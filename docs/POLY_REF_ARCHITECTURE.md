@@ -1,14 +1,14 @@
 # Poly-Ref Architecture: Opaque Polynomial Domain
 
-## Status: DESIGN PHASE
+## Status: ✅ IMPLEMENTED (Phase 1-3 Complete)
 
-Este documento define la arquitectura para **representación opaca de polinomios** (`poly_ref`) como solución definitiva al problema de explosión AST en expansiones grandes.
+Este documento define la arquitectura para **representación opaca de polinomios** (`poly_result`) implementada en ExpliCAS.
 
 ---
 
-## 1. Problema Raíz
+## 1. Problema Resuelto
 
-### Situación Actual (Problemática)
+### Situación Anterior (Problemática)
 
 ```
 expand(A^7) + expand(B^7)
@@ -21,27 +21,29 @@ __hold(3432)   __hold(3432)   ← ASTs materializados
    Add(__hold, __hold)
            │
            ▼
-   Simplifier procesa 6864 términos → 59 segundos
+   Simplifier procesa 6864 términos → 59 segundos ❌
 ```
 
-### Situación Objetivo
+### Situación Actual (Implementada)
 
 ```
 expand(A^7) + expand(B^7)
     │              │
     ▼              ▼
-poly_ref(1)     poly_ref(2)    ← Referencias opacas
+poly_result(0)  poly_result(1)  ← Referencias opacas
     │              │
     └──────┬───────┘
            ▼
-    poly_lower_pass
+    poly_lower_pass (VarTable unify + remap)
            │
            ▼
-      poly_ref(3)              ← Suma interna en PolyStore
+      poly_result(2)              ← Suma interna en PolyStore
            │
            ▼
-   Simplifier ve solo 1 átomo → milisegundos
+   Simplifier ve solo 1 átomo → 0.22 segundos ✅
 ```
+
+**Speedup: 270x (59s → 0.22s)**
 
 ---
 
@@ -53,344 +55,206 @@ poly_ref(1)     poly_ref(2)    ← Referencias opacas
 - Coste O(n) traversal por operación
 
 ### Mundo Polynomial
-- `PolyRepr`: HashMap `Monomial → Coeff`
+- `MultiPolyModP`: HashMap `Monomial → Coeff`
 - Operaciones O(n_términos) para add, O(n·m) para mul
 - Sin traversal recursivo
-- Vive en `PolyStore`
+- Vive en `PolyStore` (thread-local)
 
 ### Frontera
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        MUNDO AST                                │
 │   Expr::Add, Expr::Mul, Expr::Pow, ...                         │
-│   poly_ref(id) ← ÁTOMO OPACO                                   │
+│   poly_result(id) ← ÁTOMO OPACO                                │
 └─────────────────────────────────────────────────────────────────┘
                     ▲                          │
-                    │ poly_to_expr(id)         │ expr_to_poly(expr)
+                    │ poly_to_expr(id)         │ expand() interno
                     │ (materializa)            │ (convierte)
                     │                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                     MUNDO POLYNOMIAL                            │
-│   PolyStore { polys: Vec<(PolyMeta, PolyRepr)> }               │
-│   Operaciones: add, mul, pow, gcd                               │
+│   Thread-Local PolyStore { polys: Vec<(PolyMeta, MultiPolyModP)>│
+│   VarTable unification + monomial remapping                     │
+│   Operaciones: add, sub, mul, pow, neg                          │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 3. Estructuras de Datos Core
+## 3. API de Usuario
 
-### `PolyId`
-```rust
-pub type PolyId = u32;
+### Funciones REPL
+
+| Función | Descripción | Ejemplo |
+|---------|-------------|---------|
+| `expand(expr)` | Devuelve AST o `poly_result(id)` según tamaño | `expand((1+x+y)^7)` |
+| `poly_stats(poly_result(id))` | Muestra `poly_info(id, terms, vars, repr)` | `poly_stats(poly_result(0))` |
+| `poly_to_expr(poly_result(id) [, limit])` | Materializa a AST (con límite opcional) | `poly_to_expr(poly_result(0), 50000)` |
+
+### Ejemplo Completo
+
+```
+> a := (1 + 3*x1 + 5*x2 + 7*x3 + 9*x4 + 11*x5 + 13*x6 + 15*x7)^7 - 1
+> b := (1 - 3*x1 - 5*x2 - 7*x3 + 9*x4 - 11*x5 - 13*x6 + 15*x7)^7 + 1
+
+> expand(a) + expand(b)
+poly_result(2)
+
+> poly_stats(poly_result(2))
+poly_info(2, 1716, 7, modp)
+
+> poly_to_expr(poly_result(2))
+# Materializa los 1716 términos como AST
 ```
 
-### `VarTable`
-```rust
-/// Mapea símbolos a índices de variable (canónico y estable)
-#[derive(Debug, Clone, Default)]
-pub struct VarTable {
-    /// Nombres de variables en orden canónico
-    pub names: Vec<String>,
-    /// Lookup: nombre → índice
-    index: FxHashMap<String, u8>,
-}
+### Umbral de Materialización
 
-impl VarTable {
-    /// Obtiene o asigna índice para una variable
-    pub fn get_or_insert(&mut self, name: &str) -> u8;
-    
-    /// Unifica dos VarTables, devuelve (unión, remap_self, remap_other)
-    pub fn unify(&self, other: &VarTable) -> (VarTable, Vec<u8>, Vec<u8>);
-}
-```
-
-### `PolyRepr`
-```rust
-pub enum PolyRepr {
-    /// Coeficientes exactos (i128 con fallback a BigRational)
-    Exact(MultiPolyExact),
-    /// Módulo p (rápido, pero pierde precisión para materialización)
-    ModP(MultiPolyModP),
-}
-```
-
-### `PolyMeta`
-```rust
-#[derive(Debug, Clone)]
-pub struct PolyMeta {
-    pub n_terms: usize,
-    pub n_vars: usize,
-    pub max_total_degree: u32,
-    pub var_table: VarTable,
-    pub repr_kind: PolyReprKind,  // Exact | ModP
-    pub modulus: Option<u64>,     // Si ModP
-    pub materializable: bool,     // true si se puede convertir a Expr exacto
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PolyReprKind {
-    Exact,
-    ModP,
-}
-```
-
-### `PolyStore`
-```rust
-#[derive(Debug, Default)]
-pub struct PolyStore {
-    polys: Vec<(PolyMeta, PolyRepr)>,
-}
-
-impl PolyStore {
-    pub fn new() -> Self;
-    pub fn insert(&mut self, meta: PolyMeta, repr: PolyRepr) -> PolyId;
-    pub fn get(&self, id: PolyId) -> Option<(&PolyMeta, &PolyRepr)>;
-    pub fn meta(&self, id: PolyId) -> Option<&PolyMeta>;
-    
-    // Operaciones que producen nuevos polinomios
-    pub fn add(&mut self, a: PolyId, b: PolyId) -> PolyId;
-    pub fn sub(&mut self, a: PolyId, b: PolyId) -> PolyId;
-    pub fn mul(&mut self, a: PolyId, b: PolyId) -> PolyId;
-    pub fn pow(&mut self, a: PolyId, n: u32) -> PolyId;
-    pub fn neg(&mut self, a: PolyId) -> PolyId;
-    
-    // Limpieza
-    pub fn clear(&mut self);
-    pub fn len(&self) -> usize;
-}
-```
+| Términos Estimados | Comportamiento |
+|--------------------| --------------- |
+| ≤ 1000 | Materializa AST directamente |
+| > 1000 | Devuelve `poly_result(id)` opaco |
 
 ---
 
 ## 4. Flujo de Evaluación
 
-### 4.1 `expand()` con Umbral
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Orchestrator                             │
+├─────────────────────────────────────────────────────────────────┤
+│  1. clear_thread_local_store()    ← Limpia store por evaluación │
+│  2. eager_eval_expand_calls()     ← expand() grandes → poly_result│
+│  3. eager_eval_poly_gcd_calls()                                  │
+│  4. poly_lower_pass()             ← Combina poly_results con    │
+│                                      VarTable unify + remap     │
+│  5. Simplifier Pipeline           ← Ve poly_result como átomo   │
+│  6. Output (strip_holds, etc.)                                   │
+└─────────────────────────────────────────────────────────────────┘
+```
 
+---
+
+## 5. Estructuras de Datos
+
+### `PolyId`
 ```rust
-// En ExpandRule o eager_eval_expand
-if let Some(est) = estimate_expand_terms(ctx, arg) {
-    if est > POLY_REF_THRESHOLD {  // e.g., 500
-        // Convertir a poly, almacenar, devolver ref
-        let poly = expr_to_poly(ctx, arg, &budget)?;
-        let id = session.poly_store.insert(meta, poly);
-        return Some(make_poly_ref(ctx, id));
-    }
-}
-// else: expansión AST normal
+pub type PolyId = usize;
 ```
 
-### 4.2 `poly_lower_pass()` (Antes del Pipeline)
-
-Este pase **colapsa** operaciones entre `poly_ref`:
-
+### `PolyMeta`
 ```rust
-pub fn poly_lower_pass(
-    ctx: &mut Context,
-    store: &mut PolyStore,
-    expr: ExprId,
-) -> ExprId {
-    match ctx.get(expr).clone() {
-        // poly_ref(a) + poly_ref(b) → poly_ref(c)
-        Expr::Add(l, r) => {
-            let nl = poly_lower_pass(ctx, store, l);
-            let nr = poly_lower_pass(ctx, store, r);
-            
-            if let (Some(id_l), Some(id_r)) = (extract_poly_ref(ctx, nl),
-                                                extract_poly_ref(ctx, nr)) {
-                let new_id = store.add(id_l, id_r);
-                return make_poly_ref(ctx, new_id);
-            }
-            // Si solo uno es poly_ref y el otro es poly-like, convertir y sumar
-            // ...
-            ctx.add(Expr::Add(nl, nr))
-        }
-        // Análogo para Sub, Mul, Pow
-        _ => /* recursión estándar */
-    }
+pub struct PolyMeta {
+    pub modulus: u64,
+    pub n_terms: usize,
+    pub n_vars: usize,
+    pub max_total_degree: u32,
+    pub var_names: Vec<String>,
 }
 ```
 
-### 4.3 Pipeline Completo
-
-```
-1. Parse
-2. eager_eval_expand_calls  ← expand() grandes → poly_ref
-3. eager_eval_poly_gcd_calls
-4. poly_lower_pass          ← combina poly_ref + poly_ref
-5. Simplifier Pipeline      ← ve poly_ref como átomo
-6. Output (strip_holds, etc.)
-```
-
----
-
-## 5. Conversiones
-
-### `expr_to_poly()`
-
+### `VarTable` (con unificación Phase 3)
 ```rust
-/// Convierte expresión poly-like a PolyRepr
-/// Acepta: Add, Sub, Mul, Neg, Pow(int), Number, Variable
-pub fn expr_to_poly_exact(
-    ctx: &Context,
-    expr: ExprId,
-    budget: &PolyBudget,
-    vars: &mut VarTable,
-) -> Result<MultiPolyExact, PolyConvError>
+impl VarTable {
+    /// Obtiene o asigna índice para una variable
+    pub fn get_or_insert(&mut self, name: &str) -> Option<usize>;
+    
+    /// Obtiene índice de variable existente
+    pub fn get_index(&self, name: &str) -> Option<usize>;
+    
+    /// Unifica dos VarTables → (unified, remap_a, remap_b)
+    /// Variables ordenadas lexicográficamente para orden canónico
+    pub fn unify(&self, other: &VarTable) -> Option<(VarTable, Vec<usize>, Vec<usize>)>;
+}
 ```
 
-### `poly_to_expr()`
-
+### `MultiPolyModP::remap()`
 ```rust
-/// Materializa polinomio a Expr (bajo demanda)
-pub fn poly_to_expr(
-    ctx: &mut Context,
-    store: &PolyStore,
-    id: PolyId,
-    max_terms: usize,
-) -> Result<ExprId, PolyMaterializeError>
-
-#[derive(Debug)]
-pub enum PolyMaterializeError {
-    NotFound(PolyId),
-    TooManyTerms { actual: usize, limit: usize },
-    NotMaterializable,  // ModP sin exacto disponible
+impl MultiPolyModP {
+    /// Remapea índices de variable según vector de remapeo
+    /// Usado para alinear monomios al espacio de variables unificado
+    pub fn remap(&self, remap: &[usize], new_num_vars: usize) -> Self;
 }
 ```
 
----
-
-## 6. API de Usuario
-
-### Funciones REPL
-
-| Función | Descripción |
-|---------|-------------|
-| `expand(expr)` | Devuelve AST o `poly_ref(id)` según tamaño |
-| `poly_stats(poly_ref(id))` | Muestra metadata: términos, grado, vars |
-| `poly_to_expr(poly_ref(id))` | Materializa (con límite configurable) |
-| `poly_mul_modp(a, b [,p])` | Multiplicación mod-p, devuelve `poly_ref` |
-
-### Output JSON
-
-```json
-{
-  "kind": "poly_ref",
-  "id": 12,
-  "meta": {
-    "terms": 3432,
-    "degree": 7,
-    "vars": ["x1", "x2", "x3", "x4", "x5", "x6", "x7"],
-    "repr": "exact",
-    "materializable": true
-  }
-}
-```
-
-### Display
-
-```
-poly_ref(12)  # Compacto
-⟦poly#12: 3432 terms, deg 7⟧  # Descriptivo (opcional)
-```
-
----
-
-## 7. Exact vs ModP
-
-### Estrategia Híbrida (Recomendada)
-
-| Tamaño | Representación | Materializable |
-|--------|----------------|----------------|
-| < 500 términos | AST directo | N/A |
-| 500 - 100k términos | `Exact` | ✅ |
-| > 100k términos | `ModP` | ❌ (solo operaciones) |
-
-### `MultiPolyExact`
-
+### `PolyStore`
 ```rust
-/// Polinomio con coeficientes exactos
-pub struct MultiPolyExact {
-    terms: FxHashMap<Monomial, BigRational>,
-    var_table: VarTable,
-}
-```
-
-Para coeficientes que caben en i128, se usa i128; si overflow → BigRational.
-
----
-
-## 8. Persistencia (Snapshot)
-
-Al serializar `SessionSnapshot`:
-
-```rust
-struct SessionSnapshot {
-    store: SessionStore,
-    env: Environment,
-    // NUEVO:
-    poly_store: PolyStoreSnapshot,
-}
-
-struct PolyStoreSnapshot {
-    polys: Vec<(PolyMeta, PolyReprSnapshot)>,
-}
-
-enum PolyReprSnapshot {
-    Exact(Vec<(Vec<u16>, String)>),  // (exponentes, coef as string)
-    ModP(Vec<(Vec<u16>, u64)>, u64), // (exponentes, coef), modulus
+impl PolyStore {
+    pub fn insert(&mut self, meta: PolyMeta, poly: MultiPolyModP) -> PolyId;
+    pub fn get(&self, id: PolyId) -> Option<(&PolyMeta, &MultiPolyModP)>;
+    
+    // Operaciones con VarTable unification automática
+    pub fn add(&mut self, a: PolyId, b: PolyId) -> Option<PolyId>;
+    pub fn sub(&mut self, a: PolyId, b: PolyId) -> Option<PolyId>;
+    pub fn mul(&mut self, a: PolyId, b: PolyId) -> Option<PolyId>;
+    pub fn neg(&mut self, a: PolyId) -> Option<PolyId>;
+    pub fn pow(&mut self, a: PolyId, n: u32) -> Option<PolyId>;
+    
+    pub fn clear(&mut self);
 }
 ```
 
 ---
 
-## 9. Invariantes Críticos
+## 6. Invariantes Críticos
 
-1. **`poly_ref` es átomo**: AddView/MulView NUNCA atraviesan
-2. **VarTable unificación**: Al operar dos polys, unificar VarTables primero
-3. **ID estabilidad**: IDs dentro de una sesión son estables; entre sesiones se regeneran al cargar snapshot
-4. **Materialización opcional**: No fallar si no se puede materializar; informar al usuario
-
----
-
-## 10. Impacto en Rendimiento
-
-| Caso | Antes | Después |
-|------|-------|---------|
-| `expand(P^7)` | 0.1s | 0.1s (sin cambio) |
-| `expand(P^7) + expand(Q^7)` | 59s | **~0.1s** |
-| `expand(A^7 * B^7)` (11.8M términos) | timeout | **~3s** (como poly_ref) |
+1. **`poly_result` es átomo**: AddView/MulView NUNCA atraviesan estos nodos
+2. **VarTable unificación automática**: Al operar dos polys, se unifican VarTables y remapean monomios
+3. **Thread-local store**: Cada evaluación tiene su propio PolyStore limpio
+4. **Materialización controlada**: `poly_to_expr()` con límite opcional
 
 ---
 
-## 11. Plan de Implementación
+## 7. Rendimiento Medido
 
-### Fase 1: Infraestructura (2-3 PRs)
-- [ ] `MultiPolyExact` con coefs exactos
-- [ ] `PolyStore` con operaciones básicas (add, mul, pow)
-- [ ] `VarTable::unify` para combinar polys
-- [ ] `poly_ref(id)` AST wrapper
-- [ ] Tests: roundtrip expr → poly → expr
+| Caso | Antes | Después | Speedup |
+|------|-------|---------|---------|
+| `expand(P^7)` | 0.1s | 0.1s | - |
+| `expand(P^7) + expand(Q^7)` | 59s | **0.22s** | **270x** |
+| Combinación con VarTable diff | N/A (fallaba) | **0.22s** | ✅ |
 
-### Fase 2: Integración expand (1 PR)
-- [ ] `expand()` devuelve `poly_ref` cuando > umbral
-- [ ] `poly_stats()` regla
-- [ ] `poly_to_expr()` regla con límite
+---
 
-### Fase 3: poly_lower_pass (1 PR)
-- [ ] Pase que combina `poly_ref + poly_ref`
-- [ ] Integración en orchestrator antes del pipeline
+## 8. Estado de Implementación
 
-### Fase 4: Pulido (1 PR)
-- [ ] JSON envelope con metadata
-- [ ] Display descriptivo
-- [ ] Snapshot serialización
-- [ ] Documentación usuario
+### Fase 1: Surgical Fix ✅
+- [x] `poly_result` y `poly_ref` son atómicos en AddView/MulView
+- [x] Previene traversal O(n²)
+
+### Fase 2: Thread-Local PolyStore ✅
+- [x] `PolyStore` con operaciones add/sub/mul/neg/pow
+- [x] `poly_stats()` para metadata sin materializar
+- [x] `poly_to_expr()` para materialización controlada
+- [x] Integración en orchestrator (clear antes de cada eval)
+
+### Fase 2.5: Hardening ✅
+- [x] Formato `poly_info(id, terms, vars, repr)` claro
+- [x] Warnings para combinaciones no realizadas
+
+### Fase 3: VarTable Unification ✅
+- [x] `VarTable::unify()` con ordenación canónica lexicográfica
+- [x] `MultiPolyModP::remap()` para permutación de exponentes
+- [x] Operaciones PolyStore usan unificación automática
+- [x] Fast path cuando var_names ya coinciden
+
+---
+
+## 9. Archivos Clave
+
+| Archivo | Contenido |
+|---------|-----------|
+| `poly_store.rs` | PolyStore, thread-local ops, PolyMeta |
+| `poly_modp_conv.rs` | VarTable con unify(), expr↔poly conversion |
+| `multipoly_modp.rs` | MultiPolyModP con remap() |
+| `poly_lowering.rs` | Pre-pass que combina poly_results |
+| `rules/algebra/poly_stats.rs` | poly_stats() y poly_to_expr() rules |
+| `nary.rs` | is_poly_ref() para atomicidad |
+| `expand.rs` | expand_to_poly_ref_or_hold() |
+| `orchestrator.rs` | Integración del pipeline |
 
 ---
 
 ## Referencias
 
-- [POLY_EXPAND_PERFORMANCE.md](POLY_EXPAND_PERFORMANCE.md) - Análisis del problema
+- [POLY_EXPAND_PERFORMANCE.md](POLY_EXPAND_PERFORMANCE.md) - Análisis del problema original
 - [FAST_EXPAND.md](FAST_EXPAND.md) - Multinomial expansion algorithm
 - [ZIPPEL_GCD.md](ZIPPEL_GCD.md) - GCD mod-p infrastructure
