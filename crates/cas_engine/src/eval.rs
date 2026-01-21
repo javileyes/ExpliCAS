@@ -186,6 +186,49 @@ fn collect_domain_warnings(steps: &[crate::Step]) -> Vec<DomainWarning> {
     warnings
 }
 
+/// V2.15.36: Build a synthetic timeline step showing cache hits.
+///
+/// Creates a single aggregated step when `#N` references were resolved
+/// from cache. This provides traceability ("Used cached result from #1, #3")
+/// without repeating the full derivation steps.
+fn build_cache_hit_step(
+    ctx: &cas_ast::Context,
+    original_expr: cas_ast::ExprId,
+    resolved_expr: cas_ast::ExprId,
+    cache_hits: &[crate::session::CacheHitTrace],
+) -> Option<crate::Step> {
+    if cache_hits.is_empty() {
+        return None;
+    }
+
+    // Collect and sort entry IDs for deterministic output
+    let mut ids: Vec<u64> = cache_hits.iter().map(|h| h.entry_id).collect();
+    ids.sort();
+
+    // Format the description with truncation for readability
+    let shown: Vec<String> = ids.iter().take(6).map(|id| format!("#{}", id)).collect();
+    let suffix = if ids.len() > 6 {
+        format!(" (+{})", ids.len() - 6)
+    } else {
+        String::new()
+    };
+
+    let description = format!(
+        "Used cached simplified result from {}{}",
+        shown.join(", "),
+        suffix
+    );
+
+    Some(crate::Step::new(
+        &description,        // label
+        "Use cached result", // rule_name
+        original_expr,       // before: the original parsed expression with #N
+        resolved_expr,       // after: with #N replaced by cached simplified result
+        Vec::new(),          // child_steps
+        Some(ctx),           // context for display
+    ))
+}
+
 impl Engine {
     /// The main entry point for evaluating requests.
     /// Handles session storage, resolution, and action dispatch.
@@ -204,7 +247,8 @@ impl Engine {
         // 2. Resolve (state.resolve_all_with_diagnostics)
         // We resolve the parsed expression against the session state (Session refs #id and Environment vars)
         // Also captures inherited diagnostics from any referenced entries for SessionPropagated tracking
-        let (resolved, inherited_diagnostics) =
+        // V2.15.36: Also returns cache hit traces for synthetic timeline step generation
+        let (resolved, inherited_diagnostics, cache_hits) =
             match state.resolve_all_with_diagnostics(&mut self.simplifier.context, req.parsed) {
                 Ok(r) => r,
                 Err(ResolveError::CircularReference(msg)) => {
@@ -213,11 +257,15 @@ impl Engine {
                 Err(e) => return Err(anyhow::anyhow!("Resolution error: {}", e)),
             };
 
+        // V2.15.36: Build synthetic cache hit step (if any)
+        let cache_hit_step =
+            build_cache_hit_step(&self.simplifier.context, req.parsed, resolved, &cache_hits);
+
         // 3. Dispatch Action -> produce EvalResult
         let (
             result,
             domain_warnings,
-            steps,
+            mut steps,
             solve_steps,
             solver_assumptions,
             output_scopes,
@@ -506,6 +554,11 @@ impl Engine {
                 )
             }
         };
+
+        // V2.15.36: Prepend synthetic cache hit step if any refs were resolved from cache
+        if let Some(step) = cache_hit_step {
+            steps.insert(0, step);
+        }
 
         // Collect blocked hints from simplifier
         let blocked_hints = self.simplifier.take_blocked_hints();

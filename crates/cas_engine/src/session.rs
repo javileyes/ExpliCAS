@@ -75,6 +75,22 @@ pub enum RefMode {
     Raw,
 }
 
+/// Record of a single cache hit during resolution.
+///
+/// Used to generate synthetic timeline steps showing which
+/// cached results were used and what they resolved to.
+#[derive(Debug, Clone)]
+pub struct CacheHitTrace {
+    /// The entry ID that was resolved from cache
+    pub entry_id: EntryId,
+    /// The ExprId of the `#N` node in the AST before resolution
+    pub before_ref_expr: ExprId,
+    /// The cached simplified ExprId that replaced the reference
+    pub after_expr: ExprId,
+    /// Domain requirements from the cached entry
+    pub requires: Vec<crate::diagnostics::RequiredItem>,
+}
+
 /// Result of resolving session references with accumulated requires.
 #[derive(Debug, Clone)]
 pub struct ResolvedExpr {
@@ -86,6 +102,8 @@ pub struct ResolvedExpr {
     pub used_cache: bool,
     /// Chain of referenced entry IDs (for debugging)
     pub ref_chain: smallvec::SmallVec<[EntryId; 4]>,
+    /// Cache hits recorded during resolution (for synthetic step generation)
+    pub cache_hits: Vec<CacheHitTrace>,
 }
 
 /// A stored entry in the session
@@ -314,11 +332,16 @@ pub fn resolve_session_refs_with_mode(
     mode: RefMode,
     cache_key: &SimplifyCacheKey,
 ) -> Result<ResolvedExpr, ResolveError> {
+    use std::collections::HashSet;
+
     let mut memo: HashMap<ExprId, ExprId> = HashMap::new();
     let mut visiting: Vec<EntryId> = Vec::new();
     let mut requires: Vec<crate::diagnostics::RequiredItem> = Vec::new();
     let mut used_cache = false;
     let mut ref_chain: smallvec::SmallVec<[EntryId; 4]> = smallvec::SmallVec::new();
+    // V2.15.36: Track cache hits for synthetic timeline step
+    let mut seen_hits: HashSet<EntryId> = HashSet::new();
+    let mut cache_hits: Vec<CacheHitTrace> = Vec::new();
 
     let resolved = resolve_with_mode_recursive(
         ctx,
@@ -331,6 +354,8 @@ pub fn resolve_session_refs_with_mode(
         &mut requires,
         &mut used_cache,
         &mut ref_chain,
+        &mut seen_hits,
+        &mut cache_hits,
     )?;
 
     Ok(ResolvedExpr {
@@ -338,6 +363,7 @@ pub fn resolve_session_refs_with_mode(
         requires,
         used_cache,
         ref_chain,
+        cache_hits,
     })
 }
 
@@ -354,6 +380,8 @@ fn resolve_with_mode_recursive(
     requires: &mut Vec<crate::diagnostics::RequiredItem>,
     used_cache: &mut bool,
     ref_chain: &mut smallvec::SmallVec<[EntryId; 4]>,
+    seen_hits: &mut std::collections::HashSet<EntryId>,
+    cache_hits: &mut Vec<CacheHitTrace>,
 ) -> Result<ExprId, ResolveError> {
     use cas_ast::Expr;
 
@@ -366,7 +394,8 @@ fn resolve_with_mode_recursive(
 
     let result = match node {
         Expr::SessionRef(id) => resolve_entry_with_mode(
-            ctx, id, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+            ctx, expr, id, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+            seen_hits, cache_hits,
         )?,
 
         // Handle Variable that might be a #N reference (legacy parsing)
@@ -374,8 +403,8 @@ fn resolve_with_mode_recursive(
             if name.starts_with('#') && name.len() > 1 && name[1..].chars().all(char::is_numeric) {
                 if let Ok(id) = name[1..].parse::<u64>() {
                     resolve_entry_with_mode(
-                        ctx, id, store, mode, cache_key, memo, visiting, requires, used_cache,
-                        ref_chain,
+                        ctx, expr, id, store, mode, cache_key, memo, visiting, requires,
+                        used_cache, ref_chain, seen_hits, cache_hits,
                     )?
                 } else {
                     expr
@@ -389,9 +418,11 @@ fn resolve_with_mode_recursive(
         Expr::Add(l, r) => {
             let new_l = resolve_with_mode_recursive(
                 ctx, l, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+                seen_hits, cache_hits,
             )?;
             let new_r = resolve_with_mode_recursive(
                 ctx, r, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+                seen_hits, cache_hits,
             )?;
             if new_l == l && new_r == r {
                 expr
@@ -402,9 +433,11 @@ fn resolve_with_mode_recursive(
         Expr::Sub(l, r) => {
             let new_l = resolve_with_mode_recursive(
                 ctx, l, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+                seen_hits, cache_hits,
             )?;
             let new_r = resolve_with_mode_recursive(
                 ctx, r, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+                seen_hits, cache_hits,
             )?;
             if new_l == l && new_r == r {
                 expr
@@ -415,9 +448,11 @@ fn resolve_with_mode_recursive(
         Expr::Mul(l, r) => {
             let new_l = resolve_with_mode_recursive(
                 ctx, l, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+                seen_hits, cache_hits,
             )?;
             let new_r = resolve_with_mode_recursive(
                 ctx, r, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+                seen_hits, cache_hits,
             )?;
             if new_l == l && new_r == r {
                 expr
@@ -428,9 +463,11 @@ fn resolve_with_mode_recursive(
         Expr::Div(l, r) => {
             let new_l = resolve_with_mode_recursive(
                 ctx, l, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+                seen_hits, cache_hits,
             )?;
             let new_r = resolve_with_mode_recursive(
                 ctx, r, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+                seen_hits, cache_hits,
             )?;
             if new_l == l && new_r == r {
                 expr
@@ -441,9 +478,11 @@ fn resolve_with_mode_recursive(
         Expr::Pow(b, e) => {
             let new_b = resolve_with_mode_recursive(
                 ctx, b, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+                seen_hits, cache_hits,
             )?;
             let new_e = resolve_with_mode_recursive(
                 ctx, e, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+                seen_hits, cache_hits,
             )?;
             if new_b == b && new_e == e {
                 expr
@@ -456,6 +495,7 @@ fn resolve_with_mode_recursive(
         Expr::Neg(e) => {
             let new_e = resolve_with_mode_recursive(
                 ctx, e, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+                seen_hits, cache_hits,
             )?;
             if new_e == e {
                 expr
@@ -471,7 +511,7 @@ fn resolve_with_mode_recursive(
             for arg in &args {
                 let new_arg = resolve_with_mode_recursive(
                     ctx, *arg, store, mode, cache_key, memo, visiting, requires, used_cache,
-                    ref_chain,
+                    ref_chain, seen_hits, cache_hits,
                 )?;
                 if new_arg != *arg {
                     changed = true;
@@ -492,7 +532,7 @@ fn resolve_with_mode_recursive(
             for elem in &data {
                 let new_elem = resolve_with_mode_recursive(
                     ctx, *elem, store, mode, cache_key, memo, visiting, requires, used_cache,
-                    ref_chain,
+                    ref_chain, seen_hits, cache_hits,
                 )?;
                 if new_elem != *elem {
                     changed = true;
@@ -522,6 +562,7 @@ fn resolve_with_mode_recursive(
 #[allow(clippy::too_many_arguments)]
 fn resolve_entry_with_mode(
     ctx: &mut cas_ast::Context,
+    ref_expr_id: ExprId, // The ExprId of the #N node in AST (for cache hit trace)
     id: EntryId,
     store: &SessionStore,
     mode: RefMode,
@@ -531,6 +572,8 @@ fn resolve_entry_with_mode(
     requires: &mut Vec<crate::diagnostics::RequiredItem>,
     used_cache: &mut bool,
     ref_chain: &mut smallvec::SmallVec<[EntryId; 4]>,
+    seen_hits: &mut std::collections::HashSet<EntryId>,
+    cache_hits: &mut Vec<CacheHitTrace>,
 ) -> Result<ExprId, ResolveError> {
     use cas_ast::Expr;
 
@@ -552,6 +595,17 @@ fn resolve_entry_with_mode(
                 // Cache hit! Use cached expression and accumulate requires
                 *used_cache = true;
                 requires.extend(cache.requires.iter().cloned());
+
+                // V2.15.36: Record cache hit for synthetic step (dedup by entry_id)
+                if seen_hits.insert(id) {
+                    cache_hits.push(CacheHitTrace {
+                        entry_id: id,
+                        before_ref_expr: ref_expr_id,
+                        after_expr: cache.expr,
+                        requires: cache.requires.clone(),
+                    });
+                }
+
                 return Ok(cache.expr);
             }
         }
@@ -583,15 +637,19 @@ fn resolve_entry_with_mode(
                 requires,
                 used_cache,
                 ref_chain,
+                seen_hits,
+                cache_hits,
             )?
         }
         EntryKind::Eq { lhs, rhs } => {
             // Equation as expression: use residue form (lhs - rhs)
             let resolved_lhs = resolve_with_mode_recursive(
                 ctx, *lhs, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+                seen_hits, cache_hits,
             )?;
             let resolved_rhs = resolve_with_mode_recursive(
                 ctx, *rhs, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
+                seen_hits, cache_hits,
             )?;
             ctx.add(Expr::Sub(resolved_lhs, resolved_rhs))
         }

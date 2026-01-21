@@ -46,18 +46,26 @@ impl SessionState {
         Ok(fully_resolved)
     }
 
-    /// Resolve all references AND return inherited diagnostics.
+    /// Resolve all references AND return inherited diagnostics + cache hits.
     ///
     /// When the expression contains session references (#id), the diagnostics
     /// from those entries are accumulated for SessionPropagated origin tracking.
     ///
     /// V2.15.36: Uses cache-aware resolution - if an entry has a cached
     /// simplified result with matching key, uses that instead of raw expression.
+    /// Also returns cache hit traces for synthetic timeline step generation.
     pub fn resolve_all_with_diagnostics(
         &self,
         ctx: &mut Context,
         expr: ExprId,
-    ) -> Result<(ExprId, crate::diagnostics::Diagnostics), ResolveError> {
+    ) -> Result<
+        (
+            ExprId,
+            crate::diagnostics::Diagnostics,
+            Vec<crate::session::CacheHitTrace>,
+        ),
+        ResolveError,
+    > {
         use crate::session::{resolve_session_refs_with_mode, RefMode, SimplifyCacheKey};
 
         // Create cache key from current options
@@ -85,7 +93,7 @@ impl SessionState {
         // 3. Substitute variables from environment
         let fully_resolved = crate::env::substitute(ctx, &self.env, resolved.expr);
 
-        Ok((fully_resolved, inherited))
+        Ok((fully_resolved, inherited, resolved.cache_hits))
     }
 
     /// Clear all session state (history and environment)
