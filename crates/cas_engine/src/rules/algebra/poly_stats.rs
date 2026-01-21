@@ -154,7 +154,275 @@ impl SimpleRule for PolyToExprRule {
     }
 }
 
+/// Rule: poly_print(poly_result(id) [, max_terms]) → formatted string
+/// This prints the polynomial directly without AST construction - O(n log n) with sorting
+///
+/// Usage:
+/// - poly_print(poly_result(0))        - print up to 1000 terms
+/// - poly_print(poly_result(0), 50)    - print up to 50 terms with truncation message
+pub struct PolyPrintRule;
+
+impl SimpleRule for PolyPrintRule {
+    fn name(&self) -> &str {
+        "poly_print"
+    }
+
+    fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+        use crate::poly_store::thread_local_get_for_materialize;
+
+        // Match: poly_print(poly_result(id)) or poly_print(poly_result(id), max_terms)
+        if let Expr::Function(name, args) = ctx.get(expr).clone() {
+            if name != "poly_print" || args.is_empty() || args.len() > 2 {
+                return None;
+            }
+
+            let arg = args[0];
+            let max_terms: usize = if args.len() == 2 {
+                if let Expr::Number(n) = ctx.get(args[1]) {
+                    n.to_integer().try_into().unwrap_or(1000)
+                } else {
+                    1000
+                }
+            } else {
+                1000 // Default limit for printing
+            };
+
+            // Extract poly_result(id)
+            if let Expr::Function(inner_name, inner_args) = ctx.get(arg) {
+                if inner_name != "poly_result" || inner_args.len() != 1 {
+                    return None;
+                }
+
+                // Extract ID
+                if let Expr::Number(n) = ctx.get(inner_args[0]) {
+                    if let Ok(id) = n.to_integer().try_into() {
+                        let id: crate::poly_store::PolyId = id;
+
+                        // Get poly from thread-local store
+                        if let Some((meta, poly)) = thread_local_get_for_materialize(id) {
+                            // Format polynomial with truncation
+                            let formatted =
+                                format_poly_with_limit(&poly, &meta.var_names, max_terms);
+
+                            // Return as a variable (string representation)
+                            let result = ctx.var(&formatted);
+
+                            let desc = if meta.n_terms > max_terms {
+                                format!(
+                                    "Formatted polynomial: {} of {} terms shown (no AST)",
+                                    max_terms, meta.n_terms
+                                )
+                            } else {
+                                format!("Formatted polynomial: {} terms (no AST)", meta.n_terms)
+                            };
+
+                            return Some(Rewrite::new(result).desc(desc));
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+}
+
+/// Format MultiPolyModP directly to string with optional truncation
+/// Terms are sorted by graded lex order (total degree first, then lex)
+fn format_poly_with_limit(
+    poly: &crate::multipoly_modp::MultiPolyModP,
+    var_names: &[String],
+    max_terms: usize,
+) -> String {
+    use crate::mono::Mono;
+    use std::fmt::Write;
+
+    if poly.terms.is_empty() {
+        return "0".to_string();
+    }
+
+    // Sort terms by graded lex order for consistent output
+    let mut sorted_terms: Vec<&(Mono, u64)> = poly.terms.iter().collect();
+    sorted_terms.sort_by(|a, b| {
+        // First by total degree (descending)
+        let deg_cmp = b.0.total_degree().cmp(&a.0.total_degree());
+        if deg_cmp != std::cmp::Ordering::Equal {
+            return deg_cmp;
+        }
+        // Then by lex order (descending)
+        b.0.cmp(&a.0)
+    });
+
+    let total_terms = sorted_terms.len();
+    let show_terms = sorted_terms.len().min(max_terms);
+    let truncated = total_terms > max_terms;
+
+    let mut result = String::with_capacity(show_terms * 25);
+
+    for (i, (mono, coeff)) in sorted_terms.iter().take(show_terms).enumerate() {
+        let is_constant = mono.total_degree() == 0;
+
+        // Handle sign and spacing
+        if i == 0 {
+            // First term: no leading sign for positive
+            if is_constant {
+                write!(result, "{}", coeff).unwrap();
+            } else if *coeff == 1 {
+                // coefficient 1 is implicit
+            } else {
+                write!(result, "{}", coeff).unwrap();
+            }
+        } else {
+            // Subsequent terms: always show +
+            if is_constant || *coeff != 1 {
+                write!(result, " + {}", coeff).unwrap();
+            } else {
+                result.push_str(" + ");
+            }
+        }
+
+        // Format monomial (variables with exponents)
+        let mut first_var = i == 0 && *coeff == 1 && !is_constant;
+        for (var_idx, &exp) in mono.0.iter().enumerate() {
+            if exp > 0 && var_idx < var_names.len() {
+                if !first_var {
+                    result.push('·');
+                }
+                first_var = false;
+                result.push_str(&var_names[var_idx]);
+                if exp > 1 {
+                    write!(result, "^{}", exp).unwrap();
+                }
+            }
+        }
+    }
+
+    // Add truncation message
+    if truncated {
+        let remaining = total_terms - max_terms;
+        write!(result, " + ... (+{} more terms)", remaining).unwrap();
+    }
+
+    result
+}
+
+/// Rule: poly_latex(poly_result(id) [, max_terms]) → LaTeX formatted string
+pub struct PolyLatexRule;
+
+impl SimpleRule for PolyLatexRule {
+    fn name(&self) -> &str {
+        "poly_latex"
+    }
+
+    fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
+        use crate::poly_store::thread_local_get_for_materialize;
+
+        if let Expr::Function(name, args) = ctx.get(expr).clone() {
+            if name != "poly_latex" || args.is_empty() || args.len() > 2 {
+                return None;
+            }
+
+            let arg = args[0];
+            let max_terms: usize = if args.len() == 2 {
+                if let Expr::Number(n) = ctx.get(args[1]) {
+                    n.to_integer().try_into().unwrap_or(100)
+                } else {
+                    100
+                }
+            } else {
+                100 // LaTeX default is smaller
+            };
+
+            if let Expr::Function(inner_name, inner_args) = ctx.get(arg) {
+                if inner_name != "poly_result" || inner_args.len() != 1 {
+                    return None;
+                }
+
+                if let Expr::Number(n) = ctx.get(inner_args[0]) {
+                    if let Ok(id) = n.to_integer().try_into() {
+                        let id: crate::poly_store::PolyId = id;
+
+                        if let Some((meta, poly)) = thread_local_get_for_materialize(id) {
+                            let formatted = format_poly_latex(&poly, &meta.var_names, max_terms);
+                            let result = ctx.var(&formatted);
+                            return Some(Rewrite::new(result).desc(format!(
+                                "LaTeX polynomial: {} terms",
+                                meta.n_terms.min(max_terms)
+                            )));
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+}
+
+/// Format polynomial as LaTeX
+fn format_poly_latex(
+    poly: &crate::multipoly_modp::MultiPolyModP,
+    var_names: &[String],
+    max_terms: usize,
+) -> String {
+    use crate::mono::Mono;
+    use std::fmt::Write;
+
+    if poly.terms.is_empty() {
+        return "0".to_string();
+    }
+
+    let mut sorted_terms: Vec<&(Mono, u64)> = poly.terms.iter().collect();
+    sorted_terms.sort_by(|a, b| {
+        let deg_cmp = b.0.total_degree().cmp(&a.0.total_degree());
+        if deg_cmp != std::cmp::Ordering::Equal {
+            return deg_cmp;
+        }
+        b.0.cmp(&a.0)
+    });
+
+    let total_terms = sorted_terms.len();
+    let show_terms = sorted_terms.len().min(max_terms);
+    let truncated = total_terms > max_terms;
+
+    let mut result = String::with_capacity(show_terms * 30);
+
+    for (i, (mono, coeff)) in sorted_terms.iter().take(show_terms).enumerate() {
+        let is_constant = mono.total_degree() == 0;
+
+        if i == 0 {
+            if is_constant || *coeff != 1 {
+                write!(result, "{}", coeff).unwrap();
+            }
+        } else if is_constant || *coeff != 1 {
+            write!(result, " + {}", coeff).unwrap();
+        } else {
+            result.push_str(" + ");
+        }
+
+        // LaTeX formatting for variables
+        for (var_idx, &exp) in mono.0.iter().enumerate() {
+            if exp > 0 && var_idx < var_names.len() {
+                let var = &var_names[var_idx];
+                if exp == 1 {
+                    write!(result, " {}", var).unwrap();
+                } else {
+                    write!(result, " {}^{{{}}}", var, exp).unwrap();
+                }
+            }
+        }
+    }
+
+    if truncated {
+        let remaining = total_terms - max_terms;
+        write!(result, " + \\cdots \\text{{(+{} terms)}}", remaining).unwrap();
+    }
+
+    result
+}
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(PolyStatsRule));
     simplifier.add_rule(Box::new(PolyToExprRule));
+    simplifier.add_rule(Box::new(PolyPrintRule));
+    simplifier.add_rule(Box::new(PolyLatexRule));
 }

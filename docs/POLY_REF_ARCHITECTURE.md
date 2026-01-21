@@ -89,7 +89,17 @@ poly_result(0)  poly_result(1)  ← Referencias opacas
 |---------|-------------|---------|
 | `expand(expr)` | Devuelve AST o `poly_result(id)` según tamaño | `expand((1+x+y)^7)` |
 | `poly_stats(poly_result(id))` | Muestra `poly_info(id, terms, vars, repr)` | `poly_stats(poly_result(0))` |
-| `poly_to_expr(poly_result(id) [, limit])` | Materializa a AST (con límite opcional) | `poly_to_expr(poly_result(0), 50000)` |
+| `poly_to_expr(poly_result(id) [, limit])` | Materializa a AST (lento, crea nodos) | `poly_to_expr(poly_result(0), 50000)` |
+| `poly_print(poly_result(id) [, limit])` | **Impresión directa sin AST (rápido)** | `poly_print(poly_result(0), 50)` |
+| `poly_latex(poly_result(id) [, limit])` | Formato LaTeX sin AST | `poly_latex(poly_result(0), 10)` |
+
+### Comparativa de Tiempos (3432 términos)
+
+| Función | Tiempo | Método |
+|---------|--------|--------|
+| `poly_to_expr(p)` | ~30s | Crea AST completo |
+| `poly_print(p)` | **0.26s** | String directo, grlex sort |
+| `poly_latex(p)` | **0.26s** | LaTeX string directo |
 
 ### Ejemplo Completo
 

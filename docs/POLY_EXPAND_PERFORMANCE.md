@@ -1,14 +1,19 @@
 # Polynomial Expansion Performance Analysis
 
+> **✅ RESOLVED**: Este problema fue solucionado completamente con la arquitectura `poly_result`.
+> Ver [POLY_REF_ARCHITECTURE.md](POLY_REF_ARCHITECTURE.md) para la implementación final.
+> 
+> **Resultado**: `expand(P^7) + expand(Q^7)` ahora completa en **0.22s** (antes: 59s, **speedup 270x**).
+
 ## Executive Summary
 
-La expansión de polinomios grandes presenta un cuello de botella de rendimiento significativo. Este documento analiza el problema, identifica las causas raíz, y propone soluciones a corto y largo plazo.
+La expansión de polinomios grandes presentaba un cuello de botella de rendimiento significativo. Este documento analiza el problema original, identifica las causas raíz, y documenta la solución implementada.
 
-| Escenario | Tiempo Actual | Tiempo Objetivo |
-|-----------|---------------|-----------------|
-| `expand(P^7)` solo | 0.1s ✅ | 0.1s |
-| `expand(P^7) + expand(Q^7)` | **59s ❌** | <1s |
-| `poly_mul_modp(P^7+Q^7, 1)` | 0.015s ✅ | - |
+| Escenario | Tiempo Original | Tiempo Actual |
+|-----------|-----------------|---------------|
+| `expand(P^7)` solo | 0.1s ✅ | 0.1s ✅ |
+| `expand(P^7) + expand(Q^7)` | **59s ❌** | **0.22s ✅** |
+| `poly_mul_modp(P^7+Q^7, 1)` | 0.015s ✅ | 0.015s ✅ |
 
 ---
 
