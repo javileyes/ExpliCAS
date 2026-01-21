@@ -33,6 +33,21 @@ impl SessionState {
         }
     }
 
+    /// Create a SessionState from an existing SessionStore (for session restoration).
+    pub fn from_store(store: SessionStore) -> Self {
+        Self {
+            store,
+            env: Environment::new(),
+            options: EvalOptions::default(),
+            profile_cache: ProfileCache::new(),
+        }
+    }
+
+    /// Get a reference to the session store (for snapshot serialization).
+    pub fn store(&self) -> &SessionStore {
+        &self.store
+    }
+
     /// Resolve all references in an expression:
     /// 1. Resolve session references (#id) -> ExprId
     /// 2. Substitute environment variables (x=5) -> ExprId

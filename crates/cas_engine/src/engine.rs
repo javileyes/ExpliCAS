@@ -255,6 +255,28 @@ impl Simplifier {
         s
     }
 
+    /// Create a Simplifier with a pre-populated Context (for session restoration).
+    /// Registers default rules on the provided context.
+    pub fn with_context(context: Context) -> Self {
+        let mut s = Self {
+            context,
+            rules: HashMap::new(),
+            global_rules: Vec::new(),
+            steps_mode: StepsMode::On,
+            allow_numerical_verification: true,
+            debug_mode: false,
+            disabled_rules: HashSet::new(),
+            enable_polynomial_strategy: true,
+            profiler: RuleProfiler::new(false),
+            last_domain_warnings: Vec::new(),
+            last_blocked_hints: Vec::new(),
+            sticky_root_expr: None,
+            sticky_implicit_domain: None,
+        };
+        s.register_default_rules();
+        s
+    }
+
     /// Create a simplifier based on evaluation options.
     /// This is the main entry point for context-aware simplification.
     ///

@@ -41,6 +41,13 @@ impl Engine {
         }
     }
 
+    /// Create an Engine with a pre-populated Context (for session restoration).
+    pub fn with_context(context: cas_ast::Context) -> Self {
+        Self {
+            simplifier: Simplifier::with_context(context),
+        }
+    }
+
     /// Determine effective options, resolving Auto modes based on expression content.
     /// - ContextMode::Auto → IntegratePrep if contains integrate(), else Standard
     /// - ComplexMode::Auto → On if contains i, else Off

@@ -297,6 +297,11 @@ pub struct EvalArgs {
     /// Assume scope (only active when domain=assume)
     #[arg(long, value_enum, default_value_t = AssumeScopeArg::Real)]
     pub assume_scope: AssumeScopeArg,
+
+    /// Path to session file for persistent session across CLI invocations.
+    /// Enables `#N` references to work across multiple eval calls.
+    #[arg(long)]
+    pub session: Option<std::path::PathBuf>,
 }
 
 /// Legacy eval-json arguments (hidden, for backward compatibility)
@@ -489,11 +494,20 @@ fn read_expr_or_stdin(expr: &str) -> String {
 /// Run eval with text output
 fn run_eval_text(args: &EvalArgs) {
     use cas_ast::DisplayExpr;
-    use cas_engine::{Engine, EvalAction, EvalRequest, EvalResult, SessionState};
+    use cas_engine::session::SimplifyCacheKey;
+    use cas_engine::{EvalAction, EvalRequest, EvalResult};
     use cas_parser::parse;
 
-    let mut engine = Engine::new();
-    let mut state = SessionState::new();
+    // Build cache key for snapshot compatibility check
+    let domain_mode = match args.domain {
+        DomainArg::Strict => cas_engine::DomainMode::Strict,
+        DomainArg::Generic => cas_engine::DomainMode::Generic,
+        DomainArg::Assume => cas_engine::DomainMode::Assume,
+    };
+    let cache_key = SimplifyCacheKey::from_context(domain_mode);
+
+    // Load or create session and context
+    let (mut engine, mut state) = load_or_new_session(&args.session, &cache_key);
 
     // Parse expression
     let parsed = match parse(&args.expr, &mut engine.simplifier.context) {
@@ -504,13 +518,13 @@ fn run_eval_text(args: &EvalArgs) {
         }
     };
 
-    // Build eval request
+    // Build eval request (auto_store=true to enable #N references)
     let req = EvalRequest {
         raw_input: args.expr.clone(),
         parsed,
         kind: cas_engine::EntryKind::Expr(parsed),
         action: EvalAction::Simplify,
-        auto_store: false,
+        auto_store: args.session.is_some(), // Store if using persistent session
     };
 
     // Evaluate
@@ -539,12 +553,66 @@ fn run_eval_text(args: &EvalArgs) {
                 _ => "(no result)".to_string(),
             };
             println!("{}", result_str);
+
+            // Save session snapshot if --session is specified
+            if let Some(ref path) = args.session {
+                if let Err(e) = save_session(&engine, &state, path, &cache_key) {
+                    eprintln!("Warning: Failed to save session: {}", e);
+                }
+            }
         }
         Err(e) => {
             eprintln!("Error: {}", e);
             std::process::exit(1);
         }
     }
+}
+
+/// Load session from snapshot file or create new session
+fn load_or_new_session(
+    path: &Option<std::path::PathBuf>,
+    key: &cas_engine::session::SimplifyCacheKey,
+) -> (cas_engine::Engine, cas_engine::SessionState) {
+    use cas_engine::session_snapshot::SessionSnapshot;
+
+    let Some(path) = path else {
+        return (cas_engine::Engine::new(), cas_engine::SessionState::new());
+    };
+
+    if !path.exists() {
+        return (cas_engine::Engine::new(), cas_engine::SessionState::new());
+    }
+
+    match SessionSnapshot::load(path) {
+        Ok(snap) => {
+            if snap.is_compatible(key) {
+                let (ctx, store) = snap.into_parts();
+                let engine = cas_engine::Engine::with_context(ctx);
+                let state = cas_engine::SessionState::from_store(store);
+                (engine, state)
+            } else {
+                eprintln!("Session snapshot incompatible, starting fresh");
+                (cas_engine::Engine::new(), cas_engine::SessionState::new())
+            }
+        }
+        Err(e) => {
+            eprintln!("Warning: Failed to load session ({}), starting fresh", e);
+            (cas_engine::Engine::new(), cas_engine::SessionState::new())
+        }
+    }
+}
+
+/// Save session to snapshot file
+fn save_session(
+    engine: &cas_engine::Engine,
+    state: &cas_engine::SessionState,
+    path: &std::path::Path,
+    key: &cas_engine::session::SimplifyCacheKey,
+) -> Result<(), cas_engine::session_snapshot::SnapshotError> {
+    use cas_engine::session_snapshot::SessionSnapshot;
+
+    let snap = SessionSnapshot::new(&engine.simplifier.context, state.store(), key.clone());
+    snap.save_atomic(path)
 }
 
 /// Convert BudgetPreset enum to string for JSON args
