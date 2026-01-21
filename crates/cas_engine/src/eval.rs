@@ -219,14 +219,18 @@ fn build_cache_hit_step(
         suffix
     );
 
-    Some(crate::Step::new(
+    let mut step = crate::Step::new(
         &description,        // label
         "Use cached result", // rule_name
         original_expr,       // before: the original parsed expression with #N
         resolved_expr,       // after: with #N replaced by cached simplified result
         Vec::new(),          // child_steps
         Some(ctx),           // context for display
-    ))
+    );
+    // V2.15.36: Set to Medium so it appears in the timeline
+    step.importance = crate::step::ImportanceLevel::Medium;
+    step.category = crate::step::StepCategory::Substitute;
+    Some(step)
 }
 
 impl Engine {
