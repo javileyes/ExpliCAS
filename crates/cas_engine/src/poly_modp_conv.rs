@@ -168,6 +168,68 @@ impl std::fmt::Display for PolyConvError {
     }
 }
 
+/// Retrieve a poly_result(id) from PolyStore and remap to match local VarTable.
+///
+/// This handles the case where `expand()` returns an opaque `poly_result(id)` reference
+/// instead of a materialized AST. We retrieve the stored polynomial and remap its
+/// variable indices to match the VarTable being built during conversion.
+fn poly_result_to_modp(
+    ctx: &Context,
+    p: u64,
+    vars: &mut VarTable,
+    id_expr: ExprId,
+) -> Result<MultiPolyModP, PolyConvError> {
+    use crate::poly_store::{thread_local_get_for_materialize, PolyId};
+
+    // 1) Parse id from the argument
+    let id_u32: u32 = match ctx.get(id_expr) {
+        Expr::Number(n) => n.to_integer().to_u32().ok_or_else(|| {
+            PolyConvError::UnsupportedExpr("poly_result id not valid integer".into())
+        })?,
+        _ => {
+            return Err(PolyConvError::UnsupportedExpr(
+                "poly_result arg must be integer".into(),
+            ))
+        }
+    };
+
+    let poly_id: PolyId = id_u32;
+
+    // 2) Get polynomial from thread-local store (cloned)
+    let (meta, poly) = thread_local_get_for_materialize(poly_id).ok_or_else(|| {
+        PolyConvError::UnsupportedExpr(format!("invalid poly_result({})", poly_id))
+    })?;
+
+    // 3) Modulus guard - must match exactly
+    if poly.p != p {
+        return Err(PolyConvError::BadPrime(format!(
+            "poly_result modulus {} differs from requested {}",
+            poly.p, p
+        )));
+    }
+
+    // 4) Ensure all variable names from the stored polynomial are in local vars
+    for name in &meta.var_names {
+        vars.get_or_insert(name)
+            .ok_or(PolyConvError::TooManyVariables)?;
+    }
+
+    // 5) Build remap vector: old_index (stored) -> new_index (local vars)
+    let remap: Vec<usize> = meta
+        .var_names
+        .iter()
+        .map(|name| {
+            vars.get_index(name)
+                .expect("VarTable missing variable after insert")
+        })
+        .collect();
+
+    // 6) Remap polynomial exponents to match local VarTable ordering
+    let remapped = poly.remap(&remap, vars.len());
+
+    Ok(remapped)
+}
+
 /// Strip __hold() wrappers from expression (multi-level)
 /// Uses canonical implementation from cas_ast::hold
 pub fn strip_hold(ctx: &Context, mut expr: ExprId) -> ExprId {
@@ -287,6 +349,10 @@ fn expr_to_poly_modp_inner(
             if name == "__hold" && args.len() == 1 {
                 return expr_to_poly_modp_inner(ctx, args[0], p, budget, vars);
             }
+            // Handle poly_result(id) - retrieve from PolyStore with remapping
+            if name == "poly_result" && args.len() == 1 {
+                return poly_result_to_modp(ctx, p, vars, args[0]);
+            }
             Err(PolyConvError::UnsupportedExpr(format!("function {}", name)))
         }
 
@@ -371,6 +437,10 @@ fn convert_non_add_term(
         Expr::Function(name, args) => {
             if name == "__hold" && args.len() == 1 {
                 return convert_non_add_term(ctx, args[0], p, budget, vars);
+            }
+            // Handle poly_result(id) - retrieve from PolyStore with remapping
+            if name == "poly_result" && args.len() == 1 {
+                return poly_result_to_modp(ctx, p, vars, args[0]);
             }
             Err(PolyConvError::UnsupportedExpr(format!("function {}", name)))
         }
