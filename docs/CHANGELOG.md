@@ -5,6 +5,36 @@ All notable changes to ExpliCAS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.15.36] - 2026-01-21 - Session Caching Hardened
+
+### Added
+
+- **Phase 4: Synthetic Timeline Step**
+  - `CacheHitTrace` struct for tracking cache hit metadata
+  - `ResolvedExpr.cache_hits` with dedup via `HashSet<EntryId>`
+  - `build_cache_hit_step()` generates aggregated step: `"Used cached simplified result from #1, #3"`
+  - Step prepended to timeline for traceability without repeating derivation
+
+- **Phase 5: Memory Control with LRU Eviction**
+  - `CacheConfig` struct: `max_cached_entries=100`, `max_cached_steps=5000`, `light_cache_threshold=200`
+  - `VecDeque<EntryId>` for LRU ordering in `SessionStore`
+  - `touch_cached(id)` method for true LRU on cache hits
+  - `apply_light_cache()` drops steps when > threshold (`steps: Option<Arc<...>>`)
+  - `evict_if_needed()` with proper `0 = unlimited` handling
+
+### Changed
+
+- `SimplifiedCache.steps` changed from `Arc<Vec<Step>>` to `Option<Arc<Vec<Step>>>` for light-cache mode
+- `update_simplified()` now evicts AFTER insert (budget-correct)
+- `resolve_all_with_diagnostics()` returns `cache_hits` for synthetic step generation
+
+### Technical
+
+- All 512 unit tests pass
+- Documentation updated in `session_evaluation_caching.md`
+
+---
+
 ## [2.14.36] - 2026-01-14 - GCD Router Unification
 
 ### Added

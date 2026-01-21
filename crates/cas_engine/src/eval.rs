@@ -261,6 +261,11 @@ impl Engine {
         let cache_hit_step =
             build_cache_hit_step(&self.simplifier.context, req.parsed, resolved, &cache_hits);
 
+        // V2.15.36: Touch cached entries to maintain true LRU ordering
+        for hit in &cache_hits {
+            state.store.touch_cached(hit.entry_id);
+        }
+
         // 3. Dispatch Action -> produce EvalResult
         let (
             result,
@@ -685,7 +690,7 @@ impl Engine {
                     key: cache_key,
                     expr: *simplified_expr,
                     requires: diagnostics.requires.clone(),
-                    steps: std::sync::Arc::new(steps.clone()),
+                    steps: Some(std::sync::Arc::new(steps.clone())),
                 };
                 state.store.update_simplified(id, cache);
             }

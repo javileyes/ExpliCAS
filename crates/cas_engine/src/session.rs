@@ -49,6 +49,30 @@ impl SimplifyCacheKey {
     }
 }
 
+/// Configuration for simplified cache memory limits.
+///
+/// Controls how many cached simplified results are retained to
+/// prevent unbounded memory growth in long sessions.
+#[derive(Debug, Clone)]
+pub struct CacheConfig {
+    /// Max entries with cached simplified result (0 = unlimited)
+    pub max_cached_entries: usize,
+    /// Max total steps across all cached entries (0 = unlimited)
+    pub max_cached_steps: usize,
+    /// Drop steps for entries with > N steps (light cache mode)
+    pub light_cache_threshold: Option<usize>,
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        Self {
+            max_cached_entries: 100,          // Reasonable default
+            max_cached_steps: 5000,           // ~50 steps avg per entry
+            light_cache_threshold: Some(200), // Drop steps if > 200
+        }
+    }
+}
+
 /// Cached simplification result for a session entry.
 ///
 /// Stored after evaluation to enable fast resolution of `#N` references
@@ -61,8 +85,8 @@ pub struct SimplifiedCache {
     pub expr: ExprId,
     /// Domain requirements from this entry (for propagation)
     pub requires: Vec<crate::diagnostics::RequiredItem>,
-    /// Derivation steps (for "show #N" - shared via Arc)
-    pub steps: std::sync::Arc<Vec<crate::step::Step>>,
+    /// Derivation steps (None = light cache, steps omitted for large entries)
+    pub steps: Option<std::sync::Arc<Vec<crate::step::Step>>>,
 }
 
 /// How to resolve session references
@@ -146,6 +170,12 @@ impl Entry {
 pub struct SessionStore {
     next_id: EntryId,
     entries: Vec<Entry>,
+    /// V2.15.36: LRU tracking for cache eviction (most recent at back)
+    cache_order: std::collections::VecDeque<EntryId>,
+    /// Cache memory configuration
+    cache_config: CacheConfig,
+    /// Running total of cached steps for budget enforcement
+    cached_steps_count: usize,
 }
 
 impl Default for SessionStore {
@@ -158,9 +188,28 @@ impl SessionStore {
     /// Create a new empty session store
     pub fn new() -> Self {
         Self {
-            next_id: 1, // Start at 1 for human-friendly IDs
+            next_id: 1,
             entries: Vec::new(),
+            cache_order: std::collections::VecDeque::new(),
+            cache_config: CacheConfig::default(),
+            cached_steps_count: 0,
         }
+    }
+
+    /// Create a session store with custom cache configuration
+    pub fn with_cache_config(config: CacheConfig) -> Self {
+        Self {
+            next_id: 1,
+            entries: Vec::new(),
+            cache_order: std::collections::VecDeque::new(),
+            cache_config: config,
+            cached_steps_count: 0,
+        }
+    }
+
+    /// Get cache statistics (cached_entries, total_steps)
+    pub fn cache_stats(&self) -> (usize, usize) {
+        (self.cache_order.len(), self.cached_steps_count)
     }
 
     /// Store a new entry and return its ID (no diagnostics)
@@ -242,9 +291,90 @@ impl SessionStore {
     ///
     /// This caches the simplified result so that subsequent `#id` references
     /// can use the cached value instead of re-simplifying.
-    pub fn update_simplified(&mut self, id: EntryId, simplified: SimplifiedCache) {
+    ///
+    /// V2.15.36: Implements LRU eviction with configurable limits.
+    /// - Applies light-cache (drops steps) for large entries
+    /// - Evicts oldest cached entries when over budget (after insert)
+    pub fn update_simplified(&mut self, id: EntryId, mut simplified: SimplifiedCache) {
+        // Apply light-cache mode: drop steps for large entries
+        simplified = self.apply_light_cache(simplified);
+
         if let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) {
+            // Compute step count delta
+            let old_steps = entry
+                .simplified
+                .as_ref()
+                .and_then(|c| c.steps.as_ref())
+                .map(|s| s.len())
+                .unwrap_or(0);
+            let new_steps = simplified.steps.as_ref().map(|s| s.len()).unwrap_or(0);
+
+            // Update cache
             entry.simplified = Some(simplified);
+
+            // Update LRU order (remove old position, add to back)
+            self.cache_order.retain(|&eid| eid != id);
+            self.cache_order.push_back(id);
+
+            // Update step count budget
+            self.cached_steps_count = self.cached_steps_count + new_steps - old_steps;
+
+            // Evict if over limits (AFTER insert)
+            self.evict_if_needed();
+        }
+    }
+
+    /// Touch a cached entry to mark it as recently used (for LRU).
+    ///
+    /// Call this when resolving `#N` from cache to keep hot entries alive.
+    pub fn touch_cached(&mut self, id: EntryId) {
+        if let Some(entry) = self.entries.iter().find(|e| e.id == id) {
+            if entry.simplified.is_some() {
+                self.cache_order.retain(|&eid| eid != id);
+                self.cache_order.push_back(id);
+            }
+        }
+    }
+
+    /// Apply light-cache mode: drop steps for entries over threshold.
+    fn apply_light_cache(&self, mut simplified: SimplifiedCache) -> SimplifiedCache {
+        if let Some(threshold) = self.cache_config.light_cache_threshold {
+            if let Some(ref steps) = simplified.steps {
+                if steps.len() > threshold {
+                    simplified.steps = None; // Drop steps to save memory
+                }
+            }
+        }
+        simplified
+    }
+
+    /// Evict oldest cached entries until within limits.
+    fn evict_if_needed(&mut self) {
+        loop {
+            // Check if over entry limit (0 = unlimited)
+            let over_entries = self.cache_config.max_cached_entries > 0
+                && self.cache_order.len() > self.cache_config.max_cached_entries;
+
+            // Check if over steps budget (0 = unlimited)
+            let over_steps = self.cache_config.max_cached_steps > 0
+                && self.cached_steps_count > self.cache_config.max_cached_steps;
+
+            if !(over_entries || over_steps) {
+                break;
+            }
+
+            // Evict oldest (front of queue)
+            if let Some(oldest_id) = self.cache_order.pop_front() {
+                if let Some(entry) = self.entries.iter_mut().find(|e| e.id == oldest_id) {
+                    if let Some(cache) = entry.simplified.take() {
+                        let step_count = cache.steps.as_ref().map(|s| s.len()).unwrap_or(0);
+                        self.cached_steps_count =
+                            self.cached_steps_count.saturating_sub(step_count);
+                    }
+                }
+            } else {
+                break; // No more to evict
+            }
         }
     }
 }
@@ -1110,7 +1240,7 @@ mod tests {
             key: cache_key.clone(),
             expr: simplified_five,
             requires: vec![],
-            steps: std::sync::Arc::new(vec![]),
+            steps: Some(std::sync::Arc::new(vec![])),
         };
         store.update_simplified(1, cache);
 
@@ -1178,7 +1308,7 @@ mod tests {
             key: cache_key_strict,
             expr: simplified,
             requires: vec![],
-            steps: std::sync::Arc::new(vec![]),
+            steps: Some(std::sync::Arc::new(vec![])),
         };
         store.update_simplified(1, cache);
 
@@ -1223,7 +1353,7 @@ mod tests {
             key: cache_key.clone(),
             expr: simplified,
             requires: vec![],
-            steps: std::sync::Arc::new(vec![]),
+            steps: Some(std::sync::Arc::new(vec![])),
         };
         store.update_simplified(1, cache);
 

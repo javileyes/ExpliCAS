@@ -72,6 +72,54 @@ Error: Circular reference detected involving #1
 
 ---
 
+## Session Reference Caching (V2.15.36)
+
+When you reference a previous result with `#N`, the engine uses **cached simplified results** instead of re-running the full simplification pipeline. This provides significant performance improvements and cleaner timelines.
+
+### How It Works
+
+1. **Automatic Caching**: After each evaluation, the simplified result is cached.
+2. **Cache Hit**: When `#N` is referenced, the cached result replaces the reference.
+3. **Synthetic Step**: Timeline shows `"Used cached simplified result from #1, #3"` instead of repeating derivation.
+
+### Timeline Traceability
+
+```text
+> sin(x)^2 + cos(x)^2
+Result: 1
+#1: 1
+
+> #1 + 5
+Result: 6
+#2: 6
+Timeline: [Step 1] Used cached simplified result from #1
+          [Step 2] 1 + 5 → 6
+```
+
+### Cache Invalidation
+
+The cache is automatically invalidated when **domain settings change**:
+
+| Setting Change | Cache Behavior |
+|----------------|----------------|
+| Same domain mode | Cache hit (fast) |
+| Different domain | Cache miss (re-simplify) |
+
+### Memory Management
+
+The cache has built-in **LRU eviction** to prevent memory bloat:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Max cached entries | 100 | Oldest entries evicted first |
+| Max total steps | 5000 | Steps budget across all cached entries |
+| Light-cache threshold | 200 | Entries with > 200 steps store only result (no steps) |
+
+> [!TIP]
+> The cache is transparent — you don't need to do anything special. It just makes `#N` references faster!
+
+---
+
 ## Steps Mode (Performance & Display Control)
 
 The `steps` command controls how simplification steps are recorded and displayed. This affects both performance and output verbosity.
@@ -368,6 +416,23 @@ pub struct Entry {
     pub id: EntryId,
     pub kind: EntryKind,
     pub raw_text: String,
+    pub diagnostics: Diagnostics,
+    pub simplified: Option<SimplifiedCache>,  // V2.15.36
+}
+
+// V2.15.36: Cached simplified result
+pub struct SimplifiedCache {
+    pub key: SimplifyCacheKey,
+    pub expr: ExprId,
+    pub requires: Vec<RequiredItem>,
+    pub steps: Option<Arc<Vec<Step>>>,  // None = light cache
+}
+
+// V2.15.36: Memory management settings
+pub struct CacheConfig {
+    pub max_cached_entries: usize,   // 0 = unlimited
+    pub max_cached_steps: usize,     // 0 = unlimited
+    pub light_cache_threshold: Option<usize>,
 }
 ```
 
