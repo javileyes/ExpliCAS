@@ -397,6 +397,7 @@ fn main() -> rustyline::Result<()> {
                 complex_branch: branch_arg_to_string(args.branch_policy),
                 const_fold: const_fold_arg_to_string(args.const_fold),
                 assume_scope: assume_scope_arg_to_string(args.assume_scope),
+                session: None, // Legacy command doesn't support sessions
             };
             commands::eval_json::run(eval_args);
             Ok(())
@@ -462,6 +463,7 @@ fn run_eval(args: EvalArgs) {
                 complex_branch: branch_arg_to_string(args.complex_branch),
                 const_fold: const_fold_arg_to_string(args.const_fold),
                 assume_scope: assume_scope_arg_to_string(args.assume_scope),
+                session: args.session.clone(),
             };
             commands::eval_json::run(json_args);
         }

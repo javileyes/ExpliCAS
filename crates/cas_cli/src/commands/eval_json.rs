@@ -2,12 +2,15 @@
 //!
 //! Evaluates a single expression and returns JSON output.
 
+use std::path::PathBuf;
 use std::time::Instant;
 
 use anyhow::Result;
 use clap::Args;
 
-use cas_engine::{Engine, EvalAction, EvalRequest, EvalResult, SessionState};
+use cas_engine::session::SimplifyCacheKey;
+use cas_engine::session_snapshot::SessionSnapshot;
+use cas_engine::{EvalAction, EvalRequest, EvalResult};
 use cas_parser::parse;
 
 use crate::format::{expr_hash, expr_stats, format_expr_limited};
@@ -81,6 +84,10 @@ pub struct EvalJsonArgs {
     /// Assume scope: real, wildcard
     #[arg(long, default_value = "real")]
     pub assume_scope: String,
+
+    /// Path to session file for persistent session across CLI invocations.
+    #[arg(long)]
+    pub session: Option<PathBuf>,
 }
 
 /// Run the eval-json command
@@ -110,9 +117,16 @@ pub fn run(args: EvalJsonArgs) {
 fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
     let total_start = Instant::now();
 
-    // Create engine and session state
-    let mut engine = Engine::new();
-    let mut state = SessionState::new();
+    // Build cache key for snapshot compatibility
+    let domain_mode = match args.domain.as_str() {
+        "strict" => cas_engine::DomainMode::Strict,
+        "assume" => cas_engine::DomainMode::Assume,
+        _ => cas_engine::DomainMode::Generic,
+    };
+    let cache_key = SimplifyCacheKey::from_context(domain_mode);
+
+    // Load or create engine and session state
+    let (mut engine, mut state) = load_or_new_session(&args.session, &cache_key);
 
     // Configure options from args
     configure_options(&mut state.options, args);
@@ -120,22 +134,27 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
     // Parse expression
     let parse_start = Instant::now();
     let parsed = parse(&args.expr, &mut engine.simplifier.context)
-        .map_err(|e| anyhow::anyhow!("Parse error: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Resolution error: {}", e))?;
     let parse_us = parse_start.elapsed().as_micros() as u64;
 
-    // Build eval request
+    // Build eval request (auto_store=true if using session)
     let req = EvalRequest {
         raw_input: args.expr.clone(),
         parsed,
         kind: cas_engine::EntryKind::Expr(parsed),
         action: EvalAction::Simplify,
-        auto_store: false,
+        auto_store: args.session.is_some(),
     };
 
     // Evaluate
     let simplify_start = Instant::now();
     let output = engine.eval(&mut state, req)?;
     let simplify_us = simplify_start.elapsed().as_micros() as u64;
+
+    // Save session snapshot if using persistent session
+    if let Some(ref path) = args.session {
+        save_session(&engine, &state, path, &cache_key);
+    }
 
     // Extract result expression
     let result_expr = match &output.result {
@@ -378,4 +397,45 @@ fn build_semantics_json(args: &EvalJsonArgs) -> SemanticsJson {
         inv_trig: args.inv_trig.clone(),
         assume_scope: args.assume_scope.clone(),
     }
+}
+
+// =============================================================================
+// Session Persistence Helpers
+// =============================================================================
+
+fn load_or_new_session(
+    path: &Option<PathBuf>,
+    key: &SimplifyCacheKey,
+) -> (cas_engine::Engine, cas_engine::SessionState) {
+    let Some(path) = path else {
+        return (cas_engine::Engine::new(), cas_engine::SessionState::new());
+    };
+
+    if !path.exists() {
+        return (cas_engine::Engine::new(), cas_engine::SessionState::new());
+    }
+
+    match SessionSnapshot::load(path) {
+        Ok(snap) => {
+            if snap.is_compatible(key) {
+                let (ctx, store) = snap.into_parts();
+                let engine = cas_engine::Engine::with_context(ctx);
+                let state = cas_engine::SessionState::from_store(store);
+                (engine, state)
+            } else {
+                (cas_engine::Engine::new(), cas_engine::SessionState::new())
+            }
+        }
+        Err(_) => (cas_engine::Engine::new(), cas_engine::SessionState::new()),
+    }
+}
+
+fn save_session(
+    engine: &cas_engine::Engine,
+    state: &cas_engine::SessionState,
+    path: &std::path::Path,
+    key: &SimplifyCacheKey,
+) {
+    let snap = SessionSnapshot::new(&engine.simplifier.context, state.store(), key.clone());
+    let _ = snap.save_atomic(path); // Ignore save errors in JSON mode
 }

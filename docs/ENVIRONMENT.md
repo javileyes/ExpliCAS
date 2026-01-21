@@ -140,6 +140,34 @@ The cache has built-in **LRU eviction** to prevent memory bloat:
 > [!TIP]
 > The cache is transparent — you don't need to do anything special. It just makes `#N` references faster!
 
+### CLI Session Persistence (`--session`)
+
+By default, each CLI `eval` command runs in an **ephemeral session** — `#N` references only work within the same REPL session. With `--session <path>`, you can **persist sessions across CLI invocations**:
+
+```bash
+# First invocation: simplify and save to session file
+echo "sin(x)^2 + cos(x)^2" | cargo run -p cas_cli -- eval --session /tmp/s.bin
+# → 1
+
+# Second invocation: reference #1 from saved session
+echo "#1 + 5" | cargo run -p cas_cli -- eval --session /tmp/s.bin
+# → 6
+```
+
+**With JSON output:**
+
+```bash
+# Create session
+echo "sin(x)^2 + cos(x)^2" | cargo run -p cas_cli -- eval --format json --session /tmp/s.bin
+# → {"result": "1", ...}
+
+# Reference previous result
+echo "#1 + 5" | cargo run -p cas_cli -- eval --format json --session /tmp/s.bin
+# → {"result": "6", ...}
+```
+
+The snapshot file (`/tmp/s.bin`) stores the expression arena and session store in binary format (~500 bytes typical). If domain settings change between invocations, the session is automatically reset.
+
 ---
 
 ## Steps Mode (Performance & Display Control)
