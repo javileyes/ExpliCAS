@@ -135,19 +135,22 @@ fn eager_eval_expand_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<
     }
 }
 
-/// Expand expression to poly_ref (opaque) or __hold(AST) depending on size.
+/// Expand expression to poly_result(id) or __hold(AST) depending on size.
 ///
 /// - If terms <= EXPAND_MATERIALIZE_LIMIT: materialize AST wrapped in __hold
-/// - If terms > EXPAND_MATERIALIZE_LIMIT: return poly_ref(inline_stats)
+/// - If terms > EXPAND_MATERIALIZE_LIMIT: store in thread-local PolyStore, return poly_result(id)
 ///
-/// For now, poly_ref stores metadata inline since we don't have SessionState access.
-/// Format: poly_result(n_terms, degree, n_vars, modulus)
+/// The poly_result(id) is an opaque reference that can be:
+/// - Inspected via poly_stats()
+/// - Materialized via poly_to_expr() with limits
+/// - Combined with other poly_results via poly_lower_pass
 fn expand_to_poly_ref_or_hold(
     ctx: &mut Context,
     expr: ExprId,
     _est_terms: usize,
 ) -> Option<ExprId> {
     use crate::poly_modp_conv::{expr_to_poly_modp, PolyModpBudget, VarTable};
+    use crate::poly_store::{thread_local_insert, PolyMeta};
     use crate::rules::algebra::gcd_modp::{multipoly_modp_to_expr, DEFAULT_PRIME};
 
     // Budget for polynomial expansion
@@ -171,19 +174,18 @@ fn expand_to_poly_ref_or_hold(
         let expanded = multipoly_modp_to_expr(ctx, &poly, &vars);
         Some(ctx.add(Expr::Function("__hold".to_string(), vec![expanded])))
     } else {
-        // Too large - return poly_result with metadata
-        // poly_result(n_terms, degree, n_vars, modulus)
-        // This acts as an opaque handle that won't be traversed
-        let terms = ctx.num(n_terms as i64);
-        // Note: MultiPolyModP doesn't have max_degree(); use 0 as placeholder
-        let degree = ctx.num(0);
-        let nvars = ctx.num(vars.names().len() as i64);
-        let modulus = ctx.num(p as i64);
+        // Too large - store in PolyStore and return poly_result(id)
+        let meta = PolyMeta {
+            modulus: p,
+            n_terms,
+            n_vars: vars.names().len(),
+            max_total_degree: 0, // TODO: compute from poly
+            var_names: vars.names().to_vec(),
+        };
 
-        Some(ctx.add(Expr::Function(
-            "poly_result".to_string(),
-            vec![terms, degree, nvars, modulus],
-        )))
+        let id = thread_local_insert(meta, poly);
+        let id_expr = ctx.num(id as i64);
+        Some(ctx.add(Expr::Function("poly_result".to_string(), vec![id_expr])))
     }
 }
 

@@ -1,6 +1,7 @@
 use crate::best_so_far::{BestSoFar, BestSoFarBudget};
 use crate::expand::eager_eval_expand_calls;
 use crate::phase::{SimplifyOptions, SimplifyPhase};
+use crate::poly_store::clear_thread_local_store;
 use crate::rationalize_policy::AutoRationalizeLevel;
 use crate::rules::algebra::gcd_modp::eager_eval_poly_gcd_calls;
 use crate::{Simplifier, Step};
@@ -204,6 +205,9 @@ impl Orchestrator {
         // even after the sqrt witness is consumed.
         simplifier.set_sticky_implicit_domain(expr, self.options.value_domain);
 
+        // Clear thread-local PolyStore before evaluation
+        clear_thread_local_store();
+
         // PRE-PASS 1: Eager eval for expand() calls using fast mod-p path
         // This runs BEFORE any simplification to avoid budget exhaustion on huge arguments
         let (current, expand_steps) = eager_eval_expand_calls(&mut simplifier.context, expr);
@@ -212,6 +216,12 @@ impl Orchestrator {
         // PRE-PASS 2: Eager eval for special functions (poly_gcd_modp)
         let (current, eager_steps) = eager_eval_poly_gcd_calls(&mut simplifier.context, current);
         all_steps.extend(eager_steps);
+
+        // PRE-PASS 3: Poly lowering - combine poly_result operations before simplification
+        // This handles poly_result(0) + poly_result(1) → poly_result(2) internally
+        let lower_result = crate::poly_lowering::poly_lower_pass(&mut simplifier.context, current);
+        let current = lower_result.expr;
+        all_steps.extend(lower_result.steps);
 
         // Check for specialized strategies first
         if let Some(result) =

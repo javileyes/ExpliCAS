@@ -27,7 +27,10 @@
 //! - `Neg(poly_ref)` → negated poly_ref
 //! - `Add(poly_ref, poly_like_expr)` → if expr can convert to poly, combine
 
-use crate::poly_store::{PolyId, PolyMeta, PolyStore};
+use crate::poly_store::{
+    thread_local_add, thread_local_mul, thread_local_neg, thread_local_pow, thread_local_sub,
+    PolyId,
+};
 use crate::Step;
 use cas_ast::{Context, Expr, ExprId};
 
@@ -44,10 +47,11 @@ pub struct PolyLowerResult {
 /// Run the poly lowering pass on an expression.
 ///
 /// This should be called AFTER eager_eval_expand_calls and BEFORE the simplifier.
-pub fn poly_lower_pass(ctx: &mut Context, store: &mut PolyStore, expr: ExprId) -> PolyLowerResult {
+/// Uses the thread-local PolyStore for polynomial operations.
+pub fn poly_lower_pass(ctx: &mut Context, expr: ExprId) -> PolyLowerResult {
     let mut steps = Vec::new();
     let mut combined_any = false;
-    let result = lower_recursive(ctx, store, expr, &mut steps, &mut combined_any);
+    let result = lower_recursive(ctx, expr, &mut steps, &mut combined_any);
     PolyLowerResult {
         expr: result,
         steps,
@@ -57,32 +61,30 @@ pub fn poly_lower_pass(ctx: &mut Context, store: &mut PolyStore, expr: ExprId) -
 
 fn lower_recursive(
     ctx: &mut Context,
-    store: &mut PolyStore,
     expr: ExprId,
     steps: &mut Vec<Step>,
     combined_any: &mut bool,
 ) -> ExprId {
     match ctx.get(expr).clone() {
-        // Check if this is already a poly_ref - pass through
-        Expr::Function(ref name, ref args) if name == "poly_ref" => {
-            return expr;
-        }
+        // Check if this is already a poly_result - pass through
+        Expr::Function(ref name, ref _args) if name == "poly_result" => expr,
 
-        // Add: try to combine poly_refs
+        // Add: try to combine poly_results
         Expr::Add(l, r) => {
-            let nl = lower_recursive(ctx, store, l, steps, combined_any);
-            let nr = lower_recursive(ctx, store, r, steps, combined_any);
+            let nl = lower_recursive(ctx, l, steps, combined_any);
+            let nr = lower_recursive(ctx, r, steps, combined_any);
 
-            // Try to combine if both are poly_refs
-            if let (Some(id_l), Some(id_r)) =
-                (extract_poly_ref_id(ctx, nl), extract_poly_ref_id(ctx, nr))
-            {
-                if let Some(new_id) = combine_add(store, id_l, id_r) {
+            // Try to combine if both are poly_results
+            if let (Some(id_l), Some(id_r)) = (
+                extract_poly_result_id(ctx, nl),
+                extract_poly_result_id(ctx, nr),
+            ) {
+                if let Some(new_id) = thread_local_add(id_l, id_r) {
                     *combined_any = true;
-                    let result = make_poly_ref(ctx, new_id);
+                    let result = make_poly_result(ctx, new_id);
 
                     steps.push(Step::new(
-                        "Poly lowering: combined poly_ref + poly_ref",
+                        "Poly lowering: combined poly_result + poly_result",
                         "Polynomial Combination",
                         expr,
                         result,
@@ -102,20 +104,21 @@ fn lower_recursive(
             }
         }
 
-        // Sub: try to combine poly_refs
+        // Sub: try to combine poly_results
         Expr::Sub(l, r) => {
-            let nl = lower_recursive(ctx, store, l, steps, combined_any);
-            let nr = lower_recursive(ctx, store, r, steps, combined_any);
+            let nl = lower_recursive(ctx, l, steps, combined_any);
+            let nr = lower_recursive(ctx, r, steps, combined_any);
 
-            if let (Some(id_l), Some(id_r)) =
-                (extract_poly_ref_id(ctx, nl), extract_poly_ref_id(ctx, nr))
-            {
-                if let Some(new_id) = combine_sub(store, id_l, id_r) {
+            if let (Some(id_l), Some(id_r)) = (
+                extract_poly_result_id(ctx, nl),
+                extract_poly_result_id(ctx, nr),
+            ) {
+                if let Some(new_id) = thread_local_sub(id_l, id_r) {
                     *combined_any = true;
-                    let result = make_poly_ref(ctx, new_id);
+                    let result = make_poly_result(ctx, new_id);
 
                     steps.push(Step::new(
-                        "Poly lowering: combined poly_ref - poly_ref",
+                        "Poly lowering: combined poly_result - poly_result",
                         "Polynomial Combination",
                         expr,
                         result,
@@ -134,20 +137,21 @@ fn lower_recursive(
             }
         }
 
-        // Mul: try to combine poly_refs
+        // Mul: try to combine poly_results
         Expr::Mul(l, r) => {
-            let nl = lower_recursive(ctx, store, l, steps, combined_any);
-            let nr = lower_recursive(ctx, store, r, steps, combined_any);
+            let nl = lower_recursive(ctx, l, steps, combined_any);
+            let nr = lower_recursive(ctx, r, steps, combined_any);
 
-            if let (Some(id_l), Some(id_r)) =
-                (extract_poly_ref_id(ctx, nl), extract_poly_ref_id(ctx, nr))
-            {
-                if let Some(new_id) = combine_mul(store, id_l, id_r) {
+            if let (Some(id_l), Some(id_r)) = (
+                extract_poly_result_id(ctx, nl),
+                extract_poly_result_id(ctx, nr),
+            ) {
+                if let Some(new_id) = thread_local_mul(id_l, id_r) {
                     *combined_any = true;
-                    let result = make_poly_ref(ctx, new_id);
+                    let result = make_poly_result(ctx, new_id);
 
                     steps.push(Step::new(
-                        "Poly lowering: combined poly_ref * poly_ref",
+                        "Poly lowering: combined poly_result * poly_result",
                         "Polynomial Combination",
                         expr,
                         result,
@@ -166,14 +170,14 @@ fn lower_recursive(
             }
         }
 
-        // Neg: negate poly_ref
+        // Neg: negate poly_result
         Expr::Neg(inner) => {
-            let ni = lower_recursive(ctx, store, inner, steps, combined_any);
+            let ni = lower_recursive(ctx, inner, steps, combined_any);
 
-            if let Some(id) = extract_poly_ref_id(ctx, ni) {
-                if let Some(new_id) = combine_neg(store, id) {
+            if let Some(id) = extract_poly_result_id(ctx, ni) {
+                if let Some(new_id) = thread_local_neg(id) {
                     *combined_any = true;
-                    return make_poly_ref(ctx, new_id);
+                    return make_poly_result(ctx, new_id);
                 }
             }
 
@@ -184,17 +188,17 @@ fn lower_recursive(
             }
         }
 
-        // Pow: poly_ref^n
+        // Pow: poly_result^n
         Expr::Pow(base, exp) => {
-            let nb = lower_recursive(ctx, store, base, steps, combined_any);
-            let ne = lower_recursive(ctx, store, exp, steps, combined_any);
+            let nb = lower_recursive(ctx, base, steps, combined_any);
+            let ne = lower_recursive(ctx, exp, steps, combined_any);
 
-            if let Some(id) = extract_poly_ref_id(ctx, nb) {
+            if let Some(id) = extract_poly_result_id(ctx, nb) {
                 if let Some(n) = extract_int(ctx, ne) {
                     if n >= 0 {
-                        if let Some(new_id) = combine_pow(store, id, n as u32) {
+                        if let Some(new_id) = thread_local_pow(id, n as u32) {
                             *combined_any = true;
-                            return make_poly_ref(ctx, new_id);
+                            return make_poly_result(ctx, new_id);
                         }
                     }
                 }
@@ -209,8 +213,8 @@ fn lower_recursive(
 
         // Div: no combination (poly division is complex)
         Expr::Div(l, r) => {
-            let nl = lower_recursive(ctx, store, l, steps, combined_any);
-            let nr = lower_recursive(ctx, store, r, steps, combined_any);
+            let nl = lower_recursive(ctx, l, steps, combined_any);
+            let nr = lower_recursive(ctx, r, steps, combined_any);
             if nl != l || nr != r {
                 ctx.add(Expr::Div(nl, nr))
             } else {
@@ -218,11 +222,11 @@ fn lower_recursive(
             }
         }
 
-        // Functions (other than poly_ref): recurse into args
+        // Functions (other than poly_result): recurse into args
         Expr::Function(name, args) => {
             let new_args: Vec<ExprId> = args
                 .iter()
-                .map(|&a| lower_recursive(ctx, store, a, steps, combined_any))
+                .map(|&a| lower_recursive(ctx, a, steps, combined_any))
                 .collect();
             if new_args.iter().zip(args.iter()).any(|(n, o)| n != o) {
                 ctx.add(Expr::Function(name, new_args))
@@ -238,7 +242,7 @@ fn lower_recursive(
         Expr::Matrix { rows, cols, data } => {
             let new_data: Vec<ExprId> = data
                 .iter()
-                .map(|&e| lower_recursive(ctx, store, e, steps, combined_any))
+                .map(|&e| lower_recursive(ctx, e, steps, combined_any))
                 .collect();
             if new_data.iter().zip(data.iter()).any(|(n, o)| n != o) {
                 ctx.add(Expr::Matrix {
@@ -257,10 +261,10 @@ fn lower_recursive(
 // Helper functions
 // =============================================================================
 
-/// Extract PolyId from poly_ref(id) expression
-fn extract_poly_ref_id(ctx: &Context, expr: ExprId) -> Option<PolyId> {
+/// Extract PolyId from poly_result(id) expression
+fn extract_poly_result_id(ctx: &Context, expr: ExprId) -> Option<PolyId> {
     if let Expr::Function(name, args) = ctx.get(expr) {
-        if name == "poly_ref" && args.len() == 1 {
+        if name == "poly_result" && args.len() == 1 {
             if let Expr::Number(n) = ctx.get(args[0]) {
                 return n.to_integer().try_into().ok();
             }
@@ -269,10 +273,10 @@ fn extract_poly_ref_id(ctx: &Context, expr: ExprId) -> Option<PolyId> {
     None
 }
 
-/// Create poly_ref(id) expression
-fn make_poly_ref(ctx: &mut Context, id: PolyId) -> ExprId {
+/// Create poly_result(id) expression
+fn make_poly_result(ctx: &mut Context, id: PolyId) -> ExprId {
     let id_expr = ctx.num(id as i64);
-    ctx.add(Expr::Function("poly_ref".to_string(), vec![id_expr]))
+    ctx.add(Expr::Function("poly_result".to_string(), vec![id_expr]))
 }
 
 /// Extract integer from expression
@@ -285,125 +289,7 @@ fn extract_int(ctx: &Context, expr: ExprId) -> Option<i64> {
     None
 }
 
-// =============================================================================
-// Store combination operations (stubs - need implementation)
-// =============================================================================
-
-/// Add two polynomials in the store, return new ID
-fn combine_add(store: &mut PolyStore, a: PolyId, b: PolyId) -> Option<PolyId> {
-    let (meta_a, poly_a) = store.get(a)?;
-    let (meta_b, poly_b) = store.get(b)?;
-
-    // Ensure same modulus
-    if meta_a.modulus != meta_b.modulus {
-        return None;
-    }
-
-    // TODO: Unify VarTables and remap if needed
-    // For now, only combine if same variable order
-    if meta_a.var_names != meta_b.var_names {
-        return None;
-    }
-
-    // Add polynomials
-    let result_poly = poly_a.add(poly_b);
-
-    let meta = PolyMeta {
-        modulus: meta_a.modulus,
-        n_terms: result_poly.num_terms(),
-        n_vars: meta_a.n_vars.max(meta_b.n_vars),
-        max_total_degree: meta_a.max_total_degree.max(meta_b.max_total_degree),
-        var_names: meta_a.var_names.clone(),
-    };
-
-    Some(store.insert(meta, result_poly))
-}
-
-/// Subtract two polynomials in the store, return new ID
-fn combine_sub(store: &mut PolyStore, a: PolyId, b: PolyId) -> Option<PolyId> {
-    let (meta_a, poly_a) = store.get(a)?;
-    let (meta_b, poly_b) = store.get(b)?;
-
-    if meta_a.modulus != meta_b.modulus {
-        return None;
-    }
-    if meta_a.var_names != meta_b.var_names {
-        return None;
-    }
-
-    let result_poly = poly_a.sub(poly_b);
-
-    let meta = PolyMeta {
-        modulus: meta_a.modulus,
-        n_terms: result_poly.num_terms(),
-        n_vars: meta_a.n_vars.max(meta_b.n_vars),
-        max_total_degree: meta_a.max_total_degree.max(meta_b.max_total_degree),
-        var_names: meta_a.var_names.clone(),
-    };
-
-    Some(store.insert(meta, result_poly))
-}
-
-/// Multiply two polynomials in the store, return new ID
-fn combine_mul(store: &mut PolyStore, a: PolyId, b: PolyId) -> Option<PolyId> {
-    let (meta_a, poly_a) = store.get(a)?;
-    let (meta_b, poly_b) = store.get(b)?;
-
-    if meta_a.modulus != meta_b.modulus {
-        return None;
-    }
-    if meta_a.var_names != meta_b.var_names {
-        return None;
-    }
-
-    let result_poly = poly_a.mul(poly_b);
-
-    let meta = PolyMeta {
-        modulus: meta_a.modulus,
-        n_terms: result_poly.num_terms(),
-        n_vars: meta_a.n_vars.max(meta_b.n_vars),
-        max_total_degree: meta_a.max_total_degree + meta_b.max_total_degree,
-        var_names: meta_a.var_names.clone(),
-    };
-
-    Some(store.insert(meta, result_poly))
-}
-
-/// Negate polynomial in the store, return new ID
-fn combine_neg(store: &mut PolyStore, a: PolyId) -> Option<PolyId> {
-    let (meta_a, poly_a) = store.get(a)?;
-
-    let result_poly = poly_a.neg();
-
-    let meta = PolyMeta {
-        modulus: meta_a.modulus,
-        n_terms: result_poly.num_terms(),
-        n_vars: meta_a.n_vars,
-        max_total_degree: meta_a.max_total_degree,
-        var_names: meta_a.var_names.clone(),
-    };
-
-    Some(store.insert(meta, result_poly))
-}
-
-/// Raise polynomial to power in the store, return new ID
-fn combine_pow(store: &mut PolyStore, a: PolyId, n: u32) -> Option<PolyId> {
-    let (meta_a, poly_a) = store.get(a)?;
-
-    let result_poly = poly_a.pow(n);
-
-    let meta = PolyMeta {
-        modulus: meta_a.modulus,
-        n_terms: result_poly.num_terms(),
-        n_vars: meta_a.n_vars,
-        max_total_degree: meta_a.max_total_degree * n,
-        var_names: meta_a.var_names.clone(),
-    };
-
-    Some(store.insert(meta, result_poly))
-}
-
 #[cfg(test)]
 mod tests {
-    // TODO: Add tests when integrated with PolyStore
+    // TODO: Add tests for poly_lowering
 }

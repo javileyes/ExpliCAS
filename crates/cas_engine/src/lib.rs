@@ -41,6 +41,7 @@ pub mod pattern_detection;
 pub mod pattern_marks;
 pub mod pattern_scanner;
 pub mod phase;
+pub mod poly_lowering;
 pub mod poly_modp_conv;
 pub mod poly_store;
 pub mod polynomial;

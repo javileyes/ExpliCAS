@@ -35,13 +35,18 @@
 use cas_ast::{Context, Expr, ExprId};
 use smallvec::SmallVec;
 
-/// Check if an expression is a poly_ref(id) - opaque polynomial reference.
+/// Check if an expression is a poly_ref(id) or poly_result(id) - opaque polynomial reference.
 ///
-/// poly_ref nodes must be treated as ATOMIC by AddView/MulView to prevent
+/// These nodes must be treated as ATOMIC by AddView/MulView to prevent
 /// O(n²) traversal of huge polynomial results stored in PolyStore.
 #[inline]
 pub fn is_poly_ref(ctx: &Context, id: ExprId) -> bool {
-    matches!(ctx.get(id), Expr::Function(name, args) if name == "poly_ref" && args.len() == 1)
+    if let Expr::Function(name, args) = ctx.get(id) {
+        if args.len() == 1 && (name == "poly_ref" || name == "poly_result") {
+            return true;
+        }
+    }
+    false
 }
 
 /// Sign of a term in an additive expression.
