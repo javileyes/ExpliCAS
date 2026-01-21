@@ -29,6 +29,19 @@
             --input-bg: #0d1b2a;
         }
 
+        [data-theme="light"] {
+            --bg-primary: #f5f5f7;
+            --bg-secondary: #ffffff;
+            --bg-card: #ffffff;
+            --text-primary: #1d1d1f;
+            --text-secondary: #6e6e73;
+            --accent: #e94560;
+            --accent-hover: #ff6b6b;
+            --success: #059669;
+            --border: #d1d5db;
+            --input-bg: #ffffff;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -46,26 +59,60 @@
 
         header {
             background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
-            padding: 20px;
-            text-align: center;
+            padding: 15px 20px;
             border-bottom: 2px solid var(--accent);
             position: sticky;
             top: 0;
             z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
-        header h1 {
-            font-size: 1.8em;
+        .header-left h1 {
+            font-size: 1.5em;
             background: linear-gradient(90deg, var(--accent), #ff9a8b);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
 
-        header p {
+        .header-left p {
             color: var(--text-secondary);
-            font-size: 0.9em;
-            margin-top: 5px;
+            font-size: 0.8em;
+            margin-top: 3px;
+        }
+
+        .header-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .header-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 8px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .header-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: var(--accent);
+        }
+
+        .header-btn.danger {
+            color: #ef4444;
+        }
+
+        .header-btn.danger:hover {
+            background: rgba(239, 68, 68, 0.2);
         }
 
         .container {
@@ -113,6 +160,17 @@
             border-radius: 20px;
             font-weight: bold;
             font-size: 0.85em;
+        }
+
+        .var-badge {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 0.8em;
+            margin-left: 8px;
+            font-family: 'Fira Code', monospace;
         }
 
         .expression-input {
@@ -360,8 +418,21 @@
 
 <body>
     <header>
-        <h1>🧮 ExpliCAS</h1>
-        <p>Interactive Step-by-Step Math Simplifier</p>
+        <div class="header-left">
+            <h1>🧮 ExpliCAS</h1>
+            <p>Interactive Step-by-Step Math Simplifier</p>
+        </div>
+        <div class="header-buttons">
+            <button class="header-btn" id="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+                🌙 Dark
+            </button>
+            <button class="header-btn" onclick="exportSession()" title="Export session as HTML">
+                📥 Export
+            </button>
+            <button class="header-btn danger" onclick="clearSession()" title="Clear session">
+                🗑️ Clear
+            </button>
+        </div>
     </header>
 
     <div class="container" id="expressions">
@@ -482,7 +553,7 @@
 
         function addExpressionCard(expr, result) {
             expressionCount++;
-            const ref = expressionCount;
+            const ref = result.ref || expressionCount;
             sessionResults[ref] = result;
 
             // Hide empty state
@@ -494,14 +565,17 @@
 
             const hasSteps = result.steps && result.steps.length > 0;
             const isPolyResult = result.result && result.result.length > 500;
+            const isAssignment = result.assignment;
+            const timeMs = result.timings_us ? Math.round(result.timings_us.total_us / 1000) : (result.time_ms || 0);
 
             card.innerHTML = `
                 <div class="expression-header" onclick="toggleSteps(${ref})">
                     <div>
                         <span class="expression-ref">#${ref}</span>
+                        ${isAssignment ? `<span class="var-badge">${escapeHtml(result.assignment)}</span>` : ''}
                         <span class="expression-input">${escapeHtml(expr)}</span>
                     </div>
-                    <span class="expression-time">${result.time_ms || 0}ms</span>
+                    <span class="expression-time">${timeMs}ms</span>
                 </div>
                 <div class="expression-body">
                     ${hasSteps ? `
@@ -590,6 +664,110 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        // Theme toggle
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            html.setAttribute('data-theme', newTheme === 'dark' ? '' : 'light');
+
+            const btn = document.getElementById('theme-toggle');
+            btn.innerHTML = newTheme === 'light' ? '☀️ Light' : '🌙 Dark';
+            localStorage.setItem('explicas-theme', newTheme);
+        }
+
+        // Initialize theme from localStorage
+        (function initTheme() {
+            const saved = localStorage.getItem('explicas-theme');
+            if (saved === 'light') {
+                document.documentElement.setAttribute('data-theme', 'light');
+                document.getElementById('theme-toggle').innerHTML = '☀️ Light';
+            }
+        })();
+
+        // Export session as HTML
+        function exportSession() {
+            const cards = document.querySelectorAll('.expression-card');
+            if (cards.length === 0) {
+                alert('No expressions to export');
+                return;
+            }
+
+            const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+
+            // Build cards HTML
+            const cardsHtml = Array.from(cards).map(card => {
+                const ref = card.querySelector('.expression-ref')?.textContent || '';
+                const input = card.querySelector('.expression-input')?.textContent || '';
+                const resultEl = card.querySelector('.result-latex, .poly-output');
+                let result = '';
+                if (resultEl) {
+                    if (resultEl.classList.contains('poly-output')) {
+                        result = '<pre>' + escapeHtml(resultEl.textContent) + '</pre>';
+                    } else {
+                        result = resultEl.innerHTML;
+                    }
+                }
+                return '<div class="card"><span class="ref">' + escapeHtml(ref) + '</span>' +
+                    '<div class="input"><code>' + escapeHtml(input) + '</code></div>' +
+                    '<div class="result">' + result + '</div></div>';
+            }).join('\n');
+
+            const content = '<!DOCTYPE html>\n<html lang="en">\n<head>\n' +
+                '<meta charset="UTF-8">\n' +
+                '<title>ExpliCAS Session - ' + timestamp + '</title>\n' +
+                '<script>MathJax = { tex: { inlineMath: [["$", "$"]] }, svg: { fontCache: "global" } };<\/script>\n' +
+                '<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async><\/script>\n' +
+                '<style>\n' +
+                'body { font-family: "Segoe UI", sans-serif; background: #1a1a2e; color: #eaeaea; padding: 20px; max-width: 900px; margin: 0 auto; }\n' +
+                'h1 { color: #e94560; }\n' +
+                '.card { background: #0f3460; padding: 15px; margin: 15px 0; border-radius: 8px; border-left: 4px solid #e94560; }\n' +
+                '.ref { background: #e94560; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.85em; }\n' +
+                '.input { font-family: monospace; margin: 10px 0; }\n' +
+                '.result { font-size: 1.1em; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 6px; margin-top: 10px; }\n' +
+                'pre { background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; overflow: auto; font-size: 0.75em; white-space: pre-wrap; }\n' +
+                '</style>\n</head>\n<body>\n' +
+                '<h1>🧮 ExpliCAS Session</h1>\n' +
+                '<p>Exported: ' + new Date().toLocaleString() + '</p>\n<hr>\n' +
+                cardsHtml +
+                '\n</body>\n</html>';
+
+            const blob = new Blob([content], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'explicas-session-' + timestamp + '.html';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Clear session
+        async function clearSession() {
+            if (!confirm('Clear all expressions and reset session?')) return;
+
+            // Clear server session
+            try {
+                await fetch('/api/clear', { method: 'POST' });
+            } catch (e) {
+                console.warn('Could not clear server session:', e);
+            }
+
+            // Clear UI
+            expressionCount = 0;
+            sessionResults = {};
+            history.length = 0;
+            historyIndex = -1;
+
+            const container = document.getElementById('expressions');
+            container.innerHTML = '<div class="empty-state" id="empty-state">' +
+                '<h2>Welcome to ExpliCAS!</h2>' +
+                '<p>Enter a mathematical expression below to get started.</p>' +
+                '<p style="margin-top: 15px;">Try: <code>expand((1+x)^3)</code> or <code>solve(x^2 - 4 = 0, x)</code></p>' +
+                '</div>';
+
+            document.getElementById('expression-input').focus();
         }
     </script>
 </body>
