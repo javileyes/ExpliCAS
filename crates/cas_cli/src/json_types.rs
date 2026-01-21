@@ -71,6 +71,8 @@ pub struct StepJson {
     pub index: usize,
     /// Rule name that was applied
     pub rule: String,
+    /// Rule displayed as LaTeX: "red(antecedent) → green(consequent)"
+    pub rule_latex: String,
     /// Expression before transformation (plain text)
     pub before: String,
     /// Expression after transformation (plain text)

@@ -359,6 +359,28 @@
             margin-bottom: 8px;
         }
 
+        /* Rule box with antecedent → consequent */
+        .rule-box {
+            background: linear-gradient(135deg, rgba(233, 69, 96, 0.1), rgba(233, 69, 96, 0.05));
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 12px;
+        }
+
+        .rule-name {
+            color: var(--accent);
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+        }
+
+        .rule-change {
+            font-size: 1.2em;
+            text-align: center;
+            padding: 8px 0;
+        }
+
         .step-before,
         .step-after {
             padding: 12px 15px;
@@ -805,10 +827,18 @@
                     ? `<span class="step-math">$${step.after_latex}$</span>`
                     : escapeHtml(step.after);
 
+                // Use rule_latex if available for the "antecedent → consequent" display
+                const ruleLatex = step.rule_latex
+                    ? `<div class="rule-change"><span class="step-math">$${step.rule_latex}$</span></div>`
+                    : '';
+
                 return `
                     <div class="step-item">
+                        <div class="rule-box">
+                            <div class="rule-name">${i + 1}. ${escapeHtml(step.rule || 'Step')}</div>
+                            ${ruleLatex}
+                        </div>
                         <div class="step-header">
-                            <div class="step-rule">${i + 1}. ${escapeHtml(step.rule || 'Step')}</div>
                             ${hasSubsteps ? `
                                 <button class="substeps-toggle" id="substeps-toggle-${stepId}" onclick="toggleSubsteps('${stepId}')">
                                     ▶ Show ${step.substeps.length} sub-steps

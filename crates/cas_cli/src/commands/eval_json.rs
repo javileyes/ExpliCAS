@@ -516,6 +516,30 @@ fn collect_steps(
             }
             .to_latex();
 
+            // Generate rule_latex: colored "antecedent → consequent"
+            let mut rule_before_config = cas_ast::HighlightConfig::new();
+            rule_before_config.add(focus_before, cas_ast::HighlightColor::Red);
+            let local_before_colored = cas_ast::LaTeXExprHighlighted {
+                context: ctx,
+                id: focus_before,
+                highlights: &rule_before_config,
+            }
+            .to_latex();
+
+            let mut rule_after_config = cas_ast::HighlightConfig::new();
+            rule_after_config.add(focus_after, cas_ast::HighlightColor::Green);
+            let local_after_colored = cas_ast::LaTeXExprHighlighted {
+                context: ctx,
+                id: focus_after,
+                highlights: &rule_after_config,
+            }
+            .to_latex();
+
+            let rule_latex = format!(
+                "{} \\rightarrow {}",
+                local_before_colored, local_after_colored
+            );
+
             // Convert substeps
             let substeps: Vec<SubStepJson> = step
                 .substeps
@@ -529,6 +553,7 @@ fn collect_steps(
             StepJson {
                 index: i + 1,
                 rule: step.rule_name.clone(),
+                rule_latex,
                 before: before_str,
                 after: after_str,
                 before_latex,
