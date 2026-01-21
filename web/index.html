@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ExpliCAS - Interactive Math REPL</title>
+
+    <!-- MathJax for LaTeX rendering -->
+    <script>
+        MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
+            svg: { fontCache: 'global' }
+        };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
+
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-card: #0f3460;
+            --text-primary: #eaeaea;
+            --text-secondary: #a0a0a0;
+            --accent: #e94560;
+            --accent-hover: #ff6b6b;
+            --success: #4ade80;
+            --border: #2a4a7f;
+            --input-bg: #0d1b2a;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding-bottom: 100px;
+            /* Space for floating input */
+        }
+
+        header {
+            background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
+            padding: 20px;
+            text-align: center;
+            border-bottom: 2px solid var(--accent);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        header h1 {
+            font-size: 1.8em;
+            background: linear-gradient(90deg, var(--accent), #ff9a8b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        header p {
+            color: var(--text-secondary);
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Expression Cards */
+        .expression-card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            margin-bottom: 20px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .expression-header {
+            background: linear-gradient(135deg, var(--bg-secondary), rgba(233, 69, 96, 0.2));
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .expression-ref {
+            background: var(--accent);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.85em;
+        }
+
+        .expression-input {
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 1.1em;
+            color: var(--text-primary);
+        }
+
+        .expression-time {
+            color: var(--text-secondary);
+            font-size: 0.8em;
+        }
+
+        .expression-body {
+            padding: 20px;
+        }
+
+        .result-section {
+            background: linear-gradient(135deg, rgba(74, 222, 128, 0.1), rgba(74, 222, 128, 0.05));
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border-left: 4px solid var(--success);
+        }
+
+        .result-label {
+            color: var(--success);
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+
+        .result-math {
+            font-size: 1.3em;
+            overflow-x: auto;
+        }
+
+        /* Steps Section */
+        .steps-toggle {
+            background: rgba(255, 255, 255, 0.05);
+            border: none;
+            color: var(--text-secondary);
+            padding: 10px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .steps-toggle:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+        }
+
+        .steps-toggle .arrow {
+            transition: transform 0.2s;
+        }
+
+        .steps-toggle.expanded .arrow {
+            transform: rotate(90deg);
+        }
+
+        .steps-container {
+            display: none;
+            margin-top: 15px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+        }
+
+        .steps-container.visible {
+            display: block;
+        }
+
+        .step-item {
+            padding: 12px;
+            border-left: 3px solid var(--border);
+            margin-bottom: 10px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 0 6px 6px 0;
+        }
+
+        .step-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .step-rule {
+            color: var(--accent);
+            font-weight: bold;
+            font-size: 0.85em;
+            margin-bottom: 8px;
+        }
+
+        .step-before,
+        .step-after {
+            font-size: 0.95em;
+            margin: 5px 0;
+        }
+
+        .step-before::before {
+            content: "Before: ";
+            color: var(--text-secondary);
+        }
+
+        .step-after::before {
+            content: "After: ";
+            color: var(--success);
+        }
+
+        /* Polynomial output */
+        .poly-output {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.75em;
+            max-height: 300px;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            line-height: 1.5;
+        }
+
+        .poly-badge {
+            background: var(--accent);
+            color: white;
+            padding: 3px 10px;
+            border-radius: 10px;
+            font-size: 0.75em;
+            margin-left: 10px;
+        }
+
+        /* Floating Input */
+        .input-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--bg-secondary);
+            border-top: 2px solid var(--border);
+            padding: 15px 20px;
+            z-index: 1000;
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        .input-wrapper {
+            max-width: 900px;
+            margin: 0 auto;
+            display: flex;
+            gap: 12px;
+        }
+
+        .input-field {
+            flex: 1;
+            background: var(--input-bg);
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            padding: 12px 20px;
+            color: var(--text-primary);
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 1.1em;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .input-field:focus {
+            border-color: var(--accent);
+        }
+
+        .input-field::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .submit-btn {
+            background: linear-gradient(135deg, var(--accent), #ff6b6b);
+            border: none;
+            color: white;
+            padding: 12px 30px;
+            border-radius: 10px;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(233, 69, 96, 0.4);
+        }
+
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+
+        /* Loading state */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Error messages */
+        .error-message {
+            background: rgba(239, 68, 68, 0.2);
+            border-left: 4px solid #ef4444;
+            padding: 15px;
+            border-radius: 0 8px 8px 0;
+            color: #fca5a5;
+            margin-top: 10px;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state h2 {
+            color: var(--text-primary);
+            margin-bottom: 15px;
+        }
+
+        .empty-state code {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-family: 'Fira Code', monospace;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>🧮 ExpliCAS</h1>
+        <p>Interactive Step-by-Step Math Simplifier</p>
+    </header>
+
+    <div class="container" id="expressions">
+        <div class="empty-state" id="empty-state">
+            <h2>Welcome to ExpliCAS!</h2>
+            <p>Enter a mathematical expression below to get started.</p>
+            <p style="margin-top: 15px;">Try: <code>expand((1+x)^3)</code> or <code>solve(x^2 - 4 = 0, x)</code></p>
+        </div>
+    </div>
+
+    <div class="input-bar">
+        <div class="input-wrapper">
+            <input type="text" class="input-field" id="expression-input"
+                placeholder="Enter expression... (e.g., expand((1+x)^5), solve(x^2=4, x))" autocomplete="off" autofocus>
+            <button class="submit-btn" id="submit-btn" onclick="evaluateExpression()">
+                Evaluate
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Session state
+        let expressionCount = 0;
+        let sessionResults = {};
+        const history = [];
+        let historyIndex = -1;
+
+        // API endpoint (adjust based on your server)
+        const API_URL = '/api/eval';
+
+        // Input handling
+        const input = document.getElementById('expression-input');
+        const submitBtn = document.getElementById('submit-btn');
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                evaluateExpression();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                navigateHistory(-1);
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                navigateHistory(1);
+            }
+        });
+
+        function navigateHistory(direction) {
+            if (history.length === 0) return;
+            historyIndex = Math.max(-1, Math.min(history.length - 1, historyIndex + direction));
+            input.value = historyIndex >= 0 ? history[historyIndex] : '';
+        }
+
+        async function evaluateExpression() {
+            const expr = input.value.trim();
+            if (!expr) return;
+
+            // Add to history
+            history.unshift(expr);
+            historyIndex = -1;
+
+            // Show loading state
+            submitBtn.innerHTML = '<span class="loading"></span>';
+            submitBtn.disabled = true;
+
+            try {
+                const result = await callAPI(expr);
+                addExpressionCard(expr, result);
+            } catch (error) {
+                addErrorCard(expr, error.message);
+            } finally {
+                submitBtn.innerHTML = 'Evaluate';
+                submitBtn.disabled = false;
+                input.value = '';
+                input.focus();
+            }
+        }
+
+        async function callAPI(expr) {
+            try {
+                // Call the real API
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ expression: expr })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || `Server error: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                // Handle error in response
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                // Map cas_cli JSON response to our format
+                return {
+                    input: data.input || expr,
+                    result: data.result || '',
+                    result_latex: data.result_latex || data.result || '',
+                    steps: data.steps || [],
+                    time_ms: data.time_ms || 0,
+                    error: data.error
+                };
+            } catch (error) {
+                // If API is not available, check if it's a network error
+                if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                    // Server not running - show helpful message
+                    throw new Error('Server not running. Start with: python web/server.py');
+                }
+                throw error;
+            }
+        }
+
+        function addExpressionCard(expr, result) {
+            expressionCount++;
+            const ref = expressionCount;
+            sessionResults[ref] = result;
+
+            // Hide empty state
+            document.getElementById('empty-state').style.display = 'none';
+
+            const card = document.createElement('div');
+            card.className = 'expression-card';
+            card.id = `expr-${ref}`;
+
+            const hasSteps = result.steps && result.steps.length > 0;
+            const isPolyResult = result.result && result.result.length > 500;
+
+            card.innerHTML = `
+                <div class="expression-header" onclick="toggleSteps(${ref})">
+                    <div>
+                        <span class="expression-ref">#${ref}</span>
+                        <span class="expression-input">${escapeHtml(expr)}</span>
+                    </div>
+                    <span class="expression-time">${result.time_ms || 0}ms</span>
+                </div>
+                <div class="expression-body">
+                    ${hasSteps ? `
+                        <button class="steps-toggle" onclick="event.stopPropagation(); toggleSteps(${ref})">
+                            <span class="arrow">▶</span>
+                            Show ${result.steps.length} steps
+                        </button>
+                        <div class="steps-container" id="steps-${ref}">
+                            ${result.steps.map((step, i) => `
+                                <div class="step-item">
+                                    <div class="step-rule">${i + 1}. ${escapeHtml(step.rule || 'Step')}</div>
+                                    ${step.before ? `<div class="step-before">${escapeHtml(step.before)}</div>` : ''}
+                                    ${step.after ? `<div class="step-after">${escapeHtml(step.after)}</div>` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                    
+                    <div class="result-section">
+                        <div class="result-label">
+                            ✨ Result
+                            ${isPolyResult ? `<span class="poly-badge">Large polynomial</span>` : ''}
+                        </div>
+                        <div class="result-math">
+                            ${isPolyResult
+                    ? `<pre class="poly-output">${escapeHtml(result.result)}</pre>`
+                    : `$${result.result_latex || escapeHtml(result.result)}$`
+                }
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('expressions').appendChild(card);
+
+            // Scroll to new card
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            // Re-render MathJax
+            if (window.MathJax && !isPolyResult) {
+                MathJax.typesetPromise([card]);
+            }
+        }
+
+        function addErrorCard(expr, errorMessage) {
+            expressionCount++;
+            const ref = expressionCount;
+
+            document.getElementById('empty-state').style.display = 'none';
+
+            const card = document.createElement('div');
+            card.className = 'expression-card';
+            card.innerHTML = `
+                <div class="expression-header">
+                    <div>
+                        <span class="expression-ref">#${ref}</span>
+                        <span class="expression-input">${escapeHtml(expr)}</span>
+                    </div>
+                </div>
+                <div class="expression-body">
+                    <div class="error-message">
+                        ❌ Error: ${escapeHtml(errorMessage)}
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('expressions').appendChild(card);
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        function toggleSteps(ref) {
+            const container = document.getElementById(`steps-${ref}`);
+            const toggle = container?.previousElementSibling;
+            if (container && toggle) {
+                container.classList.toggle('visible');
+                toggle.classList.toggle('expanded');
+                const stepCount = container.querySelectorAll('.step-item').length;
+                toggle.innerHTML = container.classList.contains('visible')
+                    ? `<span class="arrow">▶</span> Hide ${stepCount} steps`
+                    : `<span class="arrow">▶</span> Show ${stepCount} steps`;
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+
+</html>
