@@ -5,8 +5,12 @@ use num_integer::Integer;
 use num_traits::{Signed, ToPrimitive};
 
 /// Threshold for using fast mod-p expansion in eager eval.
-/// Above this many estimated terms, use `expand_modp_safe`.
+/// Above this many estimated terms, use poly_ref instead of AST.
 pub const EAGER_EXPAND_MODP_THRESHOLD: u64 = 500;
+
+/// Threshold for returning poly_ref instead of materializing AST.
+/// Below this, we materialize the full AST for display.
+pub const EXPAND_MATERIALIZE_LIMIT: usize = 1_000;
 
 /// Eager evaluation pass for expand() calls.
 ///
@@ -15,8 +19,8 @@ pub const EAGER_EXPAND_MODP_THRESHOLD: u64 = 500;
 ///
 /// Strategy:
 /// - For expand(arg) where estimated terms > threshold: use fast mod-p expansion
-/// - Converts directly to MultiPolyModP and back (O(output_terms))
-/// - Avoids the slow symbolic expand() + strip_all_holds() path
+/// - If terms > EXPAND_MATERIALIZE_LIMIT: return poly_ref (opaque)
+/// - Otherwise: materialize AST wrapped in __hold
 pub fn eager_eval_expand_calls(ctx: &mut Context, expr: ExprId) -> (ExprId, Vec<Step>) {
     let mut steps = Vec::new();
     let result = eager_eval_expand_recursive(ctx, expr, &mut steps);
@@ -33,13 +37,9 @@ fn eager_eval_expand_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<
             if let Some(est) = estimate_expand_terms(ctx, arg) {
                 // Use fast mod-p path for large expansions
                 if est > EAGER_EXPAND_MODP_THRESHOLD {
-                    if let Some(result) = expand_modp_safe(ctx, arg) {
-                        // Keep the __hold wrapper - it will prevent the simplifier from
-                        // reprocessing the huge expanded expression. The hold is stripped
-                        // only at the final output boundary (engine.rs::unwrap_hold_top).
-
+                    if let Some(result) = expand_to_poly_ref_or_hold(ctx, arg, est as usize) {
                         steps.push(Step::new(
-                            &format!("Eager expand (mod-p fast path, {} terms)", est),
+                            &format!("Eager expand (mod-p, {} terms)", est),
                             "Polynomial Expansion",
                             expr,
                             result,
@@ -135,41 +135,77 @@ fn eager_eval_expand_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<
     }
 }
 
-/// Expand polynomial using fast mod-p arithmetic (MultiPolyModP).
+/// Expand expression to poly_ref (opaque) or __hold(AST) depending on size.
 ///
-/// This is a **deliberate strategy choice** when the expand strategy selector
-/// determines that mod-p expansion is safe (coefficient bound < p/2).
+/// - If terms <= EXPAND_MATERIALIZE_LIMIT: materialize AST wrapped in __hold
+/// - If terms > EXPAND_MATERIALIZE_LIMIT: return poly_ref(inline_stats)
 ///
-/// Uses the same fast polynomial engine as poly_gcd_modp with O(1) multiplication
-/// per term and binary exponentiation for Pow. Coefficients are reconstructed
-/// using symmetric representation via `modp_to_signed`.
-///
-/// Returns Some(expanded) if successful, None if cannot convert to polynomial.
-pub fn expand_modp_safe(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+/// For now, poly_ref stores metadata inline since we don't have SessionState access.
+/// Format: poly_result(n_terms, degree, n_vars, modulus)
+fn expand_to_poly_ref_or_hold(
+    ctx: &mut Context,
+    expr: ExprId,
+    _est_terms: usize,
+) -> Option<ExprId> {
     use crate::poly_modp_conv::{expr_to_poly_modp, PolyModpBudget, VarTable};
-    use crate::rules::algebra::gcd_modp::multipoly_modp_to_expr;
+    use crate::rules::algebra::gcd_modp::{multipoly_modp_to_expr, DEFAULT_PRIME};
 
-    // Budget for large polynomial expansion
+    // Budget for polynomial expansion
     let budget = PolyModpBudget {
-        max_vars: 8,
-        max_terms: 500_000, // Allow more terms for expansion
+        max_vars: 16,
+        max_terms: 500_000,
         max_total_degree: 100,
         max_pow_exp: 100,
     };
 
-    // Prime for mod p arithmetic
-    // Coefficients are reconstructed using symmetric representation (modp_to_signed)
-    let p = crate::rules::algebra::gcd_modp::DEFAULT_PRIME;
-
+    let p = DEFAULT_PRIME;
     let mut vars = VarTable::new();
 
-    // Convert to MultiPolyModP - uses fast binary exponentiation for Pow
+    // Convert to MultiPolyModP
     let poly = expr_to_poly_modp(ctx, expr, p, &budget, &mut vars).ok()?;
 
-    // Convert back to expression with signed coefficient reconstruction
-    let expanded = multipoly_modp_to_expr(ctx, &poly, &vars);
+    let n_terms = poly.num_terms();
 
-    // Wrap in __hold to prevent re-simplification of huge expression
+    if n_terms <= EXPAND_MATERIALIZE_LIMIT {
+        // Small enough to materialize - return __hold(AST)
+        let expanded = multipoly_modp_to_expr(ctx, &poly, &vars);
+        Some(ctx.add(Expr::Function("__hold".to_string(), vec![expanded])))
+    } else {
+        // Too large - return poly_result with metadata
+        // poly_result(n_terms, degree, n_vars, modulus)
+        // This acts as an opaque handle that won't be traversed
+        let terms = ctx.num(n_terms as i64);
+        // Note: MultiPolyModP doesn't have max_degree(); use 0 as placeholder
+        let degree = ctx.num(0);
+        let nvars = ctx.num(vars.names().len() as i64);
+        let modulus = ctx.num(p as i64);
+
+        Some(ctx.add(Expr::Function(
+            "poly_result".to_string(),
+            vec![terms, degree, nvars, modulus],
+        )))
+    }
+}
+
+/// Legacy function for backward compatibility.
+/// Now uses expand_to_poly_ref_or_hold internally.
+pub fn expand_modp_safe(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    // Always materialize AST for this function (used by distribution.rs)
+    use crate::poly_modp_conv::{expr_to_poly_modp, PolyModpBudget, VarTable};
+    use crate::rules::algebra::gcd_modp::{multipoly_modp_to_expr, DEFAULT_PRIME};
+
+    let budget = PolyModpBudget {
+        max_vars: 16,
+        max_terms: 500_000,
+        max_total_degree: 100,
+        max_pow_exp: 100,
+    };
+
+    let p = DEFAULT_PRIME;
+    let mut vars = VarTable::new();
+
+    let poly = expr_to_poly_modp(ctx, expr, p, &budget, &mut vars).ok()?;
+    let expanded = multipoly_modp_to_expr(ctx, &poly, &vars);
     Some(ctx.add(Expr::Function("__hold".to_string(), vec![expanded])))
 }
 

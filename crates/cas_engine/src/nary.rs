@@ -35,6 +35,15 @@
 use cas_ast::{Context, Expr, ExprId};
 use smallvec::SmallVec;
 
+/// Check if an expression is a poly_ref(id) - opaque polynomial reference.
+///
+/// poly_ref nodes must be treated as ATOMIC by AddView/MulView to prevent
+/// O(n²) traversal of huge polynomial results stored in PolyStore.
+#[inline]
+pub fn is_poly_ref(ctx: &Context, id: ExprId) -> bool {
+    matches!(ctx.get(id), Expr::Function(name, args) if name == "poly_ref" && args.len() == 1)
+}
+
 /// Sign of a term in an additive expression.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Sign {
@@ -164,6 +173,10 @@ impl AddView {
     /// NOTE: This collector unwraps __hold barriers per the Hold Contract
     /// (see ARCHITECTURE.md "Canonical Utilities Registry"). This makes
     /// AddView transparent to internal barriers used by autoexpand.
+    ///
+    /// IMPORTANT: `poly_ref(id)` is treated as an ATOMIC term and never
+    /// traversed. This prevents O(n²) explosion when dealing with large
+    /// polynomial results stored in PolyStore.
     fn collect_terms(
         ctx: &Context,
         root: ExprId,
@@ -174,6 +187,13 @@ impl AddView {
         let mut stack = vec![(root, initial_sign)];
 
         while let Some((id, sign)) = stack.pop() {
+            // CRITICAL: poly_ref is atomic - NEVER traverse into it
+            // This is the key invariant that makes large polynomial sums fast
+            if is_poly_ref(ctx, id) {
+                out.push((id, sign));
+                continue;
+            }
+
             // Unwrap __hold barrier per Hold Contract (transparency for algebra)
             let id = cas_ast::hold::unwrap_hold(ctx, id);
 
@@ -303,10 +323,20 @@ impl MulView {
     /// Iterative factor collector (stack-safe for deep expressions).
     ///
     /// NOTE: This collector unwraps __hold barriers per the Hold Contract.
+    ///
+    /// IMPORTANT: `poly_ref(id)` is treated as an ATOMIC factor and never
+    /// traversed. This prevents O(n²) explosion when dealing with large
+    /// polynomial results stored in PolyStore.
     fn collect_factors(ctx: &Context, root: ExprId, out: &mut SmallVec<[ExprId; 8]>) {
         let mut stack = vec![root];
 
         while let Some(id) = stack.pop() {
+            // CRITICAL: poly_ref is atomic - NEVER traverse into it
+            if is_poly_ref(ctx, id) {
+                out.push(id);
+                continue;
+            }
+
             // Unwrap __hold barrier per Hold Contract (transparency for algebra)
             let id = cas_ast::hold::unwrap_hold(ctx, id);
 
