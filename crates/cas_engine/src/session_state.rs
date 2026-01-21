@@ -50,19 +50,40 @@ impl SessionState {
     ///
     /// When the expression contains session references (#id), the diagnostics
     /// from those entries are accumulated for SessionPropagated origin tracking.
+    ///
+    /// V2.15.36: Uses cache-aware resolution - if an entry has a cached
+    /// simplified result with matching key, uses that instead of raw expression.
     pub fn resolve_all_with_diagnostics(
         &self,
         ctx: &mut Context,
         expr: ExprId,
     ) -> Result<(ExprId, crate::diagnostics::Diagnostics), ResolveError> {
-        use crate::session::resolve_session_refs_with_diagnostics;
+        use crate::session::{resolve_session_refs_with_mode, RefMode, SimplifyCacheKey};
 
-        // 1. Resolve session refs and collect inherited diagnostics
-        let (expr_with_refs, inherited) =
-            resolve_session_refs_with_diagnostics(ctx, expr, &self.store)?;
+        // Create cache key from current options
+        let cache_key = SimplifyCacheKey::from_context(self.options.domain_mode);
 
-        // 2. Substitute variables from environment
-        let fully_resolved = crate::env::substitute(ctx, &self.env, expr_with_refs);
+        // 1. Resolve session refs with cache checking
+        let resolved = resolve_session_refs_with_mode(
+            ctx,
+            expr,
+            &self.store,
+            RefMode::PreferSimplified,
+            &cache_key,
+        )?;
+
+        // 2. Convert requires to Diagnostics
+        let mut inherited = crate::diagnostics::Diagnostics::new();
+        for item in resolved.requires {
+            // Add with SessionPropagated origin
+            inherited.push_required(
+                item.cond,
+                crate::diagnostics::RequireOrigin::SessionPropagated,
+            );
+        }
+
+        // 3. Substitute variables from environment
+        let fully_resolved = crate::env::substitute(ctx, &self.env, resolved.expr);
 
         Ok((fully_resolved, inherited))
     }

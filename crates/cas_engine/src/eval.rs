@@ -621,6 +621,21 @@ impl Engine {
         // Update stored entry with final diagnostics (for SessionPropagated tracking)
         if let Some(id) = stored_id {
             state.store.update_diagnostics(id, diagnostics.clone());
+
+            // V2.15.36: Populate simplified cache for session reference caching
+            // This enables `#N` to use the cached simplified result instead of re-simplifying
+            if let EvalResult::Expr(simplified_expr) = &result {
+                use crate::session::{SimplifiedCache, SimplifyCacheKey};
+
+                let cache_key = SimplifyCacheKey::from_context(state.options.domain_mode);
+                let cache = SimplifiedCache {
+                    key: cache_key,
+                    expr: *simplified_expr,
+                    requires: diagnostics.requires.clone(),
+                    steps: std::sync::Arc::new(steps.clone()),
+                };
+                state.store.update_simplified(id, cache);
+            }
         }
 
         // Legacy field: extract conditions from diagnostics for backward compatibility
