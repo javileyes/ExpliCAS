@@ -26,13 +26,135 @@
 //! - `Mul(poly_ref, poly_ref)` → combined poly_ref
 //! - `Neg(poly_ref)` → negated poly_ref
 //! - `Add(poly_ref, poly_like_expr)` → if expr can convert to poly, combine
+//!
+//! # Auto-Promotion
+//!
+//! When one operand is `poly_result` and the other is a simple polynomial expression,
+//! the simple expression is automatically converted to `poly_result` for combination.
 
+use crate::poly_modp_conv::{expr_to_poly_modp, PolyModpBudget, VarTable};
 use crate::poly_store::{
-    thread_local_add, thread_local_mul, thread_local_neg, thread_local_pow, thread_local_sub,
-    PolyId,
+    thread_local_add, thread_local_insert, thread_local_meta, thread_local_mul, thread_local_neg,
+    thread_local_pow, thread_local_sub, PolyId, PolyMeta,
 };
 use crate::Step;
 use cas_ast::{Context, Expr, ExprId};
+
+/// Maximum node count for promotion (guards against huge expressions)
+const PROMOTE_MAX_NODES: usize = 200;
+
+/// Maximum terms after conversion for promotion
+const PROMOTE_MAX_TERMS: usize = 10_000;
+
+// =============================================================================
+// Auto-promotion: convert simple poly-like expressions to poly_result
+// =============================================================================
+
+/// Try to promote a simple polynomial expression to a poly_result.
+///
+/// Only attempts promotion if:
+/// 1. `base_id` is a valid poly_result (provides modulus and var_table context)
+/// 2. `expr` is small enough (node count <= PROMOTE_MAX_NODES)
+/// 3. `expr` can be converted to MultiPolyModP
+/// 4. Resulting poly has <= PROMOTE_MAX_TERMS terms
+///
+/// Returns the new PolyId on success, None on failure.
+fn try_promote_expr_to_poly(ctx: &Context, expr: ExprId, base_id: PolyId) -> Option<PolyId> {
+    // Guard: check node count
+    let (node_count, _) = cas_ast::traversal::count_nodes_and_max_depth(ctx, expr);
+    if node_count > PROMOTE_MAX_NODES {
+        tracing::debug!(
+            poly_lowering = "skip_promote",
+            reason = "node_count too large",
+            node_count = node_count,
+            max = PROMOTE_MAX_NODES,
+            "Skipping promotion: expression too large"
+        );
+        return None;
+    }
+
+    // Get base metadata (for modulus)
+    let base_meta = thread_local_meta(base_id)?;
+
+    // Budget for conversion
+    let budget = PolyModpBudget {
+        max_terms: PROMOTE_MAX_TERMS,
+        ..Default::default()
+    };
+
+    // Convert expression to polynomial
+    let mut vars = VarTable::new();
+    let poly = match expr_to_poly_modp(ctx, expr, base_meta.modulus, &budget, &mut vars) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::debug!(
+                poly_lowering = "skip_promote",
+                reason = "conversion_failed",
+                error = ?e,
+                "Skipping promotion: cannot convert expression"
+            );
+            return None;
+        }
+    };
+
+    // Check term count
+    if poly.terms.len() > PROMOTE_MAX_TERMS {
+        tracing::debug!(
+            poly_lowering = "skip_promote",
+            reason = "too_many_terms",
+            terms = poly.terms.len(),
+            max = PROMOTE_MAX_TERMS,
+            "Skipping promotion: resulting poly too large"
+        );
+        return None;
+    }
+
+    // Unify variable tables
+    let base_var_table = VarTable::from_names(&base_meta.var_names);
+    let (unified, _remap_base, remap_new) = base_var_table.unify(&vars)?;
+
+    // Remap the new polynomial to unified variable order
+    let remapped_poly = poly.remap(&remap_new, unified.len());
+
+    // Compute max total degree from terms
+    let max_deg = remapped_poly
+        .terms
+        .iter()
+        .map(|(mono, _)| mono.total_degree())
+        .max()
+        .unwrap_or(0);
+
+    // Create metadata and insert
+    let new_meta = PolyMeta {
+        modulus: base_meta.modulus,
+        n_terms: remapped_poly.terms.len(),
+        n_vars: unified.len(),
+        max_total_degree: max_deg,
+        var_names: unified.names().to_vec(),
+    };
+
+    let new_id = thread_local_insert(new_meta, remapped_poly);
+
+    tracing::debug!(
+        poly_lowering = "promoted",
+        new_id = new_id,
+        terms = poly.terms.len(),
+        "Successfully promoted expression to poly_result"
+    );
+
+    Some(new_id)
+}
+
+/// Create VarTable from existing var names
+impl VarTable {
+    pub fn from_names(names: &[String]) -> Self {
+        let mut table = Self::new();
+        for name in names {
+            table.get_or_insert(name);
+        }
+        table
+    }
+}
 
 /// Result of poly lowering pass
 pub struct PolyLowerResult {
@@ -69,41 +191,72 @@ fn lower_recursive(
         // Check if this is already a poly_result - pass through
         Expr::Function(ref name, ref _args) if name == "poly_result" => expr,
 
-        // Add: try to combine poly_results
+        // Add: try to combine poly_results or promote simple expressions
         Expr::Add(l, r) => {
             let nl = lower_recursive(ctx, l, steps, combined_any);
             let nr = lower_recursive(ctx, r, steps, combined_any);
 
-            // Try to combine if both are poly_results
-            if let (Some(id_l), Some(id_r)) = (
-                extract_poly_result_id(ctx, nl),
-                extract_poly_result_id(ctx, nr),
-            ) {
-                if let Some(new_id) = thread_local_add(id_l, id_r) {
-                    *combined_any = true;
-                    let result = make_poly_result(ctx, new_id);
+            let id_l = extract_poly_result_id(ctx, nl);
+            let id_r = extract_poly_result_id(ctx, nr);
 
-                    steps.push(Step::new(
-                        "Poly lowering: combined poly_result + poly_result",
-                        "Polynomial Combination",
-                        expr,
-                        result,
-                        Vec::new(),
-                        Some(ctx),
-                    ));
+            match (id_l, id_r) {
+                // Both are poly_result
+                (Some(id_l), Some(id_r)) => {
+                    if let Some(new_id) = thread_local_add(id_l, id_r) {
+                        *combined_any = true;
+                        let result = make_poly_result(ctx, new_id);
 
-                    return result;
-                } else {
-                    // Combination failed - likely due to incompatible var_names
-                    // Log warning (will be visible with RUST_LOG=warn)
-                    tracing::warn!(
-                        poly_lowering = "skipped",
-                        reason = "incompatible variable tables",
-                        left_id = id_l,
-                        right_id = id_r,
-                        "poly_lowering: Add skipped (Phase 3 will unify variable tables)"
-                    );
+                        steps.push(Step::new(
+                            "Poly lowering: combined poly_result + poly_result",
+                            "Polynomial Combination",
+                            expr,
+                            result,
+                            Vec::new(),
+                            Some(ctx),
+                        ));
+                        return result;
+                    }
                 }
+                // Left is poly_result, try to promote right
+                (Some(id_l), None) => {
+                    if let Some(id_r_promoted) = try_promote_expr_to_poly(ctx, nr, id_l) {
+                        if let Some(new_id) = thread_local_add(id_l, id_r_promoted) {
+                            *combined_any = true;
+                            let result = make_poly_result(ctx, new_id);
+
+                            steps.push(Step::new(
+                                "Poly lowering: promoted and combined expressions",
+                                "Polynomial Combination",
+                                expr,
+                                result,
+                                Vec::new(),
+                                Some(ctx),
+                            ));
+                            return result;
+                        }
+                    }
+                }
+                // Right is poly_result, try to promote left
+                (None, Some(id_r)) => {
+                    if let Some(id_l_promoted) = try_promote_expr_to_poly(ctx, nl, id_r) {
+                        if let Some(new_id) = thread_local_add(id_l_promoted, id_r) {
+                            *combined_any = true;
+                            let result = make_poly_result(ctx, new_id);
+
+                            steps.push(Step::new(
+                                "Poly lowering: promoted and combined expressions",
+                                "Polynomial Combination",
+                                expr,
+                                result,
+                                Vec::new(),
+                                Some(ctx),
+                            ));
+                            return result;
+                        }
+                    }
+                }
+                // Neither is poly_result - no action
+                (None, None) => {}
             }
 
             // No combination possible
@@ -114,38 +267,72 @@ fn lower_recursive(
             }
         }
 
-        // Sub: try to combine poly_results
+        // Sub: try to combine poly_results or promote simple expressions
         Expr::Sub(l, r) => {
             let nl = lower_recursive(ctx, l, steps, combined_any);
             let nr = lower_recursive(ctx, r, steps, combined_any);
 
-            if let (Some(id_l), Some(id_r)) = (
-                extract_poly_result_id(ctx, nl),
-                extract_poly_result_id(ctx, nr),
-            ) {
-                if let Some(new_id) = thread_local_sub(id_l, id_r) {
-                    *combined_any = true;
-                    let result = make_poly_result(ctx, new_id);
+            let id_l = extract_poly_result_id(ctx, nl);
+            let id_r = extract_poly_result_id(ctx, nr);
 
-                    steps.push(Step::new(
-                        "Poly lowering: combined poly_result - poly_result",
-                        "Polynomial Combination",
-                        expr,
-                        result,
-                        Vec::new(),
-                        Some(ctx),
-                    ));
+            match (id_l, id_r) {
+                // Both are poly_result
+                (Some(id_l), Some(id_r)) => {
+                    if let Some(new_id) = thread_local_sub(id_l, id_r) {
+                        *combined_any = true;
+                        let result = make_poly_result(ctx, new_id);
 
-                    return result;
-                } else {
-                    tracing::warn!(
-                        poly_lowering = "skipped",
-                        reason = "incompatible variable tables",
-                        left_id = id_l,
-                        right_id = id_r,
-                        "poly_lowering: Sub skipped (Phase 3 will unify variable tables)"
-                    );
+                        steps.push(Step::new(
+                            "Poly lowering: combined poly_result - poly_result",
+                            "Polynomial Combination",
+                            expr,
+                            result,
+                            Vec::new(),
+                            Some(ctx),
+                        ));
+                        return result;
+                    }
                 }
+                // Left is poly_result, try to promote right
+                (Some(id_l), None) => {
+                    if let Some(id_r_promoted) = try_promote_expr_to_poly(ctx, nr, id_l) {
+                        if let Some(new_id) = thread_local_sub(id_l, id_r_promoted) {
+                            *combined_any = true;
+                            let result = make_poly_result(ctx, new_id);
+
+                            steps.push(Step::new(
+                                "Poly lowering: promoted and combined expressions",
+                                "Polynomial Combination",
+                                expr,
+                                result,
+                                Vec::new(),
+                                Some(ctx),
+                            ));
+                            return result;
+                        }
+                    }
+                }
+                // Right is poly_result, try to promote left
+                (None, Some(id_r)) => {
+                    if let Some(id_l_promoted) = try_promote_expr_to_poly(ctx, nl, id_r) {
+                        if let Some(new_id) = thread_local_sub(id_l_promoted, id_r) {
+                            *combined_any = true;
+                            let result = make_poly_result(ctx, new_id);
+
+                            steps.push(Step::new(
+                                "Poly lowering: promoted and combined expressions",
+                                "Polynomial Combination",
+                                expr,
+                                result,
+                                Vec::new(),
+                                Some(ctx),
+                            ));
+                            return result;
+                        }
+                    }
+                }
+                // Neither is poly_result - no action
+                (None, None) => {}
             }
 
             if nl != l || nr != r {
@@ -155,38 +342,72 @@ fn lower_recursive(
             }
         }
 
-        // Mul: try to combine poly_results
+        // Mul: try to combine poly_results or promote simple expressions
         Expr::Mul(l, r) => {
             let nl = lower_recursive(ctx, l, steps, combined_any);
             let nr = lower_recursive(ctx, r, steps, combined_any);
 
-            if let (Some(id_l), Some(id_r)) = (
-                extract_poly_result_id(ctx, nl),
-                extract_poly_result_id(ctx, nr),
-            ) {
-                if let Some(new_id) = thread_local_mul(id_l, id_r) {
-                    *combined_any = true;
-                    let result = make_poly_result(ctx, new_id);
+            let id_l = extract_poly_result_id(ctx, nl);
+            let id_r = extract_poly_result_id(ctx, nr);
 
-                    steps.push(Step::new(
-                        "Poly lowering: combined poly_result * poly_result",
-                        "Polynomial Combination",
-                        expr,
-                        result,
-                        Vec::new(),
-                        Some(ctx),
-                    ));
+            match (id_l, id_r) {
+                // Both are poly_result
+                (Some(id_l), Some(id_r)) => {
+                    if let Some(new_id) = thread_local_mul(id_l, id_r) {
+                        *combined_any = true;
+                        let result = make_poly_result(ctx, new_id);
 
-                    return result;
-                } else {
-                    tracing::warn!(
-                        poly_lowering = "skipped",
-                        reason = "incompatible variable tables",
-                        left_id = id_l,
-                        right_id = id_r,
-                        "poly_lowering: Mul skipped (Phase 3 will unify variable tables)"
-                    );
+                        steps.push(Step::new(
+                            "Poly lowering: combined poly_result * poly_result",
+                            "Polynomial Combination",
+                            expr,
+                            result,
+                            Vec::new(),
+                            Some(ctx),
+                        ));
+                        return result;
+                    }
                 }
+                // Left is poly_result, try to promote right
+                (Some(id_l), None) => {
+                    if let Some(id_r_promoted) = try_promote_expr_to_poly(ctx, nr, id_l) {
+                        if let Some(new_id) = thread_local_mul(id_l, id_r_promoted) {
+                            *combined_any = true;
+                            let result = make_poly_result(ctx, new_id);
+
+                            steps.push(Step::new(
+                                "Poly lowering: promoted and combined expressions",
+                                "Polynomial Combination",
+                                expr,
+                                result,
+                                Vec::new(),
+                                Some(ctx),
+                            ));
+                            return result;
+                        }
+                    }
+                }
+                // Right is poly_result, try to promote left
+                (None, Some(id_r)) => {
+                    if let Some(id_l_promoted) = try_promote_expr_to_poly(ctx, nl, id_r) {
+                        if let Some(new_id) = thread_local_mul(id_l_promoted, id_r) {
+                            *combined_any = true;
+                            let result = make_poly_result(ctx, new_id);
+
+                            steps.push(Step::new(
+                                "Poly lowering: promoted and combined expressions",
+                                "Polynomial Combination",
+                                expr,
+                                result,
+                                Vec::new(),
+                                Some(ctx),
+                            ));
+                            return result;
+                        }
+                    }
+                }
+                // Neither is poly_result - no action
+                (None, None) => {}
             }
 
             if nl != l || nr != r {
