@@ -10,7 +10,20 @@ use crate::json_types::ExprStatsJson;
 /// Format an expression with a character limit.
 ///
 /// Returns (formatted_string, was_truncated, original_char_count).
+/// Automatically renders poly_result expressions as formatted polynomials.
 pub fn format_expr_limited(ctx: &Context, expr: ExprId, max_chars: usize) -> (String, bool, usize) {
+    // Try to render as poly_result first (fast path for large polynomials)
+    if let Some(poly_str) = cas_engine::poly_store::try_render_poly_result(ctx, expr) {
+        let len = poly_str.chars().count();
+        if len <= max_chars {
+            return (poly_str, false, len);
+        }
+        // Truncate poly string
+        let truncated: String = poly_str.chars().take(max_chars).collect();
+        return (format!("{truncated} … <truncated>"), true, len);
+    }
+
+    // Standard expression formatting
     let full = format!(
         "{}",
         DisplayExpr {

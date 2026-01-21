@@ -402,7 +402,7 @@ pub fn render_poly_result(id: PolyId, max_terms: usize) -> Option<String> {
 
 /// Check if an expression is a poly_result and render it directly.
 /// Returns None if not a poly_result or if rendering fails.
-/// Default max_terms is 200 for auto-display.
+/// Default max_terms is 100000 for auto-display (shows full polynomial for large products).
 pub fn try_render_poly_result(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> Option<String> {
     use cas_ast::Expr;
 
@@ -411,8 +411,8 @@ pub fn try_render_poly_result(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> 
             if let Expr::Number(n) = ctx.get(args[0]) {
                 if let Ok(id) = n.to_integer().try_into() {
                     let id: PolyId = id;
-                    // Default limit for auto-display
-                    return render_poly_result(id, 200);
+                    // Default limit for auto-display - 100k terms covers large products
+                    return render_poly_result(id, 100_000);
                 }
             }
         }
