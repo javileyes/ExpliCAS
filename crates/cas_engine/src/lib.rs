@@ -53,6 +53,7 @@ pub mod rules;
 pub mod semantic_equality;
 pub mod semantics;
 pub mod session;
+pub mod session_snapshot;
 pub mod session_state;
 pub mod solve_safety;
 pub mod solver;

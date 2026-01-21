@@ -25,7 +25,7 @@ pub enum EntryKind {
 ///
 /// If any of these settings change between when the cache was created
 /// and when it's being used, the cache is invalid.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SimplifyCacheKey {
     /// Domain mode at time of simplification
     pub domain: crate::domain::DomainMode,
@@ -376,6 +376,45 @@ impl SessionStore {
                 break; // No more to evict
             }
         }
+    }
+
+    // =========================================================================
+    // Snapshot Persistence Support (V2.15.36)
+    // =========================================================================
+
+    /// Iterate over all entries (for snapshot serialization).
+    pub fn entries(&self) -> impl Iterator<Item = &Entry> {
+        self.entries.iter()
+    }
+
+    /// Get the LRU cache order (for snapshot serialization).
+    pub fn cache_order(&self) -> &std::collections::VecDeque<EntryId> {
+        &self.cache_order
+    }
+
+    /// Get the cache configuration.
+    pub fn cache_config(&self) -> &CacheConfig {
+        &self.cache_config
+    }
+
+    /// Restore an entry from snapshot (bypasses normal ID allocation).
+    pub fn restore_entry(&mut self, entry: Entry) {
+        // Track next_id to ensure future entries don't collide
+        if entry.id >= self.next_id {
+            self.next_id = entry.id + 1;
+        }
+        // Update cached_steps_count if entry has cached steps
+        if let Some(ref cache) = entry.simplified {
+            if let Some(ref steps) = cache.steps {
+                self.cached_steps_count += steps.len();
+            }
+        }
+        self.entries.push(entry);
+    }
+
+    /// Restore the LRU cache order from snapshot.
+    pub fn restore_cache_order(&mut self, order: Vec<EntryId>) {
+        self.cache_order = order.into_iter().collect();
     }
 }
 

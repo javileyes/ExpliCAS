@@ -57,7 +57,9 @@ pub fn clear_blocked_hints() {
 ///
 /// Controls how the engine handles operations that require domain assumptions
 /// like `x/x → 1` (requires `x ≠ 0`) or `√(x²) → x` (requires `x ≥ 0`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum DomainMode {
     /// No domain assumptions - only proven-safe simplifications.
     ///
