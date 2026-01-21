@@ -17,6 +17,77 @@ pub enum EntryKind {
     Eq { lhs: ExprId, rhs: ExprId },
 }
 
+// =============================================================================
+// Session Reference Caching (V2.15.36)
+// =============================================================================
+
+/// Key for cache invalidation - must match for cache hit.
+///
+/// If any of these settings change between when the cache was created
+/// and when it's being used, the cache is invalid.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SimplifyCacheKey {
+    /// Domain mode at time of simplification
+    pub domain: crate::domain::DomainMode,
+    /// Build/version hash for ruleset (currently static)
+    pub ruleset_rev: u64,
+}
+
+impl SimplifyCacheKey {
+    /// Create a cache key from current context settings
+    pub fn from_context(domain: crate::domain::DomainMode) -> Self {
+        Self {
+            domain,
+            // For now, use a static value. In the future, could hash ruleset config.
+            ruleset_rev: 1,
+        }
+    }
+
+    /// Check if this key is compatible with another (for cache hit)
+    pub fn is_compatible(&self, other: &Self) -> bool {
+        self == other
+    }
+}
+
+/// Cached simplification result for a session entry.
+///
+/// Stored after evaluation to enable fast resolution of `#N` references
+/// without re-running the simplification pipeline.
+#[derive(Debug, Clone)]
+pub struct SimplifiedCache {
+    /// Key for invalidation (must match current context)
+    pub key: SimplifyCacheKey,
+    /// Simplified expression
+    pub expr: ExprId,
+    /// Domain requirements from this entry (for propagation)
+    pub requires: Vec<crate::diagnostics::RequiredItem>,
+    /// Derivation steps (for "show #N" - shared via Arc)
+    pub steps: std::sync::Arc<Vec<crate::step::Step>>,
+}
+
+/// How to resolve session references
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RefMode {
+    /// Use cached simplified result if available and valid (default, fast)
+    #[default]
+    PreferSimplified,
+    /// Use original parsed expression (for debugging, "raw" command)
+    Raw,
+}
+
+/// Result of resolving session references with accumulated requires.
+#[derive(Debug, Clone)]
+pub struct ResolvedExpr {
+    /// The resolved expression
+    pub expr: ExprId,
+    /// Accumulated domain requirements from all referenced entries
+    pub requires: Vec<crate::diagnostics::RequiredItem>,
+    /// Whether cache was used (for timeline step generation)
+    pub used_cache: bool,
+    /// Chain of referenced entry IDs (for debugging)
+    pub ref_chain: smallvec::SmallVec<[EntryId; 4]>,
+}
+
 /// A stored entry in the session
 #[derive(Debug, Clone)]
 pub struct Entry {
@@ -28,6 +99,8 @@ pub struct Entry {
     pub raw_text: String,
     /// Diagnostics from evaluation (for SessionPropagated tracking)
     pub diagnostics: crate::diagnostics::Diagnostics,
+    /// Cached simplified result (populated after eval)
+    pub simplified: Option<SimplifiedCache>,
 }
 
 impl Entry {
@@ -91,6 +164,7 @@ impl SessionStore {
             kind,
             raw_text,
             diagnostics,
+            simplified: None,
         });
         id
     }
@@ -143,6 +217,16 @@ impl SessionStore {
     ) {
         if let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) {
             entry.diagnostics = diagnostics;
+        }
+    }
+
+    /// Update the simplified cache for an entry (populated after eval).
+    ///
+    /// This caches the simplified result so that subsequent `#id` references
+    /// can use the cached value instead of re-simplifying.
+    pub fn update_simplified(&mut self, id: EntryId, simplified: SimplifiedCache) {
+        if let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) {
+            entry.simplified = Some(simplified);
         }
     }
 }
