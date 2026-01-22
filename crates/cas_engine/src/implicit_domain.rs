@@ -1111,32 +1111,59 @@ pub fn derive_requires_from_equation(
         matches!(ctx.get(e), Expr::Function(name, args) if name == "abs" && args.len() == 1)
     };
 
-    // Check if LHS is provably positive
+    // Helper to check if expression has structural constraints that enforce positivity.
+    // Only these expressions benefit from derived positivity requirements.
+    // Examples: sqrt(y), ln(y), y^(1/2), etc.
+    // We DON'T want to derive positivity for plain polynomials like "2*x + 3".
+    let has_positivity_structure = |ctx: &Context, e: ExprId| -> bool {
+        match ctx.get(e) {
+            // sqrt(x) requires x >= 0 and sqrt(x) > 0 implies x > 0
+            Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => true,
+            // ln(x) and log(x) require x > 0
+            Expr::Function(name, args) if (name == "ln" || name == "log") && args.len() == 1 => {
+                true
+            }
+            // x^(p/q) where q is even requires x >= 0
+            Expr::Pow(_base, exp) => {
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    is_even_root_exponent(n)
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    };
+
+    // Check if LHS is provably positive AND RHS has structure that needs it
     let lhs_positive = crate::helpers::prove_positive(ctx, lhs, vd);
     if matches!(
         lhs_positive,
         crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit
     ) {
-        // LHS > 0 proven, so RHS > 0 (for the equation to have solutions)
-        // BUT: Only add this if RHS is not DISPROVEN (provably ≤ 0)
-        // ALSO: Skip if RHS is abs(...) - solutions automatically satisfy abs(A) > 0
-        let rhs_check = crate::helpers::prove_positive(ctx, rhs, vd);
-        if rhs_check != crate::domain::Proof::Disproven && !is_abs(ctx, rhs) {
-            add_positive_and_propagate(ctx, rhs, &mut derived, vd);
+        // Only propagate if RHS has structural constraints that benefit from positivity
+        // This prevents false requires like "2*x + 3 > 0" when RHS is just a number
+        if has_positivity_structure(ctx, rhs) {
+            let rhs_check = crate::helpers::prove_positive(ctx, rhs, vd);
+            if rhs_check != crate::domain::Proof::Disproven && !is_abs(ctx, rhs) {
+                add_positive_and_propagate(ctx, rhs, &mut derived, vd);
+            }
         }
     }
 
-    // Check if RHS is provably positive
+    // Check if RHS is provably positive AND LHS has structure that needs it
     let rhs_positive = crate::helpers::prove_positive(ctx, rhs, vd);
     if matches!(
         rhs_positive,
         crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit
     ) {
-        // RHS > 0 proven, so LHS > 0 (for the equation to have solutions)
-        // Skip if LHS is abs(...) - solutions automatically satisfy abs(A) > 0
-        let lhs_check = crate::helpers::prove_positive(ctx, lhs, vd);
-        if lhs_check != crate::domain::Proof::Disproven && !is_abs(ctx, lhs) {
-            add_positive_and_propagate(ctx, lhs, &mut derived, vd);
+        // Only propagate if LHS has structural constraints that benefit from positivity
+        // This prevents false requires like "2*x + 3 > 0" when LHS is just a polynomial
+        if has_positivity_structure(ctx, lhs) {
+            let lhs_check = crate::helpers::prove_positive(ctx, lhs, vd);
+            if lhs_check != crate::domain::Proof::Disproven && !is_abs(ctx, lhs) {
+                add_positive_and_propagate(ctx, lhs, &mut derived, vd);
+            }
         }
     }
 
