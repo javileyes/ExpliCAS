@@ -132,6 +132,22 @@
             animation: slideIn 0.3s ease-out;
         }
 
+        /* Variable Assignment Cards - Special styling */
+        .variable-card {
+            background: linear-gradient(135deg, #0a2818, #0d3a22);
+            border-color: #10b981;
+        }
+
+        .variable-card .expression-header {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(5, 150, 105, 0.1));
+        }
+
+        .variable-card .var-badge {
+            background: linear-gradient(135deg, #10b981, #059669);
+            padding: 6px 14px;
+            font-size: 0.9em;
+        }
+
         @keyframes slideIn {
             from {
                 opacity: 0;
@@ -248,6 +264,37 @@
         .result-math {
             font-size: 1.3em;
             overflow-x: auto;
+            max-width: 100%;
+        }
+
+        /* Scrollable expression content */
+        .expression-input {
+            overflow-x: auto;
+            max-width: calc(100% - 100px);
+            white-space: nowrap;
+            scrollbar-width: thin;
+        }
+
+        .expression-input::-webkit-scrollbar {
+            height: 4px;
+        }
+
+        .expression-input::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 4px;
+        }
+
+        .expression-input::-webkit-scrollbar-thumb {
+            background: var(--accent);
+            border-radius: 4px;
+        }
+
+        /* Scrollable step content */
+        .step-math,
+        .solve-step-equation,
+        .solve-substep-equation {
+            overflow-x: auto;
+            max-width: 100%;
         }
 
         /* Steps Section */
@@ -708,6 +755,134 @@
             border-radius: 4px;
             font-family: 'Fira Code', monospace;
         }
+
+        /* Variables panel overlay */
+        .variables-panel-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 999;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+        }
+
+        .variables-panel-overlay.visible {
+            display: flex;
+        }
+
+        .variables-panel {
+            background: var(--bg-secondary);
+            border: 2px solid #10b981;
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 70vh;
+            overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(16, 185, 129, 0.3);
+        }
+
+        .variables-panel h2 {
+            color: #10b981;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .variables-panel .close-btn {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5em;
+            cursor: pointer;
+        }
+
+        .variables-panel .close-btn:hover {
+            color: var(--text-primary);
+        }
+
+        .variable-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .variable-list li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: rgba(16, 185, 129, 0.1);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            border-left: 3px solid #10b981;
+        }
+
+        .variable-list .var-name {
+            font-family: 'Fira Code', monospace;
+            color: #10b981;
+            font-weight: bold;
+        }
+
+        .variable-list .var-value {
+            color: var(--text-secondary);
+            font-family: 'Fira Code', monospace;
+            font-size: 0.9em;
+            max-width: 250px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .variable-list .var-delete {
+            background: none;
+            border: none;
+            color: #ef4444;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            opacity: 0.7;
+            transition: all 0.2s;
+        }
+
+        .variable-list .var-delete:hover {
+            background: rgba(239, 68, 68, 0.2);
+            opacity: 1;
+        }
+
+        .no-variables {
+            color: var(--text-secondary);
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+        }
+
+        .header-btn.variables {
+            color: #10b981;
+        }
+
+        .header-btn.variables:hover {
+            background: rgba(16, 185, 129, 0.2);
+            border-color: #10b981;
+        }
+
+        .var-count-badge {
+            background: #10b981;
+            color: white;
+            font-size: 0.7em;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 4px;
+        }
     </style>
 </head>
 
@@ -723,6 +898,10 @@
             </button>
             <button class="header-btn" onclick="exportSession()" title="Export session as HTML">
                 📥 Export
+            </button>
+            <button class="header-btn variables" id="variables-btn" onclick="showVariablesPanel()"
+                title="View assigned variables">
+                📦 Variables<span id="var-count-badge" class="var-count-badge" style="display: none;">0</span>
             </button>
             <button class="header-btn danger" onclick="clearSession()" title="Clear session">
                 🗑️ Clear
@@ -748,10 +927,21 @@
         </div>
     </div>
 
+    <!-- Variables Panel Overlay -->
+    <div class="variables-panel-overlay" id="variables-panel-overlay" onclick="hideVariablesPanel(event)">
+        <div class="variables-panel" onclick="event.stopPropagation()">
+            <h2>📦 Assigned Variables</h2>
+            <div id="variables-list-container">
+                <p class="no-variables">No variables assigned yet</p>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Session state
         let expressionCount = 0;
         let sessionResults = {};
+        let sessionVariables = {};  // Track assigned variables: name -> value
         const history = [];
         let historyIndex = -1;
 
@@ -851,79 +1041,109 @@
         }
 
         function addExpressionCard(expr, result) {
-            expressionCount++;
-            const ref = result.ref || expressionCount;
-            sessionResults[ref] = result;
+            const isAssignment = result.assignment;
+
+            // For non-assignment expressions, increment counter and track result
+            if (!isAssignment) {
+                expressionCount++;
+            }
+            const ref = isAssignment ? `var-${result.assignment}` : (result.ref || expressionCount);
+
+            if (!isAssignment) {
+                sessionResults[ref] = result;
+            } else {
+                // Track variable assignment
+                sessionVariables[result.assignment] = result.result;
+                updateVariablesBadge();
+            }
 
             // Hide empty state
             document.getElementById('empty-state').style.display = 'none';
 
             const card = document.createElement('div');
-            card.className = 'expression-card';
+            card.className = isAssignment ? 'expression-card variable-card' : 'expression-card';
             card.id = `expr-${ref}`;
+            if (isAssignment) {
+                card.dataset.varName = result.assignment;
+            }
 
             const hasSteps = result.steps && result.steps.length > 0;
             const isPolyResult = result.result && result.result.length > 500;
-            const isAssignment = result.assignment;
             const timeMs = result.timings_us ? Math.round(result.timings_us.total_us / 1000) : (result.time_ms || 0);
             const hasRequirements = result.required_display && result.required_display.length > 0;
 
-            card.innerHTML = `
-                <div class="expression-header">
-                    <div class="expression-header-left">
-                        <span class="expression-ref">#${ref}</span>
-                        ${isAssignment ? `<span class="var-badge">${escapeHtml(result.assignment)}</span>` : ''}
-                        <span class="expression-input">${escapeHtml(expr)}</span>
-                    </div>
-                    <div class="expression-header-right">
-                        <span class="expression-time">${timeMs}ms</span>
-                        <button class="delete-btn" onclick="deleteCard(${ref})" title="Delete this expression">🗑️</button>
-                    </div>
-                </div>
-                <div class="expression-body">
-                    ${hasSteps ? `
-                        <button class="steps-toggle" onclick="toggleSteps(${ref})">
-                            <span class="arrow">▶</span>
-                            Show ${result.steps.length} steps
-                        </button>
-                        <div class="steps-container" id="steps-${ref}">
-                            ${renderSteps(result.steps)}
+            if (isAssignment) {
+                // Special card for variable assignments - no #ref
+                card.innerHTML = `
+                    <div class="expression-header">
+                        <div class="expression-header-left">
+                            <span class="var-badge">${escapeHtml(result.assignment)} :=</span>
+                            <span class="expression-input">${escapeHtml(result.result)}</span>
                         </div>
-                    ` : ''}
-                    ${result.solve_steps && result.solve_steps.length > 0 ? `
-                        <button class="steps-toggle" onclick="toggleSolveSteps(${ref})" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.1)); border-color: #3b82f6;">
-                            <span class="arrow">▶</span>
-                            Show ${result.solve_steps.length} solving steps
-                        </button>
-                        <div class="steps-container" id="solve-steps-${ref}">
-                            ${renderSolveSteps(result.solve_steps)}
-                        </div>
-                    ` : ''}
-                    
-                    <div class="result-section">
-                        <div class="result-label">
-                            ✨ Result
-                            ${result.stats && result.stats.term_count ? `<span class="poly-badge">${result.stats.term_count.toLocaleString()} terms</span>` : ''}
-                            ${isPolyResult && (!result.stats || !result.stats.term_count) ? `<span class="poly-badge">Large polynomial</span>` : ''}
-                        </div>
-                        <div class="result-math">
-                            ${isPolyResult
-                    ? `<pre class="poly-output">${escapeHtml(result.result)}</pre>`
-                    : `$${result.result_latex || escapeHtml(result.result)}$`
-                }
+                        <div class="expression-header-right">
+                            <span class="expression-time">${timeMs}ms</span>
+                            <button class="delete-btn" onclick="deleteVariableCard('${escapeHtml(result.assignment)}')" title="Delete variable">🗑️</button>
                         </div>
                     </div>
+                `;
+            } else {
+                // Regular expression card with #ref
+                card.innerHTML = `
+                    <div class="expression-header">
+                        <div class="expression-header-left">
+                            <span class="expression-ref">#${ref}</span>
+                            <span class="expression-input">${escapeHtml(expr)}</span>
+                        </div>
+                        <div class="expression-header-right">
+                            <span class="expression-time">${timeMs}ms</span>
+                            <button class="delete-btn" onclick="deleteCard('${ref}')" title="Delete this expression">🗑️</button>
+                        </div>
+                    </div>
+                    <div class="expression-body">
+                        ${hasSteps ? `
+                            <button class="steps-toggle" onclick="toggleSteps('${ref}')">
+                                <span class="arrow">▶</span>
+                                Show ${result.steps.length} steps
+                            </button>
+                            <div class="steps-container" id="steps-${ref}">
+                                ${renderSteps(result.steps)}
+                            </div>
+                        ` : ''}
+                        ${result.solve_steps && result.solve_steps.length > 0 ? `
+                            <button class="steps-toggle" onclick="toggleSolveSteps('${ref}')" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.1)); border-color: #3b82f6;">
+                                <span class="arrow">▶</span>
+                                Show ${result.solve_steps.length} solving steps
+                            </button>
+                            <div class="steps-container" id="solve-steps-${ref}">
+                                ${renderSolveSteps(result.solve_steps)}
+                            </div>
+                        ` : ''}
+                        
+                        <div class="result-section">
+                            <div class="result-label">
+                                ✨ Result
+                                ${result.stats && result.stats.term_count ? `<span class="poly-badge">${result.stats.term_count.toLocaleString()} terms</span>` : ''}
+                                ${isPolyResult && (!result.stats || !result.stats.term_count) ? `<span class="poly-badge">Large polynomial</span>` : ''}
+                            </div>
+                            <div class="result-math">
+                                ${isPolyResult
+                        ? `<pre class="poly-output">${escapeHtml(result.result)}</pre>`
+                        : `$${result.result_latex || escapeHtml(result.result)}$`
+                    }
+                            </div>
+                        </div>
 
-                    ${hasRequirements ? `
-                        <div class="requires-section">
-                            <div class="requires-label">⚠️ Requires</div>
-                            <ul class="requires-list">
-                                ${result.required_display.map(req => `<li>${escapeHtml(req)}</li>`).join('')}
-                            </ul>
-                        </div>
-                    ` : ''}
-                </div>
-            `;
+                        ${hasRequirements ? `
+                            <div class="requires-section">
+                                <div class="requires-label">⚠️ Requires</div>
+                                <ul class="requires-list">
+                                    ${result.required_display.map(req => `<li>${escapeHtml(req)}</li>`).join('')}
+                                </ul>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }
 
             document.getElementById('expressions').appendChild(card);
 
@@ -931,7 +1151,7 @@
             card.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
             // Re-render MathJax
-            if (window.MathJax && !isPolyResult) {
+            if (window.MathJax && !isPolyResult && !isAssignment) {
                 MathJax.typesetPromise([card]);
             }
         }
@@ -1129,6 +1349,89 @@
             }
         }
 
+        // Delete variable card and remove variable from session
+        async function deleteVariableCard(varName) {
+            const card = document.getElementById(`expr-var-${varName}`);
+            if (card) {
+                card.style.animation = 'slideOut 0.3s ease-out forwards';
+                setTimeout(() => {
+                    card.remove();
+                    delete sessionVariables[varName];
+                    updateVariablesBadge();
+
+                    // Check if there are no more cards
+                    const remaining = document.querySelectorAll('.expression-card');
+                    if (remaining.length === 0) {
+                        document.getElementById('empty-state').style.display = 'block';
+                    }
+                }, 300);
+            }
+
+            // Also clear from server session
+            try {
+                await fetch('/api/delete-variable', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ variable: varName })
+                });
+            } catch (e) {
+                console.warn('Could not delete variable from server:', e);
+            }
+        }
+
+        // Update the variables badge count
+        function updateVariablesBadge() {
+            const badge = document.getElementById('var-count-badge');
+            const count = Object.keys(sessionVariables).length;
+            if (count > 0) {
+                badge.textContent = count;
+                badge.style.display = 'inline';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
+        // Show variables panel overlay
+        function showVariablesPanel() {
+            updateVariablesPanel();
+            document.getElementById('variables-panel-overlay').classList.add('visible');
+        }
+
+        // Hide variables panel overlay
+        function hideVariablesPanel(event) {
+            if (!event || event.target === event.currentTarget) {
+                document.getElementById('variables-panel-overlay').classList.remove('visible');
+            }
+        }
+
+        // Delete variable from panel
+        function deleteVariable(varName) {
+            deleteVariableCard(varName);
+            updateVariablesPanel();
+        }
+
+        // Update variables panel content
+        function updateVariablesPanel() {
+            const container = document.getElementById('variables-list-container');
+            const varNames = Object.keys(sessionVariables);
+
+            if (varNames.length === 0) {
+                container.innerHTML = '<p class="no-variables">No variables assigned yet</p>';
+            } else {
+                container.innerHTML = `
+                    <ul class="variable-list">
+                        ${varNames.map(name => `
+                            <li>
+                                <span class="var-name">${escapeHtml(name)}</span>
+                                <span class="var-value" title="${escapeHtml(sessionVariables[name])}">${escapeHtml(sessionVariables[name])}</span>
+                                <button class="var-delete" onclick="deleteVariable('${escapeHtml(name)}')" title="Delete variable">🗑️</button>
+                            </li>
+                        `).join('')}
+                    </ul>
+                `;
+            }
+        }
+
         function escapeHtml(text) {
             if (!text) return '';
             const div = document.createElement('div');
@@ -1227,8 +1530,10 @@
             // Clear UI
             expressionCount = 0;
             sessionResults = {};
+            sessionVariables = {};
             history.length = 0;
             historyIndex = -1;
+            updateVariablesBadge();
 
             const container = document.getElementById('expressions');
             container.innerHTML = '<div class="empty-state" id="empty-state">' +

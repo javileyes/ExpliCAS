@@ -39,6 +39,8 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_eval()
         elif self.path == '/api/clear':
             self.handle_clear()
+        elif self.path == '/api/delete-variable':
+            self.handle_delete_variable()
         else:
             self.send_error(404)
     
@@ -48,6 +50,26 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         session_variables = {}
         session_results = []
         self.send_json({"ok": True, "message": "Session cleared"})
+    
+    def handle_delete_variable(self):
+        """Delete a specific variable from session"""
+        global session_variables
+        content_length = int(self.headers.get('Content-Length', 0))
+        body = self.rfile.read(content_length).decode('utf-8')
+        
+        try:
+            data = json.loads(body)
+            var_name = data.get('variable', '')
+            
+            if var_name and var_name in session_variables:
+                del session_variables[var_name]
+                self.send_json({"ok": True, "message": f"Variable '{var_name}' deleted"})
+            else:
+                self.send_json({"ok": False, "error": f"Variable '{var_name}' not found"})
+        except json.JSONDecodeError:
+            self.send_json_error("Invalid JSON")
+        except Exception as e:
+            self.send_json_error(str(e))
     
     def handle_eval(self):
         # Read request body
