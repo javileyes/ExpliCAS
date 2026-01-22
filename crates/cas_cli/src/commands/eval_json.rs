@@ -15,6 +15,8 @@ use cas_parser::parse;
 
 // For step filtering (match timeline behavior)
 use cas_engine::step::{pathsteps_to_expr_path, ImportanceLevel};
+// For didactic substeps (like timeline)
+use cas_engine::didactic;
 
 use crate::format::{expr_hash, expr_stats, format_expr_limited};
 use crate::json_types::{
@@ -477,12 +479,27 @@ fn collect_steps(
         .steps
         .iter()
         .filter(|step| step.get_importance() >= ImportanceLevel::Medium)
+        .cloned()
         .collect();
 
-    filtered
+    if filtered.is_empty() {
+        return vec![];
+    }
+
+    // V2.15.36: Enrich steps with didactic substeps (like timeline)
+    let original_expr = filtered
+        .first()
+        .and_then(|s| s.global_before)
+        .unwrap_or_else(|| filtered.first().unwrap().before);
+    let enriched_steps = didactic::enrich_steps(ctx, original_expr, filtered.clone());
+
+    // Build the JSON output using enriched steps
+    enriched_steps
         .iter()
         .enumerate()
-        .map(|(i, step)| {
+        .map(|(i, enriched)| {
+            let step = &enriched.base_step;
+
             // Format before/after expressions - use global if available
             let before_expr = step.global_before.unwrap_or(step.before);
             let after_expr = step.global_after.unwrap_or(step.after);
@@ -558,15 +575,28 @@ fn collect_steps(
                 local_before_colored, local_after_colored
             );
 
-            // Convert substeps
-            let substeps: Vec<SubStepJson> = step
-                .substeps
-                .iter()
-                .map(|ss| SubStepJson {
+            // V2.15.36: Combine engine substeps + didactic substeps
+            let mut substeps: Vec<SubStepJson> = Vec::new();
+
+            // Add engine substeps (from step.substeps)
+            for ss in &step.substeps {
+                substeps.push(SubStepJson {
                     title: ss.title.clone(),
                     lines: ss.lines.clone(),
-                })
-                .collect();
+                    before_latex: None,
+                    after_latex: None,
+                });
+            }
+
+            // Add didactic substeps (from enrich_steps)
+            for ss in &enriched.sub_steps {
+                substeps.push(SubStepJson {
+                    title: ss.description.clone(),
+                    lines: vec![],
+                    before_latex: Some(ss.before_expr.clone()),
+                    after_latex: Some(ss.after_expr.clone()),
+                });
+            }
 
             StepJson {
                 index: i + 1,

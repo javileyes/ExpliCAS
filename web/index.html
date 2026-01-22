@@ -338,6 +338,24 @@
             margin-bottom: 0;
         }
 
+        .substep-math {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .substep-arrow {
+            color: var(--success);
+            font-size: 1.3em;
+            font-weight: bold;
+        }
+
         .substeps-toggle {
             background: none;
             border: none;
@@ -900,7 +918,16 @@
                                 ${step.substeps.map((substep, j) => `
                                     <div class="substep-item">
                                         <div class="step-rule">${i + 1}.${j + 1} ${escapeHtml(substep.title || 'Sub-step')}</div>
-                                        ${substep.lines ? `<ul>${substep.lines.map(l => `<li>${escapeHtml(l)}</li>`).join('')}</ul>` : ''}
+                                        ${substep.lines && substep.lines.length > 0
+                        ? `<ul>${substep.lines.map(l => `<li>${escapeHtml(l)}</li>`).join('')}</ul>`
+                        : ''}
+                                        ${substep.before_latex && substep.after_latex
+                        ? `<div class="substep-math">
+                                                <span class="step-math">$${substep.before_latex}$</span>
+                                                <span class="substep-arrow">→</span>
+                                                <span class="step-math">$${substep.after_latex}$</span>
+                                               </div>`
+                        : ''}
                                     </div>
                                 `).join('')}
                             </div>

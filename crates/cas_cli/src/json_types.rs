@@ -91,8 +91,15 @@ pub struct StepJson {
 pub struct SubStepJson {
     /// Title of the sub-step
     pub title: String,
-    /// Explanation lines
+    /// Explanation lines (for engine substeps)
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub lines: Vec<String>,
+    /// LaTeX for before expression (for didactic substeps)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub before_latex: Option<String>,
+    /// LaTeX for after expression (for didactic substeps)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after_latex: Option<String>,
 }
 
 /// Budget configuration and status
