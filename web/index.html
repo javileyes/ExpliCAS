@@ -938,7 +938,21 @@
     </div>
 
     <script>
-        // Session state
+        // Session ID: unique per browser tab, persists until tab is closed
+        // Uses sessionStorage so each tab/window has its own session
+        function getSessionId() {
+            let sessionId = sessionStorage.getItem('expliCAS_session_id');
+            if (!sessionId) {
+                // Generate a new UUID for this tab
+                sessionId = 'session-' + crypto.randomUUID();
+                sessionStorage.setItem('expliCAS_session_id', sessionId);
+            }
+            return sessionId;
+        }
+        const SESSION_ID = getSessionId();
+        console.log('Session ID:', SESSION_ID);  // Debug: show session ID in console
+
+        // Session state (local to this tab)
         let expressionCount = 0;
         let sessionResults = {};
         let sessionVariables = {};  // Track assigned variables: name -> value
@@ -998,11 +1012,11 @@
 
         async function callAPI(expr) {
             try {
-                // Call the real API
+                // Call the real API with session_id for per-tab isolation
                 const response = await fetch(API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ expression: expr })
+                    body: JSON.stringify({ expression: expr, session_id: SESSION_ID })
                 });
 
                 if (!response.ok) {
@@ -1371,12 +1385,12 @@
                 }, 300);
             }
 
-            // Also clear from server session
+            // Also clear from server session (for this tab only)
             try {
                 await fetch('/api/delete-variable', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ variable: varName })
+                    body: JSON.stringify({ variable: varName, session_id: SESSION_ID })
                 });
             } catch (e) {
                 console.warn('Could not delete variable from server:', e);
@@ -1524,9 +1538,13 @@
         async function clearSession() {
             if (!confirm('Clear all expressions and reset session?')) return;
 
-            // Clear server session
+            // Clear server session for this tab only
             try {
-                await fetch('/api/clear', { method: 'POST' });
+                await fetch('/api/clear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: SESSION_ID })
+                });
             } catch (e) {
                 console.warn('Could not clear server session:', e);
             }

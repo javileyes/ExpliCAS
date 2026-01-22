@@ -20,14 +20,32 @@ import os
 import re
 import subprocess
 import sys
+import uuid
 from urllib.parse import parse_qs
 
 PORT = 8080
 CAS_CLI = "./target/release/cas_cli"
 
-# Session state - persists for lifetime of server
-session_variables = {}  # name -> result string
-session_results = []     # list of all results for #n references
+# Multi-session support: each browser tab gets its own session
+# Sessions are identified by a UUID stored in the browser's sessionStorage
+sessions = {}  # session_id -> {"variables": {}, "results": []}
+
+def get_session(session_id):
+    """Get or create a session by ID"""
+    if session_id not in sessions:
+        sessions[session_id] = {
+            "variables": {},  # name -> result string
+            "results": []     # list of all results for %n references
+        }
+    return sessions[session_id]
+
+def clear_session(session_id):
+    """Clear a specific session"""
+    if session_id in sessions:
+        sessions[session_id] = {
+            "variables": {},
+            "results": []
+        }
 
 class CASHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -45,24 +63,31 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error(404)
     
     def handle_clear(self):
-        """Clear session state"""
-        global session_variables, session_results
-        session_variables = {}
-        session_results = []
-        self.send_json({"ok": True, "message": "Session cleared"})
+        """Clear session state for a specific session"""
+        content_length = int(self.headers.get('Content-Length', 0))
+        body = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else '{}'
+        
+        try:
+            data = json.loads(body) if body else {}
+            session_id = data.get('session_id', 'default')
+            clear_session(session_id)
+            self.send_json({"ok": True, "message": "Session cleared", "session_id": session_id})
+        except json.JSONDecodeError:
+            self.send_json({"ok": True, "message": "Session cleared", "session_id": "default"})
     
     def handle_delete_variable(self):
         """Delete a specific variable from session"""
-        global session_variables
         content_length = int(self.headers.get('Content-Length', 0))
         body = self.rfile.read(content_length).decode('utf-8')
         
         try:
             data = json.loads(body)
+            session_id = data.get('session_id', 'default')
+            session = get_session(session_id)
             var_name = data.get('variable', '')
             
-            if var_name and var_name in session_variables:
-                del session_variables[var_name]
+            if var_name and var_name in session["variables"]:
+                del session["variables"][var_name]
                 self.send_json({"ok": True, "message": f"Variable '{var_name}' deleted"})
             else:
                 self.send_json({"ok": False, "error": f"Variable '{var_name}' not found"})
@@ -79,6 +104,8 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         try:
             data = json.loads(body)
             expression = data.get('expression', '').strip()
+            session_id = data.get('session_id', 'default')
+            session = get_session(session_id)
             
             if not expression:
                 self.send_json_error("No expression provided")
@@ -90,23 +117,24 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             if assignment_match:
                 var_name = assignment_match.group(1)
                 expr_part = assignment_match.group(2)
-                result = self.eval_with_substitution(expr_part)
+                result = self.eval_with_substitution(expr_part, session)
                 
                 if result.get('ok', False):
                     # Store the result for this variable
-                    session_variables[var_name] = result.get('result', '')
+                    session["variables"][var_name] = result.get('result', '')
                     result['assignment'] = var_name
                     result['input'] = expression
                     
             else:
-                result = self.eval_with_substitution(expression)
+                result = self.eval_with_substitution(expression, session)
             
-            # Store result for #n references
-            session_results.append(result)
-            result['ref'] = len(session_results)
+            # Store result for %n references
+            session["results"].append(result)
+            result['ref'] = len(session["results"])
             
-            # Include current variables in response
-            result['variables'] = list(session_variables.keys())
+            # Include current variables and session_id in response
+            result['variables'] = list(session["variables"].keys())
+            result['session_id'] = session_id
             
             self.send_json(result)
             
@@ -115,9 +143,11 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             self.send_json_error(str(e))
     
-    def eval_with_substitution(self, expression):
-        """Evaluate expression, substituting known variables"""
+    def eval_with_substitution(self, expression, session):
+        """Evaluate expression, substituting known variables from the session"""
         expr = expression
+        session_results = session["results"]
+        session_variables = session["variables"]
         
         # Substitute session references: %n or #n -> result of expression n
         def replace_ref(match):
