@@ -31,6 +31,10 @@ pub struct EvalJsonOutput {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub steps: Vec<StepJson>,
 
+    /// Equation solving steps when context_mode is "solve" and steps_mode is "on"
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub solve_steps: Vec<SolveStepJson>,
+
     /// Domain warnings from simplification
     pub warnings: Vec<WarningJson>,
 
@@ -100,6 +104,43 @@ pub struct SubStepJson {
     /// LaTeX for after expression (for didactic substeps)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub after_latex: Option<String>,
+}
+
+/// A solver step for equation-solving JSON output
+#[derive(Serialize, Debug, Clone)]
+pub struct SolveStepJson {
+    /// Step index (1-based)
+    pub index: usize,
+    /// Description of the step (e.g., "Subtract 3 from both sides")
+    pub description: String,
+    /// Equation after this step as plain text
+    pub equation: String,
+    /// LHS of equation after step (LaTeX)
+    pub lhs_latex: String,
+    /// Relation operator (=, <, >, etc.)
+    pub relop: String,
+    /// RHS of equation after step (LaTeX)
+    pub rhs_latex: String,
+    /// Optional sub-steps for detailed derivation
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub substeps: Vec<SolveSubStepJson>,
+}
+
+/// A sub-step within a solve step for detailed derivation
+#[derive(Serialize, Debug, Clone)]
+pub struct SolveSubStepJson {
+    /// Step index (e.g., "1.1", "1.2")
+    pub index: String,
+    /// Description of the sub-step
+    pub description: String,
+    /// Equation after this sub-step as plain text
+    pub equation: String,
+    /// LHS of equation after sub-step (LaTeX)
+    pub lhs_latex: String,
+    /// Relation operator
+    pub relop: String,
+    /// RHS of equation after sub-step (LaTeX)
+    pub rhs_latex: String,
 }
 
 /// Budget configuration and status

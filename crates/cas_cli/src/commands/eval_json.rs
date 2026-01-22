@@ -11,7 +11,6 @@ use clap::Args;
 use cas_engine::session::SimplifyCacheKey;
 use cas_engine::session_snapshot::SessionSnapshot;
 use cas_engine::{EvalAction, EvalRequest, EvalResult};
-use cas_parser::parse;
 
 // For step filtering (match timeline behavior)
 use cas_engine::step::{pathsteps_to_expr_path, ImportanceLevel};
@@ -21,7 +20,8 @@ use cas_engine::didactic;
 use crate::format::{expr_hash, expr_stats, format_expr_limited};
 use crate::json_types::{
     BudgetJson, DomainJson, ErrorJsonOutput, EvalJsonOutput, OptionsJson, RequiredConditionJson,
-    SemanticsJson, StepJson, SubStepJson, TimingsJson, WarningJson,
+    SemanticsJson, SolveStepJson, SolveSubStepJson, StepJson, SubStepJson, TimingsJson,
+    WarningJson,
 };
 
 /// Arguments for eval-json subcommand
@@ -136,20 +136,93 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
     // Configure options from args
     configure_options(&mut state.options, args);
 
-    // Parse expression
+    // Check for solve(equation, variable) syntax
     let parse_start = Instant::now();
-    let parsed = parse(&args.expr, &mut engine.simplifier.context)
-        .map_err(|e| anyhow::anyhow!("Resolution error: {}", e))?;
-    let parse_us = parse_start.elapsed().as_micros() as u64;
 
-    // Build eval request (auto_store=true if using session)
-    let req = EvalRequest {
-        raw_input: args.expr.clone(),
-        parsed,
-        kind: cas_engine::EntryKind::Expr(parsed),
-        action: EvalAction::Simplify,
-        auto_store: args.session.is_some(),
+    let req = if let Some((eq_str, var)) = parse_solve_command(&args.expr) {
+        // Explicit solve command: solve(equation, variable)
+        let stmt = cas_parser::parse_statement(&eq_str, &mut engine.simplifier.context)
+            .map_err(|e| anyhow::anyhow!("Parse error in solve equation: {}", e))?;
+
+        match stmt {
+            cas_parser::Statement::Equation(eq) => {
+                let eq_expr = engine.simplifier.context.add(cas_ast::Expr::Function(
+                    "Equal".to_string(),
+                    vec![eq.lhs, eq.rhs],
+                ));
+
+                EvalRequest {
+                    raw_input: args.expr.clone(),
+                    parsed: eq_expr,
+                    kind: cas_engine::EntryKind::Eq {
+                        lhs: eq.lhs,
+                        rhs: eq.rhs,
+                    },
+                    action: EvalAction::Solve { var },
+                    auto_store: args.session.is_some(),
+                }
+            }
+            cas_parser::Statement::Expression(expr) => {
+                // Expression treated as equation = 0: solve(expr, var) means expr = 0
+                let zero = engine.simplifier.context.num(0);
+                let eq_expr = engine.simplifier.context.add(cas_ast::Expr::Function(
+                    "Equal".to_string(),
+                    vec![expr, zero],
+                ));
+
+                EvalRequest {
+                    raw_input: args.expr.clone(),
+                    parsed: eq_expr,
+                    kind: cas_engine::EntryKind::Eq {
+                        lhs: expr,
+                        rhs: zero,
+                    },
+                    action: EvalAction::Solve { var },
+                    auto_store: args.session.is_some(),
+                }
+            }
+        }
+    } else {
+        // Standard parsing: detect equations vs expressions
+        let stmt = cas_parser::parse_statement(&args.expr, &mut engine.simplifier.context)
+            .map_err(|e| anyhow::anyhow!("Parse error: {}", e))?;
+
+        // Build eval request based on statement type
+        match stmt {
+            cas_parser::Statement::Equation(eq) => {
+                // For equations, use Solve action with default variable detection
+                let eq_expr = engine.simplifier.context.add(cas_ast::Expr::Function(
+                    "Equal".to_string(),
+                    vec![eq.lhs, eq.rhs],
+                ));
+
+                // Detect solve variable from equation (prefer 'x' if present, else first variable found)
+                let var = detect_solve_variable(&engine.simplifier.context, eq.lhs, eq.rhs);
+
+                EvalRequest {
+                    raw_input: args.expr.clone(),
+                    parsed: eq_expr,
+                    kind: cas_engine::EntryKind::Eq {
+                        lhs: eq.lhs,
+                        rhs: eq.rhs,
+                    },
+                    action: EvalAction::Solve { var },
+                    auto_store: args.session.is_some(),
+                }
+            }
+            cas_parser::Statement::Expression(parsed) => {
+                // For expressions, use Simplify action
+                EvalRequest {
+                    raw_input: args.expr.clone(),
+                    parsed,
+                    kind: cas_engine::EntryKind::Expr(parsed),
+                    action: EvalAction::Simplify,
+                    auto_store: args.session.is_some(),
+                }
+            }
+        }
     };
+    let parse_us = parse_start.elapsed().as_micros() as u64;
 
     // Evaluate
     let simplify_start = Instant::now();
@@ -165,6 +238,42 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
     let result_expr = match &output.result {
         EvalResult::Expr(e) => *e,
         EvalResult::Set(v) if !v.is_empty() => v[0],
+        EvalResult::SolutionSet(solution_set) => {
+            // For solution sets, format the solution and return
+            let result_str = format_solution_set(&engine.simplifier.context, solution_set);
+            let result_latex = solution_set_to_latex(&engine.simplifier.context, solution_set);
+
+            return Ok(EvalJsonOutput {
+                schema_version: 1,
+                ok: true,
+                input: args.expr.clone(),
+                result: result_str.clone(),
+                result_truncated: false,
+                result_chars: result_str.len(),
+                result_latex: Some(result_latex),
+                steps_mode: args.steps.clone(),
+                steps_count: output.steps.len() + output.solve_steps.len(),
+                steps: collect_steps(&output, &engine.simplifier.context, &args.steps),
+                solve_steps: collect_solve_steps(&output, &engine.simplifier.context, &args.steps),
+                warnings: collect_warnings(&output),
+                required_conditions: collect_required_conditions(
+                    &output,
+                    &engine.simplifier.context,
+                ),
+                required_display: collect_required_display(&output, &engine.simplifier.context),
+                budget: build_budget_json(args),
+                domain: build_domain_json(args),
+                stats: Default::default(),
+                hash: None,
+                timings_us: TimingsJson {
+                    parse_us,
+                    simplify_us,
+                    total_us: total_start.elapsed().as_micros() as u64,
+                },
+                options: build_options_json(args),
+                semantics: build_semantics_json(args),
+            });
+        }
         EvalResult::Bool(b) => {
             // For bool results, format specially
             return Ok(EvalJsonOutput {
@@ -178,6 +287,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 steps_mode: args.steps.clone(),
                 steps_count: output.steps.len(),
                 steps: collect_steps(&output, &engine.simplifier.context, &args.steps),
+                solve_steps: collect_solve_steps(&output, &engine.simplifier.context, &args.steps),
                 warnings: collect_warnings(&output),
                 required_conditions: collect_required_conditions(
                     &output,
@@ -240,6 +350,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
         steps_mode: args.steps.clone(),
         steps_count: output.steps.len(),
         steps: collect_steps(&output, &engine.simplifier.context, &args.steps),
+        solve_steps: collect_solve_steps(&output, &engine.simplifier.context, &args.steps),
         warnings: collect_warnings(&output),
         required_conditions: collect_required_conditions(&output, &engine.simplifier.context),
         required_display: collect_required_display(&output, &engine.simplifier.context),
@@ -610,4 +721,418 @@ fn collect_steps(
             }
         })
         .collect()
+}
+
+/// Convert solver steps to JSON format (for equation solving)
+fn collect_solve_steps(
+    output: &cas_engine::EvalOutput,
+    ctx: &cas_ast::Context,
+    steps_mode: &str,
+) -> Vec<SolveStepJson> {
+    // Only include solve steps if steps_mode is "on"
+    if steps_mode != "on" {
+        return vec![];
+    }
+
+    // Filter steps by ImportanceLevel to match timeline behavior
+    let filtered: Vec<_> = output
+        .solve_steps
+        .iter()
+        .filter(|step| step.importance >= ImportanceLevel::Medium)
+        .collect();
+
+    if filtered.is_empty() {
+        return vec![];
+    }
+
+    filtered
+        .iter()
+        .enumerate()
+        .map(|(i, step)| {
+            // Format equation parts
+            let lhs_str = format!(
+                "{}",
+                cas_ast::DisplayExpr {
+                    context: ctx,
+                    id: step.equation_after.lhs
+                }
+            );
+            let rhs_str = format!(
+                "{}",
+                cas_ast::DisplayExpr {
+                    context: ctx,
+                    id: step.equation_after.rhs
+                }
+            );
+            let relop_str = format!("{}", step.equation_after.op);
+            let equation_str = format!("{} {} {}", lhs_str, relop_str, rhs_str);
+
+            // LaTeX for equation parts
+            let lhs_latex = cas_ast::LaTeXExpr {
+                context: ctx,
+                id: step.equation_after.lhs,
+            }
+            .to_latex();
+            let rhs_latex = cas_ast::LaTeXExpr {
+                context: ctx,
+                id: step.equation_after.rhs,
+            }
+            .to_latex();
+            let relop_latex = relop_to_latex(&step.equation_after.op);
+
+            // Collect substeps (no filter - show all substeps for educational detail)
+            let substeps: Vec<SolveSubStepJson> = step
+                .substeps
+                .iter()
+                .enumerate()
+                .map(|(j, ss)| {
+                    let ss_lhs_str = format!(
+                        "{}",
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: ss.equation_after.lhs
+                        }
+                    );
+                    let ss_rhs_str = format!(
+                        "{}",
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: ss.equation_after.rhs
+                        }
+                    );
+                    let ss_relop_str = format!("{}", ss.equation_after.op);
+                    let ss_equation_str = format!("{} {} {}", ss_lhs_str, ss_relop_str, ss_rhs_str);
+
+                    let ss_lhs_latex = cas_ast::LaTeXExpr {
+                        context: ctx,
+                        id: ss.equation_after.lhs,
+                    }
+                    .to_latex();
+                    let ss_rhs_latex = cas_ast::LaTeXExpr {
+                        context: ctx,
+                        id: ss.equation_after.rhs,
+                    }
+                    .to_latex();
+                    let ss_relop_latex = relop_to_latex(&ss.equation_after.op);
+
+                    SolveSubStepJson {
+                        index: format!("{}.{}", i + 1, j + 1),
+                        description: ss.description.clone(),
+                        equation: ss_equation_str,
+                        lhs_latex: ss_lhs_latex,
+                        relop: ss_relop_latex,
+                        rhs_latex: ss_rhs_latex,
+                    }
+                })
+                .collect();
+
+            SolveStepJson {
+                index: i + 1,
+                description: step.description.clone(),
+                equation: equation_str,
+                lhs_latex,
+                relop: relop_latex,
+                rhs_latex,
+                substeps,
+            }
+        })
+        .collect()
+}
+
+/// Convert RelOp to LaTeX string
+fn relop_to_latex(op: &cas_ast::RelOp) -> String {
+    match op {
+        cas_ast::RelOp::Eq => "=".to_string(),
+        cas_ast::RelOp::Lt => "<".to_string(),
+        cas_ast::RelOp::Leq => r"\leq".to_string(),
+        cas_ast::RelOp::Gt => ">".to_string(),
+        cas_ast::RelOp::Geq => r"\geq".to_string(),
+        cas_ast::RelOp::Neq => r"\neq".to_string(),
+    }
+}
+
+/// Detect the variable to solve for in an equation.
+/// Prefers 'x' if present, otherwise uses the first variable found.
+fn detect_solve_variable(
+    ctx: &cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+) -> String {
+    let mut variables = std::collections::HashSet::new();
+
+    // Helper to collect variables from an expression
+    fn collect_vars(
+        ctx: &cas_ast::Context,
+        expr: cas_ast::ExprId,
+        vars: &mut std::collections::HashSet<String>,
+    ) {
+        match ctx.get(expr) {
+            cas_ast::Expr::Variable(name) => {
+                // Skip special built-in variables
+                if !name.starts_with('#') && name != "e" && name != "i" && name != "pi" {
+                    vars.insert(name.clone());
+                }
+            }
+            cas_ast::Expr::Add(a, b)
+            | cas_ast::Expr::Sub(a, b)
+            | cas_ast::Expr::Mul(a, b)
+            | cas_ast::Expr::Div(a, b)
+            | cas_ast::Expr::Pow(a, b) => {
+                collect_vars(ctx, *a, vars);
+                collect_vars(ctx, *b, vars);
+            }
+            cas_ast::Expr::Neg(e) => {
+                collect_vars(ctx, *e, vars);
+            }
+            cas_ast::Expr::Function(_, args) => {
+                for arg in args {
+                    collect_vars(ctx, *arg, vars);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    collect_vars(ctx, lhs, &mut variables);
+    collect_vars(ctx, rhs, &mut variables);
+
+    // Prefer 'x' if present
+    if variables.contains("x") {
+        return "x".to_string();
+    }
+
+    // Otherwise prefer common variable names in order
+    for preferred in &["y", "z", "t", "n", "a", "b", "c"] {
+        if variables.contains(*preferred) {
+            return preferred.to_string();
+        }
+    }
+
+    // Fallback: first variable alphabetically, or "x" if none found
+    variables
+        .into_iter()
+        .min()
+        .unwrap_or_else(|| "x".to_string())
+}
+
+/// Parse solve(equation, variable) syntax.
+/// Returns Some((equation_string, variable_name)) if the input matches solve syntax.
+/// Supports:
+/// - solve(x + y = 4, y)
+/// - solve(x^2 - 4, x)  (treated as x^2 - 4 = 0)
+fn parse_solve_command(input: &str) -> Option<(String, String)> {
+    let trimmed = input.trim();
+
+    // Check for "solve(" prefix (case-insensitive)
+    if !trimmed.to_lowercase().starts_with("solve(") {
+        return None;
+    }
+
+    // Must end with ')'
+    if !trimmed.ends_with(')') {
+        return None;
+    }
+
+    // Extract content between "solve(" and ")"
+    let content = &trimmed[6..trimmed.len() - 1];
+
+    // Find the last comma (the separator before the variable)
+    // Must handle nested parentheses, e.g., solve(sin(x) = 0, x)
+    let mut paren_depth = 0;
+    let mut last_comma_pos = None;
+
+    for (i, ch) in content.char_indices() {
+        match ch {
+            '(' => paren_depth += 1,
+            ')' => paren_depth -= 1,
+            ',' if paren_depth == 0 => last_comma_pos = Some(i),
+            _ => {}
+        }
+    }
+
+    let comma_pos = last_comma_pos?;
+
+    let equation_part = content[..comma_pos].trim();
+    let variable_part = content[comma_pos + 1..].trim();
+
+    // Validate variable is a valid identifier (alphanumeric starting with letter)
+    if variable_part.is_empty() || !variable_part.chars().next()?.is_alphabetic() {
+        return None;
+    }
+    if !variable_part
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '_')
+    {
+        return None;
+    }
+
+    Some((equation_part.to_string(), variable_part.to_string()))
+}
+
+/// Format a SolutionSet as a human-readable string
+fn format_solution_set(ctx: &cas_ast::Context, solution_set: &cas_ast::SolutionSet) -> String {
+    use cas_ast::SolutionSet;
+
+    match solution_set {
+        SolutionSet::Empty => "No solution".to_string(),
+        SolutionSet::AllReals => "All real numbers".to_string(),
+        SolutionSet::Discrete(exprs) => {
+            if exprs.is_empty() {
+                "No solution".to_string()
+            } else {
+                let sols: Vec<String> = exprs
+                    .iter()
+                    .map(|e| {
+                        format!(
+                            "{}",
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: *e
+                            }
+                        )
+                    })
+                    .collect();
+                format!("{{ {} }}", sols.join(", "))
+            }
+        }
+        SolutionSet::Conditional(cases) => {
+            let mut parts = Vec::new();
+            for case in cases {
+                let cond_str = case.when.display_with_context(ctx);
+                // Format inner solutions recursively
+                let inner_str = format_solution_set(ctx, &case.then.solutions);
+                if case.when.is_empty() {
+                    parts.push(format!("{} otherwise", inner_str));
+                } else {
+                    parts.push(format!("{} if {}", inner_str, cond_str));
+                }
+            }
+            parts.join("; ")
+        }
+        SolutionSet::Continuous(interval) => {
+            format!(
+                "[{}, {}]",
+                cas_ast::DisplayExpr {
+                    context: ctx,
+                    id: interval.min
+                },
+                cas_ast::DisplayExpr {
+                    context: ctx,
+                    id: interval.max
+                }
+            )
+        }
+        SolutionSet::Union(intervals) => {
+            let parts: Vec<String> = intervals
+                .iter()
+                .map(|int| {
+                    format!(
+                        "[{}, {}]",
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: int.min
+                        },
+                        cas_ast::DisplayExpr {
+                            context: ctx,
+                            id: int.max
+                        }
+                    )
+                })
+                .collect();
+            parts.join(" ∪ ")
+        }
+        SolutionSet::Residual(expr) => {
+            format!(
+                "Solve: {} = 0",
+                cas_ast::DisplayExpr {
+                    context: ctx,
+                    id: *expr
+                }
+            )
+        }
+    }
+}
+
+/// Format a SolutionSet as LaTeX
+fn solution_set_to_latex(ctx: &cas_ast::Context, solution_set: &cas_ast::SolutionSet) -> String {
+    use cas_ast::SolutionSet;
+
+    match solution_set {
+        SolutionSet::Empty => r"\emptyset".to_string(),
+        SolutionSet::AllReals => r"\mathbb{R}".to_string(),
+        SolutionSet::Discrete(exprs) => {
+            if exprs.is_empty() {
+                r"\emptyset".to_string()
+            } else {
+                let sols: Vec<String> = exprs
+                    .iter()
+                    .map(|e| {
+                        cas_ast::LaTeXExpr {
+                            context: ctx,
+                            id: *e,
+                        }
+                        .to_latex()
+                    })
+                    .collect();
+                format!(r"\left\{{ {} \right\}}", sols.join(", "))
+            }
+        }
+        SolutionSet::Conditional(cases) => {
+            let mut latex_parts = Vec::new();
+            for case in cases {
+                let cond_latex = case.when.latex_display_with_context(ctx);
+                // Format inner solutions recursively
+                let inner_latex = solution_set_to_latex(ctx, &case.then.solutions);
+                if case.when.is_empty() {
+                    latex_parts.push(format!(r"{} & \text{{otherwise}}", inner_latex));
+                } else {
+                    latex_parts.push(format!(r"{} & \text{{if }} {}", inner_latex, cond_latex));
+                }
+            }
+            format!(
+                r"\begin{{cases}} {} \end{{cases}}",
+                latex_parts.join(r" \\ ")
+            )
+        }
+        SolutionSet::Continuous(interval) => {
+            let min_latex = cas_ast::LaTeXExpr {
+                context: ctx,
+                id: interval.min,
+            }
+            .to_latex();
+            let max_latex = cas_ast::LaTeXExpr {
+                context: ctx,
+                id: interval.max,
+            }
+            .to_latex();
+            format!(r"\left[{}, {}\right]", min_latex, max_latex)
+        }
+        SolutionSet::Union(intervals) => {
+            let parts: Vec<String> = intervals
+                .iter()
+                .map(|int| {
+                    let min = cas_ast::LaTeXExpr {
+                        context: ctx,
+                        id: int.min,
+                    }
+                    .to_latex();
+                    let max = cas_ast::LaTeXExpr {
+                        context: ctx,
+                        id: int.max,
+                    }
+                    .to_latex();
+                    format!(r"\left[{}, {}\right]", min, max)
+                })
+                .collect();
+            parts.join(r" \cup ")
+        }
+        SolutionSet::Residual(expr) => {
+            let expr_latex = cas_ast::LaTeXExpr {
+                context: ctx,
+                id: *expr,
+            }
+            .to_latex();
+            format!(r"\text{{Solve: }} {} = 0", expr_latex)
+        }
+    }
 }

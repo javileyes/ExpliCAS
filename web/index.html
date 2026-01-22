@@ -492,6 +492,92 @@
             content: "⚠️ ";
         }
 
+        /* Solve steps section (for equation solving) */
+        .solve-step-item {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.05));
+            border-radius: 10px;
+            padding: 15px 18px;
+            margin-bottom: 12px;
+            border-left: 4px solid #3b82f6;
+        }
+
+        .solve-step-description {
+            color: #3b82f6;
+            font-weight: bold;
+            font-size: 0.95em;
+            margin-bottom: 10px;
+        }
+
+        .solve-step-equation {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            padding: 12px 16px;
+            text-align: center;
+            font-size: 1.2em;
+        }
+
+        .solve-step-equation .MathJax {
+            font-size: 1.1em !important;
+        }
+
+        .solve-substeps-toggle {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.1));
+            border: 1px solid #3b82f6;
+            color: #60a5fa;
+            padding: 8px 14px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.8em;
+            margin: 8px 0;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .solve-substeps-toggle:hover {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(59, 130, 246, 0.2));
+            transform: translateY(-1px);
+        }
+
+        .solve-substeps-container {
+            display: none;
+            margin-top: 12px;
+            padding-left: 20px;
+            border-left: 2px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .solve-substeps-container.expanded {
+            display: block;
+        }
+
+        .solve-substep-item {
+            background: rgba(59, 130, 246, 0.05);
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 8px;
+        }
+
+        .solve-substep-index {
+            color: #60a5fa;
+            font-weight: bold;
+            font-size: 0.8em;
+        }
+
+        .solve-substep-description {
+            color: var(--text-secondary);
+            font-size: 0.9em;
+            margin: 6px 0;
+        }
+
+        .solve-substep-equation {
+            background: rgba(0, 0, 0, 0.15);
+            border-radius: 6px;
+            padding: 8px 12px;
+            text-align: center;
+            font-size: 1.05em;
+        }
+
         /* Polynomial output */
         .poly-output {
             background: rgba(0, 0, 0, 0.3);
@@ -803,6 +889,15 @@
                             ${renderSteps(result.steps)}
                         </div>
                     ` : ''}
+                    ${result.solve_steps && result.solve_steps.length > 0 ? `
+                        <button class="steps-toggle" onclick="toggleSolveSteps(${ref})" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.1)); border-color: #3b82f6;">
+                            <span class="arrow">▶</span>
+                            Show ${result.solve_steps.length} solving steps
+                        </button>
+                        <div class="steps-container" id="solve-steps-${ref}">
+                            ${renderSolveSteps(result.solve_steps)}
+                        </div>
+                    ` : ''}
                     
                     <div class="result-section">
                         <div class="result-label">
@@ -944,6 +1039,73 @@
                     </div>
                 `;
             }).join('');
+        }
+
+        function renderSolveSteps(steps) {
+            if (!steps || steps.length === 0) return '';
+
+            return steps.map((step, i) => {
+                const stepId = `solve-step-${Date.now()}-${i}`;
+                const hasSubsteps = step.substeps && step.substeps.length > 0;
+
+                // Build equation LaTeX: lhs relop rhs
+                const equationLatex = `${step.lhs_latex} ${step.relop} ${step.rhs_latex}`;
+
+                return `
+                    <div class="solve-step-item">
+                        <div class="solve-step-description">
+                            ${i + 1}. ${escapeHtml(step.description)}
+                        </div>
+                        ${hasSubsteps ? `
+                            <button class="solve-substeps-toggle" id="solve-substeps-toggle-${stepId}" onclick="toggleSolveSubsteps('${stepId}')">
+                                ▶ Show ${step.substeps.length} derivation steps
+                            </button>
+                            <div class="solve-substeps-container" id="solve-substeps-${stepId}">
+                                ${step.substeps.map(ss => {
+                    const ssEquationLatex = `${ss.lhs_latex} ${ss.relop} ${ss.rhs_latex}`;
+                    return `
+                                        <div class="solve-substep-item">
+                                            <div class="solve-substep-index">${escapeHtml(ss.index)}</div>
+                                            <div class="solve-substep-description">${escapeHtml(ss.description)}</div>
+                                            <div class="solve-substep-equation">$${ssEquationLatex}$</div>
+                                        </div>
+                                    `;
+                }).join('')}
+                            </div>
+                        ` : ''}
+                        <div class="solve-step-equation">$${equationLatex}$</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function toggleSolveSteps(ref) {
+            const container = document.getElementById(`solve-steps-${ref}`);
+            const btn = container.previousElementSibling;
+            const arrow = btn.querySelector('.arrow');
+
+            if (container.classList.contains('expanded')) {
+                container.classList.remove('expanded');
+                arrow.style.transform = 'rotate(0deg)';
+            } else {
+                container.classList.add('expanded');
+                arrow.style.transform = 'rotate(90deg)';
+                MathJax.typesetPromise([container]);
+            }
+        }
+
+        function toggleSolveSubsteps(stepId) {
+            const container = document.getElementById(`solve-substeps-${stepId}`);
+            const btn = document.getElementById(`solve-substeps-toggle-${stepId}`);
+
+            if (container.classList.contains('expanded')) {
+                container.classList.remove('expanded');
+                btn.innerHTML = btn.innerHTML.replace('▼', '▶');
+            } else {
+                container.classList.add('expanded');
+                btn.innerHTML = btn.innerHTML.replace('▶', '▼');
+                MathJax.typesetPromise([container]);
+            }
         }
 
         function deleteCard(ref) {
