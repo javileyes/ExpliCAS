@@ -1028,7 +1028,11 @@
                     timings_us: data.timings_us || null,
                     time_ms: data.time_ms || 0,
                     required_display: data.required_display || [],
-                    error: data.error
+                    error: data.error,
+                    // Variable assignment fields from server
+                    assignment: data.assignment || null,
+                    variables: data.variables || [],
+                    ref: data.ref || null
                 };
             } catch (error) {
                 // If API is not available, check if it's a network error
