@@ -80,6 +80,13 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         # Serve from web/ directory
         super().__init__(*args, directory="web", **kwargs)
     
+    def do_GET(self):
+        if self.path == '/api/examples':
+            self.handle_get_examples()
+        else:
+            # Default static file serving
+            super().do_GET()
+    
     def do_POST(self):
         if self.path == '/api/eval':
             self.handle_eval()
@@ -89,6 +96,26 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_delete_variable()
         else:
             self.send_error(404)
+    
+    def handle_get_examples(self):
+        """Return examples from CSV file"""
+        import csv
+        examples = []
+        csv_path = os.path.join(os.path.dirname(__file__), 'examples.csv')
+        
+        try:
+            with open(csv_path, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    examples.append({
+                        "expression": row.get('expression', ''),
+                        "description": row.get('description', '')
+                    })
+            self.send_json({"ok": True, "examples": examples})
+        except FileNotFoundError:
+            self.send_json({"ok": False, "error": "Examples file not found", "examples": []})
+        except Exception as e:
+            self.send_json({"ok": False, "error": str(e), "examples": []})
     
     def handle_clear(self):
         """Clear session state for a specific session"""

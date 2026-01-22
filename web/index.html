@@ -883,6 +883,108 @@
             border-radius: 10px;
             margin-left: 4px;
         }
+
+        /* Help/Examples button */
+        .header-btn.help {
+            color: #3b82f6;
+        }
+
+        .header-btn.help:hover {
+            background: rgba(59, 130, 246, 0.2);
+            border-color: #3b82f6;
+        }
+
+        /* Examples panel overlay */
+        .examples-panel-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 999;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+        }
+
+        .examples-panel-overlay.visible {
+            display: flex;
+        }
+
+        .examples-panel {
+            background: var(--bg-secondary);
+            border: 2px solid #3b82f6;
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 700px;
+            width: 90%;
+            max-height: 70vh;
+            overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(59, 130, 246, 0.3);
+        }
+
+        .examples-panel h2 {
+            color: #3b82f6;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .examples-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .examples-list li {
+            padding: 14px 16px;
+            background: rgba(59, 130, 246, 0.1);
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 3px solid #3b82f6;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .examples-list li:hover {
+            background: rgba(59, 130, 246, 0.25);
+            transform: translateX(4px);
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+        }
+
+        .examples-list li:active {
+            transform: translateX(2px);
+        }
+
+        .example-expression {
+            font-family: 'Fira Code', monospace;
+            color: var(--text-primary);
+            font-size: 0.95em;
+            word-break: break-all;
+            margin-bottom: 6px;
+        }
+
+        .example-description {
+            color: var(--text-secondary);
+            font-size: 0.85em;
+            font-style: italic;
+        }
+
+        .example-copied {
+            background: rgba(16, 185, 129, 0.3) !important;
+            border-left-color: #10b981 !important;
+        }
+
+        .example-copied::after {
+            content: ' ✓ Copiado';
+            color: #10b981;
+            font-weight: bold;
+            font-size: 0.8em;
+            margin-left: 10px;
+        }
     </style>
 </head>
 
@@ -902,6 +1004,9 @@
             <button class="header-btn variables" id="variables-btn" onclick="showVariablesPanel()"
                 title="View assigned variables">
                 📦 Variables<span id="var-count-badge" class="var-count-badge" style="display: none;">0</span>
+            </button>
+            <button class="header-btn help" id="help-btn" onclick="showExamplesPanel()" title="Show examples">
+                ❓ Examples
             </button>
             <button class="header-btn danger" onclick="clearSession()" title="Clear session">
                 🗑️ Clear
@@ -934,6 +1039,16 @@
             <div id="variables-list-container">
                 <p class="no-variables">No variables assigned yet</p>
             </div>
+        </div>
+    </div>
+
+    <!-- Examples Panel Overlay -->
+    <div class="examples-panel-overlay" id="examples-panel-overlay" onclick="hideExamplesPanel(event)">
+        <div class="examples-panel" onclick="event.stopPropagation()">
+            <h2>❓ Examples - Click to copy</h2>
+            <ul class="examples-list" id="examples-list">
+                <li>Loading examples...</li>
+            </ul>
         </div>
     </div>
 
@@ -1565,6 +1680,71 @@
                 '</div>';
 
             document.getElementById('expression-input').focus();
+        }
+
+        // =====================
+        // Examples Panel
+        // =====================
+
+        let cachedExamples = null;
+
+        async function loadExamples() {
+            if (cachedExamples) return cachedExamples;
+
+            try {
+                const response = await fetch('/api/examples');
+                const data = await response.json();
+                if (data.ok && data.examples) {
+                    cachedExamples = data.examples;
+                    return cachedExamples;
+                }
+            } catch (e) {
+                console.warn('Could not load examples:', e);
+            }
+            return [];
+        }
+
+        async function showExamplesPanel() {
+            const overlay = document.getElementById('examples-panel-overlay');
+            const list = document.getElementById('examples-list');
+
+            // Load examples
+            const examples = await loadExamples();
+
+            if (examples.length === 0) {
+                list.innerHTML = '<li style="cursor: default;">No examples available</li>';
+            } else {
+                list.innerHTML = examples.map((ex, i) => `
+                    <li onclick="copyExampleToInput(${i}, this)">
+                        <div class="example-expression">${escapeHtml(ex.expression)}</div>
+                        <div class="example-description">${escapeHtml(ex.description)}</div>
+                    </li>
+                `).join('');
+            }
+
+            overlay.classList.add('visible');
+        }
+
+        function hideExamplesPanel(event) {
+            if (!event || event.target === event.currentTarget) {
+                document.getElementById('examples-panel-overlay').classList.remove('visible');
+            }
+        }
+
+        function copyExampleToInput(index, element) {
+            if (!cachedExamples || !cachedExamples[index]) return;
+
+            const expression = cachedExamples[index].expression;
+            const input = document.getElementById('expression-input');
+            input.value = expression;
+            input.focus();
+
+            // Visual feedback
+            element.classList.add('example-copied');
+            setTimeout(() => {
+                element.classList.remove('example-copied');
+                hideExamplesPanel();
+            }, 600);
         }
     </script>
 </body>

@@ -1,0 +1,7 @@
+expression,description
+"1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)","Simplificación con raíces"
+"1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)","Fracción continua"
+"expand((1 + 3*x1 + 5*x2 + 7*x3 + 9*x4 + 11*x5 + 13*x6 + 15*x7)^5 - 1)","Expansión polinómica grande"
+"(sqrt(5 + 2*sqrt(6))) + (1/(u*(u+2))) - ((sqrt(2) + sqrt(3)) + (1/(2*u) - 1/(2*(u+2))))","Radicales anidados"
+"solve(Q = Q0 * 2^(-t/T),t)","Resolver ecuación exponencial"
+"solve(a*x^2+b*x+c=0,x)","Fórmula cuadrática general"
