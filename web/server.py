@@ -234,17 +234,18 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 result = self.eval_with_substitution(expr_part, session)
                 
                 if result.get('ok', False):
-                    # Store the result for this variable
+                    # Store the result for this variable (but NOT in results list)
                     session["variables"][var_name] = result.get('result', '')
                     result['assignment'] = var_name
                     result['input'] = expression
+                    # Assignments don't get a ref - they don't consume reference numbers
+                    result['ref'] = None
                     
             else:
                 result = self.eval_with_substitution(expression, session)
-            
-            # Store result for %n references
-            session["results"].append(result)
-            result['ref'] = len(session["results"])
+                # Only non-assignment evaluations get stored for %n references
+                session["results"].append(result)
+                result['ref'] = len(session["results"])
             
             # Include current variables and session_id in response
             result['variables'] = list(session["variables"].keys())
