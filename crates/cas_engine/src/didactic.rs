@@ -842,7 +842,7 @@ fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
 
                         // Sub-step 2: Show the actual rule applied
                         sub_steps.push(SubStep {
-                            description: format!("Simplificar: 1/(a/b) = b/a"),
+                            description: "Simplificar: 1/(a/b) = b/a".to_string(),
                             before_expr: before_str.clone(),
                             after_expr: after_str,
                         });

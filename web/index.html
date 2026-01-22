@@ -1640,7 +1640,8 @@
                 const resultMathEl = card.querySelector('.result-math');
                 const polyOutputEl = card.querySelector('.poly-output');
                 const errorEl = card.querySelector('.error-message');
-                const stepsSectionEl = card.querySelector('.steps-section');
+                const stepsContainerEl = card.querySelector('.steps-container');
+                const solveStepsContainerEl = card.querySelector('[id^="solve-steps-"]');
 
                 // Extract numeric reference from "#N" format
                 const refText = refEl?.textContent?.trim() || `#${index + 1}`;
@@ -1657,16 +1658,21 @@
                     input: inputEl?.textContent || '',
                     result_latex: dataLatex || (storedResult?.result_latex) || (storedResult?.result) || '',
                     result: dataResult || (storedResult?.result) || '',
+                    // Save steps from sessionResults for proper re-rendering
+                    steps: storedResult?.steps || [],
+                    solve_steps: storedResult?.solve_steps || [],
+                    // Also save HTML as backup for complex formatting
+                    steps_html: stepsContainerEl?.innerHTML || '',
+                    solve_steps_html: solveStepsContainerEl?.innerHTML || '',
                     poly_output: polyOutputEl?.textContent || null,
                     error: errorEl?.textContent || null,
                     is_assignment: card.classList.contains('assignment-card'),
-                    assignment_name: card.dataset.assignmentName || null
+                    assignment_name: card.dataset.assignmentName || null,
+                    // Save stats and timings if available
+                    stats: storedResult?.stats || null,
+                    timings_us: storedResult?.timings_us || null,
+                    required_display: storedResult?.required_display || []
                 };
-
-                // Collect steps if present - save the complete HTML
-                if (stepsSectionEl) {
-                    entry.steps_html = stepsSectionEl.innerHTML;
-                }
 
                 notebook.expressions.push(entry);
             });
@@ -1758,7 +1764,20 @@
                     const resultParseable = entry.result || serverResult?.result || entry.result_latex || '';
 
                     const isPolyResult = entry.poly_output || (resultLatex && resultLatex.length > 500);
-                    const hasSteps = entry.steps_html && entry.steps_html.trim().length > 0;
+
+                    // Determine how to render steps: prefer steps array (re-render), fallback to HTML
+                    const hasStepsArray = entry.steps && entry.steps.length > 0;
+                    const hasStepsHtml = entry.steps_html && entry.steps_html.trim().length > 0;
+                    const hasSteps = hasStepsArray || hasStepsHtml;
+                    const stepsContent = hasStepsArray ? renderSteps(entry.steps) : (entry.steps_html || '');
+                    const stepsCount = hasStepsArray ? entry.steps.length : (hasStepsHtml ? 'some' : 0);
+
+                    // Same for solve_steps
+                    const hasSolveStepsArray = entry.solve_steps && entry.solve_steps.length > 0;
+                    const hasSolveStepsHtml = entry.solve_steps_html && entry.solve_steps_html.trim().length > 0;
+                    const hasSolveSteps = hasSolveStepsArray || hasSolveStepsHtml;
+                    const solveStepsContent = hasSolveStepsArray ? renderSolveSteps(entry.solve_steps) : (entry.solve_steps_html || '');
+                    const solveStepsCount = hasSolveStepsArray ? entry.solve_steps.length : (hasSolveStepsHtml ? 'some' : 0);
 
                     // Create card element with proper ID (matching addExpressionCard)
                     const card = document.createElement('div');
@@ -1801,10 +1820,19 @@
                                 ${hasSteps ? `
                                     <button class="steps-toggle" onclick="toggleSteps('${refNum}')">
                                         <span class="arrow">▶</span>
-                                        Show steps
+                                        Show ${stepsCount} steps
                                     </button>
                                     <div class="steps-container" id="steps-${refNum}">
-                                        ${entry.steps_html}
+                                        ${stepsContent}
+                                    </div>
+                                ` : ''}
+                                ${hasSolveSteps ? `
+                                    <button class="steps-toggle" onclick="toggleSolveSteps('${refNum}')" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(59, 130, 246, 0.1)); border-color: #3b82f6;">
+                                        <span class="arrow">▶</span>
+                                        Show ${solveStepsCount} solving steps
+                                    </button>
+                                    <div class="steps-container" id="solve-steps-${refNum}">
+                                        ${solveStepsContent}
                                     </div>
                                 ` : ''}
                                 
@@ -1827,13 +1855,21 @@
                     container.appendChild(card);
 
                     // Update sessionResults for references (use the original ref number)
-                    // IMPORTANT: Store as full object so reference substitution works correctly
+                    // IMPORTANT: Store complete object so reference substitution and re-export work correctly
                     if (!isAssignment) {
                         // Check if notebook has serverResults with parseable 'result' field
                         const serverResult = notebook.serverResults?.find(r => r.ref === refNum);
                         sessionResults[refNum] = {
-                            result: serverResult?.result || entry.result_latex || '',
-                            result_latex: entry.result_latex || serverResult?.result || ''
+                            result: serverResult?.result || entry.result || entry.result_latex || '',
+                            result_latex: entry.result_latex || serverResult?.result_latex || serverResult?.result || '',
+                            // Preserve steps for re-export
+                            steps: entry.steps || [],
+                            solve_steps: entry.solve_steps || [],
+                            // Preserve additional metadata
+                            stats: entry.stats || null,
+                            timings_us: entry.timings_us || null,
+                            required_display: entry.required_display || [],
+                            poly_output: entry.poly_output || null
                         };
                     }
 
