@@ -13,6 +13,9 @@ use cas_engine::session_snapshot::SessionSnapshot;
 use cas_engine::{EvalAction, EvalRequest, EvalResult};
 use cas_parser::parse;
 
+// For step filtering (match timeline behavior)
+use cas_engine::step::{pathsteps_to_expr_path, ImportanceLevel};
+
 use crate::format::{expr_hash, expr_stats, format_expr_limited};
 use crate::json_types::{
     BudgetJson, DomainJson, ErrorJsonOutput, EvalJsonOutput, OptionsJson, RequiredConditionJson,
@@ -468,8 +471,15 @@ fn collect_steps(
         return vec![];
     }
 
-    output
+    // V2.15.36: Filter steps by ImportanceLevel to match timeline behavior
+    // Timeline only shows steps with importance >= Medium (VerbosityLevel::Normal)
+    let filtered: Vec<_> = output
         .steps
+        .iter()
+        .filter(|step| step.get_importance() >= ImportanceLevel::Medium)
+        .collect();
+
+    filtered
         .iter()
         .enumerate()
         .map(|(i, step)| {
@@ -497,22 +507,30 @@ fn collect_steps(
                 }
             );
 
-            // LaTeX with highlighting - red for before focus, green for after focus
-            let mut before_config = cas_ast::HighlightConfig::new();
-            before_config.add(focus_before, cas_ast::HighlightColor::Red);
-            let before_latex = cas_ast::LaTeXExprHighlighted {
+            // LaTeX with highlighting - use path-based highlighting like timeline
+            // V2.15.36: Path-based highlighting ensures exact position in tree is highlighted
+            let expr_path = pathsteps_to_expr_path(&step.path);
+
+            // Use PathHighlightConfig for path-based highlighting (matches timeline)
+            let mut before_config = cas_ast::PathHighlightConfig::new();
+            before_config.add(expr_path.clone(), cas_ast::HighlightColor::Red);
+            let before_latex = cas_ast::PathHighlightedLatexRenderer {
                 context: ctx,
                 id: before_expr,
-                highlights: &before_config,
+                path_highlights: &before_config,
+                hints: None,
+                style_prefs: None,
             }
             .to_latex();
 
-            let mut after_config = cas_ast::HighlightConfig::new();
-            after_config.add(focus_after, cas_ast::HighlightColor::Green);
-            let after_latex = cas_ast::LaTeXExprHighlighted {
+            let mut after_config = cas_ast::PathHighlightConfig::new();
+            after_config.add(expr_path, cas_ast::HighlightColor::Green);
+            let after_latex = cas_ast::PathHighlightedLatexRenderer {
                 context: ctx,
                 id: after_expr,
-                highlights: &after_config,
+                path_highlights: &after_config,
+                hints: None,
+                style_prefs: None,
             }
             .to_latex();
 

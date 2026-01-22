@@ -429,6 +429,39 @@
             margin: 5px 0;
         }
 
+        /* Requirements section */
+        .requires-section {
+            background: linear-gradient(135deg, rgba(251, 191, 36, 0.1), rgba(251, 191, 36, 0.05));
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border-left: 4px solid #f59e0b;
+        }
+
+        .requires-label {
+            color: #f59e0b;
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+        }
+
+        .requires-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .requires-list li {
+            padding: 4px 0;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.9em;
+            color: var(--text-secondary);
+        }
+
+        .requires-list li::before {
+            content: "⚠️ ";
+        }
+
         /* Polynomial output */
         .poly-output {
             background: rgba(0, 0, 0, 0.3);
@@ -687,6 +720,7 @@
                     stats: data.stats || null,
                     timings_us: data.timings_us || null,
                     time_ms: data.time_ms || 0,
+                    required_display: data.required_display || [],
                     error: data.error
                 };
             } catch (error) {
@@ -715,6 +749,7 @@
             const isPolyResult = result.result && result.result.length > 500;
             const isAssignment = result.assignment;
             const timeMs = result.timings_us ? Math.round(result.timings_us.total_us / 1000) : (result.time_ms || 0);
+            const hasRequirements = result.required_display && result.required_display.length > 0;
 
             card.innerHTML = `
                 <div class="expression-header">
@@ -752,6 +787,15 @@
                 }
                         </div>
                     </div>
+
+                    ${hasRequirements ? `
+                        <div class="requires-section">
+                            <div class="requires-label">⚠️ Requires</div>
+                            <ul class="requires-list">
+                                ${result.required_display.map(req => `<li>${escapeHtml(req)}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
                 </div>
             `;
 
