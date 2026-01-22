@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Solve Steps: x^2 = 1</title>
+<title>Solve Steps: Q = Q0·2^(-t / T)</title>
 <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 <style>
     * {
@@ -326,78 +326,30 @@
 </script>
 <div class="container">
     <h1>Equation Solving Steps</h1>
-    <p class="subtitle">Solving for <strong>x</strong></p>
+    <p class="subtitle">Solving for <strong>t</strong></p>
     <div class="original">
         \(\textbf{Original Equation:}\)
-        \[{x}^{2} = 1\]
+        \[Q = Q0\cdot {2}^{-\frac{t}{T}}\]
     </div>
         <div class="timeline">
         <div class="step">
             <div class="step-number">Step 1</div>
-            <div class="description">Detected quadratic equation. Applying quadratic formula.</div>
+            <div class="description">Swap sides to put variable on LHS</div>
             <div class="equation">
-                \[{x}^{2} - 1 = 0\]
+                \[Q0\cdot {2}^{-1\cdot \frac{t}{T}} = Q\]
             </div>
-            <div class="substeps-toggle" onclick="toggleSubsteps('substeps-1')">
-                <span class="arrow">▶</span>
-                <span>Show derivation (7 steps)</span>
-            </div>
-            <div id="substeps-1" class="substeps-container">
-                <div class="substep">
-                    <div class="substep-number">Step 1.1</div>
-                    <div class="substep-description">Identificar forma cuadrática: a·x² + b·x + c = 0 con a = 1, b = 0, c = -1</div>
-                    <div class="substep-equation">
-                        \[{x}^{2} - 1 = 0\]
-                    </div>
-                </div>
-                <div class="substep">
-                    <div class="substep-number">Step 1.2</div>
-                    <div class="substep-description">Dividir ambos lados por a (requiere a ≠ 0)</div>
-                    <div class="substep-equation">
-                        \[{x}^{2} - 1 = 0\]
-                    </div>
-                </div>
-                <div class="substep">
-                    <div class="substep-number">Step 1.3</div>
-                    <div class="substep-description">Mover término constante al lado derecho</div>
-                    <div class="substep-equation">
-                        \[{x}^{2} = 1\]
-                    </div>
-                </div>
-                <div class="substep">
-                    <div class="substep-number">Step 1.4</div>
-                    <div class="substep-description">Completar el cuadrado: sumar (b/2a)² a ambos lados</div>
-                    <div class="substep-equation">
-                        \[{x}^{2} = 1\]
-                    </div>
-                </div>
-                <div class="substep">
-                    <div class="substep-number">Step 1.5</div>
-                    <div class="substep-description">Escribir lado izquierdo como cuadrado perfecto</div>
-                    <div class="substep-equation">
-                        \[{x}^{2} = 1\]
-                    </div>
-                </div>
-                <div class="substep">
-                    <div class="substep-number">Step 1.6</div>
-                    <div class="substep-description">Tomar raíz cuadrada en ambos lados</div>
-                    <div class="substep-equation">
-                        \[|x| = 1\]
-                    </div>
-                </div>
-                <div class="substep">
-                    <div class="substep-number">Step 1.7</div>
-                    <div class="substep-description">|u| = a se descompone en u = a y u = -a. Despejando x (requiere Δ ≥ 0)</div>
-                    <div class="substep-equation">
-                        \[x = 0 \pm 1\]
-                    </div>
-                </div>
+        </div>
+        <div class="step">
+            <div class="step-number">Step 2</div>
+            <div class="description">Divide both sides by Q0</div>
+            <div class="equation">
+                \[{2}^{-1\cdot \frac{t}{T}} = \frac{Q}{Q0}\]
             </div>
         </div>
         </div>
         <div class="final-result">
-            \(\textbf{Solution: } x = \)
-            \[\left\{ -1, 1 \right\}\]
+            \(\textbf{Solution: } t = \)
+            \[\begin{cases} \left\{ -(T\cdot \log_{2}(\frac{Q}{Q0})) \right\} & \text{if } \frac{Q}{Q0} > 0 \\ \text{solve}({2}^{-1\cdot \frac{t}{T}} = \frac{Q}{Q0}, t) & \text{otherwise} \end{cases}\]
         </div>
     </div>
     <script>

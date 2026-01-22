@@ -26,26 +26,54 @@ from urllib.parse import parse_qs
 PORT = 8080
 CAS_CLI = "./target/release/cas_cli"
 
+# Session configuration
+SESSION_TIMEOUT_SECONDS = 2 * 60 * 60  # 2 hours of inactivity before session expires
+
 # Multi-session support: each browser tab gets its own session
 # Sessions are identified by a UUID stored in the browser's sessionStorage
-sessions = {}  # session_id -> {"variables": {}, "results": []}
+# Each session tracks: variables, results, and last_access time for cleanup
+sessions = {}  # session_id -> {"variables": {}, "results": [], "last_access": timestamp}
 
 def get_session(session_id):
-    """Get or create a session by ID"""
+    """Get or create a session by ID, updating last access time"""
+    import time
+    current_time = time.time()
+    
+    # Clean up expired sessions periodically
+    cleanup_expired_sessions(current_time)
+    
     if session_id not in sessions:
         sessions[session_id] = {
             "variables": {},  # name -> result string
-            "results": []     # list of all results for %n references
+            "results": [],    # list of all results for %n references
+            "last_access": current_time
         }
+    else:
+        # Update last access time
+        sessions[session_id]["last_access"] = current_time
+    
     return sessions[session_id]
 
 def clear_session(session_id):
-    """Clear a specific session"""
+    """Clear a specific session (but keep the session entry for new use)"""
+    import time
     if session_id in sessions:
         sessions[session_id] = {
             "variables": {},
-            "results": []
+            "results": [],
+            "last_access": time.time()
         }
+
+def cleanup_expired_sessions(current_time):
+    """Remove sessions that haven't been accessed in SESSION_TIMEOUT_SECONDS"""
+    expired = [
+        sid for sid, data in sessions.items()
+        if current_time - data.get("last_access", 0) > SESSION_TIMEOUT_SECONDS
+    ]
+    for sid in expired:
+        del sessions[sid]
+    if expired:
+        print(f"🧹 Cleaned up {len(expired)} expired session(s). Active sessions: {len(sessions)}")
 
 class CASHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):

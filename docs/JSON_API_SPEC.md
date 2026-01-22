@@ -432,3 +432,78 @@ Executors.newSingleThreadExecutor().submit {
 
 For production: use a dedicated computation dispatcher or worker thread pool.
 
+---
+
+## Web Server API
+
+The ExpliCAS web server (`web/server.py`) provides a REST API wrapper around the CLI.
+
+### Session Management
+
+Each browser tab gets an **isolated session** with its own variables and cell references.
+
+| Component | Storage | Lifetime |
+|-----------|---------|----------|
+| Session ID | Browser `sessionStorage` | Until tab is closed |
+| Session Data | Python `sessions` dict | Until timeout (2 hours) |
+
+**Session ID Format**: `session-<UUID>` (e.g., `session-60acfc57-f0a0-4457-a353-8516474f025b`)
+
+### Session Timeout
+
+Sessions expire after 2 hours of inactivity:
+
+```python
+SESSION_TIMEOUT_SECONDS = 2 * 60 * 60  # 2 hours
+```
+
+Expired sessions are automatically cleaned up on the next API request.
+
+### Web API Endpoints
+
+#### POST `/api/eval`
+
+Evaluate an expression within a session context.
+
+**Request**:
+```json
+{
+  "expression": "x^2 + 2*x + 1",
+  "session_id": "session-abc123..."
+}
+```
+
+**Response**: Same as CLI `eval-json`, plus:
+
+| Extra Field | Type | Description |
+|-------------|------|-------------|
+| `session_id` | string | Echo of session ID |
+| `ref` | int | Cell reference number (for `%n`) |
+| `variables` | array | List of defined variable names |
+| `assignment` | string? | Variable name if this was an assignment |
+
+#### POST `/api/clear`
+
+Clear all variables and results for a session.
+
+```json
+{"session_id": "session-abc123..."}
+```
+
+#### POST `/api/delete-variable`
+
+Delete a specific variable from the session.
+
+```json
+{"variable": "a", "session_id": "session-abc123..."}
+```
+
+### Variable Substitution
+
+The web server performs client-side variable substitution before calling the CLI:
+
+1. `a := expr` → Evaluates `expr`, stores result as `a`
+2. `a + b` → Substitutes stored values: `(stored_a) + (stored_b)`
+3. `%1 + %2` → Substitutes cell references: `(result_1) + (result_2)`
+
+For full details, see `web/README.md`.
