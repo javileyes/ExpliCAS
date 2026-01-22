@@ -12,6 +12,81 @@ pub struct GcdResult {
     pub steps: Vec<String>,
 }
 
+// =============================================================================
+// Large Polynomial Detection Helpers (V2.15.36)
+// =============================================================================
+
+/// Check if expression contains a poly_result reference.
+/// poly_result(n) is an opaque handle that requires algebraic (not structural) GCD.
+fn contains_poly_result(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Function(name, args) => {
+            if name == "poly_result" {
+                return true;
+            }
+            // Also check __hold wrappers
+            if name == "__hold" && !args.is_empty() {
+                return contains_poly_result(ctx, args[0]);
+            }
+            // Recurse into function arguments
+            args.iter().any(|&arg| contains_poly_result(ctx, arg))
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            contains_poly_result(ctx, *l) || contains_poly_result(ctx, *r)
+        }
+        Expr::Pow(base, exp) => contains_poly_result(ctx, *base) || contains_poly_result(ctx, *exp),
+        Expr::Neg(inner) => contains_poly_result(ctx, *inner),
+        _ => false,
+    }
+}
+
+/// Check if expression has large unexpanded powers (exponent > 2).
+/// These should be expanded before structural GCD comparison.
+fn has_large_unexpanded_power(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) => {
+            // Check if exponent is a large integer
+            if let Some(n) = get_integer_exponent(ctx, *exp) {
+                if n > 2 {
+                    // Check if base is not a simple variable (i.e., it's a compound expression)
+                    if !matches!(ctx.get(*base), Expr::Variable(_) | Expr::Number(_)) {
+                        return true;
+                    }
+                }
+            }
+            // Recurse
+            has_large_unexpanded_power(ctx, *base) || has_large_unexpanded_power(ctx, *exp)
+        }
+        Expr::Function(name, args) => {
+            // Skip poly_result - it's already expanded
+            if name == "poly_result" {
+                return false;
+            }
+            args.iter().any(|&arg| has_large_unexpanded_power(ctx, arg))
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            has_large_unexpanded_power(ctx, *l) || has_large_unexpanded_power(ctx, *r)
+        }
+        Expr::Neg(inner) => has_large_unexpanded_power(ctx, *inner),
+        _ => false,
+    }
+}
+
+/// Extract integer exponent from expression
+fn get_integer_exponent(ctx: &Context, exp: ExprId) -> Option<i64> {
+    match ctx.get(exp) {
+        Expr::Number(n) => {
+            if n.is_integer() {
+                n.to_integer().try_into().ok()
+            } else {
+                None
+            }
+        }
+        Expr::Neg(inner) => get_integer_exponent(ctx, *inner).map(|k| -k),
+        _ => None,
+    }
+}
+
 define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
     let (name, args) = if let Expr::Function(name, args) = ctx.get(expr) {
         (name.clone(), args.clone())
@@ -53,10 +128,32 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                     compute_poly_gcd_unified, parse_gcd_mode, GcdGoal, GcdMode,
                 };
 
-                let mode = if args.len() >= 3 {
-                    parse_gcd_mode(ctx, args[2])
+                // Parse explicit mode from user (if provided)
+                let explicit_mode = if args.len() >= 3 {
+                    Some(parse_gcd_mode(ctx, args[2]))
                 } else {
-                    GcdMode::Structural
+                    None
+                };
+
+                // V2.15.36: Auto-detect large polynomials requiring modp mode
+                // When either argument contains poly_result or large unexpanded powers,
+                // structural GCD will fail to find common factors. Switch to modp.
+                let needs_modp = contains_poly_result(ctx, args[0])
+                    || contains_poly_result(ctx, args[1])
+                    || has_large_unexpanded_power(ctx, args[0])
+                    || has_large_unexpanded_power(ctx, args[1]);
+
+                let effective_mode = match explicit_mode {
+                    // User explicitly specified a mode - respect it
+                    Some(m) => m,
+                    // No explicit mode - auto-select based on polynomial complexity
+                    None => {
+                        if needs_modp {
+                            GcdMode::Modp
+                        } else {
+                            GcdMode::Structural
+                        }
+                    }
                 };
 
                 let (result, desc) = compute_poly_gcd_unified(
@@ -64,7 +161,7 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                     args[0],
                     args[1],
                     GcdGoal::UserPolyGcd,
-                    mode,
+                    effective_mode,
                     None, // modp_preset
                     None, // modp_main_var
                 );
