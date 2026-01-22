@@ -92,6 +92,8 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_eval()
         elif self.path == '/api/clear':
             self.handle_clear()
+        elif self.path == '/api/import':
+            self.handle_import()
         elif self.path == '/api/delete-variable':
             self.handle_delete_variable()
         else:
@@ -129,6 +131,63 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json({"ok": True, "message": "Session cleared", "session_id": session_id})
         except json.JSONDecodeError:
             self.send_json({"ok": True, "message": "Session cleared", "session_id": "default"})
+    
+    def handle_import(self):
+        """Import session state from notebook data"""
+        content_length = int(self.headers.get('Content-Length', 0))
+        body = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else '{}'
+        
+        try:
+            data = json.loads(body) if body else {}
+            session_id = data.get('session_id', 'default')
+            variables = data.get('variables', {})
+            results = data.get('results', [])
+            replace = data.get('replace', True)
+            
+            session = get_session(session_id)
+            
+            # Build a properly indexed results list
+            # The server uses list index to look up #n references (idx = n - 1)
+            # So we need results[0] = #1, results[1] = #2, etc.
+            max_ref = 0
+            results_by_ref = {}
+            for r in results:
+                ref = r.get('ref', 0)
+                if ref > 0:
+                    results_by_ref[ref] = r
+                    max_ref = max(max_ref, ref)
+            
+            # Build ordered list with placeholders for gaps
+            imported_results = []
+            for i in range(1, max_ref + 1):
+                if i in results_by_ref:
+                    imported_results.append(results_by_ref[i])
+                else:
+                    # Placeholder for missing refs (shouldn't normally happen)
+                    imported_results.append({'result': '', 'ref': i})
+            
+            if replace:
+                # Clear and replace
+                session["variables"] = dict(variables)
+                session["results"] = imported_results
+            else:
+                # Append to existing - extend with new results
+                session["variables"].update(variables)
+                # For append, we need to adjust refs to continue from current count
+                current_len = len(session["results"])
+                for r in imported_results:
+                    session["results"].append(r)
+            
+            self.send_json({
+                "ok": True, 
+                "message": f"Imported {len(variables)} variables and {len(imported_results)} results",
+                "session_id": session_id,
+                "next_ref": len(session["results"]) + 1
+            })
+        except json.JSONDecodeError:
+            self.send_json_error("Invalid JSON")
+        except Exception as e:
+            self.send_json_error(str(e))
     
     def handle_delete_variable(self):
         """Delete a specific variable from session"""

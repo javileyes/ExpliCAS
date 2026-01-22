@@ -1,654 +1,378 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS Steps: 1 + \frac{1}{1 + \frac{1}{1 + \frac{1}{x}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}</title>
-    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-    <style>
-        * {
-            box-sizing: border-box;
-        }
-        /* Theme variables */
-        :root {
-            --bg-gradient-start: #1a1a2e;
-            --bg-gradient-end: #16213e;
-            --container-bg: rgba(30, 40, 60, 0.95);
-            --container-shadow: rgba(0, 0, 0, 0.3);
-            --title-color: #64b5f6;
-            --subtitle-color: #90caf9;
-            --original-bg-start: #1565c0;
-            --original-bg-end: #0d47a1;
-            --original-shadow: rgba(21, 101, 192, 0.4);
-            --timeline-line-start: #64b5f6;
-            --timeline-line-end: #4caf50;
-            --step-bg: rgba(40, 50, 70, 0.8);
-            --step-border: #64b5f6;
-            --step-hover-shadow: rgba(100, 181, 246, 0.3);
-            --step-dot-bg: #64b5f6;
-            --step-dot-border: #1a1a2e;
-            --step-number-color: #64b5f6;
-            --content-bg: rgba(30, 40, 55, 0.9);
-            --content-border: rgba(100, 181, 246, 0.2);
-            --content-h3-color: #90caf9;
-            --math-bg: rgba(30, 40, 55, 0.8);
-            --math-border: #64b5f6;
-            --math-before-border: #ff9800;
-            --math-before-bg: rgba(255, 152, 0, 0.1);
-            --math-after-border: #4caf50;
-            --math-after-bg: rgba(76, 175, 80, 0.1);
-            --math-strong-color: #b0bec5;
-            --rule-bg: rgba(100, 181, 246, 0.1);
-            --rule-color: #90caf9;
-            --rule-border: rgba(100, 181, 246, 0.4);
-            --rule-name-color: #bb86fc;
-            --local-change-bg: rgba(30, 40, 55, 0.8);
-            --final-bg-start: #2e7d32;
-            --final-bg-end: #1b5e20;
-            --final-shadow: rgba(76, 175, 80, 0.3);
-            --footer-color: #90caf9;
-            --substeps-bg: rgba(255, 152, 0, 0.1);
-            --substeps-border: rgba(255, 152, 0, 0.3);
-            --substeps-summary-color: #ffb74d;
-            --substeps-summary-hover: #ffa726;
-            --substeps-content-bg: rgba(30, 40, 55, 0.9);
-            --substep-border: rgba(255, 152, 0, 0.2);
-            --substep-desc-color: #b0bec5;
-            --substep-math-bg: rgba(30, 40, 55, 0.8);
-            --warning-bg: rgba(255, 193, 7, 0.15);
-            --warning-border: rgba(255, 193, 7, 0.4);
-            --warning-color: #ffd54f;
-            --text-color: #e0e0e0;
-        }
-        :root.light {
-            --bg-gradient-start: #667eea;
-            --bg-gradient-end: #764ba2;
-            --container-bg: white;
-            --container-shadow: rgba(0, 0, 0, 0.2);
-            --title-color: #333;
-            --subtitle-color: #666;
-            --original-bg-start: #f0f4ff;
-            --original-bg-end: #f0f4ff;
-            --original-shadow: rgba(102, 126, 234, 0.2);
-            --timeline-line-start: #667eea;
-            --timeline-line-end: #764ba2;
-            --step-bg: white;
-            --step-border: #667eea;
-            --step-hover-shadow: rgba(102, 126, 234, 0.3);
-            --step-dot-bg: #667eea;
-            --step-dot-border: white;
-            --step-number-color: #667eea;
-            --content-bg: #fafafa;
-            --content-border: #e0e0e0;
-            --content-h3-color: #667eea;
-            --math-bg: #fafafa;
-            --math-border: #667eea;
-            --math-before-border: #ff9800;
-            --math-before-bg: #fff8f0;
-            --math-after-border: #4caf50;
-            --math-after-bg: #f0fff4;
-            --math-strong-color: #666;
-            --rule-bg: #f9f5ff;
-            --rule-color: #667eea;
-            --rule-border: #667eea;
-            --rule-name-color: #764ba2;
-            --local-change-bg: white;
-            --final-bg-start: #4caf50;
-            --final-bg-end: #45a049;
-            --final-shadow: rgba(76, 175, 80, 0.3);
-            --footer-color: white;
-            --substeps-bg: #fff8e1;
-            --substeps-border: #ffcc80;
-            --substeps-summary-color: #ef6c00;
-            --substeps-summary-hover: #e65100;
-            --substeps-content-bg: white;
-            --substep-border: #ffe0b2;
-            --substep-desc-color: #795548;
-            --substep-math-bg: #fafafa;
-            --warning-bg: #fff3cd;
-            --warning-border: #ffc107;
-            --warning-color: #856404;
-            --text-color: #333;
-        }
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 95%;
-            margin: 0 auto;
-            padding: 20px 10px;
-            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
-            min-height: 100vh;
-            color: var(--text-color);
-            transition: background 0.3s ease;
-        }
-        .container {
-            background: var(--container-bg);
-            border-radius: 15px;
-            padding: 25px;
-            box-shadow: 0 8px 32px var(--container-shadow);
-            transition: background 0.3s ease;
-        }
-        /* Theme toggle switch */
-        .theme-toggle {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            background: var(--container-bg);
-            padding: 8px 12px;
-            border-radius: 25px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-        }
-        .theme-toggle span {
-            font-size: 1.2em;
-        }
-        .toggle-switch {
-            position: relative;
-            width: 50px;
-            height: 26px;
-        }
-        .toggle-switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-        .toggle-slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: #333;
-            transition: 0.3s;
-            border-radius: 26px;
-        }
-        .toggle-slider:before {
-            position: absolute;
-            content: "";
-            height: 20px;
-            width: 20px;
-            left: 3px;
-            bottom: 3px;
-            background-color: white;
-            transition: 0.3s;
-            border-radius: 50%;
-        }
-        input:checked + .toggle-slider {
-            background-color: #64b5f6;
-        }
-        input:checked + .toggle-slider:before {
-            transform: translateX(24px);
-        }
-        h1 {
-            color: var(--title-color);
-            text-align: center;
-            margin-bottom: 10px;
-            font-size: 1.8em;
-            transition: color 0.3s ease;
-        }
-        .subtitle {
-            text-align: center;
-            color: var(--subtitle-color);
-            margin-bottom: 25px;
-            transition: color 0.3s ease;
-        }
-        .original {
-            background: linear-gradient(135deg, var(--original-bg-start), var(--original-bg-end));
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 30px;
-            text-align: center;
-            box-shadow: 0 4px 15px var(--original-shadow);
-            transition: background 0.3s ease;
-        }
-        .timeline {
-            position: relative;
-            padding-left: 30px;
-        }
-        .timeline::before {
-            content: '';
-            position: absolute;
-            left: 10px;
-            top: 0;
-            bottom: 0;
-            width: 3px;
-            background: linear-gradient(to bottom, var(--timeline-line-start), var(--timeline-line-end));
-            transition: background 0.3s ease;
-        }
-        .step {
-            background: var(--step-bg);
-            border-radius: 10px;
-            padding: 15px 20px;
-            margin-bottom: 20px;
-            position: relative;
-            border-left: 4px solid var(--step-border);
-            transition: transform 0.2s, box-shadow 0.2s, background 0.3s ease;
-        }
-        .step:hover {
-            transform: translateX(5px);
-            box-shadow: 0 4px 20px var(--step-hover-shadow);
-        }
-        .step::before {
-            content: '';
-            position: absolute;
-            left: -23px;
-            top: 20px;
-            width: 12px;
-            height: 12px;
-            background: var(--step-dot-bg);
-            border-radius: 50%;
-            border: 3px solid var(--step-dot-border);
-            transition: background 0.3s ease;
-        }
-        .step-number {
-            color: var(--step-number-color);
-            font-weight: bold;
-            font-size: 0.9em;
-            margin-bottom: 5px;
-            transition: color 0.3s ease;
-        }
-        .step-content {
-            background: var(--content-bg);
-            padding: 20px;
-            border-radius: 10px;
-            border: 1px solid var(--content-border);
-            transition: transform 0.2s, box-shadow 0.2s, background 0.3s ease;
-        }
-        .step-content:hover {
-            transform: translateX(5px);
-            box-shadow: 0 4px 16px var(--step-hover-shadow);
-        }
-        .step-content h3 {
-            margin-top: 0;
-            color: var(--content-h3-color);
-            font-size: 1.1em;
-            transition: color 0.3s ease;
-        }
-        .math-expr {
-            padding: 12px 15px;
-            background: var(--math-bg);
-            border-left: 4px solid var(--math-border);
-            margin: 10px 0;
-            border-radius: 4px;
-            font-size: 1.05em;
-            transition: background 0.3s ease;
-            overflow-x: auto;
-            max-width: 100%;
-        }
-        .math-expr.before {
-            border-left-color: var(--math-before-border);
-            background: var(--math-before-bg);
-        }
-        .math-expr.after {
-            border-left-color: var(--math-after-border);
-            background: var(--math-after-bg);
-        }
-        .math-expr strong {
-            color: var(--math-strong-color);
-            font-size: 0.9em;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            transition: color 0.3s ease;
-        }
-        .rule-description {
-            text-align: center;
-            padding: 12px 20px;
-            margin: 15px 0;
-            background: var(--rule-bg);
-            border-radius: 6px;
-            font-size: 0.95em;
-            color: var(--rule-color);
-            border: 2px dashed var(--rule-border);
-            transition: background 0.3s ease, color 0.3s ease;
-        }
-        .local-change {
-            font-size: 1.1em;
-            margin: 8px 0;
-            padding: 10px;
-            background: var(--local-change-bg);
-            border-radius: 4px;
-            text-align: center;
-            transition: background 0.3s ease;
-        }
-        .rule-name {
-            font-size: 0.85em;
-            color: var(--rule-name-color);
-            font-weight: bold;
-            margin-bottom: 5px;
-            transition: color 0.3s ease;
-        }
-        .final-result {
-            text-align: center;
-            padding: 20px;
-            background: linear-gradient(135deg, var(--final-bg-start), var(--final-bg-end));
-            color: white;
-            border-radius: 10px;
-            margin-top: 30px;
-            font-size: 1.2em;
-            box-shadow: 0 4px 12px var(--final-shadow);
-            transition: background 0.3s ease;
-        }
-        .poly-badge {
-            background: rgba(255,255,255,0.25);
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 0.75em;
-            margin-left: 10px;
-            font-weight: normal;
-        }
-        .poly-output {
-            text-align: left;
-            background: rgba(0,0,0,0.2);
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 15px;
-            font-family: 'Courier New', monospace;
-            font-size: 0.65em;
-            max-height: 400px;
-            overflow: auto;
-            white-space: pre-wrap;
-            word-break: break-all;
-            line-height: 1.4;
-        }
-        footer {
-            text-align: center;
-            margin-top: 30px;
-            color: var(--footer-color);
-            font-size: 0.9em;
-            transition: color 0.3s ease;
-        }
-        /* Expandable details for didactic sub-steps */
-        .substeps-details {
-            margin: 10px 0;
-            padding: 10px 15px;
-            background: var(--substeps-bg);
-            border: 1px solid var(--substeps-border);
-            border-radius: 8px;
-            font-size: 0.95em;
-            transition: background 0.3s ease;
-        }
-        .substeps-details summary {
-            cursor: pointer;
-            font-weight: bold;
-            color: var(--substeps-summary-color);
-            padding: 5px 0;
-            transition: color 0.3s ease;
-        }
-        .substeps-details summary:hover {
-            color: var(--substeps-summary-hover);
-        }
-        .substeps-content {
-            margin-top: 10px;
-            padding: 10px;
-            background: var(--substeps-content-bg);
-            border-radius: 6px;
-            transition: background 0.3s ease;
-        }
-        .substep {
-            padding: 8px 0;
-            border-bottom: 1px dashed var(--substep-border);
-        }
-        .substep:last-child {
-            border-bottom: none;
-        }
-        .substep-desc {
-            font-weight: 500;
-            color: var(--substep-desc-color);
-            display: block;
-            margin-bottom: 5px;
-            transition: color 0.3s ease;
-        }
-        .substep-math {
-            padding: 5px 10px;
-            background: var(--substep-math-bg);
-            border-radius: 4px;
-            text-align: center;
-            transition: background 0.3s ease;
-        }
-        .domain-warning {
-            margin-top: 10px;
-            padding: 8px 12px;
-            background: var(--warning-bg);
-            border: 1px solid var(--warning-border);
-            border-radius: 6px;
-            color: var(--warning-color);
-            font-size: 0.9em;
-            transition: background 0.3s ease, color 0.3s ease;
-        }
-        .domain-warning::before {
-            content: '⚠ ';
-        }
-        .domain-requires {
-            margin-top: 10px;
-            padding: 8px 12px;
-            background: rgba(33, 150, 243, 0.15);
-            border: 1px solid rgba(33, 150, 243, 0.4);
-            border-radius: 6px;
-            color: #64b5f6;
-            font-size: 0.9em;
-            transition: background 0.3s ease, color 0.3s ease;
-        }
-        .domain-requires::before {
-            content: 'ℹ️ ';
-        }
-        .global-requires {
-            margin-top: 15px;
-            padding: 12px 16px;
-            background: rgba(33, 150, 243, 0.1);
-            border: 2px solid rgba(33, 150, 243, 0.5);
-            border-radius: 8px;
-            color: #90caf9;
-            font-size: 1em;
-        }
-        .global-requires strong {
-            color: #64b5f6;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solve Steps: Q = Q0·2^(-t / T)</title>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<style>
+    * {
+        box-sizing: border-box;
+    }
+    /* Theme variables */
+    :root {
+        --bg-gradient-start: #1a1a2e;
+        --bg-gradient-end: #16213e;
+        --container-bg: rgba(30, 40, 60, 0.95);
+        --container-shadow: rgba(0, 0, 0, 0.3);
+        --title-color: #64b5f6;
+        --subtitle-color: #90caf9;
+        --original-bg-start: #1565c0;
+        --original-bg-end: #0d47a1;
+        --original-shadow: rgba(21, 101, 192, 0.4);
+        --timeline-line-start: #64b5f6;
+        --timeline-line-end: #4caf50;
+        --step-bg: rgba(40, 50, 70, 0.8);
+        --step-border: #64b5f6;
+        --step-hover-shadow: rgba(100, 181, 246, 0.3);
+        --step-dot-bg: #64b5f6;
+        --step-dot-border: #1a1a2e;
+        --step-number-color: #64b5f6;
+        --description-color: #b0bec5;
+        --equation-bg: rgba(30, 40, 55, 0.9);
+        --final-bg-start: #2e7d32;
+        --final-bg-end: #1b5e20;
+        --final-shadow: rgba(76, 175, 80, 0.3);
+        --footer-color: white;
+        --text-color: #e0e0e0;
+    }
+    :root.light {
+        --bg-gradient-start: #667eea;
+        --bg-gradient-end: #764ba2;
+        --container-bg: white;
+        --container-shadow: rgba(0, 0, 0, 0.2);
+        --title-color: #333;
+        --subtitle-color: #666;
+        --original-bg-start: #f0f4ff;
+        --original-bg-end: #f0f4ff;
+        --original-shadow: rgba(102, 126, 234, 0.2);
+        --timeline-line-start: #667eea;
+        --timeline-line-end: #764ba2;
+        --step-bg: white;
+        --step-border: #667eea;
+        --step-hover-shadow: rgba(102, 126, 234, 0.3);
+        --step-dot-bg: #667eea;
+        --step-dot-border: white;
+        --step-number-color: #667eea;
+        --description-color: #666;
+        --equation-bg: #fafafa;
+        --final-bg-start: #4caf50;
+        --final-bg-end: #45a049;
+        --final-shadow: rgba(76, 175, 80, 0.3);
+        --footer-color: white;
+        --text-color: #333;
+    }
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        max-width: 95%;
+        margin: 0 auto;
+        padding: 20px 10px;
+        background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+        min-height: 100vh;
+        color: var(--text-color);
+        transition: background 0.3s ease;
+    }
+    .container {
+        background: var(--container-bg);
+        border-radius: 15px;
+        padding: 25px;
+        box-shadow: 0 8px 32px var(--container-shadow);
+        transition: background 0.3s ease;
+    }
+    /* Theme toggle switch */
+    .theme-toggle {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--container-bg);
+        padding: 8px 12px;
+        border-radius: 25px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    }
+    .theme-toggle span {
+        font-size: 1.2em;
+    }
+    .toggle-switch {
+        position: relative;
+        width: 50px;
+        height: 26px;
+    }
+    .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+    .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #333;
+        transition: 0.3s;
+        border-radius: 26px;
+    }
+    .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 20px;
+        width: 20px;
+        left: 3px;
+        bottom: 3px;
+        background-color: white;
+        transition: 0.3s;
+        border-radius: 50%;
+    }
+    input:checked + .toggle-slider {
+        background-color: #64b5f6;
+    }
+    input:checked + .toggle-slider:before {
+        transform: translateX(24px);
+    }
+    h1 {
+        color: var(--title-color);
+        text-align: center;
+        margin-bottom: 10px;
+        font-size: 1.8em;
+        transition: color 0.3s ease;
+    }
+    .subtitle {
+        text-align: center;
+        color: var(--subtitle-color);
+        margin-bottom: 25px;
+        transition: color 0.3s ease;
+    }
+    .original {
+        background: linear-gradient(135deg, var(--original-bg-start), var(--original-bg-end));
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 30px;
+        text-align: center;
+        box-shadow: 0 4px 15px var(--original-shadow);
+        transition: background 0.3s ease;
+    }
+    .timeline {
+        position: relative;
+        padding-left: 30px;
+    }
+    .timeline::before {
+        content: '';
+        position: absolute;
+        left: 10px;
+        top: 0;
+        bottom: 0;
+        width: 3px;
+        background: linear-gradient(to bottom, var(--timeline-line-start), var(--timeline-line-end));
+        transition: background 0.3s ease;
+    }
+    .step {
+        background: var(--step-bg);
+        border-radius: 10px;
+        padding: 15px 20px;
+        margin-bottom: 20px;
+        position: relative;
+        border-left: 4px solid var(--step-border);
+        transition: transform 0.2s, box-shadow 0.2s, background 0.3s ease;
+    }
+    .step:hover {
+        transform: translateX(5px);
+        box-shadow: 0 4px 20px var(--step-hover-shadow);
+    }
+    .step::before {
+        content: '';
+        position: absolute;
+        left: -23px;
+        top: 20px;
+        width: 12px;
+        height: 12px;
+        background: var(--step-dot-bg);
+        border-radius: 50%;
+        border: 3px solid var(--step-dot-border);
+        transition: background 0.3s ease;
+    }
+    .step-number {
+        color: var(--step-number-color);
+        font-weight: bold;
+        font-size: 0.9em;
+        margin-bottom: 5px;
+        transition: color 0.3s ease;
+    }
+    .description {
+        color: var(--description-color);
+        font-size: 1em;
+        margin-bottom: 10px;
+        font-style: italic;
+        transition: color 0.3s ease;
+    }
+    .equation {
+        background: var(--equation-bg);
+        padding: 15px;
+        border-radius: 8px;
+        text-align: center;
+        font-size: 1.2em;
+        transition: background 0.3s ease;
+        overflow-x: auto;
+        max-width: 100%;
+    }
+    .final-result {
+        background: linear-gradient(135deg, var(--final-bg-start), var(--final-bg-end));
+        padding: 20px;
+        text-align: center;
+        color: white;
+        border-radius: 10px;
+        margin-top: 30px;
+        font-size: 1.2em;
+        box-shadow: 0 4px 12px var(--final-shadow);
+        transition: background 0.3s ease;
+    }
+    footer {
+        text-align: center;
+        margin-top: 30px;
+        color: var(--footer-color);
+        font-size: 0.9em;
+        transition: color 0.3s ease;
+    }
+    /* Collapsible substeps styles */
+    .substeps-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 12px;
+        padding: 8px 12px;
+        background: rgba(100, 181, 246, 0.15);
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.9em;
+        color: var(--step-number-color);
+        border: 1px solid rgba(100, 181, 246, 0.3);
+        transition: all 0.2s ease;
+    }
+    .substeps-toggle:hover {
+        background: rgba(100, 181, 246, 0.25);
+    }
+    .substeps-toggle .arrow {
+        transition: transform 0.3s ease;
+        font-size: 0.8em;
+    }
+    .substeps-toggle.expanded .arrow {
+        transform: rotate(90deg);
+    }
+    .substeps-container {
+        display: none;
+        margin-top: 12px;
+        padding-left: 20px;
+        border-left: 2px solid rgba(100, 181, 246, 0.3);
+    }
+    .substeps-container.visible {
+        display: block;
+        animation: slideDown 0.3s ease;
+    }
+    @keyframes slideDown {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .substep {
+        background: rgba(30, 40, 55, 0.6);
+        border-radius: 8px;
+        padding: 12px 15px;
+        margin-bottom: 10px;
+        border-left: 3px solid #90caf9;
+    }
+    .substep-number {
+        color: #90caf9;
+        font-weight: bold;
+        font-size: 0.85em;
+        margin-bottom: 4px;
+    }
+    .substep-description {
+        color: var(--description-color);
+        font-size: 0.9em;
+        margin-bottom: 8px;
+        font-style: italic;
+    }
+    .substep-equation {
+        background: rgba(20, 30, 45, 0.8);
+        padding: 10px;
+        border-radius: 6px;
+        text-align: center;
+        font-size: 1em;
+    }
+</style>
 </head>
 <body>
-    <div class="theme-toggle">
-        <span>🌙</span>
-        <label class="toggle-switch">
-            <input type="checkbox" id="themeToggle" onchange="toggleTheme()">
-            <span class="toggle-slider"></span>
-        </label>
-        <span>☀️</span>
+<div class="theme-toggle">
+    <span>🌙</span>
+    <label class="toggle-switch">
+        <input type="checkbox" id="themeToggle" onchange="toggleTheme()">
+        <span class="toggle-slider"></span>
+    </label>
+    <span>☀️</span>
+</div>
+<script>
+    function toggleTheme() {
+        document.documentElement.classList.toggle('light');
+        localStorage.setItem('theme', document.documentElement.classList.contains('light') ? 'light' : 'dark');
+    }
+    // Load saved theme preference
+    if (localStorage.getItem('theme') === 'light') {
+        document.documentElement.classList.add('light');
+        document.getElementById('themeToggle').checked = true;
+    }
+</script>
+<div class="container">
+    <h1>Equation Solving Steps</h1>
+    <p class="subtitle">Solving for <strong>t</strong></p>
+    <div class="original">
+        \(\textbf{Original Equation:}\)
+        \[Q = Q0\cdot {2}^{-\frac{t}{T}}\]
     </div>
-    <script>
-        function toggleTheme() {
-            document.documentElement.classList.toggle('light');
-            localStorage.setItem('theme', document.documentElement.classList.contains('light') ? 'light' : 'dark');
-        }
-        // Load saved theme preference
-        if (localStorage.getItem('theme') === 'light') {
-            document.documentElement.classList.add('light');
-            document.getElementById('themeToggle').checked = true;
-        }
-    </script>
-    <div class="container">
-        <h1>CAS Simplification Steps</h1>
-        <p class="subtitle">Step-by-step visualization</p>
-        <div class="original">
-            \(\textbf{Original Expression:}\)
-            \[1 + \frac{1}{1 + \frac{1}{1 + \frac{1}{x}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
-        </div>
         <div class="timeline">
-            <div class="step">
-                <div class="step-number">1</div>
-                <div class="step-content">
-                    <h3>Add Fractions</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[1 + \frac{1}{1 + \frac{1}{{\color{red}{1 + \frac{1}{x}}}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Add fractions: a/b + c/d -> (ad+bc)/bd}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\frac{1}{x} + 1}} \rightarrow {\color{green}{\frac{x + 1}{x}}}\]
-                        </div>
-                    </div>
-                    
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[1 + \frac{1}{1 + \frac{1}{{\color{green}{\frac{1 + x}{x}}}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
-                    </div>
-                </div>
+        <div class="step">
+            <div class="step-number">Step 1</div>
+            <div class="description">Swap sides to put variable on LHS</div>
+            <div class="equation">
+                \[Q0\cdot {2}^{-1\cdot \frac{t}{T}} = Q\]
             </div>
-            <div class="step">
-                <div class="step-number">2</div>
-                <div class="step-content">
-                    <h3>Simplify Complex Fraction</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[1 + \frac{1}{1 + {\color{red}{\frac{1}{\frac{1 + x}{x}}}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
-                    </div>
-                    <details class="substeps-details">
-                            <summary>Simplificación de fracción compleja</summary>
-                            <div class="substeps-content"><div class="substep">
-                                    <span class="substep-desc">Multiplicar numerador y denominador por los denominadores internos</span><div class="substep-math">\[\frac{1}{\frac{x + 1}{x}} \rightarrow (expresión expandida)\]</div></div><div class="substep">
-                                    <span class="substep-desc">Simplificar la fracción resultante</span><div class="substep-math">\[(expresión expandida) \rightarrow \frac{x}{x + 1}\]</div></div></div></details>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Simplify nested fraction}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\frac{1}{\frac{x + 1}{x}}}} \rightarrow {\color{green}{\frac{x}{x + 1}}}\]
-                        </div>
-                    </div>
-                    
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[1 + \frac{1}{1 + {\color{green}{\frac{x}{1 + x}}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
-                    </div>
-                </div>
+        </div>
+        <div class="step">
+            <div class="step-number">Step 2</div>
+            <div class="description">Divide both sides by Q0</div>
+            <div class="equation">
+                \[{2}^{-1\cdot \frac{t}{T}} = \frac{Q}{Q0}\]
             </div>
-            <div class="step">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                    <h3>Simplify Complex Fraction</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[1 + {\color{red}{\frac{1}{1 + \frac{x}{1 + x}}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
-                    </div>
-                    <details class="substeps-details">
-                            <summary>Simplificación de fracción compleja</summary>
-                            <div class="substeps-content"><div class="substep">
-                                    <span class="substep-desc">Combinar términos del denominador (denominador común)</span><div class="substep-math">\[\frac{x}{x + 1} + 1 \rightarrow \frac{x + 1 + x}{x + 1}\]</div></div><div class="substep">
-                                    <span class="substep-desc">Invertir la fracción: 1/(a/b) = b/a</span><div class="substep-math">\[\frac{1}{\frac{x + 1 + x}{x + 1}} \rightarrow \frac{x + 1}{x + x + 1}\]</div></div></div></details>
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Simplify nested fraction}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\frac{1}{\frac{x}{x + 1} + 1}}} \rightarrow {\color{green}{\frac{x + 1}{x + x + 1}}}\]
-                        </div>
-                    </div>
-                    
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[1 + {\color{green}{\frac{1 + x}{1 + x + x}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">4</div>
-                <div class="step-content">
-                    <h3>Combine Like Terms</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[1 + \frac{1 + x}{1 + {\color{red}{x}} + {\color{red}{x}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Combine like terms}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{x + x}} \rightarrow {\color{green}{2\cdot x}}\]
-                        </div>
-                    </div>
-                    
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[1 + \frac{1 + x}{1 + {\color{green}{2\cdot x}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">5</div>
-                <div class="step-content">
-                    <h3>Common Denominator</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{1 + \frac{1 + x}{1 + 2\cdot x}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Common denominator: k + p/q → (k·q + p)/q}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\frac{x + 1}{2\cdot x + 1} + 1}} \rightarrow {\color{green}{\frac{2\cdot x + 1 + x + 1}{2\cdot x + 1}}}\]
-                        </div>
-                    </div>
-                    
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{\color{green}{\frac{1 + x + 1 + 2\cdot x}{1 + 2\cdot x}}} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">6</div>
-                <div class="step-content">
-                    <h3>Combine Like Terms</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[\frac{{\color{red}{1 + x + 1 + 2\cdot x}}}{1 + 2\cdot x} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{Combine like terms}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{x + 2\cdot x + 1 + 1}} \rightarrow {\color{green}{3\cdot x + 2}}\]
-                        </div>
-                    </div>
-                    
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[\frac{{\color{green}{2 + 3\cdot x}}}{1 + 2\cdot x} - \frac{2 + 3\cdot x}{1 + 2\cdot x}\]
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">7</div>
-                <div class="step-content">
-                    <h3>Subtraction Self-Cancel</h3>
-                    <div class="math-expr before">
-                        \(\textbf{Before:}\)
-                        \[{\color{red}{\frac{2 + 3\cdot x}{1 + 2\cdot x} - \frac{2 + 3\cdot x}{1 + 2\cdot x}}}\]
-                    </div>
-                    
-                    <div class="rule-description">
-                        <div class="rule-name">\(\text{a - a = 0}\)</div>
-                        <div class="local-change">
-                            \[{\color{red}{\frac{3\cdot x + 2}{2\cdot x + 1} - \frac{3\cdot x + 2}{2\cdot x + 1}}} \rightarrow {\color{green}{0}}\]
-                        </div>
-                    </div>
-                    
-                    <div class="math-expr after">
-                        \(\textbf{After:}\)
-                        \[{\color{green}{0}}\]
-                    </div>
-                </div>
-            </div>
+        </div>
         </div>
         <div class="final-result">
-            \(\textbf{Final Result:}\)
-            \[0\]
-        </div>
-        <div class="global-requires">
-            <strong>ℹ️ Requires:</strong> 1 / (1 / x + 1) + 1 ≠ 0, 1 / x + 1 ≠ 0, x ≠ 0, 2·x + 1 ≠ 0
+            \(\textbf{Solution: } t = \)
+            \[\begin{cases} \left\{ -(T\cdot \log_{2}(\frac{Q}{Q0})) \right\} & \text{if } \frac{Q}{Q0} > 0 \\ \text{solve}({2}^{-1\cdot \frac{t}{T}} = \frac{Q}{Q0}, t) & \text{otherwise} \end{cases}\]
         </div>
     </div>
+    <script>
+        function toggleSubsteps(id) {
+            const container = document.getElementById(id);
+            const toggle = document.querySelector(`[onclick*="${id}"]`);
+            if (container.classList.contains('visible')) {
+                container.classList.remove('visible');
+                toggle.classList.remove('expanded');
+                toggle.querySelector('span:last-child').textContent = 'Show derivation (' + container.children.length + ' steps)';
+            } else {
+                container.classList.add('visible');
+                toggle.classList.add('expanded');
+                toggle.querySelector('span:last-child').textContent = 'Hide derivation';
+                // Re-render MathJax for the newly visible content
+                if (window.MathJax) {
+                    MathJax.typeset([container]);
+                }
+            }
+        }
+    </script>
     <footer>
-        Generated by Rust CAS Engine
+        Generated by Rust CAS Engine - Equation Solver
     </footer>
 </body>
 </html>

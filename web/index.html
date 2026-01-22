@@ -998,9 +998,14 @@
             <button class="header-btn" id="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
                 🌙 Dark
             </button>
-            <button class="header-btn" onclick="exportSession()" title="Export session as HTML">
-                📥 Export
+            <button class="header-btn" onclick="exportSession()" title="Export session as JSON">
+                📤 Export
             </button>
+            <button class="header-btn" onclick="document.getElementById('import-file').click()"
+                title="Import session from JSON">
+                📥 Import
+            </button>
+            <input type="file" id="import-file" accept=".json" style="display:none" onchange="importSession(event)">
             <button class="header-btn variables" id="variables-btn" onclick="showVariablesPanel()"
                 title="View assigned variables">
                 📦 Variables<span id="var-count-badge" class="var-count-badge" style="display: none;">0</span>
@@ -1190,8 +1195,9 @@
                 updateVariablesBadge();
             }
 
-            // Hide empty state
-            document.getElementById('empty-state').style.display = 'none';
+            // Hide empty state (null check for safety after imports)
+            const emptyState = document.getElementById('empty-state');
+            if (emptyState) emptyState.style.display = 'none';
 
             const card = document.createElement('div');
             card.className = isAssignment ? 'expression-card variable-card' : 'expression-card';
@@ -1258,7 +1264,7 @@
                                 ${result.stats && result.stats.term_count ? `<span class="poly-badge">${result.stats.term_count.toLocaleString()} terms</span>` : ''}
                                 ${isPolyResult && (!result.stats || !result.stats.term_count) ? `<span class="poly-badge">Large polynomial</span>` : ''}
                             </div>
-                            <div class="result-math">
+                            <div class="result-math" data-latex="${escapeHtml(result.result_latex || result.result || '')}" data-result="${escapeHtml(result.result || '')}">
                                 ${isPolyResult
                         ? `<pre class="poly-output">${escapeHtml(result.result)}</pre>`
                         : `$${result.result_latex || escapeHtml(result.result)}$`
@@ -1293,7 +1299,9 @@
             expressionCount++;
             const ref = expressionCount;
 
-            document.getElementById('empty-state').style.display = 'none';
+            // Hide empty state (null check for safety after imports)
+            const emptyState = document.getElementById('empty-state');
+            if (emptyState) emptyState.style.display = 'none';
 
             const card = document.createElement('div');
             card.className = 'expression-card';
@@ -1476,7 +1484,8 @@
                     // Check if there are no more cards
                     const remaining = document.querySelectorAll('.expression-card');
                     if (remaining.length === 0) {
-                        document.getElementById('empty-state').style.display = 'block';
+                        const emptyState = document.getElementById('empty-state');
+                        if (emptyState) emptyState.style.display = 'block';
                     }
                 }, 300);
             }
@@ -1495,7 +1504,8 @@
                     // Check if there are no more cards
                     const remaining = document.querySelectorAll('.expression-card');
                     if (remaining.length === 0) {
-                        document.getElementById('empty-state').style.display = 'block';
+                        const emptyState = document.getElementById('empty-state');
+                        if (emptyState) emptyState.style.display = 'block';
                     }
                 }, 300);
             }
@@ -1593,7 +1603,7 @@
             }
         })();
 
-        // Export session as HTML
+        // Export session as JSON
         function exportSession() {
             const cards = document.querySelectorAll('.expression-card');
             if (cards.length === 0) {
@@ -1603,50 +1613,283 @@
 
             const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
 
-            // Build cards HTML
-            const cardsHtml = Array.from(cards).map(card => {
-                const ref = card.querySelector('.expression-ref')?.textContent || '';
-                const input = card.querySelector('.expression-input')?.textContent || '';
-                const resultEl = card.querySelector('.result-latex, .poly-output');
-                let result = '';
-                if (resultEl) {
-                    if (resultEl.classList.contains('poly-output')) {
-                        result = '<pre>' + escapeHtml(resultEl.textContent) + '</pre>';
-                    } else {
-                        result = resultEl.innerHTML;
-                    }
+            // Build notebook data for export
+            const notebook = {
+                version: 2,
+                exported: new Date().toISOString(),
+                expressionCount: expressionCount,
+                variables: { ...sessionVariables },
+                // Convert sessionResults to array format for server
+                // Store both 'result' (parseable text) and 'result_latex' for proper re-import
+                serverResults: Object.entries(sessionResults).map(([refNum, resultObj]) => {
+                    // resultObj is the full API response object
+                    const isObj = typeof resultObj === 'object' && resultObj !== null;
+                    return {
+                        result: isObj ? (resultObj.result || '') : String(resultObj),
+                        result_latex: isObj ? (resultObj.result_latex || resultObj.result || '') : String(resultObj),
+                        ref: parseInt(refNum)
+                    };
+                }).filter(r => r.result || r.result_latex).sort((a, b) => a.ref - b.ref),
+                expressions: []
+            };
+
+            // Collect all expression cards data
+            Array.from(cards).forEach((card, index) => {
+                const refEl = card.querySelector('.expression-ref');
+                const inputEl = card.querySelector('.expression-input');
+                const resultMathEl = card.querySelector('.result-math');
+                const polyOutputEl = card.querySelector('.poly-output');
+                const errorEl = card.querySelector('.error-message');
+                const stepsSectionEl = card.querySelector('.steps-section');
+
+                // Extract numeric reference from "#N" format
+                const refText = refEl?.textContent?.trim() || `#${index + 1}`;
+                const refNum = parseInt(refText.replace('#', '')) || (index + 1);
+
+                // Get result from data attributes first (most reliable), then from sessionResults
+                const storedResult = sessionResults[refNum];
+                const dataLatex = resultMathEl?.getAttribute('data-latex') || '';
+                const dataResult = resultMathEl?.getAttribute('data-result') || '';
+
+                const entry = {
+                    ref: refText,
+                    ref_num: refNum,
+                    input: inputEl?.textContent || '',
+                    result_latex: dataLatex || (storedResult?.result_latex) || (storedResult?.result) || '',
+                    result: dataResult || (storedResult?.result) || '',
+                    poly_output: polyOutputEl?.textContent || null,
+                    error: errorEl?.textContent || null,
+                    is_assignment: card.classList.contains('assignment-card'),
+                    assignment_name: card.dataset.assignmentName || null
+                };
+
+                // Collect steps if present - save the complete HTML
+                if (stepsSectionEl) {
+                    entry.steps_html = stepsSectionEl.innerHTML;
                 }
-                return '<div class="card"><span class="ref">' + escapeHtml(ref) + '</span>' +
-                    '<div class="input"><code>' + escapeHtml(input) + '</code></div>' +
-                    '<div class="result">' + result + '</div></div>';
-            }).join('\n');
 
-            const content = '<!DOCTYPE html>\n<html lang="en">\n<head>\n' +
-                '<meta charset="UTF-8">\n' +
-                '<title>ExpliCAS Session - ' + timestamp + '</title>\n' +
-                '<script>MathJax = { tex: { inlineMath: [["$", "$"]] }, svg: { fontCache: "global" } };<\/script>\n' +
-                '<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async><\/script>\n' +
-                '<style>\n' +
-                'body { font-family: "Segoe UI", sans-serif; background: #1a1a2e; color: #eaeaea; padding: 20px; max-width: 900px; margin: 0 auto; }\n' +
-                'h1 { color: #e94560; }\n' +
-                '.card { background: #0f3460; padding: 15px; margin: 15px 0; border-radius: 8px; border-left: 4px solid #e94560; }\n' +
-                '.ref { background: #e94560; color: white; padding: 4px 10px; border-radius: 12px; font-size: 0.85em; }\n' +
-                '.input { font-family: monospace; margin: 10px 0; }\n' +
-                '.result { font-size: 1.1em; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 6px; margin-top: 10px; }\n' +
-                'pre { background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; overflow: auto; font-size: 0.75em; white-space: pre-wrap; }\n' +
-                '</style>\n</head>\n<body>\n' +
-                '<h1>🧮 ExpliCAS Session</h1>\n' +
-                '<p>Exported: ' + new Date().toLocaleString() + '</p>\n<hr>\n' +
-                cardsHtml +
-                '\n</body>\n</html>';
+                notebook.expressions.push(entry);
+            });
 
-            const blob = new Blob([content], { type: 'text/html' });
+            const content = JSON.stringify(notebook, null, 2);
+            const blob = new Blob([content], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'explicas-session-' + timestamp + '.html';
+            a.download = 'explicas-notebook-' + timestamp + '.json';
             a.click();
             URL.revokeObjectURL(url);
+        }
+
+        // Import session from JSON file
+        async function importSession(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // Reset file input for future imports
+            event.target.value = '';
+
+            try {
+                const text = await file.text();
+                const notebook = JSON.parse(text);
+
+                if (!notebook.version || !notebook.expressions) {
+                    throw new Error('Invalid notebook format');
+                }
+
+                // Ask user whether to replace or append
+                const existingCards = document.querySelectorAll('.expression-card');
+                let replaceExisting = true;
+                if (existingCards.length > 0) {
+                    replaceExisting = confirm(
+                        'Replace current session?\n\n' +
+                        'OK = Replace all (clear current session)\n' +
+                        'Cancel = Append to current session'
+                    );
+                }
+
+                if (replaceExisting) {
+                    // Clear current session (but don't call clearSession to avoid server call)
+                    expressionCount = 0;
+                    sessionResults = {};
+                    sessionVariables = {};
+                    history.length = 0;
+                    historyIndex = -1;
+                    document.getElementById('expressions').innerHTML = '';
+                }
+
+                // Restore variables
+                if (notebook.variables) {
+                    Object.assign(sessionVariables, notebook.variables);
+                }
+
+                // Determine the highest ref number from the notebook
+                let maxRefNum = 0;
+                for (const entry of notebook.expressions) {
+                    const refNum = entry.ref_num || parseInt(entry.ref?.replace('#', '')) || 0;
+                    if (refNum > maxRefNum) maxRefNum = refNum;
+                }
+
+                // If replacing, use notebook's expressionCount or maxRefNum
+                if (replaceExisting) {
+                    expressionCount = notebook.expressionCount || maxRefNum;
+                } else {
+                    // If appending, keep current but update if imported has higher
+                    expressionCount = Math.max(expressionCount, maxRefNum);
+                }
+
+                // Restore expression cards
+                const container = document.getElementById('expressions');
+                // Hide empty state if present (use display:none instead of remove to avoid crashes)
+                const emptyState = container.querySelector('.empty-state') || document.getElementById('empty-state');
+                if (emptyState) emptyState.style.display = 'none';
+
+                // Build serverResults for syncing with server
+                const serverResultsToSync = [];
+
+                for (const entry of notebook.expressions) {
+                    // Use original reference number from notebook
+                    const refNum = entry.ref_num || parseInt(entry.ref?.replace('#', '')) || (notebook.expressions.indexOf(entry) + 1);
+                    const isAssignment = entry.is_assignment;
+
+                    // Get result values from multiple sources (serverResults is most reliable for v2)
+                    const serverResult = notebook.serverResults?.find(r => r.ref === refNum);
+                    const resultLatex = entry.result_latex || serverResult?.result_latex || serverResult?.result || entry.result || '';
+                    const resultParseable = entry.result || serverResult?.result || entry.result_latex || '';
+
+                    const isPolyResult = entry.poly_output || (resultLatex && resultLatex.length > 500);
+                    const hasSteps = entry.steps_html && entry.steps_html.trim().length > 0;
+
+                    // Create card element with proper ID (matching addExpressionCard)
+                    const card = document.createElement('div');
+                    card.className = 'expression-card' + (isAssignment ? ' variable-card' : '');
+                    card.id = `expr-${refNum}`;
+                    if (entry.assignment_name) {
+                        card.dataset.varName = entry.assignment_name;
+                    }
+
+                    // Build card HTML using the SAME structure as addExpressionCard
+                    let cardHtml;
+
+                    if (isAssignment && entry.assignment_name) {
+                        // Variable assignment card (no #ref)
+                        card.id = `expr-var-${entry.assignment_name}`;
+                        cardHtml = `
+                            <div class="expression-header">
+                                <div class="expression-header-left">
+                                    <span class="var-badge">${escapeHtml(entry.assignment_name)} :=</span>
+                                    <span class="expression-input">${escapeHtml(resultLatex || entry.input)}</span>
+                                </div>
+                                <div class="expression-header-right">
+                                    <button class="delete-btn" onclick="deleteVariableCard('${escapeHtml(entry.assignment_name)}')" title="Delete variable">🗑️</button>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        // Regular expression card with #ref - match addExpressionCard structure exactly
+                        cardHtml = `
+                            <div class="expression-header">
+                                <div class="expression-header-left">
+                                    <span class="expression-ref">#${refNum}</span>
+                                    <span class="expression-input">${escapeHtml(entry.input)}</span>
+                                </div>
+                                <div class="expression-header-right">
+                                    <button class="delete-btn" onclick="deleteCard('${refNum}')" title="Delete this expression">🗑️</button>
+                                </div>
+                            </div>
+                            <div class="expression-body">
+                                ${hasSteps ? `
+                                    <button class="steps-toggle" onclick="toggleSteps('${refNum}')">
+                                        <span class="arrow">▶</span>
+                                        Show steps
+                                    </button>
+                                    <div class="steps-container" id="steps-${refNum}">
+                                        ${entry.steps_html}
+                                    </div>
+                                ` : ''}
+                                
+                                <div class="result-section">
+                                    <div class="result-label">✨ Result</div>
+                                    <div class="result-math" data-latex="${escapeHtml(resultLatex)}" data-result="${escapeHtml(resultParseable)}">
+                                        ${entry.error
+                                ? `<span class="error-message">${escapeHtml(entry.error)}</span>`
+                                : isPolyResult
+                                    ? `<pre class="poly-output">${escapeHtml(entry.poly_output || resultLatex)}</pre>`
+                                    : `$${resultLatex}$`
+                            }
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }
+
+                    card.innerHTML = cardHtml;
+                    container.appendChild(card);
+
+                    // Update sessionResults for references (use the original ref number)
+                    // IMPORTANT: Store as full object so reference substitution works correctly
+                    if (!isAssignment) {
+                        // Check if notebook has serverResults with parseable 'result' field
+                        const serverResult = notebook.serverResults?.find(r => r.ref === refNum);
+                        sessionResults[refNum] = {
+                            result: serverResult?.result || entry.result_latex || '',
+                            result_latex: entry.result_latex || serverResult?.result || ''
+                        };
+                    }
+
+                    // Collect for server sync - use parseable result from serverResults if available
+                    if (!isAssignment && (entry.result_latex || notebook.serverResults)) {
+                        const serverResult = notebook.serverResults?.find(r => r.ref === refNum);
+                        serverResultsToSync.push({
+                            result: serverResult?.result || entry.result_latex,
+                            result_latex: entry.result_latex || serverResult?.result,
+                            ref: refNum
+                        });
+                    }
+                }
+
+                updateVariablesBadge();
+
+                // Sync with server so subsequent evaluations have correct references
+                try {
+                    // Use serverResults from v2 format or build from expressions
+                    const resultsForServer = notebook.serverResults || serverResultsToSync;
+
+                    const importResponse = await fetch('/api/import', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            session_id: SESSION_ID,
+                            variables: sessionVariables,
+                            results: resultsForServer,
+                            replace: replaceExisting
+                        })
+                    });
+
+                    // Use server's next_ref to sync expressionCount
+                    const importData = await importResponse.json();
+                    if (importData.ok && importData.next_ref) {
+                        // next_ref is what the NEXT expression should be, so expressionCount = next_ref - 1
+                        expressionCount = importData.next_ref - 1;
+                    }
+                } catch (e) {
+                    console.warn('Could not sync with server:', e);
+                }
+
+                // Re-render MathJax
+                if (window.MathJax && MathJax.typesetPromise) {
+                    await MathJax.typesetPromise();
+                }
+
+                alert(`Imported ${notebook.expressions.length} expressions` +
+                    (Object.keys(notebook.variables || {}).length > 0 ?
+                        ` and ${Object.keys(notebook.variables).length} variables` : '') +
+                    `\nNext evaluation will be #${expressionCount + 1}`);
+
+            } catch (e) {
+                console.error('Import error:', e);
+                alert('Error importing notebook: ' + e.message);
+            }
         }
 
         // Clear session
