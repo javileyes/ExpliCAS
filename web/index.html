@@ -356,18 +356,30 @@
             font-weight: bold;
         }
 
+        .substeps-section {
+            text-align: center;
+            margin: 15px 0;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            border: 1px dashed var(--border);
+        }
+
         .substeps-toggle {
-            background: none;
-            border: none;
-            color: var(--text-secondary);
-            font-size: 0.8em;
+            background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(251, 191, 36, 0.1));
+            border: 1px solid rgba(251, 191, 36, 0.4);
+            color: #f59e0b;
+            font-size: 0.9em;
             cursor: pointer;
-            padding: 4px 8px;
-            border-radius: 4px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            transition: all 0.2s;
         }
 
         .substeps-toggle:hover {
-            background: rgba(255, 255, 255, 0.1);
+            background: linear-gradient(135deg, rgba(251, 191, 36, 0.3), rgba(251, 191, 36, 0.2));
+            transform: translateY(-1px);
         }
 
         .step-rule {
@@ -903,35 +915,32 @@
                             <div class="rule-name">${i + 1}. ${escapeHtml(step.rule || 'Step')}</div>
                             ${ruleLatex}
                         </div>
-                        <div class="step-header">
-                            ${hasSubsteps ? `
-                                <button class="substeps-toggle" id="substeps-toggle-${stepId}" onclick="toggleSubsteps('${stepId}')">
-                                    ▶ Show ${step.substeps.length} sub-steps
-                                </button>
-                            ` : ''}
-                        </div>
                         ${step.before ? `<div class="step-before">${beforeContent}</div>` : ''}
-                        <div class="step-arrow">↓</div>
-                        ${step.after ? `<div class="step-after">${afterContent}</div>` : ''}
                         ${hasSubsteps ? `
-                            <div class="substeps-container" id="substeps-${stepId}">
-                                ${step.substeps.map((substep, j) => `
-                                    <div class="substep-item">
-                                        <div class="step-rule">${i + 1}.${j + 1} ${escapeHtml(substep.title || 'Sub-step')}</div>
-                                        ${substep.lines && substep.lines.length > 0
+                            <div class="substeps-section">
+                                <button class="substeps-toggle" id="substeps-toggle-${stepId}" onclick="toggleSubsteps('${stepId}')">
+                                    ▶ Show ${step.substeps.length} intermediate steps
+                                </button>
+                                <div class="substeps-container" id="substeps-${stepId}">
+                                    ${step.substeps.map((substep, j) => `
+                                        <div class="substep-item">
+                                            <div class="step-rule">${i + 1}.${j + 1} ${escapeHtml(substep.title || 'Sub-step')}</div>
+                                            ${substep.lines && substep.lines.length > 0
                         ? `<ul>${substep.lines.map(l => `<li>${escapeHtml(l)}</li>`).join('')}</ul>`
                         : ''}
-                                        ${substep.before_latex && substep.after_latex
+                                            ${substep.before_latex && substep.after_latex
                         ? `<div class="substep-math">
-                                                <span class="step-math">$${substep.before_latex}$</span>
-                                                <span class="substep-arrow">→</span>
-                                                <span class="step-math">$${substep.after_latex}$</span>
-                                               </div>`
+                                                    <span class="step-math">$${substep.before_latex}$</span>
+                                                    <span class="substep-arrow">→</span>
+                                                    <span class="step-math">$${substep.after_latex}$</span>
+                                                   </div>`
                         : ''}
-                                    </div>
-                                `).join('')}
+                                        </div>
+                                    `).join('')}
+                                </div>
                             </div>
-                        ` : ''}
+                        ` : `<div class="step-arrow">↓</div>`}
+                        ${step.after ? `<div class="step-after">${afterContent}</div>` : ''}
                     </div>
                 `;
             }).join('');
