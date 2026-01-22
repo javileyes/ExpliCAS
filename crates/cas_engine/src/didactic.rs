@@ -590,6 +590,19 @@ fn contains_div(ctx: &Context, id: ExprId) -> bool {
     }
 }
 
+/// Find and return the first Div node within an expression
+fn find_div_in_expr(ctx: &Context, id: ExprId) -> Option<ExprId> {
+    match ctx.get(id) {
+        Expr::Div(_, _) => Some(id),
+        Expr::Add(l, r) | Expr::Sub(l, r) => {
+            find_div_in_expr(ctx, *l).or_else(|| find_div_in_expr(ctx, *r))
+        }
+        Expr::Mul(l, r) => find_div_in_expr(ctx, *l).or_else(|| find_div_in_expr(ctx, *r)),
+        Expr::Neg(inner) => find_div_in_expr(ctx, *inner),
+        _ => None,
+    }
+}
+
 /// Classify a nested fraction expression and return the pattern and extracted components
 fn classify_nested_fraction(ctx: &Context, expr: ExprId) -> Option<NestedFractionPattern> {
     // Helper to check if expression is 1
@@ -804,19 +817,61 @@ fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
         }
 
         NestedFractionPattern::General => {
-            // Fallback: general algorithm explanation
-            sub_steps.push(SubStep {
-                description: "Multiplicar numerador y denominador por los denominadores internos"
-                    .to_string(),
-                before_expr: before_str.clone(),
-                after_expr: "(expresión expandida)".to_string(),
-            });
+            // General nested fraction: try to show meaningful intermediate steps
+            // by extracting the inner structure
+            if let Expr::Div(num, den) = ctx.get(before_expr) {
+                let num_str = to_latex(*num);
+                let _den_str = to_latex(*den);
 
-            sub_steps.push(SubStep {
-                description: "Simplificar la fracción resultante".to_string(),
-                before_expr: "(expresión expandida)".to_string(),
-                after_expr: after_str,
-            });
+                // Try to find an inner fraction in the denominator
+                if let Some(inner_frac) = find_div_in_expr(ctx, *den) {
+                    if let Expr::Div(inner_num, inner_den) = ctx.get(inner_frac) {
+                        let inner_num_str = to_latex(*inner_num);
+                        let inner_den_str = to_latex(*inner_den);
+
+                        // Sub-step 1: Identify the inner fraction structure
+                        sub_steps.push(SubStep {
+                            description: "Identificar la fracción anidada en el denominador"
+                                .to_string(),
+                            before_expr: format!(
+                                "\\frac{{{}}}{{\\text{{...}} + \\frac{{{}}}{{{}}}}}",
+                                num_str, inner_num_str, inner_den_str
+                            ),
+                            after_expr: format!("\\text{{Multiplicar por }} {}", inner_den_str),
+                        });
+
+                        // Sub-step 2: Show the actual rule applied
+                        sub_steps.push(SubStep {
+                            description: format!("Simplificar: 1/(a/b) = b/a"),
+                            before_expr: before_str.clone(),
+                            after_expr: after_str,
+                        });
+                    } else {
+                        // Fallback: single step with real expressions
+                        sub_steps.push(SubStep {
+                            description:
+                                "Simplificar fracción compleja (multiplicar por denominador común)"
+                                    .to_string(),
+                            before_expr: before_str.clone(),
+                            after_expr: after_str,
+                        });
+                    }
+                } else {
+                    // No inner fraction found, single step
+                    sub_steps.push(SubStep {
+                        description: "Simplificar fracción anidada".to_string(),
+                        before_expr: before_str.clone(),
+                        after_expr: after_str,
+                    });
+                }
+            } else {
+                // Not a Div, shouldn't happen but handle gracefully
+                sub_steps.push(SubStep {
+                    description: "Simplificar expresión".to_string(),
+                    before_expr: before_str.clone(),
+                    after_expr: after_str,
+                });
+            }
         }
     }
 
