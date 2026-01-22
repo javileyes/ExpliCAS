@@ -833,6 +833,7 @@
                     result: data.result || '',
                     result_latex: data.result_latex || data.result || '',
                     steps: data.steps || [],
+                    solve_steps: data.solve_steps || [],
                     stats: data.stats || null,
                     timings_us: data.timings_us || null,
                     time_ms: data.time_ms || 0,
@@ -1083,13 +1084,16 @@
             const container = document.getElementById(`solve-steps-${ref}`);
             const btn = container.previousElementSibling;
             const arrow = btn.querySelector('.arrow');
+            const stepCount = container.querySelectorAll('.solve-step-item').length;
 
-            if (container.classList.contains('expanded')) {
-                container.classList.remove('expanded');
+            if (container.classList.contains('visible')) {
+                container.classList.remove('visible');
                 arrow.style.transform = 'rotate(0deg)';
+                btn.innerHTML = `<span class="arrow">▶</span> Show ${stepCount} solving steps`;
             } else {
-                container.classList.add('expanded');
+                container.classList.add('visible');
                 arrow.style.transform = 'rotate(90deg)';
+                btn.innerHTML = `<span class="arrow">▶</span> Hide ${stepCount} solving steps`;
                 MathJax.typesetPromise([container]);
             }
         }
