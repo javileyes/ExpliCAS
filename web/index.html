@@ -1642,10 +1642,15 @@
                 const errorEl = card.querySelector('.error-message');
                 const stepsContainerEl = card.querySelector('.steps-container');
                 const solveStepsContainerEl = card.querySelector('[id^="solve-steps-"]');
+                const varBadgeEl = card.querySelector('.var-badge');
 
-                // Extract numeric reference from "#N" format
-                const refText = refEl?.textContent?.trim() || `#${index + 1}`;
-                const refNum = parseInt(refText.replace('#', '')) || (index + 1);
+                // Check if this is a variable assignment card
+                const isAssignment = card.classList.contains('variable-card');
+                const assignmentName = card.dataset.varName || (varBadgeEl?.textContent?.replace(' :=', '').trim()) || null;
+
+                // Extract numeric reference from "#N" format (only for non-assignment cards)
+                const refText = refEl?.textContent?.trim() || (isAssignment ? `var-${assignmentName}` : `#${index + 1}`);
+                const refNum = isAssignment ? null : (parseInt(refText.replace('#', '')) || (index + 1));
 
                 // Get result from data attributes first (most reliable), then from sessionResults
                 const storedResult = sessionResults[refNum];
@@ -1656,8 +1661,13 @@
                     ref: refText,
                     ref_num: refNum,
                     input: inputEl?.textContent || '',
-                    result_latex: dataLatex || (storedResult?.result_latex) || (storedResult?.result) || '',
-                    result: dataResult || (storedResult?.result) || '',
+                    // For assignments, the "value" is in the input element, not result
+                    result_latex: isAssignment ? '' : (dataLatex || (storedResult?.result_latex) || (storedResult?.result) || ''),
+                    result: isAssignment ? '' : (dataResult || (storedResult?.result) || ''),
+                    // Assignment-specific fields
+                    is_assignment: isAssignment,
+                    assignment_name: assignmentName,
+                    assignment_value: isAssignment ? (inputEl?.textContent || '') : null,
                     // Save steps from sessionResults for proper re-rendering
                     steps: storedResult?.steps || [],
                     solve_steps: storedResult?.solve_steps || [],
@@ -1666,8 +1676,6 @@
                     solve_steps_html: solveStepsContainerEl?.innerHTML || '',
                     poly_output: polyOutputEl?.textContent || null,
                     error: errorEl?.textContent || null,
-                    is_assignment: card.classList.contains('assignment-card'),
-                    assignment_name: card.dataset.assignmentName || null,
                     // Save stats and timings if available
                     stats: storedResult?.stats || null,
                     timings_us: storedResult?.timings_us || null,
@@ -1793,11 +1801,13 @@
                     if (isAssignment && entry.assignment_name) {
                         // Variable assignment card (no #ref)
                         card.id = `expr-var-${entry.assignment_name}`;
+                        // Use assignment_value for the displayed value
+                        const displayValue = entry.assignment_value || entry.input || '';
                         cardHtml = `
                             <div class="expression-header">
                                 <div class="expression-header-left">
                                     <span class="var-badge">${escapeHtml(entry.assignment_name)} :=</span>
-                                    <span class="expression-input">${escapeHtml(resultLatex || entry.input)}</span>
+                                    <span class="expression-input">${escapeHtml(displayValue)}</span>
                                 </div>
                                 <div class="expression-header-right">
                                     <button class="delete-btn" onclick="deleteVariableCard('${escapeHtml(entry.assignment_name)}')" title="Delete variable">🗑️</button>
@@ -1871,6 +1881,10 @@
                             required_display: entry.required_display || [],
                             poly_output: entry.poly_output || null
                         };
+                    } else if (isAssignment && entry.assignment_name) {
+                        // Track variable assignment in sessionVariables for the badge and future exports
+                        const assignedValue = entry.assignment_value || entry.input || '';
+                        sessionVariables[entry.assignment_name] = assignedValue;
                     }
 
                     // Collect for server sync - use parseable result from serverResults if available
