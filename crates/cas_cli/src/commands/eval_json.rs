@@ -998,6 +998,11 @@ fn format_solution_set(ctx: &cas_ast::Context, solution_set: &cas_ast::SolutionS
         SolutionSet::Conditional(cases) => {
             let mut parts = Vec::new();
             for case in cases {
+                // Skip "otherwise" cases that only contain Residual - they don't add useful info
+                if case.when.is_empty() && matches!(&case.then.solutions, SolutionSet::Residual(_))
+                {
+                    continue;
+                }
                 let cond_str = case.when.display_with_context(ctx);
                 // Format inner solutions recursively
                 let inner_str = format_solution_set(ctx, &case.then.solutions);
@@ -1005,6 +1010,17 @@ fn format_solution_set(ctx: &cas_ast::Context, solution_set: &cas_ast::SolutionS
                     parts.push(format!("{} otherwise", inner_str));
                 } else {
                     parts.push(format!("{} if {}", inner_str, cond_str));
+                }
+            }
+            // If all cases were filtered out, return the first non-otherwise case's solution
+            if parts.is_empty() && !cases.is_empty() {
+                // Find the first non-otherwise case
+                for case in cases {
+                    if !case.when.is_empty() {
+                        let inner_str = format_solution_set(ctx, &case.then.solutions);
+                        let cond_str = case.when.display_with_context(ctx);
+                        return format!("{} if {}", inner_str, cond_str);
+                    }
                 }
             }
             parts.join("; ")
@@ -1080,6 +1096,11 @@ fn solution_set_to_latex(ctx: &cas_ast::Context, solution_set: &cas_ast::Solutio
         SolutionSet::Conditional(cases) => {
             let mut latex_parts = Vec::new();
             for case in cases {
+                // Skip "otherwise" cases that only contain Residual - they don't add useful info
+                if case.when.is_empty() && matches!(&case.then.solutions, SolutionSet::Residual(_))
+                {
+                    continue;
+                }
                 let cond_latex = case.when.latex_display_with_context(ctx);
                 // Format inner solutions recursively
                 let inner_latex = solution_set_to_latex(ctx, &case.then.solutions);
@@ -1087,6 +1108,14 @@ fn solution_set_to_latex(ctx: &cas_ast::Context, solution_set: &cas_ast::Solutio
                     latex_parts.push(format!(r"{} & \text{{otherwise}}", inner_latex));
                 } else {
                     latex_parts.push(format!(r"{} & \text{{if }} {}", inner_latex, cond_latex));
+                }
+            }
+            // If only one case remains after filtering, don't use \begin{cases}
+            if latex_parts.len() == 1 {
+                // Extract just the solution part (before the " & \text{if}")
+                let single = &latex_parts[0];
+                if let Some(idx) = single.find(r" & \text{if}") {
+                    return single[..idx].to_string();
                 }
             }
             format!(

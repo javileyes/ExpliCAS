@@ -6375,19 +6375,32 @@ fn display_solution_set(ctx: &cas_ast::Context, set: &cas_ast::SolutionSet) -> S
         cas_ast::SolutionSet::Conditional(cases) => {
             // V2.0 Phase 2C: Pretty-print conditional solutions
             // V2.1: Use "otherwise:" without "if" prefix for natural reading
+            // V2.x: Skip "otherwise" cases that only contain Residual (not useful info)
             let case_strs: Vec<String> = cases
                 .iter()
-                .map(|case| {
+                .filter_map(|case| {
+                    // Skip "otherwise" cases that only contain Residual
+                    if case.when.is_otherwise()
+                        && matches!(&case.then.solutions, cas_ast::SolutionSet::Residual(_))
+                    {
+                        return None;
+                    }
                     let sol_str = display_solution_set(ctx, &case.then.solutions);
                     if case.when.is_otherwise() {
-                        format!("  otherwise: {}", sol_str)
+                        Some(format!("  otherwise: {}", sol_str))
                     } else {
                         let cond_str = case.when.display_with_context(ctx);
-                        format!("  if {}: {}", cond_str, sol_str)
+                        Some(format!("  if {}: {}", cond_str, sol_str))
                     }
                 })
                 .collect();
-            format!("Conditional:\n{}", case_strs.join("\n"))
+            // If only one case remains after filtering, display it more simply
+            if case_strs.len() == 1 {
+                // Extract and format the single case more compactly
+                case_strs[0].trim().to_string()
+            } else {
+                format!("Conditional:\n{}", case_strs.join("\n"))
+            }
         }
     }
 }

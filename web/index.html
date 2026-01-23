@@ -1304,12 +1304,16 @@
             if (emptyState) emptyState.style.display = 'none';
 
             const card = document.createElement('div');
-            card.className = 'expression-card';
+            card.className = 'expression-card error-card';
+            card.id = `expr-${ref}`;
             card.innerHTML = `
                 <div class="expression-header">
-                    <div>
+                    <div class="expression-header-left">
                         <span class="expression-ref">#${ref}</span>
                         <span class="expression-input">${escapeHtml(expr)}</span>
+                    </div>
+                    <div class="expression-header-right">
+                        <button class="delete-btn" onclick="deleteCard('${ref}')" title="Dismiss error">🗑️</button>
                     </div>
                 </div>
                 <div class="expression-body">

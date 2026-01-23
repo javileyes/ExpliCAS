@@ -2980,18 +2980,33 @@ impl<'a> SolveTimelineHtml<'a> {
             SolutionSet::Conditional(cases) => {
                 // V2.0 Phase 2C: Pretty-print conditional solutions as piecewise LaTeX
                 // V2.1: Use "otherwise" without "if" prefix for natural reading
+                // V2.x: Skip "otherwise" cases that only contain Residual (not useful info)
                 let case_strs: Vec<String> = cases
                     .iter()
-                    .map(|case| {
+                    .filter_map(|case| {
+                        // Skip "otherwise" cases that only contain Residual
+                        if case.when.is_otherwise()
+                            && matches!(&case.then.solutions, SolutionSet::Residual(_))
+                        {
+                            return None;
+                        }
                         let sol_latex = self.solution_set_inner_to_latex(&case.then.solutions);
                         if case.when.is_otherwise() {
-                            format!("{} & \\text{{otherwise}}", sol_latex)
+                            Some(format!("{} & \\text{{otherwise}}", sol_latex))
                         } else {
                             let cond_latex = case.when.latex_display_with_context(self.context);
-                            format!("{} & \\text{{if }} {}", sol_latex, cond_latex)
+                            Some(format!("{} & \\text{{if }} {}", sol_latex, cond_latex))
                         }
                     })
                     .collect();
+                // If only one case remains after filtering, render without \begin{cases}
+                if case_strs.len() == 1 {
+                    // Extract just the solution part (before the " & \text{if}")
+                    let single = &case_strs[0];
+                    if let Some(idx) = single.find(r" & \text{if}") {
+                        return single[..idx].to_string();
+                    }
+                }
                 format!(r"\begin{{cases}} {} \end{{cases}}", case_strs.join(r" \\ "))
             }
         }
