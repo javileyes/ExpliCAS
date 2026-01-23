@@ -6,8 +6,16 @@ use cas_ast::{Expr, ExprId};
 use num_traits::{One, Zero};
 use std::cmp::Ordering;
 
+// Phase 6: Migrated to proper module (must be declared before core.rs include)
+mod values_rules;
+pub use values_rules::{
+    CscCotPythagoreanRule, SecTanPythagoreanRule, TanToSinCosRule, TanTripleProductRule,
+    TrigQuotientRule,
+};
+// Re-export helpers for use by included files (core.rs, expansions.rs)
+use values_rules::{has_large_coefficient, is_multiple_angle};
+
 include!("identities/core.rs");
-include!("identities/values.rs");
 
 // Phase 5: Migrated to proper module (must be declared before expansions.rs include)
 mod power_products_rules;

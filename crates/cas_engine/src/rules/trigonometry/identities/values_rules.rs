@@ -1,3 +1,11 @@
+//! Trig values and specialized identity rules.
+
+use crate::define_rule;
+use crate::rule::Rewrite;
+use crate::rules::algebra::helpers::smart_mul;
+use crate::rules::trigonometry::values::detect_special_angle;
+use cas_ast::{Expr, ExprId};
+
 // =============================================================================
 // TRIPLE TANGENT PRODUCT IDENTITY
 // tan(u) · tan(π/3 - u) · tan(π/3 + u) = tan(3u)
@@ -321,7 +329,7 @@ fn is_part_of_tan_triple_product(
 /// Check if an expression is a "multiple angle" pattern: n*x where n is integer > 1.
 /// This is used to gate tan(n*x) → sin/cos expansion, which leads to complexity explosion
 /// via triple-angle formulas.
-fn is_multiple_angle(ctx: &cas_ast::Context, arg: ExprId) -> bool {
+pub fn is_multiple_angle(ctx: &cas_ast::Context, arg: ExprId) -> bool {
     use cas_ast::Expr;
 
     // Pattern: Mul(Number(n), x) or Mul(x, Number(n)) where n is integer > 1
@@ -352,7 +360,7 @@ fn is_multiple_angle(ctx: &cas_ast::Context, arg: ExprId) -> bool {
 /// Check if an expression has a "large coefficient" pattern: n*x where |n| > 2.
 /// This guards against exponential explosion in trig expansions.
 /// sin(16*x) would trigger this, blocking sin(a+b) decomposition.
-fn has_large_coefficient(ctx: &cas_ast::Context, arg: ExprId) -> bool {
+pub fn has_large_coefficient(ctx: &cas_ast::Context, arg: ExprId) -> bool {
     use cas_ast::Expr;
 
     // Pattern: Mul(Number(n), x) or Mul(x, Number(n)) where |n| > 2
@@ -464,7 +472,7 @@ impl crate::rule::Rule for TanToSinCosRule {
                 }
                 // GUARD: Don't expand tan at special angles that have known values
                 // Let EvaluateTrigTableRule handle these instead
-                if super::values::detect_special_angle(ctx, args[0]).is_some() {
+                if detect_special_angle(ctx, args[0]).is_some() {
                     return None;
                 }
             }
@@ -651,4 +659,3 @@ define_rule!(
         None
     }
 );
-
