@@ -1,3 +1,11 @@
+//! Miscellaneous trig identity rules.
+//!
+//! This module contains:
+//! - TrigSumToProductContractionRule: sin(a)+sin(b) → product form
+
+use crate::rule::Rewrite;
+use cas_ast::{Expr, ExprId};
+
 // =============================================================================
 // TrigSumToProductContractionRule: sin(a)+sin(b) → 2*sin((a+b)/2)*cos((a-b)/2)
 // =============================================================================
@@ -197,6 +205,9 @@ mod cot_half_angle_tests {
     use crate::rule::Rule;
     use cas_ast::{Context, DisplayExpr};
     use cas_parser::parse;
+
+    // Import rules from parent module (defined in half_angle_phase.rs)
+    use super::super::{CotHalfAngleDifferenceRule, TrigHiddenCubicIdentityRule};
 
     #[test]
     fn test_cot_half_angle_basic() {

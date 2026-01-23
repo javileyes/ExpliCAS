@@ -24,4 +24,6 @@ pub use tan_half_angle_rules::{
     TanDoubleAngleContractionRule, TrigQuotientToNamedRule,
 };
 
-include!("identities/misc.rs");
+// Phase 3: Migrated to proper module
+mod misc_rules;
+pub use misc_rules::TrigSumToProductContractionRule;
