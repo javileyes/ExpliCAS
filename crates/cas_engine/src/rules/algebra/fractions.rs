@@ -14,9 +14,9 @@ use std::cmp::Ordering;
 
 use super::helpers::*;
 
-include!("fractions/01_core.rs");
-include!("fractions/02_cancel.rs");
-include!("fractions/03_rationalize.rs");
-include!("fractions/04_small_rules.rs");
-include!("fractions/05_more_rules.rs");
-include!("fractions/06_tail.rs");
+include!("fractions/core.rs");
+include!("fractions/cancel.rs");
+include!("fractions/rationalize.rs");
+include!("fractions/small_rules.rs");
+include!("fractions/more_rules.rs");
+include!("fractions/tail.rs");

@@ -16,16 +16,16 @@
 use cas_ast::{Context, Expr, ExprId};
 use num_traits::{One, Signed, ToPrimitive, Zero};
 
-include!("helpers/01_destructure.rs");
-include!("helpers/02_numeric.rs");
-include!("helpers/03_trig_roots_flatten.rs");
-include!("helpers/04_pi.rs");
-include!("helpers/05_predicates.rs");
-include!("helpers/06_solver_domain.rs");
-include!("helpers/07_nf_scoring.rs");
-include!("helpers/08_numeric_eval.rs");
-include!("helpers/09_trig_matchers.rs");
-include!("helpers/10_complexity.rs");
+include!("helpers/destructure.rs");
+include!("helpers/numeric.rs");
+include!("helpers/trig_roots_flatten.rs");
+include!("helpers/pi.rs");
+include!("helpers/predicates.rs");
+include!("helpers/solver_domain.rs");
+include!("helpers/nf_scoring.rs");
+include!("helpers/numeric_eval.rs");
+include!("helpers/trig_matchers.rs");
+include!("helpers/complexity.rs");
 
 #[cfg(test)]
 mod tests {

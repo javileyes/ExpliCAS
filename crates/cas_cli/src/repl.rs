@@ -452,19 +452,18 @@ impl Default for Repl {
 }
 
 // Repl implementation split across multiple files.
-// Since Rust doesn't allow include!() inside impl blocks,
-// each included file must wrap its methods in `impl Repl { ... }`
-include!("repl/impl_01_init_and_loop.rs");
-include!("repl/impl_02_command_dispatch.rs");
-include!("repl/impl_03_help_and_set.rs");
-include!("repl/impl_04_commands_misc.rs");
-include!("repl/impl_05_semantics_and_context.rs");
-include!("repl/impl_06_commands_algebra.rs");
-include!("repl/impl_07_log_weier_solve.rs");
-include!("repl/impl_08_show_steps.rs");
-include!("repl/impl_09_eval.rs");
-include!("repl/impl_10_full_simplify.rs");
-include!("repl/impl_11_rationalize.rs");
-include!("repl/impl_12_limit.rs");
+// Each included file wraps its methods in `impl Repl { ... }`
+include!("repl/init.rs");
+include!("repl/dispatch.rs");
+include!("repl/help.rs");
+include!("repl/commands_misc.rs");
+include!("repl/semantics.rs");
+include!("repl/commands_algebra.rs");
+include!("repl/commands_solve.rs");
+include!("repl/show_steps.rs");
+include!("repl/eval.rs");
+include!("repl/simplify.rs");
+include!("repl/rationalize.rs");
+include!("repl/limit.rs");
 
 include!("repl/free_fns.rs");

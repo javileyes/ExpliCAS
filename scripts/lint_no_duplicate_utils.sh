@@ -54,6 +54,7 @@ echo "  [2/7] Checking flatten_add..."
 FLATTEN_ADD_ALLOWED=(
     "nary.rs"           # Canonical: AddView
     "helpers.rs"        # Legacy canonical for simple cases
+    "trig_roots_flatten.rs"  # Part of helpers.rs via include!()
 )
 
 for file in $(grep -rln "fn flatten_add" "$ROOT_DIR/crates" --include="*.rs" 2>/dev/null || true); do
@@ -87,6 +88,7 @@ FLATTEN_MUL_ALLOWED=(
     "views.rs"          # Canonical: MulChainView
     "helpers.rs"        # Legacy canonical
     "nary.rs"           # Also canonical: MulView
+    "trig_roots_flatten.rs"  # Part of helpers.rs via include!()
 )
 
 for file in $(grep -rln "fn flatten_mul" "$ROOT_DIR/crates" --include="*.rs" 2>/dev/null || true); do
@@ -119,6 +121,8 @@ echo "  [4/7] Checking predicates (is_zero, is_one, is_negative, get_integer)...
 
 PREDICATE_ALLOWED=(
     "helpers.rs"        # Canonical
+    "predicates.rs"     # Part of helpers.rs via include!()
+    "solver_domain.rs"  # Part of helpers.rs via include!()
     "multipoly.rs"      # Struct method (different scope)
     "polynomial.rs"     # Struct method (different scope)
     "unipoly_modp.rs"   # Struct method (different scope)
