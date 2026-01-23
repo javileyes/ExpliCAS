@@ -1,10 +1,4 @@
-use crate::define_rule;
-use crate::helpers::{extract_double_angle_arg, extract_triple_angle_arg, is_pi, is_pi_over_n};
-use crate::rule::Rewrite;
-use crate::rules::algebra::helpers::smart_mul;
-use cas_ast::{Expr, ExprId};
-use num_traits::{One, Zero};
-use std::cmp::Ordering;
+// All submodules manage their own imports - no shared imports needed at parent level
 
 // Phase 6: Migrated to proper module (must be declared before core.rs include)
 mod values_rules;
