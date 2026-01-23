@@ -112,6 +112,21 @@ impl Repl {
         repl
     }
 
+    /// Print a ReplReply to stdout/stderr.
+    /// This is the single point where ReplCore output becomes visible.
+    pub fn print_reply(&self, reply: ReplReply) {
+        for msg in reply {
+            match msg {
+                ReplMsg::Output(s) => println!("{s}"),
+                ReplMsg::Info(s) => println!("{s}"),
+                ReplMsg::Warn(s) => println!("⚠ {s}"),
+                ReplMsg::Error(s) => eprintln!("✖ {s}"),
+                ReplMsg::Steps(s) => println!("{s}"),
+                ReplMsg::Debug(s) => println!("{s}"),
+            }
+        }
+    }
+
     /// Simplify expression using current pipeline options
     #[allow(dead_code)]
     pub(crate) fn do_simplify(

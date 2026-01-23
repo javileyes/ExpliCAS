@@ -481,16 +481,22 @@ impl Default for Repl {
 mod commands_algebra;
 mod commands_misc;
 mod commands_solve;
+mod core;
 mod dispatch;
 mod eval;
 mod free_fns;
 mod help;
 mod init;
 mod limit;
+pub mod output;
 mod rationalize;
 mod semantics;
 mod show_steps;
 mod simplify;
+
+// Re-export core types for external use
+pub use core::ReplCore;
+pub use output::{ReplMsg, ReplReply, ReplReplyExt};
 
 // These were historically plain module-level helpers (when using include!()).
 // Re-export them into this module scope so existing code can keep calling them
