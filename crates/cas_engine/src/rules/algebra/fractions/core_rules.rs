@@ -3,29 +3,19 @@
 //! This module contains the main simplification and cancellation rules,
 //! along with helper functions for polynomial comparison and factor collection.
 
-use crate::assumptions::AssumptionKey;
 use crate::build::mul2_raw;
 use crate::define_rule;
-use crate::domain::{can_cancel_factor_with_hint, DomainMode};
-use crate::helpers::{as_add, as_div, as_i64, as_mul, as_number, as_pow, as_sub, prove_nonzero};
-use crate::implicit_domain::ImplicitCondition;
 use crate::multipoly::{
     gcd_multivar_layer2, gcd_multivar_layer25, multipoly_from_expr, multipoly_to_expr, GcdBudget,
     GcdLayer, Layer25Budget, MultiPoly, PolyBudget,
 };
-use crate::ordering::compare_expr;
-use crate::parent_context::ParentContext;
-use crate::phase::PhaseMask;
 use crate::polynomial::Polynomial;
 use crate::rule::{ChainedRewrite, Rewrite};
 use crate::rules::algebra::helpers::{
     collect_denominators, collect_variables, count_nodes_of_type, distribute, gcd_rational,
-    smart_mul,
 };
-use crate::solve_safety::SolveSafety;
-use cas_ast::{count_nodes, Context, DisplayExpr, Expr, ExprId};
-use num_rational::BigRational;
-use num_traits::{One, Signed, ToPrimitive, Zero};
+use cas_ast::{Context, DisplayExpr, Expr, ExprId};
+use num_traits::{One, Zero};
 use std::cmp::Ordering;
 
 // =============================================================================

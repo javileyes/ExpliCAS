@@ -5,17 +5,13 @@
 
 use crate::build::mul2_raw;
 use crate::define_rule;
-use crate::expand;
-use crate::ordering;
 use crate::phase::PhaseMask;
 use crate::polynomial::Polynomial;
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::{are_denominators_opposite, collect_variables};
 use cas_ast::{count_nodes, Context, Expr, ExprId};
-use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
 use std::cmp::Ordering;
-use std::collections::HashSet;
 
 // Import helpers from sibling core_rules module
 use super::core_rules::{
