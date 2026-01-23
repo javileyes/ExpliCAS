@@ -392,6 +392,135 @@ pub fn lookup_atan(value: ValueSpec) -> Option<AngleSpec> {
 }
 
 // =============================================================================
+// Angle Normalizer - Reduces any angle to first quadrant + sign info
+// =============================================================================
+
+/// Normalized angle: base angle in [0, π/2] plus transformation info.
+///
+/// This allows lookup in small first-quadrant tables and then
+/// applying adjustments based on the original quadrant.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NormAngle {
+    /// Base angle in [0, π/2] (first quadrant)
+    pub base: AngleSpec,
+    /// Sign for sin value: +1 or -1
+    pub sin_sign: i8,
+    /// Sign for cos value: +1 or -1
+    pub cos_sign: i8,
+    /// If true, swap sin↔cos (cofunction identity)
+    pub swap_sin_cos: bool,
+}
+
+impl NormAngle {
+    /// Apply normalization to get sin value from base lookup
+    pub fn apply_sin(&self, base_val: ValueSpec) -> ValueSpec {
+        let val = if self.swap_sin_cos {
+            // Use cos of base angle (cofunction identity)
+            lookup_cos(self.base).unwrap_or(base_val)
+        } else {
+            base_val
+        };
+        if self.sin_sign < 0 {
+            val.negate()
+        } else {
+            val
+        }
+    }
+
+    /// Apply normalization to get cos value from base lookup
+    pub fn apply_cos(&self, base_val: ValueSpec) -> ValueSpec {
+        let val = if self.swap_sin_cos {
+            // Use sin of base angle (cofunction identity)
+            lookup_sin(self.base).unwrap_or(base_val)
+        } else {
+            base_val
+        };
+        if self.cos_sign < 0 {
+            val.negate()
+        } else {
+            val
+        }
+    }
+
+    /// Apply normalization to get tan value  
+    /// tan sign = sin_sign * cos_sign
+    pub fn apply_tan(&self, base_val: ValueSpec) -> ValueSpec {
+        let tan_sign = self.sin_sign * self.cos_sign;
+        if tan_sign < 0 {
+            base_val.negate()
+        } else {
+            base_val
+        }
+    }
+}
+
+/// Normalize an angle to first quadrant [0, π/2] with sign information.
+///
+/// Returns `NormAngle` containing:
+/// - `base`: the reference angle in [0, π/2]
+/// - `sin_sign`, `cos_sign`: signs to apply after lookup
+/// - `swap_sin_cos`: whether to use cofunction identity
+///
+/// # Algorithm
+/// 1. Reduce mod 2π to get angle in [0, 2π)
+/// 2. Determine quadrant and apply identities:
+///    - Q1 [0, π/2]: no change
+///    - Q2 [π/2, π]: sin(π-x) = sin(x), cos(π-x) = -cos(x)
+///    - Q3 [π, 3π/2]: sin(π+x) = -sin(x), cos(π+x) = -cos(x)
+///    - Q4 [3π/2, 2π]: sin(2π-x) = -sin(x), cos(2π-x) = cos(x)
+pub fn normalize_angle(angle: AngleSpec) -> NormAngle {
+    // First reduce to [0, 2π)
+    let reduced = angle.reduce_mod_2pi();
+
+    // Compute quadrant boundaries as AngleSpec
+    let pi_2 = AngleSpec::PI_2; // π/2
+    let pi = AngleSpec::PI; // π
+    let pi_3_2 = AngleSpec::new(3, 2); // 3π/2
+
+    // Determine quadrant and compute base + signs
+    if reduced.cmp_value(&pi_2) != Ordering::Greater {
+        // Q1: [0, π/2]
+        NormAngle {
+            base: reduced,
+            sin_sign: 1,
+            cos_sign: 1,
+            swap_sin_cos: false,
+        }
+    } else if reduced.cmp_value(&pi) != Ordering::Greater {
+        // Q2: (π/2, π]
+        // sin(π - x) = sin(x), cos(π - x) = -cos(x)
+        let base = pi.sub(reduced);
+        NormAngle {
+            base,
+            sin_sign: 1,
+            cos_sign: -1,
+            swap_sin_cos: false,
+        }
+    } else if reduced.cmp_value(&pi_3_2) != Ordering::Greater {
+        // Q3: (π, 3π/2]
+        // sin(x) = -sin(x - π), cos(x) = -cos(x - π)
+        let base = reduced.sub(pi);
+        NormAngle {
+            base,
+            sin_sign: -1,
+            cos_sign: -1,
+            swap_sin_cos: false,
+        }
+    } else {
+        // Q4: (3π/2, 2π)
+        // sin(2π - x) = -sin(x), cos(2π - x) = cos(x)
+        let two_pi = AngleSpec::TWO_PI;
+        let base = two_pi.sub(reduced);
+        NormAngle {
+            base,
+            sin_sign: -1,
+            cos_sign: 1,
+            swap_sin_cos: false,
+        }
+    }
+}
+
+// =============================================================================
 // Tests
 // =============================================================================
 
@@ -491,5 +620,54 @@ mod tests {
 
         // Undefined -> None
         assert!(ValueSpec::Undefined.to_expr(&mut ctx).is_none());
+    }
+
+    #[test]
+    fn test_normalize_angle_q1() {
+        // Q1: π/6 stays as is
+        let norm = normalize_angle(AngleSpec::PI_6);
+        assert_eq!(norm.base, AngleSpec::PI_6);
+        assert_eq!(norm.sin_sign, 1);
+        assert_eq!(norm.cos_sign, 1);
+    }
+
+    #[test]
+    fn test_normalize_angle_q2() {
+        // Q2: 2π/3 -> base = π - 2π/3 = π/3
+        let angle = AngleSpec::new(2, 3); // 2π/3
+        let norm = normalize_angle(angle);
+        assert_eq!(norm.base, AngleSpec::PI_3);
+        assert_eq!(norm.sin_sign, 1); // sin positive in Q2
+        assert_eq!(norm.cos_sign, -1); // cos negative in Q2
+    }
+
+    #[test]
+    fn test_normalize_angle_q3() {
+        // Q3: 7π/6 -> base = 7π/6 - π = π/6
+        let angle = AngleSpec::new(7, 6); // 7π/6
+        let norm = normalize_angle(angle);
+        assert_eq!(norm.base, AngleSpec::PI_6);
+        assert_eq!(norm.sin_sign, -1); // sin negative in Q3
+        assert_eq!(norm.cos_sign, -1); // cos negative in Q3
+    }
+
+    #[test]
+    fn test_normalize_angle_q4() {
+        // Q4: 11π/6 -> base = 2π - 11π/6 = π/6
+        let angle = AngleSpec::new(11, 6); // 11π/6
+        let norm = normalize_angle(angle);
+        assert_eq!(norm.base, AngleSpec::PI_6);
+        assert_eq!(norm.sin_sign, -1); // sin negative in Q4
+        assert_eq!(norm.cos_sign, 1); // cos positive in Q4
+    }
+
+    #[test]
+    fn test_normalize_angle_negative() {
+        // -π/6 mod 2π = 11π/6 -> Q4
+        let angle = AngleSpec::new(-1, 6);
+        let norm = normalize_angle(angle);
+        assert_eq!(norm.base, AngleSpec::PI_6);
+        assert_eq!(norm.sin_sign, -1);
+        assert_eq!(norm.cos_sign, 1);
     }
 }
