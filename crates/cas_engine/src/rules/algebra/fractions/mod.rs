@@ -28,14 +28,24 @@ use super::helpers::*;
 // are converted to proper modules in Phase 2+
 mod helpers;
 
-// Submodules - temporarily using include!() for incremental migration
+// Core fraction rules - kept as include!() due to complex internal dependencies
+// These files share many helper functions and have tight coupling
 include!("core.rs");
 include!("cancel.rs");
-include!("rationalize.rs");
-include!("more_rules.rs");
 
-// Phase 2: Properly modularized submodules
+// Properly modularized submodules (Phases 2-4)
+mod more_rules;
+mod rationalize;
 mod small_rules;
 mod tail;
+
+// Re-export rules from modularized submodules
+pub use more_rules::{
+    AbsorbNegationIntoDifferenceRule, CanonicalDifferenceProductRule, RationalizeBinomialSurdRule,
+};
+pub use rationalize::{
+    DivAddCommonFactorFromDenRule, DivAddSymmetricFactorRule, FactorBasedLCDRule,
+    PullConstantFromFractionRule, QuotientOfPowersRule,
+};
 pub use small_rules::RationalizeSingleSurdRule;
 pub use tail::CombineSameDenominatorFractionsRule;

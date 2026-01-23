@@ -1,3 +1,12 @@
+use crate::build::mul2_raw;
+use crate::define_rule;
+use crate::rule::Rewrite;
+use cas_ast::{Context, Expr, ExprId};
+use num_traits::{One, Zero};
+
+// Use parent module's helpers
+use super::{build_mul_from_factors_a1, collect_mul_factors_int_pow};
+
 // =============================================================================
 // DivAddCommonFactorFromDenRule: Factor out MULTI-FACTOR from Add numerator
 // when those factors appear in the denominator, enabling cancellation.

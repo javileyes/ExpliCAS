@@ -1,3 +1,15 @@
+//! Binomial conjugate rationalization and difference canonicalization rules.
+
+use crate::build::mul2_raw;
+use crate::define_rule;
+use crate::phase::PhaseMask;
+use crate::rule::Rewrite;
+use cas_ast::{count_nodes, Context, DisplayExpr, Expr, ExprId};
+use num_traits::Signed;
+use std::cmp::Ordering;
+
+use super::helpers::collect_mul_factors;
+
 // ========== Binomial Conjugate Rationalization (Level 1) ==========
 // Transforms: num / (A + B√n) → num * (A - B√n) / (A² - B²·n)
 // Only applies when:
@@ -541,4 +553,3 @@ define_rule!(
         Some(Rewrite::new(new_expr).desc("Canonicalize same-tail difference product"))
     }
 );
-
