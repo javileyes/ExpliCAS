@@ -1,3 +1,17 @@
+//! Angle expansion and product-to-sum identities.
+//!
+//! This module contains rules for:
+//! - Product-to-sum: 2·sin(a)·cos(b) → sin(a+b) + sin(a-b)
+//! - Trig phase shifts: sin(x + π/2) → cos(x)
+
+use crate::define_rule;
+use crate::rule::Rewrite;
+use crate::rules::algebra::helpers::smart_mul;
+use cas_ast::{Expr, ExprId};
+
+// Import from parent (identities.rs) - function defined in half_angle_phase.rs include
+use super::extract_phase_shift;
+
 // =============================================================================
 // PRODUCT-TO-SUM IDENTITIES
 // =============================================================================
@@ -190,4 +204,3 @@ define_rule!(TrigPhaseShiftRule, "Trig Phase Shift", |ctx, expr| {
 
     None
 });
-

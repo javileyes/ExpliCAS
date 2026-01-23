@@ -11,7 +11,10 @@ include!("identities/values.rs");
 include!("identities/power_products.rs");
 include!("identities/expansions.rs");
 include!("identities/sum_to_product.rs");
-include!("identities/angle_expansion.rs");
+
+// Phase 1: Migrated to proper module
+mod angle_expansion_rules;
+pub use angle_expansion_rules::{ProductToSumRule, TrigPhaseShiftRule};
 include!("identities/half_angle_phase.rs");
 include!("identities/tan_half_angle.rs");
 include!("identities/misc.rs");
