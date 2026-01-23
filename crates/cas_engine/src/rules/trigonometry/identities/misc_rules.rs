@@ -201,13 +201,12 @@ fn build_coef_times_base(
 
 #[cfg(test)]
 mod cot_half_angle_tests {
-    use super::*;
     use crate::rule::Rule;
+    use crate::rules::trigonometry::identities::{
+        CotHalfAngleDifferenceRule, TrigHiddenCubicIdentityRule,
+    };
     use cas_ast::{Context, DisplayExpr};
     use cas_parser::parse;
-
-    // Import rules from parent module (defined in half_angle_phase.rs)
-    use super::super::{CotHalfAngleDifferenceRule, TrigHiddenCubicIdentityRule};
 
     #[test]
     fn test_cot_half_angle_basic() {
