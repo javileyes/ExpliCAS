@@ -1,5 +1,7 @@
+use super::*;
+
 impl Repl {
-    fn parse_semantics_set(&mut self, args: &[&str]) {
+    pub(crate) fn parse_semantics_set(&mut self, args: &[&str]) {
         if args.is_empty() {
             println!("Usage: semantics set <axis> <value>");
             println!("  or:  semantics set <axis>=<value> ...");
@@ -57,7 +59,7 @@ impl Repl {
         self.print_semantics();
     }
 
-    fn set_semantic_axis(&mut self, axis: &str, value: &str) -> bool {
+    pub(crate) fn set_semantic_axis(&mut self, axis: &str, value: &str) -> bool {
         use cas_engine::semantics::{BranchPolicy, InverseTrigPolicy, ValueDomain};
         use cas_engine::DomainMode;
 
@@ -229,7 +231,7 @@ impl Repl {
     }
 
     /// Handle "context" command - show or switch context mode
-    fn handle_context_command(&mut self, line: &str) {
+    pub(crate) fn handle_context_command(&mut self, line: &str) {
         use cas_engine::options::ContextMode;
 
         let args: Vec<&str> = line.split_whitespace().collect();
@@ -281,7 +283,7 @@ impl Repl {
     /// Handle "steps" command - show or switch steps collection mode AND display verbosity
     /// Collection: on, off, compact (controls StepsMode in engine)
     /// Display: verbose, succinct, normal, none (controls Verbosity in CLI)
-    fn handle_steps_command(&mut self, line: &str) {
+    pub(crate) fn handle_steps_command(&mut self, line: &str) {
         use cas_engine::options::StepsMode;
 
         let args: Vec<&str> = line.split_whitespace().collect();
@@ -365,7 +367,7 @@ impl Repl {
     }
 
     /// Handle "autoexpand" command - show or switch auto-expand policy
-    fn handle_autoexpand_command(&mut self, line: &str) {
+    pub(crate) fn handle_autoexpand_command(&mut self, line: &str) {
         use cas_engine::phase::ExpandPolicy;
 
         let args: Vec<&str> = line.split_whitespace().collect();

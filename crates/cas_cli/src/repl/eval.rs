@@ -1,5 +1,7 @@
+use super::*;
+
 impl Repl {
-    fn handle_eval(&mut self, line: &str) {
+    pub(crate) fn handle_eval(&mut self, line: &str) {
         use cas_ast::root_style::ParseStyleSignals;
 
         use cas_engine::eval::{EvalAction, EvalRequest, EvalResult};

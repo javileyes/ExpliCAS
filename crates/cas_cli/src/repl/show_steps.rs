@@ -1,5 +1,7 @@
+use super::*;
+
 impl Repl {
-    fn show_simplification_steps(
+    pub(crate) fn show_simplification_steps(
         &mut self,
         expr: cas_ast::ExprId,
         steps: &[cas_engine::Step],
@@ -475,5 +477,4 @@ impl Repl {
             }
         }
     }
-
 }

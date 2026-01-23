@@ -1,5 +1,7 @@
+use super::*;
+
 impl Repl {
-    fn expand_log_recursive(&mut self, expr: cas_ast::ExprId) -> cas_ast::ExprId {
+    pub(crate) fn expand_log_recursive(&mut self, expr: cas_ast::ExprId) -> cas_ast::ExprId {
         use cas_ast::Expr;
         use cas_engine::parent_context::ParentContext;
         use cas_engine::rule::Rule;
@@ -63,7 +65,7 @@ impl Repl {
 
     /// Handle the 'weierstrass' command for applying Weierstrass substitution
     /// Transforms sin(x), cos(x), tan(x) into rational expressions in t = tan(x/2)
-    fn handle_weierstrass(&mut self, line: &str) {
+    pub(crate) fn handle_weierstrass(&mut self, line: &str) {
         let rest = line[12..].trim(); // Remove "weierstrass "
 
         if rest.is_empty() {
@@ -116,7 +118,7 @@ impl Repl {
     }
 
     /// Apply Weierstrass substitution recursively to all trig functions
-    fn apply_weierstrass_recursive(&mut self, expr: cas_ast::ExprId) -> cas_ast::ExprId {
+    pub(crate) fn apply_weierstrass_recursive(&mut self, expr: cas_ast::ExprId) -> cas_ast::ExprId {
         use cas_ast::Expr;
 
         match self.engine.simplifier.context.get(expr).clone() {
@@ -248,7 +250,7 @@ impl Repl {
         }
     }
 
-    fn handle_timeline_solve(&mut self, rest: &str) {
+    pub(crate) fn handle_timeline_solve(&mut self, rest: &str) {
         // Parse equation and variable: "x + 2 = 5, x" or "x + 2 = 5 x"
         let (eq_str, var) = if let Some((e, v)) = rsplit_ignoring_parens(rest, ',') {
             (e.trim(), v.trim())
@@ -344,7 +346,7 @@ impl Repl {
         }
     }
 
-    fn handle_solve(&mut self, line: &str) {
+    pub(crate) fn handle_solve(&mut self, line: &str) {
         use cas_ast::{DisplayExpr, Expr};
         use cas_engine::eval::{EvalAction, EvalRequest, EvalResult};
         use cas_engine::EntryKind;

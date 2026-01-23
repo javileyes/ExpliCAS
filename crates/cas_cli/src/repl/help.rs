@@ -1,5 +1,7 @@
+use super::*;
+
 impl Repl {
-    fn handle_set_command(&mut self, line: &str) {
+    pub(crate) fn handle_set_command(&mut self, line: &str) {
         let parts: Vec<&str> = line.split_whitespace().collect();
 
         // `set` or `set show` → show all settings
@@ -222,7 +224,7 @@ impl Repl {
         }
     }
 
-    fn print_set_help(&self) {
+    pub(crate) fn print_set_help(&self) {
         println!("Pipeline settings:");
         println!("  set transform <on|off>         Enable/disable distribution & expansion");
         println!("  set rationalize <on|off|0|1|1.5>  Set rationalization level");
@@ -285,7 +287,7 @@ impl Repl {
         println!("  debug: {}", if self.debug_mode { "on" } else { "off" });
     }
 
-    fn handle_help(&self, line: &str) {
+    pub(crate) fn handle_help(&self, line: &str) {
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() < 2 {
             self.print_general_help();
@@ -686,7 +688,7 @@ impl Repl {
         }
     }
 
-    fn print_general_help(&self) {
+    pub(crate) fn print_general_help(&self) {
         println!("Rust CAS Commands:");
         println!();
 
@@ -774,5 +776,4 @@ impl Repl {
 
         println!("Type 'help <command>' for more details on a specific command.");
     }
-
 }

@@ -1,5 +1,7 @@
+use super::*;
+
 impl Repl {
-    fn handle_limit(&mut self, line: &str) {
+    pub(crate) fn handle_limit(&mut self, line: &str) {
         use cas_engine::limits::{limit, Approach, LimitOptions};
         use cas_engine::Budget;
 

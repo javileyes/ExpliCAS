@@ -1,5 +1,7 @@
+use super::*;
+
 impl Repl {
-    fn handle_rationalize(&mut self, line: &str) {
+    pub(crate) fn handle_rationalize(&mut self, line: &str) {
         use cas_engine::rationalize::{
             rationalize_denominator, RationalizeConfig, RationalizeResult,
         };

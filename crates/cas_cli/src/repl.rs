@@ -456,40 +456,44 @@ impl Default for Repl {
 }
 
 // =============================================================================
-// Repl implementation - split across multiple files for maintainability
+// Repl implementation - split across modules for maintainability
 // =============================================================================
-// Using include!() is the idiomatic pattern for splitting `impl` blocks:
-// - Each file contains `impl Repl { ... }` methods
-// - All files share the imports declared above in this file
-// - This is different from module splitting (which works for independent types)
+// We intentionally keep Repl's implementation split by concern, but *without*
+// include!(), so the compiler can track boundaries and tooling/navigation works
+// better. Each file defines `impl Repl { ... }` for its feature area.
 //
 // File contents:
-//   init.rs           - Constructor and configuration sync
-//   dispatch.rs       - Command dispatch and routing
-//   help.rs           - Help system and documentation
-//   commands_misc.rs  - Miscellaneous commands (set, show, debug, etc.)
-//   semantics.rs      - Semantic analysis commands
+//   init.rs             - Constructor and configuration sync
+//   dispatch.rs         - Command dispatch and routing
+//   help.rs             - Help system and documentation
+//   commands_misc.rs    - Miscellaneous commands (set, show, debug, etc.)
+//   semantics.rs        - Semantic analysis commands
 //   commands_algebra.rs - Algebra commands (factor, expand, etc.)
-//   commands_solve.rs  - Solve command and equation handling
-//   show_steps.rs     - Step-by-step output formatting
-//   eval.rs           - Expression evaluation
-//   simplify.rs       - Simplification pipeline
-//   rationalize.rs    - Rationalization commands
-//   limit.rs          - Limit computation
-//   free_fns.rs       - Free functions (format helpers, etc.)
+//   commands_solve.rs   - Solve command and equation handling
+//   show_steps.rs       - Step-by-step output formatting
+//   eval.rs             - Expression evaluation
+//   simplify.rs         - Simplification pipeline
+//   rationalize.rs      - Rationalization commands
+//   limit.rs            - Limit computation
+//   free_fns.rs         - Free functions (format helpers, etc.)
 // =============================================================================
 
-include!("repl/init.rs");
-include!("repl/dispatch.rs");
-include!("repl/help.rs");
-include!("repl/commands_misc.rs");
-include!("repl/semantics.rs");
-include!("repl/commands_algebra.rs");
-include!("repl/commands_solve.rs");
-include!("repl/show_steps.rs");
-include!("repl/eval.rs");
-include!("repl/simplify.rs");
-include!("repl/rationalize.rs");
-include!("repl/limit.rs");
+mod commands_algebra;
+mod commands_misc;
+mod commands_solve;
+mod dispatch;
+mod eval;
+mod free_fns;
+mod help;
+mod init;
+mod limit;
+mod rationalize;
+mod semantics;
+mod show_steps;
+mod simplify;
 
-include!("repl/free_fns.rs");
+// These were historically plain module-level helpers (when using include!()).
+// Re-export them into this module scope so existing code can keep calling them
+// directly (e.g. `display_solution_set(...)`) without `free_fns::` prefixes.
+#[allow(unused_imports)]
+use free_fns::*;

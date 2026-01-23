@@ -1,5 +1,7 @@
+use super::*;
+
 impl Repl {
-    fn handle_equiv(&mut self, line: &str) {
+    pub(crate) fn handle_equiv(&mut self, line: &str) {
         use cas_ast::Expr;
         use cas_parser::Statement;
 
@@ -65,7 +67,7 @@ impl Repl {
         }
     }
 
-    fn handle_subst(&mut self, line: &str) {
+    pub(crate) fn handle_subst(&mut self, line: &str) {
         // Format: subst <expr>, <target>, <replacement>
         // Examples:
         //   subst x^4 + x^2 + 1, x^2, y   → y² + y + 1 (power-aware)
@@ -185,7 +187,7 @@ impl Repl {
         );
     }
 
-    fn handle_timeline(&mut self, line: &str) {
+    pub(crate) fn handle_timeline(&mut self, line: &str) {
         let rest = line[9..].trim();
 
         // Check if the user wants to use "solve" within timeline
@@ -334,7 +336,7 @@ impl Repl {
         }
     }
 
-    fn handle_visualize(&mut self, line: &str) {
+    pub(crate) fn handle_visualize(&mut self, line: &str) {
         let rest = line
             .strip_prefix("visualize ")
             .or_else(|| line.strip_prefix("viz "))
@@ -362,7 +364,7 @@ impl Repl {
         }
     }
 
-    fn handle_explain(&mut self, line: &str) {
+    pub(crate) fn handle_explain(&mut self, line: &str) {
         let rest = line[8..].trim(); // Remove "explain "
 
         // Parse the expression
@@ -428,7 +430,7 @@ impl Repl {
     // ========== SESSION ENVIRONMENT HANDLERS ==========
 
     /// Handle "let <name> = <expr>" (eager) or "let <name> := <expr>" (lazy) command
-    fn handle_let_command(&mut self, rest: &str) {
+    pub(crate) fn handle_let_command(&mut self, rest: &str) {
         // Detect := (lazy) before = (eager) - order matters!
         if let Some(idx) = rest.find(":=") {
             let name = rest[..idx].trim();
@@ -448,7 +450,7 @@ impl Repl {
     /// Handle variable assignment (from "let" or ":=")
     /// - eager=false (=): evaluate then store (unwrap __hold)
     /// - eager=true (:=): store formula without evaluating
-    fn handle_assignment(&mut self, name: &str, expr_str: &str, lazy: bool) {
+    pub(crate) fn handle_assignment(&mut self, name: &str, expr_str: &str, lazy: bool) {
         // Validate name
         if name.is_empty() {
             println!("Error: Variable name cannot be empty");
@@ -526,7 +528,7 @@ impl Repl {
     }
 
     /// Handle "vars" command - list all variable bindings
-    fn handle_vars_command(&self) {
+    pub(crate) fn handle_vars_command(&self) {
         let bindings = self.state.env.list();
         if bindings.is_empty() {
             println!("No variables defined.");
@@ -543,7 +545,7 @@ impl Repl {
     }
 
     /// Handle "clear" or "clear <names>" command
-    fn handle_clear_command(&mut self, line: &str) {
+    pub(crate) fn handle_clear_command(&mut self, line: &str) {
         if line == "clear" {
             // Clear all
             let count = self.state.env.len();
@@ -571,7 +573,7 @@ impl Repl {
     }
 
     /// Handle "reset" command - reset entire session
-    fn handle_reset_command(&mut self) {
+    pub(crate) fn handle_reset_command(&mut self) {
         // Clear session state (history + env)
         self.state.clear();
 
@@ -623,7 +625,7 @@ impl Repl {
     }
 
     /// Handle "reset full" command - reset session AND clear profile cache
-    fn handle_reset_full_command(&mut self) {
+    pub(crate) fn handle_reset_full_command(&mut self) {
         // First do normal reset
         self.handle_reset_command();
 
@@ -634,7 +636,7 @@ impl Repl {
     }
 
     /// Handle "cache" command - show status or clear cache
-    fn handle_cache_command(&mut self, line: &str) {
+    pub(crate) fn handle_cache_command(&mut self, line: &str) {
         let args: Vec<&str> = line.split_whitespace().collect();
 
         match args.get(1).copied() {
@@ -660,7 +662,7 @@ impl Repl {
     }
 
     /// Handle "semantics" command - unified control for semantic axes
-    fn handle_semantics(&mut self, line: &str) {
+    pub(crate) fn handle_semantics(&mut self, line: &str) {
         let args: Vec<&str> = line.split_whitespace().collect();
 
         match args.get(1) {
@@ -714,7 +716,7 @@ impl Repl {
         }
     }
 
-    fn print_semantics(&self) {
+    pub(crate) fn print_semantics(&self) {
         use cas_engine::semantics::{BranchPolicy, InverseTrigPolicy, ValueDomain};
         use cas_engine::DomainMode;
 
@@ -795,7 +797,7 @@ impl Repl {
     }
 
     /// Print status for a single semantic axis with current value and available options
-    fn print_axis_status(&self, axis: &str) {
+    pub(crate) fn print_axis_status(&self, axis: &str) {
         use cas_engine::semantics::{BranchPolicy, InverseTrigPolicy, ValueDomain};
         use cas_engine::DomainMode;
 
@@ -907,7 +909,7 @@ impl Repl {
         }
     }
 
-    fn print_semantics_help(&self) {
+    pub(crate) fn print_semantics_help(&self) {
         println!("Semantics: Control evaluation semantics");
         println!();
         println!("Usage:");
@@ -958,7 +960,7 @@ impl Repl {
     }
 
     /// Handle "semantics preset" subcommand
-    fn handle_preset(&mut self, args: &[&str]) {
+    pub(crate) fn handle_preset(&mut self, args: &[&str]) {
         use cas_engine::const_fold::ConstFoldMode;
         use cas_engine::semantics::{BranchPolicy, InverseTrigPolicy, ValueDomain};
         use cas_engine::DomainMode;

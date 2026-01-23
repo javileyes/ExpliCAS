@@ -1,3 +1,5 @@
+use super::*;
+
 impl Repl {
     pub fn new() -> Self {
         let config = CasConfig::load();
@@ -112,7 +114,10 @@ impl Repl {
 
     /// Simplify expression using current pipeline options
     #[allow(dead_code)]
-    fn do_simplify(&mut self, expr: cas_ast::ExprId) -> (cas_ast::ExprId, Vec<cas_engine::Step>) {
+    pub(crate) fn do_simplify(
+        &mut self,
+        expr: cas_ast::ExprId,
+    ) -> (cas_ast::ExprId, Vec<cas_engine::Step>) {
         // Use state.options.to_simplify_options() to get correct expand_policy, context_mode, etc.
         // (self.simplify_options is legacy and doesn't sync expand_policy)
         let mut opts = self.state.options.to_simplify_options();
@@ -187,7 +192,7 @@ impl Repl {
 
     /// Print pipeline statistics for diagnostics
     #[allow(dead_code)]
-    fn print_pipeline_stats(&self, stats: &cas_engine::PipelineStats) {
+    pub(crate) fn print_pipeline_stats(&self, stats: &cas_engine::PipelineStats) {
         println!();
         println!("──── Pipeline Diagnostics ────");
         println!(
@@ -284,7 +289,7 @@ impl Repl {
         println!("───────────────────────────────");
     }
 
-    fn sync_config_to_simplifier(&mut self) {
+    pub(crate) fn sync_config_to_simplifier(&mut self) {
         let config = &self.config;
 
         // Helper to toggle rule
@@ -335,7 +340,7 @@ impl Repl {
 
     /// Build the REPL prompt with mode indicators.
     /// Only shows indicators for non-default modes to keep prompt clean.
-    fn build_prompt(&self) -> String {
+    pub(crate) fn build_prompt(&self) -> String {
         use cas_engine::options::{BranchMode, ComplexMode, ContextMode, StepsMode};
 
         let mut indicators = Vec::new();
@@ -457,7 +462,7 @@ impl Repl {
     /// Examples:
     ///   simplify(...) -> simplify x^2 + 1
     ///   solve(...) -> solve x + 2 = 5, x
-    fn preprocess_function_syntax(&self, line: &str) -> String {
+    pub(crate) fn preprocess_function_syntax(&self, line: &str) -> String {
         let line = line.trim();
 
         // Check for simplify(...)
@@ -475,5 +480,4 @@ impl Repl {
         // Return unchanged
         line.to_string()
     }
-
 }

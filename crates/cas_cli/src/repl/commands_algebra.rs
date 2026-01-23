@@ -1,5 +1,7 @@
+use super::*;
+
 impl Repl {
-    fn handle_budget_command(&mut self, line: &str) {
+    pub(crate) fn handle_budget_command(&mut self, line: &str) {
         let args: Vec<&str> = line.split_whitespace().collect();
 
         match args.get(1) {
@@ -37,7 +39,7 @@ impl Repl {
     }
 
     /// Handle "history" or "list" command - show session history
-    fn handle_history_command(&self) {
+    pub(crate) fn handle_history_command(&self) {
         let entries = self.state.store.list();
         if entries.is_empty() {
             println!("No entries in session history.");
@@ -80,7 +82,7 @@ impl Repl {
     }
 
     /// Handle "show #id" command - show details of a specific entry
-    fn handle_show_command(&mut self, line: &str) {
+    pub(crate) fn handle_show_command(&mut self, line: &str) {
         let input = line.trim().trim_start_matches('#');
         match input.parse::<u64>() {
             Ok(id) => {
@@ -224,7 +226,7 @@ impl Repl {
     }
 
     /// Handle "del #id [#id...]" command - delete session entries
-    fn handle_del_command(&mut self, line: &str) {
+    pub(crate) fn handle_del_command(&mut self, line: &str) {
         let ids: Vec<u64> = line
             .split_whitespace()
             .filter_map(|s| s.trim_start_matches('#').parse::<u64>().ok())
@@ -249,7 +251,7 @@ impl Repl {
 
     // ========== END SESSION ENVIRONMENT HANDLERS ==========
 
-    fn handle_det(&mut self, line: &str) {
+    pub(crate) fn handle_det(&mut self, line: &str) {
         let rest = line[4..].trim(); // Remove "det "
 
         // Parse the matrix expression
@@ -300,7 +302,7 @@ impl Repl {
         }
     }
 
-    fn handle_transpose(&mut self, line: &str) {
+    pub(crate) fn handle_transpose(&mut self, line: &str) {
         let rest = line[10..].trim(); // Remove "transpose "
 
         // Parse the matrix expression
@@ -338,7 +340,7 @@ impl Repl {
         }
     }
 
-    fn handle_trace(&mut self, line: &str) {
+    pub(crate) fn handle_trace(&mut self, line: &str) {
         let rest = line[6..].trim(); // Remove "trace "
 
         // Parse the matrix expression
@@ -380,7 +382,7 @@ impl Repl {
     }
 
     /// Handle the 'telescope' command for proving telescoping identities like Dirichlet kernel
-    fn handle_telescope(&mut self, line: &str) {
+    pub(crate) fn handle_telescope(&mut self, line: &str) {
         let rest = line[10..].trim(); // Remove "telescope "
 
         if rest.is_empty() {
@@ -408,7 +410,7 @@ impl Repl {
 
     /// Handle the 'expand' command for aggressive polynomial expansion
     /// Uses cas_engine::expand::expand() which distributes without educational guards
-    fn handle_expand(&mut self, line: &str) {
+    pub(crate) fn handle_expand(&mut self, line: &str) {
         let rest = line.strip_prefix("expand").unwrap_or(line).trim();
         if rest.is_empty() {
             println!("Usage: expand <expr>");
@@ -425,7 +427,7 @@ impl Repl {
 
     /// Handle the 'expand_log' command for explicit logarithm expansion
     /// Expands ln(xy) → ln(x) + ln(y), ln(x/y) → ln(x) - ln(y), ln(x^n) → n*ln(x)
-    fn handle_expand_log(&mut self, line: &str) {
+    pub(crate) fn handle_expand_log(&mut self, line: &str) {
         use cas_ast::DisplayExpr;
 
         let rest = line.strip_prefix("expand_log").unwrap_or(line).trim();

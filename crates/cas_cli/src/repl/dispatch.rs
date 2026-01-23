@@ -1,3 +1,5 @@
+use super::*;
+
 impl Repl {
     pub fn handle_command(&mut self, line: &str) {
         // Preprocess: Convert function-style commands to command-style
@@ -400,7 +402,7 @@ impl Repl {
         self.handle_eval(&line);
     }
 
-    fn handle_config(&mut self, line: &str) {
+    pub(crate) fn handle_config(&mut self, line: &str) {
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() < 2 {
             println!("Usage: config <list|enable|disable|save|restore> [rule]");

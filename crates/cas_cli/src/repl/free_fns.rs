@@ -1,6 +1,7 @@
+use super::*;
 
 // Helper to split string by delimiter, ignoring delimiters inside parentheses
-fn rsplit_ignoring_parens(s: &str, delimiter: char) -> Option<(&str, &str)> {
+pub(super) fn rsplit_ignoring_parens(s: &str, delimiter: char) -> Option<(&str, &str)> {
     let mut balance = 0;
     let mut split_idx = None;
 
@@ -24,7 +25,7 @@ fn rsplit_ignoring_parens(s: &str, delimiter: char) -> Option<(&str, &str)> {
 
 /// Split string by commas, respecting parentheses nesting.
 /// Returns a Vec of the split parts.
-fn split_by_comma_ignoring_parens(s: &str) -> Vec<&str> {
+pub(super) fn split_by_comma_ignoring_parens(s: &str) -> Vec<&str> {
     let mut parts = Vec::new();
     let mut balance = 0;
     let mut start = 0;
@@ -47,7 +48,7 @@ fn split_by_comma_ignoring_parens(s: &str) -> Vec<&str> {
     parts
 }
 
-fn display_solution_set(ctx: &cas_ast::Context, set: &cas_ast::SolutionSet) -> String {
+pub(super) fn display_solution_set(ctx: &cas_ast::Context, set: &cas_ast::SolutionSet) -> String {
     match set {
         cas_ast::SolutionSet::Empty => "Empty Set".to_string(),
         cas_ast::SolutionSet::AllReals => "All Real Numbers".to_string(),
@@ -114,7 +115,7 @@ fn display_solution_set(ctx: &cas_ast::Context, set: &cas_ast::SolutionSet) -> S
     }
 }
 
-fn display_interval(ctx: &cas_ast::Context, interval: &cas_ast::Interval) -> String {
+pub(super) fn display_interval(ctx: &cas_ast::Context, interval: &cas_ast::Interval) -> String {
     let min_bracket = match interval.min_type {
         cas_ast::BoundType::Open => "(",
         cas_ast::BoundType::Closed => "[",

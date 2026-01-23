@@ -1,5 +1,7 @@
+use super::*;
+
 impl Repl {
-    fn handle_full_simplify(&mut self, line: &str) {
+    pub(crate) fn handle_full_simplify(&mut self, line: &str) {
         // simplify <expr>
         // Uses a temporary simplifier with ALL default rules (including aggressive distribution)
         let expr_str = line[9..].trim();
