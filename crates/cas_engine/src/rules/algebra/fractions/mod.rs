@@ -20,7 +20,13 @@ use cas_ast::{Context, DisplayExpr, Expr, ExprId};
 use num_traits::{One, Signed, Zero};
 use std::cmp::Ordering;
 
+// Import shared algebra-level helpers
 use super::helpers::*;
+
+// Fractions-specific helpers (Phase 1 of incremental migration)
+// These are not imported yet - they will be used when individual files
+// are converted to proper modules in Phase 2+
+mod helpers;
 
 // Submodules - temporarily using include!() for incremental migration
 include!("core.rs");
