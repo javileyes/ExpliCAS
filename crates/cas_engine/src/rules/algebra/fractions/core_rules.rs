@@ -1,9 +1,39 @@
+//! Core fraction rules and helpers.
+//!
+//! This module contains the main simplification and cancellation rules,
+//! along with helper functions for polynomial comparison and factor collection.
+
+use crate::assumptions::AssumptionKey;
+use crate::build::mul2_raw;
+use crate::define_rule;
+use crate::domain::{can_cancel_factor_with_hint, DomainMode};
+use crate::helpers::{as_add, as_div, as_i64, as_mul, as_number, as_pow, as_sub, prove_nonzero};
+use crate::implicit_domain::ImplicitCondition;
+use crate::multipoly::{
+    gcd_multivar_layer2, gcd_multivar_layer25, multipoly_from_expr, multipoly_to_expr, GcdBudget,
+    GcdLayer, Layer25Budget, MultiPoly, PolyBudget,
+};
+use crate::ordering::compare_expr;
+use crate::parent_context::ParentContext;
+use crate::phase::PhaseMask;
+use crate::polynomial::Polynomial;
+use crate::rule::{ChainedRewrite, Rewrite};
+use crate::rules::algebra::helpers::{
+    collect_denominators, collect_variables, count_nodes_of_type, distribute, gcd_rational,
+    smart_mul,
+};
+use crate::solve_safety::SolveSafety;
+use cas_ast::{count_nodes, Context, DisplayExpr, Expr, ExprId};
+use num_rational::BigRational;
+use num_traits::{One, Signed, ToPrimitive, Zero};
+use std::cmp::Ordering;
+
 // =============================================================================
 // Context-aware helpers for AddFractionsRule gating
 // =============================================================================
 
 /// Check if a function name is trigonometric (sin, cos, tan and inverses/hyperbolics)
-fn is_trig_function_name(name: &str) -> bool {
+pub fn is_trig_function_name(name: &str) -> bool {
     matches!(
         name,
         "sin"
@@ -25,7 +55,7 @@ fn is_trig_function_name(name: &str) -> bool {
 }
 
 /// Check if expression is a constant involving π (e.g., pi, pi/9, 2*pi/3)
-fn is_pi_constant(ctx: &Context, id: ExprId) -> bool {
+pub fn is_pi_constant(ctx: &Context, id: ExprId) -> bool {
     crate::helpers::extract_rational_pi_multiple(ctx, id).is_some()
 }
 
@@ -98,7 +128,7 @@ fn poly_relation(ctx: &Context, a: ExprId, b: ExprId) -> Option<SignRelation> {
 /// - Neg(x) is unwrapped and factors collected from x (for intersection purposes)
 /// - Everything else becomes (expr, 1)
 #[allow(dead_code)]
-fn collect_mul_factors_int_pow(ctx: &Context, expr: ExprId) -> Vec<(ExprId, i64)> {
+pub fn collect_mul_factors_int_pow(ctx: &Context, expr: ExprId) -> Vec<(ExprId, i64)> {
     let mut factors = Vec::new();
     // Unwrap top-level Neg for factor collection (enables intersection with positive terms)
     let actual_expr = match ctx.get(expr) {
@@ -249,7 +279,7 @@ fn compare_expr_for_sort_a1(ctx: &Context, a: ExprId, b: ExprId) -> Ordering {
 /// Uses canonical `MulBuilder` (right-fold with exponents).
 /// (See ARCHITECTURE.md "Canonical Utilities Registry")
 #[allow(dead_code)]
-fn build_mul_from_factors_a1(ctx: &mut Context, factors: &[(ExprId, i64)]) -> ExprId {
+pub fn build_mul_from_factors_a1(ctx: &mut Context, factors: &[(ExprId, i64)]) -> ExprId {
     use cas_ast::views::MulBuilder;
 
     let mut builder = MulBuilder::new_simple();
@@ -461,7 +491,7 @@ fn try_multivar_gcd(
 /// - Mul(Number(1/n), x) or Mul(x, Number(1/n)) → (x, n, true) where numerator of coeff is ±1
 /// - Mul(Div(1,den), x) or Mul(x, Div(1,den)) → (x, den, true) for symbolic denominators
 /// - anything else → (expr, 1, false)
-fn extract_as_fraction(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId, bool) {
+pub fn extract_as_fraction(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId, bool) {
     use num_bigint::BigInt;
     use num_rational::BigRational;
     use num_traits::Signed;
@@ -1694,7 +1724,7 @@ define_rule!(
 /// For example:
 /// - d1=2, d2=2n → d2 = n·d1, so multiply n1 by n: (n1·n, n2, 2n, true)
 /// - d1=2n, d2=2 → d1 = n·d2, so multiply n2 by n: (n1, n2·n, 2n, true)
-fn check_divisible_denominators(
+pub fn check_divisible_denominators(
     ctx: &mut Context,
     n1: ExprId,
     n2: ExprId,
