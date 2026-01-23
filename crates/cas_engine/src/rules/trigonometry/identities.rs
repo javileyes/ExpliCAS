@@ -8,7 +8,13 @@ use std::cmp::Ordering;
 
 include!("identities/core.rs");
 include!("identities/values.rs");
-include!("identities/power_products.rs");
+
+// Phase 5: Migrated to proper module (must be declared before expansions.rs include)
+mod power_products_rules;
+pub use power_products_rules::{SinCosSumQuotientRule, TrigHiddenCubicIdentityRule};
+// Re-export helpers for use by included files (expansions.rs)
+use power_products_rules::{build_avg, build_half_diff, extract_trig_arg, normalize_for_even_fn};
+
 include!("identities/expansions.rs");
 
 // Phase 4: Migrated to proper module

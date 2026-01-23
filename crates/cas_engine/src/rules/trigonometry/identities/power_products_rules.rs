@@ -1,3 +1,11 @@
+//! Power products and sum-to-product quotient rules.
+
+use crate::define_rule;
+use crate::rule::Rewrite;
+use crate::rules::algebra::helpers::smart_mul;
+use cas_ast::{Expr, ExprId};
+use std::cmp::Ordering;
+
 // =============================================================================
 // HIDDEN CUBIC TRIG IDENTITY
 // sin^6(x) + cos^6(x) + 3*sin^2(x)*cos^2(x) = (sin^2(x) + cos^2(x))^3
@@ -224,7 +232,7 @@ define_rule!(
 // =============================================================================
 
 /// Extract the argument from a trig function: sin(arg) → Some(arg), else None
-fn extract_trig_arg(ctx: &cas_ast::Context, id: ExprId, fn_name: &str) -> Option<ExprId> {
+pub fn extract_trig_arg(ctx: &cas_ast::Context, id: ExprId, fn_name: &str) -> Option<ExprId> {
     if let Expr::Function(name, args) = ctx.get(id) {
         if name == fn_name && args.len() == 1 {
             return Some(args[0]);
@@ -315,7 +323,7 @@ fn args_match_as_multiset(
 /// Build half_diff = (A-B)/2 preserving the order of A and B.
 /// Use this for sin((A-B)/2) where the sign matters.
 /// Pre-simplifies the difference to produce cleaner output.
-fn build_half_diff(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> ExprId {
+pub fn build_half_diff(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> ExprId {
     let diff = ctx.add(Expr::Sub(a, b));
     // Pre-simplify the difference (e.g., 5x - 3x → 2x)
     let diff_simplified = crate::collect::collect(ctx, diff);
@@ -353,7 +361,7 @@ fn build_canonical_half_diff(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -
 /// Normalize an expression for even functions like cos.
 /// For even functions: f(-x) = f(x), so we can strip the negation.
 /// Returns the unwrapped inner expression if input is Neg(inner), else returns input.
-fn normalize_for_even_fn(ctx: &cas_ast::Context, expr: ExprId) -> ExprId {
+pub fn normalize_for_even_fn(ctx: &cas_ast::Context, expr: ExprId) -> ExprId {
     use num_bigint::BigInt;
     use num_rational::BigRational;
 
@@ -380,7 +388,7 @@ fn normalize_for_even_fn(ctx: &cas_ast::Context, expr: ExprId) -> ExprId {
 
 /// Build avg = (A+B)/2, pre-simplifying sum for cleaner output
 /// This eliminates the need for a separate "Combine Like Terms" step
-fn build_avg(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> ExprId {
+pub fn build_avg(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> ExprId {
     let sum = ctx.add(Expr::Add(a, b));
     // Pre-simplify the sum (e.g., x + 3x → 4x)
     let sum_simplified = crate::collect::collect(ctx, sum);
@@ -608,4 +616,3 @@ define_rule!(
         }
     }
 );
-
