@@ -2,6 +2,8 @@
 // Expression Complexity Helpers
 // =============================================================================
 
+use cas_ast::{Context, Expr, ExprId};
+
 /// Count the number of nodes in an expression tree.
 /// Used by the anti-worsen guard to reject rewrites that grow expressions too much.
 /// Uses iterative traversal to prevent stack overflow on deep expressions.
@@ -58,4 +60,3 @@ pub fn rewrite_worsens_too_much(
     // Block only if BOTH thresholds are exceeded (more permissive)
     growth_abs > max_growth_abs && growth_ratio > max_growth_ratio
 }
-

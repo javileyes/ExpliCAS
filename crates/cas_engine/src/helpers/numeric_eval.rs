@@ -1,5 +1,7 @@
 // ========== Numeric Evaluation ==========
 
+use cas_ast::{Context, Expr, ExprId};
+
 /// Default depth limit for numeric evaluation.
 /// Prevents stack overflow on deeply nested expressions.
 pub const DEFAULT_NUMERIC_EVAL_DEPTH: usize = 50;
@@ -202,4 +204,3 @@ fn is_one_half(ctx: &Context, expr: ExprId) -> bool {
         _ => false,
     }
 }
-

@@ -1,5 +1,8 @@
 // ========== Pi Helpers ==========
 
+use cas_ast::{Context, Expr, ExprId};
+use num_traits::{One, Zero};
+
 /// Check if expression equals π/n for a given denominator (handles both Div and Mul forms)
 pub fn is_pi_over_n(ctx: &Context, expr: ExprId, denom: i32) -> bool {
     // Handle Div form: pi/n
@@ -163,4 +166,3 @@ pub fn is_half(ctx: &Context, expr: ExprId) -> bool {
         false
     }
 }
-

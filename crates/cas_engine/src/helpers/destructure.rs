@@ -7,6 +7,8 @@
 //
 // Pattern: Extract IDs first (in a short scope), then mutate ctx.
 
+use cas_ast::{Context, Expr, ExprId};
+
 /// Destruct Add(l, r) -> Some((l, r)), else None
 #[inline]
 pub fn as_add(ctx: &Context, id: ExprId) -> Option<(ExprId, ExprId)> {
@@ -92,4 +94,3 @@ pub fn as_fn2(ctx: &Context, id: ExprId, name: &str) -> Option<(ExprId, ExprId)>
         _ => None,
     }
 }
-

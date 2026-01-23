@@ -2,6 +2,10 @@
 // Numerical Helpers (Zero-Clone for Number inspection)
 // =============================================================================
 
+use super::destructure::as_div;
+use cas_ast::{Context, Expr, ExprId};
+use num_traits::{Signed, ToPrimitive};
+
 /// Get a reference to the Number without cloning.
 /// Use for inspection only; the reference is tied to the Context's lifetime.
 #[inline]
@@ -45,4 +49,3 @@ pub fn as_frac(ctx: &Context, id: ExprId) -> Option<(ExprId, ExprId)> {
 pub fn is_frac(ctx: &Context, id: ExprId) -> bool {
     matches!(ctx.get(id), Expr::Div(_, _))
 }
-

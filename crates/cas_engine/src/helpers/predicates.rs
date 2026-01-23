@@ -2,6 +2,10 @@
 // These functions were previously duplicated across multiple files.
 // Now consolidated here for consistency and maintainability.
 
+use super::pi::extract_rational_pi_multiple;
+use cas_ast::{Context, Expr, ExprId};
+use num_traits::{One, Signed};
+
 /// Check if expression is the number 1
 pub fn is_one(ctx: &Context, expr: ExprId) -> bool {
     if let Expr::Number(n) = ctx.get(expr) {
@@ -663,4 +667,3 @@ pub fn prove_nonzero_with_guards(
     // Fall back to normal proof
     prove_nonzero(ctx, expr)
 }
-

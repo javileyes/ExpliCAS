@@ -1,5 +1,9 @@
 // ========== Solver Domain Helpers ==========
 
+use super::predicates::prove_positive;
+use cas_ast::{Context, Expr, ExprId};
+use num_traits::ToPrimitive;
+
 /// Decision result for `can_take_ln_real`.
 ///
 /// Used by the solver to determine if ln(arg) is valid in RealOnly mode.
@@ -112,4 +116,3 @@ pub fn get_variant_name(expr: &Expr) -> &'static str {
         Expr::SessionRef(_) => "SessionRef",
     }
 }
-

@@ -1,3 +1,8 @@
+// ========== Trig, Roots, and Flatten Helpers ==========
+
+use cas_ast::{Context, Expr, ExprId};
+use num_traits::{One, Signed, ToPrimitive};
+
 /// Check if expression is a trigonometric function raised to a specific power.
 ///
 /// # Example
@@ -253,4 +258,3 @@ pub fn get_parts(context: &mut Context, e: ExprId) -> (num_rational::BigRational
         _ => (num_rational::BigRational::one(), e),
     }
 }
-

@@ -1,5 +1,7 @@
 // ========== Normal Form Scoring ==========
 
+use cas_ast::{Context, Expr, ExprId};
+
 /// Count total nodes in an expression tree
 pub fn count_all_nodes(ctx: &Context, expr: ExprId) -> usize {
     let mut count = 0;
@@ -177,4 +179,3 @@ pub fn mul_unsorted_adjacent(ctx: &Context, root: ExprId) -> usize {
 
     inversions
 }
-
