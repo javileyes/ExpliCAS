@@ -364,14 +364,14 @@ pub fn render_poly_result(id: PolyId, max_terms: usize) -> Option<String> {
 
         if i == 0 {
             if is_constant {
-                write!(result, "{}", coeff).unwrap();
+                let _ = write!(result, "{}", coeff);
             } else if *coeff == 1 {
                 // coefficient 1 is implicit
             } else {
-                write!(result, "{}", coeff).unwrap();
+                let _ = write!(result, "{}", coeff);
             }
         } else if is_constant || *coeff != 1 {
-            write!(result, " + {}", coeff).unwrap();
+            let _ = write!(result, " + {}", coeff);
         } else {
             result.push_str(" + ");
         }
@@ -386,7 +386,7 @@ pub fn render_poly_result(id: PolyId, max_terms: usize) -> Option<String> {
                 first_var = false;
                 result.push_str(&meta.var_names[var_idx]);
                 if exp > 1 {
-                    write!(result, "^{}", exp).unwrap();
+                    let _ = write!(result, "^{}", exp);
                 }
             }
         }
@@ -394,7 +394,7 @@ pub fn render_poly_result(id: PolyId, max_terms: usize) -> Option<String> {
 
     if truncated {
         let remaining = total_terms - max_terms;
-        write!(result, " + ... (+{} more terms)", remaining).unwrap();
+        let _ = write!(result, " + ... (+{} more terms)", remaining);
     }
 
     Some(result)
@@ -456,10 +456,10 @@ pub fn render_poly_result_latex(id: PolyId, max_terms: usize) -> Option<String> 
 
         if i == 0 {
             if is_constant || *coeff != 1 {
-                write!(result, "{}", coeff).unwrap();
+                let _ = write!(result, "{}", coeff);
             }
         } else if is_constant || *coeff != 1 {
-            write!(result, " + {}", coeff).unwrap();
+            let _ = write!(result, " + {}", coeff);
         } else {
             result.push_str(" + ");
         }
@@ -469,9 +469,9 @@ pub fn render_poly_result_latex(id: PolyId, max_terms: usize) -> Option<String> 
             if exp > 0 && var_idx < meta.var_names.len() {
                 let var = &meta.var_names[var_idx];
                 if exp == 1 {
-                    write!(result, " {}", var).unwrap();
+                    let _ = write!(result, " {}", var);
                 } else {
-                    write!(result, " {}^{{{}}}", var, exp).unwrap();
+                    let _ = write!(result, " {}^{{{}}}", var, exp);
                 }
             }
         }
@@ -479,7 +479,7 @@ pub fn render_poly_result_latex(id: PolyId, max_terms: usize) -> Option<String> 
 
     if truncated {
         let remaining = total_terms - max_terms;
-        write!(result, " + \\cdots \\text{{(+{} terms)}}", remaining).unwrap();
+        let _ = write!(result, " + \\cdots \\text{{(+{} terms)}}", remaining);
     }
 
     Some(result)

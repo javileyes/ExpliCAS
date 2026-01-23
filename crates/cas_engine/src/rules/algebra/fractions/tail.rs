@@ -62,7 +62,12 @@ define_rule!(
                 }
 
                 if let Some(key) = found_key {
-                    denom_groups.get_mut(&key).unwrap().push((idx, num, is_neg));
+                    if let Some(v) = denom_groups.get_mut(&key) {
+                        v.push((idx, num, is_neg));
+                    } else {
+                        // Should be unreachable because `key` comes from the map's keys.
+                        denom_groups.insert(key, vec![(idx, num, is_neg)]);
+                    }
                 } else {
                     denom_groups.insert(den, vec![(idx, num, is_neg)]);
                 }

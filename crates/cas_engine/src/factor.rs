@@ -45,7 +45,7 @@ pub fn factor_polynomial(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     if vars.len() != 1 {
         return None;
     }
-    let var = vars.iter().next().unwrap();
+    let var = vars.iter().next()?;
 
     if let Ok(poly) = Polynomial::from_expr(ctx, expr, var) {
         if poly.is_zero() {
@@ -407,16 +407,9 @@ pub fn collect_variables(ctx: &Context, expr: ExprId) -> HashSet<String> {
 }
 
 fn is_sin_cos_pair(ctx: &Context, a: ExprId, b: ExprId) -> bool {
-    let arg_a = get_trig_arg(ctx, a);
-    let arg_b = get_trig_arg(ctx, b);
-
-    // Check if args match and are Some
-    if arg_a.is_none() || arg_b.is_none() {
+    let (Some(a_val), Some(b_val)) = (get_trig_arg(ctx, a), get_trig_arg(ctx, b)) else {
         return false;
-    }
-
-    let a_val = arg_a.unwrap();
-    let b_val = arg_b.unwrap();
+    };
 
     if a_val != b_val && crate::ordering::compare_expr(ctx, a_val, b_val) != Ordering::Equal {
         return false;
@@ -452,17 +445,17 @@ fn negate_term(ctx: &mut Context, expr: ExprId) -> ExprId {
         Expr::Mul(l, r) => {
             if let Expr::Number(n) = ctx.get(l) {
                 if n.is_negative() {
-                    let new_n = (-n).to_i64().unwrap();
-                    if new_n == 1 {
+                    let new_n = -n.clone();
+                    if new_n == num_rational::BigRational::one() {
                         return r;
                     }
-                    let num_expr = ctx.num(new_n);
+                    let num_expr = ctx.add(Expr::Number(new_n));
                     return mul2_raw(ctx, num_expr, r);
                 }
             }
             ctx.add(Expr::Neg(expr))
         }
-        Expr::Number(n) => ctx.num((-n).to_i64().unwrap()),
+        Expr::Number(n) => ctx.add(Expr::Number(-n)),
         _ => ctx.add(Expr::Neg(expr)),
     }
 }

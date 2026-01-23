@@ -196,7 +196,10 @@ fn is_nary_conjugate_pair(
                     unsigned_factors[0]
                 } else {
                     // Build right-associative: a * (b * (c * ...))
-                    let mut result = *unsigned_factors.last().unwrap();
+                    let mut result = match unsigned_factors.last() {
+                        Some(r) => *r,
+                        None => ctx.num(1),
+                    };
                     for factor in unsigned_factors.iter().rev().skip(1) {
                         result = ctx.add(Expr::Mul(*factor, result));
                     }

@@ -207,7 +207,10 @@ define_rule!(CanonicalizeAddRule, "Canonicalize Addition", importance: crate::st
         if !is_sorted {
             terms.sort_by(|a, b| compare_expr(ctx, *a, *b));
             // Rebuild right-associative
-            let mut new_expr = *terms.last().unwrap();
+            let mut new_expr = match terms.last() {
+            Some(t) => *t,
+            None => return None,
+        };
             for term in terms.iter().rev().skip(1) {
                 new_expr = ctx.add(Expr::Add(*term, new_expr));
             }
@@ -224,7 +227,10 @@ define_rule!(CanonicalizeAddRule, "Canonicalize Addition", importance: crate::st
         if let Expr::Add(lhs, _) = ctx.get(expr) {
             if let Expr::Add(_, _) = ctx.get(*lhs) {
                 // Left-associative at root. Rewrite.
-                let mut new_expr = *terms.last().unwrap();
+                let mut new_expr = match terms.last() {
+            Some(t) => *t,
+            None => return None,
+        };
                 for term in terms.iter().rev().skip(1) {
                     new_expr = ctx.add(Expr::Add(*term, new_expr));
                 }
@@ -308,7 +314,10 @@ define_rule!(
                 factors.sort_by(|a, b| compare_expr(ctx, *a, *b));
 
                 // Rebuild right-associative: a*(b*(c*d))
-                let mut new_expr = *factors.last().unwrap();
+                let mut new_expr = match factors.last() {
+            Some(f) => *f,
+            None => return None,
+        };
                 for factor in factors.iter().rev().skip(1) {
                     new_expr = mul2_raw(ctx, *factor, new_expr);
                 }
@@ -319,7 +328,10 @@ define_rule!(
             // 3. Check associativity: (a*b)*c -> a*(b*c)
             if let Expr::Mul(lhs, _) = ctx.get(expr) {
                 if let Expr::Mul(_, _) = ctx.get(*lhs) {
-                    let mut new_expr = *factors.last().unwrap();
+                    let mut new_expr = match factors.last() {
+            Some(f) => *f,
+            None => return None,
+        };
                     for factor in factors.iter().rev().skip(1) {
                         new_expr = mul2_raw(ctx, *factor, new_expr);
                     }

@@ -266,16 +266,16 @@ fn format_poly_with_limit(
         if i == 0 {
             // First term: no leading sign for positive
             if is_constant {
-                write!(result, "{}", coeff).unwrap();
+                let _ = write!(result, "{}", coeff);
             } else if *coeff == 1 {
                 // coefficient 1 is implicit
             } else {
-                write!(result, "{}", coeff).unwrap();
+                let _ = write!(result, "{}", coeff);
             }
         } else {
             // Subsequent terms: always show +
             if is_constant || *coeff != 1 {
-                write!(result, " + {}", coeff).unwrap();
+                let _ = write!(result, " + {}", coeff);
             } else {
                 result.push_str(" + ");
             }
@@ -291,7 +291,7 @@ fn format_poly_with_limit(
                 first_var = false;
                 result.push_str(&var_names[var_idx]);
                 if exp > 1 {
-                    write!(result, "^{}", exp).unwrap();
+                    let _ = write!(result, "^{}", exp);
                 }
             }
         }
@@ -300,7 +300,7 @@ fn format_poly_with_limit(
     // Add truncation message
     if truncated {
         let remaining = total_terms - max_terms;
-        write!(result, " + ... (+{} more terms)", remaining).unwrap();
+        let _ = write!(result, " + ... (+{} more terms)", remaining);
     }
 
     result
@@ -391,10 +391,10 @@ fn format_poly_latex(
 
         if i == 0 {
             if is_constant || *coeff != 1 {
-                write!(result, "{}", coeff).unwrap();
+                let _ = write!(result, "{}", coeff);
             }
         } else if is_constant || *coeff != 1 {
-            write!(result, " + {}", coeff).unwrap();
+            let _ = write!(result, " + {}", coeff);
         } else {
             result.push_str(" + ");
         }
@@ -404,9 +404,9 @@ fn format_poly_latex(
             if exp > 0 && var_idx < var_names.len() {
                 let var = &var_names[var_idx];
                 if exp == 1 {
-                    write!(result, " {}", var).unwrap();
+                    let _ = write!(result, " {}", var);
                 } else {
-                    write!(result, " {}^{{{}}}", var, exp).unwrap();
+                    let _ = write!(result, " {}^{{{}}}", var, exp);
                 }
             }
         }
@@ -414,7 +414,7 @@ fn format_poly_latex(
 
     if truncated {
         let remaining = total_terms - max_terms;
-        write!(result, " + \\cdots \\text{{(+{} terms)}}", remaining).unwrap();
+        let _ = write!(result, " + \\cdots \\text{{(+{} terms)}}", remaining);
     }
 
     result

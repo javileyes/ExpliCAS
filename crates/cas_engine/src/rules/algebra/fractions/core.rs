@@ -1374,7 +1374,7 @@ define_rule!(
         if vars.len() != 1 {
             return None;
         }
-        let var = vars.iter().next().unwrap();
+        let var = vars.iter().next()?;
 
         // 2. Convert to Polynomials
         let p_num = Polynomial::from_expr(ctx, num, var).ok()?;
@@ -1555,7 +1555,7 @@ define_rule!(
             return None;
         }
 
-        let (&first, rest) = unique_denoms.split_first().unwrap();
+        let (&first, rest) = unique_denoms.split_first()?;
         let multiplier = rest
             .iter()
             .copied()
@@ -1773,4 +1773,3 @@ fn exprs_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
         _ => false,
     }
 }
-

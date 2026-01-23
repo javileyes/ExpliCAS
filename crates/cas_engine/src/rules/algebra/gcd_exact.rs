@@ -275,11 +275,17 @@ fn extend_to_vars(poly: &MultiPoly, new_vars: &[String]) -> MultiPoly {
     }
 
     // Map old indices to new indices
-    let index_map: Vec<usize> = poly
-        .vars
-        .iter()
-        .map(|v| new_vars.iter().position(|x| x == v).unwrap())
-        .collect();
+    let mut index_map: Vec<usize> = Vec::with_capacity(poly.vars.len());
+    for v in &poly.vars {
+        match new_vars.iter().position(|x| x == v) {
+            Some(idx) => index_map.push(idx),
+            None => {
+                // Invariant violation: `new_vars` should contain all original variables.
+                // Fall back to returning the original polynomial unchanged.
+                return poly.clone();
+            }
+        }
+    }
 
     let new_terms: Vec<(BigRational, Vec<u32>)> = poly
         .terms

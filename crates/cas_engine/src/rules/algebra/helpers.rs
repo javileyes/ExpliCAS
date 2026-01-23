@@ -63,7 +63,10 @@ pub fn mul_many_raw(ctx: &mut Context, factors: &[ExprId]) -> Option<ExprId> {
     if factors.is_empty() {
         return None;
     }
-    let mut result = *factors.last().unwrap();
+    let mut result = match factors.last() {
+        Some(r) => *r,
+        None => return None,
+    };
     for &factor in factors.iter().rev().skip(1) {
         result = ctx.add_raw(Expr::Mul(factor, result));
     }

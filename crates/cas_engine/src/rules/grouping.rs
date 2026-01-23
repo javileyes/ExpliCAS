@@ -47,7 +47,10 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
             degrees.sort_by(|a, b| b.cmp(a));
 
             for deg in degrees {
-                let coeffs = groups.get(&deg).unwrap();
+                let coeffs = match groups.get(&deg) {
+                    Some(c) => c,
+                    None => continue,
+                };
                 if coeffs.is_empty() {
                     continue;
                 }

@@ -794,7 +794,13 @@ fn run_substitute(args: SubstituteArgs) {
             "steps": args.steps,
             "pretty": true
         });
-        let opts_str = serde_json::to_string(&opts_json).unwrap();
+        let opts_str = match serde_json::to_string(&opts_json) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Internal error: failed to serialize options: {}", e);
+                std::process::exit(1);
+            }
+        };
 
         let out = cas_engine::substitute_str_to_json(
             &args.expr,

@@ -456,7 +456,12 @@ impl Repl {
         }
 
         // Check if identifier is valid (alphanumeric + underscore, starts with letter/underscore)
-        if !name.chars().next().unwrap().is_alphabetic() && !name.starts_with('_') {
+        let starts_with_letter = name
+            .chars()
+            .next()
+            .map(|c| c.is_alphabetic())
+            .unwrap_or(false);
+        if !starts_with_letter && !name.starts_with('_') {
             println!("Error: Variable name must start with a letter or underscore");
             return;
         }
@@ -1022,14 +1027,15 @@ impl Repl {
             }
             Some(&"help") => {
                 // Show preset details
-                let name = args.get(1);
-                if name.is_none() {
-                    println!("Usage: semantics preset help <name>");
-                    println!("Presets: default, strict, complex, school");
-                    return;
-                }
-                let name = name.unwrap();
-                if let Some(p) = presets.iter().find(|p| p.name == *name) {
+                let name = match args.get(1) {
+                    Some(name) => *name,
+                    None => {
+                        println!("Usage: semantics preset help <name>");
+                        println!("Presets: default, strict, complex, school");
+                        return;
+                    }
+                };
+                if let Some(p) = presets.iter().find(|p| p.name == name) {
                     let domain_str = match p.domain {
                         DomainMode::Strict => "strict",
                         DomainMode::Generic => "generic",
@@ -1153,5 +1159,4 @@ impl Repl {
             }
         }
     }
-
 }

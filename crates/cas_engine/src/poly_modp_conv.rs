@@ -113,14 +113,14 @@ impl VarTable {
         let remap_a: Vec<usize> = self
             .names
             .iter()
-            .map(|n| unified.get_index(n).unwrap())
-            .collect();
+            .map(|n| unified.get_index(n))
+            .collect::<Option<Vec<_>>>()?;
 
         let remap_b: Vec<usize> = other
             .names
             .iter()
-            .map(|n| unified.get_index(n).unwrap())
-            .collect();
+            .map(|n| unified.get_index(n))
+            .collect::<Option<Vec<_>>>()?;
 
         Some((unified, remap_a, remap_b))
     }

@@ -102,61 +102,64 @@ enum ParseNode {
 }
 
 impl ParseNode {
-    fn lower(self, ctx: &mut Context) -> ExprId {
+    fn lower(self, ctx: &mut Context) -> std::result::Result<ExprId, ParseError> {
         match self {
-            ParseNode::Number(n) => ctx.add(Expr::Number(n)),
-            ParseNode::Constant(c) => ctx.add(Expr::Constant(c)),
-            ParseNode::Variable(s) => ctx.add(Expr::Variable(s)),
+            ParseNode::Number(n) => Ok(ctx.add(Expr::Number(n))),
+            ParseNode::Constant(c) => Ok(ctx.add(Expr::Constant(c))),
+            ParseNode::Variable(s) => Ok(ctx.add(Expr::Variable(s))),
             ParseNode::Add(l, r) => {
-                let lid = l.lower(ctx);
-                let rid = r.lower(ctx);
-                ctx.add(Expr::Add(lid, rid))
+                let lid = l.lower(ctx)?;
+                let rid = r.lower(ctx)?;
+                Ok(ctx.add(Expr::Add(lid, rid)))
             }
             ParseNode::Sub(l, r) => {
-                let lid = l.lower(ctx);
-                let rid = r.lower(ctx);
-                ctx.add(Expr::Sub(lid, rid))
+                let lid = l.lower(ctx)?;
+                let rid = r.lower(ctx)?;
+                Ok(ctx.add(Expr::Sub(lid, rid)))
             }
             ParseNode::Mul(l, r) => {
-                let lid = l.lower(ctx);
-                let rid = r.lower(ctx);
-                ctx.add(Expr::Mul(lid, rid))
+                let lid = l.lower(ctx)?;
+                let rid = r.lower(ctx)?;
+                Ok(ctx.add(Expr::Mul(lid, rid)))
             }
             ParseNode::Div(l, r) => {
-                let lid = l.lower(ctx);
-                let rid = r.lower(ctx);
-                ctx.add(Expr::Div(lid, rid))
+                let lid = l.lower(ctx)?;
+                let rid = r.lower(ctx)?;
+                Ok(ctx.add(Expr::Div(lid, rid)))
             }
             ParseNode::Pow(b, e) => {
-                let bid = b.lower(ctx);
-                let eid = e.lower(ctx);
-                ctx.add(Expr::Pow(bid, eid))
+                let bid = b.lower(ctx)?;
+                let eid = e.lower(ctx)?;
+                Ok(ctx.add(Expr::Pow(bid, eid)))
             }
             ParseNode::Neg(e) => {
-                let eid = e.lower(ctx);
-                ctx.add(Expr::Neg(eid))
+                let eid = e.lower(ctx)?;
+                Ok(ctx.add(Expr::Neg(eid)))
             }
             ParseNode::Function(name, args) => {
-                let arg_ids = args.into_iter().map(|a| a.lower(ctx)).collect();
-                ctx.add(Expr::Function(name, arg_ids))
+                let mut arg_ids = Vec::with_capacity(args.len());
+                for a in args {
+                    arg_ids.push(a.lower(ctx)?);
+                }
+                Ok(ctx.add(Expr::Function(name, arg_ids)))
             }
             ParseNode::Matrix(rows) => {
                 // Flatten 2D structure to 1D for storage
                 let num_rows = rows.len();
-                let num_cols = if num_rows > 0 { rows[0].len() } else { 0 };
+                let num_cols = rows.first().map(|r| r.len()).unwrap_or(0);
 
                 // Collect all elements in row-major order
                 let mut data = Vec::new();
                 for row in rows {
                     for elem in row {
-                        data.push(elem.lower(ctx));
+                        data.push(elem.lower(ctx)?);
                     }
                 }
 
                 ctx.matrix(num_rows, num_cols, data)
-                    .expect("matrix dimensions should match parsed structure")
+                    .map_err(|e| ParseError::syntax(format!("Invalid matrix: {}", e)))
             }
-            ParseNode::SessionRef(id) => ctx.add(Expr::SessionRef(id)),
+            ParseNode::SessionRef(id) => Ok(ctx.add(Expr::SessionRef(id))),
         }
     }
 }
@@ -338,7 +341,10 @@ fn parse_identifier(input: &str) -> IResult<&str, &str> {
     }
 
     // Count valid continuation chars (alphanumeric or underscore)
-    let mut len = first.unwrap().len_utf8();
+    let mut len = match first {
+        Some(c) => c.len_utf8(),
+        None => 0,
+    };
     for c in chars {
         if c.is_ascii_alphanumeric() || c == '_' {
             len += c.len_utf8();
@@ -772,15 +778,15 @@ pub fn parse(input: &str, ctx: &mut Context) -> Result<ExprId, ParseError> {
         return Err(ParseError::unconsumed(remaining));
     }
 
-    Ok(expr_node.lower(ctx))
+    expr_node.lower(ctx)
 }
 
 pub fn parse_statement(input: &str, ctx: &mut Context) -> Result<Statement, ParseError> {
     // Try parsing as equation first
     if let Ok((remaining, (lhs, op, rhs))) = parse_equation(input) {
         if remaining.trim().is_empty() {
-            let lhs_id = lhs.lower(ctx);
-            let rhs_id = rhs.lower(ctx);
+            let lhs_id = lhs.lower(ctx)?;
+            let rhs_id = rhs.lower(ctx)?;
             return Ok(Statement::Equation(Equation {
                 lhs: lhs_id,
                 rhs: rhs_id,
@@ -793,7 +799,7 @@ pub fn parse_statement(input: &str, ctx: &mut Context) -> Result<Statement, Pars
     match parse_expr(input) {
         Ok((remaining, expr_node)) => {
             if remaining.trim().is_empty() {
-                Ok(Statement::Expression(expr_node.lower(ctx)))
+                Ok(Statement::Expression(expr_node.lower(ctx)?))
             } else {
                 Err(ParseError::unconsumed(remaining))
             }

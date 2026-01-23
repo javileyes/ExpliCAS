@@ -683,7 +683,7 @@ define_rule!(
         let lcd = if unique_factors.len() == 1 {
             unique_factors[0]
         } else {
-            let (&first, rest) = unique_factors.split_first().unwrap();
+            let (&first, rest) = unique_factors.split_first()?;
             rest.iter()
                 .copied()
                 .fold(first, |acc, f| mul2_raw(ctx, acc, f))
@@ -726,7 +726,7 @@ define_rule!(
         let total_num = if numerator_terms.len() == 1 {
             numerator_terms[0]
         } else {
-            let (&first, rest) = numerator_terms.split_first().unwrap();
+            let (&first, rest) = numerator_terms.split_first()?;
             rest.iter()
                 .copied()
                 .fold(first, |acc, term| ctx.add(Expr::Add(acc, term)))
@@ -738,4 +738,3 @@ define_rule!(
         Some(Rewrite::new(new_expr).desc("Combine fractions with factor-based LCD"))
     }
 );
-

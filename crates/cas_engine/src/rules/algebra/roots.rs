@@ -29,8 +29,7 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
         None
     };
 
-    inner?;
-    let inner = inner.unwrap();
+    let inner = inner?;
     let inner_data = ctx.get(inner).clone();
     //println!("RootDenesting checking inner: {:?}", inner_data);
 
@@ -229,7 +228,7 @@ define_rule!(
 
             let vars = collect_variables(ctx, arg);
             if vars.len() == 1 {
-                let var = vars.iter().next().unwrap();
+                let var = vars.iter().next()?;
                 if let Ok(poly) = Polynomial::from_expr(ctx, arg, var) {
                     // First: Try to detect perfect square with rational coefficients
                     // For ax² + bx + c to be (dx + e)², we need:

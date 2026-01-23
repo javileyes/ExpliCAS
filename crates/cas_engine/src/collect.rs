@@ -255,7 +255,10 @@ fn collect_impl(ctx: &mut Context, expr: ExprId) -> CollectImplResult {
         ctx.num(0)
     } else {
         // Construct Add chain (Right-Associative to match CanonicalizeAddRule)
-        let mut result = *new_terms.last().unwrap();
+        let mut result = match new_terms.last() {
+            Some(r) => *r,
+            None => ctx.num(0),
+        };
         for t in new_terms.iter().rev().skip(1) {
             result = ctx.add(Expr::Add(*t, result));
         }

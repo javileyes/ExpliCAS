@@ -104,7 +104,7 @@ pub fn run(args: EvalJsonArgs) {
 
     match run_inner(&args) {
         Ok(output) => {
-            println!("{}", serde_json::to_string_pretty(&output).unwrap());
+            print_pretty_json(&output);
         }
         Err(e) => {
             // Classify error type based on message prefix
@@ -114,7 +114,7 @@ pub fn run(args: EvalJsonArgs) {
             } else {
                 ErrorJsonOutput::with_input(&err_str, &args.expr)
             };
-            println!("{}", serde_json::to_string_pretty(&err_output).unwrap());
+            print_pretty_json(&err_output);
         }
     }
 }
@@ -598,10 +598,11 @@ fn collect_steps(
     }
 
     // V2.15.36: Enrich steps with didactic substeps (like timeline)
-    let original_expr = filtered
-        .first()
-        .and_then(|s| s.global_before)
-        .unwrap_or_else(|| filtered.first().unwrap().before);
+    let first_step = match filtered.first() {
+        Some(s) => s,
+        None => return vec![],
+    };
+    let original_expr = first_step.global_before.unwrap_or(first_step.before);
     let enriched_steps = didactic::enrich_steps(ctx, original_expr, filtered.clone());
 
     // Build the JSON output using enriched steps
@@ -1162,6 +1163,19 @@ fn solution_set_to_latex(ctx: &cas_ast::Context, solution_set: &cas_ast::Solutio
             }
             .to_latex();
             format!(r"\text{{Solve: }} {} = 0", expr_latex)
+        }
+    }
+}
+
+fn print_pretty_json<T: serde::Serialize>(value: &T) {
+    match serde_json::to_string_pretty(value) {
+        Ok(s) => println!("{}", s),
+        Err(e) => {
+            eprintln!("JSON serialization error: {}", e);
+            match serde_json::to_string(value) {
+                Ok(s) => println!("{}", s),
+                Err(_) => println!("{{\"ok\":false,\"error\":\"JSON_SERIALIZATION_FAILED\"}}"),
+            }
         }
     }
 }
