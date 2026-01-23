@@ -62,16 +62,35 @@ pub fn expr_stats(ctx: &Context, expr: ExprId) -> ExprStatsJson {
 
 /// Count additive terms in an expression (top-level Add/Sub chain).
 /// Returns Some(count) only if there are multiple terms, None for simple expressions.
+/// Uses an iterative approach to avoid stack overflow with large expressions.
 fn count_add_terms(ctx: &Context, expr: ExprId) -> Option<usize> {
-    fn count_recursive(ctx: &Context, expr: ExprId) -> usize {
-        match ctx.get(expr) {
-            Expr::Add(l, r) => count_recursive(ctx, *l) + count_recursive(ctx, *r),
-            Expr::Sub(l, r) => count_recursive(ctx, *l) + count_recursive(ctx, *r),
-            _ => 1, // Base case: not an add/sub, counts as 1 term
+    // Unwrap __hold wrapper if present (used to prevent further simplification of large expressions)
+    let inner_expr = match ctx.get(expr) {
+        Expr::Function(name, args) if name == "__hold" && args.len() == 1 => args[0],
+        _ => expr,
+    };
+
+    // Check if the inner expression is an Add/Sub chain
+    let is_add_sub = matches!(ctx.get(inner_expr), Expr::Add(_, _) | Expr::Sub(_, _));
+    if !is_add_sub {
+        return None;
+    }
+
+    let mut count = 0usize;
+    let mut stack = vec![inner_expr];
+
+    while let Some(current) = stack.pop() {
+        match ctx.get(current) {
+            Expr::Add(l, r) | Expr::Sub(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            _ => {
+                count += 1;
+            }
         }
     }
 
-    let count = count_recursive(ctx, expr);
     // Only return count if expression has multiple terms
     if count > 1 {
         Some(count)
