@@ -652,6 +652,183 @@ pub fn eval_trig_special(ctx: &mut Context, f: TrigFn, arg: ExprId) -> Option<Ex
 }
 
 // =============================================================================
+// Value Parser - Recognize special values in AST for inverse trig
+// =============================================================================
+
+/// Inverse trig function type
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InvTrigFn {
+    Asin,
+    Acos,
+    Atan,
+}
+
+/// Try to parse an expression as a special value (for inverse trig evaluation).
+///
+/// Recognizes patterns:
+/// - 0, 1, -1
+/// - 1/2, -1/2
+/// - sqrt(2)/2, -sqrt(2)/2  (also 2^(1/2)/2)
+/// - sqrt(3)/2, -sqrt(3)/2
+/// - sqrt(3), -sqrt(3)
+/// - sqrt(3)/3 (= 1/sqrt(3)), -sqrt(3)/3
+pub fn parse_special_value(ctx: &Context, expr: ExprId) -> Option<ValueSpec> {
+    use num_traits::One;
+
+    match ctx.get(expr) {
+        // Integer constants: 0, 1, -1
+        Expr::Number(n) => {
+            if n.is_zero() {
+                Some(ValueSpec::Zero)
+            } else if n.is_one() {
+                Some(ValueSpec::One)
+            } else if *n == num_rational::Ratio::from_integer((-1).into()) {
+                Some(ValueSpec::NegOne)
+            } else if *n == num_rational::Ratio::new(1.into(), 2.into()) {
+                Some(ValueSpec::Half)
+            } else if *n == num_rational::Ratio::new((-1).into(), 2.into()) {
+                Some(ValueSpec::NegHalf)
+            } else {
+                None
+            }
+        }
+
+        // Negation: parse inner and negate
+        Expr::Neg(inner) => {
+            let v = parse_special_value(ctx, *inner)?;
+            Some(v.negate())
+        }
+
+        // Division patterns: 1/2, sqrt(n)/2, sqrt(n)/3
+        Expr::Div(num, den) => {
+            // Check denominator
+            if let Expr::Number(d) = ctx.get(*den) {
+                let denom = d.to_integer().to_i32()?;
+
+                // 1/2 or -1/2
+                if denom == 2 {
+                    if let Expr::Number(n) = ctx.get(*num) {
+                        if n.is_one() {
+                            return Some(ValueSpec::Half);
+                        }
+                        if *n == num_rational::Ratio::from_integer((-1).into()) {
+                            return Some(ValueSpec::NegHalf);
+                        }
+                    }
+
+                    // sqrt(2)/2 or sqrt(3)/2
+                    if let Some(sqrt_base) = is_sqrt(ctx, *num) {
+                        if sqrt_base == 2 {
+                            return Some(ValueSpec::Sqrt2Over2);
+                        }
+                        if sqrt_base == 3 {
+                            return Some(ValueSpec::Sqrt3Over2);
+                        }
+                    }
+
+                    // -sqrt(2)/2 or -sqrt(3)/2
+                    if let Expr::Neg(inner) = ctx.get(*num) {
+                        if let Some(sqrt_base) = is_sqrt(ctx, *inner) {
+                            if sqrt_base == 2 {
+                                return Some(ValueSpec::NegSqrt2Over2);
+                            }
+                            if sqrt_base == 3 {
+                                return Some(ValueSpec::NegSqrt3Over2);
+                            }
+                        }
+                    }
+                }
+
+                // sqrt(3)/3 = 1/sqrt(3)
+                if denom == 3 {
+                    if let Some(sqrt_base) = is_sqrt(ctx, *num) {
+                        if sqrt_base == 3 {
+                            return Some(ValueSpec::OneOverSqrt3);
+                        }
+                    }
+                    if let Expr::Neg(inner) = ctx.get(*num) {
+                        if let Some(sqrt_base) = is_sqrt(ctx, *inner) {
+                            if sqrt_base == 3 {
+                                return Some(ValueSpec::NegOneOverSqrt3);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 1/sqrt(3)
+            if let Expr::Number(n) = ctx.get(*num) {
+                if n.is_one() {
+                    if let Some(sqrt_base) = is_sqrt(ctx, *den) {
+                        if sqrt_base == 3 {
+                            return Some(ValueSpec::OneOverSqrt3);
+                        }
+                    }
+                }
+            }
+
+            None
+        }
+
+        // sqrt(n) alone
+        Expr::Pow(base, exp) => {
+            // Check if this is sqrt(3)
+            if let Some(sqrt_base) = is_sqrt_pow(ctx, *base, *exp) {
+                if sqrt_base == 3 {
+                    return Some(ValueSpec::Sqrt3);
+                }
+            }
+            None
+        }
+
+        _ => None,
+    }
+}
+
+/// Check if expression is sqrt(n) and return n
+fn is_sqrt(ctx: &Context, expr: ExprId) -> Option<i32> {
+    if let Expr::Pow(base, exp) = ctx.get(expr) {
+        is_sqrt_pow(ctx, *base, *exp)
+    } else {
+        None
+    }
+}
+
+/// Check if base^exp is sqrt(base) and return the base as i32
+fn is_sqrt_pow(ctx: &Context, base: ExprId, exp: ExprId) -> Option<i32> {
+    // exp should be 1/2
+    if let Expr::Div(num, den) = ctx.get(exp) {
+        if let (Expr::Number(n), Expr::Number(d)) = (ctx.get(*num), ctx.get(*den)) {
+            if n.to_integer().to_i32()? == 1 && d.to_integer().to_i32()? == 2 {
+                // base should be an integer
+                if let Expr::Number(b) = ctx.get(base) {
+                    return b.to_integer().to_i32();
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Evaluate inverse trig (asin/acos/atan) at a special value.
+///
+/// Returns the angle as ExprId if the value is recognized.
+pub fn eval_inv_trig_special(ctx: &mut Context, f: InvTrigFn, arg: ExprId) -> Option<ExprId> {
+    // Step 1: Parse value from expression
+    let value = parse_special_value(ctx, arg)?;
+
+    // Step 2: Lookup angle in table
+    let angle = match f {
+        InvTrigFn::Asin => lookup_asin(value),
+        InvTrigFn::Acos => lookup_acos(value),
+        InvTrigFn::Atan => lookup_atan(value),
+    }?;
+
+    // Step 3: Convert to ExprId
+    Some(angle.to_expr(ctx))
+}
+
+// =============================================================================
 // Tests
 // =============================================================================
 
