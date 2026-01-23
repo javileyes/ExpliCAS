@@ -1,3 +1,11 @@
+//! Fraction combination rules for n-ary Add/Sub chains.
+
+use crate::define_rule;
+use crate::rule::Rewrite;
+use crate::rules::algebra::count_nodes_of_type;
+use cas_ast::{count_nodes, Context, Expr, ExprId};
+use std::cmp::Ordering;
+
 // =============================================================================
 // Combine same-denominator fractions in n-ary Add/Sub chains
 // =============================================================================

@@ -32,6 +32,10 @@ mod helpers;
 include!("core.rs");
 include!("cancel.rs");
 include!("rationalize.rs");
-include!("small_rules.rs");
 include!("more_rules.rs");
-include!("tail.rs");
+
+// Phase 2: Properly modularized submodules
+mod small_rules;
+mod tail;
+pub use small_rules::RationalizeSingleSurdRule;
+pub use tail::CombineSameDenominatorFractionsRule;
