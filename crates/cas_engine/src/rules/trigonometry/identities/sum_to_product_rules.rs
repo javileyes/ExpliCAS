@@ -1,3 +1,27 @@
+//! Sum-to-product and dyadic cosine product transformations.
+
+use crate::define_rule;
+use crate::rule::Rewrite;
+use crate::rules::algebra::helpers::smart_mul;
+use crate::rules::trigonometry::{evaluation, pythagorean};
+use cas_ast::{Expr, ExprId};
+use num_traits::One;
+use std::cmp::Ordering;
+
+// Import rules from parent module (still defined in include!() files)
+use super::{
+    AngleIdentityRule, CotHalfAngleDifferenceRule, CscCotPythagoreanRule,
+    DoubleAngleContractionRule, DoubleAngleRule, HalfAngleTangentRule, HyperbolicTanhPythRule,
+    PythagoreanIdentityRule, QuintupleAngleRule, RecursiveTrigExpansionRule, SecTanPythagoreanRule,
+    Sin4xIdentityZeroRule, SinCosIntegerPiRule, SinCosSumQuotientRule, SinSupplementaryAngleRule,
+    TanDifferenceIdentityZeroRule, TanDifferenceRule, TanToSinCosRule, TanTripleProductRule,
+    TrigHiddenCubicIdentityRule, TrigOddEvenParityRule, TrigQuotientRule, TrigSumToProductRule,
+    TripleAngleRule, WeierstrassContractionRule, WeierstrassCosIdentityZeroRule,
+    WeierstrassSinIdentityZeroRule,
+};
+// Import migration Phase 1-3 rules
+use super::{GeneralizedSinCosContractionRule, HyperbolicHalfAngleSquaresRule, TrigPhaseShiftRule};
+
 // =============================================================================
 // DyadicCosProductToSinRule: 2^n · ∏_{k=0}^{n-1} cos(2^k·θ) → sin(2^n·θ)/sin(θ)
 // =============================================================================
@@ -224,7 +248,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // To enable, first disable SecToRecipCosRule, CscToRecipSinRule, and TanToSinCosRule.
 
     // Use the new data-driven EvaluateTrigTableRule instead of deprecated EvaluateTrigRule
-    simplifier.add_rule(Box::new(super::evaluation::EvaluateTrigTableRule));
+    simplifier.add_rule(Box::new(evaluation::EvaluateTrigTableRule));
     simplifier.add_rule(Box::new(PythagoreanIdentityRule));
     simplifier.add_rule(Box::new(SecTanPythagoreanRule));
     simplifier.add_rule(Box::new(CscCotPythagoreanRule));
@@ -281,27 +305,23 @@ pub fn register(simplifier: &mut crate::Simplifier) {
 
     // Pythagorean Identity simplification: k - k*sin² → k*cos², k - k*cos² → k*sin²
     // This rule was extracted from CancelCommonFactorsRule for pedagogical clarity
-    simplifier.add_rule(Box::new(super::pythagorean::TrigPythagoreanSimplifyRule));
+    simplifier.add_rule(Box::new(pythagorean::TrigPythagoreanSimplifyRule));
     // N-ary Pythagorean: sin²(t) + cos²(t) → 1 in chains of any length
-    simplifier.add_rule(Box::new(super::pythagorean::TrigPythagoreanChainRule));
+    simplifier.add_rule(Box::new(pythagorean::TrigPythagoreanChainRule));
     // Generic coefficient Pythagorean: A*sin²(x) + A*cos²(x) → A for any expression A
-    simplifier.add_rule(Box::new(
-        super::pythagorean::TrigPythagoreanGenericCoefficientRule,
-    ));
+    simplifier.add_rule(Box::new(pythagorean::TrigPythagoreanGenericCoefficientRule));
     // Linear fold: a·sin²(t) + b·cos²(t) + c → (a-b)·sin²(t) + (b+c) using sin²+cos²=1
-    simplifier.add_rule(Box::new(super::pythagorean::TrigPythagoreanLinearFoldRule));
+    simplifier.add_rule(Box::new(pythagorean::TrigPythagoreanLinearFoldRule));
     // Local collect fold: k·R·sin²(t) + R·cos²(t) - R → (k-1)·R·sin²(t) for residual R
-    simplifier.add_rule(Box::new(
-        super::pythagorean::TrigPythagoreanLocalCollectFoldRule,
-    ));
+    simplifier.add_rule(Box::new(pythagorean::TrigPythagoreanLocalCollectFoldRule));
     // Contraction: 1 + tan²(x) → sec²(x), 1 + cot²(x) → csc²(x)
-    simplifier.add_rule(Box::new(super::pythagorean::RecognizeSecSquaredRule));
-    simplifier.add_rule(Box::new(super::pythagorean::RecognizeCscSquaredRule));
+    simplifier.add_rule(Box::new(pythagorean::RecognizeSecSquaredRule));
+    simplifier.add_rule(Box::new(pythagorean::RecognizeCscSquaredRule));
     // Expansion: sec(x) → 1/cos(x), csc(x) → 1/sin(x) for canonical unification
-    simplifier.add_rule(Box::new(super::pythagorean::SecToRecipCosRule));
-    simplifier.add_rule(Box::new(super::pythagorean::CscToRecipSinRule));
+    simplifier.add_rule(Box::new(pythagorean::SecToRecipCosRule));
+    simplifier.add_rule(Box::new(pythagorean::CscToRecipSinRule));
     // Expansion: cot(x) → cos(x)/sin(x) for canonical unification
-    simplifier.add_rule(Box::new(super::pythagorean::CotToCosSinRule));
+    simplifier.add_rule(Box::new(pythagorean::CotToCosSinRule));
 
     simplifier.add_rule(Box::new(AngleConsistencyRule));
 
@@ -312,7 +332,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SinSupplementaryAngleRule));
 
     // Fourth power difference: sin⁴(x) - cos⁴(x) → sin²(x) - cos²(x)
-    simplifier.add_rule(Box::new(super::pythagorean::TrigEvenPowerDifferenceRule));
+    simplifier.add_rule(Box::new(pythagorean::TrigEvenPowerDifferenceRule));
 
     // Cotangent half-angle difference: cot(u/2) - cot(u) = 1/sin(u)
     simplifier.add_rule(Box::new(CotHalfAngleDifferenceRule));
@@ -575,4 +595,3 @@ fn expand_trig_angle(
         _ => expr,
     }
 }
-

@@ -10,7 +10,10 @@ include!("identities/core.rs");
 include!("identities/values.rs");
 include!("identities/power_products.rs");
 include!("identities/expansions.rs");
-include!("identities/sum_to_product.rs");
+
+// Phase 4: Migrated to proper module
+mod sum_to_product_rules;
+pub use sum_to_product_rules::{register, AngleConsistencyRule, DyadicCosProductToSinRule};
 
 // Phase 1: Migrated to proper module
 mod angle_expansion_rules;
