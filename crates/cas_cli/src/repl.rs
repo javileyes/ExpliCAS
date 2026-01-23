@@ -455,8 +455,30 @@ impl Default for Repl {
     }
 }
 
-// Repl implementation split across multiple files.
-// Each included file wraps its methods in `impl Repl { ... }`
+// =============================================================================
+// Repl implementation - split across multiple files for maintainability
+// =============================================================================
+// Using include!() is the idiomatic pattern for splitting `impl` blocks:
+// - Each file contains `impl Repl { ... }` methods
+// - All files share the imports declared above in this file
+// - This is different from module splitting (which works for independent types)
+//
+// File contents:
+//   init.rs           - Constructor and configuration sync
+//   dispatch.rs       - Command dispatch and routing
+//   help.rs           - Help system and documentation
+//   commands_misc.rs  - Miscellaneous commands (set, show, debug, etc.)
+//   semantics.rs      - Semantic analysis commands
+//   commands_algebra.rs - Algebra commands (factor, expand, etc.)
+//   commands_solve.rs  - Solve command and equation handling
+//   show_steps.rs     - Step-by-step output formatting
+//   eval.rs           - Expression evaluation
+//   simplify.rs       - Simplification pipeline
+//   rationalize.rs    - Rationalization commands
+//   limit.rs          - Limit computation
+//   free_fns.rs       - Free functions (format helpers, etc.)
+// =============================================================================
+
 include!("repl/init.rs");
 include!("repl/dispatch.rs");
 include!("repl/help.rs");
