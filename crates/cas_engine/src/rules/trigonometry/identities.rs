@@ -2,6 +2,10 @@
 //!
 //! This module re-exports all identity rules from specialized submodules.
 
+// --- Table-driven trig evaluation (Phases 1-6) ---
+pub mod trig_table;
+pub use trig_table::{AngleSpec, ValueSpec};
+
 // --- Core evaluation and fundamental identities ---
 mod core_rules;
 pub use core_rules::{
