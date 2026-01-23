@@ -1,3 +1,30 @@
+//! Cancellation and rationalization rules for fractions.
+//!
+//! This module contains rules for adding fractions, rationalizing denominators,
+//! and canceling common factors.
+
+use crate::build::mul2_raw;
+use crate::define_rule;
+use crate::expand;
+use crate::ordering;
+use crate::phase::PhaseMask;
+use crate::polynomial::Polynomial;
+use crate::rule::Rewrite;
+use crate::rules::algebra::helpers::{are_denominators_opposite, collect_variables};
+use cas_ast::{count_nodes, Context, Expr, ExprId};
+use num_rational::BigRational;
+use num_traits::{One, Signed, Zero};
+use std::cmp::Ordering;
+use std::collections::HashSet;
+
+// Import helpers from sibling core_rules module
+use super::core_rules::{
+    check_divisible_denominators, extract_as_fraction, is_pi_constant, is_trig_function_name,
+};
+
+// Import from local helpers module
+use super::helpers::{build_sum, collect_additive_terms, contains_irrational};
+
 // =============================================================================
 // Fold Add Into Fraction: k + p/q → (k·q + p)/q
 // =============================================================================
@@ -1158,57 +1185,8 @@ define_rule!(
     }
 );
 
-/// Collect all additive terms from an expression
-/// For a + b + c, returns vec![a, b, c]
-fn collect_additive_terms(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
-    let mut terms = Vec::new();
-    collect_terms_recursive(ctx, expr, &mut terms);
-    terms
-}
-
-fn collect_terms_recursive(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
-    match ctx.get(expr) {
-        Expr::Add(l, r) => {
-            collect_terms_recursive(ctx, *l, terms);
-            collect_terms_recursive(ctx, *r, terms);
-        }
-        _ => {
-            // It's a leaf term (including Sub which we treat as single term)
-            terms.push(expr);
-        }
-    }
-}
-
-/// Check if an expression contains an irrational (root)
-fn contains_irrational(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Pow(_, exp) => {
-            if let Expr::Number(n) = ctx.get(*exp) {
-                !n.is_integer() // Fractional exponent = root
-            } else {
-                false
-            }
-        }
-        Expr::Function(name, _) => name == "sqrt",
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
-            contains_irrational(ctx, *l) || contains_irrational(ctx, *r)
-        }
-        Expr::Neg(e) => contains_irrational(ctx, *e),
-        _ => false,
-    }
-}
-
-/// Build a sum from a list of terms
-fn build_sum(ctx: &mut Context, terms: &[ExprId]) -> ExprId {
-    if terms.is_empty() {
-        return ctx.num(0);
-    }
-    let mut result = terms[0];
-    for &term in terms.iter().skip(1) {
-        result = ctx.add(Expr::Add(result, term));
-    }
-    result
-}
+// Helper functions collect_additive_terms, contains_irrational, and build_sum
+// are imported from super::helpers
 
 define_rule!(
     GeneralizedRationalizationRule,
@@ -1768,4 +1746,3 @@ define_rule!(
         None
     }
 );
-

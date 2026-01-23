@@ -49,8 +49,15 @@ pub use core_rules::{
     SimplifyMulDivRule,
 };
 
-// Cancel rules - still using include!() until core_rules migration is verified
-include!("cancel.rs");
+// Cancel rules module (Phase 5.2)
+mod cancel_rules;
+
+// Re-export rules from cancel_rules
+pub use cancel_rules::{
+    AddFractionsRule, CancelCommonFactorsRule, CancelNthRootBinomialFactorRule,
+    FoldAddIntoFractionRule, GeneralizedRationalizationRule, RationalizeDenominatorRule,
+    RationalizeNthRootBinomialRule, RationalizeProductDenominatorRule, SqrtConjugateCollapseRule,
+};
 
 // Properly modularized submodules (Phases 2-4)
 mod more_rules;
