@@ -1,3 +1,13 @@
+//! Half-angle, phase shift, supplementary angle and Weierstrass substitution rules.
+
+use crate::define_rule;
+use crate::helpers::{is_pi, is_pi_over_n};
+use crate::rule::Rewrite;
+use crate::rules::algebra::helpers::smart_mul;
+use cas_ast::{Expr, ExprId};
+use num_traits::One;
+use std::cmp::Ordering;
+
 // =============================================================================
 // Sin Supplementary Angle Rule
 // =============================================================================
@@ -117,7 +127,7 @@ define_rule!(
 /// - Add(x, π/2) → (x, 1)
 /// - Sub(x, π/2) → (x, -1)  
 /// - Div(Add(n*x, k*π), m) → (x, k*2/m) if m divides k*2
-fn extract_phase_shift(ctx: &mut cas_ast::Context, expr: ExprId) -> Option<(ExprId, i32)> {
+pub fn extract_phase_shift(ctx: &mut cas_ast::Context, expr: ExprId) -> Option<(ExprId, i32)> {
     // Form 1: Div((coeff*x + k*pi), denom) - the canonical form!
     // Example: (2*x + pi)/2 means x + pi/2, so k=1
     if let Expr::Div(num, den) = ctx.get(expr) {
@@ -567,7 +577,7 @@ fn match_one_minus_tan_squared(ctx: &cas_ast::Context, expr: ExprId) -> Option<(
 
 // Weierstrass Contraction Rule: 2*tan(x/2)/(1+tan²(x/2)) → sin(x)
 // and (1-tan²(x/2))/(1+tan²(x/2)) → cos(x)
-struct WeierstrassContractionRule;
+pub struct WeierstrassContractionRule;
 
 impl crate::rule::Rule for WeierstrassContractionRule {
     fn name(&self) -> &str {
@@ -763,7 +773,7 @@ fn match_one_minus_tan_half_squared(ctx: &cas_ast::Context, expr: ExprId) -> Opt
 
 // WeierstrassSinIdentityZeroRule: sin(x) - 2*tan(x/2)/(1+tan²(x/2)) → 0
 // Pattern-driven cancellation, no expansion.
-struct WeierstrassSinIdentityZeroRule;
+pub struct WeierstrassSinIdentityZeroRule;
 
 impl crate::rule::Rule for WeierstrassSinIdentityZeroRule {
     fn name(&self) -> &str {
@@ -859,7 +869,7 @@ impl WeierstrassSinIdentityZeroRule {
 }
 
 // WeierstrassCosIdentityZeroRule: cos(x) - (1-tan²(x/2))/(1+tan²(x/2)) → 0
-struct WeierstrassCosIdentityZeroRule;
+pub struct WeierstrassCosIdentityZeroRule;
 
 impl crate::rule::Rule for WeierstrassCosIdentityZeroRule {
     fn name(&self) -> &str {
@@ -958,7 +968,7 @@ impl WeierstrassCosIdentityZeroRule {
 // =============================================================================
 // Recognizes the sin(4x) expansion identity directly in cancellation context.
 
-struct Sin4xIdentityZeroRule;
+pub struct Sin4xIdentityZeroRule;
 
 impl crate::rule::Rule for Sin4xIdentityZeroRule {
     fn name(&self) -> &str {
@@ -1164,7 +1174,7 @@ impl Sin4xIdentityZeroRule {
 // =============================================================================
 // Recognizes the tangent difference identity directly in cancellation context.
 
-struct TanDifferenceIdentityZeroRule;
+pub struct TanDifferenceIdentityZeroRule;
 
 impl crate::rule::Rule for TanDifferenceIdentityZeroRule {
     fn name(&self) -> &str {

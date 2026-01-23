@@ -41,10 +41,19 @@ pub use expansion_rules::{
 mod sum_to_product_rules;
 pub use sum_to_product_rules::{register, AngleConsistencyRule, DyadicCosProductToSinRule};
 
+// Phase 9: Migrated to proper module (must be declared before angle_expansion_rules)
+mod half_angle_phase_rules;
+pub use half_angle_phase_rules::{
+    CotHalfAngleDifferenceRule, HyperbolicTanhPythRule, Sin4xIdentityZeroRule,
+    SinSupplementaryAngleRule, TanDifferenceIdentityZeroRule, TanDifferenceRule,
+    WeierstrassContractionRule, WeierstrassCosIdentityZeroRule, WeierstrassSinIdentityZeroRule,
+};
+// Re-export helper for use by angle_expansion_rules
+pub use half_angle_phase_rules::extract_phase_shift;
+
 // Phase 1: Migrated to proper module
 mod angle_expansion_rules;
 pub use angle_expansion_rules::{ProductToSumRule, TrigPhaseShiftRule};
-include!("identities/half_angle_phase.rs");
 
 // Phase 2: Migrated to proper module
 mod tan_half_angle_rules;
