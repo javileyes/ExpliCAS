@@ -10,6 +10,9 @@ use num_traits::{One, Zero};
 // Import helpers from sibling modules (via re-exports in parent)
 use super::{has_large_coefficient, is_multiple_angle};
 
+// Import table-driven evaluation
+use super::trig_table::{eval_inv_trig_special, eval_trig_special, InvTrigFn, TrigFn};
+
 // =============================================================================
 // SinCosIntegerPiRule: Pre-order evaluation of sin(n·π) and cos(n·π)
 // =============================================================================
@@ -193,7 +196,39 @@ define_rule!(
             if args.len() == 1 {
                 let arg = args[0];
 
-                // Case 1: Known Values (0)
+                // ============================================================
+                // TABLE-DRIVEN FAST PATH: Try table lookup first
+                // ============================================================
+                // Direct trig functions
+                let trig_fn = match name.as_str() {
+                    "sin" => Some(TrigFn::Sin),
+                    "cos" => Some(TrigFn::Cos),
+                    "tan" => Some(TrigFn::Tan),
+                    _ => None,
+                };
+                if let Some(f) = trig_fn {
+                    if let Some(result) = eval_trig_special(ctx, f, arg) {
+                        let desc = format!("{}(...) evaluated via table", name);
+                        return Some(Rewrite::new(result).desc(desc));
+                    }
+                }
+
+                // Inverse trig functions
+                let inv_trig_fn = match name.as_str() {
+                    "arcsin" | "asin" => Some(InvTrigFn::Asin),
+                    "arccos" | "acos" => Some(InvTrigFn::Acos),
+                    "arctan" | "atan" => Some(InvTrigFn::Atan),
+                    _ => None,
+                };
+                if let Some(f) = inv_trig_fn {
+                    if let Some(result) = eval_inv_trig_special(ctx, f, arg) {
+                        let desc = format!("{}(...) evaluated via table", name);
+                        return Some(Rewrite::new(result).desc(desc));
+                    }
+                }
+                // ============================================================
+
+                // Case 1: Known Values (0) - fallback for non-table cases
                 if let Expr::Number(n) = ctx.get(arg) {
                     if n.is_zero() {
                         match name.as_str() {
