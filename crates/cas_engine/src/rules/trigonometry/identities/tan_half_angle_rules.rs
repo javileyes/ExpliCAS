@@ -1,3 +1,16 @@
+//! Tan half-angle and trigonometric quotient rules.
+//!
+//! This module contains rules for:
+//! - Hyperbolic half-angle identities: cosh²(x/2) = (cosh(x)+1)/2
+//! - Generalized sin·cos contraction: k·sin(t)·cos(t) = (k/2)·sin(2t)
+//! - Trig quotient simplification: sin/cos → tan
+//! - Tan double angle contraction
+
+use crate::define_rule;
+use crate::rule::Rewrite;
+use cas_ast::{Expr, ExprId};
+use num_traits::One;
+
 // =============================================================================
 
 define_rule!(
@@ -369,4 +382,3 @@ define_rule!(
         None
     }
 );
-

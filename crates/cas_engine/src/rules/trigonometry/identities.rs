@@ -16,5 +16,12 @@ include!("identities/sum_to_product.rs");
 mod angle_expansion_rules;
 pub use angle_expansion_rules::{ProductToSumRule, TrigPhaseShiftRule};
 include!("identities/half_angle_phase.rs");
-include!("identities/tan_half_angle.rs");
+
+// Phase 2: Migrated to proper module
+mod tan_half_angle_rules;
+pub use tan_half_angle_rules::{
+    GeneralizedSinCosContractionRule, HyperbolicHalfAngleSquaresRule,
+    TanDoubleAngleContractionRule, TrigQuotientToNamedRule,
+};
+
 include!("identities/misc.rs");
