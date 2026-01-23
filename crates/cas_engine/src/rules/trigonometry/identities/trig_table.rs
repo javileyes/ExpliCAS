@@ -67,19 +67,6 @@ impl AngleSpec {
         }
     }
 
-    /// Add two angles
-    pub fn add(self, other: Self) -> Self {
-        // a/b + c/d = (ad + bc) / bd
-        let num = self.num * other.den + other.num * self.den;
-        let den = self.den * other.den;
-        Self::new(num, den)
-    }
-
-    /// Subtract two angles
-    pub fn sub(self, other: Self) -> Self {
-        self.add(other.negate())
-    }
-
     /// Reduce angle modulo 2π to range [0, 2π)
     pub fn reduce_mod_2pi(self) -> Self {
         // We're working with (num/den)*π
@@ -136,6 +123,29 @@ impl AngleSpec {
             let d = ctx.num(self.den as i64);
             ctx.add(Expr::Div(num_pi, d))
         }
+    }
+}
+
+// Implement std::ops::Add for AngleSpec
+impl std::ops::Add for AngleSpec {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        // a/b + c/d = (ad + bc) / bd
+        let num = self.num * other.den + other.num * self.den;
+        let den = self.den * other.den;
+        Self::new(num, den)
+    }
+}
+
+// Implement std::ops::Sub for AngleSpec
+// Note: Using add+negate is intentional, not suspicious
+#[allow(clippy::suspicious_arithmetic_impl)]
+impl std::ops::Sub for AngleSpec {
+    type Output = Self;
+
+    fn sub(self, other: Self) -> Self {
+        self + other.negate()
     }
 }
 
@@ -490,7 +500,7 @@ pub fn normalize_angle(angle: AngleSpec) -> NormAngle {
     } else if reduced.cmp_value(&pi) != Ordering::Greater {
         // Q2: (π/2, π]
         // sin(π - x) = sin(x), cos(π - x) = -cos(x)
-        let base = pi.sub(reduced);
+        let base = pi - reduced;
         NormAngle {
             base,
             sin_sign: 1,
@@ -500,7 +510,7 @@ pub fn normalize_angle(angle: AngleSpec) -> NormAngle {
     } else if reduced.cmp_value(&pi_3_2) != Ordering::Greater {
         // Q3: (π, 3π/2]
         // sin(x) = -sin(x - π), cos(x) = -cos(x - π)
-        let base = reduced.sub(pi);
+        let base = reduced - pi;
         NormAngle {
             base,
             sin_sign: -1,
@@ -511,7 +521,7 @@ pub fn normalize_angle(angle: AngleSpec) -> NormAngle {
         // Q4: (3π/2, 2π)
         // sin(2π - x) = -sin(x), cos(2π - x) = cos(x)
         let two_pi = AngleSpec::TWO_PI;
-        let base = two_pi.sub(reduced);
+        let base = two_pi - reduced;
         NormAngle {
             base,
             sin_sign: -1,
@@ -850,7 +860,7 @@ mod tests {
     fn test_angle_spec_add() {
         let a = AngleSpec::new(1, 6); // π/6
         let b = AngleSpec::new(1, 3); // π/3
-        let sum = a.add(b); // π/6 + π/3 = π/2
+        let sum = a + b; // π/6 + π/3 = π/2
         assert_eq!(sum, AngleSpec::PI_2);
     }
 
