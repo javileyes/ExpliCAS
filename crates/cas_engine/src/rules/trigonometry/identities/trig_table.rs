@@ -4,6 +4,7 @@
 //! along with lookup tables for special trigonometric values.
 
 use cas_ast::{Context, Expr, ExprId};
+use num_traits::{ToPrimitive, Zero};
 use std::cmp::Ordering;
 
 // =============================================================================
@@ -518,6 +519,136 @@ pub fn normalize_angle(angle: AngleSpec) -> NormAngle {
             swap_sin_cos: false,
         }
     }
+}
+
+// =============================================================================
+// Evaluators - Connect AST to tables
+// =============================================================================
+
+/// Trig function type for unified evaluation
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TrigFn {
+    Sin,
+    Cos,
+    Tan,
+}
+
+/// Try to extract an AngleSpec from an expression that looks like k*π/n.
+///
+/// Recognizes patterns:
+/// - π -> 1/1
+/// - k*π -> k/1
+/// - π/n -> 1/n
+/// - k*π/n -> k/n
+/// - (k/n)*π -> k/n
+/// - 0 (the number) -> 0/1
+pub fn parse_angle_from_expr(ctx: &Context, expr: ExprId) -> Option<AngleSpec> {
+    match ctx.get(expr) {
+        // Zero constant
+        Expr::Number(n) if n.is_zero() => Some(AngleSpec::ZERO),
+
+        // π alone
+        Expr::Constant(cas_ast::Constant::Pi) => Some(AngleSpec::PI),
+
+        // k * π or π * k
+        Expr::Mul(a, b) => {
+            // Check if one is π and the other is integer
+            if matches!(ctx.get(*a), Expr::Constant(cas_ast::Constant::Pi)) {
+                // π * k
+                if let Expr::Number(n) = ctx.get(*b) {
+                    let k = n.to_integer().to_i32()?;
+                    return Some(AngleSpec::new(k, 1));
+                }
+            }
+            if matches!(ctx.get(*b), Expr::Constant(cas_ast::Constant::Pi)) {
+                // k * π
+                if let Expr::Number(n) = ctx.get(*a) {
+                    let k = n.to_integer().to_i32()?;
+                    return Some(AngleSpec::new(k, 1));
+                }
+                // (k/n) * π
+                if let Expr::Div(num, den) = ctx.get(*a) {
+                    if let (Expr::Number(n), Expr::Number(d)) = (ctx.get(*num), ctx.get(*den)) {
+                        let k = n.to_integer().to_i32()?;
+                        let m = d.to_integer().to_i32()?;
+                        if m != 0 {
+                            return Some(AngleSpec::new(k, m));
+                        }
+                    }
+                }
+            }
+            None
+        }
+
+        // π / n or (k*π) / n
+        Expr::Div(num, den) => {
+            if let Expr::Number(d) = ctx.get(*den) {
+                let denom = d.to_integer().to_i32()?;
+                if denom == 0 {
+                    return None;
+                }
+
+                // π / n
+                if matches!(ctx.get(*num), Expr::Constant(cas_ast::Constant::Pi)) {
+                    return Some(AngleSpec::new(1, denom));
+                }
+
+                // (k * π) / n
+                if let Expr::Mul(a, b) = ctx.get(*num) {
+                    if matches!(ctx.get(*b), Expr::Constant(cas_ast::Constant::Pi)) {
+                        if let Expr::Number(n) = ctx.get(*a) {
+                            let k = n.to_integer().to_i32()?;
+                            return Some(AngleSpec::new(k, denom));
+                        }
+                    }
+                    if matches!(ctx.get(*a), Expr::Constant(cas_ast::Constant::Pi)) {
+                        if let Expr::Number(n) = ctx.get(*b) {
+                            let k = n.to_integer().to_i32()?;
+                            return Some(AngleSpec::new(k, denom));
+                        }
+                    }
+                }
+            }
+            None
+        }
+
+        // Neg(-x) -> parse x and negate
+        Expr::Neg(inner) => {
+            let a = parse_angle_from_expr(ctx, *inner)?;
+            Some(a.negate())
+        }
+
+        _ => None,
+    }
+}
+
+/// Evaluate sin/cos/tan at a special angle, returning the simplified ExprId.
+///
+/// This is the main entry point for table-driven trig evaluation.
+/// Returns `None` if the angle is not a special value we know about.
+pub fn eval_trig_special(ctx: &mut Context, f: TrigFn, arg: ExprId) -> Option<ExprId> {
+    // Step 1: Parse angle from expression
+    let angle = parse_angle_from_expr(ctx, arg)?;
+
+    // Step 2: Normalize to first quadrant
+    let norm = normalize_angle(angle);
+
+    // Step 3: Lookup base value in table
+    let base_val = match f {
+        TrigFn::Sin => lookup_sin(norm.base),
+        TrigFn::Cos => lookup_cos(norm.base),
+        TrigFn::Tan => lookup_tan(norm.base),
+    }?;
+
+    // Step 4: Apply normalization (signs, swaps)
+    let final_val = match f {
+        TrigFn::Sin => norm.apply_sin(base_val),
+        TrigFn::Cos => norm.apply_cos(base_val),
+        TrigFn::Tan => norm.apply_tan(base_val),
+    };
+
+    // Step 5: Convert to ExprId
+    final_val.to_expr(ctx)
 }
 
 // =============================================================================
