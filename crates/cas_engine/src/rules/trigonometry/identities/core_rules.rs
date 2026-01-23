@@ -1,3 +1,16 @@
+//! Core trigonometric identity rules for evaluation at special values.
+
+use crate::define_rule;
+use crate::helpers::{is_pi, is_pi_over_n};
+use crate::rule::Rewrite;
+use crate::rules::algebra::helpers::smart_mul;
+use cas_ast::{Expr, ExprId};
+use num_traits::{One, Zero};
+use std::cmp::Ordering;
+
+// Import helpers from sibling modules (via re-exports in parent)
+use super::{has_large_coefficient, is_multiple_angle};
+
 // =============================================================================
 // SinCosIntegerPiRule: Pre-order evaluation of sin(n·π) and cos(n·π)
 // =============================================================================
@@ -836,4 +849,3 @@ impl crate::rule::Rule for AngleIdentityRule {
         None
     }
 }
-

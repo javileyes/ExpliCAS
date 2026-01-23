@@ -12,10 +12,15 @@ pub use values_rules::{
     CscCotPythagoreanRule, SecTanPythagoreanRule, TanToSinCosRule, TanTripleProductRule,
     TrigQuotientRule,
 };
-// Re-export helpers for use by included files (core.rs, expansions.rs)
-use values_rules::{has_large_coefficient, is_multiple_angle};
+// Re-export helpers for use by other modules (core_rules, expansions.rs)
+pub use values_rules::{has_large_coefficient, is_multiple_angle};
 
-include!("identities/core.rs");
+// Phase 7: Migrated to proper module
+mod core_rules;
+pub use core_rules::{
+    AngleIdentityRule, EvaluateTrigRule, PythagoreanIdentityRule, SinCosIntegerPiRule,
+    TrigOddEvenParityRule,
+};
 
 // Phase 5: Migrated to proper module (must be declared before expansions.rs include)
 mod power_products_rules;
