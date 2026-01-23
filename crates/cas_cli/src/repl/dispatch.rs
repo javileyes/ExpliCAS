@@ -1,7 +1,18 @@
+use super::output::ReplReply;
 use super::*;
 
 impl Repl {
+    /// Main command dispatch - calls core and prints result.
     pub fn handle_command(&mut self, line: &str) {
+        let reply = self.handle_command_core(line);
+        self.print_reply(reply);
+    }
+
+    /// Core command dispatch - returns structured messages, no I/O.
+    /// This is the heart of ReplCore logic.
+    pub fn handle_command_core(&mut self, line: &str) -> ReplReply {
+        let reply = ReplReply::new();
+
         // Preprocess: Convert function-style commands to command-style
         // simplify(...) -> simplify ...
         // solve(...) -> solve ...
@@ -10,7 +21,7 @@ impl Repl {
         // Check for "help" command
         if line.starts_with("help") {
             self.handle_help(&line);
-            return;
+            return reply; // TODO: migrate handle_help to return ReplReply
         }
 
         // ========== SESSION ENVIRONMENT COMMANDS ==========
@@ -18,7 +29,7 @@ impl Repl {
         // "let <name> = <expr>" - assign variable
         if let Some(rest) = line.strip_prefix("let ") {
             self.handle_let_command(rest);
-            return;
+            return reply;
         }
 
         // "<name> := <expr>" - alternative assignment syntax
@@ -27,44 +38,44 @@ impl Repl {
             let expr_str = line[idx + 2..].trim();
             if !name.is_empty() && !expr_str.is_empty() {
                 self.handle_assignment(name, expr_str, true); // := is lazy
-                return;
+                return reply;
             }
         }
 
         // "vars" - list all variables
         if line == "vars" {
             self.handle_vars_command();
-            return;
+            return reply;
         }
 
         // "clear" or "clear <names>" - clear variables
         if line == "clear" || line.starts_with("clear ") {
             self.handle_clear_command(&line);
-            return;
+            return reply;
         }
 
         // "reset" - reset entire session
         if line == "reset" {
             self.handle_reset_command();
-            return;
+            return reply;
         }
 
         // "reset full" - reset everything including profile cache
         if line == "reset full" {
             self.handle_reset_full_command();
-            return;
+            return reply;
         }
 
         // "cache clear" - clear only profile cache
         if line == "cache clear" || line == "cache" {
             self.handle_cache_command(&line);
-            return;
+            return reply;
         }
 
         // "semantics" - unified semantic settings (domain, value, branch, inv_trig, const_fold)
         if line == "semantics" || line.starts_with("semantics ") {
             self.handle_semantics(&line);
-            return;
+            return reply;
         }
 
         // "mode" - DEPRECATED: redirect to semantics
@@ -72,13 +83,13 @@ impl Repl {
             println!("⚠️  The 'mode' command is deprecated.");
             println!("Use 'semantics set inv_trig strict|principal' instead.");
             println!("Run 'semantics' to see current settings.");
-            return;
+            return reply;
         }
 
         // "context" - show/switch context mode (auto, standard, solve, integrate)
         if line == "context" || line.starts_with("context ") {
             self.handle_context_command(&line);
-            return;
+            return reply;
         }
 
         // "complex" - DEPRECATED: redirect to semantics
@@ -86,43 +97,43 @@ impl Repl {
             println!("⚠️  The 'complex' command is deprecated.");
             println!("Use 'semantics set value real|complex' instead.");
             println!("Run 'semantics' to see current settings.");
-            return;
+            return reply;
         }
 
         // "steps" - show/switch steps collection mode (on, off, compact)
         if line == "steps" || line.starts_with("steps ") {
             self.handle_steps_command(&line);
-            return;
+            return reply;
         }
 
         // "autoexpand" - show/switch auto-expand policy (on, off)
         if line == "autoexpand" || line.starts_with("autoexpand ") {
             self.handle_autoexpand_command(&line);
-            return;
+            return reply;
         }
 
         // "budget" - V2.0: Control Conditional branching budget for solve
         if line == "budget" || line.starts_with("budget ") {
             self.handle_budget_command(&line);
-            return;
+            return reply;
         }
 
         // "history" or "list" - show session history
         if line == "history" || line == "list" {
             self.handle_history_command();
-            return;
+            return reply;
         }
 
         // "show #id" - show a specific session entry
         if let Some(rest) = line.strip_prefix("show ") {
             self.handle_show_command(rest);
-            return;
+            return reply;
         }
 
         // "del #id [#id...]" - delete session entries
         if let Some(rest) = line.strip_prefix("del ") {
             self.handle_del_command(rest);
-            return;
+            return reply;
         }
 
         // ========== END SESSION ENVIRONMENT COMMANDS ==========
@@ -130,116 +141,116 @@ impl Repl {
         // Check for "set" command (pipeline options)
         if line.starts_with("set ") {
             self.handle_set_command(&line);
-            return;
+            return reply;
         }
 
         // Check for "help" command (duplicate check in original code?)
         if line == "help" {
             self.print_general_help();
-            return;
+            return reply;
         }
 
         // Check for "equiv" command
         if line.starts_with("equiv ") {
             self.handle_equiv(&line);
-            return;
+            return reply;
         }
 
         // Check for "subst" command
         if line.starts_with("subst ") {
             self.handle_subst(&line);
-            return;
+            return reply;
         }
 
         // Check for "solve" command
         if line.starts_with("solve ") {
             self.handle_solve(&line);
-            return;
+            return reply;
         }
 
         // Check for "simplify" command
         if line.starts_with("simplify ") {
             self.handle_full_simplify(&line);
-            return;
+            return reply;
         }
 
         // Check for "config" command
         if line.starts_with("config ") {
             self.handle_config(&line);
-            return;
+            return reply;
         }
 
         // Check for "timeline" command
         if line.starts_with("timeline ") {
             self.handle_timeline(&line);
-            return;
+            return reply;
         }
 
         // Check for "visualize" command
         if line.starts_with("visualize ") {
             self.handle_visualize(&line);
-            return;
+            return reply;
         }
 
         // Check for "explain" command
         if line.starts_with("explain ") {
             self.handle_explain(&line);
-            return;
+            return reply;
         }
 
         // Check for "det" command
         if line.starts_with("det ") {
             self.handle_det(&line);
-            return;
+            return reply;
         }
 
         // Check for "transpose" command
         if line.starts_with("transpose ") {
             self.handle_transpose(&line);
-            return;
+            return reply;
         }
 
         // Check for "trace" command
         if line.starts_with("trace ") {
             self.handle_trace(&line);
-            return;
+            return reply;
         }
 
         // Check for "telescope" command - for proving telescoping identities
         if line.starts_with("telescope ") {
             self.handle_telescope(&line);
-            return;
+            return reply;
         }
 
         // Check for "weierstrass" command - Weierstrass substitution (t = tan(x/2))
         if line.starts_with("weierstrass ") {
             self.handle_weierstrass(&line);
-            return;
+            return reply;
         }
 
         // Check for "expand_log" command - explicit logarithm expansion
         // MUST come before "expand" check due to prefix matching
         if line.starts_with("expand_log ") || line == "expand_log" {
             self.handle_expand_log(&line);
-            return;
+            return reply;
         }
 
         // Check for "expand" command - aggressive expansion/distribution
         if line.starts_with("expand ") {
             self.handle_expand(&line);
-            return;
+            return reply;
         }
 
         // Check for "rationalize" command - rationalize denominators with surds
         if line.starts_with("rationalize ") {
             self.handle_rationalize(&line);
-            return;
+            return reply;
         }
 
         // Check for "limit" command - compute limits at infinity
         if line.starts_with("limit ") {
             self.handle_limit(&line);
-            return;
+            return reply;
         }
 
         // Check for "profile" commands
@@ -265,7 +276,7 @@ impl Repl {
                     _ => println!("Usage: profile [enable|disable|clear]"),
                 }
             }
-            return;
+            return reply;
         }
 
         // Check for "health" commands
@@ -325,7 +336,7 @@ impl Repl {
                         if opts.contains(&"--list") || opts.contains(&"-l") {
                             // List available cases
                             println!("{}", crate::health_suite::list_cases());
-                            return;
+                            return reply;
                         }
 
                         // Check for --category
@@ -344,7 +355,7 @@ impl Repl {
                                                 "Available categories: {}",
                                                 crate::health_suite::category_names().join(", ")
                                             );
-                                            return;
+                                            return reply;
                                         }
                                     }
                                 }
@@ -354,7 +365,7 @@ impl Repl {
                                     "Available categories: {}",
                                     crate::health_suite::category_names().join(", ")
                                 );
-                                return;
+                                return reply;
                             }
                         } else {
                             None // Run all
@@ -396,10 +407,11 @@ impl Repl {
                     }
                 }
             }
-            return;
+            return reply;
         }
 
         self.handle_eval(&line);
+        reply
     }
 
     pub(crate) fn handle_config(&mut self, line: &str) {
