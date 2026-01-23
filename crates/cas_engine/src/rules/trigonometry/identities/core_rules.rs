@@ -6,7 +6,6 @@ use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{Expr, ExprId};
 use num_traits::{One, Zero};
-use std::cmp::Ordering;
 
 // Import helpers from sibling modules (via re-exports in parent)
 use super::{has_large_coefficient, is_multiple_angle};

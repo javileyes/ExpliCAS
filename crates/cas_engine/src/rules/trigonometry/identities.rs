@@ -1,61 +1,56 @@
-// All submodules manage their own imports - no shared imports needed at parent level
+//! Trigonometric identity rules for simplification and transformation.
+//!
+//! This module re-exports all identity rules from specialized submodules.
 
-// Phase 6: Migrated to proper module (must be declared before core.rs include)
-mod values_rules;
-pub use values_rules::{
-    CscCotPythagoreanRule, SecTanPythagoreanRule, TanToSinCosRule, TanTripleProductRule,
-    TrigQuotientRule,
-};
-// Re-export helpers for use by other modules (core_rules, expansions.rs)
-pub use values_rules::{has_large_coefficient, is_multiple_angle};
-
-// Phase 7: Migrated to proper module
+// --- Core evaluation and fundamental identities ---
 mod core_rules;
 pub use core_rules::{
     AngleIdentityRule, EvaluateTrigRule, PythagoreanIdentityRule, SinCosIntegerPiRule,
     TrigOddEvenParityRule,
 };
 
-// Phase 5: Migrated to proper module (must be declared before expansion_rules)
-mod power_products_rules;
-pub use power_products_rules::{SinCosSumQuotientRule, TrigHiddenCubicIdentityRule};
-// Re-export helpers for use by other modules (expansion_rules)
-pub use power_products_rules::{
-    build_avg, build_half_diff, extract_trig_arg, normalize_for_even_fn,
+mod values_rules;
+pub use values_rules::{has_large_coefficient, is_multiple_angle};
+pub use values_rules::{
+    CscCotPythagoreanRule, SecTanPythagoreanRule, TanToSinCosRule, TanTripleProductRule,
+    TrigQuotientRule,
 };
 
-// Phase 8: Migrated to proper module
+// --- Angle expansion and contraction ---
 mod expansion_rules;
 pub use expansion_rules::{
     CanonicalizeTrigSquareRule, DoubleAngleContractionRule, DoubleAngleRule, HalfAngleTangentRule,
     QuintupleAngleRule, RecursiveTrigExpansionRule, TrigSumToProductRule, TripleAngleRule,
 };
 
-// Phase 4: Migrated to proper module
+mod angle_expansion_rules;
+pub use angle_expansion_rules::{ProductToSumRule, TrigPhaseShiftRule};
+
+// --- Sum-to-product and product-to-sum ---
 mod sum_to_product_rules;
 pub use sum_to_product_rules::{register, AngleConsistencyRule, DyadicCosProductToSinRule};
 
-// Phase 9: Migrated to proper module (must be declared before angle_expansion_rules)
+mod power_products_rules;
+pub use power_products_rules::{
+    build_avg, build_half_diff, extract_trig_arg, normalize_for_even_fn,
+};
+pub use power_products_rules::{SinCosSumQuotientRule, TrigHiddenCubicIdentityRule};
+
+// --- Half-angle and Weierstrass substitution ---
 mod half_angle_phase_rules;
+pub use half_angle_phase_rules::extract_phase_shift;
 pub use half_angle_phase_rules::{
     CotHalfAngleDifferenceRule, HyperbolicTanhPythRule, Sin4xIdentityZeroRule,
     SinSupplementaryAngleRule, TanDifferenceIdentityZeroRule, TanDifferenceRule,
     WeierstrassContractionRule, WeierstrassCosIdentityZeroRule, WeierstrassSinIdentityZeroRule,
 };
-// Re-export helper for use by angle_expansion_rules
-pub use half_angle_phase_rules::extract_phase_shift;
 
-// Phase 1: Migrated to proper module
-mod angle_expansion_rules;
-pub use angle_expansion_rules::{ProductToSumRule, TrigPhaseShiftRule};
-
-// Phase 2: Migrated to proper module
 mod tan_half_angle_rules;
 pub use tan_half_angle_rules::{
     GeneralizedSinCosContractionRule, HyperbolicHalfAngleSquaresRule,
     TanDoubleAngleContractionRule, TrigQuotientToNamedRule,
 };
 
-// Phase 3: Migrated to proper module
+// --- Miscellaneous identity rules ---
 mod misc_rules;
 pub use misc_rules::TrigSumToProductContractionRule;

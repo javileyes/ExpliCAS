@@ -11,8 +11,6 @@ use num_traits::{One, Zero};
 use super::{
     build_avg, build_half_diff, extract_trig_arg, is_multiple_angle, normalize_for_even_fn,
 };
-// Import rules from sibling modules for test functions
-use super::{AngleIdentityRule, EvaluateTrigRule, TanToSinCosRule};
 
 // =============================================================================
 // STANDALONE SUM-TO-PRODUCT RULE
@@ -827,6 +825,9 @@ define_rule!(
 mod tests {
     use super::*;
     use crate::rule::Rule;
+    use crate::rules::trigonometry::identities::{
+        AngleIdentityRule, EvaluateTrigRule, TanToSinCosRule,
+    };
     use cas_ast::{Context, DisplayExpr};
     use cas_parser::parse;
 
