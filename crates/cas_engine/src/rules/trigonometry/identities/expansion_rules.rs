@@ -1,3 +1,19 @@
+//! Expansion and contraction rules for trigonometric expressions.
+
+use crate::define_rule;
+use crate::helpers::{extract_double_angle_arg, extract_triple_angle_arg};
+use crate::rule::Rewrite;
+use crate::rules::algebra::helpers::smart_mul;
+use cas_ast::{Expr, ExprId};
+use num_traits::{One, Zero};
+
+// Import helpers from sibling modules (via re-exports in parent)
+use super::{
+    build_avg, build_half_diff, extract_trig_arg, is_multiple_angle, normalize_for_even_fn,
+};
+// Import rules from sibling modules for test functions
+use super::{AngleIdentityRule, EvaluateTrigRule, TanToSinCosRule};
+
 // =============================================================================
 // STANDALONE SUM-TO-PRODUCT RULE
 // sin(A)+sin(B) → 2·sin((A+B)/2)·cos((A-B)/2)
@@ -132,7 +148,7 @@ define_rule!(
 // and inherit the original denominator ≠ 0 condition.
 //
 // Uses SoundnessLabel::EquivalenceUnderIntroducedRequires
-struct HalfAngleTangentRule;
+pub struct HalfAngleTangentRule;
 
 impl crate::rule::Rule for HalfAngleTangentRule {
     fn name(&self) -> &str {
@@ -412,7 +428,7 @@ define_rule!(
 // Double Angle Contraction Rule: 2·sin(t)·cos(t) → sin(2t), cos²(t) - sin²(t) → cos(2t)
 // This is the INVERSE of DoubleAngleRule - contracts expanded forms back to double angle.
 // Essential for recognizing Weierstrass substitution identities.
-struct DoubleAngleContractionRule;
+pub struct DoubleAngleContractionRule;
 
 impl crate::rule::Rule for DoubleAngleContractionRule {
     fn name(&self) -> &str {
@@ -1398,4 +1414,3 @@ define_rule!(
         None
     }
 );
-

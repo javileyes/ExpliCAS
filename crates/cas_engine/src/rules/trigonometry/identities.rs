@@ -22,13 +22,20 @@ pub use core_rules::{
     TrigOddEvenParityRule,
 };
 
-// Phase 5: Migrated to proper module (must be declared before expansions.rs include)
+// Phase 5: Migrated to proper module (must be declared before expansion_rules)
 mod power_products_rules;
 pub use power_products_rules::{SinCosSumQuotientRule, TrigHiddenCubicIdentityRule};
-// Re-export helpers for use by included files (expansions.rs)
-use power_products_rules::{build_avg, build_half_diff, extract_trig_arg, normalize_for_even_fn};
+// Re-export helpers for use by other modules (expansion_rules)
+pub use power_products_rules::{
+    build_avg, build_half_diff, extract_trig_arg, normalize_for_even_fn,
+};
 
-include!("identities/expansions.rs");
+// Phase 8: Migrated to proper module
+mod expansion_rules;
+pub use expansion_rules::{
+    CanonicalizeTrigSquareRule, DoubleAngleContractionRule, DoubleAngleRule, HalfAngleTangentRule,
+    QuintupleAngleRule, RecursiveTrigExpansionRule, TrigSumToProductRule, TripleAngleRule,
+};
 
 // Phase 4: Migrated to proper module
 mod sum_to_product_rules;
