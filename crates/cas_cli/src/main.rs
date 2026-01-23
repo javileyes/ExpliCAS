@@ -364,7 +364,9 @@ fn main() -> rustyline::Result<()> {
     // Initialize tracing subscriber with WARN as default level
     // Use RUST_LOG=info or RUST_LOG=debug for more verbose output
     // Use RUST_LOG=budget=warn to see budget limit messages
+    // IMPORTANT: Write to stderr to avoid corrupting JSON output on stdout
     tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
         .with_env_filter(
             tracing_subscriber::EnvFilter::builder()
                 .with_default_directive(tracing::Level::WARN.into())

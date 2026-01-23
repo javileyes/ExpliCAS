@@ -23,7 +23,7 @@ import sys
 import uuid
 from urllib.parse import parse_qs
 
-PORT = 8080
+PORT = int(os.environ.get('PORT', 8080))
 CAS_CLI = "./target/release/cas_cli"
 
 # Session configuration
@@ -286,21 +286,30 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
     
     def call_cas_cli(self, expression):
         """Call cas_cli eval-json and return parsed result"""
+        result = None  # Initialize to handle exception cases
         try:
+            # Log expression length for debugging large inputs
+            expr_len = len(expression)
+            if expr_len > 1000:
+                print(f"⚠️  Large expression: {expr_len} chars")
+            
             # Run cas_cli with the expression and steps enabled
+            # Increased timeout for very large expressions
+            timeout = 120 if expr_len > 10000 else 60
             result = subprocess.run(
                 [CAS_CLI, "eval", "--format", "json", "--max-chars", "500000", "--steps", "on"],
                 input=expression,
                 capture_output=True,
                 text=True,
-                timeout=60
+                timeout=timeout
             )
             
             if result.returncode != 0:
+                print(f"❌ cas_cli error (exit {result.returncode}): {result.stderr[:500] if result.stderr else 'no stderr'}")
                 return {
                     "ok": False,
                     "error": result.stderr or "Evaluation failed",
-                    "input": expression
+                    "input": expression[:500] + "..." if len(expression) > 500 else expression
                 }
             
             # Parse JSON output
@@ -308,14 +317,21 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             if output:
                 return json.loads(output)
             else:
-                return {"ok": False, "error": "Empty response", "input": expression}
+                print(f"❌ cas_cli returned empty output for: {expression[:200]}...")
+                return {"ok": False, "error": "Empty response from cas_cli", "input": expression[:500]}
                 
         except subprocess.TimeoutExpired:
-            return {"ok": False, "error": "Timeout (60s)", "input": expression}
+            print(f"⏰ Timeout ({timeout}s) for expression of {len(expression)} chars")
+            return {"ok": False, "error": f"Timeout ({timeout}s) - expression too complex", "input": expression[:500]}
         except FileNotFoundError:
-            return {"ok": False, "error": f"cas_cli not found. Run 'cargo build --release' first.", "input": expression}
+            return {"ok": False, "error": f"cas_cli not found. Run 'cargo build --release' first.", "input": expression[:500]}
         except json.JSONDecodeError as e:
-            return {"ok": False, "error": f"Invalid JSON from cas_cli: {e}", "input": expression, "raw": result.stdout[:500]}
+            stderr_info = result.stderr[:200] if result and result.stderr else "no stderr"
+            stdout_preview = result.stdout[:200] if result and result.stdout else "empty"
+            print(f"❌ JSON decode error: {e}")
+            print(f"   stderr: {stderr_info}")
+            print(f"   stdout preview: {stdout_preview}")
+            return {"ok": False, "error": f"Invalid JSON from cas_cli: {e}", "input": expression[:500], "raw": stdout_preview}
     
     def send_json(self, data):
         self.send_response(200)
