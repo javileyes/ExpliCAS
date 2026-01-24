@@ -2,10 +2,16 @@ use super::*;
 
 impl Repl {
     pub(crate) fn parse_semantics_set(&mut self, args: &[&str]) {
+        let reply = self.parse_semantics_set_core(args);
+        self.print_reply(reply);
+    }
+
+    fn parse_semantics_set_core(&mut self, args: &[&str]) -> ReplReply {
         if args.is_empty() {
-            println!("Usage: semantics set <axis> <value>");
-            println!("  or:  semantics set <axis>=<value> ...");
-            return;
+            return reply_output(
+                "Usage: semantics set <axis> <value>\n\
+                   or:  semantics set <axis>=<value> ...",
+            );
         }
 
         let mut i = 0;
@@ -14,15 +20,14 @@ impl Repl {
 
             // Check for key=value format
             if let Some((key, value)) = arg.split_once('=') {
-                if !self.set_semantic_axis(key, value) {
-                    return;
+                if let Some(err) = self.set_semantic_axis(key, value) {
+                    return reply_output(err);
                 }
                 i += 1;
             } else {
                 // key value format
                 if i + 1 >= args.len() {
-                    println!("ERROR: Missing value for axis '{}'", arg);
-                    return;
+                    return reply_output(format!("ERROR: Missing value for axis '{}'", arg));
                 }
 
                 // Special case: "solve check on|off" is a 3-part axis
@@ -31,16 +36,15 @@ impl Repl {
                     match on_off {
                         "on" => {
                             self.core.state.options.check_solutions = true;
-                            println!("Solve check: ON (solutions will be verified)");
                         }
                         "off" => {
                             self.core.state.options.check_solutions = false;
-                            println!("Solve check: OFF");
                         }
                         _ => {
-                            println!("ERROR: Invalid value '{}' for 'solve check'", on_off);
-                            println!("Allowed: on, off");
-                            return;
+                            return reply_output(format!(
+                                "ERROR: Invalid value '{}' for 'solve check'\nAllowed: on, off",
+                                on_off
+                            ));
                         }
                     }
                     i += 3;
@@ -48,8 +52,8 @@ impl Repl {
                 }
 
                 let value = args[i + 1];
-                if !self.set_semantic_axis(arg, value) {
-                    return;
+                if let Some(err) = self.set_semantic_axis(arg, value) {
+                    return reply_output(err);
                 }
                 i += 2;
             }
@@ -57,9 +61,11 @@ impl Repl {
 
         self.sync_config_to_simplifier();
         self.print_semantics();
+        ReplReply::new() // print_semantics already printed
     }
 
-    pub(crate) fn set_semantic_axis(&mut self, axis: &str, value: &str) -> bool {
+    /// Returns Some(error_message) on failure, None on success
+    pub(crate) fn set_semantic_axis(&mut self, axis: &str, value: &str) -> Option<String> {
         use cas_engine::semantics::{BranchPolicy, InverseTrigPolicy, ValueDomain};
         use cas_engine::DomainMode;
 
@@ -78,9 +84,10 @@ impl Repl {
                     self.core.state.options.domain_mode = DomainMode::Assume;
                 }
                 _ => {
-                    println!("ERROR: Invalid value '{}' for axis 'domain'", value);
-                    println!("Allowed: strict, generic, assume");
-                    return false;
+                    return Some(format!(
+                        "ERROR: Invalid value '{}' for axis 'domain'\nAllowed: strict, generic, assume",
+                        value
+                    ));
                 }
             },
             "value" => match value {
@@ -93,9 +100,10 @@ impl Repl {
                     self.core.state.options.value_domain = ValueDomain::ComplexEnabled;
                 }
                 _ => {
-                    println!("ERROR: Invalid value '{}' for axis 'value'", value);
-                    println!("Allowed: real, complex");
-                    return false;
+                    return Some(format!(
+                        "ERROR: Invalid value '{}' for axis 'value'\nAllowed: real, complex",
+                        value
+                    ));
                 }
             },
             "branch" => match value {
@@ -104,9 +112,10 @@ impl Repl {
                     self.core.state.options.branch = BranchPolicy::Principal;
                 }
                 _ => {
-                    println!("ERROR: Invalid value '{}' for axis 'branch'", value);
-                    println!("Allowed: principal");
-                    return false;
+                    return Some(format!(
+                        "ERROR: Invalid value '{}' for axis 'branch'\nAllowed: principal",
+                        value
+                    ));
                 }
             },
             "inv_trig" => match value {
@@ -119,9 +128,10 @@ impl Repl {
                     self.core.state.options.inv_trig = InverseTrigPolicy::PrincipalValue;
                 }
                 _ => {
-                    println!("ERROR: Invalid value '{}' for axis 'inv_trig'", value);
-                    println!("Allowed: strict, principal");
-                    return false;
+                    return Some(format!(
+                        "ERROR: Invalid value '{}' for axis 'inv_trig'\nAllowed: strict, principal",
+                        value
+                    ));
                 }
             },
             "const_fold" => {
@@ -134,9 +144,10 @@ impl Repl {
                         self.core.state.options.const_fold = ConstFoldMode::Safe;
                     }
                     _ => {
-                        println!("ERROR: Invalid value '{}' for axis 'const_fold'", value);
-                        println!("Allowed: off, safe");
-                        return false;
+                        return Some(format!(
+                            "ERROR: Invalid value '{}' for axis 'const_fold'\nAllowed: off, safe",
+                            value
+                        ));
                     }
                 }
             }
@@ -160,9 +171,10 @@ impl Repl {
                         cas_engine::AssumptionReporting::Trace;
                 }
                 _ => {
-                    println!("ERROR: Invalid value '{}' for axis 'assumptions'", value);
-                    println!("Allowed: off, summary, trace");
-                    return false;
+                    return Some(format!(
+                        "ERROR: Invalid value '{}' for axis 'assumptions'\nAllowed: off, summary, trace",
+                        value
+                    ));
                 }
             },
             "assume_scope" => match value {
@@ -175,9 +187,10 @@ impl Repl {
                     self.core.state.options.assume_scope = cas_engine::AssumeScope::Wildcard;
                 }
                 _ => {
-                    println!("ERROR: Invalid value '{}' for axis 'assume_scope'", value);
-                    println!("Allowed: real, wildcard");
-                    return false;
+                    return Some(format!(
+                        "ERROR: Invalid value '{}' for axis 'assume_scope'\nAllowed: real, wildcard",
+                        value
+                    ));
                 }
             },
             "hints" => match value {
@@ -188,51 +201,60 @@ impl Repl {
                     self.core.state.options.hints_enabled = false;
                 }
                 _ => {
-                    println!("ERROR: Invalid value '{}' for axis 'hints'", value);
-                    println!("Allowed: on, off");
-                    return false;
+                    return Some(format!(
+                        "ERROR: Invalid value '{}' for axis 'hints'\nAllowed: on, off",
+                        value
+                    ));
                 }
             },
             "solve" => match value {
                 "check" => {
-                    // "solve check" is special: toggle without secondary value
-                    println!("ERROR: Use 'semantics set solve check on' or 'semantics set solve check off'");
-                    return false;
+                    return Some(
+                        "ERROR: Use 'semantics set solve check on' or 'semantics set solve check off'"
+                            .to_string(),
+                    );
                 }
                 _ => {
-                    println!("ERROR: Invalid value '{}' for axis 'solve'", value);
-                    println!("Allowed: 'check on', 'check off'");
-                    return false;
+                    return Some(format!(
+                        "ERROR: Invalid value '{}' for axis 'solve'\nAllowed: 'check on', 'check off'",
+                        value
+                    ));
                 }
             },
             "requires" => match value {
                 "essential" => {
                     self.core.state.options.requires_display =
                         cas_engine::implicit_domain::RequiresDisplayLevel::Essential;
-                    println!("Requires display: essential (hide if witness survives)");
                 }
                 "all" => {
                     self.core.state.options.requires_display =
                         cas_engine::implicit_domain::RequiresDisplayLevel::All;
-                    println!("Requires display: all (show everything)");
                 }
                 _ => {
-                    println!("ERROR: Invalid value '{}' for axis 'requires'", value);
-                    println!("Allowed: essential, all");
-                    return false;
+                    return Some(format!(
+                        "ERROR: Invalid value '{}' for axis 'requires'\nAllowed: essential, all",
+                        value
+                    ));
                 }
             },
             _ => {
-                println!("ERROR: Unknown axis '{}'", axis);
-                println!("Valid axes: domain, value, branch, inv_trig, const_fold, assumptions, assume_scope, hints, solve, requires");
-                return false;
+                return Some(format!(
+                    "ERROR: Unknown axis '{}'\n\
+                     Valid axes: domain, value, branch, inv_trig, const_fold, assumptions, assume_scope, hints, solve, requires",
+                    axis
+                ));
             }
         }
-        true
+        None
     }
 
     /// Handle "context" command - show or switch context mode
     pub(crate) fn handle_context_command(&mut self, line: &str) {
+        let reply = self.handle_context_command_core(line);
+        self.print_reply(reply);
+    }
+
+    fn handle_context_command_core(&mut self, line: &str) -> ReplReply {
         use cas_engine::options::ContextMode;
 
         let args: Vec<&str> = line.split_whitespace().collect();
@@ -246,42 +268,45 @@ impl Repl {
                     ContextMode::Solve => "solve",
                     ContextMode::IntegratePrep => "integrate",
                 };
-                println!("Current context: {}", ctx_str);
-                println!("  (use 'context auto|standard|solve|integrate' to change)");
+                reply_output(format!(
+                    "Current context: {}\n  (use 'context auto|standard|solve|integrate' to change)",
+                    ctx_str
+                ))
             }
             Some(&"auto") => {
                 self.core.state.options.context_mode = ContextMode::Auto;
                 self.core.engine.simplifier =
                     cas_engine::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
-                println!("Context: auto (infers from expression)");
+                reply_output("Context: auto (infers from expression)")
             }
             Some(&"standard") => {
                 self.core.state.options.context_mode = ContextMode::Standard;
                 self.core.engine.simplifier =
                     cas_engine::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
-                println!("Context: standard (safe simplification only)");
+                reply_output("Context: standard (safe simplification only)")
             }
             Some(&"solve") => {
                 self.core.state.options.context_mode = ContextMode::Solve;
                 self.core.engine.simplifier =
                     cas_engine::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
-                println!("Context: solve (preserves solver-friendly forms)");
+                reply_output("Context: solve (preserves solver-friendly forms)")
             }
             Some(&"integrate") => {
                 self.core.state.options.context_mode = ContextMode::IntegratePrep;
                 self.core.engine.simplifier =
                     cas_engine::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
-                println!("Context: integrate-prep");
-                println!("  ⚠️ Enables transforms for integration (telescoping, product→sum)");
+                reply_output(
+                    "Context: integrate-prep\n  ⚠️ Enables transforms for integration (telescoping, product→sum)"
+                )
             }
-            Some(other) => {
-                println!("Unknown context: '{}'", other);
-                println!("Usage: context [auto | standard | solve | integrate]");
-            }
+            Some(other) => reply_output(format!(
+                "Unknown context: '{}'\nUsage: context [auto | standard | solve | integrate]",
+                other
+            )),
         }
     }
 
@@ -289,6 +314,11 @@ impl Repl {
     /// Collection: on, off, compact (controls StepsMode in engine)
     /// Display: verbose, succinct, normal, none (controls Verbosity in CLI)
     pub(crate) fn handle_steps_command(&mut self, line: &str) {
+        let reply = self.handle_steps_command_core(line);
+        self.print_reply(reply);
+    }
+
+    fn handle_steps_command_core(&mut self, line: &str) -> ReplReply {
         use cas_engine::options::StepsMode;
 
         let args: Vec<&str> = line.split_whitespace().collect();
@@ -307,24 +337,26 @@ impl Repl {
                     Verbosity::Normal => "normal",
                     Verbosity::Verbose => "verbose",
                 };
-                println!("Steps collection: {}", mode_str);
-                println!("Steps display: {}", verbosity_str);
-                println!("  (use 'steps on|off|compact' for collection)");
-                println!("  (use 'steps verbose|succinct|normal|none' for display)");
+                reply_output(format!(
+                    "Steps collection: {}\n\
+                     Steps display: {}\n\
+                       (use 'steps on|off|compact' for collection)\n\
+                       (use 'steps verbose|succinct|normal|none' for display)",
+                    mode_str, verbosity_str
+                ))
             }
             // Collection modes (StepsMode)
             Some(&"on") => {
                 self.core.state.options.steps_mode = StepsMode::On;
                 self.core.engine.simplifier.set_steps_mode(StepsMode::On);
                 self.verbosity = Verbosity::Normal;
-                println!("Steps: on (full collection, normal display)");
+                reply_output("Steps: on (full collection, normal display)")
             }
             Some(&"off") => {
                 self.core.state.options.steps_mode = StepsMode::Off;
                 self.core.engine.simplifier.set_steps_mode(StepsMode::Off);
                 self.verbosity = Verbosity::None;
-                println!("Steps: off");
-                println!("  ⚡ Steps disabled (faster). Warnings still enabled.");
+                reply_output("Steps: off\n  ⚡ Steps disabled (faster). Warnings still enabled.")
             }
             Some(&"compact") => {
                 self.core.state.options.steps_mode = StepsMode::Compact;
@@ -332,50 +364,57 @@ impl Repl {
                     .engine
                     .simplifier
                     .set_steps_mode(StepsMode::Compact);
-                println!("Steps: compact (no before/after snapshots)");
+                reply_output("Steps: compact (no before/after snapshots)")
             }
             // Display modes (Verbosity)
             Some(&"verbose") => {
                 self.core.state.options.steps_mode = StepsMode::On;
                 self.core.engine.simplifier.set_steps_mode(StepsMode::On);
                 self.verbosity = Verbosity::Verbose;
-                println!("Steps: verbose (all rules, full detail)");
+                reply_output("Steps: verbose (all rules, full detail)")
             }
             Some(&"succinct") => {
                 self.core.state.options.steps_mode = StepsMode::On;
                 self.core.engine.simplifier.set_steps_mode(StepsMode::On);
                 self.verbosity = Verbosity::Succinct;
-                println!("Steps: succinct (compact 1-line per step)");
+                reply_output("Steps: succinct (compact 1-line per step)")
             }
             Some(&"normal") => {
                 self.core.state.options.steps_mode = StepsMode::On;
                 self.core.engine.simplifier.set_steps_mode(StepsMode::On);
                 self.verbosity = Verbosity::Normal;
-                println!("Steps: normal (default display)");
+                reply_output("Steps: normal (default display)")
             }
             Some(&"none") => {
                 self.verbosity = Verbosity::None;
-                println!("Steps display: none (collection still active)");
-                println!("  Use 'steps off' to also disable collection.");
+                reply_output(
+                    "Steps display: none (collection still active)\n  Use 'steps off' to also disable collection."
+                )
             }
-            Some(other) => {
-                println!("Unknown steps mode: '{}'", other);
-                println!("Usage: steps [on | off | compact | verbose | succinct | normal | none]");
-                println!("  Collection modes:");
-                println!("    on      - Full steps with snapshots (default)");
-                println!("    off     - No steps (fastest, warnings preserved)");
-                println!("    compact - Minimal steps (no snapshots)");
-                println!("  Display modes:");
-                println!("    verbose - Show all rules, full detail");
-                println!("    succinct- Compact 1-line per step");
-                println!("    normal  - Standard display (default)");
-                println!("    none    - Hide steps output (collection still active)");
-            }
+            Some(other) => reply_output(format!(
+                "Unknown steps mode: '{}'\n\
+                     Usage: steps [on | off | compact | verbose | succinct | normal | none]\n\
+                       Collection modes:\n\
+                         on      - Full steps with snapshots (default)\n\
+                         off     - No steps (fastest, warnings preserved)\n\
+                         compact - Minimal steps (no snapshots)\n\
+                       Display modes:\n\
+                         verbose - Show all rules, full detail\n\
+                         succinct- Compact 1-line per step\n\
+                         normal  - Standard display (default)\n\
+                         none    - Hide steps output (collection still active)",
+                other
+            )),
         }
     }
 
     /// Handle "autoexpand" command - show or switch auto-expand policy
     pub(crate) fn handle_autoexpand_command(&mut self, line: &str) {
+        let reply = self.handle_autoexpand_command_core(line);
+        self.print_reply(reply);
+    }
+
+    fn handle_autoexpand_command_core(&mut self, line: &str) -> ReplReply {
         use cas_engine::phase::ExpandPolicy;
 
         let args: Vec<&str> = line.split_whitespace().collect();
@@ -387,16 +426,17 @@ impl Repl {
                     ExpandPolicy::Off => "off",
                     ExpandPolicy::Auto => "on",
                 };
-                println!("Auto-expand: {}", policy_str);
                 let budget = &self.core.state.options.expand_budget;
-                println!(
-                    "  Budget: pow<={}, base_terms<={}, gen_terms<={}, vars<={}",
+                reply_output(format!(
+                    "Auto-expand: {}\n\
+                       Budget: pow<={}, base_terms<={}, gen_terms<={}, vars<={}\n\
+                       (use 'autoexpand on|off' to change)",
+                    policy_str,
                     budget.max_pow_exp,
                     budget.max_base_terms,
                     budget.max_generated_terms,
                     budget.max_vars
-                );
-                println!("  (use 'autoexpand on|off' to change)");
+                ))
             }
             Some(&"on") => {
                 self.core.state.options.expand_policy = ExpandPolicy::Auto;
@@ -404,30 +444,30 @@ impl Repl {
                     cas_engine::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
                 let budget = &self.core.state.options.expand_budget;
-                println!("Auto-expand: on");
-                println!(
-                    "  Budget: pow<={}, base_terms<={}, gen_terms<={}, vars<={}",
+                reply_output(format!(
+                    "Auto-expand: on\n\
+                       Budget: pow<={}, base_terms<={}, gen_terms<={}, vars<={}\n\
+                       ⚠️ Expands small (sum)^n patterns automatically.",
                     budget.max_pow_exp,
                     budget.max_base_terms,
                     budget.max_generated_terms,
                     budget.max_vars
-                );
-                println!("  ⚠️ Expands small (sum)^n patterns automatically.");
+                ))
             }
             Some(&"off") => {
                 self.core.state.options.expand_policy = ExpandPolicy::Off;
                 self.core.engine.simplifier =
                     cas_engine::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
-                println!("Auto-expand: off");
-                println!("  Polynomial expansions require explicit expand().");
+                reply_output("Auto-expand: off\n  Polynomial expansions require explicit expand().")
             }
-            Some(other) => {
-                println!("Unknown autoexpand mode: '{}'", other);
-                println!("Usage: autoexpand [on | off]");
-                println!("  on  - Auto-expand cheap polynomial powers");
-                println!("  off - Only expand when explicitly requested (default)");
-            }
+            Some(other) => reply_output(format!(
+                "Unknown autoexpand mode: '{}'\n\
+                     Usage: autoexpand [on | off]\n\
+                       on  - Auto-expand cheap polynomial powers\n\
+                       off - Only expand when explicitly requested (default)",
+                other
+            )),
         }
     }
 }
