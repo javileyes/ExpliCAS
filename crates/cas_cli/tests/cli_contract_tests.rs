@@ -5,14 +5,14 @@
 //! - JSON output parsing and schema version
 //! - Budget presets and strict mode
 
+use assert_cmd::cargo;
 use assert_cmd::Command;
 use predicates::prelude::*;
 use serde_json::Value;
 
 /// Get the CLI command
-#[allow(deprecated)]
 fn cli() -> Command {
-    Command::cargo_bin("cas_cli").unwrap()
+    Command::new(cargo::cargo_bin!("cas_cli"))
 }
 
 /// Test that help output shows expected commands (eval, repl) and hides aliases (eval-json).

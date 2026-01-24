@@ -3,13 +3,13 @@
 //! These tests verify the core functionality of the linear systems solver
 //! using Cramer's rule with exact rational arithmetic.
 
+use assert_cmd::cargo;
 use assert_cmd::Command;
 use predicates::prelude::*;
 
 /// Helper to run cas_cli with given input
 fn run_cas(input: &str) -> assert_cmd::assert::Assert {
-    Command::cargo_bin("cas_cli")
-        .unwrap()
+    Command::new(cargo::cargo_bin!("cas_cli"))
         .write_stdin(input)
         .assert()
 }
