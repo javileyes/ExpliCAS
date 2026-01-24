@@ -148,8 +148,8 @@ pub fn try_rational_poly_rule(
 
     // Get variable index in polynomial
     // If var not in poly, it's constant wrt var (degree 0)
-    let var_idx_num = p_num.var_index(&var_name);
-    let var_idx_den = p_den.var_index(&var_name);
+    let var_idx_num = p_num.var_index(var_name);
+    let var_idx_den = p_den.var_index(var_name);
 
     // If neither contains the variable, constant rule handles it
     if var_idx_num.is_none() && var_idx_den.is_none() {
