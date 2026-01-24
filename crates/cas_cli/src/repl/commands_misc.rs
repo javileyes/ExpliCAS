@@ -2,6 +2,11 @@ use super::*;
 
 impl Repl {
     pub(crate) fn handle_equiv(&mut self, line: &str) {
+        let reply = self.handle_equiv_core(line);
+        self.print_reply(reply);
+    }
+
+    fn handle_equiv_core(&mut self, line: &str) -> ReplReply {
         use cas_ast::Expr;
         use cas_parser::Statement;
 
@@ -11,8 +16,6 @@ impl Repl {
             let expr2_str = expr2_str.trim();
 
             // Helper to parse string to ExprId
-            // Note: We use a block to limit mutable borrow scope if needed, though sequential calls work for separate statements.
-            // But we need to use 'self' to access context inside logic? No, passed as arg.
             fn parse_arg(s: &str, ctx: &mut cas_ast::Context) -> Result<cas_ast::ExprId, String> {
                 if s.starts_with('#') && s[1..].chars().all(char::is_numeric) {
                     Ok(ctx.add(Expr::Variable(s.to_string())))
@@ -28,7 +31,6 @@ impl Repl {
             }
 
             let e1_res = parse_arg(expr1_str, &mut self.core.engine.simplifier.context);
-            // Verify e1_res to avoid borrow issues? No, Result doesn't borrow.
             let e2_res = parse_arg(expr2_str, &mut self.core.engine.simplifier.context);
 
             match (e1_res, e2_res) {
@@ -38,36 +40,43 @@ impl Repl {
 
                     let result = self.core.engine.simplifier.are_equivalent_extended(e1, e2);
 
+                    let mut lines = Vec::new();
                     match result {
                         EquivalenceResult::True => {
-                            println!("True");
+                            lines.push("True".to_string());
                         }
                         EquivalenceResult::ConditionalTrue { requires } => {
-                            println!("True (conditional)");
+                            lines.push("True (conditional)".to_string());
                             if !requires.is_empty() {
-                                println!("ℹ️ Requires:");
+                                lines.push("ℹ️ Requires:".to_string());
                                 for req in &requires {
-                                    println!("  • {}", req);
+                                    lines.push(format!("  • {}", req));
                                 }
                             }
                         }
                         EquivalenceResult::False => {
-                            println!("False");
+                            lines.push("False".to_string());
                         }
                         EquivalenceResult::Unknown => {
-                            println!("Unknown (cannot prove equivalence)");
+                            lines.push("Unknown (cannot prove equivalence)".to_string());
                         }
                     }
+                    reply_output(lines.join("\n"))
                 }
-                (Err(e), _) => println!("Error parsing first arg: {}", e),
-                (_, Err(e)) => println!("Error parsing second arg: {}", e),
+                (Err(e), _) => reply_output(format!("Error parsing first arg: {}", e)),
+                (_, Err(e)) => reply_output(format!("Error parsing second arg: {}", e)),
             }
         } else {
-            println!("Usage: equiv <expr1>, <expr2>");
+            reply_output("Usage: equiv <expr1>, <expr2>")
         }
     }
 
     pub(crate) fn handle_subst(&mut self, line: &str) {
+        let reply = self.handle_subst_core(line, self.verbosity);
+        self.print_reply(reply);
+    }
+
+    fn handle_subst_core(&mut self, line: &str, verbosity: Verbosity) -> ReplReply {
         // Format: subst <expr>, <target>, <replacement>
         // Examples:
         //   subst x^4 + x^2 + 1, x^2, y   → y² + y + 1 (power-aware)
@@ -78,13 +87,13 @@ impl Repl {
         let parts: Vec<&str> = split_by_comma_ignoring_parens(rest);
 
         if parts.len() != 3 {
-            println!("Usage: subst <expr>, <target>, <replacement>");
-            println!();
-            println!("Examples:");
-            println!("  subst x^2 + x, x, 3              → 12");
-            println!("  subst x^4 + x^2 + 1, x^2, y      → y² + y + 1");
-            println!("  subst x^3, x^2, y                → y·x");
-            return;
+            return reply_output(
+                "Usage: subst <expr>, <target>, <replacement>\n\n\
+                 Examples:\n\
+                   subst x^2 + x, x, 3              → 12\n\
+                   subst x^4 + x^2 + 1, x^2, y      → y² + y + 1\n\
+                   subst x^3, x^2, y                → y·x",
+            );
         }
 
         let expr_str = parts[0].trim();
@@ -95,8 +104,7 @@ impl Repl {
         let expr = match cas_parser::parse(expr_str, &mut self.core.engine.simplifier.context) {
             Ok(e) => e,
             Err(e) => {
-                println!("Error parsing expression: {}", e);
-                return;
+                return reply_output(format!("Error parsing expression: {}", e));
             }
         };
 
@@ -105,8 +113,7 @@ impl Repl {
             match cas_parser::parse(target_str, &mut self.core.engine.simplifier.context) {
                 Ok(e) => e,
                 Err(e) => {
-                    println!("Error parsing target: {}", e);
-                    return;
+                    return reply_output(format!("Error parsing target: {}", e));
                 }
             };
 
@@ -115,21 +122,22 @@ impl Repl {
             match cas_parser::parse(replacement_str, &mut self.core.engine.simplifier.context) {
                 Ok(e) => e,
                 Err(e) => {
-                    println!("Error parsing replacement: {}", e);
-                    return;
+                    return reply_output(format!("Error parsing replacement: {}", e));
                 }
             };
+
+        let mut lines = Vec::new();
 
         // Detect if target is a simple variable or an expression
         let is_simple_var = target_str.chars().all(|c| c.is_alphanumeric() || c == '_');
 
         let subbed = if is_simple_var {
             // Variable substitution
-            if self.verbosity != Verbosity::None {
-                println!(
+            if verbosity != Verbosity::None {
+                lines.push(format!(
                     "Variable substitution: {} → {} in {}",
                     target_str, replacement_str, expr_str
-                );
+                ));
             }
             let target_var = self.core.engine.simplifier.context.var(target_str);
             cas_engine::solver::strategies::substitute_expr(
@@ -140,11 +148,11 @@ impl Repl {
             )
         } else {
             // Expression substitution (power-aware)
-            if self.verbosity != Verbosity::None {
-                println!(
+            if verbosity != Verbosity::None {
+                lines.push(format!(
                     "Expression substitution: {} → {} in {}",
                     target_str, replacement_str, expr_str
-                );
+                ));
             }
             cas_engine::substitute::substitute_power_aware(
                 &mut self.core.engine.simplifier.context,
@@ -156,27 +164,27 @@ impl Repl {
         };
 
         let (result, steps) = self.core.engine.simplifier.simplify(subbed);
-        if self.verbosity != Verbosity::None && !steps.is_empty() {
-            if self.verbosity != Verbosity::Succinct {
-                println!("Steps:");
+        if verbosity != Verbosity::None && !steps.is_empty() {
+            if verbosity != Verbosity::Succinct {
+                lines.push("Steps:".to_string());
             }
             for step in steps.iter() {
-                if should_show_step(step, self.verbosity) {
-                    if self.verbosity == Verbosity::Succinct {
-                        println!(
+                if should_show_step(step, verbosity) {
+                    if verbosity == Verbosity::Succinct {
+                        lines.push(format!(
                             "-> {}",
                             DisplayExpr {
                                 context: &self.core.engine.simplifier.context,
                                 id: step.global_after.unwrap_or(step.after)
                             }
-                        );
+                        ));
                     } else {
-                        println!("  {}  [{}]", step.description, step.rule_name);
+                        lines.push(format!("  {}  [{}]", step.description, step.rule_name));
                     }
                 }
             }
         }
-        println!(
+        lines.push(format!(
             "Result: {}",
             clean_display_string(&format!(
                 "{}",
@@ -185,7 +193,9 @@ impl Repl {
                     id: result
                 }
             ))
-        );
+        ));
+
+        reply_output(lines.join("\n"))
     }
 
     pub(crate) fn handle_timeline(&mut self, line: &str) {
@@ -1064,6 +1074,11 @@ Presets:
 
     /// Handle "semantics preset" subcommand
     pub(crate) fn handle_preset(&mut self, args: &[&str]) {
+        let reply = self.handle_preset_core(args);
+        self.print_reply(reply);
+    }
+
+    fn handle_preset_core(&mut self, args: &[&str]) -> ReplReply {
         use cas_engine::const_fold::ConstFoldMode;
         use cas_engine::semantics::{BranchPolicy, InverseTrigPolicy, ValueDomain};
         use cas_engine::DomainMode;
@@ -1118,26 +1133,28 @@ Presets:
             },
         ];
 
+        let mut lines = Vec::new();
+
         match args.first() {
             None => {
                 // List presets
-                println!("Available presets:");
+                lines.push("Available presets:".to_string());
                 for p in &presets {
-                    println!("  {:10} {}", p.name, p.description);
+                    lines.push(format!("  {:10} {}", p.name, p.description));
                 }
-                println!();
-                println!("Usage:");
-                println!("  semantics preset <name>       Apply preset");
-                println!("  semantics preset help <name>  Show preset axes");
+                lines.push(String::new());
+                lines.push("Usage:".to_string());
+                lines.push("  semantics preset <name>       Apply preset".to_string());
+                lines.push("  semantics preset help <name>  Show preset axes".to_string());
             }
             Some(&"help") => {
                 // Show preset details
                 let name = match args.get(1) {
                     Some(name) => *name,
                     None => {
-                        println!("Usage: semantics preset help <name>");
-                        println!("Presets: default, strict, complex, school");
-                        return;
+                        lines.push("Usage: semantics preset help <name>".to_string());
+                        lines.push("Presets: default, strict, complex, school".to_string());
+                        return reply_output(lines.join("\n"));
                     }
                 };
                 if let Some(p) = presets.iter().find(|p| p.name == name) {
@@ -1158,17 +1175,17 @@ Presets:
                         ConstFoldMode::Off => "off",
                         ConstFoldMode::Safe => "safe",
                     };
-                    println!("{}:", p.name);
-                    println!("  domain_mode  = {}", domain_str);
-                    println!("  value_domain = {}", value_str);
-                    println!("  branch       = principal");
-                    println!("  inv_trig     = {}", inv_trig_str);
-                    println!("  const_fold   = {}", const_fold_str);
-                    println!();
-                    println!("Purpose: {}", p.description);
+                    lines.push(format!("{}:", p.name));
+                    lines.push(format!("  domain_mode  = {}", domain_str));
+                    lines.push(format!("  value_domain = {}", value_str));
+                    lines.push("  branch       = principal".to_string());
+                    lines.push(format!("  inv_trig     = {}", inv_trig_str));
+                    lines.push(format!("  const_fold   = {}", const_fold_str));
+                    lines.push(String::new());
+                    lines.push(format!("Purpose: {}", p.description));
                 } else {
-                    println!("Unknown preset: '{}'", name);
-                    println!("Available: default, strict, complex, school");
+                    lines.push(format!("Unknown preset: '{}'", name));
+                    lines.push("Available: default, strict, complex, school".to_string());
                 }
             }
             Some(name) => {
@@ -1195,8 +1212,8 @@ Presets:
 
                     self.sync_config_to_simplifier();
 
-                    println!("Applied preset: {}", p.name);
-                    println!("Changes:");
+                    lines.push(format!("Applied preset: {}", p.name));
+                    lines.push("Changes:".to_string());
 
                     // Print changes
                     let mut changes = 0;
@@ -1211,7 +1228,7 @@ Presets:
                             DomainMode::Generic => "generic",
                             DomainMode::Assume => "assume",
                         };
-                        println!("  domain_mode:  {} → {}", old_str, new_str);
+                        lines.push(format!("  domain_mode:  {} → {}", old_str, new_str));
                         changes += 1;
                     }
                     if old_value != p.value {
@@ -1223,11 +1240,11 @@ Presets:
                             ValueDomain::RealOnly => "real",
                             ValueDomain::ComplexEnabled => "complex",
                         };
-                        println!("  value_domain: {} → {}", old_str, new_str);
+                        lines.push(format!("  value_domain: {} → {}", old_str, new_str));
                         changes += 1;
                     }
                     if old_branch != p.branch {
-                        println!("  branch:       principal → principal");
+                        lines.push("  branch:       principal → principal".to_string());
                         changes += 1;
                     }
                     if old_inv_trig != p.inv_trig {
@@ -1239,7 +1256,7 @@ Presets:
                             InverseTrigPolicy::Strict => "strict",
                             InverseTrigPolicy::PrincipalValue => "principal",
                         };
-                        println!("  inv_trig:     {} → {}", old_str, new_str);
+                        lines.push(format!("  inv_trig:     {} → {}", old_str, new_str));
                         changes += 1;
                     }
                     if old_const_fold != p.const_fold {
@@ -1251,17 +1268,19 @@ Presets:
                             ConstFoldMode::Off => "off",
                             ConstFoldMode::Safe => "safe",
                         };
-                        println!("  const_fold:   {} → {}", old_str, new_str);
+                        lines.push(format!("  const_fold:   {} → {}", old_str, new_str));
                         changes += 1;
                     }
                     if changes == 0 {
-                        println!("  (no changes - already at this preset)");
+                        lines.push("  (no changes - already at this preset)".to_string());
                     }
                 } else {
-                    println!("Unknown preset: '{}'", name);
-                    println!("Available: default, strict, complex, school");
+                    lines.push(format!("Unknown preset: '{}'", name));
+                    lines.push("Available: default, strict, complex, school".to_string());
                 }
             }
         }
+
+        reply_output(lines.join("\n"))
     }
 }
