@@ -73,41 +73,44 @@ impl<'a> LatexNoRoots<'a> {
                 let inner = self.expr_to_latex(*e, true);
                 format!("-{}", inner)
             }
-            Expr::Function(name, args) => match name.as_str() {
-                "sqrt" if args.len() == 1 => {
-                    let arg = self.expr_to_latex(args[0], false);
-                    format!("\\sqrt{{{}}}", arg)
+            Expr::Function(fn_id, args) => {
+                let name = self.context.sym_name(*fn_id);
+                match name {
+                    "sqrt" if args.len() == 1 => {
+                        let arg = self.expr_to_latex(args[0], false);
+                        format!("\\sqrt{{{}}}", arg)
+                    }
+                    "sqrt" if args.len() == 2 => {
+                        let radicand = self.expr_to_latex(args[0], false);
+                        let index = self.expr_to_latex(args[1], false);
+                        format!("\\sqrt[{}]{{{}}}", index, radicand)
+                    }
+                    "sin" | "cos" | "tan" | "cot" | "sec" | "csc" => {
+                        let arg = self.expr_to_latex(args[0], false);
+                        format!("\\{}({})", name, arg)
+                    }
+                    "ln" => {
+                        let arg = self.expr_to_latex(args[0], false);
+                        format!("\\ln({})", arg)
+                    }
+                    "log" if args.len() == 2 => {
+                        let base = self.expr_to_latex(args[0], false);
+                        let arg = self.expr_to_latex(args[1], false);
+                        format!("\\log_{{{}}}({})", base, arg)
+                    }
+                    "abs" => {
+                        let arg = self.expr_to_latex(args[0], false);
+                        format!("|{}|", arg)
+                    }
+                    _ => {
+                        let args_str: Vec<String> = args
+                            .iter()
+                            .map(|&arg| self.expr_to_latex(arg, false))
+                            .collect();
+                        format!("\\text{{{}}}({})", name, args_str.join(", "))
+                    }
                 }
-                "sqrt" if args.len() == 2 => {
-                    let radicand = self.expr_to_latex(args[0], false);
-                    let index = self.expr_to_latex(args[1], false);
-                    format!("\\sqrt[{}]{{{}}}", index, radicand)
-                }
-                "sin" | "cos" | "tan" | "cot" | "sec" | "csc" => {
-                    let arg = self.expr_to_latex(args[0], false);
-                    format!("\\{}({})", name, arg)
-                }
-                "ln" => {
-                    let arg = self.expr_to_latex(args[0], false);
-                    format!("\\ln({})", arg)
-                }
-                "log" if args.len() == 2 => {
-                    let base = self.expr_to_latex(args[0], false);
-                    let arg = self.expr_to_latex(args[1], false);
-                    format!("\\log_{{{}}}({})", base, arg)
-                }
-                "abs" => {
-                    let arg = self.expr_to_latex(args[0], false);
-                    format!("|{}|", arg)
-                }
-                _ => {
-                    let args_str: Vec<String> = args
-                        .iter()
-                        .map(|&arg| self.expr_to_latex(arg, false))
-                        .collect();
-                    format!("\\text{{{}}}({})", name, args_str.join(", "))
-                }
-            },
+            }
             Expr::Matrix { rows, cols, data } => {
                 // Render matrix as LaTeX bmatrix (same as regular latex)
                 let mut result = String::from("\\begin{bmatrix}\n");

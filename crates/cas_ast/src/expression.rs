@@ -75,7 +75,8 @@ pub enum Constant {
 /// # Extension point
 /// Add new scalar-returning functions here when implementing matrix operations.
 #[inline]
-fn function_returns_commutative(name: &str) -> bool {
+fn function_returns_commutative(ctx: &Context, fn_id: SymbolId) -> bool {
+    let name = ctx.sym_name(fn_id);
     matches!(name, "det" | "trace" | "norm" | "rank")
 }
 
@@ -104,7 +105,7 @@ pub enum Expr {
     Div(ExprId, ExprId),
     Pow(ExprId, ExprId),
     Neg(ExprId),
-    Function(String, Vec<ExprId>),
+    Function(SymbolId, Vec<ExprId>),
     /// Matrix: Unified representation for matrices and vectors
     /// - Vector column (nx1): rows=n, cols=1
     /// - Vector row (1xn): rows=1, cols=n
@@ -549,9 +550,9 @@ impl Context {
                 Expr::Neg(inner) => stack.push(*inner),
 
                 // Functions: check arguments unless function is known to return scalar
-                Expr::Function(name, args) => {
+                Expr::Function(fn_id, args) => {
                     // Check for functions known to return commutative outputs
-                    if function_returns_commutative(name) {
+                    if function_returns_commutative(self, *fn_id) {
                         continue; // Skip checking args - output is scalar
                     }
                     stack.extend(args.iter().copied());
@@ -598,6 +599,34 @@ impl Context {
     pub fn var(&mut self, name: &str) -> ExprId {
         let sym = self.intern_symbol(name);
         self.add(Expr::Variable(sym))
+    }
+
+    // =========================================================================
+    // Function call helpers
+    // =========================================================================
+
+    /// Create a function call expression: ctx.call("sqrt", vec![x])
+    pub fn call(&mut self, name: &str, args: Vec<ExprId>) -> ExprId {
+        let fn_id = self.intern_symbol(name);
+        self.add(Expr::Function(fn_id, args))
+    }
+
+    /// Get the name of a function call, if this is a function expression.
+    /// Returns None if not a function.
+    pub fn fn_name(&self, expr: ExprId) -> Option<&str> {
+        match self.get(expr) {
+            Expr::Function(fn_id, _) => Some(self.sym_name(*fn_id)),
+            _ => None,
+        }
+    }
+
+    /// Check if an expression is a function call with the given name.
+    /// Uses symbol interning for efficient O(1) comparison.
+    ///
+    /// Note: requires &mut self because intern_symbol may insert.
+    pub fn is_call_named(&mut self, expr: ExprId, name: &str) -> bool {
+        let target = self.intern_symbol(name);
+        matches!(self.get(expr), Expr::Function(fn_id, _) if *fn_id == target)
     }
 
     // Matrix helpers
@@ -715,12 +744,12 @@ mod tests {
         let matrix = ctx.matrix(2, 2, vec![a, b, c, d]).unwrap();
 
         // sin(M) should be non-commutative (contains matrix)
-        let sin_m = ctx.add(Expr::Function("sin".to_string(), vec![matrix]));
+        let sin_m = ctx.call("sin", vec![matrix]);
         assert!(!ctx.is_mul_commutative(sin_m));
 
         // sin(x) should be commutative
         let x = ctx.var("x");
-        let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![x]));
+        let sin_x = ctx.call("sin", vec![x]);
         assert!(ctx.is_mul_commutative(sin_x));
     }
 

@@ -108,7 +108,9 @@ pub trait LaTeXRenderer {
             Expr::Div(l, r) => self.format_div(*l, *r),
             Expr::Pow(base, exp) => self.format_pow(*base, *exp),
             Expr::Neg(e) => self.format_neg(*e),
-            Expr::Function(name, args) => self.format_function(name, args),
+            Expr::Function(fn_id, args) => {
+                self.format_function(self.context().sym_name(*fn_id), args)
+            }
             Expr::Matrix { rows, cols, data } => self.format_matrix(*rows, *cols, data),
             Expr::SessionRef(id) => format!("\\#{}", id), // LaTeX escape
         }
@@ -795,7 +797,9 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
             Expr::Div(l, r) => self.format_div_path(*l, *r, current_path),
             Expr::Pow(base, exp) => self.format_pow_path(*base, *exp, current_path),
             Expr::Neg(e) => self.format_neg_path(*e, current_path),
-            Expr::Function(name, args) => self.format_function_path(name, args, current_path),
+            Expr::Function(fn_id, args) => {
+                self.format_function_path(self.context.sym_name(*fn_id), args, current_path)
+            }
             Expr::Matrix { rows, cols, data } => {
                 self.format_matrix_path(*rows, *cols, data, current_path)
             }

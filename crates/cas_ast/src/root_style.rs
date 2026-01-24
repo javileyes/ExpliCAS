@@ -43,8 +43,8 @@ pub fn detect_root_style(ctx: &Context, id: ExprId) -> RootStyle {
 
     while let Some(curr) = worklist.pop() {
         match ctx.get(curr) {
-            Expr::Function(name, args) => {
-                if name == "sqrt" {
+            Expr::Function(fn_id, args) => {
+                if ctx.sym_name(*fn_id) == "sqrt" {
                     radical_score += 1;
                 }
                 // Recurse into function arguments
@@ -433,7 +433,8 @@ impl<'a> StyledExpr<'a> {
                 }
             }
 
-            Expr::Function(name, args) => {
+            Expr::Function(fn_id, args) => {
+                let name = self.context.sym_name(*fn_id);
                 write!(f, "{}(", name)?;
                 for (i, arg) in args.iter().enumerate() {
                     if i > 0 {
@@ -618,7 +619,7 @@ mod tests {
     fn test_detect_sqrt_function() {
         let mut ctx = Context::new();
         let two = ctx.num(2);
-        let sqrt2 = ctx.add(Expr::Function("sqrt".to_string(), vec![two]));
+        let sqrt2 = ctx.call("sqrt", vec![two]);
 
         assert_eq!(detect_root_style(&ctx, sqrt2), RootStyle::Radical);
     }
@@ -639,7 +640,7 @@ mod tests {
         // sqrt(2) + 3^(1/2)
         let two = ctx.num(2);
         let three = ctx.num(3);
-        let sqrt2 = ctx.add(Expr::Function("sqrt".to_string(), vec![two]));
+        let sqrt2 = ctx.call("sqrt", vec![two]);
         let half = ctx.rational(1, 2);
         let pow3 = ctx.add(Expr::Pow(three, half));
         let sum = ctx.add(Expr::Add(sqrt2, pow3));
@@ -670,7 +671,7 @@ mod tests {
     fn test_style_preferences_from_expression() {
         let mut ctx = Context::new();
         let two = ctx.num(2);
-        let sqrt2 = ctx.add(Expr::Function("sqrt".to_string(), vec![two]));
+        let sqrt2 = ctx.call("sqrt", vec![two]);
 
         let prefs = StylePreferences::from_expression(&ctx, sqrt2);
         assert_eq!(prefs.root_style, RootStyle::Radical);

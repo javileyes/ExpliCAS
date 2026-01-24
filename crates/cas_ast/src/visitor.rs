@@ -13,7 +13,9 @@ pub trait Visitor {
             Expr::Div(l, r) => self.visit_div(context, *l, *r),
             Expr::Pow(b, e) => self.visit_pow(context, *b, *e),
             Expr::Neg(e) => self.visit_neg(context, *e),
-            Expr::Function(name, args) => self.visit_function(context, name, args),
+            Expr::Function(fn_id, args) => {
+                self.visit_function(context, context.sym_name(*fn_id), args)
+            }
             Expr::Matrix { data, .. } => self.visit_matrix(context, data),
             Expr::SessionRef(id) => self.visit_session_ref(*id),
         }
@@ -82,7 +84,10 @@ pub trait Transformer {
             Expr::Div(l, r) => self.transform_div(context, id, l, r),
             Expr::Pow(b, e) => self.transform_pow(context, id, b, e),
             Expr::Neg(e) => self.transform_neg(context, id, e),
-            Expr::Function(name, args) => self.transform_function(context, id, &name, &args),
+            Expr::Function(fn_id, args) => {
+                let fn_name = context.sym_name(fn_id).to_string();
+                self.transform_function(context, id, &fn_name, &args)
+            }
             Expr::Matrix { rows, cols, data } => {
                 self.transform_matrix(context, id, rows, cols, &data)
             }
@@ -206,7 +211,7 @@ pub trait Transformer {
             new_args.push(new_arg);
         }
         if changed {
-            context.add(Expr::Function(name.to_string(), new_args))
+            context.call(name, new_args)
         } else {
             original
         }

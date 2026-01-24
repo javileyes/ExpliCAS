@@ -20,14 +20,16 @@ use crate::{Context, Expr, ExprId};
 /// Check if expression is wrapped in `__hold`
 #[inline]
 pub fn is_hold(ctx: &Context, id: ExprId) -> bool {
-    matches!(ctx.get(id), Expr::Function(name, args) if name == "__hold" && args.len() == 1)
+    matches!(ctx.get(id), Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "__hold" && args.len() == 1)
 }
 
 /// Unwrap one level of `__hold` wrapper. Returns inner if hold, otherwise unchanged.
 #[inline]
 pub fn unwrap_hold(ctx: &Context, id: ExprId) -> ExprId {
     match ctx.get(id) {
-        Expr::Function(name, args) if name == "__hold" && args.len() == 1 => args[0],
+        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "__hold" && args.len() == 1 => {
+            args[0]
+        }
         _ => id,
     }
 }
@@ -44,7 +46,7 @@ pub fn strip_all_holds(ctx: &mut Context, root: ExprId) -> ExprId {
 fn strip_holds_recursive(ctx: &mut Context, id: ExprId) -> ExprId {
     match ctx.get(id).clone() {
         // Unwrap __hold and recurse into contents
-        Expr::Function(ref name, ref args) if name == "__hold" && args.len() == 1 => {
+        Expr::Function(fn_id, ref args) if ctx.sym_name(fn_id) == "__hold" && args.len() == 1 => {
             strip_holds_recursive(ctx, args[0])
         }
 
@@ -106,7 +108,7 @@ fn strip_holds_recursive(ctx: &mut Context, id: ExprId) -> ExprId {
         }
 
         // Functions (except __hold which is handled above)
-        Expr::Function(name, args) => {
+        Expr::Function(fn_id, args) => {
             let mut changed = false;
             let new_args: Vec<ExprId> = args
                 .iter()
@@ -119,7 +121,7 @@ fn strip_holds_recursive(ctx: &mut Context, id: ExprId) -> ExprId {
                 })
                 .collect();
             if changed {
-                ctx.add(Expr::Function(name, new_args))
+                ctx.add(Expr::Function(fn_id, new_args))
             } else {
                 id
             }
@@ -162,7 +164,7 @@ mod tests {
     fn test_is_hold() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
-        let hold_x = ctx.add(Expr::Function("__hold".to_string(), vec![x]));
+        let hold_x = ctx.call("__hold", vec![x]);
 
         assert!(!is_hold(&ctx, x));
         assert!(is_hold(&ctx, hold_x));
@@ -172,7 +174,7 @@ mod tests {
     fn test_unwrap_hold() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
-        let hold_x = ctx.add(Expr::Function("__hold".to_string(), vec![x]));
+        let hold_x = ctx.call("__hold", vec![x]);
 
         assert_eq!(unwrap_hold(&ctx, x), x);
         assert_eq!(unwrap_hold(&ctx, hold_x), x);
@@ -185,9 +187,9 @@ mod tests {
         let y = ctx.var("y");
 
         // __hold(__hold(x) + y)
-        let hold_x = ctx.add(Expr::Function("__hold".to_string(), vec![x]));
+        let hold_x = ctx.call("__hold", vec![x]);
         let sum = ctx.add(Expr::Add(hold_x, y));
-        let outer_hold = ctx.add(Expr::Function("__hold".to_string(), vec![sum]));
+        let outer_hold = ctx.call("__hold", vec![sum]);
 
         let result = strip_all_holds(&mut ctx, outer_hold);
 

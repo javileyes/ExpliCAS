@@ -131,8 +131,8 @@ pub fn is_surd_free(ctx: &Context, id: ExprId, budget: usize) -> bool {
             }
 
             // Check for sqrt() function
-            Expr::Function(name, args) => {
-                if name == "sqrt" {
+            Expr::Function(fn_id, args) => {
+                if ctx.sym_name(*fn_id) == "sqrt" {
                     return false; // Found a surd!
                 }
                 worklist.extend(args.iter().copied());
@@ -195,8 +195,8 @@ pub fn count_distinct_numeric_surds(ctx: &Context, id: ExprId, budget: usize) ->
             }
 
             // Check for sqrt(Number(n))
-            Expr::Function(name, args) => {
-                if name == "sqrt" && !args.is_empty() {
+            Expr::Function(fn_id, args) => {
+                if ctx.sym_name(*fn_id) == "sqrt" && !args.is_empty() {
                     if let Expr::Number(n) = ctx.get(args[0]) {
                         if n.is_integer() {
                             if let Ok(radicand) = n.numer().try_into() {
@@ -1330,8 +1330,8 @@ impl SurdSumView {
                 }
 
                 // Function: sqrt(n) is also a surd
-                Expr::Function(name, args) => {
-                    if name == "sqrt" && args.len() == 1 {
+                Expr::Function(fn_id, args) => {
+                    if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 {
                         if let Some(atom) = Self::as_sqrt_function(ctx, args[0]) {
                             let scaled_coeff = atom.coeff * outer_coeff;
                             *surd_map
@@ -1408,8 +1408,8 @@ impl SurdSumView {
                 }
             }
             // Try sqrt function form
-            if let Expr::Function(name, args) = ctx.get(r) {
-                if name == "sqrt" && args.len() == 1 {
+            if let Expr::Function(fn_id, args) = ctx.get(r) {
+                if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 {
                     if let Some(atom) = Self::as_sqrt_function(ctx, args[0]) {
                         return Some((coeff.clone(), atom));
                     }
@@ -1424,8 +1424,8 @@ impl SurdSumView {
                 }
             }
             // Try sqrt function form
-            if let Expr::Function(name, args) = ctx.get(l) {
-                if name == "sqrt" && args.len() == 1 {
+            if let Expr::Function(fn_id, args) = ctx.get(l) {
+                if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 {
                     if let Some(atom) = Self::as_sqrt_function(ctx, args[0]) {
                         return Some((coeff.clone(), atom));
                     }
@@ -1556,8 +1556,8 @@ mod surd_tests {
         let one = ctx.num(1);
         let two = ctx.num(2);
         let three = ctx.num(3);
-        let sqrt2_fn = ctx.add(Expr::Function("sqrt".to_string(), vec![two]));
-        let sqrt3_fn = ctx.add(Expr::Function("sqrt".to_string(), vec![three]));
+        let sqrt2_fn = ctx.call("sqrt", vec![two]);
+        let sqrt3_fn = ctx.call("sqrt", vec![three]);
         let sum1 = ctx.add(Expr::Add(one, sqrt2_fn));
         let sum2 = ctx.add(Expr::Add(sum1, sqrt3_fn));
 

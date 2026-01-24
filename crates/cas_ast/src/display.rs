@@ -891,7 +891,8 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                     )
                 }
             }
-            Expr::Function(name, args) => {
+            Expr::Function(fn_id, args) => {
+                let name = self.context.sym_name(*fn_id);
                 // __hold is an internal invisible barrier - just display the inner
                 if name == "__hold" && args.len() == 1 {
                     return write!(
@@ -1543,7 +1544,8 @@ impl<'a> DisplayExprWithHints<'a> {
                     self.fmt_internal(f, *e)
                 }
             }
-            Expr::Function(name, args) => {
+            Expr::Function(fn_id, args) => {
+                let name = self.context.sym_name(*fn_id);
                 // Special handling for sqrt/root functions - always render as √
                 if name == "sqrt" && !args.is_empty() {
                     let index = if args.len() == 2 {
@@ -1973,7 +1975,8 @@ impl<'a> DisplayExprStyled<'a> {
                 }
             }
 
-            Expr::Function(name, args) => {
+            Expr::Function(fn_id, args) => {
+                let name = self.context.sym_name(*fn_id);
                 // Special case: abs(x) displays as |x|
                 if name == "abs" && args.len() == 1 {
                     write!(f, "|")?;
@@ -2144,7 +2147,7 @@ mod hold_tests {
     fn test_hold_transparency() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
-        let held = ctx.add(Expr::Function("__hold".to_string(), vec![x]));
+        let held = ctx.call("__hold", vec![x]);
         let display = format!(
             "{}",
             DisplayExpr {

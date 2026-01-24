@@ -352,17 +352,13 @@ impl<'a> Parser<'a> {
                     let radicand = self.parse_expr()?;
                     self.expect(&Token::RBrace)?;
                     // sqrt(radicand, index) - root with index
-                    Ok(self
-                        .ctx
-                        .add(Expr::Function("sqrt".to_string(), vec![radicand, index])))
+                    Ok(self.ctx.call("sqrt", vec![radicand, index]))
                 } else {
                     self.expect(&Token::LBrace)?;
                     let radicand = self.parse_expr()?;
                     self.expect(&Token::RBrace)?;
                     // sqrt(radicand) - square root
-                    Ok(self
-                        .ctx
-                        .add(Expr::Function("sqrt".to_string(), vec![radicand])))
+                    Ok(self.ctx.call("sqrt", vec![radicand]))
                 }
             }
             Some(Token::Sin) | Some(Token::Cos) | Some(Token::Tan) | Some(Token::Cot)
@@ -379,14 +375,14 @@ impl<'a> Parser<'a> {
                 self.expect(&Token::LParen)?;
                 let arg = self.parse_expr()?;
                 self.expect(&Token::RParen)?;
-                Ok(self.ctx.add(Expr::Function(name.to_string(), vec![arg])))
+                Ok(self.ctx.call(name, vec![arg]))
             }
             Some(Token::Ln) => {
                 self.advance();
                 self.expect(&Token::LParen)?;
                 let arg = self.parse_expr()?;
                 self.expect(&Token::RParen)?;
-                Ok(self.ctx.add(Expr::Function("ln".to_string(), vec![arg])))
+                Ok(self.ctx.call("ln", vec![arg]))
             }
             Some(tok) => Err(format!("Unexpected token in atom: {:?}", tok)),
             None => Err("Unexpected end of input".to_string()),

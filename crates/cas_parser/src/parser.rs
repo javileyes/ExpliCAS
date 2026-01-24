@@ -144,7 +144,7 @@ impl ParseNode {
                 for a in args {
                     arg_ids.push(a.lower(ctx)?);
                 }
-                Ok(ctx.add(Expr::Function(name, arg_ids)))
+                Ok(ctx.call(&name, arg_ids))
             }
             ParseNode::Matrix(rows) => {
                 // Flatten 2D structure to 1D for storage
