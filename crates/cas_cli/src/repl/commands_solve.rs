@@ -93,25 +93,29 @@ impl Repl {
     /// Handle the 'weierstrass' command for applying Weierstrass substitution
     /// Transforms sin(x), cos(x), tan(x) into rational expressions in t = tan(x/2)
     pub(crate) fn handle_weierstrass(&mut self, line: &str) {
+        let reply = self.handle_weierstrass_core(line);
+        self.print_reply(reply);
+    }
+
+    fn handle_weierstrass_core(&mut self, line: &str) -> ReplReply {
         let rest = line[12..].trim(); // Remove "weierstrass "
 
         if rest.is_empty() {
-            println!("Usage: weierstrass <expression>");
-            println!("Description: Apply Weierstrass substitution (t = tan(x/2))");
-            println!("Transforms:");
-            println!("  sin(x) → 2t/(1+t²)");
-            println!("  cos(x) → (1-t²)/(1+t²)");
-            println!("  tan(x) → 2t/(1-t²)");
-            println!("Example: weierstrass sin(x) + cos(x)");
-            return;
+            return reply_output(
+                "Usage: weierstrass <expression>\n\
+                 Description: Apply Weierstrass substitution (t = tan(x/2))\n\
+                 Transforms:\n\
+                   sin(x) → 2t/(1+t²)\n\
+                   cos(x) → (1-t²)/(1+t²)\n\
+                   tan(x) → 2t/(1-t²)\n\
+                 Example: weierstrass sin(x) + cos(x)",
+            );
         }
 
         // Parse the expression
         match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
             Ok(expr) => {
                 use cas_ast::DisplayExpr;
-                println!("Parsed: {}", rest);
-                println!();
 
                 // Apply Weierstrass substitution recursively
                 let result = self.apply_weierstrass_recursive(expr);
@@ -124,12 +128,8 @@ impl Repl {
                         id: result
                     }
                 );
-                println!("Weierstrass substitution (t = tan(x/2)):");
-                println!("  {} → {}", rest, result_str);
 
                 // Try to simplify the result
-                println!();
-                println!("Simplifying...");
                 let (simplified, _steps) = self.core.engine.simplifier.simplify(result);
                 let simplified_str = clean_display_string(&format!(
                     "{}",
@@ -138,9 +138,17 @@ impl Repl {
                         id: simplified
                     }
                 ));
-                println!("Result: {}", simplified_str);
+
+                reply_output(format!(
+                    "Parsed: {}\n\n\
+                     Weierstrass substitution (t = tan(x/2)):\n\
+                       {} → {}\n\n\
+                     Simplifying...\n\
+                     Result: {}",
+                    rest, rest, result_str, simplified_str
+                ))
             }
-            Err(e) => println!("Parse error: {}", e),
+            Err(e) => reply_output(format!("Parse error: {}", e)),
         }
     }
 
@@ -311,6 +319,29 @@ impl Repl {
     }
 
     pub(crate) fn handle_timeline_solve(&mut self, rest: &str) {
+        let reply = self.handle_timeline_solve_core(rest);
+
+        // Post-processing: auto-open timeline.html on macOS after WriteFile is printed
+        let has_timeline_write = reply.iter().any(|msg| {
+            matches!(msg, ReplMsg::WriteFile { path, .. } if path.to_string_lossy().ends_with("timeline.html"))
+        });
+
+        self.print_reply(reply);
+
+        // Try to auto-open on macOS (I/O stays in shell)
+        if has_timeline_write {
+            #[cfg(target_os = "macos")]
+            {
+                let _ = std::process::Command::new("open")
+                    .arg("timeline.html")
+                    .spawn();
+            }
+        }
+    }
+
+    fn handle_timeline_solve_core(&mut self, rest: &str) -> ReplReply {
+        use std::path::PathBuf;
+
         // Parse equation and variable: "x + 2 = 5, x" or "x + 2 = 5 x"
         let (eq_str, var) = if let Some((e, v)) = rsplit_ignoring_parens(rest, ',') {
             (e.trim(), v.trim())
@@ -349,15 +380,14 @@ impl Repl {
                 ) {
                     Ok((solution_set, display_steps)) => {
                         if display_steps.0.is_empty() {
-                            println!("No solving steps to visualize.");
-                            println!(
-                                "Result: {}",
-                                display_solution_set(
-                                    &self.core.engine.simplifier.context,
-                                    &solution_set
-                                )
+                            let result_str = display_solution_set(
+                                &self.core.engine.simplifier.context,
+                                &solution_set,
                             );
-                            return;
+                            return reply_output(format!(
+                                "No solving steps to visualize.\nResult: {}",
+                                result_str
+                            ));
                         }
 
                         // Generate HTML timeline for solve steps
@@ -371,46 +401,44 @@ impl Repl {
                         );
                         let html = timeline.to_html();
 
-                        let filename = "timeline.html";
-                        match std::fs::write(filename, &html) {
-                            Ok(_) => {
-                                println!("Solve timeline exported to {}", filename);
-                                println!(
-                                    "Result: {}",
-                                    display_solution_set(
-                                        &self.core.engine.simplifier.context,
-                                        &solution_set
-                                    )
-                                );
-                                println!("Open in browser to view interactive visualization.");
-
-                                // Try to auto-open on macOS
-                                #[cfg(target_os = "macos")]
-                                {
-                                    let _ =
-                                        std::process::Command::new("open").arg(filename).spawn();
-                                }
-                            }
-                            Err(e) => println!("Error writing file: {}", e),
-                        }
+                        // Return WriteFile action + result
+                        let result_str = display_solution_set(
+                            &self.core.engine.simplifier.context,
+                            &solution_set,
+                        );
+                        vec![
+                            ReplMsg::WriteFile {
+                                path: PathBuf::from("timeline.html"),
+                                contents: html,
+                            },
+                            ReplMsg::output(format!("Result: {}", result_str)),
+                            ReplMsg::output("Open in browser to view interactive visualization."),
+                        ]
                     }
-                    Err(e) => println!("Error solving: {}", e),
+                    Err(e) => reply_output(format!("Error solving: {}", e)),
                 }
             }
-            Ok(cas_parser::Statement::Expression(_)) => {
-                println!("Error: Expected an equation for solve timeline, got an expression.");
-                println!("Usage: timeline solve <equation>, <variable>");
-                println!("Example: timeline solve x + 2 = 5, x");
-            }
-            Err(e) => println!("Error parsing equation: {}", e),
+            Ok(cas_parser::Statement::Expression(_)) => reply_output(
+                "Error: Expected an equation for solve timeline, got an expression.\n\
+                     Usage: timeline solve <equation>, <variable>\n\
+                     Example: timeline solve x + 2 = 5, x",
+            ),
+            Err(e) => reply_output(format!("Error parsing equation: {}", e)),
         }
     }
 
     pub(crate) fn handle_solve(&mut self, line: &str) {
+        let reply = self.handle_solve_core(line, self.verbosity);
+        self.print_reply(reply);
+    }
+
+    fn handle_solve_core(&mut self, line: &str, verbosity: Verbosity) -> ReplReply {
         use cas_ast::{DisplayExpr, Expr};
         use cas_engine::eval::{EvalAction, EvalRequest, EvalResult};
         use cas_engine::EntryKind;
         use cas_parser::Statement;
+
+        let mut lines: Vec<String> = Vec::new();
 
         // solve [--check] <equation>, <var>
         let rest = line[6..].trim();
@@ -517,13 +545,15 @@ impl Repl {
                 match self.core.engine.eval(&mut self.core.state, req) {
                     Ok(output) => {
                         // Show ID
-                        if let Some(id) = output.stored_id {
-                            print!("#{}: ", id);
-                        }
-                        println!("Solving for {}...", var);
+                        let id_prefix = if let Some(id) = output.stored_id {
+                            format!("#{}: ", id)
+                        } else {
+                            String::new()
+                        };
+                        lines.push(format!("{}Solving for {}...", id_prefix, var));
 
                         for w in &output.domain_warnings {
-                            println!("⚠ {} (from {})", w.message, w.rule_name);
+                            lines.push(format!("⚠ {} (from {})", w.message, w.rule_name));
                         }
 
                         // Show solver assumptions summary if any
@@ -539,7 +569,7 @@ impl Repl {
                                     }
                                 })
                                 .collect();
-                            println!("⚠ Assumptions: {}", items.join(", "));
+                            lines.push(format!("⚠ Assumptions: {}", items.join(", ")));
                         }
 
                         // Show Solve Steps
@@ -548,10 +578,10 @@ impl Repl {
                         // - Succinct: compact steps (3: log, collect+factor, divide)
                         // - Normal/Verbose: detailed steps (5: log, expand, move, factor, divide)
                         let show_solve_steps =
-                            !output.solve_steps.is_empty() && self.verbosity != Verbosity::None;
+                            !output.solve_steps.is_empty() && verbosity != Verbosity::None;
 
                         if show_solve_steps {
-                            println!("Steps:");
+                            lines.push("Steps:".to_string());
 
                             // V2.9.8: Steps are now pre-cleaned by eval.rs via solve_with_display_steps
                             // No manual cleanup needed - type-safe pipeline guarantees processing
@@ -570,7 +600,7 @@ impl Repl {
                             };
 
                             for (i, step) in output.solve_steps.iter().enumerate() {
-                                println!("{}. {}", i + 1, step.description);
+                                lines.push(format!("{}. {}", i + 1, step.description));
                                 // Display equation after step with scoped transforms
                                 let ctx = &self.core.engine.simplifier.context;
                                 let (lhs_str, rhs_str) = if let Some(ref r) = renderer {
@@ -592,14 +622,13 @@ impl Repl {
                                         .to_string(),
                                     )
                                 };
-                                println!(
+                                lines.push(format!(
                                     "   -> {} {} {}",
                                     lhs_str, step.equation_after.op, rhs_str
-                                );
+                                ));
 
                                 // Display substeps with indentation (educational details)
-                                if !step.substeps.is_empty() && self.verbosity == Verbosity::Verbose
-                                {
+                                if !step.substeps.is_empty() && verbosity == Verbosity::Verbose {
                                     for (j, substep) in step.substeps.iter().enumerate() {
                                         let sub_ctx = &self.core.engine.simplifier.context;
                                         let (sub_lhs, sub_rhs) = (
@@ -614,16 +643,16 @@ impl Repl {
                                             }
                                             .to_string(),
                                         );
-                                        println!(
+                                        lines.push(format!(
                                             "      {}.{}. {}",
                                             i + 1,
                                             j + 1,
                                             substep.description
-                                        );
-                                        println!(
+                                        ));
+                                        lines.push(format!(
                                             "          -> {} {} {}",
                                             sub_lhs, substep.equation_after.op, sub_rhs
-                                        );
+                                        ));
                                     }
                                 }
                             }
@@ -633,7 +662,10 @@ impl Repl {
                             EvalResult::SolutionSet(ref solution_set) => {
                                 // V2.0: Display full solution set including Conditional
                                 let ctx = &self.core.engine.simplifier.context;
-                                println!("Result: {}", display_solution_set(ctx, solution_set));
+                                lines.push(format!(
+                                    "Result: {}",
+                                    display_solution_set(ctx, solution_set)
+                                ));
                             }
                             EvalResult::Set(ref sols) => {
                                 // Legacy: discrete solutions as Vec<ExprId>
@@ -659,12 +691,12 @@ impl Repl {
                                         .collect()
                                 };
                                 if sol_strs.is_empty() {
-                                    println!("Result: No solution");
+                                    lines.push("Result: No solution".to_string());
                                 } else {
-                                    println!("Result: {{ {} }}", sol_strs.join(", "));
+                                    lines.push(format!("Result: {{ {} }}", sol_strs.join(", ")));
                                 }
                             }
-                            _ => println!("Result: {:?}", output.result),
+                            _ => lines.push(format!("Result: {:?}", output.result)),
                         }
 
                         // V2.2+: Show Requires (implicit domain conditions from solver)
@@ -686,7 +718,7 @@ impl Repl {
                         };
 
                         if !requires_to_show.is_empty() {
-                            println!("ℹ️ Requires:");
+                            lines.push("ℹ️ Requires:".to_string());
                             // Batch normalize and apply dominance rules
                             let conditions: Vec<_> = requires_to_show
                                 .iter()
@@ -700,9 +732,12 @@ impl Repl {
                                 );
                             for cond in &normalized_conditions {
                                 if self.core.debug_mode {
-                                    println!("  • {} (normalized)", cond.display(ctx_mut));
+                                    lines.push(format!(
+                                        "  • {} (normalized)",
+                                        cond.display(ctx_mut)
+                                    ));
                                 } else {
-                                    println!("  • {}", cond.display(ctx_mut));
+                                    lines.push(format!("  • {}", cond.display(ctx_mut)));
                                 }
                             }
                         }
@@ -730,10 +765,10 @@ impl Repl {
                                     // Display verification status
                                     match verify_result.summary {
                                         VerifySummary::AllVerified => {
-                                            println!("✓ All solutions verified");
+                                            lines.push("✓ All solutions verified".to_string());
                                         }
                                         VerifySummary::PartiallyVerified => {
-                                            println!("⚠ Some solutions verified");
+                                            lines.push("⚠ Some solutions verified".to_string());
                                             for (sol_id, status) in &verify_result.solutions {
                                                 let sol_str = DisplayExpr {
                                                     context: &self.core.engine.simplifier.context,
@@ -742,25 +777,29 @@ impl Repl {
                                                 .to_string();
                                                 match status {
                                                     cas_engine::solver::check::VerifyStatus::Verified => {
-                                                        println!("  ✓ {} = {} verified", var, sol_str);
+                                                        lines.push(format!("  ✓ {} = {} verified", var, sol_str));
                                                     }
                                                     cas_engine::solver::check::VerifyStatus::Unverifiable { reason, .. } => {
-                                                        println!("  ⚠ {} = {}: {}", var, sol_str, reason);
+                                                        lines.push(format!("  ⚠ {} = {}: {}", var, sol_str, reason));
                                                     }
                                                     cas_engine::solver::check::VerifyStatus::NotCheckable { reason } => {
-                                                        println!("  ℹ {} = {}: {}", var, sol_str, reason);
+                                                        lines.push(format!("  ℹ {} = {}: {}", var, sol_str, reason));
                                                     }
                                                 }
                                             }
                                         }
                                         VerifySummary::NoneVerified => {
-                                            println!("⚠ No solutions could be verified");
+                                            lines.push(
+                                                "⚠ No solutions could be verified".to_string(),
+                                            );
                                         }
                                         VerifySummary::NotCheckable => {
                                             if let Some(desc) = verify_result.guard_description {
-                                                println!("ℹ {}", desc);
+                                                lines.push(format!("ℹ {}", desc));
                                             } else {
-                                                println!("ℹ Solution type not checkable");
+                                                lines.push(
+                                                    "ℹ Solution type not checkable".to_string(),
+                                                );
                                             }
                                         }
                                         VerifySummary::Empty => {
@@ -778,12 +817,12 @@ impl Repl {
                         let has_blocked = !hints.is_empty();
 
                         if self.core.debug_mode && (has_assumptions || has_blocked) {
-                            println!(); // Separator line
+                            lines.push(String::new()); // Separator line
                             let ctx = &self.core.engine.simplifier.context;
 
                             // Block 1: Assumptions used
                             if has_assumptions {
-                                println!("ℹ️ Assumptions used:");
+                                lines.push("ℹ️ Assumptions used:".to_string());
                                 // Dedup and stable order by (kind, expr)
                                 let mut assumption_items: Vec<_> = output
                                     .solver_assumptions
@@ -802,13 +841,13 @@ impl Repl {
                                 assumption_items.sort();
                                 assumption_items.dedup();
                                 for cond in assumption_items {
-                                    println!("  - {}", cond);
+                                    lines.push(format!("  - {}", cond));
                                 }
                             }
 
                             // Block 2: Blocked simplifications
                             if has_blocked {
-                                println!("ℹ️ Blocked simplifications:");
+                                lines.push("ℹ️ Blocked simplifications:".to_string());
                                 // Helper to format condition with expression
                                 let format_condition = |hint: &cas_engine::BlockedHint| -> String {
                                     let expr_str = cas_ast::DisplayExpr {
@@ -832,7 +871,7 @@ impl Repl {
                                 blocked_items.sort();
                                 blocked_items.dedup();
                                 for (cond, rule) in blocked_items {
-                                    println!("  - requires {}  [{}]", cond, rule);
+                                    lines.push(format!("  - requires {}  [{}]", cond, rule));
                                 }
 
                                 // Contextual suggestion
@@ -847,7 +886,7 @@ impl Repl {
                                         "tip: assumptions already enabled"
                                     }
                                 };
-                                println!("  {}", suggestion);
+                                lines.push(format!("  {}", suggestion));
                             }
                         } else if has_blocked && self.core.state.options.hints_enabled {
                             // Legacy: show blocked hints even without debug_mode if hints_enabled
@@ -876,17 +915,24 @@ impl Repl {
                                 cas_engine::DomainMode::Assume => "assumptions already enabled",
                             };
 
-                            println!("\nℹ️ Blocked simplifications:");
+                            lines.push(String::new());
+                            lines.push("ℹ️ Blocked simplifications:".to_string());
                             for hint in &hints {
-                                println!("  - requires {} [{}]", format_condition(hint), hint.rule);
+                                lines.push(format!(
+                                    "  - requires {} [{}]",
+                                    format_condition(hint),
+                                    hint.rule
+                                ));
                             }
-                            println!("  tip: {}", suggestion);
+                            lines.push(format!("  tip: {}", suggestion));
                         }
                     }
-                    Err(e) => println!("Error: {}", e),
+                    Err(e) => lines.push(format!("Error: {}", e)),
                 }
             }
-            Err(e) => println!("Parse error: {}", e),
+            Err(e) => lines.push(format!("Parse error: {}", e)),
         }
+
+        reply_output(lines.join("\n"))
     }
 }
