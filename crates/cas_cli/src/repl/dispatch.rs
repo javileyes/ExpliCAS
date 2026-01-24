@@ -258,19 +258,19 @@ impl Repl {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() == 1 {
                 // Just "profile" - show report
-                println!("{}", self.engine.simplifier.profiler.report());
+                println!("{}", self.core.engine.simplifier.profiler.report());
             } else {
                 match parts[1] {
                     "enable" => {
-                        self.engine.simplifier.profiler.enable();
+                        self.core.engine.simplifier.profiler.enable();
                         println!("Profiler enabled.");
                     }
                     "disable" => {
-                        self.engine.simplifier.profiler.disable();
+                        self.core.engine.simplifier.profiler.disable();
                         println!("Profiler disabled.");
                     }
                     "clear" => {
-                        self.engine.simplifier.profiler.clear();
+                        self.core.engine.simplifier.profiler.clear();
                         println!("Profiler statistics cleared.");
                     }
                     _ => println!("Usage: profile [enable|disable|clear]"),
@@ -285,7 +285,7 @@ impl Repl {
             if parts.len() == 1 {
                 // Just "health" - show last report
                 // First show any cycles detected
-                if let Some(ref stats) = self.last_stats {
+                if let Some(ref stats) = self.core.last_stats {
                     let cycles: Vec<_> = [
                         (&stats.core.cycle, "Core"),
                         (&stats.transform.cycle, "Transform"),
@@ -307,7 +307,7 @@ impl Repl {
                     }
                 }
 
-                if let Some(ref report) = self.last_health_report {
+                if let Some(ref report) = self.core.last_health_report {
                     println!("{}", report);
                 } else {
                     println!("No health report available.");
@@ -317,16 +317,16 @@ impl Repl {
             } else {
                 match parts[1] {
                     "on" | "enable" => {
-                        self.health_enabled = true;
+                        self.core.health_enabled = true;
                         println!("Health tracking ENABLED (metrics captured after each simplify)");
                     }
                     "off" | "disable" => {
-                        self.health_enabled = false;
+                        self.core.health_enabled = false;
                         println!("Health tracking DISABLED");
                     }
                     "reset" | "clear" => {
-                        self.engine.simplifier.profiler.clear_run();
-                        self.last_health_report = None;
+                        self.core.engine.simplifier.profiler.clear_run();
+                        self.core.last_health_report = None;
                         println!("Health statistics cleared.");
                     }
                     "status" => {
@@ -376,7 +376,7 @@ impl Repl {
                         println!("Running health status suite [category={}]...\n", cat_msg);
 
                         let results = crate::health_suite::run_suite_filtered(
-                            &mut self.engine.simplifier,
+                            &mut self.core.engine.simplifier,
                             category_filter,
                         );
                         let report =

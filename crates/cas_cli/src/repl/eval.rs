@@ -1,15 +1,25 @@
 use super::*;
 
 impl Repl {
+    /// Legacy wrapper - calls core and prints
     pub(crate) fn handle_eval(&mut self, line: &str) {
+        let reply = self.handle_eval_core(line);
+        self.print_reply(reply);
+    }
+
+    /// Core: handle eval command, returns ReplReply (no I/O)
+    pub(crate) fn handle_eval_core(&mut self, line: &str) -> ReplReply {
         use cas_ast::root_style::ParseStyleSignals;
 
         use cas_engine::eval::{EvalAction, EvalRequest, EvalResult};
         use cas_engine::EntryKind;
         use cas_parser::Statement;
 
+        let mut reply: ReplReply = vec![];
+
         let style_signals = ParseStyleSignals::from_input_string(line);
-        let parser_result = cas_parser::parse_statement(line, &mut self.engine.simplifier.context);
+        let parser_result =
+            cas_parser::parse_statement(line, &mut self.core.engine.simplifier.context);
 
         match parser_result {
             Ok(stmt) => {
@@ -17,6 +27,7 @@ impl Repl {
                 let (kind, parsed_expr) = match stmt {
                     Statement::Equation(eq) => {
                         let eq_expr = self
+                            .core
                             .engine
                             .simplifier
                             .context
@@ -41,26 +52,29 @@ impl Repl {
                     auto_store: true,
                 };
 
-                match self.engine.eval(&mut self.state, req) {
+                match self.core.engine.eval(&mut self.core.state, req) {
                     Ok(output) => {
                         // Display entry number with parsed expression
                         // NOTE: Removed duplicate print! that was causing "#1: #1:" display bug
                         // I'll skip it to reduce noise or rely on Result.
                         // Actually old logic printed: `#{id}  {expr}`.
                         if let Some(id) = output.stored_id {
-                            println!(
+                            reply.push(ReplMsg::output(format!(
                                 "#{}: {}",
                                 id,
                                 cas_ast::DisplayExpr {
-                                    context: &self.engine.simplifier.context,
+                                    context: &self.core.engine.simplifier.context,
                                     id: output.parsed
                                 }
-                            );
+                            )));
                         }
 
                         // Show warnings
                         for w in output.domain_warnings {
-                            println!("⚠ {} (from {})", w.message, w.rule_name);
+                            reply.push(ReplMsg::warn(format!(
+                                "⚠ {} (from {})",
+                                w.message, w.rule_name
+                            )));
                         }
 
                         // Show required conditions (implicit domain constraints from input)
@@ -73,9 +87,9 @@ impl Repl {
                                 _ => None,
                             };
 
-                            let ctx = &self.engine.simplifier.context;
-                            let display_level = self.state.options.requires_display;
-                            let debug_mode = self.debug_mode;
+                            let ctx = &self.core.engine.simplifier.context;
+                            let display_level = self.core.state.options.requires_display;
+                            let debug_mode = self.core.debug_mode;
 
                             // Filter requires based on display level and witness survival
                             let filtered: Vec<_> = if let Some(result) = result_expr {
@@ -90,11 +104,11 @@ impl Repl {
                             };
 
                             if !filtered.is_empty() {
-                                println!("ℹ️ Requires:");
+                                reply.push(ReplMsg::info("ℹ️ Requires:".to_string()));
                                 // Batch normalize and apply dominance rules
                                 let conditions: Vec<_> =
                                     filtered.iter().map(|item| item.cond.clone()).collect();
-                                let ctx_mut = &mut self.engine.simplifier.context;
+                                let ctx_mut = &mut self.core.engine.simplifier.context;
                                 let normalized_conditions =
                                     cas_engine::implicit_domain::normalize_and_dedupe_conditions(
                                         ctx_mut,
@@ -102,9 +116,15 @@ impl Repl {
                                     );
                                 for cond in &normalized_conditions {
                                     if debug_mode {
-                                        println!("  • {} (normalized)", cond.display(ctx_mut));
+                                        reply.push(ReplMsg::info(format!(
+                                            "  • {} (normalized)",
+                                            cond.display(ctx_mut)
+                                        )));
                                     } else {
-                                        println!("  • {}", cond.display(ctx_mut));
+                                        reply.push(ReplMsg::info(format!(
+                                            "  • {}",
+                                            cond.display(ctx_mut)
+                                        )));
                                     }
                                 }
                             }
@@ -112,7 +132,7 @@ impl Repl {
 
                         // Collect assumptions from steps for assumption reporting (before steps are consumed)
                         // Deduplicate by (condition_kind, expr_fingerprint) and group by rule
-                        let show_assumptions = self.state.options.assumption_reporting
+                        let show_assumptions = self.core.state.options.assumption_reporting
                             != cas_engine::AssumptionReporting::Off;
                         let assumed_conditions: Vec<(String, String)> = if show_assumptions {
                             let mut seen: std::collections::HashSet<u64> =
@@ -163,6 +183,8 @@ impl Repl {
 
                         // Show steps using helper
                         // We use output.resolved (input to simplify) and output.steps
+                        // NOTE: show_simplification_steps still prints directly - this is intentional
+                        // for now as it's a complex function with its own step formatting logic
                         if !output.steps.is_empty() || self.verbosity != Verbosity::None {
                             // trigger logic if verbosity on
                             self.show_simplification_steps(
@@ -174,7 +196,7 @@ impl Repl {
 
                         // Show Final Result with style sniffing (root notation preservation)
                         let style_prefs = cas_ast::StylePreferences::from_expression_with_signals(
-                            &self.engine.simplifier.context,
+                            &self.core.engine.simplifier.context,
                             output.parsed,
                             Some(&style_signals),
                         );
@@ -182,10 +204,10 @@ impl Repl {
                         match output.result {
                             EvalResult::Expr(res) => {
                                 // Check if it is Equal function
-                                let context = &self.engine.simplifier.context;
+                                let context = &self.core.engine.simplifier.context;
                                 if let Expr::Function(name, args) = context.get(res) {
                                     if name == "Equal" && args.len() == 2 {
-                                        println!(
+                                        reply.push(ReplMsg::output(format!(
                                             "Result: {} = {}",
                                             clean_display_string(&format!(
                                                 "{}",
@@ -203,22 +225,31 @@ impl Repl {
                                                     &style_prefs
                                                 )
                                             ))
-                                        );
-                                        return;
+                                        )));
+                                        return reply;
                                     }
                                 }
 
-                                println!("Result: {}", display_expr_or_poly(context, res));
+                                reply.push(ReplMsg::output(format!(
+                                    "Result: {}",
+                                    display_expr_or_poly(context, res)
+                                )));
                             }
                             EvalResult::SolutionSet(ref solution_set) => {
                                 // V2.0: Display full solution set
-                                let ctx = &self.engine.simplifier.context;
-                                println!("Result: {}", display_solution_set(ctx, solution_set));
+                                let ctx = &self.core.engine.simplifier.context;
+                                reply.push(ReplMsg::output(format!(
+                                    "Result: {}",
+                                    display_solution_set(ctx, solution_set)
+                                )));
                             }
                             EvalResult::Set(_sols) => {
-                                println!("Result: Set(...)"); // Simplify result logic doesn't usually produce Set
+                                reply.push(ReplMsg::output("Result: Set(...)".to_string()));
+                                // Simplify result logic doesn't usually produce Set
                             }
-                            EvalResult::Bool(b) => println!("Result: {}", b),
+                            EvalResult::Bool(b) => {
+                                reply.push(ReplMsg::output(format!("Result: {}", b)));
+                            }
                             EvalResult::None => {}
                         }
 
@@ -228,7 +259,7 @@ impl Repl {
                         // Filter out spurious 'defined' hints when result is undefined
                         // (these are cycle detection artifacts, not useful when result is already undefined)
                         let result_is_undefined = matches!(
-                            self.engine.simplifier.context.get(output.resolved),
+                            self.core.engine.simplifier.context.get(output.resolved),
                             cas_ast::Expr::Constant(cas_ast::Constant::Undefined)
                         );
                         let hints: Vec<_> = output
@@ -236,8 +267,8 @@ impl Repl {
                             .iter()
                             .filter(|h| !(result_is_undefined && h.key.kind() == "defined"))
                             .collect();
-                        if !hints.is_empty() && self.state.options.hints_enabled {
-                            let ctx = &self.engine.simplifier.context;
+                        if !hints.is_empty() && self.core.state.options.hints_enabled {
+                            let ctx = &self.core.engine.simplifier.context;
 
                             // Helper to format condition with expression
                             let format_condition = |hint: &cas_engine::BlockedHint| -> String {
@@ -265,7 +296,7 @@ impl Repl {
                             }
 
                             // Contextual suggestion based on current mode
-                            let suggestion = match self.state.options.domain_mode {
+                            let suggestion = match self.core.state.options.domain_mode {
                                 cas_engine::DomainMode::Strict => {
                                     "use `domain generic` or `domain assume` to allow"
                                 }
@@ -282,28 +313,33 @@ impl Repl {
                             if grouped.len() == 1 && hints.len() == 1 {
                                 // Single hint: compact format
                                 let hint = &hints[0];
-                                println!(
+                                reply.push(ReplMsg::info(format!(
                                     "ℹ️  Blocked: requires {} [{}]",
                                     format_condition(hint),
                                     hint.rule
-                                );
-                                println!("   {}", suggestion);
+                                )));
+                                reply.push(ReplMsg::info(format!("   {}", suggestion)));
                             } else {
                                 // Multiple hints or multiple rules: grouped format
-                                println!("ℹ️  Some simplifications were blocked:");
+                                reply.push(ReplMsg::info(
+                                    "ℹ️  Some simplifications were blocked:".to_string(),
+                                ));
                                 for (rule, conditions) in &grouped {
                                     if conditions.len() == 1 {
-                                        println!(" - Requires {}  [{}]", conditions[0], rule);
+                                        reply.push(ReplMsg::info(format!(
+                                            " - Requires {}  [{}]",
+                                            conditions[0], rule
+                                        )));
                                     } else {
                                         // Compact multiple conditions for same rule
-                                        println!(
+                                        reply.push(ReplMsg::info(format!(
                                             " - Requires {}  [{}]",
                                             conditions.join(", "),
                                             rule
-                                        );
+                                        )));
                                     }
                                 }
-                                println!("   Tip: {}", suggestion);
+                                reply.push(ReplMsg::info(format!("   Tip: {}", suggestion)));
                             }
                         }
 
@@ -321,19 +357,30 @@ impl Repl {
 
                             if assumed_conditions.len() == 1 {
                                 let (cond, rule) = &assumed_conditions[0];
-                                println!("ℹ️  Assumptions used (assumed): {} [{}]", cond, rule);
+                                reply.push(ReplMsg::info(format!(
+                                    "ℹ️  Assumptions used (assumed): {} [{}]",
+                                    cond, rule
+                                )));
                             } else {
-                                println!("ℹ️  Assumptions used (assumed):");
+                                reply.push(ReplMsg::info(
+                                    "ℹ️  Assumptions used (assumed):".to_string(),
+                                ));
                                 for (rule, conds) in &by_rule {
-                                    println!("   - {} [{}]", conds.join(", "), rule);
+                                    reply.push(ReplMsg::info(format!(
+                                        "   - {} [{}]",
+                                        conds.join(", "),
+                                        rule
+                                    )));
                                 }
                             }
                         }
                     }
-                    Err(e) => println!("Error: {}", e),
+                    Err(e) => reply.push(ReplMsg::error(format!("Error: {}", e))),
                 }
             }
-            Err(e) => println!("Parse error: {}", e),
+            Err(e) => reply.push(ReplMsg::error(format!("Parse error: {}", e))),
         }
+
+        reply
     }
 }

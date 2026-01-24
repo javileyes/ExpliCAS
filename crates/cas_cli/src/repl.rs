@@ -248,22 +248,12 @@ fn render_with_rule_scope(
 }
 
 pub struct Repl {
-    /// The high-level Engine instance (wraps Simplifier)
-    pub engine: cas_engine::Engine,
+    /// Core logic - pure computation without I/O
+    pub core: ReplCore,
+    /// Output verbosity level (UI concern)
     verbosity: Verbosity,
+    /// CLI configuration (loaded from file, applies rules to core)
     config: CasConfig,
-    /// Options controlling the simplification pipeline (phases, budgets)
-    simplify_options: cas_engine::SimplifyOptions,
-    /// When true, show pipeline/engine diagnostics after simplification
-    debug_mode: bool,
-    /// Last pipeline stats for diagnostics
-    last_stats: Option<cas_engine::PipelineStats>,
-    /// When true, always track health metrics (independent of debug)
-    health_enabled: bool,
-    /// Last health report string for `health` command
-    last_health_report: Option<String>,
-    /// Session state (store + env)
-    state: cas_engine::SessionState,
 }
 
 /// Substitute occurrences of `target` with `replacement` anywhere in the expression tree.
@@ -496,7 +486,7 @@ mod simplify;
 
 // Re-export core types for external use
 pub use core::ReplCore;
-pub use output::{ReplMsg, ReplReply, ReplReplyExt};
+pub use output::{CoreResult, ReplMsg, ReplReply, ReplReplyExt, UiDelta};
 
 // These were historically plain module-level helpers (when using include!()).
 // Re-export them into this module scope so existing code can keep calling them

@@ -14,46 +14,73 @@ impl Repl {
         let rule = LogExpansionRule;
 
         // Try to apply the rule at this node
-        if let Some(rewrite) = rule.apply(&mut self.engine.simplifier.context, expr, &parent_ctx) {
+        if let Some(rewrite) =
+            rule.apply(&mut self.core.engine.simplifier.context, expr, &parent_ctx)
+        {
             // Recursively expand the result
             return self.expand_log_recursive(rewrite.new_expr);
         }
 
         // If rule didn't apply, recurse into children
-        let expr_data = self.engine.simplifier.context.get(expr).clone();
+        let expr_data = self.core.engine.simplifier.context.get(expr).clone();
         match expr_data {
             Expr::Add(l, r) => {
                 let new_l = self.expand_log_recursive(l);
                 let new_r = self.expand_log_recursive(r);
-                self.engine.simplifier.context.add(Expr::Add(new_l, new_r))
+                self.core
+                    .engine
+                    .simplifier
+                    .context
+                    .add(Expr::Add(new_l, new_r))
             }
             Expr::Sub(l, r) => {
                 let new_l = self.expand_log_recursive(l);
                 let new_r = self.expand_log_recursive(r);
-                self.engine.simplifier.context.add(Expr::Sub(new_l, new_r))
+                self.core
+                    .engine
+                    .simplifier
+                    .context
+                    .add(Expr::Sub(new_l, new_r))
             }
             Expr::Mul(l, r) => {
                 let new_l = self.expand_log_recursive(l);
                 let new_r = self.expand_log_recursive(r);
-                self.engine.simplifier.context.add(Expr::Mul(new_l, new_r))
+                self.core
+                    .engine
+                    .simplifier
+                    .context
+                    .add(Expr::Mul(new_l, new_r))
             }
             Expr::Div(l, r) => {
                 let new_l = self.expand_log_recursive(l);
                 let new_r = self.expand_log_recursive(r);
-                self.engine.simplifier.context.add(Expr::Div(new_l, new_r))
+                self.core
+                    .engine
+                    .simplifier
+                    .context
+                    .add(Expr::Div(new_l, new_r))
             }
             Expr::Pow(b, e) => {
                 let new_b = self.expand_log_recursive(b);
                 let new_e = self.expand_log_recursive(e);
-                self.engine.simplifier.context.add(Expr::Pow(new_b, new_e))
+                self.core
+                    .engine
+                    .simplifier
+                    .context
+                    .add(Expr::Pow(new_b, new_e))
             }
             Expr::Neg(inner) => {
                 let new_inner = self.expand_log_recursive(inner);
-                self.engine.simplifier.context.add(Expr::Neg(new_inner))
+                self.core
+                    .engine
+                    .simplifier
+                    .context
+                    .add(Expr::Neg(new_inner))
             }
             Expr::Function(name, args) => {
                 let new_args: Vec<_> = args.iter().map(|a| self.expand_log_recursive(*a)).collect();
-                self.engine
+                self.core
+                    .engine
                     .simplifier
                     .context
                     .add(Expr::Function(name, new_args))
@@ -80,7 +107,7 @@ impl Repl {
         }
 
         // Parse the expression
-        match cas_parser::parse(rest, &mut self.engine.simplifier.context) {
+        match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
             Ok(expr) => {
                 use cas_ast::DisplayExpr;
                 println!("Parsed: {}", rest);
@@ -93,7 +120,7 @@ impl Repl {
                 let result_str = format!(
                     "{}",
                     DisplayExpr {
-                        context: &self.engine.simplifier.context,
+                        context: &self.core.engine.simplifier.context,
                         id: result
                     }
                 );
@@ -103,11 +130,11 @@ impl Repl {
                 // Try to simplify the result
                 println!();
                 println!("Simplifying...");
-                let (simplified, _steps) = self.engine.simplifier.simplify(result);
+                let (simplified, _steps) = self.core.engine.simplifier.simplify(result);
                 let simplified_str = clean_display_string(&format!(
                     "{}",
                     DisplayExpr {
-                        context: &self.engine.simplifier.context,
+                        context: &self.core.engine.simplifier.context,
                         id: simplified
                     }
                 ));
@@ -121,26 +148,34 @@ impl Repl {
     pub(crate) fn apply_weierstrass_recursive(&mut self, expr: cas_ast::ExprId) -> cas_ast::ExprId {
         use cas_ast::Expr;
 
-        match self.engine.simplifier.context.get(expr).clone() {
+        match self.core.engine.simplifier.context.get(expr).clone() {
             Expr::Function(name, args)
                 if matches!(name.as_str(), "sin" | "cos" | "tan") && args.len() == 1 =>
             {
                 let arg = args[0];
 
                 // Build t = tan(x/2) as sin(x/2)/cos(x/2)
-                let two_num = self.engine.simplifier.context.num(2);
-                let half_arg = self.engine.simplifier.context.add(Expr::Div(arg, two_num));
+                let two_num = self.core.engine.simplifier.context.num(2);
+                let half_arg = self
+                    .core
+                    .engine
+                    .simplifier
+                    .context
+                    .add(Expr::Div(arg, two_num));
                 let sin_half = self
+                    .core
                     .engine
                     .simplifier
                     .context
                     .add(Expr::Function("sin".to_string(), vec![half_arg]));
                 let cos_half = self
+                    .core
                     .engine
                     .simplifier
                     .context
                     .add(Expr::Function("cos".to_string(), vec![half_arg]));
                 let t = self
+                    .core
                     .engine
                     .simplifier
                     .context
@@ -150,52 +185,59 @@ impl Repl {
                 match name.as_str() {
                     "sin" => {
                         // sin(x) → 2t/(1+t²)
-                        let two = self.engine.simplifier.context.num(2);
-                        let one = self.engine.simplifier.context.num(1);
-                        let t_squared = self.engine.simplifier.context.add(Expr::Pow(t, two));
-                        let numerator = self.engine.simplifier.context.add(Expr::Mul(two, t));
+                        let two = self.core.engine.simplifier.context.num(2);
+                        let one = self.core.engine.simplifier.context.num(1);
+                        let t_squared = self.core.engine.simplifier.context.add(Expr::Pow(t, two));
+                        let numerator = self.core.engine.simplifier.context.add(Expr::Mul(two, t));
                         let denominator = self
+                            .core
                             .engine
                             .simplifier
                             .context
                             .add(Expr::Add(one, t_squared));
-                        self.engine
+                        self.core
+                            .engine
                             .simplifier
                             .context
                             .add(Expr::Div(numerator, denominator))
                     }
                     "cos" => {
                         // cos(x) → (1-t²)/(1+t²)
-                        let one = self.engine.simplifier.context.num(1);
-                        let two = self.engine.simplifier.context.num(2);
-                        let t_squared = self.engine.simplifier.context.add(Expr::Pow(t, two));
+                        let one = self.core.engine.simplifier.context.num(1);
+                        let two = self.core.engine.simplifier.context.num(2);
+                        let t_squared = self.core.engine.simplifier.context.add(Expr::Pow(t, two));
                         let numerator = self
+                            .core
                             .engine
                             .simplifier
                             .context
                             .add(Expr::Sub(one, t_squared));
                         let denominator = self
+                            .core
                             .engine
                             .simplifier
                             .context
                             .add(Expr::Add(one, t_squared));
-                        self.engine
+                        self.core
+                            .engine
                             .simplifier
                             .context
                             .add(Expr::Div(numerator, denominator))
                     }
                     "tan" => {
                         // tan(x) → 2t/(1-t²)
-                        let two = self.engine.simplifier.context.num(2);
-                        let one = self.engine.simplifier.context.num(1);
-                        let t_squared = self.engine.simplifier.context.add(Expr::Pow(t, two));
-                        let numerator = self.engine.simplifier.context.add(Expr::Mul(two, t));
+                        let two = self.core.engine.simplifier.context.num(2);
+                        let one = self.core.engine.simplifier.context.num(1);
+                        let t_squared = self.core.engine.simplifier.context.add(Expr::Pow(t, two));
+                        let numerator = self.core.engine.simplifier.context.add(Expr::Mul(two, t));
                         let denominator = self
+                            .core
                             .engine
                             .simplifier
                             .context
                             .add(Expr::Sub(one, t_squared));
-                        self.engine
+                        self.core
+                            .engine
                             .simplifier
                             .context
                             .add(Expr::Div(numerator, denominator))
@@ -206,34 +248,51 @@ impl Repl {
             Expr::Add(l, r) => {
                 let new_l = self.apply_weierstrass_recursive(l);
                 let new_r = self.apply_weierstrass_recursive(r);
-                self.engine.simplifier.context.add(Expr::Add(new_l, new_r))
+                self.core
+                    .engine
+                    .simplifier
+                    .context
+                    .add(Expr::Add(new_l, new_r))
             }
             Expr::Sub(l, r) => {
                 let new_l = self.apply_weierstrass_recursive(l);
                 let new_r = self.apply_weierstrass_recursive(r);
-                self.engine.simplifier.context.add(Expr::Sub(new_l, new_r))
+                self.core
+                    .engine
+                    .simplifier
+                    .context
+                    .add(Expr::Sub(new_l, new_r))
             }
             Expr::Mul(l, r) => {
                 let new_l = self.apply_weierstrass_recursive(l);
                 let new_r = self.apply_weierstrass_recursive(r);
-                self.engine.simplifier.context.add(Expr::Mul(new_l, new_r))
+                self.core
+                    .engine
+                    .simplifier
+                    .context
+                    .add(Expr::Mul(new_l, new_r))
             }
             Expr::Div(l, r) => {
                 let new_l = self.apply_weierstrass_recursive(l);
                 let new_r = self.apply_weierstrass_recursive(r);
-                self.engine.simplifier.context.add(Expr::Div(new_l, new_r))
+                self.core
+                    .engine
+                    .simplifier
+                    .context
+                    .add(Expr::Div(new_l, new_r))
             }
             Expr::Pow(base, exp) => {
                 let new_base = self.apply_weierstrass_recursive(base);
                 let new_exp = self.apply_weierstrass_recursive(exp);
-                self.engine
+                self.core
+                    .engine
                     .simplifier
                     .context
                     .add(Expr::Pow(new_base, new_exp))
             }
             Expr::Neg(e) => {
                 let new_e = self.apply_weierstrass_recursive(e);
-                self.engine.simplifier.context.add(Expr::Neg(new_e))
+                self.core.engine.simplifier.context.add(Expr::Neg(new_e))
             }
             Expr::Function(name, args) => {
                 // Recurse into function arguments
@@ -241,7 +300,8 @@ impl Repl {
                     .iter()
                     .map(|&a| self.apply_weierstrass_recursive(a))
                     .collect();
-                self.engine
+                self.core
+                    .engine
                     .simplifier
                     .context
                     .add(Expr::Function(name.clone(), new_args))
@@ -268,15 +328,15 @@ impl Repl {
             }
         };
 
-        match cas_parser::parse_statement(eq_str, &mut self.engine.simplifier.context) {
+        match cas_parser::parse_statement(eq_str, &mut self.core.engine.simplifier.context) {
             Ok(cas_parser::Statement::Equation(eq)) => {
                 // Call solver with step collection enabled and semantic options
-                self.engine.simplifier.set_collect_steps(true);
+                self.core.engine.simplifier.set_collect_steps(true);
                 let solver_opts = cas_engine::solver::SolverOptions {
-                    value_domain: self.state.options.value_domain,
-                    domain_mode: self.state.options.domain_mode,
-                    assume_scope: self.state.options.assume_scope,
-                    budget: self.state.options.budget,
+                    value_domain: self.core.state.options.value_domain,
+                    domain_mode: self.core.state.options.domain_mode,
+                    assume_scope: self.core.state.options.assume_scope,
+                    budget: self.core.state.options.budget,
                     ..Default::default()
                 };
 
@@ -284,7 +344,7 @@ impl Repl {
                 match cas_engine::solver::solve_with_display_steps(
                     &eq,
                     var,
-                    &mut self.engine.simplifier,
+                    &mut self.core.engine.simplifier,
                     solver_opts,
                 ) {
                     Ok((solution_set, display_steps)) => {
@@ -293,7 +353,7 @@ impl Repl {
                             println!(
                                 "Result: {}",
                                 display_solution_set(
-                                    &self.engine.simplifier.context,
+                                    &self.core.engine.simplifier.context,
                                     &solution_set
                                 )
                             );
@@ -303,7 +363,7 @@ impl Repl {
                         // Generate HTML timeline for solve steps
                         // Use .0 to access the inner Vec<SolveStep>
                         let mut timeline = cas_engine::timeline::SolveTimelineHtml::new(
-                            &mut self.engine.simplifier.context,
+                            &mut self.core.engine.simplifier.context,
                             &display_steps.0,
                             &eq,
                             &solution_set,
@@ -318,7 +378,7 @@ impl Repl {
                                 println!(
                                     "Result: {}",
                                     display_solution_set(
-                                        &self.engine.simplifier.context,
+                                        &self.core.engine.simplifier.context,
                                         &solution_set
                                     )
                                 );
@@ -361,7 +421,7 @@ impl Repl {
             (true, after_flag)
         } else {
             // Use session toggle if no explicit flag
-            (self.state.options.check_solutions, rest)
+            (self.core.state.options.check_solutions, rest)
         };
 
         // Split by comma or space to get equation and var
@@ -407,13 +467,14 @@ impl Repl {
             if eq_str.starts_with('#') && eq_str[1..].chars().all(char::is_numeric) {
                 // Pass as Variable("#id") - the engine will now handle this resolution!
                 Ok(Statement::Expression(
-                    self.engine
+                    self.core
+                        .engine
                         .simplifier
                         .context
                         .add(Expr::Variable(eq_str.to_string())),
                 ))
             } else {
-                cas_parser::parse_statement(eq_str, &mut self.engine.simplifier.context)
+                cas_parser::parse_statement(eq_str, &mut self.core.engine.simplifier.context)
             };
 
         match parsed_expr_res {
@@ -427,6 +488,7 @@ impl Repl {
                 let (kind, parsed_expr) = match stmt {
                     Statement::Equation(eq) => {
                         let eq_expr = self
+                            .core
                             .engine
                             .simplifier
                             .context
@@ -452,7 +514,7 @@ impl Repl {
                     auto_store: true,
                 };
 
-                match self.engine.eval(&mut self.state, req) {
+                match self.core.engine.eval(&mut self.core.state, req) {
                     Ok(output) => {
                         // Show ID
                         if let Some(id) = output.stored_id {
@@ -499,7 +561,7 @@ impl Repl {
                             let has_scopes = !output.output_scopes.is_empty();
                             let renderer = if has_scopes {
                                 Some(cas_ast::display_transforms::ScopedRenderer::new(
-                                    &self.engine.simplifier.context,
+                                    &self.core.engine.simplifier.context,
                                     &output.output_scopes,
                                     &registry,
                                 ))
@@ -510,7 +572,7 @@ impl Repl {
                             for (i, step) in output.solve_steps.iter().enumerate() {
                                 println!("{}. {}", i + 1, step.description);
                                 // Display equation after step with scoped transforms
-                                let ctx = &self.engine.simplifier.context;
+                                let ctx = &self.core.engine.simplifier.context;
                                 let (lhs_str, rhs_str) = if let Some(ref r) = renderer {
                                     (
                                         r.render(step.equation_after.lhs),
@@ -539,7 +601,7 @@ impl Repl {
                                 if !step.substeps.is_empty() && self.verbosity == Verbosity::Verbose
                                 {
                                     for (j, substep) in step.substeps.iter().enumerate() {
-                                        let sub_ctx = &self.engine.simplifier.context;
+                                        let sub_ctx = &self.core.engine.simplifier.context;
                                         let (sub_lhs, sub_rhs) = (
                                             DisplayExpr {
                                                 context: sub_ctx,
@@ -570,12 +632,12 @@ impl Repl {
                         match output.result {
                             EvalResult::SolutionSet(ref solution_set) => {
                                 // V2.0: Display full solution set including Conditional
-                                let ctx = &self.engine.simplifier.context;
+                                let ctx = &self.core.engine.simplifier.context;
                                 println!("Result: {}", display_solution_set(ctx, solution_set));
                             }
                             EvalResult::Set(ref sols) => {
                                 // Legacy: discrete solutions as Vec<ExprId>
-                                let ctx = &self.engine.simplifier.context;
+                                let ctx = &self.core.engine.simplifier.context;
                                 let sol_strs: Vec<String> = if !output.output_scopes.is_empty() {
                                     let registry = cas_ast::display_transforms::DisplayTransformRegistry::with_defaults();
                                     let renderer = cas_ast::display_transforms::ScopedRenderer::new(
@@ -613,9 +675,9 @@ impl Repl {
                             EvalResult::Set(v) => *v.first().unwrap_or(&output.resolved),
                             _ => output.resolved,
                         };
-                        let display_level = self.state.options.requires_display;
+                        let display_level = self.core.state.options.requires_display;
                         let requires_to_show = {
-                            let ctx = &self.engine.simplifier.context;
+                            let ctx = &self.core.engine.simplifier.context;
                             output.diagnostics.filter_requires_for_display(
                                 ctx,
                                 result_expr_id,
@@ -630,14 +692,14 @@ impl Repl {
                                 .iter()
                                 .map(|item| item.cond.clone())
                                 .collect();
-                            let ctx_mut = &mut self.engine.simplifier.context;
+                            let ctx_mut = &mut self.core.engine.simplifier.context;
                             let normalized_conditions =
                                 cas_engine::implicit_domain::normalize_and_dedupe_conditions(
                                     ctx_mut,
                                     &conditions,
                                 );
                             for cond in &normalized_conditions {
-                                if self.debug_mode {
+                                if self.core.debug_mode {
                                     println!("  • {} (normalized)", cond.display(ctx_mut));
                                 } else {
                                     println!("  • {}", cond.display(ctx_mut));
@@ -659,7 +721,7 @@ impl Repl {
                                     };
 
                                     let verify_result = verify_solution_set(
-                                        &mut self.engine.simplifier,
+                                        &mut self.core.engine.simplifier,
                                         eq,
                                         var,
                                         solution_set,
@@ -674,7 +736,7 @@ impl Repl {
                                             println!("⚠ Some solutions verified");
                                             for (sol_id, status) in &verify_result.solutions {
                                                 let sol_str = DisplayExpr {
-                                                    context: &self.engine.simplifier.context,
+                                                    context: &self.core.engine.simplifier.context,
                                                     id: *sol_id,
                                                 }
                                                 .to_string();
@@ -715,9 +777,9 @@ impl Repl {
                         let has_assumptions = !output.solver_assumptions.is_empty();
                         let has_blocked = !hints.is_empty();
 
-                        if self.debug_mode && (has_assumptions || has_blocked) {
+                        if self.core.debug_mode && (has_assumptions || has_blocked) {
                             println!(); // Separator line
-                            let ctx = &self.engine.simplifier.context;
+                            let ctx = &self.core.engine.simplifier.context;
 
                             // Block 1: Assumptions used
                             if has_assumptions {
@@ -774,7 +836,7 @@ impl Repl {
                                 }
 
                                 // Contextual suggestion
-                                let suggestion = match self.state.options.domain_mode {
+                                let suggestion = match self.core.state.options.domain_mode {
                                     cas_engine::DomainMode::Strict => {
                                         "tip: use `domain generic` or `domain assume` to allow"
                                     }
@@ -787,9 +849,9 @@ impl Repl {
                                 };
                                 println!("  {}", suggestion);
                             }
-                        } else if has_blocked && self.state.options.hints_enabled {
+                        } else if has_blocked && self.core.state.options.hints_enabled {
                             // Legacy: show blocked hints even without debug_mode if hints_enabled
-                            let ctx = &self.engine.simplifier.context;
+                            let ctx = &self.core.engine.simplifier.context;
                             let format_condition = |hint: &cas_engine::BlockedHint| -> String {
                                 let expr_str = cas_ast::DisplayExpr {
                                     context: ctx,
@@ -804,7 +866,7 @@ impl Repl {
                                 }
                             };
 
-                            let suggestion = match self.state.options.domain_mode {
+                            let suggestion = match self.core.state.options.domain_mode {
                                 cas_engine::DomainMode::Strict => {
                                     "use `domain generic` or `domain assume` to allow"
                                 }

@@ -98,15 +98,9 @@ impl Repl {
         simplifier.add_rule(Box::new(NumberTheoryRule));
 
         let mut repl = Self {
-            engine: cas_engine::Engine { simplifier },
+            core: ReplCore::with_simplifier(simplifier),
             verbosity: Verbosity::Normal,
             config,
-            simplify_options: cas_engine::SimplifyOptions::default(),
-            debug_mode: false,
-            last_stats: None,
-            health_enabled: false,
-            last_health_report: None,
-            state: cas_engine::SessionState::new(),
         };
         repl.sync_config_to_simplifier();
         repl
@@ -134,38 +128,39 @@ impl Repl {
         expr: cas_ast::ExprId,
     ) -> (cas_ast::ExprId, Vec<cas_engine::Step>) {
         // Use state.options.to_simplify_options() to get correct expand_policy, context_mode, etc.
-        // (self.simplify_options is legacy and doesn't sync expand_policy)
-        let mut opts = self.state.options.to_simplify_options();
-        opts.collect_steps = self.engine.simplifier.collect_steps();
+        // (self.core.simplify_options is legacy and doesn't sync expand_policy)
+        let mut opts = self.core.state.options.to_simplify_options();
+        opts.collect_steps = self.core.engine.simplifier.collect_steps();
         // V2.15.8: Copy autoexpand_binomials from simplify_options (set by 'set autoexpand_binomials on')
-        opts.autoexpand_binomials = self.simplify_options.autoexpand_binomials;
-        opts.heuristic_poly = self.simplify_options.heuristic_poly;
+        opts.autoexpand_binomials = self.core.simplify_options.autoexpand_binomials;
+        opts.heuristic_poly = self.core.simplify_options.heuristic_poly;
 
         // Note: Tool dispatcher for collect/expand_log is in Engine::eval (cas_engine/src/eval.rs)
         // This function is dead code but kept for internal use; no dispatcher needed here.
 
         // Enable health metrics and clear previous run if debug or health mode is on
-        if self.debug_mode || self.health_enabled {
-            self.engine.simplifier.profiler.enable_health();
-            self.engine.simplifier.profiler.clear_run();
+        if self.core.debug_mode || self.core.health_enabled {
+            self.core.engine.simplifier.profiler.enable_health();
+            self.core.engine.simplifier.profiler.clear_run();
         }
 
-        let (result, steps, stats) = self.engine.simplifier.simplify_with_stats(expr, opts);
+        let (result, steps, stats) = self.core.engine.simplifier.simplify_with_stats(expr, opts);
 
         // Store health report for the `health` command
         // Always store if health_enabled; for debug-only use threshold
-        if self.health_enabled || (self.debug_mode && stats.total_rewrites >= 5) {
-            self.last_health_report = Some(self.engine.simplifier.profiler.health_report());
+        if self.core.health_enabled || (self.core.debug_mode && stats.total_rewrites >= 5) {
+            self.core.last_health_report =
+                Some(self.core.engine.simplifier.profiler.health_report());
         }
 
         // Show debug output if enabled
-        if self.debug_mode {
+        if self.core.debug_mode {
             self.print_pipeline_stats(&stats);
 
             // Policy A+ hint: when simplify makes minimal changes to a Mul expression
             if stats.total_rewrites <= 1
                 && matches!(
-                    self.engine.simplifier.context.get(result),
+                    self.core.engine.simplifier.context.get(result),
                     cas_ast::Expr::Mul(_, _)
                 )
             {
@@ -175,16 +170,16 @@ impl Repl {
             // Show health report if significant activity (>= 5 rewrites)
             if stats.total_rewrites >= 5 {
                 println!();
-                if let Some(ref report) = self.last_health_report {
+                if let Some(ref report) = self.core.last_health_report {
                     print!("{}", report);
                 }
             }
         }
 
-        self.last_stats = Some(stats.clone());
+        self.core.last_stats = Some(stats.clone());
 
         // Print assumptions summary if reporting is enabled and there are assumptions
-        if self.state.options.assumption_reporting != cas_engine::AssumptionReporting::Off
+        if self.core.state.options.assumption_reporting != cas_engine::AssumptionReporting::Off
             && !stats.assumptions.is_empty()
         {
             // Build summary line
@@ -220,6 +215,7 @@ impl Repl {
                 cycle.period, cycle.at_step
             );
             let top = self
+                .core
                 .engine
                 .simplifier
                 .profiler
@@ -239,6 +235,7 @@ impl Repl {
                 cycle.period, cycle.at_step
             );
             let top = self
+                .core
                 .engine
                 .simplifier
                 .profiler
@@ -271,6 +268,7 @@ impl Repl {
                 cycle.period, cycle.at_step
             );
             let top = self
+                .core
                 .engine
                 .simplifier
                 .profiler
@@ -291,6 +289,7 @@ impl Repl {
                 cycle.period, cycle.at_step
             );
             let top = self
+                .core
                 .engine
                 .simplifier
                 .profiler
@@ -310,9 +309,9 @@ impl Repl {
         // Helper to toggle rule
         let mut toggle = |name: &str, enabled: bool| {
             if enabled {
-                self.engine.simplifier.enable_rule(name);
+                self.core.engine.simplifier.enable_rule(name);
             } else {
-                self.engine.simplifier.disable_rule(name);
+                self.core.engine.simplifier.disable_rule(name);
             }
         };
 
@@ -334,21 +333,38 @@ impl Repl {
         // If auto_factor is on, we enable AutomaticFactorRule AND ConservativeExpandRule.
         // We DISABLE the aggressive ExpandRule to prevent loops.
         if config.auto_factor {
-            self.engine
+            self.core
+                .engine
                 .simplifier
                 .enable_rule("Automatic Factorization");
-            self.engine.simplifier.enable_rule("Conservative Expand");
-            self.engine.simplifier.disable_rule("Expand Polynomial");
-            self.engine.simplifier.disable_rule("Binomial Expansion");
+            self.core
+                .engine
+                .simplifier
+                .enable_rule("Conservative Expand");
+            self.core
+                .engine
+                .simplifier
+                .disable_rule("Expand Polynomial");
+            self.core
+                .engine
+                .simplifier
+                .disable_rule("Binomial Expansion");
         } else {
-            self.engine
+            self.core
+                .engine
                 .simplifier
                 .disable_rule("Automatic Factorization");
-            self.engine.simplifier.disable_rule("Conservative Expand");
-            self.engine.simplifier.enable_rule("Expand Polynomial");
+            self.core
+                .engine
+                .simplifier
+                .disable_rule("Conservative Expand");
+            self.core.engine.simplifier.enable_rule("Expand Polynomial");
             // Re-enable Binomial Expansion if config says so
             if config.expand_binomials {
-                self.engine.simplifier.enable_rule("Binomial Expansion");
+                self.core
+                    .engine
+                    .simplifier
+                    .enable_rule("Binomial Expansion");
             }
         }
     }
@@ -361,14 +377,14 @@ impl Repl {
         let mut indicators = Vec::new();
 
         // Show steps mode if not On (default)
-        match self.state.options.steps_mode {
+        match self.core.state.options.steps_mode {
             StepsMode::Off => indicators.push("[steps:off]"),
             StepsMode::Compact => indicators.push("[steps:compact]"),
             StepsMode::On => {} // Default, no indicator
         }
 
         // Show context mode if not Auto (default)
-        match self.state.options.context_mode {
+        match self.core.state.options.context_mode {
             ContextMode::IntegratePrep => indicators.push("[ctx:integrate]"),
             ContextMode::Solve => indicators.push("[ctx:solve]"),
             ContextMode::Standard => indicators.push("[ctx:standard]"),
@@ -376,13 +392,13 @@ impl Repl {
         }
 
         // Show branch mode if not Strict (default)
-        match self.state.options.branch_mode {
+        match self.core.state.options.branch_mode {
             BranchMode::PrincipalBranch => indicators.push("[branch:principal]"),
             BranchMode::Strict => {} // Default, no indicator
         }
 
         // Show complex mode if not Auto (default)
-        match self.state.options.complex_mode {
+        match self.core.state.options.complex_mode {
             ComplexMode::On => indicators.push("[cx:on]"),
             ComplexMode::Off => indicators.push("[cx:off]"),
             ComplexMode::Auto => {} // Default, no indicator
@@ -390,7 +406,7 @@ impl Repl {
 
         // Show expand_policy if Auto (not default Off)
         use cas_engine::phase::ExpandPolicy;
-        if self.state.options.expand_policy == ExpandPolicy::Auto {
+        if self.core.state.options.expand_policy == ExpandPolicy::Auto {
             indicators.push("[autoexp:on]");
         }
 

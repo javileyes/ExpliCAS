@@ -26,7 +26,7 @@ impl Repl {
         let mode_str = parts.get(3).copied().unwrap_or("off");
 
         // Parse expression
-        let expr = match cas_parser::parse(expr_str, &mut self.engine.simplifier.context) {
+        let expr = match cas_parser::parse(expr_str, &mut self.core.engine.simplifier.context) {
             Ok(e) => e,
             Err(e) => {
                 println!("Parse error: {:?}", e);
@@ -35,7 +35,7 @@ impl Repl {
         };
 
         // Get variable
-        let var = self.engine.simplifier.context.var(var_str);
+        let var = self.core.engine.simplifier.context.var(var_str);
 
         // Parse direction
         let approach = if dir_str.contains("-infinity") || dir_str.contains("-inf") {
@@ -59,7 +59,7 @@ impl Repl {
         };
 
         match limit(
-            &mut self.engine.simplifier.context,
+            &mut self.core.engine.simplifier.context,
             expr,
             var,
             approach,
@@ -68,7 +68,7 @@ impl Repl {
         ) {
             Ok(result) => {
                 let result_disp = cas_ast::DisplayExpr {
-                    context: &self.engine.simplifier.context,
+                    context: &self.core.engine.simplifier.context,
                     id: result.expr,
                 };
 

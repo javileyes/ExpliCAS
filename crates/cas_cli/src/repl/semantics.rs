@@ -30,11 +30,11 @@ impl Repl {
                     let on_off = args[i + 2];
                     match on_off {
                         "on" => {
-                            self.state.options.check_solutions = true;
+                            self.core.state.options.check_solutions = true;
                             println!("Solve check: ON (solutions will be verified)");
                         }
                         "off" => {
-                            self.state.options.check_solutions = false;
+                            self.core.state.options.check_solutions = false;
                             println!("Solve check: OFF");
                         }
                         _ => {
@@ -66,16 +66,16 @@ impl Repl {
         match axis {
             "domain" => match value {
                 "strict" => {
-                    self.simplify_options.domain = DomainMode::Strict;
-                    self.state.options.domain_mode = DomainMode::Strict;
+                    self.core.simplify_options.domain = DomainMode::Strict;
+                    self.core.state.options.domain_mode = DomainMode::Strict;
                 }
                 "generic" => {
-                    self.simplify_options.domain = DomainMode::Generic;
-                    self.state.options.domain_mode = DomainMode::Generic;
+                    self.core.simplify_options.domain = DomainMode::Generic;
+                    self.core.state.options.domain_mode = DomainMode::Generic;
                 }
                 "assume" => {
-                    self.simplify_options.domain = DomainMode::Assume;
-                    self.state.options.domain_mode = DomainMode::Assume;
+                    self.core.simplify_options.domain = DomainMode::Assume;
+                    self.core.state.options.domain_mode = DomainMode::Assume;
                 }
                 _ => {
                     println!("ERROR: Invalid value '{}' for axis 'domain'", value);
@@ -85,12 +85,12 @@ impl Repl {
             },
             "value" => match value {
                 "real" => {
-                    self.simplify_options.value_domain = ValueDomain::RealOnly;
-                    self.state.options.value_domain = ValueDomain::RealOnly;
+                    self.core.simplify_options.value_domain = ValueDomain::RealOnly;
+                    self.core.state.options.value_domain = ValueDomain::RealOnly;
                 }
                 "complex" => {
-                    self.simplify_options.value_domain = ValueDomain::ComplexEnabled;
-                    self.state.options.value_domain = ValueDomain::ComplexEnabled;
+                    self.core.simplify_options.value_domain = ValueDomain::ComplexEnabled;
+                    self.core.state.options.value_domain = ValueDomain::ComplexEnabled;
                 }
                 _ => {
                     println!("ERROR: Invalid value '{}' for axis 'value'", value);
@@ -100,8 +100,8 @@ impl Repl {
             },
             "branch" => match value {
                 "principal" => {
-                    self.simplify_options.branch = BranchPolicy::Principal;
-                    self.state.options.branch = BranchPolicy::Principal;
+                    self.core.simplify_options.branch = BranchPolicy::Principal;
+                    self.core.state.options.branch = BranchPolicy::Principal;
                 }
                 _ => {
                     println!("ERROR: Invalid value '{}' for axis 'branch'", value);
@@ -111,12 +111,12 @@ impl Repl {
             },
             "inv_trig" => match value {
                 "strict" => {
-                    self.simplify_options.inv_trig = InverseTrigPolicy::Strict;
-                    self.state.options.inv_trig = InverseTrigPolicy::Strict;
+                    self.core.simplify_options.inv_trig = InverseTrigPolicy::Strict;
+                    self.core.state.options.inv_trig = InverseTrigPolicy::Strict;
                 }
                 "principal" => {
-                    self.simplify_options.inv_trig = InverseTrigPolicy::PrincipalValue;
-                    self.state.options.inv_trig = InverseTrigPolicy::PrincipalValue;
+                    self.core.simplify_options.inv_trig = InverseTrigPolicy::PrincipalValue;
+                    self.core.state.options.inv_trig = InverseTrigPolicy::PrincipalValue;
                 }
                 _ => {
                     println!("ERROR: Invalid value '{}' for axis 'inv_trig'", value);
@@ -128,10 +128,10 @@ impl Repl {
                 use cas_engine::const_fold::ConstFoldMode;
                 match value {
                     "off" => {
-                        self.state.options.const_fold = ConstFoldMode::Off;
+                        self.core.state.options.const_fold = ConstFoldMode::Off;
                     }
                     "safe" => {
-                        self.state.options.const_fold = ConstFoldMode::Safe;
+                        self.core.state.options.const_fold = ConstFoldMode::Safe;
                     }
                     _ => {
                         println!("ERROR: Invalid value '{}' for axis 'const_fold'", value);
@@ -142,20 +142,21 @@ impl Repl {
             }
             "assumptions" => match value {
                 "off" => {
-                    self.state.options.assumption_reporting = cas_engine::AssumptionReporting::Off;
-                    self.simplify_options.assumption_reporting =
+                    self.core.state.options.assumption_reporting =
+                        cas_engine::AssumptionReporting::Off;
+                    self.core.simplify_options.assumption_reporting =
                         cas_engine::AssumptionReporting::Off;
                 }
                 "summary" => {
-                    self.state.options.assumption_reporting =
+                    self.core.state.options.assumption_reporting =
                         cas_engine::AssumptionReporting::Summary;
-                    self.simplify_options.assumption_reporting =
+                    self.core.simplify_options.assumption_reporting =
                         cas_engine::AssumptionReporting::Summary;
                 }
                 "trace" => {
-                    self.state.options.assumption_reporting =
+                    self.core.state.options.assumption_reporting =
                         cas_engine::AssumptionReporting::Trace;
-                    self.simplify_options.assumption_reporting =
+                    self.core.simplify_options.assumption_reporting =
                         cas_engine::AssumptionReporting::Trace;
                 }
                 _ => {
@@ -166,12 +167,12 @@ impl Repl {
             },
             "assume_scope" => match value {
                 "real" => {
-                    self.simplify_options.assume_scope = cas_engine::AssumeScope::Real;
-                    self.state.options.assume_scope = cas_engine::AssumeScope::Real;
+                    self.core.simplify_options.assume_scope = cas_engine::AssumeScope::Real;
+                    self.core.state.options.assume_scope = cas_engine::AssumeScope::Real;
                 }
                 "wildcard" => {
-                    self.simplify_options.assume_scope = cas_engine::AssumeScope::Wildcard;
-                    self.state.options.assume_scope = cas_engine::AssumeScope::Wildcard;
+                    self.core.simplify_options.assume_scope = cas_engine::AssumeScope::Wildcard;
+                    self.core.state.options.assume_scope = cas_engine::AssumeScope::Wildcard;
                 }
                 _ => {
                     println!("ERROR: Invalid value '{}' for axis 'assume_scope'", value);
@@ -181,10 +182,10 @@ impl Repl {
             },
             "hints" => match value {
                 "on" => {
-                    self.state.options.hints_enabled = true;
+                    self.core.state.options.hints_enabled = true;
                 }
                 "off" => {
-                    self.state.options.hints_enabled = false;
+                    self.core.state.options.hints_enabled = false;
                 }
                 _ => {
                     println!("ERROR: Invalid value '{}' for axis 'hints'", value);
@@ -206,12 +207,12 @@ impl Repl {
             },
             "requires" => match value {
                 "essential" => {
-                    self.state.options.requires_display =
+                    self.core.state.options.requires_display =
                         cas_engine::implicit_domain::RequiresDisplayLevel::Essential;
                     println!("Requires display: essential (hide if witness survives)");
                 }
                 "all" => {
-                    self.state.options.requires_display =
+                    self.core.state.options.requires_display =
                         cas_engine::implicit_domain::RequiresDisplayLevel::All;
                     println!("Requires display: all (show everything)");
                 }
@@ -239,7 +240,7 @@ impl Repl {
         match args.get(1) {
             None => {
                 // Just "context" - show current context
-                let ctx_str = match self.state.options.context_mode {
+                let ctx_str = match self.core.state.options.context_mode {
                     ContextMode::Auto => "auto",
                     ContextMode::Standard => "standard",
                     ContextMode::Solve => "solve",
@@ -249,26 +250,30 @@ impl Repl {
                 println!("  (use 'context auto|standard|solve|integrate' to change)");
             }
             Some(&"auto") => {
-                self.state.options.context_mode = ContextMode::Auto;
-                self.engine.simplifier = cas_engine::Simplifier::with_profile(&self.state.options);
+                self.core.state.options.context_mode = ContextMode::Auto;
+                self.core.engine.simplifier =
+                    cas_engine::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
                 println!("Context: auto (infers from expression)");
             }
             Some(&"standard") => {
-                self.state.options.context_mode = ContextMode::Standard;
-                self.engine.simplifier = cas_engine::Simplifier::with_profile(&self.state.options);
+                self.core.state.options.context_mode = ContextMode::Standard;
+                self.core.engine.simplifier =
+                    cas_engine::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
                 println!("Context: standard (safe simplification only)");
             }
             Some(&"solve") => {
-                self.state.options.context_mode = ContextMode::Solve;
-                self.engine.simplifier = cas_engine::Simplifier::with_profile(&self.state.options);
+                self.core.state.options.context_mode = ContextMode::Solve;
+                self.core.engine.simplifier =
+                    cas_engine::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
                 println!("Context: solve (preserves solver-friendly forms)");
             }
             Some(&"integrate") => {
-                self.state.options.context_mode = ContextMode::IntegratePrep;
-                self.engine.simplifier = cas_engine::Simplifier::with_profile(&self.state.options);
+                self.core.state.options.context_mode = ContextMode::IntegratePrep;
+                self.core.engine.simplifier =
+                    cas_engine::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
                 println!("Context: integrate-prep");
                 println!("  ⚠️ Enables transforms for integration (telescoping, product→sum)");
@@ -291,7 +296,7 @@ impl Repl {
         match args.get(1) {
             None => {
                 // Just "steps" - show current mode
-                let mode_str = match self.state.options.steps_mode {
+                let mode_str = match self.core.state.options.steps_mode {
                     StepsMode::On => "on",
                     StepsMode::Off => "off",
                     StepsMode::Compact => "compact",
@@ -309,39 +314,42 @@ impl Repl {
             }
             // Collection modes (StepsMode)
             Some(&"on") => {
-                self.state.options.steps_mode = StepsMode::On;
-                self.engine.simplifier.set_steps_mode(StepsMode::On);
+                self.core.state.options.steps_mode = StepsMode::On;
+                self.core.engine.simplifier.set_steps_mode(StepsMode::On);
                 self.verbosity = Verbosity::Normal;
                 println!("Steps: on (full collection, normal display)");
             }
             Some(&"off") => {
-                self.state.options.steps_mode = StepsMode::Off;
-                self.engine.simplifier.set_steps_mode(StepsMode::Off);
+                self.core.state.options.steps_mode = StepsMode::Off;
+                self.core.engine.simplifier.set_steps_mode(StepsMode::Off);
                 self.verbosity = Verbosity::None;
                 println!("Steps: off");
                 println!("  ⚡ Steps disabled (faster). Warnings still enabled.");
             }
             Some(&"compact") => {
-                self.state.options.steps_mode = StepsMode::Compact;
-                self.engine.simplifier.set_steps_mode(StepsMode::Compact);
+                self.core.state.options.steps_mode = StepsMode::Compact;
+                self.core
+                    .engine
+                    .simplifier
+                    .set_steps_mode(StepsMode::Compact);
                 println!("Steps: compact (no before/after snapshots)");
             }
             // Display modes (Verbosity)
             Some(&"verbose") => {
-                self.state.options.steps_mode = StepsMode::On;
-                self.engine.simplifier.set_steps_mode(StepsMode::On);
+                self.core.state.options.steps_mode = StepsMode::On;
+                self.core.engine.simplifier.set_steps_mode(StepsMode::On);
                 self.verbosity = Verbosity::Verbose;
                 println!("Steps: verbose (all rules, full detail)");
             }
             Some(&"succinct") => {
-                self.state.options.steps_mode = StepsMode::On;
-                self.engine.simplifier.set_steps_mode(StepsMode::On);
+                self.core.state.options.steps_mode = StepsMode::On;
+                self.core.engine.simplifier.set_steps_mode(StepsMode::On);
                 self.verbosity = Verbosity::Succinct;
                 println!("Steps: succinct (compact 1-line per step)");
             }
             Some(&"normal") => {
-                self.state.options.steps_mode = StepsMode::On;
-                self.engine.simplifier.set_steps_mode(StepsMode::On);
+                self.core.state.options.steps_mode = StepsMode::On;
+                self.core.engine.simplifier.set_steps_mode(StepsMode::On);
                 self.verbosity = Verbosity::Normal;
                 println!("Steps: normal (default display)");
             }
@@ -375,12 +383,12 @@ impl Repl {
         match args.get(1) {
             None => {
                 // Just "autoexpand" - show current mode
-                let policy_str = match self.state.options.expand_policy {
+                let policy_str = match self.core.state.options.expand_policy {
                     ExpandPolicy::Off => "off",
                     ExpandPolicy::Auto => "on",
                 };
                 println!("Auto-expand: {}", policy_str);
-                let budget = &self.state.options.expand_budget;
+                let budget = &self.core.state.options.expand_budget;
                 println!(
                     "  Budget: pow<={}, base_terms<={}, gen_terms<={}, vars<={}",
                     budget.max_pow_exp,
@@ -391,10 +399,11 @@ impl Repl {
                 println!("  (use 'autoexpand on|off' to change)");
             }
             Some(&"on") => {
-                self.state.options.expand_policy = ExpandPolicy::Auto;
-                self.engine.simplifier = cas_engine::Simplifier::with_profile(&self.state.options);
+                self.core.state.options.expand_policy = ExpandPolicy::Auto;
+                self.core.engine.simplifier =
+                    cas_engine::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
-                let budget = &self.state.options.expand_budget;
+                let budget = &self.core.state.options.expand_budget;
                 println!("Auto-expand: on");
                 println!(
                     "  Budget: pow<={}, base_terms<={}, gen_terms<={}, vars<={}",
@@ -406,8 +415,9 @@ impl Repl {
                 println!("  ⚠️ Expands small (sum)^n patterns automatically.");
             }
             Some(&"off") => {
-                self.state.options.expand_policy = ExpandPolicy::Off;
-                self.engine.simplifier = cas_engine::Simplifier::with_profile(&self.state.options);
+                self.core.state.options.expand_policy = ExpandPolicy::Off;
+                self.core.engine.simplifier =
+                    cas_engine::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
                 println!("Auto-expand: off");
                 println!("  Polynomial expansions require explicit expand().");

@@ -27,16 +27,16 @@ impl Repl {
                 }
             }
 
-            let e1_res = parse_arg(expr1_str, &mut self.engine.simplifier.context);
+            let e1_res = parse_arg(expr1_str, &mut self.core.engine.simplifier.context);
             // Verify e1_res to avoid borrow issues? No, Result doesn't borrow.
-            let e2_res = parse_arg(expr2_str, &mut self.engine.simplifier.context);
+            let e2_res = parse_arg(expr2_str, &mut self.core.engine.simplifier.context);
 
             match (e1_res, e2_res) {
                 (Ok(e1), Ok(e2)) => {
                     // V2.14.45: Use new tri-state equivalence check
                     use cas_engine::EquivalenceResult;
 
-                    let result = self.engine.simplifier.are_equivalent_extended(e1, e2);
+                    let result = self.core.engine.simplifier.are_equivalent_extended(e1, e2);
 
                     match result {
                         EquivalenceResult::True => {
@@ -92,7 +92,7 @@ impl Repl {
         let replacement_str = parts[2].trim();
 
         // Parse the main expression
-        let expr = match cas_parser::parse(expr_str, &mut self.engine.simplifier.context) {
+        let expr = match cas_parser::parse(expr_str, &mut self.core.engine.simplifier.context) {
             Ok(e) => e,
             Err(e) => {
                 println!("Error parsing expression: {}", e);
@@ -101,17 +101,18 @@ impl Repl {
         };
 
         // Parse target
-        let target_expr = match cas_parser::parse(target_str, &mut self.engine.simplifier.context) {
-            Ok(e) => e,
-            Err(e) => {
-                println!("Error parsing target: {}", e);
-                return;
-            }
-        };
+        let target_expr =
+            match cas_parser::parse(target_str, &mut self.core.engine.simplifier.context) {
+                Ok(e) => e,
+                Err(e) => {
+                    println!("Error parsing target: {}", e);
+                    return;
+                }
+            };
 
         // Parse replacement
         let replacement_expr =
-            match cas_parser::parse(replacement_str, &mut self.engine.simplifier.context) {
+            match cas_parser::parse(replacement_str, &mut self.core.engine.simplifier.context) {
                 Ok(e) => e,
                 Err(e) => {
                     println!("Error parsing replacement: {}", e);
@@ -130,9 +131,9 @@ impl Repl {
                     target_str, replacement_str, expr_str
                 );
             }
-            let target_var = self.engine.simplifier.context.var(target_str);
+            let target_var = self.core.engine.simplifier.context.var(target_str);
             cas_engine::solver::strategies::substitute_expr(
-                &mut self.engine.simplifier.context,
+                &mut self.core.engine.simplifier.context,
                 expr,
                 target_var,
                 replacement_expr,
@@ -146,7 +147,7 @@ impl Repl {
                 );
             }
             cas_engine::substitute::substitute_power_aware(
-                &mut self.engine.simplifier.context,
+                &mut self.core.engine.simplifier.context,
                 expr,
                 target_expr,
                 replacement_expr,
@@ -154,7 +155,7 @@ impl Repl {
             )
         };
 
-        let (result, steps) = self.engine.simplifier.simplify(subbed);
+        let (result, steps) = self.core.engine.simplifier.simplify(subbed);
         if self.verbosity != Verbosity::None && !steps.is_empty() {
             if self.verbosity != Verbosity::Succinct {
                 println!("Steps:");
@@ -165,7 +166,7 @@ impl Repl {
                         println!(
                             "-> {}",
                             DisplayExpr {
-                                context: &self.engine.simplifier.context,
+                                context: &self.core.engine.simplifier.context,
                                 id: step.global_after.unwrap_or(step.after)
                             }
                         );
@@ -180,7 +181,7 @@ impl Repl {
             clean_display_string(&format!(
                 "{}",
                 DisplayExpr {
-                    context: &self.engine.simplifier.context,
+                    context: &self.core.engine.simplifier.context,
                     id: result
                 }
             ))
@@ -221,7 +222,7 @@ impl Repl {
 
             // Swap context to preserve variables
             std::mem::swap(
-                &mut self.engine.simplifier.context,
+                &mut self.core.engine.simplifier.context,
                 &mut temp_simplifier.context,
             );
 
@@ -231,7 +232,7 @@ impl Repl {
 
                     // Swap context back
                     std::mem::swap(
-                        &mut self.engine.simplifier.context,
+                        &mut self.core.engine.simplifier.context,
                         &mut temp_simplifier.context,
                     );
 
@@ -242,7 +243,7 @@ impl Repl {
                 Err(e) => {
                     // Swap context back even on error
                     std::mem::swap(
-                        &mut self.engine.simplifier.context,
+                        &mut self.core.engine.simplifier.context,
                         &mut temp_simplifier.context,
                     );
                     println!("Parse error: {}", e);
@@ -256,10 +257,10 @@ impl Repl {
             use cas_engine::EntryKind;
 
             // Force collect_steps for timeline
-            let was_collecting = self.engine.simplifier.collect_steps();
-            self.engine.simplifier.set_collect_steps(true);
+            let was_collecting = self.core.engine.simplifier.collect_steps();
+            self.core.engine.simplifier.set_collect_steps(true);
 
-            match cas_parser::parse(expr_str.trim(), &mut self.engine.simplifier.context) {
+            match cas_parser::parse(expr_str.trim(), &mut self.core.engine.simplifier.context) {
                 Ok(expr) => {
                     let req = EvalRequest {
                         raw_input: expr_str.to_string(),
@@ -269,24 +270,33 @@ impl Repl {
                         auto_store: false, // Don't store in session history for timeline
                     };
 
-                    match self.engine.eval(&mut self.state, req) {
+                    match self.core.engine.eval(&mut self.core.state, req) {
                         Ok(output) => {
                             let simplified = match output.result {
                                 EvalResult::Expr(e) => e,
                                 _ => expr, // Fallback
                             };
-                            self.engine.simplifier.set_collect_steps(was_collecting);
+                            self.core
+                                .engine
+                                .simplifier
+                                .set_collect_steps(was_collecting);
                             (output.steps, expr, simplified)
                         }
                         Err(e) => {
-                            self.engine.simplifier.set_collect_steps(was_collecting);
+                            self.core
+                                .engine
+                                .simplifier
+                                .set_collect_steps(was_collecting);
                             println!("Simplification error: {}", e);
                             return;
                         }
                     }
                 }
                 Err(e) => {
-                    self.engine.simplifier.set_collect_steps(was_collecting);
+                    self.core
+                        .engine
+                        .simplifier
+                        .set_collect_steps(was_collecting);
                     println!("Parse error: {}", e);
                     return;
                 }
@@ -308,7 +318,7 @@ impl Repl {
         // Generate HTML timeline with ALL steps and the known simplified result
         // V2.14.40: Pass input string for style preference sniffing (exponential vs radical)
         let mut timeline = cas_engine::timeline::TimelineHtml::new_with_result_and_style(
-            &mut self.engine.simplifier.context,
+            &mut self.core.engine.simplifier.context,
             &steps,
             expr_id,
             Some(simplified),
@@ -343,10 +353,11 @@ impl Repl {
             .unwrap_or(line)
             .trim();
 
-        match cas_parser::parse(rest, &mut self.engine.simplifier.context) {
+        match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
             Ok(expr) => {
-                let mut viz =
-                    cas_engine::visualizer::AstVisualizer::new(&self.engine.simplifier.context);
+                let mut viz = cas_engine::visualizer::AstVisualizer::new(
+                    &self.core.engine.simplifier.context,
+                );
                 let dot = viz.to_dot(expr);
 
                 // Save to file
@@ -368,17 +379,17 @@ impl Repl {
         let rest = line[8..].trim(); // Remove "explain "
 
         // Parse the expression
-        match cas_parser::parse(rest, &mut self.engine.simplifier.context) {
+        match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
             Ok(expr) => {
                 // Check if it's a function call
-                let expr_data = self.engine.simplifier.context.get(expr).clone();
+                let expr_data = self.core.engine.simplifier.context.get(expr).clone();
                 if let Expr::Function(name, args) = expr_data {
                     match name.as_str() {
                         "gcd" => {
                             if args.len() == 2 {
                                 // Call the explain_gcd function
                                 let result = cas_engine::rules::number_theory::explain_gcd(
-                                    &mut self.engine.simplifier.context,
+                                    &mut self.core.engine.simplifier.context,
                                     args[0],
                                     args[1],
                                 );
@@ -401,7 +412,7 @@ impl Repl {
                                         clean_display_string(&format!(
                                             "{}",
                                             DisplayExpr {
-                                                context: &self.engine.simplifier.context,
+                                                context: &self.core.engine.simplifier.context,
                                                 id: result_expr
                                             }
                                         ))
@@ -478,16 +489,17 @@ impl Repl {
         }
 
         // Parse the expression
-        match cas_parser::parse(expr_str, &mut self.engine.simplifier.context) {
+        match cas_parser::parse(expr_str, &mut self.core.engine.simplifier.context) {
             Ok(rhs_expr) => {
                 // Temporarily remove this binding to prevent self-reference in substitute
-                let old_binding = self.state.env.get(name);
-                self.state.env.unset(name);
+                let old_binding = self.core.state.env.get(name);
+                self.core.state.env.unset(name);
 
                 // Substitute using current environment and session refs
                 let rhs_substituted = match self
+                    .core
                     .state
-                    .resolve_all(&mut self.engine.simplifier.context, rhs_expr)
+                    .resolve_all(&mut self.core.engine.simplifier.context, rhs_expr)
                 {
                     Ok(r) => r,
                     Err(_) => rhs_expr,
@@ -498,18 +510,19 @@ impl Repl {
                     rhs_substituted
                 } else {
                     // EAGER (=): simplify the expression, then unwrap __hold
-                    let (simplified, _steps) = self.engine.simplifier.simplify(rhs_substituted);
+                    let (simplified, _steps) =
+                        self.core.engine.simplifier.simplify(rhs_substituted);
 
                     // Unwrap top-level __hold to get the actual polynomial
-                    unwrap_hold_top(&self.engine.simplifier.context, simplified)
+                    unwrap_hold_top(&self.core.engine.simplifier.context, simplified)
                 };
 
                 // Store the binding
-                self.state.env.set(name.to_string(), result);
+                self.core.state.env.set(name.to_string(), result);
 
                 // Display confirmation (with mode indicator for lazy)
                 let display = cas_ast::DisplayExpr {
-                    context: &self.engine.simplifier.context,
+                    context: &self.core.engine.simplifier.context,
                     id: result,
                 };
                 if lazy {
@@ -529,14 +542,14 @@ impl Repl {
 
     /// Handle "vars" command - list all variable bindings
     pub(crate) fn handle_vars_command(&self) {
-        let bindings = self.state.env.list();
+        let bindings = self.core.state.env.list();
         if bindings.is_empty() {
             println!("No variables defined.");
         } else {
             println!("Variables:");
             for (name, expr_id) in bindings {
                 let display = cas_ast::DisplayExpr {
-                    context: &self.engine.simplifier.context,
+                    context: &self.core.engine.simplifier.context,
                     id: expr_id,
                 };
                 println!("  {} = {}", name, display);
@@ -548,8 +561,8 @@ impl Repl {
     pub(crate) fn handle_clear_command(&mut self, line: &str) {
         if line == "clear" {
             // Clear all
-            let count = self.state.env.len();
-            self.state.env.clear_all();
+            let count = self.core.state.env.len();
+            self.core.state.env.clear_all();
             if count == 0 {
                 println!("No variables to clear.");
             } else {
@@ -560,7 +573,7 @@ impl Repl {
             let names: Vec<&str> = line[6..].split_whitespace().collect();
             let mut cleared = 0;
             for name in names {
-                if self.state.env.unset(name) {
+                if self.core.state.env.unset(name) {
                     cleared += 1;
                 } else {
                     println!("Warning: '{}' was not defined", name);
@@ -575,40 +588,60 @@ impl Repl {
     /// Handle "reset" command - reset entire session
     pub(crate) fn handle_reset_command(&mut self) {
         // Clear session state (history + env)
-        self.state.clear();
+        self.core.state.clear();
 
         // Reset simplifier with new context
-        self.engine.simplifier = Simplifier::with_default_rules();
+        self.core.engine.simplifier = Simplifier::with_default_rules();
 
         // Re-register custom rules (same as in new())
-        self.engine
+        self.core
+            .engine
             .simplifier
             .add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
-        self.engine.simplifier.add_rule(Box::new(EvaluateTrigRule));
-        self.engine
+        self.core
+            .engine
+            .simplifier
+            .add_rule(Box::new(EvaluateTrigRule));
+        self.core
+            .engine
             .simplifier
             .add_rule(Box::new(PythagoreanIdentityRule));
         if self.config.trig_angle_sum {
-            self.engine.simplifier.add_rule(Box::new(AngleIdentityRule));
+            self.core
+                .engine
+                .simplifier
+                .add_rule(Box::new(AngleIdentityRule));
         }
-        self.engine.simplifier.add_rule(Box::new(TanToSinCosRule));
+        self.core
+            .engine
+            .simplifier
+            .add_rule(Box::new(TanToSinCosRule));
         if self.config.trig_double_angle {
-            self.engine.simplifier.add_rule(Box::new(DoubleAngleRule));
+            self.core
+                .engine
+                .simplifier
+                .add_rule(Box::new(DoubleAngleRule));
         }
         if self.config.canonicalize_trig_square {
-            self.engine.simplifier.add_rule(Box::new(
+            self.core.engine.simplifier.add_rule(Box::new(
                 cas_engine::rules::trigonometry::CanonicalizeTrigSquareRule,
             ));
         }
-        self.engine.simplifier.add_rule(Box::new(EvaluateLogRule));
-        self.engine
+        self.core
+            .engine
+            .simplifier
+            .add_rule(Box::new(EvaluateLogRule));
+        self.core
+            .engine
             .simplifier
             .add_rule(Box::new(ExponentialLogRule));
-        self.engine
+        self.core
+            .engine
             .simplifier
             .add_rule(Box::new(SimplifyFractionRule));
-        self.engine.simplifier.add_rule(Box::new(ExpandRule));
-        self.engine
+        self.core.engine.simplifier.add_rule(Box::new(ExpandRule));
+        self.core
+            .engine
             .simplifier
             .add_rule(Box::new(cas_engine::rules::algebra::ConservativeExpandRule));
 
@@ -616,10 +649,10 @@ impl Repl {
         self.sync_config_to_simplifier();
 
         // Reset options
-        self.debug_mode = false;
-        self.last_stats = None;
-        self.health_enabled = false;
-        self.last_health_report = None;
+        self.core.debug_mode = false;
+        self.core.last_stats = None;
+        self.core.health_enabled = false;
+        self.core.last_health_report = None;
 
         println!("Session reset. Environment and context cleared.");
     }
@@ -630,7 +663,7 @@ impl Repl {
         self.handle_reset_command();
 
         // Also clear profile cache
-        self.state.profile_cache.clear();
+        self.core.state.profile_cache.clear();
 
         println!("Profile cache cleared (will rebuild on next eval).");
     }
@@ -642,7 +675,7 @@ impl Repl {
         match args.get(1).copied() {
             None | Some("status") => {
                 // Show cache status
-                let count = self.state.profile_cache.len();
+                let count = self.core.state.profile_cache.len();
                 println!("Profile Cache: {} profiles cached", count);
                 if count == 0 {
                     println!("  (empty - profiles will be built on first eval)");
@@ -651,7 +684,7 @@ impl Repl {
                 }
             }
             Some("clear") => {
-                self.state.profile_cache.clear();
+                self.core.state.profile_cache.clear();
                 println!("Profile cache cleared.");
             }
             Some(cmd) => {
@@ -720,22 +753,22 @@ impl Repl {
         use cas_engine::semantics::{BranchPolicy, InverseTrigPolicy, ValueDomain};
         use cas_engine::DomainMode;
 
-        let domain = match self.simplify_options.domain {
+        let domain = match self.core.simplify_options.domain {
             DomainMode::Strict => "strict",
             DomainMode::Assume => "assume",
             DomainMode::Generic => "generic",
         };
 
-        let value = match self.simplify_options.value_domain {
+        let value = match self.core.simplify_options.value_domain {
             ValueDomain::RealOnly => "real",
             ValueDomain::ComplexEnabled => "complex",
         };
 
-        let branch = match self.simplify_options.branch {
+        let branch = match self.core.simplify_options.branch {
             BranchPolicy::Principal => "principal",
         };
 
-        let inv_trig = match self.simplify_options.inv_trig {
+        let inv_trig = match self.core.simplify_options.inv_trig {
             InverseTrigPolicy::Strict => "strict",
             InverseTrigPolicy::PrincipalValue => "principal",
         };
@@ -745,7 +778,7 @@ impl Repl {
         println!("  value_domain: {}", value);
 
         // Show branch with inactive note if value=real
-        if self.simplify_options.value_domain == ValueDomain::RealOnly {
+        if self.core.simplify_options.value_domain == ValueDomain::RealOnly {
             println!("  branch: {} (inactive: value_domain=real)", branch);
         } else {
             println!("  branch: {}", branch);
@@ -753,13 +786,13 @@ impl Repl {
 
         println!("  inv_trig: {}", inv_trig);
 
-        let const_fold = match self.state.options.const_fold {
+        let const_fold = match self.core.state.options.const_fold {
             cas_engine::const_fold::ConstFoldMode::Off => "off",
             cas_engine::const_fold::ConstFoldMode::Safe => "safe",
         };
         println!("  const_fold: {}", const_fold);
 
-        let assumptions = match self.state.options.assumption_reporting {
+        let assumptions = match self.core.state.options.assumption_reporting {
             cas_engine::AssumptionReporting::Off => "off",
             cas_engine::AssumptionReporting::Summary => "summary",
             cas_engine::AssumptionReporting::Trace => "trace",
@@ -767,11 +800,11 @@ impl Repl {
         println!("  assumptions: {}", assumptions);
 
         // Show assume_scope with inactive note if domain_mode != Assume
-        let assume_scope = match self.simplify_options.assume_scope {
+        let assume_scope = match self.core.simplify_options.assume_scope {
             cas_engine::AssumeScope::Real => "real",
             cas_engine::AssumeScope::Wildcard => "wildcard",
         };
-        if self.simplify_options.domain != DomainMode::Assume {
+        if self.core.simplify_options.domain != DomainMode::Assume {
             println!(
                 "  assume_scope: {} (inactive: domain_mode != assume)",
                 assume_scope
@@ -781,7 +814,7 @@ impl Repl {
         }
 
         // Show hints_enabled
-        let hints = if self.state.options.hints_enabled {
+        let hints = if self.core.state.options.hints_enabled {
             "on"
         } else {
             "off"
@@ -789,7 +822,7 @@ impl Repl {
         println!("  hints: {}", hints);
 
         // Show requires display level
-        let requires = match self.state.options.requires_display {
+        let requires = match self.core.state.options.requires_display {
             cas_engine::implicit_domain::RequiresDisplayLevel::Essential => "essential",
             cas_engine::implicit_domain::RequiresDisplayLevel::All => "all",
         };
@@ -803,7 +836,7 @@ impl Repl {
 
         match axis {
             "domain" => {
-                let current = match self.simplify_options.domain {
+                let current = match self.core.simplify_options.domain {
                     DomainMode::Strict => "strict",
                     DomainMode::Assume => "assume",
                     DomainMode::Generic => "generic",
@@ -815,7 +848,7 @@ impl Repl {
                 println!("  assume:  Use assumptions with warnings");
             }
             "value" => {
-                let current = match self.simplify_options.value_domain {
+                let current = match self.core.simplify_options.value_domain {
                     ValueDomain::RealOnly => "real",
                     ValueDomain::ComplexEnabled => "complex",
                 };
@@ -825,10 +858,10 @@ impl Repl {
                 println!("  complex: ℂ enabled (sqrt(-1) = i)");
             }
             "branch" => {
-                let current = match self.simplify_options.branch {
+                let current = match self.core.simplify_options.branch {
                     BranchPolicy::Principal => "principal",
                 };
-                let inactive = self.simplify_options.value_domain == ValueDomain::RealOnly;
+                let inactive = self.core.simplify_options.value_domain == ValueDomain::RealOnly;
                 if inactive {
                     println!("branch: {} (inactive: value=real)", current);
                 } else {
@@ -841,7 +874,7 @@ impl Repl {
                 }
             }
             "inv_trig" => {
-                let current = match self.simplify_options.inv_trig {
+                let current = match self.core.simplify_options.inv_trig {
                     InverseTrigPolicy::Strict => "strict",
                     InverseTrigPolicy::PrincipalValue => "principal",
                 };
@@ -851,7 +884,7 @@ impl Repl {
                 println!("  principal: arctan(tan(x)) → x with warning");
             }
             "const_fold" => {
-                let current = match self.state.options.const_fold {
+                let current = match self.core.state.options.const_fold {
                     cas_engine::const_fold::ConstFoldMode::Off => "off",
                     cas_engine::const_fold::ConstFoldMode::Safe => "safe",
                 };
@@ -861,7 +894,7 @@ impl Repl {
                 println!("  safe: Fold literals (2^3 → 8, sqrt(-1) → i if complex)");
             }
             "assumptions" => {
-                let current = match self.state.options.assumption_reporting {
+                let current = match self.core.state.options.assumption_reporting {
                     cas_engine::AssumptionReporting::Off => "off",
                     cas_engine::AssumptionReporting::Summary => "summary",
                     cas_engine::AssumptionReporting::Trace => "trace",
@@ -873,11 +906,11 @@ impl Repl {
                 println!("  trace:   Detailed trace (future)");
             }
             "assume_scope" => {
-                let current = match self.simplify_options.assume_scope {
+                let current = match self.core.simplify_options.assume_scope {
                     cas_engine::AssumeScope::Real => "real",
                     cas_engine::AssumeScope::Wildcard => "wildcard",
                 };
-                let inactive = self.simplify_options.domain != DomainMode::Assume;
+                let inactive = self.core.simplify_options.domain != DomainMode::Assume;
                 if inactive {
                     println!(
                         "assume_scope: {} (inactive: domain_mode != assume)",
@@ -894,7 +927,7 @@ impl Repl {
                 }
             }
             "requires" => {
-                let current = match self.state.options.requires_display {
+                let current = match self.core.state.options.requires_display {
                     cas_engine::implicit_domain::RequiresDisplayLevel::Essential => "essential",
                     cas_engine::implicit_domain::RequiresDisplayLevel::All => "all",
                 };
@@ -1072,23 +1105,23 @@ impl Repl {
                 // Apply preset
                 if let Some(p) = presets.iter().find(|preset| preset.name == *name) {
                     // Capture old values for diff
-                    let old_domain = self.simplify_options.domain;
-                    let old_value = self.simplify_options.value_domain;
-                    let old_branch = self.simplify_options.branch;
-                    let old_inv_trig = self.simplify_options.inv_trig;
-                    let old_const_fold = self.state.options.const_fold;
+                    let old_domain = self.core.simplify_options.domain;
+                    let old_value = self.core.simplify_options.value_domain;
+                    let old_branch = self.core.simplify_options.branch;
+                    let old_inv_trig = self.core.simplify_options.inv_trig;
+                    let old_const_fold = self.core.state.options.const_fold;
 
                     // Apply preset
-                    self.simplify_options.domain = p.domain;
-                    self.simplify_options.value_domain = p.value;
-                    self.simplify_options.branch = p.branch;
-                    self.simplify_options.inv_trig = p.inv_trig;
-                    self.state.options.const_fold = p.const_fold;
+                    self.core.simplify_options.domain = p.domain;
+                    self.core.simplify_options.value_domain = p.value;
+                    self.core.simplify_options.branch = p.branch;
+                    self.core.simplify_options.inv_trig = p.inv_trig;
+                    self.core.state.options.const_fold = p.const_fold;
                     // Sync to state.options (used by evaluation pipeline)
-                    self.state.options.domain_mode = p.domain;
-                    self.state.options.value_domain = p.value;
-                    self.state.options.branch = p.branch;
-                    self.state.options.inv_trig = p.inv_trig;
+                    self.core.state.options.domain_mode = p.domain;
+                    self.core.state.options.value_domain = p.value;
+                    self.core.state.options.branch = p.branch;
+                    self.core.state.options.inv_trig = p.inv_trig;
 
                     self.sync_config_to_simplifier();
 

@@ -90,3 +90,43 @@ impl ReplReplyExt for ReplReply {
         self.push(ReplMsg::debug(s));
     }
 }
+
+use super::Verbosity;
+
+/// Delta of UI state changes produced by a core operation.
+/// The Repl wrapper applies these changes after processing the reply.
+#[derive(Debug, Clone, Default)]
+pub struct UiDelta {
+    /// New verbosity level (if changed by command like `set steps`)
+    pub verbosity: Option<Verbosity>,
+}
+
+/// Result from a core operation: reply messages + optional UI state changes.
+#[derive(Debug, Clone)]
+pub struct CoreResult {
+    /// Messages to display
+    pub reply: ReplReply,
+    /// UI state changes to apply
+    pub ui_delta: UiDelta,
+}
+
+impl CoreResult {
+    /// Create a CoreResult with only reply, no UI changes
+    pub fn reply_only(reply: ReplReply) -> Self {
+        Self {
+            reply,
+            ui_delta: UiDelta::default(),
+        }
+    }
+
+    /// Create a CoreResult with reply and UI delta
+    pub fn with_delta(reply: ReplReply, ui_delta: UiDelta) -> Self {
+        Self { reply, ui_delta }
+    }
+}
+
+impl From<ReplReply> for CoreResult {
+    fn from(reply: ReplReply) -> Self {
+        Self::reply_only(reply)
+    }
+}

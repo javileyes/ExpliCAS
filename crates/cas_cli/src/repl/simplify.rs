@@ -15,7 +15,7 @@ impl Repl {
         // Easiest: Create new simplifier, parse string into it.
         // Note: Variables from previous history won't be available if we don't copy context.
         // But REPL history is just text in rustyline, not context state (unless we implement variable storage).
-        // Current implementation: Context is reset per line? No, self.engine.simplifier.context persists.
+        // Current implementation: Context is reset per line? No, self.core.engine.simplifier.context persists.
         // If we want to support "x = 5; simplify x", we need to share context.
 
         // Better approach:
@@ -27,11 +27,11 @@ impl Repl {
         let mut temp_simplifier = Simplifier::with_default_rules();
         // Swap context and profiler so temp_simplifier uses main profiler
         std::mem::swap(
-            &mut self.engine.simplifier.context,
+            &mut self.core.engine.simplifier.context,
             &mut temp_simplifier.context,
         );
         std::mem::swap(
-            &mut self.engine.simplifier.profiler,
+            &mut self.core.engine.simplifier.profiler,
             &mut temp_simplifier.profiler,
         );
 
@@ -47,18 +47,21 @@ impl Repl {
                 // This code path is for timeline/specific commands, not regular expression evaluation
 
                 // Resolve session variables (A, B, etc.) before simplifying
-                let resolved_expr = match self.state.resolve_all(&mut temp_simplifier.context, expr)
+                let resolved_expr = match self
+                    .core
+                    .state
+                    .resolve_all(&mut temp_simplifier.context, expr)
                 {
                     Ok(resolved) => resolved,
                     Err(e) => {
                         println!("Error resolving variables: {:?}", e);
                         // Swap context and profiler back before returning
                         std::mem::swap(
-                            &mut self.engine.simplifier.context,
+                            &mut self.core.engine.simplifier.context,
                             &mut temp_simplifier.context,
                         );
                         std::mem::swap(
-                            &mut self.engine.simplifier.profiler,
+                            &mut self.core.engine.simplifier.profiler,
                             &mut temp_simplifier.profiler,
                         );
                         return;
@@ -83,7 +86,7 @@ impl Repl {
                     }
                 );
                 // Use session options (expand_policy, context_mode, etc.) for simplification
-                let mut opts = self.state.options.to_simplify_options();
+                let mut opts = self.core.state.options.to_simplify_options();
                 opts.collect_steps = self.verbosity != Verbosity::None;
 
                 let (simplified, steps, _stats) =
@@ -251,17 +254,18 @@ impl Repl {
 
         // Swap context and profiler back
         std::mem::swap(
-            &mut self.engine.simplifier.context,
+            &mut self.core.engine.simplifier.context,
             &mut temp_simplifier.context,
         );
         std::mem::swap(
-            &mut self.engine.simplifier.profiler,
+            &mut self.core.engine.simplifier.profiler,
             &mut temp_simplifier.profiler,
         );
 
         // Store health report for the `health` command (if health tracking is enabled)
-        if self.health_enabled {
-            self.last_health_report = Some(self.engine.simplifier.profiler.health_report());
+        if self.core.health_enabled {
+            self.core.last_health_report =
+                Some(self.core.engine.simplifier.profiler.health_report());
         }
     }
 }

@@ -13,36 +13,40 @@ impl Repl {
             return;
         }
 
-        match cas_parser::parse(rest, &mut self.engine.simplifier.context) {
+        match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
             Ok(parsed_expr) => {
                 // CANONICALIZE: Rebuild tree to trigger Add auto-flatten at all levels
                 // Parser creates tree incrementally, so nested Adds may not be flattened
                 // normalize_core forces reconstruction ensuring canonical form
                 let expr = cas_engine::canonical_forms::normalize_core(
-                    &mut self.engine.simplifier.context,
+                    &mut self.core.engine.simplifier.context,
                     parsed_expr,
                 );
                 // STYLE SNIFFING: Detect user's preferred notation BEFORE processing
-                let user_style = cas_ast::detect_root_style(&self.engine.simplifier.context, expr);
+                let user_style =
+                    cas_ast::detect_root_style(&self.core.engine.simplifier.context, expr);
 
                 let disp = cas_ast::DisplayExpr {
-                    context: &self.engine.simplifier.context,
+                    context: &self.core.engine.simplifier.context,
                     id: expr,
                 };
                 println!("Parsed: {}", disp);
 
                 let config = RationalizeConfig::default();
-                let result =
-                    rationalize_denominator(&mut self.engine.simplifier.context, expr, &config);
+                let result = rationalize_denominator(
+                    &mut self.core.engine.simplifier.context,
+                    expr,
+                    &config,
+                );
 
                 match result {
                     RationalizeResult::Success(rationalized) => {
                         // Simplify the result
-                        let (simplified, _) = self.engine.simplifier.simplify(rationalized);
+                        let (simplified, _) = self.core.engine.simplifier.simplify(rationalized);
 
                         // Use StyledExpr with detected style for consistent output
                         let result_disp = cas_ast::StyledExpr::new(
-                            &self.engine.simplifier.context,
+                            &self.core.engine.simplifier.context,
                             simplified,
                             user_style,
                         );

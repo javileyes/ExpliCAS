@@ -7,7 +7,7 @@ impl Repl {
         match args.get(1) {
             None => {
                 // Just "budget" - show current setting
-                let budget = self.state.options.budget;
+                let budget = self.core.state.options.budget;
                 println!("Solve budget: max_branches={}", budget.max_branches);
                 println!("  Controls how many case splits the solver can create.");
                 println!("  0: No splits (fallback to simple solutions)");
@@ -17,7 +17,7 @@ impl Repl {
             }
             Some(n_str) => {
                 if let Ok(n) = n_str.parse::<usize>() {
-                    self.state.options.budget.max_branches = n;
+                    self.core.state.options.budget.max_branches = n;
                     println!("Solve budget: max_branches = {}", n);
                     if n == 0 {
                         println!("  ⚠️ No case splits allowed (fallback to simple solutions)");
@@ -40,7 +40,7 @@ impl Repl {
 
     /// Handle "history" or "list" command - show session history
     pub(crate) fn handle_history_command(&self) {
-        let entries = self.state.store.list();
+        let entries = self.core.state.store.list();
         if entries.is_empty() {
             println!("No entries in session history.");
             return;
@@ -58,7 +58,7 @@ impl Repl {
                     format!(
                         "{}",
                         cas_ast::DisplayExpr {
-                            context: &self.engine.simplifier.context,
+                            context: &self.core.engine.simplifier.context,
                             id: *expr_id
                         }
                     )
@@ -67,11 +67,11 @@ impl Repl {
                     format!(
                         "{} = {}",
                         cas_ast::DisplayExpr {
-                            context: &self.engine.simplifier.context,
+                            context: &self.core.engine.simplifier.context,
                             id: *lhs
                         },
                         cas_ast::DisplayExpr {
-                            context: &self.engine.simplifier.context,
+                            context: &self.core.engine.simplifier.context,
                             id: *rhs
                         }
                     )
@@ -88,6 +88,7 @@ impl Repl {
             Ok(id) => {
                 // Clone entry data to avoid borrow conflicts
                 let entry_data = self
+                    .core
                     .state
                     .store
                     .get(id)
@@ -104,15 +105,16 @@ impl Repl {
                             println!(
                                 "  Parsed:     {}",
                                 DisplayExpr {
-                                    context: &self.engine.simplifier.context,
+                                    context: &self.core.engine.simplifier.context,
                                     id: *expr_id
                                 }
                             );
 
                             // Show resolved (after #id and env substitution)
                             let resolved = match self
+                                .core
                                 .state
-                                .resolve_all(&mut self.engine.simplifier.context, *expr_id)
+                                .resolve_all(&mut self.core.engine.simplifier.context, *expr_id)
                             {
                                 Ok(r) => r,
                                 Err(_) => *expr_id,
@@ -121,7 +123,7 @@ impl Repl {
                                 println!(
                                     "  Resolved:   {}",
                                     DisplayExpr {
-                                        context: &self.engine.simplifier.context,
+                                        context: &self.core.engine.simplifier.context,
                                         id: resolved
                                     }
                                 );
@@ -136,14 +138,14 @@ impl Repl {
                                 auto_store: false,
                             };
 
-                            if let Ok(output) = self.engine.eval(&mut self.state, req) {
+                            if let Ok(output) = self.core.engine.eval(&mut self.core.state, req) {
                                 // Show simplified result
                                 if let cas_engine::EvalResult::Expr(simplified) = &output.result {
                                     if *simplified != *expr_id {
                                         println!(
                                             "  Simplified: {}",
                                             DisplayExpr {
-                                                context: &self.engine.simplifier.context,
+                                                context: &self.core.engine.simplifier.context,
                                                 id: *simplified
                                             }
                                         );
@@ -156,7 +158,7 @@ impl Repl {
                                     for cond in &output.required_conditions {
                                         println!(
                                             "    - {}",
-                                            cond.display(&self.engine.simplifier.context)
+                                            cond.display(&self.core.engine.simplifier.context)
                                         );
                                     }
                                 }
@@ -178,12 +180,13 @@ impl Repl {
                                 }
                             } else {
                                 // Fallback: just simplify without metadata
-                                let (simplified, _) = self.engine.simplifier.simplify(resolved);
+                                let (simplified, _) =
+                                    self.core.engine.simplifier.simplify(resolved);
                                 if simplified != resolved {
                                     println!(
                                         "  Simplified: {}",
                                         DisplayExpr {
-                                            context: &self.engine.simplifier.context,
+                                            context: &self.core.engine.simplifier.context,
                                             id: simplified
                                         }
                                     );
@@ -195,14 +198,14 @@ impl Repl {
                             println!(
                                 "  LHS:        {}",
                                 DisplayExpr {
-                                    context: &self.engine.simplifier.context,
+                                    context: &self.core.engine.simplifier.context,
                                     id: *lhs
                                 }
                             );
                             println!(
                                 "  RHS:        {}",
                                 DisplayExpr {
-                                    context: &self.engine.simplifier.context,
+                                    context: &self.core.engine.simplifier.context,
                                     id: *rhs
                                 }
                             );
@@ -237,9 +240,9 @@ impl Repl {
             return;
         }
 
-        let before_len = self.state.store.len();
-        self.state.store.remove(&ids);
-        let removed = before_len - self.state.store.len();
+        let before_len = self.core.state.store.len();
+        self.core.state.store.remove(&ids);
+        let removed = before_len - self.core.state.store.len();
 
         if removed > 0 {
             let id_str: Vec<String> = ids.iter().map(|id| format!("#{}", id)).collect();
@@ -255,17 +258,18 @@ impl Repl {
         let rest = line[4..].trim(); // Remove "det "
 
         // Parse the matrix expression
-        match cas_parser::parse(rest, &mut self.engine.simplifier.context) {
+        match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
             Ok(expr) => {
                 // Wrap in det() function call
                 let det_expr = self
+                    .core
                     .engine
                     .simplifier
                     .context
                     .add(Expr::Function("det".to_string(), vec![expr]));
 
                 // Simplify to compute determinant
-                let (result, steps) = self.engine.simplifier.simplify(det_expr);
+                let (result, steps) = self.core.engine.simplifier.simplify(det_expr);
 
                 println!("Parsed: det({})", rest);
 
@@ -292,7 +296,7 @@ impl Repl {
                     clean_display_string(&format!(
                         "{}",
                         DisplayExpr {
-                            context: &self.engine.simplifier.context,
+                            context: &self.core.engine.simplifier.context,
                             id: result
                         }
                     ))
@@ -306,17 +310,18 @@ impl Repl {
         let rest = line[10..].trim(); // Remove "transpose "
 
         // Parse the matrix expression
-        match cas_parser::parse(rest, &mut self.engine.simplifier.context) {
+        match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
             Ok(expr) => {
                 // Wrap in transpose() function call
                 let transpose_expr = self
+                    .core
                     .engine
                     .simplifier
                     .context
                     .add(Expr::Function("transpose".to_string(), vec![expr]));
 
                 // Simplify to compute transpose
-                let (result, steps) = self.engine.simplifier.simplify(transpose_expr);
+                let (result, steps) = self.core.engine.simplifier.simplify(transpose_expr);
 
                 println!("Parsed: transpose({})", rest);
 
@@ -331,7 +336,7 @@ impl Repl {
                 println!(
                     "Result: {}",
                     DisplayExpr {
-                        context: &self.engine.simplifier.context,
+                        context: &self.core.engine.simplifier.context,
                         id: result
                     }
                 );
@@ -344,17 +349,18 @@ impl Repl {
         let rest = line[6..].trim(); // Remove "trace "
 
         // Parse the matrix expression
-        match cas_parser::parse(rest, &mut self.engine.simplifier.context) {
+        match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
             Ok(expr) => {
                 // Wrap in trace() function call
                 let trace_expr = self
+                    .core
                     .engine
                     .simplifier
                     .context
                     .add(Expr::Function("trace".to_string(), vec![expr]));
 
                 // Simplify to compute trace
-                let (result, steps) = self.engine.simplifier.simplify(trace_expr);
+                let (result, steps) = self.core.engine.simplifier.simplify(trace_expr);
 
                 println!("Parsed: trace({})", rest);
 
@@ -371,7 +377,7 @@ impl Repl {
                     clean_display_string(&format!(
                         "{}",
                         DisplayExpr {
-                            context: &self.engine.simplifier.context,
+                            context: &self.core.engine.simplifier.context,
                             id: result
                         }
                     ))
@@ -392,17 +398,19 @@ impl Repl {
         }
 
         // Parse the expression
-        match cas_parser::parse(rest, &mut self.engine.simplifier.context) {
+        match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
             Ok(expr) => {
                 println!("Parsed: {}", rest);
                 println!();
 
                 // Apply telescoping strategy
-                let result =
-                    cas_engine::telescoping::telescope(&mut self.engine.simplifier.context, expr);
+                let result = cas_engine::telescoping::telescope(
+                    &mut self.core.engine.simplifier.context,
+                    expr,
+                );
 
                 // Print formatted output
-                println!("{}", result.format(&self.engine.simplifier.context));
+                println!("{}", result.format(&self.core.engine.simplifier.context));
             }
             Err(e) => println!("Parse error: {}", e),
         }
@@ -442,12 +450,12 @@ impl Repl {
             return;
         }
 
-        match cas_parser::parse(rest, &mut self.engine.simplifier.context) {
+        match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
             Ok(expr) => {
                 println!(
                     "Parsed: {}",
                     DisplayExpr {
-                        context: &self.engine.simplifier.context,
+                        context: &self.core.engine.simplifier.context,
                         id: expr
                     }
                 );
@@ -464,7 +472,7 @@ impl Repl {
                     clean_display_string(&format!(
                         "{}",
                         DisplayExpr {
-                            context: &self.engine.simplifier.context,
+                            context: &self.core.engine.simplifier.context,
                             id: expanded
                         }
                     ))

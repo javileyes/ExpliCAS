@@ -16,7 +16,7 @@ impl Repl {
 
         // Create global style preferences from input signals + AST
         let style_prefs = StylePreferences::from_expression_with_signals(
-            &self.engine.simplifier.context,
+            &self.core.engine.simplifier.context,
             expr,
             Some(&style_signals),
         );
@@ -24,7 +24,7 @@ impl Repl {
         if steps.is_empty() {
             // Even with no engine steps, show didactic sub-steps if there are fraction sums
             let standalone_substeps = cas_engine::didactic::get_standalone_substeps(
-                &self.engine.simplifier.context,
+                &self.core.engine.simplifier.context,
                 expr,
             );
 
@@ -136,7 +136,7 @@ impl Repl {
 
             // Enrich steps ONCE before iterating
             let enriched_steps = cas_engine::didactic::enrich_steps(
-                &self.engine.simplifier.context,
+                &self.core.engine.simplifier.context,
                 expr,
                 steps.to_vec(),
             );
@@ -150,7 +150,7 @@ impl Repl {
                     let before_disp = clean_display_string(&format!(
                         "{}",
                         DisplayExprStyled::new(
-                            &self.engine.simplifier.context,
+                            &self.core.engine.simplifier.context,
                             step.before,
                             &style_prefs
                         )
@@ -158,7 +158,7 @@ impl Repl {
                     let after_disp = clean_display_string(&format!(
                         "{}",
                         DisplayExprStyled::new(
-                            &self.engine.simplifier.context,
+                            &self.core.engine.simplifier.context,
                             step.after,
                             &style_prefs
                         )
@@ -177,7 +177,7 @@ impl Repl {
                     if self.verbosity == Verbosity::Succinct {
                         // Low mode: just global state
                         current_root = reconstruct_global_expr(
-                            &mut self.engine.simplifier.context,
+                            &mut self.core.engine.simplifier.context,
                             current_root,
                             &step.path,
                             step.after,
@@ -185,7 +185,7 @@ impl Repl {
                         println!(
                             "-> {}",
                             DisplayExprStyled::new(
-                                &self.engine.simplifier.context,
+                                &self.core.engine.simplifier.context,
                                 current_root,
                                 &style_prefs
                             )
@@ -204,7 +204,7 @@ impl Repl {
                                     clean_display_string(&format!(
                                         "{}",
                                         DisplayExprStyled::new(
-                                            &self.engine.simplifier.context,
+                                            &self.core.engine.simplifier.context,
                                             global_before,
                                             &style_prefs
                                         )
@@ -216,7 +216,7 @@ impl Repl {
                                     clean_display_string(&format!(
                                         "{}",
                                         DisplayExprStyled::new(
-                                            &self.engine.simplifier.context,
+                                            &self.core.engine.simplifier.context,
                                             current_root,
                                             &style_prefs
                                         )
@@ -391,14 +391,14 @@ impl Repl {
                             let before_disp = clean_display_string(&format!(
                                 "{}",
                                 DisplayExprStyled::new(
-                                    &self.engine.simplifier.context,
+                                    &self.core.engine.simplifier.context,
                                     rule_before_id,
                                     &style_prefs
                                 )
                             ));
                             // Use scoped renderer for after expression if rule has transforms
                             let after_disp = clean_display_string(&render_with_rule_scope(
-                                &self.engine.simplifier.context,
+                                &self.core.engine.simplifier.context,
                                 rule_after_id,
                                 &step.rule_name,
                                 &style_prefs,
@@ -429,7 +429,7 @@ impl Repl {
                             current_root = global_after;
                         } else {
                             current_root = reconstruct_global_expr(
-                                &mut self.engine.simplifier.context,
+                                &mut self.core.engine.simplifier.context,
                                 current_root,
                                 &step.path,
                                 step.after,
@@ -445,7 +445,7 @@ impl Repl {
                                 clean_display_string(&format!(
                                     "{}",
                                     DisplayExprStyled::new(
-                                        &self.engine.simplifier.context,
+                                        &self.core.engine.simplifier.context,
                                         current_root,
                                         &style_prefs
                                     )
@@ -468,7 +468,7 @@ impl Repl {
                     current_root = global_after;
                 } else {
                     current_root = reconstruct_global_expr(
-                        &mut self.engine.simplifier.context,
+                        &mut self.core.engine.simplifier.context,
                         current_root,
                         &step.path,
                         step.after,
