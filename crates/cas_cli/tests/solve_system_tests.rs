@@ -41,13 +41,21 @@ fn test_solve_system_2x2_unique_with_coefficients() {
 }
 
 #[test]
-fn test_solve_system_2x2_degenerate_det_zero() {
+fn test_solve_system_2x2_infinite_solutions() {
     // x + y = 2
     // 2x + 2y = 4  (same line, infinite solutions)
-    // Should report det=0 error
     run_cas("solve_system(x+y=2; 2*x+2*y=4; x; y)\n")
         .success()
-        .stdout(predicate::str::contains("no unique solution"));
+        .stdout(predicate::str::contains("infinitely many solutions"));
+}
+
+#[test]
+fn test_solve_system_2x2_no_solution() {
+    // x + y = 2
+    // x + y = 3  (parallel lines, no solution)
+    run_cas("solve_system(x+y=2; x+y=3; x; y)\n")
+        .success()
+        .stdout(predicate::str::contains("no solution"));
 }
 
 #[test]
@@ -102,14 +110,25 @@ fn test_solve_system_3x3_with_negative() {
 }
 
 #[test]
-fn test_solve_system_3x3_degenerate() {
+fn test_solve_system_3x3_infinite_solutions() {
     // x + y + z = 1
     // x + y + z = 1  (duplicate)
     // x + y + z = 1  (duplicate)
-    // det = 0, degenerate
+    // All same plane → infinite solutions
     run_cas("solve_system(x+y+z=1; x+y+z=1; x+y+z=1; x; y; z)\n")
         .success()
-        .stdout(predicate::str::contains("no unique solution"));
+        .stdout(predicate::str::contains("infinitely many solutions"));
+}
+
+#[test]
+fn test_solve_system_3x3_no_solution() {
+    // x + y + z = 1
+    // x + y + z = 2
+    // x + y + z = 3
+    // Parallel planes, inconsistent → no solution
+    run_cas("solve_system(x+y+z=1; x+y+z=2; x+y+z=3; x; y; z)\n")
+        .success()
+        .stdout(predicate::str::contains("no solution"));
 }
 
 #[test]

@@ -14,7 +14,10 @@ use num_traits::Zero;
 #[derive(Debug)]
 pub enum LinearSystemError {
     NotLinear(String),
-    DegenerateSystem,
+    /// System has infinitely many solutions (dependent equations)
+    InfiniteSolutions,
+    /// System has no solution (inconsistent equations)
+    NoSolution,
     PolyConversion(PolyError),
 }
 
@@ -22,8 +25,14 @@ impl std::fmt::Display for LinearSystemError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             LinearSystemError::NotLinear(msg) => write!(f, "non-linear term: {}", msg),
-            LinearSystemError::DegenerateSystem => {
-                write!(f, "determinant is 0; system has no unique solution")
+            LinearSystemError::InfiniteSolutions => {
+                write!(
+                    f,
+                    "system has infinitely many solutions (dependent equations)"
+                )
+            }
+            LinearSystemError::NoSolution => {
+                write!(f, "system has no solution (inconsistent equations)")
             }
             LinearSystemError::PolyConversion(e) => write!(f, "polynomial conversion: {}", e),
         }
@@ -141,7 +150,9 @@ fn solve_2x2_cramer(
     let det = a1 * b2 - a2 * b1;
 
     if det.is_zero() {
-        return Err(LinearSystemError::DegenerateSystem);
+        // Determine if infinite solutions or no solution
+        // Check if (a1, b1, d1) is proportional to (a2, b2, d2)
+        return Err(classify_degenerate_2x2(a1, b1, &d1, a2, b2, &d2));
     }
 
     // x = (d1*b2 - b1*d2) / det
@@ -152,7 +163,62 @@ fn solve_2x2_cramer(
     Ok((x, y))
 }
 
-/// Extract linear coefficients from a polynomial for 3 variables.
+/// Classify a degenerate 2x2 system as infinite solutions or no solution
+fn classify_degenerate_2x2(
+    a1: &BigRational,
+    b1: &BigRational,
+    d1: &BigRational,
+    a2: &BigRational,
+    b2: &BigRational,
+    d2: &BigRational,
+) -> LinearSystemError {
+    // When det = 0, we have a1*b2 = a2*b1 (parallel lines)
+    // Need to check if d1*b2 = d2*b1 and d1*a2 = d2*a1 (same line)
+    // If yes: infinite solutions. If no: no solution.
+
+    // Check cross products for proportionality
+    let lhs_consistent = d1 * b2 == d2 * b1;
+    let rhs_consistent = d1 * a2 == d2 * a1;
+
+    if lhs_consistent && rhs_consistent {
+        LinearSystemError::InfiniteSolutions
+    } else {
+        LinearSystemError::NoSolution
+    }
+}
+
+/// Check if two 3-variable equations are proportional (consistent when parallel)
+/// (a1, b1, c1, e1) vs (a2, b2, c2, e2) representing a1*x + b1*y + c1*z = e1
+fn check_proportional_3(
+    a1: &BigRational,
+    b1: &BigRational,
+    c1: &BigRational,
+    e1: &BigRational,
+    a2: &BigRational,
+    b2: &BigRational,
+    c2: &BigRational,
+    e2: &BigRational,
+) -> bool {
+    // Find a non-zero coefficient to use as reference ratio
+    // Then check if all coefficients (including e) follow the same ratio
+
+    // Cross-multiply checks for each pair of components
+    // (a1, a2) should have same ratio as (b1, b2), (c1, c2), (e1, e2)
+
+    // Check: a1*b2 = a2*b1, a1*c2 = a2*c1, a1*e2 = a2*e1
+    // And:   b1*c2 = b2*c1, b1*e2 = b2*e1
+    // And:   c1*e2 = c2*e1
+
+    let ab = a1 * b2 == a2 * b1;
+    let ac = a1 * c2 == a2 * c1;
+    let ae = a1 * e2 == a2 * e1;
+    let bc = b1 * c2 == b2 * c1;
+    let be = b1 * e2 == b2 * e1;
+    let ce = c1 * e2 == c2 * e1;
+
+    ab && ac && ae && bc && be && ce
+}
+
 /// Returns coeffs where the equation is ax + by + cz + d = 0
 fn extract_linear_coeffs_3(
     ctx: &Context,
@@ -262,7 +328,24 @@ fn solve_3x3_cramer(
     );
 
     if det_a.is_zero() {
-        return Err(LinearSystemError::DegenerateSystem);
+        // For 3x3 with det=0, check consistency by examining sub-systems
+        // If any pair of equations is inconsistent, the whole system is inconsistent
+
+        // Check each pair using 2x2 consistency logic
+        // Two equations ax + by + cz = e are consistent if they're proportional
+
+        let pair1_consistent =
+            check_proportional_3(&c1.a, &c1.b, &c1.c, &e1, &c2.a, &c2.b, &c2.c, &e2);
+        let pair2_consistent =
+            check_proportional_3(&c1.a, &c1.b, &c1.c, &e1, &c3.a, &c3.b, &c3.c, &e3);
+        let pair3_consistent =
+            check_proportional_3(&c2.a, &c2.b, &c2.c, &e2, &c3.a, &c3.b, &c3.c, &e3);
+
+        if pair1_consistent && pair2_consistent && pair3_consistent {
+            return Err(LinearSystemError::InfiniteSolutions);
+        } else {
+            return Err(LinearSystemError::NoSolution);
+        }
     }
 
     // Cramer's rule: replace column i with E vector
@@ -405,9 +488,13 @@ impl Repl {
                     var_x, x_str, var_y, y_str
                 ))
             }
-            Err(LinearSystemError::DegenerateSystem) => reply_output(
-                "determinant is 0; system has no unique solution\n\
-                 The system may have infinitely many solutions or none.",
+            Err(LinearSystemError::InfiniteSolutions) => reply_output(
+                "System has infinitely many solutions.\n\
+                 The equations are dependent (same line).",
+            ),
+            Err(LinearSystemError::NoSolution) => reply_output(
+                "System has no solution.\n\
+                 The equations are inconsistent (parallel lines).",
             ),
             Err(e) => reply_output(format!("Error solving system: {}", e)),
         }
@@ -491,9 +578,13 @@ impl Repl {
                     var_x, x_str, var_y, y_str, var_z, z_str
                 ))
             }
-            Err(LinearSystemError::DegenerateSystem) => reply_output(
-                "determinant is 0; system has no unique solution\n\
-                 The system may have infinitely many solutions or none.",
+            Err(LinearSystemError::InfiniteSolutions) => reply_output(
+                "System has infinitely many solutions.\n\
+                 The equations are dependent.",
+            ),
+            Err(LinearSystemError::NoSolution) => reply_output(
+                "System has no solution.\n\
+                 The equations are inconsistent.",
             ),
             Err(e) => reply_output(format!("Error solving system: {}", e)),
         }
