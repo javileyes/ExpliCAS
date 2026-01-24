@@ -485,6 +485,7 @@ mod rationalize;
 mod semantics;
 mod show_steps;
 mod simplify;
+pub mod wire;
 
 #[cfg(test)]
 mod core_tests;
