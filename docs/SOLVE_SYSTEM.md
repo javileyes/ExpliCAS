@@ -1,36 +1,39 @@
 # Linear Systems Solver (`solve_system`)
 
-> **Added in Build 40.48** (2x2), **Extended in Build 40.49** (3x3)
+> **Build 40.48** (2×2), **Build 40.49** (3×3), **Build 40.50** (n×n Gaussian)
 
-Specialized solver for 2×2 and 3×3 linear equation systems using Cramer's rule with exact rational arithmetic.
+General solver for n×n linear equation systems:
+- 2×2, 3×3: Cramer's rule
+- n≥4: Gaussian elimination with partial pivoting
+
+Uses exact `BigRational` arithmetic.
 
 ## Syntax
 
 ```
-2x2: solve_system(eq1; eq2; x; y)
-3x3: solve_system(eq1; eq2; eq3; x; y; z)
+solve_system(eq1; eq2; ...; eqn; var1; var2; ...; varn)
 ```
 
-**Important**: Uses semicolons (`;`) as separators to avoid conflicts with expression parsing.
+**Important**: Uses semicolons (`;`) as separators.
 
 ## Examples
 
-### 2x2 Systems
+### 2×2 Systems
 ```
 > solve_system(x+y=3; x-y=1; x; y)
 { x = 2, y = 1 }
-
-> solve_system(2*x+3*y=7; x-y=1; x; y)
-{ x = 2, y = 1 }
 ```
 
-### 3x3 Systems
+### 3×3 Systems
 ```
 > solve_system(x+y+z=6; x-y=0; y+z=4; x; y; z)
 { x = 2, y = 2, z = 2 }
+```
 
-> solve_system(x+y+z=1; 2*x+y=3; x+z=2; x; y; z)
-{ x = 2, y = -1, z = 0 }
+### 4×4 Systems (Gaussian)
+```
+> solve_system(a+b+c+d=10; a=1; b=2; c=3; a; b; c; d)
+{ a = 1, b = 2, c = 3, d = 4 }
 ```
 
 ### Error Cases
