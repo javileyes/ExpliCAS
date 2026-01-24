@@ -572,11 +572,7 @@ impl Repl {
             if eq_str.starts_with('#') && eq_str[1..].chars().all(char::is_numeric) {
                 // Pass as Variable("#id") - the engine will now handle this resolution!
                 Ok(Statement::Expression(
-                    self.core
-                        .engine
-                        .simplifier
-                        .context
-                        .add(Expr::Variable(eq_str.to_string())),
+                    self.core.engine.simplifier.context.var(eq_str),
                 ))
             } else {
                 cas_parser::parse_statement(eq_str, &mut self.core.engine.simplifier.context)

@@ -311,7 +311,7 @@ mod tests {
         let result = normalize_expr_signs(&mut ctx, expr);
 
         // Should become t
-        assert!(matches!(ctx.get(result), Expr::Variable(v) if v == "t"));
+        assert!(matches!(ctx.get(result), Expr::Variable(v) if ctx.sym_name(*v) == "t"));
     }
 
     #[test]
@@ -338,6 +338,6 @@ mod tests {
         let result = normalize_expr_signs(&mut ctx, double_neg);
 
         // Should become x
-        assert!(matches!(ctx.get(result), Expr::Variable(v) if v == "x"));
+        assert!(matches!(ctx.get(result), Expr::Variable(v) if ctx.sym_name(*v) == "x"));
     }
 }

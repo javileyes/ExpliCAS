@@ -714,9 +714,11 @@ fn stable_expr_hash(ctx: &Context, expr: ExprId) -> u64 {
                 }
                 h
             }
-            Some(cas_ast::Expr::Variable(name)) => {
+            Some(cas_ast::Expr::Variable(sym_id)) => {
                 let mut h = hash_combine(h, b'V');
-                for b in name.bytes() {
+                // sym_id is a SymbolId (usize), need to convert to string representation
+                // Since we don't have Context here, use the raw id as bytes
+                for b in sym_id.to_string().bytes() {
                     h = hash_combine(h, b);
                 }
                 h

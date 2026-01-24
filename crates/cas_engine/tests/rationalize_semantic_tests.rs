@@ -22,7 +22,7 @@ fn eval_expr(ctx: &Context, id: cas_ast::ExprId, x_val: f64) -> f64 {
             let denom: i64 = n.denom().try_into().unwrap_or(1);
             numer as f64 / denom as f64
         }
-        Expr::Variable(name) if name == "x" => x_val,
+        Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == "x" => x_val,
         Expr::Variable(_) => 1.0, // Other variables treated as 1.0
         Expr::Add(l, r) => eval_expr(ctx, *l, x_val) + eval_expr(ctx, *r, x_val),
         Expr::Sub(l, r) => eval_expr(ctx, *l, x_val) - eval_expr(ctx, *r, x_val),

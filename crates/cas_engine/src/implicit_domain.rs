@@ -1027,7 +1027,7 @@ fn is_covered_by_stronger_predicate(
 /// Format expression for display (short form)
 fn format_expr_short(ctx: &Context, expr: ExprId) -> String {
     match ctx.get(expr) {
-        Expr::Variable(name) => name.clone(),
+        Expr::Variable(sym_id) => ctx.sym_name(*sym_id).to_string(),
         Expr::Number(n) => format!("{}", n),
         _ => format!("expr#{:?}", expr),
     }

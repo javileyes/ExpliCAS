@@ -74,8 +74,9 @@ impl Polynomial {
         let expr_data = context.get(expr);
         match expr_data {
             Expr::Number(n) => Ok(Polynomial::new(vec![n.clone()], var.to_string())),
-            Expr::Variable(v) => {
-                if v == var {
+            Expr::Variable(sym_id) => {
+                let var_name = context.sym_name(*sym_id);
+                if var_name == var {
                     // x = 0 + 1*x
                     Ok(Polynomial::new(
                         vec![BigRational::zero(), BigRational::one()],
@@ -85,7 +86,7 @@ impl Polynomial {
                     // Treat other variables as constants? For now, fail.
                     Err(CasError::PolynomialError(format!(
                         "Variable mismatch: expected '{}', found '{}'",
-                        var, v
+                        var, var_name
                     )))
                 }
             }

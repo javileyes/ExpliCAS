@@ -1373,7 +1373,7 @@ mod tests {
         );
 
         // Result should be raw x, not 5
-        assert!(matches!(ctx.get(result.expr), Expr::Variable(name) if name == "x"));
+        assert!(matches!(ctx.get(result.expr), Expr::Variable(name) if ctx.sym_name(*name) == "x"));
     }
 
     #[test]
@@ -1414,7 +1414,7 @@ mod tests {
         assert!(!result.used_cache, "Should NOT have used cache in Raw mode");
 
         // Result should be raw x
-        assert!(matches!(ctx.get(result.expr), Expr::Variable(name) if name == "x"));
+        assert!(matches!(ctx.get(result.expr), Expr::Variable(name) if ctx.sym_name(*name) == "x"));
     }
 
     #[test]

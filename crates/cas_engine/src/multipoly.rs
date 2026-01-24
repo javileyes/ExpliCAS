@@ -1700,8 +1700,8 @@ pub fn collect_poly_vars(ctx: &Context, expr: ExprId) -> BTreeSet<String> {
 
 fn collect_vars_recursive(ctx: &Context, expr: ExprId, vars: &mut BTreeSet<String>) {
     match ctx.get(expr) {
-        Expr::Variable(name) => {
-            vars.insert(name.clone());
+        Expr::Variable(sym_id) => {
+            vars.insert(ctx.sym_name(*sym_id).to_string());
         }
         Expr::Number(_) | Expr::Constant(_) => {}
         Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Div(a, b) | Expr::Pow(a, b) => {
@@ -1745,7 +1745,8 @@ fn from_expr_recursive(
             },
         }),
 
-        Expr::Variable(name) => {
+        Expr::Variable(sym_id) => {
+            let name = ctx.sym_name(*sym_id);
             let idx = vars
                 .iter()
                 .position(|v| v == name)
@@ -1904,7 +1905,7 @@ fn build_term_expr(
 
     for (i, &exp) in mono.iter().enumerate() {
         if exp > 0 {
-            let var_expr = ctx.add(Expr::Variable(vars[i].clone()));
+            let var_expr = ctx.var(&vars[i]);
             if exp == 1 {
                 factors.push(var_expr);
             } else {

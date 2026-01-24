@@ -1059,8 +1059,9 @@ impl AutoExpandPowSumRule {
         visited: &mut std::collections::HashSet<String>,
     ) {
         match ctx.get(expr) {
-            Expr::Variable(name) => {
-                visited.insert(name.clone());
+            Expr::Variable(sym_id) => {
+                let name = ctx.sym_name(*sym_id).to_string();
+                visited.insert(name);
             }
             Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
                 Self::count_variables(ctx, *l, visited);
@@ -1288,16 +1289,17 @@ impl AutoExpandSubCancelRule {
                 // Constant polynomial
                 Some(MultiPoly::from_const(n.clone()))
             }
-            Expr::Variable(name) => {
+            Expr::Variable(sym_id) => {
                 // Variable: ensure it's in our vars list
-                if !vars.contains(name) {
+                let name = ctx.sym_name(*sym_id).to_string();
+                if !vars.contains(&name) {
                     if vars.len() >= 4 {
                         return None; // Too many variables
                     }
                     vars.push(name.clone());
                 }
                 // Create polynomial for this variable
-                let idx = vars.iter().position(|v| v == name)?;
+                let idx = vars.iter().position(|v| v == &name)?;
                 let mut mono = vec![0u32; vars.len()];
                 mono[idx] = 1;
                 let terms = vec![(BigRational::one(), mono)];

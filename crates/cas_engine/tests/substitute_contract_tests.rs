@@ -18,7 +18,7 @@ fn parse_expr(ctx: &mut Context, s: &str) -> cas_ast::ExprId {
 /// Check if expression contains a variable
 fn contains_var(ctx: &Context, expr: cas_ast::ExprId, var: &str) -> bool {
     match ctx.get(expr) {
-        Expr::Variable(name) => name == var,
+        Expr::Variable(sym_id) => ctx.sym_name(*sym_id) == var,
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
             contains_var(ctx, *l, var) || contains_var(ctx, *r, var)
         }

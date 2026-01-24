@@ -18,7 +18,7 @@ impl Repl {
             // Helper to parse string to ExprId
             fn parse_arg(s: &str, ctx: &mut cas_ast::Context) -> Result<cas_ast::ExprId, String> {
                 if s.starts_with('#') && s[1..].chars().all(char::is_numeric) {
-                    Ok(ctx.add(Expr::Variable(s.to_string())))
+                    Ok(ctx.var(s))
                 } else {
                     match cas_parser::parse_statement(s, ctx) {
                         Ok(Statement::Equation(eq)) => {

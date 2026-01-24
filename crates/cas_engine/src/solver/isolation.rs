@@ -999,9 +999,7 @@ pub fn isolate(
 
                         // Case 2: a = 0 → x > 0, i.e., Continuous((0, +∞))
                         let case_zero_guard = ConditionSet::single(ConditionPredicate::EqZero(b));
-                        let pos_infinity = simplifier
-                            .context
-                            .add(Expr::Variable("infinity".to_string()));
+                        let pos_infinity = simplifier.context.var("infinity");
                         let interval_x_positive = Interval {
                             min: zero,
                             min_type: BoundType::Open,
@@ -1748,7 +1746,7 @@ pub fn simplify_rhs(
 
 pub fn contains_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
     match ctx.get(expr) {
-        Expr::Variable(v) => v == var,
+        Expr::Variable(sym_id) => ctx.sym_name(*sym_id) == var,
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
             contains_var(ctx, *l, var) || contains_var(ctx, *r, var)
         }

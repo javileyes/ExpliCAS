@@ -146,7 +146,9 @@ impl ContextSnapshot {
                     den: r.denom().to_string(),
                 },
                 Expr::Constant(c) => ExprNodeSnapshot::Constant(ConstantSnapshot::from(c)),
-                Expr::Variable(s) => ExprNodeSnapshot::Variable(s.clone()),
+                Expr::Variable(sym_id) => {
+                    ExprNodeSnapshot::Variable(ctx.sym_name(*sym_id).to_string())
+                }
                 Expr::Add(l, r) => ExprNodeSnapshot::Add(l.index() as u32, r.index() as u32),
                 Expr::Sub(l, r) => ExprNodeSnapshot::Sub(l.index() as u32, r.index() as u32),
                 Expr::Mul(l, r) => ExprNodeSnapshot::Mul(l.index() as u32, r.index() as u32),
@@ -185,7 +187,7 @@ impl ContextSnapshot {
                     Expr::Number(BigRational::new(n, d))
                 }
                 ExprNodeSnapshot::Constant(c) => Expr::Constant(c.into()),
-                ExprNodeSnapshot::Variable(s) => Expr::Variable(s),
+                ExprNodeSnapshot::Variable(s) => Expr::Variable(ctx.intern_symbol(&s)),
                 ExprNodeSnapshot::Add(l, r) => Expr::Add(ExprId::from_raw(l), ExprId::from_raw(r)),
                 ExprNodeSnapshot::Sub(l, r) => Expr::Sub(ExprId::from_raw(l), ExprId::from_raw(r)),
                 ExprNodeSnapshot::Mul(l, r) => Expr::Mul(ExprId::from_raw(l), ExprId::from_raw(r)),

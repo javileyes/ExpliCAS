@@ -65,7 +65,7 @@ fn sqrt_rhs_avoids_conditional_branch() {
     // Check that y > 0 is in the required set (as Positive(y))
     let has_y_positive = required.iter().any(|c| {
         matches!(c, cas_engine::implicit_domain::ImplicitCondition::Positive(e)
-            if matches!(simplifier.context.get(*e), Expr::Variable(name) if name == "y"))
+            if matches!(simplifier.context.get(*e), Expr::Variable(sym_id) if simplifier.context.sym_name(*sym_id) == "y"))
     });
     assert!(
         has_y_positive,
@@ -107,7 +107,7 @@ fn plain_y_rhs_requires_or_conditional() {
         let is_conditional = matches!(solution_set, SolutionSet::Conditional(_));
         let has_y_positive = required.iter().any(|c| {
             matches!(c, cas_engine::implicit_domain::ImplicitCondition::Positive(e)
-                if matches!(simplifier.context.get(*e), Expr::Variable(name) if name == "y"))
+                if matches!(simplifier.context.get(*e), Expr::Variable(sym_id) if simplifier.context.sym_name(*sym_id) == "y"))
         });
 
         assert!(

@@ -954,10 +954,11 @@ fn detect_solve_variable(
         vars: &mut std::collections::HashSet<String>,
     ) {
         match ctx.get(expr) {
-            cas_ast::Expr::Variable(name) => {
+            cas_ast::Expr::Variable(sym_id) => {
                 // Skip special built-in variables
+                let name = ctx.sym_name(*sym_id);
                 if !name.starts_with('#') && name != "e" && name != "i" && name != "pi" {
-                    vars.insert(name.clone());
+                    vars.insert(name.to_string());
                 }
             }
             cas_ast::Expr::Add(a, b)

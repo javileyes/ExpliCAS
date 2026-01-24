@@ -55,10 +55,11 @@ impl<'a> AstVisualizer<'a> {
                     node_id, n
                 ));
             }
-            Expr::Variable(v) => {
+            Expr::Variable(sym_id) => {
                 output.push_str(&format!(
                     "  n{} [label=\"{}\", shape=ellipse, fillcolor=\"#c8e6c9\"];\n",
-                    node_id, v
+                    node_id,
+                    self.context.sym_name(sym_id)
                 ));
             }
             Expr::Constant(c) => {

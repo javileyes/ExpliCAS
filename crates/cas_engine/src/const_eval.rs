@@ -242,7 +242,7 @@ mod tests {
     #[test]
     fn test_non_literal_returns_none() {
         let mut ctx = setup();
-        let x = ctx.add(Expr::Variable("x".to_string()));
+        let x = ctx.var("x");
         let two = ctx.add(Expr::Number(BigRational::from_integer(2.into())));
 
         // x^2 - not literal

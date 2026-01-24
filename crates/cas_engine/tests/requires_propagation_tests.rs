@@ -39,7 +39,7 @@ fn requires_propagate_on_sqrt_reuse() {
     // Verify sqrt(x) has x ≥ 0 in requires
     let has_x_nonneg = output1.required_conditions.iter().any(|c| {
         matches!(c, ImplicitCondition::NonNegative(e) 
-            if matches!(engine.simplifier.context.get(*e), Expr::Variable(name) if name == "x"))
+            if matches!(engine.simplifier.context.get(*e), Expr::Variable(sym_id) if engine.simplifier.context.sym_name(*sym_id) == "x"))
     });
     assert!(
         has_x_nonneg,
@@ -60,7 +60,7 @@ fn requires_propagate_on_sqrt_reuse() {
     // Verify the reused expression still has x ≥ 0
     let has_x_nonneg_2 = output2.required_conditions.iter().any(|c| {
         matches!(c, ImplicitCondition::NonNegative(e) 
-            if matches!(engine.simplifier.context.get(*e), Expr::Variable(name) if name == "x"))
+            if matches!(engine.simplifier.context.get(*e), Expr::Variable(sym_id) if engine.simplifier.context.sym_name(*sym_id) == "x"))
     });
     assert!(
         has_x_nonneg_2,
@@ -84,7 +84,7 @@ fn requires_propagate_on_ln_reuse() {
     // Verify ln(y) has y > 0 in requires
     let has_y_positive = output1.required_conditions.iter().any(|c| {
         matches!(c, ImplicitCondition::Positive(e) 
-            if matches!(engine.simplifier.context.get(*e), Expr::Variable(name) if name == "y"))
+            if matches!(engine.simplifier.context.get(*e), Expr::Variable(sym_id) if engine.simplifier.context.sym_name(*sym_id) == "y"))
     });
     assert!(
         has_y_positive,
@@ -99,7 +99,7 @@ fn requires_propagate_on_ln_reuse() {
     // Verify y > 0 propagates
     let has_y_positive_2 = output2.required_conditions.iter().any(|c| {
         matches!(c, ImplicitCondition::Positive(e) 
-            if matches!(engine.simplifier.context.get(*e), Expr::Variable(name) if name == "y"))
+            if matches!(engine.simplifier.context.get(*e), Expr::Variable(sym_id) if engine.simplifier.context.sym_name(*sym_id) == "y"))
     });
     assert!(
         has_y_positive_2,
@@ -123,13 +123,13 @@ fn requires_combine_from_multiple_sources() {
     // Check for x ≥ 0
     let has_x_nonneg = output.required_conditions.iter().any(|c| {
         matches!(c, ImplicitCondition::NonNegative(e) 
-            if matches!(engine.simplifier.context.get(*e), Expr::Variable(name) if name == "x"))
+            if matches!(engine.simplifier.context.get(*e), Expr::Variable(sym_id) if engine.simplifier.context.sym_name(*sym_id) == "x"))
     });
 
     // Check for y > 0
     let has_y_positive = output.required_conditions.iter().any(|c| {
         matches!(c, ImplicitCondition::Positive(e) 
-            if matches!(engine.simplifier.context.get(*e), Expr::Variable(name) if name == "y"))
+            if matches!(engine.simplifier.context.get(*e), Expr::Variable(sym_id) if engine.simplifier.context.sym_name(*sym_id) == "y"))
     });
 
     assert!(
@@ -159,7 +159,7 @@ fn requires_nonzero_from_division() {
     // Check for z ≠ 0
     let has_z_nonzero = output.required_conditions.iter().any(|c| {
         matches!(c, ImplicitCondition::NonZero(e) 
-            if matches!(engine.simplifier.context.get(*e), Expr::Variable(name) if name == "z"))
+            if matches!(engine.simplifier.context.get(*e), Expr::Variable(sym_id) if engine.simplifier.context.sym_name(*sym_id) == "z"))
     });
 
     assert!(

@@ -1107,7 +1107,7 @@ mod tests {
         if let Expr::Pow(base, exp) = ctx.get(e) {
             // base should be x
             if let Expr::Variable(v) = ctx.get(*base) {
-                assert_eq!(v, "x");
+                assert_eq!(ctx.sym_name(*v), "x");
             } else {
                 panic!("Expected base to be Variable(x)");
             }
@@ -1149,12 +1149,12 @@ mod tests {
         let e = parse("x1 + x2", &mut ctx).unwrap();
         if let Expr::Add(l, r) = ctx.get(e) {
             if let Expr::Variable(v) = ctx.get(*l) {
-                assert_eq!(v, "x1");
+                assert_eq!(ctx.sym_name(*v), "x1");
             } else {
                 panic!("Expected Variable(x1)");
             }
             if let Expr::Variable(v) = ctx.get(*r) {
-                assert_eq!(v, "x2");
+                assert_eq!(ctx.sym_name(*v), "x2");
             } else {
                 panic!("Expected Variable(x2)");
             }
@@ -1171,7 +1171,7 @@ mod tests {
         let e = parse("x1^2", &mut ctx).unwrap();
         if let Expr::Pow(base, exp) = ctx.get(e) {
             if let Expr::Variable(v) = ctx.get(*base) {
-                assert_eq!(v, "x1");
+                assert_eq!(ctx.sym_name(*v), "x1");
             } else {
                 panic!("Expected base to be Variable(x1)");
             }
@@ -1193,10 +1193,12 @@ mod tests {
         let e = parse("_tmp + x_1", &mut ctx).unwrap();
         if let Expr::Add(l, r) = ctx.get(e) {
             if let Expr::Variable(v) = ctx.get(*l) {
-                assert!(v == "_tmp" || v == "x_1");
+                let name = ctx.sym_name(*v);
+                assert!(name == "_tmp" || name == "x_1");
             }
             if let Expr::Variable(v) = ctx.get(*r) {
-                assert!(v == "_tmp" || v == "x_1");
+                let name = ctx.sym_name(*v);
+                assert!(name == "_tmp" || name == "x_1");
             }
         }
     }
@@ -1210,12 +1212,12 @@ mod tests {
         if let Expr::Mul(l, r) = ctx.get(e) {
             // One should be theta3, other phi123
             let l_var = if let Expr::Variable(v) = ctx.get(*l) {
-                v.clone()
+                ctx.sym_name(*v).to_string()
             } else {
                 panic!("Expected Variable")
             };
             let r_var = if let Expr::Variable(v) = ctx.get(*r) {
-                v.clone()
+                ctx.sym_name(*v).to_string()
             } else {
                 panic!("Expected Variable")
             };
@@ -1341,7 +1343,7 @@ mod tests {
                 panic!("Expected Number(2) on left");
             }
             if let Expr::Variable(v) = ctx.get(*r) {
-                assert_eq!(v, "x");
+                assert_eq!(ctx.sym_name(*v), "x");
             } else {
                 panic!("Expected Variable(x) on right");
             }
@@ -1352,7 +1354,7 @@ mod tests {
         // x1 should remain as a single variable (not 'x' * '1')
         let e2 = parse("x1", &mut ctx).unwrap();
         if let Expr::Variable(v) = ctx.get(e2) {
-            assert_eq!(v, "x1", "x1 should be a single variable");
+            assert_eq!(ctx.sym_name(*v), "x1", "x1 should be a single variable");
         } else {
             panic!("Expected Variable(x1)");
         }

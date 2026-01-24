@@ -36,7 +36,10 @@ pub fn compare_expr(context: &Context, a: ExprId, b: ExprId) -> Ordering {
                 }
             }
             (Variable(v1), Variable(v2)) => {
-                let c = v1.cmp(v2);
+                // Compare by symbol name (lexicographic), not by SymbolId (numeric)
+                let name1 = context.sym_name(*v1);
+                let name2 = context.sym_name(*v2);
+                let c = name1.cmp(name2);
                 if c != Ordering::Equal {
                     return c;
                 }

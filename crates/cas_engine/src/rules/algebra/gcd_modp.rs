@@ -577,8 +577,8 @@ fn extract_usize(ctx: &Context, expr: ExprId) -> Option<usize> {
 /// Extract string from expression (Variable as string literal)
 fn extract_string(ctx: &Context, expr: ExprId) -> Option<String> {
     // Check for Variable (used as string literal, e.g., "mm_gcd")
-    if let Expr::Variable(s) = ctx.get(expr) {
-        return Some(s.clone());
+    if let Expr::Variable(sym_id) = ctx.get(expr) {
+        return Some(ctx.sym_name(*sym_id).to_string());
     }
     None
 }
@@ -729,7 +729,7 @@ pub fn multipoly_modp_to_expr(
         // Add variable powers
         for (i, &exp) in mono.0.iter().enumerate() {
             if exp > 0 && i < vars.len() {
-                let var_expr = ctx.add(Expr::Variable(vars.names[i].clone()));
+                let var_expr = ctx.var(&vars.names[i]);
                 if exp == 1 {
                     factors.push(var_expr);
                 } else {

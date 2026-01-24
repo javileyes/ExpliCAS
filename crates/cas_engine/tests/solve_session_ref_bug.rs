@@ -47,10 +47,7 @@ fn test_solve_session_ref() {
 
     // Now solve #2 for x
     // CLI parses "#2" as Variable("#2")
-    let id_var = engine
-        .simplifier
-        .context
-        .add(Expr::Variable("#2".to_string()));
+    let id_var = engine.simplifier.context.var("#2");
 
     let req = EvalRequest {
         raw_input: "#2".to_string(),

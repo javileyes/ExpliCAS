@@ -1508,7 +1508,7 @@ mod tests {
     fn test_nested_fraction_pattern_classification_p1() {
         // P1: 1/(1 + 1/x) - unit fraction in denominator
         let mut ctx = Context::new();
-        let x = ctx.add(Expr::Variable("x".to_string()));
+        let x = ctx.var("x");
         let one = ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(1))));
         let one_over_x = ctx.add(Expr::Div(one, x));
         let denom = ctx.add(Expr::Add(one, one_over_x));
@@ -1525,7 +1525,7 @@ mod tests {
     fn test_nested_fraction_pattern_classification_p3() {
         // P3: 2/(1 + 1/x) - non-unit numerator
         let mut ctx = Context::new();
-        let x = ctx.add(Expr::Variable("x".to_string()));
+        let x = ctx.var("x");
         let one = ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(1))));
         let two = ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(2))));
         let one_over_x = ctx.add(Expr::Div(one, x));
@@ -1543,7 +1543,7 @@ mod tests {
     fn test_extract_combined_fraction_simple() {
         // 1 + 1/x → "(1 · x + 1) / x"
         let mut ctx = Context::new();
-        let x = ctx.add(Expr::Variable("x".to_string()));
+        let x = ctx.var("x");
         let one = ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(1))));
         let one_over_x = ctx.add(Expr::Div(one, x));
         let add_expr = ctx.add(Expr::Add(one, one_over_x));
@@ -1565,7 +1565,7 @@ mod tests {
     fn test_extract_combined_fraction_complex_denominator() {
         // 1 + x/(x+1) → LaTeX format: \frac{1 \cdot (x + 1) + x}{x + 1}
         let mut ctx = Context::new();
-        let x = ctx.add(Expr::Variable("x".to_string()));
+        let x = ctx.var("x");
         let one = ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(1))));
         let x_plus_1 = ctx.add(Expr::Add(x, one));
         let x_over_xplus1 = ctx.add(Expr::Div(x, x_plus_1));
@@ -1588,7 +1588,7 @@ mod tests {
     #[test]
     fn test_contains_div_simple() {
         let mut ctx = Context::new();
-        let x = ctx.add(Expr::Variable("x".to_string()));
+        let x = ctx.var("x");
         let one = ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(1))));
 
         // x does not contain div

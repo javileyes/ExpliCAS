@@ -104,7 +104,8 @@ pub enum GcdGoal {
 
 /// Parse GcdMode from expression (Variable token)
 pub fn parse_gcd_mode(ctx: &Context, expr: ExprId) -> GcdMode {
-    if let Expr::Variable(s) = ctx.get(expr) {
+    if let Expr::Variable(sym_id) = ctx.get(expr) {
+        let s = ctx.sym_name(*sym_id);
         match s.to_lowercase().as_str() {
             "auto" => GcdMode::Auto,
             "exact" | "rational" | "algebraic" | "q" => GcdMode::Exact,
@@ -134,7 +135,8 @@ fn parse_modp_options(ctx: &Context, args: &[ExprId]) -> (Option<ZippelPreset>, 
             }
         }
         // Try as symbol (preset)
-        if let Expr::Variable(s) = ctx.get(arg) {
+        if let Expr::Variable(sym_id) = ctx.get(arg) {
+            let s = ctx.sym_name(*sym_id);
             if let Some(p) = ZippelPreset::parse(s) {
                 preset = Some(p);
             }
@@ -832,12 +834,12 @@ mod tests {
         let mut ctx = setup_ctx();
 
         // x+1
-        let x = ctx.add(Expr::Variable("x".into()));
+        let x = ctx.var("x");
         let one = ctx.num(1);
         let x_plus_1 = ctx.add(Expr::Add(x, one));
 
         // y+2
-        let y = ctx.add(Expr::Variable("y".into()));
+        let y = ctx.var("y");
         let two = ctx.num(2);
         let y_plus_2 = ctx.add(Expr::Add(y, two));
 
@@ -845,7 +847,7 @@ mod tests {
         let a = ctx.add(Expr::Mul(x_plus_1, y_plus_2));
 
         // z+3
-        let z = ctx.add(Expr::Variable("z".into()));
+        let z = ctx.var("z");
         let three = ctx.num(3);
         let z_plus_3 = ctx.add(Expr::Add(z, three));
 
@@ -864,7 +866,7 @@ mod tests {
         let mut ctx = setup_ctx();
 
         // x+1
-        let x = ctx.add(Expr::Variable("x".into()));
+        let x = ctx.var("x");
         let one = ctx.num(1);
         let x_plus_1 = ctx.add(Expr::Add(x, one));
 
@@ -895,9 +897,9 @@ mod tests {
         let mut ctx = setup_ctx();
 
         // x
-        let x = ctx.add(Expr::Variable("x".into()));
+        let x = ctx.var("x");
         // y
-        let y = ctx.add(Expr::Variable("y".into()));
+        let y = ctx.var("y");
 
         // GCD(x, y) = 1 (no structural common factor)
         let gcd = poly_gcd_structural(&mut ctx, x, y);

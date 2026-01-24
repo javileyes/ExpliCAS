@@ -373,7 +373,7 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 Constant::I => write!(f, "i"),
                 Constant::Phi => write!(f, "phi"),
             },
-            Expr::Variable(s) => write!(f, "{}", s),
+            Expr::Variable(sym_id) => write!(f, "{}", self.context.sym_name(*sym_id)),
             Expr::Add(_, _) => {
                 // Flatten Add chain to handle mixed signs gracefully
                 let mut terms = collect_add_terms(self.context, self.id);
@@ -1142,7 +1142,7 @@ impl<'a> fmt::Display for RawDisplayExpr<'a> {
                 Constant::I => write!(f, "i"),
                 Constant::Phi => write!(f, "phi"),
             },
-            Expr::Variable(s) => write!(f, "{}", s),
+            Expr::Variable(sym_id) => write!(f, "{}", self.context.sym_name(*sym_id)),
             Expr::Add(l, r) => write!(
                 f,
                 "{} + {}",
@@ -1317,7 +1317,7 @@ impl<'a> DisplayExprWithHints<'a> {
                 Constant::I => write!(f, "i"),
                 Constant::Phi => write!(f, "phi"),
             },
-            Expr::Variable(s) => write!(f, "{}", s),
+            Expr::Variable(sym_id) => write!(f, "{}", self.context.sym_name(*sym_id)),
             Expr::Add(_, _) => {
                 // Flatten Add chain to handle mixed signs gracefully
                 let mut terms = collect_add_terms(self.context, id);
