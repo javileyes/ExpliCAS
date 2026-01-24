@@ -189,6 +189,8 @@ dependencies = [
  "cas_parser",
  "clap",
  "dirs",
+ "num-bigint",
+ "num-rational",
  "num-traits",
  "predicates",
  "regex",
