@@ -55,10 +55,10 @@ define_rule!(
             _ => return None,
         };
 
-        let name = ctx.sym_name(fn_id);
+        let name = ctx.sym_name(fn_id).to_string();
 
         // Only apply to sin, cos, tan
-        if !matches!(name, "sin" | "cos" | "tan") {
+        if !matches!(name.as_str(), "sin" | "cos" | "tan") {
             return None;
         }
 
@@ -72,7 +72,7 @@ define_rule!(
         let cos_half = ctx.call("cos", vec![half_arg]);
         let t = ctx.add(Expr::Div(sin_half, cos_half)); // t = tan(x/2)
 
-        let (new_expr, desc) = match name {
+        let (new_expr, desc) = match name.as_str() {
             "sin" => {
                 let result = weierstrass_sin(ctx, t);
                 let desc = format!(
@@ -155,7 +155,12 @@ fn is_tan_half_angle(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
         if let (Expr::Function(sin_name, sin_args), Expr::Function(cos_name, cos_args)) =
             (ctx.get(*sin_id), ctx.get(*cos_id))
         {
-            if sin_name == "sin" && cos_name == "cos" && sin_args.len() == 1 && cos_args.len() == 1
+            let sin_name_str = ctx.sym_name(*sin_name);
+            let cos_name_str = ctx.sym_name(*cos_name);
+            if sin_name_str == "sin"
+                && cos_name_str == "cos"
+                && sin_args.len() == 1
+                && cos_args.len() == 1
             {
                 let sin_arg = sin_args[0];
                 let cos_arg = cos_args[0];

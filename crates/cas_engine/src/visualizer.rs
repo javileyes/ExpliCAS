@@ -134,8 +134,9 @@ impl<'a> AstVisualizer<'a> {
                 let e_id = self.write_node(output, e);
                 output.push_str(&format!("  n{} -> n{};\n", node_id, e_id));
             }
-            Expr::Function(name, args) => {
-                let escaped_name = name.replace("\"", "\\\"");
+            Expr::Function(fn_id, args) => {
+                let func_name = self.context.sym_name(fn_id);
+                let escaped_name = func_name.replace("\"", "\\\"");
                 output.push_str(&format!(
                     "  n{} [label=\"{}()\", shape=hexagon, fillcolor=\"#d1c4e9\"];\n",
                     node_id, escaped_name

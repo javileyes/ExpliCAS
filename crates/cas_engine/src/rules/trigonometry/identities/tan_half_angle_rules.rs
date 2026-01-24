@@ -28,10 +28,9 @@ define_rule!(
             }
 
             // Check if base is cosh(x/2) or sinh(x/2)
-            if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                let name = ctx.sym_name(*fn_id);
+            if let Expr::Function(fn_id, args) = ctx.get(*base).clone() {
+                let name = ctx.sym_name(fn_id).to_string();
                 if (name == "cosh" || name == "sinh") && args.len() == 1 {
-                    let func_name = name.clone(); // Clone to avoid borrow conflict
                     let arg = args[0];
 
                     // Check if argument is x/2 or (1/2)*x
@@ -76,7 +75,7 @@ define_rule!(
                             2.into(),
                         )));
 
-                        if func_name == "cosh" {
+                        if name == "cosh" {
                             // cosh(x/2)² → (cosh(x)+1)/2
                             let sum = ctx.add(Expr::Add(cosh_x, one));
                             let result = ctx.add(Expr::Mul(half, sum));
@@ -136,13 +135,13 @@ define_rule!(
                 }
                 // Check for sin(t)
                 if let Expr::Function(fn_id, args) = ctx.get(factor) {
-                    let name = ctx.sym_name(*fn_id);
-                    if name == "sin" && args.len() == 1 && sin_idx.is_none() {
+                    let func_name = ctx.sym_name(*fn_id);
+                    if func_name == "sin" && args.len() == 1 && sin_idx.is_none() {
                         sin_idx = Some(i);
                         sin_arg = Some(args[0]);
                         continue;
                     }
-                    if name == "cos" && args.len() == 1 && cos_idx.is_none() {
+                    if func_name == "cos" && args.len() == 1 && cos_idx.is_none() {
                         cos_idx = Some(i);
                         cos_arg = Some(args[0]);
                         continue;

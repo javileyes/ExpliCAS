@@ -25,13 +25,13 @@ define_rule!(
     "Evaluate Hyperbolic Functions",
     Some(vec!["Function"]),
     |ctx, expr| {
-        if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Function(fn_id, args) = expr_data {
+            let name = ctx.sym_name(fn_id).to_string();
             if args.len() == 1 {
                 let arg = args[0];
-                let name = name.clone(); // Clone to avoid borrow issues
 
-                match ctx.sym_name(*fn_id) {
+                match name.as_str() {
                     // sinh(0) = 0, tanh(0) = 0
                     "sinh" | "tanh" => {
                         if is_zero(ctx, arg) {
