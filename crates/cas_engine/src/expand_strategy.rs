@@ -133,7 +133,7 @@ fn extract_features_recursive(ctx: &Context, expr: ExprId, features: &mut Expand
         }
         Expr::Function(name, _) => {
             // Functions (sqrt, sin, ln, etc.) → not polynomial-like
-            if name != "expand" {
+            if ctx.sym_name(*name) != "expand" {
                 features.poly_like = false;
                 features.multipoly_eligible = false;
             }

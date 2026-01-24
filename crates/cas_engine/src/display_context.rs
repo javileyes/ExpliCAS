@@ -87,7 +87,7 @@ fn scan_for_sqrt_hints(ctx: &Context, expr: cas_ast::ExprId, display_ctx: &mut D
     match ctx.get(expr) {
         Expr::Function(name, args) => {
             // Check if this is a sqrt/root function
-            if name == "sqrt" {
+            if ctx.sym_name(*name) == "sqrt" {
                 let index = match args.len() {
                     1 => 2,
                     2 => {
@@ -100,7 +100,7 @@ fn scan_for_sqrt_hints(ctx: &Context, expr: cas_ast::ExprId, display_ctx: &mut D
                     _ => 2,
                 };
                 display_ctx.insert(expr, DisplayHint::AsRoot { index });
-            } else if name == "root" && args.len() == 2 {
+            } else if ctx.sym_name(*name) == "root" && args.len() == 2 {
                 let index = if let Expr::Number(n) = ctx.get(args[1]) {
                     n.to_integer().try_into().unwrap_or(2)
                 } else {
@@ -154,7 +154,7 @@ fn collect_root_patterns_recursive(
 ) {
     match ctx.get(expr) {
         Expr::Function(name, args) => {
-            if name == "sqrt" {
+            if ctx.sym_name(*name) == "sqrt" {
                 let (index, base) = match args.len() {
                     1 => (2, args[0]),
                     2 => {
@@ -197,7 +197,7 @@ fn collect_root_patterns_recursive(
 fn expr_to_string(ctx: &Context, expr: cas_ast::ExprId) -> String {
     match ctx.get(expr) {
         Expr::Number(n) => format!("N({}/{})", n.numer(), n.denom()),
-        Expr::Variable(name) => format!("V({})", name),
+        Expr::Variable(name) => format!("V({})", ctx.sym_name(*name)),
         Expr::Constant(c) => format!("C({:?})", c),
         Expr::Add(l, r) => format!(
             "Add({},{})",
@@ -227,7 +227,7 @@ fn expr_to_string(ctx: &Context, expr: cas_ast::ExprId) -> String {
         Expr::Neg(e) => format!("Neg({})", expr_to_string(ctx, *e)),
         Expr::Function(name, args) => {
             let args_str: Vec<_> = args.iter().map(|a| expr_to_string(ctx, *a)).collect();
-            format!("Fn({},{})", name, args_str.join(","))
+            format!("Fn({},{})", ctx.sym_name(*name), args_str.join(","))
         }
         Expr::Matrix { rows, cols, data } => {
             let data_str: Vec<_> = data.iter().map(|e| expr_to_string(ctx, *e)).collect();
@@ -332,7 +332,8 @@ fn scan_for_power_roots(ctx: &Context, expr: cas_ast::ExprId, display_ctx: &mut 
 
 /// Extract the root index from a sqrt/root function
 fn extract_root_index(ctx: &Context, expr: cas_ast::ExprId) -> Option<u32> {
-    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let name = ctx.sym_name(*fn_id);
         if name == "sqrt" {
             return match args.len() {
                 1 => Some(2), // sqrt(x) = 2nd root

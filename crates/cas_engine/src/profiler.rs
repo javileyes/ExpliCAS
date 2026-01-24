@@ -168,7 +168,7 @@ impl RuleProfiler {
 
         let mut entries: Vec<_> = aggregated
             .iter()
-            .map(|(name, stats)| (ctx.sym_name(*fn_id), stats.applied.load(Ordering::Relaxed)))
+            .map(|(name, stats)| (name.clone(), stats.applied.load(Ordering::Relaxed)))
             .filter(|(_, count)| *count > 0)
             .collect();
 
@@ -185,7 +185,7 @@ impl RuleProfiler {
         report.push_str("─────────────────────────────────────────────\n");
 
         for (name, count) in entries {
-            report.push_str(&format!("{:40} {:>6}\n", truncate(name, 40), count));
+            report.push_str(&format!("{:40} {:>6}\n", truncate(&name, 40), count));
         }
 
         let total_hits: usize = aggregated

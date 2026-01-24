@@ -62,7 +62,7 @@ pub fn mk_limit(ctx: &mut Context, expr: ExprId, var: ExprId, approach: Approach
         }
     };
     ctx.add(Expr::Function(
-        "limit".into(),
+        ctx.intern_symbol("limit"),
         vec![expr, var, approach_sym],
     ))
 }

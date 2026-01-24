@@ -419,10 +419,12 @@ impl Orchestrator {
 
         // V2.15.35: Skip rollback for explicit expand() calls
         // When user explicitly calls expand(), they want the expanded form even if "worse"
-        let has_explicit_expand = matches!(
-            simplifier.context.get(expr),
-            cas_ast::Expr::Function(name, _) if name == "expand"
-        );
+        let has_explicit_expand =
+            if let cas_ast::Expr::Function(name, _) = simplifier.context.get(expr) {
+                simplifier.context.sym_name(*name) == "expand"
+            } else {
+                false
+            };
 
         // Only rollback if:
         // 1. Best is strictly better AND

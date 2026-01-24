@@ -249,7 +249,7 @@ pub fn expr_fingerprint(ctx: &Context, root: ExprId, memo: &mut FingerprintMemo)
             mix1(TAG_NEG, hx)
         }
         Expr::Function(name, args) => {
-            let mut h = mix1(TAG_FUNC, hash_str(name));
+            let mut h = mix1(TAG_FUNC, hash_str(ctx.sym_name(*name)));
             for arg in args {
                 let ha = expr_fingerprint(ctx, *arg, memo);
                 h = mix(h, ha, args.len() as u64);
