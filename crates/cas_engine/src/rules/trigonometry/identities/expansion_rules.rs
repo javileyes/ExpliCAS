@@ -84,8 +84,8 @@ define_rule!(
         let (result, desc) = match (fn_name, is_diff) {
             // sin(A) + sin(B) → 2·sin(avg)·cos(half_diff)
             ("sin", false) => {
-                let sin_avg = ctx.add(Expr::Function("sin".to_string(), vec![avg]));
-                let cos_half = ctx.add(Expr::Function("cos".to_string(), vec![half_diff]));
+                let sin_avg = ctx.call("sin", vec![avg]);
+                let cos_half = ctx.call("cos", vec![half_diff]);
                 let product = smart_mul(ctx, sin_avg, cos_half);
                 let result = smart_mul(ctx, two, product);
                 (result, "sin(A)+sin(B) = 2·sin((A+B)/2)·cos((A-B)/2)")
@@ -93,8 +93,8 @@ define_rule!(
             // sin(A) - sin(B) → 2·cos(avg)·sin(half_diff)
             // Note: half_diff preserves order (A-B)/2 for correct sign
             ("sin", true) => {
-                let cos_avg = ctx.add(Expr::Function("cos".to_string(), vec![avg]));
-                let sin_half = ctx.add(Expr::Function("sin".to_string(), vec![half_diff]));
+                let cos_avg = ctx.call("cos", vec![avg]);
+                let sin_half = ctx.call("sin", vec![half_diff]);
                 let product = smart_mul(ctx, cos_avg, sin_half);
                 let result = smart_mul(ctx, two, product);
                 (result, "sin(A)-sin(B) = 2·cos((A+B)/2)·sin((A-B)/2)")
@@ -103,7 +103,7 @@ define_rule!(
             ("cos", false) => {
                 // For cos, half_diff sign doesn't matter (even function)
                 let half_diff_normalized = normalize_for_even_fn(ctx, half_diff);
-                let cos_avg = ctx.add(Expr::Function("cos".to_string(), vec![avg]));
+                let cos_avg = ctx.call("cos", vec![avg]);
                 let cos_half = ctx.add(Expr::Function(
                     "cos".to_string(),
                     vec![half_diff_normalized],
@@ -114,8 +114,8 @@ define_rule!(
             }
             // cos(A) - cos(B) → -2·sin(avg)·sin(half_diff)
             ("cos", true) => {
-                let sin_avg = ctx.add(Expr::Function("sin".to_string(), vec![avg]));
-                let sin_half = ctx.add(Expr::Function("sin".to_string(), vec![half_diff]));
+                let sin_avg = ctx.call("sin", vec![avg]);
+                let sin_half = ctx.call("sin", vec![half_diff]);
                 let product = smart_mul(ctx, sin_avg, sin_half);
                 let two_product = smart_mul(ctx, two, product);
                 let result = ctx.add(Expr::Neg(two_product));
@@ -327,10 +327,10 @@ impl crate::rule::Rule for HalfAngleTangentRule {
             }
         };
 
-        let tan_x = ctx.add(Expr::Function("tan".to_string(), vec![x]));
+        let tan_x = ctx.call("tan", vec![x]);
 
         // Build cos(x) for the NonZero require
-        let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![x]));
+        let cos_x = ctx.call("cos", vec![x]);
 
         // Create rewrite with requires:
         // 1. Original denominator ≠ 0 (inherited from the division)
@@ -394,8 +394,8 @@ define_rule!(
                         "sin" => {
                             // sin(2x) -> 2sin(x)cos(x)
                             let two = ctx.num(2);
-                            let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![inner_var]));
-                            let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![inner_var]));
+                            let sin_x = ctx.call("sin", vec![inner_var]);
+                            let cos_x = ctx.call("cos", vec![inner_var]);
                             let sin_cos = smart_mul(ctx, sin_x, cos_x);
                             let new_expr = smart_mul(ctx, two, sin_cos);
                             return Some(Rewrite::new(new_expr).desc("sin(2x) -> 2sin(x)cos(x)"));
@@ -403,10 +403,10 @@ define_rule!(
                         "cos" => {
                             // cos(2x) -> cos^2(x) - sin^2(x)
                             let two = ctx.num(2);
-                            let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![inner_var]));
+                            let cos_x = ctx.call("cos", vec![inner_var]);
                             let cos2 = ctx.add(Expr::Pow(cos_x, two));
 
-                            let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![inner_var]));
+                            let sin_x = ctx.call("sin", vec![inner_var]);
                             let sin2 = ctx.add(Expr::Pow(sin_x, two));
 
                             let new_expr = ctx.add(Expr::Sub(cos2, sin2));
@@ -457,7 +457,7 @@ impl crate::rule::Rule for DoubleAngleContractionRule {
                     // Build sin(2*t)
                     let two = ctx.num(2);
                     let double_arg = ctx.add(Expr::Mul(two, sin_arg));
-                    let sin_2t = ctx.add(Expr::Function("sin".to_string(), vec![double_arg]));
+                    let sin_2t = ctx.call("sin", vec![double_arg]);
                     return Some(Rewrite::new(sin_2t).desc("2·sin(t)·cos(t) = sin(2t)"));
                 }
             }
@@ -472,7 +472,7 @@ impl crate::rule::Rule for DoubleAngleContractionRule {
                     // Build cos(2*t)
                     let two = ctx.num(2);
                     let double_arg = ctx.add(Expr::Mul(two, cos_arg));
-                    let cos_2t = ctx.add(Expr::Function("cos".to_string(), vec![double_arg]));
+                    let cos_2t = ctx.call("cos", vec![double_arg]);
                     return Some(Rewrite::new(cos_2t).desc("cos²(t) - sin²(t) = cos(2t)"));
                 }
             }
@@ -663,7 +663,7 @@ define_rule!(
                             let three = ctx.num(3);
                             let four = ctx.num(4);
                             let exp_three = ctx.num(3); // Separate for Pow exponent
-                            let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![inner_var]));
+                            let sin_x = ctx.call("sin", vec![inner_var]);
 
                             // 3*sin(x)
                             let term1 = smart_mul(ctx, three, sin_x);
@@ -684,7 +684,7 @@ define_rule!(
                             let three = ctx.num(3);
                             let four = ctx.num(4);
                             let exp_three = ctx.num(3); // Separate for Pow exponent
-                            let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![inner_var]));
+                            let cos_x = ctx.call("cos", vec![inner_var]);
 
                             // cos³(x) = cos(x)^3
                             let cos_cubed = ctx.add(Expr::Pow(cos_x, exp_three));
@@ -706,7 +706,7 @@ define_rule!(
                             let three = ctx.num(3);
                             let exp_two = ctx.num(2);
                             let exp_three = ctx.num(3);
-                            let tan_x = ctx.add(Expr::Function("tan".to_string(), vec![inner_var]));
+                            let tan_x = ctx.call("tan", vec![inner_var]);
 
                             // Numerator: 3tan(x) - tan³(x)
                             let three_tan = smart_mul(ctx, three, tan_x);
@@ -763,7 +763,7 @@ define_rule!(
                             let twenty = ctx.num(20);
                             let exp_three = ctx.num(3);
                             let exp_five = ctx.num(5);
-                            let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![inner_var]));
+                            let sin_x = ctx.call("sin", vec![inner_var]);
 
                             // 16sin⁵(x)
                             let sin_5 = ctx.add(Expr::Pow(sin_x, exp_five));
@@ -791,7 +791,7 @@ define_rule!(
                             let twenty = ctx.num(20);
                             let exp_three = ctx.num(3);
                             let exp_five = ctx.num(5);
-                            let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![inner_var]));
+                            let cos_x = ctx.call("cos", vec![inner_var]);
 
                             // 16cos⁵(x)
                             let cos_5 = ctx.add(Expr::Pow(cos_x, exp_five));
@@ -1338,10 +1338,10 @@ define_rule!(
                     // sin(nx) = sin((n-1)x)cos(x) + cos((n-1)x)sin(x)
                     // cos(nx) = cos((n-1)x)cos(x) - sin((n-1)x)sin(x)
 
-                    let sin_nm1 = ctx.add(Expr::Function("sin".to_string(), vec![term_nm1]));
-                    let cos_nm1 = ctx.add(Expr::Function("cos".to_string(), vec![term_nm1]));
-                    let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![x_val]));
-                    let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![x_val]));
+                    let sin_nm1 = ctx.call("sin", vec![term_nm1]);
+                    let cos_nm1 = ctx.call("cos", vec![term_nm1]);
+                    let sin_x = ctx.call("sin", vec![x_val]);
+                    let cos_x = ctx.call("cos", vec![x_val]);
 
                     if name == "sin" {
                         let t1 = smart_mul(ctx, sin_nm1, cos_x);
@@ -1392,7 +1392,7 @@ define_rule!(
                                 let arg = args[0];
                                 // (1 - sin^2(x))^(n/2)
                                 let one = ctx.num(1);
-                                let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![arg]));
+                                let sin_x = ctx.call("sin", vec![arg]);
                                 let two = ctx.num(2);
                                 let sin_sq = ctx.add(Expr::Pow(sin_x, two));
                                 let base_term = ctx.add(Expr::Sub(one, sin_sq));

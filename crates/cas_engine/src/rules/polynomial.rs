@@ -2456,7 +2456,7 @@ mod tests {
         );
 
         // ln(x) + ln(x) -> 2 * ln(x)
-        let ln_x = ctx.add(Expr::Function("ln".to_string(), vec![x]));
+        let ln_x = ctx.call("ln", vec![x]);
         let expr3 = ctx.add(Expr::Add(ln_x, ln_x));
         let rewrite3 = rule
             .apply(

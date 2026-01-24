@@ -89,7 +89,7 @@ pub fn fold_sqrt(ctx: &mut Context, base: ExprId, value_domain: ValueDomain) -> 
                 // sqrt(-n) = i * sqrt(n) for n > 0
                 let pos_n = -n;
                 let pos_n_expr = ctx.add(Expr::Number(pos_n));
-                let sqrt_pos = ctx.add(Expr::Function("sqrt".to_string(), vec![pos_n_expr]));
+                let sqrt_pos = ctx.call("sqrt", vec![pos_n_expr]);
                 let i = ctx.add(Expr::Constant(cas_ast::Constant::I));
                 Some(ctx.add(Expr::Mul(i, sqrt_pos)))
             }

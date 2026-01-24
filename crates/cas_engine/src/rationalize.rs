@@ -390,8 +390,8 @@ mod tests {
         let one_const = ctx.num(1);
         let two = ctx.num(2);
         let three = ctx.num(3);
-        let sqrt2 = ctx.add(Expr::Function("sqrt".to_string(), vec![two]));
-        let sqrt3 = ctx.add(Expr::Function("sqrt".to_string(), vec![three]));
+        let sqrt2 = ctx.call("sqrt", vec![two]);
+        let sqrt3 = ctx.call("sqrt", vec![three]);
         let sum1 = ctx.add(Expr::Add(one_const, sqrt2));
         let den = ctx.add(Expr::Add(sum1, sqrt3));
         let frac = ctx.add(Expr::Div(one, den));

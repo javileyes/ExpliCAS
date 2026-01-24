@@ -381,7 +381,7 @@ fn try_rewrite_log_power(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
             let inner = args[0];
             if let Expr::Pow(base, exp) = ctx.get(inner).clone() {
                 // Create exp * ln(base)
-                let ln_base = ctx.add(Expr::Function("ln".to_string(), vec![base]));
+                let ln_base = ctx.call("ln", vec![base]);
                 let product = ctx.add(Expr::Mul(exp, ln_base));
                 return Some(product);
             }

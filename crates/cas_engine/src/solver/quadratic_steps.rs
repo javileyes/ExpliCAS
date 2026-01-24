@@ -304,7 +304,7 @@ pub fn build_quadratic_substeps(
     let half = ctx.add(Expr::Div(one, two));
     let sqrt_rhs = ctx.add(Expr::Pow(step5_rhs, half));
     // |x + b/2a|
-    let abs_lhs = ctx.add(Expr::Function("abs".to_string(), vec![x_plus_b_over_2a]));
+    let abs_lhs = ctx.call("abs", vec![x_plus_b_over_2a]);
 
     steps.push(SolveSubStep {
         description: "Tomar raíz cuadrada en ambos lados".to_string(),

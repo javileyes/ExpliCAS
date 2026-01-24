@@ -385,7 +385,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step
                             // sqrt(x^(2k)) -> |x|^k
                             let two = ctx.num(2);
                             let k = ctx.add(Expr::Div(e, two)); // This will simplify to integer
-                            let abs_base = ctx.add(Expr::Function("abs".to_string(), vec![b]));
+                            let abs_base = ctx.call("abs", vec![b]);
                             let new_expr = ctx.add(Expr::Pow(abs_base, k));
                             return Some(Rewrite::new(new_expr).desc("sqrt(x^2k) -> |x|^k"));
                         }
@@ -835,7 +835,7 @@ mod tests {
         let rule = CanonicalizeRootRule;
         // sqrt(x)
         let x = ctx.var("x");
-        let expr = ctx.add(Expr::Function("sqrt".to_string(), vec![x]));
+        let expr = ctx.call("sqrt", vec![x]);
         let rewrite = rule
             .apply(
                 &mut ctx,
@@ -864,7 +864,7 @@ mod tests {
         // sqrt(x, 3) -> x^(1/3)
         let x = ctx.var("x");
         let three = ctx.num(3);
-        let expr = ctx.add(Expr::Function("sqrt".to_string(), vec![x, three]));
+        let expr = ctx.call("sqrt", vec![x, three]);
         let rewrite = rule
             .apply(
                 &mut ctx,

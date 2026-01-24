@@ -421,7 +421,7 @@ define_rule!(
 
                 // Add (a-b)·sin²(t) if non-zero
                 if !a_minus_b.is_zero() {
-                    let sin_t = ctx.add(Expr::Function("sin".to_string(), vec![arg]));
+                    let sin_t = ctx.call("sin", vec![arg]);
                     let two = ctx.num(2);
                     let sin_sq = ctx.add(Expr::Pow(sin_t, two));
 
@@ -578,7 +578,7 @@ define_rule!(
                     }
 
                     if !a_minus_b.is_zero() {
-                        let sin_t = ctx.add(Expr::Function("sin".to_string(), vec![*sin_arg]));
+                        let sin_t = ctx.call("sin", vec![*sin_arg]);
                         let two = ctx.num(2);
                         let sin_sq = ctx.add(Expr::Pow(sin_t, two));
 
@@ -853,7 +853,7 @@ define_rule!(
 
         // If we found both 1 and tan²(x), replace with sec²(x)
         if let (Some(one_i), Some(tan_i), Some(arg)) = (one_idx, tan2_idx, tan_arg) {
-            let sec_func = ctx.add(Expr::Function("sec".to_string(), vec![arg]));
+            let sec_func = ctx.call("sec", vec![arg]);
             let two = ctx.num(2);
             let sec_squared = ctx.add(Expr::Pow(sec_func, two));
 
@@ -925,7 +925,7 @@ define_rule!(
 
         // If we found both 1 and cot²(x), replace with csc²(x)
         if let (Some(one_i), Some(cot_i), Some(arg)) = (one_idx, cot2_idx, cot_arg) {
-            let csc_func = ctx.add(Expr::Function("csc".to_string(), vec![arg]));
+            let csc_func = ctx.call("csc", vec![arg]);
             let two = ctx.num(2);
             let csc_squared = ctx.add(Expr::Pow(csc_func, two));
 
@@ -1020,7 +1020,7 @@ define_rule!(
         if let Expr::Function(name, args) = ctx.get(expr) {
             if name == "sec" && args.len() == 1 {
                 let arg = args[0];
-                let cos_func = ctx.add(Expr::Function("cos".to_string(), vec![arg]));
+                let cos_func = ctx.call("cos", vec![arg]);
                 let one = ctx.num(1);
                 let result = ctx.add(Expr::Div(one, cos_func));
                 return Some(Rewrite::new(result).desc("sec(x) = 1/cos(x)"));
@@ -1041,7 +1041,7 @@ define_rule!(
         if let Expr::Function(name, args) = ctx.get(expr) {
             if name == "csc" && args.len() == 1 {
                 let arg = args[0];
-                let sin_func = ctx.add(Expr::Function("sin".to_string(), vec![arg]));
+                let sin_func = ctx.call("sin", vec![arg]);
                 let one = ctx.num(1);
                 let result = ctx.add(Expr::Div(one, sin_func));
                 return Some(Rewrite::new(result).desc("csc(x) = 1/sin(x)"));
@@ -1063,8 +1063,8 @@ define_rule!(
         if let Expr::Function(name, args) = ctx.get(expr) {
             if name == "cot" && args.len() == 1 {
                 let arg = args[0];
-                let cos_func = ctx.add(Expr::Function("cos".to_string(), vec![arg]));
-                let sin_func = ctx.add(Expr::Function("sin".to_string(), vec![arg]));
+                let cos_func = ctx.call("cos", vec![arg]);
+                let sin_func = ctx.call("sin", vec![arg]);
                 let result = ctx.add(Expr::Div(cos_func, sin_func));
                 return Some(Rewrite::new(result).desc("cot(x) = cos(x)/sin(x)"));
             }
@@ -1182,7 +1182,7 @@ mod tests {
         let mut ctx = Context::new();
         // 1 - sin²(x) should become cos²(x)
         let x = ctx.var("x");
-        let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![x]));
+        let sin_x = ctx.call("sin", vec![x]);
         let two = ctx.num(2);
         let sin_sq = ctx.add(Expr::Pow(sin_x, two));
         let neg_sin_sq = ctx.add(Expr::Neg(sin_sq));
@@ -1262,8 +1262,8 @@ define_rule!(
                 let arg = *sin_arg;
                 let coef = sin_coef.clone();
 
-                let sin_func = ctx.add(Expr::Function("sin".to_string(), vec![arg]));
-                let cos_func = ctx.add(Expr::Function("cos".to_string(), vec![arg]));
+                let sin_func = ctx.call("sin", vec![arg]);
+                let cos_func = ctx.call("cos", vec![arg]);
                 let two = ctx.num(2);
                 let sin_sq = ctx.add(Expr::Pow(sin_func, two));
                 let cos_sq = ctx.add(Expr::Pow(cos_func, two));

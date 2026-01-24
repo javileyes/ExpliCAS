@@ -33,7 +33,7 @@ define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
                     return Some(Rewrite::new(abs_val).desc(format!("abs(-{}) = {}", n, n)));
                 }
 
-                let abs_inner = ctx.add(Expr::Function("abs".to_string(), vec![*inner]));
+                let abs_inner = ctx.call("abs", vec![*inner]);
                 return Some(Rewrite::new(abs_inner).desc("abs(-x) = abs(x)"));
             }
         }
@@ -326,7 +326,7 @@ define_rule!(
                     // Check if exponent is 2
                     if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
                         // sqrt(base^2) -> |base|
-                        let abs_base = ctx.add(Expr::Function("abs".to_string(), vec![*base]));
+                        let abs_base = ctx.call("abs", vec![*base]);
                         return Some(Rewrite::new(abs_base).desc("sqrt(x^2) = |x|"));
                     }
                 }
@@ -375,8 +375,8 @@ define_rule!(
 
         if let (Some(base), Some((n, k))) = (base, k) {
             // Build: |x|^k * sqrt(x)
-            let abs_base = ctx.add(Expr::Function("abs".to_string(), vec![base]));
-            let sqrt_base = ctx.add(Expr::Function("sqrt".to_string(), vec![base]));
+            let abs_base = ctx.call("abs", vec![base]);
+            let sqrt_base = ctx.call("sqrt", vec![base]);
 
             let result = if k == 1 {
                 // |x| * sqrt(x)
@@ -683,7 +683,7 @@ define_rule!(
             if let (Some(a), Some(b)) = (lhs_inner, rhs_inner) {
                 // |a| * |b| → |a * b|
                 let product = mul2_raw(ctx, a, b);
-                let abs_product = ctx.add(Expr::Function("abs".to_string(), vec![product]));
+                let abs_product = ctx.call("abs", vec![product]);
                 return Some(Rewrite::new(abs_product).desc("|x|·|y| = |x·y|"));
             }
         }
@@ -728,7 +728,7 @@ define_rule!(
             if let (Some(a), Some(b)) = (lhs_inner, rhs_inner) {
                 // |a| / |b| → |a / b|
                 let quotient = ctx.add(Expr::Div(a, b));
-                let abs_quotient = ctx.add(Expr::Function("abs".to_string(), vec![quotient]));
+                let abs_quotient = ctx.call("abs", vec![quotient]);
                 return Some(Rewrite::new(abs_quotient).desc("|x| / |y| = |x / y|"));
             }
         }

@@ -1299,9 +1299,8 @@ fn check_exponential_needs_complex(
                             // Create a solve(eq, var) residual
                             let eq_expr = create_equation_expr(simplifier, eq);
                             let var_expr = simplifier.context.var(var);
-                            let residual = simplifier
-                                .context
-                                .add(Expr::Function("solve".to_string(), vec![eq_expr, var_expr]));
+                            let residual =
+                                simplifier.context.call("solve", vec![eq_expr, var_expr]);
 
                             // Create step with warning
                             let mut steps = Vec::new();
@@ -1355,9 +1354,8 @@ fn check_exponential_needs_complex(
                         {
                             let eq_expr = create_equation_expr(simplifier, eq);
                             let var_expr = simplifier.context.var(var);
-                            let residual = simplifier
-                                .context
-                                .add(Expr::Function("solve".to_string(), vec![eq_expr, var_expr]));
+                            let residual =
+                                simplifier.context.call("solve", vec![eq_expr, var_expr]);
 
                             let mut steps = Vec::new();
                             if simplifier.collect_steps() {
@@ -1388,9 +1386,7 @@ fn check_exponential_needs_complex(
 fn create_equation_expr(simplifier: &mut Simplifier, eq: &Equation) -> ExprId {
     // We represent eq as Function("__eq__", [lhs, rhs])
     // This is just for internal residual representation
-    simplifier
-        .context
-        .add(Expr::Function("__eq__".to_string(), vec![eq.lhs, eq.rhs]))
+    simplifier.context.call("__eq__", vec![eq.lhs, eq.rhs])
 }
 
 pub struct UnwrapStrategy;
@@ -1484,9 +1480,7 @@ impl SolverStrategy for UnwrapStrategy {
                         }
                         "exp" => {
                             // exp(A) = B -> A = ln(B)
-                            let new_other = simplifier
-                                .context
-                                .add(Expr::Function("ln".to_string(), vec![other]));
+                            let new_other = simplifier.context.call("ln", vec![other]);
                             let new_eq = if is_lhs {
                                 Equation {
                                     lhs: arg,

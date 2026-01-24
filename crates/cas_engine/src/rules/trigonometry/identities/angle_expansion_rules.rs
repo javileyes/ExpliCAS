@@ -70,8 +70,8 @@ define_rule!(ProductToSumRule, "Product to Sum", |ctx, expr| {
                     // 2*sin(a)*cos(b) → sin(a+b) + sin(a-b)
                     let sum_arg = ctx.add(Expr::Add(*arg1, *arg2));
                     let diff_arg = ctx.add(Expr::Sub(*arg1, *arg2));
-                    let sin_sum = ctx.add(Expr::Function("sin".to_string(), vec![sum_arg]));
-                    let sin_diff = ctx.add(Expr::Function("sin".to_string(), vec![diff_arg]));
+                    let sin_sum = ctx.call("sin", vec![sum_arg]);
+                    let sin_diff = ctx.call("sin", vec![diff_arg]);
                     let result = ctx.add(Expr::Add(sin_sum, sin_diff));
                     (result, "2·sin(a)·cos(b) → sin(a+b) + sin(a-b)")
                 }
@@ -79,8 +79,8 @@ define_rule!(ProductToSumRule, "Product to Sum", |ctx, expr| {
                     // 2*cos(a)*sin(b) → sin(a+b) - sin(a-b)
                     let sum_arg = ctx.add(Expr::Add(*arg1, *arg2));
                     let diff_arg = ctx.add(Expr::Sub(*arg1, *arg2));
-                    let sin_sum = ctx.add(Expr::Function("sin".to_string(), vec![sum_arg]));
-                    let sin_diff = ctx.add(Expr::Function("sin".to_string(), vec![diff_arg]));
+                    let sin_sum = ctx.call("sin", vec![sum_arg]);
+                    let sin_diff = ctx.call("sin", vec![diff_arg]);
                     let result = ctx.add(Expr::Sub(sin_sum, sin_diff));
                     (result, "2·cos(a)·sin(b) → sin(a+b) - sin(a-b)")
                 }
@@ -88,8 +88,8 @@ define_rule!(ProductToSumRule, "Product to Sum", |ctx, expr| {
                     // 2*cos(a)*cos(b) → cos(a+b) + cos(a-b)
                     let sum_arg = ctx.add(Expr::Add(*arg1, *arg2));
                     let diff_arg = ctx.add(Expr::Sub(*arg1, *arg2));
-                    let cos_sum = ctx.add(Expr::Function("cos".to_string(), vec![sum_arg]));
-                    let cos_diff = ctx.add(Expr::Function("cos".to_string(), vec![diff_arg]));
+                    let cos_sum = ctx.call("cos", vec![sum_arg]);
+                    let cos_diff = ctx.call("cos", vec![diff_arg]);
                     let result = ctx.add(Expr::Add(cos_sum, cos_diff));
                     (result, "2·cos(a)·cos(b) → cos(a+b) + cos(a-b)")
                 }
@@ -97,8 +97,8 @@ define_rule!(ProductToSumRule, "Product to Sum", |ctx, expr| {
                     // 2*sin(a)*sin(b) → cos(a-b) - cos(a+b)
                     let sum_arg = ctx.add(Expr::Add(*arg1, *arg2));
                     let diff_arg = ctx.add(Expr::Sub(*arg1, *arg2));
-                    let cos_sum = ctx.add(Expr::Function("cos".to_string(), vec![sum_arg]));
-                    let cos_diff = ctx.add(Expr::Function("cos".to_string(), vec![diff_arg]));
+                    let cos_sum = ctx.call("cos", vec![sum_arg]);
+                    let cos_diff = ctx.call("cos", vec![diff_arg]);
                     let result = ctx.add(Expr::Sub(cos_diff, cos_sum));
                     (result, "2·sin(a)·sin(b) → cos(a-b) - cos(a+b)")
                 }

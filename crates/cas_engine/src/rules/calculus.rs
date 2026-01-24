@@ -129,13 +129,13 @@ fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                 Some(mul2_raw(ctx, term, db))
             } else if !contains_var(ctx, base, var) {
                 // a^u * ln(a) * u'
-                let ln_a = ctx.add(Expr::Function("ln".to_string(), vec![base]));
+                let ln_a = ctx.call("ln", vec![base]);
                 let term = mul2_raw(ctx, expr, ln_a);
                 Some(mul2_raw(ctx, term, de))
             } else {
                 // Full rule: u^v * (v'*ln(u) + v*u'/u)
                 // = u^v * (de * ln(base) + exp * db / base)
-                let ln_base = ctx.add(Expr::Function("ln".to_string(), vec![base]));
+                let ln_base = ctx.call("ln", vec![base]);
                 let term1 = mul2_raw(ctx, de, ln_base);
                 let term2_num = mul2_raw(ctx, exp, db);
                 let term2 = ctx.add(Expr::Div(term2_num, base));
@@ -151,18 +151,18 @@ fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                 match name.as_str() {
                     "sin" => {
                         // cos(u) * u'
-                        let cos_u = ctx.add(Expr::Function("cos".to_string(), vec![arg]));
+                        let cos_u = ctx.call("cos", vec![arg]);
                         Some(mul2_raw(ctx, cos_u, da))
                     }
                     "cos" => {
                         // -sin(u) * u'
-                        let sin_u = ctx.add(Expr::Function("sin".to_string(), vec![arg]));
+                        let sin_u = ctx.call("sin", vec![arg]);
                         let neg_sin = ctx.add(Expr::Neg(sin_u));
                         Some(mul2_raw(ctx, neg_sin, da))
                     }
                     "tan" => {
                         // sec^2(u) * u' = (1/cos^2(u)) * u'
-                        let cos_u = ctx.add(Expr::Function("cos".to_string(), vec![arg]));
+                        let cos_u = ctx.call("cos", vec![arg]);
                         let two = ctx.num(2);
                         let cos_sq = ctx.add(Expr::Pow(cos_u, two));
                         let one = ctx.num(1);
@@ -244,7 +244,7 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                 if let Expr::Number(n) = ctx.get(exp) {
                     if *n == BigRational::from_integer((-1).into()) {
                         // ln(u) / a
-                        let ln_u = ctx.add(Expr::Function("ln".to_string(), vec![base]));
+                        let ln_u = ctx.call("ln", vec![base]);
                         return Some(ctx.add(Expr::Div(ln_u, a)));
                     }
                 }
@@ -294,7 +294,7 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                 }
 
                 // General base c
-                let ln_c = ctx.add(Expr::Function("ln".to_string(), vec![base]));
+                let ln_c = ctx.call("ln", vec![base]);
                 let denom = if is_a_one {
                     ln_c
                 } else {
@@ -325,7 +325,7 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
             if n.is_one() {
                 if let Some((a, _)) = get_linear_coeffs(ctx, den, var) {
                     // integrate(1/(ax+b)) = ln(ax+b)/a
-                    let ln_den = ctx.add(Expr::Function("ln".to_string(), vec![den]));
+                    let ln_den = ctx.call("ln", vec![den]);
                     return Some(ctx.add(Expr::Div(ln_den, a)));
                 }
             }
@@ -346,7 +346,7 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                 match name.as_str() {
                     "sin" => {
                         // integrate(sin(ax+b)) = -cos(ax+b)/a
-                        let cos_arg = ctx.add(Expr::Function("cos".to_string(), vec![arg]));
+                        let cos_arg = ctx.call("cos", vec![arg]);
                         let integral = ctx.add(Expr::Neg(cos_arg));
                         if is_a_one {
                             return Some(integral);
@@ -355,7 +355,7 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                     }
                     "cos" => {
                         // integrate(cos(ax+b)) = sin(ax+b)/a
-                        let integral = ctx.add(Expr::Function("sin".to_string(), vec![arg]));
+                        let integral = ctx.call("sin", vec![arg]);
                         if is_a_one {
                             return Some(integral);
                         }

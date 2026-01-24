@@ -1786,7 +1786,7 @@ mod tests {
     fn test_infer_sqrt_implies_nonnegative() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
-        let sqrt_x = ctx.add(Expr::Function("sqrt".to_string(), vec![x]));
+        let sqrt_x = ctx.call("sqrt", vec![x]);
 
         let domain = infer_implicit_domain(&ctx, sqrt_x, ValueDomain::RealOnly);
 
@@ -1798,7 +1798,7 @@ mod tests {
     fn test_infer_ln_implies_positive() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
-        let ln_x = ctx.add(Expr::Function("ln".to_string(), vec![x]));
+        let ln_x = ctx.call("ln", vec![x]);
 
         let domain = infer_implicit_domain(&ctx, ln_x, ValueDomain::RealOnly);
 
@@ -1821,7 +1821,7 @@ mod tests {
     fn test_witness_survives_sqrt() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
-        let sqrt_x = ctx.add(Expr::Function("sqrt".to_string(), vec![x]));
+        let sqrt_x = ctx.call("sqrt", vec![x]);
         let y = ctx.var("y");
         let output = ctx.add(Expr::Add(sqrt_x, y)); // sqrt(x) + y
 
@@ -1841,7 +1841,7 @@ mod tests {
     fn test_complex_enabled_returns_empty() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
-        let sqrt_x = ctx.add(Expr::Function("sqrt".to_string(), vec![x]));
+        let sqrt_x = ctx.call("sqrt", vec![x]);
 
         let domain = infer_implicit_domain(&ctx, sqrt_x, ValueDomain::ComplexEnabled);
 
@@ -1853,7 +1853,7 @@ mod tests {
         // sqrt(x)^2 -> x should be detected as ExpandsAnalytic
         let mut ctx = Context::new();
         let x = ctx.var("x");
-        let sqrt_x = ctx.add(Expr::Function("sqrt".to_string(), vec![x]));
+        let sqrt_x = ctx.call("sqrt", vec![x]);
         let two = ctx.num(2);
         let sqrt_x_squared = ctx.add(Expr::Pow(sqrt_x, two));
 
@@ -1886,9 +1886,9 @@ mod tests {
         // This is a simplified version - we just test that sqrt in output means safe
         let mut ctx = Context::new();
         let x = ctx.var("x");
-        let sqrt_x = ctx.add(Expr::Function("sqrt".to_string(), vec![x]));
+        let sqrt_x = ctx.call("sqrt", vec![x]);
         let y = ctx.var("y");
-        let sqrt_y = ctx.add(Expr::Function("sqrt".to_string(), vec![y]));
+        let sqrt_y = ctx.call("sqrt", vec![y]);
 
         // Input: sqrt(x) - sqrt(y)
         let input = ctx.add(Expr::Sub(sqrt_x, sqrt_y));

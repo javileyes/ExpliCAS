@@ -88,7 +88,7 @@ define_rule!(
                             // n odd → (-1)^(n+1) = 1, so sin(x)
                             // n even → (-1)^(n+1) = -1, so -sin(x)
                             let new_trig =
-                                ctx.add(Expr::Function("sin".to_string(), vec![new_angle]));
+                                ctx.call("sin", vec![new_angle]);
                             if n_parity_odd {
                                 (new_trig, format!("sin({}π - x) = sin(x)", n_candidate))
                             } else {
@@ -101,7 +101,7 @@ define_rule!(
                             // cos(n·π - x) = (-1)^n · cos(x)
                             // n odd → -cos(x), n even → cos(x)
                             let new_trig =
-                                ctx.add(Expr::Function("cos".to_string(), vec![new_angle]));
+                                ctx.call("cos", vec![new_angle]);
                             if n_parity_odd {
                                 (
                                     ctx.add(Expr::Neg(new_trig)),
@@ -616,7 +616,7 @@ impl crate::rule::Rule for WeierstrassContractionRule {
                     if crate::ordering::compare_expr(ctx, tan_arg, full_angle)
                         == std::cmp::Ordering::Equal
                     {
-                        let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![full_angle]));
+                        let sin_x = ctx.call("sin", vec![full_angle]);
                         return Some(
                             Rewrite::new(sin_x).desc("2·tan(x/2)/(1 + tan²(x/2)) = sin(x)"),
                         );
@@ -656,7 +656,7 @@ impl WeierstrassContractionRule {
                 if crate::ordering::compare_expr(ctx, num_angle, den_angle)
                     == std::cmp::Ordering::Equal
                 {
-                    let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![num_angle]));
+                    let cos_x = ctx.call("cos", vec![num_angle]);
                     return Some(
                         Rewrite::new(cos_x).desc("(1 - tan²(x/2))/(1 + tan²(x/2)) = cos(x)"),
                     );
@@ -1473,7 +1473,7 @@ define_rule!(
                     if t_half.is_positive && !t_full.is_positive {
                         // cot(u/2) - cot(u) → 1/sin(u)
                         let one = ctx.num(1);
-                        let sin_u = ctx.add(Expr::Function("sin".to_string(), vec![t_full.arg]));
+                        let sin_u = ctx.call("sin", vec![t_full.arg]);
                         let result = ctx.add(Expr::Div(one, sin_u));
 
                         // Apply coefficient if present
@@ -1509,7 +1509,7 @@ define_rule!(
                     } else if !t_half.is_positive && t_full.is_positive {
                         // -cot(u/2) + cot(u) → -1/sin(u)
                         let one = ctx.num(1);
-                        let sin_u = ctx.add(Expr::Function("sin".to_string(), vec![t_full.arg]));
+                        let sin_u = ctx.call("sin", vec![t_full.arg]);
                         let result = ctx.add(Expr::Div(one, sin_u));
                         let neg_result = ctx.add(Expr::Neg(result));
 
@@ -1564,13 +1564,13 @@ define_rule!(TanDifferenceRule, "Tangent Difference", |ctx, expr| {
                 let b = *b;
 
                 // Build tan(a) - tan(b)
-                let tan_a = ctx.add(Expr::Function("tan".to_string(), vec![a]));
-                let tan_b = ctx.add(Expr::Function("tan".to_string(), vec![b]));
+                let tan_a = ctx.call("tan", vec![a]);
+                let tan_b = ctx.call("tan", vec![b]);
                 let numerator = ctx.add(Expr::Sub(tan_a, tan_b));
 
                 // Build 1 + tan(a)*tan(b)
-                let tan_a2 = ctx.add(Expr::Function("tan".to_string(), vec![a]));
-                let tan_b2 = ctx.add(Expr::Function("tan".to_string(), vec![b]));
+                let tan_a2 = ctx.call("tan", vec![a]);
+                let tan_b2 = ctx.call("tan", vec![b]);
                 let product = ctx.add(Expr::Mul(tan_a2, tan_b2));
                 let one = ctx.num(1);
                 let denominator = ctx.add(Expr::Add(one, product));
@@ -1637,7 +1637,7 @@ define_rule!(
         // If we found 1 and -tanh²(x), replace with 1/cosh²(x)
         if let (Some(one_i), Some(tanh_i), Some(arg)) = (one_idx, tanh2_idx, tanh_arg) {
             if is_negative_tanh2 {
-                let cosh_func = ctx.add(Expr::Function("cosh".to_string(), vec![arg]));
+                let cosh_func = ctx.call("cosh", vec![arg]);
                 let two = ctx.num(2);
                 let cosh_squared = ctx.add(Expr::Pow(cosh_func, two));
                 let one = ctx.num(1);

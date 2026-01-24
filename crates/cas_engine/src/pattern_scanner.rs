@@ -946,8 +946,8 @@ mod tests {
 
         // Build: sec²(x) - tan²(x)
         let x = ctx.var("x");
-        let sec_x = ctx.add(Expr::Function("sec".into(), vec![x]));
-        let tan_x = ctx.add(Expr::Function("tan".into(), vec![x]));
+        let sec_x = ctx.call("sec", vec![x]);
+        let tan_x = ctx.call("tan", vec![x]);
         let two = ctx.num(2);
         let sec_sq = ctx.add(Expr::Pow(sec_x, two));
         let tan_sq = ctx.add(Expr::Pow(tan_x, two));
@@ -967,8 +967,8 @@ mod tests {
 
         // Build: sec²(x) - tan²(x) - 1
         let x = ctx.var("x");
-        let sec_x = ctx.add(Expr::Function("sec".into(), vec![x]));
-        let tan_x = ctx.add(Expr::Function("tan".into(), vec![x]));
+        let sec_x = ctx.call("sec", vec![x]);
+        let tan_x = ctx.call("tan", vec![x]);
         let two = ctx.num(2);
         let sec_sq = ctx.add(Expr::Pow(sec_x, two));
         let tan_sq = ctx.add(Expr::Pow(tan_x, two));
@@ -990,8 +990,8 @@ mod tests {
 
         // Build: sin(x)^2 + cos(x)^2
         let x = ctx.var("x");
-        let sin_x = ctx.add(Expr::Function("sin".into(), vec![x]));
-        let cos_x = ctx.add(Expr::Function("cos".into(), vec![x]));
+        let sin_x = ctx.call("sin", vec![x]);
+        let cos_x = ctx.call("cos", vec![x]);
         let two = ctx.num(2);
         let sin_sq = ctx.add(Expr::Pow(sin_x, two));
         let cos_sq = ctx.add(Expr::Pow(cos_x, two));
@@ -1024,7 +1024,7 @@ mod tests {
         // sin arg: 2*x + 1  => Add(Mul(2, x), 1)
         let two_x = ctx.add(Expr::Mul(two, x));
         let sin_arg = ctx.add(Expr::Add(two_x, one));
-        let sin_func = ctx.add(Expr::Function("sin".into(), vec![sin_arg]));
+        let sin_func = ctx.call("sin", vec![sin_arg]);
         let sin_sq = ctx.add(Expr::Pow(sin_func, two));
 
         // cos arg: 1 + 2*x  => Add(1, Mul(2, x))
@@ -1032,7 +1032,7 @@ mod tests {
         let one_2 = ctx.num(1);
         let two_x_2 = ctx.add(Expr::Mul(two_2, x));
         let cos_arg = ctx.add(Expr::Add(one_2, two_x_2));
-        let cos_func = ctx.add(Expr::Function("cos".into(), vec![cos_arg]));
+        let cos_func = ctx.call("cos", vec![cos_arg]);
         let two_3 = ctx.num(2);
         let cos_sq = ctx.add(Expr::Pow(cos_func, two_3));
 
@@ -1058,8 +1058,8 @@ mod tests {
 
         // Build: arctan(tan(x))
         let x = ctx.var("x");
-        let tan_x = ctx.add(Expr::Function("tan".into(), vec![x]));
-        let arctan_tan_x = ctx.add(Expr::Function("arctan".into(), vec![tan_x]));
+        let tan_x = ctx.call("tan", vec![x]);
+        let arctan_tan_x = ctx.call("arctan", vec![tan_x]);
 
         scan_and_mark_patterns(&ctx, arctan_tan_x, &mut marks);
 
@@ -1077,8 +1077,8 @@ mod tests {
 
         // Build: arcsin(sin(x))
         let x = ctx.var("x");
-        let sin_x = ctx.add(Expr::Function("sin".into(), vec![x]));
-        let arcsin_sin_x = ctx.add(Expr::Function("arcsin".into(), vec![sin_x]));
+        let sin_x = ctx.call("sin", vec![x]);
+        let arcsin_sin_x = ctx.call("arcsin", vec![sin_x]);
 
         scan_and_mark_patterns(&ctx, arcsin_sin_x, &mut marks);
 

@@ -464,7 +464,7 @@ impl crate::rule::Rule for RootPowCancelRule {
 
                 if is_even {
                     // Even root: (x^(2k))^(1/(2k)) = |x|
-                    let abs_base = ctx.add(Expr::Function("abs".to_string(), vec![inner_base]));
+                    let abs_base = ctx.call("abs", vec![inner_base]);
                     return Some(
                         crate::rule::Rewrite::new(abs_base).desc("(x^n)^(1/n) = |x| for even n"),
                     );
@@ -569,7 +569,7 @@ define_rule!(
                 // new_exp = inner_exp * outer_exp = 2k * 1/2 = k.
                 let prod_exp = mul_exp(ctx, inner_exp, outer_exp);
                 // We need to wrap base in abs.
-                let abs_base = ctx.add(Expr::Function("abs".to_string(), vec![inner_base]));
+                let abs_base = ctx.call("abs", vec![inner_base]);
                 let new_expr = ctx.add(Expr::Pow(abs_base, prod_exp));
                 return Some(Rewrite::new(new_expr).desc("Power of power with even root: (x^2k)^(1/2) -> |x|^k"));
             }

@@ -9,9 +9,9 @@ use crate::error::CasError;
 /// Create a residual solve expression: solve(__eq__(lhs, rhs), var)
 /// Used when solver can't justify a step but wants graceful degradation.
 fn mk_residual_solve(ctx: &mut Context, lhs: ExprId, rhs: ExprId, var: &str) -> ExprId {
-    let eq_expr = ctx.add(Expr::Function("__eq__".to_string(), vec![lhs, rhs]));
+    let eq_expr = ctx.call("__eq__", vec![lhs, rhs]);
     let var_expr = ctx.var(var);
-    ctx.add(Expr::Function("solve".to_string(), vec![eq_expr, var_expr]))
+    ctx.call("solve", vec![eq_expr, var_expr])
 }
 
 pub fn isolate(
@@ -824,7 +824,7 @@ pub fn isolate(
                     // Construct |B|
                     let abs_b = simplifier
                         .context
-                        .add(Expr::Function("abs".to_string(), vec![b]));
+                        .call("abs", vec![b]);
 
                     let new_eq = Equation {
                         lhs: abs_b,
@@ -1533,7 +1533,7 @@ pub fn isolate(
                         "exp" => {
                             let new_rhs = simplifier
                                 .context
-                                .add(Expr::Function("ln".to_string(), vec![rhs]));
+                                .call("ln", vec![rhs]);
                             let new_eq = Equation {
                                 lhs: arg,
                                 rhs: new_rhs,
@@ -1573,7 +1573,7 @@ pub fn isolate(
                             // sin(x) = y -> x = arcsin(y)
                             let new_rhs = simplifier
                                 .context
-                                .add(Expr::Function("arcsin".to_string(), vec![rhs]));
+                                .call("arcsin", vec![rhs]);
                             let new_eq = Equation {
                                 lhs: arg,
                                 rhs: new_rhs,
@@ -1625,7 +1625,7 @@ pub fn isolate(
                             // tan(x) = y -> x = arctan(y)
                             let new_rhs = simplifier
                                 .context
-                                .add(Expr::Function("arctan".to_string(), vec![rhs]));
+                                .call("arctan", vec![rhs]);
                             let new_eq = Equation {
                                 lhs: arg,
                                 rhs: new_rhs,

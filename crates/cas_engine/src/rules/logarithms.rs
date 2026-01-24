@@ -16,7 +16,7 @@ fn make_log(ctx: &mut Context, base: ExprId, arg: ExprId) -> ExprId {
         return ctx.add(Expr::Function("log".to_string(), vec![arg]));
     }
     if let Expr::Constant(cas_ast::Constant::E) = ctx.get(base) {
-        ctx.add(Expr::Function("ln".to_string(), vec![arg]))
+        ctx.call("ln", vec![arg])
     } else {
         ctx.add(Expr::Function("log".to_string(), vec![base, arg]))
     }
@@ -297,7 +297,7 @@ define_rule!(LnEProductRule, "Factor e from ln Product", |ctx, expr| {
 
             if let Some(x) = other {
                 let one = ctx.num(1);
-                let ln_x = ctx.add(Expr::Function("ln".to_string(), vec![x]));
+                let ln_x = ctx.call("ln", vec![x]);
                 let result = ctx.add(Expr::Add(one, ln_x));
                 return Some(Rewrite::new(result).desc("ln(e*x) = 1 + ln(x)"));
             }
@@ -327,14 +327,14 @@ define_rule!(LnEDivRule, "Factor e from ln Quotient", |ctx, expr| {
 
             if den_is_e && !num_is_e {
                 // ln(x/e) → ln(x) - 1
-                let ln_x = ctx.add(Expr::Function("ln".to_string(), vec![num]));
+                let ln_x = ctx.call("ln", vec![num]);
                 let one = ctx.num(1);
                 let result = ctx.add(Expr::Sub(ln_x, one));
                 return Some(Rewrite::new(result).desc("ln(x/e) = ln(x) - 1"));
             } else if num_is_e && !den_is_e {
                 // ln(e/x) → 1 - ln(x)
                 let one = ctx.num(1);
-                let ln_x = ctx.add(Expr::Function("ln".to_string(), vec![den]));
+                let ln_x = ctx.call("ln", vec![den]);
                 let result = ctx.add(Expr::Sub(one, ln_x));
                 return Some(Rewrite::new(result).desc("ln(e/x) = 1 - ln(x)"));
             }
@@ -705,7 +705,7 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
         }
 
         // Even exponent: ln(x^(2k)) = 2k·ln(|x|)
-        let abs_base = ctx.add(Expr::Function("abs".to_string(), vec![p_base]));
+        let abs_base = ctx.call("abs", vec![p_base]);
         let log_abs = make_log(ctx, base, abs_base);
         let mid_expr = smart_mul(ctx, p_exp, log_abs);
 
@@ -944,7 +944,7 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
         let mk_log = |ctx: &mut Context| -> ExprId {
             match base_opt {
                 Some(base) => ctx.add(Expr::Function("log".to_string(), vec![base, inner])),
-                None => ctx.add(Expr::Function("ln".to_string(), vec![inner])),
+                None => ctx.call("ln", vec![inner]),
             }
         };
 
@@ -1176,7 +1176,7 @@ impl crate::rule::Rule for LogContractionRule {
                     // If base is sentinel (ln case), create ln(), otherwise log()
                     let sentinel = cas_ast::ExprId::from_raw(u32::MAX);
                     let new_expr = if base_l == sentinel {
-                        ctx.add(Expr::Function("ln".to_string(), vec![product]))
+                        ctx.call("ln", vec![product])
                     } else {
                         make_log(ctx, base_l, product)
                     };
@@ -1198,7 +1198,7 @@ impl crate::rule::Rule for LogContractionRule {
                     // If base is sentinel (ln case), create ln(), otherwise log()
                     let sentinel = cas_ast::ExprId::from_raw(u32::MAX);
                     let new_expr = if base_l == sentinel {
-                        ctx.add(Expr::Function("ln".to_string(), vec![quotient]))
+                        ctx.call("ln", vec![quotient])
                     } else {
                         make_log(ctx, base_l, quotient)
                     };

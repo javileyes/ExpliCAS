@@ -2005,7 +2005,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
                     let abs_expr = self
                         .context
-                        .add(Expr::Function("abs".to_string(), vec![*inner_base]));
+                        .call("abs", vec![*inner_base]);
                     self.record_step(
                         "sqrt(u^2) = |u|",
                         "Simplify Square Root of Square",
@@ -2028,7 +2028,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
             {
                 let abs_expr = self
                     .context
-                    .add(Expr::Function("abs".to_string(), vec![*left]));
+                    .call("abs", vec![*left]);
                 self.record_step(
                     "sqrt(u * u) = |u|",
                     "Simplify Square Root of Product",

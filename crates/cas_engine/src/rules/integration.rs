@@ -77,8 +77,8 @@ impl Rule for ProductToSumRule {
             // Build sin(A+B) + sin(A-B)
             let a_plus_b = ctx.add(Expr::Add(a, b));
             let a_minus_b = ctx.add(Expr::Sub(a, b));
-            let sin_sum = ctx.add(Expr::Function("sin".to_string(), vec![a_plus_b]));
-            let sin_diff = ctx.add(Expr::Function("sin".to_string(), vec![a_minus_b]));
+            let sin_sum = ctx.call("sin", vec![a_plus_b]);
+            let sin_diff = ctx.call("sin", vec![a_minus_b]);
             let result = ctx.add(Expr::Add(sin_sum, sin_diff));
 
             return Some(
@@ -205,8 +205,8 @@ impl Rule for CosProductTelescopingRule {
         };
 
         // Build sin(final_arg) and sin(base_arg)
-        let sin_num = ctx.add(Expr::Function("sin".to_string(), vec![final_arg]));
-        let sin_den = ctx.add(Expr::Function("sin".to_string(), vec![base_arg]));
+        let sin_num = ctx.call("sin", vec![final_arg]);
+        let sin_den = ctx.call("sin", vec![base_arg]);
 
         // Build 2^n * sin(base_arg)
         let power_of_2_num = ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(

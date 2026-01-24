@@ -83,7 +83,7 @@ impl crate::rule::Rule for TanTripleProductRule {
                 // Build tan(3u)
                 let three = ctx.num(3);
                 let three_u = smart_mul(ctx, three, u);
-                let tan_3u = ctx.add(Expr::Function("tan".to_string(), vec![three_u]));
+                let tan_3u = ctx.call("tan", vec![three_u]);
 
                 // If there are other factors beyond the 3 tans, multiply them
                 let other_factors: Vec<ExprId> = factors
@@ -94,10 +94,10 @@ impl crate::rule::Rule for TanTripleProductRule {
 
                 let result = if other_factors.is_empty() {
                     // Wrap in __hold to prevent expansion
-                    ctx.add(Expr::Function("__hold".to_string(), vec![tan_3u]))
+                    ctx.call("__hold", vec![tan_3u])
                 } else {
                     // Multiply tan(3u) with other factors
-                    let held_tan = ctx.add(Expr::Function("__hold".to_string(), vec![tan_3u]));
+                    let held_tan = ctx.call("__hold", vec![tan_3u]);
                     let mut product = held_tan;
                     for &f in &other_factors {
                         product = smart_mul(ctx, product, f);
@@ -112,9 +112,9 @@ impl crate::rule::Rule for TanTripleProductRule {
                 let pi_over_3 = ctx.add(Expr::Div(pi, three));
                 let u_plus_pi3 = ctx.add(Expr::Add(u, pi_over_3));
                 let pi3_minus_u = ctx.add(Expr::Sub(pi_over_3, u));
-                let cos_u = ctx.add(Expr::Function("cos".to_string(), vec![u]));
-                let cos_u_plus = ctx.add(Expr::Function("cos".to_string(), vec![u_plus_pi3]));
-                let cos_pi3_minus = ctx.add(Expr::Function("cos".to_string(), vec![pi3_minus_u]));
+                let cos_u = ctx.call("cos", vec![u]);
+                let cos_u_plus = ctx.call("cos", vec![u_plus_pi3]);
+                let cos_pi3_minus = ctx.call("cos", vec![pi3_minus_u]);
 
                 // Format u for display in substeps
                 let u_str = cas_ast::DisplayExpr {
@@ -250,7 +250,7 @@ fn is_part_of_tan_triple_product(
     parent_ctx: &crate::parent_context::ParentContext,
 ) -> bool {
     // Verify this is actually a tan() function
-    if !matches!(ctx.get(tan_expr), Expr::Function(name, args) if name == "tan" && args.len() == 1)
+    if !matches!(ctx.get(tan_expr), Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "tan" && args.len() == 1)
     {
         return false;
     }
@@ -289,8 +289,8 @@ fn is_part_of_tan_triple_product(
     // Collect tan() arguments
     let mut tan_args: Vec<ExprId> = Vec::new();
     for &factor in &factors {
-        if let Expr::Function(name, args) = ctx.get(factor) {
-            if name == "tan" && args.len() == 1 {
+        if let Expr::Function(fn_id, args) = ctx.get(factor) {
+            if ctx.sym_name(*fn_id) == "tan" && args.len() == 1 {
                 tan_args.push(args[0]);
             }
         }
@@ -441,9 +441,10 @@ impl crate::rule::Rule for TanToSinCosRule {
         // GUARD: Also check immediate parent for inverse trig composition.
         // This is a fallback in case pattern_marks wasn't pre-scanned.
         if let Some(parent_id) = parent_ctx.immediate_parent() {
-            if let Expr::Function(name, _) = ctx.get(parent_id) {
+            if let Expr::Function(fn_id, _) = ctx.get(parent_id) {
+                let name = ctx.sym_name(*fn_id);
                 if matches!(
-                    name.as_str(),
+                    name,
                     "arctan" | "arcsin" | "arccos" | "atan" | "asin" | "acos"
                 ) {
                     return None; // Preserve arctan(tan(x)) pattern
@@ -464,7 +465,8 @@ impl crate::rule::Rule for TanToSinCosRule {
         // triple-angle formulas: tan(3x) → (3sin(x) - 4sin³(x))/(4cos³(x) - 3cos(x))
         // This is almost never useful for simplification.
         let expr_data = ctx.get(expr).clone();
-        if let Expr::Function(name, args) = &expr_data {
+        if let Expr::Function(fn_id, args) = &expr_data {
+            let name = ctx.sym_name(*fn_id);
             if name == "tan" && args.len() == 1 {
                 // GUARD: Don't expand tan(n*x) - causes complexity explosion
                 if is_multiple_angle(ctx, args[0]) {
@@ -479,11 +481,12 @@ impl crate::rule::Rule for TanToSinCosRule {
         }
 
         // Original conversion logic
-        if let Expr::Function(name, args) = expr_data {
+        if let Expr::Function(fn_id, args) = expr_data {
+            let name = ctx.sym_name(fn_id);
             if name == "tan" && args.len() == 1 {
                 // tan(x) -> sin(x) / cos(x)
-                let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![args[0]]));
-                let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![args[0]]));
+                let sin_x = ctx.call("sin", vec![args[0]]);
+                let cos_x = ctx.call("cos", vec![args[0]]);
                 let new_expr = ctx.add(Expr::Div(sin_x, cos_x));
                 return Some(crate::rule::Rewrite::new(new_expr).desc("tan(x) -> sin(x)/cos(x)"));
             }
@@ -535,9 +538,11 @@ impl crate::rule::Rule for TrigQuotientRule {
             let den_data = ctx.get(den).clone();
 
             // Pattern: sin(x)/cos(x) → tan(x)
-            if let (Expr::Function(num_name, num_args), Expr::Function(den_name, den_args)) =
+            if let (Expr::Function(num_fn_id, num_args), Expr::Function(den_fn_id, den_args)) =
                 (&num_data, &den_data)
             {
+                let num_name = ctx.sym_name(*num_fn_id);
+                let den_name = ctx.sym_name(*den_fn_id);
                 if num_name == "sin"
                     && den_name == "cos"
                     && num_args.len() == 1
@@ -545,7 +550,7 @@ impl crate::rule::Rule for TrigQuotientRule {
                     && crate::ordering::compare_expr(ctx, num_args[0], den_args[0])
                         == std::cmp::Ordering::Equal
                 {
-                    let tan_x = ctx.add(Expr::Function("tan".to_string(), vec![num_args[0]]));
+                    let tan_x = ctx.call("tan", vec![num_args[0]]);
                     return Some(crate::rule::Rewrite::new(tan_x).desc("sin(x)/cos(x) → tan(x)"));
                 }
 
@@ -557,24 +562,25 @@ impl crate::rule::Rule for TrigQuotientRule {
                     && crate::ordering::compare_expr(ctx, num_args[0], den_args[0])
                         == std::cmp::Ordering::Equal
                 {
-                    let cot_x = ctx.add(Expr::Function("cot".to_string(), vec![num_args[0]]));
+                    let cot_x = ctx.call("cot", vec![num_args[0]]);
                     return Some(crate::rule::Rewrite::new(cot_x).desc("cos(x)/sin(x) → cot(x)"));
                 }
             }
 
             // Pattern: 1/sin(x) → csc(x)
             if crate::helpers::is_one(ctx, num) {
-                if let Expr::Function(den_name, den_args) = &den_data {
+                if let Expr::Function(den_fn_id, den_args) = &den_data {
+                    let den_name = ctx.sym_name(*den_fn_id);
                     if den_name == "sin" && den_args.len() == 1 {
-                        let csc_x = ctx.add(Expr::Function("csc".to_string(), vec![den_args[0]]));
+                        let csc_x = ctx.call("csc", vec![den_args[0]]);
                         return Some(crate::rule::Rewrite::new(csc_x).desc("1/sin(x) → csc(x)"));
                     }
                     if den_name == "cos" && den_args.len() == 1 {
-                        let sec_x = ctx.add(Expr::Function("sec".to_string(), vec![den_args[0]]));
+                        let sec_x = ctx.call("sec", vec![den_args[0]]);
                         return Some(crate::rule::Rewrite::new(sec_x).desc("1/cos(x) → sec(x)"));
                     }
                     if den_name == "tan" && den_args.len() == 1 {
-                        let cot_x = ctx.add(Expr::Function("cot".to_string(), vec![den_args[0]]));
+                        let cot_x = ctx.call("cot", vec![den_args[0]]);
                         return Some(crate::rule::Rewrite::new(cot_x).desc("1/tan(x) → cot(x)"));
                     }
                 }

@@ -131,20 +131,20 @@ define_rule!(
                         // sinh(-x) = -sinh(x) (odd function)
                         "sinh" => {
                             let sinh_inner =
-                                ctx.add(Expr::Function("sinh".to_string(), vec![*inner]));
+                                ctx.call("sinh", vec![*inner]);
                             let new_expr = ctx.add(Expr::Neg(sinh_inner));
                             return Some(Rewrite::new(new_expr).desc("sinh(-x) = -sinh(x)"));
                         }
                         // cosh(-x) = cosh(x) (even function)
                         "cosh" => {
                             let new_expr =
-                                ctx.add(Expr::Function("cosh".to_string(), vec![*inner]));
+                                ctx.call("cosh", vec![*inner]);
                             return Some(Rewrite::new(new_expr).desc("cosh(-x) = cosh(x)"));
                         }
                         // tanh(-x) = -tanh(x) (odd function)
                         "tanh" => {
                             let tanh_inner =
-                                ctx.add(Expr::Function("tanh".to_string(), vec![*inner]));
+                                ctx.call("tanh", vec![*inner]);
                             let new_expr = ctx.add(Expr::Neg(tanh_inner));
                             return Some(Rewrite::new(new_expr).desc("tanh(-x) = -tanh(x)"));
                         }
@@ -261,7 +261,7 @@ define_rule!(
                                 let two = ctx.num(2);
                                 let two_x = ctx.add(Expr::Mul(two, x));
                                 let cosh_2x =
-                                    ctx.add(Expr::Function("cosh".to_string(), vec![two_x]));
+                                    ctx.call("cosh", vec![two_x]);
 
                                 return Some(
                                     Rewrite::new(cosh_2x).desc("cosh²(x) + sinh²(x) = cosh(2x)"),
@@ -302,8 +302,8 @@ define_rule!(
                     return None;
                 }
 
-                let sinh_x = ctx.add(Expr::Function("sinh".to_string(), vec![x]));
-                let cosh_x = ctx.add(Expr::Function("cosh".to_string(), vec![x]));
+                let sinh_x = ctx.call("sinh", vec![x]);
+                let cosh_x = ctx.call("cosh", vec![x]);
                 let result = ctx.add(Expr::Div(sinh_x, cosh_x));
                 return Some(Rewrite::new(result).desc("tanh(x) = sinh(x)/cosh(x)"));
             }
@@ -325,8 +325,8 @@ define_rule!(
                 if let Some(inner_var) = crate::helpers::extract_double_angle_arg(ctx, args[0]) {
                     // sinh(2x) → 2·sinh(x)·cosh(x)
                     let two = ctx.num(2);
-                    let sinh_x = ctx.add(Expr::Function("sinh".to_string(), vec![inner_var]));
-                    let cosh_x = ctx.add(Expr::Function("cosh".to_string(), vec![inner_var]));
+                    let sinh_x = ctx.call("sinh", vec![inner_var]);
+                    let cosh_x = ctx.call("cosh", vec![inner_var]);
                     let sinh_cosh = crate::build::mul2_raw(ctx, sinh_x, cosh_x);
                     let result = crate::build::mul2_raw(ctx, two, sinh_cosh);
                     return Some(Rewrite::new(result).desc("sinh(2x) = 2·sinh(x)·cosh(x)"));
@@ -355,7 +355,7 @@ define_rule!(
                                 == std::cmp::Ordering::Equal
                             {
                                 let x = num_args[0];
-                                let tanh_x = ctx.add(Expr::Function("tanh".to_string(), vec![x]));
+                                let tanh_x = ctx.call("tanh", vec![x]);
                                 return Some(
                                     Rewrite::new(tanh_x).desc("sinh(x)/cosh(x) = tanh(x)"),
                                 );
@@ -538,15 +538,15 @@ define_rule!(
                 if let Some((arg, is_cosh, positive_first)) = extract_exp_pair(ctx, *num) {
                     if is_cosh {
                         // (e^x + e^(-x))/2 = cosh(x)
-                        let cosh = ctx.add(Expr::Function("cosh".to_string(), vec![arg]));
+                        let cosh = ctx.call("cosh", vec![arg]);
                         return Some(Rewrite::new(cosh).desc("(e^x + e^(-x))/2 = cosh(x)"));
                     } else if positive_first {
                         // (e^x - e^(-x))/2 = sinh(x)
-                        let sinh = ctx.add(Expr::Function("sinh".to_string(), vec![arg]));
+                        let sinh = ctx.call("sinh", vec![arg]);
                         return Some(Rewrite::new(sinh).desc("(e^x - e^(-x))/2 = sinh(x)"));
                     } else {
                         // (e^(-x) - e^x)/2 = -sinh(x)
-                        let sinh = ctx.add(Expr::Function("sinh".to_string(), vec![arg]));
+                        let sinh = ctx.call("sinh", vec![arg]);
                         let neg_sinh = ctx.add(Expr::Neg(sinh));
                         return Some(Rewrite::new(neg_sinh).desc("(e^(-x) - e^x)/2 = -sinh(x)"));
                     }
@@ -567,13 +567,13 @@ define_rule!(
 
             if let Some((arg, is_cosh, positive_first)) = extract_exp_pair(ctx, sum_id) {
                 if is_cosh {
-                    let cosh = ctx.add(Expr::Function("cosh".to_string(), vec![arg]));
+                    let cosh = ctx.call("cosh", vec![arg]);
                     return Some(Rewrite::new(cosh).desc("(e^x + e^(-x))/2 = cosh(x)"));
                 } else if positive_first {
-                    let sinh = ctx.add(Expr::Function("sinh".to_string(), vec![arg]));
+                    let sinh = ctx.call("sinh", vec![arg]);
                     return Some(Rewrite::new(sinh).desc("(e^x - e^(-x))/2 = sinh(x)"));
                 } else {
-                    let sinh = ctx.add(Expr::Function("sinh".to_string(), vec![arg]));
+                    let sinh = ctx.call("sinh", vec![arg]);
                     let neg_sinh = ctx.add(Expr::Neg(sinh));
                     return Some(Rewrite::new(neg_sinh).desc("(e^(-x) - e^x)/2 = -sinh(x)"));
                 }
@@ -591,7 +591,7 @@ define_rule!(
                     if crate::ordering::compare_expr(ctx, num_arg, den_arg)
                         == std::cmp::Ordering::Equal
                     {
-                        let tanh_x = ctx.add(Expr::Function("tanh".to_string(), vec![num_arg]));
+                        let tanh_x = ctx.call("tanh", vec![num_arg]);
                         if num_positive_first {
                             return Some(
                                 Rewrite::new(tanh_x)
@@ -789,8 +789,8 @@ mod tests {
         // cosh(x)^2 + sinh(x)^2 -> cosh(2*x)
         let mut ctx = Context::new();
         let x = ctx.var("x");
-        let cosh_x = ctx.add(Expr::Function("cosh".to_string(), vec![x]));
-        let sinh_x = ctx.add(Expr::Function("sinh".to_string(), vec![x]));
+        let cosh_x = ctx.call("cosh", vec![x]);
+        let sinh_x = ctx.call("sinh", vec![x]);
         let two = ctx.num(2);
         let two2 = ctx.num(2);
         let cosh_sq = ctx.add(Expr::Pow(cosh_x, two));

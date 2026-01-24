@@ -227,26 +227,26 @@ fn convert_trig_to_sincos(ctx: &mut Context, expr: ExprId) -> ExprId {
             match name.as_str() {
                 "tan" => {
                     // tan(x) → sin(x)/cos(x)
-                    let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![converted_arg]));
-                    let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![converted_arg]));
+                    let sin_x = ctx.call("sin", vec![converted_arg]);
+                    let cos_x = ctx.call("cos", vec![converted_arg]);
                     ctx.add(Expr::Div(sin_x, cos_x))
                 }
                 "cot" => {
                     // cot(x) → cos(x)/sin(x)
-                    let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![converted_arg]));
-                    let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![converted_arg]));
+                    let sin_x = ctx.call("sin", vec![converted_arg]);
+                    let cos_x = ctx.call("cos", vec![converted_arg]);
                     ctx.add(Expr::Div(cos_x, sin_x))
                 }
                 "sec" => {
                     // sec(x) → 1/cos(x)
                     let one = ctx.num(1);
-                    let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![converted_arg]));
+                    let cos_x = ctx.call("cos", vec![converted_arg]);
                     ctx.add(Expr::Div(one, cos_x))
                 }
                 "csc" => {
                     // csc(x) → 1/sin(x)
                     let one = ctx.num(1);
-                    let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![converted_arg]));
+                    let sin_x = ctx.call("sin", vec![converted_arg]);
                     ctx.add(Expr::Div(one, sin_x))
                 }
                 _ => {
@@ -382,14 +382,14 @@ define_rule!(
             if is_one(ctx, l_val) {
                 if let Some(tan_arg) = is_function_squared(ctx, r_val, "tan") {
                     let two = ctx.num(2);
-                    let sec_expr = ctx.add(Expr::Function("sec".to_string(), vec![tan_arg]));
+                    let sec_expr = ctx.call("sec", vec![tan_arg]);
                     let sec_squared = ctx.add(Expr::Pow(sec_expr, two));
                     return Some(Rewrite::new(sec_squared).desc("1 + tan²(x) = sec²(x)"));
                 }
             } else if is_one(ctx, r_val) {
                 if let Some(tan_arg) = is_function_squared(ctx, l_val, "tan") {
                     let two = ctx.num(2);
-                    let sec_expr = ctx.add(Expr::Function("sec".to_string(), vec![tan_arg]));
+                    let sec_expr = ctx.call("sec", vec![tan_arg]);
                     let sec_squared = ctx.add(Expr::Pow(sec_expr, two));
                     return Some(Rewrite::new(sec_squared).desc("1 + tan²(x) = sec²(x)"));
                 }
@@ -412,14 +412,14 @@ define_rule!(
             if is_one(ctx, l_val) {
                 if let Some(cot_arg) = is_function_squared(ctx, r_val, "cot") {
                     let two = ctx.num(2);
-                    let csc_expr = ctx.add(Expr::Function("csc".to_string(), vec![cot_arg]));
+                    let csc_expr = ctx.call("csc", vec![cot_arg]);
                     let csc_squared = ctx.add(Expr::Pow(csc_expr, two));
                     return Some(Rewrite::new(csc_squared).desc("1 + cot²(x) = csc²(x)"));
                 }
             } else if is_one(ctx, r_val) {
                 if let Some(cot_arg) = is_function_squared(ctx, l_val, "cot") {
                     let two = ctx.num(2);
-                    let csc_expr = ctx.add(Expr::Function("csc".to_string(), vec![cot_arg]));
+                    let csc_expr = ctx.call("csc", vec![cot_arg]);
                     let csc_squared = ctx.add(Expr::Pow(csc_expr, two));
                     return Some(Rewrite::new(csc_squared).desc("1 + cot²(x) = csc²(x)"));
                 }

@@ -627,7 +627,7 @@ impl crate::rule::Rule for AtanAddRationalRule {
                             // Build the result expression: arctan((a+b)/(1-ab))
                             let result_num = ctx.add(Expr::Number(result_val));
                             let result_atan =
-                                ctx.add(Expr::Function("arctan".to_string(), vec![result_num]));
+                                ctx.call("arctan", vec![result_num]);
 
                             // Build remaining terms (if any)
                             let remaining = build_sum_without(ctx, &terms, i, j);
@@ -700,14 +700,14 @@ define_rule!(
                         "arcsin" => {
                             // arcsin(-x) = -arcsin(x)
                             let arcsin_inner =
-                                ctx.add(Expr::Function("arcsin".to_string(), vec![inner]));
+                                ctx.call("arcsin", vec![inner]);
                             let new_expr = ctx.add(Expr::Neg(arcsin_inner));
                             return Some(Rewrite::new(new_expr).desc("arcsin(-x) = -arcsin(x)"));
                         }
                         "arctan" => {
                             // arctan(-x) = -arctan(x)
                             let arctan_inner =
-                                ctx.add(Expr::Function("arctan".to_string(), vec![inner]));
+                                ctx.call("arctan", vec![inner]);
                             let new_expr = ctx.add(Expr::Neg(arctan_inner));
                             return Some(Rewrite::new(new_expr).desc("arctan(-x) = -arctan(x)"));
                         }
@@ -770,7 +770,7 @@ define_rule!(
                 let reciprocal = ctx.add(Expr::Div(one, arg));
 
                 // Build arcsin(1/arg)
-                let result = ctx.add(Expr::Function("arcsin".to_string(), vec![reciprocal]));
+                let result = ctx.call("arcsin", vec![reciprocal]);
 
                 return Some(Rewrite::new(result).desc("arccsc(x) → arcsin(1/x)"));
             }
@@ -795,7 +795,7 @@ define_rule!(
                 let reciprocal = ctx.add(Expr::Div(one, arg));
 
                 // Build arctan(1/arg)
-                let result = ctx.add(Expr::Function("arctan".to_string(), vec![reciprocal]));
+                let result = ctx.call("arctan", vec![reciprocal]);
 
                 return Some(Rewrite::new(result).desc("arccot(x) → arctan(1/x)"));
             }
