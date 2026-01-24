@@ -3,9 +3,22 @@
 //! Provides truncated expression formatting and AST statistics
 //! to avoid flooding output with huge expressions.
 
-use cas_ast::{Context, DisplayExpr, Expr, ExprId};
+use cas_ast::{Case, Context, DisplayExpr, Expr, ExprId, SolutionSet};
 
 use crate::json_types::ExprStatsJson;
+
+/// Check if a conditional case is an "otherwise" that only contains Residual.
+///
+/// These cases don't add useful information to the user (they just say
+/// "otherwise, solve this equation" which is redundant) and should be skipped
+/// in both REPL and JSON output for cleaner presentation.
+///
+/// This is the single source of truth for this logic - used by:
+/// - `commands/eval_json.rs` (format_solution_set, solution_set_to_latex)
+/// - `repl/free_fns.rs` (display_solution_set)
+pub fn is_pure_residual_otherwise(case: &Case) -> bool {
+    case.when.is_empty() && matches!(&case.then.solutions, SolutionSet::Residual(_))
+}
 
 /// Format an expression with a character limit.
 ///

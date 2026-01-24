@@ -90,9 +90,7 @@ pub(super) fn display_solution_set(ctx: &cas_ast::Context, set: &cas_ast::Soluti
                 .iter()
                 .filter_map(|case| {
                     // Skip "otherwise" cases that only contain Residual
-                    if case.when.is_otherwise()
-                        && matches!(&case.then.solutions, cas_ast::SolutionSet::Residual(_))
-                    {
+                    if crate::format::is_pure_residual_otherwise(case) {
                         return None;
                     }
                     let sol_str = display_solution_set(ctx, &case.then.solutions);

@@ -1000,8 +1000,7 @@ fn format_solution_set(ctx: &cas_ast::Context, solution_set: &cas_ast::SolutionS
             let mut parts = Vec::new();
             for case in cases {
                 // Skip "otherwise" cases that only contain Residual - they don't add useful info
-                if case.when.is_empty() && matches!(&case.then.solutions, SolutionSet::Residual(_))
-                {
+                if crate::format::is_pure_residual_otherwise(case) {
                     continue;
                 }
                 let cond_str = case.when.display_with_context(ctx);
@@ -1098,8 +1097,7 @@ fn solution_set_to_latex(ctx: &cas_ast::Context, solution_set: &cas_ast::Solutio
             let mut latex_parts = Vec::new();
             for case in cases {
                 // Skip "otherwise" cases that only contain Residual - they don't add useful info
-                if case.when.is_empty() && matches!(&case.then.solutions, SolutionSet::Residual(_))
-                {
+                if crate::format::is_pure_residual_otherwise(case) {
                     continue;
                 }
                 let cond_latex = case.when.latex_display_with_context(ctx);
