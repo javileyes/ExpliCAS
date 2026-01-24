@@ -747,6 +747,34 @@ fn parse_equation(input: &str) -> IResult<&str, (ParseNode, RelOp, ParseNode)> {
 
 use crate::error::ParseError;
 
+/// Convert a nom error to ParseError with span information.
+///
+/// Extracts the position from the remaining input slice in the nom error.
+fn nom_error_to_parse_error(original: &str, err: nom::Err<nom::error::Error<&str>>) -> ParseError {
+    match err {
+        nom::Err::Error(e) | nom::Err::Failure(e) => {
+            // e.input is the remaining slice where the error occurred
+            // Calculate offset as: original length - remaining length
+            let remaining = e.input;
+            let offset = original.len().saturating_sub(remaining.len());
+            let end = (offset + 1).min(original.len());
+
+            // Build a descriptive message from the error kind
+            let message = match e.code {
+                nom::error::ErrorKind::Tag => "unexpected token",
+                nom::error::ErrorKind::Digit => "expected digit",
+                nom::error::ErrorKind::Alpha => "expected letter",
+                nom::error::ErrorKind::Verify => "validation failed",
+                nom::error::ErrorKind::Eof => "unexpected end of input",
+                _ => "parse error",
+            };
+
+            ParseError::syntax_at(message, cas_ast::Span::new(offset, end))
+        }
+        nom::Err::Incomplete(_) => ParseError::syntax("incomplete input"),
+    }
+}
+
 /// Parse an expression string into an ExprId.
 ///
 /// # Example
@@ -771,11 +799,20 @@ use crate::error::ParseError;
 /// Returns `ParseError` if parsing fails.
 pub fn parse(input: &str, ctx: &mut Context) -> Result<ExprId, ParseError> {
     let (remaining, expr_node) =
-        parse_expr(input).map_err(|e| ParseError::from_nom_error(format!("{}", e)))?;
+        parse_expr(input).map_err(|e| nom_error_to_parse_error(input, e))?;
 
     let remaining = remaining.trim();
     if !remaining.is_empty() {
-        return Err(ParseError::unconsumed(remaining));
+        // Span points to start of unconsumed input
+        let start = input.len() - remaining.len();
+        let end = (start + 1).min(input.len());
+        return Err(ParseError::syntax_at(
+            format!(
+                "unexpected input: {}",
+                &remaining[..remaining.len().min(20)]
+            ),
+            cas_ast::Span::new(start, end),
+        ));
     }
 
     expr_node.lower(ctx)
@@ -798,13 +835,23 @@ pub fn parse_statement(input: &str, ctx: &mut Context) -> Result<Statement, Pars
     // Fallback to expression
     match parse_expr(input) {
         Ok((remaining, expr_node)) => {
-            if remaining.trim().is_empty() {
+            let remaining = remaining.trim();
+            if remaining.is_empty() {
                 Ok(Statement::Expression(expr_node.lower(ctx)?))
             } else {
-                Err(ParseError::unconsumed(remaining))
+                // Span points to start of unconsumed input
+                let start = input.len() - remaining.len();
+                let end = (start + 1).min(input.len());
+                Err(ParseError::syntax_at(
+                    format!(
+                        "unexpected input: {}",
+                        &remaining[..remaining.len().min(20)]
+                    ),
+                    cas_ast::Span::new(start, end),
+                ))
             }
         }
-        Err(e) => Err(ParseError::from_nom_error(format!("{}", e))),
+        Err(e) => Err(nom_error_to_parse_error(input, e)),
     }
 }
 

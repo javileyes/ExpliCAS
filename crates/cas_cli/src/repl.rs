@@ -474,6 +474,7 @@ mod commands_solve;
 mod commands_system;
 mod core;
 mod dispatch;
+mod error_render;
 mod eval;
 mod free_fns;
 mod help;

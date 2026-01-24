@@ -378,7 +378,9 @@ impl Repl {
                     Err(e) => reply.push(ReplMsg::error(format!("Error: {}", e))),
                 }
             }
-            Err(e) => reply.push(ReplMsg::error(format!("Parse error: {}", e))),
+            Err(e) => reply.push(ReplMsg::error(super::error_render::render_parse_error(
+                line, &e,
+            ))),
         }
 
         reply
