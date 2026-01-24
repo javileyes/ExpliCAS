@@ -42,11 +42,18 @@ Error in equation 1: non-linear term: degree > 1 in the system
 solve_system() only handles linear equations.
 ```
 
-**Degenerate system (infinite or no solutions):**
+**Infinitely many solutions (dependent equations):**
 ```
 > solve_system(x+y=2; 2*x+2*y=4; x; y)
-determinant is 0; system has no unique solution
-The system may have infinitely many solutions or none.
+System has infinitely many solutions.
+The equations are dependent (same line).
+```
+
+**No solution (inconsistent equations):**
+```
+> solve_system(x+y=2; x+y=3; x; y)
+System has no solution.
+The equations are inconsistent (parallel lines).
 ```
 
 **Inequality instead of equality:**

@@ -9,11 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`solve_system` Command**: Specialized solver for 2×2 linear equation systems
-  - Syntax: `solve_system(eq1; eq2; var1; var2)`
+- **`solve_system` Command**: Specialized solver for 2×2 and 3×3 linear equation systems
+  - 2×2 syntax: `solve_system(eq1; eq2; x; y)`
+  - 3×3 syntax: `solve_system(eq1; eq2; eq3; x; y; z)`
   - Uses Cramer's rule with exact `BigRational` arithmetic
   - Validates linearity via `MultiPoly` coefficient extraction
-  - Detects degenerate systems (det=0) with clear error messages
+  - **Degenerate Detection**: Distinguishes "infinitely many solutions" (dependent) vs "no solution" (inconsistent)
   - See [SOLVE_SYSTEM.md](SOLVE_SYSTEM.md) for full documentation
 
 - **Dependencies**: Added `num-rational` and `num-bigint` to `cas_cli`
@@ -22,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - New module: `crates/cas_cli/src/repl/commands_system.rs`
 - Semicolon bypass in REPL for `solve_system` (uses `;` as internal separator)
-- All 32 `cas_cli` tests pass
+- 11 regression tests for solve_system
 
 ---
 
