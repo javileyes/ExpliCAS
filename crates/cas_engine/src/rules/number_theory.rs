@@ -20,12 +20,12 @@ pub struct GcdResult {
 /// poly_result(n) is an opaque handle that requires algebraic (not structural) GCD.
 fn contains_poly_result(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
-        Expr::Function(name, args) => {
-            if name == "poly_result" {
+        Expr::Function(fn_id, args) => {
+            if ctx.sym_name(*fn_id) == "poly_result" {
                 return true;
             }
             // Also check __hold wrappers
-            if name == "__hold" && !args.is_empty() {
+            if ctx.sym_name(*fn_id) == "__hold" && !args.is_empty() {
                 return contains_poly_result(ctx, args[0]);
             }
             // Recurse into function arguments
@@ -57,9 +57,9 @@ fn has_large_unexpanded_power(ctx: &Context, expr: ExprId) -> bool {
             // Recurse
             has_large_unexpanded_power(ctx, *base) || has_large_unexpanded_power(ctx, *exp)
         }
-        Expr::Function(name, args) => {
+        Expr::Function(fn_id, args) => {
             // Skip poly_result - it's already expanded
-            if name == "poly_result" {
+            if ctx.sym_name(*fn_id) == "poly_result" {
                 return false;
             }
             args.iter().any(|&arg| has_large_unexpanded_power(ctx, arg))
@@ -88,13 +88,13 @@ fn get_integer_exponent(ctx: &Context, exp: ExprId) -> Option<i64> {
 }
 
 define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
-    let (name, args) = if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
-        (name.clone(), args.clone())
+    let (name, args) = if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        (ctx.sym_name(*fn_id).to_string(), args.clone())
     } else {
         return None;
     };
 
-    match ctx.sym_name(*fn_id) {
+    match name.as_str() {
         "gcd" => {
             // V2.14.35: Unified GCD dispatcher
             // gcd(int, int) -> integer GCD (Euclid)

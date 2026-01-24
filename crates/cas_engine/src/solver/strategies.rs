@@ -1434,9 +1434,10 @@ impl SolverStrategy for UnwrapStrategy {
          -> Option<(Equation, String)> {
             let target_data = simplifier.context.get(target).clone();
             match target_data {
-                Expr::Function(name, args) if args.len() == 1 => {
+                Expr::Function(fn_id, args) if args.len() == 1 => {
                     let arg = args[0];
-                    match ctx.sym_name(*fn_id) {
+                    let name = simplifier.context.sym_name(fn_id);
+                    match name {
                         "sqrt" => {
                             // sqrt(A) = B -> A = B^2
                             // Check domain? sqrt(A) >= 0. So B must be >= 0.

@@ -195,7 +195,7 @@ impl<'a> IterativeFolder<'a> {
                 let args_folded: Vec<_> = args.iter().map(|a| self.get_folded(*a)).collect();
 
                 // sqrt(literal) folding
-                if name == "sqrt"
+                if self.ctx.sym_name(*name) == "sqrt"
                     && args_folded.len() == 1
                     && helpers::is_constant_literal(self.ctx, args_folded[0])
                 {

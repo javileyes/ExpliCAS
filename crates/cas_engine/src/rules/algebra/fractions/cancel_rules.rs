@@ -15,7 +15,8 @@ use std::cmp::Ordering;
 
 // Import helpers from sibling core_rules module
 use super::core_rules::{
-    check_divisible_denominators, extract_as_fraction, is_pi_constant, is_trig_function_name,
+    check_divisible_denominators, extract_as_fraction, fn_name_is, is_pi_constant,
+    is_trig_function, is_trig_function_name,
 };
 
 // Import from local helpers module
@@ -64,7 +65,7 @@ define_rule!(
 
         // Guard: Skip if inside trig function argument
         let inside_trig = parent_ctx.has_ancestor_matching(ctx, |c, node_id| {
-            matches!(c.get(node_id), Expr::Function(name, _) if is_trig_function_name(name))
+            matches!(c.get(node_id), Expr::Function(fn_id, _) if is_trig_function(c, *fn_id))
         });
         if inside_trig {
             return None;
@@ -278,7 +279,7 @@ define_rule!(
         // Example: (√2 + √3) + 1/(u*(u+2)) should NOT become ((√2+√3)*u*(u+2) + 1) / (u*(u+2))
         fn contains_root(ctx: &Context, id: ExprId) -> bool {
             match ctx.get(id) {
-                Expr::Function(name, _) if name == "sqrt" => true,
+                Expr::Function(fn_id, _) if fn_name_is(ctx, *fn_id, "sqrt") => true,
                 Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
                     contains_root(ctx, *l) || contains_root(ctx, *r)
                 }
@@ -419,7 +420,7 @@ define_rule!(
         if is_numeric(d1) && is_numeric(d2) {
             // Check if we're inside a trig function argument
             let inside_trig = parent_ctx.has_ancestor_matching(ctx, |c, node_id| {
-            matches!(c.get(node_id), Expr::Function(name, _) if is_trig_function_name(name))
+            matches!(c.get(node_id), Expr::Function(fn_id, _) if is_trig_function(c, *fn_id))
         });
 
             if inside_trig {
@@ -634,7 +635,7 @@ define_rule!(
                     }
                     false
                 }
-                Expr::Function(name, _) => name == "sqrt",
+                Expr::Function(fn_id, _) => fn_name_is(ctx, *fn_id, "sqrt"),
                 _ => false,
             }
         };

@@ -87,8 +87,14 @@ pub fn contains_integral(ctx: &Context, root: ExprId) -> bool {
 
     while let Some(e) = stack.pop() {
         match ctx.get(e) {
-            Expr::Function(name, _) if name == "integrate" || name == "int" => {
-                return true;
+            Expr::Function(name, args) => {
+                let fn_name = ctx.sym_name(*name);
+                if fn_name == "integrate" || fn_name == "int" {
+                    return true;
+                }
+                for arg in args {
+                    stack.push(*arg);
+                }
             }
             Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
                 stack.push(*l);
@@ -96,11 +102,6 @@ pub fn contains_integral(ctx: &Context, root: ExprId) -> bool {
             }
             Expr::Neg(inner) => {
                 stack.push(*inner);
-            }
-            Expr::Function(_, args) => {
-                for arg in args {
-                    stack.push(*arg);
-                }
             }
             Expr::Matrix { data, .. } => {
                 for elem in data {

@@ -822,9 +822,7 @@ pub fn isolate(
                     let new_rhs = simplifier.context.add(Expr::Pow(rhs, inv_exp));
 
                     // Construct |B|
-                    let abs_b = simplifier
-                        .context
-                        .call("abs", vec![b]);
+                    let abs_b = simplifier.context.call("abs", vec![b]);
 
                     let new_eq = Equation {
                         lhs: abs_b,
@@ -1253,9 +1251,7 @@ pub fn isolate(
                         }
 
                         // Execute solver under guard: proceed with log step as if conditions were proven
-                        let new_rhs = simplifier
-                            .context
-                            .call("log", vec![b, rhs]);
+                        let new_rhs = simplifier.context.call("log", vec![b, rhs]);
                         let new_eq = Equation {
                             lhs: e,
                             rhs: new_rhs,
@@ -1329,9 +1325,7 @@ pub fn isolate(
                 // End of domain guards
                 // ================================================================
 
-                let new_rhs = simplifier
-                    .context
-                    .call("log", vec![b, rhs]);
+                let new_rhs = simplifier.context.call("log", vec![b, rhs]);
                 let new_eq = Equation {
                     lhs: e,
                     rhs: new_rhs,
@@ -1355,8 +1349,8 @@ pub fn isolate(
                 prepend_steps(results, steps)
             }
         }
-        Expr::Function(name, args) => {
-            if name == "abs" && args.len() == 1 {
+        Expr::Function(fn_id, args) => {
+            if simplifier.context.sym_name(fn_id) == "abs" && args.len() == 1 {
                 // |A| = B
                 // |A| < B -> -B < A < B (Intersection)
                 // |A| > B -> A > B OR A < -B (Union)
@@ -1450,7 +1444,7 @@ pub fn isolate(
                 all_steps.extend(steps2_out);
 
                 Ok((final_set, all_steps))
-            } else if name == "log" && args.len() == 2 {
+            } else if simplifier.context.sym_name(fn_id) == "log" && args.len() == 2 {
                 let base = args[0];
                 let arg = args[1];
 
@@ -1510,7 +1504,7 @@ pub fn isolate(
             } else if args.len() == 1 {
                 let arg = args[0];
                 if contains_var(&simplifier.context, arg, var) {
-                    match ctx.sym_name(*fn_id) {
+                    match simplifier.context.sym_name(fn_id) {
                         "ln" => {
                             let e = simplifier.context.add(Expr::Constant(cas_ast::Constant::E));
                             let new_rhs = simplifier.context.add(Expr::Pow(e, rhs));
@@ -1531,9 +1525,7 @@ pub fn isolate(
                             prepend_steps(results, steps)
                         }
                         "exp" => {
-                            let new_rhs = simplifier
-                                .context
-                                .call("ln", vec![rhs]);
+                            let new_rhs = simplifier.context.call("ln", vec![rhs]);
                             let new_eq = Equation {
                                 lhs: arg,
                                 rhs: new_rhs,
@@ -1571,9 +1563,7 @@ pub fn isolate(
                         }
                         "sin" => {
                             // sin(x) = y -> x = arcsin(y)
-                            let new_rhs = simplifier
-                                .context
-                                .call("arcsin", vec![rhs]);
+                            let new_rhs = simplifier.context.call("arcsin", vec![rhs]);
                             let new_eq = Equation {
                                 lhs: arg,
                                 rhs: new_rhs,
@@ -1597,9 +1587,7 @@ pub fn isolate(
                         }
                         "cos" => {
                             // cos(x) = y -> x = arccos(y)
-                            let new_rhs = simplifier
-                                .context
-                                .call("arccos", vec![rhs]);
+                            let new_rhs = simplifier.context.call("arccos", vec![rhs]);
                             let new_eq = Equation {
                                 lhs: arg,
                                 rhs: new_rhs,
@@ -1623,9 +1611,7 @@ pub fn isolate(
                         }
                         "tan" => {
                             // tan(x) = y -> x = arctan(y)
-                            let new_rhs = simplifier
-                                .context
-                                .call("arctan", vec![rhs]);
+                            let new_rhs = simplifier.context.call("arctan", vec![rhs]);
                             let new_eq = Equation {
                                 lhs: arg,
                                 rhs: new_rhs,
@@ -1647,7 +1633,9 @@ pub fn isolate(
                             let results = isolate(arg, simplified_rhs, op, var, simplifier, opts)?;
                             prepend_steps(results, steps)
                         }
-                        _ => Err(CasError::UnknownFunction(name.clone())),
+                        _ => Err(CasError::UnknownFunction(
+                            simplifier.context.sym_name(fn_id).to_string(),
+                        )),
                     }
                 } else {
                     Err(CasError::VariableNotFound(var.to_string()))

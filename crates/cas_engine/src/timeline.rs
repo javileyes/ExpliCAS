@@ -1138,7 +1138,8 @@ impl<'a> TimelineHtml<'a> {
                     })
                     .collect();
 
-                match ctx.sym_name(*fn_id) {
+                let fn_name = self.context.sym_name(*name);
+                match fn_name {
                     "sqrt" if highlighted_args.len() == 1 => {
                         format!("\\sqrt{{{}}}", highlighted_args[0])
                     }
@@ -1146,7 +1147,7 @@ impl<'a> TimelineHtml<'a> {
                         format!("\\sqrt[{}]{{{}}}", highlighted_args[1], highlighted_args[0])
                     }
                     "sin" | "cos" | "tan" | "cot" | "sec" | "csc" => {
-                        format!("\\{}({})", name, highlighted_args[0])
+                        format!("\\{}({})", fn_name, highlighted_args[0])
                     }
                     "ln" => {
                         format!("\\ln({})", highlighted_args[0])

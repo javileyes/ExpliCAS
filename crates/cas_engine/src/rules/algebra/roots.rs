@@ -9,7 +9,8 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
 
     // We look for sqrt(A + B) or sqrt(A - B)
     // Also handle Pow(inner, 1/2)
-    let inner = if let Expr::Function(fn_id, args) = &expr_data { let name = ctx.sym_name(*fn_id);
+    let inner = if let Expr::Function(fn_id, args) = &expr_data {
+        let name = ctx.sym_name(*fn_id);
         if name == "sqrt" && args.len() == 1 {
             Some(args[0])
         } else {
@@ -46,7 +47,7 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
         e: cas_ast::ExprId,
     ) -> Option<(Option<cas_ast::ExprId>, cas_ast::ExprId)> {
         match ctx.get(e) {
-            Expr::Function(fname, fargs) if fname == "sqrt" && fargs.len() == 1 => {
+            Expr::Function(fname, fargs) if ctx.sym_name(*fname) == "sqrt" && fargs.len() == 1 => {
                 Some((None, fargs[0]))
             }
             Expr::Pow(b, e) => {
@@ -63,7 +64,9 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
                 // Helper to check for sqrt/pow(1/2)
                 let is_sqrt = |e: cas_ast::ExprId| -> Option<cas_ast::ExprId> {
                     match ctx.get(e) {
-                        Expr::Function(fname, fargs) if fname == "sqrt" && fargs.len() == 1 => {
+                        Expr::Function(fname, fargs)
+                            if ctx.sym_name(*fname) == "sqrt" && fargs.len() == 1 =>
+                        {
                             Some(fargs[0])
                         }
                         Expr::Pow(b, e) => {
@@ -196,7 +199,8 @@ define_rule!(
     SimplifySquareRootRule,
     "Simplify Square Root",
     |ctx, expr| {
-        let arg = if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+        let arg = if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id);
             if name == "sqrt" && args.len() == 1 {
                 Some(args[0])
             } else {
@@ -281,8 +285,7 @@ define_rule!(
                                     };
 
                                     // sqrt((dx+e)²) = |dx+e|
-                                    let abs_linear =
-                                        ctx.call("abs", vec![linear]);
+                                    let abs_linear = ctx.call("abs", vec![linear]);
 
                                     return Some(
                                         Rewrite::new(abs_linear)
@@ -304,8 +307,7 @@ define_rule!(
                                 let k = count / 2;
                                 let rem = count % 2;
 
-                                let abs_base =
-                                    ctx.call("abs", vec![base]);
+                                let abs_base = ctx.call("abs", vec![base]);
 
                                 let term1 = if k == 1 {
                                     abs_base
@@ -319,8 +321,7 @@ define_rule!(
                                         Rewrite::new(term1).desc("Simplify perfect square root"),
                                     );
                                 } else {
-                                    let sqrt_base =
-                                        ctx.call("sqrt", vec![base]);
+                                    let sqrt_base = ctx.call("sqrt", vec![base]);
                                     let new_expr = smart_mul(ctx, term1, sqrt_base);
                                     return Some(
                                         Rewrite::new(new_expr).desc("Simplify square root factors"),
@@ -384,7 +385,9 @@ fn split_as_m_plus_t(
     // Helper to check if an expression contains a sqrt (surd-like)
     fn is_surd_like(ctx: &cas_ast::Context, e: cas_ast::ExprId) -> bool {
         match ctx.get(e) {
-            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => true,
+            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => {
+                true
+            }
             Expr::Pow(_, exp) => {
                 if let Expr::Number(n) = ctx.get(*exp) {
                     *n.numer() == 1.into() && *n.denom() == 2.into()
@@ -739,7 +742,9 @@ fn compute_t_squared(
                 };
 
                 let d = match ctx.get(surd) {
-                    Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => {
+                    Expr::Function(fn_id, args)
+                        if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 =>
+                    {
                         if let Expr::Number(n) = ctx.get(args[0]) {
                             n.clone()
                         } else {
@@ -783,7 +788,9 @@ fn compute_t_squared(
 /// Extract the radicand if expression is a sqrt (either sqrt(x) function or x^(1/2))
 fn as_sqrt(ctx: &cas_ast::Context, e: cas_ast::ExprId) -> Option<cas_ast::ExprId> {
     match ctx.get(e) {
-        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => Some(args[0]),
+        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => {
+            Some(args[0])
+        }
         Expr::Pow(base, exp) => {
             if let Expr::Number(n) = ctx.get(*exp) {
                 if *n.numer() == 1.into() && *n.denom() == 2.into() {

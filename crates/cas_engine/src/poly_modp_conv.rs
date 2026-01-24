@@ -346,15 +346,19 @@ fn expr_to_poly_modp_inner(
         }
 
         Expr::Function(ref name, ref args) => {
+            let fn_name = ctx.sym_name(*name);
             // Handle __hold by stripping
-            if name == "__hold" && args.len() == 1 {
+            if fn_name == "__hold" && args.len() == 1 {
                 return expr_to_poly_modp_inner(ctx, args[0], p, budget, vars);
             }
             // Handle poly_result(id) - retrieve from PolyStore with remapping
-            if name == "poly_result" && args.len() == 1 {
+            if fn_name == "poly_result" && args.len() == 1 {
                 return poly_result_to_modp(ctx, p, vars, args[0]);
             }
-            Err(PolyConvError::UnsupportedExpr(format!("function {}", name)))
+            Err(PolyConvError::UnsupportedExpr(format!(
+                "function {}",
+                fn_name
+            )))
         }
 
         Expr::Div(_, _) => Err(PolyConvError::UnsupportedExpr("division".into())),
@@ -437,14 +441,18 @@ fn convert_non_add_term(
         }
 
         Expr::Function(ref name, ref args) => {
-            if name == "__hold" && args.len() == 1 {
+            let fn_name = ctx.sym_name(*name);
+            if fn_name == "__hold" && args.len() == 1 {
                 return convert_non_add_term(ctx, args[0], p, budget, vars);
             }
             // Handle poly_result(id) - retrieve from PolyStore with remapping
-            if name == "poly_result" && args.len() == 1 {
+            if fn_name == "poly_result" && args.len() == 1 {
                 return poly_result_to_modp(ctx, p, vars, args[0]);
             }
-            Err(PolyConvError::UnsupportedExpr(format!("function {}", name)))
+            Err(PolyConvError::UnsupportedExpr(format!(
+                "function {}",
+                fn_name
+            )))
         }
 
         // Shouldn't hit these after flatten_add, but handle gracefully

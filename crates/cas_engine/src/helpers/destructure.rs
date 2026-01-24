@@ -78,7 +78,9 @@ pub fn fn_name_args(ctx: &Context, id: ExprId) -> Option<(&str, &[ExprId])> {
 #[inline]
 pub fn as_fn1(ctx: &Context, id: ExprId, name: &str) -> Option<ExprId> {
     match ctx.get(id) {
-        Expr::Function(fn_name, args) if fn_name == name && args.len() == 1 => Some(args[0]),
+        Expr::Function(fn_name, args) if ctx.sym_name(*fn_name) == name && args.len() == 1 => {
+            Some(args[0])
+        }
         _ => None,
     }
 }
@@ -88,7 +90,7 @@ pub fn as_fn1(ctx: &Context, id: ExprId, name: &str) -> Option<ExprId> {
 #[inline]
 pub fn as_fn2(ctx: &Context, id: ExprId, name: &str) -> Option<(ExprId, ExprId)> {
     match ctx.get(id) {
-        Expr::Function(fn_name, args) if fn_name == name && args.len() == 2 => {
+        Expr::Function(fn_name, args) if ctx.sym_name(*fn_name) == name && args.len() == 2 => {
             Some((args[0], args[1]))
         }
         _ => None,

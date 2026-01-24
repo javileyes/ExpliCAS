@@ -28,7 +28,8 @@ define_rule!(
             }
 
             // Check if base is cosh(x/2) or sinh(x/2)
-            if let Expr::Function(fn_id, args) = ctx.get(*base) { let name = ctx.sym_name(*fn_id);
+            if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                let name = ctx.sym_name(*fn_id);
                 if (name == "cosh" || name == "sinh") && args.len() == 1 {
                     let func_name = name.clone(); // Clone to avoid borrow conflict
                     let arg = args[0];
@@ -134,7 +135,8 @@ define_rule!(
                     }
                 }
                 // Check for sin(t)
-                if let Expr::Function(fn_id, args) = ctx.get(factor) { let name = ctx.sym_name(*fn_id);
+                if let Expr::Function(fn_id, args) = ctx.get(factor) {
+                    let name = ctx.sym_name(*fn_id);
                     if name == "sin" && args.len() == 1 && sin_idx.is_none() {
                         sin_idx = Some(i);
                         sin_arg = Some(args[0]);
@@ -206,16 +208,17 @@ define_rule!(
             // Pattern: 1/cos(t) → sec(t), 1/sin(t) → csc(t)
             if let Expr::Number(n) = ctx.get(num) {
                 if n.is_one() {
-                    if let Expr::Function(fn_id, args) = ctx.get(den).clone() { let name = ctx.sym_name(fn_id);
+                    if let Expr::Function(fn_id, args) = ctx.get(den).clone() {
+                        let name = ctx.sym_name(fn_id);
                         if args.len() == 1 {
                             let arg = args[0];
-                            let result_info = match ctx.sym_name(*fn_id) {
-                                "cos" => Some(("sec", name.clone())),
-                                "sin" => Some(("csc", name.clone())),
+                            let result_info = match name {
+                                "cos" => Some(("sec", name.to_string())),
+                                "sin" => Some(("csc", name.to_string())),
                                 _ => None,
                             };
                             if let Some((rn, orig_name)) = result_info {
-                                let result = ctx.add(Expr::Function(rn.to_string(), vec![arg]));
+                                let result = ctx.call(rn, vec![arg]);
                                 return Some(
                                     Rewrite::new(result)
                                         .desc(format!("1/{}(t) = {}(t)", orig_name, rn)),
@@ -227,24 +230,27 @@ define_rule!(
             }
 
             // Pattern: sin(t)/cos(t) → tan(t), cos(t)/sin(t) → cot(t)
-            if let (Expr::Function(num_name, num_args), Expr::Function(den_name, den_args)) =
+            if let (Expr::Function(num_fn_id, num_args), Expr::Function(den_fn_id, den_args)) =
                 (ctx.get(num).clone(), ctx.get(den).clone())
             {
                 if num_args.len() == 1 && den_args.len() == 1 {
                     let num_arg = num_args[0];
                     let den_arg = den_args[0];
 
+                    let num_name = ctx.sym_name(num_fn_id);
+                    let den_name = ctx.sym_name(den_fn_id);
+
                     // Check same argument
                     if crate::ordering::compare_expr(ctx, num_arg, den_arg)
                         == std::cmp::Ordering::Equal
                     {
-                        let result_name = match (num_ctx.sym_name(*fn_id), den_ctx.sym_name(*fn_id)) {
+                        let result_name = match (num_name, den_name) {
                             ("sin", "cos") => Some("tan"),
                             ("cos", "sin") => Some("cot"),
                             _ => None,
                         };
                         if let Some(rn) = result_name {
-                            let result = ctx.add(Expr::Function(rn.to_string(), vec![num_arg]));
+                            let result = ctx.call(rn, vec![num_arg]);
                             return Some(
                                 Rewrite::new(result)
                                     .desc(format!("{}/{}(t) = {}(t)", num_name, den_name, rn)),
@@ -290,7 +296,8 @@ define_rule!(
                 };
 
                 if coeff {
-                    if let Expr::Function(fn_id, args) = ctx.get(tan_part) { let name = ctx.sym_name(*fn_id);
+                    if let Expr::Function(fn_id, args) = ctx.get(tan_part) {
+                        let name = ctx.sym_name(*fn_id);
                         if name == "tan" && args.len() == 1 {
                             Some(args[0])
                         } else {
@@ -316,7 +323,8 @@ define_rule!(
                             let exp_is_2 = matches!(ctx.get(*exp), Expr::Number(n)
                                 if *n == num_rational::BigRational::from_integer(2.into()));
                             if exp_is_2 {
-                                if let Expr::Function(fn_id, args) = ctx.get(*base) { let name = ctx.sym_name(*fn_id);
+                                if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                                    let name = ctx.sym_name(*fn_id);
                                     name == "tan"
                                         && args.len() == 1
                                         && crate::ordering::compare_expr(ctx, args[0], t)
@@ -349,7 +357,8 @@ define_rule!(
                                 let exp_is_2 = matches!(ctx.get(*exp), Expr::Number(n)
                                     if *n == num_rational::BigRational::from_integer(2.into()));
                                 if exp_is_2 {
-                                    if let Expr::Function(fn_id, args) = ctx.get(*base) { let name = ctx.sym_name(*fn_id);
+                                    if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                                        let name = ctx.sym_name(*fn_id);
                                         name == "tan"
                                             && args.len() == 1
                                             && crate::ordering::compare_expr(ctx, args[0], t)

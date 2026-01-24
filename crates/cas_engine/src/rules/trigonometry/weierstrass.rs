@@ -50,13 +50,15 @@ define_rule!(
     "Weierstrass Substitution",
     |ctx, expr| {
         // Extract data first to avoid borrow conflicts
-        let (name, arg) = match ctx.get(expr) {
-            Expr::Function(name, args) if args.len() == 1 => (name.clone(), args[0]),
+        let (fn_id, arg) = match ctx.get(expr) {
+            Expr::Function(fn_id, args) if args.len() == 1 => (*fn_id, args[0]),
             _ => return None,
         };
 
+        let name = ctx.sym_name(fn_id);
+
         // Only apply to sin, cos, tan
-        if !matches!(ctx.sym_name(*fn_id), "sin" | "cos" | "tan") {
+        if !matches!(name, "sin" | "cos" | "tan") {
             return None;
         }
 
@@ -70,7 +72,7 @@ define_rule!(
         let cos_half = ctx.call("cos", vec![half_arg]);
         let t = ctx.add(Expr::Div(sin_half, cos_half)); // t = tan(x/2)
 
-        let (new_expr, desc) = match ctx.sym_name(*fn_id) {
+        let (new_expr, desc) = match name {
             "sin" => {
                 let result = weierstrass_sin(ctx, t);
                 let desc = format!(
@@ -167,7 +169,8 @@ fn is_tan_half_angle(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
     }
 
     // Also check for tan(arg/2) function directly
-    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let name = ctx.sym_name(*fn_id);
         if name == "tan" && args.len() == 1 {
             if let Some(original_angle) = check_half_angle(args[0]) {
                 return Some(original_angle);

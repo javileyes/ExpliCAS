@@ -76,7 +76,7 @@ define_rule!(
             }
 
             // Case 3: Function("sqrt", [n])
-            Expr::Function(name, ref args) if name == "sqrt" && args.len() == 1 => {
+            Expr::Function(name, ref args) if ctx.sym_name(*name) == "sqrt" && args.len() == 1 => {
                 if let Expr::Number(n) = ctx.get(args[0]) {
                     if n.is_integer() {
                         if let Some(n_int) = n.numer().to_i64().filter(|&x| x > 0) {

@@ -189,7 +189,7 @@ fn lower_recursive(
 ) -> ExprId {
     match ctx.get(expr).clone() {
         // Check if this is already a poly_result - pass through
-        Expr::Function(ref name, ref _args) if name == "poly_result" => expr,
+        Expr::Function(ref name, ref _args) if ctx.sym_name(*name) == "poly_result" => expr,
 
         // Add: try to combine poly_results or promote simple expressions
         Expr::Add(l, r) => {
@@ -510,7 +510,8 @@ fn lower_recursive(
 
 /// Extract PolyId from poly_result(id) expression
 fn extract_poly_result_id(ctx: &Context, expr: ExprId) -> Option<PolyId> {
-    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let name = ctx.sym_name(*fn_id);
         if name == "poly_result" && args.len() == 1 {
             if let Expr::Number(n) = ctx.get(args[0]) {
                 return n.to_integer().try_into().ok();
