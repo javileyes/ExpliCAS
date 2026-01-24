@@ -250,7 +250,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 result: result_str.clone(),
                 result_truncated: false,
                 result_chars: result_str.len(),
-                result_latex: Some(result_latex),
+                result_latex: Some(result_latex.clone()),
                 steps_mode: args.steps.clone(),
                 steps_count: output.steps.len() + output.solve_steps.len(),
                 steps: collect_steps(&output, &engine.simplifier.context, &args.steps),
@@ -272,7 +272,14 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 },
                 options: build_options_json(args),
                 semantics: build_semantics_json(args),
-                wire: None,
+                wire: Some(build_wire_reply(
+                    &collect_warnings(&output),
+                    &collect_required_display(&output, &engine.simplifier.context),
+                    &result_str,
+                    Some(&result_latex),
+                    output.steps.len() + output.solve_steps.len(),
+                    &args.steps,
+                )),
             });
         }
         EvalResult::Bool(b) => {
@@ -306,7 +313,14 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 },
                 options: build_options_json(args),
                 semantics: build_semantics_json(args),
-                wire: None,
+                wire: Some(build_wire_reply(
+                    &collect_warnings(&output),
+                    &collect_required_display(&output, &engine.simplifier.context),
+                    &b.to_string(),
+                    None,
+                    output.steps.len(),
+                    &args.steps,
+                )),
             });
         }
         _ => {
@@ -341,6 +355,18 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
         None
     };
 
+    // Build wire before moving values
+    let warnings = collect_warnings(&output);
+    let required_display = collect_required_display(&output, &engine.simplifier.context);
+    let wire = build_wire_reply(
+        &warnings,
+        &required_display,
+        &result_str,
+        result_latex.as_deref(),
+        output.steps.len(),
+        &args.steps,
+    );
+
     Ok(EvalJsonOutput {
         schema_version: 1,
         ok: true,
@@ -353,9 +379,9 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
         steps_count: output.steps.len(),
         steps: collect_steps(&output, &engine.simplifier.context, &args.steps),
         solve_steps: collect_solve_steps(&output, &engine.simplifier.context, &args.steps),
-        warnings: collect_warnings(&output),
+        warnings,
         required_conditions: collect_required_conditions(&output, &engine.simplifier.context),
-        required_display: collect_required_display(&output, &engine.simplifier.context),
+        required_display,
         budget: build_budget_json(args),
         domain: build_domain_json(args),
         stats,
@@ -367,7 +393,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
         },
         options: build_options_json(args),
         semantics: build_semantics_json(args),
-        wire: None,
+        wire: Some(wire),
     })
 }
 
@@ -532,6 +558,63 @@ fn build_semantics_json(args: &EvalJsonArgs) -> SemanticsJson {
         branch: args.complex_branch.clone(),
         inv_trig: args.inv_trig.clone(),
         assume_scope: args.assume_scope.clone(),
+    }
+}
+
+/// Build WireReply from evaluation output data.
+///
+/// Constructs a unified wire format with all messages in order:
+/// 1. Warnings (if any)
+/// 2. Required conditions (info)
+/// 3. Result (output)
+/// 4. Steps summary (if enabled)
+fn build_wire_reply(
+    warnings: &[WarningJson],
+    required_display: &[String],
+    result: &str,
+    result_latex: Option<&str>,
+    steps_count: usize,
+    steps_mode: &str,
+) -> crate::repl::wire::WireReply {
+    use crate::repl::wire::{WireKind, WireMsg, WireReply, SCHEMA_VERSION};
+
+    let mut messages = Vec::new();
+
+    // 1. Warnings
+    for w in warnings {
+        messages.push(WireMsg::new(
+            WireKind::Warn,
+            format!("⚠ {} ({})", w.assumption, w.rule),
+        ));
+    }
+
+    // 2. Required conditions
+    if !required_display.is_empty() {
+        messages.push(WireMsg::new(WireKind::Info, "ℹ️ Requires:".to_string()));
+        for cond in required_display {
+            messages.push(WireMsg::new(WireKind::Info, format!("  • {}", cond)));
+        }
+    }
+
+    // 3. Result (main output)
+    let result_text = if let Some(latex) = result_latex {
+        format!("Result: {} [LaTeX: {}]", result, latex)
+    } else {
+        format!("Result: {}", result)
+    };
+    messages.push(WireMsg::new(WireKind::Output, result_text));
+
+    // 4. Steps summary (if enabled and present)
+    if steps_mode == "on" && steps_count > 0 {
+        messages.push(WireMsg::new(
+            WireKind::Steps,
+            format!("{} simplification step(s)", steps_count),
+        ));
+    }
+
+    WireReply {
+        schema_version: SCHEMA_VERSION,
+        messages,
     }
 }
 
