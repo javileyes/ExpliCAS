@@ -138,3 +138,50 @@ fn test_solve_system_3x3_non_linear() {
         .success()
         .stdout(predicate::str::contains("non-linear"));
 }
+
+// =============================================================================
+// 4x4 Systems (Gaussian elimination)
+// =============================================================================
+
+#[test]
+fn test_solve_system_4x4_unique() {
+    // w + x + y + z = 4
+    // w = 1, x = 1, y = 1
+    // Solution: w = 1, x = 1, y = 1, z = 1
+    run_cas("solve_system(w+x+y+z=4; w=1; x=1; y=1; w; x; y; z)\n")
+        .success()
+        .stdout(predicate::str::contains("w = 1"))
+        .stdout(predicate::str::contains("x = 1"))
+        .stdout(predicate::str::contains("y = 1"))
+        .stdout(predicate::str::contains("z = 1"));
+}
+
+#[test]
+fn test_solve_system_4x4_simple_substitution() {
+    // a + b + c + d = 10
+    // a = 1, b = 2, c = 3
+    // Solution: a = 1, b = 2, c = 3, d = 4
+    run_cas("solve_system(a+b+c+d=10; a=1; b=2; c=3; a; b; c; d)\n")
+        .success()
+        .stdout(predicate::str::contains("a = 1"))
+        .stdout(predicate::str::contains("b = 2"))
+        .stdout(predicate::str::contains("c = 3"))
+        .stdout(predicate::str::contains("d = 4"));
+}
+
+#[test]
+fn test_solve_system_4x4_infinite() {
+    // All trivial: a=a, b=b, c=c, d=d
+    run_cas("solve_system(a=a; b=b; c=c; d=d; a; b; c; d)\n")
+        .success()
+        .stdout(predicate::str::contains("infinitely many solutions"));
+}
+
+#[test]
+fn test_solve_system_4x4_inconsistent() {
+    // Circular system: a+b=3, b+c=4, c+d=5, d+a=6
+    // Sum: 2(a+b+c+d)=18 but a+b=3, c+d=5 → only 8 ≠ 9
+    run_cas("solve_system(a+b=3; b+c=4; c+d=5; d+a=6; a; b; c; d)\n")
+        .success()
+        .stdout(predicate::str::contains("no solution"));
+}

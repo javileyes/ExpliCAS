@@ -362,6 +362,232 @@ fn solve_3x3_cramer(
     Ok((x, y, z))
 }
 
+// =============================================================================
+// N×N Gaussian Elimination Solver
+// =============================================================================
+
+/// Result of solving a linear system
+#[derive(Debug)]
+pub enum LinSolveResult {
+    /// Unique solution: values for each variable in order
+    Unique(Vec<BigRational>),
+    /// Infinitely many solutions (dependent equations)
+    Infinite,
+    /// No solution (inconsistent equations)
+    Inconsistent,
+}
+
+/// Extract linear coefficients from an equation for n variables.
+/// Returns row of coefficients [a1, a2, ..., an] and constant term b
+/// where equation is: a1*x1 + a2*x2 + ... + an*xn = b
+fn extract_linear_row(
+    ctx: &Context,
+    expr: ExprId,
+    vars: &[&str],
+) -> Result<(Vec<BigRational>, BigRational), LinearSystemError> {
+    let budget = PolyBudget {
+        max_terms: 200,
+        max_total_degree: 2,
+        max_pow_exp: 2,
+    };
+
+    let poly =
+        multipoly_from_expr(ctx, expr, &budget).map_err(LinearSystemError::PolyConversion)?;
+
+    if poly.total_degree() > 1 {
+        return Err(LinearSystemError::NotLinear(
+            "degree > 1 in the system".to_string(),
+        ));
+    }
+
+    // Find variable indices in the MultiPoly
+    let var_indices: Vec<Option<usize>> = vars
+        .iter()
+        .map(|v| poly.vars.iter().position(|pv| pv == *v))
+        .collect();
+
+    // Initialize coefficient vector and constant
+    let n = vars.len();
+    let mut coeffs = vec![BigRational::zero(); n];
+    let mut constant = BigRational::zero();
+
+    for (coef, mono) in &poly.terms {
+        let total_exp: u32 = mono.iter().sum();
+
+        if total_exp == 0 {
+            // Constant term
+            constant = &constant + coef;
+        } else if total_exp == 1 {
+            // Linear term - find which variable
+            let mut found = false;
+            for (mono_idx, &exp) in mono.iter().enumerate() {
+                if exp == 1 {
+                    // Check if this variable is one of our target variables
+                    for (var_idx, opt_idx) in var_indices.iter().enumerate() {
+                        if *opt_idx == Some(mono_idx) {
+                            coeffs[var_idx] = &coeffs[var_idx] + coef;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if !found {
+                        // Variable not in our list
+                        return Err(LinearSystemError::NotLinear(format!(
+                            "unexpected variable '{}'",
+                            poly.vars[mono_idx]
+                        )));
+                    }
+                }
+            }
+        } else {
+            return Err(LinearSystemError::NotLinear(format!(
+                "non-linear term with degree {}",
+                total_exp
+            )));
+        }
+    }
+
+    // Return (coefficients, -constant) since equation is sum = -constant
+    Ok((coeffs, -constant))
+}
+
+/// Build the augmented matrix [A|b] from equations
+fn build_augmented_matrix(
+    ctx: &Context,
+    exprs: &[ExprId],
+    vars: &[&str],
+) -> Result<Vec<Vec<BigRational>>, LinearSystemError> {
+    let n = vars.len();
+    let m = exprs.len();
+
+    let mut matrix = Vec::with_capacity(m);
+
+    for (i, &expr) in exprs.iter().enumerate() {
+        let (coeffs, b) = extract_linear_row(ctx, expr, vars).map_err(|e| match e {
+            LinearSystemError::NotLinear(msg) => {
+                LinearSystemError::NotLinear(format!("equation {}: {}", i + 1, msg))
+            }
+            other => other,
+        })?;
+
+        if coeffs.len() != n {
+            return Err(LinearSystemError::NotLinear(format!(
+                "equation {} has wrong number of coefficients",
+                i + 1
+            )));
+        }
+
+        // Create augmented row: [a1, a2, ..., an, b]
+        let mut row = coeffs;
+        row.push(b);
+        matrix.push(row);
+    }
+
+    Ok(matrix)
+}
+
+/// Gaussian elimination with partial pivoting on augmented matrix
+/// Returns LinSolveResult
+fn gauss_solve(mut matrix: Vec<Vec<BigRational>>, n: usize) -> LinSolveResult {
+    let m = matrix.len(); // number of equations
+
+    if m < n {
+        // Underdetermined system - could have infinite or no solutions
+        // For now, do elimination and check
+    }
+
+    let mut pivot_row = 0;
+    let mut pivot_cols = Vec::new(); // Track which columns have pivots
+
+    // Forward elimination
+    for col in 0..n {
+        // Find pivot (first non-zero in column from pivot_row down)
+        let mut pivot_found = None;
+        for row in pivot_row..m {
+            if !matrix[row][col].is_zero() {
+                pivot_found = Some(row);
+                break;
+            }
+        }
+
+        let Some(pivot_idx) = pivot_found else {
+            // No pivot in this column, continue to next
+            continue;
+        };
+
+        // Swap rows if needed
+        if pivot_idx != pivot_row {
+            matrix.swap(pivot_row, pivot_idx);
+        }
+
+        pivot_cols.push(col);
+
+        // Scale pivot row to make pivot = 1
+        let pivot_val = matrix[pivot_row][col].clone();
+        for j in 0..=n {
+            matrix[pivot_row][j] = &matrix[pivot_row][j] / &pivot_val;
+        }
+
+        // Eliminate below
+        for row in (pivot_row + 1)..m {
+            if !matrix[row][col].is_zero() {
+                let factor = matrix[row][col].clone();
+                for j in 0..=n {
+                    let subtrahend = &factor * &matrix[pivot_row][j];
+                    matrix[row][j] = &matrix[row][j] - subtrahend;
+                }
+            }
+        }
+
+        pivot_row += 1;
+        if pivot_row >= m {
+            break;
+        }
+    }
+
+    let rank = pivot_cols.len();
+
+    // Check for inconsistency: any row [0, 0, ..., 0 | c] where c ≠ 0
+    for row in rank..m {
+        let all_zero = (0..n).all(|j| matrix[row][j].is_zero());
+        if all_zero && !matrix[row][n].is_zero() {
+            return LinSolveResult::Inconsistent;
+        }
+    }
+
+    // If rank < n, infinite solutions
+    if rank < n {
+        return LinSolveResult::Infinite;
+    }
+
+    // Back substitution for unique solution
+    let mut solution = vec![BigRational::zero(); n];
+
+    for i in (0..rank).rev() {
+        let col = pivot_cols[i];
+        let mut val = matrix[i][n].clone();
+
+        for j in (col + 1)..n {
+            val = val - &matrix[i][j] * &solution[j];
+        }
+
+        solution[col] = val;
+    }
+
+    LinSolveResult::Unique(solution)
+}
+
+/// Solve n×n system using Gaussian elimination
+fn solve_nxn_gauss(
+    ctx: &Context,
+    exprs: &[ExprId],
+    vars: &[&str],
+) -> Result<LinSolveResult, LinearSystemError> {
+    let n = vars.len();
+    let matrix = build_augmented_matrix(ctx, exprs, vars)?;
+    Ok(gauss_solve(matrix, n))
+}
+
 fn split_by_semicolon(s: &str) -> Vec<&str> {
     let mut parts = Vec::new();
     let mut depth = 0;
@@ -413,17 +639,26 @@ impl Repl {
             .collect();
 
         // Dispatch based on number of parts
-        match parts.len() {
-            4 => self.solve_2x2_system(&parts),
-            6 => self.solve_3x3_system(&parts),
-            _ => reply_output(
+        // parts = [eq1, eq2, ..., eqn, var1, var2, ..., varn]
+        // For n×n: total parts = 2*n
+        if parts.len() < 4 || parts.len() % 2 != 0 {
+            return reply_output(
                 "Usage:\n  \
-                 2x2: solve_system(eq1; eq2; x; y)\n  \
-                 3x3: solve_system(eq1; eq2; eq3; x; y; z)\n\n\
+                 2×2: solve_system(eq1; eq2; x; y)\n  \
+                 3×3: solve_system(eq1; eq2; eq3; x; y; z)\n  \
+                 n×n: solve_system(eq1; ...; eqn; x1; ...; xn)\n\n\
                  Examples:\n  \
                  solve_system(x+y=3; x-y=1; x; y)\n  \
                  solve_system(x+y+z=6; x-y=0; y+z=4; x; y; z)",
-            ),
+            );
+        }
+
+        let n = parts.len() / 2;
+
+        match n {
+            2 => self.solve_2x2_system(&parts),
+            3 => self.solve_3x3_system(&parts),
+            _ => self.solve_nxn_system(&parts, n),
         }
     }
 
@@ -583,6 +818,66 @@ impl Repl {
                  The equations are dependent.",
             ),
             Err(LinearSystemError::NoSolution) => reply_output(
+                "System has no solution.\n\
+                 The equations are inconsistent.",
+            ),
+            Err(e) => reply_output(format!("Error solving system: {}", e)),
+        }
+    }
+
+    /// Solve an n×n linear system using Gaussian elimination
+    fn solve_nxn_system(&mut self, parts: &[&str], n: usize) -> ReplReply {
+        // First n parts are equations, last n parts are variables
+        let eq_strs = &parts[0..n];
+        let var_strs = &parts[n..2 * n];
+
+        // Validate variable names
+        for (i, var) in var_strs.iter().enumerate() {
+            if !is_valid_var(var) {
+                return reply_output(format!(
+                    "Invalid variable name at position {}: '{}'\n\
+                     Variables must be simple identifiers.",
+                    i + 1,
+                    var
+                ));
+            }
+        }
+
+        // Parse all equations
+        let mut equations = Vec::with_capacity(n);
+        for (i, eq_str) in eq_strs.iter().enumerate() {
+            match self.parse_equation(eq_str, i + 1) {
+                Ok(eq) => equations.push(eq),
+                Err(reply) => return reply,
+            }
+        }
+
+        // Normalize equations: expr = lhs - rhs
+        let ctx = &mut self.core.engine.simplifier.context;
+        let exprs: Vec<ExprId> = equations
+            .iter()
+            .map(|eq| ctx.add(Expr::Sub(eq.lhs, eq.rhs)))
+            .collect();
+
+        // Solve using Gaussian elimination
+        match solve_nxn_gauss(ctx, &exprs, var_strs) {
+            Ok(LinSolveResult::Unique(solution)) => {
+                // Format output: { x = val1, y = val2, ... }
+                let pairs: Vec<String> = var_strs
+                    .iter()
+                    .zip(solution.iter())
+                    .map(|(var, val)| {
+                        let val_str = self.display_rational(val);
+                        format!("{} = {}", var, val_str)
+                    })
+                    .collect();
+                reply_output(format!("{{ {} }}", pairs.join(", ")))
+            }
+            Ok(LinSolveResult::Infinite) => reply_output(
+                "System has infinitely many solutions.\n\
+                 The equations are dependent.",
+            ),
+            Ok(LinSolveResult::Inconsistent) => reply_output(
                 "System has no solution.\n\
                  The equations are inconsistent.",
             ),
