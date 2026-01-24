@@ -21,11 +21,40 @@ The Wire format provides a unified, versioned messaging contract for all ExpliCA
       {
         "kind": "output|info|warn|error|steps|debug",
         "text": "message content",
-        "span": { "start": 0, "end": 5 }  // optional, for errors
+        "span": { "start": 0, "end": 5 },
+        "data": { "code": "E_PARSE", ... }
       }
     ]
   }
 }
+```
+
+> **Note**: `span` and `data` are optional. Only present when relevant.
+
+## Stable Codes (FFI Contract)
+
+When `data.code` is present, it follows a stable naming convention:
+
+| Code | Kind | Description |
+|------|------|-------------|
+| `E_PARSE` | error | Parse error |
+| `E_EVAL` | error | Evaluation error |
+| `E_SOLVE` | error | Solver error |
+| `W_REQUIRES` | warn | Domain requirement warning |
+| `W_ASSUME` | warn | Assumption made |
+| `I_REQUIRES` | info | Required conditions |
+| `I_STATS` | info | Statistics |
+
+### data field examples
+
+**Error with E_PARSE:**
+```json
+{ "code": "E_PARSE", "phase": "parse" }
+```
+
+**Warning with rule:**
+```json
+{ "code": "W_ASSUME", "rule": "SimplifyFraction" }
 ```
 
 ## Message Kinds

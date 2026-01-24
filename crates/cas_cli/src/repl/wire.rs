@@ -135,6 +135,57 @@ impl WireMsg {
             data: Some(data),
         }
     }
+
+    // =========================================================================
+    // Specialized constructors with stable error codes
+    // =========================================================================
+
+    /// Create a parse error with E_PARSE code and span
+    pub fn parse_error(message: impl Into<String>, span: Option<Span>) -> Self {
+        use serde_json::json;
+        let text = message.into();
+        let data = json!({"code": "E_PARSE", "phase": "parse"});
+        match span {
+            Some(s) => Self {
+                kind: WireKind::Error,
+                text,
+                span: Some(s.into()),
+                data: Some(data),
+            },
+            None => Self {
+                kind: WireKind::Error,
+                text,
+                span: None,
+                data: Some(data),
+            },
+        }
+    }
+
+    /// Create a warning with code and rule name
+    pub fn warning_with_code(code: &str, message: impl Into<String>, rule: Option<&str>) -> Self {
+        use serde_json::json;
+        let mut data = json!({"code": code});
+        if let Some(r) = rule {
+            data["rule"] = json!(r);
+        }
+        Self {
+            kind: WireKind::Warn,
+            text: message.into(),
+            span: None,
+            data: Some(data),
+        }
+    }
+
+    /// Create an info message with code
+    pub fn info_with_code(code: &str, message: impl Into<String>) -> Self {
+        use serde_json::json;
+        Self {
+            kind: WireKind::Info,
+            text: message.into(),
+            span: None,
+            data: Some(json!({"code": code})),
+        }
+    }
 }
 
 // =============================================================================
