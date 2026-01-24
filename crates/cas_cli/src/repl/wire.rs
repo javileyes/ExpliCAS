@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 pub const SCHEMA_VERSION: u32 = 1;
 
 /// Top-level wire response container.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct WireReply {
     /// Schema version for forwards/backwards compatibility
     pub schema_version: u32,
@@ -52,7 +52,7 @@ pub enum WireKind {
 }
 
 /// Individual message in wire format.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct WireMsg {
     /// Message kind
     pub kind: WireKind,
@@ -61,6 +61,9 @@ pub struct WireMsg {
     /// Source span if available (for error localization)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub span: Option<WireSpan>,
+    /// Structured metadata for FFI/frontend (codes, rule names, etc.)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<serde_json::Value>,
 }
 
 /// Source span for wire format (matches cas_ast::Span but serializable).
@@ -94,6 +97,7 @@ impl WireMsg {
             kind,
             text: text.into(),
             span: None,
+            data: None,
         }
     }
 
@@ -103,6 +107,32 @@ impl WireMsg {
             kind,
             text: text.into(),
             span: Some(span.into()),
+            data: None,
+        }
+    }
+
+    /// Create a new WireMsg with structured data
+    pub fn with_data(kind: WireKind, text: impl Into<String>, data: serde_json::Value) -> Self {
+        Self {
+            kind,
+            text: text.into(),
+            span: None,
+            data: Some(data),
+        }
+    }
+
+    /// Create a new WireMsg with span and data
+    pub fn with_span_and_data(
+        kind: WireKind,
+        text: impl Into<String>,
+        span: Span,
+        data: serde_json::Value,
+    ) -> Self {
+        Self {
+            kind,
+            text: text.into(),
+            span: Some(span.into()),
+            data: Some(data),
         }
     }
 }
@@ -236,5 +266,41 @@ mod tests {
         let wire: WireMsg = (&msg).into();
         assert_eq!(wire.kind, WireKind::Info);
         assert!(wire.text.contains("Wrote:"));
+    }
+
+    #[test]
+    fn test_wire_msg_with_data_serialization() {
+        use serde_json::json;
+        let msg = WireMsg::with_data(
+            WireKind::Error,
+            "parse error",
+            json!({"code": "E_PARSE", "phase": "parse"}),
+        );
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""kind":"error""#));
+        assert!(json.contains(r#""code":"E_PARSE""#));
+        assert!(json.contains(r#""phase":"parse""#));
+    }
+
+    #[test]
+    fn test_wire_msg_with_span_and_data() {
+        use serde_json::json;
+        let msg = WireMsg::with_span_and_data(
+            WireKind::Error,
+            "unexpected token",
+            Span::new(4, 5),
+            json!({"code": "E_PARSE"}),
+        );
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""span""#));
+        assert!(json.contains(r#""start":4"#));
+        assert!(json.contains(r#""code":"E_PARSE""#));
+    }
+
+    #[test]
+    fn test_data_not_serialized_when_none() {
+        let msg = WireMsg::new(WireKind::Output, "result");
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(!json.contains("data"));
     }
 }
