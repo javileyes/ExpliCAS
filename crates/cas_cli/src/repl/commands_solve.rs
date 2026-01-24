@@ -1,6 +1,47 @@
 use super::*;
 
 impl Repl {
+    /// Infer the variable to solve for when user doesn't specify one explicitly.
+    ///
+    /// Returns:
+    /// - `Ok(Some(var))` if exactly one free variable found
+    /// - `Ok(None)` if no variables found (error case)
+    /// - `Err(vars)` if multiple variables found (ambiguous)
+    ///
+    /// Filters out:
+    /// - Known constants: pi, π, e, i
+    /// - Internal symbols: _* and #*
+    fn infer_solve_variable(
+        ctx: &cas_ast::Context,
+        expr: cas_ast::ExprId,
+    ) -> Result<Option<String>, Vec<String>> {
+        // TODO: Consider moving collect_variables to cas_ast::analysis to avoid CLI->rules coupling
+        let all_vars = cas_engine::rules::algebra::helpers::collect_variables(ctx, expr);
+
+        // Filter out known constants and internal symbols
+        let free_vars: Vec<String> = all_vars
+            .into_iter()
+            .filter(|v| {
+                // Filter constants
+                let is_constant = matches!(v.as_str(), "pi" | "π" | "e" | "i");
+                // Filter internal symbols
+                let is_internal = v.starts_with('_') || v.starts_with('#');
+                !is_constant && !is_internal
+            })
+            .collect();
+
+        match free_vars.len() {
+            0 => Ok(None),
+            1 => Ok(Some(free_vars.into_iter().next().unwrap())),
+            _ => {
+                // Sort for stable error messages
+                let mut sorted = free_vars;
+                sorted.sort();
+                Err(sorted)
+            }
+        }
+    }
+
     pub(crate) fn expand_log_recursive(&mut self, expr: cas_ast::ExprId) -> cas_ast::ExprId {
         use cas_ast::Expr;
         use cas_engine::parent_context::ParentContext;
@@ -343,24 +384,57 @@ impl Repl {
         use std::path::PathBuf;
 
         // Parse equation and variable: "x + 2 = 5, x" or "x + 2 = 5 x"
-        let (eq_str, var) = if let Some((e, v)) = rsplit_ignoring_parens(rest, ',') {
-            (e.trim(), v.trim())
+        // var_explicit is Some if user provided variable, None if we need to infer
+        let (eq_str, var_explicit) = if let Some((e, v)) = rsplit_ignoring_parens(rest, ',') {
+            (e.trim(), Some(v.trim().to_string()))
         } else {
             // No comma. Try to see if it looks like "eq var"
             if let Some((e, v)) = rsplit_ignoring_parens(rest, ' ') {
                 let v_trim = v.trim();
                 if !v_trim.is_empty() && v_trim.chars().all(char::is_alphabetic) {
-                    (e.trim(), v_trim)
+                    (e.trim(), Some(v_trim.to_string()))
                 } else {
-                    (rest, "x")
+                    (rest, None)
                 }
             } else {
-                (rest, "x")
+                (rest, None)
             }
         };
 
         match cas_parser::parse_statement(eq_str, &mut self.core.engine.simplifier.context) {
             Ok(cas_parser::Statement::Equation(eq)) => {
+                // Infer variable if not explicitly provided
+                let var = match var_explicit {
+                    Some(v) => v,
+                    None => {
+                        // For equations, infer from lhs - rhs
+                        let eq_expr = self
+                            .core
+                            .engine
+                            .simplifier
+                            .context
+                            .add(cas_ast::Expr::Sub(eq.lhs, eq.rhs));
+                        let ctx = &self.core.engine.simplifier.context;
+                        match Self::infer_solve_variable(ctx, eq_expr) {
+                            Ok(Some(v)) => v,
+                            Ok(None) => {
+                                return reply_output(
+                                    "Error: timeline solve found no variable.\n\
+                                     Use timeline solve <equation>, <variable>",
+                                );
+                            }
+                            Err(vars) => {
+                                return reply_output(format!(
+                                    "Error: timeline solve found ambiguous variables {{{}}}.\n\
+                                     Use timeline solve <equation>, {}",
+                                    vars.join(", "),
+                                    vars.first().unwrap_or(&"x".to_string())
+                                ));
+                            }
+                        }
+                    }
+                };
+
                 // Call solver with step collection enabled and semantic options
                 self.core.engine.simplifier.set_collect_steps(true);
                 let solver_opts = cas_engine::solver::SolverOptions {
@@ -374,7 +448,7 @@ impl Repl {
                 // V2.9.8: Use type-safe API that includes automatic cleanup
                 match cas_engine::solver::solve_with_display_steps(
                     &eq,
-                    var,
+                    &var,
                     &mut self.core.engine.simplifier,
                     solver_opts,
                 ) {
@@ -397,7 +471,7 @@ impl Repl {
                             &display_steps.0,
                             &eq,
                             &solution_set,
-                            var,
+                            &var,
                         );
                         let html = timeline.to_html();
 
@@ -453,8 +527,9 @@ impl Repl {
         };
 
         // Split by comma or space to get equation and var
-        let (eq_str, var) = if let Some((e, v)) = rsplit_ignoring_parens(rest, ',') {
-            (e.trim(), v.trim())
+        // var_explicit is Some if user explicitly provided a variable, None if we need to infer
+        let (eq_str, var_explicit) = if let Some((e, v)) = rsplit_ignoring_parens(rest, ',') {
+            (e.trim(), Some(v.trim().to_string()))
         } else {
             // No comma. Try to see if it looks like "eq var"
             if let Some((e, v)) = rsplit_ignoring_parens(rest, ' ') {
@@ -478,12 +553,14 @@ impl Repl {
                     && !e_trim.ends_with('=')
                     && !has_operators_after_eq
                 {
-                    (e_trim, v_trim)
+                    (e_trim, Some(v_trim.to_string()))
                 } else {
-                    (rest, "x")
+                    // No explicit variable - will infer after parsing
+                    (rest, None)
                 }
             } else {
-                (rest, "x")
+                // No explicit variable - will infer after parsing
+                (rest, None)
             }
         };
 
@@ -532,13 +609,38 @@ impl Repl {
                     Statement::Expression(e) => (EntryKind::Expr(e), e),
                 };
 
+                // Determine the variable to solve for
+                let var = match var_explicit {
+                    Some(v) => v,
+                    None => {
+                        // Try to infer the variable from the expression
+                        let ctx = &self.core.engine.simplifier.context;
+                        match Self::infer_solve_variable(ctx, parsed_expr) {
+                            Ok(Some(v)) => v,
+                            Ok(None) => {
+                                return reply_output(
+                                    "Error: solve() found no variable to solve for.\n\
+                                     Use solve(expr, x) to specify the variable.",
+                                );
+                            }
+                            Err(vars) => {
+                                return reply_output(format!(
+                                    "Error: solve() found ambiguous variables {{{}}}.\n\
+                                     Use solve(expr, {}) or solve(expr, {{{}}}).",
+                                    vars.join(", "),
+                                    vars.first().unwrap_or(&"x".to_string()),
+                                    vars.join(", ")
+                                ));
+                            }
+                        }
+                    }
+                };
+
                 let req = EvalRequest {
                     raw_input: eq_str.to_string(),
                     parsed: parsed_expr,
                     kind,
-                    action: EvalAction::Solve {
-                        var: var.to_string(),
-                    },
+                    action: EvalAction::Solve { var: var.clone() },
                     auto_store: true,
                 };
 
@@ -758,7 +860,7 @@ impl Repl {
                                     let verify_result = verify_solution_set(
                                         &mut self.core.engine.simplifier,
                                         eq,
-                                        var,
+                                        &var,
                                         solution_set,
                                     );
 
