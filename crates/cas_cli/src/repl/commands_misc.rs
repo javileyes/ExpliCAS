@@ -452,19 +452,26 @@ impl Repl {
 
     /// Handle "let <name> = <expr>" (eager) or "let <name> := <expr>" (lazy) command
     pub(crate) fn handle_let_command(&mut self, rest: &str) {
+        let reply = self.handle_let_command_core(rest);
+        self.print_reply(reply);
+    }
+
+    fn handle_let_command_core(&mut self, rest: &str) -> ReplReply {
         // Detect := (lazy) before = (eager) - order matters!
         if let Some(idx) = rest.find(":=") {
             let name = rest[..idx].trim();
             let expr_str = rest[idx + 2..].trim();
-            self.handle_assignment(name, expr_str, true); // lazy
+            self.handle_assignment_core(name, expr_str, true) // lazy
         } else if let Some(eq_idx) = rest.find('=') {
             let name = rest[..eq_idx].trim();
             let expr_str = rest[eq_idx + 1..].trim();
-            self.handle_assignment(name, expr_str, false); // eager
+            self.handle_assignment_core(name, expr_str, false) // eager
         } else {
-            println!("Usage: let <name> = <expr>   (eager - evaluates)");
-            println!("       let <name> := <expr>  (lazy - stores formula)");
-            println!("Example: let a = expand((1+x)^3)");
+            reply_output(
+                "Usage: let <name> = <expr>   (eager - evaluates)\n\
+                        let <name> := <expr>  (lazy - stores formula)\n\
+                 Example: let a = expand((1+x)^3)",
+            )
         }
     }
 
@@ -472,10 +479,14 @@ impl Repl {
     /// - eager=false (=): evaluate then store (unwrap __hold)
     /// - eager=true (:=): store formula without evaluating
     pub(crate) fn handle_assignment(&mut self, name: &str, expr_str: &str, lazy: bool) {
+        let reply = self.handle_assignment_core(name, expr_str, lazy);
+        self.print_reply(reply);
+    }
+
+    fn handle_assignment_core(&mut self, name: &str, expr_str: &str, lazy: bool) -> ReplReply {
         // Validate name
         if name.is_empty() {
-            println!("Error: Variable name cannot be empty");
-            return;
+            return reply_output("Error: Variable name cannot be empty");
         }
 
         // Check if identifier is valid (alphanumeric + underscore, starts with letter/underscore)
@@ -485,17 +496,15 @@ impl Repl {
             .map(|c| c.is_alphabetic())
             .unwrap_or(false);
         if !starts_with_letter && !name.starts_with('_') {
-            println!("Error: Variable name must start with a letter or underscore");
-            return;
+            return reply_output("Error: Variable name must start with a letter or underscore");
         }
 
         // Check reserved names
         if cas_engine::env::is_reserved(name) {
-            println!(
+            return reply_output(format!(
                 "Error: '{}' is a reserved name and cannot be assigned",
                 name
-            );
-            return;
+            ));
         }
 
         // Parse the expression
@@ -535,18 +544,17 @@ impl Repl {
                     context: &self.core.engine.simplifier.context,
                     id: result,
                 };
-                if lazy {
-                    println!("{} := {}", name, display);
-                } else {
-                    println!("{} = {}", name, display);
-                }
 
                 // Note: we don't restore old_binding - this is an assignment/update
                 let _ = old_binding;
+
+                if lazy {
+                    reply_output(format!("{} := {}", name, display))
+                } else {
+                    reply_output(format!("{} = {}", name, display))
+                }
             }
-            Err(e) => {
-                println!("Parse error: {}", e);
-            }
+            Err(e) => reply_output(format!("Parse error: {}", e)),
         }
     }
 
