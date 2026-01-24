@@ -164,6 +164,12 @@ impl Repl {
             return reply;
         }
 
+        // Check for "solve_system" command (must be before "solve" to avoid prefix collision)
+        if line.starts_with("solve_system") {
+            self.handle_solve_system(&line);
+            return reply;
+        }
+
         // Check for "solve" command
         if line.starts_with("solve ") {
             self.handle_solve(&line);

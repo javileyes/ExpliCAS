@@ -471,6 +471,7 @@ impl Default for Repl {
 mod commands_algebra;
 mod commands_misc;
 mod commands_solve;
+mod commands_system;
 mod core;
 mod dispatch;
 mod eval;

@@ -514,14 +514,20 @@ impl Repl {
                         break;
                     }
 
-                    // Split by semicolon to allow multiple statements on one line
-                    // e.g., "let a = 3*x; let b = 4*x; a + b"
-                    for statement in line.split(';') {
-                        let statement = statement.trim();
-                        if statement.is_empty() {
-                            continue;
+                    // Special case: solve_system uses ; as internal separator
+                    // Handle it directly without splitting
+                    if line.starts_with("solve_system") {
+                        self.handle_command(line);
+                    } else {
+                        // Split by semicolon to allow multiple statements on one line
+                        // e.g., "let a = 3*x; let b = 4*x; a + b"
+                        for statement in line.split(';') {
+                            let statement = statement.trim();
+                            if statement.is_empty() {
+                                continue;
+                            }
+                            self.handle_command(statement);
                         }
-                        self.handle_command(statement);
                     }
                 }
                 Err(ReadlineError::Interrupted) => {

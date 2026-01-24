@@ -5,6 +5,27 @@ All notable changes to ExpliCAS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.15.48] - 2026-01-24 - Linear Systems Solver
+
+### Added
+
+- **`solve_system` Command**: Specialized solver for 2×2 linear equation systems
+  - Syntax: `solve_system(eq1; eq2; var1; var2)`
+  - Uses Cramer's rule with exact `BigRational` arithmetic
+  - Validates linearity via `MultiPoly` coefficient extraction
+  - Detects degenerate systems (det=0) with clear error messages
+  - See [SOLVE_SYSTEM.md](SOLVE_SYSTEM.md) for full documentation
+
+- **Dependencies**: Added `num-rational` and `num-bigint` to `cas_cli`
+
+### Technical
+
+- New module: `crates/cas_cli/src/repl/commands_system.rs`
+- Semicolon bypass in REPL for `solve_system` (uses `;` as internal separator)
+- All 32 `cas_cli` tests pass
+
+---
+
 ## [2.15.36] - 2026-01-21 - Session Caching Hardened
 
 ### Added
