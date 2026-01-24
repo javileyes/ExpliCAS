@@ -774,20 +774,31 @@ impl Repl {
                 self.handle_preset(&args[2..]);
             }
             Some(other) => {
-                println!("Unknown semantics subcommand: '{}'", other);
-                println!("Usage: semantics [set|preset|help|<axis>]");
-                println!("  semantics            Show all settings");
-                println!("  semantics <axis>     Show one axis (domain|value|branch|inv_trig|const_fold|assumptions|assume_scope|requires)");
-                println!("  semantics help       Show help");
-                println!("  semantics set ...    Change settings");
-                println!("  semantics preset     List/apply presets");
+                let error_text = format!(
+                    "Unknown semantics subcommand: '{}'\n\
+                     Usage: semantics [set|preset|help|<axis>]\n\
+                       semantics            Show all settings\n\
+                       semantics <axis>     Show one axis (domain|value|branch|inv_trig|const_fold|assumptions|assume_scope|requires)\n\
+                       semantics help       Show help\n\
+                       semantics set ...    Change settings\n\
+                       semantics preset     List/apply presets",
+                    other
+                );
+                self.print_reply(reply_output(error_text));
             }
         }
     }
 
     pub(crate) fn print_semantics(&self) {
+        let reply = self.print_semantics_core();
+        self.print_reply(reply);
+    }
+
+    fn print_semantics_core(&self) -> ReplReply {
         use cas_engine::semantics::{BranchPolicy, InverseTrigPolicy, ValueDomain};
         use cas_engine::DomainMode;
+
+        let mut lines = Vec::new();
 
         let domain = match self.core.simplify_options.domain {
             DomainMode::Strict => "strict",
@@ -809,31 +820,34 @@ impl Repl {
             InverseTrigPolicy::PrincipalValue => "principal",
         };
 
-        println!("Semantics:");
-        println!("  domain_mode: {}", domain);
-        println!("  value_domain: {}", value);
+        lines.push("Semantics:".to_string());
+        lines.push(format!("  domain_mode: {}", domain));
+        lines.push(format!("  value_domain: {}", value));
 
         // Show branch with inactive note if value=real
         if self.core.simplify_options.value_domain == ValueDomain::RealOnly {
-            println!("  branch: {} (inactive: value_domain=real)", branch);
+            lines.push(format!(
+                "  branch: {} (inactive: value_domain=real)",
+                branch
+            ));
         } else {
-            println!("  branch: {}", branch);
+            lines.push(format!("  branch: {}", branch));
         }
 
-        println!("  inv_trig: {}", inv_trig);
+        lines.push(format!("  inv_trig: {}", inv_trig));
 
         let const_fold = match self.core.state.options.const_fold {
             cas_engine::const_fold::ConstFoldMode::Off => "off",
             cas_engine::const_fold::ConstFoldMode::Safe => "safe",
         };
-        println!("  const_fold: {}", const_fold);
+        lines.push(format!("  const_fold: {}", const_fold));
 
         let assumptions = match self.core.state.options.assumption_reporting {
             cas_engine::AssumptionReporting::Off => "off",
             cas_engine::AssumptionReporting::Summary => "summary",
             cas_engine::AssumptionReporting::Trace => "trace",
         };
-        println!("  assumptions: {}", assumptions);
+        lines.push(format!("  assumptions: {}", assumptions));
 
         // Show assume_scope with inactive note if domain_mode != Assume
         let assume_scope = match self.core.simplify_options.assume_scope {
@@ -841,12 +855,12 @@ impl Repl {
             cas_engine::AssumeScope::Wildcard => "wildcard",
         };
         if self.core.simplify_options.domain != DomainMode::Assume {
-            println!(
+            lines.push(format!(
                 "  assume_scope: {} (inactive: domain_mode != assume)",
                 assume_scope
-            );
+            ));
         } else {
-            println!("  assume_scope: {}", assume_scope);
+            lines.push(format!("  assume_scope: {}", assume_scope));
         }
 
         // Show hints_enabled
@@ -855,20 +869,29 @@ impl Repl {
         } else {
             "off"
         };
-        println!("  hints: {}", hints);
+        lines.push(format!("  hints: {}", hints));
 
         // Show requires display level
         let requires = match self.core.state.options.requires_display {
             cas_engine::implicit_domain::RequiresDisplayLevel::Essential => "essential",
             cas_engine::implicit_domain::RequiresDisplayLevel::All => "all",
         };
-        println!("  requires: {}", requires);
+        lines.push(format!("  requires: {}", requires));
+
+        reply_output(lines.join("\n"))
     }
 
     /// Print status for a single semantic axis with current value and available options
     pub(crate) fn print_axis_status(&self, axis: &str) {
+        let reply = self.print_axis_status_core(axis);
+        self.print_reply(reply);
+    }
+
+    fn print_axis_status_core(&self, axis: &str) -> ReplReply {
         use cas_engine::semantics::{BranchPolicy, InverseTrigPolicy, ValueDomain};
         use cas_engine::DomainMode;
+
+        let mut lines = Vec::new();
 
         match axis {
             "domain" => {
@@ -877,21 +900,21 @@ impl Repl {
                     DomainMode::Assume => "assume",
                     DomainMode::Generic => "generic",
                 };
-                println!("domain: {}", current);
-                println!("  Values: strict | generic | assume");
-                println!("  strict:  No domain assumptions (x/x stays x/x)");
-                println!("  generic: Classic CAS 'almost everywhere' algebra");
-                println!("  assume:  Use assumptions with warnings");
+                lines.push(format!("domain: {}", current));
+                lines.push("  Values: strict | generic | assume".to_string());
+                lines.push("  strict:  No domain assumptions (x/x stays x/x)".to_string());
+                lines.push("  generic: Classic CAS 'almost everywhere' algebra".to_string());
+                lines.push("  assume:  Use assumptions with warnings".to_string());
             }
             "value" => {
                 let current = match self.core.simplify_options.value_domain {
                     ValueDomain::RealOnly => "real",
                     ValueDomain::ComplexEnabled => "complex",
                 };
-                println!("value: {}", current);
-                println!("  Values: real | complex");
-                println!("  real:    ℝ only (sqrt(-1) undefined)");
-                println!("  complex: ℂ enabled (sqrt(-1) = i)");
+                lines.push(format!("value: {}", current));
+                lines.push("  Values: real | complex".to_string());
+                lines.push("  real:    ℝ only (sqrt(-1) undefined)".to_string());
+                lines.push("  complex: ℂ enabled (sqrt(-1) = i)".to_string());
             }
             "branch" => {
                 let current = match self.core.simplify_options.branch {
@@ -899,14 +922,16 @@ impl Repl {
                 };
                 let inactive = self.core.simplify_options.value_domain == ValueDomain::RealOnly;
                 if inactive {
-                    println!("branch: {} (inactive: value=real)", current);
+                    lines.push(format!("branch: {} (inactive: value=real)", current));
                 } else {
-                    println!("branch: {}", current);
+                    lines.push(format!("branch: {}", current));
                 }
-                println!("  Values: principal");
-                println!("  principal: Use principal branch for multi-valued functions");
+                lines.push("  Values: principal".to_string());
+                lines.push(
+                    "  principal: Use principal branch for multi-valued functions".to_string(),
+                );
                 if inactive {
-                    println!("  Note: Only active when value=complex");
+                    lines.push("  Note: Only active when value=complex".to_string());
                 }
             }
             "inv_trig" => {
@@ -914,20 +939,20 @@ impl Repl {
                     InverseTrigPolicy::Strict => "strict",
                     InverseTrigPolicy::PrincipalValue => "principal",
                 };
-                println!("inv_trig: {}", current);
-                println!("  Values: strict | principal");
-                println!("  strict:    arctan(tan(x)) unchanged");
-                println!("  principal: arctan(tan(x)) → x with warning");
+                lines.push(format!("inv_trig: {}", current));
+                lines.push("  Values: strict | principal".to_string());
+                lines.push("  strict:    arctan(tan(x)) unchanged".to_string());
+                lines.push("  principal: arctan(tan(x)) → x with warning".to_string());
             }
             "const_fold" => {
                 let current = match self.core.state.options.const_fold {
                     cas_engine::const_fold::ConstFoldMode::Off => "off",
                     cas_engine::const_fold::ConstFoldMode::Safe => "safe",
                 };
-                println!("const_fold: {}", current);
-                println!("  Values: off | safe");
-                println!("  off:  No constant folding (defer semantic decisions)");
-                println!("  safe: Fold literals (2^3 → 8, sqrt(-1) → i if complex)");
+                lines.push(format!("const_fold: {}", current));
+                lines.push("  Values: off | safe".to_string());
+                lines.push("  off:  No constant folding (defer semantic decisions)".to_string());
+                lines.push("  safe: Fold literals (2^3 → 8, sqrt(-1) → i if complex)".to_string());
             }
             "assumptions" => {
                 let current = match self.core.state.options.assumption_reporting {
@@ -935,11 +960,11 @@ impl Repl {
                     cas_engine::AssumptionReporting::Summary => "summary",
                     cas_engine::AssumptionReporting::Trace => "trace",
                 };
-                println!("assumptions: {}", current);
-                println!("  Values: off | summary | trace");
-                println!("  off:     No assumption reporting");
-                println!("  summary: Deduped summary line at end");
-                println!("  trace:   Detailed trace (future)");
+                lines.push(format!("assumptions: {}", current));
+                lines.push("  Values: off | summary | trace".to_string());
+                lines.push("  off:     No assumption reporting".to_string());
+                lines.push("  summary: Deduped summary line at end".to_string());
+                lines.push("  trace:   Detailed trace (future)".to_string());
             }
             "assume_scope" => {
                 let current = match self.core.simplify_options.assume_scope {
@@ -948,18 +973,18 @@ impl Repl {
                 };
                 let inactive = self.core.simplify_options.domain != DomainMode::Assume;
                 if inactive {
-                    println!(
+                    lines.push(format!(
                         "assume_scope: {} (inactive: domain_mode != assume)",
                         current
-                    );
+                    ));
                 } else {
-                    println!("assume_scope: {}", current);
+                    lines.push(format!("assume_scope: {}", current));
                 }
-                println!("  Values: real | wildcard");
-                println!("  real:     Assume for ℝ, error if ℂ needed");
-                println!("  wildcard: Assume for ℝ, residual+warning if ℂ needed");
+                lines.push("  Values: real | wildcard".to_string());
+                lines.push("  real:     Assume for ℝ, error if ℂ needed".to_string());
+                lines.push("  wildcard: Assume for ℝ, residual+warning if ℂ needed".to_string());
                 if inactive {
-                    println!("  Note: Only active when domain_mode=assume");
+                    lines.push("  Note: Only active when domain_mode=assume".to_string());
                 }
             }
             "requires" => {
@@ -967,65 +992,74 @@ impl Repl {
                     cas_engine::implicit_domain::RequiresDisplayLevel::Essential => "essential",
                     cas_engine::implicit_domain::RequiresDisplayLevel::All => "all",
                 };
-                println!("requires: {}", current);
-                println!("  Values: essential | all");
-                println!("  essential: Only show requires whose witness was consumed");
-                println!("  all:       Show all requires including implicit ones");
+                lines.push(format!("requires: {}", current));
+                lines.push("  Values: essential | all".to_string());
+                lines
+                    .push("  essential: Only show requires whose witness was consumed".to_string());
+                lines.push("  all:       Show all requires including implicit ones".to_string());
             }
             _ => {
-                println!("Unknown axis: {}", axis);
+                lines.push(format!("Unknown axis: {}", axis));
             }
         }
+
+        reply_output(lines.join("\n"))
     }
 
     pub(crate) fn print_semantics_help(&self) {
-        println!("Semantics: Control evaluation semantics");
-        println!();
-        println!("Usage:");
-        println!("  semantics                    Show current settings");
-        println!("  semantics set <axis> <val>   Set one axis");
-        println!("  semantics set k=v k=v ...    Set multiple axes");
-        println!();
-        println!("Axes:");
-        println!("  domain      strict | generic | assume");
-        println!("              strict:  No domain assumptions (x/x stays x/x)");
-        println!("              generic: Classic CAS 'almost everywhere' algebra");
-        println!("              assume:  Use assumptions with warnings");
-        println!();
-        println!("  value       real | complex");
-        println!("              real:    ℝ only (sqrt(-1) undefined)");
-        println!("              complex: ℂ enabled (sqrt(-1) = i)");
-        println!();
-        println!("  branch      principal");
-        println!("              (only active when value=complex)");
-        println!();
-        println!("  inv_trig    strict | principal");
-        println!("              strict:    arctan(tan(x)) unchanged");
-        println!("              principal: arctan(tan(x)) → x with warning");
-        println!();
-        println!("  const_fold  off | safe");
-        println!("              off:  No constant folding");
-        println!("              safe: Fold literals (2^3 → 8)");
-        println!();
-        println!("  assume_scope real | wildcard");
-        println!("              real:     Assume for ℝ, error if ℂ needed");
-        println!("              wildcard: Assume for ℝ, residual+warning if ℂ needed");
-        println!("              (only active when domain_mode=assume)");
-        println!();
-        println!("  requires    essential | all");
-        println!("              essential: Show only requires whose witness was consumed");
-        println!("              all:       Show all requires including implicit ones");
-        println!();
-        println!("Examples:");
-        println!("  semantics set domain strict");
-        println!("  semantics set value complex inv_trig principal");
-        println!("  semantics set domain=strict value=complex");
-        println!("  semantics set assume_scope wildcard");
-        println!();
-        println!("Presets:");
-        println!("  semantics preset              List available presets");
-        println!("  semantics preset <name>       Apply a preset");
-        println!("  semantics preset help <name>  Show preset details");
+        let reply = self.print_semantics_help_core();
+        self.print_reply(reply);
+    }
+
+    fn print_semantics_help_core(&self) -> ReplReply {
+        let text = r#"Semantics: Control evaluation semantics
+
+Usage:
+  semantics                    Show current settings
+  semantics set <axis> <val>   Set one axis
+  semantics set k=v k=v ...    Set multiple axes
+
+Axes:
+  domain      strict | generic | assume
+              strict:  No domain assumptions (x/x stays x/x)
+              generic: Classic CAS 'almost everywhere' algebra
+              assume:  Use assumptions with warnings
+
+  value       real | complex
+              real:    ℝ only (sqrt(-1) undefined)
+              complex: ℂ enabled (sqrt(-1) = i)
+
+  branch      principal
+              (only active when value=complex)
+
+  inv_trig    strict | principal
+              strict:    arctan(tan(x)) unchanged
+              principal: arctan(tan(x)) → x with warning
+
+  const_fold  off | safe
+              off:  No constant folding
+              safe: Fold literals (2^3 → 8)
+
+  assume_scope real | wildcard
+              real:     Assume for ℝ, error if ℂ needed
+              wildcard: Assume for ℝ, residual+warning if ℂ needed
+              (only active when domain_mode=assume)
+
+  requires    essential | all
+              essential: Show only requires whose witness was consumed
+              all:       Show all requires including implicit ones
+
+Examples:
+  semantics set domain strict
+  semantics set value complex inv_trig principal
+  semantics set domain=strict value=complex
+  semantics set assume_scope wildcard
+
+Presets:
+  semantics preset              List available presets
+  semantics preset <name>       Apply a preset
+  semantics preset help <name>  Show preset details"#;
+        reply_output(text)
     }
 
     /// Handle "semantics preset" subcommand
