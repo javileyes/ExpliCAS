@@ -176,7 +176,8 @@ impl Repl {
 
         // Show debug output if enabled
         if self.core.debug_mode {
-            self.print_pipeline_stats(&stats);
+            let mut lines: Vec<String> = Vec::new();
+            lines.push(self.format_pipeline_stats(&stats));
 
             // Policy A+ hint: when simplify makes minimal changes to a Mul expression
             if stats.total_rewrites <= 1
@@ -185,16 +186,21 @@ impl Repl {
                     cas_ast::Expr::Mul(_, _)
                 )
             {
-                println!("Note: simplify preserves factored products. Use expand(...) to expand.");
+                lines.push(
+                    "Note: simplify preserves factored products. Use expand(...) to expand."
+                        .to_string(),
+                );
             }
 
             // Show health report if significant activity (>= 5 rewrites)
             if stats.total_rewrites >= 5 {
-                println!();
+                lines.push(String::new());
                 if let Some(ref report) = self.core.last_health_report {
-                    print!("{}", report);
+                    lines.push(report.to_string());
                 }
             }
+
+            self.print_reply(reply_output(lines.join("\n")));
         }
 
         self.core.last_stats = Some(stats.clone());
@@ -215,26 +221,28 @@ impl Repl {
                     }
                 })
                 .collect();
-            println!("⚠ Assumptions: {}", items.join(", "));
+            self.print_reply(reply_output(format!("⚠ Assumptions: {}", items.join(", "))));
         }
 
         (result, steps)
     }
 
-    /// Print pipeline statistics for diagnostics
+    /// Format pipeline statistics for diagnostics (returns String, no I/O)
     #[allow(dead_code)]
-    pub(crate) fn print_pipeline_stats(&self, stats: &cas_engine::PipelineStats) {
-        println!();
-        println!("──── Pipeline Diagnostics ────");
-        println!(
+    pub(crate) fn format_pipeline_stats(&self, stats: &cas_engine::PipelineStats) -> String {
+        let mut lines: Vec<String> = Vec::new();
+
+        lines.push(String::new());
+        lines.push("──── Pipeline Diagnostics ────".to_string());
+        lines.push(format!(
             "  Core:       {} iters, {} rewrites",
             stats.core.iters_used, stats.core.rewrites_used
-        );
+        ));
         if let Some(ref cycle) = stats.core.cycle {
-            println!(
+            lines.push(format!(
                 "              ⚠ Cycle detected: period={} at rewrite={} (stopped early)",
                 cycle.period, cycle.at_step
-            );
+            ));
             let top = self
                 .core
                 .engine
@@ -243,18 +251,21 @@ impl Repl {
                 .top_applied_for_phase(cas_engine::SimplifyPhase::Core, 2);
             if !top.is_empty() {
                 let hints: Vec<_> = top.iter().map(|(r, c)| format!("{}={}", r, c)).collect();
-                println!("              Likely contributors: {}", hints.join(", "));
+                lines.push(format!(
+                    "              Likely contributors: {}",
+                    hints.join(", ")
+                ));
             }
         }
-        println!(
+        lines.push(format!(
             "  Transform:  {} iters, {} rewrites, changed={}",
             stats.transform.iters_used, stats.transform.rewrites_used, stats.transform.changed
-        );
+        ));
         if let Some(ref cycle) = stats.transform.cycle {
-            println!(
+            lines.push(format!(
                 "              ⚠ Cycle detected: period={} at rewrite={} (stopped early)",
                 cycle.period, cycle.at_step
-            );
+            ));
             let top = self
                 .core
                 .engine
@@ -263,31 +274,34 @@ impl Repl {
                 .top_applied_for_phase(cas_engine::SimplifyPhase::Transform, 2);
             if !top.is_empty() {
                 let hints: Vec<_> = top.iter().map(|(r, c)| format!("{}={}", r, c)).collect();
-                println!("              Likely contributors: {}", hints.join(", "));
+                lines.push(format!(
+                    "              Likely contributors: {}",
+                    hints.join(", ")
+                ));
             }
         }
-        println!(
+        lines.push(format!(
             "  Rationalize: {:?}",
             stats
                 .rationalize_level
                 .unwrap_or(cas_engine::AutoRationalizeLevel::Off)
-        );
+        ));
 
         if let Some(ref outcome) = stats.rationalize_outcome {
             match outcome {
                 cas_engine::RationalizeOutcome::Applied => {
-                    println!("              → Applied ✓");
+                    lines.push("              → Applied ✓".to_string());
                 }
                 cas_engine::RationalizeOutcome::NotApplied(reason) => {
-                    println!("              → NotApplied: {:?}", reason);
+                    lines.push(format!("              → NotApplied: {:?}", reason));
                 }
             }
         }
         if let Some(ref cycle) = stats.rationalize.cycle {
-            println!(
+            lines.push(format!(
                 "              ⚠ Cycle detected: period={} at rewrite={} (stopped early)",
                 cycle.period, cycle.at_step
-            );
+            ));
             let top = self
                 .core
                 .engine
@@ -296,19 +310,22 @@ impl Repl {
                 .top_applied_for_phase(cas_engine::SimplifyPhase::Rationalize, 2);
             if !top.is_empty() {
                 let hints: Vec<_> = top.iter().map(|(r, c)| format!("{}={}", r, c)).collect();
-                println!("              Likely contributors: {}", hints.join(", "));
+                lines.push(format!(
+                    "              Likely contributors: {}",
+                    hints.join(", ")
+                ));
             }
         }
 
-        println!(
+        lines.push(format!(
             "  PostCleanup: {} iters, {} rewrites",
             stats.post_cleanup.iters_used, stats.post_cleanup.rewrites_used
-        );
+        ));
         if let Some(ref cycle) = stats.post_cleanup.cycle {
-            println!(
+            lines.push(format!(
                 "              ⚠ Cycle detected: period={} at rewrite={} (stopped early)",
                 cycle.period, cycle.at_step
-            );
+            ));
             let top = self
                 .core
                 .engine
@@ -317,11 +334,16 @@ impl Repl {
                 .top_applied_for_phase(cas_engine::SimplifyPhase::PostCleanup, 2);
             if !top.is_empty() {
                 let hints: Vec<_> = top.iter().map(|(r, c)| format!("{}={}", r, c)).collect();
-                println!("              Likely contributors: {}", hints.join(", "));
+                lines.push(format!(
+                    "              Likely contributors: {}",
+                    hints.join(", ")
+                ));
             }
         }
-        println!("  Total rewrites: {}", stats.total_rewrites);
-        println!("───────────────────────────────");
+        lines.push(format!("  Total rewrites: {}", stats.total_rewrites));
+        lines.push("───────────────────────────────".to_string());
+
+        lines.join("\n")
     }
 
     pub(crate) fn sync_config_to_simplifier(&mut self) {
@@ -438,10 +460,23 @@ impl Repl {
         }
     }
 
+    /// Generate startup banner messages (no I/O here)
+    pub(crate) fn startup_messages(&self) -> ReplReply {
+        reply_output(
+            "Rust CAS Step-by-Step Demo\n\
+             Step-by-step output enabled (Normal).\n\
+             Enter an expression (e.g., '2 * 3 + 0'):",
+        )
+    }
+
+    /// Generate goodbye message (no I/O here)
+    pub(crate) fn goodbye_message(&self) -> ReplReply {
+        reply_output("Goodbye!")
+    }
+
     pub fn run(&mut self) -> rustyline::Result<()> {
-        println!("Rust CAS Step-by-Step Demo");
-        println!("Step-by-step output enabled (Normal).");
-        println!("Enter an expression (e.g., '2 * 3 + 0'):");
+        // Print startup banner
+        self.print_reply(self.startup_messages());
 
         let helper = CasHelper::new();
         let config = rustyline::Config::builder()
@@ -475,7 +510,7 @@ impl Repl {
                     rl.add_history_entry(line)?;
 
                     if line == "quit" || line == "exit" {
-                        println!("Goodbye!");
+                        self.print_reply(self.goodbye_message());
                         break;
                     }
 
@@ -490,15 +525,15 @@ impl Repl {
                     }
                 }
                 Err(ReadlineError::Interrupted) => {
-                    println!("CTRL-C");
+                    self.print_reply(reply_output("CTRL-C"));
                     break;
                 }
                 Err(ReadlineError::Eof) => {
-                    println!("CTRL-D");
+                    self.print_reply(reply_output("CTRL-D"));
                     break;
                 }
                 Err(err) => {
-                    println!("Error: {:?}", err);
+                    self.print_reply(reply_output(format!("Error: {:?}", err)));
                     break;
                 }
             }
