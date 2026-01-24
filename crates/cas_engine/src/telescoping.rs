@@ -336,7 +336,8 @@ fn extract_cosine_multiple(ctx: &Context, expr: ExprId) -> Option<(usize, ExprId
 
         if two_side.is_some() {
             // Other side should be cos(k*x)
-            if let Expr::Function(fn_id, args) = ctx.get(other_side) { let name = ctx.sym_name(*fn_id);
+            if let Expr::Function(fn_id, args) = ctx.get(other_side) {
+                let name = ctx.sym_name(*fn_id);
                 if name == "cos" && args.len() == 1 {
                     return extract_multiple_of_var(ctx, args[0]);
                 }
@@ -349,9 +350,11 @@ fn extract_cosine_multiple(ctx: &Context, expr: ExprId) -> Option<(usize, ExprId
 /// Extract sin(a)/sin(b) pattern, returning (a, b)
 fn extract_sin_ratio(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
     if let Expr::Div(num, den) = ctx.get(expr) {
-        if let Expr::Function(num_name, num_args) = ctx.get(*num) {
+        if let Expr::Function(num_fn_id, num_args) = ctx.get(*num) {
+            let num_name = ctx.sym_name(*num_fn_id);
             if num_name == "sin" && num_args.len() == 1 {
-                if let Expr::Function(den_name, den_args) = ctx.get(*den) {
+                if let Expr::Function(den_fn_id, den_args) = ctx.get(*den) {
+                    let den_name = ctx.sym_name(*den_fn_id);
                     if den_name == "sin" && den_args.len() == 1 {
                         return Some((num_args[0], den_args[0]));
                     }

@@ -42,9 +42,10 @@ define_rule!(ProductToSumRule, "Product to Sum", |ctx, expr| {
                         two_idx = Some(i);
                     }
                 }
-                Expr::Function(name, args) => {
+                Expr::Function(fn_id, args) => {
+                    let name = ctx.sym_name(*fn_id);
                     if args.len() == 1 && (name == "sin" || name == "cos") {
-                        trig_funcs.push((i, name.clone(), args[0]));
+                        trig_funcs.push((i, name.to_string(), args[0]));
                     }
                 }
                 _ => {}
@@ -136,7 +137,8 @@ define_rule!(ProductToSumRule, "Product to Sum", |ctx, expr| {
 define_rule!(TrigPhaseShiftRule, "Trig Phase Shift", |ctx, expr| {
     let expr_data = ctx.get(expr).clone();
 
-    if let Expr::Function(fn_id, args) = expr_data { let name = ctx.sym_name(*fn_id);
+    if let Expr::Function(fn_id, args) = expr_data {
+        let name = ctx.sym_name(fn_id);
         if args.len() != 1 {
             return None;
         }
@@ -180,7 +182,7 @@ define_rule!(TrigPhaseShiftRule, "Trig Phase Shift", |ctx, expr| {
             }
         };
 
-        let new_trig = ctx.add(Expr::Function(new_func.to_string(), vec![base_term]));
+        let new_trig = ctx.call(new_func, vec![base_term]);
         let new_expr = if negate {
             ctx.add(Expr::Neg(new_trig))
         } else {

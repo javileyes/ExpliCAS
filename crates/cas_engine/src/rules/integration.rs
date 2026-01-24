@@ -57,7 +57,8 @@ impl Rule for ProductToSumRule {
                         coeff_idx = Some(i);
                     }
                 }
-                Expr::Function(name, args) if args.len() == 1 => {
+                Expr::Function(fn_id, args) if args.len() == 1 => {
+                    let name = ctx.sym_name(*fn_id);
                     if name == "sin" && sin_idx.is_none() {
                         sin_idx = Some(i);
                         sin_arg = Some(args[0]);
@@ -135,7 +136,8 @@ impl Rule for CosProductTelescopingRule {
         let mut cos_info: Vec<(usize, i64, ExprId)> = Vec::new();
 
         for (i, &f) in factors.iter().enumerate() {
-            if let Expr::Function(fn_id, args) = ctx.get(f) { let name = ctx.sym_name(*fn_id);
+            if let Expr::Function(fn_id, args) = ctx.get(f) {
+                let name = ctx.sym_name(*fn_id);
                 if name == "cos" && args.len() == 1 {
                     let arg = args[0];
                     // Try to extract k and u from: k*u or just u (k=1)

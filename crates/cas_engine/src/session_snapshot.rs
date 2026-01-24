@@ -155,8 +155,8 @@ impl ContextSnapshot {
                 Expr::Div(l, r) => ExprNodeSnapshot::Div(l.index() as u32, r.index() as u32),
                 Expr::Pow(l, r) => ExprNodeSnapshot::Pow(l.index() as u32, r.index() as u32),
                 Expr::Neg(inner) => ExprNodeSnapshot::Neg(inner.index() as u32),
-                Expr::Function(name, args) => ExprNodeSnapshot::Function(
-                    name.clone(),
+                Expr::Function(fn_id, args) => ExprNodeSnapshot::Function(
+                    ctx.sym_name(*fn_id).to_string(),
                     args.iter().map(|a| a.index() as u32).collect(),
                 ),
                 Expr::Matrix { rows, cols, data } => ExprNodeSnapshot::Matrix {
@@ -195,7 +195,8 @@ impl ContextSnapshot {
                 ExprNodeSnapshot::Pow(l, r) => Expr::Pow(ExprId::from_raw(l), ExprId::from_raw(r)),
                 ExprNodeSnapshot::Neg(inner) => Expr::Neg(ExprId::from_raw(inner)),
                 ExprNodeSnapshot::Function(name, args) => {
-                    Expr::Function(name, args.into_iter().map(ExprId::from_raw).collect())
+                    let fn_id = ctx.intern_symbol(&name);
+                    Expr::Function(fn_id, args.into_iter().map(ExprId::from_raw).collect())
                 }
                 ExprNodeSnapshot::Matrix { rows, cols, data } => Expr::Matrix {
                     rows,

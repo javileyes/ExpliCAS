@@ -63,7 +63,7 @@ impl Visitor for DepthVisitor {
             Expr::Div(l, r) => self.visit_div(ctx, *l, *r),
             Expr::Pow(b, e) => self.visit_pow(ctx, *b, *e),
             Expr::Neg(e) => self.visit_neg(ctx, *e),
-            Expr::Function(name, args) => self.visit_function(ctx, name, args),
+            Expr::Function(fn_id, args) => self.visit_function(ctx, ctx.sym_name(*fn_id), args),
             Expr::Matrix { data, .. } => {
                 for elem in data.iter() {
                     self.visit_expr(ctx, *elem); // Recursively visit elements for depth

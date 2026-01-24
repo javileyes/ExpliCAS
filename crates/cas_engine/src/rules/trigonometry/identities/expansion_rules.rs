@@ -104,10 +104,7 @@ define_rule!(
                 // For cos, half_diff sign doesn't matter (even function)
                 let half_diff_normalized = normalize_for_even_fn(ctx, half_diff);
                 let cos_avg = ctx.call("cos", vec![avg]);
-                let cos_half = ctx.add(Expr::Function(
-                    "cos".to_string(),
-                    vec![half_diff_normalized],
-                ));
+                let cos_half = ctx.call("cos", vec![half_diff_normalized]);
                 let product = smart_mul(ctx, cos_avg, cos_half);
                 let result = smart_mul(ctx, two, product);
                 (result, "cos(A)+cos(B) = 2·cos((A+B)/2)·cos((A-B)/2)")
@@ -186,14 +183,16 @@ impl crate::rule::Rule for HalfAngleTangentRule {
             // Helper to extract cos(2x) from either cos(2x) or Neg(cos(2x))
             let try_extract_cos_2x =
                 |ctx: &cas_ast::Context, id: ExprId| -> Option<(ExprId, bool)> {
-                    if let Expr::Function(fn_id, args) = ctx.get(id) { let name = ctx.sym_name(*fn_id);
+                    if let Expr::Function(fn_id, args) = ctx.get(id) {
+                        let name = ctx.sym_name(*fn_id);
                         if name == "cos" && args.len() == 1 {
                             return extract_double_angle_arg(ctx, args[0]).map(|x| (x, false));
                         }
                     }
                     // Check for Neg(cos(2x))
                     if let Expr::Neg(inner) = ctx.get(id) {
-                        if let Expr::Function(fn_id, args) = ctx.get(*inner) { let name = ctx.sym_name(*fn_id);
+                        if let Expr::Function(fn_id, args) = ctx.get(*inner) {
+                            let name = ctx.sym_name(*fn_id);
                             if name == "cos" && args.len() == 1 {
                                 return extract_double_angle_arg(ctx, args[0]).map(|x| (x, true));
                                 // negated
@@ -209,7 +208,8 @@ impl crate::rule::Rule for HalfAngleTangentRule {
                     if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
                         if let Some((x, false)) = try_extract_cos_2x(ctx, *cos_id) {
                             // Check if denominator is sin(2x) with same argument
-                            if let Expr::Function(den_name, den_args) = ctx.get(den_id) {
+                            if let Expr::Function(den_fn_id, den_args) = ctx.get(den_id) {
+                                let den_name = ctx.sym_name(*den_fn_id);
                                 if den_name == "sin" && den_args.len() == 1 {
                                     if let Some(x2) = extract_double_angle_arg(ctx, den_args[0]) {
                                         if crate::ordering::compare_expr(ctx, x, x2)
@@ -248,7 +248,8 @@ impl crate::rule::Rule for HalfAngleTangentRule {
 
                 if let Some(x) = x_opt {
                     // Check if denominator is sin(2x) with same argument
-                    if let Expr::Function(den_name, den_args) = ctx.get(den_id) {
+                    if let Expr::Function(den_fn_id, den_args) = ctx.get(den_id) {
+                        let den_name = ctx.sym_name(*den_fn_id);
                         if den_name == "sin" && den_args.len() == 1 {
                             if let Some(x2) = extract_double_angle_arg(ctx, den_args[0]) {
                                 if crate::ordering::compare_expr(ctx, x, x2)
@@ -267,7 +268,8 @@ impl crate::rule::Rule for HalfAngleTangentRule {
 
             // Try Pattern 2: sin(2x) / (1 + cos(2x))
             // Numerator: sin(2x)
-            if let Expr::Function(fn_id, args) = ctx.get(num_id) { let name = ctx.sym_name(*fn_id);
+            if let Expr::Function(fn_id, args) = ctx.get(num_id) {
+                let name = ctx.sym_name(*fn_id);
                 if name == "sin" && args.len() == 1 {
                     if let Some(x) = extract_double_angle_arg(ctx, args[0]) {
                         // Denominator: 1 + cos(2x) or Add(1, cos(2x))
@@ -289,8 +291,9 @@ impl crate::rule::Rule for HalfAngleTangentRule {
                                     && *n == num_rational::BigRational::from_integer(1.into())
                                 {
                                     // Check if cos_id is cos(2x) with same x
-                                    if let Expr::Function(cos_name, cos_args) = ctx.get(cos_id) {
-                                        if cos_name == "cos" && cos_args.len() == 1 {
+                                    if let Expr::Function(cos_fn_id, cos_args) = ctx.get(cos_id) {
+                                        let cos_name_str = ctx.sym_name(*cos_fn_id);
+                                        if cos_name_str == "cos" && cos_args.len() == 1 {
                                             if let Some(x2) =
                                                 extract_double_angle_arg(ctx, cos_args[0])
                                             {
@@ -377,7 +380,8 @@ define_rule!(
             }
         }
 
-        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id);
             if args.len() == 1 {
                 // Check if arg is 2*x or x*2
                 // We need to match "2 * x"
@@ -562,9 +566,11 @@ impl DoubleAngleContractionRule {
         b: ExprId,
     ) -> Option<(ExprId, ExprId)> {
         // Check if a is sin and b is cos, or vice versa
-        if let Expr::Function(name_a, args_a) = ctx.get(a) {
-            if let Expr::Function(name_b, args_b) = ctx.get(b) {
+        if let Expr::Function(fn_id_a, args_a) = ctx.get(a) {
+            if let Expr::Function(fn_id_b, args_b) = ctx.get(b) {
                 if args_a.len() == 1 && args_b.len() == 1 {
+                    let name_a = ctx.sym_name(*fn_id_a);
+                    let name_b = ctx.sym_name(*fn_id_b);
                     if name_a == "sin" && name_b == "cos" {
                         return Some((args_a[0], args_b[0]));
                     }
@@ -583,9 +589,11 @@ impl DoubleAngleContractionRule {
         trig1: ExprId,
         trig2: ExprId,
     ) -> Option<(ExprId, ExprId)> {
-        if let Expr::Function(name1, args1) = ctx.get(trig1) {
-            if let Expr::Function(name2, args2) = ctx.get(trig2) {
+        if let Expr::Function(fn_id1, args1) = ctx.get(trig1) {
+            if let Expr::Function(fn_id2, args2) = ctx.get(trig2) {
                 if args1.len() == 1 && args2.len() == 1 {
+                    let name1 = ctx.sym_name(*fn_id1);
+                    let name2 = ctx.sym_name(*fn_id2);
                     if name1 == "sin" && name2 == "cos" {
                         return Some((args1[0], args2[0]));
                     }
@@ -611,13 +619,15 @@ impl DoubleAngleContractionRule {
         if let Expr::Pow(base_l, exp_l) = ctx.get(l) {
             if let Expr::Number(n) = ctx.get(*exp_l) {
                 if *n == two_rat {
-                    if let Expr::Function(name_l, args_l) = ctx.get(*base_l) {
+                    if let Expr::Function(fn_id_l, args_l) = ctx.get(*base_l) {
+                        let name_l = ctx.sym_name(*fn_id_l);
                         if name_l == "cos" && args_l.len() == 1 {
                             // Check r is sin²
                             if let Expr::Pow(base_r, exp_r) = ctx.get(r) {
                                 if let Expr::Number(m) = ctx.get(*exp_r) {
                                     if *m == two_rat {
-                                        if let Expr::Function(name_r, args_r) = ctx.get(*base_r) {
+                                        if let Expr::Function(fn_id_r, args_r) = ctx.get(*base_r) {
+                                            let name_r = ctx.sym_name(*fn_id_r);
                                             if name_r == "sin" && args_r.len() == 1 {
                                                 return Some((args_l[0], args_r[0]));
                                             }
@@ -653,7 +663,8 @@ define_rule!(
             return None;
         }
 
-        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id);
             if args.len() == 1 {
                 // Check if arg is 3*x or x*3
                 if let Some(inner_var) = extract_triple_angle_arg(ctx, args[0]) {
@@ -751,7 +762,8 @@ define_rule!(
             return None;
         }
 
-        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id);
             if args.len() == 1 {
                 // Check if arg is 5*x or x*5
                 if let Some(inner_var) = crate::helpers::extract_quintuple_angle_arg(ctx, args[0]) {
@@ -1296,7 +1308,8 @@ define_rule!(
         }
 
         let expr_data = ctx.get(expr).clone();
-        if let Expr::Function(fn_id, args) = expr_data { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = expr_data {
+            let name = ctx.sym_name(*fn_id);
             if args.len() == 1 && (name == "sin" || name == "cos") {
                 // Check for n * x where n is integer > 2
                 let inner = args[0];
