@@ -62,7 +62,7 @@ impl crate::rule::Rule for AbsPositiveSimplifyRule {
 
         // Match abs(inner)
         let inner = match ctx.get(expr).clone() {
-            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "abs" && args.len() == 1 => {
+            Expr::Function(fn_id, ref args) if ctx.sym_name(fn_id) == "abs" && args.len() == 1 => {
                 args[0]
             }
             _ => return None,
@@ -161,7 +161,7 @@ impl crate::rule::Rule for AbsNonNegativeSimplifyRule {
 
         // Match abs(inner)
         let inner = match ctx.get(expr).clone() {
-            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "abs" && args.len() == 1 => {
+            Expr::Function(fn_id, ref args) if ctx.sym_name(fn_id) == "abs" && args.len() == 1 => {
                 args[0]
             }
             _ => return None,
@@ -257,7 +257,8 @@ impl crate::rule::Rule for AbsSquaredRule {
         // V2.15.9: Skip if parent is ln or log to allow LogAbsPowerRule to apply first
         if let Some(parent_id) = parent_ctx.immediate_parent() {
             if let Expr::Function(name, _) = ctx.get(parent_id) {
-                if name == "ln" || name == "log" {
+                let name_str = ctx.sym_name(*name);
+                if name_str == "ln" || name_str == "log" {
                     return None;
                 }
             }
@@ -267,7 +268,7 @@ impl crate::rule::Rule for AbsSquaredRule {
         if let Expr::Pow(base, exp) = expr_data {
             let base_data = ctx.get(base).clone();
             if let Expr::Function(fn_id, args) = base_data {
-                let name = ctx.sym_name(*fn_id);
+                let name = ctx.sym_name(fn_id);
                 if name == "abs" && args.len() == 1 {
                     let inner = args[0];
 
@@ -448,7 +449,7 @@ impl crate::rule::Rule for SymbolicRootCancelRule {
         let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
             return None;
         };
-        let name = ctx.sym_name(*fn_id);
+        let name = ctx.sym_name(fn_id);
 
         if name != "sqrt" || args.len() != 2 {
             return None;
@@ -579,10 +580,10 @@ define_rule!(
     Some(vec!["Function"]),
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr).clone() {
-        let name = ctx.sym_name(fn_id);
+            let name = ctx.sym_name(fn_id);
             if args.len() == 1 {
                 let arg = args[0];
-                match ctx.sym_name(*fn_id) {
+                match name {
                     // simplify() is transparent - argument already processed
                     "simplify" => {
                         return Some(Rewrite::new(arg).desc("simplify(x) = x (already processed)"));
@@ -852,11 +853,11 @@ fn is_sum_of_nonnegative(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool 
             }
         }
         // |x| is non-negative
-        Expr::Function(name, _) if name == "abs" => true,
+        Expr::Function(name, _) if ctx.sym_name(*name) == "abs" => true,
         // sqrt(x) is non-negative
-        Expr::Function(name, _) if name == "sqrt" => true,
+        Expr::Function(name, _) if ctx.sym_name(*name) == "sqrt" => true,
         // exp(x) is positive
-        Expr::Function(name, _) if name == "exp" => true,
+        Expr::Function(name, _) if ctx.sym_name(*name) == "exp" => true,
         // Positive number is non-negative
         Expr::Number(n) => !n.is_negative(),
         // Sum: both sides must be non-negative

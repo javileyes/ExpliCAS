@@ -73,7 +73,7 @@ fn extract_numeric_value(ctx: &Context, expr: &Expr) -> Option<num_rational::Big
 }
 
 /// Check if function name is atan/arctan
-fn is_atan(name: &str) -> bool {
+fn is_atan_name(name: &str) -> bool {
     name == "atan" || name == "arctan"
 }
 
@@ -83,8 +83,9 @@ fn has_reciprocal_atan_pair(ctx: &Context, terms: &[ExprId]) -> bool {
     // Collect all atan arguments
     let mut atan_args: Vec<ExprId> = Vec::new();
     for &term in terms {
-        if let Expr::Function(fn_id, args) = ctx.get(term) { let name = ctx.sym_name(*fn_id);
-            if is_atan(name) && args.len() == 1 {
+        if let Expr::Function(fn_id, args) = ctx.get(term) {
+            let name = ctx.sym_name(*fn_id);
+            if is_atan_name(name) && args.len() == 1 {
                 atan_args.push(args[0]);
             }
         }
@@ -272,7 +273,10 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                         let x = inner_args[0];
 
                         // sin(arcsin(x)) = x (requires x ∈ [-1, 1])
-                        if ctx.sym_name(*outer_name) == "sin" && (ctx.sym_name(*inner_name) == "arcsin" || ctx.sym_name(*inner_name) == "asin") {
+                        if ctx.sym_name(*outer_name) == "sin"
+                            && (ctx.sym_name(*inner_name) == "arcsin"
+                                || ctx.sym_name(*inner_name) == "asin")
+                        {
                             // Check domain_mode: sin(arcsin(x)) requires x ∈ [-1,1]
                             let mode = parent_ctx.domain_mode();
                             match mode {
@@ -306,7 +310,10 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                         }
 
                         // cos(arccos(x)) = x (requires x ∈ [-1, 1])
-                        if ctx.sym_name(*outer_name) == "cos" && (ctx.sym_name(*inner_name) == "arccos" || ctx.sym_name(*inner_name) == "acos") {
+                        if ctx.sym_name(*outer_name) == "cos"
+                            && (ctx.sym_name(*inner_name) == "arccos"
+                                || ctx.sym_name(*inner_name) == "acos")
+                        {
                             let mode = parent_ctx.domain_mode();
                             match mode {
                                 crate::domain::DomainMode::Strict => {
@@ -337,16 +344,24 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                         }
 
                         // tan(arctan(x)) = x (always safe - arctan has domain R)
-                        if ctx.sym_name(*outer_name) == "tan" && (ctx.sym_name(*inner_name) == "arctan" || ctx.sym_name(*inner_name) == "atan") {
+                        if ctx.sym_name(*outer_name) == "tan"
+                            && (ctx.sym_name(*inner_name) == "arctan"
+                                || ctx.sym_name(*inner_name) == "atan")
+                        {
                             return Some(Rewrite::new(x).desc("tan(arctan(x)) = x"));
                         }
 
                         // SAFE NESTED CASE: arctan(tan(arctan(u))) = arctan(u)
                         // Because arctan(u) is always in (-π/2, π/2), it's safe to cancel
-                        if (outer_name == "arctan" || outer_name == "atan") && inner_name == "tan" {
+                        let outer_name_str = ctx.sym_name(*outer_name);
+                        let inner_name_str = ctx.sym_name(*inner_name);
+                        if (outer_name_str == "arctan" || outer_name_str == "atan")
+                            && inner_name_str == "tan"
+                        {
                             // Check if the argument of tan is arctan(something)
                             if let Expr::Function(innermost_name, innermost_args) = ctx.get(x) {
-                                if (innermost_name == "arctan" || innermost_name == "atan")
+                                let innermost_name_str = ctx.sym_name(*innermost_name);
+                                if (innermost_name_str == "arctan" || innermost_name_str == "atan")
                                     && innermost_args.len() == 1
                                 {
                                     // atan(tan(atan(u))) → atan(u)
@@ -420,9 +435,11 @@ define_rule!(
                                     // Check for both "asin"/"arcsin" and "acos"/"arccos" variants
                                     let is_arcsin = |name: &str| name == "arcsin" || name == "asin";
                                     let is_arccos = |name: &str| name == "arccos" || name == "acos";
+                                    let name_i_str = ctx.sym_name(*name_i);
+                                    let name_j_str = ctx.sym_name(*name_j);
 
-                                    if (is_arcsin(name_i) && is_arccos(name_j))
-                                        || (is_arccos(name_i) && is_arcsin(name_j))
+                                    if (is_arcsin(name_i_str) && is_arccos(name_j_str))
+                                        || (is_arccos(name_i_str) && is_arcsin(name_j_str))
                                     {
                                         // Found asin(x) + acos(x)! Build π/2
                                         let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
@@ -506,8 +523,10 @@ impl crate::rule::Rule for InverseTrigAtanRule {
                         if let (Expr::Function(name_i, args_i), Expr::Function(name_j, args_j)) =
                             (expr_i, expr_j)
                         {
-                            if is_atan(name_i)
-                                && is_atan(name_j)
+                            let name_i_str = ctx.sym_name(*name_i);
+                            let name_j_str = ctx.sym_name(*name_j);
+                            if is_atan_name(name_i_str)
+                                && is_atan_name(name_j_str)
                                 && args_i.len() == 1
                                 && args_j.len() == 1
                                 && are_reciprocals(ctx, args_i[0], args_j[0])
@@ -595,7 +614,12 @@ impl crate::rule::Rule for AtanAddRationalRule {
                 if let (Expr::Function(name_i, args_i), Expr::Function(name_j, args_j)) =
                     (&term_i_data, &term_j_data)
                 {
-                    if is_atan(name_i) && is_atan(name_j) && args_i.len() == 1 && args_j.len() == 1
+                    let name_i_str = ctx.sym_name(*name_i);
+                    let name_j_str = ctx.sym_name(*name_j);
+                    if is_atan_name(name_i_str)
+                        && is_atan_name(name_j_str)
+                        && args_i.len() == 1
+                        && args_j.len() == 1
                     {
                         let arg_i = args_i[0];
                         let arg_j = args_j[0];
@@ -626,8 +650,7 @@ impl crate::rule::Rule for AtanAddRationalRule {
 
                             // Build the result expression: arctan((a+b)/(1-ab))
                             let result_num = ctx.add(Expr::Number(result_val));
-                            let result_atan =
-                                ctx.call("arctan", vec![result_num]);
+                            let result_atan = ctx.call("arctan", vec![result_num]);
 
                             // Build remaining terms (if any)
                             let remaining = build_sum_without(ctx, &terms, i, j);
@@ -668,7 +691,8 @@ define_rule!(
     "Inverse Trig Negative Argument",
     Some(vec!["Function"]),
     |ctx, expr| {
-        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id);
             if args.len() == 1 {
                 let arg = args[0];
 
@@ -699,22 +723,19 @@ define_rule!(
                     match ctx.sym_name(*fn_id) {
                         "arcsin" => {
                             // arcsin(-x) = -arcsin(x)
-                            let arcsin_inner =
-                                ctx.call("arcsin", vec![inner]);
+                            let arcsin_inner = ctx.call("arcsin", vec![inner]);
                             let new_expr = ctx.add(Expr::Neg(arcsin_inner));
                             return Some(Rewrite::new(new_expr).desc("arcsin(-x) = -arcsin(x)"));
                         }
                         "arctan" => {
                             // arctan(-x) = -arctan(x)
-                            let arctan_inner =
-                                ctx.call("arctan", vec![inner]);
+                            let arctan_inner = ctx.call("arctan", vec![inner]);
                             let new_expr = ctx.add(Expr::Neg(arctan_inner));
                             return Some(Rewrite::new(new_expr).desc("arctan(-x) = -arctan(x)"));
                         }
                         "arccos" => {
                             // arccos(-x) = π - arccos(x)
-                            let arccos_inner =
-                                ctx.call("arccos", vec![inner]);
+                            let arccos_inner = ctx.call("arccos", vec![inner]);
                             let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                             let new_expr = ctx.add(Expr::Sub(pi, arccos_inner));
                             return Some(Rewrite::new(new_expr).desc("arccos(-x) = π - arccos(x)"));
@@ -737,7 +758,8 @@ define_rule!(
     "arcsec(x) → arccos(1/x)",
     Some(vec!["Function"]),
     |ctx, expr| {
-        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id);
             if (name == "arcsec" || name == "asec") && args.len() == 1 {
                 let arg = args[0];
 
@@ -761,7 +783,8 @@ define_rule!(
     "arccsc(x) → arcsin(1/x)",
     Some(vec!["Function"]),
     |ctx, expr| {
-        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id);
             if (name == "arccsc" || name == "acsc") && args.len() == 1 {
                 let arg = args[0];
 
@@ -786,7 +809,8 @@ define_rule!(
     "arccot(x) → arctan(1/x)",
     Some(vec!["Function"]),
     |ctx, expr| {
-        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id);
             if (name == "arccot" || name == "acot") && args.len() == 1 {
                 let arg = args[0];
 
@@ -927,8 +951,10 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
                     if let (Expr::Function(n_name, n_args), Expr::Function(d_name, d_args)) =
                         (&num_data, &den_data)
                     {
-                        if n_name == "sin"
-                            && d_name == "cos"
+                        let n_name_str = ctx.sym_name(*n_name);
+                        let d_name_str = ctx.sym_name(*d_name);
+                        if n_name_str == "sin"
+                            && d_name_str == "cos"
                             && n_args.len() == 1
                             && d_args.len() == 1
                             && (n_args[0] == d_args[0]

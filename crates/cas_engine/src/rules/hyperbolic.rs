@@ -25,7 +25,8 @@ define_rule!(
     "Evaluate Hyperbolic Functions",
     Some(vec!["Function"]),
     |ctx, expr| {
-        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id);
             if args.len() == 1 {
                 let arg = args[0];
                 let name = name.clone(); // Clone to avoid borrow issues
@@ -79,34 +80,36 @@ define_rule!(
                 if let Expr::Function(inner_name, inner_args) = ctx.get(inner_expr) {
                     if inner_args.len() == 1 {
                         let x = inner_args[0];
+                        let outer_name_str = ctx.sym_name(*outer_name);
+                        let inner_name_str = ctx.sym_name(*inner_name);
 
                         // sinh(asinh(x)) = x
-                        if ctx.sym_name(*outer_name) == "sinh" && inner_name == "asinh" {
+                        if outer_name_str == "sinh" && inner_name_str == "asinh" {
                             return Some(Rewrite::new(x).desc("sinh(asinh(x)) = x"));
                         }
 
                         // cosh(acosh(x)) = x
-                        if ctx.sym_name(*outer_name) == "cosh" && inner_name == "acosh" {
+                        if outer_name_str == "cosh" && inner_name_str == "acosh" {
                             return Some(Rewrite::new(x).desc("cosh(acosh(x)) = x"));
                         }
 
                         // tanh(atanh(x)) = x
-                        if ctx.sym_name(*outer_name) == "tanh" && inner_name == "atanh" {
+                        if outer_name_str == "tanh" && inner_name_str == "atanh" {
                             return Some(Rewrite::new(x).desc("tanh(atanh(x)) = x"));
                         }
 
                         // asinh(sinh(x)) = x
-                        if ctx.sym_name(*outer_name) == "asinh" && inner_name == "sinh" {
+                        if outer_name_str == "asinh" && inner_name_str == "sinh" {
                             return Some(Rewrite::new(x).desc("asinh(sinh(x)) = x"));
                         }
 
                         // acosh(cosh(x)) = x
-                        if ctx.sym_name(*outer_name) == "acosh" && inner_name == "cosh" {
+                        if outer_name_str == "acosh" && inner_name_str == "cosh" {
                             return Some(Rewrite::new(x).desc("acosh(cosh(x)) = x"));
                         }
 
                         // atanh(tanh(x)) = x
-                        if ctx.sym_name(*outer_name) == "atanh" && inner_name == "tanh" {
+                        if outer_name_str == "atanh" && inner_name_str == "tanh" {
                             return Some(Rewrite::new(x).desc("atanh(tanh(x)) = x"));
                         }
                     }
@@ -123,42 +126,38 @@ define_rule!(
     "Hyperbolic Negative Argument",
     Some(vec!["Function"]),
     |ctx, expr| {
-        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id);
             if args.len() == 1 {
                 let arg = args[0];
                 if let Expr::Neg(inner) = ctx.get(arg) {
                     match ctx.sym_name(*fn_id) {
                         // sinh(-x) = -sinh(x) (odd function)
                         "sinh" => {
-                            let sinh_inner =
-                                ctx.call("sinh", vec![*inner]);
+                            let sinh_inner = ctx.call("sinh", vec![*inner]);
                             let new_expr = ctx.add(Expr::Neg(sinh_inner));
                             return Some(Rewrite::new(new_expr).desc("sinh(-x) = -sinh(x)"));
                         }
                         // cosh(-x) = cosh(x) (even function)
                         "cosh" => {
-                            let new_expr =
-                                ctx.call("cosh", vec![*inner]);
+                            let new_expr = ctx.call("cosh", vec![*inner]);
                             return Some(Rewrite::new(new_expr).desc("cosh(-x) = cosh(x)"));
                         }
                         // tanh(-x) = -tanh(x) (odd function)
                         "tanh" => {
-                            let tanh_inner =
-                                ctx.call("tanh", vec![*inner]);
+                            let tanh_inner = ctx.call("tanh", vec![*inner]);
                             let new_expr = ctx.add(Expr::Neg(tanh_inner));
                             return Some(Rewrite::new(new_expr).desc("tanh(-x) = -tanh(x)"));
                         }
                         // asinh(-x) = -asinh(x) (odd function)
                         "asinh" => {
-                            let asinh_inner =
-                                ctx.call("asinh", vec![*inner]);
+                            let asinh_inner = ctx.call("asinh", vec![*inner]);
                             let new_expr = ctx.add(Expr::Neg(asinh_inner));
                             return Some(Rewrite::new(new_expr).desc("asinh(-x) = -asinh(x)"));
                         }
                         // atanh(-x) = -atanh(x) (odd function)
                         "atanh" => {
-                            let atanh_inner =
-                                ctx.call("atanh", vec![*inner]);
+                            let atanh_inner = ctx.call("atanh", vec![*inner]);
                             let new_expr = ctx.add(Expr::Neg(atanh_inner));
                             return Some(Rewrite::new(new_expr).desc("atanh(-x) = -atanh(x)"));
                         }
@@ -188,9 +187,11 @@ define_rule!(
                     if let (Expr::Function(l_fn, l_args), Expr::Function(r_fn, r_args)) =
                         (ctx.get(*l_base), ctx.get(*r_base))
                     {
+                        let l_fn_str = ctx.sym_name(*l_fn);
+                        let r_fn_str = ctx.sym_name(*r_fn);
                         // Case 1: cosh(x)^2 - sinh(x)^2 = 1
-                        if l_fn == "cosh"
-                            && r_fn == "sinh"
+                        if l_fn_str == "cosh"
+                            && r_fn_str == "sinh"
                             && l_args.len() == 1
                             && r_args.len() == 1
                         {
@@ -205,8 +206,8 @@ define_rule!(
                         }
 
                         // Case 2: sinh(x)^2 - cosh(x)^2 = -1
-                        if l_fn == "sinh"
-                            && r_fn == "cosh"
+                        if l_fn_str == "sinh"
+                            && r_fn_str == "cosh"
                             && l_args.len() == 1
                             && r_args.len() == 1
                         {
@@ -246,9 +247,11 @@ define_rule!(
                     if let (Expr::Function(l_fn, l_args), Expr::Function(r_fn, r_args)) =
                         (ctx.get(*l_base), ctx.get(*r_base))
                     {
+                        let l_fn_str = ctx.sym_name(*l_fn);
+                        let r_fn_str = ctx.sym_name(*r_fn);
                         // Check cosh + sinh or sinh + cosh with same argument
-                        let is_cosh_sinh = l_fn == "cosh" && r_fn == "sinh";
-                        let is_sinh_cosh = l_fn == "sinh" && r_fn == "cosh";
+                        let is_cosh_sinh = l_fn_str == "cosh" && r_fn_str == "sinh";
+                        let is_sinh_cosh = l_fn_str == "sinh" && r_fn_str == "cosh";
 
                         if (is_cosh_sinh || is_sinh_cosh) && l_args.len() == 1 && r_args.len() == 1
                         {
@@ -260,8 +263,7 @@ define_rule!(
                                 let x = l_args[0];
                                 let two = ctx.num(2);
                                 let two_x = ctx.add(Expr::Mul(two, x));
-                                let cosh_2x =
-                                    ctx.call("cosh", vec![two_x]);
+                                let cosh_2x = ctx.call("cosh", vec![two_x]);
 
                                 return Some(
                                     Rewrite::new(cosh_2x).desc("cosh²(x) + sinh²(x) = cosh(2x)"),
@@ -284,14 +286,18 @@ define_rule!(
     "tanh(x) = sinh(x)/cosh(x)",
     Some(vec!["Function"]),
     |ctx, expr| {
-        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id);
             if name == "tanh" && args.len() == 1 {
                 let x = args[0];
 
                 // GUARD: Don't expand if argument is inverse hyperbolic function
                 // This preserves tanh(atanh(z)) → z via HyperbolicCompositionRule
                 if let Expr::Function(inner_name, _) = ctx.get(x) {
-                    if ctx.sym_name(*inner_name) == "atanh" || ctx.sym_name(*inner_name) == "asinh" || ctx.sym_name(*inner_name) == "acosh" {
+                    if ctx.sym_name(*inner_name) == "atanh"
+                        || ctx.sym_name(*inner_name) == "asinh"
+                        || ctx.sym_name(*inner_name) == "acosh"
+                    {
                         return None;
                     }
                 }
@@ -319,7 +325,8 @@ define_rule!(
     "sinh(2x) = 2·sinh(x)·cosh(x)",
     Some(vec!["Function"]),
     |ctx, expr| {
-        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id);
             if name == "sinh" && args.len() == 1 {
                 // Check if arg is 2*x or x*2
                 if let Some(inner_var) = crate::helpers::extract_double_angle_arg(ctx, args[0]) {
@@ -347,9 +354,11 @@ define_rule!(
         if let Expr::Div(num, den) = ctx.get(expr) {
             // Check if numerator is sinh(x) and denominator is cosh(x)
             if let Expr::Function(num_name, num_args) = ctx.get(*num) {
-                if num_name == "sinh" && num_args.len() == 1 {
+                let num_name_str = ctx.sym_name(*num_name);
+                if num_name_str == "sinh" && num_args.len() == 1 {
                     if let Expr::Function(den_name, den_args) = ctx.get(*den) {
-                        if den_name == "cosh" && den_args.len() == 1 {
+                        let den_name_str = ctx.sym_name(*den_name);
+                        if den_name_str == "cosh" && den_args.len() == 1 {
                             // Check if arguments are the same
                             if crate::ordering::compare_expr(ctx, num_args[0], den_args[0])
                                 == std::cmp::Ordering::Equal
@@ -383,7 +392,9 @@ fn as_exp(ctx: &Context, id: ExprId) -> Option<ExprId> {
             }
         }
         // Case: exp(arg) function
-        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "exp" && args.len() == 1 => Some(args[0]),
+        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "exp" && args.len() == 1 => {
+            Some(args[0])
+        }
         _ => None,
     }
 }
