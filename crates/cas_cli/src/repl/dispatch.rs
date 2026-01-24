@@ -80,10 +80,11 @@ impl Repl {
 
         // "mode" - DEPRECATED: redirect to semantics
         if line == "mode" || line.starts_with("mode ") {
-            println!("⚠️  The 'mode' command is deprecated.");
-            println!("Use 'semantics set inv_trig strict|principal' instead.");
-            println!("Run 'semantics' to see current settings.");
-            return reply;
+            return reply_output(
+                "⚠️  The 'mode' command is deprecated.\n\
+                 Use 'semantics set inv_trig strict|principal' instead.\n\
+                 Run 'semantics' to see current settings.",
+            );
         }
 
         // "context" - show/switch context mode (auto, standard, solve, integrate)
@@ -94,10 +95,11 @@ impl Repl {
 
         // "complex" - DEPRECATED: redirect to semantics
         if line == "complex" || line.starts_with("complex ") {
-            println!("⚠️  The 'complex' command is deprecated.");
-            println!("Use 'semantics set value real|complex' instead.");
-            println!("Run 'semantics' to see current settings.");
-            return reply;
+            return reply_output(
+                "⚠️  The 'complex' command is deprecated.\n\
+                 Use 'semantics set value real|complex' instead.\n\
+                 Run 'semantics' to see current settings.",
+            );
         }
 
         // "steps" - show/switch steps collection mode (on, off, compact)
@@ -258,25 +260,24 @@ impl Repl {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() == 1 {
                 // Just "profile" - show report
-                println!("{}", self.core.engine.simplifier.profiler.report());
+                return reply_output(self.core.engine.simplifier.profiler.report());
             } else {
                 match parts[1] {
                     "enable" => {
                         self.core.engine.simplifier.profiler.enable();
-                        println!("Profiler enabled.");
+                        return reply_output("Profiler enabled.");
                     }
                     "disable" => {
                         self.core.engine.simplifier.profiler.disable();
-                        println!("Profiler disabled.");
+                        return reply_output("Profiler disabled.");
                     }
                     "clear" => {
                         self.core.engine.simplifier.profiler.clear();
-                        println!("Profiler statistics cleared.");
+                        return reply_output("Profiler statistics cleared.");
                     }
-                    _ => println!("Usage: profile [enable|disable|clear]"),
+                    _ => return reply_output("Usage: profile [enable|disable|clear]"),
                 }
             }
-            return reply;
         }
 
         // Check for "health" commands
@@ -284,6 +285,8 @@ impl Repl {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() == 1 {
                 // Just "health" - show last report
+                let mut lines: Vec<String> = Vec::new();
+
                 // First show any cycles detected
                 if let Some(ref stats) = self.core.last_stats {
                     let cycles: Vec<_> = [
@@ -297,37 +300,40 @@ impl Repl {
                     .collect();
 
                     for (phase_name, cycle) in &cycles {
-                        println!(
+                        lines.push(format!(
                             "⚠ Cycle detected in {}: period={} at rewrite={} (stopped early)",
                             phase_name, cycle.period, cycle.at_step
-                        );
+                        ));
                     }
                     if !cycles.is_empty() {
-                        println!();
+                        lines.push(String::new());
                     }
                 }
 
                 if let Some(ref report) = self.core.last_health_report {
-                    println!("{}", report);
+                    lines.push(report.to_string());
                 } else {
-                    println!("No health report available.");
-                    println!("Run a simplification first (health is captured when debug mode or health mode is on).");
-                    println!("Enable with: health on");
+                    lines.push("No health report available.".to_string());
+                    lines.push("Run a simplification first (health is captured when debug mode or health mode is on).".to_string());
+                    lines.push("Enable with: health on".to_string());
                 }
+                return reply_output(lines.join("\n"));
             } else {
                 match parts[1] {
                     "on" | "enable" => {
                         self.core.health_enabled = true;
-                        println!("Health tracking ENABLED (metrics captured after each simplify)");
+                        return reply_output(
+                            "Health tracking ENABLED (metrics captured after each simplify)",
+                        );
                     }
                     "off" | "disable" => {
                         self.core.health_enabled = false;
-                        println!("Health tracking DISABLED");
+                        return reply_output("Health tracking DISABLED");
                     }
                     "reset" | "clear" => {
                         self.core.engine.simplifier.profiler.clear_run();
                         self.core.last_health_report = None;
-                        println!("Health statistics cleared.");
+                        return reply_output("Health statistics cleared.");
                     }
                     "status" => {
                         // Parse options: status [--list | --category <cat>]
@@ -335,8 +341,7 @@ impl Repl {
 
                         if opts.contains(&"--list") || opts.contains(&"-l") {
                             // List available cases
-                            println!("{}", crate::health_suite::list_cases());
-                            return reply;
+                            return reply_output(crate::health_suite::list_cases());
                         }
 
                         // Check for --category
@@ -350,22 +355,19 @@ impl Repl {
                                     match cat_str.parse::<crate::health_suite::Category>() {
                                         Ok(cat) => Some(cat),
                                         Err(e) => {
-                                            println!("Error: {}", e);
-                                            println!(
-                                                "Available categories: {}",
+                                            return reply_output(format!(
+                                                "Error: {}\nAvailable categories: {}",
+                                                e,
                                                 crate::health_suite::category_names().join(", ")
-                                            );
-                                            return reply;
+                                            ));
                                         }
                                     }
                                 }
                             } else {
-                                println!("Error: --category requires an argument");
-                                println!(
-                                    "Available categories: {}",
+                                return reply_output(format!(
+                                    "Error: --category requires an argument\nAvailable categories: {}",
                                     crate::health_suite::category_names().join(", ")
-                                );
-                                return reply;
+                                ));
                             }
                         } else {
                             None // Run all
@@ -373,7 +375,10 @@ impl Repl {
 
                         // Run the health status suite
                         let cat_msg = category_filter.map_or("all".to_string(), |c| c.to_string());
-                        println!("Running health status suite [category={}]...\n", cat_msg);
+                        let mut lines = vec![format!(
+                            "Running health status suite [category={}]...\n",
+                            cat_msg
+                        )];
 
                         let results = crate::health_suite::run_suite_filtered(
                             &mut self.core.engine.simplifier,
@@ -381,33 +386,34 @@ impl Repl {
                         );
                         let report =
                             crate::health_suite::format_report_filtered(&results, category_filter);
-                        println!("{}", report);
+                        lines.push(report);
 
                         let (_passed, failed) = crate::health_suite::count_results(&results);
                         if failed > 0 {
-                            println!(
+                            lines.push(format!(
                                 "\n⚠ {} tests failed. Check Transform rules for churn.",
                                 failed
-                            );
+                            ));
                         }
+                        return reply_output(lines.join("\n"));
                     }
                     _ => {
-                        println!("Usage: health [on|off|reset|status]");
-                        println!("       health               Show last health report");
-                        println!("       health on            Enable health tracking");
-                        println!("       health off           Disable health tracking");
-                        println!("       health reset         Clear health statistics");
-                        println!("       health status        Run diagnostic test suite");
-                        println!("       health status --list List available test cases");
-                        println!("       health status --category <cat>  Run only category");
-                        println!(
-                            "                            Categories: {}",
+                        return reply_output(format!(
+                            "Usage: health [on|off|reset|status]\n\
+                             \n\
+                                   health               Show last health report\n\
+                                   health on            Enable health tracking\n\
+                                   health off           Disable health tracking\n\
+                                   health reset         Clear health statistics\n\
+                                   health status        Run diagnostic test suite\n\
+                                   health status --list List available test cases\n\
+                                   health status --category <cat>  Run only category\n\
+                                                        Categories: {}",
                             crate::health_suite::category_names().join(", ")
-                        );
+                        ));
                     }
                 }
             }
-            return reply;
         }
 
         self.handle_eval(&line);
@@ -415,57 +421,61 @@ impl Repl {
     }
 
     pub(crate) fn handle_config(&mut self, line: &str) {
+        let reply = self.handle_config_core(line);
+        self.print_reply(reply);
+    }
+
+    fn handle_config_core(&mut self, line: &str) -> ReplReply {
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() < 2 {
-            println!("Usage: config <list|enable|disable|save|restore> [rule]");
-            return;
+            return reply_output("Usage: config <list|enable|disable|save|restore> [rule]");
         }
 
         match parts[1] {
             "list" => {
-                println!("Current Configuration:");
-                println!("  distribute: {}", self.config.distribute);
-                println!("  expand_binomials: {}", self.config.expand_binomials);
-                println!(
-                    "  distribute_constants: {}",
-                    self.config.distribute_constants
+                let config_str = format!(
+                    "Current Configuration:\n\
+                       distribute: {}\n\
+                       expand_binomials: {}\n\
+                       distribute_constants: {}\n\
+                       factor_difference_squares: {}\n\
+                       root_denesting: {}\n\
+                       trig_double_angle: {}\n\
+                       trig_angle_sum: {}\n\
+                       log_split_exponents: {}\n\
+                       rationalize_denominator: {}\n\
+                       canonicalize_trig_square: {}\n\
+                       auto_factor: {}",
+                    self.config.distribute,
+                    self.config.expand_binomials,
+                    self.config.distribute_constants,
+                    self.config.factor_difference_squares,
+                    self.config.root_denesting,
+                    self.config.trig_double_angle,
+                    self.config.trig_angle_sum,
+                    self.config.log_split_exponents,
+                    self.config.rationalize_denominator,
+                    self.config.canonicalize_trig_square,
+                    self.config.auto_factor
                 );
-                println!(
-                    "  factor_difference_squares: {}",
-                    self.config.factor_difference_squares
-                );
-                println!("  root_denesting: {}", self.config.root_denesting);
-                println!("  trig_double_angle: {}", self.config.trig_double_angle);
-                println!("  trig_angle_sum: {}", self.config.trig_angle_sum);
-                println!("  log_split_exponents: {}", self.config.log_split_exponents);
-                println!(
-                    "  rationalize_denominator: {}",
-                    self.config.rationalize_denominator
-                );
-                println!(
-                    "  canonicalize_trig_square: {}",
-                    self.config.canonicalize_trig_square
-                );
-                println!("  auto_factor: {}", self.config.auto_factor);
+                reply_output(config_str)
             }
             "save" => match self.config.save() {
-                Ok(_) => println!("Configuration saved to cas_config.toml"),
-                Err(e) => println!("Error saving configuration: {}", e),
+                Ok(_) => reply_output("Configuration saved to cas_config.toml"),
+                Err(e) => reply_output(format!("Error saving configuration: {}", e)),
             },
             "restore" => {
                 self.config = CasConfig::restore();
                 self.sync_config_to_simplifier();
-                println!("Configuration restored to defaults.");
+                reply_output("Configuration restored to defaults.")
             }
             "enable" | "disable" => {
                 if parts.len() < 3 {
-                    println!("Usage: config {} <rule>", parts[1]);
-                    return;
+                    return reply_output(format!("Usage: config {} <rule>", parts[1]));
                 }
                 let rule = parts[2];
                 let enable = parts[1] == "enable";
 
-                let mut changed = true;
                 match rule {
                     "distribute" => self.config.distribute = enable,
                     "expand_binomials" => self.config.expand_binomials = enable,
@@ -478,18 +488,13 @@ impl Repl {
                     "rationalize_denominator" => self.config.rationalize_denominator = enable,
                     "canonicalize_trig_square" => self.config.canonicalize_trig_square = enable,
                     "auto_factor" => self.config.auto_factor = enable,
-                    _ => {
-                        println!("Unknown rule: {}", rule);
-                        changed = false;
-                    }
+                    _ => return reply_output(format!("Unknown rule: {}", rule)),
                 }
 
-                if changed {
-                    self.sync_config_to_simplifier();
-                    println!("Rule '{}' set to {}.", rule, enable);
-                }
+                self.sync_config_to_simplifier();
+                reply_output(format!("Rule '{}' set to {}.", rule, enable))
             }
-            _ => println!("Unknown config command: {}", parts[1]),
+            _ => reply_output(format!("Unknown config command: {}", parts[1])),
         }
     }
 }
