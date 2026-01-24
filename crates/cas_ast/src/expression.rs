@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::fmt;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
+use crate::symbol::{SymbolId, SymbolTable};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ExprId(u32);
 
@@ -136,6 +138,8 @@ pub struct Context {
     /// Using Vec<ExprId> instead of single ExprId to properly handle hash collisions
     /// without losing deduplication for expressions that share the same hash.
     pub interner: HashMap<u64, Vec<ExprId>>,
+    /// Symbol table for interned variable names
+    pub symbols: SymbolTable,
     /// Statistics for budget tracking
     stats: ContextStats,
 }
@@ -145,9 +149,40 @@ impl Context {
         Self {
             nodes: Vec::new(),
             interner: HashMap::new(),
+            symbols: SymbolTable::new(),
             stats: ContextStats::default(),
         }
     }
+
+    // =========================================================================
+    // Symbol interning API
+    // =========================================================================
+
+    /// Intern a symbol name, returning its SymbolId.
+    #[inline]
+    pub fn intern_symbol(&mut self, name: &str) -> SymbolId {
+        self.symbols.intern(name)
+    }
+
+    /// Resolve a SymbolId to its string name.
+    #[inline]
+    pub fn sym_name(&self, id: SymbolId) -> &str {
+        self.symbols.resolve(id)
+    }
+
+    /// Check if an expression is a variable with the given name.
+    ///
+    /// Note: requires &mut self because intern_symbol may insert.
+    pub fn is_var(&mut self, expr: ExprId, name: &str) -> bool {
+        match self.get(expr) {
+            Expr::Variable(s) => s == name,
+            _ => false,
+        }
+    }
+
+    // =========================================================================
+    // Statistics
+    // =========================================================================
 
     /// Get current statistics (for budget tracking).
     #[inline]

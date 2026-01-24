@@ -14,6 +14,7 @@ pub mod latex_parser;
 pub mod ordering; // Canonical ordering utilities
 pub mod root_style; // Style Sniffing for root notation
 pub mod span; // Canonical source span for error reporting
+pub mod symbol; // Symbol interning for variable names
 pub mod traversal; // Canonical traversal utilities (count_nodes, etc.)
 pub mod views; // Unified views for pattern matching
 pub mod visitor;
