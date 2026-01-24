@@ -180,6 +180,17 @@ impl Context {
         }
     }
 
+    /// Compare a SymbolId with a string name efficiently.
+    ///
+    /// When Expr::Variable uses SymbolId internally, this allows O(1)
+    /// comparison without resolving to string.
+    ///
+    /// Note: requires &mut self because intern_symbol may insert.
+    #[inline]
+    pub fn sym_is(&mut self, id: SymbolId, name: &str) -> bool {
+        id == self.intern_symbol(name)
+    }
+
     // =========================================================================
     // Statistics
     // =========================================================================
