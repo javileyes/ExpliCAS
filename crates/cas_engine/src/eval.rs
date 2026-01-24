@@ -304,10 +304,10 @@ impl Engine {
 
                 // TOOL DISPATCHER: Detect tool functions and set appropriate goal
                 // This prevents inverse rules from undoing the effect of collect/expand_log
-                let (expr_to_simplify, expand_log_events) = if let Expr::Function(name, args) =
+                let (expr_to_simplify, expand_log_events) = if let Expr::Function(fn_id, args) =
                     ctx_simplifier.context.get(resolved).clone()
                 {
-                    match ctx.sym_name(*fn_id) {
+                    match ctx_simplifier.context.sym_name(fn_id) {
                         "collect" => {
                             simplify_opts.goal = crate::semantics::NormalFormGoal::Collected;
                             (resolved, Vec::new())
@@ -453,19 +453,30 @@ impl Engine {
 
                 // We must peek at the resolved expression structure
                 let eq_to_solve = match self.simplifier.context.get(resolved) {
-                    Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "Equal" && args.len() == 2 => {
+                    Expr::Function(fn_id, args)
+                        if self.simplifier.context.sym_name(*fn_id) == "Equal"
+                            && args.len() == 2 =>
+                    {
                         Equation {
                             lhs: args[0],
                             rhs: args[1],
                             op: RelOp::Eq, // Assuming strict equality for Solve for now
                         }
                     }
-                    Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "Less" && args.len() == 2 => Equation {
-                        lhs: args[0],
-                        rhs: args[1],
-                        op: RelOp::Lt,
-                    },
-                    Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "Greater" && args.len() == 2 => {
+                    Expr::Function(fn_id, args)
+                        if self.simplifier.context.sym_name(*fn_id) == "Less"
+                            && args.len() == 2 =>
+                    {
+                        Equation {
+                            lhs: args[0],
+                            rhs: args[1],
+                            op: RelOp::Lt,
+                        }
+                    }
+                    Expr::Function(fn_id, args)
+                        if self.simplifier.context.sym_name(*fn_id) == "Greater"
+                            && args.len() == 2 =>
+                    {
                         Equation {
                             lhs: args[0],
                             rhs: args[1],

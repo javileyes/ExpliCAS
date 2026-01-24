@@ -68,7 +68,7 @@ pub fn as_neg(ctx: &Context, id: ExprId) -> Option<ExprId> {
 #[inline]
 pub fn fn_name_args(ctx: &Context, id: ExprId) -> Option<(&str, &[ExprId])> {
     match ctx.get(id) {
-        Expr::Function(name, args) => Some((ctx.sym_name(*fn_id), args.as_slice())),
+        Expr::Function(fn_id, args) => Some((ctx.sym_name(*fn_id), args.as_slice())),
         _ => None,
     }
 }

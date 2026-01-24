@@ -3,7 +3,7 @@ use crate::options::StepsMode;
 use crate::profiler::RuleProfiler;
 use crate::rule::Rule;
 use crate::step::Step;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{symbol::SymbolId, Context, Expr, ExprId};
 use num_traits::{ToPrimitive, Zero};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -923,13 +923,14 @@ impl Simplifier {
 
     pub fn are_equivalent(&mut self, a: ExprId, b: ExprId) -> bool {
         let diff = self.context.add(Expr::Sub(a, b));
-        let expand_str = "expand".to_string();
-        let expanded_diff = self.context.add(Expr::Function(expand_str, vec![diff]));
+        let expand_id = self.context.intern_symbol("expand");
+        let expanded_diff = self.context.add(Expr::Function(expand_id, vec![diff]));
         let (simplified_diff, _) = self.simplify(expanded_diff);
 
         let result_expr = {
             let expr = self.context.get(simplified_diff);
-            if let Expr::Function(fn_id, args) = expr { let name = ctx.sym_name(*fn_id);
+            if let Expr::Function(fn_id, args) = expr {
+                let name = self.context.sym_name(*fn_id);
                 if name == "expand" && args.len() == 1 {
                     args[0]
                 } else {
@@ -1388,7 +1389,9 @@ fn eval_f64_checked_depth(
 
         Expr::Neg(e) => -eval_f64_checked_depth(ctx, *e, var_map, opts, depth - 1)?,
 
-        Expr::Function(name, args) => eval_function_checked(ctx, name, args, var_map, opts, depth)?,
+        Expr::Function(fn_id, args) => {
+            eval_function_checked(ctx, ctx.sym_name(*fn_id), args, var_map, opts, depth)?
+        }
 
         Expr::Constant(c) => match c {
             cas_ast::Constant::Pi => std::f64::consts::PI,
@@ -1622,7 +1625,7 @@ fn eval_f64_depth(
             )?),
         ),
         Expr::Neg(e) => Some(-eval_f64_depth(ctx, *e, var_map, depth - 1)?),
-        Expr::Function(name, args) => {
+        Expr::Function(fn_id, args) => {
             let arg_vals: Option<Vec<f64>> = args
                 .iter()
                 .map(|a| eval_f64_depth(ctx, *a, var_map, depth - 1))
@@ -2003,9 +2006,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
         if let Expr::Pow(inner_base, inner_exp) = self.context.get(base) {
             if let Expr::Number(n) = self.context.get(*inner_exp) {
                 if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
-                    let abs_expr = self
-                        .context
-                        .call("abs", vec![*inner_base]);
+                    let abs_expr = self.context.call("abs", vec![*inner_base]);
                     self.record_step(
                         "sqrt(u^2) = |u|",
                         "Simplify Square Root of Square",
@@ -2026,9 +2027,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
             if crate::ordering::compare_expr(self.context, *left, *right)
                 == std::cmp::Ordering::Equal
             {
-                let abs_expr = self
-                    .context
-                    .call("abs", vec![*left]);
+                let abs_expr = self.context.call("abs", vec![*left]);
                 self.record_step(
                     "sqrt(u * u) = |u|",
                     "Simplify Square Root of Product",
@@ -2044,7 +2043,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
     /// Transform Function expression by simplifying children.
     /// Extracted with #[inline(never)] to reduce stack frame size.
     #[inline(never)]
-    fn transform_function(&mut self, id: ExprId, name: String, args: Vec<ExprId>) -> ExprId {
+    fn transform_function(&mut self, id: ExprId, fn_id: SymbolId, args: Vec<ExprId>) -> ExprId {
+        let name = self.context.sym_name(fn_id);
         // Check if this function is canonical before recursing into children
         if (name == "sqrt" || name == "abs")
             && crate::canonical_forms::is_canonical_form(self.context, id)
@@ -2057,7 +2057,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
         }
 
         // HoldAll semantics: do NOT simplify arguments for these functions
-        if is_hold_all_function(&name) {
+        if is_hold_all_function(name) {
             debug!(
                 "HoldAll function, skipping child simplification: {:?}",
                 self.context.get(id)
@@ -2082,7 +2082,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
         }
 
         if changed {
-            self.context.add(Expr::Function(name, new_args))
+            self.context.add(Expr::Function(fn_id, new_args))
         } else {
             id
         }
@@ -2206,7 +2206,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     id
                 }
             }
-            Expr::Function(name, args) => self.transform_function(id, name, args),
+            Expr::Function(fn_id, args) => self.transform_function(id, *fn_id, args.clone()),
             Expr::Matrix { rows, cols, data } => {
                 // Recursively simplify matrix elements
                 let mut new_data = Vec::new();

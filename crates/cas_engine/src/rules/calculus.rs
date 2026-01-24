@@ -6,7 +6,8 @@ use num_rational::BigRational;
 use num_traits::One;
 
 define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
-    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let name = ctx.sym_name(*fn_id);
         if name == "integrate" {
             if args.len() == 2 {
                 let integrand = args[0];
@@ -44,7 +45,8 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
 });
 
 define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
-    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let name = ctx.sym_name(*fn_id);
         if name == "diff" && args.len() == 2 {
             let target = args[0];
             let var_expr = args[1];
@@ -143,12 +145,12 @@ fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                 Some(mul2_raw(ctx, expr, inner))
             }
         }
-        Expr::Function(name, args) => {
+        Expr::Function(fn_id, args) => {
             if args.len() == 1 {
                 let arg = args[0];
                 let da = differentiate(ctx, arg, var)?;
 
-                match ctx.sym_name(*fn_id) {
+                match ctx.sym_name(fn_id) {
                     "sin" => {
                         // cos(u) * u'
                         let cos_u = ctx.call("cos", vec![arg]);
@@ -333,7 +335,8 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
     }
 
     // Trig Rules & Exponential with Linear Substitution
-    if let Expr::Function(fn_id, args) = expr_data { let name = ctx.sym_name(*fn_id);
+    if let Expr::Function(fn_id, args) = expr_data {
+        let name = ctx.sym_name(*fn_id);
         if args.len() == 1 {
             let arg = args[0];
             if let Some((a, _)) = get_linear_coeffs(ctx, arg, var) {
@@ -672,7 +675,8 @@ mod tests {
 // Example: sum(k^2, k, 1, 5) → 1 + 4 + 9 + 16 + 25 = 55
 
 define_rule!(SumRule, "Finite Summation", |ctx, expr| {
-    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let name = ctx.sym_name(*fn_id);
         if name == "sum" && args.len() == 4 {
             let summand = args[0];
             let var_expr = args[1];
@@ -960,7 +964,8 @@ fn substitute_var(ctx: &mut Context, expr: ExprId, var: &str, value: ExprId) -> 
 // Example: product((k+1)/k, k, 1, n) → n+1  (telescoping)
 
 define_rule!(ProductRule, "Finite Product", |ctx, expr| {
-    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let name = ctx.sym_name(*fn_id);
         if name == "product" && args.len() == 4 {
             let factor = args[0];
             let var_expr = args[1];

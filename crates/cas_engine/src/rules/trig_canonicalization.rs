@@ -50,12 +50,12 @@ fn is_inverse_trig_name(name: &str) -> bool {
 // Check if expression is a composition like tan(arctan(x))
 fn is_trig_of_inverse_trig(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
-        Expr::Function(outer_name, outer_args) if outer_args.len() == 1 => {
+        Expr::Function(outer_fn_id, outer_args) if outer_args.len() == 1 => {
             let inner = outer_args[0];
             match ctx.get(inner) {
-                Expr::Function(inner_name, _) => {
-                    is_reciprocal_trig_name(outer_ctx.sym_name(*fn_id))
-                        && is_inverse_trig_name(inner_ctx.sym_name(*fn_id))
+                Expr::Function(inner_fn_id, _) => {
+                    is_reciprocal_trig_name(ctx.sym_name(*outer_fn_id))
+                        && is_inverse_trig_name(ctx.sym_name(*inner_fn_id))
                 }
                 _ => false,
             }
@@ -75,12 +75,11 @@ define_rule!(
     crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
-        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
-            // Clone name and args to avoid borrow issues
-            let name_clone = name.clone();
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id).to_string();
             let args_clone = args.clone();
 
-            let canonical_name = match name_clone.as_str() {
+            let canonical_name = match name.as_str() {
                 // Short forms → Canonical long forms
                 "asin" => Some("arcsin"),
                 "acos" => Some("arccos"),
@@ -97,8 +96,8 @@ define_rule!(
             };
 
             if let Some(canonical) = canonical_name {
-                let new_fn = ctx.add(Expr::Function(canonical.to_string(), args_clone));
-                return Some(Rewrite::new(new_fn).desc(format!("{} → {}", name_clone, canonical)));
+                let new_fn = ctx.call(canonical, args_clone);
+                return Some(Rewrite::new(new_fn).desc(format!("{} → {}", name, canonical)));
             }
         }
         None
@@ -112,10 +111,11 @@ use std::collections::HashSet;
 // Recursively collect all trig function names in an expression
 fn collect_trig_recursive(ctx: &Context, expr: ExprId, funcs: &mut HashSet<String>) {
     match ctx.get(expr) {
-        Expr::Function(name, args) => {
+        Expr::Function(fn_id, args) => {
+            let name = ctx.sym_name(*fn_id);
             // Add if it's a trig function
-            if matches!(ctx.sym_name(*fn_id), "sin" | "cos" | "tan" | "cot" | "sec" | "csc") {
-                funcs.insert(name.clone());
+            if matches!(name, "sin" | "cos" | "tan" | "cot" | "sec" | "csc") {
+                funcs.insert(name.to_string());
             }
             // Recurse into arguments
             for &arg in args {
@@ -156,9 +156,10 @@ fn is_any_trig_function_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
         Expr::Pow(base, exp) => {
             if is_two(ctx, *exp) {
                 match ctx.get(*base) {
-                    Expr::Function(name, args) if args.len() == 1 => {
+                    Expr::Function(fn_id, args) if args.len() == 1 => {
+                        let name = ctx.sym_name(*fn_id);
                         // Check if it's a trig function (sin, cos, tan, cot, sec, csc)
-                        if matches!(ctx.sym_name(*fn_id), "sin" | "cos" | "tan" | "cot" | "sec" | "csc") {
+                        if matches!(name, "sin" | "cos" | "tan" | "cot" | "sec" | "csc") {
                             return Some(args[0]);
                         }
                     }
@@ -220,11 +221,11 @@ fn is_mixed_trig_fraction(ctx: &Context, num: ExprId, den: ExprId) -> bool {
 fn convert_trig_to_sincos(ctx: &mut Context, expr: ExprId) -> ExprId {
     let expr_data = ctx.get(expr).clone();
     match expr_data {
-        Expr::Function(name, args) if args.len() == 1 => {
+        Expr::Function(fn_id, args) if args.len() == 1 => {
             let arg = args[0];
             let converted_arg = convert_trig_to_sincos(ctx, arg);
 
-            match ctx.sym_name(*fn_id) {
+            match ctx.sym_name(fn_id) {
                 "tan" => {
                     // tan(x) → sin(x)/cos(x)
                     let sin_x = ctx.call("sin", vec![converted_arg]);
@@ -251,7 +252,7 @@ fn convert_trig_to_sincos(ctx: &mut Context, expr: ExprId) -> ExprId {
                 }
                 _ => {
                     // Keep sin/cos as-is, but with converted arg
-                    ctx.add(Expr::Function(name, vec![converted_arg]))
+                    ctx.add(Expr::Function(fn_id, vec![converted_arg]))
                 }
             }
         }
@@ -507,7 +508,11 @@ fn is_function_squared(ctx: &Context, expr: ExprId, fname: &str) -> Option<ExprI
         Expr::Pow(base, exp) => {
             if is_two(ctx, *exp) {
                 match ctx.get(*base) {
-                    Expr::Function(name, args) if name == fname && args.len() == 1 => Some(args[0]),
+                    Expr::Function(fn_id, args)
+                        if ctx.sym_name(*fn_id) == fname && args.len() == 1 =>
+                    {
+                        Some(args[0])
+                    }
                     _ => None,
                 }
             } else {
@@ -546,7 +551,7 @@ fn check_reciprocal_pair(ctx: &Context, expr1: ExprId, expr2: ExprId) -> (bool, 
         {
             let arg = args1[0];
             let is_pair = matches!(
-                (name1.as_str(), name2.as_str()),
+                (ctx.sym_name(*name1), ctx.sym_name(*name2)),
                 ("tan", "cot")
                     | ("cot", "tan")
                     | ("sec", "cos")
