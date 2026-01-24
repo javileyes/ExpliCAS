@@ -307,7 +307,7 @@ impl Engine {
                 let (expr_to_simplify, expand_log_events) = if let Expr::Function(name, args) =
                     ctx_simplifier.context.get(resolved).clone()
                 {
-                    match name.as_str() {
+                    match ctx.sym_name(*fn_id) {
                         "collect" => {
                             simplify_opts.goal = crate::semantics::NormalFormGoal::Collected;
                             (resolved, Vec::new())
@@ -453,19 +453,19 @@ impl Engine {
 
                 // We must peek at the resolved expression structure
                 let eq_to_solve = match self.simplifier.context.get(resolved) {
-                    Expr::Function(name, args) if name == "Equal" && args.len() == 2 => {
+                    Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "Equal" && args.len() == 2 => {
                         Equation {
                             lhs: args[0],
                             rhs: args[1],
                             op: RelOp::Eq, // Assuming strict equality for Solve for now
                         }
                     }
-                    Expr::Function(name, args) if name == "Less" && args.len() == 2 => Equation {
+                    Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "Less" && args.len() == 2 => Equation {
                         lhs: args[0],
                         rhs: args[1],
                         op: RelOp::Lt,
                     },
-                    Expr::Function(name, args) if name == "Greater" && args.len() == 2 => {
+                    Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "Greater" && args.len() == 2 => {
                         Equation {
                             lhs: args[0],
                             rhs: args[1],

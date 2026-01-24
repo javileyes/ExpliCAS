@@ -16,7 +16,7 @@ define_rule!(
     "Evaluate Trigonometric Functions (Table)",
     |ctx, expr| {
         let expr_data = ctx.get(expr).clone();
-        if let Expr::Function(name, args) = expr_data {
+        if let Expr::Function(fn_id, args) = expr_data { let name = ctx.sym_name(*fn_id);
             if args.len() == 1 {
                 let arg = args[0];
 
@@ -50,7 +50,7 @@ define_rule!(
                 // Handle negative arguments: sin(-x) = -sin(x), cos(-x) = cos(x), tan(-x) = -tan(x)
                 let inner_opt = extract_negated_inner(ctx, arg);
                 if let Some(inner) = inner_opt {
-                    match name.as_str() {
+                    match ctx.sym_name(*fn_id) {
                         "sin" => {
                             let sin_inner = ctx.call("sin", vec![inner]);
                             let new_expr = ctx.add(Expr::Neg(sin_inner));

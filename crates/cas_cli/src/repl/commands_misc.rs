@@ -22,7 +22,7 @@ impl Repl {
                 } else {
                     match cas_parser::parse_statement(s, ctx) {
                         Ok(Statement::Equation(eq)) => {
-                            Ok(ctx.add(Expr::Function("Equal".to_string(), vec![eq.lhs, eq.rhs])))
+                            Ok(ctx.call("Equal", vec![eq.lhs, eq.rhs]))
                         }
                         Ok(Statement::Expression(e)) => Ok(e),
                         Err(e) => Err(format!("{}", e)),

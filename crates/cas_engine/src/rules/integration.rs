@@ -135,7 +135,7 @@ impl Rule for CosProductTelescopingRule {
         let mut cos_info: Vec<(usize, i64, ExprId)> = Vec::new();
 
         for (i, &f) in factors.iter().enumerate() {
-            if let Expr::Function(name, args) = ctx.get(f) {
+            if let Expr::Function(fn_id, args) = ctx.get(f) { let name = ctx.sym_name(*fn_id);
                 if name == "cos" && args.len() == 1 {
                     let arg = args[0];
                     // Try to extract k and u from: k*u or just u (k=1)

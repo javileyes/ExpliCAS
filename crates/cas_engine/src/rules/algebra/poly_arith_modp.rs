@@ -18,7 +18,7 @@ use cas_ast::Expr;
 
 /// Check if expression is wrapped in __hold
 fn is_hold(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
-    matches!(ctx.get(expr), Expr::Function(name, args) if name == "__hold" && args.len() == 1)
+    matches!(ctx.get(expr), Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "__hold" && args.len() == 1)
 }
 
 // PolySubModpRule: handle __hold(P) - __hold(Q) in polynomial domain
@@ -96,8 +96,8 @@ mod tests {
         let x = ctx.var("x");
         let one = ctx.num(1);
         let x_plus_1 = ctx.add(Expr::Add(x, one));
-        let hold_a = ctx.add(Expr::Function("__hold".to_string(), vec![x_plus_1]));
-        let hold_b = ctx.add(Expr::Function("__hold".to_string(), vec![x_plus_1]));
+        let hold_a = ctx.call("__hold", vec![x_plus_1]);
+        let hold_b = ctx.call("__hold", vec![x_plus_1]);
         let sub_expr = ctx.add(Expr::Sub(hold_a, hold_b));
 
         // Apply rule

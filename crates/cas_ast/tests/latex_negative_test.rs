@@ -103,7 +103,7 @@ fn test_addition_with_neg_one_times_function() {
     let four = ctx.num(4);
     let x = ctx.var("x");
     let four_x = ctx.add(Expr::Mul(four, x));
-    let cos_4x = ctx.add(Expr::Function("cos".to_string(), vec![four_x]));
+    let cos_4x = ctx.call("cos", vec![four_x]);
 
     // (-1) * cos(4x)
     let neg_cos = ctx.add(Expr::Mul(neg_one, cos_4x));

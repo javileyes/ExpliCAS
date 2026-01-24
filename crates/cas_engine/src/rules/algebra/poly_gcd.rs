@@ -35,8 +35,8 @@ fn pre_evaluate_for_gcd(ctx: &mut Context, expr: ExprId) -> ExprId {
     use crate::phase::ExpandPolicy;
 
     // Only process specific wrappers that need evaluation
-    if let Expr::Function(name, args) = ctx.get(expr) {
-        match name.as_str() {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+        match ctx.sym_name(*fn_id) {
             // expand() is explicitly requested by user - evaluate it
             "expand" => {
                 // Create a minimal, safe simplifier
@@ -770,7 +770,7 @@ impl Rule for PolyGcdRule {
     ) -> Option<Rewrite> {
         let fn_expr = ctx.get(expr).clone();
 
-        if let Expr::Function(name, args) = fn_expr {
+        if let Expr::Function(fn_id, args) = fn_expr { let name = ctx.sym_name(fn_id);
             // Match poly_gcd, pgcd with 2-4 arguments
             let is_poly_gcd = name == "poly_gcd" || name == "pgcd";
 
@@ -806,7 +806,7 @@ impl Rule for PolyGcdRule {
                 );
 
                 // Wrap result in __hold() to prevent further simplification
-                let held_gcd = ctx.add(Expr::Function("__hold".to_string(), vec![result]));
+                let held_gcd = ctx.call("__hold", vec![result]);
 
                 return Some(Rewrite::simple(held_gcd, description));
             }

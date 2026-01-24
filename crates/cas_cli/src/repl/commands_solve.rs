@@ -216,13 +216,13 @@ impl Repl {
                     .engine
                     .simplifier
                     .context
-                    .add(Expr::Function("sin".to_string(), vec![half_arg]));
+                    .call("sin", vec![half_arg]);
                 let cos_half = self
                     .core
                     .engine
                     .simplifier
                     .context
-                    .add(Expr::Function("cos".to_string(), vec![half_arg]));
+                    .call("cos", vec![half_arg]);
                 let t = self
                     .core
                     .engine
@@ -593,7 +593,7 @@ impl Repl {
                             .engine
                             .simplifier
                             .context
-                            .add(Expr::Function("Equal".to_string(), vec![eq.lhs, eq.rhs]));
+                            .call("Equal", vec![eq.lhs, eq.rhs]);
                         (
                             EntryKind::Eq {
                                 lhs: eq.lhs,

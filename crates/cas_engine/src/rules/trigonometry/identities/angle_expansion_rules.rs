@@ -136,7 +136,7 @@ define_rule!(ProductToSumRule, "Product to Sum", |ctx, expr| {
 define_rule!(TrigPhaseShiftRule, "Trig Phase Shift", |ctx, expr| {
     let expr_data = ctx.get(expr).clone();
 
-    if let Expr::Function(name, args) = expr_data {
+    if let Expr::Function(fn_id, args) = expr_data { let name = ctx.sym_name(*fn_id);
         if args.len() != 1 {
             return None;
         }

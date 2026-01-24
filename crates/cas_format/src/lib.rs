@@ -238,7 +238,7 @@ mod tests {
         let x = ctx.var("x");
         let two = ctx.num(2);
         let pow = ctx.add(Expr::Pow(x, two));
-        let sin = ctx.add(Expr::Function("sin".to_string(), vec![x]));
+        let sin = ctx.call("sin", vec![x]);
         let div = ctx.add(Expr::Div(sin, two));
         let expr = ctx.add(Expr::Add(pow, div));
 

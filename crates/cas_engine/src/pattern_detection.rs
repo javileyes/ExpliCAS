@@ -23,7 +23,7 @@ pub fn is_sec_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
         Expr::Pow(base, exp) => {
             if is_two(ctx, *exp) {
                 match ctx.get(*base) {
-                    Expr::Function(name, args) if name == "sec" && args.len() == 1 => Some(args[0]),
+                    Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sec" && args.len() == 1 => Some(args[0]),
                     _ => None,
                 }
             } else {
@@ -40,7 +40,7 @@ pub fn is_tan_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
         Expr::Pow(base, exp) => {
             if is_two(ctx, *exp) {
                 match ctx.get(*base) {
-                    Expr::Function(name, args) if name == "tan" && args.len() == 1 => Some(args[0]),
+                    Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "tan" && args.len() == 1 => Some(args[0]),
                     _ => None,
                 }
             } else {
@@ -57,7 +57,7 @@ pub fn is_csc_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
         Expr::Pow(base, exp) => {
             if is_two(ctx, *exp) {
                 match ctx.get(*base) {
-                    Expr::Function(name, args) if name == "csc" && args.len() == 1 => Some(args[0]),
+                    Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "csc" && args.len() == 1 => Some(args[0]),
                     _ => None,
                 }
             } else {
@@ -74,7 +74,7 @@ pub fn is_cot_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
         Expr::Pow(base, exp) => {
             if is_two(ctx, *exp) {
                 match ctx.get(*base) {
-                    Expr::Function(name, args) if name == "cot" && args.len() == 1 => Some(args[0]),
+                    Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "cot" && args.len() == 1 => Some(args[0]),
                     _ => None,
                 }
             } else {

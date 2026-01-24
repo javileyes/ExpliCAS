@@ -1076,7 +1076,7 @@ define_rule!(
                     }
                     None
                 }
-                Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => Some(args[0]),
+                Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => Some(args[0]),
                 _ => None,
             }
         };

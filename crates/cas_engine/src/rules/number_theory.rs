@@ -88,13 +88,13 @@ fn get_integer_exponent(ctx: &Context, exp: ExprId) -> Option<i64> {
 }
 
 define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
-    let (name, args) = if let Expr::Function(name, args) = ctx.get(expr) {
+    let (name, args) = if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
         (name.clone(), args.clone())
     } else {
         return None;
     };
 
-    match name.as_str() {
+    match ctx.sym_name(*fn_id) {
         "gcd" => {
             // V2.14.35: Unified GCD dispatcher
             // gcd(int, int) -> integer GCD (Euclid)
@@ -167,7 +167,7 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                 );
 
                 // Wrap in __hold to prevent further simplification
-                let held = ctx.add(Expr::Function("__hold".to_string(), vec![result]));
+                let held = ctx.call("__hold", vec![result]);
                 return Some(Rewrite::new(held).desc(desc));
             }
         }
@@ -473,7 +473,7 @@ fn compute_prime_factors(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
     }
 
     // Return as a "factored" function to prevent CombineConstants from undoing it
-    Some(ctx.add(Expr::Function("factored".to_string(), exprs)))
+    Some(ctx.call("factored", exprs))
 }
 
 fn compute_factorial(ctx: &mut Context, n: ExprId) -> Option<ExprId> {

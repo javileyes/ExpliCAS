@@ -1255,7 +1255,7 @@ pub fn isolate(
                         // Execute solver under guard: proceed with log step as if conditions were proven
                         let new_rhs = simplifier
                             .context
-                            .add(Expr::Function("log".to_string(), vec![b, rhs]));
+                            .call("log", vec![b, rhs]);
                         let new_eq = Equation {
                             lhs: e,
                             rhs: new_rhs,
@@ -1331,7 +1331,7 @@ pub fn isolate(
 
                 let new_rhs = simplifier
                     .context
-                    .add(Expr::Function("log".to_string(), vec![b, rhs]));
+                    .call("log", vec![b, rhs]);
                 let new_eq = Equation {
                     lhs: e,
                     rhs: new_rhs,
@@ -1510,7 +1510,7 @@ pub fn isolate(
             } else if args.len() == 1 {
                 let arg = args[0];
                 if contains_var(&simplifier.context, arg, var) {
-                    match name.as_str() {
+                    match ctx.sym_name(*fn_id) {
                         "ln" => {
                             let e = simplifier.context.add(Expr::Constant(cas_ast::Constant::E));
                             let new_rhs = simplifier.context.add(Expr::Pow(e, rhs));
@@ -1599,7 +1599,7 @@ pub fn isolate(
                             // cos(x) = y -> x = arccos(y)
                             let new_rhs = simplifier
                                 .context
-                                .add(Expr::Function("arccos".to_string(), vec![rhs]));
+                                .call("arccos", vec![rhs]);
                             let new_eq = Equation {
                                 lhs: arg,
                                 rhs: new_rhs,

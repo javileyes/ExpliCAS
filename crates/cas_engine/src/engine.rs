@@ -929,7 +929,7 @@ impl Simplifier {
 
         let result_expr = {
             let expr = self.context.get(simplified_diff);
-            if let Expr::Function(name, args) = expr {
+            if let Expr::Function(fn_id, args) = expr { let name = ctx.sym_name(*fn_id);
                 if name == "expand" && args.len() == 1 {
                     args[0]
                 } else {
@@ -1628,7 +1628,7 @@ fn eval_f64_depth(
                 .map(|a| eval_f64_depth(ctx, *a, var_map, depth - 1))
                 .collect();
             let arg_vals = arg_vals?;
-            match name.as_str() {
+            match ctx.sym_name(*fn_id) {
                 // Basic trig
                 "sin" => Some(arg_vals.first()?.sin()),
                 "cos" => Some(arg_vals.first()?.cos()),

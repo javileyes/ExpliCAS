@@ -35,7 +35,7 @@ fn sqrt_rhs_avoids_conditional_branch() {
     let x = ctx.var("x");
     let y = ctx.var("y");
     let lhs = ctx.add(Expr::Pow(two, x)); // 2^x
-    let rhs = ctx.add(Expr::Function("sqrt".to_string(), vec![y])); // sqrt(y)
+    let rhs = ctx.call("sqrt", vec![y]); // sqrt(y)
 
     let eq = Equation {
         lhs,

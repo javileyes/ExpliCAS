@@ -19,9 +19,9 @@ fn extract_trig_pow6(ctx: &cas_ast::Context, term: ExprId) -> Option<(ExprId, &'
         if let Expr::Number(n) = ctx.get(*exp) {
             if n.is_integer() && *n.numer() == 6.into() {
                 // Check base is sin(arg) or cos(arg)
-                if let Expr::Function(name, args) = ctx.get(*base) {
+                if let Expr::Function(fn_id, args) = ctx.get(*base) { let name = ctx.sym_name(*fn_id);
                     if args.len() == 1 {
-                        match name.as_str() {
+                        match ctx.sym_name(*fn_id) {
                             "sin" => return Some((args[0], "sin")),
                             "cos" => return Some((args[0], "cos")),
                             _ => {}
@@ -42,9 +42,9 @@ fn extract_trig_pow2(ctx: &cas_ast::Context, term: ExprId) -> Option<(ExprId, &'
         if let Expr::Number(n) = ctx.get(*exp) {
             if n.is_integer() && *n.numer() == 2.into() {
                 // Check base is sin(arg) or cos(arg)
-                if let Expr::Function(name, args) = ctx.get(*base) {
+                if let Expr::Function(fn_id, args) = ctx.get(*base) { let name = ctx.sym_name(*fn_id);
                     if args.len() == 1 {
-                        match name.as_str() {
+                        match ctx.sym_name(*fn_id) {
                             "sin" => return Some((args[0], "sin")),
                             "cos" => return Some((args[0], "cos")),
                             _ => {}
@@ -233,7 +233,7 @@ define_rule!(
 
 /// Extract the argument from a trig function: sin(arg) → Some(arg), else None
 pub fn extract_trig_arg(ctx: &cas_ast::Context, id: ExprId, fn_name: &str) -> Option<ExprId> {
-    if let Expr::Function(name, args) = ctx.get(id) {
+    if let Expr::Function(fn_id, args) = ctx.get(id) { let name = ctx.sym_name(*fn_id);
         if name == fn_name && args.len() == 1 {
             return Some(args[0]);
         }

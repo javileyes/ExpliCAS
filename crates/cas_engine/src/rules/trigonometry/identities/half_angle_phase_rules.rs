@@ -26,7 +26,7 @@ define_rule!(
 
         let expr_data = ctx.get(expr).clone();
 
-        if let Expr::Function(name, args) = expr_data {
+        if let Expr::Function(fn_id, args) = expr_data { let name = ctx.sym_name(*fn_id);
             if args.len() != 1 {
                 return None;
             }
@@ -428,7 +428,7 @@ fn extract_cot_term(
     let inner_data = ctx.get(inner_term);
 
     // Check for cot(arg) directly
-    if let Expr::Function(name, args) = inner_data {
+    if let Expr::Function(fn_id, args) = inner_data { let name = ctx.sym_name(*fn_id);
         if name == "cot" && args.len() == 1 {
             // Coefficient is implicitly 1
             return Some((None, args[0], is_positive));
@@ -438,13 +438,13 @@ fn extract_cot_term(
     // Check for Mul(coef, cot(arg))
     if let Expr::Mul(l, r) = inner_data {
         // Check if right is cot
-        if let Expr::Function(name, args) = ctx.get(*r) {
+        if let Expr::Function(fn_id, args) = ctx.get(*r) { let name = ctx.sym_name(*fn_id);
             if name == "cot" && args.len() == 1 {
                 return Some((Some(*l), args[0], is_positive));
             }
         }
         // Check if left is cot
-        if let Expr::Function(name, args) = ctx.get(*l) {
+        if let Expr::Function(fn_id, args) = ctx.get(*l) { let name = ctx.sym_name(*fn_id);
             if name == "cot" && args.len() == 1 {
                 return Some((Some(*r), args[0], is_positive));
             }
@@ -464,7 +464,7 @@ fn extract_cot_term(
 
 /// Helper: Check if expr is tan(arg/2) and return Some(arg), i.e. the full angle
 fn extract_tan_half_angle(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
-    if let Expr::Function(name, args) = ctx.get(expr) {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
         if name == "tan" && args.len() == 1 {
             // Check if the argument is x/2 or (1/2)*x
             let arg = args[0];
@@ -836,7 +836,7 @@ impl WeierstrassSinIdentityZeroRule {
         rhs: ExprId,
     ) -> Option<Rewrite> {
         // Check if sin_side is sin(x)
-        if let Expr::Function(name, args) = ctx.get(sin_side) {
+        if let Expr::Function(fn_id, args) = ctx.get(sin_side) { let name = ctx.sym_name(*fn_id);
             if name != "sin" || args.len() != 1 {
                 return None;
             }
@@ -931,7 +931,7 @@ impl WeierstrassCosIdentityZeroRule {
         rhs: ExprId,
     ) -> Option<Rewrite> {
         // Check if cos_side is cos(x)
-        if let Expr::Function(name, args) = ctx.get(cos_side) {
+        if let Expr::Function(fn_id, args) = ctx.get(cos_side) { let name = ctx.sym_name(*fn_id);
             if name != "cos" || args.len() != 1 {
                 return None;
             }
@@ -1023,7 +1023,7 @@ impl crate::rule::Rule for Sin4xIdentityZeroRule {
 impl Sin4xIdentityZeroRule {
     fn try_match(&self, ctx: &mut cas_ast::Context, lhs: ExprId, rhs: ExprId) -> Option<Rewrite> {
         // LHS should be sin(4*t)
-        if let Expr::Function(name, args) = ctx.get(lhs) {
+        if let Expr::Function(fn_id, args) = ctx.get(lhs) { let name = ctx.sym_name(*fn_id);
             if name != "sin" || args.len() != 1 {
                 return None;
             }
@@ -1079,7 +1079,7 @@ impl Sin4xIdentityZeroRule {
                 }
                 // Check for sin(t)
                 if let Expr::Function(fn_name, fn_args) = ctx.get(factor) {
-                    if fn_name == "sin"
+                    if ctx.sym_name(*fn_name) == "sin"
                         && fn_args.len() == 1
                         && crate::ordering::compare_expr(ctx, fn_args[0], t)
                             == std::cmp::Ordering::Equal
@@ -1087,7 +1087,7 @@ impl Sin4xIdentityZeroRule {
                         has_sin_t = true;
                         continue;
                     }
-                    if fn_name == "cos" && fn_args.len() == 1 {
+                    if ctx.sym_name(*fn_name) == "cos" && fn_args.len() == 1 {
                         let arg = fn_args[0];
                         if crate::ordering::compare_expr(ctx, arg, t) == std::cmp::Ordering::Equal {
                             has_cos_t = true;
@@ -1140,7 +1140,7 @@ impl Sin4xIdentityZeroRule {
         if let Expr::Pow(base, exp) = ctx.get(expr) {
             if let Expr::Number(n) = ctx.get(*exp) {
                 if *n == num_rational::BigRational::from_integer(2.into()) {
-                    if let Expr::Function(name, args) = ctx.get(*base) {
+                    if let Expr::Function(fn_id, args) = ctx.get(*base) { let name = ctx.sym_name(*fn_id);
                         if name == "sin" && args.len() == 1 {
                             return crate::ordering::compare_expr(ctx, args[0], t)
                                 == std::cmp::Ordering::Equal;
@@ -1156,7 +1156,7 @@ impl Sin4xIdentityZeroRule {
         if let Expr::Pow(base, exp) = ctx.get(expr) {
             if let Expr::Number(n) = ctx.get(*exp) {
                 if *n == num_rational::BigRational::from_integer(2.into()) {
-                    if let Expr::Function(name, args) = ctx.get(*base) {
+                    if let Expr::Function(fn_id, args) = ctx.get(*base) { let name = ctx.sym_name(*fn_id);
                         if name == "cos" && args.len() == 1 {
                             return crate::ordering::compare_expr(ctx, args[0], t)
                                 == std::cmp::Ordering::Equal;
@@ -1229,7 +1229,7 @@ impl crate::rule::Rule for TanDifferenceIdentityZeroRule {
 impl TanDifferenceIdentityZeroRule {
     fn try_match(&self, ctx: &mut cas_ast::Context, lhs: ExprId, rhs: ExprId) -> Option<Rewrite> {
         // LHS should be tan(a - b)
-        if let Expr::Function(name, args) = ctx.get(lhs) {
+        if let Expr::Function(fn_id, args) = ctx.get(lhs) { let name = ctx.sym_name(*fn_id);
             if name != "tan" || args.len() != 1 {
                 return None;
             }
@@ -1270,7 +1270,7 @@ impl TanDifferenceIdentityZeroRule {
 
                 // Verify tan_a_num is tan(a)
                 if let Expr::Function(name_a, args_a) = ctx.get(tan_a_num) {
-                    if name_a != "tan" || args_a.len() != 1 {
+                    if ctx.sym_name(*name_a) != "tan" || args_a.len() != 1 {
                         return None;
                     }
                     if crate::ordering::compare_expr(ctx, args_a[0], a) != std::cmp::Ordering::Equal
@@ -1283,7 +1283,7 @@ impl TanDifferenceIdentityZeroRule {
 
                 // Verify tan_b_num is tan(b)
                 if let Expr::Function(name_b, args_b) = ctx.get(tan_b_num) {
-                    if name_b != "tan" || args_b.len() != 1 {
+                    if ctx.sym_name(*name_b) != "tan" || args_b.len() != 1 {
                         return None;
                     }
                     if crate::ordering::compare_expr(ctx, args_b[0], b) != std::cmp::Ordering::Equal
@@ -1555,7 +1555,7 @@ define_rule!(
 // =============================================================================
 
 define_rule!(TanDifferenceRule, "Tangent Difference", |ctx, expr| {
-    if let Expr::Function(name, args) = ctx.get(expr) {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
         if name == "tan" && args.len() == 1 {
             let arg = args[0];
             // Check if argument is a - b

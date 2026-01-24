@@ -164,7 +164,7 @@ pub fn try_expand_multinomial_direct(
 
     // 10. Wrap in __hold() to prevent slow post-simplification traversal
     // The __hold barrier is unwrapped at eval boundary (engine.rs::unwrap_hold_top)
-    let held = ctx.add(Expr::Function("__hold".to_string(), vec![expanded]));
+    let held = ctx.call("__hold", vec![expanded]);
     Some(held)
 }
 

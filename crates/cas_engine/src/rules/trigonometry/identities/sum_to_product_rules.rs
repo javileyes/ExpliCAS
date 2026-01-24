@@ -78,7 +78,7 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
         for &factor in &factors {
             if let Some(n) = as_number(ctx, factor) {
                 numeric_coeff *= n.clone();
-            } else if let Expr::Function(name, args) = ctx.get(factor) {
+            } else if let Expr::Function(fn_id, args) = ctx.get(factor) { let name = ctx.sym_name(*fn_id);
                 if name == "cos" && args.len() == 1 {
                     cos_args.push(args[0]);
                 } else {
@@ -482,11 +482,11 @@ fn expand_trig_angle(
     let expr_data = ctx.get(expr).clone();
 
     // Check if this node is trig(large_angle)
-    if let Expr::Function(name, args) = &expr_data {
+    if let Expr::Function(fn_id, args) = &expr_data { let name = ctx.sym_name(*fn_id);
         if args.len() == 1
             && crate::ordering::compare_expr(ctx, args[0], large_angle) == Ordering::Equal
         {
-            match name.as_str() {
+            match ctx.sym_name(*fn_id) {
                 "sin" => {
                     // sin(A) -> 2sin(A/2)cos(A/2)
                     let two = ctx.num(2);

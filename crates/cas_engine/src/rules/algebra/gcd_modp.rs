@@ -22,7 +22,7 @@ pub const DEFAULT_PRIME: u64 = INTERNAL_DEFAULT_PRIME;
 /// Also strips __hold wrappers.
 fn strip_expand_wrapper(ctx: &Context, mut expr: ExprId) -> ExprId {
     loop {
-        if let Expr::Function(name, args) = ctx.get(expr) {
+        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
             if (name == "expand" || name == "__hold") && args.len() == 1 {
                 expr = args[0];
                 continue;
@@ -234,14 +234,14 @@ pub fn compute_gcd_modp_with_factor_extraction(
                     if n.is_one() {
                         // Wrap in __hold
                         return Some(
-                            ctx.add(Expr::Function("__hold".to_string(), vec![common_expr])),
+                            ctx.call("__hold", vec![common_expr]),
                         );
                     }
                 }
 
                 // Otherwise return common * gcd_rest
                 let result = ctx.add(Expr::Mul(common_expr, gcd_rest));
-                return Some(ctx.add(Expr::Function("__hold".to_string(), vec![result])));
+                return Some(ctx.call("__hold", vec![result]));
             }
             Err(_) => {
                 // Fall through to direct computation
@@ -252,7 +252,7 @@ pub fn compute_gcd_modp_with_factor_extraction(
     // Step 3: No common factors or extraction failed - try direct GCD (no expand!)
     // The MultiPoly converter handles Pow(base, n) natively via pow() method
     match compute_gcd_modp_with_options(ctx, a0, b0, DEFAULT_PRIME, None, None) {
-        Ok(gcd_expr) => Some(ctx.add(Expr::Function("__hold".to_string(), vec![gcd_expr]))),
+        Ok(gcd_expr) => Some(ctx.call("__hold", vec![gcd_expr])),
         Err(_) => None,
     }
 }
@@ -272,7 +272,7 @@ pub fn eager_eval_poly_gcd_calls(ctx: &mut Context, expr: ExprId) -> (ExprId, Ve
 
 fn eager_eval_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<crate::Step>) -> ExprId {
     // Check if this is poly_gcd_modp - if so, evaluate and STOP descent
-    if let Expr::Function(name, args) = ctx.get(expr).clone() {
+    if let Expr::Function(fn_id, args) = ctx.get(expr).clone() { let name = ctx.sym_name(fn_id);
         if (name == "poly_gcd_modp" || name == "pgcdp") && args.len() >= 2 {
             if let Some(result) = compute_gcd_modp_with_factor_extraction(ctx, args[0], args[1]) {
                 // Create step for the evaluation
@@ -399,7 +399,7 @@ impl Rule for PolyGcdModpRule {
     ) -> Option<Rewrite> {
         let fn_expr = ctx.get(expr).clone();
 
-        if let Expr::Function(name, args) = fn_expr {
+        if let Expr::Function(fn_id, args) = fn_expr { let name = ctx.sym_name(fn_id);
             let is_gcd_modp = name == "poly_gcd_modp" || name == "pgcdp";
 
             if is_gcd_modp && args.len() >= 2 && args.len() <= 4 {
@@ -449,7 +449,7 @@ impl Rule for PolyGcdModpRule {
                 match compute_gcd_modp_with_options(ctx, a, b, DEFAULT_PRIME, main_var, preset) {
                     Ok(gcd_expr) => {
                         // Wrap in __hold to prevent further simplification
-                        let held = ctx.add(Expr::Function("__hold".to_string(), vec![gcd_expr]));
+                        let held = ctx.call("__hold", vec![gcd_expr]);
 
                         return Some(Rewrite::simple(
                             held,
@@ -508,7 +508,7 @@ impl Rule for PolyEqModpRule {
     ) -> Option<Rewrite> {
         let fn_expr = ctx.get(expr).clone();
 
-        if let Expr::Function(name, args) = fn_expr {
+        if let Expr::Function(fn_id, args) = fn_expr { let name = ctx.sym_name(fn_id);
             let is_eq_modp = name == "poly_eq_modp" || name == "peqp";
 
             if is_eq_modp && (args.len() == 2 || args.len() == 3) {

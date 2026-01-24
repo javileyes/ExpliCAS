@@ -598,15 +598,15 @@ struct LogInfo {
 /// Extract log info from a Function node
 fn extract_log_info(ctx: &Context, id: ExprId) -> Option<LogInfo> {
     match ctx.get(id) {
-        Expr::Function(name, args) if name == "ln" && args.len() == 1 => Some(LogInfo {
+        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "ln" && args.len() == 1 => Some(LogInfo {
             arg: args[0],
             base: None,
         }),
-        Expr::Function(name, args) if name == "log" && args.len() == 1 => Some(LogInfo {
+        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "log" && args.len() == 1 => Some(LogInfo {
             arg: args[0],
             base: None,
         }),
-        Expr::Function(name, args) if name == "log" && args.len() == 2 => Some(LogInfo {
+        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "log" && args.len() == 2 => Some(LogInfo {
             arg: args[1],
             base: Some(args[0]),
         }),

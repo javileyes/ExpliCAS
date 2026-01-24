@@ -85,12 +85,12 @@ impl VarTable {
         // Collect all unique variable names
         let mut all_names: Vec<&str> = Vec::new();
         for name in &self.names {
-            if !all_names.contains(&name.as_str()) {
+            if !all_names.contains(&ctx.sym_name(*fn_id)) {
                 all_names.push(name);
             }
         }
         for name in &other.names {
-            if !all_names.contains(&name.as_str()) {
+            if !all_names.contains(&ctx.sym_name(*fn_id)) {
                 all_names.push(name);
             }
         }

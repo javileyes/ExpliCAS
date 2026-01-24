@@ -31,7 +31,7 @@ impl Repl {
                             .engine
                             .simplifier
                             .context
-                            .add(Expr::Function("Equal".to_string(), vec![eq.lhs, eq.rhs]));
+                            .call("Equal", vec![eq.lhs, eq.rhs]);
                         (
                             EntryKind::Eq {
                                 lhs: eq.lhs,

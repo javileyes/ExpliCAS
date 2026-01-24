@@ -419,7 +419,7 @@ fn test_prove_positive_exp() {
     let mut ctx = Context::new();
 
     let x = ctx.var("x");
-    let exp_x = ctx.add(cas_ast::Expr::Function("exp".to_string(), vec![x]));
+    let exp_x = ctx.call("exp", vec![x]);
 
     // NEW CONTRACT:
     // In RealOnly: exp(x) > 0 for ALL x (x is real by contract)
@@ -438,7 +438,7 @@ fn test_prove_positive_exp() {
 
     // exp(literal): Proven in both modes (literal is always real)
     let two = ctx.num(2);
-    let exp_two = ctx.add(cas_ast::Expr::Function("exp".to_string(), vec![two]));
+    let exp_two = ctx.call("exp", vec![two]);
     assert_eq!(
         prove_positive(&ctx, exp_two, ValueDomain::RealOnly),
         Proof::Proven
@@ -450,7 +450,7 @@ fn test_prove_positive_exp() {
 
     // exp(π): Proven in both modes (constant is real)
     let pi = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::Pi));
-    let exp_pi = ctx.add(cas_ast::Expr::Function("exp".to_string(), vec![pi]));
+    let exp_pi = ctx.call("exp", vec![pi]);
     assert_eq!(
         prove_positive(&ctx, exp_pi, ValueDomain::RealOnly),
         Proof::Proven

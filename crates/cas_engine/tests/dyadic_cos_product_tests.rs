@@ -151,7 +151,7 @@ fn test_prove_nonzero_sin_pi_over_9() {
     let pi = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::Pi));
     let nine = ctx.num(9);
     let pi_over_9 = ctx.add(cas_ast::Expr::Div(pi, nine));
-    let sin_pi_9 = ctx.add(cas_ast::Expr::Function("sin".to_string(), vec![pi_over_9]));
+    let sin_pi_9 = ctx.call("sin", vec![pi_over_9]);
 
     assert_eq!(
         prove_nonzero(&ctx, sin_pi_9),
@@ -168,7 +168,7 @@ fn test_prove_nonzero_sin_pi() {
 
     let mut ctx = Context::new();
     let pi = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::Pi));
-    let sin_pi = ctx.add(cas_ast::Expr::Function("sin".to_string(), vec![pi]));
+    let sin_pi = ctx.call("sin", vec![pi]);
 
     assert_eq!(
         prove_nonzero(&ctx, sin_pi),
@@ -190,7 +190,7 @@ fn test_prove_nonzero_sin_18pi_over_9() {
         9.into(),
     )));
     let arg = ctx.add(cas_ast::Expr::Mul(coeff, pi));
-    let sin_expr = ctx.add(cas_ast::Expr::Function("sin".to_string(), vec![arg]));
+    let sin_expr = ctx.call("sin", vec![arg]);
 
     assert_eq!(
         prove_nonzero(&ctx, sin_expr),
@@ -207,7 +207,7 @@ fn test_prove_nonzero_sin_symbolic() {
 
     let mut ctx = Context::new();
     let a = ctx.var("a");
-    let sin_a = ctx.add(cas_ast::Expr::Function("sin".to_string(), vec![a]));
+    let sin_a = ctx.call("sin", vec![a]);
 
     assert_eq!(
         prove_nonzero(&ctx, sin_a),

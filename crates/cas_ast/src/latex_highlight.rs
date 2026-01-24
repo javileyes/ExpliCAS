@@ -329,7 +329,7 @@ mod tests {
         let k = ctx.var("k");
         let one = ctx.num(1);
         let n = ctx.var("n");
-        let sum = ctx.add(Expr::Function("sum".to_string(), vec![k, k, one, n]));
+        let sum = ctx.call("sum", vec![k, k, one, n]);
 
         let config = HighlightConfig::new();
         let latex = LaTeXExprHighlighted {

@@ -599,7 +599,7 @@ fn collect_product_bases(ctx: &Context, expr: ExprId, bases: &mut Vec<ExprId>) {
 
 /// Check if expr is Abs(inner_expr), i.e., |inner_expr|
 fn is_abs_of(ctx: &Context, expr: ExprId, inner: ExprId) -> bool {
-    if let Expr::Function(name, args) = ctx.get(expr) {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
         if name == "abs" && args.len() == 1 {
             return exprs_equivalent(ctx, args[0], inner);
         }
@@ -1108,7 +1108,7 @@ pub fn derive_requires_from_equation(
 
     // Helper to check if expr is abs(...)
     let is_abs = |ctx: &Context, e: ExprId| -> bool {
-        matches!(ctx.get(e), Expr::Function(name, args) if name == "abs" && args.len() == 1)
+        matches!(ctx.get(e), Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "abs" && args.len() == 1)
     };
 
     // Helper to check if expression has structural constraints that enforce positivity.
@@ -1118,9 +1118,9 @@ pub fn derive_requires_from_equation(
     let has_positivity_structure = |ctx: &Context, e: ExprId| -> bool {
         match ctx.get(e) {
             // sqrt(x) requires x >= 0 and sqrt(x) > 0 implies x > 0
-            Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => true,
+            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => true,
             // ln(x) and log(x) require x > 0
-            Expr::Function(name, args) if (name == "ln" || name == "log") && args.len() == 1 => {
+            Expr::Function(fn_id, args) if (ctx.sym_name(*fn_id) == "ln" || ctx.sym_name(*fn_id) == "log") && args.len() == 1 => {
                 true
             }
             // x^(p/q) where q is even requires x >= 0
@@ -1193,11 +1193,11 @@ fn add_positive_and_propagate(
         // abs(t) > 0 ⟺ t ≠ 0 (since abs is always ≥ 0)
         // Don't add Positive(abs(t)) - it's redundant and confusing
         // Instead add NonZero(t) which is the actual constraint
-        Expr::Function(name, args) if name == "abs" && args.len() == 1 => {
+        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "abs" && args.len() == 1 => {
             derived.push(ImplicitCondition::NonZero(args[0]));
         }
         // sqrt(t) > 0 implies t > 0
-        Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => {
+        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => {
             derived.push(ImplicitCondition::Positive(expr));
             derived.push(ImplicitCondition::Positive(args[0]));
         }
@@ -1283,10 +1283,10 @@ fn is_always_nonnegative_depth(ctx: &Context, expr: ExprId, depth: usize) -> boo
         }
 
         // |x| is always non-negative
-        Expr::Function(name, args) if name == "abs" && args.len() == 1 => true,
+        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "abs" && args.len() == 1 => true,
 
         // sqrt(x) is non-negative by definition (for real)
-        Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => true,
+        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => true,
 
         // x * x where both sides are the same = x², always non-negative
         Expr::Mul(l, r) => {
@@ -1317,7 +1317,7 @@ fn infer_recursive(ctx: &Context, root: ExprId, domain: &mut ImplicitDomain) {
         match ctx.get(expr) {
             // sqrt(t) → NonNegative(t)
             // BUT skip numeric literals - they're trivially provable
-            Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => {
+            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => {
                 if !matches!(ctx.get(args[0]), Expr::Number(_)) {
                     domain.add_nonnegative(args[0]);
                 }
@@ -1325,7 +1325,7 @@ fn infer_recursive(ctx: &Context, root: ExprId, domain: &mut ImplicitDomain) {
             }
 
             // ln(t) or log(t) → Positive(t)
-            Expr::Function(name, args) if (name == "ln" || name == "log") && args.len() == 1 => {
+            Expr::Function(fn_id, args) if (ctx.sym_name(*fn_id) == "ln" || ctx.sym_name(*fn_id) == "log") && args.len() == 1 => {
                 domain.add_positive(args[0]);
                 stack.push(args[0]);
             }
@@ -1412,14 +1412,14 @@ pub fn witness_survives(ctx: &Context, target: ExprId, output: ExprId, kind: Wit
 fn search_witness(ctx: &Context, target: ExprId, expr: ExprId, kind: WitnessKind) -> bool {
     match ctx.get(expr) {
         // Check if this node is a witness
-        Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => {
+        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => {
             if kind == WitnessKind::Sqrt && exprs_equal(ctx, args[0], target) {
                 return true;
             }
             search_witness(ctx, target, args[0], kind)
         }
 
-        Expr::Function(name, args) if (name == "ln" || name == "log") && args.len() == 1 => {
+        Expr::Function(fn_id, args) if (ctx.sym_name(*fn_id) == "ln" || ctx.sym_name(*fn_id) == "log") && args.len() == 1 => {
             if kind == WitnessKind::Log && exprs_equal(ctx, args[0], target) {
                 return true;
             }
@@ -1516,14 +1516,14 @@ fn search_witness_in_context(
 
     match ctx.get(expr) {
         // Check if this node is a witness
-        Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => {
+        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => {
             if kind == WitnessKind::Sqrt && exprs_equal(ctx, args[0], target) {
                 return true;
             }
             search_witness_in_context(ctx, target, args[0], replaced_node, replacement, kind)
         }
 
-        Expr::Function(name, args) if (name == "ln" || name == "log") && args.len() == 1 => {
+        Expr::Function(fn_id, args) if (ctx.sym_name(*fn_id) == "ln" || ctx.sym_name(*fn_id) == "log") && args.len() == 1 => {
             if kind == WitnessKind::Log && exprs_equal(ctx, args[0], target) {
                 return true;
             }

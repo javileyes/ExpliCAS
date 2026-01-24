@@ -71,7 +71,7 @@ impl crate::rule::Rule for TrigSumToProductContractionRule {
 
         // Build the product form based on function name and operation
         let two_id = ctx.num(2);
-        let result = match (l_name.as_str(), is_add) {
+        let result = match (l_ctx.sym_name(*fn_id), is_add) {
             ("sin", true) => {
                 // sin(a) + sin(b) → 2*sin((a+b)/2)*cos((a-b)/2)
                 let sin_half_sum = ctx.call("sin", vec![half_sum_arg]);
@@ -118,7 +118,7 @@ impl crate::rule::Rule for TrigSumToProductContractionRule {
 
 /// Extract trig function name and argument
 fn extract_trig_fn(ctx: &cas_ast::Context, expr: ExprId) -> Option<(String, ExprId)> {
-    if let Expr::Function(name, args) = ctx.get(expr) {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
         if (name == "sin" || name == "cos") && args.len() == 1 {
             return Some((name.clone(), args[0]));
         }

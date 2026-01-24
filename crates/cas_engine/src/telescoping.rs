@@ -336,7 +336,7 @@ fn extract_cosine_multiple(ctx: &Context, expr: ExprId) -> Option<(usize, ExprId
 
         if two_side.is_some() {
             // Other side should be cos(k*x)
-            if let Expr::Function(name, args) = ctx.get(other_side) {
+            if let Expr::Function(fn_id, args) = ctx.get(other_side) { let name = ctx.sym_name(*fn_id);
                 if name == "cos" && args.len() == 1 {
                     return extract_multiple_of_var(ctx, args[0]);
                 }

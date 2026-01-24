@@ -75,7 +75,7 @@ define_rule!(
     "Evaluate Reciprocal Trig Functions",
     Some(vec!["Function"]),
     |ctx, expr| {
-        if let Expr::Function(name, args) = ctx.get(expr) {
+        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
             if args.len() == 1 {
                 let arg = args[0];
                 for (func, check, build, desc) in EVAL_RULES {
@@ -149,12 +149,12 @@ define_rule!(
     "Reciprocal Trig Negative Argument",
     Some(vec!["Function"]),
     |ctx, expr| {
-        if let Expr::Function(name, args) = ctx.get(expr) {
+        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
             if args.len() == 1 {
                 let arg = args[0];
                 if let Expr::Neg(inner) = ctx.get(arg) {
                     let inner = *inner;
-                    let name_str = name.as_str();
+                    let name_str = ctx.sym_name(*fn_id);
 
                     for (func, behavior) in NEG_BEHAVIORS {
                         if name_str == *func {

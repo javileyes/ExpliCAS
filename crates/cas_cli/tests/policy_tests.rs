@@ -226,7 +226,7 @@ fn test_expand_idempotence() {
     // Wrap in expand again
     let expr2 = s
         .context
-        .add(cas_ast::Expr::Function("expand".to_string(), vec![once]));
+        .call("expand", vec![once]);
     let (twice, _) = s.simplify(expr2);
 
     assert_eq!(once, twice, "expand should be idempotent");

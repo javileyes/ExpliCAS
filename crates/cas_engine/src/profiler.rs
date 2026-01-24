@@ -168,7 +168,7 @@ impl RuleProfiler {
 
         let mut entries: Vec<_> = aggregated
             .iter()
-            .map(|(name, stats)| (name.as_str(), stats.applied.load(Ordering::Relaxed)))
+            .map(|(name, stats)| (ctx.sym_name(*fn_id), stats.applied.load(Ordering::Relaxed)))
             .filter(|(_, count)| *count > 0)
             .collect();
 

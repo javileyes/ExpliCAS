@@ -226,7 +226,7 @@ define_rule!(
 
                 // Look up in expansion table
                 for (outer, inner_variants, transform, description) in EXPANSIONS {
-                    if outer_name == *outer && inner_variants.contains(&inner_name.as_str()) {
+                    if outer_name == *outer && inner_variants.contains(&inner_ctx.sym_name(*fn_id)) {
                         let result = apply_transform(ctx, x, *transform);
                         return Some(Rewrite::new(result).desc(*description));
                     }

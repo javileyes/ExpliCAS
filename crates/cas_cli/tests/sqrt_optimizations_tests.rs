@@ -245,7 +245,7 @@ fn test_aggressive_mode_sqrt_binomial() {
     // Aplicar aggressive simplification
     let expand_func = simplifier
         .context
-        .add(Expr::Function("expand".to_string(), vec![expr]));
+        .call("expand", vec![expr]);
     let (result, _steps) = simplifier.simplify(expand_func);
 
     let result_str = format!(
@@ -270,7 +270,7 @@ fn test_aggressive_mode_abs_product() {
 
     let expand_func = simplifier
         .context
-        .add(Expr::Function("expand".to_string(), vec![expr]));
+        .call("expand", vec![expr]);
     let (result, _steps) = simplifier.simplify(expand_func);
 
     let result_str = format!(

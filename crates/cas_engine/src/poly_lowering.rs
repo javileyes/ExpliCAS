@@ -510,7 +510,7 @@ fn lower_recursive(
 
 /// Extract PolyId from poly_result(id) expression
 fn extract_poly_result_id(ctx: &Context, expr: ExprId) -> Option<PolyId> {
-    if let Expr::Function(name, args) = ctx.get(expr) {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
         if name == "poly_result" && args.len() == 1 {
             if let Expr::Number(n) = ctx.get(args[0]) {
                 return n.to_integer().try_into().ok();
@@ -523,7 +523,7 @@ fn extract_poly_result_id(ctx: &Context, expr: ExprId) -> Option<PolyId> {
 /// Create poly_result(id) expression
 fn make_poly_result(ctx: &mut Context, id: PolyId) -> ExprId {
     let id_expr = ctx.num(id as i64);
-    ctx.add(Expr::Function("poly_result".to_string(), vec![id_expr]))
+    ctx.call("poly_result", vec![id_expr])
 }
 
 /// Extract integer from expression

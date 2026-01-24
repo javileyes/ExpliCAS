@@ -6,7 +6,8 @@ use num_integer::Integer;
 use num_traits::Signed;
 
 define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
-    if let Expr::Function(name, args) = ctx.get(expr) {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let name = ctx.sym_name(*fn_id);
         if name == "abs" && args.len() == 1 {
             let arg = args[0];
 
@@ -61,7 +62,9 @@ impl crate::rule::Rule for AbsPositiveSimplifyRule {
 
         // Match abs(inner)
         let inner = match ctx.get(expr).clone() {
-            Expr::Function(name, args) if name == "abs" && args.len() == 1 => args[0],
+            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "abs" && args.len() == 1 => {
+                args[0]
+            }
             _ => return None,
         };
 
@@ -158,7 +161,9 @@ impl crate::rule::Rule for AbsNonNegativeSimplifyRule {
 
         // Match abs(inner)
         let inner = match ctx.get(expr).clone() {
-            Expr::Function(name, args) if name == "abs" && args.len() == 1 => args[0],
+            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "abs" && args.len() == 1 => {
+                args[0]
+            }
             _ => return None,
         };
 
@@ -261,7 +266,8 @@ impl crate::rule::Rule for AbsSquaredRule {
         let expr_data = ctx.get(expr).clone();
         if let Expr::Pow(base, exp) = expr_data {
             let base_data = ctx.get(base).clone();
-            if let Expr::Function(name, args) = base_data {
+            if let Expr::Function(fn_id, args) = base_data {
+                let name = ctx.sym_name(*fn_id);
                 if name == "abs" && args.len() == 1 {
                     let inner = args[0];
 
@@ -298,7 +304,8 @@ define_rule!(
         // sqrt(x^2) -> |x|
         // Also handles Pow(x, 1/2) of Pow(x, 2)
 
-        let inner = if let Expr::Function(name, args) = ctx.get(expr) {
+        let inner = if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id);
             if name == "sqrt" && args.len() == 1 {
                 Some(args[0])
             } else {
@@ -438,9 +445,10 @@ impl crate::rule::Rule for SymbolicRootCancelRule {
         }
 
         // Match sqrt(arg, index) where arg = Pow(base, exp) and exp == index
-        let Expr::Function(name, args) = ctx.get(expr).clone() else {
+        let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
             return None;
         };
+        let name = ctx.sym_name(*fn_id);
 
         if name != "sqrt" || args.len() != 2 {
             return None;
@@ -570,10 +578,11 @@ define_rule!(
     "Evaluate Meta Functions",
     Some(vec!["Function"]),
     |ctx, expr| {
-        if let Expr::Function(name, args) = ctx.get(expr).clone() {
+        if let Expr::Function(fn_id, args) = ctx.get(expr).clone() {
+        let name = ctx.sym_name(fn_id);
             if args.len() == 1 {
                 let arg = args[0];
-                match name.as_str() {
+                match ctx.sym_name(*fn_id) {
                     // simplify() is transparent - argument already processed
                     "simplify" => {
                         return Some(Rewrite::new(arg).desc("simplify(x) = x (already processed)"));
@@ -608,11 +617,12 @@ define_rule!(
 // =============================================================================
 define_rule!(AbsIdempotentRule, "Abs Idempotent", |ctx, expr| {
     // Match abs(abs(inner))
-    if let Expr::Function(name, args) = ctx.get(expr) {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let name = ctx.sym_name(*fn_id);
         if name == "abs" && args.len() == 1 {
             let arg = args[0];
             if let Expr::Function(inner_name, inner_args) = ctx.get(arg) {
-                if inner_name == "abs" && inner_args.len() == 1 {
+                if ctx.sym_name(*inner_name) == "abs" && inner_args.len() == 1 {
                     // ||x|| → |x|
                     return Some(Rewrite::new(arg).desc("||x|| = |x|"));
                 }
@@ -628,7 +638,8 @@ define_rule!(AbsIdempotentRule, "Abs Idempotent", |ctx, expr| {
 // =============================================================================
 define_rule!(AbsOfEvenPowerRule, "Abs Of Even Power", |ctx, expr| {
     // Match abs(x^n) where n is even integer
-    if let Expr::Function(name, args) = ctx.get(expr) {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let name = ctx.sym_name(*fn_id);
         if name == "abs" && args.len() == 1 {
             let arg = args[0];
             if let Expr::Pow(_base, exp) = ctx.get(arg) {
@@ -659,7 +670,8 @@ define_rule!(
         // Match Mul(abs(a), abs(b))
         if let Expr::Mul(lhs, rhs) = ctx.get(expr) {
             // Check if lhs is abs(a)
-            let lhs_inner = if let Expr::Function(name, args) = ctx.get(*lhs) {
+            let lhs_inner = if let Expr::Function(fn_id, args) = ctx.get(*lhs) {
+                let name = ctx.sym_name(*fn_id);
                 if name == "abs" && args.len() == 1 {
                     Some(args[0])
                 } else {
@@ -670,7 +682,8 @@ define_rule!(
             };
 
             // Check if rhs is abs(b)
-            let rhs_inner = if let Expr::Function(name, args) = ctx.get(*rhs) {
+            let rhs_inner = if let Expr::Function(fn_id, args) = ctx.get(*rhs) {
+                let name = ctx.sym_name(*fn_id);
                 if name == "abs" && args.len() == 1 {
                     Some(args[0])
                 } else {
@@ -704,7 +717,8 @@ define_rule!(
         // Match Div(abs(a), abs(b))
         if let Expr::Div(lhs, rhs) = ctx.get(expr) {
             // Check if lhs is abs(a)
-            let lhs_inner = if let Expr::Function(name, args) = ctx.get(*lhs) {
+            let lhs_inner = if let Expr::Function(fn_id, args) = ctx.get(*lhs) {
+                let name = ctx.sym_name(*fn_id);
                 if name == "abs" && args.len() == 1 {
                     Some(args[0])
                 } else {
@@ -715,7 +729,8 @@ define_rule!(
             };
 
             // Check if rhs is abs(b)
-            let rhs_inner = if let Expr::Function(name, args) = ctx.get(*rhs) {
+            let rhs_inner = if let Expr::Function(fn_id, args) = ctx.get(*rhs) {
+                let name = ctx.sym_name(*fn_id);
                 if name == "abs" && args.len() == 1 {
                     Some(args[0])
                 } else {
@@ -742,13 +757,14 @@ define_rule!(
 // =============================================================================
 define_rule!(AbsSqrtRule, "Abs Of Sqrt", |ctx, expr| {
     // Match abs(sqrt(x)) or abs(x^(1/2))
-    if let Expr::Function(name, args) = ctx.get(expr) {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let name = ctx.sym_name(*fn_id);
         if name == "abs" && args.len() == 1 {
             let arg = args[0];
 
             // Check for sqrt(x) function
             if let Expr::Function(inner_name, _inner_args) = ctx.get(arg) {
-                if inner_name == "sqrt" {
+                if ctx.sym_name(*inner_name) == "sqrt" {
                     // |sqrt(x)| → sqrt(x)
                     return Some(Rewrite::new(arg).desc("|√x| = √x"));
                 }
@@ -777,13 +793,14 @@ define_rule!(AbsSqrtRule, "Abs Of Sqrt", |ctx, expr| {
 // =============================================================================
 define_rule!(AbsExpRule, "Abs Of Exp", |ctx, expr| {
     // Match abs(exp(x)) or abs(e^x)
-    if let Expr::Function(name, args) = ctx.get(expr) {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let name = ctx.sym_name(*fn_id);
         if name == "abs" && args.len() == 1 {
             let arg = args[0];
 
             // Check for exp(x) function
             if let Expr::Function(inner_name, _inner_args) = ctx.get(arg) {
-                if inner_name == "exp" {
+                if ctx.sym_name(*inner_name) == "exp" {
                     // |exp(x)| → exp(x)
                     return Some(Rewrite::new(arg).desc("|e^x| = e^x"));
                 }
@@ -809,7 +826,8 @@ define_rule!(AbsExpRule, "Abs Of Exp", |ctx, expr| {
 // =============================================================================
 define_rule!(AbsSumOfSquaresRule, "Abs Of Sum Of Squares", |ctx, expr| {
     // Match abs(a + b) where both a and b are non-negative (squares, abs, etc.)
-    if let Expr::Function(name, args) = ctx.get(expr) {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let name = ctx.sym_name(*fn_id);
         if name == "abs" && args.len() == 1 {
             let arg = args[0];
 

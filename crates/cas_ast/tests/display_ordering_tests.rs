@@ -132,7 +132,7 @@ fn test_non_polynomial_determinism() {
     let two = ctx.num(2);
 
     // sin(x)
-    let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![x]));
+    let sin_x = ctx.call("sin", vec![x]);
 
     // x^2
     let x_sq = ctx.add(Expr::Pow(x, two));
@@ -195,9 +195,9 @@ fn test_non_polynomial_different_construction_order() {
     let two = ctx.num(2);
 
     // Components
-    let sin_x = ctx.add(Expr::Function("sin".to_string(), vec![x]));
+    let sin_x = ctx.call("sin", vec![x]);
     let x_sq = ctx.add(Expr::Pow(x, two));
-    let cos_x = ctx.add(Expr::Function("cos".to_string(), vec![x]));
+    let cos_x = ctx.call("cos", vec![x]);
 
     // Build order 1: sin(x) + x^2 + cos(x)
     let sum1_a = ctx.add(Expr::Add(sin_x, x_sq));
@@ -206,9 +206,9 @@ fn test_non_polynomial_different_construction_order() {
     // Build order 2: x^2 + cos(x) + sin(x) (different construction order)
     let x2 = ctx.var("x");
     let two2 = ctx.num(2);
-    let sin_x2 = ctx.add(Expr::Function("sin".to_string(), vec![x2]));
+    let sin_x2 = ctx.call("sin", vec![x2]);
     let x_sq2 = ctx.add(Expr::Pow(x2, two2));
-    let cos_x2 = ctx.add(Expr::Function("cos".to_string(), vec![x2]));
+    let cos_x2 = ctx.call("cos", vec![x2]);
 
     let sum2_a = ctx.add(Expr::Add(x_sq2, cos_x2));
     let expr2 = ctx.add(Expr::Add(sum2_a, sin_x2));
@@ -216,9 +216,9 @@ fn test_non_polynomial_different_construction_order() {
     // Build order 3: cos(x) + sin(x) + x^2 (yet another order)
     let x3 = ctx.var("x");
     let two3 = ctx.num(2);
-    let sin_x3 = ctx.add(Expr::Function("sin".to_string(), vec![x3]));
+    let sin_x3 = ctx.call("sin", vec![x3]);
     let x_sq3 = ctx.add(Expr::Pow(x3, two3));
-    let cos_x3 = ctx.add(Expr::Function("cos".to_string(), vec![x3]));
+    let cos_x3 = ctx.call("cos", vec![x3]);
 
     let sum3_a = ctx.add(Expr::Add(cos_x3, sin_x3));
     let expr3 = ctx.add(Expr::Add(sum3_a, x_sq3));

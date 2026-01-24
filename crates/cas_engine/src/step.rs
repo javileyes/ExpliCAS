@@ -215,7 +215,7 @@ impl Step {
         let after_str = context.map(|ctx| {
             // Unwrap __hold for display purposes
             let display_id = match ctx.get(after) {
-                cas_ast::Expr::Function(name, args) if name == "__hold" && args.len() == 1 => {
+                cas_ast::Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "__hold" && args.len() == 1 => {
                     args[0]
                 }
                 _ => after,

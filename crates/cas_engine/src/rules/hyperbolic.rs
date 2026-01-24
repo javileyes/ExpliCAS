@@ -25,12 +25,12 @@ define_rule!(
     "Evaluate Hyperbolic Functions",
     Some(vec!["Function"]),
     |ctx, expr| {
-        if let Expr::Function(name, args) = ctx.get(expr) {
+        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
             if args.len() == 1 {
                 let arg = args[0];
                 let name = name.clone(); // Clone to avoid borrow issues
 
-                match name.as_str() {
+                match ctx.sym_name(*fn_id) {
                     // sinh(0) = 0, tanh(0) = 0
                     "sinh" | "tanh" => {
                         if is_zero(ctx, arg) {
@@ -81,32 +81,32 @@ define_rule!(
                         let x = inner_args[0];
 
                         // sinh(asinh(x)) = x
-                        if outer_name == "sinh" && inner_name == "asinh" {
+                        if ctx.sym_name(*outer_name) == "sinh" && inner_name == "asinh" {
                             return Some(Rewrite::new(x).desc("sinh(asinh(x)) = x"));
                         }
 
                         // cosh(acosh(x)) = x
-                        if outer_name == "cosh" && inner_name == "acosh" {
+                        if ctx.sym_name(*outer_name) == "cosh" && inner_name == "acosh" {
                             return Some(Rewrite::new(x).desc("cosh(acosh(x)) = x"));
                         }
 
                         // tanh(atanh(x)) = x
-                        if outer_name == "tanh" && inner_name == "atanh" {
+                        if ctx.sym_name(*outer_name) == "tanh" && inner_name == "atanh" {
                             return Some(Rewrite::new(x).desc("tanh(atanh(x)) = x"));
                         }
 
                         // asinh(sinh(x)) = x
-                        if outer_name == "asinh" && inner_name == "sinh" {
+                        if ctx.sym_name(*outer_name) == "asinh" && inner_name == "sinh" {
                             return Some(Rewrite::new(x).desc("asinh(sinh(x)) = x"));
                         }
 
                         // acosh(cosh(x)) = x
-                        if outer_name == "acosh" && inner_name == "cosh" {
+                        if ctx.sym_name(*outer_name) == "acosh" && inner_name == "cosh" {
                             return Some(Rewrite::new(x).desc("acosh(cosh(x)) = x"));
                         }
 
                         // atanh(tanh(x)) = x
-                        if outer_name == "atanh" && inner_name == "tanh" {
+                        if ctx.sym_name(*outer_name) == "atanh" && inner_name == "tanh" {
                             return Some(Rewrite::new(x).desc("atanh(tanh(x)) = x"));
                         }
                     }
@@ -123,11 +123,11 @@ define_rule!(
     "Hyperbolic Negative Argument",
     Some(vec!["Function"]),
     |ctx, expr| {
-        if let Expr::Function(name, args) = ctx.get(expr) {
+        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
             if args.len() == 1 {
                 let arg = args[0];
                 if let Expr::Neg(inner) = ctx.get(arg) {
-                    match name.as_str() {
+                    match ctx.sym_name(*fn_id) {
                         // sinh(-x) = -sinh(x) (odd function)
                         "sinh" => {
                             let sinh_inner =
@@ -151,14 +151,14 @@ define_rule!(
                         // asinh(-x) = -asinh(x) (odd function)
                         "asinh" => {
                             let asinh_inner =
-                                ctx.add(Expr::Function("asinh".to_string(), vec![*inner]));
+                                ctx.call("asinh", vec![*inner]);
                             let new_expr = ctx.add(Expr::Neg(asinh_inner));
                             return Some(Rewrite::new(new_expr).desc("asinh(-x) = -asinh(x)"));
                         }
                         // atanh(-x) = -atanh(x) (odd function)
                         "atanh" => {
                             let atanh_inner =
-                                ctx.add(Expr::Function("atanh".to_string(), vec![*inner]));
+                                ctx.call("atanh", vec![*inner]);
                             let new_expr = ctx.add(Expr::Neg(atanh_inner));
                             return Some(Rewrite::new(new_expr).desc("atanh(-x) = -atanh(x)"));
                         }
@@ -284,14 +284,14 @@ define_rule!(
     "tanh(x) = sinh(x)/cosh(x)",
     Some(vec!["Function"]),
     |ctx, expr| {
-        if let Expr::Function(name, args) = ctx.get(expr) {
+        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
             if name == "tanh" && args.len() == 1 {
                 let x = args[0];
 
                 // GUARD: Don't expand if argument is inverse hyperbolic function
                 // This preserves tanh(atanh(z)) → z via HyperbolicCompositionRule
                 if let Expr::Function(inner_name, _) = ctx.get(x) {
-                    if inner_name == "atanh" || inner_name == "asinh" || inner_name == "acosh" {
+                    if ctx.sym_name(*inner_name) == "atanh" || ctx.sym_name(*inner_name) == "asinh" || ctx.sym_name(*inner_name) == "acosh" {
                         return None;
                     }
                 }
@@ -319,7 +319,7 @@ define_rule!(
     "sinh(2x) = 2·sinh(x)·cosh(x)",
     Some(vec!["Function"]),
     |ctx, expr| {
-        if let Expr::Function(name, args) = ctx.get(expr) {
+        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
             if name == "sinh" && args.len() == 1 {
                 // Check if arg is 2*x or x*2
                 if let Some(inner_var) = crate::helpers::extract_double_angle_arg(ctx, args[0]) {
@@ -383,7 +383,7 @@ fn as_exp(ctx: &Context, id: ExprId) -> Option<ExprId> {
             }
         }
         // Case: exp(arg) function
-        Expr::Function(name, args) if name == "exp" && args.len() == 1 => Some(args[0]),
+        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "exp" && args.len() == 1 => Some(args[0]),
         _ => None,
     }
 }

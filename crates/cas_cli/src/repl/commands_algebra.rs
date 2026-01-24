@@ -311,7 +311,7 @@ impl Repl {
                     .engine
                     .simplifier
                     .context
-                    .add(Expr::Function("det".to_string(), vec![expr]));
+                    .call("det", vec![expr]);
 
                 // Simplify to compute determinant
                 let (result, steps) = self.core.engine.simplifier.simplify(det_expr);
@@ -374,7 +374,7 @@ impl Repl {
                     .engine
                     .simplifier
                     .context
-                    .add(Expr::Function("transpose".to_string(), vec![expr]));
+                    .call("transpose", vec![expr]);
 
                 // Simplify to compute transpose
                 let (result, steps) = self.core.engine.simplifier.simplify(transpose_expr);
@@ -424,7 +424,7 @@ impl Repl {
                     .engine
                     .simplifier
                     .context
-                    .add(Expr::Function("trace".to_string(), vec![expr]));
+                    .call("trace", vec![expr]);
 
                 // Simplify to compute trace
                 let (result, steps) = self.core.engine.simplifier.simplify(trace_expr);

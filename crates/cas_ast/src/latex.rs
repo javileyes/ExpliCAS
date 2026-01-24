@@ -103,7 +103,7 @@ mod tests {
     fn test_latex_sqrt() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
-        let sqrt = ctx.add(Expr::Function("sqrt".to_string(), vec![x]));
+        let sqrt = ctx.call("sqrt", vec![x]);
 
         let latex = LaTeXExpr {
             context: &ctx,
@@ -229,7 +229,7 @@ mod tests {
         let k = ctx.var("k");
         let one = ctx.num(1);
         let n = ctx.var("n");
-        let sum = ctx.add(Expr::Function("sum".to_string(), vec![k, k, one, n]));
+        let sum = ctx.call("sum", vec![k, k, one, n]);
 
         let latex = LaTeXExpr {
             context: &ctx,
@@ -244,7 +244,7 @@ mod tests {
         let k = ctx.var("k");
         let one = ctx.num(1);
         let n = ctx.var("n");
-        let prod = ctx.add(Expr::Function("product".to_string(), vec![k, k, one, n]));
+        let prod = ctx.call("product", vec![k, k, one, n]);
 
         let latex = LaTeXExpr {
             context: &ctx,

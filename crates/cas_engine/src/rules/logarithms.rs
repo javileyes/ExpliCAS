@@ -13,12 +13,12 @@ fn make_log(ctx: &mut Context, base: ExprId, arg: ExprId) -> ExprId {
     // Check for log10 sentinel first (before accessing ctx.get which would panic)
     let sentinel_log10 = ExprId::from_raw(u32::MAX - 1);
     if base == sentinel_log10 {
-        return ctx.add(Expr::Function("log".to_string(), vec![arg]));
+        return ctx.call("log", vec![arg]);
     }
     if let Expr::Constant(cas_ast::Constant::E) = ctx.get(base) {
         ctx.call("ln", vec![arg])
     } else {
-        ctx.add(Expr::Function("log".to_string(), vec![base, arg]))
+        ctx.call("log", vec![base, arg])
     }
 }
 
@@ -135,7 +135,7 @@ use std::collections::HashMap;
 
 define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
     let expr_data = ctx.get(expr).clone();
-    if let Expr::Function(name, args) = expr_data {
+    if let Expr::Function(fn_id, args) = expr_data { let name = ctx.sym_name(*fn_id);
         // Handle ln(x) as log(e, x)
         let (base, arg) = if name == "ln" && args.len() == 1 {
             let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
@@ -275,7 +275,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
 // =============================================================================
 define_rule!(LnEProductRule, "Factor e from ln Product", |ctx, expr| {
     // Match ln(arg)
-    if let Expr::Function(name, args) = ctx.get(expr).clone() {
+    if let Expr::Function(fn_id, args) = ctx.get(expr).clone() { let name = ctx.sym_name(fn_id);
         if name != "ln" || args.len() != 1 {
             return None;
         }
@@ -314,7 +314,7 @@ define_rule!(LnEProductRule, "Factor e from ln Product", |ctx, expr| {
 // =============================================================================
 define_rule!(LnEDivRule, "Factor e from ln Quotient", |ctx, expr| {
     // Match ln(arg)
-    if let Expr::Function(name, args) = ctx.get(expr).clone() {
+    if let Expr::Function(fn_id, args) = ctx.get(expr).clone() { let name = ctx.sym_name(fn_id);
         if name != "ln" || args.len() != 1 {
             return None;
         }
@@ -374,7 +374,7 @@ impl crate::rule::Rule for LogExpansionRule {
         }
 
         let expr_data = ctx.get(expr).clone();
-        if let Expr::Function(name, args) = expr_data {
+        if let Expr::Function(fn_id, args) = expr_data { let name = ctx.sym_name(*fn_id);
             // Handle ln(x) as log(e, x), or log(b, x)
             let (base, arg) = if name == "ln" && args.len() == 1 {
                 let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
@@ -923,8 +923,8 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
 
         // Match ln(arg) or log(base, arg)
         let (base_opt, arg) = match ctx.get(expr).clone() {
-            Expr::Function(name, args) if name == "ln" && args.len() == 1 => (None, args[0]),
-            Expr::Function(name, args) if name == "log" && args.len() == 2 => {
+            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "ln" && args.len() == 1 => (None, args[0]),
+            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "log" && args.len() == 2 => {
                 (Some(args[0]), args[1])
             }
             _ => return None,
@@ -932,7 +932,7 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
 
         // Match abs(inner)
         let inner = match ctx.get(arg).clone() {
-            Expr::Function(name, args) if name == "abs" && args.len() == 1 => args[0],
+            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "abs" && args.len() == 1 => args[0],
             _ => return None,
         };
 
@@ -943,7 +943,7 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
         // Helper to rebuild ln/log with inner (without abs)
         let mk_log = |ctx: &mut Context| -> ExprId {
             match base_opt {
-                Some(base) => ctx.add(Expr::Function("log".to_string(), vec![base, inner])),
+                Some(base) => ctx.call("log", vec![base, inner]),
                 None => ctx.call("ln", vec![inner]),
             }
         };
@@ -1223,7 +1223,7 @@ fn extract_log_parts(
     ctx: &cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
-    if let Expr::Function(name, args) = ctx.get(expr) {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
         if name == "ln" && args.len() == 1 {
             // For ln(x), base is implicitly e - we need to create it
             // But we can't mutate ctx here. Instead we'll use a sentinel value.
@@ -1664,7 +1664,7 @@ define_rule!(
         let check_log_denom =
             |ctx: &Context, denom: cas_ast::ExprId| -> Option<Option<cas_ast::ExprId>> {
                 // println!("check_log_denom checking {:?}", denom);
-                if let Expr::Function(name, args) = ctx.get(denom) {
+                if let Expr::Function(fn_id, args) = ctx.get(denom) { let name = ctx.sym_name(*fn_id);
                     // Debug: checking log denominator
                     if name == "log" && args.len() == 2 {
                         let log_base = args[0];
@@ -1771,7 +1771,7 @@ impl crate::rule::Rule for LogExpInverseRule {
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
         let expr_data = ctx.get(expr).clone();
-        if let Expr::Function(name, args) = expr_data {
+        if let Expr::Function(fn_id, args) = expr_data { let name = ctx.sym_name(*fn_id);
             // Handle ln(x) as log(e, x), or log(b, x)
             let (base, arg) = if name == "ln" && args.len() == 1 {
                 let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
@@ -1909,7 +1909,7 @@ impl crate::rule::Rule for LogPowerBaseRule {
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
         let expr_data = ctx.get(expr).clone();
-        if let Expr::Function(name, args) = expr_data {
+        if let Expr::Function(fn_id, args) = expr_data { let name = ctx.sym_name(*fn_id);
             // Match log(base, arg) - not ln (which has implicit base e)
             if name != "log" || args.len() != 2 {
                 return None;
@@ -2201,10 +2201,10 @@ impl crate::rule::Rule for AutoExpandLogRule {
 
         // Match log(arg) or ln(arg)
         let arg = match ctx.get(expr) {
-            Expr::Function(name, args) if (name == "log" || name == "ln") && args.len() == 1 => {
+            Expr::Function(fn_id, args) if (ctx.sym_name(*fn_id) == "log" || ctx.sym_name(*fn_id) == "ln") && args.len() == 1 => {
                 args[0]
             }
-            Expr::Function(name, args) if name == "log" && args.len() == 2 => {
+            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "log" && args.len() == 2 => {
                 args[1] // log(base, arg)
             }
             _ => return None,
@@ -2361,7 +2361,7 @@ fn expand_log_for_rule(
     // Get base (ln = natural log, log with 1 arg = base 10)
     let base = match ctx.get(_original) {
         Expr::Function(name, _) if name == "ln" => ctx.add(Expr::Constant(cas_ast::Constant::E)),
-        Expr::Function(name, args) if name == "log" && args.len() == 2 => args[0],
+        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "log" && args.len() == 2 => args[0],
         Expr::Function(_, _) => {
             // log with 1 arg = base 10, use sentinel
             ExprId::from_raw(u32::MAX - 1)

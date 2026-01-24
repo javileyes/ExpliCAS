@@ -54,8 +54,8 @@ fn is_trig_of_inverse_trig(ctx: &Context, expr: ExprId) -> bool {
             let inner = outer_args[0];
             match ctx.get(inner) {
                 Expr::Function(inner_name, _) => {
-                    is_reciprocal_trig_name(outer_name.as_str())
-                        && is_inverse_trig_name(inner_name.as_str())
+                    is_reciprocal_trig_name(outer_ctx.sym_name(*fn_id))
+                        && is_inverse_trig_name(inner_ctx.sym_name(*fn_id))
                 }
                 _ => false,
             }
@@ -75,7 +75,7 @@ define_rule!(
     crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
-        if let Expr::Function(name, args) = ctx.get(expr) {
+        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
             // Clone name and args to avoid borrow issues
             let name_clone = name.clone();
             let args_clone = args.clone();
@@ -114,7 +114,7 @@ fn collect_trig_recursive(ctx: &Context, expr: ExprId, funcs: &mut HashSet<Strin
     match ctx.get(expr) {
         Expr::Function(name, args) => {
             // Add if it's a trig function
-            if matches!(name.as_str(), "sin" | "cos" | "tan" | "cot" | "sec" | "csc") {
+            if matches!(ctx.sym_name(*fn_id), "sin" | "cos" | "tan" | "cot" | "sec" | "csc") {
                 funcs.insert(name.clone());
             }
             // Recurse into arguments
@@ -158,7 +158,7 @@ fn is_any_trig_function_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
                 match ctx.get(*base) {
                     Expr::Function(name, args) if args.len() == 1 => {
                         // Check if it's a trig function (sin, cos, tan, cot, sec, csc)
-                        if matches!(name.as_str(), "sin" | "cos" | "tan" | "cot" | "sec" | "csc") {
+                        if matches!(ctx.sym_name(*fn_id), "sin" | "cos" | "tan" | "cot" | "sec" | "csc") {
                             return Some(args[0]);
                         }
                     }
@@ -224,7 +224,7 @@ fn convert_trig_to_sincos(ctx: &mut Context, expr: ExprId) -> ExprId {
             let arg = args[0];
             let converted_arg = convert_trig_to_sincos(ctx, arg);
 
-            match name.as_str() {
+            match ctx.sym_name(*fn_id) {
                 "tan" => {
                     // tan(x) → sin(x)/cos(x)
                     let sin_x = ctx.call("sin", vec![converted_arg]);

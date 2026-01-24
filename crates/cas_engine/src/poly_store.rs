@@ -406,7 +406,7 @@ pub fn render_poly_result(id: PolyId, max_terms: usize) -> Option<String> {
 pub fn try_render_poly_result(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> Option<String> {
     use cas_ast::Expr;
 
-    if let Expr::Function(name, args) = ctx.get(expr) {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
         if name == "poly_result" && args.len() == 1 {
             if let Expr::Number(n) = ctx.get(args[0]) {
                 if let Ok(id) = n.to_integer().try_into() {
@@ -493,7 +493,7 @@ pub fn try_render_poly_result_latex(
 ) -> Option<String> {
     use cas_ast::Expr;
 
-    if let Expr::Function(name, args) = ctx.get(expr) {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
         if name == "poly_result" && args.len() == 1 {
             if let Expr::Number(n) = ctx.get(args[0]) {
                 if let Ok(id) = n.to_integer().try_into() {
@@ -514,7 +514,7 @@ pub fn try_get_poly_result_term_count(
 ) -> Option<usize> {
     use cas_ast::Expr;
 
-    if let Expr::Function(name, args) = ctx.get(expr) {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
         if name == "poly_result" && args.len() == 1 {
             if let Expr::Number(n) = ctx.get(args[0]) {
                 if let Ok(id) = n.to_integer().try_into() {

@@ -138,7 +138,7 @@ fn check_and_mark_sqrt_square_pattern(ctx: &Context, expr_id: ExprId, marks: &mu
     }
 
     // Also check for sqrt(base) function form
-    if let Expr::Function(name, args) = ctx.get(expr_id) {
+    if let Expr::Function(fn_id, args) = ctx.get(expr_id) { let name = ctx.sym_name(*fn_id);
         if name == "sqrt" && args.len() == 1 {
             let base_id = args[0];
             let base_expr = ctx.get(base_id);
@@ -185,9 +185,9 @@ fn check_and_mark_trig_square_pattern(ctx: &Context, expr_id: ExprId, marks: &mu
                 if let Expr::Number(n) = ctx.get(*exp) {
                     if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
                         // Check base is sin or cos
-                        if let Expr::Function(name, args) = ctx.get(*base) {
+                        if let Expr::Function(fn_id, args) = ctx.get(*base) { let name = ctx.sym_name(*fn_id);
                             if args.len() == 1 {
-                                match name.as_str() {
+                                match ctx.sym_name(*fn_id) {
                                     "sin" => return Some(("sin", *base, args[0])),
                                     "cos" => return Some(("cos", *base, args[0])),
                                     _ => {}
@@ -238,7 +238,7 @@ fn check_and_mark_inverse_trig_pattern(ctx: &Context, expr_id: ExprId, marks: &m
         let inner_id = outer_args[0];
 
         // Check if outer is an inverse trig function
-        let inverse_inner_pair = match outer_name.as_str() {
+        let inverse_inner_pair = match outer_ctx.sym_name(*fn_id) {
             "arctan" | "atan" => Some("tan"),
             "arcsin" | "asin" => Some("sin"),
             "arccos" | "acos" => Some("cos"),
@@ -293,7 +293,7 @@ fn check_and_mark_sum_quotient_pattern(ctx: &Context, expr_id: ExprId, marks: &m
         id: ExprId,
         fn_name: &str,
     ) -> Option<(ExprId, ExprId)> {
-        if let Expr::Function(name, args) = ctx.get(id) {
+        if let Expr::Function(fn_id, args) = ctx.get(id) { let name = ctx.sym_name(*fn_id);
             if name == fn_name && args.len() == 1 {
                 return Some((id, args[0]));
             }
@@ -360,7 +360,7 @@ fn check_and_mark_tan_triple_product_pattern(
     // Extract all tan(arg) functions
     let mut tan_nodes: Vec<(ExprId, ExprId)> = Vec::new(); // (func_id, arg)
     for &factor in &factors {
-        if let Expr::Function(name, args) = ctx.get(factor) {
+        if let Expr::Function(fn_id, args) = ctx.get(factor) { let name = ctx.sym_name(*fn_id);
             if name == "tan" && args.len() == 1 {
                 tan_nodes.push((factor, args[0]));
             }
@@ -523,7 +523,7 @@ fn try_match_tan_diff_identity(
     marks: &mut PatternMarks,
 ) -> bool {
     // LHS should be tan(a - b)
-    let Expr::Function(name, args) = ctx.get(lhs) else {
+    let Expr::Function(fn_id, args) = ctx.get(lhs) else {
         return false;
     };
     if name != "tan" || args.len() != 1 {
@@ -568,7 +568,7 @@ fn try_match_tan_diff_identity(
 
     // Verify tan_a_num is tan(a)
     if let Expr::Function(name_a, args_a) = ctx.get(tan_a_num) {
-        if name_a != "tan" || args_a.len() != 1 {
+        if ctx.sym_name(*name_a) != "tan" || args_a.len() != 1 {
             return false;
         }
         if crate::ordering::compare_expr(ctx, args_a[0], a) != std::cmp::Ordering::Equal {
@@ -580,7 +580,7 @@ fn try_match_tan_diff_identity(
 
     // Verify tan_b_num is tan(b)
     if let Expr::Function(name_b, args_b) = ctx.get(tan_b_num) {
-        if name_b != "tan" || args_b.len() != 1 {
+        if ctx.sym_name(*name_b) != "tan" || args_b.len() != 1 {
             return false;
         }
         if crate::ordering::compare_expr(ctx, args_b[0], b) != std::cmp::Ordering::Equal {
@@ -667,7 +667,7 @@ fn matches_one_plus_tan_product(ctx: &Context, expr: ExprId, a: ExprId, b: ExprI
         return false;
     };
 
-    if n1 != "tan" || n2 != "tan" || args1.len() != 1 || args2.len() != 1 {
+    if ctx.sym_name(*n1) != "tan" || ctx.sym_name(*n2) != "tan" || args1.len() != 1 || args2.len() != 1 {
         return false;
     }
 
@@ -717,7 +717,7 @@ fn try_match_sin4x_identity(
     marks: &mut PatternMarks,
 ) -> bool {
     // LHS should be sin(4*t)
-    let Expr::Function(name, args) = ctx.get(lhs) else {
+    let Expr::Function(fn_id, args) = ctx.get(lhs) else {
         return false;
     };
     if name != "sin" || args.len() != 1 {
@@ -779,14 +779,14 @@ fn try_match_sin4x_identity(
         }
         // Check for sin(t) or cos(t)
         if let Expr::Function(fn_name, fn_args) = ctx.get(factor) {
-            if fn_name == "sin"
+            if ctx.sym_name(*fn_name) == "sin"
                 && fn_args.len() == 1
                 && crate::ordering::compare_expr(ctx, fn_args[0], t) == std::cmp::Ordering::Equal
             {
                 has_sin_t = true;
                 continue;
             }
-            if fn_name == "cos" && fn_args.len() == 1 {
+            if ctx.sym_name(*fn_name) == "cos" && fn_args.len() == 1 {
                 let arg = fn_args[0];
                 if crate::ordering::compare_expr(ctx, arg, t) == std::cmp::Ordering::Equal {
                     has_cos_t = true;
@@ -847,7 +847,7 @@ fn is_sin_squared_t(ctx: &Context, expr: ExprId, t: ExprId) -> bool {
     if let Expr::Pow(base, exp) = ctx.get(expr) {
         if let Expr::Number(n) = ctx.get(*exp) {
             if *n == num_rational::BigRational::from_integer(2.into()) {
-                if let Expr::Function(name, args) = ctx.get(*base) {
+                if let Expr::Function(fn_id, args) = ctx.get(*base) { let name = ctx.sym_name(*fn_id);
                     if name == "sin" && args.len() == 1 {
                         return crate::ordering::compare_expr(ctx, args[0], t)
                             == std::cmp::Ordering::Equal;
@@ -863,7 +863,7 @@ fn is_cos_squared_t(ctx: &Context, expr: ExprId, t: ExprId) -> bool {
     if let Expr::Pow(base, exp) = ctx.get(expr) {
         if let Expr::Number(n) = ctx.get(*exp) {
             if *n == num_rational::BigRational::from_integer(2.into()) {
-                if let Expr::Function(name, args) = ctx.get(*base) {
+                if let Expr::Function(fn_id, args) = ctx.get(*base) { let name = ctx.sym_name(*fn_id);
                     if name == "cos" && args.len() == 1 {
                         return crate::ordering::compare_expr(ctx, args[0], t)
                             == std::cmp::Ordering::Equal;

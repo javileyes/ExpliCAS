@@ -186,14 +186,14 @@ impl crate::rule::Rule for HalfAngleTangentRule {
             // Helper to extract cos(2x) from either cos(2x) or Neg(cos(2x))
             let try_extract_cos_2x =
                 |ctx: &cas_ast::Context, id: ExprId| -> Option<(ExprId, bool)> {
-                    if let Expr::Function(name, args) = ctx.get(id) {
+                    if let Expr::Function(fn_id, args) = ctx.get(id) { let name = ctx.sym_name(*fn_id);
                         if name == "cos" && args.len() == 1 {
                             return extract_double_angle_arg(ctx, args[0]).map(|x| (x, false));
                         }
                     }
                     // Check for Neg(cos(2x))
                     if let Expr::Neg(inner) = ctx.get(id) {
-                        if let Expr::Function(name, args) = ctx.get(*inner) {
+                        if let Expr::Function(fn_id, args) = ctx.get(*inner) { let name = ctx.sym_name(*fn_id);
                             if name == "cos" && args.len() == 1 {
                                 return extract_double_angle_arg(ctx, args[0]).map(|x| (x, true));
                                 // negated
@@ -267,7 +267,7 @@ impl crate::rule::Rule for HalfAngleTangentRule {
 
             // Try Pattern 2: sin(2x) / (1 + cos(2x))
             // Numerator: sin(2x)
-            if let Expr::Function(name, args) = ctx.get(num_id) {
+            if let Expr::Function(fn_id, args) = ctx.get(num_id) { let name = ctx.sym_name(*fn_id);
                 if name == "sin" && args.len() == 1 {
                     if let Some(x) = extract_double_angle_arg(ctx, args[0]) {
                         // Denominator: 1 + cos(2x) or Add(1, cos(2x))
@@ -377,7 +377,7 @@ define_rule!(
             }
         }
 
-        if let Expr::Function(name, args) = ctx.get(expr) {
+        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
             if args.len() == 1 {
                 // Check if arg is 2*x or x*2
                 // We need to match "2 * x"
@@ -390,7 +390,7 @@ define_rule!(
                         return None;
                     }
 
-                    match name.as_str() {
+                    match ctx.sym_name(*fn_id) {
                         "sin" => {
                             // sin(2x) -> 2sin(x)cos(x)
                             let two = ctx.num(2);
@@ -653,11 +653,11 @@ define_rule!(
             return None;
         }
 
-        if let Expr::Function(name, args) = ctx.get(expr) {
+        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
             if args.len() == 1 {
                 // Check if arg is 3*x or x*3
                 if let Some(inner_var) = extract_triple_angle_arg(ctx, args[0]) {
-                    match name.as_str() {
+                    match ctx.sym_name(*fn_id) {
                         "sin" => {
                             // sin(3x) → 3sin(x) - 4sin³(x)
                             let three = ctx.num(3);
@@ -751,11 +751,11 @@ define_rule!(
             return None;
         }
 
-        if let Expr::Function(name, args) = ctx.get(expr) {
+        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
             if args.len() == 1 {
                 // Check if arg is 5*x or x*5
                 if let Some(inner_var) = crate::helpers::extract_quintuple_angle_arg(ctx, args[0]) {
-                    match name.as_str() {
+                    match ctx.sym_name(*fn_id) {
                         "sin" => {
                             // sin(5x) → 16sin⁵(x) - 20sin³(x) + 5sin(x)
                             let five = ctx.num(5);
@@ -1296,7 +1296,7 @@ define_rule!(
         }
 
         let expr_data = ctx.get(expr).clone();
-        if let Expr::Function(name, args) = expr_data {
+        if let Expr::Function(fn_id, args) = expr_data { let name = ctx.sym_name(*fn_id);
             if args.len() == 1 && (name == "sin" || name == "cos") {
                 // Check for n * x where n is integer > 2
                 let inner = args[0];
@@ -1387,7 +1387,7 @@ define_rule!(
                 {
                     // Limit power to avoid explosion? Let's say <= 4 for now.
                     if n <= num_rational::BigRational::from_integer(4.into()) {
-                        if let Expr::Function(name, args) = ctx.get(base) {
+                        if let Expr::Function(fn_id, args) = ctx.get(base) { let name = ctx.sym_name(*fn_id);
                             if name == "cos" && args.len() == 1 {
                                 let arg = args[0];
                                 // (1 - sin^2(x))^(n/2)

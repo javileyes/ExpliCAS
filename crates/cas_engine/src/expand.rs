@@ -29,7 +29,8 @@ pub fn eager_eval_expand_calls(ctx: &mut Context, expr: ExprId) -> (ExprId, Vec<
 
 fn eager_eval_expand_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<Step>) -> ExprId {
     // Check if this is expand(...) that should use fast path
-    if let Expr::Function(name, args) = ctx.get(expr).clone() {
+    if let Expr::Function(fn_id, args) = ctx.get(expr).clone() {
+        let name = ctx.sym_name(fn_id);
         if name == "expand" && args.len() == 1 {
             let arg = args[0];
 
@@ -65,7 +66,7 @@ fn eager_eval_expand_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<
             .zip(args.iter())
             .any(|(new, old)| new != old)
         {
-            return ctx.add(Expr::Function(name.clone(), new_args));
+            return ctx.add(Expr::Function(fn_id, new_args));
         }
         return expr;
     }
@@ -172,7 +173,7 @@ fn expand_to_poly_ref_or_hold(
     if n_terms <= EXPAND_MATERIALIZE_LIMIT {
         // Small enough to materialize - return __hold(AST)
         let expanded = multipoly_modp_to_expr(ctx, &poly, &vars);
-        Some(ctx.add(Expr::Function("__hold".to_string(), vec![expanded])))
+        Some(ctx.call("__hold", vec![expanded]))
     } else {
         // Too large - store in PolyStore and return poly_result(id)
         let meta = PolyMeta {
@@ -185,7 +186,7 @@ fn expand_to_poly_ref_or_hold(
 
         let id = thread_local_insert(meta, poly);
         let id_expr = ctx.num(id as i64);
-        Some(ctx.add(Expr::Function("poly_result".to_string(), vec![id_expr])))
+        Some(ctx.call("poly_result", vec![id_expr]))
     }
 }
 
@@ -208,7 +209,7 @@ pub fn expand_modp_safe(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
 
     let poly = expr_to_poly_modp(ctx, expr, p, &budget, &mut vars).ok()?;
     let expanded = multipoly_modp_to_expr(ctx, &poly, &vars);
-    Some(ctx.add(Expr::Function("__hold".to_string(), vec![expanded])))
+    Some(ctx.call("__hold", vec![expanded]))
 }
 
 /// Expand with budget tracking, returning PassStats for unified budget charging.
@@ -361,13 +362,14 @@ pub fn expand(ctx: &mut Context, expr: ExprId) -> ExprId {
             let ee = expand(ctx, e);
             ctx.add(Expr::Neg(ee))
         }
-        Expr::Function(name, args) => {
+        Expr::Function(fn_id, args) => {
+            let name = ctx.sym_name(fn_id);
             if name == "expand" && args.len() == 1 {
                 // Unwrap explicit expand call
                 return expand(ctx, args[0]);
             }
             let new_args: Vec<ExprId> = args.iter().map(|a| expand(ctx, *a)).collect();
-            ctx.add(Expr::Function(name, new_args))
+            ctx.add(Expr::Function(fn_id, new_args))
         }
         _ => expr,
     };

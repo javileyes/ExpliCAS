@@ -1138,7 +1138,7 @@ impl<'a> TimelineHtml<'a> {
                     })
                     .collect();
 
-                match name.as_str() {
+                match ctx.sym_name(*fn_id) {
                     "sqrt" if highlighted_args.len() == 1 => {
                         format!("\\sqrt{{{}}}", highlighted_args[0])
                     }

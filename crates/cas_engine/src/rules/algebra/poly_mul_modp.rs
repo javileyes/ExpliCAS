@@ -130,7 +130,7 @@ define_rule!(
 
         // Check if arg is poly_result(terms, degree, vars, modulus)
         if let Expr::Function(inner_name, inner_args) = ctx.get(args[0]) {
-            if inner_name == "poly_result" && inner_args.len() == 4 {
+            if ctx.sym_name(*inner_name) == "poly_result" && inner_args.len() == 4 {
                 // Already has stats, just format nicely
                 return Some(Rewrite::new(args[0]).desc("poly_stats: already computed"));
             }
@@ -166,7 +166,7 @@ mod tests {
         let rewrite = result.unwrap();
 
         // Should be poly_result(terms, degree, vars, modulus)
-        if let Expr::Function(name, args) = ctx.get(rewrite.new_expr) {
+        if let Expr::Function(fn_id, args) = ctx.get(rewrite.new_expr) { let name = ctx.sym_name(*fn_id);
             assert_eq!(name, "poly_result");
             assert_eq!(args.len(), 4);
         } else {

@@ -22,7 +22,7 @@ define_rule!(
     None,
     PhaseMask::TRANSFORM,
     |ctx, expr| {
-        if let Expr::Function(name, args) = ctx.get(expr) {
+        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
             if name == "expand" && args.len() == 1 {
                 let arg = args[0];
 
@@ -75,7 +75,7 @@ define_rule!(
     None,
     PhaseMask::TRANSFORM,
     |ctx, expr| {
-        if let Expr::Function(name, args) = ctx.get(expr) {
+        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
             if name == "expand" && args.len() == 1 {
                 let arg = args[0];
                 let expanded = crate::expand::expand(ctx, arg);

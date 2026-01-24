@@ -197,7 +197,7 @@ fn substitute_impl(
             let name = ctx.sym_name(sym_id).to_string();
 
             // Don't substitute shadowed variables
-            if shadow.contains(name.as_str()) {
+            if shadow.contains(ctx.sym_name(*fn_id)) {
                 return expr;
             }
 
