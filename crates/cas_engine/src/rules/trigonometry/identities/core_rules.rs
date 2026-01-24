@@ -45,7 +45,8 @@ impl crate::rule::Rule for SinCosIntegerPiRule {
 
         let expr_data = ctx.get(expr).clone();
 
-        if let Expr::Function(fn_id, args) = expr_data { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = expr_data {
+            let name = ctx.sym_name(fn_id);
             if args.len() != 1 {
                 return None;
             }
@@ -107,7 +108,8 @@ define_rule!(
     |ctx, expr| {
         let expr_data = ctx.get(expr).clone();
 
-        if let Expr::Function(fn_id, args) = expr_data { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = expr_data {
+            let name = ctx.sym_name(fn_id).to_string();
             if args.len() != 1 {
                 return None;
             }
@@ -158,10 +160,10 @@ define_rule!(
                     base
                 };
 
-                match ctx.sym_name(*fn_id) {
+                match name.as_str() {
                     // ODD functions: f(-u) = -f(u)
                     "sin" | "tan" | "csc" | "cot" | "sinh" | "tanh" => {
-                        let f_u = ctx.add(Expr::Function(name.clone(), vec![positive_arg]));
+                        let f_u = ctx.add(Expr::Function(fn_id, vec![positive_arg]));
                         let neg_f_u = ctx.add(Expr::Neg(f_u));
                         return Some(
                             Rewrite::new(neg_f_u)
@@ -170,7 +172,7 @@ define_rule!(
                     }
                     // EVEN functions: f(-u) = f(u)
                     "cos" | "sec" | "cosh" => {
-                        let f_u = ctx.add(Expr::Function(name.clone(), vec![positive_arg]));
+                        let f_u = ctx.add(Expr::Function(fn_id, vec![positive_arg]));
                         return Some(
                             Rewrite::new(f_u)
                                 .desc(format!("{}(-u) = {}(u) [even function]", name, name)),
@@ -192,7 +194,8 @@ define_rule!(
     "Evaluate Trigonometric Functions",
     |ctx, expr| {
         let expr_data = ctx.get(expr).clone();
-        if let Expr::Function(fn_id, args) = expr_data { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = expr_data {
+            let name = ctx.sym_name(fn_id).to_string();
             if args.len() == 1 {
                 let arg = args[0];
 
@@ -200,7 +203,7 @@ define_rule!(
                 // TABLE-DRIVEN FAST PATH: Try table lookup first
                 // ============================================================
                 // Direct trig functions
-                let trig_fn = match ctx.sym_name(*fn_id) {
+                let trig_fn = match name.as_str() {
                     "sin" => Some(TrigFn::Sin),
                     "cos" => Some(TrigFn::Cos),
                     "tan" => Some(TrigFn::Tan),
@@ -214,7 +217,7 @@ define_rule!(
                 }
 
                 // Inverse trig functions
-                let inv_trig_fn = match ctx.sym_name(*fn_id) {
+                let inv_trig_fn = match name.as_str() {
                     "arcsin" | "asin" => Some(InvTrigFn::Asin),
                     "arccos" | "acos" => Some(InvTrigFn::Acos),
                     "arctan" | "atan" => Some(InvTrigFn::Atan),
@@ -231,7 +234,7 @@ define_rule!(
                 // Case 1: Known Values (0) - fallback for non-table cases
                 if let Expr::Number(n) = ctx.get(arg) {
                     if n.is_zero() {
-                        match ctx.sym_name(*fn_id) {
+                        match name.as_str() {
                             "sin" | "tan" | "arcsin" | "arctan" => {
                                 let zero = ctx.num(0);
                                 return Some(Rewrite::new(zero).desc(format!("{}(0) = 0", name)));
@@ -249,7 +252,7 @@ define_rule!(
                             _ => {}
                         }
                     } else if n.is_one() {
-                        match ctx.sym_name(*fn_id) {
+                        match name.as_str() {
                             "arcsin" => {
                                 let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                                 let two = ctx.num(2);
@@ -270,7 +273,7 @@ define_rule!(
                         }
                     } else if *n == num_rational::BigRational::new(1.into(), 2.into()) {
                         // 1/2
-                        match ctx.sym_name(*fn_id) {
+                        match name.as_str() {
                             "arcsin" => {
                                 let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                                 let six = ctx.num(6);
@@ -290,7 +293,7 @@ define_rule!(
 
                 // Case 2: Known Values (pi) - using shared helper
                 if is_pi(ctx, arg) {
-                    match ctx.sym_name(*fn_id) {
+                    match name.as_str() {
                         "sin" | "tan" => {
                             let zero = ctx.num(0);
                             return Some(Rewrite::new(zero).desc(format!("{}(pi) = 0", name)));
@@ -305,7 +308,7 @@ define_rule!(
 
                 // Case 3: Known Values (pi/2) - using shared helper for both Div and Mul formats
                 if is_pi_over_n(ctx, arg, 2) {
-                    match ctx.sym_name(*fn_id) {
+                    match name.as_str() {
                         "sin" => {
                             let one = ctx.num(1);
                             return Some(Rewrite::new(one).desc("sin(pi/2) = 1"));
@@ -324,7 +327,7 @@ define_rule!(
 
                 // Case 4: Known Values (pi/3) - sin(π/3) = √3/2, cos(π/3) = 1/2, tan(π/3) = √3
                 if is_pi_over_n(ctx, arg, 3) {
-                    match ctx.sym_name(*fn_id) {
+                    match name.as_str() {
                         "sin" => {
                             // sin(π/3) = √3/2
                             let three = ctx.num(3);
@@ -358,7 +361,7 @@ define_rule!(
 
                 // Case 5: Known Values (pi/4) - sin(π/4) = cos(π/4) = √2/2, tan(π/4) = 1
                 if is_pi_over_n(ctx, arg, 4) {
-                    match ctx.sym_name(*fn_id) {
+                    match name.as_str() {
                         "sin" | "cos" => {
                             // sin(π/4) = cos(π/4) = √2/2
                             let two = ctx.num(2);
@@ -383,7 +386,7 @@ define_rule!(
 
                 // Case 6: Known Values (pi/6) - sin(π/6) = 1/2, cos(π/6) = √3/2, tan(π/6) = 1/√3
                 if is_pi_over_n(ctx, arg, 6) {
-                    match ctx.sym_name(*fn_id) {
+                    match name.as_str() {
                         "sin" => {
                             // sin(π/6) = 1/2
                             let one = ctx.num(1);
@@ -442,7 +445,7 @@ define_rule!(
                 };
 
                 if let Some(inner) = inner_opt {
-                    match ctx.sym_name(*fn_id) {
+                    match name.as_str() {
                         "sin" => {
                             let sin_inner = ctx.call("sin", vec![inner]);
                             let new_expr = ctx.add(Expr::Neg(sin_inner));
@@ -503,9 +506,10 @@ define_rule!(
                         if n.clone() >= num_rational::BigRational::from_integer(2.into())
                             && n.is_integer()
                         {
-                            let trig_info = if let Expr::Function(fn_id, args) = ctx.get(base) { let name = ctx.sym_name(*fn_id);
+                            let trig_info = if let Expr::Function(fn_id, args) = ctx.get(base) {
+                                let name = ctx.sym_name(*fn_id);
                                 if (name == "sin" || name == "cos") && args.len() == 1 {
-                                    Some((name.clone(), args[0]))
+                                    Some((name.to_string(), args[0]))
                                 } else {
                                     None
                                 }
@@ -549,10 +553,11 @@ define_rule!(
                                 if n.clone() >= num_rational::BigRational::from_integer(2.into())
                                     && n.is_integer()
                                 {
-                                    if let Expr::Function(fn_id, args) = ctx.get(base) { let name = ctx.sym_name(*fn_id);
+                                    if let Expr::Function(fn_id, args) = ctx.get(base) {
+                                        let name = ctx.sym_name(*fn_id);
                                         if (name == "sin" || name == "cos") && args.len() == 1 {
                                             trig_idx = Some(i);
-                                            trig_info = Some((name.clone(), args[0]));
+                                            trig_info = Some((name.to_string(), args[0]));
 
                                             let two =
                                                 num_rational::BigRational::from_integer(2.into());
@@ -722,7 +727,8 @@ impl crate::rule::Rule for AngleIdentityRule {
         // exponential explosion: sin(16x) → sin(13x+3x) → ... huge tree.
         // This guard blocks the expansion at the source.
         if !parent_ctx.is_expand_mode() {
-            if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+            if let Expr::Function(fn_id, args) = ctx.get(expr) {
+                let name = ctx.sym_name(*fn_id);
                 if (name == "sin" || name == "cos" || name == "tan")
                     && args.len() == 1
                     && has_large_coefficient(ctx, args[0])
@@ -752,7 +758,8 @@ impl crate::rule::Rule for AngleIdentityRule {
         // - Either a or b is already a multiple angle (n*x where |n| > 1)
         // - This would cause exponential expansion: sin(12x + 4x) → huge tree
         // Note: We allow sin(x + y) with distinct variables, only block multiples of same var
-        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id);
             if (name == "sin" || name == "cos") && args.len() == 1 {
                 let inner = args[0];
                 if let Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) = ctx.get(inner) {
@@ -764,7 +771,8 @@ impl crate::rule::Rule for AngleIdentityRule {
             }
         }
 
-        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id);
             if args.len() == 1 {
                 let inner = args[0];
                 match ctx.sym_name(*fn_id) {
