@@ -189,6 +189,7 @@ fn classify_degenerate_2x2(
 
 /// Check if two 3-variable equations are proportional (consistent when parallel)
 /// (a1, b1, c1, e1) vs (a2, b2, c2, e2) representing a1*x + b1*y + c1*z = e1
+#[allow(clippy::too_many_arguments)]
 fn check_proportional_3(
     a1: &BigRational,
     b1: &BigRational,
@@ -295,6 +296,7 @@ fn extract_linear_coeffs_3(
 /// | a1 b1 c1 |
 /// | a2 b2 c2 |
 /// | a3 b3 c3 |
+#[allow(clippy::too_many_arguments)]
 fn det3x3(
     a1: &BigRational,
     b1: &BigRational,
@@ -488,6 +490,7 @@ fn build_augmented_matrix(
 
 /// Gaussian elimination with partial pivoting on augmented matrix
 /// Returns LinSolveResult
+#[allow(clippy::needless_range_loop)] // Complex borrow pattern: reads pivot_row while modifying row
 fn gauss_solve(mut matrix: Vec<Vec<BigRational>>, n: usize) -> LinSolveResult {
     let m = matrix.len(); // number of equations
 
@@ -503,8 +506,8 @@ fn gauss_solve(mut matrix: Vec<Vec<BigRational>>, n: usize) -> LinSolveResult {
     for col in 0..n {
         // Find pivot (first non-zero in column from pivot_row down)
         let mut pivot_found = None;
-        for row in pivot_row..m {
-            if !matrix[row][col].is_zero() {
+        for (row, mat_row) in matrix.iter().enumerate().skip(pivot_row) {
+            if !mat_row[col].is_zero() {
                 pivot_found = Some(row);
                 break;
             }
@@ -524,8 +527,8 @@ fn gauss_solve(mut matrix: Vec<Vec<BigRational>>, n: usize) -> LinSolveResult {
 
         // Scale pivot row to make pivot = 1
         let pivot_val = matrix[pivot_row][col].clone();
-        for j in 0..=n {
-            matrix[pivot_row][j] = &matrix[pivot_row][j] / &pivot_val;
+        for cell in matrix[pivot_row].iter_mut().take(n + 1) {
+            *cell = &*cell / &pivot_val;
         }
 
         // Eliminate below
@@ -534,7 +537,7 @@ fn gauss_solve(mut matrix: Vec<Vec<BigRational>>, n: usize) -> LinSolveResult {
                 let factor = matrix[row][col].clone();
                 for j in 0..=n {
                     let subtrahend = &factor * &matrix[pivot_row][j];
-                    matrix[row][j] = &matrix[row][j] - subtrahend;
+                    matrix[row][j] -= subtrahend;
                 }
             }
         }
@@ -548,9 +551,9 @@ fn gauss_solve(mut matrix: Vec<Vec<BigRational>>, n: usize) -> LinSolveResult {
     let rank = pivot_cols.len();
 
     // Check for inconsistency: any row [0, 0, ..., 0 | c] where c ≠ 0
-    for row in rank..m {
-        let all_zero = (0..n).all(|j| matrix[row][j].is_zero());
-        if all_zero && !matrix[row][n].is_zero() {
+    for mat_row in matrix.iter().take(m).skip(rank) {
+        let all_zero = (0..n).all(|j| mat_row[j].is_zero());
+        if all_zero && !mat_row[n].is_zero() {
             return LinSolveResult::Inconsistent;
         }
     }
@@ -568,7 +571,7 @@ fn gauss_solve(mut matrix: Vec<Vec<BigRational>>, n: usize) -> LinSolveResult {
         let mut val = matrix[i][n].clone();
 
         for j in (col + 1)..n {
-            val = val - &matrix[i][j] * &solution[j];
+            val -= &matrix[i][j] * &solution[j];
         }
 
         solution[col] = val;
@@ -641,7 +644,7 @@ impl Repl {
         // Dispatch based on number of parts
         // parts = [eq1, eq2, ..., eqn, var1, var2, ..., varn]
         // For n×n: total parts = 2*n
-        if parts.len() < 4 || parts.len() % 2 != 0 {
+        if parts.len() < 4 || !parts.len().is_multiple_of(2) {
             return reply_output(
                 "Usage:\n  \
                  2×2: solve_system(eq1; eq2; x; y)\n  \
