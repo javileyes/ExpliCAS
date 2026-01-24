@@ -66,6 +66,11 @@ pub struct EvalJsonOutput {
 
     /// Complete semantics configuration
     pub semantics: SemanticsJson,
+
+    /// Unified wire output (stable messaging format)
+    /// Contains all messages in a structured, versioned format.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wire: Option<crate::repl::wire::WireReply>,
 }
 
 /// A simplification step for JSON output

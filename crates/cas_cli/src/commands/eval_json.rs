@@ -272,6 +272,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 },
                 options: build_options_json(args),
                 semantics: build_semantics_json(args),
+                wire: None,
             });
         }
         EvalResult::Bool(b) => {
@@ -305,6 +306,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 },
                 options: build_options_json(args),
                 semantics: build_semantics_json(args),
+                wire: None,
             });
         }
         _ => {
@@ -365,6 +367,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
         },
         options: build_options_json(args),
         semantics: build_semantics_json(args),
+        wire: None,
     })
 }
 
