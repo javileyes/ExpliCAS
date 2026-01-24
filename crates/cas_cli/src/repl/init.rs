@@ -108,6 +108,7 @@ impl Repl {
 
     /// Print a ReplReply to stdout/stderr.
     /// This is the single point where ReplCore output becomes visible.
+    /// WriteFile actions are executed here (file I/O), with results printed.
     pub fn print_reply(&self, reply: ReplReply) {
         for msg in reply {
             match msg {
@@ -117,6 +118,26 @@ impl Repl {
                 ReplMsg::Error(s) => eprintln!("✖ {s}"),
                 ReplMsg::Steps(s) => println!("{s}"),
                 ReplMsg::Debug(s) => println!("{s}"),
+                ReplMsg::WriteFile { path, contents } => {
+                    // Execute file write (I/O happens in shell, not core)
+                    // Create parent directories if needed
+                    if let Some(parent) = path.parent() {
+                        if !parent.exists() {
+                            if let Err(e) = std::fs::create_dir_all(parent) {
+                                eprintln!(
+                                    "✖ Failed to create directory {}: {}",
+                                    parent.display(),
+                                    e
+                                );
+                                continue;
+                            }
+                        }
+                    }
+                    match std::fs::write(&path, &contents) {
+                        Ok(()) => println!("Wrote: {}", path.display()),
+                        Err(e) => eprintln!("✖ Failed to write {}: {}", path.display(), e),
+                    }
+                }
             }
         }
     }

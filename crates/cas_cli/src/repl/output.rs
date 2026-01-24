@@ -3,6 +3,8 @@
 //! This allows the REPL logic to be decoupled from I/O, making it testable
 //! and reusable for web/TUI/API contexts.
 
+use std::path::PathBuf;
+
 /// Structured message returned by ReplCore operations.
 #[derive(Debug, Clone)]
 pub enum ReplMsg {
@@ -18,6 +20,8 @@ pub enum ReplMsg {
     Steps(String),
     /// Debug mode output
     Debug(String),
+    /// Action: write content to a file (executed by shell, not core)
+    WriteFile { path: PathBuf, contents: String },
 }
 
 impl ReplMsg {

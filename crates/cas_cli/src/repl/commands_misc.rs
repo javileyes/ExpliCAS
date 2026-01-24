@@ -199,13 +199,37 @@ impl Repl {
     }
 
     pub(crate) fn handle_timeline(&mut self, line: &str) {
+        let reply = self.handle_timeline_core(line);
+
+        // Post-processing: auto-open timeline.html on macOS after WriteFile is printed
+        let has_timeline_write = reply.iter().any(|msg| {
+            matches!(msg, ReplMsg::WriteFile { path, .. } if path.to_string_lossy().ends_with("timeline.html"))
+        });
+
+        self.print_reply(reply);
+
+        // Try to auto-open on macOS (I/O stays in shell)
+        if has_timeline_write {
+            #[cfg(target_os = "macos")]
+            {
+                let _ = std::process::Command::new("open")
+                    .arg("timeline.html")
+                    .spawn();
+            }
+        }
+    }
+
+    fn handle_timeline_core(&mut self, line: &str) -> ReplReply {
+        use std::path::PathBuf;
+
         let rest = line[9..].trim();
 
         // Check if the user wants to use "solve" within timeline
         // e.g., "timeline solve x + 2 = 5, x"
         if let Some(solve_rest) = rest.strip_prefix("solve ") {
+            // Delegate to solve timeline (still uses old pattern for now)
             self.handle_timeline_solve(solve_rest);
-            return;
+            return ReplReply::new();
         }
 
         // Check if the user wants to use "simplify" within timeline
@@ -256,8 +280,7 @@ impl Repl {
                         &mut self.core.engine.simplifier.context,
                         &mut temp_simplifier.context,
                     );
-                    println!("Parse error: {}", e);
-                    return;
+                    return reply_output(format!("Parse error: {}", e));
                 }
             }
         } else {
@@ -297,8 +320,7 @@ impl Repl {
                                 .engine
                                 .simplifier
                                 .set_collect_steps(was_collecting);
-                            println!("Simplification error: {}", e);
-                            return;
+                            return reply_output(format!("Simplification error: {}", e));
                         }
                     }
                 }
@@ -307,15 +329,13 @@ impl Repl {
                         .engine
                         .simplifier
                         .set_collect_steps(was_collecting);
-                    println!("Parse error: {}", e);
-                    return;
+                    return reply_output(format!("Parse error: {}", e));
                 }
             }
         };
 
         if steps.is_empty() {
-            println!("No simplification steps to visualize.");
-            return;
+            return reply_output("No simplification steps to visualize.");
         }
 
         // NOTE: filter_non_productive_steps removed here as timeline already handles filtering
@@ -337,26 +357,29 @@ impl Repl {
         );
         let html = timeline.to_html();
 
-        let filename = "timeline.html";
-        match std::fs::write(filename, &html) {
-            Ok(_) => {
-                println!("Timeline exported to {}", filename);
-                if use_aggressive {
-                    println!("(Aggressive simplification mode)");
-                }
-                println!("Open in browser to view interactive visualization.");
-
-                // Try to auto-open on macOS
-                #[cfg(target_os = "macos")]
-                {
-                    let _ = std::process::Command::new("open").arg(filename).spawn();
-                }
-            }
-            Err(e) => println!("Error writing file: {}", e),
+        // Return WriteFile action + info messages
+        let mut reply = ReplReply::new();
+        reply.push(ReplMsg::WriteFile {
+            path: PathBuf::from("timeline.html"),
+            contents: html,
+        });
+        if use_aggressive {
+            reply.push(ReplMsg::output("(Aggressive simplification mode)"));
         }
+        reply.push(ReplMsg::output(
+            "Open in browser to view interactive visualization.",
+        ));
+        reply
     }
 
     pub(crate) fn handle_visualize(&mut self, line: &str) {
+        let reply = self.handle_visualize_core(line);
+        self.print_reply(reply);
+    }
+
+    fn handle_visualize_core(&mut self, line: &str) -> ReplReply {
+        use std::path::PathBuf;
+
         let rest = line
             .strip_prefix("visualize ")
             .or_else(|| line.strip_prefix("viz "))
@@ -370,22 +393,27 @@ impl Repl {
                 );
                 let dot = viz.to_dot(expr);
 
-                // Save to file
-                let filename = "ast.dot";
-                match std::fs::write(filename, &dot) {
-                    Ok(_) => {
-                        println!("AST exported to {}", filename);
-                        println!("Render with: dot -Tsvg {} -o ast.svg", filename);
-                        println!("Or: dot -Tpng {} -o ast.png", filename);
-                    }
-                    Err(e) => println!("Error writing file: {}", e),
-                }
+                // Return WriteFile action - shell will execute the write
+                let filename = PathBuf::from("ast.dot");
+                vec![
+                    ReplMsg::WriteFile {
+                        path: filename,
+                        contents: dot,
+                    },
+                    ReplMsg::output("Render with: dot -Tsvg ast.dot -o ast.svg"),
+                    ReplMsg::output("Or: dot -Tpng ast.dot -o ast.png"),
+                ]
             }
-            Err(e) => println!("Parse error: {}", e),
+            Err(e) => reply_output(format!("Parse error: {}", e)),
         }
     }
 
     pub(crate) fn handle_explain(&mut self, line: &str) {
+        let reply = self.handle_explain_core(line);
+        self.print_reply(reply);
+    }
+
+    fn handle_explain_core(&mut self, line: &str) -> ReplReply {
         let rest = line[8..].trim(); // Remove "explain "
 
         // Parse the expression
@@ -404,20 +432,21 @@ impl Repl {
                                     args[1],
                                 );
 
-                                println!("Parsed: {}", rest);
-                                println!();
-                                println!("Educational Steps:");
-                                println!("{}", "─".repeat(60));
+                                let mut lines = Vec::new();
+                                lines.push(format!("Parsed: {}", rest));
+                                lines.push(String::new());
+                                lines.push("Educational Steps:".to_string());
+                                lines.push("─".repeat(60));
 
                                 for step in &result.steps {
-                                    println!("{}", step);
+                                    lines.push(step.clone());
                                 }
 
-                                println!("{}", "─".repeat(60));
-                                println!();
+                                lines.push("─".repeat(60));
+                                lines.push(String::new());
 
                                 if let Some(result_expr) = result.value {
-                                    println!(
+                                    lines.push(format!(
                                         "Result: {}",
                                         clean_display_string(&format!(
                                             "{}",
@@ -426,25 +455,29 @@ impl Repl {
                                                 id: result_expr
                                             }
                                         ))
-                                    );
+                                    ));
                                 } else {
-                                    println!("Could not compute GCD");
+                                    lines.push("Could not compute GCD".to_string());
                                 }
+                                reply_output(lines.join("\n"))
                             } else {
-                                println!("Usage: explain gcd(a, b)");
+                                reply_output("Usage: explain gcd(a, b)")
                             }
                         }
-                        _ => {
-                            println!("Explain mode not yet implemented for function '{}'", name);
-                            println!("Currently supported: gcd");
-                        }
+                        _ => reply_output(format!(
+                            "Explain mode not yet implemented for function '{}'\n\
+                                 Currently supported: gcd",
+                            name
+                        )),
                     }
                 } else {
-                    println!("Explain mode currently only supports function calls");
-                    println!("Try: explain gcd(48, 18)");
+                    reply_output(
+                        "Explain mode currently only supports function calls\n\
+                         Try: explain gcd(48, 18)",
+                    )
                 }
             }
-            Err(e) => println!("Parse error: {}", e),
+            Err(e) => reply_output(format!("Parse error: {}", e)),
         }
     }
 
