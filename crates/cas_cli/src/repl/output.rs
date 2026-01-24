@@ -55,6 +55,16 @@ impl ReplMsg {
 /// Collection of messages returned by a ReplCore operation
 pub type ReplReply = Vec<ReplMsg>;
 
+/// Create a new empty ReplReply
+pub fn reply() -> ReplReply {
+    Vec::new()
+}
+
+/// Create a ReplReply with a single Output message
+pub fn reply_output(s: impl Into<String>) -> ReplReply {
+    vec![ReplMsg::output(s)]
+}
+
 /// Extension trait for ReplReply to add helper methods
 pub trait ReplReplyExt {
     fn push_output(&mut self, s: impl Into<String>);

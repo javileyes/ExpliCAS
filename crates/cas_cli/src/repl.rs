@@ -489,7 +489,7 @@ mod core_tests;
 
 // Re-export core types for external use
 pub use core::ReplCore;
-pub use output::{CoreResult, ReplMsg, ReplReply, ReplReplyExt, UiDelta};
+pub use output::{reply_output, CoreResult, ReplMsg, ReplReply, ReplReplyExt, UiDelta};
 
 // These were historically plain module-level helpers (when using include!()).
 // Re-export them into this module scope so existing code can keep calling them

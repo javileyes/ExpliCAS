@@ -542,31 +542,45 @@ impl Repl {
 
     /// Handle "vars" command - list all variable bindings
     pub(crate) fn handle_vars_command(&self) {
+        let reply = self.handle_vars_command_core();
+        self.print_reply(reply);
+    }
+
+    /// Core logic for "vars" command
+    fn handle_vars_command_core(&self) -> ReplReply {
         let bindings = self.core.state.env.list();
         if bindings.is_empty() {
-            println!("No variables defined.");
+            reply_output("No variables defined.")
         } else {
-            println!("Variables:");
+            let mut lines = vec!["Variables:".to_string()];
             for (name, expr_id) in bindings {
                 let display = cas_ast::DisplayExpr {
                     context: &self.core.engine.simplifier.context,
                     id: expr_id,
                 };
-                println!("  {} = {}", name, display);
+                lines.push(format!("  {} = {}", name, display));
             }
+            reply_output(lines.join("\n"))
         }
     }
 
     /// Handle "clear" or "clear <names>" command
     pub(crate) fn handle_clear_command(&mut self, line: &str) {
+        let reply = self.handle_clear_command_core(line);
+        self.print_reply(reply);
+    }
+
+    /// Core logic for "clear" command
+    fn handle_clear_command_core(&mut self, line: &str) -> ReplReply {
+        let mut reply = ReplReply::new();
         if line == "clear" {
             // Clear all
             let count = self.core.state.env.len();
             self.core.state.env.clear_all();
             if count == 0 {
-                println!("No variables to clear.");
+                reply.push(ReplMsg::output("No variables to clear."));
             } else {
-                println!("Cleared {} variable(s).", count);
+                reply.push(ReplMsg::output(format!("Cleared {} variable(s).", count)));
             }
         } else {
             // Clear specific variables
@@ -576,17 +590,27 @@ impl Repl {
                 if self.core.state.env.unset(name) {
                     cleared += 1;
                 } else {
-                    println!("Warning: '{}' was not defined", name);
+                    reply.push(ReplMsg::output(format!(
+                        "Warning: '{}' was not defined",
+                        name
+                    )));
                 }
             }
             if cleared > 0 {
-                println!("Cleared {} variable(s).", cleared);
+                reply.push(ReplMsg::output(format!("Cleared {} variable(s).", cleared)));
             }
         }
+        reply
     }
 
     /// Handle "reset" command - reset entire session
     pub(crate) fn handle_reset_command(&mut self) {
+        let reply = self.handle_reset_command_impl();
+        self.print_reply(reply);
+    }
+
+    /// Implementation of reset - keeps access to both core and config
+    fn handle_reset_command_impl(&mut self) -> ReplReply {
         // Clear session state (history + env)
         self.core.state.clear();
 
@@ -654,42 +678,54 @@ impl Repl {
         self.core.health_enabled = false;
         self.core.last_health_report = None;
 
-        println!("Session reset. Environment and context cleared.");
+        reply_output("Session reset. Environment and context cleared.")
     }
 
     /// Handle "reset full" command - reset session AND clear profile cache
     pub(crate) fn handle_reset_full_command(&mut self) {
-        // First do normal reset
-        self.handle_reset_command();
+        // First do normal reset (which prints its message)
+        let reset_reply = self.handle_reset_command_impl();
+        self.print_reply(reset_reply);
 
         // Also clear profile cache
         self.core.state.profile_cache.clear();
 
-        println!("Profile cache cleared (will rebuild on next eval).");
+        self.print_reply(reply_output(
+            "Profile cache cleared (will rebuild on next eval).",
+        ));
     }
 
     /// Handle "cache" command - show status or clear cache
     pub(crate) fn handle_cache_command(&mut self, line: &str) {
+        let reply = self.handle_cache_command_core(line);
+        self.print_reply(reply);
+    }
+
+    /// Core logic for "cache" command
+    fn handle_cache_command_core(&mut self, line: &str) -> ReplReply {
         let args: Vec<&str> = line.split_whitespace().collect();
 
         match args.get(1).copied() {
             None | Some("status") => {
                 // Show cache status
                 let count = self.core.state.profile_cache.len();
-                println!("Profile Cache: {} profiles cached", count);
+                let mut lines = vec![format!("Profile Cache: {} profiles cached", count)];
                 if count == 0 {
-                    println!("  (empty - profiles will be built on first eval)");
+                    lines.push("  (empty - profiles will be built on first eval)".to_string());
                 } else {
-                    println!("  (profiles are reused across evaluations)");
+                    lines.push("  (profiles are reused across evaluations)".to_string());
                 }
+                reply_output(lines.join("\n"))
             }
             Some("clear") => {
                 self.core.state.profile_cache.clear();
-                println!("Profile cache cleared.");
+                reply_output("Profile cache cleared.")
             }
             Some(cmd) => {
-                println!("Unknown cache command: {}", cmd);
-                println!("Usage: cache [status|clear]");
+                let mut reply = ReplReply::new();
+                reply.push(ReplMsg::output(format!("Unknown cache command: {}", cmd)));
+                reply.push(ReplMsg::output("Usage: cache [status|clear]"));
+                reply
             }
         }
     }
