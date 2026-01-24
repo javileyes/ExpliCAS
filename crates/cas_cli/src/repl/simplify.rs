@@ -2,9 +2,15 @@ use super::*;
 
 impl Repl {
     pub(crate) fn handle_full_simplify(&mut self, line: &str) {
+        let reply = self.handle_full_simplify_core(line, self.verbosity);
+        self.print_reply(reply);
+    }
+
+    fn handle_full_simplify_core(&mut self, line: &str, verbosity: Verbosity) -> ReplReply {
         // simplify <expr>
         // Uses a temporary simplifier with ALL default rules (including aggressive distribution)
         let expr_str = line[9..].trim();
+        let mut lines: Vec<String> = Vec::new();
 
         // We need to use the existing context to parse, but then we want to simplify using a different rule set.
         // The Simplifier struct owns the context.
@@ -39,9 +45,9 @@ impl Repl {
         // Also add DistributeConstantRule just in case (though DistributeRule covers it)
 
         // Set steps mode
-        temp_simplifier.set_collect_steps(self.verbosity != Verbosity::None);
+        temp_simplifier.set_collect_steps(verbosity != Verbosity::None);
 
-        match cas_parser::parse(expr_str, &mut temp_simplifier.context) {
+        let result = match cas_parser::parse(expr_str, &mut temp_simplifier.context) {
             Ok(expr) => {
                 // Note: Tool dispatcher is handled in Engine::eval, not here
                 // This code path is for timeline/specific commands, not regular expression evaluation
@@ -54,17 +60,11 @@ impl Repl {
                 {
                     Ok(resolved) => resolved,
                     Err(e) => {
-                        println!("Error resolving variables: {:?}", e);
-                        // Swap context and profiler back before returning
-                        std::mem::swap(
-                            &mut self.core.engine.simplifier.context,
-                            &mut temp_simplifier.context,
+                        // Return error
+                        return self.cleanup_simplifier_and_return(
+                            temp_simplifier,
+                            reply_output(format!("Error resolving variables: {:?}", e)),
                         );
-                        std::mem::swap(
-                            &mut self.core.engine.simplifier.profiler,
-                            &mut temp_simplifier.profiler,
-                        );
-                        return;
                     }
                 };
 
@@ -78,36 +78,37 @@ impl Repl {
                     Some(&style_signals),
                 );
 
-                println!(
+                lines.push(format!(
                     "Parsed: {}",
                     DisplayExpr {
                         context: &temp_simplifier.context,
                         id: resolved_expr
                     }
-                );
+                ));
+
                 // Use session options (expand_policy, context_mode, etc.) for simplification
                 let mut opts = self.core.state.options.to_simplify_options();
-                opts.collect_steps = self.verbosity != Verbosity::None;
+                opts.collect_steps = verbosity != Verbosity::None;
 
                 let (simplified, steps, _stats) =
                     temp_simplifier.simplify_with_stats(resolved_expr, opts);
 
-                if self.verbosity != Verbosity::None {
+                if verbosity != Verbosity::None {
                     if steps.is_empty() {
-                        if self.verbosity != Verbosity::Succinct {
-                            println!("No simplification steps needed.");
+                        if verbosity != Verbosity::Succinct {
+                            lines.push("No simplification steps needed.".to_string());
                         }
                     } else {
-                        if self.verbosity != Verbosity::Succinct {
-                            println!("Steps (Aggressive Mode):");
+                        if verbosity != Verbosity::Succinct {
+                            lines.push("Steps (Aggressive Mode):".to_string());
                         }
                         let mut current_root = expr;
                         let mut step_count = 0;
                         for step in steps.iter() {
-                            if should_show_step(step, self.verbosity) {
+                            if should_show_step(step, verbosity) {
                                 step_count += 1;
 
-                                if self.verbosity == Verbosity::Succinct {
+                                if verbosity == Verbosity::Succinct {
                                     // Low mode: just global state
                                     current_root = reconstruct_global_expr(
                                         &mut temp_simplifier.context,
@@ -115,26 +116,26 @@ impl Repl {
                                         &step.path,
                                         step.after,
                                     );
-                                    println!(
+                                    lines.push(format!(
                                         "-> {}",
                                         DisplayExpr {
                                             context: &temp_simplifier.context,
                                             id: current_root
                                         }
-                                    );
+                                    ));
                                 } else {
                                     // Normal/Verbose
-                                    println!(
+                                    lines.push(format!(
                                         "{}. {}  [{}]",
                                         step_count, step.description, step.rule_name
-                                    );
+                                    ));
 
-                                    if self.verbosity == Verbosity::Verbose
-                                        || self.verbosity == Verbosity::Normal
+                                    if verbosity == Verbosity::Verbose
+                                        || verbosity == Verbosity::Normal
                                     {
                                         // Show Before: global expression before this step
                                         if let Some(global_before) = step.global_before {
-                                            println!(
+                                            lines.push(format!(
                                                 "   Before: {}",
                                                 clean_display_string(&format!(
                                                     "{}",
@@ -144,9 +145,9 @@ impl Repl {
                                                         &style_prefs
                                                     )
                                                 ))
-                                            );
+                                            ));
                                         } else {
-                                            println!(
+                                            lines.push(format!(
                                                 "   Before: {}",
                                                 clean_display_string(&format!(
                                                     "{}",
@@ -156,7 +157,7 @@ impl Repl {
                                                         &style_prefs
                                                     )
                                                 ))
-                                            );
+                                            ));
                                         }
 
                                         // Show Rule: local transformation
@@ -185,7 +186,10 @@ impl Repl {
                                                 &style_prefs,
                                             ));
 
-                                        println!("   Rule: {} -> {}", before_disp, after_disp);
+                                        lines.push(format!(
+                                            "   Rule: {} -> {}",
+                                            before_disp, after_disp
+                                        ));
                                     }
 
                                     // Use precomputed global_after if available, fall back to reconstruction
@@ -201,7 +205,7 @@ impl Repl {
                                     }
 
                                     // Show After: global expression after this step
-                                    println!(
+                                    lines.push(format!(
                                         "   After: {}",
                                         clean_display_string(&format!(
                                             "{}",
@@ -211,16 +215,16 @@ impl Repl {
                                                 &style_prefs
                                             )
                                         ))
-                                    );
+                                    ));
 
                                     for event in &step.assumption_events {
                                         if event.kind.should_display() {
-                                            println!(
+                                            lines.push(format!(
                                                 "   {} {}: {}",
                                                 event.kind.icon(),
                                                 event.kind.label(),
                                                 event.message
-                                            );
+                                            ));
                                         }
                                     }
                                 }
@@ -241,16 +245,17 @@ impl Repl {
                     }
                 }
                 // Use DisplayExprStyled with detected preferences for consistent output
-                println!(
+                lines.push(format!(
                     "Result: {}",
                     clean_display_string(&format!(
                         "{}",
                         DisplayExprStyled::new(&temp_simplifier.context, simplified, &style_prefs)
                     ))
-                );
+                ));
+                reply_output(lines.join("\n"))
             }
-            Err(e) => println!("Error: {}", e),
-        }
+            Err(e) => reply_output(format!("Error: {}", e)),
+        };
 
         // Swap context and profiler back
         std::mem::swap(
@@ -267,5 +272,24 @@ impl Repl {
             self.core.last_health_report =
                 Some(self.core.engine.simplifier.profiler.health_report());
         }
+
+        result
+    }
+
+    /// Helper to cleanup temp simplifier and return reply
+    fn cleanup_simplifier_and_return(
+        &mut self,
+        mut temp_simplifier: Simplifier,
+        reply: ReplReply,
+    ) -> ReplReply {
+        std::mem::swap(
+            &mut self.core.engine.simplifier.context,
+            &mut temp_simplifier.context,
+        );
+        std::mem::swap(
+            &mut self.core.engine.simplifier.profiler,
+            &mut temp_simplifier.profiler,
+        );
+        reply
     }
 }

@@ -2,18 +2,24 @@ use super::*;
 
 impl Repl {
     pub(crate) fn handle_limit(&mut self, line: &str) {
+        let reply = self.handle_limit_core(line);
+        self.print_reply(reply);
+    }
+
+    fn handle_limit_core(&mut self, line: &str) -> ReplReply {
         use cas_engine::limits::{limit, Approach, LimitOptions};
         use cas_engine::Budget;
 
         let rest = line.strip_prefix("limit").unwrap_or(line).trim();
         if rest.is_empty() {
-            println!("Usage: limit <expr> [, <var> [, <direction> [, safe]]]");
-            println!("Examples:");
-            println!("  limit x^2                      → infinity (default: x → +∞)");
-            println!("  limit (x^2+1)/(2*x^2-3), x     → 1/2");
-            println!("  limit x^3/x^2, x, -infinity    → -infinity");
-            println!("  limit (x-x)/x, x, infinity, safe → 0 (with pre-simplify)");
-            return;
+            return reply_output(
+                "Usage: limit <expr> [, <var> [, <direction> [, safe]]]\n\
+                 Examples:\n\
+                   limit x^2                      → infinity (default: x → +∞)\n\
+                   limit (x^2+1)/(2*x^2-3), x     → 1/2\n\
+                   limit x^3/x^2, x, -infinity    → -infinity\n\
+                   limit (x-x)/x, x, infinity, safe → 0 (with pre-simplify)",
+            );
         }
 
         // Parse: expr [, var [, direction [, mode]]]
@@ -29,8 +35,7 @@ impl Repl {
         let expr = match cas_parser::parse(expr_str, &mut self.core.engine.simplifier.context) {
             Ok(e) => e,
             Err(e) => {
-                println!("Parse error: {:?}", e);
-                return;
+                return reply_output(format!("Parse error: {:?}", e));
             }
         };
 
@@ -77,15 +82,18 @@ impl Repl {
                     Approach::NegInfinity => "-∞",
                 };
 
-                println!("lim_{{{}→{}}} = {}", var_str, dir_disp, result_disp);
+                let mut lines = vec![format!(
+                    "lim_{{{}→{}}} = {}",
+                    var_str, dir_disp, result_disp
+                )];
 
                 if let Some(warning) = result.warning {
-                    println!("Warning: {}", warning);
+                    lines.push(format!("Warning: {}", warning));
                 }
+
+                reply_output(lines.join("\n"))
             }
-            Err(e) => {
-                println!("Error computing limit: {}", e);
-            }
+            Err(e) => reply_output(format!("Error computing limit: {}", e)),
         }
     }
 }

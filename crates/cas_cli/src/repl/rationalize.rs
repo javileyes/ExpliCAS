@@ -2,15 +2,21 @@ use super::*;
 
 impl Repl {
     pub(crate) fn handle_rationalize(&mut self, line: &str) {
+        let reply = self.handle_rationalize_core(line);
+        self.print_reply(reply);
+    }
+
+    fn handle_rationalize_core(&mut self, line: &str) -> ReplReply {
         use cas_engine::rationalize::{
             rationalize_denominator, RationalizeConfig, RationalizeResult,
         };
 
         let rest = line.strip_prefix("rationalize").unwrap_or(line).trim();
         if rest.is_empty() {
-            println!("Usage: rationalize <expr>");
-            println!("Example: rationalize 1/(1 + sqrt(2) + sqrt(3))");
-            return;
+            return reply_output(
+                "Usage: rationalize <expr>\n\
+                 Example: rationalize 1/(1 + sqrt(2) + sqrt(3))",
+            );
         }
 
         match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
@@ -26,11 +32,14 @@ impl Repl {
                 let user_style =
                     cas_ast::detect_root_style(&self.core.engine.simplifier.context, expr);
 
-                let disp = cas_ast::DisplayExpr {
-                    context: &self.core.engine.simplifier.context,
-                    id: expr,
-                };
-                println!("Parsed: {}", disp);
+                // Convert to string BEFORE mutable borrows to avoid borrow conflict
+                let parsed_str = format!(
+                    "{}",
+                    cas_ast::DisplayExpr {
+                        context: &self.core.engine.simplifier.context,
+                        id: expr,
+                    }
+                );
 
                 let config = RationalizeConfig::default();
                 let result = rationalize_denominator(
@@ -50,18 +59,26 @@ impl Repl {
                             simplified,
                             user_style,
                         );
-                        println!("Rationalized: {}", result_disp);
+                        reply_output(format!("Parsed: {}\nRationalized: {}", parsed_str, result_disp))
                     }
                     RationalizeResult::NotApplicable => {
-                        println!("Cannot rationalize: denominator is not a sum of surds");
-                        println!("(Supported: 1/(a + b√n + c√m) where a,b,c are rational and n,m are positive integers)");
+                        reply_output(format!(
+                            "Parsed: {}\n\
+                             Cannot rationalize: denominator is not a sum of surds\n\
+                             (Supported: 1/(a + b√n + c√m) where a,b,c are rational and n,m are positive integers)",
+                            parsed_str
+                        ))
                     }
                     RationalizeResult::BudgetExceeded => {
-                        println!("Rationalization aborted: expression became too complex");
+                        reply_output(format!(
+                            "Parsed: {}\n\
+                             Rationalization aborted: expression became too complex",
+                            parsed_str
+                        ))
                     }
                 }
             }
-            Err(e) => println!("Parse error: {:?}", e),
+            Err(e) => reply_output(format!("Parse error: {:?}", e)),
         }
     }
 }
