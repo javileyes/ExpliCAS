@@ -484,6 +484,9 @@ mod semantics;
 mod show_steps;
 mod simplify;
 
+#[cfg(test)]
+mod core_tests;
+
 // Re-export core types for external use
 pub use core::ReplCore;
 pub use output::{CoreResult, ReplMsg, ReplReply, ReplReplyExt, UiDelta};
