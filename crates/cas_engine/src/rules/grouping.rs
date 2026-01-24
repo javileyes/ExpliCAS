@@ -12,8 +12,8 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
             let var_expr = args[1];
 
             // Ensure second argument is a variable
-            let var_name = if let Expr::Variable(v) = ctx.get(var_expr) {
-                v.clone()
+            let var_name = if let Expr::Variable(sym_id) = ctx.get(var_expr) {
+                ctx.sym_name(*sym_id).to_string()
             } else {
                 return None;
             };
@@ -134,12 +134,12 @@ fn extract_coeff_degree(ctx: &mut Context, term: ExprId, var: &str) -> (ExprId, 
     for factor in factors {
         let factor_data = ctx.get(factor).clone();
         match factor_data {
-            Expr::Variable(v) if v == var => {
+            Expr::Variable(sym_id) if ctx.sym_name(sym_id) == var => {
                 degree += 1;
             }
             Expr::Pow(base, exp) => {
-                if let Expr::Variable(v) = ctx.get(base) {
-                    if v == var {
+                if let Expr::Variable(sym_id) = ctx.get(base) {
+                    if ctx.sym_name(*sym_id) == var {
                         if let Expr::Number(n) = ctx.get(exp) {
                             if n.is_integer() {
                                 degree += n.to_integer().try_into().unwrap_or(0);

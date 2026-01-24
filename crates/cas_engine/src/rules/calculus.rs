@@ -11,8 +11,8 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
             if args.len() == 2 {
                 let integrand = args[0];
                 let var_expr = args[1];
-                if let Expr::Variable(var_name) = ctx.get(var_expr) {
-                    let var_name = var_name.clone(); // Clone to drop borrow
+                if let Expr::Variable(var_sym) = ctx.get(var_expr) {
+                    let var_name = ctx.sym_name(*var_sym).to_string();
                     if let Some(result) = integrate(ctx, integrand, &var_name) {
                         return Some(Rewrite::new(result).desc(format!(
                             "integrate({}, {})",
@@ -48,8 +48,8 @@ define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
         if name == "diff" && args.len() == 2 {
             let target = args[0];
             let var_expr = args[1];
-            if let Expr::Variable(var_name) = ctx.get(var_expr) {
-                let var_name = var_name.clone();
+            if let Expr::Variable(var_sym) = ctx.get(var_expr) {
+                let var_name = ctx.sym_name(*var_sym).to_string();
                 if let Some(result) = differentiate(ctx, target, &var_name) {
                     return Some(Rewrite::new(result).desc(format!(
                         "diff({}, {})",
@@ -75,8 +75,8 @@ fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
     }
 
     match expr_data {
-        Expr::Variable(v) => {
-            if v == var {
+        Expr::Variable(sym_id) => {
+            if ctx.sym_name(sym_id) == var {
                 Some(ctx.num(1))
             } else {
                 Some(ctx.num(0))
@@ -310,8 +310,8 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
     // Actually get_linear_coeffs(x) returns (1, 0).
     // So Pow(x, 1) would be handled above IF expr was parsed as Pow.
     // But "x" is Expr::Variable.
-    if let Expr::Variable(v) = &expr_data {
-        if v == var {
+    if let Expr::Variable(sym_id) = &expr_data {
+        if ctx.sym_name(*sym_id) == var {
             let var_expr = ctx.var(var);
             let two = ctx.num(2);
             let pow_expr = ctx.add(Expr::Pow(var_expr, two));
@@ -380,7 +380,7 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
 
 fn contains_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
     match ctx.get(expr) {
-        Expr::Variable(v) => v == var,
+        Expr::Variable(sym_id) => ctx.sym_name(*sym_id) == var,
         Expr::Number(_) | Expr::Constant(_) => false,
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
             contains_var(ctx, *l, var) || contains_var(ctx, *r, var)
@@ -402,7 +402,7 @@ fn get_linear_coeffs(ctx: &mut Context, expr: ExprId, var: &str) -> Option<(Expr
     }
 
     match expr_data {
-        Expr::Variable(v) if v == var => Some((ctx.num(1), ctx.num(0))),
+        Expr::Variable(sym_id) if ctx.sym_name(sym_id) == var => Some((ctx.num(1), ctx.num(0))),
         Expr::Mul(l, r) => {
             // c * x
             if !contains_var(ctx, l, var) && is_var(ctx, r, var) {
@@ -446,8 +446,8 @@ fn get_linear_coeffs(ctx: &mut Context, expr: ExprId, var: &str) -> Option<(Expr
 }
 
 fn is_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
-    if let Expr::Variable(v) = ctx.get(expr) {
-        v == var
+    if let Expr::Variable(sym_id) = ctx.get(expr) {
+        ctx.sym_name(*sym_id) == var
     } else {
         false
     }
@@ -680,8 +680,8 @@ define_rule!(SumRule, "Finite Summation", |ctx, expr| {
             let end_expr = args[3];
 
             // Extract variable name
-            let var_name = if let Expr::Variable(v) = ctx.get(var_expr) {
-                v.clone()
+            let var_name = if let Expr::Variable(sym_id) = ctx.get(var_expr) {
+                ctx.sym_name(*sym_id).to_string()
             } else {
                 return None;
             };
@@ -854,17 +854,17 @@ fn try_telescoping_rational_sum(
 fn extract_linear_offset(ctx: &Context, expr: ExprId, var: &str) -> Option<i64> {
     match ctx.get(expr) {
         // Just the variable: k+0
-        Expr::Variable(v) if v == var => Some(0),
+        Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var => Some(0),
 
         // k + c
         Expr::Add(l, r) => {
-            if let Expr::Variable(v) = ctx.get(*l) {
-                if v == var {
+            if let Expr::Variable(sym_id) = ctx.get(*l) {
+                if ctx.sym_name(*sym_id) == var {
                     return get_integer(ctx, *r);
                 }
             }
-            if let Expr::Variable(v) = ctx.get(*r) {
-                if v == var {
+            if let Expr::Variable(sym_id) = ctx.get(*r) {
+                if ctx.sym_name(*sym_id) == var {
                     return get_integer(ctx, *l);
                 }
             }
@@ -873,8 +873,8 @@ fn extract_linear_offset(ctx: &Context, expr: ExprId, var: &str) -> Option<i64> 
 
         // k - c = k + (-c)
         Expr::Sub(l, r) => {
-            if let Expr::Variable(v) = ctx.get(*l) {
-                if v == var {
+            if let Expr::Variable(sym_id) = ctx.get(*l) {
+                if ctx.sym_name(*sym_id) == var {
                     return get_integer(ctx, *r).map(|c| -c);
                 }
             }
@@ -898,7 +898,7 @@ fn substitute_var(ctx: &mut Context, expr: ExprId, var: &str, value: ExprId) -> 
     let expr_data = ctx.get(expr).clone();
 
     match expr_data {
-        Expr::Variable(v) if v == var => value,
+        Expr::Variable(sym_id) if ctx.sym_name(sym_id) == var => value,
         Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_) => expr,
         Expr::Add(l, r) => {
             let new_l = substitute_var(ctx, l, var, value);
@@ -968,8 +968,8 @@ define_rule!(ProductRule, "Finite Product", |ctx, expr| {
             let end_expr = args[3];
 
             // Extract variable name
-            let var_name = if let Expr::Variable(v) = ctx.get(var_expr) {
-                v.clone()
+            let var_name = if let Expr::Variable(sym_id) = ctx.get(var_expr) {
+                ctx.sym_name(*sym_id).to_string()
             } else {
                 return None;
             };
@@ -1248,18 +1248,18 @@ fn detect_reciprocal_power(ctx: &Context, expr: ExprId, var: &str) -> Option<(St
             if n.is_one() {
                 // den should be k^power
                 if let Expr::Pow(base, exp) = ctx.get(*den) {
-                    if let Expr::Variable(v) = ctx.get(*base) {
-                        if v == var {
+                    if let Expr::Variable(sym_id) = ctx.get(*base) {
+                        if ctx.sym_name(*sym_id) == var {
                             if let Some(power) = get_integer(ctx, *exp) {
-                                return Some((v.clone(), power));
+                                return Some((ctx.sym_name(*sym_id).to_string(), power));
                             }
                         }
                     }
                 }
                 // Also check if den is just k (power = 1)
-                if let Expr::Variable(v) = ctx.get(*den) {
-                    if v == var {
-                        return Some((v.clone(), 1));
+                if let Expr::Variable(sym_id) = ctx.get(*den) {
+                    if ctx.sym_name(*sym_id) == var {
+                        return Some((ctx.sym_name(*sym_id).to_string(), 1));
                     }
                 }
             }
@@ -1268,18 +1268,18 @@ fn detect_reciprocal_power(ctx: &Context, expr: ExprId, var: &str) -> Option<(St
 
     // Pattern 2: k^(-n)
     if let Expr::Pow(base, exp) = ctx.get(expr) {
-        if let Expr::Variable(v) = ctx.get(*base) {
-            if v == var {
+        if let Expr::Variable(sym_id) = ctx.get(*base) {
+            if ctx.sym_name(*sym_id) == var {
                 if let Expr::Neg(inner_exp) = ctx.get(*exp) {
                     if let Some(power) = get_integer(ctx, *inner_exp) {
-                        return Some((v.clone(), power));
+                        return Some((ctx.sym_name(*sym_id).to_string(), power));
                     }
                 }
                 // Check for negative number exponent
                 if let Expr::Number(n) = ctx.get(*exp) {
                     if *n < num_rational::BigRational::from_integer(0.into()) {
                         if let Some(power) = get_integer(ctx, *exp) {
-                            return Some((v.clone(), -power));
+                            return Some((ctx.sym_name(*sym_id).to_string(), -power));
                         }
                     }
                 }

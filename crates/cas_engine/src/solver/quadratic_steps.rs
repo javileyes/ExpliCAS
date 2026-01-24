@@ -82,7 +82,7 @@ pub fn build_quadratic_substeps(
         |ctx: &Context, id: ExprId| -> String { format!("{}", DisplayExpr { context: ctx, id }) };
 
     // Build x variable
-    let x = ctx.add(Expr::Variable(var.to_string()));
+    let x = ctx.var(var);
 
     // Build x²
     let x2 = ctx.add(Expr::Pow(x, two));

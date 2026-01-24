@@ -334,8 +334,8 @@ fn collect_variables_recursive(
     vars: &mut std::collections::HashSet<String>,
 ) {
     match ctx.get(id) {
-        Expr::Variable(name) => {
-            vars.insert(name.clone());
+        Expr::Variable(sym_id) => {
+            vars.insert(ctx.sym_name(*sym_id).to_string());
         }
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
             collect_variables_recursive(ctx, *l, vars);

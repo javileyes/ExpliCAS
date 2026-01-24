@@ -192,23 +192,26 @@ fn substitute_impl(
     let expr_data = ctx.get(expr).clone();
 
     match expr_data {
-        Expr::Variable(ref name) => {
+        Expr::Variable(sym_id) => {
+            // Resolve symbol to string for Environment lookup
+            let name = ctx.sym_name(sym_id).to_string();
+
             // Don't substitute shadowed variables
             if shadow.contains(name.as_str()) {
                 return expr;
             }
 
             // Check for binding
-            if let Some(bound_expr) = env.get(name) {
+            if let Some(bound_expr) = env.get(&name) {
                 // Cycle detection: if we're already visiting this variable, stop
-                if visiting.contains(name) {
+                if visiting.contains(&name) {
                     return expr; // Leave as Var(name) to break cycle
                 }
 
                 // Mark as visiting and recurse (transitive closure)
                 visiting.insert(name.clone());
                 let result = substitute_impl(ctx, env, bound_expr, shadow, visiting, depth + 1);
-                visiting.remove(name);
+                visiting.remove(&name);
                 result
             } else {
                 expr // No binding, leave unchanged

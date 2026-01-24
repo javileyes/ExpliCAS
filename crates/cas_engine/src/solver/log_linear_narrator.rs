@@ -349,15 +349,15 @@ fn try_factor_x(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
 fn try_extract_x_coefficient(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     if let Expr::Mul(l, r) = ctx.get(expr) {
         // Check if l or r is just "x"
-        if matches!(ctx.get(*l), Expr::Variable(v) if v == "x") {
+        if matches!(ctx.get(*l), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == "x") {
             return Some(*r);
         }
-        if matches!(ctx.get(*r), Expr::Variable(v) if v == "x") {
+        if matches!(ctx.get(*r), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == "x") {
             return Some(*l);
         }
     }
     // Check if expr is just "x" (coef = 1)
-    if matches!(ctx.get(expr), Expr::Variable(v) if v == "x") {
+    if matches!(ctx.get(expr), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == "x") {
         // Would need to return 1, but we can't easily do this here
         return None;
     }

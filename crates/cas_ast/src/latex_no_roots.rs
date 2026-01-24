@@ -21,7 +21,7 @@ impl<'a> LatexNoRoots<'a> {
                     format!("\\frac{{{}}}{{{}}}", n.numer(), n.denom())
                 }
             }
-            Expr::Variable(name) => name.clone(),
+            Expr::Variable(sym_id) => self.context.sym_name(*sym_id).to_string(),
             Expr::Constant(c) => match c {
                 Constant::Pi => "\\pi".to_string(),
                 Constant::E => "e".to_string(),

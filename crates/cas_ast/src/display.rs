@@ -1811,7 +1811,7 @@ impl<'a> DisplayExprStyled<'a> {
                 Constant::I => write!(f, "i"),
                 Constant::Phi => write!(f, "phi"),
             },
-            Expr::Variable(s) => write!(f, "{}", s),
+            Expr::Variable(sym_id) => write!(f, "{}", self.context.sym_name(*sym_id)),
 
             Expr::Add(_, _) => {
                 // Collect terms and display with proper signs
@@ -2143,7 +2143,7 @@ mod hold_tests {
     #[test]
     fn test_hold_transparency() {
         let mut ctx = Context::new();
-        let x = ctx.add(Expr::Variable("x".to_string()));
+        let x = ctx.var("x");
         let held = ctx.add(Expr::Function("__hold".to_string(), vec![x]));
         let display = format!(
             "{}",

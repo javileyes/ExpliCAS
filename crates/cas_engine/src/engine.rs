@@ -1313,9 +1313,14 @@ fn eval_f64_checked_depth(
     let result = match ctx.get(expr) {
         Expr::Number(n) => n.to_f64().ok_or(EvalCheckedError::NonFinite)?,
 
-        Expr::Variable(v) => *var_map
-            .get(v)
-            .ok_or_else(|| EvalCheckedError::UnboundVariable { name: v.clone() })?,
+        Expr::Variable(sym_id) => {
+            let name = ctx.sym_name(*sym_id);
+            *var_map
+                .get(name)
+                .ok_or_else(|| EvalCheckedError::UnboundVariable {
+                    name: name.to_string(),
+                })?
+        }
 
         Expr::Add(l, r) => {
             eval_f64_checked_depth(ctx, *l, var_map, opts, depth - 1)?
@@ -1591,7 +1596,7 @@ fn eval_f64_depth(
 
     match ctx.get(expr) {
         Expr::Number(n) => n.to_f64(),
-        Expr::Variable(v) => var_map.get(v).cloned(),
+        Expr::Variable(sym_id) => var_map.get(ctx.sym_name(*sym_id)).cloned(),
         Expr::Add(l, r) => Some(
             eval_f64_depth(ctx, *l, var_map, depth - 1)?
                 + eval_f64_depth(ctx, *r, var_map, depth - 1)?,

@@ -286,7 +286,8 @@ fn expr_to_poly_modp_inner(
             Ok(MultiPolyModP::constant(val, p, MAX_VARS))
         }
 
-        Expr::Variable(name) => {
+        Expr::Variable(sym_id) => {
+            let name = ctx.sym_name(*sym_id);
             let idx = vars
                 .get_or_insert(name)
                 .ok_or(PolyConvError::TooManyVariables)?;
@@ -344,7 +345,7 @@ fn expr_to_poly_modp_inner(
             Ok(result)
         }
 
-        Expr::Function(name, args) => {
+        Expr::Function(ref name, ref args) => {
             // Handle __hold by stripping
             if name == "__hold" && args.len() == 1 {
                 return expr_to_poly_modp_inner(ctx, args[0], p, budget, vars);
@@ -394,7 +395,8 @@ fn convert_non_add_term(
             Ok(MultiPolyModP::constant(val, p, MAX_VARS))
         }
 
-        Expr::Variable(name) => {
+        Expr::Variable(sym_id) => {
+            let name = ctx.sym_name(*sym_id);
             let idx = vars
                 .get_or_insert(name)
                 .ok_or(PolyConvError::TooManyVariables)?;
@@ -434,7 +436,7 @@ fn convert_non_add_term(
             Ok(result)
         }
 
-        Expr::Function(name, args) => {
+        Expr::Function(ref name, ref args) => {
             if name == "__hold" && args.len() == 1 {
                 return convert_non_add_term(ctx, args[0], p, budget, vars);
             }
@@ -558,7 +560,8 @@ fn parse_linear_term(
             let val = bigint_to_modp(n.numer(), p);
             Some((val, None))
         }
-        Expr::Variable(name) => {
+        Expr::Variable(sym_id) => {
+            let name = ctx.sym_name(*sym_id);
             let idx = vars.get_or_insert(name)?;
             Some((1, Some(idx)))
         }
@@ -595,7 +598,8 @@ fn get_number(ctx: &Context, expr: ExprId, p: u64) -> Option<u64> {
 }
 
 fn get_var_idx(ctx: &Context, expr: ExprId, vars: &mut VarTable) -> Option<usize> {
-    if let Expr::Variable(name) = ctx.get(expr) {
+    if let Expr::Variable(sym_id) = ctx.get(expr) {
+        let name = ctx.sym_name(*sym_id);
         return vars.get_or_insert(name);
     }
     None

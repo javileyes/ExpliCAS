@@ -217,7 +217,7 @@ pub fn expr_fingerprint(ctx: &Context, root: ExprId, memo: &mut FingerprintMemo)
             let d = q.denom().to_string();
             mix(TAG_NUM, hash_str(&n), hash_str(&d))
         }
-        Expr::Variable(name) => mix1(TAG_VAR, hash_str(name)),
+        Expr::Variable(sym_id) => mix1(TAG_VAR, hash_str(ctx.sym_name(*sym_id))),
         Expr::Constant(c) => mix1(TAG_CONST, hash_str(&format!("{:?}", c))),
         Expr::Add(a, b) => {
             let ha = expr_fingerprint(ctx, *a, memo);

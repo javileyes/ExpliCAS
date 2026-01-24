@@ -19,7 +19,8 @@ pub fn is_simple_reciprocal(ctx: &Context, expr: ExprId, var: &str) -> bool {
         // Numerator must be 1
         let is_one = matches!(ctx.get(*num), Expr::Number(n) if *n == num_rational::BigRational::from_integer(1.into()));
         // Denominator must be exactly the variable
-        let is_var = matches!(ctx.get(*denom), Expr::Variable(v) if v == var);
+        let is_var =
+            matches!(ctx.get(*denom), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var);
         is_one && is_var
     } else {
         false

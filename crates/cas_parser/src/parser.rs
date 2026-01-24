@@ -106,7 +106,10 @@ impl ParseNode {
         match self {
             ParseNode::Number(n) => Ok(ctx.add(Expr::Number(n))),
             ParseNode::Constant(c) => Ok(ctx.add(Expr::Constant(c))),
-            ParseNode::Variable(s) => Ok(ctx.add(Expr::Variable(s))),
+            ParseNode::Variable(s) => {
+                let sym = ctx.intern_symbol(&s);
+                Ok(ctx.add(Expr::Variable(sym)))
+            }
             ParseNode::Add(l, r) => {
                 let lid = l.lower(ctx)?;
                 let rid = r.lower(ctx)?;

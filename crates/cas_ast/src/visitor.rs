@@ -6,7 +6,7 @@ pub trait Visitor {
         match expr {
             Expr::Number(n) => self.visit_number(n),
             Expr::Constant(c) => self.visit_constant(c),
-            Expr::Variable(name) => self.visit_variable(name),
+            Expr::Variable(sym_id) => self.visit_variable(context.sym_name(*sym_id)),
             Expr::Add(l, r) => self.visit_add(context, *l, *r),
             Expr::Sub(l, r) => self.visit_sub(context, *l, *r),
             Expr::Mul(l, r) => self.visit_mul(context, *l, *r),

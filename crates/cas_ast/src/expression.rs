@@ -97,7 +97,7 @@ pub enum MulCommutativity {
 pub enum Expr {
     Number(BigRational),
     Constant(Constant),
-    Variable(String),
+    Variable(SymbolId),
     Add(ExprId, ExprId),
     Sub(ExprId, ExprId),
     Mul(ExprId, ExprId),
@@ -174,9 +174,14 @@ impl Context {
     ///
     /// Note: requires &mut self because intern_symbol may insert.
     pub fn is_var(&mut self, expr: ExprId, name: &str) -> bool {
-        match self.get(expr) {
-            Expr::Variable(s) => s == name,
-            _ => false,
+        // Extract sym_id first to avoid borrow conflict
+        let sym_id = match self.get(expr) {
+            Expr::Variable(id) => Some(*id),
+            _ => None,
+        };
+        match sym_id {
+            Some(id) => self.sym_is(id, name),
+            None => false,
         }
     }
 
@@ -591,7 +596,8 @@ impl Context {
     }
 
     pub fn var(&mut self, name: &str) -> ExprId {
-        self.add(Expr::Variable(name.to_string()))
+        let sym = self.intern_symbol(name);
+        self.add(Expr::Variable(sym))
     }
 
     // Matrix helpers

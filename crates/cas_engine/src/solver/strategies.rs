@@ -34,8 +34,8 @@ pub fn detect_substitution(ctx: &mut Context, eq: &Equation, var: &str) -> Optio
     for term in &terms {
         if let Expr::Pow(_, exp) = ctx.get(*term) {
             // Check if exponent is exactly var (e^x)
-            if let Expr::Variable(v) = ctx.get(*exp) {
-                if v == var {
+            if let Expr::Variable(sym_id) = ctx.get(*exp) {
+                if ctx.sym_name(*sym_id) == var {
                     base_term = Some(*term);
                 }
             } else {
@@ -81,7 +81,7 @@ pub fn collect_exponential_terms(ctx: &Context, expr: ExprId, var: &str) -> Vec<
     match ctx.get(expr) {
         Expr::Pow(b, e) => {
             let is_e = match ctx.get(*b) {
-                Expr::Variable(name) => name == "e",
+                Expr::Variable(sym_id) => ctx.sym_name(*sym_id) == "e",
                 Expr::Constant(c) => matches!(c, cas_ast::Constant::E),
                 _ => false,
             };
@@ -371,10 +371,10 @@ fn analyze_term_mut(ctx: &mut Context, term: ExprId, var: &str) -> Option<(ExprI
     let term_data = ctx.get(term).clone();
 
     match term_data {
-        Expr::Variable(v) if v == var => Some((ctx.num(1), 1)),
+        Expr::Variable(sym_id) if ctx.sym_name(sym_id) == var => Some((ctx.num(1), 1)),
         Expr::Pow(base, exp) => {
-            if let Expr::Variable(v) = ctx.get(base) {
-                if v == var && !contains_var(ctx, exp, var) {
+            if let Expr::Variable(sym_id) = ctx.get(base) {
+                if ctx.sym_name(*sym_id) == var && !contains_var(ctx, exp, var) {
                     let degree = if let Expr::Number(n) = ctx.get(exp) {
                         if n.is_integer() {
                             Some(n.to_integer())

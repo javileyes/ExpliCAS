@@ -225,7 +225,7 @@ fn substitute(simplifier: &mut Simplifier, expr: ExprId, var: &str, value: ExprI
     let expr_data = simplifier.context.get(expr).clone();
 
     match expr_data {
-        Expr::Variable(name) if name == var => value,
+        Expr::Variable(sym_id) if simplifier.context.sym_name(sym_id) == var => value,
         Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => expr,
 
         Expr::Add(a, b) => {

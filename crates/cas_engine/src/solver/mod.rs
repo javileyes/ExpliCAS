@@ -865,7 +865,7 @@ fn substitute(ctx: &mut Context, expr: ExprId, var: &str, val: ExprId) -> ExprId
     use cas_ast::Expr;
     let expr_data = ctx.get(expr).clone();
     match expr_data {
-        Expr::Variable(v) if v == var => val,
+        Expr::Variable(sym_id) if ctx.sym_name(sym_id) == var => val,
         Expr::Add(l, r) => {
             let nl = substitute(ctx, l, var, val);
             let nr = substitute(ctx, r, var, val);

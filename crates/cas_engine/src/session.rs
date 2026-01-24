@@ -568,7 +568,8 @@ fn resolve_with_mode_recursive(
         )?,
 
         // Handle Variable that might be a #N reference (legacy parsing)
-        Expr::Variable(ref name) => {
+        Expr::Variable(sym_id) => {
+            let name = ctx.sym_name(sym_id);
             if name.starts_with('#') && name.len() > 1 && name[1..].chars().all(char::is_numeric) {
                 if let Ok(id) = name[1..].parse::<u64>() {
                     resolve_entry_with_mode(
@@ -842,7 +843,8 @@ fn resolve_recursive(
 
     match node {
         Expr::SessionRef(id) => resolve_session_id(ctx, id, store, cache, visiting, inherited),
-        Expr::Variable(ref name) => {
+        Expr::Variable(sym_id) => {
+            let name = ctx.sym_name(sym_id);
             if name.starts_with('#') && name.len() > 1 && name[1..].chars().all(char::is_numeric) {
                 if let Ok(id) = name[1..].parse::<u64>() {
                     return resolve_session_id(ctx, id, store, cache, visiting, inherited);

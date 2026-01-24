@@ -56,7 +56,7 @@ impl Visitor for DepthVisitor {
         match ctx.get(expr) {
             Expr::Number(n) => self.visit_number(n),
             Expr::Constant(c) => self.visit_constant(c),
-            Expr::Variable(name) => self.visit_variable(name),
+            Expr::Variable(sym_id) => self.visit_variable(ctx.sym_name(*sym_id)),
             Expr::Add(l, r) => self.visit_add(ctx, *l, *r),
             Expr::Sub(l, r) => self.visit_sub(ctx, *l, *r),
             Expr::Mul(l, r) => self.visit_mul(ctx, *l, *r),

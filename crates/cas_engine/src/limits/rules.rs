@@ -130,9 +130,10 @@ pub fn try_rational_poly_rule(
     };
 
     // Get variable name
-    let Expr::Variable(var_name) = ctx.get(var).clone() else {
+    let Expr::Variable(var_sym_id) = ctx.get(var).clone() else {
         return None;
     };
+    let var_name = ctx.sym_name(var_sym_id);
 
     // Conservative budget for polynomial conversion
     let budget = PolyBudget {

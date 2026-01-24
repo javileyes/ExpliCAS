@@ -35,7 +35,7 @@ pub fn isolate(
     let lhs_expr = simplifier.context.get(lhs).clone();
 
     match lhs_expr {
-        Expr::Variable(v) if v == var => {
+        Expr::Variable(sym_id) if simplifier.context.sym_name(sym_id) == var => {
             // Simplify RHS before returning
             let (sim_rhs, _) = simplifier.simplify(rhs);
 
@@ -647,8 +647,10 @@ pub fn isolate(
                 };
 
                 // Check if denominator is just the variable (simple case)
-                if let Expr::Variable(v) = simplifier.context.get(r) {
-                    if v == var && matches!(op, RelOp::Lt | RelOp::Gt | RelOp::Leq | RelOp::Geq) {
+                if let Expr::Variable(sym_id) = simplifier.context.get(r) {
+                    if simplifier.context.sym_name(*sym_id) == var
+                        && matches!(op, RelOp::Lt | RelOp::Gt | RelOp::Leq | RelOp::Geq)
+                    {
                         // Split into x > 0 and x < 0
 
                         let op_pos = flip_inequality(op.clone());

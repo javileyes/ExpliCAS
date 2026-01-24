@@ -202,7 +202,7 @@ fn split_linear_term(ctx: &mut Context, term: ExprId, var: &str) -> TermClass {
 
     match ctx.get(term).clone() {
         // term == var → Linear(1)
-        Expr::Variable(v) if v == var => {
+        Expr::Variable(sym_id) if ctx.sym_name(sym_id) == var => {
             // Coefficient is 1 (implicit)
             TermClass::Linear(None) // None = implicit coefficient 1
         }
@@ -215,7 +215,8 @@ fn split_linear_term(ctx: &mut Context, term: ExprId, var: &str) -> TermClass {
                 (true, false) => {
                     // l contains var, r is coefficient
                     // Check if l is just the variable
-                    if matches!(ctx.get(l), Expr::Variable(v) if v == var) {
+                    if matches!(ctx.get(l), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var)
+                    {
                         TermClass::Linear(Some(r))
                     } else {
                         // l is more complex (Mul(P, k), etc.)
@@ -240,7 +241,8 @@ fn split_linear_term(ctx: &mut Context, term: ExprId, var: &str) -> TermClass {
                 }
                 (false, true) => {
                     // r contains var, l is coefficient
-                    if matches!(ctx.get(r), Expr::Variable(v) if v == var) {
+                    if matches!(ctx.get(r), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var)
+                    {
                         TermClass::Linear(Some(l))
                     } else {
                         match split_linear_term(ctx, r, var) {
@@ -371,7 +373,7 @@ pub fn linear_form(ctx: &mut Context, expr: ExprId, var: &str) -> Option<LinearF
 
     match ctx.get(expr).clone() {
         // var itself → (1, 0)
-        Expr::Variable(v) if v == var => {
+        Expr::Variable(sym_id) if ctx.sym_name(sym_id) == var => {
             let one = ctx.num(1);
             let zero = ctx.num(0);
             Some(LinearForm {

@@ -419,7 +419,7 @@ mod tests {
     /// Check if expression contains a variable
     fn contains_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
         match ctx.get(expr) {
-            Expr::Variable(name) => name == var,
+            Expr::Variable(sym_id) => ctx.sym_name(*sym_id) == var,
             Expr::Add(l, r)
             | Expr::Sub(l, r)
             | Expr::Mul(l, r)
@@ -469,7 +469,7 @@ mod tests {
         // x^4 = (x^2)^2 → y^2, should be Pow(y, 2)
         if let Expr::Pow(base, exp) = ctx.get(result) {
             assert!(
-                matches!(ctx.get(*base), Expr::Variable(v) if v == "y"),
+                matches!(ctx.get(*base), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == "y"),
                 "Base should be y"
             );
             if let Expr::Number(n) = ctx.get(*exp) {
@@ -500,10 +500,10 @@ mod tests {
         // x^3 = x^2 * x → y * x, should be Mul(y, x)
         if let Expr::Mul(l, r) = ctx.get(result) {
             // One side should be y, the other should be x
-            let has_y = matches!(ctx.get(*l), Expr::Variable(v) if v == "y")
-                || matches!(ctx.get(*r), Expr::Variable(v) if v == "y");
-            let has_x = matches!(ctx.get(*l), Expr::Variable(v) if v == "x")
-                || matches!(ctx.get(*r), Expr::Variable(v) if v == "x");
+            let has_y = matches!(ctx.get(*l), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == "y")
+                || matches!(ctx.get(*r), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == "y");
+            let has_x = matches!(ctx.get(*l), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == "x")
+                || matches!(ctx.get(*r), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == "x");
             assert!(has_y && has_x, "Result should be y*x");
         } else {
             panic!("Result should be Mul, got: {:?}", ctx.get(result));
@@ -568,7 +568,7 @@ mod tests {
         // x^6 = (x^2)^3 → y^3
         if let Expr::Pow(base, exp) = ctx.get(result) {
             assert!(
-                matches!(ctx.get(*base), Expr::Variable(v) if v == "y"),
+                matches!(ctx.get(*base), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == "y"),
                 "Base should be y"
             );
             if let Expr::Number(n) = ctx.get(*exp) {
