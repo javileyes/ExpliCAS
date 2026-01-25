@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
-# lint_string_compares_progress.sh — Track progress of FunctionKind migration
+# lint_string_compares_progress.sh — Prevent string comparisons for function names
 #
-# This guardrail counts the remaining string comparisons for function names
-# in cas_engine. The goal is to replace `sym_name(...) == "..."` with
-# FunctionKind/BuiltinFn pattern matching (Phase 2 of interning).
+# STRICT MODE (default): No function string comparisons allowed in cas_engine/cas_cli.
+# This guardrail enforces is_builtin()/BuiltinFn pattern matching for function dispatch.
+#
+# Exception Policy:
+#   - FUNCTION comparisons (Expr::Function) → BLOCKED (must use BuiltinFn)
+#   - VARIABLE comparisons (Expr::Variable) → ALLOWED (intentional in solver, ~14 cases)
+#     These compare against "x", "y", "var" for equation solving - not a migration target.
 #
 # Usage:
-#   ./scripts/lint_string_compares_progress.sh           # report only (CI-safe)
-#   LINT_STRING_STRICT=1 ./scripts/lint_string_compares_progress.sh  # fail if over limit
+#   ./scripts/lint_string_compares_progress.sh           # strict mode (default in CI)
+#   LINT_STRING_STRICT=0 ./scripts/lint_string_compares_progress.sh  # report only
 #
 # Environment variables:
-#   LINT_STRING_STRICT=1  - Enable strict mode (fail if count exceeds STRING_COMPARE_LIMIT)
-#   STRING_COMPARE_LIMIT  - Maximum allowed string comparisons (default: 999 = always pass)
+#   LINT_STRING_STRICT=1  - Enable strict mode (default: 1)
+#   STRING_COMPARE_LIMIT  - Maximum allowed comparisons (default: 0)
 
 set -uo pipefail
 # Note: NOT using set -e because grep returns 1 when no matches, which is expected
@@ -28,9 +32,9 @@ BLU=$'\033[34m'
 CYN=$'\033[36m'
 RST=$'\033[0m'
 
-# Config
-STRICT="${LINT_STRING_STRICT:-0}"
-LIMIT="${STRING_COMPARE_LIMIT:-999}"
+# Config - strict mode ON by default (no function string comparisons allowed in production)
+STRICT="${LINT_STRING_STRICT:-1}"
+LIMIT="${STRING_COMPARE_LIMIT:-0}"
 
 echo "${BLU}==>${RST} String comparisons progress (FunctionKind migration)"
 echo ""
@@ -78,18 +82,9 @@ echo "${YLW}📊 Variable comparisons (not targeted by this guardrail):${RST}"
 echo "  Variable sym_name checks: ${BLU}$SYM_NAME_VAR_COUNT${RST} (these use Expr::Variable, not Function)"
 echo ""
 
-# Count specific builtin names
-echo "${CYN}📊 Top builtin names still compared as strings:${RST}"
-echo ""
-
-for fn in sqrt sin cos tan ln log exp abs asin acos atan; do
-    fn_count=$(grep -rn "== \"$fn\"" "$ENGINE_DIR" 2>/dev/null | wc -l | tr -d ' ')
-    if [[ "$fn_count" -gt 0 ]]; then
-        printf "  %3d  %s\n" "$fn_count" "$fn"
-    fi
-done
-
-echo ""
+# NOTE: String comparisons like `name == "sin"` (where name is already a &str)
+# are NOT what this guardrail targets. Those are pre-lookup patterns that could
+# eventually migrate to BuiltinFn too, but are lower priority than sym_name() calls.
 
 # Summary
 echo "${CYN}📈 Summary:${RST}"
