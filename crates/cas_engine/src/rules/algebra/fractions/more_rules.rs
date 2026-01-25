@@ -86,7 +86,7 @@ define_rule!(
                         None
                     }
                     Expr::Function(fn_id, args)
-                        if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 =>
+                        if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Sqrt) && args.len() == 1 =>
                     {
                         if let Expr::Number(n) = ctx.get(args[0]) {
                             if n.is_integer() {
