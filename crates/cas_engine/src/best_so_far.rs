@@ -115,7 +115,9 @@ fn count_sqrt_in_den(ctx: &Context, expr: ExprId) -> u16 {
                 stack.push((*base, in_den));
                 stack.push((*exp, in_den));
             }
-            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && in_den => {
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Sqrt) && in_den =>
+            {
                 count = count.saturating_add(1);
                 for arg in args {
                     stack.push((*arg, in_den));

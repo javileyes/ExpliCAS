@@ -133,7 +133,9 @@ pub fn contains_i(ctx: &Context, root: ExprId) -> bool {
                 return true;
             }
             // Check for sqrt(-1) pattern
-            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => {
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Sqrt) && args.len() == 1 =>
+            {
                 if is_negative_one(ctx, args[0]) {
                     return true;
                 }

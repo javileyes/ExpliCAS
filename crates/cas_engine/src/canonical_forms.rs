@@ -20,7 +20,8 @@ pub fn is_canonical_form(ctx: &Context, expr: ExprId) -> bool {
         // Case 3: Functions containing powers or products that should be preserved
         // Examples: sqrt((x-1)^2), sqrt((x-2)(x+2)), abs((x+y)^3)
         Expr::Function(fn_id, args)
-            if (ctx.sym_name(*fn_id) == "sqrt" || ctx.sym_name(*fn_id) == "abs")
+            if (ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Sqrt)
+                || ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Abs))
                 && args.len() == 1 =>
         {
             let inner = args[0];

@@ -377,7 +377,7 @@ fn try_rewrite_log_power(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
 
     match expr_data {
         // ln(a^exp) → exp·ln(a)
-        Expr::Function(fn_id, args) if ctx.sym_name(fn_id) == "ln" && args.len() == 1 => {
+        Expr::Function(fn_id, args) if ctx.is_builtin(fn_id, BuiltinFn::Ln) && args.len() == 1 => {
             let inner = args[0];
             if let Expr::Pow(base, exp) = ctx.get(inner).clone() {
                 // Create exp * ln(base)
