@@ -405,14 +405,9 @@ fn check_negation_structure(ctx: &Context, potential_neg: ExprId, original: Expr
 }
 
 /// Unwrap __hold(X) to X, otherwise return the expression unchanged
+/// Delegates to canonical implementation in cas_ast::hold
 fn unwrap_hold(ctx: &Context, expr: ExprId) -> ExprId {
-    if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        let name = ctx.sym_name(*fn_id);
-        if name == "__hold" && args.len() == 1 {
-            return args[0];
-        }
-    }
-    expr
+    cas_ast::hold::unwrap_hold(ctx, expr)
 }
 
 /// Normalize a term by extracting negation from leading coefficient
@@ -693,75 +688,73 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
             continue; // Only check positive __hold terms
         }
 
-        // Check if this is a __hold
-        if let Expr::Function(fn_id, args) = ctx.get(*term) {
-            let name = ctx.sym_name(*fn_id);
-            if name == "__hold" && args.len() == 1 {
-                let held_content = args[0];
+        // Check if this is a __hold using canonical helper
+        if cas_ast::hold::is_hold(ctx, *term) {
+            // Unwrap the held content
+            let held_content = cas_ast::hold::unwrap_hold(ctx, *term);
 
-                // Flatten the held content to get its terms
-                let mut held_terms: Vec<(ExprId, bool)> = Vec::new();
-                flatten_additive_terms(ctx, held_content, false, &mut held_terms);
+            // Flatten the held content to get its terms
+            let mut held_terms: Vec<(ExprId, bool)> = Vec::new();
+            flatten_additive_terms(ctx, held_content, false, &mut held_terms);
 
-                // Get all other terms (excluding this __hold)
-                let other_terms: Vec<(ExprId, bool)> = terms
-                    .iter()
-                    .enumerate()
-                    .filter(|(i, _)| *i != idx)
-                    .map(|(_, t)| *t)
-                    .collect();
+            // Get all other terms (excluding this __hold)
+            let other_terms: Vec<(ExprId, bool)> = terms
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| *i != idx)
+                .map(|(_, t)| *t)
+                .collect();
 
-                // Check if held_terms and other_terms cancel out
-                // They cancel if for each held term there's an opposite signed other term
-                if held_terms.len() == other_terms.len() {
-                    let mut all_cancel = true;
-                    let mut used = vec![false; other_terms.len()];
+            // Check if held_terms and other_terms cancel out
+            // They cancel if for each held term there's an opposite signed other term
+            if held_terms.len() == other_terms.len() {
+                let mut all_cancel = true;
+                let mut used = vec![false; other_terms.len()];
 
-                    for (held_term, held_neg) in &held_terms {
-                        let mut found = false;
+                for (held_term, held_neg) in &held_terms {
+                    let mut found = false;
 
-                        for (j, (other_term, other_neg)) in other_terms.iter().enumerate() {
-                            if used[j] {
-                                continue;
+                    for (j, (other_term, other_neg)) in other_terms.iter().enumerate() {
+                        if used[j] {
+                            continue;
+                        }
+
+                        // Check if terms cancel (one positive, one negative equivalently)
+                        // Case 1: Same term with opposite flags
+                        if *other_neg != *held_neg {
+                            // Use poly_equal for more robust comparison
+                            // This handles cases where expressions are semantically equal
+                            // but structurally different (e.g., Mul(15,x) vs Mul(x,15))
+                            if poly_equal(ctx, *held_term, *other_term) {
+                                used[j] = true;
+                                found = true;
+                                break;
                             }
+                        }
 
-                            // Check if terms cancel (one positive, one negative equivalently)
-                            // Case 1: Same term with opposite flags
-                            if *other_neg != *held_neg {
-                                // Use poly_equal for more robust comparison
-                                // This handles cases where expressions are semantically equal
-                                // but structurally different (e.g., Mul(15,x) vs Mul(x,15))
-                                if poly_equal(ctx, *held_term, *other_term) {
+                        // Case 2: Number with same flag but opposite value (e.g., 1 vs -1)
+                        if *other_neg == *held_neg {
+                            if let (Expr::Number(n1), Expr::Number(n2)) =
+                                (ctx.get(*held_term), ctx.get(*other_term))
+                            {
+                                if n1 == &-n2.clone() {
                                     used[j] = true;
                                     found = true;
                                     break;
                                 }
                             }
-
-                            // Case 2: Number with same flag but opposite value (e.g., 1 vs -1)
-                            if *other_neg == *held_neg {
-                                if let (Expr::Number(n1), Expr::Number(n2)) =
-                                    (ctx.get(*held_term), ctx.get(*other_term))
-                                {
-                                    if n1 == &-n2.clone() {
-                                        used[j] = true;
-                                        found = true;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                        if !found {
-                            all_cancel = false;
-                            break;
                         }
                     }
 
-                    if all_cancel && used.iter().all(|&u| u) {
-                        let zero = ctx.num(0);
-                        return Some(Rewrite::new(zero).desc("__hold(sum) - sum = 0"));
+                    if !found {
+                        all_cancel = false;
+                        break;
                     }
+                }
+
+                if all_cancel && used.iter().all(|&u| u) {
+                    let zero = ctx.num(0);
+                    return Some(Rewrite::new(zero).desc("__hold(sum) - sum = 0"));
                 }
             }
         }
@@ -2075,7 +2068,7 @@ impl crate::rule::Rule for HeuristicExtractCommonFactorAddRule {
         // Build result: factor * inner_sum
         // Wrap in __hold to prevent DistributeRule from expanding it back
         let product = ctx.add(Expr::Mul(factor, inner_sum));
-        let new_expr = ctx.call("__hold", vec![product]);
+        let new_expr = cas_ast::hold::wrap_hold(ctx, product);
 
         // Complexity check: result should be simpler
         let old_nodes = cas_ast::count_nodes(ctx, expr);

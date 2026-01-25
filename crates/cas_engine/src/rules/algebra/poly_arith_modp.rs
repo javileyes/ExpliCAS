@@ -96,8 +96,8 @@ mod tests {
         let x = ctx.var("x");
         let one = ctx.num(1);
         let x_plus_1 = ctx.add(Expr::Add(x, one));
-        let hold_a = ctx.call("__hold", vec![x_plus_1]);
-        let hold_b = ctx.call("__hold", vec![x_plus_1]);
+        let hold_a = cas_ast::hold::wrap_hold(&mut ctx, x_plus_1);
+        let hold_b = cas_ast::hold::wrap_hold(&mut ctx, x_plus_1);
         let sub_expr = ctx.add(Expr::Sub(hold_a, hold_b));
 
         // Apply rule

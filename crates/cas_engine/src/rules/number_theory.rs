@@ -167,7 +167,7 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                 );
 
                 // Wrap in __hold to prevent further simplification
-                let held = ctx.call("__hold", vec![result]);
+                let held = cas_ast::hold::wrap_hold(ctx, result);
                 return Some(Rewrite::new(held).desc(desc));
             }
         }

@@ -2147,7 +2147,7 @@ mod hold_tests {
     fn test_hold_transparency() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
-        let held = ctx.call("__hold", vec![x]);
+        let held = crate::hold::wrap_hold(&mut ctx, x);
         let display = format!(
             "{}",
             DisplayExpr {

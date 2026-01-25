@@ -56,8 +56,8 @@ fn pre_evaluate_for_gcd(ctx: &mut Context, expr: ExprId) -> ExprId {
                 return result;
             }
 
-            // __hold is an internal wrapper - unwrap it
-            "__hold" if !args.is_empty() => {
+            // __hold is an internal wrapper - unwrap it using canonical helper
+            _ if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Hold) && !args.is_empty() => {
                 return args[0]; // Just unwrap, don't recurse
             }
 
@@ -807,7 +807,7 @@ impl Rule for PolyGcdRule {
                 );
 
                 // Wrap result in __hold() to prevent further simplification
-                let held_gcd = ctx.call("__hold", vec![result]);
+                let held_gcd = cas_ast::hold::wrap_hold(ctx, result);
 
                 return Some(Rewrite::simple(held_gcd, description));
             }

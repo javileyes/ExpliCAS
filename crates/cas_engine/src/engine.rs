@@ -1575,6 +1575,7 @@ fn eval_function_checked(
         "sign" | "sgn" => Ok(arg_vals.first().copied().unwrap_or(0.0).signum()),
 
         // __hold is transparent
+        // TODO(N3-future): This uses string match; refactor to take fn_id parameter for BuiltinFn::Hold check
         "__hold" => {
             if let Some(&arg_id) = args.first() {
                 eval_f64_checked_depth(ctx, arg_id, var_map, opts, depth - 1)
@@ -1683,7 +1684,8 @@ fn eval_f64_depth(
                 "round" => Some(arg_vals.first()?.round()),
                 "sign" | "sgn" => Some(arg_vals.first()?.signum()),
 
-                // __hold is transparent for evaluation - just evaluate the held expression
+                // __hold is transparent for evaluation
+                // TODO(N3-future): This uses string match; consider using BuiltinFn::Hold check
                 "__hold" => {
                     if args.len() == 1 {
                         eval_f64_depth(ctx, args[0], var_map, depth - 1)

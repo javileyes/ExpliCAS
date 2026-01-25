@@ -94,10 +94,10 @@ impl crate::rule::Rule for TanTripleProductRule {
 
                 let result = if other_factors.is_empty() {
                     // Wrap in __hold to prevent expansion
-                    ctx.call("__hold", vec![tan_3u])
+                    cas_ast::hold::wrap_hold(ctx, tan_3u)
                 } else {
                     // Multiply tan(3u) with other factors
-                    let held_tan = ctx.call("__hold", vec![tan_3u]);
+                    let held_tan = cas_ast::hold::wrap_hold(ctx, tan_3u);
                     let mut product = held_tan;
                     for &f in &other_factors {
                         product = smart_mul(ctx, product, f);

@@ -403,7 +403,7 @@ define_rule!(
                 if new_expr != arg {
                     // Wrap in __hold() to prevent other rules from undoing the factorization
                     // (e.g., DifferenceOfSquaresRule converts (a-b)(a+b) back to a²-b²)
-                    let held = ctx.call("__hold", vec![new_expr]);
+                    let held = cas_ast::hold::wrap_hold(ctx, new_expr);
                     return Some(Rewrite::new(held).desc("Factorization"));
                 }
             }
@@ -785,7 +785,7 @@ define_rule!(
         let xyz = crate::rules::algebra::helpers::smart_mul(ctx, xy, bases[2]);
         let inner_result = crate::rules::algebra::helpers::smart_mul(ctx, three, xyz);
         // Wrap in __hold to prevent DistributeRule from expanding
-        let result = ctx.call("__hold", vec![inner_result]);
+        let result = cas_ast::hold::wrap_hold(ctx, inner_result);
 
         Some(
             Rewrite::new(result)

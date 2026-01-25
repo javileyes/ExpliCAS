@@ -7,7 +7,7 @@ use num_traits::{Signed, ToPrimitive};
 /// Threshold for using fast mod-p expansion in eager eval.
 /// Above this many estimated terms, use poly_ref instead of AST.
 pub const EAGER_EXPAND_MODP_THRESHOLD: u64 = 500;
-
+use cas_ast::hold::wrap_hold;
 /// Threshold for returning poly_ref instead of materializing AST.
 /// Below this, we materialize the full AST for display.
 pub const EXPAND_MATERIALIZE_LIMIT: usize = 1_000;
@@ -173,7 +173,7 @@ fn expand_to_poly_ref_or_hold(
     if n_terms <= EXPAND_MATERIALIZE_LIMIT {
         // Small enough to materialize - return __hold(AST)
         let expanded = multipoly_modp_to_expr(ctx, &poly, &vars);
-        Some(ctx.call("__hold", vec![expanded]))
+        Some(wrap_hold(ctx, expanded))
     } else {
         // Too large - store in PolyStore and return poly_result(id)
         let meta = PolyMeta {
@@ -208,7 +208,7 @@ pub fn expand_modp_safe(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
 
     let poly = expr_to_poly_modp(ctx, expr, p, &budget, &mut vars).ok()?;
     let expanded = multipoly_modp_to_expr(ctx, &poly, &vars);
-    Some(ctx.call("__hold", vec![expanded]))
+    Some(wrap_hold(ctx, expanded))
 }
 
 /// Expand with budget tracking, returning PassStats for unified budget charging.

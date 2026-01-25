@@ -24,7 +24,8 @@ fn strip_expand_wrapper(ctx: &Context, mut expr: ExprId) -> ExprId {
     loop {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             let name = ctx.sym_name(*fn_id);
-            if (name == "expand" || name == "__hold") && args.len() == 1 {
+            let is_hold = ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Hold);
+            if (name == "expand" || is_hold) && args.len() == 1 {
                 expr = args[0];
                 continue;
             }
@@ -234,13 +235,13 @@ pub fn compute_gcd_modp_with_factor_extraction(
                     use num_traits::One;
                     if n.is_one() {
                         // Wrap in __hold
-                        return Some(ctx.call("__hold", vec![common_expr]));
+                        return Some(cas_ast::hold::wrap_hold(ctx, common_expr));
                     }
                 }
 
                 // Otherwise return common * gcd_rest
                 let result = ctx.add(Expr::Mul(common_expr, gcd_rest));
-                return Some(ctx.call("__hold", vec![result]));
+                return Some(cas_ast::hold::wrap_hold(ctx, result));
             }
             Err(_) => {
                 // Fall through to direct computation
@@ -251,7 +252,7 @@ pub fn compute_gcd_modp_with_factor_extraction(
     // Step 3: No common factors or extraction failed - try direct GCD (no expand!)
     // The MultiPoly converter handles Pow(base, n) natively via pow() method
     match compute_gcd_modp_with_options(ctx, a0, b0, DEFAULT_PRIME, None, None) {
-        Ok(gcd_expr) => Some(ctx.call("__hold", vec![gcd_expr])),
+        Ok(gcd_expr) => Some(cas_ast::hold::wrap_hold(ctx, gcd_expr)),
         Err(_) => None,
     }
 }
@@ -450,7 +451,7 @@ impl Rule for PolyGcdModpRule {
                 match compute_gcd_modp_with_options(ctx, a, b, DEFAULT_PRIME, main_var, preset) {
                     Ok(gcd_expr) => {
                         // Wrap in __hold to prevent further simplification
-                        let held = ctx.call("__hold", vec![gcd_expr]);
+                        let held = cas_ast::hold::wrap_hold(ctx, gcd_expr);
 
                         return Some(Rewrite::simple(
                             held,
