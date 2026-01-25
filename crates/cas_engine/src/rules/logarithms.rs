@@ -2,7 +2,7 @@ use crate::define_rule;
 use crate::ordering::compare_expr;
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::smart_mul;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_traits::{One, Zero};
 use std::cmp::Ordering;
 
@@ -695,7 +695,7 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
         // This prevents matching ln(exp(x)) which should simplify to x directly
         if let Expr::Constant(cas_ast::Constant::E) = ctx.get(base) {
             if let Expr::Function(fname, _) = ctx.get(p_base) {
-                if ctx.sym_name(*fname) == "exp" {
+                if ctx.is_builtin(*fname, BuiltinFn::Exp) {
                     return None;
                 }
             }
@@ -867,7 +867,7 @@ impl crate::rule::Rule for LogAbsPowerRule {
         let Expr::Function(abs_name, abs_args) = ctx.get(p_base).clone() else {
             return None;
         };
-        if ctx.sym_name(abs_name) != "abs" || abs_args.len() != 1 {
+        if !ctx.is_builtin(abs_name, BuiltinFn::Abs) || abs_args.len() != 1 {
             return None;
         }
         let inner = abs_args[0]; // This is 'u' in |u|^n
@@ -935,10 +935,14 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
 
         // Match ln(arg) or log(base, arg)
         let (base_opt, arg) = match ctx.get(expr).clone() {
-            Expr::Function(fn_id, args) if ctx.sym_name(fn_id) == "ln" && args.len() == 1 => {
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(fn_id, BuiltinFn::Ln) && args.len() == 1 =>
+            {
                 (None, args[0])
             }
-            Expr::Function(fn_id, args) if ctx.sym_name(fn_id) == "log" && args.len() == 2 => {
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(fn_id, BuiltinFn::Log) && args.len() == 2 =>
+            {
                 (Some(args[0]), args[1])
             }
             _ => return None,
@@ -946,7 +950,9 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
 
         // Match abs(inner)
         let inner = match ctx.get(arg).clone() {
-            Expr::Function(fn_id, args) if ctx.sym_name(fn_id) == "abs" && args.len() == 1 => {
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(fn_id, BuiltinFn::Abs) && args.len() == 1 =>
+            {
                 args[0]
             }
             _ => return None,
@@ -2224,12 +2230,15 @@ impl crate::rule::Rule for AutoExpandLogRule {
         // Match log(arg) or ln(arg)
         let arg = match ctx.get(expr) {
             Expr::Function(fn_id, args)
-                if (ctx.sym_name(*fn_id) == "log" || ctx.sym_name(*fn_id) == "ln")
+                if (ctx.is_builtin(*fn_id, BuiltinFn::Log)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Ln))
                     && args.len() == 1 =>
             {
                 args[0]
             }
-            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "log" && args.len() == 2 => {
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(*fn_id, BuiltinFn::Log) && args.len() == 2 =>
+            {
                 args[1] // log(base, arg)
             }
             _ => return None,
@@ -2385,10 +2394,12 @@ fn expand_log_for_rule(
 ) -> Option<Rewrite> {
     // Get base (ln = natural log, log with 1 arg = base 10)
     let base = match ctx.get(_original).clone() {
-        Expr::Function(name, _) if ctx.sym_name(name) == "ln" => {
+        Expr::Function(name, _) if ctx.is_builtin(name, BuiltinFn::Ln) => {
             ctx.add(Expr::Constant(cas_ast::Constant::E))
         }
-        Expr::Function(fn_id, args) if ctx.sym_name(fn_id) == "log" && args.len() == 2 => args[0],
+        Expr::Function(fn_id, args) if ctx.is_builtin(fn_id, BuiltinFn::Log) && args.len() == 2 => {
+            args[0]
+        }
         Expr::Function(_, _) => {
             // log with 1 arg = base 10, use sentinel
             ExprId::from_raw(u32::MAX - 1)

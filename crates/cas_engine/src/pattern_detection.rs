@@ -1,4 +1,4 @@
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use std::cmp::Ordering;
 
 /// Check if expression equals 2
@@ -24,7 +24,7 @@ pub fn is_sec_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
             if is_two(ctx, *exp) {
                 match ctx.get(*base) {
                     Expr::Function(fn_id, args)
-                        if ctx.sym_name(*fn_id) == "sec" && args.len() == 1 =>
+                        if ctx.is_builtin(*fn_id, BuiltinFn::Sec) && args.len() == 1 =>
                     {
                         Some(args[0])
                     }
@@ -45,7 +45,7 @@ pub fn is_tan_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
             if is_two(ctx, *exp) {
                 match ctx.get(*base) {
                     Expr::Function(fn_id, args)
-                        if ctx.sym_name(*fn_id) == "tan" && args.len() == 1 =>
+                        if ctx.is_builtin(*fn_id, BuiltinFn::Tan) && args.len() == 1 =>
                     {
                         Some(args[0])
                     }
@@ -66,7 +66,7 @@ pub fn is_csc_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
             if is_two(ctx, *exp) {
                 match ctx.get(*base) {
                     Expr::Function(fn_id, args)
-                        if ctx.sym_name(*fn_id) == "csc" && args.len() == 1 =>
+                        if ctx.is_builtin(*fn_id, BuiltinFn::Csc) && args.len() == 1 =>
                     {
                         Some(args[0])
                     }
@@ -87,7 +87,7 @@ pub fn is_cot_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
             if is_two(ctx, *exp) {
                 match ctx.get(*base) {
                     Expr::Function(fn_id, args)
-                        if ctx.sym_name(*fn_id) == "cot" && args.len() == 1 =>
+                        if ctx.is_builtin(*fn_id, BuiltinFn::Cot) && args.len() == 1 =>
                     {
                         Some(args[0])
                     }

@@ -9,7 +9,7 @@
 
 use crate::pattern_marks::PatternMarks;
 use crate::phase::ExpandBudget;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_traits::{Signed, ToPrimitive, Zero};
 
 /// Scan expression tree and mark auto-expand contexts where expansion is beneficial.
@@ -598,19 +598,23 @@ struct LogInfo {
 /// Extract log info from a Function node
 fn extract_log_info(ctx: &Context, id: ExprId) -> Option<LogInfo> {
     match ctx.get(id) {
-        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "ln" && args.len() == 1 => {
+        Expr::Function(fn_id, args) if ctx.is_builtin(*fn_id, BuiltinFn::Ln) && args.len() == 1 => {
             Some(LogInfo {
                 arg: args[0],
                 base: None,
             })
         }
-        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "log" && args.len() == 1 => {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Log) && args.len() == 1 =>
+        {
             Some(LogInfo {
                 arg: args[0],
                 base: None,
             })
         }
-        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "log" && args.len() == 2 => {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Log) && args.len() == 2 =>
+        {
             Some(LogInfo {
                 arg: args[1],
                 base: Some(args[0]),
