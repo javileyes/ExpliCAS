@@ -79,7 +79,11 @@ pub fn expr_stats(ctx: &Context, expr: ExprId) -> ExprStatsJson {
 fn count_add_terms(ctx: &Context, expr: ExprId) -> Option<usize> {
     // Unwrap __hold wrapper if present (used to prevent further simplification of large expressions)
     let inner_expr = match ctx.get(expr) {
-        Expr::Function(name, args) if ctx.sym_name(*name) == "__hold" && args.len() == 1 => args[0],
+        Expr::Function(name, args)
+            if ctx.is_builtin(*name, cas_ast::BuiltinFn::Hold) && args.len() == 1 =>
+        {
+            args[0]
+        }
         _ => expr,
     };
 
