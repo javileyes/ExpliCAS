@@ -1275,7 +1275,7 @@ mod tests {
         // sin(#12)
         let e = parse("sin(#12)", &mut ctx).unwrap();
         if let Expr::Function(name, args) = ctx.get(e) {
-            assert_eq!(name, "sin");
+            assert_eq!(ctx.sym_name(*name), "sin");
             assert_eq!(args.len(), 1);
             if let Expr::SessionRef(id) = ctx.get(args[0]) {
                 assert_eq!(*id, 12);

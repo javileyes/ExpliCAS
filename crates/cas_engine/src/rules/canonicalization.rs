@@ -370,7 +370,8 @@ define_rule!(CanonicalizeDivRule, "Canonicalize Division", importance: crate::st
 
 define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
     let expr_data = ctx.get(expr).clone();
-    if let Expr::Function(fn_id, args) = expr_data { let name = ctx.sym_name(*fn_id);
+    if let Expr::Function(fn_id, args) = expr_data {
+        let name = ctx.sym_name(fn_id);
         if name == "sqrt" {
             if args.len() == 1 {
                 let arg = args[0];
@@ -762,7 +763,8 @@ impl crate::rule::Rule for ExpToEPowRule {
         }
 
         let expr_data = ctx.get(expr).clone();
-        if let Expr::Function(fn_id, args) = expr_data { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = expr_data {
+            let name = ctx.sym_name(fn_id);
             if name == "exp" && args.len() == 1 {
                 let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
                 let new_expr = ctx.add(Expr::Pow(e, args[0]));

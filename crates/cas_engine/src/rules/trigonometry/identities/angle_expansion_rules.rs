@@ -138,7 +138,7 @@ define_rule!(TrigPhaseShiftRule, "Trig Phase Shift", |ctx, expr| {
     let expr_data = ctx.get(expr).clone();
 
     if let Expr::Function(fn_id, args) = expr_data {
-        let name = ctx.sym_name(fn_id);
+        let name = ctx.sym_name(fn_id).to_string();
         if args.len() != 1 {
             return None;
         }

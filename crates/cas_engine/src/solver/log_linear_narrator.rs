@@ -377,7 +377,7 @@ fn try_rewrite_log_power(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
 
     match expr_data {
         // ln(a^exp) → exp·ln(a)
-        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "ln" && args.len() == 1 => {
+        Expr::Function(fn_id, args) if ctx.sym_name(fn_id) == "ln" && args.len() == 1 => {
             let inner = args[0];
             if let Expr::Pow(base, exp) = ctx.get(inner).clone() {
                 // Create exp * ln(base)
@@ -422,7 +422,7 @@ fn contains_ln_times_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
 
 /// Check if expression is a ln(...) call
 fn is_ln_call(ctx: &Context, expr: ExprId) -> bool {
-    matches!(ctx.get(expr), Expr::Function(name, _) if name == "ln")
+    matches!(ctx.get(expr), Expr::Function(name, _) if ctx.sym_name(*name) == "ln")
 }
 
 #[cfg(test)]

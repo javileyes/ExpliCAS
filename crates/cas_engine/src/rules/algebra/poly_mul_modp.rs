@@ -25,7 +25,7 @@ define_rule!(
     PhaseMask::TRANSFORM,
     |ctx, expr| {
         let (name, args) = match ctx.get(expr) {
-            Expr::Function(n, a) => (n.as_str(), a.clone()),
+            Expr::Function(fn_id, a) => (ctx.sym_name(*fn_id).to_string(), a.clone()),
             _ => return None,
         };
 
@@ -97,10 +97,7 @@ define_rule!(
         let nvars = ctx.num(meta.n_vars as i64);
         let modulus = ctx.num(meta.modulus as i64);
 
-        let result = ctx.add(Expr::Function(
-            "poly_result".to_string(),
-            vec![terms, degree, nvars, modulus],
-        ));
+        let result = ctx.call("poly_result", vec![terms, degree, nvars, modulus]);
 
         Some(Rewrite::new(result).desc(format!(
             "poly_mul_modp: {} terms, degree {}, {} vars (mod {})",
@@ -120,7 +117,7 @@ define_rule!(
     PhaseMask::TRANSFORM,
     |ctx, expr| {
         let (name, args) = match ctx.get(expr) {
-            Expr::Function(n, a) => (n.as_str(), a.clone()),
+            Expr::Function(fn_id, a) => (ctx.sym_name(*fn_id).to_string(), a.clone()),
             _ => return None,
         };
 
@@ -166,7 +163,8 @@ mod tests {
         let rewrite = result.unwrap();
 
         // Should be poly_result(terms, degree, vars, modulus)
-        if let Expr::Function(fn_id, args) = ctx.get(rewrite.new_expr) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(rewrite.new_expr) {
+            let name = ctx.sym_name(*fn_id);
             assert_eq!(name, "poly_result");
             assert_eq!(args.len(), 4);
         } else {

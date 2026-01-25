@@ -2206,7 +2206,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     id
                 }
             }
-            Expr::Function(fn_id, args) => self.transform_function(id, *fn_id, args.clone()),
+            Expr::Function(fn_id, args) => self.transform_function(id, fn_id, args.clone()),
             Expr::Matrix { rows, cols, data } => {
                 // Recursively simplify matrix elements
                 let mut new_data = Vec::new();

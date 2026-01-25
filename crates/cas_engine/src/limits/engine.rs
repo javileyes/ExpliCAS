@@ -247,8 +247,8 @@ mod tests {
         );
 
         // Should be residual Function("limit", ...)
-        if let Expr::Function(name, _) = ctx.get(r.expr) {
-            assert_eq!(name, "limit");
+        if let Expr::Function(fn_id, _) = ctx.get(r.expr) {
+            assert_eq!(ctx.sym_name(*fn_id), "limit");
         } else {
             panic!("Expected residual limit function");
         }

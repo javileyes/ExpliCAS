@@ -206,7 +206,7 @@ impl Repl {
                                 // Check if it is Equal function
                                 let context = &self.core.engine.simplifier.context;
                                 if let Expr::Function(name, args) = context.get(res) {
-                                    if name == "Equal" && args.len() == 2 {
+                                    if context.sym_name(*name) == "Equal" && args.len() == 2 {
                                         reply.push(ReplMsg::output(format!(
                                             "Result: {} = {}",
                                             clean_display_string(&format!(

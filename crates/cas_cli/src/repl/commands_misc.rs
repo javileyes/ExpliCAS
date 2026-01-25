@@ -21,9 +21,7 @@ impl Repl {
                     Ok(ctx.var(s))
                 } else {
                     match cas_parser::parse_statement(s, ctx) {
-                        Ok(Statement::Equation(eq)) => {
-                            Ok(ctx.call("Equal", vec![eq.lhs, eq.rhs]))
-                        }
+                        Ok(Statement::Equation(eq)) => Ok(ctx.call("Equal", vec![eq.lhs, eq.rhs])),
                         Ok(Statement::Expression(e)) => Ok(e),
                         Err(e) => Err(format!("{}", e)),
                     }
@@ -421,7 +419,14 @@ impl Repl {
             Ok(expr) => {
                 // Check if it's a function call
                 let expr_data = self.core.engine.simplifier.context.get(expr).clone();
-                if let Expr::Function(name, args) = expr_data {
+                if let Expr::Function(name_id, args) = expr_data {
+                    let name = self
+                        .core
+                        .engine
+                        .simplifier
+                        .context
+                        .sym_name(name_id)
+                        .to_string();
                     match name.as_str() {
                         "gcd" => {
                             if args.len() == 2 {

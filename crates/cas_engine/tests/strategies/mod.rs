@@ -197,7 +197,7 @@ fn add_recursive(ctx: &mut Context, re: RecursiveExpr) -> ExprId {
         }
         RecursiveExpr::Function(name, args) => {
             let arg_ids: Vec<ExprId> = args.into_iter().map(|a| add_recursive(ctx, a)).collect();
-            ctx.add(Expr::Function(name, arg_ids))
+            ctx.call(&name, arg_ids)
         }
     }
 }

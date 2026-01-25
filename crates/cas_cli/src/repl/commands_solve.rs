@@ -197,10 +197,18 @@ impl Repl {
     pub(crate) fn apply_weierstrass_recursive(&mut self, expr: cas_ast::ExprId) -> cas_ast::ExprId {
         use cas_ast::Expr;
 
-        match self.core.engine.simplifier.context.get(expr).clone() {
-            Expr::Function(name, args)
-                if matches!(name.as_str(), "sin" | "cos" | "tan") && args.len() == 1 =>
-            {
+        let expr_data = self.core.engine.simplifier.context.get(expr).clone();
+
+        // Check if it's a trig function first
+        if let Expr::Function(name_id, ref args) = expr_data {
+            let name = self
+                .core
+                .engine
+                .simplifier
+                .context
+                .sym_name(name_id)
+                .to_string();
+            if matches!(name.as_str(), "sin" | "cos" | "tan") && args.len() == 1 {
                 let arg = args[0];
 
                 // Build t = tan(x/2) as sin(x/2)/cos(x/2)
@@ -231,7 +239,7 @@ impl Repl {
                     .add(Expr::Div(sin_half, cos_half)); // t = tan(x/2)
 
                 // Apply appropriate transformation
-                match name.as_str() {
+                return match name.as_str() {
                     "sin" => {
                         // sin(x) → 2t/(1+t²)
                         let two = self.core.engine.simplifier.context.num(2);
@@ -292,8 +300,12 @@ impl Repl {
                             .add(Expr::Div(numerator, denominator))
                     }
                     _ => expr,
-                }
+                };
             }
+        }
+
+        // Handle other expression types
+        match expr_data {
             Expr::Add(l, r) => {
                 let new_l = self.apply_weierstrass_recursive(l);
                 let new_r = self.apply_weierstrass_recursive(r);
@@ -353,7 +365,7 @@ impl Repl {
                     .engine
                     .simplifier
                     .context
-                    .add(Expr::Function(name.clone(), new_args))
+                    .add(Expr::Function(name, new_args))
             }
             _ => expr, // Number, Variable, Constant, Matrix - leave as is
         }

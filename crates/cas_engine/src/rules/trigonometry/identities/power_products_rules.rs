@@ -19,9 +19,10 @@ fn extract_trig_pow6(ctx: &cas_ast::Context, term: ExprId) -> Option<(ExprId, &'
         if let Expr::Number(n) = ctx.get(*exp) {
             if n.is_integer() && *n.numer() == 6.into() {
                 // Check base is sin(arg) or cos(arg)
-                if let Expr::Function(fn_id, args) = ctx.get(*base) { let name = ctx.sym_name(*fn_id);
+                if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                    let name = ctx.sym_name(*fn_id);
                     if args.len() == 1 {
-                        match ctx.sym_name(*fn_id) {
+                        match name {
                             "sin" => return Some((args[0], "sin")),
                             "cos" => return Some((args[0], "cos")),
                             _ => {}
@@ -42,9 +43,10 @@ fn extract_trig_pow2(ctx: &cas_ast::Context, term: ExprId) -> Option<(ExprId, &'
         if let Expr::Number(n) = ctx.get(*exp) {
             if n.is_integer() && *n.numer() == 2.into() {
                 // Check base is sin(arg) or cos(arg)
-                if let Expr::Function(fn_id, args) = ctx.get(*base) { let name = ctx.sym_name(*fn_id);
+                if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                    let name = ctx.sym_name(*fn_id);
                     if args.len() == 1 {
-                        match ctx.sym_name(*fn_id) {
+                        match name {
                             "sin" => return Some((args[0], "sin")),
                             "cos" => return Some((args[0], "cos")),
                             _ => {}
@@ -233,7 +235,8 @@ define_rule!(
 
 /// Extract the argument from a trig function: sin(arg) → Some(arg), else None
 pub fn extract_trig_arg(ctx: &cas_ast::Context, id: ExprId, fn_name: &str) -> Option<ExprId> {
-    if let Expr::Function(fn_id, args) = ctx.get(id) { let name = ctx.sym_name(*fn_id);
+    if let Expr::Function(fn_id, args) = ctx.get(id) {
+        let name = ctx.sym_name(*fn_id);
         if name == fn_name && args.len() == 1 {
             return Some(args[0]);
         }
@@ -575,10 +578,7 @@ define_rule!(
 
             // Intermediate states
             let two = ctx.num(2);
-            let cos_half_diff = ctx.add(Expr::Function(
-                "cos".to_string(),
-                vec![half_diff_normalized],
-            ));
+            let cos_half_diff = ctx.call("cos", vec![half_diff_normalized]);
 
             // Intermediate numerator: 2·sin(avg)·cos(half_diff)
             let sin_avg_for_num = ctx.call("sin", vec![avg]);
@@ -588,10 +588,7 @@ define_rule!(
             // Intermediate denominator: 2·cos(avg)·cos(half_diff)
             let two_2 = ctx.num(2);
             let cos_avg_for_den = ctx.call("cos", vec![avg]);
-            let cos_half_diff_2 = ctx.add(Expr::Function(
-                "cos".to_string(),
-                vec![half_diff_normalized],
-            ));
+            let cos_half_diff_2 = ctx.call("cos", vec![half_diff_normalized]);
             let den_product = smart_mul(ctx, cos_avg_for_den, cos_half_diff_2);
             let intermediate_den = smart_mul(ctx, two_2, den_product);
 

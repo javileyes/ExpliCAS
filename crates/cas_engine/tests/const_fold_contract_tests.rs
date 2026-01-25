@@ -217,7 +217,9 @@ fn safe_preserves_non_perfect_sqrt() {
     );
 
     // sqrt(2) is not a perfect square, should not fold
-    assert!(matches!(ctx.get(result.expr), Expr::Function(name, _) if name == "sqrt"));
+    assert!(
+        matches!(ctx.get(result.expr), Expr::Function(name, _) if ctx.sym_name(*name) == "sqrt")
+    );
 }
 
 // ============================================================================

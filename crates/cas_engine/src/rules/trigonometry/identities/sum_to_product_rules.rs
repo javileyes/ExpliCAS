@@ -78,7 +78,8 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
         for &factor in &factors {
             if let Some(n) = as_number(ctx, factor) {
                 numeric_coeff *= n.clone();
-            } else if let Expr::Function(fn_id, args) = ctx.get(factor) { let name = ctx.sym_name(*fn_id);
+            } else if let Expr::Function(fn_id, args) = ctx.get(factor) {
+                let name = ctx.sym_name(*fn_id);
                 if name == "cos" && args.len() == 1 {
                     cos_args.push(args[0]);
                 } else {
@@ -403,7 +404,8 @@ define_rule!(
 
 fn collect_trig_args_recursive(ctx: &cas_ast::Context, expr: ExprId, args: &mut Vec<ExprId>) {
     match ctx.get(expr) {
-        Expr::Function(name, fargs) => {
+        Expr::Function(fn_id, fargs) => {
+            let name = ctx.sym_name(*fn_id);
             if (name == "sin" || name == "cos" || name == "tan") && fargs.len() == 1 {
                 args.push(fargs[0]);
             }
@@ -482,11 +484,12 @@ fn expand_trig_angle(
     let expr_data = ctx.get(expr).clone();
 
     // Check if this node is trig(large_angle)
-    if let Expr::Function(fn_id, args) = &expr_data { let name = ctx.sym_name(*fn_id);
+    if let Expr::Function(fn_id, args) = &expr_data {
+        let name = ctx.sym_name(*fn_id);
         if args.len() == 1
             && crate::ordering::compare_expr(ctx, args[0], large_angle) == Ordering::Equal
         {
-            match ctx.sym_name(*fn_id) {
+            match name {
                 "sin" => {
                     // sin(A) -> 2sin(A/2)cos(A/2)
                     let two = ctx.num(2);
@@ -576,7 +579,8 @@ fn expand_trig_angle(
                 expr
             }
         }
-        Expr::Function(name, args) => {
+        Expr::Function(fn_id, args) => {
+            let fn_name = ctx.sym_name(fn_id).to_string();
             let mut new_args = Vec::new();
             let mut changed = false;
             for arg in args {
@@ -587,7 +591,7 @@ fn expand_trig_angle(
                 new_args.push(na);
             }
             if changed {
-                ctx.add(Expr::Function(name, new_args))
+                ctx.call(&fn_name, new_args)
             } else {
                 expr
             }

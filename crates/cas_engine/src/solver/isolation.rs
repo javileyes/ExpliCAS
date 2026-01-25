@@ -1645,7 +1645,7 @@ pub fn isolate(
                     var.to_string(),
                     format!(
                         "Cannot invert function '{}' with {} arguments",
-                        name,
+                        simplifier.context.sym_name(fn_id),
                         args.len()
                     ),
                 ))

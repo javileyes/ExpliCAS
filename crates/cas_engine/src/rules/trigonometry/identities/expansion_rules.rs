@@ -1309,7 +1309,7 @@ define_rule!(
 
         let expr_data = ctx.get(expr).clone();
         if let Expr::Function(fn_id, args) = expr_data {
-            let name = ctx.sym_name(*fn_id);
+            let name = ctx.sym_name(fn_id).to_string();
             if args.len() == 1 && (name == "sin" || name == "cos") {
                 // Check for n * x where n is integer > 2
                 let inner = args[0];

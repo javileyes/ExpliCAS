@@ -26,7 +26,7 @@ use crate::config::CasConfig;
 /// Unwrap top-level __hold() wrapper (used for eager let bindings)
 fn unwrap_hold_top(ctx: &Context, expr: ExprId) -> ExprId {
     if let Expr::Function(name, args) = ctx.get(expr) {
-        if name == "__hold" && args.len() == 1 {
+        if ctx.sym_name(*name) == "__hold" && args.len() == 1 {
             return args[0];
         }
     }

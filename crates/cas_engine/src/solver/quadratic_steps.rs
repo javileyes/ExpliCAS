@@ -329,10 +329,7 @@ pub fn build_quadratic_substeps(
     // For both numeric and symbolic: show formula with ± notation
     // x = -b/2a ± √((b²-4ac)/4a²)
     // The post-pass simplifier will clean up numeric values
-    let plus_minus = ctx.add(Expr::Function(
-        "PlusMinus".to_string(),
-        vec![neg_b_over_2a, sqrt_rhs],
-    ));
+    let plus_minus = ctx.call("PlusMinus", vec![neg_b_over_2a, sqrt_rhs]);
     // No need to divide by 2a again - it's already incorporated in both terms
 
     let description = if is_real_only {

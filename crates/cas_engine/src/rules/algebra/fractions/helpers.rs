@@ -274,7 +274,7 @@ pub fn contains_irrational(ctx: &Context, expr: ExprId) -> bool {
                 false
             }
         }
-        Expr::Function(name, _) => name == "sqrt",
+        Expr::Function(name, _) => ctx.sym_name(*name) == "sqrt",
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
             contains_irrational(ctx, *l) || contains_irrational(ctx, *r)
         }

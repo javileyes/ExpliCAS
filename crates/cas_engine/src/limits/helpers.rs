@@ -61,10 +61,7 @@ pub fn mk_limit(ctx: &mut Context, expr: ExprId, var: ExprId, approach: Approach
             ctx.add(Expr::Neg(inf))
         }
     };
-    ctx.add(Expr::Function(
-        ctx.intern_symbol("limit"),
-        vec![expr, var, approach_sym],
-    ))
+    ctx.call("limit", vec![expr, var, approach_sym])
 }
 
 /// Determine the sign of infinity based on approach and power parity.

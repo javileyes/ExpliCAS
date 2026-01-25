@@ -1626,17 +1626,13 @@ impl SolverStrategy for UnwrapStrategy {
                         }
 
                         // Safe to take ln of both sides
-                        let ln_str = "ln".to_string();
-
                         // ln(A^x) -> x * ln(A)
                         // We construct x * ln(A) directly
-                        let ln_b = simplifier
-                            .context
-                            .add(Expr::Function(ln_str.clone(), vec![b]));
+                        let ln_b = simplifier.context.call("ln", vec![b]);
                         let new_lhs_part = simplifier.context.add(Expr::Mul(e, ln_b));
 
                         // ln(B)
-                        let ln_other = simplifier.context.add(Expr::Function(ln_str, vec![other]));
+                        let ln_other = simplifier.context.call("ln", vec![other]);
 
                         let new_eq = if is_lhs {
                             Equation {

@@ -26,7 +26,8 @@ define_rule!(
 
         let expr_data = ctx.get(expr).clone();
 
-        if let Expr::Function(fn_id, args) = expr_data { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = expr_data {
+            let name = ctx.sym_name(fn_id);
             if args.len() != 1 {
                 return None;
             }
@@ -87,8 +88,7 @@ define_rule!(
                             // sin(n·π - x) = (-1)^(n+1) · sin(x)
                             // n odd → (-1)^(n+1) = 1, so sin(x)
                             // n even → (-1)^(n+1) = -1, so -sin(x)
-                            let new_trig =
-                                ctx.call("sin", vec![new_angle]);
+                            let new_trig = ctx.call("sin", vec![new_angle]);
                             if n_parity_odd {
                                 (new_trig, format!("sin({}π - x) = sin(x)", n_candidate))
                             } else {
@@ -100,8 +100,7 @@ define_rule!(
                         } else {
                             // cos(n·π - x) = (-1)^n · cos(x)
                             // n odd → -cos(x), n even → cos(x)
-                            let new_trig =
-                                ctx.call("cos", vec![new_angle]);
+                            let new_trig = ctx.call("cos", vec![new_angle]);
                             if n_parity_odd {
                                 (
                                     ctx.add(Expr::Neg(new_trig)),
@@ -428,7 +427,8 @@ fn extract_cot_term(
     let inner_data = ctx.get(inner_term);
 
     // Check for cot(arg) directly
-    if let Expr::Function(fn_id, args) = inner_data { let name = ctx.sym_name(*fn_id);
+    if let Expr::Function(fn_id, args) = inner_data {
+        let name = ctx.sym_name(*fn_id);
         if name == "cot" && args.len() == 1 {
             // Coefficient is implicitly 1
             return Some((None, args[0], is_positive));
@@ -438,13 +438,15 @@ fn extract_cot_term(
     // Check for Mul(coef, cot(arg))
     if let Expr::Mul(l, r) = inner_data {
         // Check if right is cot
-        if let Expr::Function(fn_id, args) = ctx.get(*r) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(*r) {
+            let name = ctx.sym_name(*fn_id);
             if name == "cot" && args.len() == 1 {
                 return Some((Some(*l), args[0], is_positive));
             }
         }
         // Check if left is cot
-        if let Expr::Function(fn_id, args) = ctx.get(*l) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(*l) {
+            let name = ctx.sym_name(*fn_id);
             if name == "cot" && args.len() == 1 {
                 return Some((Some(*r), args[0], is_positive));
             }
@@ -464,7 +466,8 @@ fn extract_cot_term(
 
 /// Helper: Check if expr is tan(arg/2) and return Some(arg), i.e. the full angle
 fn extract_tan_half_angle(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
-    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let name = ctx.sym_name(*fn_id);
         if name == "tan" && args.len() == 1 {
             // Check if the argument is x/2 or (1/2)*x
             let arg = args[0];
@@ -836,7 +839,8 @@ impl WeierstrassSinIdentityZeroRule {
         rhs: ExprId,
     ) -> Option<Rewrite> {
         // Check if sin_side is sin(x)
-        if let Expr::Function(fn_id, args) = ctx.get(sin_side) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(sin_side) {
+            let name = ctx.sym_name(*fn_id);
             if name != "sin" || args.len() != 1 {
                 return None;
             }
@@ -931,7 +935,8 @@ impl WeierstrassCosIdentityZeroRule {
         rhs: ExprId,
     ) -> Option<Rewrite> {
         // Check if cos_side is cos(x)
-        if let Expr::Function(fn_id, args) = ctx.get(cos_side) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(cos_side) {
+            let name = ctx.sym_name(*fn_id);
             if name != "cos" || args.len() != 1 {
                 return None;
             }
@@ -1023,7 +1028,8 @@ impl crate::rule::Rule for Sin4xIdentityZeroRule {
 impl Sin4xIdentityZeroRule {
     fn try_match(&self, ctx: &mut cas_ast::Context, lhs: ExprId, rhs: ExprId) -> Option<Rewrite> {
         // LHS should be sin(4*t)
-        if let Expr::Function(fn_id, args) = ctx.get(lhs) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(lhs) {
+            let name = ctx.sym_name(*fn_id);
             if name != "sin" || args.len() != 1 {
                 return None;
             }
@@ -1140,7 +1146,8 @@ impl Sin4xIdentityZeroRule {
         if let Expr::Pow(base, exp) = ctx.get(expr) {
             if let Expr::Number(n) = ctx.get(*exp) {
                 if *n == num_rational::BigRational::from_integer(2.into()) {
-                    if let Expr::Function(fn_id, args) = ctx.get(*base) { let name = ctx.sym_name(*fn_id);
+                    if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                        let name = ctx.sym_name(*fn_id);
                         if name == "sin" && args.len() == 1 {
                             return crate::ordering::compare_expr(ctx, args[0], t)
                                 == std::cmp::Ordering::Equal;
@@ -1156,7 +1163,8 @@ impl Sin4xIdentityZeroRule {
         if let Expr::Pow(base, exp) = ctx.get(expr) {
             if let Expr::Number(n) = ctx.get(*exp) {
                 if *n == num_rational::BigRational::from_integer(2.into()) {
-                    if let Expr::Function(fn_id, args) = ctx.get(*base) { let name = ctx.sym_name(*fn_id);
+                    if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                        let name = ctx.sym_name(*fn_id);
                         if name == "cos" && args.len() == 1 {
                             return crate::ordering::compare_expr(ctx, args[0], t)
                                 == std::cmp::Ordering::Equal;
@@ -1229,7 +1237,8 @@ impl crate::rule::Rule for TanDifferenceIdentityZeroRule {
 impl TanDifferenceIdentityZeroRule {
     fn try_match(&self, ctx: &mut cas_ast::Context, lhs: ExprId, rhs: ExprId) -> Option<Rewrite> {
         // LHS should be tan(a - b)
-        if let Expr::Function(fn_id, args) = ctx.get(lhs) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(lhs) {
+            let name = ctx.sym_name(*fn_id);
             if name != "tan" || args.len() != 1 {
                 return None;
             }
@@ -1340,9 +1349,11 @@ impl TanDifferenceIdentityZeroRule {
                 let (tan1, tan2) = (*ml, *mr);
 
                 // Check if both are tan functions
-                if let (Expr::Function(n1, args1), Expr::Function(n2, args2)) =
+                if let (Expr::Function(fn_id1, args1), Expr::Function(fn_id2, args2)) =
                     (ctx.get(tan1), ctx.get(tan2))
                 {
+                    let n1 = ctx.sym_name(*fn_id1);
+                    let n2 = ctx.sym_name(*fn_id2);
                     if n1 == "tan" && n2 == "tan" && args1.len() == 1 && args2.len() == 1 {
                         let arg1 = args1[0];
                         let arg2 = args2[0];
@@ -1555,7 +1566,8 @@ define_rule!(
 // =============================================================================
 
 define_rule!(TanDifferenceRule, "Tangent Difference", |ctx, expr| {
-    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let name = ctx.sym_name(*fn_id);
         if name == "tan" && args.len() == 1 {
             let arg = args[0];
             // Check if argument is a - b
@@ -1621,7 +1633,8 @@ define_rule!(
                 if let Expr::Pow(base, exp) = ctx.get(*inner) {
                     if let Expr::Number(n) = ctx.get(*exp) {
                         if *n == num_rational::BigRational::from_integer(2.into()) {
-                            if let Expr::Function(fname, args) = ctx.get(*base) {
+                            if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                                let fname = ctx.sym_name(*fn_id);
                                 if fname == "tanh" && args.len() == 1 {
                                     tanh2_idx = Some(i);
                                     tanh_arg = Some(args[0]);

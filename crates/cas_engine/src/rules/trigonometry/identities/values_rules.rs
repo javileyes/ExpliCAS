@@ -482,7 +482,7 @@ impl crate::rule::Rule for TanToSinCosRule {
 
         // Original conversion logic
         if let Expr::Function(fn_id, args) = expr_data {
-            let name = ctx.sym_name(*fn_id);
+            let name = ctx.sym_name(fn_id);
             if name == "tan" && args.len() == 1 {
                 // tan(x) -> sin(x) / cos(x)
                 let sin_x = ctx.call("sin", vec![args[0]]);

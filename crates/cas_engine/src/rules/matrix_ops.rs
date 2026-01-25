@@ -161,11 +161,11 @@ impl SimpleRule for MatrixFunctionRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
-            let name = name.clone();
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id).to_string();
             let args = args.clone();
 
-            match ctx.sym_name(*fn_id) {
+            match name.as_str() {
                 "det" | "determinant" => {
                     if args.len() == 1 {
                         if let Some(matrix) = Matrix::from_expr(ctx, args[0]) {
@@ -224,29 +224,24 @@ impl SimpleRule for TransposeProductRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
-            let name = name.clone();
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id).to_string();
             let args = args.clone();
 
             if (name == "transpose" || name == "T") && args.len() == 1 {
                 // Check if arg is matmul(A, B)
-                if let Expr::Function(inner_name, inner_args) = ctx.get(args[0]) {
-                    let inner_name = inner_name.clone();
+                if let Expr::Function(inner_fn_id, inner_args) = ctx.get(args[0]) {
+                    let inner_name = ctx.sym_name(*inner_fn_id).to_string();
                     let inner_args = inner_args.clone();
 
-                    if ctx.sym_name(*inner_name) == "matmul" && inner_args.len() == 2 {
+                    if inner_name == "matmul" && inner_args.len() == 2 {
                         let a = inner_args[0];
                         let b = inner_args[1];
 
                         // Build: matmul(transpose(B), transpose(A))
-                        let transposed_b =
-                            ctx.call("transpose", vec![b]);
-                        let transposed_a =
-                            ctx.call("transpose", vec![a]);
-                        let result = ctx.add(Expr::Function(
-                            "matmul".to_string(),
-                            vec![transposed_b, transposed_a],
-                        ));
+                        let transposed_b = ctx.call("transpose", vec![b]);
+                        let transposed_a = ctx.call("transpose", vec![a]);
+                        let result = ctx.call("matmul", vec![transposed_b, transposed_a]);
 
                         return Some(Rewrite::new(result).desc("(AB)^T = B^T·A^T"));
                     }

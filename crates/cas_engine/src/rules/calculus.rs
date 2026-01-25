@@ -336,7 +336,7 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
 
     // Trig Rules & Exponential with Linear Substitution
     if let Expr::Function(fn_id, args) = expr_data {
-        let name = ctx.sym_name(*fn_id);
+        let name = ctx.sym_name(fn_id).to_string();
         if args.len() == 1 {
             let arg = args[0];
             if let Some((a, _)) = get_linear_coeffs(ctx, arg, var) {
@@ -346,7 +346,7 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                     false
                 };
 
-                match ctx.sym_name(*fn_id) {
+                match name.as_str() {
                     "sin" => {
                         // integrate(sin(ax+b)) = -cos(ax+b)/a
                         let cos_arg = ctx.call("cos", vec![arg]);

@@ -738,9 +738,9 @@ fn stable_expr_hash(ctx: &Context, expr: ExprId) -> u64 {
                 let h = hash_expr(ctx, *base, h);
                 hash_expr(ctx, *exp, h)
             }
-            Some(cas_ast::Expr::Function(name, args)) => {
+            Some(cas_ast::Expr::Function(name_id, args)) => {
                 let mut h = hash_combine(h, b'F');
-                for b in name.bytes() {
+                for b in ctx.sym_name(*name_id).bytes() {
                     h = hash_combine(h, b);
                 }
                 for arg in args {

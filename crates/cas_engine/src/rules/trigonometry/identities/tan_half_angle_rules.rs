@@ -236,14 +236,14 @@ define_rule!(
                     let num_arg = num_args[0];
                     let den_arg = den_args[0];
 
-                    let num_name = ctx.sym_name(num_fn_id);
-                    let den_name = ctx.sym_name(den_fn_id);
+                    let num_name = ctx.sym_name(num_fn_id).to_string();
+                    let den_name = ctx.sym_name(den_fn_id).to_string();
 
                     // Check same argument
                     if crate::ordering::compare_expr(ctx, num_arg, den_arg)
                         == std::cmp::Ordering::Equal
                     {
-                        let result_name = match (num_name, den_name) {
+                        let result_name = match (num_name.as_str(), den_name.as_str()) {
                             ("sin", "cos") => Some("tan"),
                             ("cos", "sin") => Some("cot"),
                             _ => None,

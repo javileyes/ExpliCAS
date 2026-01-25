@@ -30,7 +30,7 @@ fn eval_expr(ctx: &Context, id: cas_ast::ExprId, x_val: f64) -> f64 {
         Expr::Div(l, r) => eval_expr(ctx, *l, x_val) / eval_expr(ctx, *r, x_val),
         Expr::Neg(inner) => -eval_expr(ctx, *inner, x_val),
         Expr::Pow(base, exp) => eval_expr(ctx, *base, x_val).powf(eval_expr(ctx, *exp, x_val)),
-        Expr::Function(name, args) if name == "sqrt" && args.len() == 1 => {
+        Expr::Function(name, args) if ctx.sym_name(*name) == "sqrt" && args.len() == 1 => {
             eval_expr(ctx, args[0], x_val).sqrt()
         }
         _ => f64::NAN,

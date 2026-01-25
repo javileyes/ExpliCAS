@@ -461,10 +461,7 @@ fn compute_prime_factors(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
         } else {
             let exp_expr = ctx.num(exp);
             // Use "factored_pow" to prevent EvaluateNumericPower from simplifying 2^2 -> 4
-            exprs.push(ctx.add(Expr::Function(
-                "factored_pow".to_string(),
-                vec![base_expr, exp_expr],
-            )));
+            exprs.push(ctx.call("factored_pow", vec![base_expr, exp_expr]));
         }
     }
 

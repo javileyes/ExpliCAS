@@ -75,7 +75,8 @@ define_rule!(
     "Evaluate Reciprocal Trig Functions",
     Some(vec!["Function"]),
     |ctx, expr| {
-        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id);
             if args.len() == 1 {
                 let arg = args[0];
                 for (func, check, build, desc) in EVAL_RULES {
@@ -105,12 +106,14 @@ define_rule!(
     "Reciprocal Trig Composition",
     Some(vec!["Function"]),
     |ctx, expr| {
-        if let Expr::Function(outer_name, outer_args) = ctx.get(expr) {
+        if let Expr::Function(outer_fn_id, outer_args) = ctx.get(expr) {
             if outer_args.len() == 1 {
                 let inner_expr = outer_args[0];
-                if let Expr::Function(inner_name, inner_args) = ctx.get(inner_expr) {
+                if let Expr::Function(inner_fn_id, inner_args) = ctx.get(inner_expr) {
                     if inner_args.len() == 1 {
                         let x = inner_args[0];
+                        let outer_name = ctx.sym_name(*outer_fn_id);
+                        let inner_name = ctx.sym_name(*inner_fn_id);
                         for (outer, inner) in COMPOSITION_PAIRS {
                             if outer_name == *outer && inner_name == *inner {
                                 return Some(
@@ -149,16 +152,16 @@ define_rule!(
     "Reciprocal Trig Negative Argument",
     Some(vec!["Function"]),
     |ctx, expr| {
-        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id);
             if args.len() == 1 {
                 let arg = args[0];
                 if let Expr::Neg(inner) = ctx.get(arg) {
                     let inner = *inner;
-                    let name_str = ctx.sym_name(*fn_id);
 
                     for (func, behavior) in NEG_BEHAVIORS {
-                        if name_str == *func {
-                            let f_inner = ctx.add(Expr::Function(func.to_string(), vec![inner]));
+                        if name == *func {
+                            let f_inner = ctx.call(func, vec![inner]);
                             let (new_expr, desc) = match behavior {
                                 NegBehavior::Odd => (
                                     ctx.add(Expr::Neg(f_inner)),

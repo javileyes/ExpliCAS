@@ -1209,8 +1209,8 @@ mod tests {
         // Result should be cos²(x)
         if let Expr::Mul(_coeff, pow) = ctx.get(rewrite.new_expr) {
             if let Expr::Pow(base, _) = ctx.get(*pow) {
-                if let Expr::Function(name, _) = ctx.get(*base) {
-                    assert_eq!(name, "cos");
+                if let Expr::Function(name_id, _) = ctx.get(*base) {
+                    assert_eq!(ctx.sym_name(*name_id), "cos");
                 }
             }
         }

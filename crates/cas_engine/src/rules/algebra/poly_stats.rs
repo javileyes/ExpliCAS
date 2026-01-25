@@ -17,7 +17,8 @@ impl SimpleRule for PolyStatsRule {
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         // Match: poly_stats(poly_result(id))
-        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id);
             if name != "poly_stats" || args.len() != 1 {
                 return None;
             }
@@ -25,7 +26,8 @@ impl SimpleRule for PolyStatsRule {
             let arg = args[0];
 
             // Extract poly_result(id)
-            if let Expr::Function(inner_name, inner_args) = ctx.get(arg) {
+            if let Expr::Function(inner_fn_id, inner_args) = ctx.get(arg) {
+                let inner_name = ctx.sym_name(*inner_fn_id);
                 if inner_name != "poly_result" || inner_args.len() != 1 {
                     return None;
                 }
@@ -47,10 +49,7 @@ impl SimpleRule for PolyStatsRule {
                             // repr indicator: "modp" for modular, "exact" for exact
                             let repr = ctx.var("modp");
 
-                            let result = ctx.add(Expr::Function(
-                                "poly_info".to_string(),
-                                vec![poly_id, terms, nvars, repr],
-                            ));
+                            let result = ctx.call("poly_info", vec![poly_id, terms, nvars, repr]);
 
                             // Materialization threshold based on EXPAND_MATERIALIZE_LIMIT
                             let can_materialize = meta.n_terms <= 50_000;
@@ -88,7 +87,8 @@ impl SimpleRule for PolyToExprRule {
         use crate::rules::algebra::gcd_modp::multipoly_modp_to_expr;
 
         // Match: poly_to_expr(poly_result(id)) or poly_to_expr(poly_result(id), max_terms)
-        if let Expr::Function(fn_id, args) = ctx.get(expr).clone() { let name = ctx.sym_name(fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(expr).clone() {
+            let name = ctx.sym_name(fn_id);
             if name != "poly_to_expr" || args.is_empty() || args.len() > 2 {
                 return None;
             }
@@ -105,7 +105,8 @@ impl SimpleRule for PolyToExprRule {
             };
 
             // Extract poly_result(id)
-            if let Expr::Function(inner_name, inner_args) = ctx.get(arg) {
+            if let Expr::Function(inner_fn_id, inner_args) = ctx.get(arg) {
+                let inner_name = ctx.sym_name(*inner_fn_id);
                 if inner_name != "poly_result" || inner_args.len() != 1 {
                     return None;
                 }
@@ -171,7 +172,8 @@ impl SimpleRule for PolyPrintRule {
         use crate::poly_store::thread_local_get_for_materialize;
 
         // Match: poly_print(poly_result(id)) or poly_print(poly_result(id), max_terms)
-        if let Expr::Function(fn_id, args) = ctx.get(expr).clone() { let name = ctx.sym_name(fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(expr).clone() {
+            let name = ctx.sym_name(fn_id);
             if name != "poly_print" || args.is_empty() || args.len() > 2 {
                 return None;
             }
@@ -188,7 +190,8 @@ impl SimpleRule for PolyPrintRule {
             };
 
             // Extract poly_result(id)
-            if let Expr::Function(inner_name, inner_args) = ctx.get(arg) {
+            if let Expr::Function(inner_fn_id, inner_args) = ctx.get(arg) {
+                let inner_name = ctx.sym_name(*inner_fn_id);
                 if inner_name != "poly_result" || inner_args.len() != 1 {
                     return None;
                 }
@@ -317,7 +320,8 @@ impl SimpleRule for PolyLatexRule {
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         use crate::poly_store::thread_local_get_for_materialize;
 
-        if let Expr::Function(fn_id, args) = ctx.get(expr).clone() { let name = ctx.sym_name(fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(expr).clone() {
+            let name = ctx.sym_name(fn_id);
             if name != "poly_latex" || args.is_empty() || args.len() > 2 {
                 return None;
             }
@@ -333,7 +337,8 @@ impl SimpleRule for PolyLatexRule {
                 100 // LaTeX default is smaller
             };
 
-            if let Expr::Function(inner_name, inner_args) = ctx.get(arg) {
+            if let Expr::Function(inner_fn_id, inner_args) = ctx.get(arg) {
+                let inner_name = ctx.sym_name(*inner_fn_id);
                 if inner_name != "poly_result" || inner_args.len() != 1 {
                     return None;
                 }

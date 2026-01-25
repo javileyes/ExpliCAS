@@ -146,10 +146,10 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
 
         match stmt {
             cas_parser::Statement::Equation(eq) => {
-                let eq_expr = engine.simplifier.context.add(cas_ast::Expr::Function(
-                    "Equal".to_string(),
-                    vec![eq.lhs, eq.rhs],
-                ));
+                let eq_expr = engine
+                    .simplifier
+                    .context
+                    .call("Equal", vec![eq.lhs, eq.rhs]);
 
                 EvalRequest {
                     raw_input: args.expr.clone(),
@@ -165,10 +165,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
             cas_parser::Statement::Expression(expr) => {
                 // Expression treated as equation = 0: solve(expr, var) means expr = 0
                 let zero = engine.simplifier.context.num(0);
-                let eq_expr = engine.simplifier.context.add(cas_ast::Expr::Function(
-                    "Equal".to_string(),
-                    vec![expr, zero],
-                ));
+                let eq_expr = engine.simplifier.context.call("Equal", vec![expr, zero]);
 
                 EvalRequest {
                     raw_input: args.expr.clone(),
@@ -191,10 +188,10 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
         match stmt {
             cas_parser::Statement::Equation(eq) => {
                 // For equations, use Solve action with default variable detection
-                let eq_expr = engine.simplifier.context.add(cas_ast::Expr::Function(
-                    "Equal".to_string(),
-                    vec![eq.lhs, eq.rhs],
-                ));
+                let eq_expr = engine
+                    .simplifier
+                    .context
+                    .call("Equal", vec![eq.lhs, eq.rhs]);
 
                 // Detect solve variable from equation (prefer 'x' if present, else first variable found)
                 let var = detect_solve_variable(&engine.simplifier.context, eq.lhs, eq.rhs);
