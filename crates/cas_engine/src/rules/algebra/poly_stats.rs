@@ -3,7 +3,7 @@
 //! Provides `poly_stats(poly_result(id))` to show polynomial metadata
 //! without materializing the full AST.
 
-use crate::poly_store::{thread_local_meta, PolyId};
+use crate::poly_store::thread_local_meta;
 use crate::rule::{Rewrite, SimpleRule};
 use cas_ast::{Context, Expr, ExprId};
 
@@ -25,47 +25,35 @@ impl SimpleRule for PolyStatsRule {
 
             let arg = args[0];
 
-            // Extract poly_result(id)
-            if let Expr::Function(inner_fn_id, inner_args) = ctx.get(arg) {
-                let inner_name = ctx.sym_name(*inner_fn_id);
-                if inner_name != "poly_result" || inner_args.len() != 1 {
-                    return None;
-                }
+            // Extract poly_result(id) using canonical helper
+            let id = crate::poly_result::parse_poly_result_id(ctx, arg)?;
 
-                // Extract ID
-                if let Expr::Number(n) = ctx.get(inner_args[0]) {
-                    if let Ok(id) = n.to_integer().try_into() {
-                        let id: PolyId = id;
+            // Get metadata from thread-local store
+            if let Some(meta) = thread_local_meta(id) {
+                // Build human-friendly result with clear labeling
+                // Format: poly_info(id, terms, vars, repr)
+                // where repr = "modp" indicates modular arithmetic
+                let poly_id = ctx.num(id as i64);
+                let terms = ctx.num(meta.n_terms as i64);
+                let nvars = ctx.num(meta.n_vars as i64);
 
-                        // Get metadata from thread-local store
-                        if let Some(meta) = thread_local_meta(id) {
-                            // Build human-friendly result with clear labeling
-                            // Format: poly_info(id, terms, vars, repr)
-                            // where repr = "modp" indicates modular arithmetic
-                            let poly_id = ctx.num(id as i64);
-                            let terms = ctx.num(meta.n_terms as i64);
-                            let nvars = ctx.num(meta.n_vars as i64);
+                // repr indicator: "modp" for modular, "exact" for exact
+                let repr = ctx.var("modp");
 
-                            // repr indicator: "modp" for modular, "exact" for exact
-                            let repr = ctx.var("modp");
+                let result = ctx.call("poly_info", vec![poly_id, terms, nvars, repr]);
 
-                            let result = ctx.call("poly_info", vec![poly_id, terms, nvars, repr]);
+                // Materialization threshold based on EXPAND_MATERIALIZE_LIMIT
+                let can_materialize = meta.n_terms <= 50_000;
+                let materialize_note = if can_materialize {
+                    format!("materializable via poly_to_expr(poly_result({}))", id)
+                } else {
+                    "too large to materialize".to_string()
+                };
 
-                            // Materialization threshold based on EXPAND_MATERIALIZE_LIMIT
-                            let can_materialize = meta.n_terms <= 50_000;
-                            let materialize_note = if can_materialize {
-                                format!("materializable via poly_to_expr(poly_result({}))", id)
-                            } else {
-                                "too large to materialize".to_string()
-                            };
-
-                            return Some(Rewrite::new(result).desc(format!(
-                                "Poly #{}: {} terms, {} vars, repr=modp, {}",
-                                id, meta.n_terms, meta.n_vars, materialize_note
-                            )));
-                        }
-                    }
-                }
+                return Some(Rewrite::new(result).desc(format!(
+                    "Poly #{}: {} terms, {} vars, repr=modp, {}",
+                    id, meta.n_terms, meta.n_vars, materialize_note
+                )));
             }
         }
 
@@ -104,50 +92,36 @@ impl SimpleRule for PolyToExprRule {
                 50_000 // Default limit
             };
 
-            // Extract poly_result(id)
-            if let Expr::Function(inner_fn_id, inner_args) = ctx.get(arg) {
-                let inner_name = ctx.sym_name(*inner_fn_id);
-                if inner_name != "poly_result" || inner_args.len() != 1 {
-                    return None;
+            // Extract poly_result(id) using canonical helper
+            let id = crate::poly_result::parse_poly_result_id(ctx, arg)?;
+
+            // Get poly from thread-local store
+            if let Some((meta, poly)) = thread_local_get_for_materialize(id) {
+                // Check limit
+                if meta.n_terms > max_terms {
+                    // Return error message
+                    let msg = ctx.var(&format!(
+                        "Error: {} terms exceeds limit {}",
+                        meta.n_terms, max_terms
+                    ));
+                    return Some(Rewrite::new(msg).desc(format!(
+                        "poly_to_expr: {} terms > limit {}",
+                        meta.n_terms, max_terms
+                    )));
                 }
 
-                // Extract ID
-                if let Expr::Number(n) = ctx.get(inner_args[0]) {
-                    if let Ok(id) = n.to_integer().try_into() {
-                        let id: crate::poly_store::PolyId = id;
-
-                        // Get poly from thread-local store
-                        if let Some((meta, poly)) = thread_local_get_for_materialize(id) {
-                            // Check limit
-                            if meta.n_terms > max_terms {
-                                // Return error message
-                                let msg = ctx.var(&format!(
-                                    "Error: {} terms exceeds limit {}",
-                                    meta.n_terms, max_terms
-                                ));
-                                return Some(Rewrite::new(msg).desc(format!(
-                                    "poly_to_expr: {} terms > limit {}",
-                                    meta.n_terms, max_terms
-                                )));
-                            }
-
-                            // Materialize
-                            let mut vars = VarTable::new();
-                            for name in &meta.var_names {
-                                vars.get_or_insert(name);
-                            }
-
-                            let materialized = multipoly_modp_to_expr(ctx, &poly, &vars);
-
-                            return Some(
-                                Rewrite::new(materialized).desc(format!(
-                                    "Materialized polynomial: {} terms",
-                                    meta.n_terms
-                                )),
-                            );
-                        }
-                    }
+                // Materialize
+                let mut vars = VarTable::new();
+                for name in &meta.var_names {
+                    vars.get_or_insert(name);
                 }
+
+                let materialized = multipoly_modp_to_expr(ctx, &poly, &vars);
+
+                return Some(
+                    Rewrite::new(materialized)
+                        .desc(format!("Materialized polynomial: {} terms", meta.n_terms)),
+                );
             }
         }
 
@@ -189,40 +163,27 @@ impl SimpleRule for PolyPrintRule {
                 1000 // Default limit for printing
             };
 
-            // Extract poly_result(id)
-            if let Expr::Function(inner_fn_id, inner_args) = ctx.get(arg) {
-                let inner_name = ctx.sym_name(*inner_fn_id);
-                if inner_name != "poly_result" || inner_args.len() != 1 {
-                    return None;
-                }
+            // Extract poly_result(id) using canonical helper
+            let id = crate::poly_result::parse_poly_result_id(ctx, arg)?;
 
-                // Extract ID
-                if let Expr::Number(n) = ctx.get(inner_args[0]) {
-                    if let Ok(id) = n.to_integer().try_into() {
-                        let id: crate::poly_store::PolyId = id;
+            // Get poly from thread-local store
+            if let Some((meta, poly)) = thread_local_get_for_materialize(id) {
+                // Format polynomial with truncation
+                let formatted = format_poly_with_limit(&poly, &meta.var_names, max_terms);
 
-                        // Get poly from thread-local store
-                        if let Some((meta, poly)) = thread_local_get_for_materialize(id) {
-                            // Format polynomial with truncation
-                            let formatted =
-                                format_poly_with_limit(&poly, &meta.var_names, max_terms);
+                // Return as a variable (string representation)
+                let result = ctx.var(&formatted);
 
-                            // Return as a variable (string representation)
-                            let result = ctx.var(&formatted);
+                let desc = if meta.n_terms > max_terms {
+                    format!(
+                        "Formatted polynomial: {} of {} terms shown (no AST)",
+                        max_terms, meta.n_terms
+                    )
+                } else {
+                    format!("Formatted polynomial: {} terms (no AST)", meta.n_terms)
+                };
 
-                            let desc = if meta.n_terms > max_terms {
-                                format!(
-                                    "Formatted polynomial: {} of {} terms shown (no AST)",
-                                    max_terms, meta.n_terms
-                                )
-                            } else {
-                                format!("Formatted polynomial: {} terms (no AST)", meta.n_terms)
-                            };
-
-                            return Some(Rewrite::new(result).desc(desc));
-                        }
-                    }
-                }
+                return Some(Rewrite::new(result).desc(desc));
             }
         }
 
@@ -337,26 +298,17 @@ impl SimpleRule for PolyLatexRule {
                 100 // LaTeX default is smaller
             };
 
-            if let Expr::Function(inner_fn_id, inner_args) = ctx.get(arg) {
-                let inner_name = ctx.sym_name(*inner_fn_id);
-                if inner_name != "poly_result" || inner_args.len() != 1 {
-                    return None;
-                }
+            // Extract poly_result(id) using canonical helper
+            let id = crate::poly_result::parse_poly_result_id(ctx, arg)?;
 
-                if let Expr::Number(n) = ctx.get(inner_args[0]) {
-                    if let Ok(id) = n.to_integer().try_into() {
-                        let id: crate::poly_store::PolyId = id;
-
-                        if let Some((meta, poly)) = thread_local_get_for_materialize(id) {
-                            let formatted = format_poly_latex(&poly, &meta.var_names, max_terms);
-                            let result = ctx.var(&formatted);
-                            return Some(Rewrite::new(result).desc(format!(
-                                "LaTeX polynomial: {} terms",
-                                meta.n_terms.min(max_terms)
-                            )));
-                        }
-                    }
-                }
+            // Get poly from thread-local store
+            if let Some((meta, poly)) = thread_local_get_for_materialize(id) {
+                let formatted = format_poly_latex(&poly, &meta.var_names, max_terms);
+                let result = ctx.var(&formatted);
+                return Some(Rewrite::new(result).desc(format!(
+                    "LaTeX polynomial: {} terms",
+                    meta.n_terms.min(max_terms)
+                )));
             }
         }
         None

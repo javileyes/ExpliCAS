@@ -261,6 +261,16 @@ fn expr_to_poly_modp_inner(
     budget: &PolyModpBudget,
     vars: &mut VarTable,
 ) -> Result<MultiPolyModP, PolyConvError> {
+    // Early return for __hold - strip and recurse (using canonical helper)
+    if let Some(inner) = cas_ast::hold::unwrap_hold_if_wrapped(ctx, expr) {
+        return expr_to_poly_modp_inner(ctx, inner, p, budget, vars);
+    }
+
+    // Early return for poly_result - retrieve from PolyStore (using canonical helper)
+    if let Some(arg) = crate::poly_result::poly_result_arg(ctx, expr) {
+        return poly_result_to_modp(ctx, p, vars, arg);
+    }
+
     match ctx.get(expr) {
         Expr::Number(n) => {
             // Convert rational to mod p
@@ -345,16 +355,9 @@ fn expr_to_poly_modp_inner(
             Ok(result)
         }
 
-        Expr::Function(ref name, ref args) => {
+        // __hold and poly_result are handled by early returns above
+        Expr::Function(ref name, _) => {
             let fn_name = ctx.sym_name(*name);
-            // Handle __hold by stripping
-            if fn_name == "__hold" && args.len() == 1 {
-                return expr_to_poly_modp_inner(ctx, args[0], p, budget, vars);
-            }
-            // Handle poly_result(id) - retrieve from PolyStore with remapping
-            if fn_name == "poly_result" && args.len() == 1 {
-                return poly_result_to_modp(ctx, p, vars, args[0]);
-            }
             Err(PolyConvError::UnsupportedExpr(format!(
                 "function {}",
                 fn_name
@@ -381,6 +384,12 @@ fn convert_non_add_term(
     vars: &mut VarTable,
 ) -> Result<MultiPolyModP, PolyConvError> {
     let expr = strip_hold(ctx, expr);
+
+    // Early return for poly_result - retrieve from PolyStore (using canonical helper)
+    if let Some(arg) = crate::poly_result::poly_result_arg(ctx, expr) {
+        return poly_result_to_modp(ctx, p, vars, arg);
+    }
+
     match ctx.get(expr) {
         Expr::Number(n) => {
             let num = n.numer();
@@ -440,15 +449,10 @@ fn convert_non_add_term(
             Ok(result)
         }
 
-        Expr::Function(ref name, ref args) => {
+        // __hold is already stripped at function entry
+        // poly_result is handled by early return above
+        Expr::Function(ref name, _) => {
             let fn_name = ctx.sym_name(*name);
-            if fn_name == "__hold" && args.len() == 1 {
-                return convert_non_add_term(ctx, args[0], p, budget, vars);
-            }
-            // Handle poly_result(id) - retrieve from PolyStore with remapping
-            if fn_name == "poly_result" && args.len() == 1 {
-                return poly_result_to_modp(ctx, p, vars, args[0]);
-            }
             Err(PolyConvError::UnsupportedExpr(format!(
                 "function {}",
                 fn_name

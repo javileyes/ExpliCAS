@@ -41,9 +41,14 @@ use smallvec::SmallVec;
 /// O(n²) traversal of huge polynomial results stored in PolyStore.
 #[inline]
 pub fn is_poly_ref(ctx: &Context, id: ExprId) -> bool {
+    // Check poly_result using canonical helper
+    if crate::poly_result::is_poly_result(ctx, id) {
+        return true;
+    }
+    // Check legacy poly_ref (no helper yet, string check is acceptable here)
     if let Expr::Function(fn_id, args) = ctx.get(id) {
         let name = ctx.sym_name(*fn_id);
-        if args.len() == 1 && (name == "poly_ref" || name == "poly_result") {
+        if args.len() == 1 && name == "poly_ref" {
             return true;
         }
     }

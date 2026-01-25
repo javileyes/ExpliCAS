@@ -34,6 +34,18 @@ pub fn unwrap_hold(ctx: &Context, id: ExprId) -> ExprId {
     }
 }
 
+/// Unwrap `__hold` wrapper, returning `Some(inner)` if wrapped, `None` otherwise.
+/// Useful for early-return patterns where you only want to act if it IS a hold wrapper.
+#[inline]
+pub fn unwrap_hold_if_wrapped(ctx: &Context, id: ExprId) -> Option<ExprId> {
+    match ctx.get(id) {
+        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "__hold" && args.len() == 1 => {
+            Some(args[0])
+        }
+        _ => None,
+    }
+}
+
 /// Recursively strip ALL `__hold()` wrappers from an expression tree.
 /// Uses stack-based traversal to be safe for deep expressions.
 ///

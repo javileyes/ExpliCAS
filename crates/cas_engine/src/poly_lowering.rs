@@ -522,8 +522,7 @@ fn extract_poly_result_id(ctx: &Context, expr: ExprId) -> Option<PolyId> {
 
 /// Create poly_result(id) expression
 fn make_poly_result(ctx: &mut Context, id: PolyId) -> ExprId {
-    let id_expr = ctx.num(id as i64);
-    ctx.call("poly_result", vec![id_expr])
+    crate::poly_result::wrap_poly_result(ctx, id)
 }
 
 /// Extract integer from expression

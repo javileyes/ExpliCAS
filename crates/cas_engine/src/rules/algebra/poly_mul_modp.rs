@@ -90,14 +90,15 @@ define_rule!(
         // mutable access to SessionState. This will be handled by the eager evaluator
         // or a separate builtin mechanism.
         //
-        // For now, return stats as a function call that can be displayed:
-        // poly_result(terms, degree, vars, modulus)
+        // For now, return stats as a function call that can be displayed.
+        // NOTE: This uses poly_mul_stats (NOT poly_result) to distinguish from
+        // the id-based poly_result(id) format used elsewhere.
         let terms = ctx.num(meta.n_terms as i64);
         let degree = ctx.num(meta.max_total_degree as i64);
         let nvars = ctx.num(meta.n_vars as i64);
         let modulus = ctx.num(meta.modulus as i64);
 
-        let result = ctx.call("poly_result", vec![terms, degree, nvars, modulus]);
+        let result = ctx.call("poly_mul_stats", vec![terms, degree, nvars, modulus]);
 
         Some(Rewrite::new(result).desc(format!(
             "poly_mul_modp: {} terms, degree {}, {} vars (mod {})",
@@ -162,10 +163,10 @@ mod tests {
         assert!(result.is_some(), "Rule should fire for poly_mul_modp");
         let rewrite = result.unwrap();
 
-        // Should be poly_result(terms, degree, vars, modulus)
+        // Should be poly_mul_stats(terms, degree, vars, modulus)
         if let Expr::Function(fn_id, args) = ctx.get(rewrite.new_expr) {
             let name = ctx.sym_name(*fn_id);
-            assert_eq!(name, "poly_result");
+            assert_eq!(name, "poly_mul_stats");
             assert_eq!(args.len(), 4);
         } else {
             panic!("Expected poly_result function");

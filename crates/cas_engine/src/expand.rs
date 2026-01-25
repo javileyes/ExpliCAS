@@ -185,8 +185,7 @@ fn expand_to_poly_ref_or_hold(
         };
 
         let id = thread_local_insert(meta, poly);
-        let id_expr = ctx.num(id as i64);
-        Some(ctx.call("poly_result", vec![id_expr]))
+        Some(crate::poly_result::wrap_poly_result(ctx, id))
     }
 }
 
