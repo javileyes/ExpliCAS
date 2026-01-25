@@ -4,7 +4,7 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::smart_mul;
 use crate::rules::trigonometry::values::detect_special_angle;
-use cas_ast::{Expr, ExprId};
+use cas_ast::{BuiltinFn, Expr, ExprId};
 
 // =============================================================================
 // TRIPLE TANGENT PRODUCT IDENTITY
@@ -250,7 +250,7 @@ fn is_part_of_tan_triple_product(
     parent_ctx: &crate::parent_context::ParentContext,
 ) -> bool {
     // Verify this is actually a tan() function
-    if !matches!(ctx.get(tan_expr), Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "tan" && args.len() == 1)
+    if !matches!(ctx.get(tan_expr), Expr::Function(fn_id, args) if ctx.is_builtin(*fn_id, BuiltinFn::Tan) && args.len() == 1)
     {
         return false;
     }
@@ -290,7 +290,7 @@ fn is_part_of_tan_triple_product(
     let mut tan_args: Vec<ExprId> = Vec::new();
     for &factor in &factors {
         if let Expr::Function(fn_id, args) = ctx.get(factor) {
-            if ctx.sym_name(*fn_id) == "tan" && args.len() == 1 {
+            if ctx.is_builtin(*fn_id, BuiltinFn::Tan) && args.len() == 1 {
                 tan_args.push(args[0]);
             }
         }

@@ -1328,7 +1328,9 @@ fn generate_root_denesting_substeps(ctx: &Context, step: &crate::step::Step) -> 
     // Helper to extract sqrt radicand
     let get_sqrt_inner = |id: ExprId| -> Option<ExprId> {
         match ctx.get(id) {
-            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => {
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Sqrt) && args.len() == 1 =>
+            {
                 Some(args[0])
             }
             Expr::Pow(base, exp) => {
@@ -1360,7 +1362,9 @@ fn generate_root_denesting_substeps(ctx: &Context, step: &crate::step::Step) -> 
     // The surd should be c·√d or just √d
     fn analyze_surd(ctx: &Context, e: ExprId) -> Option<(BigRational, ExprId)> {
         match ctx.get(e) {
-            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => {
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Sqrt) && args.len() == 1 =>
+            {
                 Some((BigRational::from_integer(BigInt::from(1)), args[0]))
             }
             Expr::Pow(base, exp) => {

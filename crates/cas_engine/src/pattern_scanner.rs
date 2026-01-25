@@ -1,6 +1,6 @@
 use crate::pattern_detection::{is_cot_squared, is_csc_squared, is_sec_squared, is_tan_squared};
 use crate::pattern_marks::PatternMarks;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 
 /// Scan the entire expression tree and mark ExprIds that are part of Pythagorean patterns.
 /// This pre-analysis pass allows guards to make correct decisions even with bottom-up processing.
@@ -139,8 +139,7 @@ fn check_and_mark_sqrt_square_pattern(ctx: &Context, expr_id: ExprId, marks: &mu
 
     // Also check for sqrt(base) function form
     if let Expr::Function(fn_id, args) = ctx.get(expr_id) {
-        let name = ctx.sym_name(*fn_id);
-        if name == "sqrt" && args.len() == 1 {
+        if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 {
             let base_id = args[0];
             let base_expr = ctx.get(base_id);
 
@@ -529,7 +528,7 @@ fn try_match_tan_diff_identity(
     let Expr::Function(fn_id, args) = ctx.get(lhs) else {
         return false;
     };
-    if ctx.sym_name(*fn_id) != "tan" || args.len() != 1 {
+    if !ctx.is_builtin(*fn_id, BuiltinFn::Tan) || args.len() != 1 {
         return false;
     }
     let tan_arg = args[0];
@@ -571,7 +570,7 @@ fn try_match_tan_diff_identity(
 
     // Verify tan_a_num is tan(a)
     if let Expr::Function(name_a, args_a) = ctx.get(tan_a_num) {
-        if ctx.sym_name(*name_a) != "tan" || args_a.len() != 1 {
+        if !ctx.is_builtin(*name_a, BuiltinFn::Tan) || args_a.len() != 1 {
             return false;
         }
         if crate::ordering::compare_expr(ctx, args_a[0], a) != std::cmp::Ordering::Equal {
@@ -583,7 +582,7 @@ fn try_match_tan_diff_identity(
 
     // Verify tan_b_num is tan(b)
     if let Expr::Function(name_b, args_b) = ctx.get(tan_b_num) {
-        if ctx.sym_name(*name_b) != "tan" || args_b.len() != 1 {
+        if !ctx.is_builtin(*name_b, BuiltinFn::Tan) || args_b.len() != 1 {
             return false;
         }
         if crate::ordering::compare_expr(ctx, args_b[0], b) != std::cmp::Ordering::Equal {
@@ -670,8 +669,8 @@ fn matches_one_plus_tan_product(ctx: &Context, expr: ExprId, a: ExprId, b: ExprI
         return false;
     };
 
-    if ctx.sym_name(*n1) != "tan"
-        || ctx.sym_name(*n2) != "tan"
+    if !ctx.is_builtin(*n1, BuiltinFn::Tan)
+        || !ctx.is_builtin(*n2, BuiltinFn::Tan)
         || args1.len() != 1
         || args2.len() != 1
     {
@@ -727,7 +726,7 @@ fn try_match_sin4x_identity(
     let Expr::Function(fn_id, args) = ctx.get(lhs) else {
         return false;
     };
-    if ctx.sym_name(*fn_id) != "sin" || args.len() != 1 {
+    if !ctx.is_builtin(*fn_id, BuiltinFn::Sin) || args.len() != 1 {
         return false;
     }
     let sin_arg = args[0];
@@ -786,14 +785,14 @@ fn try_match_sin4x_identity(
         }
         // Check for sin(t) or cos(t)
         if let Expr::Function(fn_name, fn_args) = ctx.get(factor) {
-            if ctx.sym_name(*fn_name) == "sin"
+            if ctx.is_builtin(*fn_name, BuiltinFn::Sin)
                 && fn_args.len() == 1
                 && crate::ordering::compare_expr(ctx, fn_args[0], t) == std::cmp::Ordering::Equal
             {
                 has_sin_t = true;
                 continue;
             }
-            if ctx.sym_name(*fn_name) == "cos" && fn_args.len() == 1 {
+            if ctx.is_builtin(*fn_name, BuiltinFn::Cos) && fn_args.len() == 1 {
                 let arg = fn_args[0];
                 if crate::ordering::compare_expr(ctx, arg, t) == std::cmp::Ordering::Equal {
                     has_cos_t = true;
