@@ -191,6 +191,33 @@ make ci
 
 ---
 
+## Stringly-typed IR enforcement
+
+We enforce type-safe patterns for internal IR nodes like `__hold` and `poly_result`.
+
+### Command
+
+```bash
+make lint-no-stringly-ir
+```
+
+### Policy
+
+| Node | Status | Baseline | Helpers |
+|------|--------|----------|---------|
+| `poly_result` | **Enforced** | 0 | `is_poly_result`, `parse_poly_result_id`, `wrap_poly_result` |
+| `__hold` | Tracking | 29 | `is_hold`, `unwrap_hold`, `strip_all_holds` |
+
+* `poly_result`: **hard gate** in CI. Any string comparison (e.g., `name == "poly_result"`) outside `poly_result.rs` fails the build.
+* `__hold`: **no regression** policy. Violations above baseline (29) fail CI. Migration to 0 is in progress.
+
+### Canonical modules
+
+* `cas_ast::hold` — all `__hold` helpers
+* `cas_engine::poly_result` — all `poly_result` helpers
+
+---
+
 ## Summary: current guarantees
 
 | Guarantee | Status |
@@ -199,3 +226,5 @@ make ci
 | Known intentional panics are documented and scoped | ✅ |
 | REPL has a panic fence with error_id reporting | ✅ |
 | Golden corpus prevents regressions in common workflows | ✅ |
+| `poly_result` stringly-typed checks enforced to 0 | ✅ |
+| `__hold` stringly-typed checks capped at baseline | ✅ |

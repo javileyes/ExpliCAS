@@ -83,21 +83,33 @@ lint-no-panic-prod:
 	@cargo clippy --workspace --lib --bins -- -D clippy::panic 2>&1 || { echo ""; echo "FAIL: Found panic! in production code. Fix or add #[allow(clippy::panic)] with justification."; exit 1; }
 	@echo "✓ No panic! in production code"
 
-# Forbid direct "__hold" and "poly_result" string comparisons outside canonical modules
+# Enforce poly_result helpers, track __hold with no-regression
+# - poly_result: ENFORCE (0 violations required, uses canonical helpers)
+# - __hold: TRACK (baseline 29, fail if regression)
 # Canonical modules: cas_ast/src/hold.rs, cas_engine/src/poly_result.rs
-# Goal: all code should use helpers (is_hold, is_poly_result, etc.), not string patterns
 lint-no-stringly-ir:
-	@echo "==> Checking for stringly-typed IR patterns..."
+	@echo "==> Stringly-typed IR lint"
 	@echo ""
 	@HOLD_VIOLATIONS=$$(grep -rn '"__hold"' crates/cas_engine/src crates/cas_ast/src 2>/dev/null | grep -v 'hold.rs' | grep -v 'tests::' | wc -l | tr -d ' '); \
 	POLY_VIOLATIONS=$$(grep -rn '"poly_result"' crates/cas_engine/src 2>/dev/null | grep -v 'poly_result.rs' | grep -v 'poly_store.rs' | grep -v 'tests::' | wc -l | tr -d ' '); \
-	echo "  __hold violations (outside hold.rs): $$HOLD_VIOLATIONS"; \
-	echo "  poly_result violations (outside poly_result.rs/poly_store.rs): $$POLY_VIOLATIONS"; \
+	HOLD_BASELINE=29; \
+	echo "  __hold violations: $$HOLD_VIOLATIONS (baseline: $$HOLD_BASELINE)"; \
+	echo "  poly_result violations: $$POLY_VIOLATIONS (enforced: 0)"; \
 	echo ""; \
-	if [ "$$HOLD_VIOLATIONS" != "0" ] || [ "$$POLY_VIOLATIONS" != "0" ]; then \
-		echo "Note: Existing violations are grandfathered. New code should use canonical helpers:"; \
-		echo "  - __hold: use cas_ast::hold::{is_hold, unwrap_hold, strip_all_holds}"; \
-		echo "  - poly_result: use cas_engine::poly_result::{is_poly_result, parse_poly_result_id, wrap_poly_result}"; \
+	FAILED=0; \
+	if [ "$$POLY_VIOLATIONS" != "0" ]; then \
+		echo "❌ FAIL: poly_result violations > 0"; \
+		echo "   Use helpers: is_poly_result, parse_poly_result_id, wrap_poly_result"; \
+		FAILED=1; \
 	else \
-		echo "✓ No stringly-typed IR patterns found"; \
-	fi
+		echo "✓ poly_result: CLEAN (enforced)"; \
+	fi; \
+	if [ "$$HOLD_VIOLATIONS" -gt "$$HOLD_BASELINE" ]; then \
+		echo "❌ FAIL: __hold violations ($$HOLD_VIOLATIONS) > baseline ($$HOLD_BASELINE)"; \
+		echo "   Use helpers: is_hold, unwrap_hold, strip_all_holds"; \
+		FAILED=1; \
+	else \
+		echo "✓ __hold: OK ($$HOLD_VIOLATIONS <= baseline $$HOLD_BASELINE)"; \
+	fi; \
+	if [ "$$FAILED" = "1" ]; then exit 1; fi
+
