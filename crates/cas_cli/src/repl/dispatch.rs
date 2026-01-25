@@ -7,9 +7,10 @@ impl Repl {
     /// # Panic Fence (Defense in Depth)
     /// Wraps command execution with `catch_unwind` to prevent internal panics
     /// from crashing the REPL session. On panic:
-    /// - Displays a user-friendly error message
+    /// - Generates a unique error_id for correlation
+    /// - Displays a user-friendly error message with error_id
+    /// - Logs details to stderr (controlled by EXPLICAS_PANIC_REPORT)
     /// - Session remains alive for continued use
-    /// - Suggests reporting the issue
     pub fn handle_command(&mut self, line: &str) {
         use std::panic::{catch_unwind, AssertUnwindSafe};
 
@@ -29,19 +30,51 @@ impl Repl {
                     "unknown panic".to_string()
                 };
 
-                // Log to stderr for debugging (visible in terminal)
-                eprintln!("Internal error (panic caught): {}", panic_msg);
+                // Generate short error_id for correlation (hash of timestamp + message)
+                let error_id = Self::generate_error_id(&panic_msg);
+
+                // Log to stderr if EXPLICAS_PANIC_REPORT is set (for debugging)
+                // This respects the repl IO lint by only logging when explicitly enabled
+                if std::env::var("EXPLICAS_PANIC_REPORT").is_ok() {
+                    // Use init.rs print_reply with Error variant which goes to stderr
+                    let version = env!("CARGO_PKG_VERSION");
+                    let log_msg = format!(
+                        "[PANIC_REPORT] id={} version={} command={:?} panic={}",
+                        error_id, version, line, panic_msg
+                    );
+                    // Log via ReplMsg::Debug to get it to output
+                    self.print_reply(vec![ReplMsg::Debug(log_msg)]);
+                }
 
                 // Return user-friendly error that doesn't kill the session
-                self.print_reply(reply_output(format!(
-                    "⚠ Internal error: {}\n\
-                     \n\
+                self.print_reply(vec![ReplMsg::Error(format!(
+                    "Internal error (id: {}): {}\n\n\
                      The session is still active. You can continue working.\n\
-                     Please report this issue if it persists.",
-                    panic_msg
-                )));
+                     Please report this issue with the error id if it persists.",
+                    error_id, panic_msg
+                ))]);
             }
         }
+    }
+
+    /// Generate a short error ID for crash correlation.
+    /// Uses a simple hash of timestamp + message for uniqueness.
+    fn generate_error_id(msg: &str) -> String {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let mut hasher = DefaultHasher::new();
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        timestamp.hash(&mut hasher);
+        msg.hash(&mut hasher);
+        let hash = hasher.finish();
+
+        // Return short hex (6 chars = 24 bits = ~16M unique IDs)
+        format!("{:06X}", (hash & 0xFFFFFF) as u32)
     }
 
     /// Core command dispatch - returns structured messages, no I/O.

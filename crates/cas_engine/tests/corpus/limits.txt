@@ -1,0 +1,50 @@
+# Golden Corpus - Limits and Asymptotics
+# Tests limit computation and asymptotic behavior
+# The test ensures: (1) no panic, (2) stable output kind
+
+# === Basic Limits ===
+limit x, x, 0
+limit x, x, 1
+limit x^2, x, 0
+limit x^2, x, 2
+
+# === Limits at Infinity ===
+limit 1/x, x, inf
+limit 1/x^2, x, inf
+limit x, x, inf
+limit x^2, x, inf
+
+# === Indeterminate Forms (0/0) ===
+limit (x^2 - 1)/(x - 1), x, 1
+limit (x^2 - 4)/(x - 2), x, 2
+limit sin(x)/x, x, 0
+
+# === Indeterminate Forms (inf/inf) ===
+limit x^2/x, x, inf
+limit (2*x + 1)/(x + 1), x, inf
+limit x/(x^2 + 1), x, inf
+
+# === Exponential Limits ===
+limit e^x, x, 0
+limit e^x, x, inf
+limit e^(-x), x, inf
+limit x*e^(-x), x, inf
+
+# === Logarithmic Limits ===
+limit ln(x), x, 1
+limit ln(x)/x, x, inf
+limit x*ln(x), x, 0
+
+# === Trigonometric Limits ===
+limit sin(x), x, 0
+limit cos(x), x, 0
+limit tan(x), x, 0
+limit sin(x)/x, x, 0
+
+# === One-Sided Limits (if supported) ===
+limit 1/x, x, 0
+limit |x|/x, x, 0
+
+# === Composed Limits ===
+limit (1 + 1/x)^x, x, inf
+limit sqrt(x^2 + 1) - x, x, inf
