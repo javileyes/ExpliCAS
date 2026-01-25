@@ -273,9 +273,9 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                         let x = inner_args[0];
 
                         // sin(arcsin(x)) = x (requires x ∈ [-1, 1])
-                        if ctx.sym_name(*outer_name) == "sin"
-                            && (ctx.sym_name(*inner_name) == "arcsin"
-                                || ctx.sym_name(*inner_name) == "asin")
+                        if ctx.is_builtin(*outer_name, BuiltinFn::Sin)
+                            && (ctx.is_builtin(*inner_name, BuiltinFn::Arcsin)
+                                || ctx.is_builtin(*inner_name, BuiltinFn::Asin))
                         {
                             // Check domain_mode: sin(arcsin(x)) requires x ∈ [-1,1]
                             let mode = parent_ctx.domain_mode();
@@ -310,9 +310,9 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                         }
 
                         // cos(arccos(x)) = x (requires x ∈ [-1, 1])
-                        if ctx.sym_name(*outer_name) == "cos"
-                            && (ctx.sym_name(*inner_name) == "arccos"
-                                || ctx.sym_name(*inner_name) == "acos")
+                        if ctx.is_builtin(*outer_name, BuiltinFn::Cos)
+                            && (ctx.is_builtin(*inner_name, BuiltinFn::Arccos)
+                                || ctx.is_builtin(*inner_name, BuiltinFn::Acos))
                         {
                             let mode = parent_ctx.domain_mode();
                             match mode {
@@ -344,26 +344,25 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
                         }
 
                         // tan(arctan(x)) = x (always safe - arctan has domain R)
-                        if ctx.sym_name(*outer_name) == "tan"
-                            && (ctx.sym_name(*inner_name) == "arctan"
-                                || ctx.sym_name(*inner_name) == "atan")
+                        if ctx.is_builtin(*outer_name, BuiltinFn::Tan)
+                            && (ctx.is_builtin(*inner_name, BuiltinFn::Arctan)
+                                || ctx.is_builtin(*inner_name, BuiltinFn::Atan))
                         {
                             return Some(Rewrite::new(x).desc("tan(arctan(x)) = x"));
                         }
 
                         // SAFE NESTED CASE: arctan(tan(arctan(u))) = arctan(u)
                         // Because arctan(u) is always in (-π/2, π/2), it's safe to cancel
-                        let outer_name_str = ctx.sym_name(*outer_name);
-                        let inner_name_str = ctx.sym_name(*inner_name);
-                        if (outer_name_str == "arctan" || outer_name_str == "atan")
-                            && inner_name_str == "tan"
-                        {
+                        let is_outer_arctan = ctx.is_builtin(*outer_name, BuiltinFn::Arctan)
+                            || ctx.is_builtin(*outer_name, BuiltinFn::Atan);
+                        let is_inner_tan = ctx.is_builtin(*inner_name, BuiltinFn::Tan);
+                        if is_outer_arctan && is_inner_tan {
                             // Check if the argument of tan is arctan(something)
                             if let Expr::Function(innermost_name, innermost_args) = ctx.get(x) {
-                                let innermost_name_str = ctx.sym_name(*innermost_name);
-                                if (innermost_name_str == "arctan" || innermost_name_str == "atan")
-                                    && innermost_args.len() == 1
-                                {
+                                let is_innermost_arctan = ctx
+                                    .is_builtin(*innermost_name, BuiltinFn::Arctan)
+                                    || ctx.is_builtin(*innermost_name, BuiltinFn::Atan);
+                                if is_innermost_arctan && innermost_args.len() == 1 {
                                     // atan(tan(atan(u))) → atan(u)
                                     let atan_u = x; // x is already atan(u)
                                     return Some(Rewrite::new(atan_u).desc(
