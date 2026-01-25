@@ -484,12 +484,13 @@ define_rule!(
             let mut terms = Vec::new();
             crate::helpers::flatten_add(ctx, expr, &mut terms);
 
-            // Helper to extract (coeff, func_name, arg, is_negated) from a term
-            // Returns (coeff_expr_id, func_name, arg_expr_id, is_negated)
-            // is_negated indicates if the entire term is wrapped in Neg
-            let extract_trig_part = |ctx: &mut cas_ast::Context,
-                                     term: ExprId|
-             -> Option<(ExprId, String, ExprId, bool)> {
+            // Helper to extract ALL (coeff, func_name, arg, is_negated) candidates from a term
+            // Returns Vec of candidates - for terms like sin²*cos², returns multiple candidates
+            // Each candidate interprets a different trig² factor as the "main" one
+            let extract_trig_parts = |ctx: &mut cas_ast::Context,
+                                      term: ExprId|
+             -> Vec<(ExprId, String, ExprId, bool)> {
+                let mut results = Vec::new();
                 let term_data = ctx.get(term).clone();
 
                 // Check if term is negated: Neg(...)
@@ -521,32 +522,30 @@ define_rule!(
                                 // If n > 2, coeff is sin^(n-2)
                                 let two = num_rational::BigRational::from_integer(2.into());
                                 if n.clone() == two {
-                                    return Some((ctx.num(1), name, arg, is_negated));
+                                    results.push((ctx.num(1), name, arg, is_negated));
                                 } else {
                                     let rem_exp = n.clone() - two;
                                     if rem_exp.is_one() {
-                                        return Some((base, name, arg, is_negated));
+                                        results.push((base, name, arg, is_negated));
                                     } else {
                                         let rem_exp_expr = ctx.add(Expr::Number(rem_exp));
                                         let rem_pow = ctx.add(Expr::Pow(base, rem_exp_expr));
-                                        return Some((rem_pow, name, arg, is_negated));
+                                        results.push((rem_pow, name, arg, is_negated));
                                     }
                                 }
+                                return results;
                             }
                         }
                     }
                 }
 
                 // Check if inner term is Mul containing sin^n or cos^n
+                // IMPORTANT: Generate ALL possible candidates (one per trig^n factor)
                 if let Expr::Mul(_, _) = inner_data {
                     let mut factors = Vec::new();
                     crate::helpers::flatten_mul(ctx, inner_term, &mut factors);
 
-                    // Find the trig square factor (or higher power)
-                    let mut trig_idx = None;
-                    let mut trig_info = None;
-                    let mut trig_rem = None; // Remaining power if n > 2
-
+                    // Find ALL trig^n factors (not just the first)
                     for (i, &factor) in factors.iter().enumerate() {
                         if let Expr::Pow(base, exp) = ctx.get(factor).clone() {
                             if let Expr::Number(n) = ctx.get(exp) {
@@ -556,71 +555,71 @@ define_rule!(
                                     if let Expr::Function(fn_id, args) = ctx.get(base) {
                                         let name = ctx.sym_name(*fn_id);
                                         if (name == "sin" || name == "cos") && args.len() == 1 {
-                                            trig_idx = Some(i);
-                                            trig_info = Some((name.to_string(), args[0]));
+                                            // Clone args[0] and name before mutable borrows
+                                            let arg = args[0];
+                                            let name_str = name.to_string();
 
+                                            // Calculate remaining power if n > 2
                                             let two =
                                                 num_rational::BigRational::from_integer(2.into());
-                                            if n.clone() > two {
+                                            let trig_rem = if n.clone() > two {
                                                 let rem_exp = n.clone() - two;
                                                 if rem_exp.is_one() {
-                                                    trig_rem = Some(base);
+                                                    Some(base)
                                                 } else {
                                                     let rem_exp_expr =
                                                         ctx.add(Expr::Number(rem_exp));
-                                                    trig_rem = Some(
-                                                        ctx.add(Expr::Pow(base, rem_exp_expr)),
-                                                    );
+                                                    Some(ctx.add(Expr::Pow(base, rem_exp_expr)))
+                                                }
+                                            } else {
+                                                None
+                                            };
+
+                                            // Construct coefficient from remaining factors AND remaining power
+                                            let mut coeff_factors = Vec::new();
+                                            for (j, &f) in factors.iter().enumerate() {
+                                                if j != i {
+                                                    coeff_factors.push(f);
                                                 }
                                             }
-                                            break;
+                                            if let Some(rem) = trig_rem {
+                                                coeff_factors.push(rem);
+                                            }
+
+                                            let coeff = if coeff_factors.is_empty() {
+                                                ctx.num(1)
+                                            } else {
+                                                let mut c = coeff_factors[0];
+                                                for &f in coeff_factors.iter().skip(1) {
+                                                    c = smart_mul(ctx, c, f);
+                                                }
+                                                c
+                                            };
+                                            results.push((coeff, name_str, arg, is_negated));
+                                            // NO break here - continue to find ALL trig^n factors
                                         }
                                     }
                                 }
                             }
                         }
                     }
-
-                    if let (Some(idx), Some((name, arg))) = (trig_idx, trig_info) {
-                        // Construct coefficient from remaining factors AND remaining power
-                        let mut coeff_factors = Vec::new();
-                        for (i, &f) in factors.iter().enumerate() {
-                            if i != idx {
-                                coeff_factors.push(f);
-                            }
-                        }
-                        if let Some(rem) = trig_rem {
-                            coeff_factors.push(rem);
-                        }
-
-                        let coeff = if coeff_factors.is_empty() {
-                            ctx.num(1)
-                        } else {
-                            let mut c = coeff_factors[0];
-                            for &f in coeff_factors.iter().skip(1) {
-                                c = smart_mul(ctx, c, f);
-                            }
-                            c
-                        };
-                        return Some((coeff, name, arg, is_negated));
-                    }
                 }
 
-                None
+                results
             };
 
-            // Analyze terms
+            // Analyze terms - collect ALL candidates from each term
             struct TrigTerm {
                 index: usize,
                 coeff: ExprId,
                 func_name: String,
                 arg: ExprId,
-                is_negated: bool, // NEW: Track if term is negated
+                is_negated: bool,
             }
 
             let mut trig_terms = Vec::new();
             for (i, &term) in terms.iter().enumerate() {
-                if let Some((coeff, name, arg, is_negated)) = extract_trig_part(ctx, term) {
+                for (coeff, name, arg, is_negated) in extract_trig_parts(ctx, term) {
                     trig_terms.push(TrigTerm {
                         index: i,
                         coeff,

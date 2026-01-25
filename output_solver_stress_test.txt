@@ -1,0 +1,1002 @@
+==========================================================
+CLI Solver Stress Tests - 18 Niveles de Complejidad
+From Basic Linear to Ultra-Complex Mixed Operations
+Fecha: Fri Dec  5 10:43:32 CET 2025
+==========================================================
+
+    Finished `release` profile [optimized] target(s) in 0.02s
+     Running `target/release/cas_cli`
+Rust CAS Step-by-Step Demo
+Step-by-step output enabled (Normal).
+Enter an expression (e.g., '2 * 3 + 0'):
+Step-by-step output enabled (Normal).
+Simplification Steps:
+Solving simplified equation: 5 + x = 10
+Steps:
+1. Subtract 5 from both sides
+   -> x = 5
+Result: { 5 }
+Simplification Steps:
+Solving simplified equation: -7 + 3 * x = 14
+Steps:
+1. Subtract -7 from both sides
+   -> 3 * x = 21
+2. Divide both sides by 3
+   -> x = 7
+Result: { 7 }
+Simplification Steps:
+Solving simplified equation: 3 + 2 * x = -12 + 5 * x
+Steps:
+1. Subtract -12 + 5 * x from both sides
+   -> 15 - 3 * x = 0
+2. Subtract 15 from both sides
+   -> -3 * x = -15
+3. Divide both sides by -3
+   -> x = 5
+Result: { 5 }
+Simplification Steps:
+Solving simplified equation: 3 + x > 7
+Steps:
+1. Subtract 3 from both sides
+   -> x > 4
+Result: (4, infinity)
+Simplification Steps:
+Solving simplified equation: -2 * x < 10
+Steps:
+1. Divide both sides by -2
+   -> x > -5
+Result: (-5, infinity)
+Simplification Steps:
+Solving simplified equation: -5 + 3 * x >= 1 + 2 * x
+Steps:
+1. Subtract 1 + 2 * x from both sides
+   -> -6 + x >= 0
+2. Subtract -6 from both sides
+   -> x >= 6
+Result: [6, infinity)
+Steps:
+1. Factorized equation: (x - 4) * (x + 4) = 0
+   -> (x - 4) * (x + 4) = 0
+2. Solve factor: x - 4 = 0
+   -> -4 + x = 0
+3. Subtract -4 from both sides
+   -> x = 4
+4. Solve factor: x + 4 = 0
+   -> 4 + x = 0
+5. Subtract 4 from both sides
+   -> x = -4
+Result: { -4, 4 }
+Simplification Steps:
+LHS 2. Factor Polynomial  [Factor]
+   Local: 6 + x^2 - 5 * x -> (x - 2) * (x - 3)
+Solving simplified equation: (x - 2) * (x - 3) = 0
+Steps:
+1. Factorized equation: (x - 2) * (x - 3) = 0
+   -> (x - 2) * (x - 3) = 0
+2. Solve factor: x - 2 = 0
+   -> -2 + x = 0
+3. Subtract -2 from both sides
+   -> x = 2
+4. Solve factor: x - 3 = 0
+   -> -3 + x = 0
+5. Subtract -3 from both sides
+   -> x = 3
+Result: { 2, 3 }
+Simplification Steps:
+LHS 2. Factor Polynomial  [Factor]
+   Local: 9 + x^2 - 6 * x -> (x - 3)^2
+Solving simplified equation: (x - 3)^2 = 0
+Steps:
+1. Factorized equation: (x - 3)^2 = 0
+   -> (x - 3)^2 = 0
+2. Solve factor: x - 3 = 0
+   -> -3 + x = 0
+3. Subtract -3 from both sides
+   -> x = 3
+Result: { 3 }
+Steps:
+1. Take 2-th root of both sides (even root implies absolute value)
+   -> |x| < 3
+2. Split absolute value (Case 1): x < 9^(1 / 2)
+   -> x < 3
+3. Split absolute value (Case 2): x > -(9^(1 / 2))
+   -> x > -3
+Result: (-3, 3)
+Steps:
+1. Take 2-th root of both sides (even root implies absolute value)
+   -> |x| > 2
+2. Split absolute value (Case 1): x > 4^(1 / 2)
+   -> x > 2
+3. Split absolute value (Case 2): x < -(4^(1 / 2))
+   -> x < -2
+Result: (-infinity, -2) U (2, infinity)
+Simplification Steps:
+LHS 8. Expand Polynomial  [Expand]
+   Local: (-3 + x) * (-1 + x) -> -1 * -3 - 1 * x + x * -3 + x * x
+LHS 11. Multiply identical terms  [Product of Powers]
+   Local: x * x -> x^2
+LHS 12. Global Combine Like Terms  [Combine Like Terms]
+   Local: -3 * x + x^2 -> x^2 - 3 * x
+LHS 13. Global Combine Like Terms  [Combine Like Terms]
+   Local: -x + x^2 - 3 * x -> x^2 - 4 * x
+LHS 14. Factor Polynomial  [Factor]
+   Local: 3 + x^2 - 4 * x -> (x - 1) * (x - 3)
+Solving simplified equation: (x - 1) * (x - 3) > 0
+Steps:
+1. Factorized equation: (x - 1) * (x - 3) = 0
+   -> (x - 1) * (x - 3) = 0
+2. Detected quadratic equation. Applying quadratic formula.
+   -> (x - 1) * (x - 3) = 0
+Result: (-infinity, 1) U (3, infinity)
+Steps:
+1. Isolate denominator x
+   -> x = 1/2
+Result: { 1/2 }
+Simplification Steps:
+RHS 2. 1/3 * 2 = 2/3  [Combine Constants]
+   Local: 1/3 * 2 -> 2/3
+Solving simplified equation: 1 / x = 2/3
+Steps:
+1. Isolate denominator x
+   -> x = 3/2
+Result: { 3/2 }
+Simplification Steps:
+Solving simplified equation: (1 + x) / (-2 + x) = 3
+Steps:
+1. Multiply both sides by -2 + x
+   -> 1 + x = -6 + 3 * x
+2. Subtract 1 from both sides
+   -> x = -7 + 3 * x
+Result: {  }
+Steps:
+1. Case 1: Assume x > 0. Multiply by x (positive). Inequality direction preserved (flipped from isolation logic).
+   -> x < infinity
+2. --- End of Case 1 ---
+   -> x > infinity
+3. Case 1: Assume x > 0. Multiply by x (positive). Inequality direction preserved (flipped from isolation logic).
+   -> x < infinity
+4. Case 2: Assume x < 0. Multiply by x (negative). Inequality flips.
+   -> x > infinity
+Result: (0, infinity)
+Steps:
+1. Case 1: Assume x > 0. Multiply by x (positive). Inequality direction preserved (flipped from isolation logic).
+   -> x > infinity
+2. --- End of Case 1 ---
+   -> x < infinity
+3. Case 1: Assume x > 0. Multiply by x (positive). Inequality direction preserved (flipped from isolation logic).
+   -> x > infinity
+4. Case 2: Assume x < 0. Multiply by x (negative). Inequality flips.
+   -> x < infinity
+Result: (-infinity, 0)
+Simplification Steps:
+Solving simplified equation: (-1 + x) / (2 + x) > 0
+Steps:
+1. Case 1: Assume 2 + x > 0. Multiply by positive denominator.
+   -> -1 + x > 0
+2. Subtract -1 from both sides
+   -> x > 1
+3. --- End of Case 1 ---
+   -> -1 + x > 0
+4. Case 1: Assume 2 + x > 0. Multiply by positive denominator.
+   -> -1 + x > 0
+5. Case 2: Assume 2 + x < 0. Multiply by negative denominator (flips inequality).
+   -> -1 + x < 0
+6. Subtract -1 from both sides
+   -> x < 1
+Result: (-infinity, -2) U (1, infinity)
+Steps:
+1. Split absolute value (Case 1): x = 5
+   -> x = 5
+2. Split absolute value (Case 2): x = -5
+   -> x = -5
+Result: { 5, -5 }
+Steps:
+1. Split absolute value (Case 1): x < 3
+   -> x < 3
+2. Split absolute value (Case 2): x > -3
+   -> x > -3
+Result: (-3, 3)
+Simplification Steps:
+Solving simplified equation: |-3 + 2 * x| = 7
+Steps:
+1. Split absolute value (Case 1): -3 + 2 * x = 7
+   -> -3 + 2 * x = 7
+2. Subtract -3 from both sides
+   -> 2 * x = 10
+3. Divide both sides by 2
+   -> x = 5
+4. Split absolute value (Case 2): -3 + 2 * x = -7
+   -> -3 + 2 * x = -7
+5. Subtract -3 from both sides
+   -> 2 * x = -4
+6. Divide both sides by 2
+   -> x = -2
+Result: { 5, -2 }
+Simplification Steps:
+Solving simplified equation: x^2 / (-1 + x) = 2 + x
+Steps:
+1. Subtract 2 + x from both sides
+   -> -2 - x + x^2 / (-1 + x) = 0
+2. Subtract -2 from both sides
+   -> -x + x^2 / (-1 + x) = 2
+3. Subtract x^2 / (-1 + x) from both sides
+   -> -x = 2 - x^2 / (-1 + x)
+4. Multiply both sides by -1 (flips inequality)
+   -> x = -2 + x^2 / (-1 + x)
+Result: {  }
+Simplification Steps:
+Solving simplified equation: 1 / (1 + x) = 1 / (-3 + 2 * x)
+Steps:
+1. Subtract 1 / (-3 + 2 * x) from both sides
+   -> -(1 / (-3 + 2 * x)) + 1 / (1 + x) = 0
+2. Subtract 1 / (1 + x) from both sides
+   -> -(1 / (-3 + 2 * x)) = -(1 / (1 + x))
+3. Multiply both sides by -1 (flips inequality)
+   -> 1 / (-3 + 2 * x) = 1 / (1 + x)
+4. Isolate denominator -3 + 2 * x
+   -> -3 + 2 * x = 1 + x
+5. Subtract -3 from both sides
+   -> 2 * x = 4 + x
+6. Divide both sides by 2
+   -> x = 2 + 1/2 * x
+Result: {  }
+Simplification Steps:
+LHS 12. Expand Polynomial  [Expand]
+   Local: (-3 + x) * (-2 + x) * (-1 + x) -> -1 * -2 * -3 + -1 * -2 * x + -1 * x * -3 + -1 * x * x + x * -2 * -3 + x * -2 * x + x * x * -3 + x * x * x
+LHS 14. -2 * -1 = 2  [Combine Constants]
+   Local: -2 * -1 -> 2
+LHS 16. -3 * 2 = -6  [Combine Constants]
+   Local: -3 * 2 -> -6
+LHS 18. -2 * -1 = 2  [Combine Constants]
+   Local: -2 * -1 -> 2
+LHS 19. Global Combine Like Terms  [Combine Like Terms]
+   Local: -1 * x -> -x
+LHS 21. Global Combine Like Terms  [Combine Like Terms]
+   Local: -1 * x -> -x
+LHS 23. Global Combine Like Terms  [Combine Like Terms]
+   Local: 6 * x + x^(1 + 2) - 3 * x^2 - 2 * x * x -> x^(1 + 2) - 3 * x^2 - 2 * x * x + 6 * x
+LHS 24. Global Combine Like Terms  [Combine Like Terms]
+   Local: -(x * x) + x^(1 + 2) - 3 * x^2 - 2 * x * x + 6 * x -> x^(1 + 2) - 3 * x^2 - 3 * x * x + 6 * x
+LHS 25. Global Combine Like Terms  [Combine Like Terms]
+   Local: 2 * x - x * -3 + x^(1 + 2) - 3 * x^2 - 3 * x * x + 6 * x -> -(x * -3) + x^(1 + 2) - 3 * x^2 - 3 * x * x + 8 * x
+LHS 28. Multiply identical terms  [Product of Powers]
+   Local: x * x -> x^2
+LHS 29. Global Combine Like Terms  [Combine Like Terms]
+   Local: -3 * x^2 - 3 * x^2 + 8 * x -> -6 * x^2 + 8 * x
+LHS 30. Global Combine Like Terms  [Combine Like Terms]
+   Local: 3 * x + x^3 - 6 * x^2 + 8 * x -> x^3 - 6 * x^2 + 11 * x
+LHS 31. Factor Polynomial  [Factor]
+   Local: -6 + x^3 - 6 * x^2 + 11 * x -> (x - 1) * (x - 2) * (x - 3)
+Solving simplified equation: (x - 1) * (x - 2) * (x - 3) > 0
+Steps:
+Result: (1, 2) U (3, infinity)
+Simplification Steps:
+Solving simplified equation: 5 + x = 3 + x
+Steps:
+Result: Empty Set
+Simplification Steps:
+Solving simplified equation: 1 + x = 1 + x
+Steps:
+Result: All Real Numbers
+Simplification Steps:
+LHS 2. Factor Polynomial  [Factor]
+   Local: 500000 + 1000000 * x -> 1000000 * x + 500000
+Solving simplified equation: 500000 + 1000000 * x = 2500000
+Steps:
+1. Subtract 500000 from both sides
+   -> 1000000 * x = 2000000
+2. Divide both sides by 1000000
+   -> x = 2
+Result: { 2 }
+Simplification Steps:
+RHS 2. 1/10000 * 5 = 1/2000  [Combine Constants]
+   Local: 1/10000 * 5 -> 1/2000
+Solving simplified equation: 1/10000 * x = 1/2000
+Steps:
+1. Divide both sides by 1/10000
+   -> x = 5
+Result: { 5 }
+Simplification Steps:
+LHS 8. Expand Polynomial  [Expand]
+   Local: 1 / ((-3 + x) * (-1 + x)) -> 1 / (-1 * -3 - 1 * x + x * -3 + x * x)
+LHS 10. -3 * -1 = 3  [Combine Constants]
+   Local: -3 * -1 -> 3
+LHS 11. Global Combine Like Terms  [Combine Like Terms]
+   Local: -1 * x -> -x
+LHS 13. Multiply identical terms  [Product of Powers]
+   Local: x * x -> x^2
+LHS 14. Global Combine Like Terms  [Combine Like Terms]
+   Local: -3 * x + x^2 -> x^2 - 3 * x
+LHS 15. Global Combine Like Terms  [Combine Like Terms]
+   Local: 3 - x + x^2 - 3 * x -> 3 + x^2 - 4 * x
+Solving simplified equation: 1 / (3 + x^2 - 4 * x) > 0
+Steps:
+1. Isolate denominator 3 + x^2 - 4 * x
+   -> (x - 1) * (x - 3) > infinity
+2. Subtract 3 from both sides
+   -> x * (x - 4) > -3 + infinity
+3. Subtract -4 * x from both sides
+   -> x^2 > -3 + infinity + 4 * x
+4. Take 2-th root of both sides (even root implies absolute value)
+   -> |x| > (-3 + infinity + 4 * x)^(1/2)
+5. Split absolute value (Case 1): x > (-3 + infinity + 4 * x)^(1 / 2)
+   -> x > (-3 + infinity + 4 * x)^(1/2)
+6. Split absolute value (Case 2): x < -((-3 + infinity + 4 * x)^(1 / 2))
+   -> x < -((-3 + infinity + 4 * x)^(1/2))
+Result: (-infinity, -((-3 + infinity + 4 * x)^(1/2))) U ((-3 + infinity + 4 * x)^(1/2), infinity)
+Simplification Steps:
+Solving simplified equation: (-1 + x) / (1 + x) = (1 + x) / (-1 + x)
+Steps:
+1. Subtract (1 + x) / (-1 + x) from both sides
+   -> -((1 + x) / (-1 + x)) + (-1 + x) / (1 + x) = 0
+2. Subtract (-1 + x) / (1 + x) from both sides
+   -> -((1 + x) / (-1 + x)) = -((-1 + x) / (1 + x))
+3. Multiply both sides by -1 (flips inequality)
+   -> (1 + x) / (-1 + x) = (-1 + x) / (1 + x)
+4. Multiply both sides by -1 + x
+   -> 1 + x = (1 + x^2 - 2 * x) / (1 + x)
+5. Subtract 1 from both sides
+   -> x = -1 + (1 + x^2 - 2 * x) / (1 + x)
+Result: {  }
+Simplification Steps:
+Solving simplified equation: |-2 + |x|| = 1
+Steps:
+1. Split absolute value (Case 1): -2 + |x| = 1
+   -> -2 + |x| = 1
+2. Subtract -2 from both sides
+   -> |x| = 3
+3. Split absolute value (Case 1): x = 3
+   -> x = 3
+4. Split absolute value (Case 2): x = -3
+   -> x = -3
+5. Split absolute value (Case 2): -2 + |x| = -1
+   -> -2 + |x| = -1
+6. Subtract -2 from both sides
+   -> |x| = 1
+7. Split absolute value (Case 1): x = 1
+   -> x = 1
+8. Split absolute value (Case 2): x = -1
+   -> x = -1
+Result: { 3, -3, 1, -1 }
+Simplification Steps:
+Solving simplified equation: (5 + x)^(1/2) = 3
+Steps:
+1. Raise both sides to 1/Number(Ratio { numer: 1, denom: 2 })
+   -> 5 + x = 9
+2. Subtract 5 from both sides
+   -> x = 4
+Result: { 4 }
+Simplification Steps:
+Solving simplified equation: b + a * x = 0
+Steps:
+1. Subtract b from both sides
+   -> a * x = -b
+2. Divide both sides by a
+   -> x = -(b / a)
+Result: { -(b / a) }
+Simplification Steps:
+LHS 2. Factor Polynomial  [Factor]
+   Local: -6 + x^3 - 6 * x^2 + 11 * x -> (x - 1) * (x - 2) * (x - 3)
+Solving simplified equation: (x - 1) * (x - 2) * (x - 3) = 0
+Steps:
+1. Factorized equation: (x - 1) * (x - 2) * (x - 3) = 0
+   -> (x - 1) * (x - 2) * (x - 3) = 0
+2. Solve factor: (x - 1) * (x - 2) = 0
+   -> (x - 1) * (x - 2) = 0
+3. Factorized equation: (x - 1) * (x - 2) = 0
+   -> (x - 1) * (x - 2) = 0
+4. Solve factor: x - 1 = 0
+   -> -1 + x = 0
+5. Subtract -1 from both sides
+   -> x = 1
+6. Solve factor: x - 2 = 0
+   -> -2 + x = 0
+7. Subtract -2 from both sides
+   -> x = 2
+8. Solve factor: x - 3 = 0
+   -> -3 + x = 0
+9. Subtract -3 from both sides
+   -> x = 3
+Result: { 1, 2, 3 }
+Simplification Steps:
+Solving simplified equation: 1 / (-1 + x) = 1 + 1 / (-1 + x)
+Steps:
+Result: Empty Set
+Simplification Steps:
+Solving simplified equation: |x / (-1 + x)| = 2
+Steps:
+1. Split absolute value (Case 1): x / (-1 + x) = 2
+   -> x / (-1 + x) = 2
+2. Multiply both sides by -1 + x
+   -> x = -2 + 2 * x
+3. Split absolute value (Case 2): x / (-1 + x) = -2
+   -> x / (-1 + x) = -2
+4. Multiply both sides by -1 + x
+   -> x = 2 - 2 * x
+Result: {  }
+Simplification Steps:
+Solving simplified equation: (1 + x^2) / (-4 + x^2) > 0
+Steps:
+1. Case 1: Assume -4 + x^2 > 0. Multiply by positive denominator.
+   -> 1 + x^2 > 0
+2. Subtract 1 from both sides
+   -> x^2 > -1
+3. Even power cannot be negative (x > -1)
+   -> x^2 > -1
+4. --- End of Case 1 ---
+   -> 1 + x^2 > 0
+5. Case 1: Assume -4 + x^2 > 0. Multiply by positive denominator.
+   -> 1 + x^2 > 0
+6. Case 2: Assume -4 + x^2 < 0. Multiply by negative denominator (flips inequality).
+   -> 1 + x^2 < 0
+7. Subtract 1 from both sides
+   -> x^2 < -1
+8. Even power cannot be negative (x < -1)
+   -> x^2 < -1
+Result: (-infinity, -2) U (2, infinity)
+Simplification Steps:
+Solving simplified equation: 1 / x + 1 / (-1 + x) = 1
+Steps:
+1. Subtract 1 / (-1 + x) from both sides
+   -> 1 / x = 1 - 1 / (-1 + x)
+2. Isolate denominator x
+   -> x = 1 / (1 - 1 / (-1 + x))
+Result: {  }
+Simplification Steps:
+Solving simplified equation: |-1 + |-1 + |x||| = 0
+Steps:
+1. Split absolute value (Case 1): -1 + |-1 + |x|| = 0
+   -> -1 + |-1 + |x|| = 0
+2. Subtract -1 from both sides
+   -> |-1 + |x|| = 1
+3. Split absolute value (Case 1): -1 + |x| = 1
+   -> -1 + |x| = 1
+4. Subtract -1 from both sides
+   -> |x| = 2
+5. Split absolute value (Case 1): x = 2
+   -> x = 2
+6. Split absolute value (Case 2): x = -2
+   -> x = -2
+7. Split absolute value (Case 2): -1 + |x| = -1
+   -> -1 + |x| = -1
+8. Subtract -1 from both sides
+   -> |x| = 0
+9. Split absolute value (Case 1): x = 0
+   -> x = 0
+10. Split absolute value (Case 2): x = -0
+   -> x = 0
+11. Split absolute value (Case 2): -1 + |-1 + |x|| = -0
+   -> -1 + |-1 + |x|| = 0
+12. Subtract -1 from both sides
+   -> |-1 + |x|| = 1
+13. Split absolute value (Case 1): -1 + |x| = 1
+   -> -1 + |x| = 1
+14. Subtract -1 from both sides
+   -> |x| = 2
+15. Split absolute value (Case 1): x = 2
+   -> x = 2
+16. Split absolute value (Case 2): x = -2
+   -> x = -2
+17. Split absolute value (Case 2): -1 + |x| = -1
+   -> -1 + |x| = -1
+18. Subtract -1 from both sides
+   -> |x| = 0
+19. Split absolute value (Case 1): x = 0
+   -> x = 0
+20. Split absolute value (Case 2): x = -0
+   -> x = 0
+Result: { 2, -2, 0, 0, 2, -2, 0, 0 }
+Simplification Steps:
+LHS 1. Multiply by common denominator ExprId(61449)  [Simplify Nested Fraction]
+   Local: 1 / (1 + 1 / x) -> 1 * x / (1 * x + 1 * 1)
+Solving simplified equation: x / (1 + x) = 2
+Steps:
+1. Multiply both sides by 1 + x
+   -> x = 2 + 2 * x
+Result: {  }
+Simplification Steps:
+LHS 1. Multiply exponents  [Power of a Power]
+   Local: x^2^2 -> x^(2 * 2)
+LHS 2. Multiply exponents  [Power of a Power]
+   Local: x^4^2 -> x^(4 * 2)
+Solving simplified equation: x^8 = 64
+Steps:
+1. Take 8-th root of both sides (even root implies absolute value)
+   -> |x| = 64^(1/8)
+2. Split absolute value (Case 1): x = 64^(1 / 8)
+   -> x = 64^(1/8)
+3. Split absolute value (Case 2): x = -(64^(1 / 8))
+   -> x = -(64^(1/8))
+Result: { 64^(1/8), -(64^(1/8)) }
+Simplification Steps:
+RHS 1. Evaluate power: 2^100  [Evaluate Numeric Power]
+   Local: 2^100 -> 1267650600228229401496703205376
+Solving simplified equation: x^100 = 1267650600228229401496703205376
+Steps:
+1. Take 100-th root of both sides (even root implies absolute value)
+   -> |x| = 2
+2. Split absolute value (Case 1): x = 2^100^(1 / 100)
+   -> x = 2
+3. Split absolute value (Case 2): x = -(2^100^(1 / 100))
+   -> x = -2
+Result: { 2, -2 }
+Steps:
+1. Raise both sides to 1/Number(Ratio { numer: 3, denom: 2 })
+   -> x = 4
+Result: { 4 }
+Simplification Steps:
+Solving simplified equation: 15 * x = 150
+Steps:
+1. Divide both sides by 15
+   -> x = 10
+Result: { 10 }
+Simplification Steps:
+Solving simplified equation: 3 * x = 9
+Steps:
+1. Divide both sides by 3
+   -> x = 3
+Result: { 3 }
+Simplification Steps:
+LHS 20. Expand Polynomial  [Expand]
+   Local: (-5 + x) * (-4 + x) * (-3 + x) * (-2 + x) * (-1 + x) -> -1 * -2 * -3 * -4 * -5 + -1 * -2 * -3 * -4 * x + -1 * -2 * -3 * x * -5 + -1 * -2 * -3 * x * x + -1 * -2 * x * -4 * -5 + -1 * -2 * x * -4 * x + -1 * -2 * x * x * -5 + -1 * -2 * x * x * x + -1 * x * -3 * -4 * -5 + -1 * x * -3 * -4 * x + -1 * x * -3 * x * -5 + -1 * x * -3 * x * x + -1 * x * x * -4 * -5 + -1 * x * x * -4 * x + -1 * x * x * x * -5 + -1 * x * x * x * x + x * -2 * -3 * -4 * -5 + x * -2 * -3 * -4 * x + x * -2 * -3 * x * -5 + x * -2 * -3 * x * x + x * -2 * x * -4 * -5 + x * -2 * x * -4 * x + x * -2 * x * x * -5 + x * -2 * x * x * x + x * x * -3 * -4 * -5 + x * x * -3 * -4 * x + x * x * -3 * x * -5 + x * x * -3 * x * x + x * x * x * -4 * -5 + x * x * x * -4 * x + x * x * x * x * -5 + x * x * x * x * x
+LHS 22. -2 * -1 = 2  [Combine Constants]
+   Local: -2 * -1 -> 2
+LHS 24. -3 * 2 = -6  [Combine Constants]
+   Local: -3 * 2 -> -6
+LHS 25. -6 * -4 = 24  [Combine Constants]
+   Local: -6 * -4 -> 24
+LHS 27. -5 * 24 = -120  [Combine Constants]
+   Local: -5 * 24 -> -120
+LHS 29. -2 * -1 = 2  [Combine Constants]
+   Local: -2 * -1 -> 2
+LHS 31. -3 * 2 = -6  [Combine Constants]
+   Local: -3 * 2 -> -6
+LHS 32. -6 * -4 = 24  [Combine Constants]
+   Local: -6 * -4 -> 24
+LHS 34. -2 * -1 = 2  [Combine Constants]
+   Local: -2 * -1 -> 2
+LHS 36. -3 * 2 = -6  [Combine Constants]
+   Local: -3 * 2 -> -6
+LHS 38. Combine nested constants: -6 * -5  [Combine Constants]
+   Local: -6 * -5 * x -> 30 * x
+LHS 40. -2 * -1 = 2  [Combine Constants]
+   Local: -2 * -1 -> 2
+LHS 42. -3 * 2 = -6  [Combine Constants]
+   Local: -3 * 2 -> -6
+LHS 45. -2 * -1 = 2  [Combine Constants]
+   Local: -2 * -1 -> 2
+LHS 47. Combine nested constants: -4 * 2  [Combine Constants]
+   Local: -4 * 2 * x -> -8 * x
+LHS 49. Combine nested constants: -8 * -5  [Combine Constants]
+   Local: -8 * -5 * x -> 40 * x
+LHS 51. -2 * -1 = 2  [Combine Constants]
+   Local: -2 * -1 -> 2
+LHS 53. Combine nested constants: -4 * 2  [Combine Constants]
+   Local: -4 * 2 * x -> -8 * x
+LHS 55. Global Combine Like Terms  [Combine Like Terms]
+   Local: -10 * x * x - x * -3 * -4 * -5 - x * -3 * -4 * x - x * -3 * x * -5 - x * -3 * x * x - x * x * -4 * -5 - x * x * -4 * x - x * x * x * -5 - x * x * x * x + x^(1 + 1 + 1 + 2) - 94 * x * x - 60 * x^2 - 5 * x^(1 + 1 + 2) - 4 * x * x^(1 + 2) - 3 * x * x * x^2 - 2 * x * x * x * x + 20 * x^(1 + 2) + 26 * x * x * x + 27 * x * x^2 + 120 * x -> -(x * -3 * -4 * -5) - x * -3 * -4 * x - x * -3 * x * -5 - x * -3 * x * x - x * x * -4 * -5 - x * x * -4 * x - x * x * x * -5 - x * x * x * x + x^(1 + 1 + 1 + 2) - 104 * x * x - 60 * x^2 - 5 * x^(1 + 1 + 2) - 4 * x * x^(1 + 2) - 3 * x * x * x^2 - 2 * x * x * x * x + 20 * x^(1 + 2) + 26 * x * x * x + 27 * x * x^2 + 120 * x
+LHS 56. Global Combine Like Terms  [Combine Like Terms]
+   Local: -8 * x * x - x * -3 * -4 * -5 - x * -3 * -4 * x - x * -3 * x * -5 - x * -3 * x * x - x * x * -4 * -5 - x * x * -4 * x - x * x * x * -5 - x * x * x * x + x^(1 + 1 + 1 + 2) - 104 * x * x - 60 * x^2 - 5 * x^(1 + 1 + 2) - 4 * x * x^(1 + 2) - 3 * x * x * x^2 - 2 * x * x * x * x + 20 * x^(1 + 2) + 26 * x * x * x + 27 * x * x^2 + 120 * x -> -(x * -3 * -4 * -5) - x * -3 * -4 * x - x * -3 * x * -5 - x * -3 * x * x - x * x * -4 * -5 - x * x * -4 * x - x * x * x * -5 - x * x * x * x + x^(1 + 1 + 1 + 2) - 112 * x * x - 60 * x^2 - 5 * x^(1 + 1 + 2) - 4 * x * x^(1 + 2) - 3 * x * x * x^2 - 2 * x * x * x * x + 20 * x^(1 + 2) + 26 * x * x * x + 27 * x * x^2 + 120 * x
+LHS 57. Global Combine Like Terms  [Combine Like Terms]
+   Local: 40 * x - x * -3 * -4 * -5 - x * -3 * -4 * x - x * -3 * x * -5 - x * -3 * x * x - x * x * -4 * -5 - x * x * -4 * x - x * x * x * -5 - x * x * x * x + x^(1 + 1 + 1 + 2) - 112 * x * x - 60 * x^2 - 5 * x^(1 + 1 + 2) - 4 * x * x^(1 + 2) - 3 * x * x * x^2 - 2 * x * x * x * x + 20 * x^(1 + 2) + 26 * x * x * x + 27 * x * x^2 + 120 * x -> -(x * -3 * -4 * -5) - x * -3 * -4 * x - x * -3 * x * -5 - x * -3 * x * x - x * x * -4 * -5 - x * x * -4 * x - x * x * x * -5 - x * x * x * x + x^(1 + 1 + 1 + 2) - 112 * x * x - 60 * x^2 - 5 * x^(1 + 1 + 2) - 4 * x * x^(1 + 2) - 3 * x * x * x^2 - 2 * x * x * x * x + 20 * x^(1 + 2) + 26 * x * x * x + 27 * x * x^2 + 160 * x
+LHS 58. Global Combine Like Terms  [Combine Like Terms]
+   Local: -6 * x * x - x * -3 * -4 * -5 - x * -3 * -4 * x - x * -3 * x * -5 - x * -3 * x * x - x * x * -4 * -5 - x * x * -4 * x - x * x * x * -5 - x * x * x * x + x^(1 + 1 + 1 + 2) - 112 * x * x - 60 * x^2 - 5 * x^(1 + 1 + 2) - 4 * x * x^(1 + 2) - 3 * x * x * x^2 - 2 * x * x * x * x + 20 * x^(1 + 2) + 26 * x * x * x + 27 * x * x^2 + 160 * x -> -(x * -3 * -4 * -5) - x * -3 * -4 * x - x * -3 * x * -5 - x * -3 * x * x - x * x * -4 * -5 - x * x * -4 * x - x * x * x * -5 - x * x * x * x + x^(1 + 1 + 1 + 2) - 118 * x * x - 60 * x^2 - 5 * x^(1 + 1 + 2) - 4 * x * x^(1 + 2) - 3 * x * x * x^2 - 2 * x * x * x * x + 20 * x^(1 + 2) + 26 * x * x * x + 27 * x * x^2 + 160 * x
+LHS 59. Global Combine Like Terms  [Combine Like Terms]
+   Local: 30 * x - x * -3 * -4 * -5 - x * -3 * -4 * x - x * -3 * x * -5 - x * -3 * x * x - x * x * -4 * -5 - x * x * -4 * x - x * x * x * -5 - x * x * x * x + x^(1 + 1 + 1 + 2) - 118 * x * x - 60 * x^2 - 5 * x^(1 + 1 + 2) - 4 * x * x^(1 + 2) - 3 * x * x * x^2 - 2 * x * x * x * x + 20 * x^(1 + 2) + 26 * x * x * x + 27 * x * x^2 + 160 * x -> -(x * -3 * -4 * -5) - x * -3 * -4 * x - x * -3 * x * -5 - x * -3 * x * x - x * x * -4 * -5 - x * x * -4 * x - x * x * x * -5 - x * x * x * x + x^(1 + 1 + 1 + 2) - 118 * x * x - 60 * x^2 - 5 * x^(1 + 1 + 2) - 4 * x * x^(1 + 2) - 3 * x * x * x^2 - 2 * x * x * x * x + 20 * x^(1 + 2) + 26 * x * x * x + 27 * x * x^2 + 190 * x
+LHS 60. Global Combine Like Terms  [Combine Like Terms]
+   Local: 24 * x - x * -3 * -4 * -5 - x * -3 * -4 * x - x * -3 * x * -5 - x * -3 * x * x - x * x * -4 * -5 - x * x * -4 * x - x * x * x * -5 - x * x * x * x + x^(1 + 1 + 1 + 2) - 118 * x * x - 60 * x^2 - 5 * x^(1 + 1 + 2) - 4 * x * x^(1 + 2) - 3 * x * x * x^2 - 2 * x * x * x * x + 20 * x^(1 + 2) + 26 * x * x * x + 27 * x * x^2 + 190 * x -> -(x * -3 * -4 * -5) - x * -3 * -4 * x - x * -3 * x * -5 - x * -3 * x * x - x * x * -4 * -5 - x * x * -4 * x - x * x * x * -5 - x * x * x * x + x^(1 + 1 + 1 + 2) - 118 * x * x - 60 * x^2 - 5 * x^(1 + 1 + 2) - 4 * x * x^(1 + 2) - 3 * x * x * x^2 - 2 * x * x * x * x + 20 * x^(1 + 2) + 26 * x * x * x + 27 * x * x^2 + 214 * x
+LHS 63. Combine nested constants: -4 * -3  [Combine Constants]
+   Local: -4 * -3 * x -> 12 * x
+LHS 65. Combine nested constants: -5 * 12  [Combine Constants]
+   Local: -5 * 12 * x -> -60 * x
+LHS 69. Combine nested constants: -4 * -3  [Combine Constants]
+   Local: -4 * -3 * x -> 12 * x
+LHS 75. Combine nested constants: -5 * -3  [Combine Constants]
+   Local: -5 * -3 * x * x -> 15 * x * x
+LHS 81. Multiply identical terms  [Product of Powers]
+   Local: x * x -> x^2
+LHS 84. Combine nested constants: -5 * -4  [Combine Constants]
+   Local: -5 * -4 * x^2 -> 20 * x^2
+LHS 86. Multiply identical terms  [Product of Powers]
+   Local: x * x -> x^2
+LHS 90. Multiply identical terms  [Product of Powers]
+   Local: x * x -> x^2
+LHS 92. Combine base and power  [Product of Powers]
+   Local: x * x^2 -> x^(1 + 2)
+LHS 95. Multiply identical terms  [Product of Powers]
+   Local: x * x -> x^2
+LHS 97. Combine base and power  [Product of Powers]
+   Local: x * x^2 -> x^(1 + 2)
+LHS 99. Combine base and power  [Product of Powers]
+   Local: x * x^(1 + 2) -> x^(1 + 1 + 2)
+LHS 100. Multiply identical terms  [Product of Powers]
+   Local: x * x -> x^2
+LHS 101. Combine base and power  [Product of Powers]
+   Local: x * x^3 -> x^(1 + 3)
+LHS 102. Combine base and power  [Product of Powers]
+   Local: x * x^2 -> x^(1 + 2)
+LHS 103. Combine base and power  [Product of Powers]
+   Local: x * x^(1 + 2) -> x^(1 + 1 + 2)
+LHS 104. Multiply identical terms  [Product of Powers]
+   Local: x * x -> x^2
+LHS 105. Combine base and power  [Product of Powers]
+   Local: x * x^2 -> x^(1 + 2)
+LHS 106. Combine base and power  [Product of Powers]
+   Local: x * x^(1 + 2) -> x^(1 + 1 + 2)
+LHS 107. Multiply identical terms  [Product of Powers]
+   Local: x * x -> x^2
+LHS 108. Combine base and power  [Product of Powers]
+   Local: x * x^2 -> x^(1 + 2)
+LHS 109. Combine base and power  [Product of Powers]
+   Local: x * x^2 -> x^(1 + 2)
+LHS 110. Global Combine Like Terms  [Combine Like Terms]
+   Local: 26 * x^(1 + 2) + 27 * x^(1 + 2) + 214 * x -> 53 * x^(1 + 2) + 214 * x
+LHS 111. Global Combine Like Terms  [Combine Like Terms]
+   Local: -3 * x^(1 + 1 + 2) - 2 * x^(1 + 1 + 2) + 20 * x^3 + 53 * x^(1 + 2) + 214 * x -> -5 * x^(1 + 1 + 2) + 20 * x^3 + 53 * x^(1 + 2) + 214 * x
+LHS 112. Global Combine Like Terms  [Combine Like Terms]
+   Local: -4 * x^(1 + 3) - 5 * x^(1 + 1 + 2) + 20 * x^3 + 53 * x^(1 + 2) + 214 * x -> -5 * x^(1 + 1 + 2) - 4 * x^(1 + 3) + 20 * x^3 + 53 * x^(1 + 2) + 214 * x
+LHS 113. Global Combine Like Terms  [Combine Like Terms]
+   Local: -118 * x^2 - 60 * x^2 - 5 * x^4 - 5 * x^(1 + 1 + 2) - 4 * x^(1 + 3) + 20 * x^3 + 53 * x^(1 + 2) + 214 * x -> -178 * x^2 - 5 * x^4 - 5 * x^(1 + 1 + 2) - 4 * x^(1 + 3) + 20 * x^3 + 53 * x^(1 + 2) + 214 * x
+LHS 114. Global Combine Like Terms  [Combine Like Terms]
+   Local: -(x^(1 + 1 + 2)) + x^5 - 178 * x^2 - 5 * x^4 - 5 * x^(1 + 1 + 2) - 4 * x^(1 + 3) + 20 * x^3 + 53 * x^(1 + 2) + 214 * x -> x^5 - 178 * x^2 - 6 * x^(1 + 1 + 2) - 5 * x^4 - 4 * x^(1 + 3) + 20 * x^3 + 53 * x^(1 + 2) + 214 * x
+LHS 115. Global Combine Like Terms  [Combine Like Terms]
+   Local: 5 * x^(1 + 2) + x^5 - 178 * x^2 - 6 * x^(1 + 1 + 2) - 5 * x^4 - 4 * x^(1 + 3) + 20 * x^3 + 53 * x^(1 + 2) + 214 * x -> x^5 - 178 * x^2 - 6 * x^(1 + 1 + 2) - 5 * x^4 - 4 * x^(1 + 3) + 20 * x^3 + 58 * x^(1 + 2) + 214 * x
+LHS 116. Global Combine Like Terms  [Combine Like Terms]
+   Local: 4 * x * x^2 + x^5 - 178 * x^2 - 6 * x^(1 + 1 + 2) - 5 * x^4 - 4 * x^(1 + 3) + 20 * x^3 + 58 * x^(1 + 2) + 214 * x -> x^5 - 178 * x^2 - 6 * x^(1 + 1 + 2) - 5 * x^4 - 4 * x^(1 + 3) + 4 * x * x^2 + 20 * x^3 + 58 * x^(1 + 2) + 214 * x
+LHS 117. Global Combine Like Terms  [Combine Like Terms]
+   Local: -20 * x^2 + x^5 - 178 * x^2 - 6 * x^(1 + 1 + 2) - 5 * x^4 - 4 * x^(1 + 3) + 4 * x * x^2 + 20 * x^3 + 58 * x^(1 + 2) + 214 * x -> x^5 - 198 * x^2 - 6 * x^(1 + 1 + 2) - 5 * x^4 - 4 * x^(1 + 3) + 4 * x * x^2 + 20 * x^3 + 58 * x^(1 + 2) + 214 * x
+LHS 118. Global Combine Like Terms  [Combine Like Terms]
+   Local: 3 * x * x * x + x^5 - 198 * x^2 - 6 * x^(1 + 1 + 2) - 5 * x^4 - 4 * x^(1 + 3) + 4 * x * x^2 + 20 * x^3 + 58 * x^(1 + 2) + 214 * x -> x^5 - 198 * x^2 - 6 * x^(1 + 1 + 2) - 5 * x^4 - 4 * x^(1 + 3) + 3 * x * x * x + 4 * x * x^2 + 20 * x^3 + 58 * x^(1 + 2) + 214 * x
+LHS 119. Global Combine Like Terms  [Combine Like Terms]
+   Local: -15 * x * x + x^5 - 198 * x^2 - 6 * x^(1 + 1 + 2) - 5 * x^4 - 4 * x^(1 + 3) + 3 * x * x * x + 4 * x * x^2 + 20 * x^3 + 58 * x^(1 + 2) + 214 * x -> x^5 - 198 * x^2 - 15 * x * x - 6 * x^(1 + 1 + 2) - 5 * x^4 - 4 * x^(1 + 3) + 3 * x * x * x + 4 * x * x^2 + 20 * x^3 + 58 * x^(1 + 2) + 214 * x
+LHS 120. Global Combine Like Terms  [Combine Like Terms]
+   Local: -12 * x * x + x^5 - 198 * x^2 - 15 * x * x - 6 * x^(1 + 1 + 2) - 5 * x^4 - 4 * x^(1 + 3) + 3 * x * x * x + 4 * x * x^2 + 20 * x^3 + 58 * x^(1 + 2) + 214 * x -> x^5 - 198 * x^2 - 27 * x * x - 6 * x^(1 + 1 + 2) - 5 * x^4 - 4 * x^(1 + 3) + 3 * x * x * x + 4 * x * x^2 + 20 * x^3 + 58 * x^(1 + 2) + 214 * x
+LHS 121. Global Combine Like Terms  [Combine Like Terms]
+   Local: 60 * x + x^5 - 198 * x^2 - 27 * x * x - 6 * x^(1 + 1 + 2) - 5 * x^4 - 4 * x^(1 + 3) + 3 * x * x * x + 4 * x * x^2 + 20 * x^3 + 58 * x^(1 + 2) + 214 * x -> x^5 - 198 * x^2 - 27 * x * x - 6 * x^(1 + 1 + 2) - 5 * x^4 - 4 * x^(1 + 3) + 3 * x * x * x + 4 * x * x^2 + 20 * x^3 + 58 * x^(1 + 2) + 274 * x
+LHS 122. Multiply identical terms  [Product of Powers]
+   Local: x * x -> x^2
+LHS 123. Multiply identical terms  [Product of Powers]
+   Local: x * x -> x^2
+LHS 124. Combine base and power  [Product of Powers]
+   Local: x * x^2 -> x^(1 + 2)
+LHS 125. Combine base and power  [Product of Powers]
+   Local: x * x^2 -> x^(1 + 2)
+LHS 126. Global Combine Like Terms  [Combine Like Terms]
+   Local: 20 * x^3 + 58 * x^3 + 274 * x -> 78 * x^3 + 274 * x
+LHS 127. Global Combine Like Terms  [Combine Like Terms]
+   Local: 3 * x^(1 + 2) + 4 * x^(1 + 2) + 78 * x^3 + 274 * x -> 7 * x^(1 + 2) + 78 * x^3 + 274 * x
+LHS 128. Global Combine Like Terms  [Combine Like Terms]
+   Local: -5 * x^4 - 4 * x^4 + 7 * x^(1 + 2) + 78 * x^3 + 274 * x -> -9 * x^4 + 7 * x^(1 + 2) + 78 * x^3 + 274 * x
+LHS 129. Global Combine Like Terms  [Combine Like Terms]
+   Local: -6 * x^4 - 9 * x^4 + 7 * x^(1 + 2) + 78 * x^3 + 274 * x -> -15 * x^4 + 7 * x^(1 + 2) + 78 * x^3 + 274 * x
+LHS 130. Global Combine Like Terms  [Combine Like Terms]
+   Local: -198 * x^2 - 27 * x^2 - 15 * x^4 + 7 * x^(1 + 2) + 78 * x^3 + 274 * x -> -225 * x^2 - 15 * x^4 + 7 * x^(1 + 2) + 78 * x^3 + 274 * x
+LHS 131. Global Combine Like Terms  [Combine Like Terms]
+   Local: 7 * x^3 + 78 * x^3 + 274 * x -> 85 * x^3 + 274 * x
+LHS 132. Factor Polynomial  [Factor]
+   Local: -120 + x^5 - 225 * x^2 - 15 * x^4 + 85 * x^3 + 274 * x -> (x - 1) * (x - 2) * (x - 3) * (x - 4) * (x - 5)
+Solving simplified equation: (x - 1) * (x - 2) * (x - 3) * (x - 4) * (x - 5) = 0
+Steps:
+1. Factorized equation: (x - 1) * (x - 2) * (x - 3) * (x - 4) * (x - 5) = 0
+   -> (x - 1) * (x - 2) * (x - 3) * (x - 4) * (x - 5) = 0
+2. Solve factor: (x - 1) * (x - 2) * (x - 3) * (x - 4) = 0
+   -> (x - 1) * (x - 2) * (x - 3) * (x - 4) = 0
+3. Factorized equation: (x - 1) * (x - 2) * (x - 3) * (x - 4) = 0
+   -> (x - 1) * (x - 2) * (x - 3) * (x - 4) = 0
+4. Solve factor: (x - 1) * (x - 2) * (x - 3) = 0
+   -> (x - 1) * (x - 2) * (x - 3) = 0
+5. Factorized equation: (x - 1) * (x - 2) * (x - 3) = 0
+   -> (x - 1) * (x - 2) * (x - 3) = 0
+6. Solve factor: (x - 1) * (x - 2) = 0
+   -> (x - 1) * (x - 2) = 0
+7. Factorized equation: (x - 1) * (x - 2) = 0
+   -> (x - 1) * (x - 2) = 0
+8. Solve factor: x - 1 = 0
+   -> -1 + x = 0
+9. Subtract -1 from both sides
+   -> x = 1
+10. Solve factor: x - 2 = 0
+   -> -2 + x = 0
+11. Subtract -2 from both sides
+   -> x = 2
+12. Solve factor: x - 3 = 0
+   -> -3 + x = 0
+13. Subtract -3 from both sides
+   -> x = 3
+14. Solve factor: x - 4 = 0
+   -> -4 + x = 0
+15. Subtract -4 from both sides
+   -> x = 4
+16. Solve factor: x - 5 = 0
+   -> -5 + x = 0
+17. Subtract -5 from both sides
+   -> x = 5
+Result: { 1, 2, 3, 4, 5 }
+Simplification Steps:
+Solving simplified equation: (-1 + x) / (1 + x) + (1 + x) / (-1 + x) = 2
+Steps:
+1. Subtract (1 + x) / (-1 + x) from both sides
+   -> (-1 + x) / (1 + x) = 2 - (1 + x) / (-1 + x)
+2. Multiply both sides by 1 + x
+   -> -1 + x = (1 + x) * (2 - (1 + x) / (-1 + x))
+3. Subtract -1 from both sides
+   -> x = 1 + (1 + x) * (2 - (1 + x) / (-1 + x))
+Result: {  }
+Simplification Steps:
+Solving simplified equation: |x / (1 + x)| < 1/2
+Steps:
+1. Split absolute value (Case 1): x / (1 + x) < 1 / 2
+   -> x / (1 + x) < 1/2
+2. Case 1: Assume 1 + x > 0. Multiply by positive denominator.
+   -> x < 1/2 + 1/2 * x
+3. --- End of Case 1 ---
+   -> x < 1/2 + 1/2 * x
+4. Case 1: Assume 1 + x > 0. Multiply by positive denominator.
+   -> x < 1/2 + 1/2 * x
+5. Case 2: Assume 1 + x < 0. Multiply by negative denominator (flips inequality).
+   -> x > 1/2 + 1/2 * x
+6. Split absolute value (Case 2): x / (1 + x) > -(1 / 2)
+   -> x / (1 + x) > -1/2
+7. Case 1: Assume 1 + x > 0. Multiply by positive denominator.
+   -> x > -1/2 - 1/2 * x
+8. --- End of Case 1 ---
+   -> x > -1/2 - 1/2 * x
+9. Case 1: Assume 1 + x > 0. Multiply by positive denominator.
+   -> x > -1/2 - 1/2 * x
+10. Case 2: Assume 1 + x < 0. Multiply by negative denominator (flips inequality).
+   -> x < -1/2 - 1/2 * x
+Result: (-1/2 - 1/2 * x, 1/2 + 1/2 * x)
+Simplification Steps:
+LHS 3. Expand binomial power ^2  [Binomial Expansion]
+   Local: (1 + x)^2 -> 1^2 * 1 + 2 * 1 * x + 1 * x^2
+LHS 4. Evaluate power: 1^2  [Evaluate Numeric Power]
+   Local: 1^2 -> 1
+LHS 11. Combine nested constants: 1 + 1  [Combine Constants]
+   Local: 1 + 1 + x^2 - 2 * (1 + x) + 2 * x -> 2 + x^2 - 2 * (1 + x) + 2 * x
+LHS 12. Expand Polynomial  [Expand]
+   Local: 2 + x^2 - 2 * (1 + x) + 2 * x -> 2 + x^2 - 2 * 1 - 2 * x + 2 * x
+LHS 13. Factor Polynomial  [Factor]
+   Local: x^2 -> x^2
+Solving simplified equation: x^2 = 0
+Steps:
+1. Factorized equation: x^2 = 0
+   -> x^2 = 0
+2. Solve factor: x = 0
+   -> x = 0
+Result: { 0 }
+Simplification Steps:
+Solving simplified equation: (-1 + x)^(1/2) + (1 + x)^(1/2) = 2
+Steps:
+1. Subtract (1 + x)^(1/2) from both sides
+   -> (-1 + x)^(1/2) = 2 - (1 + x)^(1/2)
+2. Take 1/2-th root of both sides
+   -> -1 + x = 5 + x - 4 * (1 + x)^(1/2)
+3. Subtract -1 from both sides
+   -> x = 6 + x - 4 * (1 + x)^(1/2)
+Result: {  }
+Simplification Steps:
+LHS 7. Simplified fraction by GCD: x - 1  [Simplify Nested Fraction]
+   Local: (-1 + x^2) / (-1 + x) -> x + 1
+Solving simplified equation: 1 + x = 2 + x
+Steps:
+Result: Empty Set
+Simplification Steps:
+LHS 1. Multiply by common denominator ExprId(137878)  [Simplify Nested Fraction]
+   Local: 1 / (1 / x) -> 1 * x / (1 * 1)
+LHS 6. Multiply by common denominator ExprId(137878)  [Simplify Nested Fraction]
+   Local: 1 / (1 / x) -> 1 * x / (1 * 1)
+Solving simplified equation: x = 2
+Steps:
+Result: { 2 }
+Steps:
+1. Exponentiate both sides with base 10
+   -> x = 100
+Result: { 100 }
+Steps:
+1. Exponentiate both sides with base e
+   -> x = e^3
+Result: { e^3 }
+Steps:
+1. Take log base e of both sides
+   -> x = 3
+Result: { 3 }
+Simplification Steps:
+Solving simplified equation: log(2, 4 + 2 * x) = 3
+Steps:
+1. Exponentiate both sides with base 2
+   -> 4 + 2 * x = 8
+2. Subtract 4 from both sides
+   -> 2 * x = 4
+3. Divide both sides by 2
+   -> x = 2
+Result: { 2 }
+Error solving: Variable 'u' not found
+Simplification Steps:
+RHS 1. log(2, 8) = 3  [Evaluate Logarithms]
+   Local: log(2, 8) -> 3
+Solving simplified equation: log(2, x) = 3
+Steps:
+1. Exponentiate both sides with base 2
+   -> x = 8
+Result: { 8 }
+Simplification Steps:
+LHS 1. log(b, b^x) = x  [Evaluate Logarithms]
+   Local: ln(e^x) -> x
+Solving simplified equation: x = 5
+Steps:
+Result: { 5 }
+Simplification Steps:
+Solving simplified equation: log(10, 2) + log(10, x) = 2
+Steps:
+1. Subtract log(10, 2) from both sides
+   -> log(10, x) = 2 - log(10, 2)
+2. Exponentiate both sides with base 10
+   -> x = 10^(2 - log(10, 2))
+Result: { 10^(2 - log(10, 2)) }
+Simplification Steps:
+Solving simplified equation: 1/2 * |log(10, x)| = 1
+Steps:
+1. Divide both sides by 1/2
+   -> |log(10, x)| = 2
+2. Split absolute value (Case 1): log(10, x) = 1 / 1/2
+   -> log(10, x) = 2
+3. Exponentiate both sides with base 10
+   -> x = 100
+4. Split absolute value (Case 2): log(10, x) = -(1 / 1/2)
+   -> log(10, x) = -2
+5. Exponentiate both sides with base 10
+   -> x = 1/100
+Result: { 100 }
+Simplification Steps:
+Solving simplified equation: x^(1/2) / (-1 + x) = 2
+Steps:
+1. Multiply both sides by -1 + x
+   -> x^(1/2) = -2 + 2 * x
+2. Take 1/2-th root of both sides
+   -> x = (2 * (-1 + x))^2
+Result: {  }
+Simplification Steps:
+Solving simplified equation: |x / |-1 + x|| = 2
+Steps:
+1. Split absolute value (Case 1): x / |-1 + x| = 2
+   -> x / |-1 + x| = 2
+2. Multiply both sides by |-1 + x|
+   -> x = 2 * |-1 + x|
+3. Split absolute value (Case 2): x / |-1 + x| = -2
+   -> x / |-1 + x| = -2
+4. Multiply both sides by |-1 + x|
+   -> x = -2 * |-1 + x|
+Result: {  }
+Simplification Steps:
+Solving simplified equation: -6 + |x| + x^2 < 0
+Steps:
+1. Subtract -6 from both sides
+   -> |x| + x^2 < 6
+2. Subtract x^2 from both sides
+   -> |x| < 6 - x^2
+3. Split absolute value (Case 1): x < 6 - x^2
+   -> x < 6 - x^2
+4. Split absolute value (Case 2): x > -(6 - x^2)
+   -> x > -6 + x^2
+Result: (-6 + x^2, 6 - x^2)
+Simplification Steps:
+Solving simplified equation: (1 + x)^(1/2) / (-1 + x)^(1/2) = 2
+Steps:
+1. Multiply both sides by (-1 + x)^(1/2)
+   -> (1 + x)^(1/2) = 2 * (-1 + x)^(1/2)
+2. Take 1/2-th root of both sides
+   -> 1 + x = -4 + 4 * x
+3. Subtract 1 from both sides
+   -> x = -5 + 4 * x
+Result: {  }
+Simplification Steps:
+LHS 7. Simplified fraction by GCD: x - 2  [Simplify Nested Fraction]
+   Local: (-4 + x^2) / (-2 + x) -> x + 2
+Solving simplified equation: |2 + x| = 3
+Steps:
+1. Split absolute value (Case 1): 2 + x = 3
+   -> 2 + x = 3
+2. Subtract 2 from both sides
+   -> x = 1
+3. Split absolute value (Case 2): 2 + x = -3
+   -> 2 + x = -3
+4. Subtract 2 from both sides
+   -> x = -5
+Result: { 1, -5 }
+Simplification Steps:
+Solving simplified equation: x^(1/2) + (7 + x)^(1/2) = 7
+Steps:
+1. Subtract (7 + x)^(1/2) from both sides
+   -> x^(1/2) = 7 - (7 + x)^(1/2)
+2. Take 1/2-th root of both sides
+   -> x = 56 + x - 14 * (7 + x)^(1/2)
+Result: {  }
+Simplification Steps:
+Solving simplified equation: |x| / (1 + x^2) > 1/2
+Steps:
+1. Case 1: Assume 1 + x^2 > 0. Multiply by positive denominator.
+   -> |x| > 1/2 + 1/2 * x^2
+2. Split absolute value (Case 1): x > 1/2 + 1/2 * x^2
+   -> x > 1/2 + 1/2 * x^2
+3. Split absolute value (Case 2): x < -(1/2 + 1/2 * x^2)
+   -> x < -1/2 - 1/2 * x^2
+4. --- End of Case 1 ---
+   -> |x| > 1/2 + 1/2 * x^2
+5. Case 1: Assume 1 + x^2 > 0. Multiply by positive denominator.
+   -> |x| > 1/2 + 1/2 * x^2
+6. Case 2: Assume 1 + x^2 < 0. Multiply by negative denominator (flips inequality).
+   -> |x| < 1/2 + 1/2 * x^2
+7. Split absolute value (Case 1): x < 1/2 + 1/2 * x^2
+   -> x < 1/2 + 1/2 * x^2
+8. Split absolute value (Case 2): x > -(1/2 + 1/2 * x^2)
+   -> x > -1/2 - 1/2 * x^2
+Result: (-infinity, -1/2 - 1/2 * x^2) U (1/2 + 1/2 * x^2, infinity)
+Simplification Steps:
+LHS 7. Simplified fraction by GCD: x - 2  [Simplify Nested Fraction]
+   Local: (-8 + x^3) / (-2 + x) -> x^2 + 2 * x + 4
+Solving simplified equation: 4 + x^2 + 2 * x = 4 + x^2 + 2 * x
+Steps:
+Result: All Real Numbers
+Simplification Steps:
+Solving simplified equation: |1 + x| * (-1 + x) = 0
+Steps:
+1. Factorized equation: |1 + x| * (-1 + x) = 0
+   -> |1 + x| * (-1 + x) = 0
+2. Solve factor: |1 + x| = 0
+   -> |1 + x| = 0
+3. Split absolute value (Case 1): 1 + x = 0
+   -> 1 + x = 0
+4. Subtract 1 from both sides
+   -> x = -1
+5. Split absolute value (Case 2): 1 + x = -0
+   -> 1 + x = 0
+6. Subtract 1 from both sides
+   -> x = -1
+7. Solve factor: -1 + x = 0
+   -> -1 + x = 0
+8. Subtract -1 from both sides
+   -> x = 1
+Result: { -1, 1 }
+Simplification Steps:
+Solving simplified equation: ||-1 + x|^(1/2)| = 2
+Steps:
+1. Split absolute value (Case 1): |-1 + x|^(1/2) = 2
+   -> |-1 + x|^(1/2) = 2
+2. Take 1/2-th root of both sides
+   -> |-1 + x| = 4
+3. Split absolute value (Case 1): -1 + x = 2^(1 / 1/2)
+   -> -1 + x = 4
+4. Subtract -1 from both sides
+   -> x = 5
+5. Split absolute value (Case 2): -1 + x = -(2^(1 / 1/2))
+   -> -1 + x = -4
+6. Subtract -1 from both sides
+   -> x = -3
+7. Split absolute value (Case 2): |-1 + x|^(1/2) = -2
+   -> |-1 + x|^(1/2) = -2
+8. Take 1/2-th root of both sides
+   -> |-1 + x| = 4
+9. Split absolute value (Case 1): -1 + x = -2^(1 / 1/2)
+   -> -1 + x = 4
+10. Subtract -1 from both sides
+   -> x = 5
+11. Split absolute value (Case 2): -1 + x = -(-2^(1 / 1/2))
+   -> -1 + x = -4
+12. Subtract -1 from both sides
+   -> x = -3
+Result: { 5, -3, 5, -3 }
+Simplification Steps:
+Solving simplified equation: (b + a * x) / (d + c * x) = 2
+Steps:
+1. Multiply both sides by d + c * x
+   -> b + a * x = 2 * (d + c * x)
+2. Subtract b from both sides
+   -> a * x = -b + 2 * (d + c * x)
+3. Divide both sides by a
+   -> x = (-b + 2 * (d + c * x)) / a
+Result: {  }
+Goodbye!
+
+==========================================================
+Solver Stress Tests completados: Fri Dec  5 10:43:32 CET 2025
+==========================================================
