@@ -3,9 +3,45 @@ use super::*;
 
 impl Repl {
     /// Main command dispatch - calls core and prints result.
+    ///
+    /// # Panic Fence (Defense in Depth)
+    /// Wraps command execution with `catch_unwind` to prevent internal panics
+    /// from crashing the REPL session. On panic:
+    /// - Displays a user-friendly error message
+    /// - Session remains alive for continued use
+    /// - Suggests reporting the issue
     pub fn handle_command(&mut self, line: &str) {
-        let reply = self.handle_command_core(line);
-        self.print_reply(reply);
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+
+        // Wrap in catch_unwind to prevent panics from killing the session
+        // AssertUnwindSafe is needed because &mut self is not UnwindSafe
+        let result = catch_unwind(AssertUnwindSafe(|| self.handle_command_core(line)));
+
+        match result {
+            Ok(reply) => self.print_reply(reply),
+            Err(panic_info) => {
+                // Extract panic message if possible
+                let panic_msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
+                    s.to_string()
+                } else if let Some(s) = panic_info.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    "unknown panic".to_string()
+                };
+
+                // Log to stderr for debugging (visible in terminal)
+                eprintln!("Internal error (panic caught): {}", panic_msg);
+
+                // Return user-friendly error that doesn't kill the session
+                self.print_reply(reply_output(format!(
+                    "⚠ Internal error: {}\n\
+                     \n\
+                     The session is still active. You can continue working.\n\
+                     Please report this issue if it persists.",
+                    panic_msg
+                )));
+            }
+        }
     }
 
     /// Core command dispatch - returns structured messages, no I/O.
