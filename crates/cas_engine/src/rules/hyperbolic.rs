@@ -1,7 +1,7 @@
 use crate::define_rule;
 use crate::helpers::{is_one, is_zero};
 use crate::rule::Rewrite;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use std::cmp::Ordering;
 
 // ==================== Helper Functions ====================
@@ -391,7 +391,9 @@ fn as_exp(ctx: &Context, id: ExprId) -> Option<ExprId> {
             }
         }
         // Case: exp(arg) function
-        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "exp" && args.len() == 1 => {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Exp) && args.len() == 1 =>
+        {
             Some(args[0])
         }
         _ => None,

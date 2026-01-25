@@ -1,7 +1,7 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::smart_mul;
-use cas_ast::{Context, Expr};
+use cas_ast::{BuiltinFn, Context, Expr};
 use num_traits::{Signed, Zero};
 
 define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
@@ -10,8 +10,7 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
     // We look for sqrt(A + B) or sqrt(A - B)
     // Also handle Pow(inner, 1/2)
     let inner = if let Expr::Function(fn_id, args) = &expr_data {
-        let name = ctx.sym_name(*fn_id);
-        if name == "sqrt" && args.len() == 1 {
+        if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 {
             Some(args[0])
         } else {
             None
@@ -47,7 +46,9 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
         e: cas_ast::ExprId,
     ) -> Option<(Option<cas_ast::ExprId>, cas_ast::ExprId)> {
         match ctx.get(e) {
-            Expr::Function(fname, fargs) if ctx.sym_name(*fname) == "sqrt" && fargs.len() == 1 => {
+            Expr::Function(fname, fargs)
+                if ctx.is_builtin(*fname, BuiltinFn::Sqrt) && fargs.len() == 1 =>
+            {
                 Some((None, fargs[0]))
             }
             Expr::Pow(b, e) => {
@@ -65,7 +66,7 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
                 let is_sqrt = |e: cas_ast::ExprId| -> Option<cas_ast::ExprId> {
                     match ctx.get(e) {
                         Expr::Function(fname, fargs)
-                            if ctx.sym_name(*fname) == "sqrt" && fargs.len() == 1 =>
+                            if ctx.is_builtin(*fname, BuiltinFn::Sqrt) && fargs.len() == 1 =>
                         {
                             Some(fargs[0])
                         }
@@ -200,8 +201,7 @@ define_rule!(
     "Simplify Square Root",
     |ctx, expr| {
         let arg = if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
-            if name == "sqrt" && args.len() == 1 {
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 {
                 Some(args[0])
             } else {
                 None
@@ -385,7 +385,9 @@ fn split_as_m_plus_t(
     // Helper to check if an expression contains a sqrt (surd-like)
     fn is_surd_like(ctx: &cas_ast::Context, e: cas_ast::ExprId) -> bool {
         match ctx.get(e) {
-            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => {
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
+            {
                 true
             }
             Expr::Pow(_, exp) => {
@@ -708,7 +710,9 @@ fn compute_t_squared(
         Expr::Number(n) => Some(n * n),
 
         // sqrt(d) function
-        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
+        {
             if let Expr::Number(d) = ctx.get(args[0]) {
                 Some(d.clone())
             } else {
@@ -743,7 +747,7 @@ fn compute_t_squared(
 
                 let d = match ctx.get(surd) {
                     Expr::Function(fn_id, args)
-                        if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 =>
+                        if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
                     {
                         if let Expr::Number(n) = ctx.get(args[0]) {
                             n.clone()
@@ -788,7 +792,9 @@ fn compute_t_squared(
 /// Extract the radicand if expression is a sqrt (either sqrt(x) function or x^(1/2))
 fn as_sqrt(ctx: &cas_ast::Context, e: cas_ast::ExprId) -> Option<cas_ast::ExprId> {
     match ctx.get(e) {
-        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
+        {
             Some(args[0])
         }
         Expr::Pow(base, exp) => {

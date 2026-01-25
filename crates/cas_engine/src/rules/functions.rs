@@ -1,14 +1,13 @@
 use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use cas_ast::Expr;
+use cas_ast::{BuiltinFn, Expr};
 use num_integer::Integer;
 use num_traits::Signed;
 
 define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
     if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        let name = ctx.sym_name(*fn_id);
-        if name == "abs" && args.len() == 1 {
+        if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 {
             let arg = args[0];
 
             // Case 1: abs(number)
@@ -62,7 +61,9 @@ impl crate::rule::Rule for AbsPositiveSimplifyRule {
 
         // Match abs(inner)
         let inner = match ctx.get(expr).clone() {
-            Expr::Function(fn_id, ref args) if ctx.sym_name(fn_id) == "abs" && args.len() == 1 => {
+            Expr::Function(fn_id, ref args)
+                if ctx.is_builtin(fn_id, BuiltinFn::Abs) && args.len() == 1 =>
+            {
                 args[0]
             }
             _ => return None,
@@ -161,7 +162,9 @@ impl crate::rule::Rule for AbsNonNegativeSimplifyRule {
 
         // Match abs(inner)
         let inner = match ctx.get(expr).clone() {
-            Expr::Function(fn_id, ref args) if ctx.sym_name(fn_id) == "abs" && args.len() == 1 => {
+            Expr::Function(fn_id, ref args)
+                if ctx.is_builtin(fn_id, BuiltinFn::Abs) && args.len() == 1 =>
+            {
                 args[0]
             }
             _ => return None,
@@ -257,8 +260,7 @@ impl crate::rule::Rule for AbsSquaredRule {
         // V2.15.9: Skip if parent is ln or log to allow LogAbsPowerRule to apply first
         if let Some(parent_id) = parent_ctx.immediate_parent() {
             if let Expr::Function(name, _) = ctx.get(parent_id) {
-                let name_str = ctx.sym_name(*name);
-                if name_str == "ln" || name_str == "log" {
+                if ctx.is_builtin(*name, BuiltinFn::Ln) || ctx.is_builtin(*name, BuiltinFn::Log) {
                     return None;
                 }
             }
@@ -268,8 +270,7 @@ impl crate::rule::Rule for AbsSquaredRule {
         if let Expr::Pow(base, exp) = expr_data {
             let base_data = ctx.get(base).clone();
             if let Expr::Function(fn_id, args) = base_data {
-                let name = ctx.sym_name(fn_id);
-                if name == "abs" && args.len() == 1 {
+                if ctx.is_builtin(fn_id, BuiltinFn::Abs) && args.len() == 1 {
                     let inner = args[0];
 
                     // Check if exponent is an even integer
@@ -306,8 +307,7 @@ define_rule!(
         // Also handles Pow(x, 1/2) of Pow(x, 2)
 
         let inner = if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
-            if name == "sqrt" && args.len() == 1 {
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 {
                 Some(args[0])
             } else {
                 None
@@ -449,9 +449,8 @@ impl crate::rule::Rule for SymbolicRootCancelRule {
         let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
             return None;
         };
-        let name = ctx.sym_name(fn_id);
 
-        if name != "sqrt" || args.len() != 2 {
+        if !ctx.is_builtin(fn_id, BuiltinFn::Sqrt) || args.len() != 2 {
             return None;
         }
 
@@ -580,10 +579,10 @@ define_rule!(
     Some(vec!["Function"]),
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr).clone() {
-            let name = ctx.sym_name(fn_id);
             if args.len() == 1 {
                 let arg = args[0];
-                match name {
+                let fn_name = ctx.sym_name(fn_id);
+                match fn_name {
                     // simplify() is transparent - argument already processed
                     "simplify" => {
                         return Some(Rewrite::new(arg).desc("simplify(x) = x (already processed)"));
@@ -619,11 +618,10 @@ define_rule!(
 define_rule!(AbsIdempotentRule, "Abs Idempotent", |ctx, expr| {
     // Match abs(abs(inner))
     if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        let name = ctx.sym_name(*fn_id);
-        if name == "abs" && args.len() == 1 {
+        if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 {
             let arg = args[0];
             if let Expr::Function(inner_name, inner_args) = ctx.get(arg) {
-                if ctx.sym_name(*inner_name) == "abs" && inner_args.len() == 1 {
+                if ctx.is_builtin(*inner_name, BuiltinFn::Abs) && inner_args.len() == 1 {
                     // ||x|| → |x|
                     return Some(Rewrite::new(arg).desc("||x|| = |x|"));
                 }
@@ -640,8 +638,7 @@ define_rule!(AbsIdempotentRule, "Abs Idempotent", |ctx, expr| {
 define_rule!(AbsOfEvenPowerRule, "Abs Of Even Power", |ctx, expr| {
     // Match abs(x^n) where n is even integer
     if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        let name = ctx.sym_name(*fn_id);
-        if name == "abs" && args.len() == 1 {
+        if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 {
             let arg = args[0];
             if let Expr::Pow(_base, exp) = ctx.get(arg) {
                 if let Expr::Number(n) = ctx.get(*exp) {
@@ -672,8 +669,7 @@ define_rule!(
         if let Expr::Mul(lhs, rhs) = ctx.get(expr) {
             // Check if lhs is abs(a)
             let lhs_inner = if let Expr::Function(fn_id, args) = ctx.get(*lhs) {
-                let name = ctx.sym_name(*fn_id);
-                if name == "abs" && args.len() == 1 {
+                if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 {
                     Some(args[0])
                 } else {
                     None
@@ -684,8 +680,7 @@ define_rule!(
 
             // Check if rhs is abs(b)
             let rhs_inner = if let Expr::Function(fn_id, args) = ctx.get(*rhs) {
-                let name = ctx.sym_name(*fn_id);
-                if name == "abs" && args.len() == 1 {
+                if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 {
                     Some(args[0])
                 } else {
                     None
@@ -719,8 +714,7 @@ define_rule!(
         if let Expr::Div(lhs, rhs) = ctx.get(expr) {
             // Check if lhs is abs(a)
             let lhs_inner = if let Expr::Function(fn_id, args) = ctx.get(*lhs) {
-                let name = ctx.sym_name(*fn_id);
-                if name == "abs" && args.len() == 1 {
+                if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 {
                     Some(args[0])
                 } else {
                     None
@@ -731,8 +725,7 @@ define_rule!(
 
             // Check if rhs is abs(b)
             let rhs_inner = if let Expr::Function(fn_id, args) = ctx.get(*rhs) {
-                let name = ctx.sym_name(*fn_id);
-                if name == "abs" && args.len() == 1 {
+                if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 {
                     Some(args[0])
                 } else {
                     None
@@ -759,13 +752,12 @@ define_rule!(
 define_rule!(AbsSqrtRule, "Abs Of Sqrt", |ctx, expr| {
     // Match abs(sqrt(x)) or abs(x^(1/2))
     if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        let name = ctx.sym_name(*fn_id);
-        if name == "abs" && args.len() == 1 {
+        if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 {
             let arg = args[0];
 
             // Check for sqrt(x) function
             if let Expr::Function(inner_name, _inner_args) = ctx.get(arg) {
-                if ctx.sym_name(*inner_name) == "sqrt" {
+                if ctx.is_builtin(*inner_name, BuiltinFn::Sqrt) {
                     // |sqrt(x)| → sqrt(x)
                     return Some(Rewrite::new(arg).desc("|√x| = √x"));
                 }
@@ -795,13 +787,12 @@ define_rule!(AbsSqrtRule, "Abs Of Sqrt", |ctx, expr| {
 define_rule!(AbsExpRule, "Abs Of Exp", |ctx, expr| {
     // Match abs(exp(x)) or abs(e^x)
     if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        let name = ctx.sym_name(*fn_id);
-        if name == "abs" && args.len() == 1 {
+        if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 {
             let arg = args[0];
 
             // Check for exp(x) function
             if let Expr::Function(inner_name, _inner_args) = ctx.get(arg) {
-                if ctx.sym_name(*inner_name) == "exp" {
+                if ctx.is_builtin(*inner_name, BuiltinFn::Exp) {
                     // |exp(x)| → exp(x)
                     return Some(Rewrite::new(arg).desc("|e^x| = e^x"));
                 }
@@ -828,8 +819,7 @@ define_rule!(AbsExpRule, "Abs Of Exp", |ctx, expr| {
 define_rule!(AbsSumOfSquaresRule, "Abs Of Sum Of Squares", |ctx, expr| {
     // Match abs(a + b) where both a and b are non-negative (squares, abs, etc.)
     if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        let name = ctx.sym_name(*fn_id);
-        if name == "abs" && args.len() == 1 {
+        if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 {
             let arg = args[0];
 
             // Check if the argument is provably non-negative
@@ -853,11 +843,11 @@ fn is_sum_of_nonnegative(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool 
             }
         }
         // |x| is non-negative
-        Expr::Function(name, _) if ctx.sym_name(*name) == "abs" => true,
+        Expr::Function(name, _) if ctx.is_builtin(*name, BuiltinFn::Abs) => true,
         // sqrt(x) is non-negative
-        Expr::Function(name, _) if ctx.sym_name(*name) == "sqrt" => true,
+        Expr::Function(name, _) if ctx.is_builtin(*name, BuiltinFn::Sqrt) => true,
         // exp(x) is positive
-        Expr::Function(name, _) if ctx.sym_name(*name) == "exp" => true,
+        Expr::Function(name, _) if ctx.is_builtin(*name, BuiltinFn::Exp) => true,
         // Positive number is non-negative
         Expr::Number(n) => !n.is_negative(),
         // Sum: both sides must be non-negative
