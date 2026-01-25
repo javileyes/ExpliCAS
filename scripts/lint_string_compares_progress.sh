@@ -36,18 +36,31 @@ echo "${BLU}==>${RST} String comparisons progress (FunctionKind migration)"
 echo ""
 
 # Count sym_name comparisons in cas_engine
-SYM_NAME_LINES=$(grep -rn 'sym_name([^)]*) == "' "$ENGINE_DIR" 2>/dev/null || true)
-SYM_NAME_COUNT=0
-if [[ -n "$SYM_NAME_LINES" ]]; then
-    SYM_NAME_COUNT=$(echo "$SYM_NAME_LINES" | wc -l | tr -d ' ')
+# We separate FUNCTION comparisons (the goal of this guardrail) from VARIABLE comparisons
+SYM_NAME_ALL_LINES=$(grep -rn 'sym_name([^)]*) == "' "$ENGINE_DIR" 2>/dev/null || true)
+
+# Filter: Variable comparisons (Expr::Variable pattern)
+SYM_NAME_VAR_LINES=$(echo "$SYM_NAME_ALL_LINES" | grep -E 'Expr::Variable|Variable\(' || true)
+SYM_NAME_VAR_COUNT=0
+if [[ -n "$SYM_NAME_VAR_LINES" ]]; then
+    SYM_NAME_VAR_COUNT=$(echo "$SYM_NAME_VAR_LINES" | wc -l | tr -d ' ')
 fi
 
-# Get per-file breakdown
-echo "${CYN}📊 Per-file breakdown (sym_name(...) == \"...\"):${RST}"
+# Filter: Function comparisons (everything else - this is what we want to migrate)
+SYM_NAME_FN_LINES=$(echo "$SYM_NAME_ALL_LINES" | grep -vE 'Expr::Variable|Variable\(' || true)
+SYM_NAME_FN_COUNT=0
+if [[ -n "$SYM_NAME_FN_LINES" ]]; then
+    SYM_NAME_FN_COUNT=$(echo "$SYM_NAME_FN_LINES" | wc -l | tr -d ' ')
+fi
+
+SYM_NAME_COUNT=$SYM_NAME_FN_COUNT  # Use function count as the main metric
+
+# Get per-file breakdown (FUNCTION comparisons only)
+echo "${CYN}📊 Per-file breakdown (function sym_name(...) == \"...\"):${RST}"
 echo ""
 
-if [[ -n "$SYM_NAME_LINES" ]]; then
-    echo "$SYM_NAME_LINES" | \
+if [[ -n "$SYM_NAME_FN_LINES" ]]; then
+    echo "$SYM_NAME_FN_LINES" | \
         sed 's|'"$ENGINE_DIR"'/||' | \
         cut -d: -f1 | \
         sort | uniq -c | sort -rn | head -15 | \
@@ -55,9 +68,14 @@ if [[ -n "$SYM_NAME_LINES" ]]; then
             printf "  %3d  %s\n" "$count" "$file"
         done
 else
-    echo "  (none found - migration complete! 🎉)"
+    echo "  (none found - function migration complete! 🎉)"
 fi
 
+echo ""
+
+# Show variable comparisons separately (informational only)
+echo "${YLW}📊 Variable comparisons (not targeted by this guardrail):${RST}"
+echo "  Variable sym_name checks: ${BLU}$SYM_NAME_VAR_COUNT${RST} (these use Expr::Variable, not Function)"
 echo ""
 
 # Count specific builtin names

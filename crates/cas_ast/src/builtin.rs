@@ -93,6 +93,7 @@ pub enum BuiltinFn {
     // Roots / Powers
     Sqrt,
     Cbrt,
+    Root, // root(x, n) = nth root
 
     // Other common
     Abs,
@@ -103,12 +104,18 @@ pub enum BuiltinFn {
     // Internal / Special
     Hold,       // __hold barrier
     PolyResult, // poly_result wrapper
+    Expand,     // expand command
+
+    // Comparison functions (used by solver)
+    Equal,   // Equal(a, b)
+    Less,    // Less(a, b)
+    Greater, // Greater(a, b)
 }
 
 impl BuiltinFn {
     /// Total number of builtin functions.
     /// Update this when adding new variants!
-    pub const COUNT: usize = 34;
+    pub const COUNT: usize = 39;
 
     /// Get the string name of this builtin function.
     #[inline]
@@ -155,6 +162,7 @@ impl BuiltinFn {
             // Roots
             BuiltinFn::Sqrt => "sqrt",
             BuiltinFn::Cbrt => "cbrt",
+            BuiltinFn::Root => "root",
 
             // Other
             BuiltinFn::Abs => "abs",
@@ -165,6 +173,12 @@ impl BuiltinFn {
             // Internal
             BuiltinFn::Hold => "__hold",
             BuiltinFn::PolyResult => "poly_result",
+            BuiltinFn::Expand => "expand",
+
+            // Comparison
+            BuiltinFn::Equal => "Equal",
+            BuiltinFn::Less => "Less",
+            BuiltinFn::Greater => "Greater",
         }
     }
 
@@ -206,12 +220,17 @@ pub const ALL_BUILTINS: [BuiltinFn; BuiltinFn::COUNT] = [
     BuiltinFn::Exp,
     BuiltinFn::Sqrt,
     BuiltinFn::Cbrt,
+    BuiltinFn::Root,
     BuiltinFn::Abs,
     BuiltinFn::Sign,
     BuiltinFn::Floor,
     BuiltinFn::Ceil,
     BuiltinFn::Hold,
     BuiltinFn::PolyResult,
+    BuiltinFn::Expand,
+    BuiltinFn::Equal,
+    BuiltinFn::Less,
+    BuiltinFn::Greater,
 ];
 
 /// Cache of builtin function SymbolIds.

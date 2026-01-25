@@ -5,7 +5,7 @@ use crate::poly_store::clear_thread_local_store;
 use crate::rationalize_policy::AutoRationalizeLevel;
 use crate::rules::algebra::gcd_modp::eager_eval_poly_gcd_calls;
 use crate::{Simplifier, Step};
-use cas_ast::ExprId;
+use cas_ast::{BuiltinFn, ExprId};
 use std::collections::VecDeque;
 
 pub struct Orchestrator {
@@ -421,7 +421,7 @@ impl Orchestrator {
         // When user explicitly calls expand(), they want the expanded form even if "worse"
         let has_explicit_expand =
             if let cas_ast::Expr::Function(name, _) = simplifier.context.get(expr) {
-                simplifier.context.sym_name(*name) == "expand"
+                simplifier.context.is_builtin(*name, BuiltinFn::Expand)
             } else {
                 false
             };

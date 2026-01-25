@@ -9,7 +9,7 @@ use crate::phase::PhaseMask;
 use crate::poly_modp_conv::{expr_to_poly_modp, PolyModpBudget, VarTable};
 use crate::poly_store::{PolyMeta, POLY_MAX_STORE_TERMS};
 use crate::rule::Rewrite;
-use cas_ast::Expr;
+use cas_ast::{BuiltinFn, Expr};
 
 /// Default prime for mod-p operations
 pub const DEFAULT_PRIME: u64 = 4503599627370449;
@@ -127,7 +127,7 @@ define_rule!(
 
         // Check if arg is poly_result(terms, degree, vars, modulus)
         if let Expr::Function(inner_name, inner_args) = ctx.get(args[0]) {
-            if ctx.sym_name(*inner_name) == "poly_result" && inner_args.len() == 4 {
+            if ctx.is_builtin(*inner_name, BuiltinFn::PolyResult) && inner_args.len() == 4 {
                 // Already has stats, just format nicely
                 return Some(Rewrite::new(args[0]).desc("poly_stats: already computed"));
             }

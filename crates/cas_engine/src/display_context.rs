@@ -100,7 +100,7 @@ fn scan_for_sqrt_hints(ctx: &Context, expr: cas_ast::ExprId, display_ctx: &mut D
                     _ => 2,
                 };
                 display_ctx.insert(expr, DisplayHint::AsRoot { index });
-            } else if ctx.sym_name(*name) == "root" && args.len() == 2 {
+            } else if ctx.is_builtin(*name, BuiltinFn::Root) && args.len() == 2 {
                 let index = if let Expr::Number(n) = ctx.get(args[1]) {
                     n.to_integer().try_into().unwrap_or(2)
                 } else {
@@ -347,7 +347,7 @@ fn extract_root_index(ctx: &Context, expr: cas_ast::ExprId) -> Option<u32> {
                 _ => None,
             };
         }
-        if ctx.sym_name(*fn_id) == "root" && args.len() == 2 {
+        if ctx.is_builtin(*fn_id, BuiltinFn::Root) && args.len() == 2 {
             // root(x, n) = nth root
             if let Expr::Number(n) = ctx.get(args[1]) {
                 return n.to_integer().try_into().ok();

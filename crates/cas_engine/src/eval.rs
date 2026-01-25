@@ -1,7 +1,7 @@
 use crate::session::{EntryKind, ResolveError};
 use crate::session_state::SessionState;
 use crate::Simplifier;
-use cas_ast::{Equation, Expr, ExprId, RelOp};
+use cas_ast::{BuiltinFn, Equation, Expr, ExprId, RelOp};
 
 /// The central Engine struct that wraps the core Simplifier and potentially other components.
 ///
@@ -454,7 +454,7 @@ impl Engine {
                 // We must peek at the resolved expression structure
                 let eq_to_solve = match self.simplifier.context.get(resolved) {
                     Expr::Function(fn_id, args)
-                        if self.simplifier.context.sym_name(*fn_id) == "Equal"
+                        if self.simplifier.context.is_builtin(*fn_id, BuiltinFn::Equal)
                             && args.len() == 2 =>
                     {
                         Equation {
@@ -464,7 +464,7 @@ impl Engine {
                         }
                     }
                     Expr::Function(fn_id, args)
-                        if self.simplifier.context.sym_name(*fn_id) == "Less"
+                        if self.simplifier.context.is_builtin(*fn_id, BuiltinFn::Less)
                             && args.len() == 2 =>
                     {
                         Equation {
@@ -474,7 +474,10 @@ impl Engine {
                         }
                     }
                     Expr::Function(fn_id, args)
-                        if self.simplifier.context.sym_name(*fn_id) == "Greater"
+                        if self
+                            .simplifier
+                            .context
+                            .is_builtin(*fn_id, BuiltinFn::Greater)
                             && args.len() == 2 =>
                     {
                         Equation {
