@@ -1,7 +1,9 @@
 use crate::engine::Simplifier;
 use crate::solver::solution_set::{intersect_solution_sets, neg_inf, pos_inf, union_solution_sets};
 use crate::solver::{solve, SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
-use cas_ast::{BoundType, Context, Equation, Expr, ExprId, Interval, RelOp, SolutionSet};
+use cas_ast::{
+    BoundType, BuiltinFn, Context, Equation, Expr, ExprId, Interval, RelOp, SolutionSet,
+};
 use num_traits::Zero;
 
 use crate::error::CasError;
@@ -1350,7 +1352,7 @@ pub fn isolate(
             }
         }
         Expr::Function(fn_id, args) => {
-            if simplifier.context.sym_name(fn_id) == "abs" && args.len() == 1 {
+            if simplifier.context.is_builtin(fn_id, BuiltinFn::Abs) && args.len() == 1 {
                 // |A| = B
                 // |A| < B -> -B < A < B (Intersection)
                 // |A| > B -> A > B OR A < -B (Union)
@@ -1444,7 +1446,7 @@ pub fn isolate(
                 all_steps.extend(steps2_out);
 
                 Ok((final_set, all_steps))
-            } else if simplifier.context.sym_name(fn_id) == "log" && args.len() == 2 {
+            } else if simplifier.context.is_builtin(fn_id, BuiltinFn::Log) && args.len() == 2 {
                 let base = args[0];
                 let arg = args[1];
 
