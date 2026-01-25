@@ -216,7 +216,7 @@ impl Step {
             // Unwrap __hold for display purposes
             let display_id = match ctx.get(after) {
                 cas_ast::Expr::Function(fn_id, args)
-                    if ctx.sym_name(*fn_id) == "__hold" && args.len() == 1 =>
+                    if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Hold) && args.len() == 1 =>
                 {
                     args[0]
                 }

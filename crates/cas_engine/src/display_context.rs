@@ -333,8 +333,7 @@ fn scan_for_power_roots(ctx: &Context, expr: cas_ast::ExprId, display_ctx: &mut 
 /// Extract the root index from a sqrt/root function
 fn extract_root_index(ctx: &Context, expr: cas_ast::ExprId) -> Option<u32> {
     if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        let name = ctx.sym_name(*fn_id);
-        if name == "sqrt" {
+        if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) {
             return match args.len() {
                 1 => Some(2), // sqrt(x) = 2nd root
                 2 => {
@@ -348,7 +347,7 @@ fn extract_root_index(ctx: &Context, expr: cas_ast::ExprId) -> Option<u32> {
                 _ => None,
             };
         }
-        if name == "root" && args.len() == 2 {
+        if ctx.sym_name(*fn_id) == "root" && args.len() == 2 {
             // root(x, n) = nth root
             if let Expr::Number(n) = ctx.get(args[1]) {
                 return n.to_integer().try_into().ok();

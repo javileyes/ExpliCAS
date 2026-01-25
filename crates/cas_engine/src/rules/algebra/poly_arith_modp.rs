@@ -14,11 +14,11 @@ use crate::phase::PhaseMask;
 use crate::poly_modp_conv::{expr_to_poly_modp, strip_hold, PolyModpBudget, VarTable};
 use crate::rule::Rewrite;
 use crate::rules::algebra::gcd_modp::DEFAULT_PRIME;
-use cas_ast::Expr;
+use cas_ast::{BuiltinFn, Expr};
 
 /// Check if expression is wrapped in __hold
 fn is_hold(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
-    matches!(ctx.get(expr), Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "__hold" && args.len() == 1)
+    matches!(ctx.get(expr), Expr::Function(fn_id, args) if ctx.is_builtin(*fn_id, BuiltinFn::Hold) && args.len() == 1)
 }
 
 // PolySubModpRule: handle __hold(P) - __hold(Q) in polynomial domain
