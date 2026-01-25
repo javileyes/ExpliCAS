@@ -43,6 +43,7 @@ pub mod pattern_scanner;
 pub mod phase;
 pub mod poly_lowering;
 pub mod poly_modp_conv;
+pub mod poly_result;
 pub mod poly_store;
 pub mod polynomial;
 pub mod profile_cache;

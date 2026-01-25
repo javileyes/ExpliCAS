@@ -82,3 +82,22 @@ lint-no-panic-prod:
 	@echo "==> Checking for panic! in production code..."
 	@cargo clippy --workspace --lib --bins -- -D clippy::panic 2>&1 || { echo ""; echo "FAIL: Found panic! in production code. Fix or add #[allow(clippy::panic)] with justification."; exit 1; }
 	@echo "✓ No panic! in production code"
+
+# Forbid direct "__hold" and "poly_result" string comparisons outside canonical modules
+# Canonical modules: cas_ast/src/hold.rs, cas_engine/src/poly_result.rs
+# Goal: all code should use helpers (is_hold, is_poly_result, etc.), not string patterns
+lint-no-stringly-ir:
+	@echo "==> Checking for stringly-typed IR patterns..."
+	@echo ""
+	@HOLD_VIOLATIONS=$$(grep -rn '"__hold"' crates/cas_engine/src crates/cas_ast/src 2>/dev/null | grep -v 'hold.rs' | grep -v 'tests::' | wc -l | tr -d ' '); \
+	POLY_VIOLATIONS=$$(grep -rn '"poly_result"' crates/cas_engine/src 2>/dev/null | grep -v 'poly_result.rs' | grep -v 'poly_store.rs' | grep -v 'tests::' | wc -l | tr -d ' '); \
+	echo "  __hold violations (outside hold.rs): $$HOLD_VIOLATIONS"; \
+	echo "  poly_result violations (outside poly_result.rs/poly_store.rs): $$POLY_VIOLATIONS"; \
+	echo ""; \
+	if [ "$$HOLD_VIOLATIONS" != "0" ] || [ "$$POLY_VIOLATIONS" != "0" ]; then \
+		echo "Note: Existing violations are grandfathered. New code should use canonical helpers:"; \
+		echo "  - __hold: use cas_ast::hold::{is_hold, unwrap_hold, strip_all_holds}"; \
+		echo "  - poly_result: use cas_engine::poly_result::{is_poly_result, parse_poly_result_id, wrap_poly_result}"; \
+	else \
+		echo "✓ No stringly-typed IR patterns found"; \
+	fi
