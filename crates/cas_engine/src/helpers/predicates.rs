@@ -3,7 +3,7 @@
 // Now consolidated here for consistency and maintainability.
 
 use super::pi::extract_rational_pi_multiple;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_traits::{One, Signed};
 
 /// Check if expression is the number 1
@@ -134,7 +134,8 @@ fn prove_nonzero_depth(ctx: &Context, expr: ExprId, depth: usize) -> crate::doma
         // ln(x) or log(x): non-zero iff x ≠ 1 (and x > 0 for it to be defined)
         // We check if x is a numeric constant that is > 0 and ≠ 1
         Expr::Function(fn_id, args)
-            if (ctx.sym_name(*fn_id) == "ln" || ctx.sym_name(*fn_id) == "log")
+            if (ctx.is_builtin(*fn_id, BuiltinFn::Ln)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Log))
                 && args.len() == 1 =>
         {
             match ctx.get(args[0]) {
@@ -178,7 +179,9 @@ fn prove_nonzero_depth(ctx: &Context, expr: ExprId, depth: usize) -> crate::doma
 
         // sin(k·π): zero iff k is integer, non-zero iff k is rational non-integer
         // This enables cancellation of sin(π/9)/sin(π/9) without requiring assumptions
-        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sin" && args.len() == 1 => {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sin) && args.len() == 1 =>
+        {
             // Try to extract k from sin(k·π)
             if let Some(k) = extract_rational_pi_multiple(ctx, args[0]) {
                 // k.is_integer() checks if denominator == 1 (works on reduced form)
@@ -347,7 +350,9 @@ fn prove_positive_depth(
         }
 
         // abs(x): always ≥ 0, but only > 0 if x ≠ 0
-        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "abs" && args.len() == 1 => {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 =>
+        {
             let inner_nonzero = prove_nonzero_depth(ctx, args[0], depth - 1);
             if inner_nonzero == Proof::Proven {
                 Proof::Proven
@@ -361,7 +366,9 @@ fn prove_positive_depth(
         // exp(x) > 0 for all x ∈ ℝ, but NOT for complex x
         // RealOnly: symbols are real, so exp(symbol) > 0
         // ComplexEnabled: only exp(literal) is provably positive
-        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "exp" && args.len() == 1 => {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Exp) && args.len() == 1 =>
+        {
             match value_domain {
                 ValueDomain::RealOnly => {
                     // In RealOnly: e^x > 0 for ALL x (x is real by contract)
@@ -380,7 +387,9 @@ fn prove_positive_depth(
         }
 
         // sqrt(x) with x > 0 gives positive result
-        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
+        {
             prove_positive_depth(ctx, args[0], value_domain, depth - 1)
         }
 
@@ -509,19 +518,25 @@ fn prove_nonnegative_depth(
         }
 
         // abs(x): always ≥ 0
-        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "abs" && args.len() == 1 => {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 =>
+        {
             Proof::Proven
         }
 
         // sqrt(x): if defined, result is ≥ 0 (by principal root convention)
         // But we can't prove sqrt is defined without proving arg ≥ 0 (circular)
-        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
+        {
             // If the arg is provably non-negative, sqrt(arg) ≥ 0
             prove_nonnegative_depth(ctx, args[0], value_domain, depth - 1)
         }
 
         // exp(x) > 0 for all real x, hence ≥ 0
-        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "exp" && args.len() == 1 => {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Exp) && args.len() == 1 =>
+        {
             match value_domain {
                 ValueDomain::RealOnly => Proof::Proven, // e^x > 0 for all real x
                 ValueDomain::ComplexEnabled => {

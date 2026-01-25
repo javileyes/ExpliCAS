@@ -1,4 +1,4 @@
-.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget lint-limits audit-utils help
+.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget lint-limits audit-utils lint-string-compares help
 
 help:
 	@echo "Targets:"
@@ -69,3 +69,8 @@ audit-utils:
 	@echo ""
 	@echo "==> Running lint check..."
 	@./scripts/lint_no_duplicate_utils.sh
+
+# Track FunctionKind migration progress (Phase 2 of interning)
+lint-string-compares:
+	./scripts/lint_string_compares_progress.sh
+

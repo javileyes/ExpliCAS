@@ -1,3 +1,4 @@
+pub mod builtin; // Builtin function identifiers for O(1) comparison
 pub mod display; // NEW: Display formatting
 pub mod display_context;
 pub mod display_transforms; // Scoped display transforms (sqrt in quadratic, etc.)
@@ -18,6 +19,8 @@ pub mod symbol; // Symbol interning for variable names
 pub mod traversal; // Canonical traversal utilities (count_nodes, etc.)
 pub mod views; // Unified views for pattern matching
 pub mod visitor;
+
+pub use builtin::{BuiltinFn, BuiltinIds, ALL_BUILTINS};
 
 pub use display::{DisplayExpr, DisplayExprStyled, DisplayExprWithHints, RawDisplayExpr};
 pub use display_context::{DisplayContext, DisplayHint};

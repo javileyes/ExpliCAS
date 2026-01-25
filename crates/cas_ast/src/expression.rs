@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
+use crate::builtin::{BuiltinFn, BuiltinIds, ALL_BUILTINS};
 use crate::symbol::{SymbolId, SymbolTable};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -132,7 +133,7 @@ pub struct ContextStats {
     pub nodes_created: u64,
 }
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct Context {
     pub nodes: Vec<Expr>,
     /// Interner: maps hash to bucket of ExprIds with that hash.
@@ -143,16 +144,43 @@ pub struct Context {
     pub symbols: SymbolTable,
     /// Statistics for budget tracking
     stats: ContextStats,
+    /// Cached SymbolIds for builtin functions (O(1) comparison)
+    builtins: BuiltinIds,
+}
+
+impl Default for Context {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Context {
     pub fn new() -> Self {
-        Self {
+        let mut ctx = Self {
             nodes: Vec::new(),
             interner: HashMap::new(),
             symbols: SymbolTable::new(),
             stats: ContextStats::default(),
+            builtins: BuiltinIds::new(),
+        };
+        ctx.init_builtins();
+        ctx
+    }
+
+    /// Initialize builtin function ID cache.
+    ///
+    /// Called automatically by `new()`, but can be called manually if
+    /// Context was created some other way.
+    fn init_builtins(&mut self) {
+        if self.builtins.is_initialized() {
+            return;
         }
+        for builtin in ALL_BUILTINS.iter().take(28) {
+            // Take only unique builtins (not padding)
+            let id = self.intern_symbol(builtin.name());
+            self.builtins.set(*builtin, id);
+        }
+        self.builtins.mark_initialized();
     }
 
     // =========================================================================
@@ -627,6 +655,67 @@ impl Context {
     pub fn is_call_named(&mut self, expr: ExprId, name: &str) -> bool {
         let target = self.intern_symbol(name);
         matches!(self.get(expr), Expr::Function(fn_id, _) if *fn_id == target)
+    }
+
+    // =========================================================================
+    // Builtin function helpers (O(1) comparison, no string allocation)
+    // =========================================================================
+
+    /// Get the cached SymbolId for a builtin function.
+    ///
+    /// This is pre-computed at Context creation, so comparison is O(1).
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// // Instead of: ctx.sym_name(*fn_id) == "sqrt"
+    /// if *fn_id == ctx.builtin_id(BuiltinFn::Sqrt) { ... }
+    /// ```
+    #[inline]
+    pub fn builtin_id(&self, builtin: BuiltinFn) -> SymbolId {
+        self.builtins.get(builtin)
+    }
+
+    /// Check if an expression is a call to a specific builtin function.
+    ///
+    /// This is the preferred way to check function identity in rules.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// if ctx.is_builtin_call(expr, BuiltinFn::Sqrt) {
+    ///     // Handle sqrt(...)
+    /// }
+    /// ```
+    #[inline]
+    pub fn is_builtin_call(&self, expr: ExprId, builtin: BuiltinFn) -> bool {
+        match self.get(expr) {
+            Expr::Function(fn_id, _) => *fn_id == self.builtin_id(builtin),
+            _ => false,
+        }
+    }
+
+    /// Check if a function SymbolId matches a builtin.
+    ///
+    /// Use this when you already have the fn_id extracted from Expr::Function.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// if let Expr::Function(fn_id, args) = ctx.get(expr) {
+    ///     if ctx.is_builtin(*fn_id, BuiltinFn::Sin) { ... }
+    /// }
+    /// ```
+    #[inline]
+    pub fn is_builtin(&self, fn_id: SymbolId, builtin: BuiltinFn) -> bool {
+        fn_id == self.builtin_id(builtin)
+    }
+
+    /// Create a function call using a builtin.
+    ///
+    /// Slightly more efficient than `call("sqrt", args)` since it uses
+    /// the cached SymbolId.
+    #[inline]
+    pub fn call_builtin(&mut self, builtin: BuiltinFn, args: Vec<ExprId>) -> ExprId {
+        let fn_id = self.builtin_id(builtin);
+        self.add(Expr::Function(fn_id, args))
     }
 
     // Matrix helpers
