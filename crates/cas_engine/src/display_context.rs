@@ -11,7 +11,7 @@
 //! ```
 
 use crate::step::Step;
-use cas_ast::{Context, DisplayContext, DisplayHint, Expr};
+use cas_ast::{BuiltinFn, Context, DisplayContext, DisplayHint, Expr};
 
 /// Build DisplayContext by analyzing the original expression and simplification steps
 ///
@@ -87,7 +87,7 @@ fn scan_for_sqrt_hints(ctx: &Context, expr: cas_ast::ExprId, display_ctx: &mut D
     match ctx.get(expr) {
         Expr::Function(name, args) => {
             // Check if this is a sqrt/root function
-            if ctx.sym_name(*name) == "sqrt" {
+            if ctx.is_builtin(*name, BuiltinFn::Sqrt) {
                 let index = match args.len() {
                     1 => 2,
                     2 => {
@@ -154,7 +154,7 @@ fn collect_root_patterns_recursive(
 ) {
     match ctx.get(expr) {
         Expr::Function(name, args) => {
-            if ctx.sym_name(*name) == "sqrt" {
+            if ctx.is_builtin(*name, BuiltinFn::Sqrt) {
                 let (index, base) = match args.len() {
                     1 => (2, args[0]),
                     2 => {

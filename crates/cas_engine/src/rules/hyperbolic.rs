@@ -80,36 +80,34 @@ define_rule!(
                 if let Expr::Function(inner_name, inner_args) = ctx.get(inner_expr) {
                     if inner_args.len() == 1 {
                         let x = inner_args[0];
-                        let outer_name_str = ctx.sym_name(*outer_name);
-                        let inner_name_str = ctx.sym_name(*inner_name);
 
                         // sinh(asinh(x)) = x
-                        if outer_name_str == "sinh" && inner_name_str == "asinh" {
+                        if ctx.is_builtin(*outer_name, BuiltinFn::Sinh) && ctx.is_builtin(*inner_name, BuiltinFn::Asinh) {
                             return Some(Rewrite::new(x).desc("sinh(asinh(x)) = x"));
                         }
 
                         // cosh(acosh(x)) = x
-                        if outer_name_str == "cosh" && inner_name_str == "acosh" {
+                        if ctx.is_builtin(*outer_name, BuiltinFn::Cosh) && ctx.is_builtin(*inner_name, BuiltinFn::Acosh) {
                             return Some(Rewrite::new(x).desc("cosh(acosh(x)) = x"));
                         }
 
                         // tanh(atanh(x)) = x
-                        if outer_name_str == "tanh" && inner_name_str == "atanh" {
+                        if ctx.is_builtin(*outer_name, BuiltinFn::Tanh) && ctx.is_builtin(*inner_name, BuiltinFn::Atanh) {
                             return Some(Rewrite::new(x).desc("tanh(atanh(x)) = x"));
                         }
 
                         // asinh(sinh(x)) = x
-                        if outer_name_str == "asinh" && inner_name_str == "sinh" {
+                        if ctx.is_builtin(*outer_name, BuiltinFn::Asinh) && ctx.is_builtin(*inner_name, BuiltinFn::Sinh) {
                             return Some(Rewrite::new(x).desc("asinh(sinh(x)) = x"));
                         }
 
                         // acosh(cosh(x)) = x
-                        if outer_name_str == "acosh" && inner_name_str == "cosh" {
+                        if ctx.is_builtin(*outer_name, BuiltinFn::Acosh) && ctx.is_builtin(*inner_name, BuiltinFn::Cosh) {
                             return Some(Rewrite::new(x).desc("acosh(cosh(x)) = x"));
                         }
 
                         // atanh(tanh(x)) = x
-                        if outer_name_str == "atanh" && inner_name_str == "tanh" {
+                        if ctx.is_builtin(*outer_name, BuiltinFn::Atanh) && ctx.is_builtin(*inner_name, BuiltinFn::Tanh) {
                             return Some(Rewrite::new(x).desc("atanh(tanh(x)) = x"));
                         }
                     }
@@ -186,11 +184,9 @@ define_rule!(
                     if let (Expr::Function(l_fn, l_args), Expr::Function(r_fn, r_args)) =
                         (ctx.get(*l_base), ctx.get(*r_base))
                     {
-                        let l_fn_str = ctx.sym_name(*l_fn);
-                        let r_fn_str = ctx.sym_name(*r_fn);
                         // Case 1: cosh(x)^2 - sinh(x)^2 = 1
-                        if l_fn_str == "cosh"
-                            && r_fn_str == "sinh"
+                        if ctx.is_builtin(*l_fn, BuiltinFn::Cosh)
+                            && ctx.is_builtin(*r_fn, BuiltinFn::Sinh)
                             && l_args.len() == 1
                             && r_args.len() == 1
                         {
@@ -205,8 +201,8 @@ define_rule!(
                         }
 
                         // Case 2: sinh(x)^2 - cosh(x)^2 = -1
-                        if l_fn_str == "sinh"
-                            && r_fn_str == "cosh"
+                        if ctx.is_builtin(*l_fn, BuiltinFn::Sinh)
+                            && ctx.is_builtin(*r_fn, BuiltinFn::Cosh)
                             && l_args.len() == 1
                             && r_args.len() == 1
                         {
@@ -246,11 +242,11 @@ define_rule!(
                     if let (Expr::Function(l_fn, l_args), Expr::Function(r_fn, r_args)) =
                         (ctx.get(*l_base), ctx.get(*r_base))
                     {
-                        let l_fn_str = ctx.sym_name(*l_fn);
-                        let r_fn_str = ctx.sym_name(*r_fn);
                         // Check cosh + sinh or sinh + cosh with same argument
-                        let is_cosh_sinh = l_fn_str == "cosh" && r_fn_str == "sinh";
-                        let is_sinh_cosh = l_fn_str == "sinh" && r_fn_str == "cosh";
+                        let is_cosh_sinh = ctx.is_builtin(*l_fn, BuiltinFn::Cosh)
+                            && ctx.is_builtin(*r_fn, BuiltinFn::Sinh);
+                        let is_sinh_cosh = ctx.is_builtin(*l_fn, BuiltinFn::Sinh)
+                            && ctx.is_builtin(*r_fn, BuiltinFn::Cosh);
 
                         if (is_cosh_sinh || is_sinh_cosh) && l_args.len() == 1 && r_args.len() == 1
                         {
@@ -286,16 +282,15 @@ define_rule!(
     Some(vec!["Function"]),
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
-            if name == "tanh" && args.len() == 1 {
+            if ctx.is_builtin(*fn_id, BuiltinFn::Tanh) && args.len() == 1 {
                 let x = args[0];
 
                 // GUARD: Don't expand if argument is inverse hyperbolic function
                 // This preserves tanh(atanh(z)) → z via HyperbolicCompositionRule
                 if let Expr::Function(inner_name, _) = ctx.get(x) {
-                    if ctx.sym_name(*inner_name) == "atanh"
-                        || ctx.sym_name(*inner_name) == "asinh"
-                        || ctx.sym_name(*inner_name) == "acosh"
+                    if ctx.is_builtin(*inner_name, BuiltinFn::Atanh)
+                        || ctx.is_builtin(*inner_name, BuiltinFn::Asinh)
+                        || ctx.is_builtin(*inner_name, BuiltinFn::Acosh)
                     {
                         return None;
                     }
@@ -353,11 +348,9 @@ define_rule!(
         if let Expr::Div(num, den) = ctx.get(expr) {
             // Check if numerator is sinh(x) and denominator is cosh(x)
             if let Expr::Function(num_name, num_args) = ctx.get(*num) {
-                let num_name_str = ctx.sym_name(*num_name);
-                if num_name_str == "sinh" && num_args.len() == 1 {
+                if ctx.is_builtin(*num_name, BuiltinFn::Sinh) && num_args.len() == 1 {
                     if let Expr::Function(den_name, den_args) = ctx.get(*den) {
-                        let den_name_str = ctx.sym_name(*den_name);
-                        if den_name_str == "cosh" && den_args.len() == 1 {
+                        if ctx.is_builtin(*den_name, BuiltinFn::Cosh) && den_args.len() == 1 {
                             // Check if arguments are the same
                             if crate::ordering::compare_expr(ctx, num_args[0], den_args[0])
                                 == std::cmp::Ordering::Equal

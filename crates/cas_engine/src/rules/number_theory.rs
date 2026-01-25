@@ -1,6 +1,6 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_integer::Integer;
 use num_rational::BigRational;
@@ -21,11 +21,11 @@ pub struct GcdResult {
 fn contains_poly_result(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Function(fn_id, args) => {
-            if ctx.sym_name(*fn_id) == "poly_result" {
+            if ctx.is_builtin(*fn_id, BuiltinFn::PolyResult) {
                 return true;
             }
             // Also check __hold wrappers
-            if ctx.sym_name(*fn_id) == "__hold" && !args.is_empty() {
+            if ctx.is_builtin(*fn_id, BuiltinFn::Hold) && !args.is_empty() {
                 return contains_poly_result(ctx, args[0]);
             }
             // Recurse into function arguments
@@ -59,7 +59,7 @@ fn has_large_unexpanded_power(ctx: &Context, expr: ExprId) -> bool {
         }
         Expr::Function(fn_id, args) => {
             // Skip poly_result - it's already expanded
-            if ctx.sym_name(*fn_id) == "poly_result" {
+            if ctx.is_builtin(*fn_id, BuiltinFn::PolyResult) {
                 return false;
             }
             args.iter().any(|&arg| has_large_unexpanded_power(ctx, arg))

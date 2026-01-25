@@ -73,6 +73,11 @@ pub enum BuiltinFn {
     Cosh,
     Tanh,
 
+    // Inverse hyperbolic
+    Asinh,
+    Acosh,
+    Atanh,
+
     // Logarithmic / Exponential
     Ln,
     Log,
@@ -98,7 +103,7 @@ pub enum BuiltinFn {
 impl BuiltinFn {
     /// Total number of builtin functions.
     /// Update this when adding new variants!
-    pub const COUNT: usize = 30;
+    pub const COUNT: usize = 31;
 
     /// Get the string name of this builtin function.
     #[inline]
@@ -124,6 +129,11 @@ impl BuiltinFn {
             BuiltinFn::Sinh => "sinh",
             BuiltinFn::Cosh => "cosh",
             BuiltinFn::Tanh => "tanh",
+
+            // Inverse hyperbolic
+            BuiltinFn::Asinh => "asinh",
+            BuiltinFn::Acosh => "acosh",
+            BuiltinFn::Atanh => "atanh",
 
             // Log/exp
             BuiltinFn::Ln => "ln",
@@ -173,6 +183,9 @@ pub const ALL_BUILTINS: [BuiltinFn; BuiltinFn::COUNT] = [
     BuiltinFn::Sinh,
     BuiltinFn::Cosh,
     BuiltinFn::Tanh,
+    BuiltinFn::Asinh,
+    BuiltinFn::Acosh,
+    BuiltinFn::Atanh,
     BuiltinFn::Ln,
     BuiltinFn::Log,
     BuiltinFn::Log2,
@@ -186,9 +199,6 @@ pub const ALL_BUILTINS: [BuiltinFn; BuiltinFn::COUNT] = [
     BuiltinFn::Ceil,
     BuiltinFn::Hold,
     BuiltinFn::PolyResult,
-    // Padding to match COUNT - add new builtins above this
-    BuiltinFn::Sin, // placeholder 29
-    BuiltinFn::Sin, // placeholder 30
 ];
 
 /// Cache of builtin function SymbolIds.

@@ -16,7 +16,7 @@
 
 use crate::helpers::is_one;
 use crate::solver::SolveStep;
-use cas_ast::{Context, Equation, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Equation, Expr, ExprId};
 
 // =============================================================================
 // Display-only cleanup: remove "1·" identity coefficients from equations
@@ -422,7 +422,7 @@ fn contains_ln_times_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
 
 /// Check if expression is a ln(...) call
 fn is_ln_call(ctx: &Context, expr: ExprId) -> bool {
-    matches!(ctx.get(expr), Expr::Function(name, _) if ctx.sym_name(*name) == "ln")
+    matches!(ctx.get(expr), Expr::Function(name, _) if ctx.is_builtin(*name, BuiltinFn::Ln))
 }
 
 #[cfg(test)]
