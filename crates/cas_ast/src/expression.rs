@@ -175,8 +175,8 @@ impl Context {
         if self.builtins.is_initialized() {
             return;
         }
-        for builtin in ALL_BUILTINS.iter().take(28) {
-            // Take only unique builtins (not padding)
+        for builtin in ALL_BUILTINS.iter().take(BuiltinFn::COUNT) {
+            // Initialize all builtins from ALL_BUILTINS array
             let id = self.intern_symbol(builtin.name());
             self.builtins.set(*builtin, id);
         }

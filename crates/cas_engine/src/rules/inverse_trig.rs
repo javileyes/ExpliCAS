@@ -2,7 +2,7 @@ use crate::define_rule;
 use crate::helpers::is_one;
 use crate::nary::build_balanced_add;
 use crate::rule::Rewrite;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_traits::One;
 use std::cmp::Ordering;
 
@@ -886,9 +886,9 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
             let inner_data = ctx.get(inner).clone();
 
             // Pattern: arcsin(sin(u)) → u (assuming u ∈ [-π/2, π/2])
-            if ctx.sym_name(*outer_name) == "arcsin" {
+            if ctx.is_builtin(*outer_name, BuiltinFn::Arcsin) {
                 if let Expr::Function(inner_name, inner_args) = &inner_data {
-                    if ctx.sym_name(*inner_name) == "sin" && inner_args.len() == 1 {
+                    if ctx.is_builtin(*inner_name, BuiltinFn::Sin) && inner_args.len() == 1 {
                         let u = inner_args[0];
                         return Some(
                             Rewrite::new(u)
@@ -905,9 +905,9 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
             }
 
             // Pattern: arccos(cos(u)) → u (assuming u ∈ [0, π])
-            if ctx.sym_name(*outer_name) == "arccos" {
+            if ctx.is_builtin(*outer_name, BuiltinFn::Arccos) {
                 if let Expr::Function(inner_name, inner_args) = &inner_data {
-                    if ctx.sym_name(*inner_name) == "cos" && inner_args.len() == 1 {
+                    if ctx.is_builtin(*inner_name, BuiltinFn::Cos) && inner_args.len() == 1 {
                         let u = inner_args[0];
                         return Some(
                             Rewrite::new(u)
@@ -924,9 +924,9 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
             }
 
             // Pattern: arctan(tan(u)) → u (assuming u ∈ (-π/2, π/2))
-            if ctx.sym_name(*outer_name) == "arctan" {
+            if ctx.is_builtin(*outer_name, BuiltinFn::Arctan) {
                 if let Expr::Function(inner_name, inner_args) = &inner_data {
-                    if ctx.sym_name(*inner_name) == "tan" && inner_args.len() == 1 {
+                    if ctx.is_builtin(*inner_name, BuiltinFn::Tan) && inner_args.len() == 1 {
                         let u = inner_args[0];
                         return Some(
                             Rewrite::new(u)
@@ -943,17 +943,15 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
             }
 
             // Pattern: arctan(sin(u)/cos(u)) → u (tan(u) in disguise)
-            if ctx.sym_name(*outer_name) == "arctan" {
+            if ctx.is_builtin(*outer_name, BuiltinFn::Arctan) {
                 if let Expr::Div(num, den) = &inner_data {
                     let num_data = ctx.get(*num).clone();
                     let den_data = ctx.get(*den).clone();
                     if let (Expr::Function(n_name, n_args), Expr::Function(d_name, d_args)) =
                         (&num_data, &den_data)
                     {
-                        let n_name_str = ctx.sym_name(*n_name);
-                        let d_name_str = ctx.sym_name(*d_name);
-                        if n_name_str == "sin"
-                            && d_name_str == "cos"
+                        if ctx.is_builtin(*n_name, BuiltinFn::Sin)
+                            && ctx.is_builtin(*d_name, BuiltinFn::Cos)
                             && n_args.len() == 1
                             && d_args.len() == 1
                             && (n_args[0] == d_args[0]

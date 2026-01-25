@@ -60,13 +60,18 @@ pub enum BuiltinFn {
     Csc,
     Cot,
 
-    // Inverse trigonometric
+    // Inverse trigonometric (short form: a*)
     Asin,
     Acos,
     Atan,
     Asec,
     Acsc,
     Acot,
+
+    // Inverse trigonometric (long form: arc*)
+    Arcsin,
+    Arccos,
+    Arctan,
 
     // Hyperbolic
     Sinh,
@@ -103,7 +108,7 @@ pub enum BuiltinFn {
 impl BuiltinFn {
     /// Total number of builtin functions.
     /// Update this when adding new variants!
-    pub const COUNT: usize = 31;
+    pub const COUNT: usize = 34;
 
     /// Get the string name of this builtin function.
     #[inline]
@@ -117,13 +122,18 @@ impl BuiltinFn {
             BuiltinFn::Csc => "csc",
             BuiltinFn::Cot => "cot",
 
-            // Inverse trig
+            // Inverse trig (short)
             BuiltinFn::Asin => "asin",
             BuiltinFn::Acos => "acos",
             BuiltinFn::Atan => "atan",
             BuiltinFn::Asec => "asec",
             BuiltinFn::Acsc => "acsc",
             BuiltinFn::Acot => "acot",
+
+            // Inverse trig (long)
+            BuiltinFn::Arcsin => "arcsin",
+            BuiltinFn::Arccos => "arccos",
+            BuiltinFn::Arctan => "arctan",
 
             // Hyperbolic
             BuiltinFn::Sinh => "sinh",
@@ -180,6 +190,9 @@ pub const ALL_BUILTINS: [BuiltinFn; BuiltinFn::COUNT] = [
     BuiltinFn::Asec,
     BuiltinFn::Acsc,
     BuiltinFn::Acot,
+    BuiltinFn::Arcsin,
+    BuiltinFn::Arccos,
+    BuiltinFn::Arctan,
     BuiltinFn::Sinh,
     BuiltinFn::Cosh,
     BuiltinFn::Tanh,
