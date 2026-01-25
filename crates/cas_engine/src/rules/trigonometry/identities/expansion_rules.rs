@@ -381,7 +381,6 @@ define_rule!(
         }
 
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
             if args.len() == 1 {
                 // Check if arg is 2*x or x*2
                 // We need to match "2 * x"
@@ -664,7 +663,6 @@ define_rule!(
         }
 
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
             if args.len() == 1 {
                 // Check if arg is 3*x or x*3
                 if let Some(inner_var) = extract_triple_angle_arg(ctx, args[0]) {
@@ -763,7 +761,6 @@ define_rule!(
         }
 
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
             if args.len() == 1 {
                 // Check if arg is 5*x or x*5
                 if let Some(inner_var) = crate::helpers::extract_quintuple_angle_arg(ctx, args[0]) {

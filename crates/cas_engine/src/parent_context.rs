@@ -447,7 +447,8 @@ impl ParentContext {
 
         // Check if the new parent is sin/cos/tan(n*x) with |n| > 2
         // If so, set protection flag to block trig expansions for descendants
-        let is_trig_large_coeff = if let Expr::Function(fn_id, args) = ctx.get(parent_id) { let name = ctx.sym_name(*fn_id);
+        let is_trig_large_coeff = if let Expr::Function(fn_id, args) = ctx.get(parent_id) {
+            let name = ctx.sym_name(*fn_id);
             if (name == "sin" || name == "cos" || name == "tan") && args.len() == 1 {
                 // Check if argument is n*x with |n| > 2
                 is_large_trig_coefficient(ctx, args[0])

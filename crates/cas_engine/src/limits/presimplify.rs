@@ -108,7 +108,7 @@ fn presimplify_recursive(
             for arg in args {
                 new_args.push(presimplify_recursive(ctx, *arg, depth + 1)?);
             }
-            Ok(ctx.add(Expr::Function(name.clone(), new_args)))
+            Ok(ctx.add(Expr::Function(*name, new_args)))
         }
         // Terminal nodes: return as-is
         Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) => Ok(expr),

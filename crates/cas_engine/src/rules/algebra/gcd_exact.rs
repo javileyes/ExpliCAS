@@ -431,7 +431,8 @@ impl Rule for PolyGcdExactRule {
     ) -> Option<Rewrite> {
         let fn_expr = ctx.get(expr).clone();
 
-        if let Expr::Function(fn_id, args) = fn_expr { let name = ctx.sym_name(fn_id);
+        if let Expr::Function(fn_id, args) = fn_expr {
+            let name = ctx.sym_name(fn_id);
             // Match poly_gcd_exact, pgcdx with 2 arguments
             let is_gcd_exact = name == "poly_gcd_exact" || name == "pgcdx";
 

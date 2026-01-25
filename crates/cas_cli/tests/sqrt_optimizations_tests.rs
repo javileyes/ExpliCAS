@@ -237,15 +237,12 @@ fn test_nested_sqrt() {
 #[test]
 fn test_aggressive_mode_sqrt_binomial() {
     // Verificar que modo aggressive también optimiza
-    use cas_ast::Expr;
 
     let mut simplifier = create_simplifier();
     let expr = parse("sqrt((x-1)^2)", &mut simplifier.context).unwrap();
 
     // Aplicar aggressive simplification
-    let expand_func = simplifier
-        .context
-        .call("expand", vec![expr]);
+    let expand_func = simplifier.context.call("expand", vec![expr]);
     let (result, _steps) = simplifier.simplify(expand_func);
 
     let result_str = format!(
@@ -263,14 +260,11 @@ fn test_aggressive_mode_sqrt_binomial() {
 #[test]
 fn test_aggressive_mode_abs_product() {
     // Verificar que abs((x-2)(x+2)) no expande en modo aggressive
-    use cas_ast::Expr;
 
     let mut simplifier = create_simplifier();
     let expr = parse("abs((x-2)*(x+2))", &mut simplifier.context).unwrap();
 
-    let expand_func = simplifier
-        .context
-        .call("expand", vec![expr]);
+    let expand_func = simplifier.context.call("expand", vec![expr]);
     let (result, _steps) = simplifier.simplify(expand_func);
 
     let result_str = format!(

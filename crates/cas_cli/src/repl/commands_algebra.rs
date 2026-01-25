@@ -306,12 +306,7 @@ impl Repl {
         match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
             Ok(expr) => {
                 // Wrap in det() function call
-                let det_expr = self
-                    .core
-                    .engine
-                    .simplifier
-                    .context
-                    .call("det", vec![expr]);
+                let det_expr = self.core.engine.simplifier.context.call("det", vec![expr]);
 
                 // Simplify to compute determinant
                 let (result, steps) = self.core.engine.simplifier.simplify(det_expr);

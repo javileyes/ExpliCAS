@@ -394,7 +394,8 @@ define_rule!(
     Some(vec!["Function"]), // Target Function expressions specifically
     PhaseMask::CORE | PhaseMask::POST,
     |ctx, expr| {
-        if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let name = ctx.sym_name(*fn_id);
             if name == "factor" && args.len() == 1 {
                 let arg = args[0];
                 // Use the general factor entry point which tries polynomial then diff squares

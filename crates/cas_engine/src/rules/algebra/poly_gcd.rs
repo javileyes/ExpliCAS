@@ -35,7 +35,7 @@ fn pre_evaluate_for_gcd(ctx: &mut Context, expr: ExprId) -> ExprId {
     use crate::phase::ExpandPolicy;
 
     // Only process specific wrappers that need evaluation
-    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
         match ctx.sym_name(*fn_id) {
             // expand() is explicitly requested by user - evaluate it
             "expand" => {
@@ -770,7 +770,8 @@ impl Rule for PolyGcdRule {
     ) -> Option<Rewrite> {
         let fn_expr = ctx.get(expr).clone();
 
-        if let Expr::Function(fn_id, args) = fn_expr { let name = ctx.sym_name(fn_id);
+        if let Expr::Function(fn_id, args) = fn_expr {
+            let name = ctx.sym_name(fn_id);
             // Match poly_gcd, pgcd with 2-4 arguments
             let is_poly_gcd = name == "poly_gcd" || name == "pgcd";
 

@@ -15,8 +15,7 @@ use std::cmp::Ordering;
 
 // Import helpers from sibling core_rules module
 use super::core_rules::{
-    check_divisible_denominators, extract_as_fraction, fn_name_is, is_pi_constant,
-    is_trig_function, is_trig_function_name,
+    check_divisible_denominators, extract_as_fraction, fn_name_is, is_pi_constant, is_trig_function,
 };
 
 // Import from local helpers module

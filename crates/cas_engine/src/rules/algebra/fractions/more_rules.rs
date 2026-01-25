@@ -85,7 +85,9 @@ define_rule!(
                         }
                         None
                     }
-                    Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => {
+                    Expr::Function(fn_id, args)
+                        if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 =>
+                    {
                         if let Expr::Number(n) = ctx.get(args[0]) {
                             if n.is_integer() {
                                 return n.numer().to_i64().filter(|&x| x > 0);

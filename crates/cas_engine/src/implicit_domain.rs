@@ -599,7 +599,8 @@ fn collect_product_bases(ctx: &Context, expr: ExprId, bases: &mut Vec<ExprId>) {
 
 /// Check if expr is Abs(inner_expr), i.e., |inner_expr|
 fn is_abs_of(ctx: &Context, expr: ExprId, inner: ExprId) -> bool {
-    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let name = ctx.sym_name(*fn_id);
         if name == "abs" && args.len() == 1 {
             return exprs_equivalent(ctx, args[0], inner);
         }
@@ -1118,9 +1119,14 @@ pub fn derive_requires_from_equation(
     let has_positivity_structure = |ctx: &Context, e: ExprId| -> bool {
         match ctx.get(e) {
             // sqrt(x) requires x >= 0 and sqrt(x) > 0 implies x > 0
-            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => true,
+            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => {
+                true
+            }
             // ln(x) and log(x) require x > 0
-            Expr::Function(fn_id, args) if (ctx.sym_name(*fn_id) == "ln" || ctx.sym_name(*fn_id) == "log") && args.len() == 1 => {
+            Expr::Function(fn_id, args)
+                if (ctx.sym_name(*fn_id) == "ln" || ctx.sym_name(*fn_id) == "log")
+                    && args.len() == 1 =>
+            {
                 true
             }
             // x^(p/q) where q is even requires x >= 0
@@ -1325,7 +1331,10 @@ fn infer_recursive(ctx: &Context, root: ExprId, domain: &mut ImplicitDomain) {
             }
 
             // ln(t) or log(t) → Positive(t)
-            Expr::Function(fn_id, args) if (ctx.sym_name(*fn_id) == "ln" || ctx.sym_name(*fn_id) == "log") && args.len() == 1 => {
+            Expr::Function(fn_id, args)
+                if (ctx.sym_name(*fn_id) == "ln" || ctx.sym_name(*fn_id) == "log")
+                    && args.len() == 1 =>
+            {
                 domain.add_positive(args[0]);
                 stack.push(args[0]);
             }
@@ -1419,7 +1428,10 @@ fn search_witness(ctx: &Context, target: ExprId, expr: ExprId, kind: WitnessKind
             search_witness(ctx, target, args[0], kind)
         }
 
-        Expr::Function(fn_id, args) if (ctx.sym_name(*fn_id) == "ln" || ctx.sym_name(*fn_id) == "log") && args.len() == 1 => {
+        Expr::Function(fn_id, args)
+            if (ctx.sym_name(*fn_id) == "ln" || ctx.sym_name(*fn_id) == "log")
+                && args.len() == 1 =>
+        {
             if kind == WitnessKind::Log && exprs_equal(ctx, args[0], target) {
                 return true;
             }
@@ -1523,7 +1535,10 @@ fn search_witness_in_context(
             search_witness_in_context(ctx, target, args[0], replaced_node, replacement, kind)
         }
 
-        Expr::Function(fn_id, args) if (ctx.sym_name(*fn_id) == "ln" || ctx.sym_name(*fn_id) == "log") && args.len() == 1 => {
+        Expr::Function(fn_id, args)
+            if (ctx.sym_name(*fn_id) == "ln" || ctx.sym_name(*fn_id) == "log")
+                && args.len() == 1 =>
+        {
             if kind == WitnessKind::Log && exprs_equal(ctx, args[0], target) {
                 return true;
             }

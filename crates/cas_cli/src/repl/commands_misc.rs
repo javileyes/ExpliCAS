@@ -7,7 +7,6 @@ impl Repl {
     }
 
     fn handle_equiv_core(&mut self, line: &str) -> ReplReply {
-        use cas_ast::Expr;
         use cas_parser::Statement;
 
         let rest = line[6..].trim();

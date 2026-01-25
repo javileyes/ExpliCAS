@@ -41,7 +41,8 @@ use smallvec::SmallVec;
 /// O(n²) traversal of huge polynomial results stored in PolyStore.
 #[inline]
 pub fn is_poly_ref(ctx: &Context, id: ExprId) -> bool {
-    if let Expr::Function(fn_id, args) = ctx.get(id) { let name = ctx.sym_name(*fn_id);
+    if let Expr::Function(fn_id, args) = ctx.get(id) {
+        let name = ctx.sym_name(*fn_id);
         if args.len() == 1 && (name == "poly_ref" || name == "poly_result") {
             return true;
         }

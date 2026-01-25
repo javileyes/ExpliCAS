@@ -210,7 +210,7 @@ impl<'a> IterativeFolder<'a> {
                 // Rebuild if args changed
                 if args_folded != *args {
                     self.nodes_created += 1;
-                    self.ctx.add(Expr::Function(name.clone(), args_folded))
+                    self.ctx.add(Expr::Function(*name, args_folded))
                 } else {
                     id
                 }

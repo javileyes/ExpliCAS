@@ -1,6 +1,6 @@
 #[test]
 fn test_hold_transparency_from_engine() {
-    use cas_ast::{Context, DisplayExpr, Expr};
+    use cas_ast::{Context, DisplayExpr};
     let mut ctx = Context::new();
     let x = ctx.var("x");
     let held = ctx.call("__hold", vec![x]);

@@ -187,7 +187,6 @@ fn check_and_mark_trig_square_pattern(ctx: &Context, expr_id: ExprId, marks: &mu
                     if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
                         // Check base is sin or cos
                         if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                            let name = ctx.sym_name(*fn_id);
                             if args.len() == 1 {
                                 match ctx.sym_name(*fn_id) {
                                     "sin" => return Some(("sin", *base, args[0])),

@@ -406,7 +406,8 @@ fn check_negation_structure(ctx: &Context, potential_neg: ExprId, original: Expr
 
 /// Unwrap __hold(X) to X, otherwise return the expression unchanged
 fn unwrap_hold(ctx: &Context, expr: ExprId) -> ExprId {
-    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let name = ctx.sym_name(*fn_id);
         if name == "__hold" && args.len() == 1 {
             return args[0];
         }
@@ -693,7 +694,8 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
         }
 
         // Check if this is a __hold
-        if let Expr::Function(fn_id, args) = ctx.get(*term) { let name = ctx.sym_name(*fn_id);
+        if let Expr::Function(fn_id, args) = ctx.get(*term) {
+            let name = ctx.sym_name(*fn_id);
             if name == "__hold" && args.len() == 1 {
                 let held_content = args[0];
 

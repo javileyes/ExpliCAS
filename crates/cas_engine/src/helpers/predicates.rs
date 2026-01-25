@@ -133,7 +133,10 @@ fn prove_nonzero_depth(ctx: &Context, expr: ExprId, depth: usize) -> crate::doma
 
         // ln(x) or log(x): non-zero iff x ≠ 1 (and x > 0 for it to be defined)
         // We check if x is a numeric constant that is > 0 and ≠ 1
-        Expr::Function(fn_id, args) if (ctx.sym_name(*fn_id) == "ln" || ctx.sym_name(*fn_id) == "log") && args.len() == 1 => {
+        Expr::Function(fn_id, args)
+            if (ctx.sym_name(*fn_id) == "ln" || ctx.sym_name(*fn_id) == "log")
+                && args.len() == 1 =>
+        {
             match ctx.get(args[0]) {
                 Expr::Number(n) => {
                     let one = num_rational::BigRational::one();
@@ -506,7 +509,9 @@ fn prove_nonnegative_depth(
         }
 
         // abs(x): always ≥ 0
-        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "abs" && args.len() == 1 => Proof::Proven,
+        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "abs" && args.len() == 1 => {
+            Proof::Proven
+        }
 
         // sqrt(x): if defined, result is ≥ 0 (by principal root convention)
         // But we can't prove sqrt is defined without proving arg ≥ 0 (circular)

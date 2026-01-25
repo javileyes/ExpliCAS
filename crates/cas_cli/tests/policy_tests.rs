@@ -224,9 +224,7 @@ fn test_expand_idempotence() {
 
     let (once, _) = s.simplify(expr);
     // Wrap in expand again
-    let expr2 = s
-        .context
-        .call("expand", vec![once]);
+    let expr2 = s.context.call("expand", vec![once]);
     let (twice, _) = s.simplify(expr2);
 
     assert_eq!(once, twice, "expand should be idempotent");

@@ -6,7 +6,8 @@ use cas_ast::{Context, Expr, ExprId};
 use std::collections::HashMap;
 
 define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
-    if let Expr::Function(fn_id, args) = ctx.get(expr) { let name = ctx.sym_name(*fn_id);
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let name = ctx.sym_name(*fn_id);
         if name == "collect" && args.len() == 2 {
             let target_expr = args[0];
             let var_expr = args[1];

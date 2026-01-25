@@ -1328,7 +1328,9 @@ fn generate_root_denesting_substeps(ctx: &Context, step: &crate::step::Step) -> 
     // Helper to extract sqrt radicand
     let get_sqrt_inner = |id: ExprId| -> Option<ExprId> {
         match ctx.get(id) {
-            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => Some(args[0]),
+            Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "sqrt" && args.len() == 1 => {
+                Some(args[0])
+            }
             Expr::Pow(base, exp) => {
                 if let Expr::Number(n) = ctx.get(*exp) {
                     if *n.numer() == BigInt::from(1) && *n.denom() == BigInt::from(2) {
