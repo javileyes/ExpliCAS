@@ -4,7 +4,7 @@ use crate::define_rule;
 use crate::helpers::{is_pi, is_pi_over_n};
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::smart_mul;
-use cas_ast::{Expr, ExprId};
+use cas_ast::{BuiltinFn, Expr, ExprId};
 use num_traits::One;
 use std::cmp::Ordering;
 
@@ -1085,7 +1085,7 @@ impl Sin4xIdentityZeroRule {
                 }
                 // Check for sin(t)
                 if let Expr::Function(fn_name, fn_args) = ctx.get(factor) {
-                    if ctx.sym_name(*fn_name) == "sin"
+                    if ctx.is_builtin(*fn_name, BuiltinFn::Sin)
                         && fn_args.len() == 1
                         && crate::ordering::compare_expr(ctx, fn_args[0], t)
                             == std::cmp::Ordering::Equal
@@ -1093,7 +1093,7 @@ impl Sin4xIdentityZeroRule {
                         has_sin_t = true;
                         continue;
                     }
-                    if ctx.sym_name(*fn_name) == "cos" && fn_args.len() == 1 {
+                    if ctx.is_builtin(*fn_name, BuiltinFn::Cos) && fn_args.len() == 1 {
                         let arg = fn_args[0];
                         if crate::ordering::compare_expr(ctx, arg, t) == std::cmp::Ordering::Equal {
                             has_cos_t = true;
@@ -1279,7 +1279,7 @@ impl TanDifferenceIdentityZeroRule {
 
                 // Verify tan_a_num is tan(a)
                 if let Expr::Function(name_a, args_a) = ctx.get(tan_a_num) {
-                    if ctx.sym_name(*name_a) != "tan" || args_a.len() != 1 {
+                    if !ctx.is_builtin(*name_a, BuiltinFn::Tan) || args_a.len() != 1 {
                         return None;
                     }
                     if crate::ordering::compare_expr(ctx, args_a[0], a) != std::cmp::Ordering::Equal
@@ -1292,7 +1292,7 @@ impl TanDifferenceIdentityZeroRule {
 
                 // Verify tan_b_num is tan(b)
                 if let Expr::Function(name_b, args_b) = ctx.get(tan_b_num) {
-                    if ctx.sym_name(*name_b) != "tan" || args_b.len() != 1 {
+                    if !ctx.is_builtin(*name_b, BuiltinFn::Tan) || args_b.len() != 1 {
                         return None;
                     }
                     if crate::ordering::compare_expr(ctx, args_b[0], b) != std::cmp::Ordering::Equal

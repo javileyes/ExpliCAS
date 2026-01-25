@@ -152,7 +152,7 @@ fn is_sqrt5(ctx: &cas_ast::Context, id: cas_ast::ExprId) -> bool {
             false
         }
         Expr::Function(name, args) => {
-            if ctx.sym_name(*name) == "sqrt" && args.len() == 1 {
+            if ctx.is_builtin(*name, cas_ast::BuiltinFn::Sqrt) && args.len() == 1 {
                 if let Expr::Number(n) = ctx.get(args[0]) {
                     return n == &five;
                 }
