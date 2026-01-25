@@ -1,4 +1,4 @@
-.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget lint-limits audit-utils lint-string-compares help
+.PHONY: ci ci-release ci-msrv ci-quick lint test fmt clippy build-release lint-allowlist lint-budget lint-limits audit-utils lint-string-compares lint-no-panic-prod help
 
 help:
 	@echo "Targets:"
@@ -9,6 +9,7 @@ help:
 	@echo "  make lint          -> fmt + lints + clippy"
 	@echo "  make lint-budget   -> check budget instrumentation in hotspots"
 	@echo "  make lint-limits   -> check presimplify_safe isolation"
+	@echo "  make lint-no-panic-prod -> forbid panic! in production code"
 	@echo "  make audit-utils   -> show canonical utilities registry + lint check"
 	@echo "  make test          -> cargo test (debug) only"
 	@echo "  make build-release -> cargo build --release only"
@@ -74,3 +75,10 @@ audit-utils:
 lint-string-compares:
 	./scripts/lint_string_compares_progress.sh
 
+# Forbid panic! in production code (lib/bin only, not tests)
+# Exceptions must use #[allow(clippy::panic)] with justification comment
+# Note: unwrap_used enforcement is Phase 2 (PR 2+ per anti_panic_inventory.md)
+lint-no-panic-prod:
+	@echo "==> Checking for panic! in production code..."
+	@cargo clippy --workspace --lib --bins -- -D clippy::panic 2>&1 || { echo ""; echo "FAIL: Found panic! in production code. Fix or add #[allow(clippy::panic)] with justification."; exit 1; }
+	@echo "✓ No panic! in production code"

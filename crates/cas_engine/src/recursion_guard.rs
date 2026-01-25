@@ -28,7 +28,13 @@ thread_local! {
 
 /// Execute a closure with recursion depth tracking.
 /// Panics if depth exceeds the limit, providing a useful backtrace.
+///
+/// # Intentional Panic
+/// This panic is by design - it converts hard-to-debug stack overflows
+/// into panics with proper backtraces. The alternative (returning Result)
+/// would require threading errors through the entire call stack.
 #[inline]
+#[allow(clippy::panic)] // Intentional: stack overflow protection
 pub fn with_depth_guard<F, R>(label: &'static str, limit: usize, f: F) -> R
 where
     F: FnOnce() -> R,

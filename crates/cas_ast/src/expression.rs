@@ -430,7 +430,11 @@ impl Context {
     /// Build balanced Add tree iteratively: [a,b,c,d] -> Add(Add(a,b), Add(c,d))
     fn build_balanced_add(&mut self, terms: &[ExprId]) -> Expr {
         match terms.len() {
-            0 => panic!("Cannot build Add from empty terms"),
+            0 => {
+                // Empty terms is a pipeline bug, but we recover gracefully in release
+                debug_assert!(false, "build_balanced_add called with empty terms");
+                Expr::Number(BigRational::from_integer(BigInt::from(0))) // Identity for addition
+            }
             1 => self.get(terms[0]).clone(),
             2 => Expr::Add(terms[0], terms[1]),
             _ => {
@@ -498,7 +502,11 @@ impl Context {
     /// - POLICY.md "Builders Contract" for contribution rules
     pub fn build_balanced_mul(&mut self, factors: &[ExprId]) -> ExprId {
         match factors.len() {
-            0 => panic!("Cannot build Mul from empty factors"),
+            0 => {
+                // Empty factors is a pipeline bug, but we recover gracefully in release
+                debug_assert!(false, "build_balanced_mul called with empty factors");
+                self.num(1) // Identity for multiplication
+            }
             1 => factors[0],
             2 => self.add_raw(Expr::Mul(factors[0], factors[1])),
             _ => {

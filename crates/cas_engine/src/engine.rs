@@ -542,6 +542,7 @@ impl Simplifier {
     /// Note: Rules with multiple target_types appear in multiple buckets
     /// but are the same rule instance, so we deduplicate by Arc pointer first.
     #[cfg(debug_assertions)]
+    #[allow(clippy::panic)] // Intentional: debug-only invariant enforcement
     pub fn assert_unique_rule_names(&self) {
         use std::collections::HashSet;
 
