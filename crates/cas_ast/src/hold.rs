@@ -37,12 +37,30 @@ pub const fn hold_name() -> &'static str {
 
 /// Check if a function name string matches the hold builtin.
 ///
-/// Use this when you only have a function name string and not a fn_id.
-/// This is the canonical way to check for hold by name.
-/// Accepts both "hold" (user-facing) and "__hold" (internal) names.
+/// Check if a function name is the INTERNAL hold barrier name (`__hold`).
+/// Returns true ONLY for the internal wrapper, not user-facing `hold`.
+///
+/// Used for stripping internal wrappers from display output.
+/// User-facing `hold(...)` should remain visible.
+#[inline]
+pub fn is_internal_hold_name(name: &str) -> bool {
+    name == BuiltinFn::Hold.name()
+}
+
+/// Check if a function name is a user-facing hold function (`hold`).
+/// Returns true for explicit `hold(...)` calls that user wrote.
+/// These should remain visible in display output.
+#[inline]
+pub fn is_user_hold_name(name: &str) -> bool {
+    name == "hold"
+}
+
+/// Check if a function name is ANY hold barrier (internal or user-facing).
+/// Both have HoldAll semantics (children not simplified).
+/// Use this for evaluation semantics, not display stripping.
 #[inline]
 pub fn is_hold_name(name: &str) -> bool {
-    name == BuiltinFn::Hold.name() || name == "hold"
+    is_internal_hold_name(name) || is_user_hold_name(name)
 }
 
 /// Wrap an expression in `__hold(expr)`.
@@ -68,6 +86,29 @@ pub fn is_hold(ctx: &Context, id: ExprId) -> bool {
             ctx.is_builtin(*fn_id, BuiltinFn::Hold) || ctx.sym_name(*fn_id) == "hold"
         }
         _ => false,
+    }
+}
+
+/// Unwrap one level of INTERNAL `__hold` wrapper only. Returns inner if internal hold, otherwise unchanged.
+///
+/// This function ONLY unwraps:
+/// - `Expr::Hold(inner)` variant
+/// - `Function(__hold, [arg])` where fn_id matches BuiltinFn::Hold
+///
+/// User-facing `hold(expr)` is preserved (NOT unwrapped).
+/// Use this at output boundaries to strip internal barriers while keeping user `hold()` visible.
+#[inline]
+pub fn unwrap_internal_hold(ctx: &Context, id: ExprId) -> ExprId {
+    match ctx.get(id) {
+        // Expr::Hold variant is always internal
+        Expr::Hold(inner) => *inner,
+        // Function form: ONLY unwrap __hold (BuiltinFn::Hold), NOT user "hold"
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Hold) =>
+        {
+            args[0]
+        }
+        _ => id,
     }
 }
 
@@ -126,13 +167,13 @@ pub fn strip_all_holds(ctx: &mut Context, root: ExprId) -> ExprId {
 /// Internal recursive implementation with memoization potential
 fn strip_holds_recursive(ctx: &mut Context, id: ExprId) -> ExprId {
     match ctx.get(id).clone() {
-        // New variant form: unwrap and recurse
+        // New variant form: unwrap and recurse (Expr::Hold is internal infrastructure)
         Expr::Hold(inner) => strip_holds_recursive(ctx, inner),
 
-        // Function form: unwrap __hold or hold and recurse into contents
+        // Function form: ONLY unwrap __hold (internal), NOT hold (user-facing)
+        // User-facing hold(...) should remain visible in display
         Expr::Function(fn_id, ref args)
-            if (ctx.is_builtin(fn_id, BuiltinFn::Hold) || ctx.sym_name(fn_id) == "hold")
-                && args.len() == 1 =>
+            if ctx.is_builtin(fn_id, BuiltinFn::Hold) && args.len() == 1 =>
         {
             strip_holds_recursive(ctx, args[0])
         }

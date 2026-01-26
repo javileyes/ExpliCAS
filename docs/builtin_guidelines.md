@@ -71,9 +71,32 @@ These are **internal IR wrappers**, not user-facing functions:
 
 **Never compare strings directly:** Use `eq::*` helpers or `ctx.is_builtin(.., BuiltinFn::Eq)`
 
-### `__hold` — Simplification Barrier
+### `__hold` vs `hold` — Simplification Barriers
 
-See [Quick Reference](#quick-reference) above.
+Two related functions with different visibility:
+
+| Function | Visibility | Display | Use Case |
+|----------|------------|---------|----------|
+| `__hold(expr)` | Internal | Transparent (hidden) | Rule protection (expand, factor) |
+| `hold(expr)` | User-facing | Visible | Didactic, forcing unevaluated form |
+
+**HoldAll Semantics:** Both `__hold` and `hold` prevent child simplification:
+- `hold(x + 0)` → `hold(x + 0)` (child preserved)
+- `hold(2 * 3)` → `hold(2 * 3)` (not folded to 6)
+
+| Need to... | Use |
+|------------|-----|
+| Create `__hold(inner)` | `wrap_hold(ctx, inner)` |
+| Check if internal __hold | `ctx.is_builtin(fn_id, BuiltinFn::Hold)` |
+| Check if any hold | `is_hold(ctx, id)` |
+| Unwrap ONLY internal __hold | `unwrap_internal_hold(ctx, id)` ← preserves user `hold()` |
+| Unwrap any hold | `unwrap_hold(ctx, id)` |
+| Strip all internal holds | `strip_all_holds(ctx, root)` |
+| Check name string | `is_internal_hold_name(name)` or `is_hold_name(name)` |
+
+**Output boundaries:** Use `unwrap_internal_hold` at `simplify()` exit to strip internal barriers while keeping user `hold()` visible.
+
+See [Quick Reference](#quick-reference) for creation helpers.
 
 ### `poly_result` — Polynomial Store Reference
 

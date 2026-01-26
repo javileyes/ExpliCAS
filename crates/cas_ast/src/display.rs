@@ -893,8 +893,9 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
             }
             Expr::Function(fn_id, args) => {
                 let name = self.context.sym_name(*fn_id);
-                // Hold barrier is transparent for display - just show the inner
-                if crate::hold::is_hold_name(name) && args.len() == 1 {
+                // ONLY internal __hold barrier is transparent for display
+                // User-facing hold(...) should be displayed explicitly
+                if crate::hold::is_internal_hold_name(name) && args.len() == 1 {
                     return write!(
                         f,
                         "{}",

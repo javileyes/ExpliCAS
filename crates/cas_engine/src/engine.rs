@@ -60,9 +60,9 @@ fn is_hold_all_function(name: &str) -> bool {
 
 /// Unwrap top-level __hold() wrapper after simplification.
 /// This is called at the end of eval/simplify so the user sees clean results
-/// without the internal barrier visible.
+/// without the INTERNAL barrier visible (user-facing hold() is preserved).
 fn unwrap_hold_top(ctx: &Context, expr: ExprId) -> ExprId {
-    cas_ast::hold::unwrap_hold(ctx, expr)
+    cas_ast::hold::unwrap_internal_hold(ctx, expr)
 }
 
 /// Re-export strip_all_holds from cas_ast for use by rules.
