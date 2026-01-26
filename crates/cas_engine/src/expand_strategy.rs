@@ -146,6 +146,10 @@ fn extract_features_recursive(ctx: &Context, expr: ExprId, features: &mut Expand
             features.poly_like = false;
             features.multipoly_eligible = false;
         }
+        // Hold is transparent - traverse inner like Neg
+        Expr::Hold(e) => {
+            extract_features_recursive(ctx, *e, features);
+        }
     }
 }
 

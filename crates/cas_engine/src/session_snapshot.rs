@@ -78,6 +78,7 @@ pub enum ExprNodeSnapshot {
         data: Vec<u32>,
     },
     SessionRef(u64),
+    Hold(u32), // ExprId index for inner expression
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -165,6 +166,7 @@ impl ContextSnapshot {
                     data: data.iter().map(|d| d.index() as u32).collect(),
                 },
                 Expr::SessionRef(id) => ExprNodeSnapshot::SessionRef(*id),
+                Expr::Hold(inner) => ExprNodeSnapshot::Hold(inner.index() as u32),
             })
             .collect();
 
@@ -204,6 +206,7 @@ impl ContextSnapshot {
                     data: data.into_iter().map(ExprId::from_raw).collect(),
                 },
                 ExprNodeSnapshot::SessionRef(id) => Expr::SessionRef(id),
+                ExprNodeSnapshot::Hold(inner) => Expr::Hold(ExprId::from_raw(inner)),
             };
             // Use add_raw to preserve exact structure without re-canonicalization
             ctx.nodes.push(expr);

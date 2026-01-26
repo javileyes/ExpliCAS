@@ -18,6 +18,7 @@ pub trait Visitor {
             }
             Expr::Matrix { data, .. } => self.visit_matrix(context, data),
             Expr::SessionRef(id) => self.visit_session_ref(*id),
+            Expr::Hold(inner) => self.visit_hold(context, *inner),
         }
     }
 
@@ -69,6 +70,11 @@ pub trait Visitor {
     fn visit_session_ref(&mut self, _id: u64) {
         // SessionRef is a leaf node - no children to recurse into
     }
+
+    fn visit_hold(&mut self, context: &Context, inner: ExprId) {
+        // Hold is a unary wrapper - recurse into inner
+        self.visit_expr(context, inner);
+    }
 }
 
 pub trait Transformer {
@@ -92,6 +98,7 @@ pub trait Transformer {
                 self.transform_matrix(context, id, rows, cols, &data)
             }
             Expr::SessionRef(_) => self.transform_session_ref(context, id),
+            Expr::Hold(inner) => self.transform_hold(context, id, inner),
         }
     }
 
@@ -248,5 +255,14 @@ pub trait Transformer {
     fn transform_session_ref(&mut self, _context: &mut Context, id: ExprId) -> ExprId {
         // SessionRef is a leaf - return as-is (should be resolved before transform)
         id
+    }
+
+    fn transform_hold(&mut self, context: &mut Context, original: ExprId, inner: ExprId) -> ExprId {
+        let new_inner = self.transform_expr(context, inner);
+        if new_inner != inner {
+            context.add(Expr::Hold(new_inner))
+        } else {
+            original
+        }
     }
 }

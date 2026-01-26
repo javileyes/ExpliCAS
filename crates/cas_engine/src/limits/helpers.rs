@@ -26,6 +26,7 @@ pub fn depends_on(ctx: &Context, expr: ExprId, var: ExprId) -> bool {
                 stack.push(*r);
             }
             Expr::Neg(inner) => stack.push(*inner),
+            Expr::Hold(inner) => stack.push(*inner),
             Expr::Function(_, args) => {
                 for arg in args {
                     stack.push(*arg);

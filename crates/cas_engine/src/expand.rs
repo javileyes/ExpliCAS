@@ -126,12 +126,13 @@ fn eager_eval_expand_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<
                 expr
             }
         }
-        // Leaves - no recursion needed
+        // Leaves - no recursion needed (Hold blocks expansion, so treat as leaf)
         Expr::Number(_)
         | Expr::Variable(_)
         | Expr::Constant(_)
         | Expr::Matrix { .. }
         | Expr::SessionRef(_)
+        | Expr::Hold(_)
         | Expr::Function(_, _) => expr,
     }
 }

@@ -1049,6 +1049,15 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 }
             }
             Expr::SessionRef(id) => write!(f, "#{}", id),
+            // Hold is transparent for display - render inner directly
+            Expr::Hold(inner) => write!(
+                f,
+                "{}",
+                DisplayExpr {
+                    context: self.context,
+                    id: *inner
+                }
+            ),
         }
     }
 }
@@ -1058,7 +1067,7 @@ fn precedence(ctx: &Context, id: ExprId) -> i32 {
         Expr::Add(_, _) | Expr::Sub(_, _) => 1,
         Expr::Mul(_, _) | Expr::Div(_, _) => 2,
         Expr::Pow(_, _) => 3,
-        Expr::Neg(_) => 4,
+        Expr::Neg(_) | Expr::Hold(_) => 4, // Unary wrappers
         Expr::Function(_, _)
         | Expr::Variable(_)
         | Expr::Number(_)
@@ -1261,6 +1270,15 @@ impl<'a> fmt::Display for RawDisplayExpr<'a> {
                 write!(f, "])")
             }
             Expr::SessionRef(id) => write!(f, "#{}", id),
+            // Hold is transparent for display - render inner directly
+            Expr::Hold(inner) => write!(
+                f,
+                "{}",
+                RawDisplayExpr {
+                    context: self.context,
+                    id: *inner
+                }
+            ),
         }
     }
 }
@@ -1591,6 +1609,8 @@ impl<'a> DisplayExprWithHints<'a> {
                 write!(f, "])")
             }
             Expr::SessionRef(id) => write!(f, "#{}", id),
+            // Hold is transparent for display - render inner directly
+            Expr::Hold(inner) => self.fmt_internal(f, *inner),
         }
     }
 
@@ -2005,6 +2025,8 @@ impl<'a> DisplayExprStyled<'a> {
                 write!(f, "])")
             }
             Expr::SessionRef(id) => write!(f, "#{}", id),
+            // Hold is transparent for display - render inner directly
+            Expr::Hold(inner) => self.fmt_internal(f, *inner),
         }
     }
 

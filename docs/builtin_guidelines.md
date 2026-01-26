@@ -45,3 +45,41 @@ let hold = cas_ast::hold::hold_name(); // "__hold"
 2. Add case to `BuiltinFn::name()` method
 3. Update `ALL_BUILTINS` array and `COUNT`
 4. Add helper functions if needed (like `hold.rs` for Hold)
+
+---
+
+## Internal Wrappers: `__hold`, `__eq__`, `poly_result`
+
+These are **internal IR wrappers**, not user-facing functions:
+
+### `__eq__` — Equation Wrapper
+
+| Need to... | Use |
+|------------|-----|
+| Create `__eq__(lhs, rhs)` | `wrap_eq(ctx, lhs, rhs)` |
+| Check if expr is `__eq__` | `is_eq(ctx, id)` or `ctx.is_builtin(fn_id, BuiltinFn::Eq)` |
+| Unwrap `__eq__` | `unwrap_eq(ctx, id)` → `Option<(lhs, rhs)>` |
+| Compare function name string | `is_eq_name(name)` |
+
+**Important distinctions:**
+- `__eq__`: Internal equation wrapper `lhs = rhs` (for solver residuals, parse trees)
+- `Equal`: Symbolic equality comparison operator (semantic)
+
+**Aridad canónica:** 2 (lhs, rhs)
+
+**Display/LaTeX:** Rendered as equation `lhs = rhs` (never as function call)
+
+**Never compare strings directly:** Use `eq::*` helpers or `ctx.is_builtin(.., BuiltinFn::Eq)`
+
+### `__hold` — Simplification Barrier
+
+See [Quick Reference](#quick-reference) above.
+
+### `poly_result` — Polynomial Store Reference
+
+| Need to... | Use |
+|------------|-----|
+| Create `poly_result_{id}` | `wrap_poly_result(ctx, poly_id)` |
+| Check if expr is poly_result | `is_poly_result(ctx, id)` |
+| Extract poly ID | `parse_poly_result_id(ctx, id)` |
+

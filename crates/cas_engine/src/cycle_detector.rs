@@ -266,6 +266,11 @@ pub fn expr_fingerprint(ctx: &Context, root: ExprId, memo: &mut FingerprintMemo)
         }
         // SessionRef is a leaf - hash the id
         Expr::SessionRef(id) => mix1(TAG_VAR, *id),
+        // Hold is transparent for fingerprinting - hash inner like Neg
+        Expr::Hold(x) => {
+            let hx = expr_fingerprint(ctx, *x, memo);
+            mix1(TAG_NEG, hx) // Reuse TAG_NEG for simplicity
+        }
     };
 
     memo.insert(root, h);

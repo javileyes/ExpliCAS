@@ -234,6 +234,7 @@ fn expr_to_string(ctx: &Context, expr: cas_ast::ExprId) -> String {
             format!("Mat({},{},{})", rows, cols, data_str.join(","))
         }
         Expr::SessionRef(id) => format!("Ref(#{})", id),
+        Expr::Hold(e) => format!("Hold({})", expr_to_string(ctx, *e)),
     }
 }
 

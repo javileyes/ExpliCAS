@@ -15,7 +15,7 @@ pub fn node_count(ctx: &Context, expr: ExprId) -> usize {
         count += 1;
         match ctx.get(id) {
             Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
-            Expr::Neg(e) => stack.push(*e),
+            Expr::Neg(e) | Expr::Hold(e) => stack.push(*e),
             Expr::Add(l, r)
             | Expr::Sub(l, r)
             | Expr::Mul(l, r)

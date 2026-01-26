@@ -1218,6 +1218,7 @@ fn is_purely_numeric(ctx: &Context, expr: ExprId) -> bool {
             is_purely_numeric(ctx, *l) && is_purely_numeric(ctx, *r)
         }
         Expr::Neg(inner) => is_purely_numeric(ctx, *inner),
+        Expr::Hold(inner) => is_purely_numeric(ctx, *inner),
         Expr::Function(_, args) => args.iter().all(|a| is_purely_numeric(ctx, *a)),
         Expr::Matrix { data, .. } => data.iter().all(|e| is_purely_numeric(ctx, *e)),
         Expr::SessionRef(_) => false,

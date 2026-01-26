@@ -323,6 +323,16 @@ fn substitute_impl(
         // Literals: no substitution needed
         // SessionRef should be resolved before substitution, so leave unchanged
         Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => expr,
+
+        // Hold: substitute inside but preserve the wrapper
+        Expr::Hold(inner) => {
+            let new_inner = substitute_impl(ctx, env, inner, shadow, visiting, depth + 1);
+            if new_inner == inner {
+                expr
+            } else {
+                ctx.add(Expr::Hold(new_inner))
+            }
+        }
     }
 }
 

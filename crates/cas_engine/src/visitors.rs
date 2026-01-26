@@ -71,6 +71,8 @@ impl Visitor for DepthVisitor {
             }
             // SessionRef is a leaf - use default handler (no recursion)
             Expr::SessionRef(id) => self.visit_session_ref(*id),
+            // Hold is transparent - traverse inner for depth
+            Expr::Hold(inner) => self.visit_expr(ctx, *inner),
         }
 
         self.current_depth -= 1;

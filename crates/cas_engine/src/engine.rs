@@ -1411,6 +1411,8 @@ fn eval_f64_checked_depth(
         Expr::Matrix { .. } | Expr::SessionRef(_) => {
             return Err(EvalCheckedError::Unsupported);
         }
+        // Hold is transparent for evaluation - unwrap and evaluate inner
+        Expr::Hold(inner) => eval_f64_checked_depth(ctx, *inner, var_map, opts, depth - 1)?,
     };
 
     // Final check for non-finite result
@@ -1706,6 +1708,8 @@ fn eval_f64_depth(
         },
         Expr::Matrix { .. } => None, // Matrix evaluation not supported in f64
         Expr::SessionRef(_) => None, // SessionRef should be resolved before eval
+        // Hold is transparent for evaluation - unwrap and evaluate inner
+        Expr::Hold(inner) => eval_f64_depth(ctx, *inner, var_map, depth - 1),
     }
 }
 
@@ -2236,6 +2240,20 @@ impl<'a> LocalSimplificationTransformer<'a> {
             }
             // SessionRef is a leaf - return as-is (should be resolved before simplification)
             Expr::SessionRef(_) => id,
+            // Hold barrier: simplify contents but preserve the wrapper (blocks expansive rules)
+            Expr::Hold(inner) => {
+                self.current_path.push(crate::step::PathStep::Inner);
+                self.ancestor_stack.push(id);
+                let new_inner = self.transform_expr_recursive(inner);
+                self.ancestor_stack.pop();
+                self.current_path.pop();
+
+                if new_inner != inner {
+                    self.context.add(Expr::Hold(new_inner))
+                } else {
+                    id
+                }
+            }
         };
 
         // 2. Apply rules
@@ -2953,5 +2971,6 @@ fn get_variant_name(expr: &Expr) -> &'static str {
         Expr::Constant(_) => "Constant",
         Expr::Matrix { .. } => "Matrix",
         Expr::SessionRef(_) => "SessionRef",
+        Expr::Hold(_) => "Hold",
     }
 }

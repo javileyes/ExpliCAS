@@ -410,6 +410,16 @@ pub fn normalize_core(ctx: &mut Context, expr: ExprId) -> ExprId {
 
                 // Atoms: no normalization needed
                 Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => id,
+
+                // Hold: normalize inner but keep hold wrapper
+                Expr::Hold(inner) => {
+                    let inner_norm = *cache.get(inner).unwrap_or(inner);
+                    if inner_norm == *inner {
+                        id
+                    } else {
+                        ctx.add(Expr::Hold(inner_norm))
+                    }
+                }
             };
 
             cache.insert(id, result);

@@ -596,6 +596,11 @@ impl CycleDetector {
                     11u8.hash(hasher);
                     id.hash(hasher);
                 }
+                // Hold is transparent for hashing - hash inner like Neg
+                cas_ast::Expr::Hold(e) => {
+                    12u8.hash(hasher);
+                    hash_expr_depth(ctx, *e, depth - 1, hasher);
+                }
             }
         }
 

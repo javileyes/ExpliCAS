@@ -452,6 +452,8 @@ impl<'a> StyledExpr<'a> {
             }
 
             Expr::SessionRef(id) => write!(f, "#{}", id),
+            // Hold is transparent for display - render inner directly
+            Expr::Hold(inner) => self.fmt_expr(f, *inner),
         }
     }
 

@@ -1250,6 +1250,7 @@ fn contains_variable(ctx: &Context, root: ExprId) -> bool {
                 stack.push(*r);
             }
             Expr::Neg(inner) => stack.push(*inner),
+            Expr::Hold(inner) => stack.push(*inner),
             Expr::Function(_, args) => stack.extend(args.iter().copied()),
             Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
         }
@@ -1392,6 +1393,9 @@ fn infer_recursive(ctx: &Context, root: ExprId, domain: &mut ImplicitDomain) {
             Expr::Matrix { data, .. } => {
                 stack.extend(data.iter().copied());
             }
+            Expr::Hold(inner) => {
+                stack.push(*inner);
+            }
         }
     }
 }
@@ -1484,8 +1488,9 @@ fn search_witness(ctx: &Context, target: ExprId, expr: ExprId, kind: WitnessKind
         Expr::Neg(inner) => search_witness(ctx, target, *inner, kind),
         Expr::Function(_, args) => args.iter().any(|a| search_witness(ctx, target, *a, kind)),
 
-        // Leaf nodes
         Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => false,
+
+        Expr::Hold(inner) => search_witness(ctx, target, *inner, kind),
 
         Expr::Matrix { data, .. } => data.iter().any(|e| search_witness(ctx, target, *e, kind)),
     }
@@ -1601,8 +1606,11 @@ fn search_witness_in_context(
             .iter()
             .any(|a| search_witness_in_context(ctx, target, *a, replaced_node, replacement, kind)),
 
-        // Leaf nodes
         Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => false,
+
+        Expr::Hold(inner) => {
+            search_witness_in_context(ctx, target, *inner, replaced_node, replacement, kind)
+        }
 
         Expr::Matrix { data, .. } => data
             .iter()

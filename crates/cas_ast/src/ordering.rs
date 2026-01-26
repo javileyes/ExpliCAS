@@ -64,7 +64,7 @@ pub fn compare_expr(context: &Context, a: ExprId, b: ExprId) -> Ordering {
                     stack.push((*a1, *a2));
                 }
             }
-            (Neg(e1), Neg(e2)) => {
+            (Neg(e1), Neg(e2)) | (Hold(e1), Hold(e2)) => {
                 stack.push((*e1, *e2));
             }
             (Pow(b1, e1), Pow(b2, e2)) => {
@@ -125,6 +125,7 @@ pub fn get_rank(expr: &Expr) -> u8 {
         Variable(_) => 2,
         Function(_, _) => 3,
         Neg(_) => 4,
+        Hold(_) => 4, // Same rank as Neg (unary wrapper)
         Pow(_, _) => 5,
         Mul(_, _) => 6,
         Div(_, _) => 7,

@@ -275,6 +275,10 @@ fn substitute(simplifier: &mut Simplifier, expr: ExprId, var: &str, value: ExprI
                 data: data_sub,
             })
         }
+        Expr::Hold(inner) => {
+            let inner_sub = substitute(simplifier, inner, var, value);
+            simplifier.context.add(Expr::Hold(inner_sub))
+        }
     }
 }
 

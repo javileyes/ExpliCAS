@@ -120,6 +120,10 @@ pub enum Expr {
     /// Session reference: refers to a previously stored expression by ID (#1, #2, etc.)
     /// Resolved before simplification using SessionStore
     SessionRef(u64),
+    /// Hold barrier: blocks expansive/structural rules but transparent to basic algebra.
+    /// Like Neg, this is a unary wrapper (TAG_UNARY) for consistent storage/layout.
+    /// Phase 1: capacity only - wrap_hold still produces Function(__hold, [x])
+    Hold(ExprId),
 }
 
 /// Statistics for tracking Context resource usage.
@@ -340,7 +344,7 @@ impl Context {
         let tag = match &canonical_expr {
             Expr::Number(_) => ExprId::TAG_NUMBER,
             Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => ExprId::TAG_ATOM,
-            Expr::Neg(_) => ExprId::TAG_UNARY,
+            Expr::Neg(_) | Expr::Hold(_) => ExprId::TAG_UNARY,
             Expr::Add(_, _)
             | Expr::Sub(_, _)
             | Expr::Mul(_, _)
@@ -395,7 +399,7 @@ impl Context {
         let tag = match &expr {
             Expr::Number(_) => ExprId::TAG_NUMBER,
             Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => ExprId::TAG_ATOM,
-            Expr::Neg(_) => ExprId::TAG_UNARY,
+            Expr::Neg(_) | Expr::Hold(_) => ExprId::TAG_UNARY,
             Expr::Add(_, _)
             | Expr::Sub(_, _)
             | Expr::Mul(_, _)
@@ -583,7 +587,7 @@ impl Context {
                     stack.push(*l);
                     stack.push(*r);
                 }
-                Expr::Neg(inner) => stack.push(*inner),
+                Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
 
                 // Functions: check arguments unless function is known to return scalar
                 Expr::Function(fn_id, args) => {

@@ -251,6 +251,10 @@ fn expr_key_hash<H: Hasher>(ctx: &Context, expr: ExprId, hasher: &mut H) {
             "SessionRef".hash(hasher);
             id.hash(hasher);
         }
+        Expr::Hold(inner) => {
+            "Hold".hash(hasher);
+            expr_key_ac(ctx, *inner).hash(hasher);
+        }
     }
 }
 

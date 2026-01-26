@@ -368,6 +368,16 @@ fn eager_eval_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<crate::
         | Expr::Matrix { .. }
         | Expr::SessionRef(_)
         | Expr::Function(_, _) => expr,
+
+        // Hold: recurse into inner
+        Expr::Hold(inner) => {
+            let ni = eager_eval_recursive(ctx, inner, steps);
+            if ni != inner {
+                ctx.add(Expr::Hold(ni))
+            } else {
+                expr
+            }
+        }
     }
 }
 

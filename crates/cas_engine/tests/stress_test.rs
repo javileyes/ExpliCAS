@@ -374,6 +374,7 @@ fn count_depth(ctx: &Context, expr: cas_ast::ExprId) -> usize {
             1 + count_depth(ctx, *l).max(count_depth(ctx, *r))
         }
         Expr::Neg(e) => 1 + count_depth(ctx, *e),
+        Expr::Hold(e) => 1 + count_depth(ctx, *e),
         Expr::Function(_, args) => 1 + args.iter().map(|a| count_depth(ctx, *a)).max().unwrap_or(0),
         Expr::Matrix { data, .. } => {
             1 + data.iter().map(|e| count_depth(ctx, *e)).max().unwrap_or(0)

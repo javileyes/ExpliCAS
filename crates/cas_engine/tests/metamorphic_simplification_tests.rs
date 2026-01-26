@@ -241,6 +241,7 @@ fn expr_shape_signature(ctx: &Context, expr: ExprId) -> String {
             }
             Expr::Matrix { .. } => "MAT".to_string(),
             Expr::SessionRef(_) => "REF".to_string(),
+            Expr::Hold(held) => format!("Hold({})", inner(ctx, *held, depth + 1)),
         }
     }
     inner(ctx, expr, 0)

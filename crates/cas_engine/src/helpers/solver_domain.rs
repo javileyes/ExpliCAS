@@ -114,5 +114,6 @@ pub fn get_variant_name(expr: &Expr) -> &'static str {
         Expr::Function(_, _) => "Function",
         Expr::Matrix { .. } => "Matrix",
         Expr::SessionRef(_) => "SessionRef",
+        Expr::Hold(_) => "Hold",
     }
 }

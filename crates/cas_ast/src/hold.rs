@@ -39,9 +39,10 @@ pub const fn hold_name() -> &'static str {
 ///
 /// Use this when you only have a function name string and not a fn_id.
 /// This is the canonical way to check for hold by name.
+/// Accepts both "hold" (user-facing) and "__hold" (internal) names.
 #[inline]
 pub fn is_hold_name(name: &str) -> bool {
-    name == BuiltinFn::Hold.name()
+    name == BuiltinFn::Hold.name() || name == "hold"
 }
 
 /// Wrap an expression in `__hold(expr)`.
@@ -53,41 +54,61 @@ pub fn wrap_hold(ctx: &mut Context, inner: ExprId) -> ExprId {
     ctx.call_builtin(BuiltinFn::Hold, vec![inner])
 }
 
-/// Check if expression is wrapped in `__hold`.
+/// Check if expression is wrapped in `__hold` or `hold`.
 ///
-/// Uses BuiltinFn::Hold for O(1) comparison instead of string matching.
+/// Uses BuiltinFn::Hold for O(1) comparison, but also checks for user-facing "hold" name.
+/// Detects BOTH Expr::Hold variant AND Function(__hold/hold, [arg]) form.
 #[inline]
 pub fn is_hold(ctx: &Context, id: ExprId) -> bool {
-    matches!(ctx.get(id), Expr::Function(fn_id, args) 
-        if ctx.is_builtin(*fn_id, BuiltinFn::Hold) && args.len() == 1)
+    match ctx.get(id) {
+        // New variant form
+        Expr::Hold(_) => true,
+        // Function form: __hold or hold
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            ctx.is_builtin(*fn_id, BuiltinFn::Hold) || ctx.sym_name(*fn_id) == "hold"
+        }
+        _ => false,
+    }
 }
 
-/// Unwrap one level of `__hold` wrapper. Returns inner if hold, otherwise unchanged.
+/// Unwrap one level of `__hold` or `hold` wrapper. Returns inner if hold, otherwise unchanged.
 ///
-/// Uses BuiltinFn::Hold for O(1) comparison.
+/// Uses BuiltinFn::Hold for O(1) comparison, but also checks for user-facing "hold" name.
+/// Handles BOTH Expr::Hold variant AND Function(__hold/hold, [arg]) form.
 #[inline]
 pub fn unwrap_hold(ctx: &Context, id: ExprId) -> ExprId {
     match ctx.get(id) {
-        Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, BuiltinFn::Hold) && args.len() == 1 =>
-        {
-            args[0]
+        // New variant form
+        Expr::Hold(inner) => *inner,
+        // Function form: __hold or hold
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            if ctx.is_builtin(*fn_id, BuiltinFn::Hold) || ctx.sym_name(*fn_id) == "hold" {
+                args[0]
+            } else {
+                id
+            }
         }
         _ => id,
     }
 }
 
-/// Unwrap `__hold` wrapper, returning `Some(inner)` if wrapped, `None` otherwise.
+/// Unwrap `__hold` or `hold` wrapper, returning `Some(inner)` if wrapped, `None` otherwise.
 ///
 /// Useful for early-return patterns where you only want to act if it IS a hold wrapper.
-/// Uses BuiltinFn::Hold for O(1) comparison.
+/// Uses BuiltinFn::Hold for O(1) comparison, but also checks for user-facing "hold" name.
+/// Handles BOTH Expr::Hold variant AND Function(__hold/hold, [arg]) form.
 #[inline]
 pub fn unwrap_hold_if_wrapped(ctx: &Context, id: ExprId) -> Option<ExprId> {
     match ctx.get(id) {
-        Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, BuiltinFn::Hold) && args.len() == 1 =>
-        {
-            Some(args[0])
+        // New variant form
+        Expr::Hold(inner) => Some(*inner),
+        // Function form: __hold or hold
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            if ctx.is_builtin(*fn_id, BuiltinFn::Hold) || ctx.sym_name(*fn_id) == "hold" {
+                Some(args[0])
+            } else {
+                None
+            }
         }
         _ => None,
     }
@@ -105,9 +126,13 @@ pub fn strip_all_holds(ctx: &mut Context, root: ExprId) -> ExprId {
 /// Internal recursive implementation with memoization potential
 fn strip_holds_recursive(ctx: &mut Context, id: ExprId) -> ExprId {
     match ctx.get(id).clone() {
-        // Unwrap __hold and recurse into contents (uses BuiltinFn::Hold)
+        // New variant form: unwrap and recurse
+        Expr::Hold(inner) => strip_holds_recursive(ctx, inner),
+
+        // Function form: unwrap __hold or hold and recurse into contents
         Expr::Function(fn_id, ref args)
-            if ctx.is_builtin(fn_id, BuiltinFn::Hold) && args.len() == 1 =>
+            if (ctx.is_builtin(fn_id, BuiltinFn::Hold) || ctx.sym_name(fn_id) == "hold")
+                && args.len() == 1 =>
         {
             strip_holds_recursive(ctx, args[0])
         }

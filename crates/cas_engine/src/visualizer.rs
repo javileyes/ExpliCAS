@@ -168,6 +168,15 @@ impl<'a> AstVisualizer<'a> {
                     node_id, id
                 ));
             }
+            // Hold barrier: visualize with barrier icon
+            Expr::Hold(inner) => {
+                output.push_str(&format!(
+                    "  n{} [label=\"hold\", shape=octagon, fillcolor=\"#ffab91\"];\n",
+                    node_id
+                ));
+                let inner_id = self.write_node(output, inner);
+                output.push_str(&format!("  n{} -> n{};\n", node_id, inner_id));
+            }
         }
 
         node_id

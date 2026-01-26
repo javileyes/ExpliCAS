@@ -722,6 +722,19 @@ fn resolve_with_mode_recursive(
 
         // Leaf nodes
         Expr::Number(_) | Expr::Constant(_) => expr,
+
+        // Hold: recurse into inner
+        Expr::Hold(inner) => {
+            let new_inner = resolve_with_mode_recursive(
+                ctx, inner, store, mode, cache_key, memo, visiting, requires, used_cache,
+                ref_chain, seen_hits, cache_hits,
+            )?;
+            if new_inner == inner {
+                expr
+            } else {
+                ctx.add(Expr::Hold(new_inner))
+            }
+        }
     };
 
     memo.insert(expr, result);
@@ -952,6 +965,16 @@ fn resolve_recursive(
 
         // Leaf nodes - no change needed
         Expr::Number(_) | Expr::Constant(_) => Ok(expr),
+
+        // Hold: recurse into inner
+        Expr::Hold(inner) => {
+            let new_inner = resolve_recursive(ctx, inner, store, cache, visiting, inherited)?;
+            if new_inner == inner {
+                Ok(expr)
+            } else {
+                Ok(ctx.add(Expr::Hold(new_inner)))
+            }
+        }
     }
 }
 

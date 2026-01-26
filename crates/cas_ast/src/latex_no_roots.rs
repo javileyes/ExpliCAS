@@ -130,6 +130,8 @@ impl<'a> LatexNoRoots<'a> {
                 result
             }
             Expr::SessionRef(id) => format!("\\#{}", id), // LaTeX escape for #
+            // Hold is transparent for display - render inner directly
+            Expr::Hold(inner) => self.expr_to_latex(*inner, parent_needs_parens),
         }
     }
 

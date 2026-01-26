@@ -102,3 +102,8 @@ sqrt(-1)
 # === Limits (if supported) ===
 limit x, x, 0
 limit 1/x, x, inf
+
+# === Equations (exercise __eq__ display) ===
+solve x + y = z, x
+solve a*x + b = c, x
+solve x^2 + y = z, x

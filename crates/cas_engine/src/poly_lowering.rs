@@ -501,6 +501,16 @@ fn lower_recursive(
                 expr
             }
         }
+
+        // Hold blocks simplification - but recurse into inner for any poly_refs
+        Expr::Hold(inner) => {
+            let ni = lower_recursive(ctx, inner, steps, combined_any);
+            if ni != inner {
+                ctx.add(Expr::Hold(ni))
+            } else {
+                expr
+            }
+        }
     }
 }
 

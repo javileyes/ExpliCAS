@@ -371,6 +371,9 @@ fn expr_to_poly_modp_inner(
         Expr::Matrix { .. } => Err(PolyConvError::UnsupportedExpr("matrix".into())),
 
         Expr::SessionRef(_) => Err(PolyConvError::UnsupportedExpr("session reference".into())),
+
+        // Hold is stripped at function entry, but handle explicitly for exhaustiveness
+        Expr::Hold(inner) => expr_to_poly_modp_inner(ctx, *inner, p, budget, vars),
     }
 }
 
@@ -469,6 +472,9 @@ fn convert_non_add_term(
         Expr::Constant(c) => Err(PolyConvError::UnsupportedExpr(format!("constant {:?}", c))),
         Expr::Matrix { .. } => Err(PolyConvError::UnsupportedExpr("matrix".into())),
         Expr::SessionRef(_) => Err(PolyConvError::UnsupportedExpr("session reference".into())),
+
+        // Hold is stripped at function entry, but handle explicitly for exhaustiveness
+        Expr::Hold(inner) => convert_non_add_term(ctx, *inner, p, budget, vars),
     }
 }
 

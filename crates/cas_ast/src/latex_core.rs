@@ -113,6 +113,8 @@ pub trait LaTeXRenderer {
             }
             Expr::Matrix { rows, cols, data } => self.format_matrix(*rows, *cols, data),
             Expr::SessionRef(id) => format!("\\#{}", id), // LaTeX escape
+            // Hold is transparent for display - render inner directly
+            Expr::Hold(inner) => self.format_expr(*inner, parent_needs_parens),
         }
     }
 
@@ -806,6 +808,8 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
                 self.format_matrix_path(*rows, *cols, data, current_path)
             }
             Expr::SessionRef(id) => format!("\\#{}", id),
+            // Hold is transparent for display - render inner directly
+            Expr::Hold(inner) => self.render_with_path(*inner, parent_needs_parens, current_path),
         }
     }
 

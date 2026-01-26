@@ -389,6 +389,7 @@ fn contains_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
             contains_var(ctx, *l, var) || contains_var(ctx, *r, var)
         }
         Expr::Neg(e) => contains_var(ctx, *e, var),
+        Expr::Hold(e) => contains_var(ctx, *e, var),
         Expr::Function(_, args) => args.iter().any(|a| contains_var(ctx, *a, var)),
         Expr::Matrix { data, .. } => data.iter().any(|elem| contains_var(ctx, *elem, var)),
         // SessionRef is a leaf - doesn't contain variables
@@ -953,6 +954,11 @@ fn substitute_var(ctx: &mut Context, expr: ExprId, var: &str, value: ExprId) -> 
         }
         // SessionRef is a leaf - no substitution needed
         Expr::SessionRef(_) => expr,
+        // Hold: substitute inside and rewrap
+        Expr::Hold(inner) => {
+            let new_inner = substitute_var(ctx, inner, var, value);
+            ctx.add(Expr::Hold(new_inner))
+        }
     }
 }
 

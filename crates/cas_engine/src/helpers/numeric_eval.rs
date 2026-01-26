@@ -114,6 +114,8 @@ pub fn contains_integral(ctx: &Context, root: ExprId) -> bool {
             }
             // Leaf nodes: nothing to push
             Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+            // Hold is transparent - traverse inner
+            Expr::Hold(inner) => stack.push(*inner),
         }
     }
 
@@ -173,6 +175,8 @@ pub fn contains_i(ctx: &Context, root: ExprId) -> bool {
             }
             // Leaf nodes: nothing to push
             Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+            // Hold is transparent - traverse inner
+            Expr::Hold(inner) => stack.push(*inner),
         }
     }
 

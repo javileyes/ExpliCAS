@@ -202,6 +202,10 @@ fn hash_expr_recursive<H: std::hash::Hasher>(ctx: &Context, expr: ExprId, hasher
                 hash_expr_recursive(ctx, *elem, hasher);
             }
         }
+        Expr::Hold(inner) => {
+            12u8.hash(hasher);
+            hash_expr_recursive(ctx, *inner, hasher);
+        }
     }
 }
 

@@ -143,7 +143,7 @@ pub fn is_surd_free(ctx: &Context, id: ExprId, budget: usize) -> bool {
                 worklist.push(*l);
                 worklist.push(*r);
             }
-            Expr::Neg(inner) => worklist.push(*inner),
+            Expr::Neg(inner) | Expr::Hold(inner) => worklist.push(*inner),
             Expr::Matrix { data, .. } => worklist.extend(data.iter().copied()),
 
             // Atoms are surd-free
@@ -213,7 +213,7 @@ pub fn count_distinct_numeric_surds(ctx: &Context, id: ExprId, budget: usize) ->
                 worklist.push(*l);
                 worklist.push(*r);
             }
-            Expr::Neg(inner) => worklist.push(*inner),
+            Expr::Neg(inner) | Expr::Hold(inner) => worklist.push(*inner),
             Expr::Matrix { data, .. } => worklist.extend(data.iter().copied()),
 
             // Atoms have no surds
@@ -1349,8 +1349,8 @@ impl SurdSumView {
                 // Division: not supported in v1
                 Expr::Div(_, _) => return None,
 
-                // SessionRef: not supported in surd parsing (should be resolved first)
-                Expr::SessionRef(_) => return None,
+                // SessionRef/Hold: not supported in surd parsing (should be resolved first)
+                Expr::SessionRef(_) | Expr::Hold(_) => return None,
             }
         }
 
