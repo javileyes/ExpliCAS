@@ -83,17 +83,16 @@ lint-no-panic-prod:
 	@cargo clippy --workspace --lib --bins -- -D clippy::panic 2>&1 || { echo ""; echo "FAIL: Found panic! in production code. Fix or add #[allow(clippy::panic)] with justification."; exit 1; }
 	@echo "✓ No panic! in production code"
 
-# Enforce poly_result helpers, track __hold with no-regression
-# - poly_result: ENFORCE (0 violations required, uses canonical helpers)
-# - __hold: TRACK (baseline 29, fail if regression)
+# Enforce stringly-typed IR helpers (both poly_result and __hold)
+# - poly_result: ENFORCE (0 violations required)
+# - __hold: ENFORCE (0 violations required, as of 2026-01)
 # Canonical modules: cas_ast/src/hold.rs, cas_engine/src/poly_result.rs
 lint-no-stringly-ir:
 	@echo "==> Stringly-typed IR lint"
 	@echo ""
-	@HOLD_VIOLATIONS=$$(grep -rn '"__hold"' crates/cas_engine/src crates/cas_ast/src 2>/dev/null | grep -v 'hold.rs' | grep -v 'tests::' | wc -l | tr -d ' '); \
+	@HOLD_VIOLATIONS=$$(grep -rn '"__hold"' crates/cas_engine/src crates/cas_ast/src 2>/dev/null | grep -v 'hold.rs' | grep -v 'builtin.rs' | grep -v 'tests::' | wc -l | tr -d ' '); \
 	POLY_VIOLATIONS=$$(grep -rn '"poly_result"' crates/cas_engine/src 2>/dev/null | grep -v 'poly_result.rs' | grep -v 'poly_store.rs' | grep -v 'tests::' | wc -l | tr -d ' '); \
-	HOLD_BASELINE=29; \
-	echo "  __hold violations: $$HOLD_VIOLATIONS (baseline: $$HOLD_BASELINE)"; \
+	echo "  __hold violations: $$HOLD_VIOLATIONS (enforced: 0)"; \
 	echo "  poly_result violations: $$POLY_VIOLATIONS (enforced: 0)"; \
 	echo ""; \
 	FAILED=0; \
@@ -104,12 +103,12 @@ lint-no-stringly-ir:
 	else \
 		echo "✓ poly_result: CLEAN (enforced)"; \
 	fi; \
-	if [ "$$HOLD_VIOLATIONS" -gt "$$HOLD_BASELINE" ]; then \
-		echo "❌ FAIL: __hold violations ($$HOLD_VIOLATIONS) > baseline ($$HOLD_BASELINE)"; \
-		echo "   Use helpers: is_hold, unwrap_hold, strip_all_holds"; \
+	if [ "$$HOLD_VIOLATIONS" != "0" ]; then \
+		echo "❌ FAIL: __hold violations > 0"; \
+		echo "   Use helpers: is_hold, unwrap_hold, wrap_hold, is_hold_name"; \
 		FAILED=1; \
 	else \
-		echo "✓ __hold: OK ($$HOLD_VIOLATIONS <= baseline $$HOLD_BASELINE)"; \
+		echo "✓ __hold: CLEAN (enforced)"; \
 	fi; \
 	if [ "$$FAILED" = "1" ]; then exit 1; fi
 

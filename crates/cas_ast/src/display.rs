@@ -893,8 +893,8 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
             }
             Expr::Function(fn_id, args) => {
                 let name = self.context.sym_name(*fn_id);
-                // __hold is an internal invisible barrier - just display the inner
-                if name == "__hold" && args.len() == 1 {
+                // Hold barrier is transparent for display - just show the inner
+                if crate::hold::is_hold_name(name) && args.len() == 1 {
                     return write!(
                         f,
                         "{}",
