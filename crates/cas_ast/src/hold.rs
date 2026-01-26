@@ -22,8 +22,27 @@
 //! - `unwrap_hold(ctx, id)` - unwrap if hold, else return unchanged
 //! - `unwrap_hold_if_wrapped(ctx, id)` - return `Some(inner)` if hold, `None` otherwise
 //! - `strip_all_holds(ctx, root)` - recursively remove all holds
+//! - `is_hold_name(name)` - check if a function name string matches the hold builtin
+//! - `hold_name()` - get the canonical hold function name
 
 use crate::{BuiltinFn, Context, Expr, ExprId};
+
+/// Get the canonical name of the hold function.
+///
+/// Use this instead of hardcoding `"__hold"` to ensure consistency.
+#[inline]
+pub const fn hold_name() -> &'static str {
+    BuiltinFn::Hold.name()
+}
+
+/// Check if a function name string matches the hold builtin.
+///
+/// Use this when you only have a function name string and not a fn_id.
+/// This is the canonical way to check for hold by name.
+#[inline]
+pub fn is_hold_name(name: &str) -> bool {
+    name == BuiltinFn::Hold.name()
+}
 
 /// Wrap an expression in `__hold(expr)`.
 ///

@@ -53,9 +53,9 @@ impl EquivalenceResult {
 /// should NOT be simplified before the function rule is applied.
 /// This is crucial for functions like poly_gcd that need to see the raw
 /// multiplicative structure of their arguments.
-/// Also includes '__hold' which is an internal invisible barrier.
+/// Also includes hold function which is an internal invisible barrier.
 fn is_hold_all_function(name: &str) -> bool {
-    matches!(name, "poly_gcd" | "pgcd" | "__hold")
+    matches!(name, "poly_gcd" | "pgcd") || cas_ast::hold::is_hold_name(name)
 }
 
 /// Unwrap top-level __hold() wrapper after simplification.
@@ -1574,9 +1574,8 @@ fn eval_function_checked(
         "round" => Ok(arg_vals.first().copied().unwrap_or(0.0).round()),
         "sign" | "sgn" => Ok(arg_vals.first().copied().unwrap_or(0.0).signum()),
 
-        // __hold is transparent
-        // TODO(N3-future): This uses string match; refactor to take fn_id parameter for BuiltinFn::Hold check
-        "__hold" => {
+        // Hold barrier is transparent for numeric evaluation
+        _ if cas_ast::hold::is_hold_name(name) => {
             if let Some(&arg_id) = args.first() {
                 eval_f64_checked_depth(ctx, arg_id, var_map, opts, depth - 1)
             } else {
@@ -1684,9 +1683,9 @@ fn eval_f64_depth(
                 "round" => Some(arg_vals.first()?.round()),
                 "sign" | "sgn" => Some(arg_vals.first()?.signum()),
 
-                // __hold is transparent for evaluation
-                // TODO(N3-future): This uses string match; consider using BuiltinFn::Hold check
-                "__hold" => {
+                // Hold barrier is transparent for numeric evaluation
+                // This fallback uses is_builtin because fn_id is in scope
+                _ if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Hold) => {
                     if args.len() == 1 {
                         eval_f64_depth(ctx, args[0], var_map, depth - 1)
                     } else {
