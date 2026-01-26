@@ -11,7 +11,7 @@ use crate::error::CasError;
 /// Create a residual solve expression: solve(__eq__(lhs, rhs), var)
 /// Used when solver can't justify a step but wants graceful degradation.
 fn mk_residual_solve(ctx: &mut Context, lhs: ExprId, rhs: ExprId, var: &str) -> ExprId {
-    let eq_expr = ctx.call("__eq__", vec![lhs, rhs]);
+    let eq_expr = cas_ast::eq::wrap_eq(ctx, lhs, rhs);
     let var_expr = ctx.var(var);
     ctx.call("solve", vec![eq_expr, var_expr])
 }

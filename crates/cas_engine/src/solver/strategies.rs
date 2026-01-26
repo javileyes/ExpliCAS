@@ -1386,7 +1386,7 @@ fn check_exponential_needs_complex(
 fn create_equation_expr(simplifier: &mut Simplifier, eq: &Equation) -> ExprId {
     // We represent eq as Function("__eq__", [lhs, rhs])
     // This is just for internal residual representation
-    simplifier.context.call("__eq__", vec![eq.lhs, eq.rhs])
+    cas_ast::eq::wrap_eq(&mut simplifier.context, eq.lhs, eq.rhs)
 }
 
 pub struct UnwrapStrategy;

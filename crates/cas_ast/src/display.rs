@@ -904,8 +904,8 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                         }
                     );
                 }
-                // __eq__ is an internal equation representation - display as "lhs = rhs"
-                if name == "__eq__" && args.len() == 2 {
+                // __eq__ is an internal equation representation - display as \"lhs = rhs\"
+                if crate::eq::is_eq_name(name) && args.len() == 2 {
                     return write!(
                         f,
                         "{} = {}",

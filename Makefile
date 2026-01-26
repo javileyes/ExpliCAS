@@ -83,17 +83,20 @@ lint-no-panic-prod:
 	@cargo clippy --workspace --lib --bins -- -D clippy::panic 2>&1 || { echo ""; echo "FAIL: Found panic! in production code. Fix or add #[allow(clippy::panic)] with justification."; exit 1; }
 	@echo "✓ No panic! in production code"
 
-# Enforce stringly-typed IR helpers (both poly_result and __hold)
+# Enforce stringly-typed IR helpers (poly_result, __hold, __eq__)
 # - poly_result: ENFORCE (0 violations required)
 # - __hold: ENFORCE (0 violations required, as of 2026-01)
-# Canonical modules: cas_ast/src/hold.rs, cas_engine/src/poly_result.rs
+# - __eq__: ENFORCE (0 violations required, as of 2026-01)
+# Canonical modules: cas_ast/src/hold.rs, cas_ast/src/eq.rs, cas_engine/src/poly_result.rs
 lint-no-stringly-ir:
 	@echo "==> Stringly-typed IR lint"
 	@echo ""
 	@HOLD_VIOLATIONS=$$(grep -rn '"__hold"' crates/cas_engine/src crates/cas_ast/src 2>/dev/null | grep -v 'hold.rs' | grep -v 'builtin.rs' | grep -v 'tests::' | wc -l | tr -d ' '); \
 	POLY_VIOLATIONS=$$(grep -rn '"poly_result"' crates/cas_engine/src 2>/dev/null | grep -v 'poly_result.rs' | grep -v 'poly_store.rs' | grep -v 'tests::' | wc -l | tr -d ' '); \
+	EQ_VIOLATIONS=$$(grep -rn '"__eq__"' crates/cas_engine/src crates/cas_ast/src 2>/dev/null | grep -v 'eq.rs' | grep -v 'builtin.rs' | grep -v 'tests::' | grep -v '// ' | wc -l | tr -d ' '); \
 	echo "  __hold violations: $$HOLD_VIOLATIONS (enforced: 0)"; \
 	echo "  poly_result violations: $$POLY_VIOLATIONS (enforced: 0)"; \
+	echo "  __eq__ violations: $$EQ_VIOLATIONS (enforced: 0)"; \
 	echo ""; \
 	FAILED=0; \
 	if [ "$$POLY_VIOLATIONS" != "0" ]; then \
@@ -109,6 +112,13 @@ lint-no-stringly-ir:
 		FAILED=1; \
 	else \
 		echo "✓ __hold: CLEAN (enforced)"; \
+	fi; \
+	if [ "$$EQ_VIOLATIONS" != "0" ]; then \
+		echo "❌ FAIL: __eq__ violations > 0"; \
+		echo "   Use helpers: is_eq_name, wrap_eq, unwrap_eq from cas_ast::eq"; \
+		FAILED=1; \
+	else \
+		echo "✓ __eq__: CLEAN (enforced)"; \
 	fi; \
 	if [ "$$FAILED" = "1" ]; then exit 1; fi
 

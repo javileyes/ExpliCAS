@@ -107,15 +107,16 @@ pub enum BuiltinFn {
     Expand,     // expand command
 
     // Comparison functions (used by solver)
-    Equal,   // Equal(a, b)
+    Equal,   // Equal(a, b) - symbolic comparison
     Less,    // Less(a, b)
     Greater, // Greater(a, b)
+    Eq,      // __eq__(lhs, rhs) - internal equation wrapper
 }
 
 impl BuiltinFn {
     /// Total number of builtin functions.
     /// Update this when adding new variants!
-    pub const COUNT: usize = 39;
+    pub const COUNT: usize = 40;
 
     /// Get the string name of this builtin function.
     #[inline]
@@ -179,6 +180,7 @@ impl BuiltinFn {
             BuiltinFn::Equal => "Equal",
             BuiltinFn::Less => "Less",
             BuiltinFn::Greater => "Greater",
+            BuiltinFn::Eq => "__eq__",
         }
     }
 
@@ -231,6 +233,7 @@ pub const ALL_BUILTINS: [BuiltinFn; BuiltinFn::COUNT] = [
     BuiltinFn::Equal,
     BuiltinFn::Less,
     BuiltinFn::Greater,
+    BuiltinFn::Eq,
 ];
 
 /// Cache of builtin function SymbolIds.
