@@ -129,6 +129,14 @@ The old function-shaped wrappers remain supported only as an input/compatibility
      - `{"Hold": ...}` / `{"PolyResult": ...}` (new shape)
    - Recommended: accept both; emit a stable format (likely legacy for compatibility unless you want a format version bump).
 
+5) **User-facing `hold()` vs internal `__hold`**
+   - `__hold(expr)`: Internal barrier, transparent in display, stripped before output.
+   - `hold(expr)`: User-facing function with HoldAll semantics, VISIBLE in output.
+   - N4 `Expr::Hold` should represent ONLY `__hold` (internal).
+   - User `hold()` should remain as `Expr::Function("hold", ...)` with HoldAll attribute.
+   - Alternative: Introduce `Expr::UserHold(ExprId)` if you want variant-exhaustive matching,
+     but this adds complexity. Recommended: keep user `hold` as a function with attribute flag.
+
 ## Testing & Verification
 
 - Full workspace test suite.

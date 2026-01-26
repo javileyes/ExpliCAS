@@ -107,3 +107,9 @@ limit 1/x, x, inf
 solve x + y = z, x
 solve a*x + b = c, x
 solve x^2 + y = z, x
+
+# === Hold (user-facing barrier, must remain visible) ===
+hold(1*x)
+hold(x + 0) + 0
+hold(2 * 3)
+hold(sin(0))
