@@ -136,7 +136,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
     // Configure options from args
     configure_options(&mut state.options, args);
 
-    // Check for solve(equation, variable) syntax
+    // Check for solve(equation, variable) or limit(expr, var, approach) syntax
     let parse_start = Instant::now();
 
     let req = if let Some((eq_str, var)) = parse_solve_command(&args.expr) {
@@ -178,6 +178,18 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                     auto_store: args.session.is_some(),
                 }
             }
+        }
+    } else if let Some((expr_str, var, approach)) = parse_limit_command(&args.expr) {
+        // Explicit limit command: limit(expression, variable, approach)
+        let parsed = cas_parser::parse(&expr_str, &mut engine.simplifier.context)
+            .map_err(|e| anyhow::anyhow!("Parse error in limit expression: {}", e))?;
+
+        EvalRequest {
+            raw_input: args.expr.clone(),
+            parsed,
+            kind: cas_engine::EntryKind::Expr(parsed),
+            action: EvalAction::Limit { var, approach },
+            auto_store: args.session.is_some(),
         }
     } else {
         // Standard parsing: detect equations vs expressions
@@ -1052,6 +1064,95 @@ fn parse_solve_command(input: &str) -> Option<(String, String)> {
     }
 
     Some((equation_part.to_string(), variable_part.to_string()))
+}
+
+/// Parse limit(expression, variable, approach) syntax.
+/// Returns Some((expr_string, variable_name, approach)) if the input matches limit syntax.
+/// Approach can be: inf, infinity, -inf, -infinity, +inf, +infinity
+/// If approach is omitted, defaults to +infinity.
+///
+/// Examples:
+/// - limit(1/x, x, inf)
+/// - limit(x^2, x, -inf)
+/// - limit((x^2 + 3*x)/(2*x^2 - x), x, inf)
+fn parse_limit_command(input: &str) -> Option<(String, String, cas_engine::limits::Approach)> {
+    use cas_engine::limits::Approach;
+
+    let trimmed = input.trim();
+
+    // Check for "limit(" or "lim(" prefix (case-insensitive)
+    let lower = trimmed.to_lowercase();
+    let prefix_len = if lower.starts_with("limit(") {
+        6
+    } else if lower.starts_with("lim(") {
+        4
+    } else {
+        return None;
+    };
+
+    // Must end with ')'
+    if !trimmed.ends_with(')') {
+        return None;
+    }
+
+    // Extract content between "limit(" and ")"
+    let content = &trimmed[prefix_len..trimmed.len() - 1];
+
+    // Split by commas at depth 0 (handle nested parentheses)
+    let parts = split_by_comma_at_depth_0(content);
+
+    if parts.len() < 2 || parts.len() > 3 {
+        return None;
+    }
+
+    let expr_str = parts[0].trim();
+    let var_str = parts[1].trim();
+
+    // Validate variable is a valid identifier
+    if var_str.is_empty() || !var_str.chars().next()?.is_alphabetic() {
+        return None;
+    }
+    if !var_str.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        return None;
+    }
+
+    // Parse approach (default to PosInfinity)
+    let approach = if parts.len() == 3 {
+        let approach_str = parts[2].trim().to_lowercase();
+        match approach_str.as_str() {
+            "inf" | "infinity" | "+inf" | "+infinity" => Approach::PosInfinity,
+            "-inf" | "-infinity" => Approach::NegInfinity,
+            _ => return None, // Invalid approach
+        }
+    } else {
+        Approach::PosInfinity // Default
+    };
+
+    Some((expr_str.to_string(), var_str.to_string(), approach))
+}
+
+/// Split a string by commas, but only at parenthesis depth 0.
+fn split_by_comma_at_depth_0(s: &str) -> Vec<&str> {
+    let mut result = Vec::new();
+    let mut start = 0;
+    let mut depth = 0;
+
+    for (i, ch) in s.char_indices() {
+        match ch {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth -= 1,
+            ',' if depth == 0 => {
+                result.push(&s[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+
+    // Push the last part
+    result.push(&s[start..]);
+
+    result
 }
 
 /// Format a SolutionSet as a human-readable string

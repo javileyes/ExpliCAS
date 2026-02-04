@@ -101,9 +101,18 @@ pub enum EvalAction {
     Simplify,
     Expand,
     // Solve for a variable.
-    Solve { var: String },
+    Solve {
+        var: String,
+    },
     // Check equivalence between two expressions
-    Equiv { other: ExprId },
+    Equiv {
+        other: ExprId,
+    },
+    // Compute limit as variable approaches a value
+    Limit {
+        var: String,
+        approach: crate::limits::Approach,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -582,6 +591,42 @@ impl Engine {
                     vec![],
                     vec![], // solver_required: empty for equiv
                 )
+            }
+            EvalAction::Limit { var, approach } => {
+                // Compute limit using the limits engine
+                use crate::limits::{limit, LimitOptions};
+
+                // Create variable ExprId from name
+                let var_id = self.simplifier.context.var(&var);
+
+                // Default limit options
+                let opts = LimitOptions::default();
+
+                // Budget for limit computation
+                let mut budget = crate::budget::Budget::preset_cli();
+
+                match limit(
+                    &mut self.simplifier.context,
+                    resolved,
+                    var_id,
+                    approach,
+                    &opts,
+                    &mut budget,
+                ) {
+                    Ok(result) => {
+                        let res_expr = result.expr;
+                        (
+                            EvalResult::Expr(res_expr),
+                            vec![],
+                            vec![],
+                            vec![],
+                            vec![],
+                            vec![],
+                            vec![], // solver_required: empty for limit
+                        )
+                    }
+                    Err(e) => return Err(anyhow::anyhow!("Limit error: {}", e)),
+                }
             }
         };
 
