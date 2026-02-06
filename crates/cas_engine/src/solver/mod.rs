@@ -41,12 +41,6 @@ pub struct SolverOptions {
 // These newtypes enforce that renderers only consume post-processed steps.
 // This eliminates bifurcation between text/timeline outputs at compile time.
 
-/// Raw solve steps as produced by solver strategies (internal only).
-/// Contains the raw step sequence before didactic cleanup.
-/// Reserved for future internal usage when solve_with_options is deprecated.
-#[allow(dead_code)]
-pub struct RawSolveSteps(pub(crate) Vec<SolveStep>);
-
 /// Display-ready solve steps after didactic cleanup and narration.
 /// All renderers (text, timeline, JSON) consume this type only.
 #[derive(Debug, Clone)]

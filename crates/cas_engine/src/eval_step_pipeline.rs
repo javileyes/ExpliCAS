@@ -69,19 +69,6 @@ pub fn to_display_steps(raw_steps: Vec<Step>) -> DisplayEvalSteps {
     DisplayEvalSteps(cleaned)
 }
 
-/// Convert raw steps to display-ready steps with semantic context.
-///
-/// Extended version that can use semantic configuration for smarter cleanup.
-/// Currently delegates to `to_display_steps()`, but provides hook for future.
-#[allow(dead_code)]
-pub fn to_display_steps_with_context(
-    raw_steps: Vec<Step>,
-    _context: &cas_ast::Context,
-) -> DisplayEvalSteps {
-    // Future: use context for smart deduplication, witness survival filtering, etc.
-    to_display_steps(raw_steps)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

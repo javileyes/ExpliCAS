@@ -131,12 +131,10 @@ fn scan_for_sqrt_hints(ctx: &Context, expr: cas_ast::ExprId, display_ctx: &mut D
 }
 
 /// Represents a root pattern collected from sqrt() functions
-/// Stores index and a string representation of the base expression for matching
+/// Stores the root index for matching against Pow(base, k/n) expressions
 #[derive(Debug, Clone)]
 struct RootPattern {
     index: usize,
-    #[allow(dead_code)]
-    base_repr: String,
 }
 
 /// Collect root patterns from sqrt() functions in the expression
@@ -155,22 +153,17 @@ fn collect_root_patterns_recursive(
     match ctx.get(expr) {
         Expr::Function(name, args) => {
             if ctx.is_builtin(*name, BuiltinFn::Sqrt) {
-                let (index, base) = match args.len() {
-                    1 => (2, args[0]),
+                let index = match args.len() {
                     2 => {
-                        let idx = if let Expr::Number(n) = ctx.get(args[1]) {
+                        if let Expr::Number(n) = ctx.get(args[1]) {
                             n.to_integer().try_into().unwrap_or(2)
                         } else {
                             2
-                        };
-                        (idx, args[0])
+                        }
                     }
-                    _ => (2, args[0]),
+                    _ => 2,
                 };
-                patterns.push(RootPattern {
-                    index,
-                    base_repr: expr_to_string(ctx, base),
-                });
+                patterns.push(RootPattern { index });
             }
             // Recurse into arguments
             for arg in args {
@@ -190,51 +183,6 @@ fn collect_root_patterns_recursive(
             }
         }
         _ => {}
-    }
-}
-
-/// Compute a string representation of an expression for pattern matching
-fn expr_to_string(ctx: &Context, expr: cas_ast::ExprId) -> String {
-    match ctx.get(expr) {
-        Expr::Number(n) => format!("N({}/{})", n.numer(), n.denom()),
-        Expr::Variable(name) => format!("V({})", ctx.sym_name(*name)),
-        Expr::Constant(c) => format!("C({:?})", c),
-        Expr::Add(l, r) => format!(
-            "Add({},{})",
-            expr_to_string(ctx, *l),
-            expr_to_string(ctx, *r)
-        ),
-        Expr::Sub(l, r) => format!(
-            "Sub({},{})",
-            expr_to_string(ctx, *l),
-            expr_to_string(ctx, *r)
-        ),
-        Expr::Mul(l, r) => format!(
-            "Mul({},{})",
-            expr_to_string(ctx, *l),
-            expr_to_string(ctx, *r)
-        ),
-        Expr::Div(l, r) => format!(
-            "Div({},{})",
-            expr_to_string(ctx, *l),
-            expr_to_string(ctx, *r)
-        ),
-        Expr::Pow(base, exp) => format!(
-            "Pow({},{})",
-            expr_to_string(ctx, *base),
-            expr_to_string(ctx, *exp)
-        ),
-        Expr::Neg(e) => format!("Neg({})", expr_to_string(ctx, *e)),
-        Expr::Function(name, args) => {
-            let args_str: Vec<_> = args.iter().map(|a| expr_to_string(ctx, *a)).collect();
-            format!("Fn({},{})", ctx.sym_name(*name), args_str.join(","))
-        }
-        Expr::Matrix { rows, cols, data } => {
-            let data_str: Vec<_> = data.iter().map(|e| expr_to_string(ctx, *e)).collect();
-            format!("Mat({},{},{})", rows, cols, data_str.join(","))
-        }
-        Expr::SessionRef(id) => format!("Ref(#{})", id),
-        Expr::Hold(e) => format!("Hold({})", expr_to_string(ctx, *e)),
     }
 }
 

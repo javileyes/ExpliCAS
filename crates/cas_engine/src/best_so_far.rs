@@ -257,12 +257,6 @@ impl BestSoFar {
     pub fn into_parts(self) -> (ExprId, Vec<Step>) {
         (self.best_expr, self.best_steps)
     }
-
-    /// Get current best score (for diagnostics).
-    #[allow(dead_code)]
-    pub fn best_score(&self) -> Score {
-        self.best_score
-    }
 }
 
 #[cfg(test)]
