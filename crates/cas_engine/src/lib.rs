@@ -66,7 +66,6 @@ pub(crate) mod strategies;
 pub mod substitute;
 pub mod telescoping;
 pub mod timeline;
-pub mod timeline_templates;
 pub mod unipoly_modp;
 pub mod visualizer;
 

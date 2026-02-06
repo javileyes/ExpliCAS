@@ -1,9 +1,27 @@
-//! Display formatting for expressions
+//! Display formatting for expressions.
 //!
 //! This module provides display implementations for expressions:
-//! - `DisplayExpr`: Basic expression display
-//! - `DisplayExprWithHints`: Display with rendering hints (roots, etc.)
-//! - `RawDisplayExpr`: Debug-style display
+//! - [`DisplayExpr`]: Basic expression display (ASCII and Unicode pretty modes)
+//! - [`DisplayExprWithHints`]: Display with rendering hints (roots, fractions, etc.)
+//! - [`RawDisplayExpr`]: Debug-style raw AST display
+//!
+//! # Architecture: `display_context` Split
+//!
+//! Display context is split across two crates by design:
+//!
+//! - **`cas_ast::display_context`** — owns the **types** ([`DisplayHint`],
+//!   [`DisplayContext`]) because they are pure data structures with no engine
+//!   dependency. Any crate that needs to *read* display hints can depend on
+//!   `cas_ast` alone.
+//!
+//! - **`cas_engine::display_context`** — owns the **builder**
+//!   (`build_display_context`) because constructing hints requires access to
+//!   [`Step`](crate) types defined in `cas_engine`. This function scans
+//!   simplification steps for sqrt/root patterns and propagates `AsRoot` hints
+//!   to the corresponding `Pow` expressions.
+//!
+//! This split keeps `cas_ast` dependency-free while allowing `cas_engine` to
+//! perform the analysis that requires step-level context.
 
 use crate::{Constant, Context, Expr, ExprId};
 use num_rational::BigRational;

@@ -1,8 +1,21 @@
-//! Display hints for preserving original expression forms
+//! Display hints for preserving original expression forms.
 //!
 //! This module provides types for hinting how expressions should be displayed.
 //! For example, when sqrt(x) is internally canonicalized to x^(1/2), a hint
 //! can be stored to still render it as √x.
+//!
+//! # Architecture: `display_context` Split
+//!
+//! This module owns the **types** ([`DisplayHint`], [`DisplayContext`]) because
+//! they are pure data structures with no engine dependency. Any crate that needs
+//! to *read* display hints can depend on `cas_ast` alone.
+//!
+//! The **builder** (`build_display_context`) lives in `cas_engine::display_context`
+//! because constructing hints requires access to `Step` types defined in
+//! `cas_engine`. That function scans simplification steps for sqrt/root patterns
+//! and propagates `AsRoot` hints to the corresponding `Pow` expressions.
+//!
+//! See also: [`crate::display`] for display formatting that consumes these hints.
 
 use crate::ExprId;
 use std::collections::HashMap;
