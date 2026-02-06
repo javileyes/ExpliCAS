@@ -1,12 +1,16 @@
+use cas_ast::LaTeXExpr;
 use cas_engine::Simplifier;
-use cas_format::Format;
 use cas_parser::parse;
 
 fn simplify_str(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();
     let expr = parse(input, &mut simplifier.context).unwrap();
     let result = simplifier.simplify(expr);
-    result.0.to_latex(&simplifier.context)
+    LaTeXExpr {
+        context: &simplifier.context,
+        id: result.0,
+    }
+    .to_latex()
 }
 
 #[test]
@@ -74,7 +78,7 @@ fn test_diff_chain_rule_depth() {
     let res = simplify_str("diff(sin(x^2), x)");
     println!("test_diff_chain_rule_depth: {}", res);
     assert!(res.contains("\\cos"));
-    assert!(res.contains("x^{2}"));
+    assert!(res.contains("{x}^{2}") || res.contains("x^{2}"));
     assert!(res.contains("2"));
     assert!(res.contains("x"));
 }

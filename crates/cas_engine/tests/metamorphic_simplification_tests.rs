@@ -2573,8 +2573,11 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
                         // Collect numeric-only example for verbose output (all, for classifier)
                         if verbose {
                             // Get the diff residual string using Format trait
-                            use cas_format::Format;
-                            let diff_str = diff_simplified.to_latex(&simplifier.context);
+                            let diff_str = cas_ast::LaTeXExpr {
+                                context: &simplifier.context,
+                                id: diff_simplified,
+                            }
+                            .to_latex();
                             let shape = expr_shape_signature(&simplifier.context, diff_simplified);
                             numeric_only_examples.push((
                                 combined_exp.clone(),

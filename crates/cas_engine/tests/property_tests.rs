@@ -45,7 +45,7 @@ proptest! {
     #[test]
     fn test_round_trip_parse(re in strategies::arb_recursive_expr()) {
         let (ctx, expr) = strategies::to_context(re);
-        let _s = cas_format::Format::to_latex(&expr, &ctx); // Use to_latex to ensure it doesn't panicon for now, or Display
+        let _s = cas_ast::LaTeXExpr { context: &ctx, id: expr }.to_latex(); // Use to_latex to ensure it doesn't panic for now, or Display
         // Actually we should use Display implementation if available.
         // But DisplayExpr is needed.
         let display_expr = cas_ast::DisplayExpr { context: &ctx, id: expr };

@@ -19,4 +19,6 @@ desarrollo
 /crates/metatest_log.jsonl
 
 salida*
+results.txt
+mm_modp.txt
 crates/cas_engine/tests/baselines/metatest_baseline.jsonl

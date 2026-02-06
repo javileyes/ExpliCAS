@@ -3,7 +3,6 @@ members = [
     "crates/cas_ast",
     "crates/cas_engine",
     "crates/cas_parser",
-    "crates/cas_format",
     "crates/cas_cli",
     "crates/cas_android_ffi",
 ]

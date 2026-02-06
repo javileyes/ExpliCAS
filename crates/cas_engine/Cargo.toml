@@ -29,7 +29,6 @@ parallel = ["rayon"]
 
 [dev-dependencies]
 cas_parser = { path = "../cas_parser" }
-cas_format = { path = "../cas_format" }
 proptest = "1.9.0"
 criterion = "0.7.0"
 lazy_static = "1.4"

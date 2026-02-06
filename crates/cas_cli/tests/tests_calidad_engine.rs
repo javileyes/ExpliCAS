@@ -4,8 +4,8 @@
 //! de simplificación. Estos tests representan casos "Boss Final" que requieren
 //! un manejo muy fino de la simplificación algebraica.
 
+use cas_ast::LaTeXExpr;
 use cas_engine::Simplifier;
-use cas_format::Format;
 use cas_parser::parse;
 
 /// Helper para simplificar una expresión y obtener su representación como string
@@ -13,7 +13,11 @@ fn simplify_expr(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();
     let expr = parse(input, &mut simplifier.context).expect("Failed to parse");
     let (result, _) = simplifier.simplify(expr);
-    result.to_latex(&simplifier.context)
+    LaTeXExpr {
+        context: &simplifier.context,
+        id: result,
+    }
+    .to_latex()
 }
 
 /// Test #64: Suma Cíclica Racional
