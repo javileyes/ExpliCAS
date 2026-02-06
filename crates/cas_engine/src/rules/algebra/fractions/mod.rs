@@ -6,11 +6,6 @@
 //! - Combining (AddFractionsRule, FoldAddIntoFractionRule)
 //! - Rationalization (RationalizeDenominatorRule, etc.)
 
-// Fractions-specific helpers (Phase 1 of incremental migration)
-// These are not imported yet - they will be used when individual files
-// are converted to proper modules in Phase 2+
-mod helpers;
-
 // Core fraction rules module (Phase 5.1)
 mod core_rules;
 

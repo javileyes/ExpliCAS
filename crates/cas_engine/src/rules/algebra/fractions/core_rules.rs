@@ -16,7 +16,6 @@ use crate::rules::algebra::helpers::{
 };
 use cas_ast::{Context, DisplayExpr, Expr, ExprId};
 use num_traits::{One, Zero};
-use std::cmp::Ordering;
 
 // =============================================================================
 // Context-aware helpers for AddFractionsRule gating
@@ -127,7 +126,6 @@ fn poly_relation(ctx: &Context, a: ExprId, b: ExprId) -> Option<SignRelation> {
 /// - Pow(base, k) with integer k becomes (base, k)
 /// - Neg(x) is unwrapped and factors collected from x (for intersection purposes)
 /// - Everything else becomes (expr, 1)
-#[allow(dead_code)]
 pub fn collect_mul_factors_int_pow(ctx: &Context, expr: ExprId) -> Vec<(ExprId, i64)> {
     let mut factors = Vec::new();
     // Unwrap top-level Neg for factor collection (enables intersection with positive terms)
@@ -180,105 +178,10 @@ fn get_integer_exponent_a1(ctx: &Context, exp: ExprId) -> Option<i64> {
     }
 }
 
-/// Cancel common factors between numerator and denominator.
-/// Returns (new_num, new_den, cancelled_factors) if any cancellation happened.
-#[allow(dead_code)]
-fn cancel_common_factors_structural(
-    ctx: &mut Context,
-    num: ExprId,
-    den: ExprId,
-) -> Option<(ExprId, ExprId, Vec<ExprId>)> {
-    let mut num_factors = collect_mul_factors_int_pow(ctx, num);
-    let mut den_factors = collect_mul_factors_int_pow(ctx, den);
-
-    // Sort both by canonical ordering for merge
-    num_factors.sort_by(|(a, _), (b, _)| compare_expr_for_sort_a1(ctx, *a, *b));
-    den_factors.sort_by(|(a, _), (b, _)| compare_expr_for_sort_a1(ctx, *a, *b));
-
-    let mut cancelled: Vec<ExprId> = Vec::new();
-    let mut new_num_factors: Vec<(ExprId, i64)> = Vec::new();
-    let mut new_den_factors: Vec<(ExprId, i64)> = Vec::new();
-
-    let mut i = 0;
-    let mut j = 0;
-
-    while i < num_factors.len() && j < den_factors.len() {
-        let (num_base, num_exp) = num_factors[i];
-        let (den_base, den_exp) = den_factors[j];
-
-        match compare_expr_for_sort_a1(ctx, num_base, den_base) {
-            Ordering::Less => {
-                new_num_factors.push((num_base, num_exp));
-                i += 1;
-            }
-            Ordering::Greater => {
-                new_den_factors.push((den_base, den_exp));
-                j += 1;
-            }
-            Ordering::Equal => {
-                // Same base - cancel exponents
-                let diff = num_exp - den_exp;
-                if diff > 0 {
-                    new_num_factors.push((num_base, diff));
-                } else if diff < 0 {
-                    new_den_factors.push((den_base, -diff));
-                }
-                // Track cancelled factor
-                cancelled.push(num_base);
-                i += 1;
-                j += 1;
-            }
-        }
-    }
-
-    // Add remaining factors
-    while i < num_factors.len() {
-        new_num_factors.push(num_factors[i]);
-        i += 1;
-    }
-    while j < den_factors.len() {
-        new_den_factors.push(den_factors[j]);
-        j += 1;
-    }
-
-    // If nothing was cancelled, return None
-    if cancelled.is_empty() {
-        return None;
-    }
-
-    // Build new numerator and denominator
-    let new_num = build_mul_from_factors_a1(ctx, &new_num_factors);
-    let new_den = build_mul_from_factors_a1(ctx, &new_den_factors);
-
-    Some((new_num, new_den, cancelled))
-}
-
-/// Compare expressions for sorting (wrapper for canonical comparison)
-#[allow(dead_code)]
-fn compare_expr_for_sort_a1(ctx: &Context, a: ExprId, b: ExprId) -> Ordering {
-    // Use DisplayExpr for string representation
-    let a_str = format!(
-        "{}",
-        DisplayExpr {
-            context: ctx,
-            id: a
-        }
-    );
-    let b_str = format!(
-        "{}",
-        DisplayExpr {
-            context: ctx,
-            id: b
-        }
-    );
-    a_str.cmp(&b_str)
-}
-
 /// Build a product from factors with integer exponents.
 ///
 /// Uses canonical `MulBuilder` (right-fold with exponents).
 /// (See ARCHITECTURE.md "Canonical Utilities Registry")
-#[allow(dead_code)]
 pub fn build_mul_from_factors_a1(ctx: &mut Context, factors: &[(ExprId, i64)]) -> ExprId {
     use cas_ast::views::MulBuilder;
 
@@ -291,27 +194,6 @@ pub fn build_mul_from_factors_a1(ctx: &mut Context, factors: &[(ExprId, i64)]) -
     }
     builder.build(ctx)
 }
-
-/// Build domain assumption for cancelled factors.
-/// Returns Some(...) if non-numeric factors were cancelled.
-#[allow(dead_code)]
-fn build_cancel_domain_assumption(ctx: &Context, cancelled: &[ExprId]) -> Option<&'static str> {
-    if cancelled.is_empty() {
-        return None;
-    }
-    // Check if any cancelled factor is non-numeric
-    for &factor in cancelled {
-        match ctx.get(factor) {
-            Expr::Number(_) => continue, // Numbers are always ≠ 0 if we cancelled them
-            _ => return Some("Assuming cancelled factor ≠ 0"),
-        }
-    }
-    None
-}
-
-// NOTE: A1 structural factor cancellation helper functions above can be integrated
-// into the existing CancelCommonFactorsRule (line ~1460) to add power support.
-// The existing rule already handles basic factor cancellation.
 
 // =============================================================================
 // Multivariate GCD (Layers 1 + 2 + 2.5)

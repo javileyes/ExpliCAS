@@ -8,7 +8,24 @@ use cas_ast::{count_nodes, Context, DisplayExpr, Expr, ExprId};
 use num_traits::Signed;
 use std::cmp::Ordering;
 
-use super::helpers::collect_mul_factors;
+/// Collect all multiplicative factors from an expression (flatten Mul tree).
+fn collect_mul_factors(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
+    let mut factors = Vec::new();
+    collect_mul_factors_flat_recursive(ctx, expr, &mut factors);
+    factors
+}
+
+fn collect_mul_factors_flat_recursive(ctx: &Context, expr: ExprId, factors: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Mul(l, r) => {
+            collect_mul_factors_flat_recursive(ctx, *l, factors);
+            collect_mul_factors_flat_recursive(ctx, *r, factors);
+        }
+        _ => {
+            factors.push(expr);
+        }
+    }
+}
 
 // ========== Binomial Conjugate Rationalization (Level 1) ==========
 // Transforms: num / (A + B√n) → num * (A - B√n) / (A² - B²·n)
