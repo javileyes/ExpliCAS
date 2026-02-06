@@ -361,11 +361,6 @@ mod tests {
 // V2.9.9: Type-Safe Eval Step Wrappers
 // =============================================================================
 
-/// V2.9.9: Internal steps before cleanup/enrichment.
-/// NOT exported from crate. Use for debugging only.
-#[allow(dead_code)]
-pub(crate) struct RawEvalSteps(pub Vec<Step>);
-
 /// V2.9.9: Display-ready steps after cleanup/enrichment.
 /// The ONLY type external consumers should receive.
 ///

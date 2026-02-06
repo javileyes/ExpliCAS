@@ -432,20 +432,6 @@ mod tests {
         parse(s, ctx).expect("parse failed")
     }
 
-    #[allow(dead_code)]
-    fn simplify_once(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
-        if let Some(r) = add_infinity_absorption(ctx, expr) {
-            return Some(r.new_expr);
-        }
-        if let Some(r) = div_by_infinity(ctx, expr) {
-            return Some(r.new_expr);
-        }
-        if let Some(r) = mul_zero_infinity(ctx, expr) {
-            return Some(r.new_expr);
-        }
-        None
-    }
-
     // ========== REGRESSION TESTS ==========
 
     /// Test 118: Infinity addition absorption

@@ -22,3 +22,5 @@ salida*
 results.txt
 mm_modp.txt
 crates/cas_engine/tests/baselines/metatest_baseline.jsonl
+tests/output_*.txt
+tests/benchmarks.log

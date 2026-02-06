@@ -19,7 +19,6 @@ use crate::rule::{Rewrite, Rule};
 use crate::rules::algebra::gcd_exact::{gcd_exact, GcdExactBudget, GcdExactLayer};
 use cas_ast::{Context, DisplayExpr, Expr, ExprId};
 use num_traits::{One, ToPrimitive};
-use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -361,26 +360,6 @@ fn get_integer_exp(ctx: &Context, exp: ExprId) -> Option<i64> {
         Expr::Neg(inner) => get_integer_exp(ctx, *inner).map(|k| -k),
         _ => None,
     }
-}
-
-// Keep for backwards compatibility but now unused
-#[allow(dead_code)]
-fn compare_expr_for_sort(ctx: &Context, a: ExprId, b: ExprId) -> Ordering {
-    let a_str = format!(
-        "{}",
-        DisplayExpr {
-            context: ctx,
-            id: a
-        }
-    );
-    let b_str = format!(
-        "{}",
-        DisplayExpr {
-            context: ctx,
-            id: b
-        }
-    );
-    a_str.cmp(&b_str)
 }
 
 /// Build a product from factors with exponents.
