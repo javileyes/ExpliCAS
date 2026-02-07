@@ -130,10 +130,16 @@ fn collect_trig_recursive(ctx: &Context, expr: ExprId, funcs: &mut HashSet<Strin
             collect_trig_recursive(ctx, *base, funcs);
             collect_trig_recursive(ctx, *exp, funcs);
         }
-        Expr::Neg(inner) => {
+        Expr::Neg(inner) | Expr::Hold(inner) => {
             collect_trig_recursive(ctx, *inner, funcs);
         }
-        _ => {}
+        Expr::Matrix { data, .. } => {
+            for elem in data {
+                collect_trig_recursive(ctx, *elem, funcs);
+            }
+        }
+        // Leaves
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
     }
 }
 

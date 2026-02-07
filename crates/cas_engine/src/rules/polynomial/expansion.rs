@@ -186,7 +186,7 @@ impl AutoExpandPowSumRule {
                 let name = ctx.sym_name(*sym_id).to_string();
                 visited.insert(name);
             }
-            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
                 Self::count_variables(ctx, *l, visited);
                 Self::count_variables(ctx, *r, visited);
             }
@@ -194,7 +194,7 @@ impl AutoExpandPowSumRule {
                 Self::count_variables(ctx, *b, visited);
                 Self::count_variables(ctx, *e, visited);
             }
-            Expr::Neg(e) => {
+            Expr::Neg(e) | Expr::Hold(e) => {
                 Self::count_variables(ctx, *e, visited);
             }
             Expr::Function(_, args) => {
@@ -202,7 +202,13 @@ impl AutoExpandPowSumRule {
                     Self::count_variables(ctx, *arg, visited);
                 }
             }
-            _ => {}
+            Expr::Matrix { data, .. } => {
+                for elem in data {
+                    Self::count_variables(ctx, *elem, visited);
+                }
+            }
+            // Leaves
+            Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
         }
     }
 
@@ -832,8 +838,21 @@ impl HeuristicPolyNormalizeAddRule {
                 Self::contains_pow_add_inner(ctx, *l, depth + 1)
                     || Self::contains_pow_add_inner(ctx, *r, depth + 1)
             }
-            Expr::Neg(inner) => Self::contains_pow_add_inner(ctx, *inner, depth + 1),
-            _ => false,
+            Expr::Neg(inner) | Expr::Hold(inner) => {
+                Self::contains_pow_add_inner(ctx, *inner, depth + 1)
+            }
+            Expr::Div(l, r) => {
+                Self::contains_pow_add_inner(ctx, *l, depth + 1)
+                    || Self::contains_pow_add_inner(ctx, *r, depth + 1)
+            }
+            Expr::Function(_, args) => args
+                .iter()
+                .any(|a| Self::contains_pow_add_inner(ctx, *a, depth + 1)),
+            Expr::Matrix { data, .. } => data
+                .iter()
+                .any(|e| Self::contains_pow_add_inner(ctx, *e, depth + 1)),
+            // Leaves
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => false,
         }
     }
 }

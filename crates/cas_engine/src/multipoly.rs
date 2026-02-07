@@ -1708,10 +1708,21 @@ fn collect_vars_recursive(ctx: &Context, expr: ExprId, vars: &mut BTreeSet<Strin
             collect_vars_recursive(ctx, *a, vars);
             collect_vars_recursive(ctx, *b, vars);
         }
-        Expr::Neg(a) => {
+        Expr::Neg(a) | Expr::Hold(a) => {
             collect_vars_recursive(ctx, *a, vars);
         }
-        _ => {} // Functions, matrices, etc. - ignore
+        Expr::Function(_, args) => {
+            for arg in args {
+                collect_vars_recursive(ctx, *arg, vars);
+            }
+        }
+        Expr::Matrix { data, .. } => {
+            for elem in data {
+                collect_vars_recursive(ctx, *elem, vars);
+            }
+        }
+        // Leaves
+        Expr::SessionRef(_) => {}
     }
 }
 
