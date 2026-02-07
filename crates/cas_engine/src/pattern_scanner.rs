@@ -28,7 +28,7 @@ fn scan_recursive(ctx: &Context, root: ExprId, marks: &mut PatternMarks) {
                 work_stack.push(*l);
                 work_stack.push(*r);
             }
-            Expr::Neg(inner) => {
+            Expr::Neg(inner) | Expr::Hold(inner) => {
                 work_stack.push(*inner);
             }
             Expr::Function(_, args) => {

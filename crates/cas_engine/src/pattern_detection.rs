@@ -145,9 +145,11 @@ fn expr_contains(ctx: &Context, haystack: ExprId, needle: ExprId) -> bool {
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
             expr_contains(ctx, *l, needle) || expr_contains(ctx, *r, needle)
         }
-        Expr::Neg(inner) => expr_contains(ctx, *inner, needle),
+        Expr::Neg(inner) | Expr::Hold(inner) => expr_contains(ctx, *inner, needle),
         Expr::Function(_, args) => args.iter().any(|&arg| expr_contains(ctx, arg, needle)),
-        _ => false,
+        Expr::Matrix { data, .. } => data.iter().any(|&elem| expr_contains(ctx, elem, needle)),
+        // Leaves
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => false,
     }
 }
 
