@@ -21,7 +21,7 @@ SEARCH_DIR="crates/cas_engine/src"
 # These files need to construct Mul directly as part of their core function.
 ALLOWLIST=(
   "crates/cas_engine/src/nary.rs"
-  "crates/cas_engine/src/engine/mod.rs"
+  "crates/cas_engine/src/engine/transform.rs"
   "crates/cas_engine/src/build.rs"
   "crates/cas_engine/src/session.rs"
   "crates/cas_engine/src/env.rs"
