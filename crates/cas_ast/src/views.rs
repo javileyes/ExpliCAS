@@ -479,6 +479,7 @@ impl MulChainView {
         if self.factors.is_empty() {
             return ctx.num(1);
         }
+        // SAFETY: factors is non-empty (empty case returns at line 479)
         let mut acc = *self.factors.last().unwrap();
         for &f in self.factors[..self.factors.len() - 1].iter().rev() {
             acc = ctx.add_raw(Expr::Mul(f, acc));
@@ -753,6 +754,7 @@ impl MulBuilder {
 
         // 6. Build RIGHT-fold product: a*(b*(c*d))
         // This matches the current system's expected form
+        // SAFETY: parts is non-empty (empty case returns at line 718)
         let mut acc = *parts.last().unwrap();
         for &f in parts[..parts.len() - 1].iter().rev() {
             acc = ctx.add(Expr::Mul(f, acc));
@@ -825,6 +827,7 @@ impl FractionParts {
         }
 
         // RIGHT-fold: a*(b*(c*d)) - use add_raw to preserve order
+        // SAFETY: parts is non-empty (empty case returns at line 812)
         let mut acc = *parts.last().unwrap();
         for &p in parts[..parts.len() - 1].iter().rev() {
             acc = ctx.add_raw(Expr::Mul(p, acc));

@@ -562,6 +562,7 @@ pub fn run_case(case: &HealthCase, simplifier: &mut Simplifier) -> HealthCaseRes
             transform_rewrites, case.limits.max_transform_rewrites
         ));
     } else if case.limits.forbid_cycles && cycle_detected.is_some() {
+        // SAFETY: cycle_detected.is_some() checked on line 564
         let (phase, period) = cycle_detected.as_ref().unwrap();
         failure_reason = Some(format!("cycle detected: {:?} period={}", phase, period));
     }

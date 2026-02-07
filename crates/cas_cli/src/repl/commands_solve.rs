@@ -32,6 +32,7 @@ impl Repl {
 
         match free_vars.len() {
             0 => Ok(None),
+            // SAFETY: free_vars.len() == 1 checked by match arm
             1 => Ok(Some(free_vars.into_iter().next().unwrap())),
             _ => {
                 // Sort for stable error messages

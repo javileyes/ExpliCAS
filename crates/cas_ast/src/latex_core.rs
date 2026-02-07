@@ -50,20 +50,24 @@ pub trait LaTeXRenderer {
         result = result.replace("- -(", "+ (");
 
         // Fix "+ -" before digits or letters (e.g., "+ -x" → "- x")
+        // SAFETY: static regex pattern, compile never fails
         let re_plus_minus = Regex::new(r"\+ -([0-9a-zA-Z])").unwrap();
         result = re_plus_minus.replace_all(&result, "- $1").to_string();
 
         // Fix "- -" before digits or letters (e.g., "- -x" → "+ x")
+        // SAFETY: static regex pattern, compile never fails
         let re_minus_minus = Regex::new(r"- -([0-9a-zA-Z])").unwrap();
         result = re_minus_minus.replace_all(&result, "+ $1").to_string();
 
         // Fix "+ {color command}{-" patterns (highlighted negatives)
         // e.g., "+ {\color{red}{-..." → "- {\color{red}{"
         // Note: Absorbs only the leading minus of the highlighted expression
+        // SAFETY: static regex pattern, compile never fails
         let re_plus_color_minus = Regex::new(r"\+ (\{\\color\{[^}]+\}\{)-").unwrap();
         result = re_plus_color_minus.replace_all(&result, "- $1").to_string();
 
         // Fix "- {color command}{-" patterns (double negative with highlight)
+        // SAFETY: static regex pattern, compile never fails
         let re_minus_color_minus = Regex::new(r"- (\{\\color\{[^}]+\}\{)-").unwrap();
         result = re_minus_color_minus
             .replace_all(&result, "+ $1")
@@ -741,19 +745,23 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
         result = result.replace("- -(", "+ (");
 
         // Fix "+ -" before digits or letters (e.g., "+ -x" → "- x")
+        // SAFETY: static regex pattern, compile never fails
         let re_plus_minus = Regex::new(r"\+ -([0-9a-zA-Z])").unwrap();
         result = re_plus_minus.replace_all(&result, "- $1").to_string();
 
         // Fix "- -" before digits or letters (e.g., "- -x" → "+ x")
+        // SAFETY: static regex pattern, compile never fails
         let re_minus_minus = Regex::new(r"- -([0-9a-zA-Z])").unwrap();
         result = re_minus_minus.replace_all(&result, "+ $1").to_string();
 
         // Fix "+ {color command}{-" patterns (highlighted negatives)
         // e.g., "+ {\color{red}{-..." → "- {\color{red}{"
+        // SAFETY: static regex pattern, compile never fails
         let re_plus_color_minus = Regex::new(r"\+ (\{\\color\{[^}]+\}\{)-").unwrap();
         result = re_plus_color_minus.replace_all(&result, "- $1").to_string();
 
         // Fix "- {color command}{-" patterns (double negative with highlight)
+        // SAFETY: static regex pattern, compile never fails
         let re_minus_color_minus = Regex::new(r"- (\{\\color\{[^}]+\}\{)-").unwrap();
         result = re_minus_color_minus
             .replace_all(&result, "+ $1")

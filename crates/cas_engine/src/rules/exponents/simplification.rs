@@ -351,6 +351,7 @@ impl crate::rule::Rule for MulNaryCombinePowersRule {
             return Some(Rewrite::new(ctx.num(1)).desc("All factors cancelled"));
         }
 
+        // SAFETY: result_factors is non-empty (empty case returns at line 350)
         let mut result = *result_factors.last().unwrap();
         for factor in result_factors.iter().rev().skip(1) {
             result = mul2_raw(ctx, *factor, result);

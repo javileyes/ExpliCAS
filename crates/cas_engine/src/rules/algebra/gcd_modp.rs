@@ -762,6 +762,7 @@ pub fn multipoly_modp_to_expr(
             factors
                 .into_iter()
                 .reduce(|acc, f| ctx.add(Expr::Mul(acc, f)))
+                // SAFETY: factors is non-empty (constants or variables pushed above)
                 .unwrap()
         };
 
