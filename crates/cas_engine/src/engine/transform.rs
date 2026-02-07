@@ -29,6 +29,10 @@ const MAX_SIMPLIFY_DEPTH: usize = 50;
 /// Path to log expressions that exceed the depth limit for later investigation.
 const DEPTH_OVERFLOW_LOG_PATH: &str = "/tmp/cas_depth_overflow_expressions.log";
 
+/// Cached env var check: avoids heap-allocated String lookup on every rule match.
+static CAS_TRACE_RULES_ENABLED: std::sync::LazyLock<bool> =
+    std::sync::LazyLock::new(|| std::env::var("CAS_TRACE_RULES").is_ok());
+
 /// Binary operation type for transform_binary helper
 #[derive(Clone, Copy)]
 #[allow(dead_code)] // Div is kept for consistency, may be used if Div early-detection is removed
@@ -116,6 +120,48 @@ impl<'a> Transformer for LocalSimplificationTransformer<'a> {
 impl<'a> LocalSimplificationTransformer<'a> {
     fn indent(&self) -> String {
         "  ".repeat(self.current_path.len())
+    }
+
+    /// Build the ParentContext for the current node position.
+    ///
+    /// PERF: This is called once per `apply_rules()` invocation (i.e., once per node),
+    /// and the result is shared by all rule attempts on that node. Previously, this
+    /// construction was duplicated inside both the specific-rules and global-rules loops,
+    /// causing O(rules × nodes × ancestors) redundant work.
+    fn build_parent_context(&self) -> crate::parent_context::ParentContext {
+        let mut ctx = if let Some(marks) = self.initial_parent_ctx.pattern_marks() {
+            crate::parent_context::ParentContext::with_marks(marks.clone())
+        } else {
+            crate::parent_context::ParentContext::root()
+        };
+        // Copy expand_mode (enables BinomialExpansionRule when Simplifier::expand() is called)
+        if self.initial_parent_ctx.is_expand_mode() {
+            ctx = ctx.with_expand_mode_flag(true);
+        }
+        // Copy auto_expand (enables AutoExpandPowSumRule)
+        if self.initial_parent_ctx.is_auto_expand() {
+            ctx = ctx
+                .with_auto_expand_flag(true, self.initial_parent_ctx.auto_expand_budget().cloned());
+        }
+        ctx = ctx.with_domain_mode(self.initial_parent_ctx.domain_mode());
+        ctx = ctx.with_inv_trig(self.initial_parent_ctx.inv_trig_policy());
+        ctx = ctx.with_value_domain(self.initial_parent_ctx.value_domain());
+        ctx = ctx.with_goal(self.initial_parent_ctx.goal());
+        if let Some(root) = self.initial_parent_ctx.root_expr() {
+            ctx = ctx.with_root_expr_only(root);
+        }
+        // Propagate context_mode and simplify_purpose for Solve mode blocking
+        ctx = ctx.with_context_mode(self.initial_parent_ctx.context_mode());
+        ctx = ctx.with_simplify_purpose(self.initial_parent_ctx.simplify_purpose());
+        // Propagate implicit_domain for domain-aware simplifications
+        ctx = ctx.with_implicit_domain(self.initial_parent_ctx.implicit_domain().cloned());
+        // Build ancestor chain from stack (for Div tracking)
+        for &ancestor in &self.ancestor_stack {
+            ctx = ctx.extend_with_div_check(ancestor, self.context);
+        }
+        ctx = ctx.with_autoexpand_binomials(self.initial_parent_ctx.autoexpand_binomials());
+        ctx = ctx.with_heuristic_poly(self.initial_parent_ctx.heuristic_poly());
+        ctx
     }
 
     /// Reconstruct the global expression by substituting `replacement` at the given path
@@ -571,6 +617,11 @@ impl<'a> LocalSimplificationTransformer<'a> {
         loop {
             let mut changed = false;
             let variant = crate::helpers::get_variant_name(self.context.get(expr_id));
+
+            // PERF: Build ParentContext ONCE per node, shared by all rules.
+            // Previously this was rebuilt inside the rule loop (O(rules × nodes × ancestors)).
+            let parent_ctx = self.build_parent_context();
+
             // println!("apply_rules for {:?} variant: {}", expr_id, variant);
             // Try specific rules
             if let Some(specific_rules) = self.rules.get(variant) {
@@ -607,56 +658,6 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             }
                         }
                     }
-                    // Build ParentContext with ancestors from traversal stack + pattern marks + expand_mode + auto_expand
-                    let parent_ctx = {
-                        let mut ctx = crate::parent_context::ParentContext::root();
-                        // Copy pattern marks from initial context
-                        if let Some(marks) = self.initial_parent_ctx.pattern_marks() {
-                            ctx = crate::parent_context::ParentContext::with_marks(marks.clone());
-                        }
-                        // CRITICAL: Copy expand_mode from initial context
-                        // This enables BinomialExpansionRule when Simplifier::expand() is called
-                        if self.initial_parent_ctx.is_expand_mode() {
-                            ctx = ctx.with_expand_mode_flag(true);
-                        }
-                        // Copy auto_expand from initial context
-                        // This enables AutoExpandPowSumRule when autoexpand is on
-                        if self.initial_parent_ctx.is_auto_expand() {
-                            ctx = ctx.with_auto_expand_flag(
-                                true,
-                                self.initial_parent_ctx.auto_expand_budget().cloned(),
-                            );
-                        }
-                        // Copy domain_mode from initial context for factor cancellation
-                        ctx = ctx.with_domain_mode(self.initial_parent_ctx.domain_mode());
-                        // Copy inv_trig from initial context for inverse trig simplification
-                        ctx = ctx.with_inv_trig(self.initial_parent_ctx.inv_trig_policy());
-                        // Copy value_domain from initial context for log expansion rules
-                        ctx = ctx.with_value_domain(self.initial_parent_ctx.value_domain());
-                        // Copy goal from initial context for expand_log and collect gating
-                        ctx = ctx.with_goal(self.initial_parent_ctx.goal());
-                        // V2.14.21: Copy root_expr for lazy implicit_domain computation in rules
-                        if let Some(root) = self.initial_parent_ctx.root_expr() {
-                            ctx = ctx.with_root_expr_only(root);
-                        }
-                        // V2.15.8: Propagate implicit_domain for domain-aware simplifications
-                        // (e.g., AbsNonNegativeSimplifyRule needs to see x≥0 from sqrt)
-                        // Note: check_analytic_expansion is gated by rule.solve_safety() below
-                        ctx = ctx.with_implicit_domain(
-                            self.initial_parent_ctx.implicit_domain().cloned(),
-                        );
-                        // Build ancestor chain from stack (for Div tracking)
-                        for &ancestor in &self.ancestor_stack {
-                            ctx = ctx.extend_with_div_check(ancestor, self.context);
-                        }
-                        // V2.15.8: Copy autoexpand_binomials from initial context
-                        ctx = ctx.with_autoexpand_binomials(
-                            self.initial_parent_ctx.autoexpand_binomials(),
-                        );
-                        // V2.15.9: Copy heuristic_poly from initial context
-                        ctx = ctx.with_heuristic_poly(self.initial_parent_ctx.heuristic_poly());
-                        ctx
-                    };
 
                     if let Some(mut rewrite) = rule.apply(self.context, expr_id, &parent_ctx) {
                         // Check semantic equality - skip if no real change
@@ -799,7 +800,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             .record_with_delta(self.current_phase, rule.name(), delta);
 
                         // TRACE: Log applied rules for debugging cycles
-                        if std::env::var("CAS_TRACE_RULES").is_ok() {
+                        if *CAS_TRACE_RULES_ENABLED {
                             use std::io::Write;
                             if let Ok(mut f) = std::fs::OpenOptions::new()
                                 .create(true)
@@ -1001,49 +1002,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     continue;
                 }
 
-                // Apply rule with parent_ctx containing ancestorsfrom traversal stack
-                // V2.14.27: Update to use full parent_ctx with ancestors for Div tracking guards
-                let parent_ctx = {
-                    let mut ctx = crate::parent_context::ParentContext::root();
-                    // Copy pattern marks from initial context
-                    if let Some(marks) = self.initial_parent_ctx.pattern_marks() {
-                        ctx = crate::parent_context::ParentContext::with_marks(marks.clone());
-                    }
-                    // Copy other settings from initial context
-                    if self.initial_parent_ctx.is_expand_mode() {
-                        ctx = ctx.with_expand_mode_flag(true);
-                    }
-                    if self.initial_parent_ctx.is_auto_expand() {
-                        ctx = ctx.with_auto_expand_flag(
-                            true,
-                            self.initial_parent_ctx.auto_expand_budget().cloned(),
-                        );
-                    }
-                    ctx = ctx.with_domain_mode(self.initial_parent_ctx.domain_mode());
-                    ctx = ctx.with_inv_trig(self.initial_parent_ctx.inv_trig_policy());
-                    ctx = ctx.with_value_domain(self.initial_parent_ctx.value_domain());
-                    ctx = ctx.with_goal(self.initial_parent_ctx.goal());
-                    if let Some(root) = self.initial_parent_ctx.root_expr() {
-                        ctx = ctx.with_root_expr_only(root);
-                    }
-                    // V2.14.27: Propagate context_mode and simplify_purpose for Solve mode blocking
-                    ctx = ctx.with_context_mode(self.initial_parent_ctx.context_mode());
-                    ctx = ctx.with_simplify_purpose(self.initial_parent_ctx.simplify_purpose());
-                    // V2.14.27: Propagate implicit_domain for domain-aware simplifications
-                    // This is needed for sqrt(x)^2 → x in Generic mode
-                    ctx = ctx
-                        .with_implicit_domain(self.initial_parent_ctx.implicit_domain().cloned());
-                    // Build ancestor chain from stack (for Div tracking)
-                    for &ancestor in &self.ancestor_stack {
-                        ctx = ctx.extend_with_div_check(ancestor, self.context);
-                    }
-                    // V2.15.8: Copy autoexpand_binomials from initial context
-                    ctx = ctx
-                        .with_autoexpand_binomials(self.initial_parent_ctx.autoexpand_binomials());
-                    // V2.15.9: Copy heuristic_poly from initial context
-                    ctx = ctx.with_heuristic_poly(self.initial_parent_ctx.heuristic_poly());
-                    ctx
-                };
+                // PERF: Reuse the parent_ctx built once per apply_rules() call
                 if let Some(mut rewrite) = rule.apply(self.context, expr_id, &parent_ctx) {
                     // Fast path: if rewrite produces identical ExprId, skip entirely
                     if rewrite.new_expr == expr_id {
