@@ -2,34 +2,14 @@
 // Expression Complexity Helpers
 // =============================================================================
 
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{Context, ExprId};
 
 /// Count the number of nodes in an expression tree.
 /// Used by the anti-worsen guard to reject rewrites that grow expressions too much.
-/// Uses iterative traversal to prevent stack overflow on deep expressions.
+///
+/// Delegates to canonical `cas_ast::traversal::count_all_nodes`.
 pub fn node_count(ctx: &Context, expr: ExprId) -> usize {
-    let mut count = 0;
-    let mut stack = vec![expr];
-
-    while let Some(id) = stack.pop() {
-        count += 1;
-        match ctx.get(id) {
-            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
-            Expr::Neg(e) | Expr::Hold(e) => stack.push(*e),
-            Expr::Add(l, r)
-            | Expr::Sub(l, r)
-            | Expr::Mul(l, r)
-            | Expr::Div(l, r)
-            | Expr::Pow(l, r) => {
-                stack.push(*l);
-                stack.push(*r);
-            }
-            Expr::Function(_, args) => stack.extend(args.iter().copied()),
-            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
-        }
-    }
-
-    count
+    cas_ast::traversal::count_all_nodes(ctx, expr)
 }
 
 /// Check if a rewrite would "worsen" the expression by growing it too much.
