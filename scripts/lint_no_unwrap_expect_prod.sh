@@ -14,7 +14,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # ─── Budgets (current ceiling — lower these as you fix unwraps) ───
 # Format: CRATE_DIR MAX_UNWRAP MAX_EXPECT
 BUDGETS=(
-    "crates/cas_engine/src    308  38"
+    "crates/cas_engine/src    306  38"
     "crates/cas_ast/src        15  19"
     "crates/cas_cli/src        14   0"
     "crates/cas_android_ffi/src 0   1"

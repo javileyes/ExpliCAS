@@ -787,12 +787,9 @@ impl<'a> TimelineHtml<'a> {
             // V2.9.25: When before_local is an Add node (representing multiple matched terms),
             // always use multi-term highlighting. Single-path highlighting would only highlight
             // one subtree when the matched terms may come from different parts of the expression.
-            let (global_before, global_after) = if step.before_local.is_some()
-                && step.before_local != Some(step.before)
+            let (global_before, global_after) = if let Some(before_local) =
+                step.before_local.filter(|&bl| bl != step.before)
             {
-                // SAFETY: before_local.is_some() checked at line 790
-                let before_local = step.before_local.unwrap();
-
                 // V2.9.25: Check if before_local is an Add node. If so, use multi-term highlighting
                 // to ensure all terms are highlighted, not just the subtree that happens to match.
                 let before_local_is_add = matches!(self.context.get(before_local), Expr::Add(_, _));
@@ -841,8 +838,7 @@ impl<'a> TimelineHtml<'a> {
                     // This fixes the regression where ExprId-based highlighting would mark
                     // all identical values (e.g., all 'x' symbols) instead of just those
                     // within the focus area.
-                    // SAFETY: before_local.is_some() checked at line 790
-                    let focus_before = step.before_local.unwrap();
+                    let focus_before = before_local;
                     let focus_after = step.after_local.unwrap_or(step.after);
 
                     // BEFORE: Extract terms from focus_before and find paths to each within
