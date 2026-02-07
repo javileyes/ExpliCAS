@@ -1,0 +1,935 @@
+use crate::define_rule;
+use crate::ordering::compare_expr;
+use crate::rule::Rewrite;
+use crate::rules::algebra::helpers::smart_mul;
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use num_traits::{One, Zero};
+use std::cmp::Ordering;
+
+// Re-use helpers from parent module
+use super::make_log;
+
+/// Domain-aware rule for b^log(b, x) → x.
+/// Requires x > 0 (domain of log). Respects domain_mode.
+pub struct ExponentialLogRule;
+
+impl crate::rule::Rule for ExponentialLogRule {
+    fn name(&self) -> &str {
+        "Exponential-Log Inverse"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Pow(base, exp) = expr_data {
+            let exp_data = ctx.get(exp).clone();
+
+            // Helper to get log base and arg
+            let get_log_parts = |ctx: &mut cas_ast::Context,
+                                 e_id: cas_ast::ExprId|
+             -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+                let e_data = ctx.get(e_id).clone();
+                if let Expr::Function(name, args) = e_data {
+                    let name_str = ctx.sym_name(name);
+                    if name_str == "log" && args.len() == 2 {
+                        return Some((args[0], args[1]));
+                    } else if name_str == "ln" && args.len() == 1 {
+                        let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+                        return Some((e, args[0]));
+                    }
+                }
+                None
+            };
+
+            // Case 1: b^log(b, x) → x
+            // The condition x > 0 is IMPLICIT from ln(x)/log(b,x) being defined.
+            // This is NOT a new assumption - it's already required by the expression.
+            if let Some((log_base, log_arg)) = get_log_parts(ctx, exp) {
+                if compare_expr(ctx, log_base, base) == Ordering::Equal {
+                    let mode = parent_ctx.domain_mode();
+                    let vd = parent_ctx.value_domain();
+
+                    // Use prove_positive with ValueDomain
+                    let arg_positive = crate::helpers::prove_positive(ctx, log_arg, vd);
+
+                    // In Strict mode: only allow if proven
+                    if mode == crate::domain::DomainMode::Strict
+                        && arg_positive != crate::domain::Proof::Proven
+                    {
+                        return None;
+                    }
+
+                    // In Generic/Assume: allow with implicit requires
+                    // The condition x > 0 is ALREADY implied by log(b, x) existing.
+                    // This is like sqrt(x)^2 → x with requires x ≥ 0.
+                    use crate::implicit_domain::ImplicitCondition;
+
+                    if arg_positive == crate::domain::Proof::Proven {
+                        // Already proven positive, no requires needed
+                        return Some(crate::rule::Rewrite::new(log_arg).desc("b^log(b, x) = x"));
+                    }
+
+                    // Emit implicit requires (like sqrt(x)^2 → x)
+                    return Some(
+                        crate::rule::Rewrite::new(log_arg)
+                            .desc("b^log(b, x) = x")
+                            .requires(ImplicitCondition::Positive(log_arg)),
+                    );
+                }
+            }
+
+            // Case 2: b^(c * log(b, x)) → x^c
+            // Same logic as Case 1: x > 0 is IMPLICIT from log(b, x) existing.
+            if let Expr::Mul(lhs, rhs) = &exp_data {
+                let vd = parent_ctx.value_domain();
+                let mode = parent_ctx.domain_mode();
+
+                let mut check_log = |target: cas_ast::ExprId,
+                                     coeff: cas_ast::ExprId|
+                 -> Option<crate::rule::Rewrite> {
+                    if let Some((log_base, log_arg)) = get_log_parts(ctx, target) {
+                        if compare_expr(ctx, log_base, base) == Ordering::Equal {
+                            // Use prove_positive with ValueDomain
+                            let arg_positive = crate::helpers::prove_positive(ctx, log_arg, vd);
+
+                            // In Strict mode: only allow if proven
+                            if mode == crate::domain::DomainMode::Strict
+                                && arg_positive != crate::domain::Proof::Proven
+                            {
+                                return None;
+                            }
+
+                            let new_expr = ctx.add(Expr::Pow(log_arg, coeff));
+
+                            // In Generic/Assume: allow with implicit requires
+                            use crate::implicit_domain::ImplicitCondition;
+
+                            if arg_positive == crate::domain::Proof::Proven {
+                                return Some(
+                                    crate::rule::Rewrite::new(new_expr)
+                                        .desc("b^(c*log(b, x)) = x^c"),
+                                );
+                            }
+
+                            return Some(
+                                crate::rule::Rewrite::new(new_expr)
+                                    .desc("b^(c*log(b, x)) = x^c")
+                                    .requires(ImplicitCondition::Positive(log_arg)),
+                            );
+                        }
+                    }
+                    None
+                };
+
+                if let Some(rw) = check_log(*lhs, *rhs) {
+                    return Some(rw);
+                }
+                if let Some(rw) = check_log(*rhs, *lhs) {
+                    return Some(rw);
+                }
+            }
+        }
+        None
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Pow"])
+    }
+
+    fn solve_safety(&self) -> crate::solve_safety::SolveSafety {
+        crate::solve_safety::SolveSafety::NeedsCondition(
+            crate::assumptions::ConditionClass::Analytic,
+        )
+    }
+}
+
+define_rule!(
+    SplitLogExponentsRule,
+    "Split Log Exponents",
+    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
+        crate::assumptions::ConditionClass::Analytic
+    ),
+    |ctx, expr, _parent_ctx| {
+    // e^(a + b) -> e^a * e^b IF a or b is a log
+    let expr_data = ctx.get(expr).clone();
+    if let Expr::Pow(base, exp) = expr_data {
+        let base_is_e = matches!(ctx.get(base), Expr::Constant(cas_ast::Constant::E));
+        if base_is_e {
+            let exp_data = ctx.get(exp).clone();
+            if let Expr::Add(lhs, rhs) = exp_data {
+                let lhs_is_log = is_log(ctx, lhs);
+                let rhs_is_log = is_log(ctx, rhs);
+
+                if lhs_is_log || rhs_is_log {
+                    let term1 = simplify_exp_log(ctx, base, lhs);
+                    let term2 = simplify_exp_log(ctx, base, rhs);
+                    let new_expr = smart_mul(ctx, term1, term2);
+                    return Some(Rewrite::new(new_expr).desc("e^(a+b) -> e^a * e^b (log cancellation)"));
+                }
+            }
+        }
+    }
+    None
+});
+
+fn simplify_exp_log(context: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
+    // Check if exp is log(base, x)
+    if let Expr::Function(name, args) = context.get(exp).clone() {
+        let name_str = context.sym_name(name);
+        if name_str == "log" && args.len() == 2 {
+            let log_base = args[0];
+            let log_arg = args[1];
+            if log_base == base {
+                return log_arg;
+            }
+        }
+    }
+    // Also check n*log(base, x) -> x^n?
+    // Maybe later. For now just direct cancellation.
+    context.add(Expr::Pow(base, exp))
+}
+
+fn is_log(context: &Context, expr: ExprId) -> bool {
+    if let Expr::Function(name, _) = context.get(expr) {
+        let name_str = context.sym_name(*name);
+        return name_str == "log" || name_str == "ln";
+    }
+    // Also check for n*log(x)
+    if let Expr::Mul(l, r) = context.get(expr) {
+        return is_log(context, *l) || is_log(context, *r);
+    }
+    false
+}
+
+define_rule!(
+    LogInversePowerRule,
+    "Log Inverse Power",
+    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
+        crate::assumptions::ConditionClass::Analytic
+    ),
+    |ctx, expr, _parent_ctx| {
+    let expr_data = ctx.get(expr).clone();
+    if let Expr::Pow(base, exp) = expr_data {
+        // Check for x^(c / log(b, x))
+        // exp could be Div(c, log(b, x)) or Mul(c, Pow(log(b, x), -1))
+
+        // Returns Some(Some(base)) for log(b, x), Some(None) for ln(x) -> base e
+        let check_log_denom =
+            |ctx: &Context, denom: cas_ast::ExprId| -> Option<Option<cas_ast::ExprId>> {
+                if let Expr::Function(fn_id, args) = ctx.get(denom) { let name = ctx.sym_name(*fn_id);
+                    if name == "log" && args.len() == 2 {
+                        let log_base = args[0];
+                        let log_arg = args[1];
+                        // Check if log_arg == base
+                        if compare_expr(ctx, log_arg, base) == Ordering::Equal {
+                            return Some(Some(log_base));
+                        }
+                    } else if name == "ln" && args.len() == 1 {
+                        let log_arg = args[0];
+                        if compare_expr(ctx, log_arg, base) == Ordering::Equal {
+                            return Some(None); // Base e
+                        }
+                    }
+                }
+                None
+            };
+
+        let mut target_b_opt: Option<Option<cas_ast::ExprId>> = None;
+        let mut coeff: Option<cas_ast::ExprId> = None;
+
+        let exp_data = ctx.get(exp).clone();
+        match exp_data {
+            Expr::Div(num, den) => {
+                if let Some(b_opt) = check_log_denom(ctx, den) {
+                    target_b_opt = Some(b_opt);
+                    coeff = Some(num);
+                }
+            }
+            Expr::Mul(l, r) => {
+                // Check l * r^-1
+                if let Expr::Pow(b, e) = ctx.get(r) {
+                    if let Expr::Number(n) = ctx.get(*e) {
+                        if n.is_integer()
+                            && *n == num_rational::BigRational::from_integer((-1).into())
+                        {
+                            if let Some(b_opt) = check_log_denom(ctx, *b) {
+                                target_b_opt = Some(b_opt);
+                                coeff = Some(l);
+                            }
+                        }
+                    }
+                }
+                // Check r * l^-1
+                if target_b_opt.is_none() {
+                    if let Expr::Pow(b, e) = ctx.get(l) {
+                        if let Expr::Number(n) = ctx.get(*e) {
+                            if n.is_integer()
+                                && *n == num_rational::BigRational::from_integer((-1).into())
+                            {
+                                if let Some(b_opt) = check_log_denom(ctx, *b) {
+                                    target_b_opt = Some(b_opt);
+                                    coeff = Some(r);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Expr::Pow(b, e) => {
+                // Check if it's log(b, x)^-1
+                if let Expr::Number(n) = ctx.get(e) {
+                    if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into())
+                    {
+                        if let Some(b_opt) = check_log_denom(ctx, b) {
+                            target_b_opt = Some(b_opt);
+                            coeff = Some(ctx.num(1));
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        if let (Some(b_opt), Some(c)) = (target_b_opt, coeff) {
+            // Result is b^c
+            let b = b_opt.unwrap_or_else(|| ctx.add(Expr::Constant(cas_ast::Constant::E)));
+            let new_expr = ctx.add(Expr::Pow(b, c));
+            return Some(Rewrite::new(new_expr).desc("x^(c/log(b, x)) = b^c"));
+        }
+    }
+    None
+});
+
+/// Domain-aware rule for log(b, b^x) → x.
+/// Variable exponents only simplify when domain_mode is NOT strict.
+/// Numeric exponents (like log(x, x^2) → 2) always apply.
+/// This is controlled by domain_mode because it's a domain assumption (x is real),
+/// not an inverse trig composition.
+pub struct LogExpInverseRule;
+
+impl crate::rule::Rule for LogExpInverseRule {
+    fn name(&self) -> &str {
+        "Log-Exp Inverse"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Function(fn_id, args) = expr_data {
+            let name = ctx.sym_name(fn_id);
+            // Handle ln(x) as log(e, x), or log(b, x)
+            let (base, arg) = if name == "ln" && args.len() == 1 {
+                let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+                (e, args[0])
+            } else if name == "log" && args.len() == 2 {
+                (args[0], args[1])
+            } else {
+                return None;
+            };
+
+            let arg_data = ctx.get(arg).clone();
+
+            // log(b, b^x) → x (when b matches)
+            if let Expr::Pow(p_base, p_exp) = arg_data {
+                if p_base == base || ctx.get(p_base) == ctx.get(base) {
+                    // For numeric exponents like log(x, x^2) → 2, always simplify
+                    let is_numeric_exponent = matches!(ctx.get(p_exp), Expr::Number(_));
+
+                    if is_numeric_exponent {
+                        // Always safe: log(b, b^n) = n for any numeric n
+                        return Some(crate::rule::Rewrite::new(p_exp).desc("log(b, b^n) = n"));
+                    } else {
+                        // For variable exponents like log(e, e^x) → x
+                        //
+                        // NEW CONTRACT (RealOnly = symbols are real):
+                        // - RealOnly: e^x > 0 for all x ∈ ℝ, so ln(e^x) = x ALWAYS.
+                        //   This applies even in Strict mode (no assumption needed).
+                        // - ComplexEnabled: ln is multivalued. ln(e^x) = x + 2πik.
+                        //   NEVER simplify for symbolic exponents (would require principal branch).
+                        //
+                        // GATE: For bases other than e, require prove_positive(base) and base ≠ 1
+                        // log(b, b^x) = x only when b > 0 AND b ≠ 1
+                        //
+                        use crate::domain::Proof;
+                        use crate::helpers::prove_positive;
+                        use crate::semantics::ValueDomain;
+                        let vd = parent_ctx.value_domain();
+
+                        if vd == ValueDomain::ComplexEnabled {
+                            // ComplexEnabled: Never simplify symbolic exponents
+                            // (ln is multivalued, can't assume principal branch)
+                            return None;
+                        }
+
+                        // RealOnly: Check if base is provably valid (>0 and ≠1)
+                        let is_e_base =
+                            matches!(ctx.get(base), Expr::Constant(cas_ast::Constant::E));
+
+                        if !is_e_base {
+                            // For non-e bases, require prove_positive(base) == Proven
+                            let base_positive = prove_positive(ctx, base, vd);
+                            if base_positive != Proof::Proven {
+                                // Cannot prove base > 0
+                                let dm = parent_ctx.domain_mode();
+                                match dm {
+                                    crate::domain::DomainMode::Strict
+                                    | crate::domain::DomainMode::Generic => {
+                                        // Don't simplify if can't prove base > 0
+                                        return None;
+                                    }
+                                    crate::domain::DomainMode::Assume => {
+                                        // Allow with assumption warning
+                                        // Require base > 0 and base ≠ 1 (use base - 1 ≠ 0)
+                                        let one = ctx.num(1);
+                                        let base_minus_1 = ctx.add(Expr::Sub(base, one));
+                                        return Some(
+                                            crate::rule::Rewrite::new(p_exp)
+                                                .desc("log(b, b^x) → x")
+                                                .assume(
+                                                    crate::assumptions::AssumptionEvent::positive_assumed(
+                                                        ctx, base,
+                                                    ),
+                                                )
+                                                .requires(crate::implicit_domain::ImplicitCondition::NonZero(base_minus_1)),
+                                        );
+                                    }
+                                }
+                            }
+                            // Check base ≠ 1 (log_1 is undefined)
+                            if let Expr::Number(n) = ctx.get(base) {
+                                if *n == num_rational::BigRational::from_integer(1.into()) {
+                                    return None; // log base 1 is undefined
+                                }
+                            }
+                        }
+
+                        // RealOnly with valid base (proven positive): Always simplify
+                        // Still need to require base ≠ 1 for log to be defined (use base - 1 ≠ 0)
+                        let one = ctx.num(1);
+                        let base_minus_1 = ctx.add(Expr::Sub(base, one));
+                        return Some(
+                            crate::rule::Rewrite::new(p_exp)
+                                .desc("log(b, b^x) → x")
+                                .requires(crate::implicit_domain::ImplicitCondition::NonZero(
+                                    base_minus_1,
+                                )),
+                        );
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Function"])
+    }
+}
+
+/// Rule for log(a^m, a^n) → n/m
+///
+/// Handles cases like:
+/// - log(x^2, x^6) → 6/2 = 3
+/// - log(1/x, x) → log(x^(-1), x^1) → 1/(-1) = -1
+///
+/// Normalizes bases and arguments to power form:
+/// - a → (a, 1)
+/// - a^m → (a, m)
+/// - 1/a → (a, -1)
+pub struct LogPowerBaseRule;
+
+impl crate::rule::Rule for LogPowerBaseRule {
+    fn name(&self) -> &str {
+        "Log Power Base"
+    }
+
+    fn soundness(&self) -> crate::rule::SoundnessLabel {
+        crate::rule::SoundnessLabel::EquivalenceUnderIntroducedRequires
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        let expr_data = ctx.get(expr).clone();
+        if let Expr::Function(fn_id, args) = expr_data {
+            let name = ctx.sym_name(fn_id);
+            // Match log(base, arg) - not ln (which has implicit base e)
+            if name != "log" || args.len() != 2 {
+                return None;
+            }
+            let base = args[0];
+            let arg = args[1];
+
+            // Normalize base to (core, exponent) form
+            let (base_core, base_exp) = normalize_to_power(ctx, base);
+            // Normalize arg to (core, exponent) form
+            let (arg_core, arg_exp) = normalize_to_power(ctx, arg);
+
+            // Both must have the same core, and base_exp must not be 0 or 1
+            // (if base_exp = 0, base = a^0 = 1, undefined log)
+            // (if base_exp = 1, this is just log(a, a^n) → n, handled by LogExpInverseRule)
+            if base_core == arg_core || compare_expr(ctx, base_core, arg_core) == Ordering::Equal {
+                // Check base_exp is not 0 or 1 (to avoid overlapping with other rules)
+                let base_exp_is_one = matches!(ctx.get(base_exp), Expr::Number(n) if n.is_one());
+                if base_exp_is_one {
+                    // log(a, a^n) → n is handled by LogExpInverseRule
+                    return None;
+                }
+
+                // Check both exponents are numeric (for now, start conservative)
+                let base_exp_num = match ctx.get(base_exp) {
+                    Expr::Number(n) => Some(n.clone()),
+                    _ => None,
+                };
+                let arg_exp_num = match ctx.get(arg_exp) {
+                    Expr::Number(n) => Some(n.clone()),
+                    _ => None,
+                };
+
+                if let (Some(m), Some(n)) = (base_exp_num, arg_exp_num) {
+                    // Check m ≠ 0 (log base a^0 = 1 is undefined)
+                    if m.is_zero() {
+                        return None;
+                    }
+
+                    // Result: n/m  (clone for description building)
+                    let m_disp = m.clone();
+                    let n_disp = n.clone();
+                    let result_ratio = n / m;
+                    let result = ctx.add(Expr::Number(result_ratio.clone()));
+
+                    // Domain requires: a > 0, a ≠ 1
+                    use crate::implicit_domain::ImplicitCondition;
+                    let one = ctx.num(1);
+
+                    // Gate by domain mode
+                    use crate::domain::{DomainMode, Proof};
+                    use crate::helpers::prove_positive;
+                    use crate::semantics::ValueDomain;
+
+                    let vd = parent_ctx.value_domain();
+                    if vd == ValueDomain::ComplexEnabled {
+                        // Complex domain: don't simplify
+                        return None;
+                    }
+
+                    let dm = parent_ctx.domain_mode();
+                    let base_positive = prove_positive(ctx, base_core, vd);
+
+                    // For numeric exponents, the identity log(a^m, a^n) = n/m is ALGEBRAICALLY VALID
+                    // The domain restrictions (a > 0, a^m ≠ 1) are already implied by the log being defined.
+                    // In Generic mode, we can apply without proving a > 0, since the input expression
+                    // already requires those conditions to be meaningful.
+                    // We only block if we're in Strict mode and can't prove positivity.
+                    match dm {
+                        DomainMode::Strict => {
+                            if base_positive != Proof::Proven {
+                                // Cannot prove a > 0, block in Strict
+                                return None;
+                            }
+                            // Also check a ≠ 1
+                            if compare_expr(ctx, base_core, one) == Ordering::Equal {
+                                return None;
+                            }
+                        }
+                        DomainMode::Generic | DomainMode::Assume => {
+                            // For numeric exponents: algebraically valid, proceed
+                            // The log existence already implies the domain conditions
+                        }
+                    }
+
+                    // Build description using cloned exponents
+                    let desc = format!(
+                        "log(a^{}, a^{}) = {}/{} = {}",
+                        m_disp, n_disp, n_disp, m_disp, result_ratio
+                    );
+
+                    let mut rewrite = crate::rule::Rewrite::new(result).desc(desc);
+
+                    // Add requires in Assume mode (or always to be explicit)
+                    if dm == DomainMode::Assume && base_positive != Proof::Proven {
+                        rewrite = rewrite.requires(ImplicitCondition::Positive(base_core));
+                    }
+                    // base ≠ 1 (log base 1 is undefined) - use base - 1 ≠ 0
+                    let base_minus_1 = ctx.add(Expr::Sub(base, one));
+                    rewrite = rewrite.requires(ImplicitCondition::NonZero(base_minus_1));
+
+                    return Some(rewrite);
+                }
+            }
+        }
+        None
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Function"])
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::Medium
+    }
+
+    fn priority(&self) -> i32 {
+        // Higher than LogEvenPowerWithChainedAbsRule (10) to match log(x^2, x^6) first
+        // Otherwise LogEvenPower would expand to 6·log(x², |x|) before we can simplify to 3
+        15
+    }
+}
+
+/// Normalize an expression to (core, exponent) form:
+/// - a → (a, 1)
+/// - a^m → (a, m)
+/// - 1/a → (a, -1)
+/// - a^m/b → not handled, returns original
+fn normalize_to_power(ctx: &mut cas_ast::Context, expr: ExprId) -> (ExprId, ExprId) {
+    match ctx.get(expr).clone() {
+        Expr::Pow(base, exp) => (base, exp),
+        Expr::Div(num, den) => {
+            // Check if num is 1 (literal 1)
+            if matches!(ctx.get(num), Expr::Number(n) if n.is_one()) {
+                // 1/a → (a, -1)
+                let neg_one = ctx.num(-1);
+                (den, neg_one)
+            } else {
+                // Not a simple reciprocal, return as is
+                let one = ctx.num(1);
+                (expr, one)
+            }
+        }
+        _ => {
+            // Just a → (a, 1)
+            let one = ctx.num(1);
+            (expr, one)
+        }
+    }
+}
+
+// ============================================================================
+// Auto Expand Log Rule with ExpandBudget Integration
+// ============================================================================
+
+/// Estimates the number of terms that would result from expanding a log expression.
+/// Returns `(base_terms, gen_terms, pow_exp)`:
+/// - base_terms: number of factors in the log argument
+/// - gen_terms: number of log terms that would be generated
+/// - pow_exp: if the argument is u^n, returns Some(n) for integer n
+///
+/// Returns None if the expression is not expandable (not Mul/Div/Pow).
+pub fn estimate_log_terms(ctx: &Context, arg: ExprId) -> Option<(u32, u32, Option<u32>)> {
+    match ctx.get(arg) {
+        // Mul(a, b) - could be nested, so we flatten
+        Expr::Mul(_, _) => {
+            let factors = count_mul_factors(ctx, arg);
+            if factors <= 1 {
+                return None; // No benefit from expanding
+            }
+            Some((factors, factors, None))
+        }
+        // Div(num, den) - expands to log(num) - log(den)
+        Expr::Div(num, den) => {
+            let num_factors = count_mul_factors(ctx, *num);
+            let den_factors = count_mul_factors(ctx, *den);
+            let total = num_factors + den_factors;
+            if total <= 1 {
+                return None;
+            }
+            Some((total, total, None))
+        }
+        // Pow(base, exp) - expands to exp * log(base) if exp is integer
+        Expr::Pow(_, exp) => {
+            // Only expand if exponent is a positive integer
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if n.is_integer() {
+                    let exp_i64: i64 = n.to_integer().try_into().ok()?;
+                    if exp_i64 > 0 {
+                        let exp_u32 = exp_i64 as u32;
+                        // log(u^n) -> n*log(u): base_terms=1, gen_terms=1
+                        return Some((1, 1, Some(exp_u32)));
+                    }
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Count the number of multiplicative factors in a flattened Mul expression.
+fn count_mul_factors(ctx: &Context, expr: ExprId) -> u32 {
+    match ctx.get(expr) {
+        Expr::Mul(a, b) => count_mul_factors(ctx, *a) + count_mul_factors(ctx, *b),
+        _ => 1,
+    }
+}
+
+// NOTE: Local is_provably_positive was removed in V2.15.9.
+// Use crate::helpers::prove_positive instead, which handles:
+// - base > 0 → base^(p/q) > 0 (RealOnly)
+// - sqrt(x) > 0 when x > 0
+// - exp(x) > 0 in RealOnly
+// - etc.
+
+/// AutoExpandLogRule: Automatically expand log(a*b) -> log(a) + log(b) during simplify
+/// when log_expand_policy = Auto and the expansion passes budget checks.
+///
+/// This rule uses domain gating:
+/// - Assume mode: expands with HeuristicAssumption (⚠️) for a>0, b>0
+/// - Generic mode: blocks and registers hint if positivity not proven
+/// - Strict mode: blocks without hint
+pub struct AutoExpandLogRule;
+
+impl crate::rule::Rule for AutoExpandLogRule {
+    fn name(&self) -> &'static str {
+        "AutoExpandLogRule"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        // GATE: Expand if global auto-expand mode OR inside a marked cancellation context
+        // This mirrors AutoExpandPowSumRule behavior exactly
+        let in_expand_context = parent_ctx.in_auto_expand_context();
+        if !(parent_ctx.is_auto_expand() || in_expand_context) {
+            return None;
+        }
+
+        // Match log(arg) or ln(arg)
+        let arg = match ctx.get(expr) {
+            Expr::Function(fn_id, args)
+                if (ctx.is_builtin(*fn_id, BuiltinFn::Log)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Ln))
+                    && args.len() == 1 =>
+            {
+                args[0]
+            }
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(*fn_id, BuiltinFn::Log) && args.len() == 2 =>
+            {
+                args[1] // log(base, arg)
+            }
+            _ => return None,
+        };
+
+        // Check if expandable and get term estimates
+        let (base_terms, gen_terms, pow_exp) = estimate_log_terms(ctx, arg)?;
+
+        // Get budget - use default if in context but no explicit budget set
+        let default_budget = crate::phase::ExpandBudget::default();
+        let budget = parent_ctx.auto_expand_budget().unwrap_or(&default_budget);
+
+        // Budget check
+        if !budget.allows_log_expansion(base_terms, gen_terms, pow_exp) {
+            return None;
+        }
+
+        // Don't expand if it wouldn't help (gen_terms <= 1)
+        if gen_terms <= 1 {
+            return None;
+        }
+
+        // Get domain mode from parent context
+        let domain_mode = parent_ctx.domain_mode();
+
+        // For Generic/Strict mode, we need to check if factors are provably positive
+        // For Assume mode, we proceed and emit HeuristicAssumption events
+        match domain_mode {
+            crate::domain::DomainMode::Strict => {
+                // In Strict, never auto-expand unless proven
+                let factors = collect_mul_factors(ctx, arg);
+                let vd = parent_ctx.value_domain();
+                let all_positive = factors
+                    .iter()
+                    .all(|&f| crate::helpers::prove_positive(ctx, f, vd).is_proven());
+                if !all_positive {
+                    return None; // Block silently in Strict
+                }
+                // Expand without assumption events (proven)
+                expand_log_for_rule(ctx, expr, arg, &[])
+            }
+            crate::domain::DomainMode::Generic => {
+                // In Generic, block if not proven AND not implied by global requires
+                let factors = collect_mul_factors(ctx, arg);
+
+                // V2.14.21: Before blocking, check if each factor's positivity is
+                // implied by global requires (e.g., b^3 > 0 is implied by b > 0)
+                // V2.15: Use cached implicit_domain if available, fallback to computation
+                let vd = parent_ctx.value_domain();
+                let implicit_domain: Option<crate::implicit_domain::ImplicitDomain> =
+                    parent_ctx.implicit_domain().cloned().or_else(|| {
+                        parent_ctx.root_expr().map(|root| {
+                            crate::implicit_domain::infer_implicit_domain(ctx, root, vd)
+                        })
+                    });
+
+                let mut unproven_factor: Option<ExprId> = None;
+                for &factor in &factors {
+                    // V2.15.9: Use canonical prove_positive which handles:
+                    // - base > 0 → base^(p/q) > 0 (RealOnly)
+                    // - sqrt(x) > 0 when x > 0
+                    // - etc.
+                    let vd = parent_ctx.value_domain();
+                    if crate::helpers::prove_positive(ctx, factor, vd).is_proven() {
+                        continue; // Algebraically proven
+                    }
+
+                    // Check if Positive(factor) is implied by global requires
+                    let cond = crate::implicit_domain::ImplicitCondition::Positive(factor);
+                    let is_implied = implicit_domain.as_ref().is_some_and(|id| {
+                        // Create a temporary DomainContext to use is_condition_implied
+                        let dc = crate::implicit_domain::DomainContext::new(
+                            id.conditions().iter().cloned().collect(),
+                        );
+                        dc.is_condition_implied(ctx, &cond)
+                    });
+
+                    if !is_implied {
+                        unproven_factor = Some(factor);
+                        break;
+                    }
+                }
+
+                if let Some(factor) = unproven_factor {
+                    // Register blocked hint for user feedback
+                    let hint = crate::domain::BlockedHint {
+                        key: crate::assumptions::AssumptionKey::Positive {
+                            expr_fingerprint: crate::assumptions::expr_fingerprint(ctx, factor),
+                        },
+                        expr_id: factor,
+                        rule: "AutoExpandLogRule".to_string(),
+                        suggestion: "Use 'semantics set domain assume' to enable log expansion.",
+                    };
+                    crate::domain::register_blocked_hint(hint);
+                    return None;
+                }
+
+                // All factors proven or implied positive, expand without events
+                expand_log_for_rule(ctx, expr, arg, &[])
+            }
+            crate::domain::DomainMode::Assume => {
+                // In Assume mode, expand and emit HeuristicAssumption events
+                let factors = collect_mul_factors(ctx, arg);
+                let vd = parent_ctx.value_domain();
+                let mut events = Vec::new();
+                for &factor in &factors {
+                    if !crate::helpers::prove_positive(ctx, factor, vd).is_proven() {
+                        events.push(crate::assumptions::AssumptionEvent::positive_assumed(
+                            ctx, factor,
+                        ));
+                    }
+                }
+                expand_log_for_rule(ctx, expr, arg, &events)
+            }
+        }
+    }
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Function"])
+    }
+
+    fn allowed_phases(&self) -> crate::phase::PhaseMask {
+        // Same as AutoExpandPowSumRule: CORE, TRANSFORM, RATIONALIZE
+        crate::phase::PhaseMask::CORE
+            | crate::phase::PhaseMask::TRANSFORM
+            | crate::phase::PhaseMask::RATIONALIZE
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        // Didactically important: users should see log expansions
+        crate::step::ImportanceLevel::Medium
+    }
+}
+
+/// Collect all multiplicative factors from a Mul expression (flattened).
+fn collect_mul_factors(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
+    match ctx.get(expr) {
+        Expr::Mul(a, b) => {
+            let mut factors = collect_mul_factors(ctx, *a);
+            factors.extend(collect_mul_factors(ctx, *b));
+            factors
+        }
+        _ => vec![expr],
+    }
+}
+
+/// Perform the log expansion for AutoExpandLogRule.
+fn expand_log_for_rule(
+    ctx: &mut Context,
+    _original: ExprId,
+    arg: ExprId,
+    events: &[crate::assumptions::AssumptionEvent],
+) -> Option<Rewrite> {
+    // Get base (ln = natural log, log with 1 arg = base 10)
+    let base = match ctx.get(_original).clone() {
+        Expr::Function(name, _) if ctx.is_builtin(name, BuiltinFn::Ln) => {
+            ctx.add(Expr::Constant(cas_ast::Constant::E))
+        }
+        Expr::Function(fn_id, args) if ctx.is_builtin(fn_id, BuiltinFn::Log) && args.len() == 2 => {
+            args[0]
+        }
+        Expr::Function(_, _) => {
+            // log with 1 arg = base 10, use sentinel
+            ExprId::from_raw(u32::MAX - 1)
+        }
+        _ => return None,
+    };
+
+    match ctx.get(arg).clone() {
+        Expr::Mul(_, _) => {
+            // Expand log(a*b*c) -> log(a) + log(b) + log(c)
+            let factors = collect_mul_factors(ctx, arg);
+            if factors.len() <= 1 {
+                return None;
+            }
+
+            let mut sum = make_log(ctx, base, factors[0]);
+            for &factor in &factors[1..] {
+                let log_f = make_log(ctx, base, factor);
+                sum = ctx.add(Expr::Add(sum, log_f));
+            }
+
+            let mut rewrite = Rewrite::new(sum).desc("Auto-expand log product");
+            for event in events {
+                rewrite = rewrite.assume(event.clone());
+            }
+            Some(rewrite)
+        }
+        Expr::Div(num, den) => {
+            // Expand log(a/b) -> log(a) - log(b)
+            let log_num = make_log(ctx, base, num);
+            let log_den = make_log(ctx, base, den);
+            let result = ctx.add(Expr::Sub(log_num, log_den));
+
+            let mut rewrite = Rewrite::new(result).desc("Auto-expand log quotient");
+            for event in events {
+                rewrite = rewrite.assume(event.clone());
+            }
+            Some(rewrite)
+        }
+        Expr::Pow(pow_base, exp) => {
+            // Expand log(u^n) -> n * log(u)
+            let log_base = make_log(ctx, base, pow_base);
+            let result = smart_mul(ctx, exp, log_base);
+
+            let mut rewrite = Rewrite::new(result).desc("Auto-expand log power");
+            for event in events {
+                rewrite = rewrite.assume(event.clone());
+            }
+            Some(rewrite)
+        }
+        _ => None,
+    }
+}
