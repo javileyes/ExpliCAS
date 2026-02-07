@@ -175,30 +175,31 @@ fn clean_display_string(s: &str) -> String {
 /// This mirrors the LaTeX cleanup logic in clean_latex_negatives.
 fn clean_sign_patterns(s: String) -> String {
     use regex::Regex;
+    use std::sync::LazyLock;
+
+    static RE_PLUS_MINUS: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"\+ -([0-9a-zA-Z√^])").unwrap());
+    static RE_MINUS_MINUS: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"- -([0-9a-zA-Z√^])").unwrap());
+    static RE_PLUS_MINUS_COMPACT: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"\+-([0-9a-zA-Z])").unwrap());
+    static RE_MINUS_MINUS_COMPACT: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"--([0-9a-zA-Z])").unwrap());
+
     let mut result = s;
 
     // Only clean "+ -" and "- -" when followed by a digit, letter, or √/^ symbol,
     // NOT when followed by ( which indicates a parenthesized expression like (-1)²
-    if let Ok(re_plus_minus) = Regex::new(r"\+ -([0-9a-zA-Z√^])") {
-        result = re_plus_minus.replace_all(&result, "- $1").to_string();
-    }
-
-    if let Ok(re_minus_minus) = Regex::new(r"- -([0-9a-zA-Z√^])") {
-        result = re_minus_minus.replace_all(&result, "+ $1").to_string();
-    }
+    result = RE_PLUS_MINUS.replace_all(&result, "- $1").to_string();
+    result = RE_MINUS_MINUS.replace_all(&result, "+ $1").to_string();
 
     // Also handle without space variants, but only before digits/letters
-    if let Ok(re_plus_minus_compact) = Regex::new(r"\+-([0-9a-zA-Z])") {
-        result = re_plus_minus_compact
-            .replace_all(&result, "-$1")
-            .to_string();
-    }
-
-    if let Ok(re_minus_minus_compact) = Regex::new(r"--([0-9a-zA-Z])") {
-        result = re_minus_minus_compact
-            .replace_all(&result, "+$1")
-            .to_string();
-    }
+    result = RE_PLUS_MINUS_COMPACT
+        .replace_all(&result, "-$1")
+        .to_string();
+    result = RE_MINUS_MINUS_COMPACT
+        .replace_all(&result, "+$1")
+        .to_string();
 
     result
 }

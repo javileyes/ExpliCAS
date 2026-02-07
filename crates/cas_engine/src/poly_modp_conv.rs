@@ -219,10 +219,14 @@ fn poly_result_to_modp(
         .var_names
         .iter()
         .map(|name| {
-            vars.get_index(name)
-                .expect("VarTable missing variable after insert")
+            vars.get_index(name).ok_or_else(|| {
+                PolyConvError::UnsupportedExpr(format!(
+                    "VarTable missing variable '{}' after insert",
+                    name
+                ))
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
 
     // 6) Remap polynomial exponents to match local VarTable ordering
     let remapped = poly.remap(&remap, vars.len());

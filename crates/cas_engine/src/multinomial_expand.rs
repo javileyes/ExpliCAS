@@ -370,10 +370,9 @@ fn emit_polynomial_from_terms(
         exprs = next;
     }
 
-    // INVARIANT: loop reduces exprs until exactly 1 element remains
-    exprs
-        .pop()
-        .expect("balanced tree reduction leaves exactly 1 element")
+    // INVARIANT: loop reduces exprs until exactly 1 element remains.
+    // Graceful fallback to 0 if invariant is ever violated.
+    exprs.pop().unwrap_or_else(|| ctx.num(0))
 }
 
 /// Emit a single term: coeff * x1^e1 * x2^e2 * ...

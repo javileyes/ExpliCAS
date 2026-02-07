@@ -312,30 +312,29 @@ pub fn compute_gcd(ctx: &mut Context, a: ExprId, b: ExprId, explain: bool) -> Gc
 
     // Must be univariate and same variable
     if vars.len() == 1 && vars == vars_b {
-        // SAFETY: vars.len() == 1 checked on line 314
-        let var = vars.iter().next().unwrap();
-
-        if let (Ok(p_a), Ok(p_b)) = (
-            Polynomial::from_expr(ctx, a, var),
-            Polynomial::from_expr(ctx, b, var),
-        ) {
-            if explain {
-                steps.push(format!(
-                    "Detectados polinomios univariados en '{}'. Aplicando Euclides polinómico.",
-                    var
-                ));
-                let (gcd_poly, sub_steps) = verbose_poly_gcd(ctx, &p_a, &p_b);
-                steps.extend(sub_steps);
-                return GcdResult {
-                    value: Some(gcd_poly.to_expr(ctx)),
-                    steps,
-                };
-            } else {
-                let gcd_poly = p_a.gcd(&p_b);
-                return GcdResult {
-                    value: Some(gcd_poly.to_expr(ctx)),
-                    steps: vec![],
-                };
+        if let Some(var) = vars.iter().next() {
+            if let (Ok(p_a), Ok(p_b)) = (
+                Polynomial::from_expr(ctx, a, var),
+                Polynomial::from_expr(ctx, b, var),
+            ) {
+                if explain {
+                    steps.push(format!(
+                        "Detectados polinomios univariados en '{}'. Aplicando Euclides polinómico.",
+                        var
+                    ));
+                    let (gcd_poly, sub_steps) = verbose_poly_gcd(ctx, &p_a, &p_b);
+                    steps.extend(sub_steps);
+                    return GcdResult {
+                        value: Some(gcd_poly.to_expr(ctx)),
+                        steps,
+                    };
+                } else {
+                    let gcd_poly = p_a.gcd(&p_b);
+                    return GcdResult {
+                        value: Some(gcd_poly.to_expr(ctx)),
+                        steps: vec![],
+                    };
+                }
             }
         }
     }

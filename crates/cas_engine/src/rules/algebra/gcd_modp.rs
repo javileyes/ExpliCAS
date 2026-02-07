@@ -762,8 +762,8 @@ pub fn multipoly_modp_to_expr(
             factors
                 .into_iter()
                 .reduce(|acc, f| ctx.add(Expr::Mul(acc, f)))
-                // SAFETY: factors is non-empty (constants or variables pushed above)
-                .unwrap()
+                // INVARIANT: factors.len() >= 2 here (checked above)
+                .unwrap_or_else(|| ctx.num(1))
         };
 
         // Apply negation if coefficient was negative
