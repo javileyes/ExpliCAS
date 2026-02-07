@@ -726,6 +726,13 @@ impl<'a> TimelineHtml<'a> {
                 let new_inner = self.reconstruct_global_expr(inner, remaining_path, replacement);
                 self.context.add(Expr::Hold(new_inner))
             }
+            // Leaves — no children, path cannot descend further
+            (Expr::Number(_), _)
+            | (Expr::Constant(_), _)
+            | (Expr::Variable(_), _)
+            | (Expr::SessionRef(_), _)
+            | (Expr::Matrix { .. }, _) => root,
+            // Path mismatch: valid expr but wrong PathStep direction
             _ => root,
         }
     }

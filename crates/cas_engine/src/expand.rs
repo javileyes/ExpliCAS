@@ -371,7 +371,13 @@ pub fn expand(ctx: &mut Context, expr: ExprId) -> ExprId {
             let new_args: Vec<ExprId> = args.iter().map(|a| expand(ctx, *a)).collect();
             ctx.add(Expr::Function(fn_id, new_args))
         }
-        _ => expr,
+        // Leaves — Hold blocks expansion (deliberate), others have no children
+        Expr::Number(_)
+        | Expr::Constant(_)
+        | Expr::Variable(_)
+        | Expr::Matrix { .. }
+        | Expr::SessionRef(_)
+        | Expr::Hold(_) => expr,
     };
 
     expanded_expr

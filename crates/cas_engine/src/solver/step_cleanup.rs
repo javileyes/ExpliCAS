@@ -218,8 +218,33 @@ fn normalize_signs_recursive(ctx: &mut Context, expr: ExprId) -> ExprId {
             }
         }
 
-        // Leaf nodes: no change
-        _ => expr,
+        Expr::Hold(inner) => {
+            let norm_inner = normalize_signs_recursive(ctx, inner);
+            if norm_inner != inner {
+                ctx.add(Expr::Hold(norm_inner))
+            } else {
+                expr
+            }
+        }
+
+        Expr::Matrix { rows, cols, data } => {
+            let new_data: Vec<ExprId> = data
+                .iter()
+                .map(|&d| normalize_signs_recursive(ctx, d))
+                .collect();
+            if new_data != data {
+                ctx.add(Expr::Matrix {
+                    rows,
+                    cols,
+                    data: new_data,
+                })
+            } else {
+                expr
+            }
+        }
+
+        // Leaves — no children to normalize
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => expr,
     }
 }
 

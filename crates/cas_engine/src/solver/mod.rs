@@ -929,7 +929,36 @@ fn substitute(ctx: &mut Context, expr: ExprId, var: &str, val: ExprId) -> ExprId
                 expr
             }
         }
-        _ => expr,
+        Expr::Hold(inner) => {
+            let new_inner = substitute(ctx, inner, var, val);
+            if new_inner != inner {
+                ctx.add(Expr::Hold(new_inner))
+            } else {
+                expr
+            }
+        }
+        Expr::Matrix { rows, cols, data } => {
+            let mut new_data = Vec::new();
+            let mut changed = false;
+            for elem in data {
+                let new_elem = substitute(ctx, elem, var, val);
+                if new_elem != elem {
+                    changed = true;
+                }
+                new_data.push(new_elem);
+            }
+            if changed {
+                ctx.add(Expr::Matrix {
+                    rows,
+                    cols,
+                    data: new_data,
+                })
+            } else {
+                expr
+            }
+        }
+        // Leaves — no children to substitute into
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => expr,
     }
 }
 

@@ -300,8 +300,34 @@ impl<'a> IterativeFolder<'a> {
                 }
             }
 
-            // Everything else: no rebuild needed
-            _ => id,
+            // Hold: propagate folded child
+            Expr::Hold(inner) => {
+                let inner_f = self.get_folded(*inner);
+                if inner_f != *inner {
+                    self.nodes_created += 1;
+                    self.ctx.add(Expr::Hold(inner_f))
+                } else {
+                    id
+                }
+            }
+
+            // Matrix: propagate folded children
+            Expr::Matrix { rows, cols, data } => {
+                let data_f: Vec<_> = data.iter().map(|d| self.get_folded(*d)).collect();
+                if data_f != *data {
+                    self.nodes_created += 1;
+                    self.ctx.add(Expr::Matrix {
+                        rows: *rows,
+                        cols: *cols,
+                        data: data_f,
+                    })
+                } else {
+                    id
+                }
+            }
+
+            // Leaves — no children to fold
+            Expr::Variable(_) | Expr::SessionRef(_) => id,
         }
     }
 

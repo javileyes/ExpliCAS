@@ -144,6 +144,8 @@ pub fn substitute_expr_by_id(
                 root
             }
         }
-        _ => root,
+        // Leaves — no children to recurse into.
+        // Explicit listing so `rustc` catches missing variants when Expr grows.
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => root,
     }
 }

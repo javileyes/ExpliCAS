@@ -395,7 +395,38 @@ pub fn simplify_numeric_exponents(ctx: &mut Context, expr: ExprId) -> ExprId {
                 expr
             }
         }
-        _ => expr, // Number, Variable, Constant, Matrix - no processing needed
+        Expr::Hold(inner) => {
+            let ne = simplify_numeric_exponents(ctx, inner);
+            if ne != inner {
+                ctx.add(Expr::Hold(ne))
+            } else {
+                expr
+            }
+        }
+        Expr::Matrix { rows, cols, data } => {
+            let mut changed = false;
+            let new_data: Vec<ExprId> = data
+                .iter()
+                .map(|a| {
+                    let na = simplify_numeric_exponents(ctx, *a);
+                    if na != *a {
+                        changed = true;
+                    }
+                    na
+                })
+                .collect();
+            if changed {
+                ctx.add(Expr::Matrix {
+                    rows,
+                    cols,
+                    data: new_data,
+                })
+            } else {
+                expr
+            }
+        }
+        // Leaves — no children to simplify
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => expr,
     }
 }
 

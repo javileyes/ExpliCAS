@@ -245,7 +245,19 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         root
                     }
                 }
-                _ => root, // Path mismatch
+                (Expr::Hold(inner), PathStep::Inner) => {
+                    let new_inner =
+                        reconstruct_recursive(context, inner, remaining_path, replacement);
+                    context.add_raw(Expr::Hold(new_inner))
+                }
+                // Leaves — no children, path cannot descend further
+                (Expr::Number(_), _)
+                | (Expr::Constant(_), _)
+                | (Expr::Variable(_), _)
+                | (Expr::SessionRef(_), _)
+                | (Expr::Matrix { .. }, _) => root,
+                // Path mismatch: valid expr but wrong PathStep direction
+                _ => root,
             }
         }
 

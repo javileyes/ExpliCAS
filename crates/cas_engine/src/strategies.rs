@@ -139,6 +139,13 @@ fn reconstruct_global(
             let new_inner = reconstruct_global(ctx, inner, remaining_path, replacement);
             ctx.add(Expr::Hold(new_inner))
         }
+        // Leaves — no children, path cannot descend further
+        (Expr::Number(_), _)
+        | (Expr::Constant(_), _)
+        | (Expr::Variable(_), _)
+        | (Expr::SessionRef(_), _)
+        | (Expr::Matrix { .. }, _) => root,
+        // Path mismatch: valid expr but wrong PathStep direction
         _ => root,
     }
 }
