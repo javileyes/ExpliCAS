@@ -850,8 +850,9 @@ fn is_symbolic_expr(ctx: &Context, expr: ExprId) -> bool {
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
             is_symbolic_expr(ctx, *l) || is_symbolic_expr(ctx, *r)
         }
-        Expr::Neg(e) => is_symbolic_expr(ctx, *e),
-        _ => true, // Default: treat as symbolic
+        Expr::Neg(e) | Expr::Hold(e) => is_symbolic_expr(ctx, *e),
+        Expr::Matrix { data, .. } => data.iter().any(|d| is_symbolic_expr(ctx, *d)),
+        Expr::SessionRef(_) => true, // Unresolved reference — treat as symbolic
     }
 }
 
@@ -997,7 +998,7 @@ fn collect_denominators_into_set(
             collect_denominators_into_set(ctx, *l, var, denoms);
             collect_denominators_into_set(ctx, *r, var, denoms);
         }
-        Expr::Neg(e) => {
+        Expr::Neg(e) | Expr::Hold(e) => {
             collect_denominators_into_set(ctx, *e, var, denoms);
         }
         Expr::Function(_, args) => {
@@ -1005,7 +1006,13 @@ fn collect_denominators_into_set(
                 collect_denominators_into_set(ctx, *arg, var, denoms);
             }
         }
-        _ => {}
+        Expr::Matrix { data, .. } => {
+            for elem in data {
+                collect_denominators_into_set(ctx, *elem, var, denoms);
+            }
+        }
+        // Leaves — no children to collect from
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
     }
 }
 

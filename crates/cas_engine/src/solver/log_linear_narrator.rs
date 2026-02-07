@@ -73,8 +73,56 @@ fn strip_mul_one(ctx: &mut Context, expr: ExprId) -> ExprId {
             let clean_exp = strip_mul_one(ctx, exp);
             ctx.add(Expr::Pow(clean_base, clean_exp))
         }
-        // Other expressions pass through unchanged
-        _ => expr,
+        Expr::Function(fn_id, args) => {
+            let mut changed = false;
+            let new_args: Vec<ExprId> = args
+                .iter()
+                .map(|&a| {
+                    let na = strip_mul_one(ctx, a);
+                    if na != a {
+                        changed = true;
+                    }
+                    na
+                })
+                .collect();
+            if changed {
+                ctx.add(Expr::Function(fn_id, new_args))
+            } else {
+                expr
+            }
+        }
+        Expr::Hold(inner) => {
+            let clean = strip_mul_one(ctx, inner);
+            if clean != inner {
+                ctx.add(Expr::Hold(clean))
+            } else {
+                expr
+            }
+        }
+        Expr::Matrix { rows, cols, data } => {
+            let mut changed = false;
+            let new_data: Vec<ExprId> = data
+                .iter()
+                .map(|&d| {
+                    let nd = strip_mul_one(ctx, d);
+                    if nd != d {
+                        changed = true;
+                    }
+                    nd
+                })
+                .collect();
+            if changed {
+                ctx.add(Expr::Matrix {
+                    rows,
+                    cols,
+                    data: new_data,
+                })
+            } else {
+                expr
+            }
+        }
+        // Leaves — no children to strip
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => expr,
     }
 }
 

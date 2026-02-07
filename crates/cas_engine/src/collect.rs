@@ -62,7 +62,7 @@ pub fn has_undefined_risk(ctx: &Context, expr: ExprId) -> bool {
                 stack.push(*l);
                 stack.push(*r);
             }
-            Expr::Neg(inner) => {
+            Expr::Neg(inner) | Expr::Hold(inner) => {
                 stack.push(*inner);
             }
             Expr::Function(_, args) => {
@@ -70,8 +70,13 @@ pub fn has_undefined_risk(ctx: &Context, expr: ExprId) -> bool {
                     stack.push(*arg);
                 }
             }
-            // Leaf nodes: nothing to push
-            _ => {}
+            Expr::Matrix { data, .. } => {
+                for elem in data {
+                    stack.push(*elem);
+                }
+            }
+            // Leaves — no children to push
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
         }
     }
     false
@@ -292,7 +297,16 @@ fn extract_numerical_coeff(ctx: &mut Context, expr: ExprId) -> (BigRational, Exp
                 (BigRational::one(), expr)
             }
         }
-        _ => (BigRational::one(), expr),
+        Expr::Add(_, _)
+        | Expr::Sub(_, _)
+        | Expr::Div(_, _)
+        | Expr::Pow(_, _)
+        | Expr::Function(_, _)
+        | Expr::Constant(_)
+        | Expr::Variable(_)
+        | Expr::Matrix { .. }
+        | Expr::SessionRef(_)
+        | Expr::Hold(_) => (BigRational::one(), expr),
     }
 }
 
