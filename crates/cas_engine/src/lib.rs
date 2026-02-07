@@ -93,7 +93,7 @@ pub use engine::{
     eval_f64_checked, strip_all_holds, EquivalenceResult, EvalCheckedError, EvalCheckedOptions,
     Simplifier,
 };
-pub use error::CasError;
+pub use error::{CasError, CasResult};
 pub use eval::*;
 // JSON API exports (canonical for CLI/FFI)
 pub use assumptions::{

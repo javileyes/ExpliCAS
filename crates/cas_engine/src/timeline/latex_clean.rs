@@ -8,6 +8,7 @@ pub(super) fn clean_latex_identities(latex: &str) -> String {
     let mut changed = true;
 
     // Pre-compile regex outside the loop (clippy: regex_creation_in_loops)
+    // SAFETY: static regex pattern, compile never fails
     let re_mult_unit_frac = Regex::new(r"(\d+)\s*\\cdot\s*\\frac\{1\}\{([^}]+)\}").unwrap();
 
     // Iterate until no more changes (handles nested patterns)

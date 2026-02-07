@@ -2,6 +2,14 @@ use thiserror::Error;
 
 use crate::budget;
 
+/// Convenience alias for `Result<T, CasError>`.
+///
+/// Use this throughout the engine to avoid repeating the error type.
+/// ```ignore
+/// fn my_function() -> CasResult<ExprId> { ... }
+/// ```
+pub type CasResult<T> = Result<T, CasError>;
+
 #[derive(Error, Debug)]
 pub enum CasError {
     #[error("Variable '{0}' not found")]
@@ -43,6 +51,16 @@ pub enum CasError {
     /// Includes suggestion to enable complex mode
     #[error("not supported in real domain: {0}")]
     UnsupportedInRealDomain(String),
+
+    /// Expression didn't match expected shape (e.g., expected Add but got Mul).
+    /// Used to replace unwrap() on pattern-matching in rules and transforms.
+    #[error("expression error: {0}")]
+    ExpressionError(String),
+
+    /// Numeric conversion overflow (e.g., BigInt → i64 narrowing failed).
+    /// Used to replace unwrap() on `.to_i64()`, `.to_u32()`, etc.
+    #[error("numeric overflow: {0}")]
+    NumericOverflow(String),
 }
 
 impl From<budget::BudgetExceeded> for CasError {
@@ -100,6 +118,8 @@ impl CasError {
             CasError::NotImplemented { .. } => "NotImplemented",
             CasError::InternalError(_) => "InternalError",
             CasError::UnsupportedInRealDomain(_) => "DomainError",
+            CasError::ExpressionError(_) => "DomainError",
+            CasError::NumericOverflow(_) => "DomainError",
         }
     }
 
@@ -123,6 +143,8 @@ impl CasError {
             CasError::NotImplemented { .. } => "E_NOT_IMPL",
             CasError::InternalError(_) => "E_INTERNAL",
             CasError::UnsupportedInRealDomain(_) => "E_REAL_ONLY",
+            CasError::ExpressionError(_) => "E_EXPR",
+            CasError::NumericOverflow(_) => "E_OVERFLOW",
         }
     }
 

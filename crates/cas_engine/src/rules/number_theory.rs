@@ -312,6 +312,7 @@ pub fn compute_gcd(ctx: &mut Context, a: ExprId, b: ExprId, explain: bool) -> Gc
 
     // Must be univariate and same variable
     if vars.len() == 1 && vars == vars_b {
+        // SAFETY: vars.len() == 1 checked on line 314
         let var = vars.iter().next().unwrap();
 
         if let (Ok(p_a), Ok(p_b)) = (
