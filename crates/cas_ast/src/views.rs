@@ -476,15 +476,15 @@ impl MulChainView {
 
     /// Rebuild as right-associative Mul chain using add_raw.
     pub fn build_raw(self, ctx: &mut Context) -> ExprId {
-        if self.factors.is_empty() {
-            return ctx.num(1);
+        if let Some((&last, rest)) = self.factors.split_last() {
+            let mut acc = last;
+            for &f in rest.iter().rev() {
+                acc = ctx.add_raw(Expr::Mul(f, acc));
+            }
+            acc
+        } else {
+            ctx.num(1)
         }
-        // SAFETY: factors is non-empty (empty case returns at line 479)
-        let mut acc = *self.factors.last().unwrap();
-        for &f in self.factors[..self.factors.len() - 1].iter().rev() {
-            acc = ctx.add_raw(Expr::Mul(f, acc));
-        }
-        acc
     }
 }
 
@@ -754,11 +754,21 @@ impl MulBuilder {
 
         // 6. Build RIGHT-fold product: a*(b*(c*d))
         // This matches the current system's expected form
-        // SAFETY: parts is non-empty (empty case returns at line 718)
-        let mut acc = *parts.last().unwrap();
-        for &f in parts[..parts.len() - 1].iter().rev() {
-            acc = ctx.add(Expr::Mul(f, acc));
-        }
+        let acc = if let Some((&last, rest)) = parts.split_last() {
+            let mut acc = last;
+            for &f in rest.iter().rev() {
+                acc = ctx.add(Expr::Mul(f, acc));
+            }
+            acc
+        } else {
+            // parts is empty — all exponents cancelled
+            return if self.sign < 0 {
+                let one = ctx.num(1);
+                ctx.add(Expr::Neg(one))
+            } else {
+                ctx.num(1)
+            };
+        };
 
         // 7. Apply sign
         if self.sign < 0 {
@@ -827,12 +837,15 @@ impl FractionParts {
         }
 
         // RIGHT-fold: a*(b*(c*d)) - use add_raw to preserve order
-        // SAFETY: parts is non-empty (empty case returns at line 812)
-        let mut acc = *parts.last().unwrap();
-        for &p in parts[..parts.len() - 1].iter().rev() {
-            acc = ctx.add_raw(Expr::Mul(p, acc));
+        if let Some((&last, rest)) = parts.split_last() {
+            let mut acc = last;
+            for &p in rest.iter().rev() {
+                acc = ctx.add_raw(Expr::Mul(p, acc));
+            }
+            acc
+        } else {
+            ctx.num(1)
         }
-        acc
     }
 
     /// Build as didactic division: `Div(num, den)` or just `num` if den=1.
