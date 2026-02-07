@@ -66,34 +66,10 @@ define_rule!(
         use crate::helpers::prove_nonzero;
 
         // Helper: check if expression contains any Div with non-literal denominator
-        fn has_undefined_risk(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
-            let mut stack = vec![expr];
-            while let Some(e) = stack.pop() {
-                match ctx.get(e) {
-                    Expr::Div(_, den) => {
-                        // If denominator is not a proven nonzero literal, there's risk
-                        if prove_nonzero(ctx, *den) != Proof::Proven {
-                            return true;
-                        }
-                        stack.push(*den);
-                    }
-                    Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
-                        stack.push(*l);
-                        stack.push(*r);
-                    }
-                    Expr::Neg(inner) => {
-                        stack.push(*inner);
-                    }
-                    Expr::Function(_, args) => {
-                        for arg in args {
-                            stack.push(*arg);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            false
-        }
+        // Delegates to canonical implementation that handles Hold/Matrix
+        let has_undefined_risk = |ctx: &cas_ast::Context, expr: cas_ast::ExprId| -> bool {
+            crate::collect::has_undefined_risk(ctx, expr)
+        };
 
         let expr_data = ctx.get(expr).clone();
         if let Expr::Mul(lhs, rhs) = expr_data {
@@ -531,33 +507,11 @@ impl crate::rule::SimpleRule for SubSelfToZeroRule {
         use crate::semantic_equality::SemanticEqualityChecker;
 
         // Helper: check if expression contains any Div with non-literal denominator
-        fn has_undefined_risk(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
-            let mut stack = vec![expr];
-            while let Some(e) = stack.pop() {
-                match ctx.get(e) {
-                    Expr::Div(_, den) => {
-                        if prove_nonzero(ctx, *den) != Proof::Proven {
-                            return true;
-                        }
-                        stack.push(*den);
-                    }
-                    Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
-                        stack.push(*l);
-                        stack.push(*r);
-                    }
-                    Expr::Neg(inner) => {
-                        stack.push(*inner);
-                    }
-                    Expr::Function(_, args) => {
-                        for arg in args {
-                            stack.push(*arg);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            false
-        }
+        // Helper: check if expression contains any Div with non-literal denominator
+        // Delegates to canonical implementation that handles Hold/Matrix
+        let has_undefined_risk = |ctx: &cas_ast::Context, expr: cas_ast::ExprId| -> bool {
+            crate::collect::has_undefined_risk(ctx, expr)
+        };
 
         // Match: Sub(lhs, rhs)
         if let Expr::Sub(lhs, rhs) = ctx.get(expr) {
@@ -606,32 +560,7 @@ define_rule!(AddInverseRule, "Add Inverse", |ctx, expr, parent_ctx| {
 
     // Helper: check if expression contains any Div with non-literal denominator
     fn has_undefined_risk(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
-        let mut stack = vec![expr];
-        while let Some(e) = stack.pop() {
-            match ctx.get(e) {
-                Expr::Div(_, den) => {
-                    // If denominator is not a proven nonzero literal, there's risk
-                    if prove_nonzero(ctx, *den) != Proof::Proven {
-                        return true;
-                    }
-                    stack.push(*den);
-                }
-                Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
-                    stack.push(*l);
-                    stack.push(*r);
-                }
-                Expr::Neg(inner) => {
-                    stack.push(*inner);
-                }
-                Expr::Function(_, args) => {
-                    for arg in args {
-                        stack.push(*arg);
-                    }
-                }
-                _ => {}
-            }
-        }
-        false
+        crate::collect::has_undefined_risk(ctx, expr)
     }
 
     // Pattern: a + (-a) = 0 or (-a) + a = 0

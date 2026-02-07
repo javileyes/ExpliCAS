@@ -66,7 +66,7 @@ fn contains_irrational(ctx: &Context, expr: ExprId) -> bool {
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
             contains_irrational(ctx, *l) || contains_irrational(ctx, *r)
         }
-        Expr::Neg(e) => contains_irrational(ctx, *e),
+        Expr::Neg(e) | Expr::Hold(e) => contains_irrational(ctx, *e),
         _ => false,
     }
 }
@@ -196,6 +196,7 @@ define_rule!(
                     };
                     is_fractional || contains_function_or_root(ctx, *base)
                 }
+                Expr::Hold(inner) => contains_function_or_root(ctx, *inner),
                 _ => false,
             }
         }
@@ -287,7 +288,7 @@ define_rule!(
                 Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
                     contains_function(ctx, *l) || contains_function(ctx, *r)
                 }
-                Expr::Neg(e) | Expr::Pow(e, _) => contains_function(ctx, *e),
+                Expr::Neg(e) | Expr::Hold(e) | Expr::Pow(e, _) => contains_function(ctx, *e),
                 _ => false,
             }
         }
@@ -344,6 +345,7 @@ define_rule!(
                         _ => false,
                     }
                 }
+                Expr::Hold(e) => contains_root(ctx, *e),
                 _ => false,
             }
         }

@@ -41,13 +41,19 @@ fn find_all_fraction_sums_recursive(
             find_all_fraction_sums_recursive(ctx, *b, results);
             find_all_fraction_sums_recursive(ctx, *e, results);
         }
-        Expr::Neg(e) => find_all_fraction_sums_recursive(ctx, *e, results),
+        Expr::Neg(e) | Expr::Hold(e) => find_all_fraction_sums_recursive(ctx, *e, results),
         Expr::Function(_, args) => {
             for arg in args {
                 find_all_fraction_sums_recursive(ctx, *arg, results);
             }
         }
-        _ => {}
+        Expr::Matrix { data, .. } => {
+            for elem in data {
+                find_all_fraction_sums_recursive(ctx, *elem, results);
+            }
+        }
+        // Leaves
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
     }
 }
 
@@ -123,7 +129,7 @@ fn find_fraction_sum_in_expr(ctx: &Context, expr: ExprId) -> Option<FractionSumI
             // Check both sides
             find_fraction_sum_in_expr(ctx, *l).or_else(|| find_fraction_sum_in_expr(ctx, *r))
         }
-        Expr::Neg(e) => find_fraction_sum_in_expr(ctx, *e),
+        Expr::Neg(e) | Expr::Hold(e) => find_fraction_sum_in_expr(ctx, *e),
         Expr::Function(_, args) => {
             for arg in args {
                 if let Some(info) = find_fraction_sum_in_expr(ctx, *arg) {
@@ -132,7 +138,16 @@ fn find_fraction_sum_in_expr(ctx: &Context, expr: ExprId) -> Option<FractionSumI
             }
             None
         }
-        _ => None,
+        Expr::Matrix { data, .. } => {
+            for elem in data {
+                if let Some(info) = find_fraction_sum_in_expr(ctx, *elem) {
+                    return Some(info);
+                }
+            }
+            None
+        }
+        // Leaves
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => None,
     }
 }
 

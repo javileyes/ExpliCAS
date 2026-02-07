@@ -615,32 +615,9 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
     use crate::helpers::prove_nonzero;
 
     // Helper: check if expression contains any Div with non-literal denominator
+    // Delegates to canonical implementation that handles Hold/Matrix
     fn has_undefined_risk(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
-        let mut stack = vec![expr];
-        while let Some(e) = stack.pop() {
-            match ctx.get(e) {
-                Expr::Div(_, den) => {
-                    if prove_nonzero(ctx, *den) != Proof::Proven {
-                        return true;
-                    }
-                    stack.push(*den);
-                }
-                Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
-                    stack.push(*l);
-                    stack.push(*r);
-                }
-                Expr::Neg(inner) => {
-                    stack.push(*inner);
-                }
-                Expr::Function(_, args) => {
-                    for arg in args {
-                        stack.push(*arg);
-                    }
-                }
-                _ => {}
-            }
-        }
-        false
+        crate::collect::has_undefined_risk(ctx, expr)
     }
 
     // Only process Add/Sub expressions
