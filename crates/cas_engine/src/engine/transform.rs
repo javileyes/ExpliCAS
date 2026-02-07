@@ -5,7 +5,7 @@
 //! depth-guarding, cycle detection, budget tracking, and step recording.
 
 use super::hold::is_hold_all_function;
-use crate::canonical_forms::normalize_core;
+use crate::canonical_forms::normalize_core_with_cache;
 use crate::options::StepsMode;
 use crate::profiler::RuleProfiler;
 use crate::rule::Rule;
@@ -89,6 +89,8 @@ pub(super) struct LocalSimplificationTransformer<'a> {
     pub(super) stop_reason: Option<crate::budget::BudgetExceeded>,
     /// Purpose of simplification: controls which rules are filtered by solve_safety()
     pub(super) simplify_purpose: crate::solve_safety::SimplifyPurpose,
+    /// PERF: Reusable cache for normalize_core, avoids per-call HashMap allocation.
+    pub(super) normalize_cache: std::collections::HashMap<cas_ast::ExprId, cas_ast::ExprId>,
 }
 
 use cas_ast::visitor::Transformer;
@@ -932,7 +934,11 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
                         // Note: Rule application tracking for rationalization is now handled by phase, not flag
                         // Apply canonical normalization to prevent loops
-                        expr_id = normalize_core(self.context, expr_id);
+                        expr_id = normalize_core_with_cache(
+                            self.context,
+                            expr_id,
+                            &mut self.normalize_cache,
+                        );
 
                         // V2.14.30: Always-On Cycle Detection with blocklist
                         // Reset detector if phase changed since last initialization
@@ -1203,7 +1209,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
                     // Note: Rule application tracking for rationalization is now handled by phase, not flag
                     // Apply canonical normalization to prevent loops
-                    expr_id = normalize_core(self.context, expr_id);
+                    expr_id =
+                        normalize_core_with_cache(self.context, expr_id, &mut self.normalize_cache);
                     changed = true;
                     break;
                 }

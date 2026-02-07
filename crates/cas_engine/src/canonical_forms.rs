@@ -220,6 +220,56 @@ fn normalize_term(ctx: &Context, expr: ExprId) -> (ExprId, bool) {
 // - Use explicit worklist instead of recursion
 // - Only compress when it actually reduces complexity
 
+/// PERF: Quick check whether an expression *might* contain patterns that
+/// `normalize_core` actually transforms (Neg(Neg(…)), Neg(Number(…)), or
+/// Pow(Pow(…,int),int)). If none are present, we can skip the entire
+/// HashMap+worklist traversal.
+///
+/// This is conservative — it scans the top few levels only (depth ≤ budget)
+/// to avoid becoming expensive itself. If the budget is exhausted we return
+/// `true` ("might need normalization") to stay correct.
+fn needs_normalization(ctx: &Context, expr: ExprId, budget: &mut u32) -> bool {
+    if *budget == 0 {
+        return true; // budget exhausted → conservative
+    }
+    *budget -= 1;
+    match ctx.get(expr) {
+        // Atoms never need normalization
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => false,
+
+        // Neg: normalizable if inner is Neg or Number
+        Expr::Neg(inner) => {
+            matches!(ctx.get(*inner), Expr::Neg(_) | Expr::Number(_))
+                || needs_normalization(ctx, *inner, budget)
+        }
+
+        // Pow: normalizable if base is Pow(_, int) and exp is int
+        Expr::Pow(base, exp) => {
+            if let Expr::Pow(_, inner_exp) = ctx.get(*base) {
+                if let Expr::Number(a) = ctx.get(*inner_exp) {
+                    if a.is_integer() {
+                        if let Expr::Number(b) = ctx.get(*exp) {
+                            if b.is_integer() {
+                                return true; // Pow(Pow(x,int),int)
+                            }
+                        }
+                    }
+                }
+            }
+            needs_normalization(ctx, *base, budget) || needs_normalization(ctx, *exp, budget)
+        }
+
+        // Binary ops: recurse into children
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            needs_normalization(ctx, *l, budget) || needs_normalization(ctx, *r, budget)
+        }
+
+        Expr::Function(_, args) => args.iter().any(|a| needs_normalization(ctx, *a, budget)),
+        Expr::Matrix { data, .. } => data.iter().any(|e| needs_normalization(ctx, *e, budget)),
+        Expr::Hold(inner) => needs_normalization(ctx, *inner, budget),
+    }
+}
+
 /// Normalize an expression to canonical form to prevent infinite loops.
 ///
 /// Applies the following normalization rules:
@@ -232,11 +282,38 @@ fn normalize_term(ctx: &Context, expr: ExprId) -> (ExprId, bool) {
 ///
 /// IMPLEMENTATION: Uses iterative worklist to avoid stack overflow on deep expressions.
 pub fn normalize_core(ctx: &mut Context, expr: ExprId) -> ExprId {
-    use num_traits::ToPrimitive;
-    use std::collections::HashMap;
+    // PERF: Early exit if nothing to normalize (atoms, simple expressions)
+    let mut budget = 256;
+    if !needs_normalization(ctx, expr, &mut budget) {
+        return expr;
+    }
+    let mut cache = std::collections::HashMap::new();
+    normalize_core_inner(ctx, expr, &mut cache)
+}
 
-    // Cache: maps original ExprId -> normalized ExprId
-    let mut cache: HashMap<ExprId, ExprId> = HashMap::new();
+/// Like `normalize_core`, but reuses a caller-provided cache HashMap.
+/// PERF: Avoids per-call HashMap allocation when called in a tight loop.
+pub fn normalize_core_with_cache(
+    ctx: &mut Context,
+    expr: ExprId,
+    cache: &mut std::collections::HashMap<ExprId, ExprId>,
+) -> ExprId {
+    // PERF: Early exit if nothing to normalize
+    let mut budget = 256;
+    if !needs_normalization(ctx, expr, &mut budget) {
+        return expr;
+    }
+    cache.clear();
+    normalize_core_inner(ctx, expr, cache)
+}
+
+/// Inner implementation shared by both `normalize_core` and `normalize_core_with_cache`.
+fn normalize_core_inner(
+    ctx: &mut Context,
+    expr: ExprId,
+    cache: &mut std::collections::HashMap<ExprId, ExprId>,
+) -> ExprId {
+    use num_traits::ToPrimitive;
 
     // Worklist: (node, children_processed)
     // When children_processed=false, push children first

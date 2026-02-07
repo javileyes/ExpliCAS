@@ -59,6 +59,7 @@ impl Simplifier {
             budget_op: crate::budget::Operation::SimplifyCore,
             stop_reason: None,
             simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
+            normalize_cache: std::collections::HashMap::new(),
         };
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
@@ -284,6 +285,7 @@ impl Simplifier {
             },
             stop_reason: None,
             simplify_purpose,
+            normalize_cache: std::collections::HashMap::new(),
         };
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
