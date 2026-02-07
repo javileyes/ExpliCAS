@@ -9,13 +9,13 @@ use crate::phase::PhaseMask;
 use crate::polynomial::Polynomial;
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::{are_denominators_opposite, collect_variables};
-use cas_ast::{count_nodes, Context, Expr, ExprId};
+use cas_ast::{count_nodes, BuiltinFn, Context, Expr, ExprId};
 use num_traits::{One, Signed, Zero};
 use std::cmp::Ordering;
 
 // Import helpers from sibling core_rules module
 use super::core_rules::{
-    check_divisible_denominators, extract_as_fraction, fn_name_is, is_pi_constant, is_trig_function,
+    check_divisible_denominators, extract_as_fraction, is_pi_constant, is_trig_function,
 };
 
 // Helpers inlined from deleted helpers.rs
@@ -329,7 +329,7 @@ define_rule!(
         // Example: (√2 + √3) + 1/(u*(u+2)) should NOT become ((√2+√3)*u*(u+2) + 1) / (u*(u+2))
         fn contains_root(ctx: &Context, id: ExprId) -> bool {
             match ctx.get(id) {
-                Expr::Function(fn_id, _) if fn_name_is(ctx, *fn_id, "sqrt") => true,
+                Expr::Function(fn_id, _) if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) => true,
                 Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
                     contains_root(ctx, *l) || contains_root(ctx, *r)
                 }
@@ -686,7 +686,7 @@ define_rule!(
                     }
                     false
                 }
-                Expr::Function(fn_id, _) => fn_name_is(ctx, *fn_id, "sqrt"),
+                Expr::Function(fn_id, _) => ctx.is_builtin(*fn_id, BuiltinFn::Sqrt),
                 _ => false,
             }
         };

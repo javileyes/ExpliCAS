@@ -611,9 +611,6 @@ fn flatten_additive_terms(
 // - Assume: always apply (educational mode assumption: all expressions are defined)
 // - Generic: same as Assume
 define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
-    use crate::domain::Proof;
-    use crate::helpers::prove_nonzero;
-
     // Helper: check if expression contains any Div with non-literal denominator
     // Delegates to canonical implementation that handles Hold/Matrix
     fn has_undefined_risk(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {

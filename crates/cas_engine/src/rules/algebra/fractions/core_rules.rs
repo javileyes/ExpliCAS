@@ -48,11 +48,6 @@ pub fn is_trig_function(ctx: &Context, fn_id: usize) -> bool {
     is_trig_function_name(ctx.sym_name(fn_id))
 }
 
-/// Check if a function name equals the given string (convenience for SymbolId comparison)
-pub fn fn_name_is(ctx: &Context, fn_id: usize, name: &str) -> bool {
-    ctx.sym_name(fn_id) == name
-}
-
 /// Check if expression is a constant involving π (e.g., pi, pi/9, 2*pi/3)
 pub fn is_pi_constant(ctx: &Context, id: ExprId) -> bool {
     crate::helpers::extract_rational_pi_multiple(ctx, id).is_some()

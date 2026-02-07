@@ -62,8 +62,6 @@ define_rule!(
     ),
     |ctx, expr, parent_ctx| {
         use crate::assumptions::ConditionClass;
-        use crate::domain::Proof;
-        use crate::helpers::prove_nonzero;
 
         // Helper: check if expression contains any Div with non-literal denominator
         // Delegates to canonical implementation that handles Hold/Matrix
@@ -502,11 +500,8 @@ impl crate::rule::SimpleRule for SubSelfToZeroRule {
         expr: cas_ast::ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
-        use crate::domain::Proof;
-        use crate::helpers::prove_nonzero;
         use crate::semantic_equality::SemanticEqualityChecker;
 
-        // Helper: check if expression contains any Div with non-literal denominator
         // Helper: check if expression contains any Div with non-literal denominator
         // Delegates to canonical implementation that handles Hold/Matrix
         let has_undefined_risk = |ctx: &cas_ast::Context, expr: cas_ast::ExprId| -> bool {
@@ -555,9 +550,6 @@ impl crate::rule::SimpleRule for SubSelfToZeroRule {
 // The individual Div operations already emit NonZero(denominator) as Requires.
 // Showing "a is defined" here is redundant and confusing.
 define_rule!(AddInverseRule, "Add Inverse", |ctx, expr, parent_ctx| {
-    use crate::domain::Proof;
-    use crate::helpers::prove_nonzero;
-
     // Helper: check if expression contains any Div with non-literal denominator
     fn has_undefined_risk(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
         crate::collect::has_undefined_risk(ctx, expr)
