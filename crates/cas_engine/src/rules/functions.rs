@@ -5,6 +5,17 @@ use cas_ast::{BuiltinFn, Expr};
 use num_integer::Integer;
 use num_traits::Signed;
 
+/// Extract the inner argument of `abs(x)`, returning `Some(x)` if the expression
+/// is an absolute value call, `None` otherwise.
+fn try_unwrap_abs(ctx: &cas_ast::Context, id: cas_ast::ExprId) -> Option<cas_ast::ExprId> {
+    if let Expr::Function(fn_id, args) = ctx.get(id) {
+        if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 {
+            return Some(args[0]);
+        }
+    }
+    None
+}
+
 define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
     if let Expr::Function(fn_id, args) = ctx.get(expr) {
         if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 {
@@ -667,29 +678,7 @@ define_rule!(
 
         // Match Mul(abs(a), abs(b))
         if let Expr::Mul(lhs, rhs) = ctx.get(expr) {
-            // Check if lhs is abs(a)
-            let lhs_inner = if let Expr::Function(fn_id, args) = ctx.get(*lhs) {
-                if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 {
-                    Some(args[0])
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            // Check if rhs is abs(b)
-            let rhs_inner = if let Expr::Function(fn_id, args) = ctx.get(*rhs) {
-                if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 {
-                    Some(args[0])
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            if let (Some(a), Some(b)) = (lhs_inner, rhs_inner) {
+            if let (Some(a), Some(b)) = (try_unwrap_abs(ctx, *lhs), try_unwrap_abs(ctx, *rhs)) {
                 // |a| * |b| → |a * b|
                 let product = mul2_raw(ctx, a, b);
                 let abs_product = ctx.call("abs", vec![product]);
@@ -712,29 +701,7 @@ define_rule!(
     |ctx, expr| {
         // Match Div(abs(a), abs(b))
         if let Expr::Div(lhs, rhs) = ctx.get(expr) {
-            // Check if lhs is abs(a)
-            let lhs_inner = if let Expr::Function(fn_id, args) = ctx.get(*lhs) {
-                if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 {
-                    Some(args[0])
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            // Check if rhs is abs(b)
-            let rhs_inner = if let Expr::Function(fn_id, args) = ctx.get(*rhs) {
-                if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 {
-                    Some(args[0])
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            if let (Some(a), Some(b)) = (lhs_inner, rhs_inner) {
+            if let (Some(a), Some(b)) = (try_unwrap_abs(ctx, *lhs), try_unwrap_abs(ctx, *rhs)) {
                 // |a| / |b| → |a / b|
                 let quotient = ctx.add(Expr::Div(a, b));
                 let abs_quotient = ctx.call("abs", vec![quotient]);

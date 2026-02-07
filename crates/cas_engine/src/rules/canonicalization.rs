@@ -69,13 +69,8 @@ define_rule!(
 
             // -(c * x) -> (-c) * x
             if let Expr::Mul(lhs, rhs) = inner_data {
-                let n_opt = if let Expr::Number(n) = ctx.get(lhs) {
-                    Some(n.clone())
-                } else {
-                    None
-                };
-
-                if let Some(n) = n_opt {
+                if let Expr::Number(n) = ctx.get(lhs) {
+                    let n = n.clone();
                     let neg_n = -n.clone();
                     let neg_n_expr = ctx.add(Expr::Number(neg_n.clone()));
                     let new_expr = mul2_raw(ctx, neg_n_expr, rhs);
@@ -113,33 +108,20 @@ define_rule!(
         // 3. Multiplication: a * (-b) -> -(a * b)
         if let Expr::Mul(lhs, rhs) = expr_data {
             // Check for (-a) * b
-            let lhs_is_neg = if let Expr::Neg(inner) = ctx.get(lhs) {
-                Some(*inner)
-            } else {
-                None
-            };
-            if let Some(inner_l) = lhs_is_neg {
+            if let Expr::Neg(inner_l) = ctx.get(lhs) {
+                let inner_l = *inner_l;
                 let new_mul = mul2_raw(ctx, inner_l, rhs);
                 let new_expr = ctx.add(Expr::Neg(new_mul));
                 return Some(Rewrite::new(new_expr).desc("(-a) * b = -(a * b)"));
             }
 
             // Check for a * (-b)
-            let rhs_is_neg = if let Expr::Neg(inner) = ctx.get(rhs) {
-                Some(*inner)
-            } else {
-                None
-            };
+            if let Expr::Neg(inner_r) = ctx.get(rhs) {
+                let inner_r = *inner_r;
 
-            if let Some(inner_r) = rhs_is_neg {
                 // Special case: if a is a Number, we prefer (-a) * b
-                let n_opt = if let Expr::Number(n) = ctx.get(lhs) {
-                    Some(n.clone())
-                } else {
-                    None
-                };
-
-                if let Some(n) = n_opt {
+                if let Expr::Number(n) = ctx.get(lhs) {
+                    let n = n.clone();
                     let neg_n = -n.clone();
                     let neg_n_expr = ctx.add(Expr::Number(neg_n.clone()));
                     let new_expr = mul2_raw(ctx, neg_n_expr, inner_r);
