@@ -127,7 +127,7 @@ fn count_sqrt_in_den(ctx: &Context, expr: ExprId) -> u16 {
                 stack.push((*l, in_den));
                 stack.push((*r, in_den));
             }
-            Expr::Neg(inner) => {
+            Expr::Neg(inner) | Expr::Hold(inner) => {
                 stack.push((*inner, in_den));
             }
             Expr::Function(_, args) => {
@@ -135,7 +135,13 @@ fn count_sqrt_in_den(ctx: &Context, expr: ExprId) -> u16 {
                     stack.push((*arg, false)); // function args reset denominator context
                 }
             }
-            _ => {}
+            Expr::Matrix { data, .. } => {
+                for elem in data {
+                    stack.push((*elem, in_den));
+                }
+            }
+            // Leaves
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
         }
     }
     count
@@ -159,7 +165,7 @@ fn count_nested_div(ctx: &Context, expr: ExprId) -> u16 {
                 stack.push((*l, inside_div));
                 stack.push((*r, inside_div));
             }
-            Expr::Neg(inner) => {
+            Expr::Neg(inner) | Expr::Hold(inner) => {
                 stack.push((*inner, inside_div));
             }
             Expr::Function(_, args) => {
@@ -167,7 +173,13 @@ fn count_nested_div(ctx: &Context, expr: ExprId) -> u16 {
                     stack.push((*arg, false));
                 }
             }
-            _ => {}
+            Expr::Matrix { data, .. } => {
+                for elem in data {
+                    stack.push((*elem, inside_div));
+                }
+            }
+            // Leaves
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
         }
     }
     count
@@ -194,7 +206,7 @@ fn has_add_in_den(ctx: &Context, expr: ExprId) -> bool {
                 stack.push((*l, in_den));
                 stack.push((*r, in_den));
             }
-            Expr::Neg(inner) => {
+            Expr::Neg(inner) | Expr::Hold(inner) => {
                 stack.push((*inner, in_den));
             }
             Expr::Function(_, args) => {
@@ -202,7 +214,13 @@ fn has_add_in_den(ctx: &Context, expr: ExprId) -> bool {
                     stack.push((*arg, false));
                 }
             }
-            _ => {}
+            Expr::Matrix { data, .. } => {
+                for elem in data {
+                    stack.push((*elem, in_den));
+                }
+            }
+            // Leaves
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
         }
     }
     false

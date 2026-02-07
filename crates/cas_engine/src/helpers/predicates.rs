@@ -92,7 +92,8 @@ fn prove_nonzero_depth(ctx: &Context, expr: ExprId, depth: usize) -> crate::doma
         }
 
         // Neg: -a ≠ 0 iff a ≠ 0
-        Expr::Neg(a) => prove_nonzero_depth(ctx, *a, depth - 1),
+        // Hold: transparent — Hold(x) ≠ 0 iff x ≠ 0
+        Expr::Neg(a) | Expr::Hold(a) => prove_nonzero_depth(ctx, *a, depth - 1),
 
         // Mul: a*b ≠ 0 iff a ≠ 0 AND b ≠ 0
         Expr::Mul(a, b) => {
@@ -417,6 +418,9 @@ fn prove_positive_depth(
             }
         }
 
+        // Hold: transparent — Hold(x) > 0 iff x > 0
+        Expr::Hold(inner) => prove_positive_depth(ctx, *inner, value_domain, depth - 1),
+
         // Variables, other functions: UNKNOWN (conservative)
         _ => Proof::Unknown,
     }
@@ -571,6 +575,9 @@ fn prove_nonnegative_depth(
                 _ => Proof::Unknown,
             }
         }
+
+        // Hold: transparent — Hold(x) ≥ 0 iff x ≥ 0
+        Expr::Hold(inner) => prove_nonnegative_depth(ctx, *inner, value_domain, depth - 1),
 
         // Variables, other functions: UNKNOWN (conservative)
         _ => Proof::Unknown,

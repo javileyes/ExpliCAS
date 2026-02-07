@@ -67,7 +67,7 @@ fn scan_recursive(ctx: &Context, root: ExprId, budget: &ExpandBudget, marks: &mu
                 work_stack.push((*l, depth + 1));
                 work_stack.push((*r, depth + 1));
             }
-            Expr::Neg(inner) => {
+            Expr::Neg(inner) | Expr::Hold(inner) => {
                 work_stack.push((*inner, depth + 1));
             }
             Expr::Function(_, args) => {
@@ -80,7 +80,8 @@ fn scan_recursive(ctx: &Context, root: ExprId, budget: &ExpandBudget, marks: &mu
                     work_stack.push((*elem, depth + 1));
                 }
             }
-            _ => {}
+            // Leaves — no children
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
         }
     }
 }
@@ -175,7 +176,8 @@ fn find_pow_add_in_expr(ctx: &Context, id: ExprId) -> Option<(ExprId, u32)> {
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
             find_pow_add_in_expr(ctx, *l).or_else(|| find_pow_add_in_expr(ctx, *r))
         }
-        Expr::Neg(inner) => find_pow_add_in_expr(ctx, *inner),
+        Expr::Neg(inner) | Expr::Hold(inner) => find_pow_add_in_expr(ctx, *inner),
+        // Div, Function, Matrix, leaves: not part of polynomial search
         _ => None,
     }
 }
@@ -197,7 +199,7 @@ pub fn looks_polynomial_like(ctx: &Context, id: ExprId) -> bool {
             }
             false
         }
-        Expr::Neg(inner) => looks_polynomial_like(ctx, *inner),
+        Expr::Neg(inner) | Expr::Hold(inner) => looks_polynomial_like(ctx, *inner),
         // Functions, Div, Matrix, SessionRef are not "polynomial-like"
         _ => false,
     }
@@ -341,7 +343,7 @@ fn collect_variables_recursive(
             collect_variables_recursive(ctx, *l, vars);
             collect_variables_recursive(ctx, *r, vars);
         }
-        Expr::Neg(inner) => {
+        Expr::Neg(inner) | Expr::Hold(inner) => {
             collect_variables_recursive(ctx, *inner, vars);
         }
         Expr::Function(_, args) => {
@@ -349,7 +351,13 @@ fn collect_variables_recursive(
                 collect_variables_recursive(ctx, *arg, vars);
             }
         }
-        _ => {}
+        Expr::Matrix { data, .. } => {
+            for elem in data {
+                collect_variables_recursive(ctx, *elem, vars);
+            }
+        }
+        // Leaves
+        Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
     }
 }
 
