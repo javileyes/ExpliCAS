@@ -56,8 +56,8 @@ impl Matrix {
         }
 
         let mut result_data = Vec::with_capacity(self.data.len());
-        for i in 0..self.data.len() {
-            let sum = ctx.add(Expr::Add(self.data[i], other.data[i]));
+        for (&a, &b) in self.data.iter().zip(other.data.iter()) {
+            let sum = ctx.add(Expr::Add(a, b));
             result_data.push(sum);
         }
 
@@ -75,8 +75,8 @@ impl Matrix {
         }
 
         let mut result_data = Vec::with_capacity(self.data.len());
-        for i in 0..self.data.len() {
-            let diff = ctx.add(Expr::Sub(self.data[i], other.data[i]));
+        for (&a, &b) in self.data.iter().zip(other.data.iter()) {
+            let diff = ctx.add(Expr::Sub(a, b));
             result_data.push(diff);
         }
 

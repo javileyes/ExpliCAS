@@ -170,8 +170,8 @@ pub fn mul_unsorted_adjacent(ctx: &Context, root: ExprId) -> usize {
         }
 
         // Count adjacent inversions
-        for i in 0..factors.len().saturating_sub(1) {
-            if compare_expr(ctx, factors[i], factors[i + 1]) == Ordering::Greater {
+        for pair in factors.windows(2) {
+            if compare_expr(ctx, pair[0], pair[1]) == Ordering::Greater {
                 inversions += 1;
             }
         }

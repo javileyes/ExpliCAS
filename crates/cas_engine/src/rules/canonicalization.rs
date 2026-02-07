@@ -184,13 +184,7 @@ define_rule!(CanonicalizeAddRule, "Canonicalize Addition", importance: crate::st
         }
 
         // 2. Check if already sorted
-        let mut is_sorted = true;
-        for i in 0..terms.len() - 1 {
-            if compare_expr(ctx, terms[i], terms[i + 1]) == Ordering::Greater {
-                is_sorted = false;
-                break;
-            }
-        }
+        let is_sorted = !terms.windows(2).any(|w| compare_expr(ctx, w[0], w[1]) == Ordering::Greater);
 
         // 3. Check if right-associative (if sorted)
         // If sorted, we only need to rewrite if the structure is NOT right-associative.
@@ -301,13 +295,7 @@ define_rule!(
             }
 
             // 2. Check if already sorted
-            let mut is_sorted = true;
-            for i in 0..factors.len().saturating_sub(1) {
-                if compare_expr(ctx, factors[i], factors[i + 1]) == Ordering::Greater {
-                    is_sorted = false;
-                    break;
-                }
-            }
+            let is_sorted = !factors.windows(2).any(|w| compare_expr(ctx, w[0], w[1]) == Ordering::Greater);
 
             if !is_sorted {
                 // Sort factors canonically
