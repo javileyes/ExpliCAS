@@ -1439,61 +1439,70 @@ pub fn witness_survives(ctx: &Context, target: ExprId, output: ExprId, kind: Wit
     search_witness(ctx, target, output, kind)
 }
 
-fn search_witness(ctx: &Context, target: ExprId, expr: ExprId, kind: WitnessKind) -> bool {
-    match ctx.get(expr) {
-        // Check if this node is a witness
-        Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
-        {
-            if kind == WitnessKind::Sqrt && exprs_equal(ctx, args[0], target) {
-                return true;
-            }
-            search_witness(ctx, target, args[0], kind)
-        }
+/// Iterative witness search to prevent stack overflow on deep expressions.
+fn search_witness(ctx: &Context, target: ExprId, root: ExprId, kind: WitnessKind) -> bool {
+    let mut stack = vec![root];
 
-        Expr::Function(fn_id, args)
-            if (ctx.is_builtin(*fn_id, BuiltinFn::Ln)
-                || ctx.is_builtin(*fn_id, BuiltinFn::Log))
-                && args.len() == 1 =>
-        {
-            if kind == WitnessKind::Log && exprs_equal(ctx, args[0], target) {
-                return true;
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            // Check if this node is a witness: sqrt(target)
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
+            {
+                if kind == WitnessKind::Sqrt && exprs_equal(ctx, args[0], target) {
+                    return true;
+                }
+                stack.push(args[0]);
             }
-            search_witness(ctx, target, args[0], kind)
-        }
 
-        Expr::Pow(base, exp) => {
+            // Check if this node is a witness: ln(target) or log(target)
+            Expr::Function(fn_id, args)
+                if (ctx.is_builtin(*fn_id, BuiltinFn::Ln)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Log))
+                    && args.len() == 1 =>
+            {
+                if kind == WitnessKind::Log && exprs_equal(ctx, args[0], target) {
+                    return true;
+                }
+                stack.push(args[0]);
+            }
+
             // Check for t^(1/2) form as witness for sqrt
-            if kind == WitnessKind::Sqrt {
-                if let Expr::Number(n) = ctx.get(*exp) {
-                    if is_even_root_exponent(n) && exprs_equal(ctx, *base, target) {
-                        return true;
+            Expr::Pow(base, exp) => {
+                if kind == WitnessKind::Sqrt {
+                    if let Expr::Number(n) = ctx.get(*exp) {
+                        if is_even_root_exponent(n) && exprs_equal(ctx, *base, target) {
+                            return true;
+                        }
                     }
                 }
+                stack.push(*base);
+                stack.push(*exp);
             }
-            search_witness(ctx, target, *base, kind) || search_witness(ctx, target, *exp, kind)
-        }
 
-        Expr::Div(num, den) => {
-            if kind == WitnessKind::Division && exprs_equal(ctx, *den, target) {
-                return true;
+            // Check for Div(_, target) as witness for division
+            Expr::Div(num, den) => {
+                if kind == WitnessKind::Division && exprs_equal(ctx, *den, target) {
+                    return true;
+                }
+                stack.push(*num);
+                stack.push(*den);
             }
-            search_witness(ctx, target, *num, kind) || search_witness(ctx, target, *den, kind)
+
+            // Push children for traversal
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
         }
-
-        // Recursively search children
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
-            search_witness(ctx, target, *l, kind) || search_witness(ctx, target, *r, kind)
-        }
-        Expr::Neg(inner) => search_witness(ctx, target, *inner, kind),
-        Expr::Function(_, args) => args.iter().any(|a| search_witness(ctx, target, *a, kind)),
-
-        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => false,
-
-        Expr::Hold(inner) => search_witness(ctx, target, *inner, kind),
-
-        Expr::Matrix { data, .. } => data.iter().any(|e| search_witness(ctx, target, *e, kind)),
     }
+
+    false
 }
 
 /// Check if two expressions are equal (by ExprId or structural comparison).
@@ -1533,89 +1542,88 @@ pub fn witness_survives_in_context(
     search_witness_in_context(ctx, target, root, replaced_node, replacement, kind)
 }
 
+/// Iterative witness search with node replacement to prevent stack overflow.
 fn search_witness_in_context(
     ctx: &Context,
     target: ExprId,
-    expr: ExprId,
+    root: ExprId,
     replaced_node: ExprId,
     replacement: Option<ExprId>,
     kind: WitnessKind,
 ) -> bool {
-    // If we've reached the replaced node, search in replacement instead (if provided)
-    if expr == replaced_node {
-        if let Some(repl) = replacement {
-            return search_witness(ctx, target, repl, kind);
-        } else {
-            // No replacement provided, skip this subtree
-            return false;
-        }
-    }
+    let mut stack = vec![root];
 
-    match ctx.get(expr) {
-        // Check if this node is a witness
-        Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
-        {
-            if kind == WitnessKind::Sqrt && exprs_equal(ctx, args[0], target) {
-                return true;
-            }
-            search_witness_in_context(ctx, target, args[0], replaced_node, replacement, kind)
-        }
-
-        Expr::Function(fn_id, args)
-            if (ctx.is_builtin(*fn_id, BuiltinFn::Ln)
-                || ctx.is_builtin(*fn_id, BuiltinFn::Log))
-                && args.len() == 1 =>
-        {
-            if kind == WitnessKind::Log && exprs_equal(ctx, args[0], target) {
-                return true;
-            }
-            search_witness_in_context(ctx, target, args[0], replaced_node, replacement, kind)
-        }
-
-        Expr::Pow(base, exp) => {
-            // Check for t^(1/2) form as witness for sqrt
-            if kind == WitnessKind::Sqrt {
-                if let Expr::Number(n) = ctx.get(*exp) {
-                    if is_even_root_exponent(n) && exprs_equal(ctx, *base, target) {
-                        return true;
-                    }
+    while let Some(expr) = stack.pop() {
+        // If we've reached the replaced node, search in replacement instead
+        if expr == replaced_node {
+            if let Some(repl) = replacement {
+                if search_witness(ctx, target, repl, kind) {
+                    return true;
                 }
             }
-            search_witness_in_context(ctx, target, *base, replaced_node, replacement, kind)
-                || search_witness_in_context(ctx, target, *exp, replaced_node, replacement, kind)
+            // Skip children of replaced node
+            continue;
         }
 
-        Expr::Div(num, den) => {
-            if kind == WitnessKind::Division && exprs_equal(ctx, *den, target) {
-                return true;
+        match ctx.get(expr) {
+            // Check if this node is a witness: sqrt(target)
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
+            {
+                if kind == WitnessKind::Sqrt && exprs_equal(ctx, args[0], target) {
+                    return true;
+                }
+                stack.push(args[0]);
             }
-            search_witness_in_context(ctx, target, *num, replaced_node, replacement, kind)
-                || search_witness_in_context(ctx, target, *den, replaced_node, replacement, kind)
-        }
 
-        // Recursively search children
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
-            search_witness_in_context(ctx, target, *l, replaced_node, replacement, kind)
-                || search_witness_in_context(ctx, target, *r, replaced_node, replacement, kind)
-        }
-        Expr::Neg(inner) => {
-            search_witness_in_context(ctx, target, *inner, replaced_node, replacement, kind)
-        }
-        Expr::Function(_, args) => args
-            .iter()
-            .any(|a| search_witness_in_context(ctx, target, *a, replaced_node, replacement, kind)),
+            // Check if this node is a witness: ln(target) or log(target)
+            Expr::Function(fn_id, args)
+                if (ctx.is_builtin(*fn_id, BuiltinFn::Ln)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Log))
+                    && args.len() == 1 =>
+            {
+                if kind == WitnessKind::Log && exprs_equal(ctx, args[0], target) {
+                    return true;
+                }
+                stack.push(args[0]);
+            }
 
-        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => false,
+            // Check for t^(1/2) form as witness for sqrt
+            Expr::Pow(base, exp) => {
+                if kind == WitnessKind::Sqrt {
+                    if let Expr::Number(n) = ctx.get(*exp) {
+                        if is_even_root_exponent(n) && exprs_equal(ctx, *base, target) {
+                            return true;
+                        }
+                    }
+                }
+                stack.push(*base);
+                stack.push(*exp);
+            }
 
-        Expr::Hold(inner) => {
-            search_witness_in_context(ctx, target, *inner, replaced_node, replacement, kind)
+            // Check for Div(_, target) as witness for division
+            Expr::Div(num, den) => {
+                if kind == WitnessKind::Division && exprs_equal(ctx, *den, target) {
+                    return true;
+                }
+                stack.push(*num);
+                stack.push(*den);
+            }
+
+            // Push children for traversal
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
         }
-
-        Expr::Matrix { data, .. } => data
-            .iter()
-            .any(|e| search_witness_in_context(ctx, target, *e, replaced_node, replacement, kind)),
     }
+
+    false
 }
 
 // =============================================================================
@@ -1946,6 +1954,34 @@ mod tests {
             delta,
             DomainDelta::Safe,
             "sqrt witnesses preserved should be safe"
+        );
+    }
+
+    #[test]
+    fn test_search_witness_deep_expression_no_overflow() {
+        // Regression test: a 500-deep nested expression would overflow
+        // the stack with the old recursive implementation.
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let sqrt_x = ctx.call("sqrt", vec![x]);
+
+        // Build: Add(Add(Add(... sqrt(x) ..., 1), 1), 1) — depth 500
+        let mut expr = sqrt_x;
+        for _ in 0..500 {
+            let one = ctx.num(1);
+            expr = ctx.add(Expr::Add(expr, one));
+        }
+
+        assert!(
+            witness_survives(&ctx, x, expr, WitnessKind::Sqrt),
+            "sqrt(x) witness should survive deep nesting"
+        );
+
+        // Also verify the in-context variant doesn't overflow
+        let dummy_replaced = ctx.num(999);
+        assert!(
+            witness_survives_in_context(&ctx, x, expr, dummy_replaced, None, WitnessKind::Sqrt,),
+            "in-context search should survive deep nesting"
         );
     }
 }
