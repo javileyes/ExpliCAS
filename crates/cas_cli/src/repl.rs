@@ -178,13 +178,13 @@ fn clean_sign_patterns(s: String) -> String {
     use std::sync::LazyLock;
 
     static RE_PLUS_MINUS: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"\+ -([0-9a-zA-Z√^])").unwrap());
+        LazyLock::new(|| Regex::new(r"\+ -([0-9a-zA-Z√^])").expect("valid regex literal"));
     static RE_MINUS_MINUS: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"- -([0-9a-zA-Z√^])").unwrap());
+        LazyLock::new(|| Regex::new(r"- -([0-9a-zA-Z√^])").expect("valid regex literal"));
     static RE_PLUS_MINUS_COMPACT: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"\+-([0-9a-zA-Z])").unwrap());
+        LazyLock::new(|| Regex::new(r"\+-([0-9a-zA-Z])").expect("valid regex literal"));
     static RE_MINUS_MINUS_COMPACT: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"--([0-9a-zA-Z])").unwrap());
+        LazyLock::new(|| Regex::new(r"--([0-9a-zA-Z])").expect("valid regex literal"));
 
     let mut result = s;
 

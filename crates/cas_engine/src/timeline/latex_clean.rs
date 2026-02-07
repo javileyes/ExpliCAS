@@ -6,8 +6,9 @@ pub(super) fn clean_latex_identities(latex: &str) -> String {
     use std::sync::LazyLock;
 
     // Compiled once, reused across all calls
-    static RE_MULT_UNIT_FRAC: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"(\d+)\s*\\cdot\s*\\frac\{1\}\{([^}]+)\}").unwrap());
+    static RE_MULT_UNIT_FRAC: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(\d+)\s*\\cdot\s*\\frac\{1\}\{([^}]+)\}").expect("valid regex literal")
+    });
 
     let mut result = latex.to_string();
     let mut changed = true;
