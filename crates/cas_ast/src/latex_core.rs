@@ -8,6 +8,54 @@ use crate::display_context::DisplayContext;
 use crate::latex_highlight::{HighlightColor, HighlightConfig};
 use crate::{Constant, Context, Expr, ExprId};
 use num_traits::Signed;
+use regex::Regex;
+use std::sync::LazyLock;
+
+// ── Static regex constants for LaTeX negative-sign cleanup ──────────────────
+static RE_PLUS_MINUS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\+ -([0-9a-zA-Z])").unwrap());
+static RE_MINUS_MINUS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"- -([0-9a-zA-Z])").unwrap());
+static RE_PLUS_COLOR_MINUS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\+ (\{\\color\{[^}]+\}\{)-").unwrap());
+static RE_MINUS_COLOR_MINUS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"- (\{\\color\{[^}]+\}\{)-").unwrap());
+
+/// Shared implementation for cleaning LaTeX negative-sign patterns.
+/// Used by both `LaTeXRenderer::clean_latex_negatives` and
+/// `PathHighlightedLatexRenderer::clean_latex_negatives`.
+fn clean_latex_negatives_shared(latex: &str) -> String {
+    let mut result = latex.to_string();
+
+    // Fix "+ -" → "-" in all contexts
+    result = result.replace("+ -\\", "- \\");
+    result = result.replace("+ -(", "- (");
+
+    // Fix "- -" → "+" (double negative)
+    result = result.replace("- -\\", "+ \\");
+    result = result.replace("- -(", "+ (");
+
+    // Fix "+ -" before digits or letters (e.g., "+ -x" → "- x")
+    result = RE_PLUS_MINUS.replace_all(&result, "- $1").to_string();
+
+    // Fix "- -" before digits or letters (e.g., "- -x" → "+ x")
+    result = RE_MINUS_MINUS.replace_all(&result, "+ $1").to_string();
+
+    // Fix "+ {color command}{-" patterns (highlighted negatives)
+    // e.g., "+ {\color{red}{-..." → "- {\color{red}{"
+    result = RE_PLUS_COLOR_MINUS.replace_all(&result, "- $1").to_string();
+
+    // Fix "- {color command}{-" patterns (double negative with highlight)
+    result = RE_MINUS_COLOR_MINUS
+        .replace_all(&result, "+ $1")
+        .to_string();
+
+    // Fix "+ -{" → "- {" (when minus precedes a brace group)
+    result = result.replace("+ -{", "- {");
+
+    // Fix "- -{" → "+ {" (double negative before brace)
+    result = result.replace("- -{", "+ {");
+
+    result
+}
 
 /// Core trait for LaTeX rendering
 ///
@@ -38,48 +86,7 @@ pub trait LaTeXRenderer {
 
     /// Post-process LaTeX to fix negative sign patterns
     fn clean_latex_negatives(latex: &str) -> String {
-        use regex::Regex;
-        let mut result = latex.to_string();
-
-        // Fix "+ -" → "-" in all contexts
-        result = result.replace("+ -\\", "- \\");
-        result = result.replace("+ -(", "- (");
-
-        // Fix "- -" → "+" (double negative)
-        result = result.replace("- -\\", "+ \\");
-        result = result.replace("- -(", "+ (");
-
-        // Fix "+ -" before digits or letters (e.g., "+ -x" → "- x")
-        // SAFETY: static regex pattern, compile never fails
-        let re_plus_minus = Regex::new(r"\+ -([0-9a-zA-Z])").unwrap();
-        result = re_plus_minus.replace_all(&result, "- $1").to_string();
-
-        // Fix "- -" before digits or letters (e.g., "- -x" → "+ x")
-        // SAFETY: static regex pattern, compile never fails
-        let re_minus_minus = Regex::new(r"- -([0-9a-zA-Z])").unwrap();
-        result = re_minus_minus.replace_all(&result, "+ $1").to_string();
-
-        // Fix "+ {color command}{-" patterns (highlighted negatives)
-        // e.g., "+ {\color{red}{-..." → "- {\color{red}{"
-        // Note: Absorbs only the leading minus of the highlighted expression
-        // SAFETY: static regex pattern, compile never fails
-        let re_plus_color_minus = Regex::new(r"\+ (\{\\color\{[^}]+\}\{)-").unwrap();
-        result = re_plus_color_minus.replace_all(&result, "- $1").to_string();
-
-        // Fix "- {color command}{-" patterns (double negative with highlight)
-        // SAFETY: static regex pattern, compile never fails
-        let re_minus_color_minus = Regex::new(r"- (\{\\color\{[^}]+\}\{)-").unwrap();
-        result = re_minus_color_minus
-            .replace_all(&result, "+ $1")
-            .to_string();
-
-        // Fix "+ -{" → "- {" (when minus precedes a brace group)
-        result = result.replace("+ -{", "- {");
-
-        // Fix "- -{" → "+ {" (double negative before brace)
-        result = result.replace("- -{", "+ {");
-
-        result
+        clean_latex_negatives_shared(latex)
     }
 
     /// Generate complete LaTeX output
@@ -733,47 +740,7 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
 
     /// Post-process LaTeX to fix negative sign patterns (same as LaTeXRenderer)
     fn clean_latex_negatives(latex: &str) -> String {
-        use regex::Regex;
-        let mut result = latex.to_string();
-
-        // Fix "+ -" → "-" in all contexts
-        result = result.replace("+ -\\", "- \\");
-        result = result.replace("+ -(", "- (");
-
-        // Fix "- -" → "+" (double negative)
-        result = result.replace("- -\\", "+ \\");
-        result = result.replace("- -(", "+ (");
-
-        // Fix "+ -" before digits or letters (e.g., "+ -x" → "- x")
-        // SAFETY: static regex pattern, compile never fails
-        let re_plus_minus = Regex::new(r"\+ -([0-9a-zA-Z])").unwrap();
-        result = re_plus_minus.replace_all(&result, "- $1").to_string();
-
-        // Fix "- -" before digits or letters (e.g., "- -x" → "+ x")
-        // SAFETY: static regex pattern, compile never fails
-        let re_minus_minus = Regex::new(r"- -([0-9a-zA-Z])").unwrap();
-        result = re_minus_minus.replace_all(&result, "+ $1").to_string();
-
-        // Fix "+ {color command}{-" patterns (highlighted negatives)
-        // e.g., "+ {\color{red}{-..." → "- {\color{red}{"
-        // SAFETY: static regex pattern, compile never fails
-        let re_plus_color_minus = Regex::new(r"\+ (\{\\color\{[^}]+\}\{)-").unwrap();
-        result = re_plus_color_minus.replace_all(&result, "- $1").to_string();
-
-        // Fix "- {color command}{-" patterns (double negative with highlight)
-        // SAFETY: static regex pattern, compile never fails
-        let re_minus_color_minus = Regex::new(r"- (\{\\color\{[^}]+\}\{)-").unwrap();
-        result = re_minus_color_minus
-            .replace_all(&result, "+ $1")
-            .to_string();
-
-        // Fix "+ -{" → "- {" (when minus precedes a brace group)
-        result = result.replace("+ -{", "- {");
-
-        // Fix "- -{" → "+ {" (double negative before brace)
-        result = result.replace("- -{", "+ {");
-
-        result
+        clean_latex_negatives_shared(latex)
     }
 
     /// Render expression with path tracking

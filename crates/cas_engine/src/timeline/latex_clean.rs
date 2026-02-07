@@ -3,13 +3,14 @@
 /// Patterns like "\cdot 1" and "1 \cdot x" are cleaned up for better display.
 pub(super) fn clean_latex_identities(latex: &str) -> String {
     use regex::Regex;
+    use std::sync::LazyLock;
+
+    // Compiled once, reused across all calls
+    static RE_MULT_UNIT_FRAC: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"(\d+)\s*\\cdot\s*\\frac\{1\}\{([^}]+)\}").unwrap());
 
     let mut result = latex.to_string();
     let mut changed = true;
-
-    // Pre-compile regex outside the loop (clippy: regex_creation_in_loops)
-    // SAFETY: static regex pattern, compile never fails
-    let re_mult_unit_frac = Regex::new(r"(\d+)\s*\\cdot\s*\\frac\{1\}\{([^}]+)\}").unwrap();
 
     // Iterate until no more changes (handles nested patterns)
     while changed {
@@ -51,7 +52,7 @@ pub(super) fn clean_latex_identities(latex: &str) -> String {
 
         // KEY FIX: Convert "n \cdot \frac{1}{expr}" → "\frac{n}{expr}"
         // This handles cases like "2 \cdot \frac{1}{x}" → "\frac{2}{x}"
-        result = re_mult_unit_frac
+        result = RE_MULT_UNIT_FRAC
             .replace_all(&result, r"\frac{$1}{$2}")
             .to_string();
 
