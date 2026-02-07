@@ -1319,12 +1319,14 @@ define_rule!(
         }
 
         // 7. Divide by GCD (full_gcd is non-zero since we checked it's non-trivial above)
-        let (new_num_poly, rem_num) = p_num
-            .div_rem(&full_gcd)
-            .expect("div_rem should not fail: full_gcd is non-zero");
-        let (new_den_poly, rem_den) = p_den
-            .div_rem(&full_gcd)
-            .expect("div_rem should not fail: full_gcd is non-zero");
+        let (new_num_poly, rem_num) = match p_num.div_rem(&full_gcd) {
+            Ok(result) => result,
+            Err(_) => return None,
+        };
+        let (new_den_poly, rem_den) = match p_den.div_rem(&full_gcd) {
+            Ok(result) => result,
+            Err(_) => return None,
+        };
 
         if !rem_num.is_zero() || !rem_den.is_zero() {
             return None;

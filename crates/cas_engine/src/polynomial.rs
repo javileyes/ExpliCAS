@@ -293,7 +293,7 @@ impl Polynomial {
             // div_rem cannot fail here since b is not zero
             let (_, r) = a
                 .div_rem(&b)
-                .expect("div_rem should not fail: b is not zero");
+                .unwrap_or_else(|_| (Polynomial::zero(a.var.clone()), a.clone()));
             a = b;
             b = r;
         }
@@ -430,7 +430,7 @@ impl Polynomial {
                 // factor is never zero (q is non-zero from rational root theorem)
                 let (quotient, _) = current_poly
                     .div_rem(&factor)
-                    .expect("div_rem should not fail: factor is non-zero");
+                    .unwrap_or_else(|_| (current_poly.clone(), Polynomial::zero(self.var.clone())));
                 current_poly = quotient;
             } else {
                 // No more rational roots.

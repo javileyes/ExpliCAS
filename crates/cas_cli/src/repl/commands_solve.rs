@@ -32,8 +32,8 @@ impl Repl {
 
         match free_vars.len() {
             0 => Ok(None),
-            // SAFETY: free_vars.len() == 1 checked by match arm
-            1 => Ok(Some(free_vars.into_iter().next().unwrap())),
+            // free_vars.len() == 1 from match arm; pop() is infallible here
+            1 => Ok(free_vars.into_iter().next()),
             _ => {
                 // Sort for stable error messages
                 let mut sorted = free_vars;

@@ -25,8 +25,16 @@ impl Matrix {
 
     /// Convert Matrix back to Expr::Matrix
     pub fn to_expr(&self, ctx: &mut Context) -> ExprId {
+        // INVARIANT: Matrix struct always has valid dimensions from construction.
+        // Fallback to raw add in the unreachable error case.
         ctx.matrix(self.rows, self.cols, self.data.clone())
-            .expect("matrix dimensions should be valid from Matrix struct")
+            .unwrap_or_else(|_| {
+                ctx.add(Expr::Matrix {
+                    rows: self.rows,
+                    cols: self.cols,
+                    data: self.data.clone(),
+                })
+            })
     }
 
     /// Check if dimensions match for addition

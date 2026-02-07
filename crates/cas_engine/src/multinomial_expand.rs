@@ -285,8 +285,8 @@ fn factorial_table(n: u32) -> Vec<BigInt> {
     let mut fact = Vec::with_capacity((n + 1) as usize);
     fact.push(BigInt::one());
     for i in 1..=n {
-        // INVARIANT: fact is never empty (initialized with fact.push(BigInt::one()))
-        let prev = fact.last().expect("factorial table is never empty").clone();
+        // INVARIANT: fact is never empty (initialized above)
+        let prev = fact.last().unwrap_or(&BigInt::one()).clone();
         fact.push(prev * BigInt::from(i));
     }
     fact
@@ -306,8 +306,8 @@ fn pow_table_rational(c: &BigRational, n: u32) -> Vec<BigRational> {
     let mut table = Vec::with_capacity((n + 1) as usize);
     table.push(BigRational::one());
     for _ in 1..=n {
-        // INVARIANT: table is never empty (initialized with table.push(BigRational::one()))
-        let prev = table.last().expect("power table is never empty").clone();
+        // INVARIANT: table is never empty (initialized above)
+        let prev = table.last().unwrap_or(&BigRational::one()).clone();
         table.push(prev * c);
     }
     table

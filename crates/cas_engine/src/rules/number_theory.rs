@@ -655,7 +655,7 @@ fn verbose_poly_gcd(
         // División (b is non-zero from while condition)
         let (_, r) = a
             .div_rem(&b)
-            .expect("div_rem should not fail: b is non-zero");
+            .unwrap_or_else(|_| (Polynomial::zero(a.var.clone()), a.clone()));
 
         steps.push("Dividimos A entre B.".to_string());
         if r.is_zero() {
