@@ -117,7 +117,7 @@ fn scan_for_sqrt_hints(ctx: &Context, expr: cas_ast::ExprId, display_ctx: &mut D
             scan_for_sqrt_hints(ctx, *l, display_ctx);
             scan_for_sqrt_hints(ctx, *r, display_ctx);
         }
-        Expr::Neg(e) => {
+        Expr::Neg(e) | Expr::Hold(e) => {
             scan_for_sqrt_hints(ctx, *e, display_ctx);
         }
         Expr::Matrix { data, .. } => {
@@ -125,8 +125,8 @@ fn scan_for_sqrt_hints(ctx: &Context, expr: cas_ast::ExprId, display_ctx: &mut D
                 scan_for_sqrt_hints(ctx, *elem, display_ctx);
             }
         }
-        // Terminals: Number, Variable, Constant - no children to scan
-        _ => {}
+        // Leaves
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
     }
 }
 
@@ -174,7 +174,7 @@ fn collect_root_patterns_recursive(
             collect_root_patterns_recursive(ctx, *l, patterns);
             collect_root_patterns_recursive(ctx, *r, patterns);
         }
-        Expr::Neg(e) => {
+        Expr::Neg(e) | Expr::Hold(e) => {
             collect_root_patterns_recursive(ctx, *e, patterns);
         }
         Expr::Matrix { data, .. } => {
@@ -182,7 +182,8 @@ fn collect_root_patterns_recursive(
                 collect_root_patterns_recursive(ctx, *elem, patterns);
             }
         }
-        _ => {}
+        // Leaves
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
     }
 }
 
@@ -223,7 +224,7 @@ fn propagate_sqrt_hints_to_pow(
             propagate_sqrt_hints_to_pow(ctx, *l, patterns, display_ctx);
             propagate_sqrt_hints_to_pow(ctx, *r, patterns, display_ctx);
         }
-        Expr::Neg(e) => {
+        Expr::Neg(e) | Expr::Hold(e) => {
             propagate_sqrt_hints_to_pow(ctx, *e, patterns, display_ctx);
         }
         Expr::Function(_, args) => {
@@ -236,7 +237,8 @@ fn propagate_sqrt_hints_to_pow(
                 propagate_sqrt_hints_to_pow(ctx, *elem, patterns, display_ctx);
             }
         }
-        _ => {}
+        // Leaves
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
     }
 }
 

@@ -2,28 +2,11 @@
 
 use cas_ast::{Context, Expr, ExprId};
 
-/// Count total nodes in an expression tree
+/// Count total nodes in an expression tree.
+///
+/// Delegates to canonical `cas_ast::traversal::count_all_nodes`.
 pub fn count_all_nodes(ctx: &Context, expr: ExprId) -> usize {
-    let mut count = 0;
-    let mut stack = vec![expr];
-    while let Some(id) = stack.pop() {
-        count += 1;
-        match ctx.get(id) {
-            Expr::Add(l, r)
-            | Expr::Sub(l, r)
-            | Expr::Mul(l, r)
-            | Expr::Div(l, r)
-            | Expr::Pow(l, r) => {
-                stack.push(*l);
-                stack.push(*r);
-            }
-            Expr::Neg(e) => stack.push(*e),
-            Expr::Function(_, args) => stack.extend(args),
-            Expr::Matrix { data, .. } => stack.extend(data),
-            _ => {}
-        }
-    }
-    count
+    cas_ast::traversal::count_all_nodes(ctx, expr)
 }
 
 /// Count nodes matching a predicate.
@@ -77,10 +60,11 @@ fn nf_score_base(ctx: &Context, id: ExprId) -> (usize, usize) {
                 stack.push(*l);
                 stack.push(*r);
             }
-            Expr::Neg(inner) => stack.push(*inner),
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
             Expr::Function(_, args) => stack.extend(args),
             Expr::Matrix { data, .. } => stack.extend(data),
-            _ => {}
+            // Leaves
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
         }
     }
 
@@ -137,10 +121,11 @@ pub fn mul_unsorted_adjacent(ctx: &Context, root: ExprId) -> usize {
                 stack.push(*l);
                 stack.push(*r);
             }
-            Expr::Neg(inner) => stack.push(*inner),
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
             Expr::Function(_, args) => stack.extend(args),
             Expr::Matrix { data, .. } => stack.extend(data),
-            _ => {}
+            // Leaves
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
         }
     }
 

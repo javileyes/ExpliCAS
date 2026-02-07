@@ -63,7 +63,24 @@ pub(super) fn find_path_to_expr(ctx: &Context, root: ExprId, target: ExprId) -> 
                     path.pop();
                 }
             }
-            _ => {}
+            Expr::Hold(inner) => {
+                path.push(PathStep::Inner);
+                if dfs(ctx, *inner, target, path) {
+                    return true;
+                }
+                path.pop();
+            }
+            Expr::Matrix { data, .. } => {
+                for (i, elem) in data.iter().enumerate() {
+                    path.push(PathStep::Arg(i));
+                    if dfs(ctx, *elem, target, path) {
+                        return true;
+                    }
+                    path.pop();
+                }
+            }
+            // Leaves
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
         }
         false
     }
@@ -157,7 +174,24 @@ pub(super) fn diff_find_path_to_expr(
                     path.pop();
                 }
             }
-            _ => {}
+            Expr::Hold(inner) => {
+                path.push(0);
+                if search(ctx, *inner, target, path) {
+                    return true;
+                }
+                path.pop();
+            }
+            Expr::Matrix { data, .. } => {
+                for (i, elem) in data.iter().enumerate() {
+                    path.push(i as u8);
+                    if search(ctx, *elem, target, path) {
+                        return true;
+                    }
+                    path.pop();
+                }
+            }
+            // Leaves
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
         }
         false
     }
@@ -220,7 +254,20 @@ pub(super) fn diff_find_all_paths_to_expr(
                     path.pop();
                 }
             }
-            _ => {}
+            Expr::Hold(inner) => {
+                path.push(0);
+                search(ctx, *inner, target, path, results);
+                path.pop();
+            }
+            Expr::Matrix { data, .. } => {
+                for (i, elem) in data.iter().enumerate() {
+                    path.push(i as u8);
+                    search(ctx, *elem, target, path, results);
+                    path.pop();
+                }
+            }
+            // Leaves
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
         }
     }
 
@@ -283,7 +330,20 @@ pub(super) fn diff_find_paths_by_structure(
                     path.pop();
                 }
             }
-            _ => {}
+            Expr::Hold(inner) => {
+                path.push(0);
+                search(ctx, *inner, target, path, results);
+                path.pop();
+            }
+            Expr::Matrix { data, .. } => {
+                for (i, elem) in data.iter().enumerate() {
+                    path.push(i as u8);
+                    search(ctx, *elem, target, path, results);
+                    path.pop();
+                }
+            }
+            // Leaves
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
         }
     }
 
@@ -311,7 +371,18 @@ pub(super) fn navigate_to_subexpr(ctx: &Context, mut current: ExprId, path: &Exp
                     current = arg;
                 }
             }
-            _ => break,
+            Expr::Hold(inner) => {
+                current = *inner;
+            }
+            Expr::Matrix { data, .. } => {
+                if let Some(&elem) = data.get(step as usize) {
+                    current = elem;
+                } else {
+                    break;
+                }
+            }
+            // Leaves
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => break,
         }
     }
     current

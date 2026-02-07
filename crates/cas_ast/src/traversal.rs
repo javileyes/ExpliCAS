@@ -105,7 +105,7 @@ pub fn count_nodes_and_max_depth(ctx: &Context, root: ExprId) -> (usize, usize) 
                 stack.push((*l, child_depth));
                 stack.push((*r, child_depth));
             }
-            Expr::Neg(e) => stack.push((*e, child_depth)),
+            Expr::Neg(e) | Expr::Hold(e) => stack.push((*e, child_depth)),
             Expr::Function(_, args) => {
                 for &arg in args {
                     stack.push((arg, child_depth));
@@ -116,8 +116,8 @@ pub fn count_nodes_and_max_depth(ctx: &Context, root: ExprId) -> (usize, usize) 
                     stack.push((elem, child_depth));
                 }
             }
-            // Leaf nodes: Number, Variable, Constant, SessionRef
-            _ => {}
+            // Leaves — no children
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
         }
     }
 
@@ -132,11 +132,11 @@ fn push_children(node: &Expr, stack: &mut Vec<ExprId>) {
             stack.push(*l);
             stack.push(*r);
         }
-        Expr::Neg(e) => stack.push(*e),
+        Expr::Neg(e) | Expr::Hold(e) => stack.push(*e),
         Expr::Function(_, args) => stack.extend(args),
         Expr::Matrix { data, .. } => stack.extend(data),
-        // Leaf nodes: no children
-        _ => {}
+        // Leaves — no children
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
     }
 }
 
