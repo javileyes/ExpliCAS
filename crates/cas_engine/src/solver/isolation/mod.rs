@@ -215,9 +215,11 @@ pub fn contains_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
             contains_var(ctx, *l, var) || contains_var(ctx, *r, var)
         }
-        Expr::Neg(e) => contains_var(ctx, *e, var),
+        Expr::Neg(e) | Expr::Hold(e) => contains_var(ctx, *e, var),
         Expr::Function(_, args) => args.iter().any(|a| contains_var(ctx, *a, var)),
-        _ => false,
+        Expr::Matrix { data, .. } => data.iter().any(|elem| contains_var(ctx, *elem, var)),
+        // Leaves — no children to check
+        Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => false,
     }
 }
 

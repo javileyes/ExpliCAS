@@ -381,21 +381,7 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
     None
 }
 
-fn contains_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
-    match ctx.get(expr) {
-        Expr::Variable(sym_id) => ctx.sym_name(*sym_id) == var,
-        Expr::Number(_) | Expr::Constant(_) => false,
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
-            contains_var(ctx, *l, var) || contains_var(ctx, *r, var)
-        }
-        Expr::Neg(e) => contains_var(ctx, *e, var),
-        Expr::Hold(e) => contains_var(ctx, *e, var),
-        Expr::Function(_, args) => args.iter().any(|a| contains_var(ctx, *a, var)),
-        Expr::Matrix { data, .. } => data.iter().any(|elem| contains_var(ctx, *elem, var)),
-        // SessionRef is a leaf - doesn't contain variables
-        Expr::SessionRef(_) => false,
-    }
-}
+use crate::solver::contains_var;
 
 // Returns (a, b) such that expr = a*var + b
 fn get_linear_coeffs(ctx: &mut Context, expr: ExprId, var: &str) -> Option<(ExprId, ExprId)> {

@@ -402,8 +402,16 @@ fn substitute_inner(
                 node
             }
         }
-        // Leaf nodes: Number, Variable, Constant, SessionRef - no children
-        _ => node,
+        Expr::Hold(inner) => {
+            let ni = substitute_inner(ctx, inner, target, replacement, target_power, opts, steps);
+            if ni != inner {
+                ctx.add(Expr::Hold(ni))
+            } else {
+                node
+            }
+        }
+        // Leaves — no children to substitute
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => node,
     }
 }
 

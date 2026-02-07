@@ -24,6 +24,7 @@ mod normalization;
 mod witness;
 
 // Re-export all public items from submodules
+pub(crate) use inference::contains_variable;
 pub use inference::{
     check_analytic_expansion, derive_requires_from_equation, domain_delta_check,
     expands_analytic_domain, expands_analytic_in_context, infer_implicit_domain,

@@ -608,23 +608,9 @@ define_rule!(
         let coef_l = coef_l?;
         let coef_r = coef_r?;
 
-        // CRITICAL: Skip if either term contains a Variable
-        // We only want to factor pure numeric expressions like 2*√2 - 2, NOT algebraic like 2*x - 6
-        fn contains_variable(ctx: &cas_ast::Context, e: cas_ast::ExprId) -> bool {
-            match ctx.get(e) {
-                Expr::Variable(_) => true,
-                Expr::Add(l, r)
-                | Expr::Sub(l, r)
-                | Expr::Mul(l, r)
-                | Expr::Div(l, r)
-                | Expr::Pow(l, r) => contains_variable(ctx, *l) || contains_variable(ctx, *r),
-                Expr::Neg(inner) => contains_variable(ctx, *inner),
-                Expr::Function(_, args) => args.iter().any(|a| contains_variable(ctx, *a)),
-                _ => false,
-            }
-        }
-
-        if contains_variable(ctx, l) || contains_variable(ctx, r) {
+        if crate::implicit_domain::contains_variable(ctx, l)
+            || crate::implicit_domain::contains_variable(ctx, r)
+        {
             return None;
         }
 
