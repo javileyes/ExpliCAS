@@ -317,17 +317,9 @@ define_rule!(CanonicalizeDivRule, "Canonicalize Division", importance: crate::st
     let expr_data = ctx.get(expr).clone();
     if let Expr::Div(lhs, rhs) = expr_data {
         // x / c -> (1/c) * x
-        let n_opt = if let Expr::Number(n) = ctx.get(rhs) {
-            Some(n.clone())
-        } else {
-            None
-        };
-
-        if let Some(n) = n_opt {
+        if let Expr::Number(n) = ctx.get(rhs) {
+            let n = n.clone();
             if !n.is_zero() {
-                // n is Ratio<BigInt>.
-                // We want 1/n.
-                // Ratio::recip() exists.
                 let inv = n.recip();
                 let inv_expr = ctx.add(Expr::Number(inv));
                 let new_expr = smart_mul(ctx, inv_expr, lhs);
