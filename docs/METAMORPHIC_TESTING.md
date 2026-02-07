@@ -18,7 +18,7 @@ El sistema de **Metamorphic Equivalence Testing** es la herramienta principal pa
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                    identity_pairs.csv                        │
-│  (351+ identidades: algebra, trig, log, rationales, etc.)   │
+│  (~400 identidades: algebra, trig, log, rationales, etc.)   │
 └──────────────────────────┬───────────────────────────────────┘
                            │
                            ▼
@@ -445,80 +445,142 @@ METATEST_LEGACY_BUCKET=unconditional cargo test ...
 ### Test de Combinaciones
 
 ```bash
-# Pequeño (CI)
-cargo test metatest_csv_combinations_small
+# Pequeño (CI, 30 pares = ~435 combinaciones dobles)
+cargo test -p cas_engine --test metamorphic_simplification_tests \
+    metatest_csv_combinations_small -- --nocapture 2>&1
 
-cargo test -p cas_engine --test metamorphic_simplification_tests metatest_csv_combinations_small -- --nocapture 2>&1
-
-# Completo
-cargo test metatest_csv_combinations_full --ignored
-
-cargo test -p cas_engine --test metamorphic_simplification_tests metatest_csv_combinations_full -- --nocapture --ignored 2>&1
+# Completo (100 pares + triples)
+cargo test -p cas_engine --test metamorphic_simplification_tests \
+    metatest_csv_combinations_full -- --nocapture --ignored 2>&1
 ```
 
 #### Modo Verbose para Combinaciones
 
-Para ver **qué combinaciones pasan solo numéricamente** (no simbólicamente):
+Para ver el **informe detallado con clasificación por niveles**:
 
 ```bash
-# Ver 10 ejemplos de combinaciones numeric-only
-METATEST_VERBOSE=1 cargo test -p cas_engine --test metamorphic_simplification_tests metatest_csv_combinations_small -- --nocapture
+# Verbose con 10 ejemplos (default)
+METATEST_VERBOSE=1 cargo test -p cas_engine --test metamorphic_simplification_tests \
+    metatest_csv_combinations_small -- --nocapture 2>&1
 
-# Ver más ejemplos (hasta 50)
-METATEST_VERBOSE=1 METATEST_MAX_EXAMPLES=50 cargo test -p cas_engine --test metamorphic_simplification_tests metatest_csv_combinations_full -- --nocapture --ignored
+# Verbose con más ejemplos + offset
+METATEST_VERBOSE=1 METATEST_MAX_EXAMPLES=50 cargo test -p cas_engine \
+    --test metamorphic_simplification_tests metatest_csv_combinations_full \
+    -- --nocapture --ignored 2>&1
 ```
 
 **Variables de entorno:**
 
 | Variable | Default | Descripción |
 |----------|---------|-------------|
-| `METATEST_VERBOSE` | (desactivado) | Activa la lista de ejemplos numeric-only |
-| `METATEST_MAX_EXAMPLES` | `10` | Número máximo de ejemplos a mostrar |
+| `METATEST_VERBOSE` | (desactivado) | Activa informe detallado con ejemplos y clasificadores |
+| `METATEST_MAX_EXAMPLES` | `10` | Número máximo de ejemplos a mostrar por categoría |
+| `METATEST_START_OFFSET` | `0` | Saltar las primeras N identidades del CSV |
 
-**Output ejemplo:**
+#### Clasificación de Combinaciones (3 niveles)
+
+Cada combinación `(identity_i + identity_j)` se clasifica en:
+
+| Nivel | Emoji | Significado |
+|-------|-------|-------------|
+| **NF-convergent** | 📐 | **Equivalencia simbólica pura** — `simplify(LHS) == simplify(RHS)` estructuralmente idénticos |
+| **Proved-symbolic** | 🔢 | **Equivalencia simbólica con cambios** — las formas normales difieren pero `simplify(LHS - RHS) == 0` |
+| **Numeric-only** | 🌡️ | **Equivalencia numérica** — solo pasa por muestreo numérico, no hay prueba simbólica |
+| **Failed** | ❌ | **Error** — falla incluso la equivalencia numérica |
+
+**Output ejemplo (sin verbose):**
 
 ```
-✅ Double combinations: 435 passed (199 symbolic, 236 numeric-only), 0 failed
-
-🔢 Numeric-only combination examples (METATEST_VERBOSE=1):
-    1. LHS: (sin(x)^2 + cos(x)^2) + (tan(u)^2 + 1)
-       RHS: (1) + (sec(u)^2)
-       (simplifies: 1 + sec(x)^2)
-    2. LHS: (sin(x)^2 + cos(x)^2) + (1 + cot(u)^2)
-       RHS: (1) + (csc(u)^2)
-       (simplifies: 1 + csc(x)^2)
-   ... and 226 more (set METATEST_MAX_EXAMPLES=N to show more)
+📊 Running CSV combination tests with 100 pairs (offset 0)
+✅ Double combinations: 4278 passed, 0 failed
+   📐 NF-convergent: 2440 | 🔢 Proved-symbolic: 1814 | 🌡️ Numeric-only: 24
+✅ Triple combinations: 100 passed, 0 failed (of 100 tested)
 ```
 
-**Interpretación:** Las combinaciones son numeric-only cuando el simplificador produce resultados
-diferentes pero matemáticamente equivalentes (ej. diferentes path de simplificación).
-Esto es normal y **no es un error** — lo importante es que `Failed = 0`.
+#### Secciones del Informe Verbose
+
+Con `METATEST_VERBOSE=1` se muestran **4 secciones adicionales**:
+
+**1. 🔢 NF-mismatch examples** — Proved-symbolic pero con formas normales diferentes:
+```
+🔢 NF-mismatch examples (proved symbolic but different normal forms):
+    1. LHS: (sin(x)^2 + cos(x)^2) + ((u^2+1)*(u+1)*(u-1))
+       RHS: (1) + ((u^2+1)*(u+1)*(u-1))
+       (simplifies: 1 + (x^2+1)*(x+1)*(x-1))
+```
+
+**2. 🌡️ Numeric-only examples** — Con el residuo `simplify(LHS-RHS)` en LaTeX:
+```
+🌡️ Numeric-only examples (no symbolic proof found):
+    1. LHS: (tan(x)^2 + 1) + (tan(2*u))
+       RHS: (sec(x)^2) + (2*tan(u)/(1-tan(u)^2))
+       simplify(LHS-RHS): \frac{...}{...}
+```
+
+**3. 📊 Family classifier** — Agrupación de casos numeric-only por familia matemática:
+```
+📊 Numeric-only grouped by family:
+   ── tan (without sec/csc) (15 cases) ──
+   ── sec/csc (Pythagorean: tan²+1=sec², 1+cot²=csc²) (9 cases) ──
+```
+
+Familias detectadas: `sec/csc`, `tan`, `cot`, `half/double angle`, `ln/log`, `exp`, `sqrt/roots`, `abs`, `arc*`, `other`.
+
+**4. 📈 Top-N Shape Analysis** — Patrones dominantes en los residuos:
+```
+📈 Top-N Shape Analysis (residual patterns):
+    1.   8.3% (  2) Div(Add(Mul(...),Mul(...)),...)  [NEG_EXP] [DIV]
+    2.   4.2% (  1) Div(Add(Add(...),...),...) [NEG_EXP] [DIV]
+```
+
+Marcadores: `[NEG_EXP]` = exponentes negativos, `[DIV]` = divisiones. Apuntan a reglas de simplificación faltantes.
+
+**Interpretación:** Las combinaciones numeric-only indican que el simplificador produce resultados
+diferentes pero matemáticamente equivalentes. Esto es normal y **no es un error** — lo importante
+es que `Failed = 0`. Los clasificadores ayudan a **priorizar qué reglas de simplificación añadir**.
 
 ---
 
 ## Interpretación de Resultados
 
-### Salida Típica
+### Test Individual — Salida Típica
 
 ```
 📊 Individual Identity Results:
-   Total tested: 351
-   ✅ Symbolic: 245 (69%)
+   Total tested: 389
+   ✅ Symbolic: 292 (75%)
+   🔢 Numeric-only: 97
    ❌ Failed: 0
    ⏭️  Skipped: 18
 ```
 
+### Test de Combinaciones — Salida Típica
+
+```
+✅ Double combinations: 4278 passed, 0 failed
+   📐 NF-convergent: 2440 | 🔢 Proved-symbolic: 1814 | 🌡️ Numeric-only: 24
+✅ Triple combinations: 100 passed, 0 failed (of 100 tested)
+```
+
 ### Qué Significan
 
+**Individual:**
 - **Symbolic**: Engine produjo la forma canónica esperada
+- **Numeric-only**: Equivalentes numéricamente, pero el engine aún no simplifica a la misma forma
 - **Failed**: Ni simbólico ni numérico equivalentes (bug o identidad incorrecta)
 - **Skipped**: Identidad requiere modo `assume` y test corre en `generic`
+
+**Combinaciones:**
+- **NF-convergent**: Ambos lados simplifican a la misma expresión exacta (ideal)
+- **Proved-symbolic**: Formas normales difieren, pero `simplify(LHS - RHS) == 0`
+- **Numeric-only**: Solo equivalencia numérica — oportunidad de mejora del engine
 
 ### Mejorar el Engine
 
 1. **Aumentar Symbolic %**: Añadir reglas de simplificación
-2. **Reducir Failed**: Verificar identidad matemática o corregir regla
-3. **Investigar asymmetric_invalid**: Señal de bug en evaluación
+2. **Reducir Numeric-only**: Analizar familias y shapes para priorizar reglas
+3. **Reducir Failed**: Verificar identidad matemática o corregir regla
+4. **Investigar asymmetric_invalid**: Señal de bug en evaluación
 
 ---
 
@@ -545,12 +607,13 @@ Esto es normal y **no es un error** — lo importante es que `Failed = 0`.
 |----------|---------|---------|-------------|
 | `METATEST_MODE` | `generic`/`assume` | `generic` | DomainMode del engine |
 | `METATEST_STRESS` | `0`/`1` | `0` | Más samples, mayor depth |
-| `METATEST_DIAG` | `0`/`1` | `0` | Habilita diagnóstico detallado |
+| `METATEST_DIAG` | `0`/`1` | `0` | Habilita diagnóstico detallado (individual) |
 | `METATEST_LEGACY_BUCKET` | `unconditional`/`conditional_requires` | `conditional_requires` | Bucket para CSV 4-col |
 | `METATEST_SNAPSHOT` | `0`/`1` | `0` | Compara resultados vs baseline |
 | `METATEST_UPDATE_BASELINE` | `0`/`1` | `0` | Regenera archivo baseline |
-| `METATEST_VERBOSE` | `0`/`1` | `0` | Muestra ejemplos de combinaciones numeric-only |
-| `METATEST_MAX_EXAMPLES` | número | `10` | Máximos ejemplos numeric-only a mostrar |
+| `METATEST_VERBOSE` | `0`/`1` | `0` | Informe detallado: ejemplos, familias, shapes |
+| `METATEST_MAX_EXAMPLES` | número | `10` | Máximos ejemplos a mostrar por categoría |
+| `METATEST_START_OFFSET` | número | `0` | Saltar las primeras N identidades del CSV |
 
 ---
 
@@ -784,7 +847,8 @@ Si algún refactor futuro añade `abs(u) → u` incorrecto, CI fallará.
 
 ```
 crates/cas_engine/tests/
-├── identity_pairs.csv              # Base de identidades
+├── identity_pairs.csv                   # Base de identidades (~400)
 ├── metamorphic_simplification_tests.rs  # Implementación
-└── metatest.log                    # Historial de ejecuciones
+├── baselines/metatest_baseline.jsonl    # Baseline de regresión
+└── metatest.log                         # Historial de ejecuciones
 ```
