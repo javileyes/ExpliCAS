@@ -10,6 +10,45 @@ use crate::step::Step;
 use cas_ast::ExprId;
 use std::collections::HashMap;
 
+/// Configuration for a simplification loop pass.
+///
+/// Replaces the 14-parameter signature of `apply_rules_loop_with_phase_and_mode`.
+/// Use `LoopConfig::default()` and override only the fields you need.
+#[derive(Debug, Clone)]
+pub struct LoopConfig {
+    pub phase: crate::phase::SimplifyPhase,
+    pub expand_mode: bool,
+    pub auto_expand: bool,
+    pub expand_budget: crate::phase::ExpandBudget,
+    pub domain_mode: crate::domain::DomainMode,
+    pub inv_trig: crate::semantics::InverseTrigPolicy,
+    pub value_domain: crate::semantics::ValueDomain,
+    pub goal: crate::semantics::NormalFormGoal,
+    pub simplify_purpose: crate::solve_safety::SimplifyPurpose,
+    pub context_mode: crate::options::ContextMode,
+    pub autoexpand_binomials: crate::options::AutoExpandBinomials,
+    pub heuristic_poly: crate::options::HeuristicPoly,
+}
+
+impl Default for LoopConfig {
+    fn default() -> Self {
+        Self {
+            phase: crate::phase::SimplifyPhase::Transform,
+            expand_mode: false,
+            auto_expand: false,
+            expand_budget: crate::phase::ExpandBudget::default(),
+            domain_mode: crate::domain::DomainMode::default(),
+            inv_trig: crate::semantics::InverseTrigPolicy::default(),
+            value_domain: crate::semantics::ValueDomain::default(),
+            goal: crate::semantics::NormalFormGoal::default(),
+            simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
+            context_mode: crate::options::ContextMode::default(),
+            autoexpand_binomials: crate::options::AutoExpandBinomials::Off,
+            heuristic_poly: crate::options::HeuristicPoly::On,
+        }
+    }
+}
+
 impl Simplifier {
     pub fn local_simplify(
         &mut self,
@@ -148,45 +187,33 @@ impl Simplifier {
         pattern_marks: &crate::pattern_marks::PatternMarks,
         phase: crate::phase::SimplifyPhase,
     ) -> (ExprId, Vec<Step>, crate::budget::PassStats) {
-        // Default: not in expand mode, no auto-expand, Generic domain mode, Strict inv_trig, RealOnly value_domain, Simplify goal
-        self.apply_rules_loop_with_phase_and_mode(
-            expr_id,
-            pattern_marks,
+        let config = LoopConfig {
             phase,
-            false,
-            false,
-            crate::phase::ExpandBudget::default(),
-            crate::domain::DomainMode::default(),
-            crate::semantics::InverseTrigPolicy::default(),
-            crate::semantics::ValueDomain::default(),
-            crate::semantics::NormalFormGoal::default(),
-            crate::solve_safety::SimplifyPurpose::default(),
-            crate::options::ContextMode::default(),
-            crate::options::AutoExpandBinomials::Off, // autoexpand_binomials: On by default
-            crate::options::HeuristicPoly::On,        // heuristic_poly: On by default
-        )
+            ..LoopConfig::default()
+        };
+        self.apply_rules_loop_with_config(expr_id, pattern_marks, &config)
     }
 
-    /// Apply rules loop with explicit expand_mode and auto_expand control.
+    /// Apply rules loop with full configuration via `LoopConfig`.
     /// Returns PassStats for the caller to charge the Budget.
-    #[allow(clippy::too_many_arguments)]
-    pub fn apply_rules_loop_with_phase_and_mode(
+    pub fn apply_rules_loop_with_config(
         &mut self,
         expr_id: ExprId,
         pattern_marks: &crate::pattern_marks::PatternMarks,
-        phase: crate::phase::SimplifyPhase,
-        expand_mode: bool,
-        auto_expand: bool,
-        expand_budget: crate::phase::ExpandBudget,
-        domain_mode: crate::domain::DomainMode,
-        inv_trig: crate::semantics::InverseTrigPolicy,
-        value_domain: crate::semantics::ValueDomain,
-        goal: crate::semantics::NormalFormGoal,
-        simplify_purpose: crate::solve_safety::SimplifyPurpose,
-        context_mode: crate::options::ContextMode,
-        autoexpand_binomials: crate::options::AutoExpandBinomials, // V2.15.8
-        heuristic_poly: crate::options::HeuristicPoly,             // V2.15.9
+        config: &LoopConfig,
     ) -> (ExprId, Vec<Step>, crate::budget::PassStats) {
+        let phase = config.phase;
+        let expand_mode = config.expand_mode;
+        let auto_expand = config.auto_expand;
+        let expand_budget = config.expand_budget;
+        let domain_mode = config.domain_mode;
+        let inv_trig = config.inv_trig;
+        let value_domain = config.value_domain;
+        let goal = config.goal;
+        let simplify_purpose = config.simplify_purpose;
+        let context_mode = config.context_mode;
+        let autoexpand_binomials = config.autoexpand_binomials;
+        let heuristic_poly = config.heuristic_poly;
         let rules = &self.rules;
         let global_rules = &self.global_rules;
         let steps_mode = self.steps_mode;

@@ -92,22 +92,22 @@ impl Orchestrator {
                     &mut self.pattern_marks,
                 );
             }
-            let (next, steps, pass_stats) = simplifier.apply_rules_loop_with_phase_and_mode(
-                current,
-                &self.pattern_marks,
+            let config = crate::engine::LoopConfig {
                 phase,
-                self.options.expand_mode,
-                global_auto_expand,
-                self.options.expand_budget,
-                self.options.domain,
-                self.options.inv_trig,
-                self.options.value_domain,
-                self.options.goal,
-                self.options.simplify_purpose,
-                self.options.context_mode,
-                self.options.autoexpand_binomials, // V2.15.8: education mode
-                self.options.heuristic_poly,       // V2.15.9: smart polynomial simplification
-            );
+                expand_mode: self.options.expand_mode,
+                auto_expand: global_auto_expand,
+                expand_budget: self.options.expand_budget,
+                domain_mode: self.options.domain,
+                inv_trig: self.options.inv_trig,
+                value_domain: self.options.value_domain,
+                goal: self.options.goal,
+                simplify_purpose: self.options.simplify_purpose,
+                context_mode: self.options.context_mode,
+                autoexpand_binomials: self.options.autoexpand_binomials,
+                heuristic_poly: self.options.heuristic_poly,
+            };
+            let (next, steps, pass_stats) =
+                simplifier.apply_rules_loop_with_config(current, &self.pattern_marks, &config);
 
             // Log budget stats for this iteration (actual charging done by caller if Budget provided)
             if pass_stats.rewrite_count > 0 || pass_stats.nodes_delta > 0 {

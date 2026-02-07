@@ -135,6 +135,10 @@ fn reconstruct_global(
                 root
             }
         }
+        (Expr::Hold(inner), PathStep::Inner) => {
+            let new_inner = reconstruct_global(ctx, inner, remaining_path, replacement);
+            ctx.add(Expr::Hold(new_inner))
+        }
         _ => root,
     }
 }

@@ -136,6 +136,14 @@ pub fn substitute_expr_by_id(
                 root
             }
         }
+        Expr::Hold(inner) => {
+            let new_inner = substitute_expr_by_id(context, inner, target, replacement);
+            if new_inner != inner {
+                context.add(Expr::Hold(new_inner))
+            } else {
+                root
+            }
+        }
         _ => root,
     }
 }

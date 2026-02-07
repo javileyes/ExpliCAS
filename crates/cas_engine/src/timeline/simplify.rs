@@ -722,6 +722,10 @@ impl<'a> TimelineHtml<'a> {
                     root
                 }
             }
+            (Expr::Hold(inner), PathStep::Inner) => {
+                let new_inner = self.reconstruct_global_expr(inner, remaining_path, replacement);
+                self.context.add(Expr::Hold(new_inner))
+            }
             _ => root,
         }
     }
