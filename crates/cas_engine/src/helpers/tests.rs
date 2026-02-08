@@ -80,22 +80,6 @@ fn test_flatten_mul_chain_with_neg() {
 }
 
 #[test]
-fn test_get_variant_name() {
-    let mut ctx = Context::new();
-    let a = ctx.num(1);
-    let b = ctx.num(2);
-
-    // Test with actual expressions from context
-    assert_eq!(get_variant_name(ctx.get(a)), "Number");
-
-    let x = ctx.var("x");
-    assert_eq!(get_variant_name(ctx.get(x)), "Variable");
-
-    let sum = ctx.add(Expr::Add(a, b));
-    assert_eq!(get_variant_name(ctx.get(sum)), "Add");
-}
-
-#[test]
 fn test_is_pi_over_n() {
     let mut ctx = Context::new();
     let pi_over_2 = build_pi_over_n(&mut ctx, 2);

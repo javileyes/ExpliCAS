@@ -43,22 +43,3 @@ pub(crate) fn get_integer_exact(ctx: &Context, expr: ExprId) -> Option<num_bigin
         _ => None,
     }
 }
-
-/// Get the variant name of an expression (for debugging/display)
-pub(crate) fn get_variant_name(expr: &Expr) -> &'static str {
-    match expr {
-        Expr::Number(_) => "Number",
-        Expr::Variable(_) => "Variable",
-        Expr::Constant(_) => "Constant",
-        Expr::Add(_, _) => "Add",
-        Expr::Sub(_, _) => "Sub",
-        Expr::Mul(_, _) => "Mul",
-        Expr::Div(_, _) => "Div",
-        Expr::Pow(_, _) => "Pow",
-        Expr::Neg(_) => "Neg",
-        Expr::Function(_, _) => "Function",
-        Expr::Matrix { .. } => "Matrix",
-        Expr::SessionRef(_) => "SessionRef",
-        Expr::Hold(_) => "Hold",
-    }
-}

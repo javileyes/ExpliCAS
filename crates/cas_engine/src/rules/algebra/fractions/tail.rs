@@ -3,6 +3,7 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
 use crate::rules::algebra::count_nodes_of_type;
+use crate::target_kind::TargetKind;
 use cas_ast::{count_nodes, Context, Expr, ExprId};
 use std::cmp::Ordering;
 
@@ -196,8 +197,8 @@ define_rule!(
         if count_nodes(ctx, result) >= count_nodes(ctx, expr) {
             // Only proceed if we actually reduced something or combined fractions
             // Check that we did combine (reduced number of Div nodes)
-            let old_divs = count_nodes_of_type(ctx, expr, "Div");
-            let new_divs = count_nodes_of_type(ctx, result, "Div");
+            let old_divs = count_nodes_of_type(ctx, expr, TargetKind::Div);
+            let new_divs = count_nodes_of_type(ctx, result, TargetKind::Div);
             if new_divs >= old_divs {
                 return None;
             }

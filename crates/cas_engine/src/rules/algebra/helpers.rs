@@ -1,5 +1,6 @@
-use crate::helpers::{get_variant_name, is_one};
+use crate::helpers::is_one;
 use crate::ordering::compare_expr;
+use crate::target_kind::TargetKind;
 use cas_ast::{Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{One, Signed};
@@ -18,10 +19,10 @@ pub(crate) fn gcd_rational(a: BigRational, b: BigRational) -> BigRational {
 
 /// Count nodes of a specific variant type.
 ///
-/// Uses canonical `cas_ast::traversal::count_nodes_matching` with variant name predicate.
+/// Uses canonical `cas_ast::traversal::count_nodes_matching` with `TargetKind` predicate.
 /// (See POLICY.md "Traversal Contract")
-pub(crate) fn count_nodes_of_type(ctx: &Context, expr: ExprId, variant: &str) -> usize {
-    cas_ast::traversal::count_nodes_matching(ctx, expr, |node| get_variant_name(node) == variant)
+pub(crate) fn count_nodes_of_type(ctx: &Context, expr: ExprId, kind: TargetKind) -> usize {
+    cas_ast::traversal::count_nodes_matching(ctx, expr, |node| TargetKind::from_expr(node) == kind)
 }
 
 /// Create a Mul but avoid trivial 1*x or x*1.
