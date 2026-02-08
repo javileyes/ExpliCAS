@@ -164,7 +164,7 @@ where
 
             return Some(
                 Rewrite::new(final_result)
-                    .desc(format!("-[{}]", desc))
+                    .desc_lazy(|| format!("-[{}]", desc))
                     .local(local_before, neg_result),
             );
         }
@@ -188,7 +188,7 @@ where
 
                 return Some(
                     Rewrite::new(final_result)
-                        .desc(format!("k·[{}]", desc))
+                        .desc_lazy(|| format!("k·[{}]", desc))
                         .local(local_before, scaled_result),
                 );
             }
@@ -213,7 +213,7 @@ where
 
                     return Some(
                         Rewrite::new(final_result)
-                            .desc(format!("-k·[{}]", desc))
+                            .desc_lazy(|| format!("-k·[{}]", desc))
                             .local(local_before, neg_scaled),
                     );
                 }
@@ -646,10 +646,12 @@ impl crate::rule::Rule for AtanAddRationalRule {
 
                             return Some(
                                 crate::rule::Rewrite::new(final_result)
-                                    .desc(format!(
-                                        "arctan({}) + arctan({}) = arctan((a+b)/(1-ab))",
-                                        a, b
-                                    ))
+                                    .desc_lazy(|| {
+                                        format!(
+                                            "arctan({}) + arctan({}) = arctan((a+b)/(1-ab))",
+                                            a, b
+                                        )
+                                    })
                                     .local(local_before, result_atan),
                             );
                         }

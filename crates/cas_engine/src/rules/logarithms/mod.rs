@@ -196,7 +196,8 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                     if let Some(ratio) = eval_log_rational(&b_int, &n_int) {
                         let new_expr = ctx.add(Expr::Number(ratio.clone()));
                         return Some(
-                            Rewrite::new(new_expr).desc(format!("log({}, {}) = {}", b, n, ratio)),
+                            Rewrite::new(new_expr)
+                                .desc_lazy(|| format!("log({}, {}) = {}", b, n, ratio)),
                         );
                     }
                 }

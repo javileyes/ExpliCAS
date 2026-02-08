@@ -42,7 +42,9 @@ define_rule!(
                         } else {
                             "tanh"
                         };
-                        return Some(Rewrite::new(ctx.num(0)).desc(format!("{}(0) = 0", name)));
+                        return Some(
+                            Rewrite::new(ctx.num(0)).desc_lazy(|| format!("{}(0) = 0", name)),
+                        );
                     }
                 }
                 // cosh(0) = 1
@@ -59,7 +61,9 @@ define_rule!(
                         } else {
                             "atanh"
                         };
-                        return Some(Rewrite::new(ctx.num(0)).desc(format!("{}(0) = 0", name)));
+                        return Some(
+                            Rewrite::new(ctx.num(0)).desc_lazy(|| format!("{}(0) = 0", name)),
+                        );
                     }
                 }
                 // acosh(1) = 0

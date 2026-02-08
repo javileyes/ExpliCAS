@@ -308,7 +308,7 @@ pub fn mul_finite_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
             };
             return Some(
                 Rewrite::new(mk_infinity(ctx, result_sign))
-                    .desc(format!("finite * ∞ → {:?}∞", result_sign)),
+                    .desc_lazy(|| format!("finite * ∞ → {:?}∞", result_sign)),
             );
         }
     }
@@ -327,7 +327,7 @@ pub fn mul_finite_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
             };
             return Some(
                 Rewrite::new(mk_infinity(ctx, result_sign))
-                    .desc(format!("finite * ∞ → {:?}∞", result_sign)),
+                    .desc_lazy(|| format!("finite * ∞ → {:?}∞", result_sign)),
             );
         }
     }
@@ -367,7 +367,7 @@ pub fn inf_div_finite(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
 
     Some(
         Rewrite::new(mk_infinity(ctx, result_sign))
-            .desc(format!("∞ / finite → {:?}∞", result_sign)),
+            .desc_lazy(|| format!("∞ / finite → {:?}∞", result_sign)),
     )
 }
 

@@ -100,10 +100,12 @@ define_rule!(
 
         let result = ctx.call("poly_mul_stats", vec![terms, degree, nvars, modulus]);
 
-        Some(Rewrite::new(result).desc(format!(
-            "poly_mul_modp: {} terms, degree {}, {} vars (mod {})",
-            meta.n_terms, meta.max_total_degree, meta.n_vars, meta.modulus
-        )))
+        Some(Rewrite::new(result).desc_lazy(|| {
+            format!(
+                "poly_mul_modp: {} terms, degree {}, {} vars (mod {})",
+                meta.n_terms, meta.max_total_degree, meta.n_vars, meta.modulus
+            )
+        }))
     }
 );
 

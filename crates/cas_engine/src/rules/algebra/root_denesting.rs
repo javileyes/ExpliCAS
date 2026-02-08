@@ -330,10 +330,10 @@ define_rule!(
         // Success! Return the root as the result
         let result = ctx.add(Expr::Number(root.clone()));
 
-        Some(Rewrite::new(result).desc(format!(
-            "Cubic conjugate identity: ∛(m+t) + ∛(m-t) = {}",
-            root
-        )))
+        Some(
+            Rewrite::new(result)
+                .desc_lazy(|| format!("Cubic conjugate identity: ∛(m+t) + ∛(m-t) = {}", root)),
+        )
     }
 );
 
@@ -544,10 +544,10 @@ define_rule!(
 
         let result = ctx.add(Expr::Add(sqrt_m, sqrt_n));
 
-        Some(Rewrite::new(result).desc(format!(
-            "Denest nested square root: √(a+√b) = √({}) + √({})",
-            m, n
-        )))
+        Some(
+            Rewrite::new(result)
+                .desc_lazy(|| format!("Denest nested square root: √(a+√b) = √({}) + √({})", m, n)),
+        )
     }
 );
 
@@ -790,10 +790,12 @@ define_rule!(
             ctx.add(Expr::Add(x_expr, y_sqrt_n))
         };
 
-        Some(Rewrite::new(result).desc(format!(
-            "Denest cube root in quadratic field: ∛(A+B√n) = {} + {}√{}",
-            x, y, n
-        )))
+        Some(Rewrite::new(result).desc_lazy(|| {
+            format!(
+                "Denest cube root in quadratic field: ∛(A+B√n) = {} + {}√{}",
+                x, y, n
+            )
+        }))
     }
 );
 

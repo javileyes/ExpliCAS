@@ -248,13 +248,15 @@ define_rule!(
 
         // Match! This is sin(x)
         let sin_x = ctx.call("sin", vec![original_angle]);
-        Some(crate::rule::Rewrite::new(sin_x).desc(format!(
-            "Reverse Weierstrass: 2t/(1+t²) = sin({})",
-            DisplayExpr {
-                context: ctx,
-                id: original_angle
-            }
-        )))
+        Some(crate::rule::Rewrite::new(sin_x).desc_lazy(|| {
+            format!(
+                "Reverse Weierstrass: 2t/(1+t²) = sin({})",
+                DisplayExpr {
+                    context: ctx,
+                    id: original_angle
+                }
+            )
+        }))
     }
 );
 

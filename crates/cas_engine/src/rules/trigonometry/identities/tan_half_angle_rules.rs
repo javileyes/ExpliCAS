@@ -238,7 +238,7 @@ define_rule!(
                             let result = ctx.call(rn, vec![arg]);
                             return Some(
                                 Rewrite::new(result)
-                                    .desc(format!("1/{}(t) = {}(t)", orig_name, rn)),
+                                    .desc_lazy(|| format!("1/{}(t) = {}(t)", orig_name, rn)),
                             );
                         }
                     }
@@ -271,10 +271,9 @@ define_rule!(
                     };
                     if let Some((rn, num_display, den_display)) = result_name {
                         let result = ctx.call(rn, vec![num_arg]);
-                        return Some(
-                            Rewrite::new(result)
-                                .desc(format!("{}/{}(t) = {}(t)", num_display, den_display, rn)),
-                        );
+                        return Some(Rewrite::new(result).desc_lazy(|| {
+                            format!("{}/{}(t) = {}(t)", num_display, den_display, rn)
+                        }));
                     }
                 }
             }

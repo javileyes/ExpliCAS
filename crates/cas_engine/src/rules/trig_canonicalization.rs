@@ -103,7 +103,7 @@ define_rule!(
             if let Some(canonical) = canonical_name {
                 let old_name = ctx.builtin_of(*fn_id).unwrap().name();
                 let new_fn = ctx.call(canonical, args_clone);
-                return Some(Rewrite::new(new_fn).desc(format!("{} → {}", old_name, canonical)));
+                return Some(Rewrite::new(new_fn).desc_lazy(|| format!("{} → {}", old_name, canonical)));
             }
         }
         None

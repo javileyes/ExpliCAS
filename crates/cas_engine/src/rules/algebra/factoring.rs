@@ -692,7 +692,7 @@ define_rule!(
 
         Some(
             Rewrite::new(new_expr)
-                .desc(format!("Factor out {}", gcd_int))
+                .desc_lazy(|| format!("Factor out {}", gcd_int))
                 .local(expr, new_expr),
         )
     }

@@ -50,10 +50,12 @@ impl SimpleRule for PolyStatsRule {
                     "too large to materialize".to_string()
                 };
 
-                return Some(Rewrite::new(result).desc(format!(
-                    "Poly #{}: {} terms, {} vars, repr=modp, {}",
-                    id, meta.n_terms, meta.n_vars, materialize_note
-                )));
+                return Some(Rewrite::new(result).desc_lazy(|| {
+                    format!(
+                        "Poly #{}: {} terms, {} vars, repr=modp, {}",
+                        id, meta.n_terms, meta.n_vars, materialize_note
+                    )
+                }));
             }
         }
 
@@ -105,10 +107,9 @@ impl SimpleRule for PolyToExprRule {
                         "Error: {} terms exceeds limit {}",
                         meta.n_terms, max_terms
                     ));
-                    return Some(Rewrite::new(msg).desc(format!(
-                        "poly_to_expr: {} terms > limit {}",
-                        meta.n_terms, max_terms
-                    )));
+                    return Some(Rewrite::new(msg).desc_lazy(|| {
+                        format!("poly_to_expr: {} terms > limit {}", meta.n_terms, max_terms)
+                    }));
                 }
 
                 // Materialize
@@ -121,7 +122,7 @@ impl SimpleRule for PolyToExprRule {
 
                 return Some(
                     Rewrite::new(materialized)
-                        .desc(format!("Materialized polynomial: {} terms", meta.n_terms)),
+                        .desc_lazy(|| format!("Materialized polynomial: {} terms", meta.n_terms)),
                 );
             }
         }
@@ -308,10 +309,9 @@ impl SimpleRule for PolyLatexRule {
             if let Some((meta, poly)) = thread_local_get_for_materialize(id) {
                 let formatted = format_poly_latex(&poly, &meta.var_names, max_terms);
                 let result = ctx.var(&formatted);
-                return Some(Rewrite::new(result).desc(format!(
-                    "LaTeX polynomial: {} terms",
-                    meta.n_terms.min(max_terms)
-                )));
+                return Some(Rewrite::new(result).desc_lazy(|| {
+                    format!("LaTeX polynomial: {} terms", meta.n_terms.min(max_terms))
+                }));
             }
         }
         None

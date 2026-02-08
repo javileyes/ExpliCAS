@@ -208,7 +208,8 @@ define_rule!(TrigPhaseShiftRule, "Trig Phase Shift", |ctx, expr| {
         };
 
         return Some(
-            Rewrite::new(new_expr).desc(format!("{}(x + {}) phase shift", name, shift_desc)),
+            Rewrite::new(new_expr)
+                .desc_lazy(|| format!("{}(x + {}) phase shift", name, shift_desc)),
         );
     }
 

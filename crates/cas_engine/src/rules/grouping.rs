@@ -94,7 +94,8 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
             if new_terms.is_empty() {
                 let zero = ctx.num(0);
                 return Some(
-                    Rewrite::new(zero).desc(format!("collect({}, {})", target_expr, var_name)),
+                    Rewrite::new(zero)
+                        .desc_lazy(|| format!("collect({}, {})", target_expr, var_name)),
                 );
             }
 
@@ -104,7 +105,8 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
             }
 
             return Some(
-                Rewrite::new(result).desc(format!("collect({}, {})", target_expr, var_name)),
+                Rewrite::new(result)
+                    .desc_lazy(|| format!("collect({}, {})", target_expr, var_name)),
             );
         }
     }

@@ -199,7 +199,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step:
                     let new_expr = ctx.add(Expr::Add(sum_expr, rr));
                     return Some(
                         Rewrite::new(new_expr)
-                            .desc(format!("Combine nested constants: {} + {}", n1, n2)),
+                            .desc_lazy(|| format!("Combine nested constants: {} + {}", n1, n2)),
                     );
                 }
             }
@@ -212,7 +212,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step:
             let (n1, n2) = (n1.clone(), n2.clone());
             let prod = &n1 * &n2;
             let new_expr = ctx.add(Expr::Number(prod.clone()));
-            return Some(Rewrite::new(new_expr).desc(format!("{} * {} = {}", n1, n2, prod)));
+            return Some(Rewrite::new(new_expr).desc_lazy(|| format!("{} * {} = {}", n1, n2, prod)));
         }
 
         // V2.15.25: Flatten complete Mul chain and combine ALL numeric factors
@@ -266,7 +266,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step:
             }
 
             let nums_str: Vec<String> = numeric_factors.iter().map(|n| format!("{}", n)).collect();
-            return Some(Rewrite::new(result).desc(format!(
+            return Some(Rewrite::new(result).desc_lazy(|| format!(
                 "Combine nested constants: {} = {}",
                 nums_str.join(" * "),
                 product
@@ -284,7 +284,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step:
                     let new_expr = smart_mul(ctx, prod_expr, rr);
                     return Some(
                         Rewrite::new(new_expr)
-                            .desc(format!("Combine nested constants: {} * {}", n1, n2)),
+                            .desc_lazy(|| format!("Combine nested constants: {} * {}", n1, n2)),
                     );
                 }
             }
@@ -298,7 +298,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step:
                         let ratio_expr = ctx.add(Expr::Number(ratio));
                         let new_expr = smart_mul(ctx, ratio_expr, num);
                         return Some(
-                            Rewrite::new(new_expr).desc(format!(
+                            Rewrite::new(new_expr).desc_lazy(|| format!(
                                 "{} * (x / {}) -> ({} / {}) * x",
                                 n1, n2, n1, n2
                             )),
@@ -315,7 +315,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step:
             let (n1, n2) = (n1.clone(), n2.clone());
             let diff = &n1 - &n2;
             let new_expr = ctx.add(Expr::Number(diff.clone()));
-            return Some(Rewrite::new(new_expr).desc(format!("{} - {} = {}", n1, n2, diff)));
+            return Some(Rewrite::new(new_expr).desc_lazy(|| format!("{} - {} = {}", n1, n2, diff)));
         }
     }
 
@@ -327,7 +327,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step:
                 let quot = &n1 / &n2;
                 let new_expr = ctx.add(Expr::Number(quot.clone()));
                 return Some(
-                    Rewrite::new(new_expr).desc(format!("{} / {} = {}", n1, n2, quot)),
+                    Rewrite::new(new_expr).desc_lazy(|| format!("{} / {} = {}", n1, n2, quot)),
                 );
             } else {
                 let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
@@ -348,7 +348,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step:
                         let new_expr = smart_mul(ctx, ratio_expr, mr);
                         return Some(
                             Rewrite::new(new_expr)
-                                .desc(format!("({} * x) / {} -> ({} / {}) * x", c, d, c, d)),
+                                .desc_lazy(|| format!("({} * x) / {} -> ({} / {}) * x", c, d, c, d)),
                         );
                     }
 
@@ -360,7 +360,7 @@ define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step:
                         let new_expr = smart_mul(ctx, ratio_expr, ml);
                         return Some(
                             Rewrite::new(new_expr)
-                                .desc(format!("(x * {}) / {} -> ({} / {}) * x", c, d, c, d)),
+                                .desc_lazy(|| format!("(x * {}) / {} -> ({} / {}) * x", c, d, c, d)),
                         );
                     }
                 }
@@ -625,11 +625,10 @@ define_rule!(
                     format!("{}/{}", sum.numer(), sum.denom())
                 };
 
-                return Some(Rewrite::new(new_pow).desc(format!(
-                    "{} = {}",
-                    addend_strs.join(" + "),
-                    sum_str
-                )));
+                return Some(
+                    Rewrite::new(new_pow)
+                        .desc_lazy(|| format!("{} = {}", addend_strs.join(" + "), sum_str)),
+                );
             }
         }
         None

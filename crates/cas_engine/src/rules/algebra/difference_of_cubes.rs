@@ -276,7 +276,7 @@ define_rule!(
             // The engine limits highlight search to before_local subtree, avoiding
             // incorrect highlights in denominator from shared ExprIds.
             let factor_rw = Rewrite::new(intermediate)
-                .desc(format!(
+                .desc_lazy(|| format!(
                     "Factor difference of cubes: x - {} = (x^(1/3) - {})·(x^(2/3) + {}·x^(1/3) + {})",
                     cube_val, b_val, b_val, &b_val * &b_val
                 ))

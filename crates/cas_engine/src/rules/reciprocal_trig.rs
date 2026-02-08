@@ -126,7 +126,8 @@ define_rule!(
                         for (outer, inner) in COMPOSITION_PAIRS {
                             if outer_name == *outer && inner_name == *inner {
                                 return Some(
-                                    Rewrite::new(x).desc(format!("{}({}(x)) = x", outer, inner)),
+                                    Rewrite::new(x)
+                                        .desc_lazy(|| format!("{}({}(x)) = x", outer, inner)),
                                 );
                             }
                         }

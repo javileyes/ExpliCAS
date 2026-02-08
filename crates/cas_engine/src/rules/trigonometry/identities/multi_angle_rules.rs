@@ -347,7 +347,8 @@ define_rule!(
                         let t2 = smart_mul(ctx, cos_nm1, sin_x);
                         let new_expr = ctx.add(Expr::Add(t1, t2));
                         return Some(
-                            Rewrite::new(new_expr).desc(format!("sin({}x) expansion", n_val)),
+                            Rewrite::new(new_expr)
+                                .desc_lazy(|| format!("sin({}x) expansion", n_val)),
                         );
                     } else {
                         // cos
@@ -355,7 +356,8 @@ define_rule!(
                         let t2 = smart_mul(ctx, sin_nm1, sin_x);
                         let new_expr = ctx.add(Expr::Sub(t1, t2));
                         return Some(
-                            Rewrite::new(new_expr).desc(format!("cos({}x) expansion", n_val)),
+                            Rewrite::new(new_expr)
+                                .desc_lazy(|| format!("cos({}x) expansion", n_val)),
                         );
                     }
                 }

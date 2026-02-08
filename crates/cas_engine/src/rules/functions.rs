@@ -402,7 +402,9 @@ define_rule!(
                 ctx.add(Expr::Mul(abs_pow_k, sqrt_base))
             };
 
-            return Some(Rewrite::new(result).desc(format!("x^({}/2) = |x|^{} * √x", n, k)));
+            return Some(
+                Rewrite::new(result).desc_lazy(|| format!("x^({}/2) = |x|^{} * √x", n, k)),
+            );
         }
 
         None
@@ -650,7 +652,9 @@ define_rule!(AbsOfEvenPowerRule, "Abs Of Even Power", |ctx, expr| {
                 if let Expr::Number(n) = ctx.get(*exp) {
                     if n.is_integer() && n.to_integer().is_even() {
                         // |x^(2k)| → x^(2k) since x^(2k) ≥ 0 always
-                        return Some(Rewrite::new(arg).desc(format!("|x^{}| = x^{}", n, n)));
+                        return Some(
+                            Rewrite::new(arg).desc_lazy(|| format!("|x^{}| = x^{}", n, n)),
+                        );
                     }
                 }
             }

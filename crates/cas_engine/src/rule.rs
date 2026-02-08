@@ -3,6 +3,32 @@ use crate::phase::PhaseMask;
 use crate::step::{ImportanceLevel, StepCategory};
 use cas_ast::{Context, ExprId};
 use std::borrow::Cow;
+use std::cell::Cell;
+
+// =============================================================================
+// Steps-enabled thread-local flag
+// =============================================================================
+//
+// When steps_mode == Off, rules still construct Rewrite objects with .desc().
+// This flag gates description computation so that format!() closures in
+// desc_lazy() are never evaluated, and desc() drops incoming Strings immediately.
+// Set by the engine in orchestration.rs before each simplification pass.
+
+thread_local! {
+    static STEPS_ENABLED: Cell<bool> = const { Cell::new(true) };
+}
+
+/// Set whether step descriptions should be computed.
+/// Called by the engine before simplification passes.
+pub fn set_steps_enabled(enabled: bool) {
+    STEPS_ENABLED.with(|s| s.set(enabled));
+}
+
+/// Check if step descriptions are enabled.
+#[inline]
+pub fn steps_enabled() -> bool {
+    STEPS_ENABLED.with(|s| s.get())
+}
 
 // =============================================================================
 // SoundnessLabel: Mathematical soundness classification for Rule transformations
@@ -91,9 +117,22 @@ impl ChainedRewrite {
     }
 
     /// Set the description of this chained step.
+    /// Gated: when steps are disabled, skips storage to avoid overhead.
     #[must_use]
     pub fn desc(mut self, description: impl Into<Cow<'static, str>>) -> Self {
-        self.description = description.into();
+        if steps_enabled() {
+            self.description = description.into();
+        }
+        self
+    }
+
+    /// Lazy description — closure is only evaluated when steps mode is on.
+    /// Use instead of `.desc(format!(...))` to avoid heap allocation when steps are off.
+    #[must_use]
+    pub fn desc_lazy(mut self, f: impl FnOnce() -> String) -> Self {
+        if steps_enabled() {
+            self.description = Cow::Owned(f());
+        }
         self
     }
 
@@ -247,9 +286,22 @@ impl Rewrite {
     // =========================================================================
 
     /// Set the description of this rewrite.
+    /// Gated: when steps are disabled, skips storage to avoid overhead.
     #[must_use]
     pub fn desc(mut self, description: impl Into<Cow<'static, str>>) -> Self {
-        self.description = description.into();
+        if steps_enabled() {
+            self.description = description.into();
+        }
+        self
+    }
+
+    /// Lazy description — closure is only evaluated when steps mode is on.
+    /// Use instead of `.desc(format!(...))` to avoid heap allocation when steps are off.
+    #[must_use]
+    pub fn desc_lazy(mut self, f: impl FnOnce() -> String) -> Self {
+        if steps_enabled() {
+            self.description = Cow::Owned(f());
+        }
         self
     }
 

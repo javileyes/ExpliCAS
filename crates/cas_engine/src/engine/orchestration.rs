@@ -101,6 +101,9 @@ impl Simplifier {
             normalize_cache: std::collections::HashMap::new(),
         };
 
+        // PERF: Set steps-enabled flag so rules can skip description computation
+        crate::rule::set_steps_enabled(self.steps_mode != crate::options::StepsMode::Off);
+
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
 
         // Extract steps from transformer
@@ -314,6 +317,9 @@ impl Simplifier {
             simplify_purpose,
             normalize_cache: std::collections::HashMap::new(),
         };
+
+        // PERF: Set steps-enabled flag so rules can skip description computation
+        crate::rule::set_steps_enabled(steps_mode != crate::options::StepsMode::Off);
 
         let new_expr = local_transformer.transform_expr_recursive(expr_id);
 

@@ -292,10 +292,10 @@ define_rule!(
 
         let new_expr = ctx.add(Expr::Div(new_num, new_den));
 
-        Some(Rewrite::new(new_expr).desc(format!(
-            "Rationalize {} root binomial (geometric sum)",
-            ordinal(n)
-        )))
+        Some(
+            Rewrite::new(new_expr)
+                .desc_lazy(|| format!("Rationalize {} root binomial (geometric sum)", ordinal(n))),
+        )
     }
 );
 
@@ -488,7 +488,10 @@ define_rule!(
         // Build result as sum
         let result = build_sum(ctx, &terms);
 
-        Some(Rewrite::new(result).desc(format!("Cancel {} root binomial factor", ordinal(n))))
+        Some(
+            Rewrite::new(result)
+                .desc_lazy(|| format!("Cancel {} root binomial factor", ordinal(n))),
+        )
     }
 );
 
@@ -698,10 +701,12 @@ define_rule!(
 
         let new_expr = ctx.add(Expr::Div(new_num, new_den_expanded));
 
-        Some(Rewrite::new(new_expr).desc(format!(
-            "Rationalize: group {} terms and multiply by conjugate",
-            terms.len()
-        )))
+        Some(Rewrite::new(new_expr).desc_lazy(|| {
+            format!(
+                "Rationalize: group {} terms and multiply by conjugate",
+                terms.len()
+            )
+        }))
     }
 );
 

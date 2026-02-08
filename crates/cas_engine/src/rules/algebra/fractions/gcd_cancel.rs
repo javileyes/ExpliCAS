@@ -823,7 +823,7 @@ define_rule!(
                 use crate::implicit_domain::ImplicitCondition;
                 let gcd_display = format!("{}", DisplayExpr { context: ctx, id: gcd_expr });
                 let factor_rw = Rewrite::new(factored_form_norm)
-                    .desc(format!("Factor by GCD: {}", gcd_display))
+                    .desc_lazy(|| format!("Factor by GCD: {}", gcd_display))
                     .local(expr, factored_form_norm)
                     .requires(ImplicitCondition::NonZero(den));
 
@@ -915,7 +915,7 @@ define_rule!(
                 let result = ctx.add(Expr::Div(new_num_expr, new_den_expr));
 
                 return Some(Rewrite::new(result)
-                    .desc(format!("Reduced numeric content by gcd {} (strict-safe)", numeric_gcd))
+                    .desc_lazy(|| format!("Reduced numeric content by gcd {} (strict-safe)", numeric_gcd))
                     .local(expr, result));
             }
             // No numeric content to cancel, don't simplify
@@ -971,7 +971,7 @@ define_rule!(
         use crate::implicit_domain::ImplicitCondition;
         let gcd_display = format!("{}", DisplayExpr { context: ctx, id: gcd_expr });
         let factor_rw = Rewrite::new(factored_form_norm)
-            .desc(format!("Factor by GCD: {}", gcd_display))
+            .desc_lazy(|| format!("Factor by GCD: {}", gcd_display))
             .local(expr, factored_form_norm)
             .requires(ImplicitCondition::NonZero(den));
 

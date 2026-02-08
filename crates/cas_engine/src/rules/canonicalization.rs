@@ -39,7 +39,7 @@ define_rule!(
 
                 let n_display = n.clone();
                 let new_expr = ctx.add(Expr::Number(normalized_n.clone()));
-                return Some(Rewrite::new(new_expr).desc(format!("-({}) = {}", n_display, normalized_n)));
+                return Some(Rewrite::new(new_expr).desc_lazy(|| format!("-({}) = {}", n_display, normalized_n)));
             }
 
             // -(-x) -> x
@@ -72,7 +72,7 @@ define_rule!(
                     let neg_n = -n.clone();
                     let neg_n_expr = ctx.add(Expr::Number(neg_n.clone()));
                     let new_expr = mul2_raw(ctx, neg_n_expr, rhs);
-                    return Some(Rewrite::new(new_expr).desc(format!("-({} * x) = {} * x", n, neg_n)));
+                    return Some(Rewrite::new(new_expr).desc_lazy(|| format!("-({} * x) = {} * x", n, neg_n)));
                 }
             }
 
@@ -120,7 +120,7 @@ define_rule!(
                     let neg_n = -n.clone();
                     let neg_n_expr = ctx.add(Expr::Number(neg_n.clone()));
                     let new_expr = mul2_raw(ctx, neg_n_expr, inner_r);
-                    return Some(Rewrite::new(new_expr).desc(format!("{} * (-x) = {} * x", n, neg_n)));
+                    return Some(Rewrite::new(new_expr).desc_lazy(|| format!("{} * (-x) = {} * x", n, neg_n)));
                 }
 
                 let new_mul = mul2_raw(ctx, lhs, inner_r);
@@ -315,7 +315,7 @@ define_rule!(CanonicalizeDivRule, "Canonicalize Division", importance: crate::st
                 let inv = n.recip();
                 let inv_expr = ctx.add(Expr::Number(inv));
                 let new_expr = smart_mul(ctx, inv_expr, lhs);
-                return Some(Rewrite::new(new_expr).desc(format!("x / {} = (1/{}) * x", n, n)));
+                return Some(Rewrite::new(new_expr).desc_lazy(|| format!("x / {} = (1/{}) * x", n, n)));
             }
         }
     }
@@ -390,7 +390,8 @@ define_rule!(NormalizeSignsRule, "Normalize Signs", |ctx, expr| {
                     let n_clone = n.clone();
                     let new_expr = ctx.add(Expr::Sub(r, inner_neg));
                     return Some(
-                        Rewrite::new(new_expr).desc(format!("-{} + x -> x - {}", n_clone, n_clone)),
+                        Rewrite::new(new_expr)
+                            .desc_lazy(|| format!("-{} + x -> x - {}", n_clone, n_clone)),
                     );
                 }
             }
@@ -403,7 +404,7 @@ define_rule!(NormalizeSignsRule, "Normalize Signs", |ctx, expr| {
                     let new_expr = ctx.add(Expr::Sub(l, inner_neg));
                     return Some(
                         Rewrite::new(new_expr)
-                            .desc(format!("x + (-{}) -> x - {}", n_clone, n_clone)),
+                            .desc_lazy(|| format!("x + (-{}) -> x - {}", n_clone, n_clone)),
                     );
                 }
             }

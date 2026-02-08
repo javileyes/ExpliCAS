@@ -174,94 +174,106 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
         "lcm" => {
             if args.len() == 2 {
                 if let Some(res) = compute_lcm(ctx, args[0], args[1]) {
-                    return Some(Rewrite::new(res).desc(format!(
-                        "lcm({}, {})",
-                        cas_ast::DisplayExpr {
-                            context: ctx,
-                            id: args[0]
-                        },
-                        cas_ast::DisplayExpr {
-                            context: ctx,
-                            id: args[1]
-                        }
-                    )));
+                    return Some(Rewrite::new(res).desc_lazy(|| {
+                        format!(
+                            "lcm({}, {})",
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[0]
+                            },
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[1]
+                            }
+                        )
+                    }));
                 }
             }
         }
         "mod" => {
             if args.len() == 2 {
                 if let Some(res) = compute_mod(ctx, args[0], args[1]) {
-                    return Some(Rewrite::new(res).desc(format!(
-                        "mod({}, {})",
-                        cas_ast::DisplayExpr {
-                            context: ctx,
-                            id: args[0]
-                        },
-                        cas_ast::DisplayExpr {
-                            context: ctx,
-                            id: args[1]
-                        }
-                    )));
+                    return Some(Rewrite::new(res).desc_lazy(|| {
+                        format!(
+                            "mod({}, {})",
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[0]
+                            },
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[1]
+                            }
+                        )
+                    }));
                 }
             }
         }
         "prime_factors" | "factors" => {
             if args.len() == 1 {
                 if let Some(res) = compute_prime_factors(ctx, args[0]) {
-                    return Some(Rewrite::new(res).desc(format!(
-                        "factors({})",
-                        cas_ast::DisplayExpr {
-                            context: ctx,
-                            id: args[0]
-                        }
-                    )));
+                    return Some(Rewrite::new(res).desc_lazy(|| {
+                        format!(
+                            "factors({})",
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[0]
+                            }
+                        )
+                    }));
                 }
             }
         }
         "fact" | "factorial" => {
             if args.len() == 1 {
                 if let Some(res) = compute_factorial(ctx, args[0]) {
-                    return Some(Rewrite::new(res).desc(format!(
-                        "fact({})",
-                        cas_ast::DisplayExpr {
-                            context: ctx,
-                            id: args[0]
-                        }
-                    )));
+                    return Some(Rewrite::new(res).desc_lazy(|| {
+                        format!(
+                            "fact({})",
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[0]
+                            }
+                        )
+                    }));
                 }
             }
         }
         "choose" | "nCr" => {
             if args.len() == 2 {
                 if let Some(res) = compute_choose(ctx, args[0], args[1]) {
-                    return Some(Rewrite::new(res).desc(format!(
-                        "choose({}, {})",
-                        cas_ast::DisplayExpr {
-                            context: ctx,
-                            id: args[0]
-                        },
-                        cas_ast::DisplayExpr {
-                            context: ctx,
-                            id: args[1]
-                        }
-                    )));
+                    return Some(Rewrite::new(res).desc_lazy(|| {
+                        format!(
+                            "choose({}, {})",
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[0]
+                            },
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[1]
+                            }
+                        )
+                    }));
                 }
             }
         }
         "perm" | "nPr" => {
             if args.len() == 2 {
                 if let Some(res) = compute_perm(ctx, args[0], args[1]) {
-                    return Some(Rewrite::new(res).desc(format!(
-                        "perm({}, {})",
-                        cas_ast::DisplayExpr {
-                            context: ctx,
-                            id: args[0]
-                        },
-                        cas_ast::DisplayExpr {
-                            context: ctx,
-                            id: args[1]
-                        }
-                    )));
+                    return Some(Rewrite::new(res).desc_lazy(|| {
+                        format!(
+                            "perm({}, {})",
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[0]
+                            },
+                            cas_ast::DisplayExpr {
+                                context: ctx,
+                                id: args[1]
+                            }
+                        )
+                    }));
                 }
             }
         }

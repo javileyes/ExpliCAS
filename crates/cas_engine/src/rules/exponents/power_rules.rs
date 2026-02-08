@@ -612,7 +612,7 @@ define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", importance: crate::ste
                         let inside_rat = BigRational::new(in_n, in_d);
                         if inside_rat.is_one() {
                             let new_expr = ctx.add(Expr::Number(outside_val));
-                            return Some(Rewrite::new(new_expr).desc(format!("Simplify root: {}^{}", b, e)));
+                            return Some(Rewrite::new(new_expr).desc_lazy(|| format!("Simplify root: {}^{}", b, e)));
                         } else {
                             let outside_expr = ctx.add(Expr::Number(outside_val));
                             let inside_expr = ctx.add(Expr::Number(inside_rat));
@@ -620,7 +620,7 @@ define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", importance: crate::ste
                             let root_part = ctx.add(Expr::Pow(inside_expr, exp_expr));
                             let new_expr = ctx.add(Expr::Mul(outside_expr, root_part));
                             return Some(
-                                Rewrite::new(new_expr).desc(format!("Simplify root: {}^{}", b, e)),
+                                Rewrite::new(new_expr).desc_lazy(|| format!("Simplify root: {}^{}", b, e)),
                             );
                         }
                     }

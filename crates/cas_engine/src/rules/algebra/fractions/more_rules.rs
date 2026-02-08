@@ -353,25 +353,27 @@ define_rule!(
             return None;
         }
 
-        Some(Rewrite::new(new_expr).desc(format!(
-            "{} / {} -> {} / {}",
-            DisplayExpr {
-                context: ctx,
-                id: num
-            },
-            DisplayExpr {
-                context: ctx,
-                id: den
-            },
-            DisplayExpr {
-                context: ctx,
-                id: new_num
-            },
-            DisplayExpr {
-                context: ctx,
-                id: new_den
-            }
-        )))
+        Some(Rewrite::new(new_expr).desc_lazy(|| {
+            format!(
+                "{} / {} -> {} / {}",
+                DisplayExpr {
+                    context: ctx,
+                    id: num
+                },
+                DisplayExpr {
+                    context: ctx,
+                    id: den
+                },
+                DisplayExpr {
+                    context: ctx,
+                    id: new_num
+                },
+                DisplayExpr {
+                    context: ctx,
+                    id: new_den
+                }
+            )
+        }))
     }
 );
 

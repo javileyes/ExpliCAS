@@ -58,7 +58,7 @@ define_rule!(
                     if is_sin {
                         // sin(n·π) = 0 for any integer n
                         let zero = ctx.num(0);
-                        return Some(Rewrite::new(zero).desc(format!("sin({}·π) = 0", n)));
+                        return Some(Rewrite::new(zero).desc_lazy(|| format!("sin({}·π) = 0", n)));
                     } else {
                         // cos(n·π) = (-1)^n
                         // n even → 1, n odd → -1
@@ -66,7 +66,7 @@ define_rule!(
                         let result = if is_even { ctx.num(1) } else { ctx.num(-1) };
                         let result_str = if is_even { "1" } else { "-1" };
                         return Some(
-                            Rewrite::new(result).desc(format!("cos({}·π) = {}", n, result_str)),
+                            Rewrite::new(result).desc_lazy(|| format!("cos({}·π) = {}", n, result_str)),
                         );
                     }
                 }
@@ -150,16 +150,18 @@ define_rule!(
                         let f_u = ctx.add(Expr::Function(fn_id, vec![positive_arg]));
                         let neg_f_u = ctx.add(Expr::Neg(f_u));
                         return Some(
-                            Rewrite::new(neg_f_u)
-                                .desc(format!("{}(-u) = -{}(u) [odd function]", name, name)),
+                            Rewrite::new(neg_f_u).desc_lazy(|| {
+                                format!("{}(-u) = -{}(u) [odd function]", name, name)
+                            }),
                         );
                     }
                     // EVEN functions: f(-u) = f(u)
                     "cos" | "sec" | "cosh" => {
                         let f_u = ctx.add(Expr::Function(fn_id, vec![positive_arg]));
                         return Some(
-                            Rewrite::new(f_u)
-                                .desc(format!("{}(-u) = {}(u) [even function]", name, name)),
+                            Rewrite::new(f_u).desc_lazy(|| {
+                                format!("{}(-u) = {}(u) [even function]", name, name)
+                            }),
                         );
                     }
                     _ => {}
@@ -227,7 +229,9 @@ define_rule!(
                         match name.as_str() {
                             "sin" | "tan" | "arcsin" | "arctan" => {
                                 let zero = ctx.num(0);
-                                return Some(Rewrite::new(zero).desc(format!("{}(0) = 0", name)));
+                                return Some(
+                                    Rewrite::new(zero).desc_lazy(|| format!("{}(0) = 0", name)),
+                                );
                             }
                             "cos" => {
                                 let one = ctx.num(1);
@@ -286,7 +290,9 @@ define_rule!(
                     match name.as_str() {
                         "sin" | "tan" => {
                             let zero = ctx.num(0);
-                            return Some(Rewrite::new(zero).desc(format!("{}(pi) = 0", name)));
+                            return Some(
+                                Rewrite::new(zero).desc_lazy(|| format!("{}(pi) = 0", name)),
+                            );
                         }
                         "cos" => {
                             let neg_one = ctx.num(-1);
@@ -362,7 +368,8 @@ define_rule!(
                             let two3 = ctx.num(2);
                             let new_expr = ctx.add(Expr::Div(sqrt2, two3));
                             return Some(
-                                Rewrite::new(new_expr).desc(format!("{}(π/4) = √2/2", name)),
+                                Rewrite::new(new_expr)
+                                    .desc_lazy(|| format!("{}(π/4) = √2/2", name)),
                             );
                         }
                         "tan" => {

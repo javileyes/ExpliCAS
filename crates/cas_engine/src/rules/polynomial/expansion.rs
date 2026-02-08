@@ -141,7 +141,7 @@ impl crate::rule::Rule for BinomialExpansionRule {
 
                             return Some(
                                 Rewrite::new(expanded)
-                                    .desc(format!("Expand binomial power ^{}", n_val)),
+                                    .desc_lazy(|| format!("Expand binomial power ^{}", n_val)),
                             );
                         }
                     }
@@ -345,7 +345,9 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
                 expanded = ctx.add(Expr::Add(expanded, term));
             }
 
-            return Some(Rewrite::new(expanded).desc(format!("Auto-expand (a+b)^{}", n_val)));
+            return Some(
+                Rewrite::new(expanded).desc_lazy(|| format!("Auto-expand (a+b)^{}", n_val)),
+            );
         }
 
         // For trinomials and higher, use general multinomial expansion

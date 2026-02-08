@@ -26,10 +26,12 @@ impl SimpleRule for MatrixAddRule {
             ) {
                 // Add matrices
                 if let Some(result) = m1.add(&m2, ctx) {
-                    return Some(Rewrite::new(result.to_expr(ctx)).desc(format!(
-                        "Matrix addition: {}×{} + {}×{}",
-                        m1.rows, m1.cols, m2.rows, m2.cols
-                    )));
+                    return Some(Rewrite::new(result.to_expr(ctx)).desc_lazy(|| {
+                        format!(
+                            "Matrix addition: {}×{} + {}×{}",
+                            m1.rows, m1.cols, m2.rows, m2.cols
+                        )
+                    }));
                 }
             }
         }
@@ -59,10 +61,12 @@ impl SimpleRule for MatrixSubRule {
                 Matrix::from_expr(ctx, right_id),
             ) {
                 if let Some(result) = m1.sub(&m2, ctx) {
-                    return Some(Rewrite::new(result.to_expr(ctx)).desc(format!(
-                        "Matrix subtraction: {}×{} - {}×{}",
-                        m1.rows, m1.cols, m2.rows, m2.cols
-                    )));
+                    return Some(Rewrite::new(result.to_expr(ctx)).desc_lazy(|| {
+                        format!(
+                            "Matrix subtraction: {}×{} - {}×{}",
+                            m1.rows, m1.cols, m2.rows, m2.cols
+                        )
+                    }));
                 }
             }
         }
@@ -91,20 +95,24 @@ impl SimpleRule for ScalarMatrixRule {
             if let Some(matrix) = Matrix::from_expr(ctx, right_id) {
                 // left is the scalar
                 let result = matrix.scalar_mul(left_id, ctx);
-                return Some(Rewrite::new(result.to_expr(ctx)).desc(format!(
-                    "Scalar multiplication: scalar × {}×{} matrix",
-                    matrix.rows, matrix.cols
-                )));
+                return Some(Rewrite::new(result.to_expr(ctx)).desc_lazy(|| {
+                    format!(
+                        "Scalar multiplication: scalar × {}×{} matrix",
+                        matrix.rows, matrix.cols
+                    )
+                }));
             }
 
             // Try matrix * scalar
             if let Some(matrix) = Matrix::from_expr(ctx, left_id) {
                 // right is the scalar
                 let result = matrix.scalar_mul(right_id, ctx);
-                return Some(Rewrite::new(result.to_expr(ctx)).desc(format!(
-                    "Scalar multiplication: {}×{} matrix × scalar",
-                    matrix.rows, matrix.cols
-                )));
+                return Some(Rewrite::new(result.to_expr(ctx)).desc_lazy(|| {
+                    format!(
+                        "Scalar multiplication: {}×{} matrix × scalar",
+                        matrix.rows, matrix.cols
+                    )
+                }));
             }
         }
         None
@@ -137,10 +145,12 @@ impl SimpleRule for MatrixMultiplyRule {
                 // Actually, 1×1 matrices should be treated as matrices for multiplication
                 // So we proceed with matrix multiplication
                 if let Some(result) = m1.multiply(&m2, ctx) {
-                    return Some(Rewrite::new(result.to_expr(ctx)).desc(format!(
-                        "Matrix multiplication: {}×{} × {}×{} = {}×{}",
-                        m1.rows, m1.cols, m2.rows, m2.cols, result.rows, result.cols
-                    )));
+                    return Some(Rewrite::new(result.to_expr(ctx)).desc_lazy(|| {
+                        format!(
+                            "Matrix multiplication: {}×{} × {}×{} = {}×{}",
+                            m1.rows, m1.cols, m2.rows, m2.cols, result.rows, result.cols
+                        )
+                    }));
                 }
             }
         }
@@ -170,12 +180,9 @@ impl SimpleRule for MatrixFunctionRule {
                     if args.len() == 1 {
                         if let Some(matrix) = Matrix::from_expr(ctx, args[0]) {
                             if let Some(det_value) = matrix.determinant(ctx) {
-                                return Some(
-                                    Rewrite::new(det_value).desc(format!(
-                                        "det({}×{} matrix)",
-                                        matrix.rows, matrix.cols
-                                    )),
-                                );
+                                return Some(Rewrite::new(det_value).desc_lazy(|| {
+                                    format!("det({}×{} matrix)", matrix.rows, matrix.cols)
+                                }));
                             }
                         }
                     }
@@ -184,10 +191,12 @@ impl SimpleRule for MatrixFunctionRule {
                     if args.len() == 1 {
                         if let Some(matrix) = Matrix::from_expr(ctx, args[0]) {
                             let transposed = matrix.transpose();
-                            return Some(Rewrite::new(transposed.to_expr(ctx)).desc(format!(
-                                "transpose({}×{}) = {}×{}",
-                                matrix.rows, matrix.cols, transposed.rows, transposed.cols
-                            )));
+                            return Some(Rewrite::new(transposed.to_expr(ctx)).desc_lazy(|| {
+                                format!(
+                                    "transpose({}×{}) = {}×{}",
+                                    matrix.rows, matrix.cols, transposed.rows, transposed.cols
+                                )
+                            }));
                         }
                     }
                 }
@@ -195,10 +204,9 @@ impl SimpleRule for MatrixFunctionRule {
                     if args.len() == 1 {
                         if let Some(matrix) = Matrix::from_expr(ctx, args[0]) {
                             if let Some(trace_value) = matrix.trace(ctx) {
-                                return Some(Rewrite::new(trace_value).desc(format!(
-                                    "trace({}×{} matrix)",
-                                    matrix.rows, matrix.cols
-                                )));
+                                return Some(Rewrite::new(trace_value).desc_lazy(|| {
+                                    format!("trace({}×{} matrix)", matrix.rows, matrix.cols)
+                                }));
                             }
                         }
                     }
