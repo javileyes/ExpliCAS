@@ -221,7 +221,7 @@ fn warnings_in_steps_on_mode() {
     assert_eq!(mode, StepsMode::On);
 
     // Check if any step has assumption_events (Morrie rule should produce one)
-    let _has_assumption_events = steps.iter().any(|s| !s.assumption_events.is_empty());
+    let _has_assumption_events = steps.iter().any(|s| !s.assumption_events().is_empty());
 
     // Note: This depends on whether the Morrie telescoping rule fires
     // If the simplifier applies the rule, we expect assumption_events
@@ -229,13 +229,13 @@ fn warnings_in_steps_on_mode() {
         // If steps exist and Morrie applies, we should see assumption_events
         let assumption_steps: Vec<_> = steps
             .iter()
-            .filter(|s| !s.assumption_events.is_empty())
+            .filter(|s| !s.assumption_events().is_empty())
             .collect();
         println!(
             "Assumption event steps: {:?}",
             assumption_steps
                 .iter()
-                .flat_map(|s| &s.assumption_events)
+                .flat_map(|s| s.assumption_events())
                 .map(|e| &e.message)
                 .collect::<Vec<_>>()
         );

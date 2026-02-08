@@ -35,7 +35,7 @@ pub fn optimize_steps_semantic(
     }
 
     // Check if there are polynomial identity steps - use absorption to hide mechanical steps
-    let has_poly_identity = steps.iter().any(|s| s.poly_proof.is_some());
+    let has_poly_identity = steps.iter().any(|s| s.poly_proof().is_some());
 
     // Otherwise, apply normal optimization (with absorption if PolyZero present)
     if has_poly_identity {
@@ -87,7 +87,7 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
                 if next.importance >= crate::step::ImportanceLevel::Medium {
                     break;
                 }
-                if is_canonicalization_rule(&next.rule_name) && next.path == current.path {
+                if is_canonicalization_rule(&next.rule_name) && next.path() == current.path() {
                     last_same_path_idx = j;
                     j += 1;
                 } else {
@@ -102,20 +102,16 @@ pub fn optimize_steps(steps: Vec<Step>) -> Vec<Step> {
                     rule_name: "Canonicalize".to_string(),
                     before: current.before,
                     after: last.after,
-                    path: current.path.clone(),
-                    after_str: last.after_str.clone(),
                     global_before: current.global_before,
                     global_after: last.global_after,
-                    before_local: None,
-                    after_local: None,
-                    assumption_events: Default::default(),
-                    required_conditions: vec![],
-                    poly_proof: None,
                     importance: crate::step::ImportanceLevel::Low,
                     category: crate::step::StepCategory::Canonicalize,
-                    is_chained: false,
                     soundness: crate::rule::SoundnessLabel::Equivalence,
-                    substeps: vec![],
+                    meta: Some(Box::new(crate::step::StepMeta {
+                        path: current.path().to_vec(),
+                        after_str: last.after_str().map(|s| s.to_string()),
+                        ..Default::default()
+                    })),
                 };
                 optimized.push(coalesced);
                 i = last_same_path_idx + 1;
@@ -199,7 +195,7 @@ pub fn find_steps_to_absorb_for_polyzero(steps: &[Step]) -> Vec<usize> {
 
     for (j, step) in steps.iter().enumerate() {
         // Detect PolynomialIdentity step by poly_proof data
-        if step.poly_proof.is_some() {
+        if step.poly_proof().is_some() {
             // Walk backwards within window and absorb mechanical steps
             let window_start = j.saturating_sub(ABSORPTION_WINDOW);
 

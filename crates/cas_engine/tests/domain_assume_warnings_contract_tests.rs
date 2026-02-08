@@ -14,7 +14,7 @@ use cas_parser::parse;
 
 /// Helper: check if step has any assumption_events
 fn step_has_assumption(step: &Step) -> bool {
-    !step.assumption_events.is_empty()
+    !step.assumption_events().is_empty()
 }
 
 /// Helper: simplify with Assume domain mode, returning result and steps
@@ -73,7 +73,7 @@ fn assume_2x_div_2x_simplifies_and_assumption_mentions_symbolic_part() {
     // Contract: the assumption should mention x (the symbolic nonzero), not "2*x"
     // (since 2 is provably nonzero, only x needs to be assumed)
     // Check structured assumption_events
-    let has_structured = steps.iter().any(|s| !s.assumption_events.is_empty());
+    let has_structured = steps.iter().any(|s| !s.assumption_events().is_empty());
 
     assert!(
         has_structured,

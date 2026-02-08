@@ -28,7 +28,7 @@ fn test_chained_step_no_gcd_substeps() {
     );
     step.importance = ImportanceLevel::Medium;
     step.category = StepCategory::Simplify;
-    step.is_chained = true; // Marked as from ChainedRewrite
+    step.meta_mut().is_chained = true; // Marked as from ChainedRewrite
 
     // Enrich steps
     let enriched = enrich_steps(&ctx, before, vec![step]);
@@ -64,7 +64,7 @@ fn test_non_chained_step_may_have_gcd_substeps() {
     );
     step.importance = ImportanceLevel::Medium;
     step.category = StepCategory::Simplify;
-    step.is_chained = false; // NOT chained - substeps should be attempted
+    step.meta_mut().is_chained = false; // NOT chained - substeps should be attempted
 
     // Enrich steps
     let enriched = enrich_steps(&ctx, before, vec![step]);

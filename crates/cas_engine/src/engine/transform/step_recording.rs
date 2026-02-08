@@ -176,13 +176,16 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 global_before,
                 main_global_after,
             );
-            step.before_local = main_before_local;
-            step.after_local = main_after_local;
-            step.assumption_events = main_assumptions;
-            step.required_conditions = main_required;
-            step.poly_proof = main_poly_proof;
-            step.substeps = main_substeps;
             step.importance = rule.importance();
+            {
+                let meta = step.meta_mut();
+                meta.before_local = main_before_local;
+                meta.after_local = main_after_local;
+                meta.assumption_events = main_assumptions;
+                meta.required_conditions = main_required;
+                meta.poly_proof = main_poly_proof;
+                meta.substeps = main_substeps;
+            }
             self.steps.push(step);
 
             // Trace coherence verification
@@ -210,13 +213,16 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     chain_global_before,
                     chain_global_after,
                 );
-                chain_step.before_local = chain_rw.before_local;
-                chain_step.after_local = chain_rw.after_local;
-                chain_step.assumption_events = chain_rw.assumption_events;
-                chain_step.required_conditions = chain_rw.required_conditions;
-                chain_step.poly_proof = chain_rw.poly_proof;
                 chain_step.importance = chain_rw.importance.unwrap_or_else(|| rule.importance());
-                chain_step.is_chained = true;
+                {
+                    let meta = chain_step.meta_mut();
+                    meta.before_local = chain_rw.before_local;
+                    meta.after_local = chain_rw.after_local;
+                    meta.assumption_events = chain_rw.assumption_events;
+                    meta.required_conditions = chain_rw.required_conditions;
+                    meta.poly_proof = chain_rw.poly_proof;
+                    meta.is_chained = true;
+                }
                 self.steps.push(chain_step);
 
                 current = chain_rw.after;

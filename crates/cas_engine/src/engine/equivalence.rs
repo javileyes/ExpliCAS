@@ -127,7 +127,7 @@ impl Simplifier {
             let mut requires: Vec<String> = Vec::new();
 
             for step in &steps_a {
-                for req in &step.required_conditions {
+                for req in step.required_conditions() {
                     let condition_str = req.display(&self.context);
                     if !requires.contains(&condition_str) {
                         requires.push(condition_str);
@@ -162,7 +162,7 @@ impl Simplifier {
                 if step.soundness != SoundnessLabel::Equivalence {
                     has_conditional_rules = true;
                 }
-                for req in &step.required_conditions {
+                for req in step.required_conditions() {
                     let condition_str = req.display(&self.context);
                     if !requires.contains(&condition_str) {
                         requires.push(condition_str);
@@ -235,7 +235,7 @@ impl Simplifier {
                 }
 
                 // Collect required_conditions from steps
-                for req in &step.required_conditions {
+                for req in step.required_conditions() {
                     let condition_str = req.display(&self.context);
                     if !requires.contains(&condition_str) {
                         requires.push(condition_str);

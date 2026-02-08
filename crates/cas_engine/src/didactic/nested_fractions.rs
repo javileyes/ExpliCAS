@@ -383,8 +383,8 @@ pub(crate) fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> V
     // Extract before/after expressions
     // Use before_local/after_local if available (the focused sub-expression)
     // Otherwise fall back to global before/after
-    let before = step.before_local.unwrap_or(step.before);
-    let after = step.after_local.unwrap_or(step.after);
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
 
     // Check if it's a generalized rationalization (3+ terms)
     if step.description.contains("group") {
@@ -574,7 +574,7 @@ pub(crate) fn generate_polynomial_identity_substeps(
     let mut sub_steps = Vec::new();
 
     // Get the proof data (caller should have checked is_some())
-    let proof = match &step.poly_proof {
+    let proof = match step.poly_proof() {
         Some(p) => p,
         None => return sub_steps,
     };
@@ -783,7 +783,7 @@ pub(crate) fn generate_root_denesting_substeps(
     let mut sub_steps = Vec::new();
 
     // Get the before expression (should be sqrt(a + c·√d))
-    let before_expr = step.before_local.unwrap_or(step.before);
+    let before_expr = step.before_local().unwrap_or(step.before);
 
     // Build display hints for proper sqrt notation
     let hints = DisplayContext::with_root_index(2);

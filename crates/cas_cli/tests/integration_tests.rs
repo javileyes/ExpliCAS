@@ -124,7 +124,7 @@ fn test_end_to_end_simplification() {
         }
     );
     for (i, step) in steps.iter().enumerate() {
-        if let Some(s) = &step.after_str {
+        if let Some(s) = step.after_str() {
             println!("Step {}: {} -> {} (cached)", i + 1, step.rule_name, s);
         } else {
             println!(

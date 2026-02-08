@@ -113,7 +113,7 @@ impl Repl {
                                     current_root = reconstruct_global_expr(
                                         &mut temp_simplifier.context,
                                         current_root,
-                                        &step.path,
+                                        &step.path(),
                                         step.after,
                                     );
                                     lines.push(format!(
@@ -164,7 +164,7 @@ impl Repl {
                                         // Use before_local/after_local if available (for n-ary rules),
                                         // otherwise fall back to before/after
                                         let (rule_before_id, rule_after_id) =
-                                            match (step.before_local, step.after_local) {
+                                            match (step.before_local(), step.after_local()) {
                                                 (Some(bl), Some(al)) => (bl, al),
                                                 _ => (step.before, step.after),
                                             };
@@ -199,7 +199,7 @@ impl Repl {
                                         current_root = reconstruct_global_expr(
                                             &mut temp_simplifier.context,
                                             current_root,
-                                            &step.path,
+                                            &step.path(),
                                             step.after,
                                         );
                                     }
@@ -217,7 +217,7 @@ impl Repl {
                                         ))
                                     ));
 
-                                    for event in &step.assumption_events {
+                                    for event in step.assumption_events() {
                                         if event.kind.should_display() {
                                             lines.push(format!(
                                                 "   {} {}: {}",
@@ -236,7 +236,7 @@ impl Repl {
                                     current_root = reconstruct_global_expr(
                                         &mut temp_simplifier.context,
                                         current_root,
-                                        &step.path,
+                                        &step.path(),
                                         step.after,
                                     );
                                 }

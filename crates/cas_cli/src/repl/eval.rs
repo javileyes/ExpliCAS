@@ -139,7 +139,7 @@ impl Repl {
                                 std::collections::HashSet::new();
                             let mut result = Vec::new();
                             for step in &output.steps {
-                                for event in &step.assumption_events {
+                                for event in step.assumption_events() {
                                     // Dedupe by fingerprint
                                     let fp = match &event.key {
                                         cas_engine::assumptions::AssumptionKey::NonZero { expr_fingerprint } => *expr_fingerprint,

@@ -41,7 +41,7 @@ pub fn to_display_steps(raw_steps: Vec<Step>) -> DisplayEvalSteps {
         .into_iter()
         .filter(|step| {
             let global_changed = step.before != step.after;
-            let local_changed = match (step.before_local, step.after_local) {
+            let local_changed = match (step.before_local(), step.after_local()) {
                 (Some(bl), Some(al)) => bl != al,
                 _ => false, // No local focus means rely on global
             };

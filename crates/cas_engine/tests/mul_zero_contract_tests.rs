@@ -34,7 +34,7 @@ fn simplify_strict(input: &str) -> (String, Vec<String>) {
     // Collect warnings from steps
     let warnings: Vec<String> = steps
         .iter()
-        .flat_map(|s| s.assumption_events.iter())
+        .flat_map(|s| s.assumption_events().iter())
         .map(|e| format!("{:?}", e.key))
         .collect();
 
@@ -70,7 +70,7 @@ fn simplify_assume(input: &str) -> (String, Vec<String>) {
 
     let warnings: Vec<String> = steps
         .iter()
-        .flat_map(|s| s.assumption_events.iter())
+        .flat_map(|s| s.assumption_events().iter())
         .map(|e| format!("{:?}", e.key))
         .collect();
 
@@ -106,7 +106,7 @@ fn simplify_generic(input: &str) -> (String, Vec<String>) {
 
     let warnings: Vec<String> = steps
         .iter()
-        .flat_map(|s| s.assumption_events.iter())
+        .flat_map(|s| s.assumption_events().iter())
         .map(|e| format!("{:?}", e.key))
         .collect();
 

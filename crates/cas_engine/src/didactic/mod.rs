@@ -132,7 +132,7 @@ pub fn enrich_steps(ctx: &Context, original_expr: ExprId, steps: Vec<Step>) -> V
         // Add factorization sub-steps for fraction GCD simplification
         // V2.12.13: Gate by is_chained - if this step came from ChainedRewrite,
         // the Factor→Cancel decomposition already exists as separate Steps
-        if step.description.starts_with("Simplified fraction by GCD") && !step.is_chained {
+        if step.description.starts_with("Simplified fraction by GCD") && !step.is_chained() {
             sub_steps.extend(generate_gcd_factorization_substeps(ctx, step));
         }
 
@@ -151,7 +151,7 @@ pub fn enrich_steps(ctx: &Context, original_expr: ExprId, steps: Vec<Step>) -> V
         }
 
         // Add sub-steps for polynomial identity normalization (PolyZero airbag)
-        if step.poly_proof.is_some() {
+        if step.poly_proof().is_some() {
             sub_steps.extend(generate_polynomial_identity_substeps(ctx, step));
         }
 

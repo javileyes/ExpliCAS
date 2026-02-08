@@ -15,7 +15,7 @@ pub fn filter_non_productive_steps(
         // FIRST: Check for didactically important steps that should always be kept
         // These bypass ALL filtering because they're pedagogically valuable
         if step.rule_name == "Sum Exponents" || step.rule_name == "Evaluate Numeric Power" {
-            let global_after = reconstruct_global(ctx, current_global, &step.path, step.after);
+            let global_after = reconstruct_global(ctx, current_global, step.path(), step.after);
             filtered.push(step);
             current_global = global_after;
             continue;
@@ -52,7 +52,7 @@ pub fn filter_non_productive_steps(
             }
         }
 
-        let global_after = reconstruct_global(ctx, current_global, &step.path, step.after);
+        let global_after = reconstruct_global(ctx, current_global, step.path(), step.after);
         let checker = crate::semantic_equality::SemanticEqualityChecker::new(ctx);
         if !checker.are_equal(current_global, global_after) {
             filtered.push(step);

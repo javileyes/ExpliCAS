@@ -247,7 +247,7 @@ pub(crate) fn generate_gcd_factorization_substeps(ctx: &Context, step: &Step) ->
 
         // Check if the step's "before_local" shows factored form in Rule display
         // If available, use it to show the factorization step
-        if let Some(local_before) = step.before_local {
+        if let Some(local_before) = step.before_local() {
             let local_before_str = format!(
                 "{}",
                 DisplayExpr {

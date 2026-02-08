@@ -712,8 +712,8 @@ fn collect_steps(
             let after_expr = step.global_after.unwrap_or(step.after);
 
             // Focus expressions (the parts that actually changed)
-            let focus_before = step.before_local.unwrap_or(step.before);
-            let focus_after = step.after_local.unwrap_or(step.after);
+            let focus_before = step.before_local().unwrap_or(step.before);
+            let focus_after = step.after_local().unwrap_or(step.after);
 
             // Plain text format
             let before_str = format!(
@@ -733,7 +733,7 @@ fn collect_steps(
 
             // LaTeX with highlighting - use path-based highlighting like timeline
             // V2.15.36: Path-based highlighting ensures exact position in tree is highlighted
-            let expr_path = pathsteps_to_expr_path(&step.path);
+            let expr_path = pathsteps_to_expr_path(step.path());
 
             // Use PathHighlightConfig for path-based highlighting (matches timeline)
             let mut before_config = cas_ast::PathHighlightConfig::new();
@@ -786,7 +786,7 @@ fn collect_steps(
             let mut substeps: Vec<SubStepJson> = Vec::new();
 
             // Add engine substeps (from step.substeps)
-            for ss in &step.substeps {
+            for ss in step.substeps() {
                 substeps.push(SubStepJson {
                     title: ss.title.clone(),
                     lines: ss.lines.clone(),

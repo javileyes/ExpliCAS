@@ -201,7 +201,7 @@ pub(crate) fn collect_domain_warnings(steps: &[crate::Step]) -> Vec<DomainWarnin
 
     for step in steps {
         // Collect structured assumption_events
-        for event in &step.assumption_events {
+        for event in step.assumption_events() {
             // Skip RequiresIntroduced - these show in steps with ℹ️ icon, not as ⚠️ warnings
             // Skip DerivedFromRequires - these are implied by existing requires, don't show
             if matches!(

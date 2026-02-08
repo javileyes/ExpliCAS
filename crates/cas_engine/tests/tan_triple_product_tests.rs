@@ -115,14 +115,14 @@ fn test_tan_triple_product_has_substeps() {
 
     // Verify substeps are populated
     assert_eq!(
-        step.substeps.len(),
+        step.substeps().len(),
         3,
         "Should have 3 substeps; got: {:?}",
-        step.substeps
+        step.substeps()
     );
 
     // Check substep titles (now in Spanish for pedagogical clarity)
-    assert_eq!(step.substeps[0].title, "Normalizar argumentos");
-    assert_eq!(step.substeps[1].title, "Reconocer patrón");
-    assert_eq!(step.substeps[2].title, "Aplicar identidad");
+    assert_eq!(step.substeps()[0].title, "Normalizar argumentos");
+    assert_eq!(step.substeps()[1].title, "Reconocer patrón");
+    assert_eq!(step.substeps()[2].title, "Aplicar identidad");
 }

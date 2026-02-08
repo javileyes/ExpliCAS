@@ -32,11 +32,11 @@ fn factor_integer_has_focus() {
 
     if let Some(step) = factor_step {
         assert!(
-            step.before_local.is_some(),
+            step.before_local().is_some(),
             "FactorCommonIntegerFromAdd should have before_local"
         );
         assert!(
-            step.after_local.is_some(),
+            step.after_local().is_some(),
             "FactorCommonIntegerFromAdd should have after_local"
         );
     }
@@ -61,7 +61,7 @@ fn factor_integer_focus_shows_change() {
         for step in &display_steps {
             if step.rule_name == "Factor Common Integer" {
                 if let (Some(before_local), Some(after_local)) =
-                    (step.before_local, step.after_local)
+                    (step.before_local(), step.after_local())
                 {
                     let before_str = display(&simplifier.context, before_local);
                     let after_str = display(&simplifier.context, after_local);

@@ -282,12 +282,14 @@ pub fn try_difference_of_squares_preorder(
         factor_step.global_before = Some(expr_id);
         factor_step.global_after = Some(intermediate_with_orig_den);
         // Focus Rule line on numerator transformation only
-        factor_step.before_local = Some(num);
-        factor_step.after_local = Some(factored_num);
+        {
+            let meta = factor_step.meta_mut();
+            meta.before_local = Some(num);
+            meta.after_local = Some(factored_num);
+            meta.required_conditions
+                .push(crate::implicit_domain::ImplicitCondition::NonZero(den));
+        }
         factor_step.importance = crate::step::ImportanceLevel::High;
-        factor_step
-            .required_conditions
-            .push(crate::implicit_domain::ImplicitCondition::NonZero(den));
         steps.push(factor_step);
 
         // Step 1.5 (conditional): Show denominator simplification if it changed
@@ -305,8 +307,11 @@ pub fn try_difference_of_squares_preorder(
             simplify_den_step.after = intermediate;
             simplify_den_step.global_before = Some(intermediate_with_orig_den);
             simplify_den_step.global_after = Some(intermediate);
-            simplify_den_step.before_local = Some(den);
-            simplify_den_step.after_local = Some(den_simplified);
+            {
+                let meta = simplify_den_step.meta_mut();
+                meta.before_local = Some(den);
+                meta.after_local = Some(den_simplified);
+            }
             simplify_den_step.importance = crate::step::ImportanceLevel::Medium;
             steps.push(simplify_den_step);
         }

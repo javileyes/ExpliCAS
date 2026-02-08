@@ -30,8 +30,12 @@ fn simplify_and_inspect_focus(
     display_steps
         .iter()
         .map(|step| {
-            let before_local = step.before_local.map(|id| display(&simplifier.context, id));
-            let after_local = step.after_local.map(|id| display(&simplifier.context, id));
+            let before_local = step
+                .before_local()
+                .map(|id| display(&simplifier.context, id));
+            let after_local = step
+                .after_local()
+                .map(|id| display(&simplifier.context, id));
             let rule = step.rule_name.clone();
             let desc = step.description.clone();
             (rule, before_local, after_local, desc)

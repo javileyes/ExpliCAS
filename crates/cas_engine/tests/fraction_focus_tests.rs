@@ -30,8 +30,12 @@ fn simplify_and_inspect_focus(
     display_steps
         .iter()
         .map(|step| {
-            let before_local = step.before_local.map(|id| display(&simplifier.context, id));
-            let after_local = step.after_local.map(|id| display(&simplifier.context, id));
+            let before_local = step
+                .before_local()
+                .map(|id| display(&simplifier.context, id));
+            let after_local = step
+                .after_local()
+                .map(|id| display(&simplifier.context, id));
             let rule = step.rule_name.clone();
             let desc = step.description.clone();
             (rule, before_local, after_local, desc)
@@ -146,7 +150,8 @@ fn focus_invariant_smaller_than_full_expression() {
         let display_steps = to_display_steps(raw_steps);
 
         for step in &display_steps {
-            if let (Some(before_local), Some(_after_local)) = (step.before_local, step.after_local)
+            if let (Some(before_local), Some(_after_local)) =
+                (step.before_local(), step.after_local())
             {
                 let before_str = display(&simplifier.context, step.before);
                 let focus_str = display(&simplifier.context, before_local);
@@ -183,7 +188,8 @@ fn focus_invariant_vars_subset() {
         let display_steps = to_display_steps(raw_steps);
 
         for step in &display_steps {
-            if let (Some(before_local), Some(_after_local)) = (step.before_local, step.after_local)
+            if let (Some(before_local), Some(_after_local)) =
+                (step.before_local(), step.after_local())
             {
                 let before_str = display(&simplifier.context, step.before);
                 let focus_str = display(&simplifier.context, before_local);
@@ -225,7 +231,7 @@ fn focus_invariant_must_show_change() {
         for step in &display_steps {
             if step.rule_name == "Combine Same Denominator Fractions" {
                 if let (Some(before_local), Some(after_local)) =
-                    (step.before_local, step.after_local)
+                    (step.before_local(), step.after_local())
                 {
                     let before_str = display(&simplifier.context, before_local);
                     let after_str = display(&simplifier.context, after_local);
@@ -261,7 +267,7 @@ fn focus_invariant_combines_at_least_two_fractions() {
 
         for step in &display_steps {
             if step.rule_name == "Combine Same Denominator Fractions" {
-                if let Some(before_local) = step.before_local {
+                if let Some(before_local) = step.before_local() {
                     let focus_str = display(&simplifier.context, before_local);
 
                     // Count '/' characters as proxy for fraction count

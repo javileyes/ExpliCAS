@@ -41,7 +41,7 @@ impl Engine {
             use std::collections::HashSet;
             let mut seen: HashSet<String> = HashSet::new();
             for step in &steps {
-                for cond in &step.required_conditions {
+                for cond in step.required_conditions() {
                     let display = cond.display(&self.simplifier.context);
                     if seen.insert(display) {
                         diagnostics.push_required(
@@ -124,7 +124,7 @@ impl Engine {
 
         // Add assumed events from solve steps (if any)
         for step in &steps {
-            for event in &step.assumption_events {
+            for event in step.assumption_events() {
                 diagnostics.push_assumed(event.clone());
             }
         }

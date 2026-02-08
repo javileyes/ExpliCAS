@@ -409,7 +409,7 @@ impl Orchestrator {
             let mut collector = crate::assumptions::AssumptionCollector::new();
             for step in &optimized_steps {
                 // Collect structured assumption_events
-                for event in &step.assumption_events {
+                for event in step.assumption_events() {
                     collector.note(event.clone());
                 }
             }

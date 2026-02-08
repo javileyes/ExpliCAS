@@ -155,11 +155,14 @@ impl Engine {
                     Vec::new(),
                     Some(&ctx_simplifier.context),
                 );
-                step.assumption_events.extend(expand_log_events);
+                step.meta_mut().assumption_events.extend(expand_log_events);
                 steps.push(step);
             } else {
                 // Add events to first step
-                steps[0].assumption_events.extend(expand_log_events);
+                steps[0]
+                    .meta_mut()
+                    .assumption_events
+                    .extend(expand_log_events);
             }
         }
 
@@ -209,7 +212,7 @@ impl Engine {
                 classify_assumptions_in_place(
                     &self.simplifier.context,
                     &mut dc,
-                    &mut step.assumption_events,
+                    &mut step.meta_mut().assumption_events,
                 );
             }
         }

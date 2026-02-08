@@ -778,7 +778,7 @@ impl<'a> TimelineHtml<'a> {
                 }
             });
             let global_after_expr = step.global_after.unwrap_or_else(|| {
-                self.reconstruct_global_expr(global_before_expr, &step.path, step.after)
+                self.reconstruct_global_expr(global_before_expr, step.path(), step.after)
             });
             last_global_after = global_after_expr; // Always update for final result
 
@@ -799,7 +799,7 @@ impl<'a> TimelineHtml<'a> {
             // always use multi-term highlighting. Single-path highlighting would only highlight
             // one subtree when the matched terms may come from different parts of the expression.
             let (global_before, global_after) = if let Some(before_local) =
-                step.before_local.filter(|&bl| bl != step.before)
+                step.before_local().filter(|&bl| bl != step.before)
             {
                 // V2.9.25: Check if before_local is an Add node. If so, use multi-term highlighting
                 // to ensure all terms are highlighted, not just the subtree that happens to match.
@@ -816,7 +816,7 @@ impl<'a> TimelineHtml<'a> {
                 if !focus_path.is_empty() {
                     // Path found - extend step.path and use path-based highlighting
                     // This branch is only used for non-Add before_local nodes
-                    let mut extended = pathsteps_to_expr_path(&step.path);
+                    let mut extended = pathsteps_to_expr_path(step.path());
                     for ps in &focus_path {
                         extended.push(pathstep_to_u8(ps));
                     }
@@ -850,13 +850,13 @@ impl<'a> TimelineHtml<'a> {
                     // all identical values (e.g., all 'x' symbols) instead of just those
                     // within the focus area.
                     let focus_before = before_local;
-                    let focus_after = step.after_local.unwrap_or(step.after);
+                    let focus_after = step.after_local().unwrap_or(step.after);
 
                     // BEFORE: Extract terms from focus_before and find paths to each within
                     // the subexpression at step.path (NOT the entire global_before_expr).
                     // This handles dynamically constructed expressions like Add(x, x) or Sub(frac1, frac2)
                     let focus_terms = extract_add_terms(self.context, focus_before);
-                    let step_path_prefix = pathsteps_to_expr_path(&step.path);
+                    let step_path_prefix = pathsteps_to_expr_path(step.path());
 
                     // Navigate to the subexpression at step.path
                     let subexpr_at_path =
@@ -934,7 +934,7 @@ impl<'a> TimelineHtml<'a> {
                         .to_latex()
                     } else {
                         // Fallback: use step.path if no paths found to individual terms
-                        let expr_path = pathsteps_to_expr_path(&step.path);
+                        let expr_path = pathsteps_to_expr_path(step.path());
                         let mut before_config = PathHighlightConfig::new();
                         before_config.add(expr_path, HighlightColor::Red);
                         PathHighlightedLatexRenderer {
@@ -978,7 +978,7 @@ impl<'a> TimelineHtml<'a> {
                 }
             } else {
                 // Standard case: use step.path for highlighting
-                let expr_path = pathsteps_to_expr_path(&step.path);
+                let expr_path = pathsteps_to_expr_path(step.path());
                 let mut before_config = PathHighlightConfig::new();
                 before_config.add(expr_path.clone(), HighlightColor::Red);
                 let before = PathHighlightedLatexRenderer {
@@ -1011,8 +1011,8 @@ impl<'a> TimelineHtml<'a> {
 
             // Generate colored rule display: red antecedent → green consequent
             // Use before_local/after_local (Focus) if available, otherwise fall back to before/after
-            let focus_before = step.before_local.unwrap_or(step.before);
-            let focus_after = step.after_local.unwrap_or(step.after);
+            let focus_before = step.before_local().unwrap_or(step.before);
+            let focus_after = step.after_local().unwrap_or(step.after);
 
             let mut rule_before_config = HighlightConfig::new();
             rule_before_config.add(focus_before, HighlightColor::Red);
@@ -1115,13 +1115,13 @@ impl<'a> TimelineHtml<'a> {
             };
 
             // V2.14.45: Build HTML for rule-provided substeps (educational explanations)
-            let rule_substeps_html = if !step.substeps.is_empty() {
+            let rule_substeps_html = if !step.substeps().is_empty() {
                 let mut details_html = String::from(
                     r#"<details class="substeps-details" open>
                     <summary>Pasos didácticos</summary>
                     <div class="substeps-content">"#,
                 );
-                for substep in &step.substeps {
+                for substep in step.substeps() {
                     details_html.push_str(&format!(
                         r#"<div class="substep">
                             <strong>[{}]</strong>"#,
@@ -1142,12 +1142,12 @@ impl<'a> TimelineHtml<'a> {
             };
 
             // V2.12.13: Build assumption HTML from assumption_events, filtered and grouped by kind
-            let domain_html = if !step.assumption_events.is_empty() {
+            let domain_html = if !step.assumption_events().is_empty() {
                 use crate::assumptions::AssumptionKind;
 
                 // Filter to displayable events only
                 let displayable: Vec<_> = step
-                    .assumption_events
+                    .assumption_events()
                     .iter()
                     .filter(|e| e.kind.should_display())
                     .collect();

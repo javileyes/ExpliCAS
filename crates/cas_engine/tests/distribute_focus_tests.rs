@@ -26,8 +26,12 @@ fn simplify_and_inspect_focus(
     display_steps
         .iter()
         .map(|step| {
-            let before_local = step.before_local.map(|id| display(&simplifier.context, id));
-            let after_local = step.after_local.map(|id| display(&simplifier.context, id));
+            let before_local = step
+                .before_local()
+                .map(|id| display(&simplifier.context, id));
+            let after_local = step
+                .after_local()
+                .map(|id| display(&simplifier.context, id));
             let rule = step.rule_name.clone();
             let desc = step.description.clone();
             (rule, before_local, after_local, desc)
@@ -97,7 +101,7 @@ fn distribute_focus_invariant_before_ne_after() {
         for step in &display_steps {
             if step.rule_name == "Distributive Property" {
                 if let (Some(before_local), Some(after_local)) =
-                    (step.before_local, step.after_local)
+                    (step.before_local(), step.after_local())
                 {
                     let before_str = display(&simplifier.context, before_local);
                     let after_str = display(&simplifier.context, after_local);

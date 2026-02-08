@@ -173,14 +173,14 @@ fn eval_step_local_expressions_parity() {
 
     for (i, step) in display_steps.iter().enumerate() {
         // All renderers see the same before_local/after_local
-        let has_before_local = step.before_local.is_some();
-        let has_after_local = step.after_local.is_some();
+        let has_before_local = step.before_local().is_some();
+        let has_after_local = step.after_local().is_some();
 
         // If one is present, both should typically be present
         // (though this isn't always required, the point is they're consistent)
         if has_before_local || has_after_local {
             // Just verify the pattern is consistent across access methods
-            let via_direct = (step.before_local.is_some(), step.after_local.is_some());
+            let via_direct = (step.before_local().is_some(), step.after_local().is_some());
             assert_eq!(
                 via_direct,
                 (has_before_local, has_after_local),

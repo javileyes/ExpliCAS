@@ -63,13 +63,13 @@ fn simplify_with_principal_inv_trig(input: &str) -> Vec<Step> {
 fn has_assumption_kind(steps: &[Step], kind: &str) -> bool {
     steps
         .iter()
-        .any(|s| s.assumption_events.iter().any(|e| e.key.kind() == kind))
+        .any(|s| s.assumption_events().iter().any(|e| e.key.kind() == kind))
 }
 
 /// Check if any step has an assumption_event mentioning the given expression
 fn has_assumption_for_expr(steps: &[Step], kind: &str, expr_contains: &str) -> bool {
     steps.iter().any(|s| {
-        s.assumption_events
+        s.assumption_events()
             .iter()
             .any(|e| e.key.kind() == kind && e.expr_display.contains(expr_contains))
     })
@@ -89,7 +89,7 @@ fn nonzero_emitted_for_division_cancellation() {
         "x/x should emit NonZero assumption. Steps: {:?}",
         steps
             .iter()
-            .map(|s| &s.assumption_events)
+            .map(|s| s.assumption_events())
             .collect::<Vec<_>>()
     );
 }
@@ -115,7 +115,7 @@ fn nonzero_targets_symbolic_factor() {
         "Should emit NonZero for x, not 2. Events: {:?}",
         steps
             .iter()
-            .flat_map(|s| &s.assumption_events)
+            .flat_map(|s| s.assumption_events())
             .collect::<Vec<_>>()
     );
 }
@@ -206,7 +206,7 @@ fn positive_emitted_for_exp_ln_inverse() {
 
     // The condition x > 0 should be in required_conditions (implicit domain), not assumption_events
     let has_positive_require = steps.iter().any(|s| {
-        s.required_conditions.iter().any(|c| {
+        s.required_conditions().iter().any(|c| {
             let display = c.display(&simplifier.context);
             display.contains("x") && display.contains("> 0")
         })
@@ -217,7 +217,7 @@ fn positive_emitted_for_exp_ln_inverse() {
         "exp(ln(x)) should emit x > 0 as required_condition (implicit domain from ln). Steps: {:?}",
         steps
             .iter()
-            .map(|s| (&s.required_conditions, &s.assumption_events))
+            .map(|s| (s.required_conditions(), s.assumption_events()))
             .collect::<Vec<_>>()
     );
 }
@@ -251,7 +251,7 @@ fn no_assumption_for_log_exp_inverse() {
     let (_, steps) = simplifier.simplify_with_options(expr, opts);
 
     // ln(e^x) = x should NOT emit any assumption because e^x > 0 for all x
-    let has_any_assumption = steps.iter().any(|s| !s.assumption_events.is_empty());
+    let has_any_assumption = steps.iter().any(|s| !s.assumption_events().is_empty());
 
     assert!(
         !has_any_assumption,
@@ -309,7 +309,7 @@ fn duplicate_assumptions_deduplicate() {
     // Count NonZero(x) events across all steps
     let nonzero_x_count: usize = steps
         .iter()
-        .flat_map(|s| &s.assumption_events)
+        .flat_map(|s| s.assumption_events())
         .filter(|e| e.key.kind() == "nonzero" && e.expr_display == "x")
         .count();
 

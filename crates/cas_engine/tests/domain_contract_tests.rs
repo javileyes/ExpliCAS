@@ -904,7 +904,7 @@ fn step_tracks_assumed_nonzero_in_generic() {
 
     // Check that at least one step has assumption_events with NonZero(x)
     let has_nonzero_assumption = output.steps.iter().any(|step| {
-        step.assumption_events.iter().any(|event| {
+        step.assumption_events().iter().any(|event| {
             matches!(
                 event.key,
                 cas_engine::assumptions::AssumptionKey::NonZero { .. }
@@ -1077,7 +1077,7 @@ fn sqrt_conjugate_collapse_allowed_in_assume() {
     // The key is that if it DOES collapse, there should be a NonNegative assumption
 
     let has_nonnegative_assumption = output.steps.iter().any(|step| {
-        step.assumption_events.iter().any(|event| {
+        step.assumption_events().iter().any(|event| {
             matches!(
                 event.key,
                 cas_engine::assumptions::AssumptionKey::NonNegative { .. }

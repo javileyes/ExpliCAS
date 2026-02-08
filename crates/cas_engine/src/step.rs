@@ -153,6 +153,42 @@ impl SubStep {
     }
 }
 
+/// Didactic metadata for a step — presentation/debug fields that are
+/// only needed when steps are displayed to the user.
+///
+/// Boxed behind `Option<Box<StepMeta>>` in `Step` so that the core struct
+/// stays small and the allocation is skipped when not needed.
+#[derive(Debug, Clone, Default)]
+pub struct StepMeta {
+    /// Path from root to the transformed node (kept for debugging/reference)
+    pub path: Vec<PathStep>,
+    /// String representation of after (for display)
+    pub after_str: Option<String>,
+    /// Optional: The specific pattern matched (for n-ary rules like atan(x)+atan(1/x))
+    /// Use this for "Rule: X -> Y" display if set, otherwise use before/after
+    pub before_local: Option<ExprId>,
+    /// Optional: The specific result of the pattern (for n-ary rules)
+    pub after_local: Option<ExprId>,
+    /// Structured assumption events.
+    /// Propagated from Rewrite.assumption_events during step creation.
+    pub assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]>,
+    /// Required conditions for validity (implicit domain preservation) - NOT assumptions!
+    /// These are conditions that were already implicitly required by the input expression.
+    /// Propagated from Rewrite.required_conditions during step creation.
+    pub required_conditions: Vec<crate::implicit_domain::ImplicitCondition>,
+    /// Optional: Polynomial proof data for identity cancellation (PolyZero airbag)
+    /// Propagated from Rewrite.poly_proof during step creation for didactic display
+    pub poly_proof: Option<crate::multipoly_display::PolynomialProofData>,
+    /// V2.12.13: True if this Step was created from a ChainedRewrite.
+    /// Used to gate didactic substep generation to avoid duplicating explanations
+    /// that are already expressed as separate engine Steps.
+    pub is_chained: bool,
+    /// V2.14.45: Educational sub-steps explaining rule application.
+    /// These are metadata only - don't affect the simplification loop.
+    /// Propagated from Rewrite.substeps during step creation.
+    pub substeps: Vec<SubStep>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Step {
     pub description: String,
@@ -161,46 +197,90 @@ pub struct Step {
     pub before: ExprId,
     /// The local expression after transformation
     pub after: ExprId,
-    /// Path from root to the transformed node (kept for debugging/reference)
-    pub path: Vec<PathStep>,
-    /// String representation of after (for display)
-    pub after_str: Option<String>,
     /// Complete root expression BEFORE this step's transformation
     pub global_before: Option<ExprId>,
     /// Complete root expression AFTER this step's transformation
     pub global_after: Option<ExprId>,
-    /// Optional: The specific pattern matched (for n-ary rules like atan(x)+atan(1/x))
-    /// Use this for "Rule: X -> Y" display if set, otherwise use before/after
-    pub before_local: Option<ExprId>,
-    /// Optional: The specific result of the pattern (for n-ary rules)
-    pub after_local: Option<ExprId>,
-    /// Optional domain assumption used by the rule (e.g., "x > 0" assumed)
-    /// LEGACY: use assumption_events for structured emission, this is fallback.
-    /// Structured assumption events (preferred over domain_assumption string).
-    /// Propagated from Rewrite.assumption_events during step creation.
-    pub assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]>,
-    /// Required conditions for validity (implicit domain preservation) - NOT assumptions!
-    /// These are conditions that were already implicitly required by the input expression.
-    /// Propagated from Rewrite.required_conditions during step creation.
-    pub required_conditions: Vec<crate::implicit_domain::ImplicitCondition>,
     /// Importance level for step filtering (from Rule::importance())
     pub importance: ImportanceLevel,
     /// Category of step for grouping (from Rule::category() or pipeline origin)
     pub category: StepCategory,
-    /// Optional: Polynomial proof data for identity cancellation (PolyZero airbag)
-    /// Propagated from Rewrite.poly_proof during step creation for didactic display
-    pub poly_proof: Option<crate::multipoly_display::PolynomialProofData>,
-    /// V2.12.13: True if this Step was created from a ChainedRewrite.
-    /// Used to gate didactic substep generation to avoid duplicating explanations
-    /// that are already expressed as separate engine Steps.
-    pub is_chained: bool,
     /// V2.14.30: Mathematical soundness classification of this step's transformation.
     /// Propagated from Rule::soundness() or elevated based on assumption_events.
     pub soundness: SoundnessLabel,
-    /// V2.14.45: Educational sub-steps explaining rule application.
-    /// These are metadata only - don't affect the simplification loop.
-    /// Propagated from Rewrite.substeps during step creation.
-    pub substeps: Vec<SubStep>,
+    /// Didactic metadata — lazily allocated, only present when steps are displayed.
+    pub meta: Option<Box<StepMeta>>,
+}
+
+// ── Convenience accessors ──────────────────────────────────────────────
+// These delegate to StepMeta so that callers don't need to manually
+// unwrap the Option<Box<…>> at every access site.
+
+impl Step {
+    // ── Read accessors ─────────────────────────────────────────────────
+
+    /// Path from root to the transformed node.
+    #[inline]
+    pub fn path(&self) -> &[PathStep] {
+        self.meta.as_ref().map_or(&[], |m| &m.path)
+    }
+
+    /// String representation of the after expression.
+    #[inline]
+    pub fn after_str(&self) -> Option<&str> {
+        self.meta.as_ref().and_then(|m| m.after_str.as_deref())
+    }
+
+    /// Focused before sub-expression (for "Rule: X → Y" display).
+    #[inline]
+    pub fn before_local(&self) -> Option<ExprId> {
+        self.meta.as_ref().and_then(|m| m.before_local)
+    }
+
+    /// Focused after sub-expression (for "Rule: X → Y" display).
+    #[inline]
+    pub fn after_local(&self) -> Option<ExprId> {
+        self.meta.as_ref().and_then(|m| m.after_local)
+    }
+
+    /// Structured assumption events.
+    #[inline]
+    pub fn assumption_events(&self) -> &[crate::assumptions::AssumptionEvent] {
+        self.meta.as_ref().map_or(&[], |m| &m.assumption_events)
+    }
+
+    /// Required conditions for validity.
+    #[inline]
+    pub fn required_conditions(&self) -> &[crate::implicit_domain::ImplicitCondition] {
+        self.meta.as_ref().map_or(&[], |m| &m.required_conditions)
+    }
+
+    /// Polynomial proof data for identity cancellation.
+    #[inline]
+    pub fn poly_proof(&self) -> Option<&crate::multipoly_display::PolynomialProofData> {
+        self.meta.as_ref().and_then(|m| m.poly_proof.as_ref())
+    }
+
+    /// Whether this step was created from a ChainedRewrite.
+    #[inline]
+    pub fn is_chained(&self) -> bool {
+        self.meta.as_ref().map_or(false, |m| m.is_chained)
+    }
+
+    /// Educational sub-steps.
+    #[inline]
+    pub fn substeps(&self) -> &[SubStep] {
+        self.meta.as_ref().map_or(&[], |m| &m.substeps)
+    }
+
+    // ── Write accessor ─────────────────────────────────────────────────
+
+    /// Get a mutable reference to the meta, creating it if absent.
+    #[inline]
+    pub fn meta_mut(&mut self) -> &mut StepMeta {
+        self.meta
+            .get_or_insert_with(|| Box::new(StepMeta::default()))
+    }
 }
 
 impl Step {
@@ -235,20 +315,16 @@ impl Step {
             rule_name: rule_name.to_string(),
             before,
             after,
-            path,
-            after_str,
             global_before: None,
             global_after: None,
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
             importance: ImportanceLevel::Low,
             category: StepCategory::General,
-            is_chained: false,
             soundness: SoundnessLabel::Equivalence,
-            substeps: vec![],
+            meta: Some(Box::new(StepMeta {
+                path,
+                after_str,
+                ..Default::default()
+            })),
         }
     }
 
@@ -260,20 +336,12 @@ impl Step {
             rule_name: rule_name.to_string(),
             before,
             after,
-            path: Vec::new(),
-            after_str: None,
             global_before: None,
             global_after: None,
-            before_local: None,
-            after_local: None,
-            assumption_events: Default::default(),
-            required_conditions: vec![],
-            poly_proof: None,
             importance: ImportanceLevel::Low,
             category: StepCategory::General,
-            is_chained: false,
             soundness: SoundnessLabel::Equivalence,
-            substeps: vec![],
+            meta: None, // No meta for compact steps
         }
     }
 
@@ -305,7 +373,7 @@ impl Step {
         }
 
         // Steps with assumptions are always shown - important for user awareness
-        if !self.assumption_events.is_empty() {
+        if !self.assumption_events().is_empty() {
             return ImportanceLevel::Medium;
         }
 
@@ -334,7 +402,8 @@ mod tests {
 
         // Test 3: Steps with assumption_events are bumped to Medium
         let mut step = Step::new("Rule with assumption", "Rule", x, y, vec![], Some(&ctx));
-        step.assumption_events
+        step.meta_mut()
+            .assumption_events
             .push(crate::assumptions::AssumptionEvent {
                 key: crate::assumptions::AssumptionKey::NonZero {
                     expr_fingerprint: 12345,

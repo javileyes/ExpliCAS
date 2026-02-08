@@ -24,8 +24,12 @@ fn simplify_and_get_nested_focus(input: &str) -> Vec<(Option<String>, Option<Str
         .iter()
         .filter(|step| step.rule_name == "Simplify Complex Fraction")
         .map(|step| {
-            let before_local = step.before_local.map(|id| display(&simplifier.context, id));
-            let after_local = step.after_local.map(|id| display(&simplifier.context, id));
+            let before_local = step
+                .before_local()
+                .map(|id| display(&simplifier.context, id));
+            let after_local = step
+                .after_local()
+                .map(|id| display(&simplifier.context, id));
             (before_local, after_local, step.description.clone())
         })
         .collect()
@@ -73,7 +77,7 @@ fn nested_fraction_focus_invariant_before_ne_after() {
         for step in &display_steps {
             if step.rule_name == "Simplify Complex Fraction" {
                 if let (Some(before_local), Some(after_local)) =
-                    (step.before_local, step.after_local)
+                    (step.before_local(), step.after_local())
                 {
                     let before_str = display(&simplifier.context, before_local);
                     let after_str = display(&simplifier.context, after_local);
@@ -104,7 +108,7 @@ fn nested_fraction_focus_invariant_contains_div() {
 
         for step in &display_steps {
             if step.rule_name == "Simplify Complex Fraction" {
-                if let Some(before_local) = step.before_local {
+                if let Some(before_local) = step.before_local() {
                     use cas_ast::Expr;
                     // Check that before_local contains a Div
                     fn contains_div(ctx: &Context, e: cas_ast::ExprId) -> bool {

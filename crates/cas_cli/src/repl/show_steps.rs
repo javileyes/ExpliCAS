@@ -124,7 +124,7 @@ impl Repl {
                         current_root = reconstruct_global_expr(
                             &mut self.core.engine.simplifier.context,
                             current_root,
-                            &step.path,
+                            &step.path(),
                             step.after,
                         );
                         buf.line(format!(
@@ -236,7 +236,7 @@ impl Repl {
 
                             // Show Rule: local transformation
                             let (rule_before_id, rule_after_id) =
-                                match (step.before_local, step.after_local) {
+                                match (step.before_local(), step.after_local()) {
                                     (Some(bl), Some(al)) => (bl, al),
                                     _ => (step.before, step.after),
                                 };
@@ -266,8 +266,8 @@ impl Repl {
                             buf.line(format!("   Rule: {} -> {}", before_disp, after_disp));
 
                             // Rule-provided substeps
-                            if !step.substeps.is_empty() {
-                                for substep in &step.substeps {
+                            if !step.substeps().is_empty() {
+                                for substep in step.substeps() {
                                     buf.line(format!("   [{}]", substep.title));
                                     for line in &substep.lines {
                                         buf.line(format!("      • {}", line));
@@ -283,7 +283,7 @@ impl Repl {
                             current_root = reconstruct_global_expr(
                                 &mut self.core.engine.simplifier.context,
                                 current_root,
-                                &step.path,
+                                &step.path(),
                                 step.after,
                             );
                         }
@@ -304,7 +304,7 @@ impl Repl {
                                 ))
                             ));
 
-                            for event in &step.assumption_events {
+                            for event in step.assumption_events() {
                                 if event.kind.should_display() {
                                     buf.line(format!(
                                         "   {} {}: {}",
@@ -322,7 +322,7 @@ impl Repl {
                     current_root = reconstruct_global_expr(
                         &mut self.core.engine.simplifier.context,
                         current_root,
-                        &step.path,
+                        &step.path(),
                         step.after,
                     );
                 }

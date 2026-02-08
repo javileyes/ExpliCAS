@@ -323,7 +323,7 @@ impl Repl {
                             step.description,
                             step.rule_name
                         ));
-                        for event in &step.assumption_events {
+                        for event in step.assumption_events() {
                             if event.kind.should_display() {
                                 lines.push(format!(
                                     "   {} {}: {}",
