@@ -4,7 +4,7 @@
 //! - TrigSumToProductContractionRule: sin(a)+sin(b) → product form
 
 use crate::rule::Rewrite;
-use cas_ast::{Expr, ExprId};
+use cas_ast::{BuiltinFn, Expr, ExprId};
 
 // =============================================================================
 // TrigSumToProductContractionRule: sin(a)+sin(b) → 2*sin((a+b)/2)*cos((a-b)/2)
@@ -119,9 +119,13 @@ impl crate::rule::Rule for TrigSumToProductContractionRule {
 /// Extract trig function name and argument
 fn extract_trig_fn(ctx: &cas_ast::Context, expr: ExprId) -> Option<(String, ExprId)> {
     if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        let name = ctx.sym_name(*fn_id);
-        if (name == "sin" || name == "cos") && args.len() == 1 {
-            return Some((name.to_string(), args[0]));
+        let builtin = ctx.builtin_of(*fn_id);
+        if args.len() == 1 {
+            match builtin {
+                Some(BuiltinFn::Sin) => return Some(("sin".to_string(), args[0])),
+                Some(BuiltinFn::Cos) => return Some(("cos".to_string(), args[0])),
+                _ => {}
+            }
         }
     }
     None

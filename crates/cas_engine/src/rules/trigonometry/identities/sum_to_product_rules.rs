@@ -4,7 +4,7 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::smart_mul;
 use crate::rules::trigonometry::{evaluation, pythagorean};
-use cas_ast::{Expr, ExprId};
+use cas_ast::{BuiltinFn, Expr, ExprId};
 use num_traits::One;
 use std::cmp::Ordering;
 
@@ -79,8 +79,7 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
             if let Some(n) = as_number(ctx, factor) {
                 numeric_coeff *= n.clone();
             } else if let Expr::Function(fn_id, args) = ctx.get(factor) {
-                let name = ctx.sym_name(*fn_id);
-                if name == "cos" && args.len() == 1 {
+                if matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Cos)) && args.len() == 1 {
                     cos_args.push(args[0]);
                 } else {
                     other_factors.push(factor);
@@ -405,8 +404,11 @@ define_rule!(
 fn collect_trig_args_recursive(ctx: &cas_ast::Context, expr: ExprId, args: &mut Vec<ExprId>) {
     match ctx.get(expr) {
         Expr::Function(fn_id, fargs) => {
-            let name = ctx.sym_name(*fn_id);
-            if (name == "sin" || name == "cos" || name == "tan") && fargs.len() == 1 {
+            if matches!(
+                ctx.builtin_of(*fn_id),
+                Some(BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan)
+            ) && fargs.len() == 1
+            {
                 args.push(fargs[0]);
             }
             for arg in fargs {
@@ -485,12 +487,11 @@ fn expand_trig_angle(
 
     // Check if this node is trig(large_angle)
     if let Expr::Function(fn_id, args) = &expr_data {
-        let name = ctx.sym_name(*fn_id);
         if args.len() == 1
             && crate::ordering::compare_expr(ctx, args[0], large_angle) == Ordering::Equal
         {
-            match name {
-                "sin" => {
+            match ctx.builtin_of(*fn_id) {
+                Some(BuiltinFn::Sin) => {
                     // sin(A) -> 2sin(A/2)cos(A/2)
                     let two = ctx.num(2);
                     let sin_half = ctx.call("sin", vec![small_angle]);
@@ -498,7 +499,7 @@ fn expand_trig_angle(
                     let term = smart_mul(ctx, sin_half, cos_half);
                     return smart_mul(ctx, two, term);
                 }
-                "cos" => {
+                Some(BuiltinFn::Cos) => {
                     // cos(A) -> 2cos^2(A/2) - 1
                     let two = ctx.num(2);
                     let one = ctx.num(1);
@@ -507,7 +508,7 @@ fn expand_trig_angle(
                     let term = smart_mul(ctx, two, cos_sq);
                     return ctx.add(Expr::Sub(term, one));
                 }
-                "tan" => {
+                Some(BuiltinFn::Tan) => {
                     // tan(A) -> 2tan(A/2) / (1 - tan^2(A/2))
                     let two = ctx.num(2);
                     let one = ctx.num(1);
@@ -580,7 +581,10 @@ fn expand_trig_angle(
             }
         }
         Expr::Function(fn_id, args) => {
-            let fn_name = ctx.sym_name(fn_id).to_string();
+            let fn_name = ctx
+                .builtin_of(fn_id)
+                .map(|b| b.name().to_string())
+                .unwrap_or_else(|| ctx.sym_name(fn_id).to_string());
             let mut new_args = Vec::new();
             let mut changed = false;
             for arg in args {

@@ -17,7 +17,12 @@ define_rule!(
     |ctx, expr| {
         let expr_data = ctx.get(expr).clone();
         if let Expr::Function(fn_id, args) = expr_data {
-            let name = ctx.sym_name(fn_id).to_string();
+            let builtin = ctx.builtin_of(fn_id);
+            // Only process known trig/inverse trig functions
+            let name = match builtin {
+                Some(b) => b.name().to_string(),
+                None => return None,
+            };
             if args.len() == 1 {
                 let arg = args[0];
 

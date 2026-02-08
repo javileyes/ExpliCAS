@@ -442,10 +442,9 @@ impl crate::rule::Rule for TanToSinCosRule {
         // This is a fallback in case pattern_marks wasn't pre-scanned.
         if let Some(parent_id) = parent_ctx.immediate_parent() {
             if let Expr::Function(fn_id, _) = ctx.get(parent_id) {
-                let name = ctx.sym_name(*fn_id);
                 if matches!(
-                    name,
-                    "arctan" | "arcsin" | "arccos" | "atan" | "asin" | "acos"
+                    ctx.builtin_of(*fn_id),
+                    Some(BuiltinFn::Arctan | BuiltinFn::Arcsin | BuiltinFn::Arccos)
                 ) {
                     return None; // Preserve arctan(tan(x)) pattern
                 }
@@ -466,8 +465,7 @@ impl crate::rule::Rule for TanToSinCosRule {
         // This is almost never useful for simplification.
         let expr_data = ctx.get(expr).clone();
         if let Expr::Function(fn_id, args) = &expr_data {
-            let name = ctx.sym_name(*fn_id);
-            if name == "tan" && args.len() == 1 {
+            if matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Tan)) && args.len() == 1 {
                 // GUARD: Don't expand tan(n*x) - causes complexity explosion
                 if is_multiple_angle(ctx, args[0]) {
                     return None;
@@ -482,8 +480,7 @@ impl crate::rule::Rule for TanToSinCosRule {
 
         // Original conversion logic
         if let Expr::Function(fn_id, args) = expr_data {
-            let name = ctx.sym_name(fn_id);
-            if name == "tan" && args.len() == 1 {
+            if matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Tan)) && args.len() == 1 {
                 // tan(x) -> sin(x) / cos(x)
                 let sin_x = ctx.call("sin", vec![args[0]]);
                 let cos_x = ctx.call("cos", vec![args[0]]);
@@ -541,10 +538,10 @@ impl crate::rule::Rule for TrigQuotientRule {
             if let (Expr::Function(num_fn_id, num_args), Expr::Function(den_fn_id, den_args)) =
                 (&num_data, &den_data)
             {
-                let num_name = ctx.sym_name(*num_fn_id);
-                let den_name = ctx.sym_name(*den_fn_id);
-                if num_name == "sin"
-                    && den_name == "cos"
+                let num_builtin = ctx.builtin_of(*num_fn_id);
+                let den_builtin = ctx.builtin_of(*den_fn_id);
+                if matches!(num_builtin, Some(BuiltinFn::Sin))
+                    && matches!(den_builtin, Some(BuiltinFn::Cos))
                     && num_args.len() == 1
                     && den_args.len() == 1
                     && crate::ordering::compare_expr(ctx, num_args[0], den_args[0])
@@ -555,8 +552,8 @@ impl crate::rule::Rule for TrigQuotientRule {
                 }
 
                 // Pattern: cos(x)/sin(x) → cot(x)
-                if num_name == "cos"
-                    && den_name == "sin"
+                if matches!(num_builtin, Some(BuiltinFn::Cos))
+                    && matches!(den_builtin, Some(BuiltinFn::Sin))
                     && num_args.len() == 1
                     && den_args.len() == 1
                     && crate::ordering::compare_expr(ctx, num_args[0], den_args[0])
@@ -570,16 +567,16 @@ impl crate::rule::Rule for TrigQuotientRule {
             // Pattern: 1/sin(x) → csc(x)
             if crate::helpers::is_one(ctx, num) {
                 if let Expr::Function(den_fn_id, den_args) = &den_data {
-                    let den_name = ctx.sym_name(*den_fn_id);
-                    if den_name == "sin" && den_args.len() == 1 {
+                    let den_builtin = ctx.builtin_of(*den_fn_id);
+                    if matches!(den_builtin, Some(BuiltinFn::Sin)) && den_args.len() == 1 {
                         let csc_x = ctx.call("csc", vec![den_args[0]]);
                         return Some(crate::rule::Rewrite::new(csc_x).desc("1/sin(x) → csc(x)"));
                     }
-                    if den_name == "cos" && den_args.len() == 1 {
+                    if matches!(den_builtin, Some(BuiltinFn::Cos)) && den_args.len() == 1 {
                         let sec_x = ctx.call("sec", vec![den_args[0]]);
                         return Some(crate::rule::Rewrite::new(sec_x).desc("1/cos(x) → sec(x)"));
                     }
-                    if den_name == "tan" && den_args.len() == 1 {
+                    if matches!(den_builtin, Some(BuiltinFn::Tan)) && den_args.len() == 1 {
                         let cot_x = ctx.call("cot", vec![den_args[0]]);
                         return Some(crate::rule::Rewrite::new(cot_x).desc("1/tan(x) → cot(x)"));
                     }

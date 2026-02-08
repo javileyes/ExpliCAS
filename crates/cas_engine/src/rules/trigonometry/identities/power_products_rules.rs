@@ -3,7 +3,7 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::smart_mul;
-use cas_ast::{Expr, ExprId};
+use cas_ast::{BuiltinFn, Expr, ExprId};
 use std::cmp::Ordering;
 
 // =============================================================================
@@ -20,11 +20,10 @@ fn extract_trig_pow6(ctx: &cas_ast::Context, term: ExprId) -> Option<(ExprId, &'
             if n.is_integer() && *n.numer() == 6.into() {
                 // Check base is sin(arg) or cos(arg)
                 if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                    let name = ctx.sym_name(*fn_id);
                     if args.len() == 1 {
-                        match name {
-                            "sin" => return Some((args[0], "sin")),
-                            "cos" => return Some((args[0], "cos")),
+                        match ctx.builtin_of(*fn_id) {
+                            Some(BuiltinFn::Sin) => return Some((args[0], "sin")),
+                            Some(BuiltinFn::Cos) => return Some((args[0], "cos")),
                             _ => {}
                         }
                     }
@@ -44,11 +43,10 @@ fn extract_trig_pow2(ctx: &cas_ast::Context, term: ExprId) -> Option<(ExprId, &'
             if n.is_integer() && *n.numer() == 2.into() {
                 // Check base is sin(arg) or cos(arg)
                 if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                    let name = ctx.sym_name(*fn_id);
                     if args.len() == 1 {
-                        match name {
-                            "sin" => return Some((args[0], "sin")),
-                            "cos" => return Some((args[0], "cos")),
+                        match ctx.builtin_of(*fn_id) {
+                            Some(BuiltinFn::Sin) => return Some((args[0], "sin")),
+                            Some(BuiltinFn::Cos) => return Some((args[0], "cos")),
                             _ => {}
                         }
                     }
@@ -236,8 +234,7 @@ define_rule!(
 /// Extract the argument from a trig function: sin(arg) → Some(arg), else None
 pub fn extract_trig_arg(ctx: &cas_ast::Context, id: ExprId, fn_name: &str) -> Option<ExprId> {
     if let Expr::Function(fn_id, args) = ctx.get(id) {
-        let name = ctx.sym_name(*fn_id);
-        if name == fn_name && args.len() == 1 {
+        if ctx.builtin_of(*fn_id).is_some_and(|b| b.name() == fn_name) && args.len() == 1 {
             return Some(args[0]);
         }
     }

@@ -7,7 +7,7 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::smart_mul;
-use cas_ast::{Expr, ExprId};
+use cas_ast::{BuiltinFn, Expr, ExprId};
 
 // Import from parent (identities.rs) - function defined in half_angle_phase.rs include
 use super::extract_phase_shift;
@@ -43,9 +43,16 @@ define_rule!(ProductToSumRule, "Product to Sum", |ctx, expr| {
                     }
                 }
                 Expr::Function(fn_id, args) => {
-                    let name = ctx.sym_name(*fn_id);
-                    if args.len() == 1 && (name == "sin" || name == "cos") {
-                        trig_funcs.push((i, name.to_string(), args[0]));
+                    if args.len() == 1 {
+                        match ctx.builtin_of(*fn_id) {
+                            Some(BuiltinFn::Sin) => {
+                                trig_funcs.push((i, "sin".to_string(), args[0]))
+                            }
+                            Some(BuiltinFn::Cos) => {
+                                trig_funcs.push((i, "cos".to_string(), args[0]))
+                            }
+                            _ => {}
+                        }
                     }
                 }
                 _ => {}
@@ -138,16 +145,17 @@ define_rule!(TrigPhaseShiftRule, "Trig Phase Shift", |ctx, expr| {
     let expr_data = ctx.get(expr).clone();
 
     if let Expr::Function(fn_id, args) = expr_data {
-        let name = ctx.sym_name(fn_id).to_string();
         if args.len() != 1 {
             return None;
         }
 
-        let is_sin = name == "sin";
-        let is_cos = name == "cos";
+        let builtin = ctx.builtin_of(fn_id);
+        let is_sin = matches!(builtin, Some(BuiltinFn::Sin));
+        let is_cos = matches!(builtin, Some(BuiltinFn::Cos));
         if !is_sin && !is_cos {
             return None;
         }
+        let name = builtin.unwrap().name();
 
         let arg = args[0];
 

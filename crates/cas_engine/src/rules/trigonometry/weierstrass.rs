@@ -12,7 +12,7 @@
 
 use crate::define_rule;
 use crate::rules::algebra::helpers::smart_mul;
-use cas_ast::{DisplayExpr, Expr, ExprId};
+use cas_ast::{BuiltinFn, DisplayExpr, Expr, ExprId};
 use num_traits::One;
 
 /// Build the Weierstrass expression for sin(x): 2t/(1+t²)
@@ -55,12 +55,11 @@ define_rule!(
             _ => return None,
         };
 
-        let name = ctx.sym_name(fn_id).to_string();
-
-        // Only apply to sin, cos, tan
-        if !matches!(name.as_str(), "sin" | "cos" | "tan") {
-            return None;
-        }
+        let builtin = match ctx.builtin_of(fn_id) {
+            Some(b @ (BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan)) => b,
+            _ => return None,
+        };
+        let name = builtin.name();
 
         // Build t = tan(x/2) as sin(x/2)/cos(x/2)
         let half = ctx.add(Expr::Number(num_rational::BigRational::new(
@@ -72,7 +71,7 @@ define_rule!(
         let cos_half = ctx.call("cos", vec![half_arg]);
         let t = ctx.add(Expr::Div(sin_half, cos_half)); // t = tan(x/2)
 
-        let (new_expr, desc) = match name.as_str() {
+        let (new_expr, desc) = match name {
             "sin" => {
                 let result = weierstrass_sin(ctx, t);
                 let desc = format!(
@@ -155,10 +154,8 @@ fn is_tan_half_angle(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
         if let (Expr::Function(sin_name, sin_args), Expr::Function(cos_name, cos_args)) =
             (ctx.get(*sin_id), ctx.get(*cos_id))
         {
-            let sin_name_str = ctx.sym_name(*sin_name);
-            let cos_name_str = ctx.sym_name(*cos_name);
-            if sin_name_str == "sin"
-                && cos_name_str == "cos"
+            if matches!(ctx.builtin_of(*sin_name), Some(BuiltinFn::Sin))
+                && matches!(ctx.builtin_of(*cos_name), Some(BuiltinFn::Cos))
                 && sin_args.len() == 1
                 && cos_args.len() == 1
             {
@@ -175,8 +172,7 @@ fn is_tan_half_angle(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
 
     // Also check for tan(arg/2) function directly
     if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        let name = ctx.sym_name(*fn_id);
-        if name == "tan" && args.len() == 1 {
+        if matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Tan)) && args.len() == 1 {
             if let Some(original_angle) = check_half_angle(args[0]) {
                 return Some(original_angle);
             }

@@ -8,7 +8,7 @@
 
 use crate::define_rule;
 use crate::rule::Rewrite;
-use cas_ast::{Expr, ExprId};
+use cas_ast::{BuiltinFn, Expr, ExprId};
 use num_traits::One;
 
 // =============================================================================
@@ -29,8 +29,10 @@ define_rule!(
 
             // Check if base is cosh(x/2) or sinh(x/2)
             if let Expr::Function(fn_id, args) = ctx.get(*base).clone() {
-                let name = ctx.sym_name(fn_id).to_string();
-                if (name == "cosh" || name == "sinh") && args.len() == 1 {
+                let builtin = ctx.builtin_of(fn_id);
+                let is_cosh = matches!(builtin, Some(BuiltinFn::Cosh));
+                let is_sinh = matches!(builtin, Some(BuiltinFn::Sinh));
+                if (is_cosh || is_sinh) && args.len() == 1 {
                     let arg = args[0];
 
                     // Check if argument is x/2 or (1/2)*x
@@ -75,7 +77,7 @@ define_rule!(
                             2.into(),
                         )));
 
-                        if name == "cosh" {
+                        if is_cosh {
                             // cosh(x/2)² → (cosh(x)+1)/2
                             let sum = ctx.add(Expr::Add(cosh_x, one));
                             let result = ctx.add(Expr::Mul(half, sum));
@@ -135,13 +137,19 @@ define_rule!(
                 }
                 // Check for sin(t)
                 if let Expr::Function(fn_id, args) = ctx.get(factor) {
-                    let func_name = ctx.sym_name(*fn_id);
-                    if func_name == "sin" && args.len() == 1 && sin_idx.is_none() {
+                    let builtin = ctx.builtin_of(*fn_id);
+                    if matches!(builtin, Some(BuiltinFn::Sin))
+                        && args.len() == 1
+                        && sin_idx.is_none()
+                    {
                         sin_idx = Some(i);
                         sin_arg = Some(args[0]);
                         continue;
                     }
-                    if func_name == "cos" && args.len() == 1 && cos_idx.is_none() {
+                    if matches!(builtin, Some(BuiltinFn::Cos))
+                        && args.len() == 1
+                        && cos_idx.is_none()
+                    {
                         cos_idx = Some(i);
                         cos_arg = Some(args[0]);
                         continue;
@@ -208,12 +216,11 @@ define_rule!(
             if let Expr::Number(n) = ctx.get(num) {
                 if n.is_one() {
                     if let Expr::Function(fn_id, args) = ctx.get(den).clone() {
-                        let name = ctx.sym_name(fn_id);
                         if args.len() == 1 {
                             let arg = args[0];
-                            let result_info = match name {
-                                "cos" => Some(("sec", name.to_string())),
-                                "sin" => Some(("csc", name.to_string())),
+                            let result_info = match ctx.builtin_of(fn_id) {
+                                Some(BuiltinFn::Cos) => Some(("sec", "cos")),
+                                Some(BuiltinFn::Sin) => Some(("csc", "sin")),
                                 _ => None,
                             };
                             if let Some((rn, orig_name)) = result_info {
@@ -236,23 +243,29 @@ define_rule!(
                     let num_arg = num_args[0];
                     let den_arg = den_args[0];
 
-                    let num_name = ctx.sym_name(num_fn_id).to_string();
-                    let den_name = ctx.sym_name(den_fn_id).to_string();
+                    let num_builtin = ctx.builtin_of(num_fn_id);
+                    let den_builtin = ctx.builtin_of(den_fn_id);
 
                     // Check same argument
                     if crate::ordering::compare_expr(ctx, num_arg, den_arg)
                         == std::cmp::Ordering::Equal
                     {
-                        let result_name = match (num_name.as_str(), den_name.as_str()) {
-                            ("sin", "cos") => Some("tan"),
-                            ("cos", "sin") => Some("cot"),
+                        let result_name = match (num_builtin, den_builtin) {
+                            (Some(BuiltinFn::Sin), Some(BuiltinFn::Cos)) => {
+                                Some(("tan", "sin", "cos"))
+                            }
+                            (Some(BuiltinFn::Cos), Some(BuiltinFn::Sin)) => {
+                                Some(("cot", "cos", "sin"))
+                            }
                             _ => None,
                         };
-                        if let Some(rn) = result_name {
+                        if let Some((rn, num_display, den_display)) = result_name {
                             let result = ctx.call(rn, vec![num_arg]);
                             return Some(
-                                Rewrite::new(result)
-                                    .desc(format!("{}/{}(t) = {}(t)", num_name, den_name, rn)),
+                                Rewrite::new(result).desc(format!(
+                                    "{}/{}(t) = {}(t)",
+                                    num_display, den_display, rn
+                                )),
                             );
                         }
                     }
@@ -296,8 +309,8 @@ define_rule!(
 
                 if coeff {
                     if let Expr::Function(fn_id, args) = ctx.get(tan_part) {
-                        let name = ctx.sym_name(*fn_id);
-                        if name == "tan" && args.len() == 1 {
+                        if matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Tan)) && args.len() == 1
+                        {
                             Some(args[0])
                         } else {
                             None
@@ -323,8 +336,7 @@ define_rule!(
                                 if *n == num_rational::BigRational::from_integer(2.into()));
                             if exp_is_2 {
                                 if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                                    let name = ctx.sym_name(*fn_id);
-                                    name == "tan"
+                                    matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Tan))
                                         && args.len() == 1
                                         && crate::ordering::compare_expr(ctx, args[0], t)
                                             == std::cmp::Ordering::Equal
@@ -357,8 +369,7 @@ define_rule!(
                                     if *n == num_rational::BigRational::from_integer(2.into()));
                                 if exp_is_2 {
                                     if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                                        let name = ctx.sym_name(*fn_id);
-                                        name == "tan"
+                                        matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Tan))
                                             && args.len() == 1
                                             && crate::ordering::compare_expr(ctx, args[0], t)
                                                 == std::cmp::Ordering::Equal
