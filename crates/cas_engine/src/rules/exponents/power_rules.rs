@@ -284,12 +284,19 @@ define_rule!(
 // ============================================================================
 // RootPowCancelRule: (x^n)^(1/n) → x (odd n) or |x| (even n)
 // ============================================================================
-define_rule!(
-    RootPowCancelRule,
-    "Root Power Cancel",
-    priority: 15,
-    importance: crate::step::ImportanceLevel::High,
-    |ctx, expr, parent_ctx| {
+pub struct RootPowCancelRule;
+
+impl crate::rule::Rule for RootPowCancelRule {
+    fn name(&self) -> &str {
+        "Root Power Cancel"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
         use crate::semantics::ValueDomain;
 
         let (base, outer_exp) = as_pow(ctx, expr)?;
@@ -385,7 +392,19 @@ define_rule!(
             }
         }
     }
-);
+
+    fn target_types(&self) -> Option<Vec<&str>> {
+        Some(vec!["Pow"])
+    }
+
+    fn priority(&self) -> i32 {
+        15
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+}
 
 define_rule!(
     PowerPowerRule,
