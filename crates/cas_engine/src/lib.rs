@@ -101,9 +101,14 @@ pub use assumptions::{
 };
 pub use domain::{can_cancel_factor, BlockedHint, CancelDecision, DomainMode, Proof};
 pub use json::{
-    eval_str_to_json, substitute_str_to_json, BudgetExceededJson, BudgetJsonInfo, BudgetOpts,
+    eval_str_to_json, substitute_str_to_json, AssumptionDto, BlockedHintDto, BoundDto,
+    BudgetExceededJson, BudgetJsonInfo, BudgetOpts, CaseDto, ConditionDto, DomainJson, EngineInfo,
     EngineJsonError, EngineJsonResponse, EngineJsonStep, EngineJsonSubstep, EngineJsonWarning,
-    JsonRunOptions, SpanJson, SubstituteJsonOptions, SubstituteJsonResponse, SCHEMA_VERSION,
+    ErrorJsonOutput, ExprDto, ExprStatsJson, JsonRunOptions, OptionsJson, OutputEnvelope,
+    RequestInfo, RequestOptions, RequiredConditionJson, ResultDto, SemanticsJson, SolutionSetDto,
+    SolveStepJson, SolveSubStepJson, SpanJson, StepDto, StepJson, SubStepJson,
+    SubstituteJsonOptions, SubstituteJsonResponse, ThenDto, TimingsJson, TransparencyDto,
+    WarningJson, WhenDto, SCHEMA_VERSION,
 };
 pub use options::AutoExpandBinomials; // V2.15.8: education mode expansion
 pub use options::HeuristicPoly; // V2.15.9: smart polynomial simplification
