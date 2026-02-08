@@ -102,7 +102,7 @@ pub(crate) fn collect_exponential_terms(ctx: &Context, expr: ExprId, var: &str) 
     terms
 }
 
-pub(crate) fn substitute_expr(
+pub fn substitute_expr(
     ctx: &mut Context,
     expr: ExprId,
     target: ExprId,
