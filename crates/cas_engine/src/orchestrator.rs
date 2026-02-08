@@ -208,18 +208,24 @@ impl Orchestrator {
         // Clear thread-local PolyStore before evaluation
         clear_thread_local_store();
 
+        // Extract collect_steps early so pre-passes can skip Step construction
+        let collect_steps = self.options.collect_steps;
+
         // PRE-PASS 1: Eager eval for expand() calls using fast mod-p path
         // This runs BEFORE any simplification to avoid budget exhaustion on huge arguments
-        let (current, expand_steps) = eager_eval_expand_calls(&mut simplifier.context, expr);
+        let (current, expand_steps) =
+            eager_eval_expand_calls(&mut simplifier.context, expr, collect_steps);
         let mut all_steps = expand_steps;
 
         // PRE-PASS 2: Eager eval for special functions (poly_gcd_modp)
-        let (current, eager_steps) = eager_eval_poly_gcd_calls(&mut simplifier.context, current);
+        let (current, eager_steps) =
+            eager_eval_poly_gcd_calls(&mut simplifier.context, current, collect_steps);
         all_steps.extend(eager_steps);
 
         // PRE-PASS 3: Poly lowering - combine poly_result operations before simplification
         // This handles poly_result(0) + poly_result(1) → poly_result(2) internally
-        let lower_result = crate::poly_lowering::poly_lower_pass(&mut simplifier.context, current);
+        let lower_result =
+            crate::poly_lowering::poly_lower_pass(&mut simplifier.context, current, collect_steps);
         let current = lower_result.expr;
         all_steps.extend(lower_result.steps);
 
@@ -251,7 +257,6 @@ impl Orchestrator {
         let budgets = self.options.budgets;
         let enable_transform = self.options.enable_transform;
         let auto_level = self.options.rationalize.auto_level;
-        let collect_steps = self.options.collect_steps;
 
         // V2.15.25: Best-So-Far tracking to prevent returning worse expressions
         // Initialize BSF AFTER Core phase (not from raw input) to preserve Phase 1 canonicalizations

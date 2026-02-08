@@ -298,17 +298,25 @@ impl<'a> LocalSimplificationTransformer<'a> {
     /// Extracted to reduce stack frame size in transform_expr_recursive.
     #[inline(never)]
     fn transform_binary(&mut self, id: ExprId, l: ExprId, r: ExprId, op: BinaryOp) -> ExprId {
-        self.current_path.push(crate::step::PathStep::Left);
+        if self.steps_mode != StepsMode::Off {
+            self.current_path.push(crate::step::PathStep::Left);
+        }
         self.ancestor_stack.push(id);
         let new_l = self.transform_expr_recursive(l);
         self.ancestor_stack.pop();
-        self.current_path.pop();
+        if self.steps_mode != StepsMode::Off {
+            self.current_path.pop();
+        }
 
-        self.current_path.push(crate::step::PathStep::Right);
+        if self.steps_mode != StepsMode::Off {
+            self.current_path.push(crate::step::PathStep::Right);
+        }
         self.ancestor_stack.push(id);
         let new_r = self.transform_expr_recursive(r);
         self.ancestor_stack.pop();
-        self.current_path.pop();
+        if self.steps_mode != StepsMode::Off {
+            self.current_path.pop();
+        }
 
         if new_l != l || new_r != r {
             let expr = match op {
@@ -350,17 +358,25 @@ impl<'a> LocalSimplificationTransformer<'a> {
         }
 
         // Simplify children
-        self.current_path.push(crate::step::PathStep::Base);
+        if self.steps_mode != StepsMode::Off {
+            self.current_path.push(crate::step::PathStep::Base);
+        }
         self.ancestor_stack.push(id);
         let new_b = self.transform_expr_recursive(base);
         self.ancestor_stack.pop();
-        self.current_path.pop();
+        if self.steps_mode != StepsMode::Off {
+            self.current_path.pop();
+        }
 
-        self.current_path.push(crate::step::PathStep::Exponent);
+        if self.steps_mode != StepsMode::Off {
+            self.current_path.push(crate::step::PathStep::Exponent);
+        }
         self.ancestor_stack.push(id);
         let new_e = self.transform_expr_recursive(exp);
         self.ancestor_stack.pop();
-        self.current_path.pop();
+        if self.steps_mode != StepsMode::Off {
+            self.current_path.pop();
+        }
 
         if new_b != base || new_e != exp {
             self.context.add(Expr::Pow(new_b, new_e))
@@ -438,11 +454,15 @@ impl<'a> LocalSimplificationTransformer<'a> {
         let mut new_args = Vec::with_capacity(args.len());
         let mut changed = false;
         for (i, arg) in args.iter().enumerate() {
-            self.current_path.push(crate::step::PathStep::Arg(i));
+            if self.steps_mode != StepsMode::Off {
+                self.current_path.push(crate::step::PathStep::Arg(i));
+            }
             self.ancestor_stack.push(id);
             let new_arg = self.transform_expr_recursive(*arg);
             self.ancestor_stack.pop();
-            self.current_path.pop();
+            if self.steps_mode != StepsMode::Off {
+                self.current_path.pop();
+            }
 
             if new_arg != *arg {
                 changed = true;
@@ -476,17 +496,25 @@ impl<'a> LocalSimplificationTransformer<'a> {
         }
 
         // Simplify children
-        self.current_path.push(crate::step::PathStep::Left);
+        if self.steps_mode != StepsMode::Off {
+            self.current_path.push(crate::step::PathStep::Left);
+        }
         self.ancestor_stack.push(id);
         let new_l = self.transform_expr_recursive(l);
         self.ancestor_stack.pop();
-        self.current_path.pop();
+        if self.steps_mode != StepsMode::Off {
+            self.current_path.pop();
+        }
 
-        self.current_path.push(crate::step::PathStep::Right);
+        if self.steps_mode != StepsMode::Off {
+            self.current_path.push(crate::step::PathStep::Right);
+        }
         self.ancestor_stack.push(id);
         let new_r = self.transform_expr_recursive(r);
         self.ancestor_stack.pop();
-        self.current_path.pop();
+        if self.steps_mode != StepsMode::Off {
+            self.current_path.pop();
+        }
 
         if new_l != l || new_r != r {
             self.context.add(Expr::Div(new_l, new_r))
@@ -563,11 +591,15 @@ impl<'a> LocalSimplificationTransformer<'a> {
             Expr::Div(l, r) => self.transform_div(id, l, r),
             Expr::Pow(b, e) => self.transform_pow(id, b, e),
             Expr::Neg(e) => {
-                self.current_path.push(crate::step::PathStep::Inner);
+                if self.steps_mode != StepsMode::Off {
+                    self.current_path.push(crate::step::PathStep::Inner);
+                }
                 self.ancestor_stack.push(id); // Track current node as parent for children
                 let new_e = self.transform_expr_recursive(e);
                 self.ancestor_stack.pop();
-                self.current_path.pop();
+                if self.steps_mode != StepsMode::Off {
+                    self.current_path.pop();
+                }
 
                 if new_e != e {
                     self.context.add(Expr::Neg(new_e))
@@ -581,11 +613,15 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 let mut new_data = Vec::new();
                 let mut changed = false;
                 for (i, elem) in data.iter().enumerate() {
-                    self.current_path.push(crate::step::PathStep::Arg(i));
+                    if self.steps_mode != StepsMode::Off {
+                        self.current_path.push(crate::step::PathStep::Arg(i));
+                    }
                     self.ancestor_stack.push(id); // Track current node as parent for children
                     let new_elem = self.transform_expr_recursive(*elem);
                     self.ancestor_stack.pop();
-                    self.current_path.pop();
+                    if self.steps_mode != StepsMode::Off {
+                        self.current_path.pop();
+                    }
                     if new_elem != *elem {
                         changed = true;
                     }
@@ -605,11 +641,15 @@ impl<'a> LocalSimplificationTransformer<'a> {
             Expr::SessionRef(_) => id,
             // Hold barrier: simplify contents but preserve the wrapper (blocks expansive rules)
             Expr::Hold(inner) => {
-                self.current_path.push(crate::step::PathStep::Inner);
+                if self.steps_mode != StepsMode::Off {
+                    self.current_path.push(crate::step::PathStep::Inner);
+                }
                 self.ancestor_stack.push(id);
                 let new_inner = self.transform_expr_recursive(inner);
                 self.ancestor_stack.pop();
-                self.current_path.pop();
+                if self.steps_mode != StepsMode::Off {
+                    self.current_path.pop();
+                }
 
                 if new_inner != inner {
                     self.context.add(Expr::Hold(new_inner))

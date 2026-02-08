@@ -268,28 +268,39 @@ pub fn compute_gcd_modp_with_factor_extraction(
 ///
 /// CRITICAL: When we find poly_gcd_modp, we do NOT descend into its children.
 /// This prevents the expensive symbolic expansion of huge arguments.
-pub fn eager_eval_poly_gcd_calls(ctx: &mut Context, expr: ExprId) -> (ExprId, Vec<crate::Step>) {
+pub fn eager_eval_poly_gcd_calls(
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> (ExprId, Vec<crate::Step>) {
     let mut steps = Vec::new();
-    let result = eager_eval_recursive(ctx, expr, &mut steps);
+    let result = eager_eval_recursive(ctx, expr, &mut steps, collect_steps);
     (result, steps)
 }
 
-fn eager_eval_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<crate::Step>) -> ExprId {
+fn eager_eval_recursive(
+    ctx: &mut Context,
+    expr: ExprId,
+    steps: &mut Vec<crate::Step>,
+    collect_steps: bool,
+) -> ExprId {
     // Check if this is poly_gcd_modp - if so, evaluate and STOP descent
     if let Expr::Function(fn_id, args) = ctx.get(expr) {
         let (fn_id, args) = (*fn_id, args.clone());
-        let name = ctx.sym_name(fn_id).to_string();
+        let name = ctx.sym_name(fn_id);
         if (name == "poly_gcd_modp" || name == "pgcdp") && args.len() >= 2 {
             if let Some(result) = compute_gcd_modp_with_factor_extraction(ctx, args[0], args[1]) {
                 // Create step for the evaluation
-                steps.push(crate::Step::new(
-                    "Eager eval poly_gcd_modp (bypass simplifier)",
-                    "Polynomial GCD mod p",
-                    expr,
-                    result,
-                    Vec::new(),
-                    Some(ctx),
-                ));
+                if collect_steps {
+                    steps.push(crate::Step::new(
+                        "Eager eval poly_gcd_modp (bypass simplifier)",
+                        "Polynomial GCD mod p",
+                        expr,
+                        result,
+                        Vec::new(),
+                        Some(ctx),
+                    ));
+                }
                 return result;
             }
         }
@@ -297,7 +308,7 @@ fn eager_eval_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<crate::
         // For other functions, recurse into children
         let new_args: Vec<ExprId> = args
             .iter()
-            .map(|&arg| eager_eval_recursive(ctx, arg, steps))
+            .map(|&arg| eager_eval_recursive(ctx, arg, steps, collect_steps))
             .collect();
 
         // Check if any arg changed
@@ -306,7 +317,7 @@ fn eager_eval_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<crate::
             .zip(args.iter())
             .any(|(new, old)| new != old)
         {
-            return ctx.call(&name, new_args);
+            return ctx.add(Expr::Function(fn_id, new_args));
         }
         return expr;
     }
@@ -329,8 +340,8 @@ fn eager_eval_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<crate::
     };
     match recurse {
         Recurse::Binary(l, r, op) => {
-            let nl = eager_eval_recursive(ctx, l, steps);
-            let nr = eager_eval_recursive(ctx, r, steps);
+            let nl = eager_eval_recursive(ctx, l, steps, collect_steps);
+            let nr = eager_eval_recursive(ctx, r, steps, collect_steps);
             if nl != l || nr != r {
                 match op {
                     0 => ctx.add(Expr::Add(nl, nr)),
@@ -344,7 +355,7 @@ fn eager_eval_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<crate::
             }
         }
         Recurse::Unary(inner, op) => {
-            let ni = eager_eval_recursive(ctx, inner, steps);
+            let ni = eager_eval_recursive(ctx, inner, steps, collect_steps);
             if ni != inner {
                 match op {
                     0 => ctx.add(Expr::Neg(ni)),

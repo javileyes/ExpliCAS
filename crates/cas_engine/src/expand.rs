@@ -21,13 +21,22 @@ pub const EXPAND_MATERIALIZE_LIMIT: usize = 1_000;
 /// - For expand(arg) where estimated terms > threshold: use fast mod-p expansion
 /// - If terms > EXPAND_MATERIALIZE_LIMIT: return poly_ref (opaque)
 /// - Otherwise: materialize AST wrapped in __hold
-pub fn eager_eval_expand_calls(ctx: &mut Context, expr: ExprId) -> (ExprId, Vec<Step>) {
+pub fn eager_eval_expand_calls(
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> (ExprId, Vec<Step>) {
     let mut steps = Vec::new();
-    let result = eager_eval_expand_recursive(ctx, expr, &mut steps);
+    let result = eager_eval_expand_recursive(ctx, expr, &mut steps, collect_steps);
     (result, steps)
 }
 
-fn eager_eval_expand_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<Step>) -> ExprId {
+fn eager_eval_expand_recursive(
+    ctx: &mut Context,
+    expr: ExprId,
+    steps: &mut Vec<Step>,
+    collect_steps: bool,
+) -> ExprId {
     // Check if this is expand(...) that should use fast path
     if let Expr::Function(fn_id, args) = ctx.get(expr).clone() {
         let name = ctx.sym_name(fn_id);
@@ -39,14 +48,16 @@ fn eager_eval_expand_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<
                 // Use fast mod-p path for large expansions
                 if est > EAGER_EXPAND_MODP_THRESHOLD {
                     if let Some(result) = expand_to_poly_ref_or_hold(ctx, arg, est as usize) {
-                        steps.push(Step::new(
-                            &format!("Eager expand (mod-p, {} terms)", est),
-                            "Polynomial Expansion",
-                            expr,
-                            result,
-                            Vec::new(),
-                            Some(ctx),
-                        ));
+                        if collect_steps {
+                            steps.push(Step::new(
+                                &format!("Eager expand (mod-p, {} terms)", est),
+                                "Polynomial Expansion",
+                                expr,
+                                result,
+                                Vec::new(),
+                                Some(ctx),
+                            ));
+                        }
 
                         return result;
                     }
@@ -58,7 +69,7 @@ fn eager_eval_expand_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<
         // For other functions, recurse into children
         let new_args: Vec<ExprId> = args
             .iter()
-            .map(|&arg| eager_eval_expand_recursive(ctx, arg, steps))
+            .map(|&arg| eager_eval_expand_recursive(ctx, arg, steps, collect_steps))
             .collect();
 
         if new_args
@@ -74,8 +85,8 @@ fn eager_eval_expand_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<
     // Recurse into children for other expression types
     match ctx.get(expr).clone() {
         Expr::Add(l, r) => {
-            let nl = eager_eval_expand_recursive(ctx, l, steps);
-            let nr = eager_eval_expand_recursive(ctx, r, steps);
+            let nl = eager_eval_expand_recursive(ctx, l, steps, collect_steps);
+            let nr = eager_eval_expand_recursive(ctx, r, steps, collect_steps);
             if nl != l || nr != r {
                 ctx.add(Expr::Add(nl, nr))
             } else {
@@ -83,8 +94,8 @@ fn eager_eval_expand_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<
             }
         }
         Expr::Sub(l, r) => {
-            let nl = eager_eval_expand_recursive(ctx, l, steps);
-            let nr = eager_eval_expand_recursive(ctx, r, steps);
+            let nl = eager_eval_expand_recursive(ctx, l, steps, collect_steps);
+            let nr = eager_eval_expand_recursive(ctx, r, steps, collect_steps);
             if nl != l || nr != r {
                 ctx.add(Expr::Sub(nl, nr))
             } else {
@@ -92,8 +103,8 @@ fn eager_eval_expand_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<
             }
         }
         Expr::Mul(l, r) => {
-            let nl = eager_eval_expand_recursive(ctx, l, steps);
-            let nr = eager_eval_expand_recursive(ctx, r, steps);
+            let nl = eager_eval_expand_recursive(ctx, l, steps, collect_steps);
+            let nr = eager_eval_expand_recursive(ctx, r, steps, collect_steps);
             if nl != l || nr != r {
                 ctx.add(Expr::Mul(nl, nr))
             } else {
@@ -101,8 +112,8 @@ fn eager_eval_expand_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<
             }
         }
         Expr::Div(l, r) => {
-            let nl = eager_eval_expand_recursive(ctx, l, steps);
-            let nr = eager_eval_expand_recursive(ctx, r, steps);
+            let nl = eager_eval_expand_recursive(ctx, l, steps, collect_steps);
+            let nr = eager_eval_expand_recursive(ctx, r, steps, collect_steps);
             if nl != l || nr != r {
                 ctx.add(Expr::Div(nl, nr))
             } else {
@@ -110,8 +121,8 @@ fn eager_eval_expand_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<
             }
         }
         Expr::Pow(b, e) => {
-            let nb = eager_eval_expand_recursive(ctx, b, steps);
-            let ne = eager_eval_expand_recursive(ctx, e, steps);
+            let nb = eager_eval_expand_recursive(ctx, b, steps, collect_steps);
+            let ne = eager_eval_expand_recursive(ctx, e, steps, collect_steps);
             if nb != b || ne != e {
                 ctx.add(Expr::Pow(nb, ne))
             } else {
@@ -119,7 +130,7 @@ fn eager_eval_expand_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<
             }
         }
         Expr::Neg(e) => {
-            let ne = eager_eval_expand_recursive(ctx, e, steps);
+            let ne = eager_eval_expand_recursive(ctx, e, steps, collect_steps);
             if ne != e {
                 ctx.add(Expr::Neg(ne))
             } else {

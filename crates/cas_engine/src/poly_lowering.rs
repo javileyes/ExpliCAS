@@ -170,10 +170,10 @@ pub struct PolyLowerResult {
 ///
 /// This should be called AFTER eager_eval_expand_calls and BEFORE the simplifier.
 /// Uses the thread-local PolyStore for polynomial operations.
-pub fn poly_lower_pass(ctx: &mut Context, expr: ExprId) -> PolyLowerResult {
+pub fn poly_lower_pass(ctx: &mut Context, expr: ExprId, collect_steps: bool) -> PolyLowerResult {
     let mut steps = Vec::new();
     let mut combined_any = false;
-    let result = lower_recursive(ctx, expr, &mut steps, &mut combined_any);
+    let result = lower_recursive(ctx, expr, &mut steps, &mut combined_any, collect_steps);
     PolyLowerResult {
         expr: result,
         steps,
@@ -186,6 +186,7 @@ fn lower_recursive(
     expr: ExprId,
     steps: &mut Vec<Step>,
     combined_any: &mut bool,
+    collect_steps: bool,
 ) -> ExprId {
     match ctx.get(expr).clone() {
         // Check if this is already a poly_result - pass through
@@ -193,8 +194,8 @@ fn lower_recursive(
 
         // Add: try to combine poly_results or promote simple expressions
         Expr::Add(l, r) => {
-            let nl = lower_recursive(ctx, l, steps, combined_any);
-            let nr = lower_recursive(ctx, r, steps, combined_any);
+            let nl = lower_recursive(ctx, l, steps, combined_any, collect_steps);
+            let nr = lower_recursive(ctx, r, steps, combined_any, collect_steps);
 
             let id_l = extract_poly_result_id(ctx, nl);
             let id_r = extract_poly_result_id(ctx, nr);
@@ -206,14 +207,16 @@ fn lower_recursive(
                         *combined_any = true;
                         let result = make_poly_result(ctx, new_id);
 
-                        steps.push(Step::new(
-                            "Poly lowering: combined poly_result + poly_result",
-                            "Polynomial Combination",
-                            expr,
-                            result,
-                            Vec::new(),
-                            Some(ctx),
-                        ));
+                        if collect_steps {
+                            steps.push(Step::new(
+                                "Poly lowering: combined poly_result + poly_result",
+                                "Polynomial Combination",
+                                expr,
+                                result,
+                                Vec::new(),
+                                Some(ctx),
+                            ));
+                        }
                         return result;
                     }
                 }
@@ -224,14 +227,16 @@ fn lower_recursive(
                             *combined_any = true;
                             let result = make_poly_result(ctx, new_id);
 
-                            steps.push(Step::new(
-                                "Poly lowering: promoted and combined expressions",
-                                "Polynomial Combination",
-                                expr,
-                                result,
-                                Vec::new(),
-                                Some(ctx),
-                            ));
+                            if collect_steps {
+                                steps.push(Step::new(
+                                    "Poly lowering: promoted and combined expressions",
+                                    "Polynomial Combination",
+                                    expr,
+                                    result,
+                                    Vec::new(),
+                                    Some(ctx),
+                                ));
+                            }
                             return result;
                         }
                     }
@@ -269,8 +274,8 @@ fn lower_recursive(
 
         // Sub: try to combine poly_results or promote simple expressions
         Expr::Sub(l, r) => {
-            let nl = lower_recursive(ctx, l, steps, combined_any);
-            let nr = lower_recursive(ctx, r, steps, combined_any);
+            let nl = lower_recursive(ctx, l, steps, combined_any, collect_steps);
+            let nr = lower_recursive(ctx, r, steps, combined_any, collect_steps);
 
             let id_l = extract_poly_result_id(ctx, nl);
             let id_r = extract_poly_result_id(ctx, nr);
@@ -282,14 +287,16 @@ fn lower_recursive(
                         *combined_any = true;
                         let result = make_poly_result(ctx, new_id);
 
-                        steps.push(Step::new(
-                            "Poly lowering: combined poly_result - poly_result",
-                            "Polynomial Combination",
-                            expr,
-                            result,
-                            Vec::new(),
-                            Some(ctx),
-                        ));
+                        if collect_steps {
+                            steps.push(Step::new(
+                                "Poly lowering: combined poly_result - poly_result",
+                                "Polynomial Combination",
+                                expr,
+                                result,
+                                Vec::new(),
+                                Some(ctx),
+                            ));
+                        }
                         return result;
                     }
                 }
@@ -300,14 +307,16 @@ fn lower_recursive(
                             *combined_any = true;
                             let result = make_poly_result(ctx, new_id);
 
-                            steps.push(Step::new(
-                                "Poly lowering: promoted and combined expressions",
-                                "Polynomial Combination",
-                                expr,
-                                result,
-                                Vec::new(),
-                                Some(ctx),
-                            ));
+                            if collect_steps {
+                                steps.push(Step::new(
+                                    "Poly lowering: promoted and combined expressions",
+                                    "Polynomial Combination",
+                                    expr,
+                                    result,
+                                    Vec::new(),
+                                    Some(ctx),
+                                ));
+                            }
                             return result;
                         }
                     }
@@ -319,14 +328,16 @@ fn lower_recursive(
                             *combined_any = true;
                             let result = make_poly_result(ctx, new_id);
 
-                            steps.push(Step::new(
-                                "Poly lowering: promoted and combined expressions",
-                                "Polynomial Combination",
-                                expr,
-                                result,
-                                Vec::new(),
-                                Some(ctx),
-                            ));
+                            if collect_steps {
+                                steps.push(Step::new(
+                                    "Poly lowering: promoted and combined expressions",
+                                    "Polynomial Combination",
+                                    expr,
+                                    result,
+                                    Vec::new(),
+                                    Some(ctx),
+                                ));
+                            }
                             return result;
                         }
                     }
@@ -344,8 +355,8 @@ fn lower_recursive(
 
         // Mul: try to combine poly_results or promote simple expressions
         Expr::Mul(l, r) => {
-            let nl = lower_recursive(ctx, l, steps, combined_any);
-            let nr = lower_recursive(ctx, r, steps, combined_any);
+            let nl = lower_recursive(ctx, l, steps, combined_any, collect_steps);
+            let nr = lower_recursive(ctx, r, steps, combined_any, collect_steps);
 
             let id_l = extract_poly_result_id(ctx, nl);
             let id_r = extract_poly_result_id(ctx, nr);
@@ -357,14 +368,16 @@ fn lower_recursive(
                         *combined_any = true;
                         let result = make_poly_result(ctx, new_id);
 
-                        steps.push(Step::new(
-                            "Poly lowering: combined poly_result * poly_result",
-                            "Polynomial Combination",
-                            expr,
-                            result,
-                            Vec::new(),
-                            Some(ctx),
-                        ));
+                        if collect_steps {
+                            steps.push(Step::new(
+                                "Poly lowering: combined poly_result * poly_result",
+                                "Polynomial Combination",
+                                expr,
+                                result,
+                                Vec::new(),
+                                Some(ctx),
+                            ));
+                        }
                         return result;
                     }
                 }
@@ -375,14 +388,16 @@ fn lower_recursive(
                             *combined_any = true;
                             let result = make_poly_result(ctx, new_id);
 
-                            steps.push(Step::new(
-                                "Poly lowering: promoted and combined expressions",
-                                "Polynomial Combination",
-                                expr,
-                                result,
-                                Vec::new(),
-                                Some(ctx),
-                            ));
+                            if collect_steps {
+                                steps.push(Step::new(
+                                    "Poly lowering: promoted and combined expressions",
+                                    "Polynomial Combination",
+                                    expr,
+                                    result,
+                                    Vec::new(),
+                                    Some(ctx),
+                                ));
+                            }
                             return result;
                         }
                     }
@@ -394,14 +409,16 @@ fn lower_recursive(
                             *combined_any = true;
                             let result = make_poly_result(ctx, new_id);
 
-                            steps.push(Step::new(
-                                "Poly lowering: promoted and combined expressions",
-                                "Polynomial Combination",
-                                expr,
-                                result,
-                                Vec::new(),
-                                Some(ctx),
-                            ));
+                            if collect_steps {
+                                steps.push(Step::new(
+                                    "Poly lowering: promoted and combined expressions",
+                                    "Polynomial Combination",
+                                    expr,
+                                    result,
+                                    Vec::new(),
+                                    Some(ctx),
+                                ));
+                            }
                             return result;
                         }
                     }
@@ -419,7 +436,7 @@ fn lower_recursive(
 
         // Neg: negate poly_result
         Expr::Neg(inner) => {
-            let ni = lower_recursive(ctx, inner, steps, combined_any);
+            let ni = lower_recursive(ctx, inner, steps, combined_any, collect_steps);
 
             if let Some(id) = extract_poly_result_id(ctx, ni) {
                 if let Some(new_id) = thread_local_neg(id) {
@@ -437,8 +454,8 @@ fn lower_recursive(
 
         // Pow: poly_result^n
         Expr::Pow(base, exp) => {
-            let nb = lower_recursive(ctx, base, steps, combined_any);
-            let ne = lower_recursive(ctx, exp, steps, combined_any);
+            let nb = lower_recursive(ctx, base, steps, combined_any, collect_steps);
+            let ne = lower_recursive(ctx, exp, steps, combined_any, collect_steps);
 
             if let Some(id) = extract_poly_result_id(ctx, nb) {
                 if let Some(n) = extract_int(ctx, ne) {
@@ -460,8 +477,8 @@ fn lower_recursive(
 
         // Div: no combination (poly division is complex)
         Expr::Div(l, r) => {
-            let nl = lower_recursive(ctx, l, steps, combined_any);
-            let nr = lower_recursive(ctx, r, steps, combined_any);
+            let nl = lower_recursive(ctx, l, steps, combined_any, collect_steps);
+            let nr = lower_recursive(ctx, r, steps, combined_any, collect_steps);
             if nl != l || nr != r {
                 ctx.add(Expr::Div(nl, nr))
             } else {
@@ -473,7 +490,7 @@ fn lower_recursive(
         Expr::Function(name, args) => {
             let new_args: Vec<ExprId> = args
                 .iter()
-                .map(|&a| lower_recursive(ctx, a, steps, combined_any))
+                .map(|&a| lower_recursive(ctx, a, steps, combined_any, collect_steps))
                 .collect();
             if new_args.iter().zip(args.iter()).any(|(n, o)| n != o) {
                 ctx.add(Expr::Function(name, new_args))
@@ -489,7 +506,7 @@ fn lower_recursive(
         Expr::Matrix { rows, cols, data } => {
             let new_data: Vec<ExprId> = data
                 .iter()
-                .map(|&e| lower_recursive(ctx, e, steps, combined_any))
+                .map(|&e| lower_recursive(ctx, e, steps, combined_any, collect_steps))
                 .collect();
             if new_data.iter().zip(data.iter()).any(|(n, o)| n != o) {
                 ctx.add(Expr::Matrix {
@@ -504,7 +521,7 @@ fn lower_recursive(
 
         // Hold blocks simplification - but recurse into inner for any poly_refs
         Expr::Hold(inner) => {
-            let ni = lower_recursive(ctx, inner, steps, combined_any);
+            let ni = lower_recursive(ctx, inner, steps, combined_any, collect_steps);
             if ni != inner {
                 ctx.add(Expr::Hold(ni))
             } else {
