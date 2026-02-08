@@ -166,9 +166,7 @@ impl crate::rule::Rule for HalfAngleTangentRule {
         use crate::implicit_domain::ImplicitCondition;
 
         // Only match Div nodes
-        let Some((num_id, den_id)) = as_div(ctx, expr) else {
-            return None;
-        };
+        let (num_id, den_id) = as_div(ctx, expr)?;
 
         // Pattern 1: (1 - cos(2x)) / sin(2x) → tan(x)
         // Pattern 2: sin(2x) / (1 + cos(2x)) → tan(x)

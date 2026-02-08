@@ -299,13 +299,9 @@ impl crate::rule::Rule for RootPowCancelRule {
     ) -> Option<crate::rule::Rewrite> {
         use crate::semantics::ValueDomain;
 
-        let Some((base, outer_exp)) = as_pow(ctx, expr) else {
-            return None;
-        };
+        let (base, outer_exp) = as_pow(ctx, expr)?;
 
-        let Some((inner_base, inner_exp)) = as_pow(ctx, base) else {
-            return None;
-        };
+        let (inner_base, inner_exp) = as_pow(ctx, base)?;
 
         let outer_exp_data = ctx.get(outer_exp).clone();
         let inner_exp_data = ctx.get(inner_exp).clone();

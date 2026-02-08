@@ -592,9 +592,7 @@ impl crate::rule::Rule for WeierstrassContractionRule {
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
         // Only match Div nodes
-        let Some((num_id, den_id)) = as_div(ctx, expr) else {
-            return None;
-        };
+        let (num_id, den_id) = as_div(ctx, expr)?;
 
         // Pattern 1: 2*tan(x/2) / (1 + tan²(x/2)) → sin(x)
         // Check denominator: 1 + tan²(x/2)

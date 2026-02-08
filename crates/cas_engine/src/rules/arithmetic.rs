@@ -1,4 +1,5 @@
 use crate::define_rule;
+use crate::helpers::{as_add, as_div, as_mul, as_sub};
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::Expr;
@@ -9,17 +10,15 @@ define_rule!(
     "Identity Property of Addition",
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Add(lhs, rhs) = expr_data {
-            if let Expr::Number(n) = ctx.get(rhs) {
-                if n.is_zero() {
-                    return Some(Rewrite::new(lhs).desc("x + 0 = x"));
-                }
+        let (lhs, rhs) = as_add(ctx, expr)?;
+        if let Expr::Number(n) = ctx.get(rhs) {
+            if n.is_zero() {
+                return Some(Rewrite::new(lhs).desc("x + 0 = x"));
             }
-            if let Expr::Number(n) = ctx.get(lhs) {
-                if n.is_zero() {
-                    return Some(Rewrite::new(rhs).desc("0 + x = x"));
-                }
+        }
+        if let Expr::Number(n) = ctx.get(lhs) {
+            if n.is_zero() {
+                return Some(Rewrite::new(rhs).desc("0 + x = x"));
             }
         }
         None
@@ -31,17 +30,15 @@ define_rule!(
     "Identity Property of Multiplication",
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Mul(lhs, rhs) = expr_data {
-            if let Expr::Number(n) = ctx.get(rhs) {
-                if n.is_one() {
-                    return Some(Rewrite::new(lhs).desc("x * 1 = x"));
-                }
+        let (lhs, rhs) = as_mul(ctx, expr)?;
+        if let Expr::Number(n) = ctx.get(rhs) {
+            if n.is_one() {
+                return Some(Rewrite::new(lhs).desc("x * 1 = x"));
             }
-            if let Expr::Number(n) = ctx.get(lhs) {
-                if n.is_one() {
-                    return Some(Rewrite::new(rhs).desc("1 * x = x"));
-                }
+        }
+        if let Expr::Number(n) = ctx.get(lhs) {
+            if n.is_one() {
+                return Some(Rewrite::new(rhs).desc("1 * x = x"));
             }
         }
         None
@@ -132,258 +129,232 @@ define_rule!(
         use crate::domain::Proof;
         use crate::helpers::prove_nonzero;
 
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Div(num, den) = expr_data {
-            // Check if numerator is 0
-            let num_is_zero = matches!(ctx.get(num), Expr::Number(n) if n.is_zero());
-            if !num_is_zero {
-                return None;
-            }
+        let (num, den) = as_div(ctx, expr)?;
 
-            // Special case: 0/0 → undefined (all modes)
-            if let Expr::Number(d) = ctx.get(den) {
-                if d.is_zero() {
-                    let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
-                    return Some(Rewrite::new(undef).desc("0/0 is undefined"));
-                }
-            }
-
-            // Use central gate for NonZero condition (Definability class)
-            let den_proof = prove_nonzero(ctx, den);
-            let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, den);
-            let decision = crate::domain::can_cancel_factor_with_hint(
-                parent_ctx.domain_mode(),
-                den_proof,
-                key,
-                den,
-                "Zero Property of Division",
-            );
-
-            if !decision.allow {
-                return None; // Strict mode: don't simplify if not proven
-            }
-
-            // Build assumption events if needed
-            let assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]> = if decision.assumption.is_some() && den_proof != Proof::Proven {
-                smallvec::smallvec![crate::assumptions::AssumptionEvent::nonzero(ctx, den)]
-            } else {
-                smallvec::SmallVec::new()
-            };
-
-            let zero = ctx.num(0);
-            return Some(Rewrite::new(zero).desc("0 / d = 0").assume_all(assumption_events));
+        // Check if numerator is 0
+        let num_is_zero = matches!(ctx.get(num), Expr::Number(n) if n.is_zero());
+        if !num_is_zero {
+            return None;
         }
-        None
+
+        // Special case: 0/0 → undefined (all modes)
+        if let Expr::Number(d) = ctx.get(den) {
+            if d.is_zero() {
+                let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
+                return Some(Rewrite::new(undef).desc("0/0 is undefined"));
+            }
+        }
+
+        // Use central gate for NonZero condition (Definability class)
+        let den_proof = prove_nonzero(ctx, den);
+        let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, den);
+        let decision = crate::domain::can_cancel_factor_with_hint(
+            parent_ctx.domain_mode(),
+            den_proof,
+            key,
+            den,
+            "Zero Property of Division",
+        );
+
+        if !decision.allow {
+            return None; // Strict mode: don't simplify if not proven
+        }
+
+        // Build assumption events if needed
+        let assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]> = if decision.assumption.is_some() && den_proof != Proof::Proven {
+            smallvec::smallvec![crate::assumptions::AssumptionEvent::nonzero(ctx, den)]
+        } else {
+            smallvec::SmallVec::new()
+        };
+
+        let zero = ctx.num(0);
+        Some(Rewrite::new(zero).desc("0 / d = 0").assume_all(assumption_events))
     }
 );
 
 define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
-    // We need to clone data to avoid borrowing ctx while mutating it later
-    let expr_data = ctx.get(expr).clone();
-    match expr_data {
-        Expr::Add(lhs, rhs) => {
-            let lhs_data = ctx.get(lhs).clone();
-            let rhs_data = ctx.get(rhs).clone();
-            if let (Expr::Number(n1), Expr::Number(n2)) = (&lhs_data, &rhs_data) {
-                let sum = n1 + n2;
-                let new_expr = ctx.add(Expr::Number(sum.clone()));
-                // Format description cleanly: "1 + -1" → "1 - 1"
-                let description = if n2 < &num_rational::BigRational::from_integer(0.into()) {
-                    let abs_n2 = -n2;
-                    format!("{} - {} = {}", n1, abs_n2, sum)
-                } else {
-                    format!("{} + {} = {}", n1, n2, sum)
-                };
-                return Some(Rewrite::new(new_expr).desc(description));
-            }
-            // Handle nested: c1 + (c2 + x) -> (c1+c2) + x
-            if let Expr::Number(n1) = lhs_data {
-                if let Expr::Add(rl, rr) = rhs_data {
-                    let rl_data = ctx.get(rl).clone();
-                    if let Expr::Number(n2) = rl_data {
-                        let sum = &n1 + &n2;
-                        let sum_expr = ctx.add(Expr::Number(sum));
-                        let new_expr = ctx.add(Expr::Add(sum_expr, rr));
-                        return Some(
-                            Rewrite::new(new_expr)
-                                .desc(format!("Combine nested constants: {} + {}", n1, n2)),
-                        );
-                    }
+    // Try Add branch
+    if let Some((lhs, rhs)) = as_add(ctx, expr) {
+        if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(lhs).clone(), ctx.get(rhs).clone()) {
+            let sum = &n1 + &n2;
+            let new_expr = ctx.add(Expr::Number(sum.clone()));
+            let description = if n2 < num_rational::BigRational::from_integer(0.into()) {
+                let abs_n2 = -&n2;
+                format!("{} - {} = {}", n1, abs_n2, sum)
+            } else {
+                format!("{} + {} = {}", n1, n2, sum)
+            };
+            return Some(Rewrite::new(new_expr).desc(description));
+        }
+        // Handle nested: c1 + (c2 + x) -> (c1+c2) + x
+        if let Expr::Number(n1) = ctx.get(lhs).clone() {
+            if let Some((rl, rr)) = as_add(ctx, rhs) {
+                if let Expr::Number(n2) = ctx.get(rl).clone() {
+                    let sum = &n1 + &n2;
+                    let sum_expr = ctx.add(Expr::Number(sum));
+                    let new_expr = ctx.add(Expr::Add(sum_expr, rr));
+                    return Some(
+                        Rewrite::new(new_expr)
+                            .desc(format!("Combine nested constants: {} + {}", n1, n2)),
+                    );
                 }
             }
         }
-        Expr::Mul(lhs, rhs) => {
-            let lhs_data = ctx.get(lhs).clone();
-            let rhs_data = ctx.get(rhs).clone();
-            if let (Expr::Number(n1), Expr::Number(n2)) = (&lhs_data, &rhs_data) {
-                let prod = n1 * n2;
-                let new_expr = ctx.add(Expr::Number(prod.clone()));
-                return Some(Rewrite::new(new_expr).desc(format!("{} * {} = {}", n1, n2, prod)));
+    }
+
+    // Try Mul branch
+    if let Some((lhs, rhs)) = as_mul(ctx, expr) {
+        if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(lhs).clone(), ctx.get(rhs).clone()) {
+            let prod = &n1 * &n2;
+            let new_expr = ctx.add(Expr::Number(prod.clone()));
+            return Some(Rewrite::new(new_expr).desc(format!("{} * {} = {}", n1, n2, prod)));
+        }
+
+        // V2.15.25: Flatten complete Mul chain and combine ALL numeric factors
+        let mut factors = Vec::new();
+        let mut stack = vec![expr];
+        while let Some(id) = stack.pop() {
+            if let Expr::Mul(l, r) = ctx.get(id) {
+                stack.push(*r);
+                stack.push(*l);
+            } else {
+                factors.push(id);
+            }
+        }
+
+        let mut numeric_factors: Vec<num_rational::BigRational> = Vec::new();
+        let mut non_numeric: Vec<cas_ast::ExprId> = Vec::new();
+
+        for &f in &factors {
+            if let Expr::Number(n) = ctx.get(f) {
+                numeric_factors.push(n.clone());
+            } else {
+                non_numeric.push(f);
+            }
+        }
+
+        if numeric_factors.len() >= 2 {
+            let product: num_rational::BigRational = numeric_factors.iter().fold(
+                num_rational::BigRational::from_integer(1.into()),
+                |acc, n| acc * n
+            );
+
+            if product.is_zero() {
+                let zero = ctx.num(0);
+                return Some(Rewrite::new(zero).desc("0 * x = 0"));
             }
 
-            // V2.15.25: Flatten complete Mul chain and combine ALL numeric factors
-            // This handles cases like: 2 * (2 * (sin(u) * cos(u))) → 4 * sin(u) * cos(u)
-            let mut factors = Vec::new();
-            let mut stack = vec![expr];
-            while let Some(id) = stack.pop() {
-                if let Expr::Mul(l, r) = ctx.get(id) {
-                    stack.push(*r);
-                    stack.push(*l);
-                } else {
-                    factors.push(id);
+            let mut result: cas_ast::ExprId;
+            if product.is_one() && !non_numeric.is_empty() {
+                result = non_numeric[0];
+                for &f in &non_numeric[1..] {
+                    result = smart_mul(ctx, result, f);
+                }
+            } else if non_numeric.is_empty() {
+                result = ctx.add(Expr::Number(product.clone()));
+            } else {
+                let prod_expr = ctx.add(Expr::Number(product.clone()));
+                result = prod_expr;
+                for &f in &non_numeric {
+                    result = smart_mul(ctx, result, f);
                 }
             }
 
-            // Separate numeric and non-numeric factors
-            let mut numeric_factors: Vec<num_rational::BigRational> = Vec::new();
-            let mut non_numeric: Vec<cas_ast::ExprId> = Vec::new();
+            let nums_str: Vec<String> = numeric_factors.iter().map(|n| format!("{}", n)).collect();
+            return Some(Rewrite::new(result).desc(format!(
+                "Combine nested constants: {} = {}",
+                nums_str.join(" * "),
+                product
+            )));
+        }
 
-            for &f in &factors {
-                if let Expr::Number(n) = ctx.get(f) {
-                    numeric_factors.push(n.clone());
-                } else {
-                    non_numeric.push(f);
-                }
-            }
-
-            // Only proceed if we have 2+ numeric factors to combine
-            if numeric_factors.len() >= 2 {
-                // Multiply all numeric factors together
-                let product: num_rational::BigRational = numeric_factors.iter().fold(
-                    num_rational::BigRational::from_integer(1.into()),
-                    |acc, n| acc * n
-                );
-
-                // Build: if product is 1, skip it; if 0, return 0
-                if product.is_zero() {
-                    let zero = ctx.num(0);
-                    return Some(Rewrite::new(zero).desc("0 * x = 0"));
-                }
-
-                // Build new Mul chain: product * non_numeric[0] * non_numeric[1] * ...
-                let mut result: cas_ast::ExprId;
-                if product.is_one() && !non_numeric.is_empty() {
-                    // Product is 1, start with first non-numeric
-                    result = non_numeric[0];
-                    for &f in &non_numeric[1..] {
-                        result = smart_mul(ctx, result, f);
-                    }
-                } else if non_numeric.is_empty() {
-                    // Only numeric factors
-                    result = ctx.add(Expr::Number(product.clone()));
-                } else {
-                    // Normal case: product * rest
-                    let prod_expr = ctx.add(Expr::Number(product.clone()));
-                    result = prod_expr;
-                    for &f in &non_numeric {
-                        result = smart_mul(ctx, result, f);
-                    }
-                }
-
-                // Format description
-                let nums_str: Vec<String> = numeric_factors.iter().map(|n| format!("{}", n)).collect();
-                return Some(Rewrite::new(result).desc(format!(
-                    "Combine nested constants: {} = {}",
-                    nums_str.join(" * "),
-                    product
-                )));
-            }
-
-            // Fallback: Handle c1 * (c2 * x) -> (c1*c2) * x (single nested case)
-            if let Expr::Number(ref n1) = lhs_data {
-                if let Expr::Mul(rl, rr) = rhs_data {
-                    let rl_data = ctx.get(rl).clone();
-                    if let Expr::Number(n2) = rl_data {
-                        let prod = n1 * &n2;
-                        let prod_expr = ctx.add(Expr::Number(prod));
-                        let new_expr = smart_mul(ctx, prod_expr, rr);
-                        return Some(
-                            Rewrite::new(new_expr)
-                                .desc(format!("Combine nested constants: {} * {}", n1, n2)),
-                        );
-                    }
+        // Fallback: Handle c1 * (c2 * x) -> (c1*c2) * x
+        if let Expr::Number(n1) = ctx.get(lhs).clone() {
+            if let Some((rl, rr)) = as_mul(ctx, rhs) {
+                if let Expr::Number(n2) = ctx.get(rl).clone() {
+                    let prod = &n1 * &n2;
+                    let prod_expr = ctx.add(Expr::Number(prod));
+                    let new_expr = smart_mul(ctx, prod_expr, rr);
+                    return Some(
+                        Rewrite::new(new_expr)
+                            .desc(format!("Combine nested constants: {} * {}", n1, n2)),
+                    );
                 }
             }
 
             // Handle c1 * (x / c2) -> (c1/c2) * x
-            if let Expr::Number(ref n1) = lhs_data {
-                if let Expr::Div(num, den) = rhs_data {
-                    let den_data = ctx.get(den).clone();
-                    if let Expr::Number(n2) = den_data {
-                        if !n2.is_zero() {
-                            let ratio = n1 / &n2;
-                            let ratio_expr = ctx.add(Expr::Number(ratio));
-                            let new_expr = smart_mul(ctx, ratio_expr, num);
-                            return Some(
-                                Rewrite::new(new_expr).desc(format!(
-                                    "{} * (x / {}) -> ({} / {}) * x",
-                                    n1, n2, n1, n2
-                                )),
-                            );
-                        }
+            if let Some((num, den)) = as_div(ctx, rhs) {
+                if let Expr::Number(n2) = ctx.get(den).clone() {
+                    if !n2.is_zero() {
+                        let ratio = &n1 / &n2;
+                        let ratio_expr = ctx.add(Expr::Number(ratio));
+                        let new_expr = smart_mul(ctx, ratio_expr, num);
+                        return Some(
+                            Rewrite::new(new_expr).desc(format!(
+                                "{} * (x / {}) -> ({} / {}) * x",
+                                n1, n2, n1, n2
+                            )),
+                        );
                     }
                 }
             }
         }
-        Expr::Sub(lhs, rhs) => {
-            let lhs_data = ctx.get(lhs).clone();
-            let rhs_data = ctx.get(rhs).clone();
-            if let (Expr::Number(n1), Expr::Number(n2)) = (&lhs_data, &rhs_data) {
-                let diff = n1 - n2;
-                let new_expr = ctx.add(Expr::Number(diff.clone()));
-                return Some(Rewrite::new(new_expr).desc(format!("{} - {} = {}", n1, n2, diff)));
-            }
-        }
-        Expr::Div(lhs, rhs) => {
-            let lhs_data = ctx.get(lhs).clone();
-            let rhs_data = ctx.get(rhs).clone();
-            if let (Expr::Number(n1), Expr::Number(n2)) = (&lhs_data, &rhs_data) {
-                if !n2.is_zero() {
-                    let quot = n1 / n2;
-                    let new_expr = ctx.add(Expr::Number(quot.clone()));
-                    return Some(
-                        Rewrite::new(new_expr).desc(format!("{} / {} = {}", n1, n2, quot)),
-                    );
-                } else {
-                    let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
-                    return Some(Rewrite::new(undef).desc("Division by zero"));
-                }
-            }
-
-            // Handle (c * x) / d -> (c/d) * x
-            if let Expr::Number(d) = rhs_data {
-                if !d.is_zero() {
-                    if let Expr::Mul(ml, mr) = lhs_data {
-                        let ml_data = ctx.get(ml).clone();
-                        let mr_data = ctx.get(mr).clone();
-
-                        // Case 1: (c * x) / d
-                        if let Expr::Number(c) = ml_data {
-                            let ratio = &c / &d;
-                            let ratio_expr = ctx.add(Expr::Number(ratio));
-                            let new_expr = smart_mul(ctx, ratio_expr, mr);
-                            return Some(
-                                Rewrite::new(new_expr)
-                                    .desc(format!("({} * x) / {} -> ({} / {}) * x", c, d, c, d)),
-                            );
-                        }
-
-                        // Case 2: (x * c) / d
-                        if let Expr::Number(c) = mr_data {
-                            let ratio = &c / &d;
-                            let ratio_expr = ctx.add(Expr::Number(ratio));
-                            let new_expr = smart_mul(ctx, ratio_expr, ml);
-                            return Some(
-                                Rewrite::new(new_expr)
-                                    .desc(format!("(x * {}) / {} -> ({} / {}) * x", c, d, c, d)),
-                            );
-                        }
-                    }
-                }
-            }
-        }
-        _ => {}
     }
+
+    // Try Sub branch
+    if let Some((lhs, rhs)) = as_sub(ctx, expr) {
+        if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(lhs).clone(), ctx.get(rhs).clone()) {
+            let diff = &n1 - &n2;
+            let new_expr = ctx.add(Expr::Number(diff.clone()));
+            return Some(Rewrite::new(new_expr).desc(format!("{} - {} = {}", n1, n2, diff)));
+        }
+    }
+
+    // Try Div branch
+    if let Some((lhs, rhs)) = as_div(ctx, expr) {
+        if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(lhs).clone(), ctx.get(rhs).clone()) {
+            if !n2.is_zero() {
+                let quot = &n1 / &n2;
+                let new_expr = ctx.add(Expr::Number(quot.clone()));
+                return Some(
+                    Rewrite::new(new_expr).desc(format!("{} / {} = {}", n1, n2, quot)),
+                );
+            } else {
+                let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
+                return Some(Rewrite::new(undef).desc("Division by zero"));
+            }
+        }
+
+        // Handle (c * x) / d -> (c/d) * x
+        if let Expr::Number(d) = ctx.get(rhs).clone() {
+            if !d.is_zero() {
+                if let Some((ml, mr)) = as_mul(ctx, lhs) {
+                    // Case 1: (c * x) / d
+                    if let Expr::Number(c) = ctx.get(ml).clone() {
+                        let ratio = &c / &d;
+                        let ratio_expr = ctx.add(Expr::Number(ratio));
+                        let new_expr = smart_mul(ctx, ratio_expr, mr);
+                        return Some(
+                            Rewrite::new(new_expr)
+                                .desc(format!("({} * x) / {} -> ({} / {}) * x", c, d, c, d)),
+                        );
+                    }
+
+                    // Case 2: (x * c) / d
+                    if let Expr::Number(c) = ctx.get(mr).clone() {
+                        let ratio = &c / &d;
+                        let ratio_expr = ctx.add(Expr::Number(ratio));
+                        let new_expr = smart_mul(ctx, ratio_expr, ml);
+                        return Some(
+                            Rewrite::new(new_expr)
+                                .desc(format!("(x * {}) / {} -> ({} / {}) * x", c, d, c, d)),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     None
 });
 

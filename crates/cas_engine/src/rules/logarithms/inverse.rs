@@ -25,9 +25,7 @@ impl crate::rule::Rule for ExponentialLogRule {
         expr: cas_ast::ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        let Some((base, exp)) = as_pow(ctx, expr) else {
-            return None;
-        };
+        let (base, exp) = as_pow(ctx, expr)?;
         {
             // Helper to get log base and arg
             let get_log_parts = |ctx: &mut cas_ast::Context,
@@ -162,9 +160,7 @@ define_rule!(
     ),
     |ctx, expr, _parent_ctx| {
     // e^(a + b) -> e^a * e^b IF a or b is a log
-    let Some((base, exp)) = as_pow(ctx, expr) else {
-        return None;
-    };
+    let (base, exp) = as_pow(ctx, expr)?;
     {
         let base_is_e = matches!(ctx.get(base), Expr::Constant(cas_ast::Constant::E));
         if base_is_e {
@@ -220,9 +216,7 @@ define_rule!(
         crate::assumptions::ConditionClass::Analytic
     ),
     |ctx, expr, _parent_ctx| {
-    let Some((base, exp)) = as_pow(ctx, expr) else {
-        return None;
-    };
+    let (base, exp) = as_pow(ctx, expr)?;
     {
         // Check for x^(c / log(b, x))
         // exp could be Div(c, log(b, x)) or Mul(c, Pow(log(b, x), -1))

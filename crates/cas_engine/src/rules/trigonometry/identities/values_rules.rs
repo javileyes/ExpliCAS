@@ -1,6 +1,7 @@
 //! Trig values and specialized identity rules.
 
 use crate::define_rule;
+use crate::helpers::{as_add, as_div, as_mul, as_sub};
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::smart_mul;
 use crate::rules::trigonometry::values::detect_special_angle;
@@ -160,7 +161,7 @@ impl crate::rule::Rule for TanTripleProductRule {
 
 /// Check if expr equals u + π/3 (or π/3 + u)
 fn is_u_plus_pi_over_3(ctx: &cas_ast::Context, expr: ExprId, u: ExprId) -> bool {
-    if let Expr::Add(l, r) = ctx.get(expr).clone() {
+    if let Some((l, r)) = as_add(ctx, expr) {
         // Case: u + π/3
         if crate::ordering::compare_expr(ctx, l, u) == std::cmp::Ordering::Equal {
             return is_pi_over_3(ctx, r);
@@ -176,7 +177,7 @@ fn is_u_plus_pi_over_3(ctx: &cas_ast::Context, expr: ExprId, u: ExprId) -> bool 
 /// Check if expr equals π/3 - u (or -u + π/3 in canonicalized form)
 fn is_pi_over_3_minus_u(ctx: &cas_ast::Context, expr: ExprId, u: ExprId) -> bool {
     // Pattern 1: Sub(π/3, u)
-    if let Expr::Sub(l, r) = ctx.get(expr).clone() {
+    if let Some((l, r)) = as_sub(ctx, expr) {
         if is_pi_over_3(ctx, l)
             && crate::ordering::compare_expr(ctx, r, u) == std::cmp::Ordering::Equal
         {
@@ -184,19 +185,19 @@ fn is_pi_over_3_minus_u(ctx: &cas_ast::Context, expr: ExprId, u: ExprId) -> bool
         }
     }
     // Pattern 2: Add(π/3, Neg(u)) or Add(Neg(u), π/3) - canonicalized subtraction
-    if let Expr::Add(l, r) = ctx.get(expr).clone() {
+    if let Some((l, r)) = as_add(ctx, expr) {
         // Add(π/3, Neg(u))
         if is_pi_over_3(ctx, l) {
-            if let Expr::Neg(inner) = ctx.get(r).clone() {
-                if crate::ordering::compare_expr(ctx, inner, u) == std::cmp::Ordering::Equal {
+            if let Expr::Neg(inner) = ctx.get(r) {
+                if crate::ordering::compare_expr(ctx, *inner, u) == std::cmp::Ordering::Equal {
                     return true;
                 }
             }
         }
         // Add(Neg(u), π/3)
         if is_pi_over_3(ctx, r) {
-            if let Expr::Neg(inner) = ctx.get(l).clone() {
-                if crate::ordering::compare_expr(ctx, inner, u) == std::cmp::Ordering::Equal {
+            if let Expr::Neg(inner) = ctx.get(l) {
+                if crate::ordering::compare_expr(ctx, *inner, u) == std::cmp::Ordering::Equal {
                     return true;
                 }
             }
@@ -208,7 +209,7 @@ fn is_pi_over_3_minus_u(ctx: &cas_ast::Context, expr: ExprId, u: ExprId) -> bool
 /// Check if an expression is π/3 (i.e., Div(π, 3) or canonicalized Mul(1/3, π))
 fn is_pi_over_3(ctx: &cas_ast::Context, expr: ExprId) -> bool {
     // Pattern 1: Div(π, 3)
-    if let Expr::Div(num, den) = ctx.get(expr).clone() {
+    if let Some((num, den)) = as_div(ctx, expr) {
         if matches!(ctx.get(num), Expr::Constant(cas_ast::Constant::Pi)) {
             if let Expr::Number(n) = ctx.get(den) {
                 if n.is_integer() && *n.numer() == 3.into() {
@@ -219,7 +220,7 @@ fn is_pi_over_3(ctx: &cas_ast::Context, expr: ExprId) -> bool {
     }
 
     // Pattern 2: Mul(Number(1/3), π) - canonicalized form from CanonicalizeDivRule
-    if let Expr::Mul(l, r) = ctx.get(expr).clone() {
+    if let Some((l, r)) = as_mul(ctx, expr) {
         // Check Mul(1/3, π)
         if let Expr::Number(n) = ctx.get(l) {
             if *n == num_rational::BigRational::new(1.into(), 3.into())
@@ -463,30 +464,29 @@ impl crate::rule::Rule for TanToSinCosRule {
         // Don't expand tan(n*x) for integer n > 1, as it leads to explosive
         // triple-angle formulas: tan(3x) → (3sin(x) - 4sin³(x))/(4cos³(x) - 3cos(x))
         // This is almost never useful for simplification.
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Function(fn_id, args) = &expr_data {
-            if matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Tan)) && args.len() == 1 {
-                // GUARD: Don't expand tan(n*x) - causes complexity explosion
-                if is_multiple_angle(ctx, args[0]) {
-                    return None;
-                }
-                // GUARD: Don't expand tan at special angles that have known values
-                // Let EvaluateTrigTableRule handle these instead
-                if detect_special_angle(ctx, args[0]).is_some() {
-                    return None;
-                }
+        let (fn_id, args) = match ctx.get(expr) {
+            Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+            _ => return None,
+        };
+        if matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Tan)) && args.len() == 1 {
+            // GUARD: Don't expand tan(n*x) - causes complexity explosion
+            if is_multiple_angle(ctx, args[0]) {
+                return None;
+            }
+            // GUARD: Don't expand tan at special angles that have known values
+            // Let EvaluateTrigTableRule handle these instead
+            if detect_special_angle(ctx, args[0]).is_some() {
+                return None;
             }
         }
 
         // Original conversion logic
-        if let Expr::Function(fn_id, args) = expr_data {
-            if matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Tan)) && args.len() == 1 {
-                // tan(x) -> sin(x) / cos(x)
-                let sin_x = ctx.call("sin", vec![args[0]]);
-                let cos_x = ctx.call("cos", vec![args[0]]);
-                let new_expr = ctx.add(Expr::Div(sin_x, cos_x));
-                return Some(crate::rule::Rewrite::new(new_expr).desc("tan(x) -> sin(x)/cos(x)"));
-            }
+        if matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Tan)) && args.len() == 1 {
+            // tan(x) -> sin(x) / cos(x)
+            let sin_x = ctx.call("sin", vec![args[0]]);
+            let cos_x = ctx.call("cos", vec![args[0]]);
+            let new_expr = ctx.add(Expr::Div(sin_x, cos_x));
+            return Some(crate::rule::Rewrite::new(new_expr).desc("tan(x) -> sin(x)/cos(x)"));
         }
         None
     }
@@ -527,59 +527,56 @@ impl crate::rule::Rule for TrigQuotientRule {
     ) -> Option<crate::rule::Rewrite> {
         use cas_ast::Expr;
 
-        let expr_data = ctx.get(expr).clone();
+        let (num, den) = as_div(ctx, expr)?;
+        // Extract function names and arguments from numerator and denominator
+        let num_data = ctx.get(num).clone();
+        let den_data = ctx.get(den).clone();
 
-        if let Expr::Div(num, den) = expr_data {
-            // Extract function names and arguments from numerator and denominator
-            let num_data = ctx.get(num).clone();
-            let den_data = ctx.get(den).clone();
-
-            // Pattern: sin(x)/cos(x) → tan(x)
-            if let (Expr::Function(num_fn_id, num_args), Expr::Function(den_fn_id, den_args)) =
-                (&num_data, &den_data)
+        // Pattern: sin(x)/cos(x) → tan(x)
+        if let (Expr::Function(num_fn_id, num_args), Expr::Function(den_fn_id, den_args)) =
+            (&num_data, &den_data)
+        {
+            let num_builtin = ctx.builtin_of(*num_fn_id);
+            let den_builtin = ctx.builtin_of(*den_fn_id);
+            if matches!(num_builtin, Some(BuiltinFn::Sin))
+                && matches!(den_builtin, Some(BuiltinFn::Cos))
+                && num_args.len() == 1
+                && den_args.len() == 1
+                && crate::ordering::compare_expr(ctx, num_args[0], den_args[0])
+                    == std::cmp::Ordering::Equal
             {
-                let num_builtin = ctx.builtin_of(*num_fn_id);
-                let den_builtin = ctx.builtin_of(*den_fn_id);
-                if matches!(num_builtin, Some(BuiltinFn::Sin))
-                    && matches!(den_builtin, Some(BuiltinFn::Cos))
-                    && num_args.len() == 1
-                    && den_args.len() == 1
-                    && crate::ordering::compare_expr(ctx, num_args[0], den_args[0])
-                        == std::cmp::Ordering::Equal
-                {
-                    let tan_x = ctx.call("tan", vec![num_args[0]]);
-                    return Some(crate::rule::Rewrite::new(tan_x).desc("sin(x)/cos(x) → tan(x)"));
-                }
-
-                // Pattern: cos(x)/sin(x) → cot(x)
-                if matches!(num_builtin, Some(BuiltinFn::Cos))
-                    && matches!(den_builtin, Some(BuiltinFn::Sin))
-                    && num_args.len() == 1
-                    && den_args.len() == 1
-                    && crate::ordering::compare_expr(ctx, num_args[0], den_args[0])
-                        == std::cmp::Ordering::Equal
-                {
-                    let cot_x = ctx.call("cot", vec![num_args[0]]);
-                    return Some(crate::rule::Rewrite::new(cot_x).desc("cos(x)/sin(x) → cot(x)"));
-                }
+                let tan_x = ctx.call("tan", vec![num_args[0]]);
+                return Some(crate::rule::Rewrite::new(tan_x).desc("sin(x)/cos(x) → tan(x)"));
             }
 
-            // Pattern: 1/sin(x) → csc(x)
-            if crate::helpers::is_one(ctx, num) {
-                if let Expr::Function(den_fn_id, den_args) = &den_data {
-                    let den_builtin = ctx.builtin_of(*den_fn_id);
-                    if matches!(den_builtin, Some(BuiltinFn::Sin)) && den_args.len() == 1 {
-                        let csc_x = ctx.call("csc", vec![den_args[0]]);
-                        return Some(crate::rule::Rewrite::new(csc_x).desc("1/sin(x) → csc(x)"));
-                    }
-                    if matches!(den_builtin, Some(BuiltinFn::Cos)) && den_args.len() == 1 {
-                        let sec_x = ctx.call("sec", vec![den_args[0]]);
-                        return Some(crate::rule::Rewrite::new(sec_x).desc("1/cos(x) → sec(x)"));
-                    }
-                    if matches!(den_builtin, Some(BuiltinFn::Tan)) && den_args.len() == 1 {
-                        let cot_x = ctx.call("cot", vec![den_args[0]]);
-                        return Some(crate::rule::Rewrite::new(cot_x).desc("1/tan(x) → cot(x)"));
-                    }
+            // Pattern: cos(x)/sin(x) → cot(x)
+            if matches!(num_builtin, Some(BuiltinFn::Cos))
+                && matches!(den_builtin, Some(BuiltinFn::Sin))
+                && num_args.len() == 1
+                && den_args.len() == 1
+                && crate::ordering::compare_expr(ctx, num_args[0], den_args[0])
+                    == std::cmp::Ordering::Equal
+            {
+                let cot_x = ctx.call("cot", vec![num_args[0]]);
+                return Some(crate::rule::Rewrite::new(cot_x).desc("cos(x)/sin(x) → cot(x)"));
+            }
+        }
+
+        // Pattern: 1/sin(x) → csc(x)
+        if crate::helpers::is_one(ctx, num) {
+            if let Expr::Function(den_fn_id, den_args) = &den_data {
+                let den_builtin = ctx.builtin_of(*den_fn_id);
+                if matches!(den_builtin, Some(BuiltinFn::Sin)) && den_args.len() == 1 {
+                    let csc_x = ctx.call("csc", vec![den_args[0]]);
+                    return Some(crate::rule::Rewrite::new(csc_x).desc("1/sin(x) → csc(x)"));
+                }
+                if matches!(den_builtin, Some(BuiltinFn::Cos)) && den_args.len() == 1 {
+                    let sec_x = ctx.call("sec", vec![den_args[0]]);
+                    return Some(crate::rule::Rewrite::new(sec_x).desc("1/cos(x) → sec(x)"));
+                }
+                if matches!(den_builtin, Some(BuiltinFn::Tan)) && den_args.len() == 1 {
+                    let cot_x = ctx.call("cot", vec![den_args[0]]);
+                    return Some(crate::rule::Rewrite::new(cot_x).desc("1/tan(x) → cot(x)"));
                 }
             }
         }
@@ -605,23 +602,18 @@ define_rule!(
     |ctx, expr| {
         use crate::pattern_detection::{is_sec_squared, is_tan_squared};
 
-        let expr_data = ctx.get(expr).clone();
-
-        // Pattern 1: sec²(x) - tan²(x) = 1
-        // NOTE: Subtraction is normalized to Add(a, Neg(b))
-        if let Expr::Add(left, right) = expr_data {
-            // Try both orderings: Add(sec², Neg(tan²)) or Add(Neg(tan²), sec²)
-            for (pos, neg) in [(left, right), (right, left)] {
-                if let Expr::Neg(neg_inner) = ctx.get(neg) {
-                    // Check if pos=sec²  and neg_inner=tan²
-                    if let (Some(sec_arg), Some(tan_arg)) =
-                        (is_sec_squared(ctx, pos), is_tan_squared(ctx, *neg_inner))
+        let (left, right) = as_add(ctx, expr)?;
+        // Try both orderings: Add(sec², Neg(tan²)) or Add(Neg(tan²), sec²)
+        for (pos, neg) in [(left, right), (right, left)] {
+            if let Expr::Neg(neg_inner) = ctx.get(neg) {
+                // Check if pos=sec²  and neg_inner=tan²
+                if let (Some(sec_arg), Some(tan_arg)) =
+                    (is_sec_squared(ctx, pos), is_tan_squared(ctx, *neg_inner))
+                {
+                    if crate::ordering::compare_expr(ctx, sec_arg, tan_arg)
+                        == std::cmp::Ordering::Equal
                     {
-                        if crate::ordering::compare_expr(ctx, sec_arg, tan_arg)
-                            == std::cmp::Ordering::Equal
-                        {
-                            return Some(Rewrite::new(ctx.num(1)).desc("sec²(x) - tan²(x) = 1"));
-                        }
+                        return Some(Rewrite::new(ctx.num(1)).desc("sec²(x) - tan²(x) = 1"));
                     }
                 }
             }
@@ -639,21 +631,17 @@ define_rule!(
     |ctx, expr| {
         use crate::pattern_detection::{is_cot_squared, is_csc_squared};
 
-        let expr_data = ctx.get(expr).clone();
-
-        // Pattern: csc²(x) - cot²(x) = 1
-        if let Expr::Add(left, right) = expr_data {
-            for (pos, neg) in [(left, right), (right, left)] {
-                if let Expr::Neg(neg_inner) = ctx.get(neg) {
-                    // Check if pos=csc² and neg_inner=cot²
-                    if let (Some(csc_arg), Some(cot_arg)) =
-                        (is_csc_squared(ctx, pos), is_cot_squared(ctx, *neg_inner))
+        let (left, right) = as_add(ctx, expr)?;
+        for (pos, neg) in [(left, right), (right, left)] {
+            if let Expr::Neg(neg_inner) = ctx.get(neg) {
+                // Check if pos=csc² and neg_inner=cot²
+                if let (Some(csc_arg), Some(cot_arg)) =
+                    (is_csc_squared(ctx, pos), is_cot_squared(ctx, *neg_inner))
+                {
+                    if crate::ordering::compare_expr(ctx, csc_arg, cot_arg)
+                        == std::cmp::Ordering::Equal
                     {
-                        if crate::ordering::compare_expr(ctx, csc_arg, cot_arg)
-                            == std::cmp::Ordering::Equal
-                        {
-                            return Some(Rewrite::new(ctx.num(1)).desc("csc²(x) - cot²(x) = 1"));
-                        }
+                        return Some(Rewrite::new(ctx.num(1)).desc("csc²(x) - cot²(x) = 1"));
                     }
                 }
             }

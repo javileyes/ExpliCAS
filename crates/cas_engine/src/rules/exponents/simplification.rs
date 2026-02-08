@@ -400,9 +400,7 @@ define_rule!(
         use crate::ordering::compare_expr;
         use std::cmp::Ordering;
 
-        let Some((base, exp)) = as_pow(ctx, expr) else {
-            return None;
-        };
+        let (base, exp) = as_pow(ctx, expr)?;
 
         let is_even = match ctx.get(exp) {
             Expr::Number(n) => n.is_integer() && n.to_integer().is_even(),

@@ -7,6 +7,7 @@
 //! - Tan double angle contraction
 
 use crate::define_rule;
+use crate::helpers::as_div;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use num_traits::One;
@@ -211,63 +212,55 @@ define_rule!(
     TrigQuotientToNamedRule,
     "Trig Quotient to Named Function",
     |ctx, expr| {
-        if let Expr::Div(num, den) = ctx.get(expr).clone() {
-            // Pattern: 1/cos(t) → sec(t), 1/sin(t) → csc(t)
-            if let Expr::Number(n) = ctx.get(num) {
-                if n.is_one() {
-                    if let Expr::Function(fn_id, args) = ctx.get(den).clone() {
-                        if args.len() == 1 {
-                            let arg = args[0];
-                            let result_info = match ctx.builtin_of(fn_id) {
-                                Some(BuiltinFn::Cos) => Some(("sec", "cos")),
-                                Some(BuiltinFn::Sin) => Some(("csc", "sin")),
-                                _ => None,
-                            };
-                            if let Some((rn, orig_name)) = result_info {
-                                let result = ctx.call(rn, vec![arg]);
-                                return Some(
-                                    Rewrite::new(result)
-                                        .desc(format!("1/{}(t) = {}(t)", orig_name, rn)),
-                                );
-                            }
+        let (num, den) = as_div(ctx, expr)?;
+        // Pattern: 1/cos(t) → sec(t), 1/sin(t) → csc(t)
+        if let Expr::Number(n) = ctx.get(num) {
+            if n.is_one() {
+                if let Expr::Function(fn_id, args) = ctx.get(den).clone() {
+                    if args.len() == 1 {
+                        let arg = args[0];
+                        let result_info = match ctx.builtin_of(fn_id) {
+                            Some(BuiltinFn::Cos) => Some(("sec", "cos")),
+                            Some(BuiltinFn::Sin) => Some(("csc", "sin")),
+                            _ => None,
+                        };
+                        if let Some((rn, orig_name)) = result_info {
+                            let result = ctx.call(rn, vec![arg]);
+                            return Some(
+                                Rewrite::new(result)
+                                    .desc(format!("1/{}(t) = {}(t)", orig_name, rn)),
+                            );
                         }
                     }
                 }
             }
+        }
 
-            // Pattern: sin(t)/cos(t) → tan(t), cos(t)/sin(t) → cot(t)
-            if let (Expr::Function(num_fn_id, num_args), Expr::Function(den_fn_id, den_args)) =
-                (ctx.get(num).clone(), ctx.get(den).clone())
-            {
-                if num_args.len() == 1 && den_args.len() == 1 {
-                    let num_arg = num_args[0];
-                    let den_arg = den_args[0];
+        // Pattern: sin(t)/cos(t) → tan(t), cos(t)/sin(t) → cot(t)
+        if let (Expr::Function(num_fn_id, num_args), Expr::Function(den_fn_id, den_args)) =
+            (ctx.get(num).clone(), ctx.get(den).clone())
+        {
+            if num_args.len() == 1 && den_args.len() == 1 {
+                let num_arg = num_args[0];
+                let den_arg = den_args[0];
 
-                    let num_builtin = ctx.builtin_of(num_fn_id);
-                    let den_builtin = ctx.builtin_of(den_fn_id);
+                let num_builtin = ctx.builtin_of(num_fn_id);
+                let den_builtin = ctx.builtin_of(den_fn_id);
 
-                    // Check same argument
-                    if crate::ordering::compare_expr(ctx, num_arg, den_arg)
-                        == std::cmp::Ordering::Equal
-                    {
-                        let result_name = match (num_builtin, den_builtin) {
-                            (Some(BuiltinFn::Sin), Some(BuiltinFn::Cos)) => {
-                                Some(("tan", "sin", "cos"))
-                            }
-                            (Some(BuiltinFn::Cos), Some(BuiltinFn::Sin)) => {
-                                Some(("cot", "cos", "sin"))
-                            }
-                            _ => None,
-                        };
-                        if let Some((rn, num_display, den_display)) = result_name {
-                            let result = ctx.call(rn, vec![num_arg]);
-                            return Some(
-                                Rewrite::new(result).desc(format!(
-                                    "{}/{}(t) = {}(t)",
-                                    num_display, den_display, rn
-                                )),
-                            );
-                        }
+                // Check same argument
+                if crate::ordering::compare_expr(ctx, num_arg, den_arg) == std::cmp::Ordering::Equal
+                {
+                    let result_name = match (num_builtin, den_builtin) {
+                        (Some(BuiltinFn::Sin), Some(BuiltinFn::Cos)) => Some(("tan", "sin", "cos")),
+                        (Some(BuiltinFn::Cos), Some(BuiltinFn::Sin)) => Some(("cot", "cos", "sin")),
+                        _ => None,
+                    };
+                    if let Some((rn, num_display, den_display)) = result_name {
+                        let result = ctx.call(rn, vec![num_arg]);
+                        return Some(
+                            Rewrite::new(result)
+                                .desc(format!("{}/{}(t) = {}(t)", num_display, den_display, rn)),
+                        );
                     }
                 }
             }

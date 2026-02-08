@@ -273,9 +273,7 @@ impl crate::rule::Rule for AbsSquaredRule {
             }
         }
 
-        let Some((base, exp)) = as_pow(ctx, expr) else {
-            return None;
-        };
+        let (base, exp) = as_pow(ctx, expr)?;
         {
             let (fn_id, args) = match ctx.get(base) {
                 Expr::Function(fn_id, args) => (*fn_id, args.clone()),
@@ -472,9 +470,7 @@ impl crate::rule::Rule for SymbolicRootCancelRule {
         }
 
         // Arg must be Pow(base, exp)
-        let Some((base, exp)) = as_pow(ctx, arg) else {
-            return None;
-        };
+        let (base, exp) = as_pow(ctx, arg)?;
 
         // Check if exp == index (structural equality)
         if crate::ordering::compare_expr(ctx, exp, index) != std::cmp::Ordering::Equal {
