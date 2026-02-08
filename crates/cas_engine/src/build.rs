@@ -13,28 +13,3 @@ use cas_ast::{Context, Expr, ExprId};
 pub fn mul2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
     ctx.add_raw(Expr::Mul(a, b))
 }
-
-/// Raw multiplication of multiple factors. Right-folds without simplification.
-///
-/// `mul_many_raw(ctx, [a, b, c])` → `a * (b * c)` (right-associative)
-///
-/// Returns `None` if factors is empty.
-pub fn mul_many_raw(ctx: &mut Context, factors: &[ExprId]) -> Option<ExprId> {
-    if factors.is_empty() {
-        return None;
-    }
-    let mut result = match factors.last() {
-        Some(r) => *r,
-        None => return None,
-    };
-    for &factor in factors.iter().rev().skip(1) {
-        result = ctx.add_raw(Expr::Mul(factor, result));
-    }
-    Some(result)
-}
-
-/// Raw 2-factor addition. Preserves operand order using `add_raw`.
-#[inline]
-pub fn add2_raw(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
-    ctx.add_raw(Expr::Add(a, b))
-}

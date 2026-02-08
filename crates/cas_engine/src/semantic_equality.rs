@@ -1,4 +1,3 @@
-use crate::rule::{Rewrite, Rule};
 use cas_ast::{Context, Expr, ExprId};
 
 /// Semantic equality checker - determines if two expressions are mathematically equivalent
@@ -226,56 +225,6 @@ impl<'a> SemanticEqualityChecker<'a> {
             _ => false,
         }
     }
-}
-
-/// Apply a rule with semantic equality checking
-/// Returns None if the rule produces a semantically equivalent result that doesn't improve canonicity.
-///
-/// Policy:
-/// - If provably semantically EQUAL: accept only if it improves normal form (reduces Div/Sub count)
-/// - If NOT provably equal (unknown/different): always accept
-/// - Exception: Didactic rules always generate steps
-///
-/// NOTE: `checker.are_equal == true` means "provably equal".
-/// `false` means "cannot prove equality" - NOT necessarily "provably different".
-pub fn apply_rule_with_semantic_check(
-    ctx: &mut Context,
-    rule: &dyn Rule,
-    expr_id: ExprId,
-) -> Option<Rewrite> {
-    if let Some(rewrite) = rule.apply(ctx, expr_id, &crate::parent_context::ParentContext::root()) {
-        // Fast path: if rewrite produces identical ExprId, skip entirely
-        if rewrite.new_expr == expr_id {
-            return None;
-        }
-
-        // Didactic rules should always generate steps, even if semantically equivalent
-        // e.g., sqrt(12) → 2*√3 is numerically equivalent but shows simplification
-        let is_didactic_rule =
-            rule.name() == "Evaluate Numeric Power" || rule.name() == "Sum Exponents";
-
-        if is_didactic_rule {
-            return Some(rewrite);
-        }
-
-        // Check if provably semantically equal
-        // NOTE: are_equal returning false does NOT mean "provably different",
-        // just "cannot establish equality" - so we accept those rewrites.
-        let checker = SemanticEqualityChecker::new(ctx);
-        if !checker.are_equal(expr_id, rewrite.new_expr) {
-            // Not provably equal - accept (could be different or just unknown)
-            return Some(rewrite);
-        }
-
-        // Provably semantically equal - accept only if it improves normal form
-        // This allows canonicalizing rewrites like Div(1,2) -> Number(1/2)
-        // Uses lazy comparison: only calculates mul_inversions if first two components tie
-        if crate::helpers::nf_score_after_is_better(ctx, expr_id, rewrite.new_expr) {
-            return Some(rewrite);
-        }
-        // No improvement in normal form - skip this rewrite
-    }
-    None
 }
 
 #[cfg(test)]

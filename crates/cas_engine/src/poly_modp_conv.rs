@@ -14,6 +14,7 @@ use rustc_hash::FxHashMap;
 pub struct PolyModpBudget {
     pub max_vars: usize,
     pub max_terms: usize,
+    #[allow(dead_code)] // Budget cap not yet enforced; kept for future degree-limit checks
     pub max_total_degree: u32,
     pub max_pow_exp: u32,
 }

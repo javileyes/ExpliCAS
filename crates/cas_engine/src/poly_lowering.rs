@@ -162,7 +162,7 @@ pub struct PolyLowerResult {
     pub expr: ExprId,
     /// Steps generated during lowering
     pub steps: Vec<Step>,
-    /// Whether any poly_refs were combined
+    #[allow(dead_code)] // Constructed but not yet consumed; kept for future pipeline diagnostics
     pub combined_any: bool,
 }
 

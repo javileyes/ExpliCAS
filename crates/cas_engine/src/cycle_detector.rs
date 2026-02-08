@@ -151,7 +151,7 @@ impl CycleDetector {
         self.buf[idx]
     }
 
-    /// Reset the detector for a new phase
+    #[allow(dead_code)] // Phase-reset infrastructure kept for future use
     pub fn reset(&mut self, phase: crate::phase::SimplifyPhase) {
         self.buf = [0u64; 64];
         self.pos = 0;

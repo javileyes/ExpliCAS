@@ -1,3 +1,4 @@
+#![allow(dead_code)] // Debugging infrastructure — kept for future diagnostic use
 //! Recursion depth guards for debugging stack overflows.
 //!
 //! This module provides thread-local recursion depth tracking to convert
