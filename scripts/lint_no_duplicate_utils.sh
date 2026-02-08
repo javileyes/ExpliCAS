@@ -123,7 +123,7 @@ PREDICATE_ALLOWED=(
     "helpers.rs"        # Canonical
     "predicates.rs"     # Part of helpers.rs via include!()
     "solver_domain.rs"  # Part of helpers.rs via include!()
-    "multipoly.rs"      # Struct method (different scope)
+    "mod.rs"            # multipoly struct methods (different scope)
     "polynomial.rs"     # Struct method (different scope)
     "unipoly_modp.rs"   # Struct method (different scope)
     "multipoly_modp.rs" # Struct method (different scope)

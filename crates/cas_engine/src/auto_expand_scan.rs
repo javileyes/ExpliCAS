@@ -325,40 +325,7 @@ fn estimate_multinomial_terms(m: u32, n: u32) -> Option<u32> {
 
 /// Count unique variables in an expression (simple heuristic).
 fn count_variables(ctx: &Context, id: ExprId) -> u32 {
-    let mut vars = std::collections::HashSet::new();
-    collect_variables_recursive(ctx, id, &mut vars);
-    vars.len() as u32
-}
-
-fn collect_variables_recursive(
-    ctx: &Context,
-    id: ExprId,
-    vars: &mut std::collections::HashSet<String>,
-) {
-    match ctx.get(id) {
-        Expr::Variable(sym_id) => {
-            vars.insert(ctx.sym_name(*sym_id).to_string());
-        }
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
-            collect_variables_recursive(ctx, *l, vars);
-            collect_variables_recursive(ctx, *r, vars);
-        }
-        Expr::Neg(inner) | Expr::Hold(inner) => {
-            collect_variables_recursive(ctx, *inner, vars);
-        }
-        Expr::Function(_, args) => {
-            for arg in args {
-                collect_variables_recursive(ctx, *arg, vars);
-            }
-        }
-        Expr::Matrix { data, .. } => {
-            for elem in data {
-                collect_variables_recursive(ctx, *elem, vars);
-            }
-        }
-        // Leaves
-        Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
-    }
+    crate::rules::algebra::collect_variables(ctx, id).len() as u32
 }
 
 // =============================================================================

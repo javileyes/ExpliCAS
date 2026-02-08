@@ -16,7 +16,8 @@ HOTSPOTS=(
     "crates/cas_engine/src/multinomial_expand.rs"
     "crates/cas_engine/src/engine/orchestration.rs"
     "crates/cas_engine/src/engine/transform.rs"
-    "crates/cas_engine/src/multipoly.rs"
+    "crates/cas_engine/src/multipoly/arithmetic.rs"
+    "crates/cas_engine/src/multipoly/gcd.rs"
     "crates/cas_engine/src/gcd_zippel_modp.rs"
 )
 

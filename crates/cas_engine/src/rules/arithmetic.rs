@@ -66,8 +66,10 @@ define_rule!(
             crate::collect::has_undefined_risk(ctx, expr)
         };
 
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Mul(lhs, rhs) = expr_data {
+        let (lhs, rhs) = match ctx.get(expr) {
+            Expr::Mul(l, r) => (*l, *r),
+            _ => return None,
+        };
             // Check if either side is zero literal
             let lhs_is_zero = matches!(ctx.get(lhs), Expr::Number(n) if n.is_zero());
             let rhs_is_zero = matches!(ctx.get(rhs), Expr::Number(n) if n.is_zero());
@@ -106,10 +108,9 @@ define_rule!(
                 "x * 0 = 0".to_string()
             };
 
+
             let zero = ctx.num(0);
-            return Some(Rewrite::new(zero).desc(description).assume_all(assumption_events));
-        }
-        None
+            Some(Rewrite::new(zero).desc(description).assume_all(assumption_events))
     }
 );
 
