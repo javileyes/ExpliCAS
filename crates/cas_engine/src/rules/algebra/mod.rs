@@ -2,7 +2,7 @@
 mod tests;
 
 pub mod helpers;
-pub use helpers::*;
+pub(crate) use helpers::*;
 
 pub mod fractions;
 pub use fractions::*;

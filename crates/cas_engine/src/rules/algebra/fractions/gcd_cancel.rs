@@ -8,7 +8,7 @@ use crate::define_rule;
 use crate::polynomial::Polynomial;
 use crate::rule::{ChainedRewrite, Rewrite};
 use crate::rules::algebra::helpers::{
-    collect_denominators, collect_variables, count_nodes_of_type, distribute, gcd_rational,
+    collect_denominators, count_nodes_of_type, distribute, gcd_rational,
 };
 use cas_ast::{Context, DisplayExpr, Expr, ExprId};
 use num_traits::{One, Zero};
@@ -745,7 +745,7 @@ define_rule!(
         // Future work: investigate stack-safe approach for power cancellation.
 
         // 0. Try multivariate GCD (Layer 1: monomial + content)
-        let vars = collect_variables(ctx, expr);
+        let vars = cas_ast::collect_variables(ctx, expr);
         if vars.len() > 1 {
             if let Some((new_num, new_den, gcd_expr, layer)) = try_multivar_gcd(ctx, num, den) {
                 // DOMAIN GATE: Check if we can cancel by this GCD

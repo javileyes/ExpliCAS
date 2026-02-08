@@ -4,7 +4,6 @@ use cas_ast::{Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{One, Signed};
 use std::cmp::Ordering;
-use std::collections::HashSet;
 
 pub(crate) fn gcd_rational(a: BigRational, b: BigRational) -> BigRational {
     if a.is_integer() && b.is_integer() {
@@ -207,10 +206,6 @@ pub(crate) fn collect_denominators(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
         _ => {}
     }
     denoms
-}
-
-pub fn collect_variables(ctx: &Context, expr: ExprId) -> HashSet<String> {
-    cas_ast::collect_variables(ctx, expr)
 }
 
 // Helper function: Check if two expressions are structurally opposite (e.g., a-b vs b-a)

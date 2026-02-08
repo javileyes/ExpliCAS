@@ -7,7 +7,7 @@ use super::evaluator::eval_f64;
 use super::{EquivalenceResult, Simplifier};
 use cas_ast::{Expr, ExprId};
 use num_traits::Zero;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 impl Simplifier {
     pub fn are_equivalent(&mut self, a: ExprId, b: ExprId) -> bool {
@@ -37,7 +37,7 @@ impl Simplifier {
                 if !self.allow_numerical_verification {
                     return false;
                 }
-                let vars = self.collect_variables(result_expr);
+                let vars = cas_ast::collect_variables(&self.context, result_expr);
                 let mut var_map = HashMap::new();
                 for var in vars {
                     var_map.insert(var, 1.23456789);
@@ -280,7 +280,7 @@ impl Simplifier {
         } else {
             // Not zero symbolically - try numeric verification
             if self.allow_numerical_verification {
-                let vars = self.collect_variables(result_expr);
+                let vars = cas_ast::collect_variables(&self.context, result_expr);
                 let mut var_map = HashMap::new();
                 for var in &vars {
                     var_map.insert(var.clone(), 1.23456789);
@@ -299,9 +299,5 @@ impl Simplifier {
             // Can't determine
             EquivalenceResult::Unknown
         }
-    }
-
-    fn collect_variables(&self, expr_id: ExprId) -> HashSet<String> {
-        crate::rules::algebra::collect_variables(&self.context, expr_id)
     }
 }

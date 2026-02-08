@@ -325,7 +325,7 @@ fn estimate_multinomial_terms(m: u32, n: u32) -> Option<u32> {
 
 /// Count unique variables in an expression (simple heuristic).
 fn count_variables(ctx: &Context, id: ExprId) -> u32 {
-    crate::rules::algebra::collect_variables(ctx, id).len() as u32
+    cas_ast::collect_variables(ctx, id).len() as u32
 }
 
 // =============================================================================

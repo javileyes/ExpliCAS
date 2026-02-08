@@ -40,7 +40,7 @@ pub fn factor(ctx: &mut Context, expr: ExprId) -> ExprId {
 
 /// Factors a polynomial expression using rational roots.
 pub fn factor_polynomial(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
-    let vars = crate::rules::algebra::collect_variables(ctx, expr);
+    let vars = cas_ast::collect_variables(ctx, expr);
     if vars.len() != 1 {
         return None;
     }
@@ -393,8 +393,6 @@ fn is_2ab_term(ctx: &Context, expr: ExprId, a: ExprId, b: ExprId) -> Option<bool
 
     None
 }
-
-// collect_variables: use canonical definition from algebra::helpers
 
 fn is_sin_cos_pair(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     let (Some(a_val), Some(b_val)) = (get_trig_arg(ctx, a), get_trig_arg(ctx, b)) else {

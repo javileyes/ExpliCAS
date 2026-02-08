@@ -235,9 +235,8 @@ define_rule!(
             }
 
             use crate::polynomial::Polynomial;
-            use crate::rules::algebra::helpers::collect_variables;
 
-            let vars = collect_variables(ctx, arg);
+            let vars = cas_ast::collect_variables(ctx, arg);
             if vars.len() == 1 {
                 let var = vars.iter().next()?;
                 if let Ok(poly) = Polynomial::from_expr(ctx, arg, var) {

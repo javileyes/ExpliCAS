@@ -88,7 +88,7 @@ define_rule!(
                 || matches!(l_expr, Expr::Mul(_, _))
                 || matches!(l_expr, Expr::Div(_, _))
                 || (matches!(l_expr, Expr::Variable(_))
-                    && crate::rules::algebra::collect_variables(ctx, expr).len() > 1);
+                    && cas_ast::collect_variables(ctx, expr).len() > 1);
 
             if !should_distribute {
                 return None;
@@ -136,7 +136,7 @@ define_rule!(
                 || matches!(r_expr, Expr::Mul(_, _))
                 || matches!(r_expr, Expr::Div(_, _))
                 || (matches!(r_expr, Expr::Variable(_))
-                    && crate::rules::algebra::collect_variables(ctx, expr).len() > 1);
+                    && cas_ast::collect_variables(ctx, expr).len() > 1);
 
             if !should_distribute {
                 return None;
@@ -237,7 +237,7 @@ define_rule!(
                 }
 
                 // Fallback to Polynomial GCD
-                let vars = crate::rules::algebra::collect_variables(ctx, num);
+                let vars = cas_ast::collect_variables(ctx, num);
                 if vars.is_empty() {
                     return 0;
                 }
@@ -557,12 +557,8 @@ fn poly_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     }
 
     // Fallback: try polynomial comparison for univariate case
-    let vars_a: Vec<_> = crate::rules::algebra::collect_variables(ctx, a)
-        .into_iter()
-        .collect();
-    let vars_b: Vec<_> = crate::rules::algebra::collect_variables(ctx, b)
-        .into_iter()
-        .collect();
+    let vars_a: Vec<_> = cas_ast::collect_variables(ctx, a).into_iter().collect();
+    let vars_b: Vec<_> = cas_ast::collect_variables(ctx, b).into_iter().collect();
 
     // Only compare if same single variable
     if vars_a.len() == 1 && vars_b.len() == 1 && vars_a[0] == vars_b[0] {

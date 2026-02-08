@@ -8,7 +8,7 @@ use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::polynomial::Polynomial;
 use crate::rule::Rewrite;
-use crate::rules::algebra::helpers::{are_denominators_opposite, collect_variables};
+use crate::rules::algebra::helpers::are_denominators_opposite;
 use cas_ast::{count_nodes, BuiltinFn, Context, Expr, ExprId};
 use num_traits::{One, Signed, Zero};
 use std::cmp::Ordering;
@@ -534,7 +534,7 @@ define_rule!(
             }
 
             // Try Polynomial GCD Check
-            let vars = collect_variables(ctx, new_num);
+            let vars = cas_ast::collect_variables(ctx, new_num);
             if vars.len() == 1 {
                 if let Some(var) = vars.iter().next() {
                     if let Ok(p_num) = Polynomial::from_expr(ctx, new_num, var) {

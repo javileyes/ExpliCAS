@@ -317,10 +317,9 @@ pub fn compute_gcd(ctx: &mut Context, a: ExprId, b: ExprId, explain: bool) -> Gc
 
     // Try polynomial GCD
     use crate::polynomial::Polynomial;
-    use crate::rules::algebra::collect_variables;
 
-    let vars = collect_variables(ctx, a);
-    let vars_b = collect_variables(ctx, b);
+    let vars = cas_ast::collect_variables(ctx, a);
+    let vars_b = cas_ast::collect_variables(ctx, b);
 
     // Must be univariate and same variable
     if vars.len() == 1 && vars == vars_b {
