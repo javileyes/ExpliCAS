@@ -124,7 +124,7 @@ impl Repl {
                         current_root = reconstruct_global_expr(
                             &mut self.core.engine.simplifier.context,
                             current_root,
-                            &step.path(),
+                            step.path(),
                             step.after,
                         );
                         buf.line(format!(
@@ -283,7 +283,7 @@ impl Repl {
                             current_root = reconstruct_global_expr(
                                 &mut self.core.engine.simplifier.context,
                                 current_root,
-                                &step.path(),
+                                step.path(),
                                 step.after,
                             );
                         }
@@ -322,7 +322,7 @@ impl Repl {
                     current_root = reconstruct_global_expr(
                         &mut self.core.engine.simplifier.context,
                         current_root,
-                        &step.path(),
+                        step.path(),
                         step.after,
                     );
                 }

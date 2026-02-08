@@ -264,7 +264,7 @@ impl Step {
     /// Whether this step was created from a ChainedRewrite.
     #[inline]
     pub fn is_chained(&self) -> bool {
-        self.meta.as_ref().map_or(false, |m| m.is_chained)
+        self.meta.as_ref().is_some_and(|m| m.is_chained)
     }
 
     /// Educational sub-steps.

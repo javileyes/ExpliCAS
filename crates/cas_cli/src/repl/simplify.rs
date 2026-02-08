@@ -113,7 +113,7 @@ impl Repl {
                                     current_root = reconstruct_global_expr(
                                         &mut temp_simplifier.context,
                                         current_root,
-                                        &step.path(),
+                                        step.path(),
                                         step.after,
                                     );
                                     lines.push(format!(
@@ -199,7 +199,7 @@ impl Repl {
                                         current_root = reconstruct_global_expr(
                                             &mut temp_simplifier.context,
                                             current_root,
-                                            &step.path(),
+                                            step.path(),
                                             step.after,
                                         );
                                     }
@@ -236,7 +236,7 @@ impl Repl {
                                     current_root = reconstruct_global_expr(
                                         &mut temp_simplifier.context,
                                         current_root,
-                                        &step.path(),
+                                        step.path(),
                                         step.after,
                                     );
                                 }
