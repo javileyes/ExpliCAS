@@ -8,7 +8,7 @@ use super::hold::is_hold_all_function;
 use crate::canonical_forms::normalize_core_with_cache;
 use crate::options::StepsMode;
 use crate::profiler::RuleProfiler;
-use crate::rule::Rule;
+use crate::rule::{Rewrite, Rule};
 use crate::step::Step;
 use cas_ast::{symbol::SymbolId, Context, Expr, ExprId};
 use std::collections::{HashMap, HashSet};
@@ -625,6 +625,202 @@ impl<'a> LocalSimplificationTransformer<'a> {
         result
     }
 
+    /// Check the Domain Delta Airbag: whether a rewrite expands the analytic domain.
+    ///
+    /// Returns `true` if the rewrite should be **skipped** (blocked in Strict mode).
+    /// In Generic mode, attaches `required_conditions` to the rewrite.
+    /// In Assume mode, attaches `assumption_events` to the rewrite.
+    ///
+    /// `skip_unless_analytic`: if `true`, only check rules with `NeedsCondition(Analytic)`.
+    /// Specific rules use `true` (gated), global rules use `false` (unconditional).
+    #[inline(never)]
+    fn check_domain_airbag(
+        &mut self,
+        rule: &dyn Rule,
+        parent_ctx: &crate::parent_context::ParentContext,
+        expr_id: ExprId,
+        rewrite: &mut Rewrite,
+        skip_unless_analytic: bool,
+    ) -> bool {
+        // Determine which parent context to read domain info from
+        let vd = parent_ctx.value_domain();
+        let mode = parent_ctx.domain_mode();
+
+        // Optionally gate on NeedsCondition(Analytic) solve_safety
+        if skip_unless_analytic {
+            let needs_analytic_check = matches!(
+                rule.solve_safety(),
+                crate::solve_safety::SolveSafety::NeedsCondition(
+                    crate::assumptions::ConditionClass::Analytic
+                )
+            );
+            if !needs_analytic_check {
+                return false; // Not blocked
+            }
+        }
+
+        if parent_ctx.implicit_domain().is_none() {
+            return false; // No domain to check
+        }
+
+        use crate::implicit_domain::{
+            check_analytic_expansion, AnalyticExpansionResult, ImplicitCondition,
+        };
+
+        let expansion =
+            check_analytic_expansion(self.context, self.root_expr, expr_id, rewrite.new_expr, vd);
+
+        if let AnalyticExpansionResult::WouldExpand { dropped, sources } = expansion {
+            match mode {
+                crate::domain::DomainMode::Strict => {
+                    debug!(
+                        "{}[DEBUG] Rule '{}' would expand analytic domain ({}), blocked in Strict mode",
+                        self.indent(),
+                        rule.name(),
+                        sources.join(", ")
+                    );
+                    return true; // Blocked
+                }
+                crate::domain::DomainMode::Generic => {
+                    rewrite.required_conditions.extend(dropped.clone());
+                    debug!(
+                        "{}[DEBUG] Rule '{}' expands analytic domain, allowed in Generic mode with required conditions: {}",
+                        self.indent(),
+                        rule.name(),
+                        sources.join(", ")
+                    );
+                }
+                crate::domain::DomainMode::Assume => {
+                    for cond in dropped {
+                        match cond {
+                            ImplicitCondition::NonNegative(t) => {
+                                rewrite.assumption_events.push(
+                                    crate::assumptions::AssumptionEvent::nonnegative(
+                                        self.context,
+                                        t,
+                                    ),
+                                );
+                            }
+                            ImplicitCondition::Positive(t) => {
+                                rewrite.assumption_events.push(
+                                    crate::assumptions::AssumptionEvent::positive(self.context, t),
+                                );
+                            }
+                            ImplicitCondition::NonZero(_) => {} // Skip definability
+                        }
+                    }
+                    debug!(
+                        "{}[DEBUG] Rule '{}' expands analytic domain, allowed in Assume mode with assumptions: {}",
+                        self.indent(),
+                        rule.name(),
+                        sources.join(", ")
+                    );
+                }
+            }
+        }
+
+        false // Not blocked
+    }
+
+    /// Record a rewrite as one or more Steps (main + chained), handling `steps_mode` gating.
+    ///
+    /// Returns the `final_result` ExprId (last of chained, or main `new_expr`).
+    /// When `steps_mode == Off`, skips all Step construction for performance.
+    #[inline(never)]
+    fn record_rewrite_step(
+        &mut self,
+        rule: &dyn Rule,
+        expr_id: ExprId,
+        rewrite: &Rewrite,
+    ) -> ExprId {
+        if self.steps_mode != StepsMode::Off {
+            let main_new_expr = rewrite.new_expr;
+            let main_description = rewrite.description.clone();
+            let main_before_local = rewrite.before_local;
+            let main_after_local = rewrite.after_local;
+            let main_assumptions = rewrite.assumption_events.clone();
+            let main_required = rewrite.required_conditions.clone();
+            let main_poly_proof = rewrite.poly_proof.clone();
+            let main_substeps = rewrite.substeps.clone();
+            let chained_rewrites = rewrite.chained.clone();
+
+            // Determine final result (last of chained, or main rewrite)
+            let final_result = chained_rewrites
+                .last()
+                .map(|c| c.after)
+                .unwrap_or(main_new_expr);
+
+            let global_before = self.root_expr;
+            let main_global_after = self.reconstruct_at_path(main_new_expr);
+
+            // Main step
+            let mut step = Step::with_snapshots(
+                &main_description,
+                rule.name(),
+                expr_id,
+                main_new_expr,
+                self.current_path.clone(),
+                Some(self.context),
+                global_before,
+                main_global_after,
+            );
+            step.before_local = main_before_local;
+            step.after_local = main_after_local;
+            step.assumption_events = main_assumptions;
+            step.required_conditions = main_required;
+            step.poly_proof = main_poly_proof;
+            step.substeps = main_substeps;
+            step.importance = rule.importance();
+            self.steps.push(step);
+
+            // Trace coherence verification
+            debug_assert_eq!(
+                main_global_after,
+                self.root_expr,
+                "[Trace Coherence] Step global_after doesn't match updated root_expr. \
+                 Rule: {}, This will cause trace mismatch for next step.",
+                rule.name()
+            );
+
+            // Process chained rewrites sequentially
+            let mut current = main_new_expr;
+            for chain_rw in chained_rewrites {
+                let chain_global_before = self.reconstruct_at_path(current);
+                let chain_global_after = self.reconstruct_at_path(chain_rw.after);
+
+                let mut chain_step = Step::with_snapshots(
+                    &chain_rw.description,
+                    rule.name(),
+                    current,
+                    chain_rw.after,
+                    self.current_path.clone(),
+                    Some(self.context),
+                    chain_global_before,
+                    chain_global_after,
+                );
+                chain_step.before_local = chain_rw.before_local;
+                chain_step.after_local = chain_rw.after_local;
+                chain_step.assumption_events = chain_rw.assumption_events;
+                chain_step.required_conditions = chain_rw.required_conditions;
+                chain_step.poly_proof = chain_rw.poly_proof;
+                chain_step.importance = chain_rw.importance.unwrap_or_else(|| rule.importance());
+                chain_step.is_chained = true;
+                self.steps.push(chain_step);
+
+                current = chain_rw.after;
+            }
+
+            final_result
+        } else {
+            // Without steps, just compute final result
+            rewrite
+                .chained
+                .last()
+                .map(|c| c.after)
+                .unwrap_or(rewrite.new_expr)
+        }
+    }
+
     fn apply_rules(&mut self, mut expr_id: ExprId) -> ExprId {
         // Note: This loop pattern with early returns is intentional for structured exit points
         #[allow(clippy::never_loop)]
@@ -718,87 +914,15 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             continue;
                         }
 
-                        // Domain Delta Airbag: Check if rewrite expands analytic domain
-                        // This catches any rewrite that removes implicit constraints like x≥0 from sqrt(x)
-                        // V2.15.8: Only run this check for rules that declare NeedsCondition(Analytic)
-                        // This allows rules like AbsNonNegativeSimplifyRule to use implicit_domain
-                        // without triggering the airbag that would block LogExpInverseRule
-                        // Behavior by mode:
-                        // - Strict/Generic: Block if expansion detected
-                        // - Assume: Allow but register dropped predicates as assumptions
-                        let vd = parent_ctx.value_domain();
-                        let mode = parent_ctx.domain_mode();
-                        let needs_analytic_check = matches!(
-                            rule.solve_safety(),
-                            crate::solve_safety::SolveSafety::NeedsCondition(
-                                crate::assumptions::ConditionClass::Analytic
-                            )
-                        );
-                        if parent_ctx.implicit_domain().is_some() && needs_analytic_check {
-                            use crate::implicit_domain::{
-                                check_analytic_expansion, AnalyticExpansionResult,
-                                ImplicitCondition,
-                            };
-
-                            let expansion = check_analytic_expansion(
-                                self.context,
-                                self.root_expr,
-                                expr_id,
-                                rewrite.new_expr,
-                                vd,
-                            );
-
-                            if let AnalyticExpansionResult::WouldExpand { dropped, sources } =
-                                expansion
-                            {
-                                match mode {
-                                    crate::domain::DomainMode::Strict => {
-                                        // Strict: block - don't expand domain at all
-                                        debug!(
-                                            "{}[DEBUG] Rule '{}' would expand analytic domain ({}), blocked in Strict mode",
-                                            self.indent(),
-                                            rule.name(),
-                                            sources.join(", ")
-                                        );
-                                        continue;
-                                    }
-                                    crate::domain::DomainMode::Generic => {
-                                        // Generic: allow rewrite but emit as required_conditions (not assumptions!)
-                                        // This communicates "the input already required these conditions implicitly"
-                                        rewrite.required_conditions.extend(dropped.clone());
-                                        debug!(
-                                            "{}[DEBUG] Rule '{}' expands analytic domain, allowed in Generic mode with required conditions: {}",
-                                            self.indent(),
-                                            rule.name(),
-                                            sources.join(", ")
-                                        );
-                                    }
-                                    crate::domain::DomainMode::Assume => {
-                                        // In Assume mode: allow rewrite but register assumptions
-                                        for cond in dropped {
-                                            match cond {
-                                                ImplicitCondition::NonNegative(t) => {
-                                                    rewrite.assumption_events.push(
-                                                        crate::assumptions::AssumptionEvent::nonnegative(self.context, t)
-                                                    );
-                                                }
-                                                ImplicitCondition::Positive(t) => {
-                                                    rewrite.assumption_events.push(
-                                                        crate::assumptions::AssumptionEvent::positive(self.context, t)
-                                                    );
-                                                }
-                                                ImplicitCondition::NonZero(_) => {} // Skip definability
-                                            }
-                                        }
-                                        debug!(
-                                            "{}[DEBUG] Rule '{}' expands analytic domain, allowed in Assume mode with assumptions: {}",
-                                            self.indent(),
-                                            rule.name(),
-                                            sources.join(", ")
-                                        );
-                                    }
-                                }
-                            }
+                        // Domain Delta Airbag: skip_unless_analytic=true for specific rules
+                        if self.check_domain_airbag(
+                            rule.as_ref(),
+                            &parent_ctx,
+                            expr_id,
+                            &mut rewrite,
+                            true,
+                        ) {
+                            continue;
                         }
 
                         // Record rule application with delta_nodes for health metrics
@@ -850,96 +974,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             expr_id,
                             rewrite.new_expr
                         );
-                        if self.steps_mode != StepsMode::Off {
-                            // Extract rewrite fields to avoid borrow conflicts with self methods
-                            let main_new_expr = rewrite.new_expr;
-                            let main_description = rewrite.description.clone();
-                            let main_before_local = rewrite.before_local;
-                            let main_after_local = rewrite.after_local;
-                            let main_assumptions = rewrite.assumption_events.clone();
-                            let main_required = rewrite.required_conditions.clone();
-                            let main_poly_proof = rewrite.poly_proof.clone();
-                            let main_substeps = rewrite.substeps.clone();
-                            let chained_rewrites = rewrite.chained.clone();
-
-                            // Determine final result (last of chained, or main rewrite)
-                            let final_result = chained_rewrites
-                                .last()
-                                .map(|c| c.after)
-                                .unwrap_or(main_new_expr);
-
-                            let global_before = self.root_expr;
-                            let main_global_after = self.reconstruct_at_path(main_new_expr);
-
-                            // Main step: before=expr_id, after=main_new_expr
-                            let mut step = Step::with_snapshots(
-                                &main_description,
-                                rule.name(),
-                                expr_id,
-                                main_new_expr,
-                                self.current_path.clone(),
-                                Some(self.context),
-                                global_before,
-                                main_global_after,
-                            );
-                            step.before_local = main_before_local;
-                            step.after_local = main_after_local;
-                            step.assumption_events = main_assumptions;
-                            step.required_conditions = main_required;
-                            step.poly_proof = main_poly_proof;
-                            step.substeps = main_substeps;
-                            step.importance = rule.importance();
-                            self.steps.push(step);
-
-                            // V2.14.20: Trace coherence verification
-                            // Verify that the step's global_after matches the updated root_expr
-                            // This catches mismatches where subsequent steps might have stale global_before
-                            debug_assert_eq!(
-                                main_global_after, self.root_expr,
-                                "[Trace Coherence] Step global_after doesn't match updated root_expr. \
-                                 Rule: {}, This will cause trace mismatch for next step.",
-                                rule.name()
-                            );
-
-                            // Process chained rewrites sequentially
-                            // Invariant: each step's before equals previous step's after
-                            let mut current = main_new_expr;
-                            for chain_rw in chained_rewrites {
-                                let chain_global_before = self.reconstruct_at_path(current);
-                                let chain_global_after = self.reconstruct_at_path(chain_rw.after);
-
-                                let mut chain_step = Step::with_snapshots(
-                                    &chain_rw.description,
-                                    rule.name(),
-                                    current,
-                                    chain_rw.after,
-                                    self.current_path.clone(),
-                                    Some(self.context),
-                                    chain_global_before,
-                                    chain_global_after,
-                                );
-                                chain_step.before_local = chain_rw.before_local;
-                                chain_step.after_local = chain_rw.after_local;
-                                chain_step.assumption_events = chain_rw.assumption_events;
-                                chain_step.required_conditions = chain_rw.required_conditions;
-                                chain_step.poly_proof = chain_rw.poly_proof;
-                                chain_step.importance =
-                                    chain_rw.importance.unwrap_or_else(|| rule.importance());
-                                chain_step.is_chained = true; // V2.12.13: Gate didactic substeps
-                                self.steps.push(chain_step);
-
-                                current = chain_rw.after;
-                            }
-
-                            expr_id = final_result;
-                        } else {
-                            // Without steps, just use final result
-                            expr_id = rewrite
-                                .chained
-                                .last()
-                                .map(|c| c.after)
-                                .unwrap_or(rewrite.new_expr);
-                        }
+                        expr_id = self.record_rewrite_step(rule.as_ref(), expr_id, &rewrite);
 
                         // Budget tracking: count this rewrite (charged at end of pass)
                         self.rewrite_count += 1;
@@ -1047,78 +1082,15 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         }
                     }
 
-                    // Domain Delta Airbag: Check if rewrite expands analytic domain
-                    // Behavior by mode:
-                    // - Strict/Generic: Block if expansion detected
-                    // - Assume: Allow but register dropped predicates as assumptions
-                    let vd = self.initial_parent_ctx.value_domain();
-                    let mode = self.initial_parent_ctx.domain_mode();
-                    if self.initial_parent_ctx.implicit_domain().is_some() {
-                        use crate::implicit_domain::{
-                            check_analytic_expansion, AnalyticExpansionResult, ImplicitCondition,
-                        };
-
-                        let expansion = check_analytic_expansion(
-                            self.context,
-                            self.root_expr,
-                            expr_id,
-                            rewrite.new_expr,
-                            vd,
-                        );
-
-                        if let AnalyticExpansionResult::WouldExpand { dropped, sources } = expansion
-                        {
-                            match mode {
-                                crate::domain::DomainMode::Strict => {
-                                    // Strict: block - don't expand domain at all
-                                    debug!(
-                                        "{}[DEBUG] Global Rule '{}' would expand analytic domain ({}), blocked in Strict mode",
-                                        self.indent(),
-                                        rule.name(),
-                                        sources.join(", ")
-                                    );
-                                    continue;
-                                }
-                                crate::domain::DomainMode::Generic => {
-                                    // Generic: allow rewrite but emit as required_conditions (not assumptions!)
-                                    // This communicates "the input already required these conditions implicitly"
-                                    rewrite.required_conditions.extend(dropped.clone());
-                                    debug!(
-                                        "{}[DEBUG] Global Rule '{}' expands analytic domain, allowed in Generic mode with required conditions: {}",
-                                        self.indent(),
-                                        rule.name(),
-                                        sources.join(", ")
-                                    );
-                                }
-                                crate::domain::DomainMode::Assume => {
-                                    // In Assume mode: allow rewrite but register assumptions
-                                    for cond in dropped {
-                                        match cond {
-                                            ImplicitCondition::NonNegative(t) => {
-                                                rewrite.assumption_events.push(
-                                                    crate::assumptions::AssumptionEvent::nonnegative(self.context, t)
-                                                );
-                                            }
-                                            ImplicitCondition::Positive(t) => {
-                                                rewrite.assumption_events.push(
-                                                    crate::assumptions::AssumptionEvent::positive(
-                                                        self.context,
-                                                        t,
-                                                    ),
-                                                );
-                                            }
-                                            ImplicitCondition::NonZero(_) => {} // Skip definability
-                                        }
-                                    }
-                                    debug!(
-                                        "{}[DEBUG] Global Rule '{}' expands analytic domain, allowed in Assume mode with assumptions: {}",
-                                        self.indent(),
-                                        rule.name(),
-                                        sources.join(", ")
-                                    );
-                                }
-                            }
-                        }
+                    // Domain Delta Airbag: skip_unless_analytic=false for global rules (unconditional)
+                    if self.check_domain_airbag(
+                        rule.as_ref(),
+                        &parent_ctx,
+                        expr_id,
+                        &mut rewrite,
+                        false,
+                    ) {
+                        continue;
                     }
 
                     // Record rule application for profiling
@@ -1131,90 +1103,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         expr_id,
                         rewrite.new_expr
                     );
-                    if self.steps_mode != StepsMode::Off {
-                        // Extract rewrite fields to avoid borrow conflicts
-                        let main_new_expr = rewrite.new_expr;
-                        let main_description = rewrite.description.clone();
-                        let main_before_local = rewrite.before_local;
-                        let main_after_local = rewrite.after_local;
-                        let main_assumptions = rewrite.assumption_events.clone();
-                        let main_required = rewrite.required_conditions.clone();
-                        let main_poly_proof = rewrite.poly_proof.clone();
-                        let main_substeps = rewrite.substeps.clone();
-                        let chained_rewrites = rewrite.chained.clone();
-
-                        let final_result = chained_rewrites
-                            .last()
-                            .map(|c| c.after)
-                            .unwrap_or(main_new_expr);
-
-                        let global_before = self.root_expr;
-                        let main_global_after = self.reconstruct_at_path(main_new_expr);
-
-                        let mut step = Step::with_snapshots(
-                            &main_description,
-                            rule.name(),
-                            expr_id,
-                            main_new_expr,
-                            self.current_path.clone(),
-                            Some(self.context),
-                            global_before,
-                            main_global_after,
-                        );
-                        step.before_local = main_before_local;
-                        step.after_local = main_after_local;
-                        step.assumption_events = main_assumptions;
-                        step.required_conditions = main_required;
-                        step.poly_proof = main_poly_proof;
-                        step.substeps = main_substeps;
-                        step.importance = rule.importance();
-                        self.steps.push(step);
-
-                        // V2.14.20: Trace coherence verification (global rules)
-                        debug_assert_eq!(
-                            main_global_after, self.root_expr,
-                            "[Trace Coherence] Global rule step global_after doesn't match updated root_expr. \
-                             Rule: {}, This will cause trace mismatch for next step.",
-                            rule.name()
-                        );
-
-                        // Process chained rewrites
-                        let mut current = main_new_expr;
-                        for chain_rw in chained_rewrites {
-                            let chain_global_before = self.reconstruct_at_path(current);
-                            let chain_global_after = self.reconstruct_at_path(chain_rw.after);
-
-                            let mut chain_step = Step::with_snapshots(
-                                &chain_rw.description,
-                                rule.name(),
-                                current,
-                                chain_rw.after,
-                                self.current_path.clone(),
-                                Some(self.context),
-                                chain_global_before,
-                                chain_global_after,
-                            );
-                            chain_step.before_local = chain_rw.before_local;
-                            chain_step.after_local = chain_rw.after_local;
-                            chain_step.assumption_events = chain_rw.assumption_events;
-                            chain_step.required_conditions = chain_rw.required_conditions;
-                            chain_step.poly_proof = chain_rw.poly_proof;
-                            chain_step.importance =
-                                chain_rw.importance.unwrap_or_else(|| rule.importance());
-                            chain_step.is_chained = true; // V2.12.13: Gate didactic substeps
-                            self.steps.push(chain_step);
-
-                            current = chain_rw.after;
-                        }
-
-                        expr_id = final_result;
-                    } else {
-                        expr_id = rewrite
-                            .chained
-                            .last()
-                            .map(|c| c.after)
-                            .unwrap_or(rewrite.new_expr);
-                    }
+                    expr_id = self.record_rewrite_step(rule.as_ref(), expr_id, &rewrite);
 
                     // Budget tracking: count this rewrite (charged at end of pass)
                     self.rewrite_count += 1;

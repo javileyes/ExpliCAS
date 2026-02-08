@@ -2965,7 +2965,7 @@ fn metatest_individual_identities_impl() {
         // Simplify for display and numeric fallback
         let opts = cas_engine::phase::SimplifyOptions {
             semantics: cas_engine::semantics::EvalConfig {
-                domain_mode: domain_mode,
+                domain_mode,
                 ..Default::default()
             },
             ..Default::default()
