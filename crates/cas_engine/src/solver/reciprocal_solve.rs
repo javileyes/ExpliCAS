@@ -14,7 +14,7 @@ use crate::nary::add_terms_no_sign;
 use crate::solver::{contains_var, SolveStep};
 
 /// Check if expr is `1/var` pattern (simple reciprocal of target variable)
-pub fn is_simple_reciprocal(ctx: &Context, expr: ExprId, var: &str) -> bool {
+pub(crate) fn is_simple_reciprocal(ctx: &Context, expr: ExprId, var: &str) -> bool {
     if let Expr::Div(num, denom) = ctx.get(expr) {
         // Numerator must be 1
         let is_one = matches!(ctx.get(*num), Expr::Number(n) if *n == num_rational::BigRational::from_integer(1.into()));
@@ -56,7 +56,7 @@ fn expr_to_fraction(ctx: &mut Context, expr: ExprId) -> Fraction {
 /// Numerator N = Σ (num_i × (D/den_i))
 ///
 /// Returns (N, D) after light normalization (canonicalized order).
-pub fn combine_fractions_deterministic(
+pub(crate) fn combine_fractions_deterministic(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<(ExprId, ExprId)> {
@@ -137,7 +137,7 @@ fn build_scale_factor(ctx: &mut Context, fractions: &[Fraction], my_den: ExprId)
 ///
 /// Returns `Some((SolutionSet, steps))` if pattern matches,
 /// `None` to fall through to standard isolation.
-pub fn try_reciprocal_solve(
+pub(crate) fn try_reciprocal_solve(
     lhs: ExprId,
     rhs: ExprId,
     var: &str,

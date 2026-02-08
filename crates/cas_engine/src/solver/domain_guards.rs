@@ -125,7 +125,7 @@ impl SolverAssumption {
 ///
 /// # Returns
 /// A `LogSolveDecision` indicating how to proceed.
-pub fn classify_log_solve(
+pub(crate) fn classify_log_solve(
     ctx: &Context,
     base: ExprId,
     rhs: ExprId,

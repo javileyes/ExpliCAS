@@ -3,28 +3,28 @@ use num_rational::BigRational;
 use std::cmp::Ordering;
 
 // Helper to create -infinity
-pub fn neg_inf(ctx: &mut Context) -> ExprId {
+pub(crate) fn neg_inf(ctx: &mut Context) -> ExprId {
     let inf = ctx.add(Expr::Constant(Constant::Infinity));
     ctx.add(Expr::Neg(inf))
 }
 
 // Helper to create +infinity
-pub fn pos_inf(ctx: &mut Context) -> ExprId {
+pub(crate) fn pos_inf(ctx: &mut Context) -> ExprId {
     ctx.add(Expr::Constant(Constant::Infinity))
 }
 
-pub fn is_infinity(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_infinity(ctx: &Context, expr: ExprId) -> bool {
     matches!(ctx.get(expr), Expr::Constant(Constant::Infinity))
 }
 
-pub fn is_neg_infinity(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_neg_infinity(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Neg(inner) => is_infinity(ctx, *inner),
         _ => false,
     }
 }
 
-pub fn get_number(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+pub(crate) fn get_number(ctx: &Context, expr: ExprId) -> Option<BigRational> {
     match ctx.get(expr) {
         Expr::Number(n) => Some(n.clone()),
         Expr::Neg(inner) => get_number(ctx, *inner).map(|n| -n),
@@ -32,7 +32,7 @@ pub fn get_number(ctx: &Context, expr: ExprId) -> Option<BigRational> {
     }
 }
 
-pub fn compare_values(ctx: &Context, a: ExprId, b: ExprId) -> Ordering {
+pub(crate) fn compare_values(ctx: &Context, a: ExprId, b: ExprId) -> Ordering {
     // Handle Infinity
     let a_inf = is_infinity(ctx, a);
     let b_inf = is_infinity(ctx, b);
@@ -68,7 +68,7 @@ pub fn compare_values(ctx: &Context, a: ExprId, b: ExprId) -> Ordering {
     crate::ordering::compare_expr(ctx, a, b)
 }
 
-pub fn intersect_intervals(ctx: &Context, i1: &Interval, i2: &Interval) -> SolutionSet {
+pub(crate) fn intersect_intervals(ctx: &Context, i1: &Interval, i2: &Interval) -> SolutionSet {
     // Intersection of [a, b] and [c, d] is [max(a,c), min(b,d)]
 
     // Compare mins
@@ -118,7 +118,7 @@ pub fn intersect_intervals(ctx: &Context, i1: &Interval, i2: &Interval) -> Solut
     }
 }
 
-pub fn union_solution_sets(ctx: &Context, s1: SolutionSet, s2: SolutionSet) -> SolutionSet {
+pub(crate) fn union_solution_sets(ctx: &Context, s1: SolutionSet, s2: SolutionSet) -> SolutionSet {
     let intervals = match (s1, s2) {
         (SolutionSet::Empty, s) | (s, SolutionSet::Empty) => return s,
         (SolutionSet::AllReals, _) | (_, SolutionSet::AllReals) => return SolutionSet::AllReals,
@@ -191,7 +191,11 @@ fn merge_intervals(ctx: &Context, mut intervals: Vec<Interval>) -> Vec<Interval>
     merged
 }
 
-pub fn intersect_solution_sets(ctx: &Context, s1: SolutionSet, s2: SolutionSet) -> SolutionSet {
+pub(crate) fn intersect_solution_sets(
+    ctx: &Context,
+    s1: SolutionSet,
+    s2: SolutionSet,
+) -> SolutionSet {
     match (s1, s2) {
         (SolutionSet::Empty, _) => SolutionSet::Empty,
         (_, SolutionSet::Empty) => SolutionSet::Empty,

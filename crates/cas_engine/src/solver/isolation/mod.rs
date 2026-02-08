@@ -17,7 +17,7 @@ pub(super) fn mk_residual_solve(ctx: &mut Context, lhs: ExprId, rhs: ExprId, var
     ctx.call("solve", vec![eq_expr, var_expr])
 }
 
-pub fn isolate(
+pub(crate) fn isolate(
     lhs: ExprId,
     rhs: ExprId,
     op: RelOp,
@@ -159,7 +159,7 @@ pub fn isolate(
 // Helpers (used by submodules via `super::`)
 // =============================================================================
 
-pub fn prepend_steps(
+pub(crate) fn prepend_steps(
     (set, mut res_steps): (SolutionSet, Vec<SolveStep>),
     mut steps: Vec<SolveStep>,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
@@ -174,7 +174,7 @@ pub fn prepend_steps(
 ///
 /// This is specific to solver isolation logic where we need to determine
 /// sign to correctly flip inequalities when multiplying/dividing.
-pub fn is_known_negative(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_known_negative(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Number(n) => *n < num_rational::BigRational::from_integer(0.into()),
         Expr::Neg(_) => true,
@@ -183,7 +183,7 @@ pub fn is_known_negative(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-pub fn simplify_rhs(
+pub(crate) fn simplify_rhs(
     rhs: ExprId,
     lhs: ExprId,
     op: RelOp,
@@ -233,7 +233,7 @@ pub fn contains_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
 ///
 /// Returns Some(recomposed_expr) where recomposed = (a/b)^e, if pattern matches.
 /// Returns None if pattern does not match.
-pub fn try_recompose_pow_quotient(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn try_recompose_pow_quotient(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     use crate::ordering::compare_expr;
     use std::cmp::Ordering;
 
@@ -252,7 +252,7 @@ pub fn try_recompose_pow_quotient(ctx: &mut Context, expr: ExprId) -> Option<Exp
     None
 }
 
-pub fn flip_inequality(op: RelOp) -> RelOp {
+pub(crate) fn flip_inequality(op: RelOp) -> RelOp {
     match op {
         RelOp::Eq => RelOp::Eq,
         RelOp::Neq => RelOp::Neq,

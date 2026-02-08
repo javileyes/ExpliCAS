@@ -137,7 +137,7 @@ fn strip_equation(ctx: &mut Context, eq: &Equation) -> Equation {
 
 /// Check if a step sequence is a log-linear solve pattern.
 /// Returns true if we should rewrite the steps for better didactic display.
-pub fn is_log_linear_pattern(steps: &[SolveStep]) -> bool {
+pub(crate) fn is_log_linear_pattern(steps: &[SolveStep]) -> bool {
     if steps.is_empty() {
         return false;
     }
@@ -156,7 +156,7 @@ pub fn is_log_linear_pattern(steps: &[SolveStep]) -> bool {
 /// * `ctx` - Expression context
 /// * `steps` - Original solve steps  
 /// * `detailed` - If true, decompose "Collect and factor" into atomic sub-steps
-pub fn rewrite_log_linear_steps(
+pub(crate) fn rewrite_log_linear_steps(
     ctx: &mut Context,
     steps: Vec<SolveStep>,
     detailed: bool,
@@ -437,40 +437,6 @@ fn try_rewrite_log_power(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
         }
         _ => None,
     }
-}
-
-/// Check if equation after log contains pattern ln(a)·(1+x) = x·ln(b)
-/// This indicates a log-linear equation we can narrate better.
-pub fn detect_log_linear_form(ctx: &Context, lhs: ExprId, rhs: ExprId, var: &str) -> bool {
-    // Check if LHS has pattern ln(a)·f(x) and RHS has pattern g(x)·ln(b)
-    let lhs_has_ln = contains_ln_times_var(ctx, lhs, var);
-    let rhs_has_ln = contains_ln_times_var(ctx, rhs, var);
-
-    lhs_has_ln && rhs_has_ln
-}
-
-/// Check if expression contains a pattern like ln(c) * (something with var)
-fn contains_ln_times_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
-    match ctx.get(expr) {
-        Expr::Mul(l, r) => {
-            // Check if one side is ln(...) and other contains var
-            let l_is_ln = is_ln_call(ctx, *l);
-            let r_is_ln = is_ln_call(ctx, *r);
-            let l_has_var = crate::solver::contains_var(ctx, *l, var);
-            let r_has_var = crate::solver::contains_var(ctx, *r, var);
-
-            (l_is_ln && r_has_var) || (r_is_ln && l_has_var) || (l_has_var && r_has_var)
-        }
-        Expr::Add(l, r) | Expr::Sub(l, r) => {
-            contains_ln_times_var(ctx, *l, var) || contains_ln_times_var(ctx, *r, var)
-        }
-        _ => false,
-    }
-}
-
-/// Check if expression is a ln(...) call
-fn is_ln_call(ctx: &Context, expr: ExprId) -> bool {
-    matches!(ctx.get(expr), Expr::Function(name, _) if ctx.is_builtin(*name, BuiltinFn::Ln))
 }
 
 #[cfg(test)]

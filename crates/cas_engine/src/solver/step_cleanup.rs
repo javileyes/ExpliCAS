@@ -25,7 +25,7 @@ use cas_ast::{Context, Expr, ExprId};
 /// * `steps` - Original solve steps  
 /// * `detailed` - If true, decompose into atomic sub-steps (Normal/Verbose verbosity)
 ///   If false, use compact representation (Succinct verbosity)
-pub fn cleanup_solve_steps(
+pub(crate) fn cleanup_solve_steps(
     ctx: &mut Context,
     steps: Vec<SolveStep>,
     detailed: bool,

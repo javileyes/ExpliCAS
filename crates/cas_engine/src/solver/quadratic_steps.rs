@@ -25,7 +25,10 @@ fn is_numeric(ctx: &Context, expr: ExprId) -> bool {
 /// Apply didactic simplification to all substeps (post-pass).
 /// This runs AFTER construction to avoid borrow conflicts.
 /// Only applies "safe" simplifications: 0+x→x, 1*x→x, 0*x→0, x/1→x, etc.
-pub fn didactic_simplify_substeps(simplifier: &mut Simplifier, substeps: &mut [SolveSubStep]) {
+pub(crate) fn didactic_simplify_substeps(
+    simplifier: &mut Simplifier,
+    substeps: &mut [SolveSubStep],
+) {
     // Disable step collection during simplification
     let was_collecting = simplifier.collect_steps();
     simplifier.set_collect_steps(false);
@@ -54,7 +57,7 @@ pub fn didactic_simplify_substeps(simplifier: &mut Simplifier, substeps: &mut [S
 /// 4. Complete the square (add (b/2a)² to both sides)
 /// 5. Factor LHS as perfect square
 /// 6. Take square root and isolate x
-pub fn build_quadratic_substeps(
+pub(crate) fn build_quadratic_substeps(
     simplifier: &mut Simplifier,
     var: &str,
     a: ExprId,

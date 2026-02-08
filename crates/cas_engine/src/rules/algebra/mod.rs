@@ -16,6 +16,9 @@ pub use factoring::*;
 pub mod roots;
 pub use roots::*;
 
+pub mod root_denesting;
+pub use root_denesting::*;
+
 pub mod poly_gcd;
 pub use poly_gcd::*;
 

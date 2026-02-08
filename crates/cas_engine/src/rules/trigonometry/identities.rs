@@ -40,13 +40,17 @@ pub use power_products_rules::{
 };
 pub use power_products_rules::{SinCosSumQuotientRule, TrigHiddenCubicIdentityRule};
 
+// --- Phase shift and supplementary angle ---
+mod phase_shift_rules;
+pub use phase_shift_rules::extract_phase_shift;
+pub use phase_shift_rules::SinSupplementaryAngleRule;
+
 // --- Half-angle and Weierstrass substitution ---
 mod half_angle_phase_rules;
-pub use half_angle_phase_rules::extract_phase_shift;
 pub use half_angle_phase_rules::{
     CotHalfAngleDifferenceRule, HyperbolicTanhPythRule, Sin4xIdentityZeroRule,
-    SinSupplementaryAngleRule, TanDifferenceIdentityZeroRule, TanDifferenceRule,
-    WeierstrassContractionRule, WeierstrassCosIdentityZeroRule, WeierstrassSinIdentityZeroRule,
+    TanDifferenceIdentityZeroRule, TanDifferenceRule, WeierstrassContractionRule,
+    WeierstrassCosIdentityZeroRule, WeierstrassSinIdentityZeroRule,
 };
 
 mod tan_half_angle_rules;

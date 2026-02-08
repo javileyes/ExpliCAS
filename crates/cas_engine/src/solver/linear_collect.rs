@@ -33,7 +33,7 @@ pub enum TermClass {
 /// Returns Some((SolutionSet, steps)) if successful, None if not applicable.
 ///
 /// Example: P + P*r*t - A = 0 → P = A / (1 + r*t) with guard 1+r*t ≠ 0
-pub fn try_linear_collect(
+pub(crate) fn try_linear_collect(
     lhs: ExprId,
     rhs: ExprId,
     var: &str,
@@ -361,7 +361,7 @@ pub struct LinearForm {
 /// - `linear_form(x + 1, "x")` → `(1, 1)`
 /// - `linear_form(y*(x+1), "x")` → `(y, y)` (because y*x + y*1)
 /// - `linear_form(x^2, "x")` → `None`
-pub fn linear_form(ctx: &mut Context, expr: ExprId, var: &str) -> Option<LinearForm> {
+pub(crate) fn linear_form(ctx: &mut Context, expr: ExprId, var: &str) -> Option<LinearForm> {
     // Base case: doesn't contain var → constant
     if !contains_var(ctx, expr, var) {
         let zero = ctx.num(0);
@@ -516,7 +516,7 @@ pub fn linear_form(ctx: &mut Context, expr: ExprId, var: &str) -> Option<LinearF
 /// This is an alternative to the term-based approach that works
 /// better for expressions like `y*(1+x)` where the coefficient
 /// is itself an expression.
-pub fn try_linear_collect_v2(
+pub(crate) fn try_linear_collect_v2(
     lhs: ExprId,
     rhs: ExprId,
     var: &str,

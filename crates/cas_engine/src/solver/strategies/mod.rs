@@ -2,9 +2,9 @@ pub mod isolation_strategy;
 pub mod quadratic;
 pub mod substitution;
 
+pub(crate) use isolation_strategy::match_rational_power;
 pub use isolation_strategy::{
-    match_rational_power, CollectTermsStrategy, IsolationStrategy, RationalExponentStrategy,
-    UnwrapStrategy,
+    CollectTermsStrategy, IsolationStrategy, RationalExponentStrategy, UnwrapStrategy,
 };
 pub use quadratic::QuadraticStrategy;
 pub use substitution::SubstitutionStrategy;
@@ -18,7 +18,7 @@ use std::cmp::Ordering;
 
 // --- Helper Functions (Keep these as they are useful helpers) ---
 
-pub fn detect_substitution(ctx: &mut Context, eq: &Equation, var: &str) -> Option<ExprId> {
+pub(crate) fn detect_substitution(ctx: &mut Context, eq: &Equation, var: &str) -> Option<ExprId> {
     // ... (Keep existing implementation)
     // Heuristic: Look for e^x.
     // Collect all Pow(e, ...) terms.
@@ -80,7 +80,7 @@ pub fn detect_substitution(ctx: &mut Context, eq: &Equation, var: &str) -> Optio
     None
 }
 
-pub fn collect_exponential_terms(ctx: &Context, expr: ExprId, var: &str) -> Vec<ExprId> {
+pub(crate) fn collect_exponential_terms(ctx: &Context, expr: ExprId, var: &str) -> Vec<ExprId> {
     let mut terms = Vec::new();
     match ctx.get(expr) {
         Expr::Pow(b, e) => {
@@ -102,7 +102,7 @@ pub fn collect_exponential_terms(ctx: &Context, expr: ExprId, var: &str) -> Vec<
     terms
 }
 
-pub fn substitute_expr(
+pub(crate) fn substitute_expr(
     ctx: &mut Context,
     expr: ExprId,
     target: ExprId,

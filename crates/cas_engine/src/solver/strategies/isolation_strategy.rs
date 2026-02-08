@@ -709,7 +709,11 @@ impl SolverStrategy for RationalExponentStrategy {
 }
 
 /// Match Pow(base, p/q) where base contains var and p/q is a non-integer rational
-pub fn match_rational_power(ctx: &Context, expr: ExprId, var: &str) -> Option<(ExprId, i64, i64)> {
+pub(crate) fn match_rational_power(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, i64, i64)> {
     if let Expr::Pow(base, exp) = ctx.get(expr) {
         // Check that base contains the variable
         if !contains_var(ctx, *base, var) {
