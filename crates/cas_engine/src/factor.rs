@@ -5,7 +5,6 @@ use num_traits::{One, Signed, ToPrimitive};
 use crate::helpers::{get_square_root, get_trig_arg, is_trig_pow};
 use crate::polynomial::Polynomial;
 use std::cmp::Ordering;
-use std::collections::HashSet;
 
 /// Factors an expression.
 /// This is the main entry point for factorization.
@@ -41,7 +40,7 @@ pub fn factor(ctx: &mut Context, expr: ExprId) -> ExprId {
 
 /// Factors a polynomial expression using rational roots.
 pub fn factor_polynomial(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
-    let vars = collect_variables(ctx, expr);
+    let vars = crate::rules::algebra::collect_variables(ctx, expr);
     if vars.len() != 1 {
         return None;
     }
@@ -395,16 +394,7 @@ fn is_2ab_term(ctx: &Context, expr: ExprId, a: ExprId, b: ExprId) -> Option<bool
     None
 }
 
-// Helpers
-
-pub fn collect_variables(ctx: &Context, expr: ExprId) -> HashSet<String> {
-    use crate::visitors::VariableCollector;
-    use cas_ast::Visitor;
-
-    let mut collector = VariableCollector::new();
-    collector.visit_expr(ctx, expr);
-    collector.vars
-}
+// collect_variables: use canonical definition from algebra::helpers
 
 fn is_sin_cos_pair(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     let (Some(a_val), Some(b_val)) = (get_trig_arg(ctx, a), get_trig_arg(ctx, b)) else {

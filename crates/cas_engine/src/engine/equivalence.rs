@@ -302,11 +302,6 @@ impl Simplifier {
     }
 
     fn collect_variables(&self, expr_id: ExprId) -> HashSet<String> {
-        use crate::visitors::VariableCollector;
-        use cas_ast::Visitor;
-
-        let mut collector = VariableCollector::new();
-        collector.visit_expr(&self.context, expr_id);
-        collector.vars
+        crate::rules::algebra::collect_variables(&self.context, expr_id)
     }
 }
