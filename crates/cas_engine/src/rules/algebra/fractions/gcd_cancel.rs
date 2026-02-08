@@ -104,7 +104,7 @@ define_rule!(
         };
 
         Some(Rewrite::new(result)
-            .desc(&desc)
+            .desc(desc)
             .local(expr, result)
             .requires(ImplicitCondition::NonZero(base_num))
             .assume_all(decision.assumption_events(ctx, base_num)))
@@ -686,7 +686,7 @@ fn try_power_quotient_preserve_form(
 
     Some(
         Rewrite::new(result)
-            .desc(&desc)
+            .desc(desc)
             .local(num, result)
             .requires(ImplicitCondition::NonZero(den)),
     )

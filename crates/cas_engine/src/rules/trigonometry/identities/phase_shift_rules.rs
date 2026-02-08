@@ -114,7 +114,7 @@ define_rule!(
                             }
                         };
 
-                        return Some(Rewrite::new(result).desc(&desc));
+                        return Some(Rewrite::new(result).desc(desc));
                     }
                 }
             }

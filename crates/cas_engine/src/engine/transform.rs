@@ -775,7 +775,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
     ) -> ExprId {
         if self.steps_mode != StepsMode::Off {
             let main_new_expr = rewrite.new_expr;
-            let main_description = rewrite.description.clone();
+            let main_description = &rewrite.description;
             let main_before_local = rewrite.before_local;
             let main_after_local = rewrite.after_local;
             let main_assumptions = rewrite.assumption_events.clone();
@@ -795,7 +795,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
             // Main step
             let mut step = Step::with_snapshots(
-                &main_description,
+                main_description,
                 rule.name(),
                 expr_id,
                 main_new_expr,

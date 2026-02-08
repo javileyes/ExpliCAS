@@ -146,7 +146,7 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
         // Build description
         let desc = format!("2^{n}·∏cos(2^k·θ) = sin(2^{n}·θ)/sin(θ)", n = n);
 
-        let mut rewrite = Rewrite::new(result).desc(&desc).local(expr, result);
+        let mut rewrite = Rewrite::new(result).desc(desc).local(expr, result);
 
         // Add assumption if in Assume mode and sin(θ)≠0 not proven
         if domain_mode == crate::domain::DomainMode::Assume && !is_provably_sin_nonzero(ctx, theta)

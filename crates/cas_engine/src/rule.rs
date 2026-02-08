@@ -2,6 +2,7 @@ use crate::parent_context::ParentContext;
 use crate::phase::PhaseMask;
 use crate::step::{ImportanceLevel, StepCategory};
 use cas_ast::{Context, ExprId};
+use std::borrow::Cow;
 
 // =============================================================================
 // SoundnessLabel: Mathematical soundness classification for Rule transformations
@@ -58,7 +59,7 @@ pub struct ChainedRewrite {
     /// The result expression after this transformation
     pub after: ExprId,
     /// Human-readable description of this step
-    pub description: String,
+    pub description: Cow<'static, str>,
     /// Optional: Focus the "Rule:" line on this sub-expression
     pub before_local: Option<ExprId>,
     /// Optional: Focus the "Rule:" line on this result
@@ -79,7 +80,7 @@ impl ChainedRewrite {
     pub fn new(after: ExprId) -> Self {
         Self {
             after,
-            description: String::new(),
+            description: Cow::Borrowed(""),
             before_local: None,
             after_local: None,
             required_conditions: vec![],
@@ -91,7 +92,7 @@ impl ChainedRewrite {
 
     /// Set the description of this chained step.
     #[must_use]
-    pub fn desc(mut self, description: impl Into<String>) -> Self {
+    pub fn desc(mut self, description: impl Into<Cow<'static, str>>) -> Self {
         self.description = description.into();
         self
     }
@@ -135,7 +136,7 @@ pub struct Rewrite {
     /// The transformed expression
     pub new_expr: ExprId,
     /// Human-readable description of the transformation
-    pub description: String,
+    pub description: Cow<'static, str>,
     /// Optional: The specific local expression before the rule (for n-ary rules)
     /// If set, CLI uses this for "Rule: before -> after" instead of full expression
     pub before_local: Option<ExprId>,
@@ -167,7 +168,7 @@ impl Default for Rewrite {
     fn default() -> Self {
         Self {
             new_expr: cas_ast::ExprId::from_raw(0), // Will be set by new()
-            description: String::new(),
+            description: Cow::Borrowed(""),
             before_local: None,
             after_local: None,
             assumption_events: Default::default(),
@@ -201,7 +202,7 @@ impl Rewrite {
 
     /// Create a simple rewrite (most common case - local transform = global transform)
     #[must_use]
-    pub fn simple(new_expr: ExprId, description: impl Into<String>) -> Self {
+    pub fn simple(new_expr: ExprId, description: impl Into<Cow<'static, str>>) -> Self {
         Self::new(new_expr).desc(description)
     }
 
@@ -210,7 +211,7 @@ impl Rewrite {
     #[must_use]
     pub fn with_local(
         new_expr: ExprId,
-        description: impl Into<String>,
+        description: impl Into<Cow<'static, str>>,
         before_local: ExprId,
         after_local: ExprId,
     ) -> Self {
@@ -224,7 +225,7 @@ impl Rewrite {
     #[must_use]
     pub fn with_domain_assumption(
         new_expr: ExprId,
-        description: impl Into<String>,
+        description: impl Into<Cow<'static, str>>,
         _assumption: &'static str,
     ) -> Self {
         Self::new(new_expr).desc(description)
@@ -235,7 +236,7 @@ impl Rewrite {
     #[must_use]
     pub fn with_poly_proof(
         new_expr: ExprId,
-        description: impl Into<String>,
+        description: impl Into<Cow<'static, str>>,
         poly_proof: crate::multipoly_display::PolynomialProofData,
     ) -> Self {
         Self::new(new_expr).desc(description).poly_proof(poly_proof)
@@ -247,7 +248,7 @@ impl Rewrite {
 
     /// Set the description of this rewrite.
     #[must_use]
-    pub fn desc(mut self, description: impl Into<String>) -> Self {
+    pub fn desc(mut self, description: impl Into<Cow<'static, str>>) -> Self {
         self.description = description.into();
         self
     }
