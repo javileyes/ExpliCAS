@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use std::cmp::Ordering;
 
