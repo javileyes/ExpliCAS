@@ -176,7 +176,8 @@ define_rule!(
 define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
     // Try Add branch
     if let Some((lhs, rhs)) = as_add(ctx, expr) {
-        if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(lhs).clone(), ctx.get(rhs).clone()) {
+        if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(lhs), ctx.get(rhs)) {
+            let (n1, n2) = (n1.clone(), n2.clone());
             let sum = &n1 + &n2;
             let new_expr = ctx.add(Expr::Number(sum.clone()));
             let description = if n2 < num_rational::BigRational::from_integer(0.into()) {
@@ -188,9 +189,11 @@ define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step:
             return Some(Rewrite::new(new_expr).desc(description));
         }
         // Handle nested: c1 + (c2 + x) -> (c1+c2) + x
-        if let Expr::Number(n1) = ctx.get(lhs).clone() {
+        if let Expr::Number(n1) = ctx.get(lhs) {
+            let n1 = n1.clone();
             if let Some((rl, rr)) = as_add(ctx, rhs) {
-                if let Expr::Number(n2) = ctx.get(rl).clone() {
+                if let Expr::Number(n2) = ctx.get(rl) {
+                    let n2 = n2.clone();
                     let sum = &n1 + &n2;
                     let sum_expr = ctx.add(Expr::Number(sum));
                     let new_expr = ctx.add(Expr::Add(sum_expr, rr));
@@ -205,7 +208,8 @@ define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step:
 
     // Try Mul branch
     if let Some((lhs, rhs)) = as_mul(ctx, expr) {
-        if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(lhs).clone(), ctx.get(rhs).clone()) {
+        if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(lhs), ctx.get(rhs)) {
+            let (n1, n2) = (n1.clone(), n2.clone());
             let prod = &n1 * &n2;
             let new_expr = ctx.add(Expr::Number(prod.clone()));
             return Some(Rewrite::new(new_expr).desc(format!("{} * {} = {}", n1, n2, prod)));
@@ -270,9 +274,11 @@ define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step:
         }
 
         // Fallback: Handle c1 * (c2 * x) -> (c1*c2) * x
-        if let Expr::Number(n1) = ctx.get(lhs).clone() {
+        if let Expr::Number(n1) = ctx.get(lhs) {
+            let n1 = n1.clone();
             if let Some((rl, rr)) = as_mul(ctx, rhs) {
-                if let Expr::Number(n2) = ctx.get(rl).clone() {
+                if let Expr::Number(n2) = ctx.get(rl) {
+                    let n2 = n2.clone();
                     let prod = &n1 * &n2;
                     let prod_expr = ctx.add(Expr::Number(prod));
                     let new_expr = smart_mul(ctx, prod_expr, rr);
@@ -285,7 +291,8 @@ define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step:
 
             // Handle c1 * (x / c2) -> (c1/c2) * x
             if let Some((num, den)) = as_div(ctx, rhs) {
-                if let Expr::Number(n2) = ctx.get(den).clone() {
+                if let Expr::Number(n2) = ctx.get(den) {
+                    let n2 = n2.clone();
                     if !n2.is_zero() {
                         let ratio = &n1 / &n2;
                         let ratio_expr = ctx.add(Expr::Number(ratio));
@@ -304,7 +311,8 @@ define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step:
 
     // Try Sub branch
     if let Some((lhs, rhs)) = as_sub(ctx, expr) {
-        if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(lhs).clone(), ctx.get(rhs).clone()) {
+        if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(lhs), ctx.get(rhs)) {
+            let (n1, n2) = (n1.clone(), n2.clone());
             let diff = &n1 - &n2;
             let new_expr = ctx.add(Expr::Number(diff.clone()));
             return Some(Rewrite::new(new_expr).desc(format!("{} - {} = {}", n1, n2, diff)));
@@ -313,7 +321,8 @@ define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step:
 
     // Try Div branch
     if let Some((lhs, rhs)) = as_div(ctx, expr) {
-        if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(lhs).clone(), ctx.get(rhs).clone()) {
+        if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(lhs), ctx.get(rhs)) {
+            let (n1, n2) = (n1.clone(), n2.clone());
             if !n2.is_zero() {
                 let quot = &n1 / &n2;
                 let new_expr = ctx.add(Expr::Number(quot.clone()));
@@ -327,11 +336,13 @@ define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step:
         }
 
         // Handle (c * x) / d -> (c/d) * x
-        if let Expr::Number(d) = ctx.get(rhs).clone() {
+        if let Expr::Number(d) = ctx.get(rhs) {
+            let d = d.clone();
             if !d.is_zero() {
                 if let Some((ml, mr)) = as_mul(ctx, lhs) {
                     // Case 1: (c * x) / d
-                    if let Expr::Number(c) = ctx.get(ml).clone() {
+                    if let Expr::Number(c) = ctx.get(ml) {
+                        let c = c.clone();
                         let ratio = &c / &d;
                         let ratio_expr = ctx.add(Expr::Number(ratio));
                         let new_expr = smart_mul(ctx, ratio_expr, mr);
@@ -342,7 +353,8 @@ define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step:
                     }
 
                     // Case 2: (x * c) / d
-                    if let Expr::Number(c) = ctx.get(mr).clone() {
+                    if let Expr::Number(c) = ctx.get(mr) {
+                        let c = c.clone();
                         let ratio = &c / &d;
                         let ratio_expr = ctx.add(Expr::Number(ratio));
                         let new_expr = smart_mul(ctx, ratio_expr, ml);

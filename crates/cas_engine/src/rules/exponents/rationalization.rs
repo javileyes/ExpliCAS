@@ -28,8 +28,9 @@ define_rule!(
         };
 
         // Parse denominator as sqrt(t) ± c
-        let (sqrt_arg, const_part, is_plus) = match ctx.get(denominator).clone() {
+        let (sqrt_arg, const_part, is_plus) = match ctx.get(denominator) {
             Expr::Add(l, r) => {
+                let (l, r) = (*l, *r);
                 // sqrt(t) + c or c + sqrt(t)
                 if let Some(arg) = extract_sqrt_arg(ctx, l) {
                     // sqrt(t) + c
@@ -42,6 +43,7 @@ define_rule!(
                 }
             }
             Expr::Sub(l, r) => {
+                let (l, r) = (*l, *r);
                 // sqrt(t) - c
                 if let Some(arg) = extract_sqrt_arg(ctx, l) {
                     (arg, r, false)
@@ -123,14 +125,16 @@ define_rule!(
         };
 
         // Parse denominator as sqrt(p) ± sqrt(q)
-        let (sqrt_p_arg, sqrt_q_arg, is_plus) = match ctx.get(denominator).clone() {
+        let (sqrt_p_arg, sqrt_q_arg, is_plus) = match ctx.get(denominator) {
             Expr::Add(l, r) => {
+                let (l, r) = (*l, *r);
                 // sqrt(p) + sqrt(q)
                 let p_arg = extract_sqrt_arg(ctx, l)?;
                 let q_arg = extract_sqrt_arg(ctx, r)?;
                 (p_arg, q_arg, true)
             }
             Expr::Sub(l, r) => {
+                let (l, r) = (*l, *r);
                 // sqrt(p) - sqrt(q)
                 let p_arg = extract_sqrt_arg(ctx, l)?;
                 let q_arg = extract_sqrt_arg(ctx, r)?;
@@ -198,8 +202,9 @@ define_rule!(
         };
 
         // Parse denominator as 1 ± u^(1/3)
-        let (cbrt_base, is_plus) = match ctx.get(denominator).clone() {
+        let (cbrt_base, is_plus) = match ctx.get(denominator) {
             Expr::Add(l, r) => {
+                let (l, r) = (*l, *r);
                 // 1 + r or r + 1
                 if is_one(ctx, l) {
                     if let Some(base) = extract_cbrt_arg(ctx, r) {
@@ -218,6 +223,7 @@ define_rule!(
                 }
             }
             Expr::Sub(l, r) => {
+                let (l, r) = (*l, *r);
                 // 1 - r
                 if is_one(ctx, l) {
                     if let Some(base) = extract_cbrt_arg(ctx, r) {
@@ -322,8 +328,8 @@ impl crate::rule::Rule for RootMergeMulRule {
         use crate::helpers::prove_nonnegative;
 
         // Match Mul(Pow(a, 1/2), Pow(b, 1/2))
-        let (left, right) = match ctx.get(expr).clone() {
-            Expr::Mul(l, r) => (l, r),
+        let (left, right) = match ctx.get(expr) {
+            Expr::Mul(l, r) => (*l, *r),
             _ => return None,
         };
 
@@ -410,8 +416,8 @@ impl crate::rule::Rule for RootMergeDivRule {
         use crate::helpers::{prove_nonnegative, prove_positive};
 
         // Match Div(Pow(a, 1/2), Pow(b, 1/2))
-        let (num, den) = match ctx.get(expr).clone() {
-            Expr::Div(n, d) => (n, d),
+        let (num, den) = match ctx.get(expr) {
+            Expr::Div(n, d) => (*n, *d),
             _ => return None,
         };
 
@@ -496,26 +502,28 @@ impl crate::rule::Rule for PowPowCancelReciprocalRule {
         use crate::helpers::{prove_nonzero, prove_positive};
 
         // Match Pow(Pow(u, y), Div(1, y)) or Pow(Pow(u, y), exp) where exp = 1/y
-        let (inner_pow, outer_exp) = match ctx.get(expr).clone() {
-            Expr::Pow(base, exp) => (base, exp),
+        let (inner_pow, outer_exp) = match ctx.get(expr) {
+            Expr::Pow(base, exp) => (*base, *exp),
             _ => return None,
         };
 
         // Inner must be Pow(u, y)
-        let (u, y) = match ctx.get(inner_pow).clone() {
-            Expr::Pow(base, exp) => (base, exp),
+        let (u, y) = match ctx.get(inner_pow) {
+            Expr::Pow(base, exp) => (*base, *exp),
             _ => return None,
         };
 
         // Outer exponent must be 1/y (either Div(1, y) or a number that equals 1/y)
-        let is_reciprocal = match ctx.get(outer_exp).clone() {
+        let is_reciprocal = match ctx.get(outer_exp) {
             Expr::Div(num, den) => {
+                let (num, den) = (*num, *den);
                 // Check if num is 1 and den equals y
                 let is_one = matches!(ctx.get(num), Expr::Number(n) if n.is_one());
                 let same_exp = den == y;
                 is_one && same_exp
             }
             Expr::Number(outer_n) => {
+                let outer_n = outer_n.clone();
                 // Check if y is a number and outer_exp = 1/y
                 if let Expr::Number(y_n) = ctx.get(y) {
                     !y_n.is_zero() && outer_n == y_n.recip()

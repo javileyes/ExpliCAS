@@ -12,43 +12,26 @@ use std::cmp::Ordering;
 
 /// Check if two expressions are reciprocals: a = 1/b or b = 1/a
 fn are_reciprocals(ctx: &Context, expr1: ExprId, expr2: ExprId) -> bool {
-    // Get clones to avoid borrow issues
-    let data1 = ctx.get(expr1).clone();
-    let data2 = ctx.get(expr2).clone();
-
     // Case 1: expr2 = 1 / expr1
-    if let Expr::Div(num, den) = &data2 {
-        if is_one(ctx, *num) {
-            // Compare semantically, not just ExprId
-            if crate::ordering::compare_expr(ctx, *den, expr1) == Ordering::Equal {
-                return true;
-            }
+    if let Expr::Div(num, den) = ctx.get(expr2) {
+        if is_one(ctx, *num) && crate::ordering::compare_expr(ctx, *den, expr1) == Ordering::Equal {
+            return true;
         }
     }
 
     // Case 2: expr1 = 1 / expr2
-    if let Expr::Div(num, den) = &data1 {
-        if is_one(ctx, *num) {
-            // Compare semantically, not just ExprId
-            if crate::ordering::compare_expr(ctx, *den, expr2) == Ordering::Equal {
-                return true;
-            }
+    if let Expr::Div(num, den) = ctx.get(expr1) {
+        if is_one(ctx, *num) && crate::ordering::compare_expr(ctx, *den, expr2) == Ordering::Equal {
+            return true;
         }
     }
 
-    // Case 3: Both are numeric (Number or Div of Numbers) and their product is 1
-    // This handles cases like:
-    //   - Number(2) and Div(Number(1), Number(2))
-    //   - Div(Number(1), Number(3)) and Number(3)
-    //   - Number(2) and Number(1/2) (though latter is rare)
-
-    // Try to extract numeric values
-    let num1_opt = extract_numeric_value(ctx, &data1);
-    let num2_opt = extract_numeric_value(ctx, &data2);
+    // Case 3: Both are numeric and their product is 1
+    let num1_opt = extract_numeric_value(ctx, expr1);
+    let num2_opt = extract_numeric_value(ctx, expr2);
 
     if let (Some(n1), Some(n2)) = (num1_opt, num2_opt) {
-        let product = n1 * n2;
-        if product.is_one() {
+        if (n1 * n2).is_one() {
             return true;
         }
     }
@@ -57,11 +40,10 @@ fn are_reciprocals(ctx: &Context, expr1: ExprId, expr2: ExprId) -> bool {
 }
 
 /// Extract numeric value from an expression if it's a pure number or fraction of numbers
-fn extract_numeric_value(ctx: &Context, expr: &Expr) -> Option<num_rational::BigRational> {
-    match expr {
+fn extract_numeric_value(ctx: &Context, id: ExprId) -> Option<num_rational::BigRational> {
+    match ctx.get(id) {
         Expr::Number(n) => Some(n.clone()),
         Expr::Div(num_id, den_id) => {
-            // Check if both numerator and denominator are numbers
             if let (Expr::Number(num), Expr::Number(den)) = (ctx.get(*num_id), ctx.get(*den_id)) {
                 Some(num / den)
             } else {
@@ -140,8 +122,6 @@ fn check_pair_with_negation<F>(
     ctx: &mut Context,
     term_i: ExprId,
     term_j: ExprId,
-    term_i_data: Expr,
-    term_j_data: Expr,
     terms: &[ExprId],
     i: usize,
     j: usize,
@@ -150,6 +130,9 @@ fn check_pair_with_negation<F>(
 where
     F: Fn(&mut Context, &Expr, &Expr) -> Option<(ExprId, String)>,
 {
+    // Clone once inside to break borrow aliasing (ctx.get vs ctx.add)
+    let term_i_data = ctx.get(term_i).clone();
+    let term_j_data = ctx.get(term_j).clone();
     // Case 1: Try direct match (positive pair)
     if let Some((result, desc)) = check_fn(ctx, &term_i_data, &term_j_data) {
         let remaining = build_sum_without(ctx, terms, i, j);
@@ -399,16 +382,11 @@ define_rule!(
         // Search for asin/acos pairs among all terms
         for i in 0..terms.len() {
             for j in (i + 1)..terms.len() {
-                let term_i_data = ctx.get(terms[i]).clone();
-                let term_j_data = ctx.get(terms[j]).clone();
-
                 // Use generalized helper to check both positive and negated pairs
                 if let Some(rewrite) = check_pair_with_negation(
                     ctx,
                     terms[i],
                     terms[j],
-                    term_i_data,
-                    term_j_data,
                     &terms,
                     i,
                     j,
@@ -510,16 +488,11 @@ impl crate::rule::Rule for InverseTrigAtanRule {
         // Search for atan(x) + atan(1/x) among all pairs of terms
         for i in 0..terms.len() {
             for j in (i + 1)..terms.len() {
-                let term_i_data = ctx.get(terms[i]).clone();
-                let term_j_data = ctx.get(terms[j]).clone();
-
                 // Use generalized helper to check both positive and negated pairs
                 if let Some(rewrite) = check_pair_with_negation(
                     ctx,
                     terms[i],
                     terms[j],
-                    term_i_data,
-                    term_j_data,
                     &terms,
                     i,
                     j,
@@ -618,19 +591,18 @@ impl crate::rule::Rule for AtanAddRationalRule {
         // Search for atan(a) + atan(b) pairs among all terms
         for i in 0..terms.len() {
             for j in (i + 1)..terms.len() {
-                let term_i_data = ctx.get(terms[i]).clone();
-                let term_j_data = ctx.get(terms[j]).clone();
-
                 // Check if both are atan functions with rational arguments
                 if let (Expr::Function(name_i, args_i), Expr::Function(name_j, args_j)) =
-                    (&term_i_data, &term_j_data)
+                    (ctx.get(terms[i]), ctx.get(terms[j]))
                 {
+                    let (name_i, args_i) = (*name_i, args_i.clone());
+                    let (name_j, args_j) = (*name_j, args_j.clone());
                     let is_i_atan = matches!(
-                        ctx.builtin_of(*name_i),
+                        ctx.builtin_of(name_i),
                         Some(BuiltinFn::Atan | BuiltinFn::Arctan)
                     );
                     let is_j_atan = matches!(
-                        ctx.builtin_of(*name_j),
+                        ctx.builtin_of(name_j),
                         Some(BuiltinFn::Atan | BuiltinFn::Arctan)
                     );
                     if is_i_atan && is_j_atan && args_i.len() == 1 && args_j.len() == 1 {
@@ -638,8 +610,8 @@ impl crate::rule::Rule for AtanAddRationalRule {
                         let arg_j = args_j[0];
 
                         // Extract rational values from both arguments
-                        let val_i = extract_numeric_value(ctx, &ctx.get(arg_i).clone());
-                        let val_j = extract_numeric_value(ctx, &ctx.get(arg_j).clone());
+                        let val_i = extract_numeric_value(ctx, arg_i);
+                        let val_j = extract_numeric_value(ctx, arg_j);
 
                         if let (Some(a), Some(b)) = (val_i, val_j) {
                             // Guard: 1 - a*b > 0 (ensures no branch crossing)

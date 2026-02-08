@@ -152,8 +152,8 @@ fn prime_exponent_map(n: &num_bigint::BigInt) -> HashMap<num_bigint::BigInt, u32
 use std::collections::HashMap;
 
 define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
-    let expr_data = ctx.get(expr).clone();
-    if let Expr::Function(fn_id, args) = expr_data {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let (fn_id, args) = (*fn_id, args.clone());
         use cas_ast::BuiltinFn;
         // Handle ln(x) as log(e, x)
         let (base, arg) = match ctx.builtin_of(fn_id) {
@@ -165,10 +165,9 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
             _ => return None,
         };
 
-        let arg_data = ctx.get(arg).clone();
-
         // 1. log(b, 1) = 0, log(b, 0) = -infinity, log(b, neg) = undefined
-        if let Expr::Number(n) = &arg_data {
+        if let Expr::Number(n) = ctx.get(arg) {
+            let n = n.clone();
             if n.is_one() {
                 let zero = ctx.num(0);
                 return Some(Rewrite::new(zero).desc("log(b, 1) = 0"));
@@ -178,14 +177,14 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
                 let neg_inf = ctx.add(Expr::Neg(inf));
                 return Some(Rewrite::new(neg_inf).desc("log(b, 0) = -infinity"));
             }
-            if *n < num_rational::BigRational::zero() {
+            if n < num_rational::BigRational::zero() {
                 let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
                 return Some(Rewrite::new(undef).desc("log(b, neg) = undefined"));
             }
 
             // Check if n is a power of base (if base is a number)
-            let base_data = ctx.get(base).clone();
-            if let Expr::Number(b) = base_data {
+            if let Expr::Number(b) = ctx.get(base) {
+                let b = b.clone();
                 // Try to evaluate log(base, val) as a rational number
                 // This handles cases like:
                 //   log(2, 8) = 3      (8 = 2^3)
@@ -220,7 +219,8 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
         // This rule is good for canonicalization.
         // GUARD: When x == b (inverse composition), only simplify if exponent is a number.
         // For variable exponents like log(e, e^x), let LogExpInverseRule handle with policy.
-        if let Expr::Pow(p_base, p_exp) = arg_data {
+        if let Expr::Pow(p_base, p_exp) = ctx.get(arg) {
+            let (p_base, p_exp) = (*p_base, *p_exp);
             let is_inverse_composition = p_base == base || ctx.get(p_base) == ctx.get(base);
 
             if is_inverse_composition {
@@ -294,14 +294,16 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
 // =============================================================================
 define_rule!(LnEProductRule, "Factor e from ln Product", |ctx, expr| {
     // Match ln(arg)
-    if let Expr::Function(fn_id, args) = ctx.get(expr).clone() {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let (fn_id, args) = (*fn_id, args.clone());
         if ctx.builtin_of(fn_id) != Some(cas_ast::BuiltinFn::Ln) || args.len() != 1 {
             return None;
         }
         let arg = args[0];
 
         // Match Mul(e, x) or Mul(x, e) in the argument
-        if let Expr::Mul(l, r) = ctx.get(arg).clone() {
+        if let Expr::Mul(l, r) = ctx.get(arg) {
+            let (l, r) = (*l, *r);
             let l_is_e = matches!(ctx.get(l), Expr::Constant(cas_ast::Constant::E));
             let r_is_e = matches!(ctx.get(r), Expr::Constant(cas_ast::Constant::E));
 
@@ -333,14 +335,16 @@ define_rule!(LnEProductRule, "Factor e from ln Product", |ctx, expr| {
 // =============================================================================
 define_rule!(LnEDivRule, "Factor e from ln Quotient", |ctx, expr| {
     // Match ln(arg)
-    if let Expr::Function(fn_id, args) = ctx.get(expr).clone() {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let (fn_id, args) = (*fn_id, args.clone());
         if ctx.builtin_of(fn_id) != Some(cas_ast::BuiltinFn::Ln) || args.len() != 1 {
             return None;
         }
         let arg = args[0];
 
         // Match Div(x, e) or Div(e, x) in the argument
-        if let Expr::Div(num, den) = ctx.get(arg).clone() {
+        if let Expr::Div(num, den) = ctx.get(arg) {
+            let (num, den) = (*num, *den);
             let num_is_e = matches!(ctx.get(num), Expr::Constant(cas_ast::Constant::E));
             let den_is_e = matches!(ctx.get(den), Expr::Constant(cas_ast::Constant::E));
 
@@ -419,10 +423,14 @@ impl crate::rule::Rule for LogContractionRule {
             return None;
         }
 
-        let expr_data = ctx.get(expr).clone();
+        let (lhs_opt, rhs_opt) = match ctx.get(expr) {
+            Expr::Add(l, r) => (Some((*l, *r, true)), None),
+            Expr::Sub(l, r) => (None, Some((*l, *r))),
+            _ => (None, None),
+        };
 
         // Case 1: ln(a) + ln(b) → ln(a*b) or log(b,x) + log(b,y) → log(b, x*y)
-        if let Expr::Add(lhs, rhs) = expr_data {
+        if let Some((lhs, rhs, _is_add)) = lhs_opt {
             if let (Some((base_l, arg_l)), Some((base_r, arg_r))) =
                 (extract_log_parts(ctx, lhs), extract_log_parts(ctx, rhs))
             {
@@ -444,7 +452,7 @@ impl crate::rule::Rule for LogContractionRule {
         }
 
         // Case 2: ln(a) - ln(b) → ln(a/b) or log(b,x) - log(b,y) → log(b, x/y)
-        if let Expr::Sub(lhs, rhs) = expr_data {
+        if let Some((lhs, rhs)) = rhs_opt {
             if let (Some((base_l, arg_l)), Some((base_r, arg_r))) =
                 (extract_log_parts(ctx, lhs), extract_log_parts(ctx, rhs))
             {

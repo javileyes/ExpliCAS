@@ -134,22 +134,34 @@ fn is_nary_conjugate_pair(
     fn normalize_term(ctx: &mut cas_ast::Context, term: cas_ast::ExprId) -> (cas_ast::ExprId, i32) {
         use crate::helpers::flatten_mul;
 
-        match ctx.get(term).clone() {
-            Expr::Neg(inner) => {
-                // Recursively normalize the inner term
+        // Pre-extract variant info from borrow to avoid cloning full Expr
+        enum TermKind {
+            Neg(cas_ast::ExprId),
+            Num(num_rational::BigRational),
+            Mul,
+            Other,
+        }
+        let kind = match ctx.get(term) {
+            Expr::Neg(inner) => TermKind::Neg(*inner),
+            Expr::Number(n) => TermKind::Num(n.clone()),
+            Expr::Mul(_, _) => TermKind::Mul,
+            _ => TermKind::Other,
+        };
+        match kind {
+            TermKind::Neg(inner) => {
                 let (core, sign) = normalize_term(ctx, inner);
                 (core, -sign)
             }
-            Expr::Number(n) => {
+            TermKind::Num(n) => {
                 if n.is_negative() {
-                    let pos_n = -n.clone();
+                    let pos_n = -n;
                     let pos_term = ctx.add(Expr::Number(pos_n));
                     (pos_term, -1)
                 } else {
                     (term, 1)
                 }
             }
-            Expr::Mul(_, _) => {
+            TermKind::Mul => {
                 // Flatten the product to get all factors
                 let mut factors: Vec<cas_ast::ExprId> = Vec::new();
                 flatten_mul(ctx, term, &mut factors);
@@ -159,28 +171,34 @@ fn is_nary_conjugate_pair(
                 let mut unsigned_factors: Vec<cas_ast::ExprId> = Vec::new();
 
                 for factor in factors {
-                    match ctx.get(factor).clone() {
-                        Expr::Neg(inner) => {
+                    // Pre-extract variant info from borrow before any ctx.add calls
+                    let factor_info = match ctx.get(factor) {
+                        Expr::Neg(inner) => Some(("neg", *inner)),
+                        Expr::Number(n) if n.is_negative() => {
+                            let neg_n = -n.clone();
+                            // We need to defer the ctx.add, so store the value
+                            let pos_term = ctx.add(Expr::Number(neg_n));
                             overall_sign *= -1;
-                            // Check if inner is also negative number
-                            if let Expr::Number(n) = ctx.get(inner).clone() {
-                                if n.is_negative() {
-                                    // Neg(Number(-x)) = x
-                                    unsigned_factors.push(ctx.add(Expr::Number(-n)));
-                                } else {
-                                    unsigned_factors.push(inner);
-                                }
+                            unsigned_factors.push(pos_term);
+                            continue;
+                        }
+                        _ => None,
+                    };
+                    if let Some(("neg", inner)) = factor_info {
+                        overall_sign *= -1;
+                        // Check if inner is a negative number
+                        if let Expr::Number(n) = ctx.get(inner) {
+                            if n.is_negative() {
+                                let pos_n = -n.clone();
+                                unsigned_factors.push(ctx.add(Expr::Number(pos_n)));
                             } else {
                                 unsigned_factors.push(inner);
                             }
+                        } else {
+                            unsigned_factors.push(inner);
                         }
-                        Expr::Number(n) if n.is_negative() => {
-                            overall_sign *= -1;
-                            unsigned_factors.push(ctx.add(Expr::Number(-n)));
-                        }
-                        _ => {
-                            unsigned_factors.push(factor);
-                        }
+                    } else {
+                        unsigned_factors.push(factor);
                     }
                 }
 
@@ -208,7 +226,7 @@ fn is_nary_conjugate_pair(
 
                 (canonical_core, overall_sign)
             }
-            _ => (term, 1),
+            TermKind::Other => (term, 1),
         }
     }
 
@@ -417,10 +435,7 @@ define_rule!(
     "Factor Difference of Squares",
     |ctx, expr| {
         // match Expr::Add(l, r)
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Add(_, _) | Expr::Sub(_, _) = expr_data {
-            // Check
-        } else {
+        if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
             return None;
         }
 
@@ -632,22 +647,23 @@ define_rule!(
             term: cas_ast::ExprId,
             gcd: &BigRational,
         ) -> cas_ast::ExprId {
-            match ctx.get(term).clone() {
+            match ctx.get(term) {
                 Expr::Number(n) => {
-                    let new_n = &n / gcd;
+                    let new_n = n / gcd;
                     ctx.add(Expr::Number(new_n))
                 }
                 Expr::Mul(a, b) => {
-                    if let Expr::Number(n) = ctx.get(a).clone() {
-                        let new_n = &n / gcd;
+                    let (a, b) = (*a, *b);
+                    if let Expr::Number(n) = ctx.get(a) {
+                        let new_n = n / gcd;
                         if new_n.is_one() {
                             return b;
                         }
                         let num = ctx.add(Expr::Number(new_n));
                         return ctx.add_raw(Expr::Mul(num, b));
                     }
-                    if let Expr::Number(n) = ctx.get(b).clone() {
-                        let new_n = &n / gcd;
+                    if let Expr::Number(n) = ctx.get(b) {
+                        let new_n = n / gcd;
                         if new_n.is_one() {
                             return a;
                         }
@@ -657,6 +673,7 @@ define_rule!(
                     term
                 }
                 Expr::Neg(inner) => {
+                    let inner = *inner;
                     let divided = divide_term(ctx, inner, gcd);
                     ctx.add(Expr::Neg(divided))
                 }
@@ -712,9 +729,10 @@ define_rule!(
         // Extract bases from cubes: term must be Pow(base, 3)
         let mut bases: Vec<cas_ast::ExprId> = Vec::new();
         for &term in &terms {
-            let (base, is_neg) = match ctx.get(term).clone() {
+            let (base, is_neg) = match ctx.get(term) {
                 Expr::Pow(b, e) => {
-                    if let Expr::Number(n) = ctx.get(e).clone() {
+                    let (b, e) = (*b, *e);
+                    if let Expr::Number(n) = ctx.get(e) {
                         if n.is_integer() && n.to_integer() == num_bigint::BigInt::from(3) {
                             (b, false)
                         } else {
@@ -725,9 +743,11 @@ define_rule!(
                     }
                 }
                 Expr::Neg(inner) => {
+                    let inner = *inner;
                     // Handle -(x^3) form
-                    if let Expr::Pow(b, e) = ctx.get(inner).clone() {
-                        if let Expr::Number(n) = ctx.get(e).clone() {
+                    if let Expr::Pow(b, e) = ctx.get(inner) {
+                        let (b, e) = (*b, *e);
+                        if let Expr::Number(n) = ctx.get(e) {
                             if n.is_integer() && n.to_integer() == num_bigint::BigInt::from(3) {
                                 (b, true)
                             } else {
@@ -802,17 +822,19 @@ fn is_structurally_zero(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> bo
         sign: i32,
         atoms: &mut std::collections::HashMap<String, i32>,
     ) {
-        match ctx.get(expr).clone() {
+        match ctx.get(expr) {
             Expr::Add(l, r) => {
+                let (l, r) = (*l, *r);
                 collect_atoms(ctx, l, sign, atoms);
                 collect_atoms(ctx, r, sign, atoms);
             }
             Expr::Sub(l, r) => {
+                let (l, r) = (*l, *r);
                 collect_atoms(ctx, l, sign, atoms);
                 collect_atoms(ctx, r, -sign, atoms);
             }
             Expr::Neg(inner) => {
-                collect_atoms(ctx, inner, -sign, atoms);
+                collect_atoms(ctx, *inner, -sign, atoms);
             }
             _ => {
                 // Use display string as key for structural comparison
