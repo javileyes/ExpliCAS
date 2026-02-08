@@ -1,63 +1,7 @@
 // ========== Solver Domain Helpers ==========
 
-use super::predicates::prove_positive;
 use cas_ast::{Context, Expr, ExprId};
 use num_traits::ToPrimitive;
-
-/// Decision result for `can_take_ln_real`.
-///
-/// Used by the solver to determine if ln(arg) is valid in RealOnly mode.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum LnDecision {
-    /// Argument is provably positive - ln() is safe with no assumption.
-    Safe,
-    /// Argument positivity is unknown but allowed under assumption (Assume mode only).
-    /// Contains the assumption message to be emitted.
-    AssumePositive,
-}
-
-/// Check if ln(arg) is valid in RealOnly mode.
-///
-/// This is used by the solver to gate log operations on exponential equations.
-///
-/// # Arguments
-/// * `ctx` - Expression context
-/// * `arg` - The argument to ln()
-/// * `mode` - The current DomainMode
-/// * `value_domain` - RealOnly or ComplexEnabled
-///
-/// # Returns
-/// * `Ok(LnDecision::Safe)` if arg is provably positive (no assumption needed)
-/// * `Ok(LnDecision::AssumePositive)` if allowed with assumption (Assume mode only)
-/// * `Err(reason)` if ln is invalid (arg ≤ 0 proven, or unknown in Strict/Generic)
-///
-/// # Examples
-/// ```ignore
-/// can_take_ln_real(ctx, ctx.num(2), DomainMode::Strict, RealOnly)   // Ok(Safe)
-/// can_take_ln_real(ctx, ctx.num(-5), DomainMode::Strict, RealOnly)  // Err("argument ≤ 0")
-/// can_take_ln_real(ctx, ctx.var("x"), DomainMode::Strict, RealOnly) // Err("cannot prove > 0")
-/// can_take_ln_real(ctx, ctx.var("x"), DomainMode::Assume, RealOnly) // Ok(AssumePositive)
-/// ```
-#[allow(dead_code)]
-pub(crate) fn can_take_ln_real(
-    ctx: &Context,
-    arg: ExprId,
-    mode: crate::domain::DomainMode,
-    value_domain: crate::semantics::ValueDomain,
-) -> Result<LnDecision, &'static str> {
-    use crate::domain::{DomainMode, Proof};
-
-    let proof = prove_positive(ctx, arg, value_domain);
-
-    match proof {
-        Proof::Proven | Proof::ProvenImplicit => Ok(LnDecision::Safe),
-        Proof::Disproven => Err("argument is ≤ 0"),
-        Proof::Unknown => match mode {
-            DomainMode::Strict | DomainMode::Generic => Err("cannot prove argument > 0 for ln()"),
-            DomainMode::Assume => Ok(LnDecision::AssumePositive),
-        },
-    }
-}
 
 /// Try to extract an integer value from an expression.
 ///

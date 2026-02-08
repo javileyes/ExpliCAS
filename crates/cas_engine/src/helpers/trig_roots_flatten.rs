@@ -245,20 +245,3 @@ fn flatten_mul_recursive(ctx: &mut Context, expr: ExprId, factors: &mut Vec<Expr
         }
     }
 }
-
-#[allow(dead_code)]
-pub(crate) fn get_parts(context: &mut Context, e: ExprId) -> (num_rational::BigRational, ExprId) {
-    match context.get(e) {
-        Expr::Mul(a, b) => {
-            if let Expr::Number(n) = context.get(*a) {
-                (n.clone(), *b)
-            } else if let Expr::Number(n) = context.get(*b) {
-                (n.clone(), *a)
-            } else {
-                (num_rational::BigRational::one(), e)
-            }
-        }
-        Expr::Number(n) => (n.clone(), context.num(1)), // Treat constant as c * 1
-        _ => (num_rational::BigRational::one(), e),
-    }
-}

@@ -29,20 +29,6 @@ fn test_is_zero() {
 }
 
 #[test]
-fn test_is_negative() {
-    let mut ctx = Context::new();
-    let neg_one = ctx.num(-1);
-    let one = ctx.num(1);
-    let x = ctx.var("x");
-    let neg_x = ctx.add(Expr::Neg(x));
-
-    assert!(is_negative(&ctx, neg_one));
-    assert!(!is_negative(&ctx, one));
-    assert!(is_negative(&ctx, neg_x));
-    assert!(!is_negative(&ctx, x));
-}
-
-#[test]
 fn test_get_integer() {
     let mut ctx = Context::new();
     let five = ctx.num(5);

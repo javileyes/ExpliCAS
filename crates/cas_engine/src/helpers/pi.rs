@@ -43,16 +43,6 @@ pub(crate) fn is_pi(ctx: &Context, expr: ExprId) -> bool {
     matches!(ctx.get(expr), Expr::Constant(cas_ast::Constant::Pi))
 }
 
-/// Check if expression equals a specific numeric value
-#[allow(dead_code)]
-pub(crate) fn is_numeric_value(ctx: &Context, expr: ExprId, numer: i32, denom: i32) -> bool {
-    if let Expr::Number(n) = ctx.get(expr) {
-        *n == num_rational::BigRational::new(numer.into(), denom.into())
-    } else {
-        false
-    }
-}
-
 /// Build π/n expression
 pub(crate) fn build_pi_over_n(ctx: &mut Context, denom: i64) -> ExprId {
     let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));

@@ -82,34 +82,3 @@ pub(crate) fn match_trig_diff(ctx: &Context, expr: ExprId, fn_name: &str) -> Opt
 
     None
 }
-
-/// Check if two pairs of arguments match as unordered sets: {A,B} == {C,D}
-///
-/// This is used to validate that the denominator contains the same angles
-/// as the numerator, WITHOUT reordering the numerator's extraction.
-#[allow(dead_code)]
-pub(crate) fn same_args_unordered(
-    ctx: &Context,
-    a: ExprId,
-    b: ExprId,
-    c: ExprId,
-    d: ExprId,
-) -> bool {
-    use crate::ordering::compare_expr;
-    use std::cmp::Ordering;
-
-    // Canonicalize both pairs by putting smaller first
-    let (a1, a2) = if compare_expr(ctx, a, b) == Ordering::Greater {
-        (b, a)
-    } else {
-        (a, b)
-    };
-    let (b1, b2) = if compare_expr(ctx, c, d) == Ordering::Greater {
-        (d, c)
-    } else {
-        (c, d)
-    };
-
-    // Compare canonicalized pairs
-    compare_expr(ctx, a1, b1) == Ordering::Equal && compare_expr(ctx, a2, b2) == Ordering::Equal
-}

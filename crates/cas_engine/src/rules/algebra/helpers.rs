@@ -40,66 +40,6 @@ pub(crate) fn smart_mul(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
     ctx.add_raw(Expr::Mul(a, b))
 }
 
-/// Simplifying multiplication builder. Alias for `smart_mul`.
-///
-/// Use `mul2_simpl` when you want:
-/// - 1*x → x (identity elimination)
-/// - x*1 → x
-/// - No operand reordering
-///
-/// For raw construction without any simplification, use local `mul2_raw`.
-#[inline]
-#[allow(dead_code)]
-pub(crate) fn mul2_simpl(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
-    smart_mul(ctx, a, b)
-}
-
-/// Raw multiplication of multiple factors. Right-folds without simplification.
-///
-/// `mul_many_raw(ctx, [a, b, c])` → `a * (b * c)` (right-associative)
-///
-/// Returns `None` if factors is empty.
-#[allow(dead_code)]
-pub(crate) fn mul_many_raw(ctx: &mut Context, factors: &[ExprId]) -> Option<ExprId> {
-    if factors.is_empty() {
-        return None;
-    }
-    let mut result = match factors.last() {
-        Some(r) => *r,
-        None => return None,
-    };
-    for &factor in factors.iter().rev().skip(1) {
-        result = ctx.add_raw(Expr::Mul(factor, result));
-    }
-    Some(result)
-}
-
-/// Simplifying multiplication of multiple factors. Eliminates 1*x.
-///
-/// `mul_many_simpl(ctx, [1, a, b])` → `a * b` (eliminates 1s)
-///
-/// Returns `None` if factors is empty, or Some(1) if all factors are 1.
-#[allow(dead_code)]
-pub(crate) fn mul_many_simpl(ctx: &mut Context, factors: &[ExprId]) -> Option<ExprId> {
-    // Filter out 1s
-    let non_ones: Vec<_> = factors
-        .iter()
-        .filter(|&&f| !is_one(ctx, f))
-        .copied()
-        .collect();
-
-    if non_ones.is_empty() {
-        // All factors were 1, return 1
-        return if factors.is_empty() {
-            None
-        } else {
-            Some(ctx.num(1))
-        };
-    }
-
-    mul_many_raw(ctx, &non_ones)
-}
-
 pub(crate) fn distribute(ctx: &mut Context, target: ExprId, multiplier: ExprId) -> ExprId {
     enum Shape {
         Add(ExprId, ExprId),

@@ -63,17 +63,6 @@ pub(crate) fn as_neg(ctx: &Context, id: ExprId) -> Option<ExprId> {
     }
 }
 
-/// Extract function name and args without cloning String or Vec.
-/// Returns references with the Context's lifetime.
-#[inline]
-#[allow(dead_code)]
-pub(crate) fn fn_name_args(ctx: &Context, id: ExprId) -> Option<(&str, &[ExprId])> {
-    match ctx.get(id) {
-        Expr::Function(fn_id, args) => Some((ctx.sym_name(*fn_id), args.as_slice())),
-        _ => None,
-    }
-}
-
 /// Check if expression matches a 1-arg function with the given name.
 /// Returns the argument ExprId if matched.
 #[inline]
@@ -81,74 +70,6 @@ pub(crate) fn as_fn1(ctx: &Context, id: ExprId, name: &str) -> Option<ExprId> {
     match ctx.get(id) {
         Expr::Function(fn_name, args) if ctx.sym_name(*fn_name) == name && args.len() == 1 => {
             Some(args[0])
-        }
-        _ => None,
-    }
-}
-
-/// Check if expression matches a 2-arg function with the given name.
-/// Returns the argument ExprIds if matched.
-#[inline]
-#[allow(dead_code)]
-pub(crate) fn as_fn2(ctx: &Context, id: ExprId, name: &str) -> Option<(ExprId, ExprId)> {
-    match ctx.get(id) {
-        Expr::Function(fn_name, args) if ctx.sym_name(*fn_name) == name && args.len() == 2 => {
-            Some((args[0], args[1]))
-        }
-        _ => None,
-    }
-}
-
-// =============================================================================
-// Builtin-aware matchers (O(1) identity check, no string comparison)
-// =============================================================================
-
-/// Match 1-arg builtin function call (sin(x), ln(x), abs(x), etc.)
-/// Uses O(1) SymbolId comparison instead of string matching.
-#[inline]
-#[allow(dead_code)]
-pub(crate) fn as_builtin1(
-    ctx: &Context,
-    id: ExprId,
-    builtin: cas_ast::BuiltinFn,
-) -> Option<ExprId> {
-    match ctx.get(id) {
-        Expr::Function(fn_id, args) if *fn_id == ctx.builtin_id(builtin) && args.len() == 1 => {
-            Some(args[0])
-        }
-        _ => None,
-    }
-}
-
-/// Match 2-arg builtin function call (log(b,x), root(x,n), etc.)
-/// Uses O(1) SymbolId comparison instead of string matching.
-#[inline]
-#[allow(dead_code)]
-pub(crate) fn as_builtin2(
-    ctx: &Context,
-    id: ExprId,
-    builtin: cas_ast::BuiltinFn,
-) -> Option<(ExprId, ExprId)> {
-    match ctx.get(id) {
-        Expr::Function(fn_id, args) if *fn_id == ctx.builtin_id(builtin) && args.len() == 2 => {
-            Some((args[0], args[1]))
-        }
-        _ => None,
-    }
-}
-
-/// Extract builtin identity and args from a function call (O(1) reverse lookup).
-/// Returns `None` if the expression is not a function call or the function is not a builtin.
-#[inline]
-#[allow(dead_code)]
-pub(crate) fn fn_builtin_args(
-    ctx: &Context,
-    id: ExprId,
-) -> Option<(cas_ast::BuiltinFn, &[ExprId])> {
-    match ctx.get(id) {
-        Expr::Function(fn_id, args) => {
-            let builtin = ctx.builtin_of(*fn_id)?;
-            Some((builtin, args.as_slice()))
         }
         _ => None,
     }

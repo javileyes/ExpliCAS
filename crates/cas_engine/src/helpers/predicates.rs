@@ -24,16 +24,6 @@ pub fn is_zero(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-/// Check if expression is a negative number
-#[allow(dead_code)]
-pub(crate) fn is_negative(ctx: &Context, expr: ExprId) -> bool {
-    if let Expr::Number(n) = ctx.get(expr) {
-        n.is_negative()
-    } else {
-        matches!(ctx.get(expr), Expr::Neg(_))
-    }
-}
-
 /// Attempt to prove whether an expression is non-zero.
 ///
 /// This is used by domain-aware simplification to gate operations like
@@ -201,15 +191,6 @@ fn prove_nonzero_depth(ctx: &Context, expr: ExprId, depth: usize) -> crate::doma
         // Variables, other functions: UNKNOWN (conservative)
         _ => Proof::Unknown,
     }
-}
-
-/// Check if an expression can be proven to be non-zero (convenience wrapper).
-///
-/// Returns `true` only for `Proof::Proven`. Use `prove_nonzero()` directly
-/// for more fine-grained control.
-#[allow(dead_code)]
-pub(crate) fn can_prove_nonzero(ctx: &Context, expr: ExprId) -> bool {
-    prove_nonzero(ctx, expr).is_proven()
 }
 
 /// Attempt to prove whether an expression is strictly positive (> 0).
@@ -428,19 +409,6 @@ fn prove_positive_depth(
     }
 }
 
-/// Check if an expression can be proven to be positive (convenience wrapper).
-///
-/// Returns `true` only for `Proof::Proven`. Use `prove_positive()` directly
-/// for more fine-grained control.
-#[allow(dead_code)]
-pub(crate) fn can_prove_positive(
-    ctx: &Context,
-    expr: ExprId,
-    value_domain: crate::semantics::ValueDomain,
-) -> bool {
-    prove_positive(ctx, expr, value_domain).is_proven()
-}
-
 /// Attempt to prove whether an expression is non-negative (≥ 0).
 ///
 /// This is used by domain-aware simplification to gate operations like
@@ -585,118 +553,4 @@ fn prove_nonnegative_depth(
         // Variables, other functions: UNKNOWN (conservative)
         _ => Proof::Unknown,
     }
-}
-
-/// Prove non-negative with implicit domain support.
-///
-/// This extends `prove_nonnegative` to also consider conditions that are
-/// implicitly required by the expression structure (e.g., `sqrt(x)` implies `x ≥ 0`).
-///
-/// Returns `Proof::ProvenImplicit` if:
-/// 1. The base proof is `Unknown`
-/// 2. The expression has an implicit non-negative constraint
-/// 3. The witness for that constraint survives in the output
-///
-/// This enables simplifications like `sqrt(x)² → x` within expressions
-/// that still contain `sqrt(x)` elsewhere, without requiring explicit assumptions.
-#[allow(dead_code)]
-pub(crate) fn prove_nonnegative_with_implicit(
-    ctx: &Context,
-    expr: ExprId,
-    value_domain: crate::semantics::ValueDomain,
-    implicit_domain: &crate::implicit_domain::ImplicitDomain,
-    output: ExprId,
-) -> crate::domain::Proof {
-    use crate::domain::Proof;
-    use crate::implicit_domain::WitnessKind;
-
-    // First try normal proof
-    let base_proof = prove_nonnegative(ctx, expr, value_domain);
-
-    match base_proof {
-        Proof::Proven | Proof::ProvenImplicit | Proof::Disproven => base_proof,
-        Proof::Unknown => {
-            // Check if implicit domain contains NonNegative(expr)
-            if implicit_domain.contains_nonnegative(expr) {
-                // Check if witness survives in output
-                if crate::implicit_domain::witness_survives(ctx, expr, output, WitnessKind::Sqrt) {
-                    return Proof::ProvenImplicit;
-                }
-            }
-            Proof::Unknown
-        }
-    }
-}
-
-/// V2.0: Prove positivity with guard environment.
-///
-/// Like `prove_positive`, but first checks if the expression's positivity
-/// is asserted in the guard set. This allows conditional branches to
-/// treat guarded conditions as proven facts.
-///
-/// # Arguments
-/// * `ctx` - Expression context
-/// * `expr` - Expression to check
-/// * `value_domain` - RealOnly or ComplexEnabled
-/// * `guards` - Set of conditions to treat as proven
-///
-/// # Example
-/// ```ignore
-/// let guard = ConditionSet::single(ConditionPredicate::Positive(x));
-/// // Now prove_positive_with_guards(ctx, x, RealOnly, &guard) returns Proven
-/// ```
-#[allow(dead_code)]
-pub(crate) fn prove_positive_with_guards(
-    ctx: &Context,
-    expr: ExprId,
-    value_domain: crate::semantics::ValueDomain,
-    guards: &cas_ast::ConditionSet,
-) -> crate::domain::Proof {
-    use crate::domain::Proof;
-    use cas_ast::ConditionPredicate;
-
-    // First check if this expression is guarded as Positive
-    for pred in guards.predicates() {
-        match pred {
-            ConditionPredicate::Positive(e) if *e == expr => return Proof::Proven,
-            ConditionPredicate::NonNegative(e) if *e == expr => {
-                // NonNegative doesn't imply strictly positive, but if we have
-                // NonNegative AND NonZero, then we can prove Positive
-                if guards
-                    .predicates()
-                    .iter()
-                    .any(|p| matches!(p, ConditionPredicate::NonZero(z) if *z == expr))
-                {
-                    return Proof::Proven;
-                }
-            }
-            _ => {}
-        }
-    }
-
-    // Fall back to normal proof
-    prove_positive(ctx, expr, value_domain)
-}
-
-/// V2.0: Prove non-zero with guard environment.
-#[allow(dead_code)]
-pub(crate) fn prove_nonzero_with_guards(
-    ctx: &Context,
-    expr: ExprId,
-    guards: &cas_ast::ConditionSet,
-) -> crate::domain::Proof {
-    use crate::domain::Proof;
-    use cas_ast::ConditionPredicate;
-
-    // Check if this expression is guarded as NonZero or Positive
-    for pred in guards.predicates() {
-        match pred {
-            ConditionPredicate::NonZero(e) if *e == expr => return Proof::Proven,
-            ConditionPredicate::Positive(e) if *e == expr => return Proof::Proven, // x > 0 implies x ≠ 0
-            _ => {}
-        }
-    }
-
-    // Fall back to normal proof
-    prove_nonzero(ctx, expr)
 }
