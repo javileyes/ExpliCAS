@@ -225,8 +225,14 @@ define_rule!(
                 let x = inner_args[0];
 
                 // Look up in expansion table
-                let outer = ctx.sym_name(*outer_name);
-                let inner = ctx.sym_name(*inner_name);
+                let outer = match ctx.builtin_of(*outer_name) {
+                    Some(b) => b.name(),
+                    None => return None,
+                };
+                let inner = match ctx.builtin_of(*inner_name) {
+                    Some(b) => b.name(),
+                    None => return None,
+                };
                 for (outer_expected, inner_variants, transform, description) in EXPANSIONS {
                     if outer == *outer_expected && inner_variants.contains(&inner) {
                         let result = apply_transform(ctx, x, *transform);

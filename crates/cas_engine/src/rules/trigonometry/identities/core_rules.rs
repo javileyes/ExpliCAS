@@ -110,10 +110,10 @@ define_rule!(
 
         if let Expr::Function(fn_id, args) = expr_data {
             let builtin = ctx.builtin_of(fn_id);
-            let name = builtin
-                .map(|b| b.name())
-                .unwrap_or_else(|| ctx.sym_name(fn_id));
-            let name = name.to_string();
+            let name = match builtin {
+                Some(b) => b.name().to_string(),
+                None => return None,
+            };
             if args.len() != 1 {
                 return None;
             }
@@ -199,7 +199,10 @@ define_rule!(
     |ctx, expr| {
         let expr_data = ctx.get(expr).clone();
         if let Expr::Function(fn_id, args) = expr_data {
-            let name = ctx.sym_name(fn_id).to_string();
+            let name = match ctx.builtin_of(fn_id) {
+                Some(b) => b.name().to_string(),
+                None => return None,
+            };
             if args.len() == 1 {
                 let arg = args[0];
 

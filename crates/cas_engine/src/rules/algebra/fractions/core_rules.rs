@@ -45,7 +45,8 @@ pub fn is_trig_function_name(name: &str) -> bool {
 
 /// Check if a function (by SymbolId) is trigonometric
 pub fn is_trig_function(ctx: &Context, fn_id: usize) -> bool {
-    is_trig_function_name(ctx.sym_name(fn_id))
+    ctx.builtin_of(fn_id)
+        .is_some_and(|b| is_trig_function_name(b.name()))
 }
 
 /// Check if expression is a constant involving π (e.g., pi, pi/9, 2*pi/3)

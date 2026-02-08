@@ -76,7 +76,10 @@ define_rule!(
     Some(vec!["Function"]),
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
+            let name = match ctx.builtin_of(*fn_id) {
+                Some(b) => b.name(),
+                None => return None,
+            };
             if args.len() == 1 {
                 let arg = args[0];
                 for (func, check, build, desc) in EVAL_RULES {
@@ -112,8 +115,14 @@ define_rule!(
                 if let Expr::Function(inner_fn_id, inner_args) = ctx.get(inner_expr) {
                     if inner_args.len() == 1 {
                         let x = inner_args[0];
-                        let outer_name = ctx.sym_name(*outer_fn_id);
-                        let inner_name = ctx.sym_name(*inner_fn_id);
+                        let outer_name = match ctx.builtin_of(*outer_fn_id) {
+                            Some(b) => b.name(),
+                            None => return None,
+                        };
+                        let inner_name = match ctx.builtin_of(*inner_fn_id) {
+                            Some(b) => b.name(),
+                            None => return None,
+                        };
                         for (outer, inner) in COMPOSITION_PAIRS {
                             if outer_name == *outer && inner_name == *inner {
                                 return Some(
@@ -153,7 +162,10 @@ define_rule!(
     Some(vec!["Function"]),
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
+            let name = match ctx.builtin_of(*fn_id) {
+                Some(b) => b.name(),
+                None => return None,
+            };
             if args.len() == 1 {
                 let arg = args[0];
                 if let Expr::Neg(inner) = ctx.get(arg) {

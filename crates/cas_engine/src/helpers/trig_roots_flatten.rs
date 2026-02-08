@@ -15,7 +15,10 @@ pub fn is_trig_pow(context: &Context, expr: ExprId, name: &str, power: i64) -> b
         if let Expr::Number(n) = context.get(*exp) {
             if n.is_integer() && n.to_integer() == power.into() {
                 if let Expr::Function(func_name, args) = context.get(*base) {
-                    return context.sym_name(*func_name) == name && args.len() == 1;
+                    return context
+                        .builtin_of(*func_name)
+                        .is_some_and(|b| b.name() == name)
+                        && args.len() == 1;
                 }
             }
         }

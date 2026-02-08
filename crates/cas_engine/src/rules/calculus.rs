@@ -1,7 +1,7 @@
 use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::rule::Rewrite;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::One;
 
@@ -150,19 +150,19 @@ fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                 let arg = args[0];
                 let da = differentiate(ctx, arg, var)?;
 
-                match ctx.sym_name(fn_id) {
-                    "sin" => {
+                match ctx.builtin_of(fn_id) {
+                    Some(BuiltinFn::Sin) => {
                         // cos(u) * u'
                         let cos_u = ctx.call("cos", vec![arg]);
                         Some(mul2_raw(ctx, cos_u, da))
                     }
-                    "cos" => {
+                    Some(BuiltinFn::Cos) => {
                         // -sin(u) * u'
                         let sin_u = ctx.call("sin", vec![arg]);
                         let neg_sin = ctx.add(Expr::Neg(sin_u));
                         Some(mul2_raw(ctx, neg_sin, da))
                     }
-                    "tan" => {
+                    Some(BuiltinFn::Tan) => {
                         // sec^2(u) * u' = (1/cos^2(u)) * u'
                         let cos_u = ctx.call("cos", vec![arg]);
                         let two = ctx.num(2);
@@ -171,15 +171,15 @@ fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                         let sec_sq = ctx.add(Expr::Div(one, cos_sq));
                         Some(mul2_raw(ctx, sec_sq, da))
                     }
-                    "exp" => {
+                    Some(BuiltinFn::Exp) => {
                         // exp(u) * u'
                         Some(mul2_raw(ctx, expr, da))
                     }
-                    "ln" => {
+                    Some(BuiltinFn::Ln) => {
                         // u'/u
                         Some(ctx.add(Expr::Div(da, arg)))
                     }
-                    "abs" => {
+                    Some(BuiltinFn::Abs) => {
                         // abs(u)/u * u' (sign(u) * u')
                         // or u/abs(u) * u'
                         let term = ctx.add(Expr::Div(arg, expr)); // u / abs(u)
@@ -336,7 +336,6 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
 
     // Trig Rules & Exponential with Linear Substitution
     if let Expr::Function(fn_id, args) = expr_data {
-        let name = ctx.sym_name(fn_id).to_string();
         if args.len() == 1 {
             let arg = args[0];
             if let Some((a, _)) = get_linear_coeffs(ctx, arg, var) {
@@ -346,8 +345,8 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                     false
                 };
 
-                match name.as_str() {
-                    "sin" => {
+                match ctx.builtin_of(fn_id) {
+                    Some(BuiltinFn::Sin) => {
                         // integrate(sin(ax+b)) = -cos(ax+b)/a
                         let cos_arg = ctx.call("cos", vec![arg]);
                         let integral = ctx.add(Expr::Neg(cos_arg));
@@ -356,7 +355,7 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                         }
                         return Some(ctx.add(Expr::Div(integral, a)));
                     }
-                    "cos" => {
+                    Some(BuiltinFn::Cos) => {
                         // integrate(cos(ax+b)) = sin(ax+b)/a
                         let integral = ctx.call("sin", vec![arg]);
                         if is_a_one {
@@ -364,7 +363,7 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                         }
                         return Some(ctx.add(Expr::Div(integral, a)));
                     }
-                    "exp" => {
+                    Some(BuiltinFn::Exp) => {
                         // integrate(exp(ax+b)) = exp(ax+b)/a
                         let integral = expr;
                         if is_a_one {

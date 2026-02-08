@@ -101,9 +101,9 @@ define_rule!(
             };
 
             if let Some(canonical) = canonical_name {
-                let name = ctx.sym_name(*fn_id).to_string();
+                let old_name = ctx.builtin_of(*fn_id).unwrap().name();
                 let new_fn = ctx.call(canonical, args_clone);
-                return Some(Rewrite::new(new_fn).desc(format!("{} → {}", name, canonical)));
+                return Some(Rewrite::new(new_fn).desc(format!("{} → {}", old_name, canonical)));
             }
         }
         None
@@ -539,7 +539,8 @@ fn is_function_squared(ctx: &Context, expr: ExprId, fname: &str) -> Option<ExprI
             if is_two(ctx, *exp) {
                 match ctx.get(*base) {
                     Expr::Function(fn_id, args)
-                        if ctx.sym_name(*fn_id) == fname && args.len() == 1 =>
+                        if ctx.builtin_of(*fn_id).is_some_and(|b| b.name() == fname)
+                            && args.len() == 1 =>
                     {
                         Some(args[0])
                     }
@@ -580,14 +581,16 @@ fn check_reciprocal_pair(ctx: &Context, expr1: ExprId, expr2: ExprId) -> (bool, 
             if args1.len() == 1 && args2.len() == 1 && args1[0] == args2[0] =>
         {
             let arg = args1[0];
+            let b1 = ctx.builtin_of(*name1);
+            let b2 = ctx.builtin_of(*name2);
             let is_pair = matches!(
-                (ctx.sym_name(*name1), ctx.sym_name(*name2)),
-                ("tan", "cot")
-                    | ("cot", "tan")
-                    | ("sec", "cos")
-                    | ("cos", "sec")
-                    | ("csc", "sin")
-                    | ("sin", "csc")
+                (b1, b2),
+                (Some(BuiltinFn::Tan), Some(BuiltinFn::Cot))
+                    | (Some(BuiltinFn::Cot), Some(BuiltinFn::Tan))
+                    | (Some(BuiltinFn::Sec), Some(BuiltinFn::Cos))
+                    | (Some(BuiltinFn::Cos), Some(BuiltinFn::Sec))
+                    | (Some(BuiltinFn::Csc), Some(BuiltinFn::Sin))
+                    | (Some(BuiltinFn::Sin), Some(BuiltinFn::Csc))
             );
             (is_pair, if is_pair { Some(arg) } else { None })
         }
