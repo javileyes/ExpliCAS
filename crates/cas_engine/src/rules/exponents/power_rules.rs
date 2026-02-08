@@ -256,23 +256,22 @@ define_rule!(
 
         let (num, den, _) = fp.to_num_den(ctx);
 
-        let num_data = ctx.get(num).clone();
-        let den_data = ctx.get(den).clone();
-
-        if let (Expr::Pow(base_num, exp_num), Expr::Pow(base_den, exp_den)) = (&num_data, &den_data)
+        if let (Expr::Pow(base_num, exp_num), Expr::Pow(base_den, exp_den)) =
+            (ctx.get(num), ctx.get(den))
         {
-            if compare_expr(ctx, *exp_num, *exp_den) == Ordering::Equal {
-                let base_num_is_num = matches!(ctx.get(*base_num), Expr::Number(_));
-                let base_den_is_num = matches!(ctx.get(*base_den), Expr::Number(_));
-                let base_num_has_num = base_num_is_num || has_numeric_factor(ctx, *base_num);
-                let base_den_has_num = base_den_is_num || has_numeric_factor(ctx, *base_den);
+            let (base_num, exp_num, base_den, exp_den) = (*base_num, *exp_num, *base_den, *exp_den);
+            if compare_expr(ctx, exp_num, exp_den) == Ordering::Equal {
+                let base_num_is_num = matches!(ctx.get(base_num), Expr::Number(_));
+                let base_den_is_num = matches!(ctx.get(base_den), Expr::Number(_));
+                let base_num_has_num = base_num_is_num || has_numeric_factor(ctx, base_num);
+                let base_den_has_num = base_den_is_num || has_numeric_factor(ctx, base_den);
 
                 if !base_num_has_num && !base_den_has_num {
                     return None;
                 }
 
-                let new_base = ctx.add(Expr::Div(*base_num, *base_den));
-                let new_expr = ctx.add(Expr::Pow(new_base, *exp_num));
+                let new_base = ctx.add(Expr::Div(base_num, base_den));
+                let new_expr = ctx.add(Expr::Pow(new_base, exp_num));
                 return Some(Rewrite::new(new_expr).desc("a^n / b^n = (a/b)^n"));
             }
         }
@@ -303,10 +302,7 @@ impl crate::rule::Rule for RootPowCancelRule {
 
         let (inner_base, inner_exp) = as_pow(ctx, base)?;
 
-        let outer_exp_data = ctx.get(outer_exp).clone();
-        let inner_exp_data = ctx.get(inner_exp).clone();
-
-        let combined_is_one = match (&outer_exp_data, &inner_exp_data) {
+        let combined_is_one = match (ctx.get(outer_exp), ctx.get(inner_exp)) {
             (Expr::Number(o), Expr::Number(i)) => {
                 let combined = o * i;
                 combined.is_one()
@@ -337,7 +333,7 @@ impl crate::rule::Rule for RootPowCancelRule {
             return None;
         }
 
-        if let Expr::Number(n) = &inner_exp_data {
+        if let Expr::Number(n) = ctx.get(inner_exp) {
             if n.is_integer() {
                 let n_int = n.to_integer();
                 let is_even = n_int.is_even();
@@ -586,11 +582,8 @@ define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", importance: crate::ste
             return Some(Rewrite::new(result).desc("Evaluate literal power"));
         }
 
-        let base_data = ctx.get(base).clone();
-        let exp_data = ctx.get(exp).clone();
-
-        // Case 2: Fractional Exponent (Roots)
-        if let (Expr::Number(b), Expr::Number(e)) = (base_data, exp_data) {
+        if let (Expr::Number(b), Expr::Number(e)) = (ctx.get(base), ctx.get(exp)) {
+            let (b, e) = (b.clone(), e.clone());
             let numer = e.numer();
             let denom = e.denom();
 

@@ -25,48 +25,50 @@ define_rule!(
     "Evaluate Hyperbolic Functions",
     Some(vec!["Function"]),
     |ctx, expr| {
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Function(fn_id, args) = expr_data {
-            if args.len() == 1 {
-                let arg = args[0];
+        let (fn_id, args) = if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            (*fn_id, args.clone())
+        } else {
+            return None;
+        };
+        if args.len() == 1 {
+            let arg = args[0];
 
-                match ctx.builtin_of(fn_id) {
-                    // sinh(0) = 0, tanh(0) = 0
-                    Some(BuiltinFn::Sinh) | Some(BuiltinFn::Tanh) => {
-                        if is_zero(ctx, arg) {
-                            let name = if ctx.builtin_of(fn_id) == Some(BuiltinFn::Sinh) {
-                                "sinh"
-                            } else {
-                                "tanh"
-                            };
-                            return Some(Rewrite::new(ctx.num(0)).desc(format!("{}(0) = 0", name)));
-                        }
+            match ctx.builtin_of(fn_id) {
+                // sinh(0) = 0, tanh(0) = 0
+                Some(BuiltinFn::Sinh) | Some(BuiltinFn::Tanh) => {
+                    if is_zero(ctx, arg) {
+                        let name = if ctx.builtin_of(fn_id) == Some(BuiltinFn::Sinh) {
+                            "sinh"
+                        } else {
+                            "tanh"
+                        };
+                        return Some(Rewrite::new(ctx.num(0)).desc(format!("{}(0) = 0", name)));
                     }
-                    // cosh(0) = 1
-                    Some(BuiltinFn::Cosh) => {
-                        if is_zero(ctx, arg) {
-                            return Some(Rewrite::new(ctx.num(1)).desc("cosh(0) = 1"));
-                        }
-                    }
-                    // asinh(0) = 0, atanh(0) = 0
-                    Some(BuiltinFn::Asinh) | Some(BuiltinFn::Atanh) => {
-                        if is_zero(ctx, arg) {
-                            let name = if ctx.builtin_of(fn_id) == Some(BuiltinFn::Asinh) {
-                                "asinh"
-                            } else {
-                                "atanh"
-                            };
-                            return Some(Rewrite::new(ctx.num(0)).desc(format!("{}(0) = 0", name)));
-                        }
-                    }
-                    // acosh(1) = 0
-                    Some(BuiltinFn::Acosh) => {
-                        if is_one(ctx, arg) {
-                            return Some(Rewrite::new(ctx.num(0)).desc("acosh(1) = 0"));
-                        }
-                    }
-                    _ => {}
                 }
+                // cosh(0) = 1
+                Some(BuiltinFn::Cosh) => {
+                    if is_zero(ctx, arg) {
+                        return Some(Rewrite::new(ctx.num(1)).desc("cosh(0) = 1"));
+                    }
+                }
+                // asinh(0) = 0, atanh(0) = 0
+                Some(BuiltinFn::Asinh) | Some(BuiltinFn::Atanh) => {
+                    if is_zero(ctx, arg) {
+                        let name = if ctx.builtin_of(fn_id) == Some(BuiltinFn::Asinh) {
+                            "asinh"
+                        } else {
+                            "atanh"
+                        };
+                        return Some(Rewrite::new(ctx.num(0)).desc(format!("{}(0) = 0", name)));
+                    }
+                }
+                // acosh(1) = 0
+                Some(BuiltinFn::Acosh) => {
+                    if is_one(ctx, arg) {
+                        return Some(Rewrite::new(ctx.num(0)).desc("acosh(1) = 0"));
+                    }
+                }
+                _ => {}
             }
         }
         None
@@ -183,15 +185,15 @@ define_rule!(
     Some(vec!["Sub"]),
     |ctx, expr| {
         if let Expr::Sub(l, r) = ctx.get(expr) {
-            let l_data = ctx.get(*l).clone();
-            let r_data = ctx.get(*r).clone();
+            let (l, r) = (*l, *r);
 
             // Check pattern: cosh(x)^2 - sinh(x)^2
-            if let (Expr::Pow(l_base, l_exp), Expr::Pow(r_base, r_exp)) = (&l_data, &r_data) {
+            if let (Expr::Pow(l_base, l_exp), Expr::Pow(r_base, r_exp)) = (ctx.get(l), ctx.get(r)) {
+                let (l_base, l_exp, r_base, r_exp) = (*l_base, *l_exp, *r_base, *r_exp);
                 // Both should be squared
-                if is_two(ctx, *l_exp) && is_two(ctx, *r_exp) {
+                if is_two(ctx, l_exp) && is_two(ctx, r_exp) {
                     if let (Expr::Function(l_fn, l_args), Expr::Function(r_fn, r_args)) =
-                        (ctx.get(*l_base), ctx.get(*r_base))
+                        (ctx.get(l_base), ctx.get(r_base))
                     {
                         // Case 1: cosh(x)^2 - sinh(x)^2 = 1
                         if ctx.is_builtin(*l_fn, BuiltinFn::Cosh)
@@ -241,15 +243,15 @@ define_rule!(
     Some(vec!["Add"]),
     |ctx, expr| {
         if let Expr::Add(l, r) = ctx.get(expr) {
-            let l_data = ctx.get(*l).clone();
-            let r_data = ctx.get(*r).clone();
+            let (l, r) = (*l, *r);
 
             // Check pattern: cosh(x)^2 + sinh(x)^2 or sinh(x)^2 + cosh(x)^2
-            if let (Expr::Pow(l_base, l_exp), Expr::Pow(r_base, r_exp)) = (&l_data, &r_data) {
+            if let (Expr::Pow(l_base, l_exp), Expr::Pow(r_base, r_exp)) = (ctx.get(l), ctx.get(r)) {
+                let (l_base, l_exp, r_base, r_exp) = (*l_base, *l_exp, *r_base, *r_exp);
                 // Both should be squared
-                if is_two(ctx, *l_exp) && is_two(ctx, *r_exp) {
+                if is_two(ctx, l_exp) && is_two(ctx, r_exp) {
                     if let (Expr::Function(l_fn, l_args), Expr::Function(r_fn, r_args)) =
-                        (ctx.get(*l_base), ctx.get(*r_base))
+                        (ctx.get(l_base), ctx.get(r_base))
                     {
                         // Check cosh + sinh or sinh + cosh with same argument
                         let is_cosh_sinh = ctx.is_builtin(*l_fn, BuiltinFn::Cosh)

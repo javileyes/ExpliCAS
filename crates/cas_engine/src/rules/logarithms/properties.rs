@@ -153,11 +153,31 @@ pub fn expand_logs_with_assumptions(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> (cas_ast::ExprId, Vec<crate::assumptions::AssumptionEvent>) {
-    let expr_data = ctx.get(expr).clone();
+    // Extract variant info without cloning the entire Expr
+    enum LogKind {
+        LogFn(usize, Vec<ExprId>),
+        Add(ExprId, ExprId),
+        Sub(ExprId, ExprId),
+        Mul(ExprId, ExprId),
+        Div(ExprId, ExprId),
+        Neg(ExprId),
+        Pow(ExprId, ExprId),
+        Other,
+    }
+    let kind = match ctx.get(expr) {
+        Expr::Function(name, args) => LogKind::LogFn(*name, args.clone()),
+        Expr::Add(l, r) => LogKind::Add(*l, *r),
+        Expr::Sub(l, r) => LogKind::Sub(*l, *r),
+        Expr::Mul(l, r) => LogKind::Mul(*l, *r),
+        Expr::Div(l, r) => LogKind::Div(*l, *r),
+        Expr::Neg(e) => LogKind::Neg(*e),
+        Expr::Pow(b, e) => LogKind::Pow(*b, *e),
+        _ => LogKind::Other,
+    };
     let mut events = Vec::new();
 
-    let result = match expr_data {
-        Expr::Function(name, ref args)
+    let result = match kind {
+        LogKind::LogFn(name, ref args)
             if matches!(
                 ctx.builtin_of(name),
                 Some(BuiltinFn::Ln) | Some(BuiltinFn::Log)
@@ -189,27 +209,11 @@ pub fn expand_logs_with_assumptions(
             // First expand logs in the argument recursively
             let (expanded_arg, sub_events) = expand_logs_with_assumptions(ctx, arg);
             events.extend(sub_events);
-            let arg_data = ctx.get(expanded_arg).clone();
-
-            // Try to expand log(x*y) → log(x) + log(y)
-            if let Expr::Mul(lhs, rhs) = arg_data {
-                // Add assumption events: lhs > 0 AND rhs > 0
-                events.push(crate::assumptions::AssumptionEvent::positive(ctx, lhs));
-                events.push(crate::assumptions::AssumptionEvent::positive(ctx, rhs));
-
-                // Create the expanded form
-                let log_lhs = make_log(ctx, base, lhs);
-                let log_rhs = make_log(ctx, base, rhs);
-                let sum = ctx.add(Expr::Add(log_lhs, log_rhs));
-                // Recursively expand the result
-                let (final_result, more_events) = expand_logs_with_assumptions(ctx, sum);
-                events.extend(more_events);
-                return (final_result, events);
-            }
-
-            // Try to expand log(x/y) → log(x) - log(y)
-            if let Expr::Div(num, den) = arg_data {
-                // Add assumption events: num > 0 AND den > 0
+            let (lhs, rhs) = if let Expr::Mul(lhs, rhs) = ctx.get(expanded_arg) {
+                (*lhs, *rhs)
+            } else if let Expr::Div(num, den) = ctx.get(expanded_arg) {
+                // Expand log(x/y) → log(x) - log(y)
+                let (num, den) = (*num, *den);
                 events.push(crate::assumptions::AssumptionEvent::positive(ctx, num));
                 events.push(crate::assumptions::AssumptionEvent::positive(ctx, den));
 
@@ -219,54 +223,68 @@ pub fn expand_logs_with_assumptions(
                 let (final_result, more_events) = expand_logs_with_assumptions(ctx, diff);
                 events.extend(more_events);
                 return (final_result, events);
-            }
+            } else {
+                // No expansion possible, return with expanded arg
+                return (make_log(ctx, base, expanded_arg), events);
+            };
 
-            // No expansion possible, return with expanded arg
-            make_log(ctx, base, expanded_arg)
+            // log(x*y) → log(x) + log(y)
+            events.push(crate::assumptions::AssumptionEvent::positive(ctx, lhs));
+            events.push(crate::assumptions::AssumptionEvent::positive(ctx, rhs));
+
+            // Create the expanded form
+            let log_lhs = make_log(ctx, base, lhs);
+            let log_rhs = make_log(ctx, base, rhs);
+            let sum = ctx.add(Expr::Add(log_lhs, log_rhs));
+            // Recursively expand the result
+            let (final_result, more_events) = expand_logs_with_assumptions(ctx, sum);
+            events.extend(more_events);
+            return (final_result, events);
         }
 
         // Recurse through structural nodes
-        Expr::Add(l, r) => {
+        LogKind::Add(l, r) => {
             let (el, le) = expand_logs_with_assumptions(ctx, l);
             let (er, re) = expand_logs_with_assumptions(ctx, r);
             events.extend(le);
             events.extend(re);
             ctx.add(Expr::Add(el, er))
         }
-        Expr::Sub(l, r) => {
+        LogKind::Sub(l, r) => {
             let (el, le) = expand_logs_with_assumptions(ctx, l);
             let (er, re) = expand_logs_with_assumptions(ctx, r);
             events.extend(le);
             events.extend(re);
             ctx.add(Expr::Sub(el, er))
         }
-        Expr::Mul(l, r) => {
+        LogKind::Mul(l, r) => {
             let (el, le) = expand_logs_with_assumptions(ctx, l);
             let (er, re) = expand_logs_with_assumptions(ctx, r);
             events.extend(le);
             events.extend(re);
             ctx.add(Expr::Mul(el, er))
         }
-        Expr::Div(l, r) => {
+        LogKind::Div(l, r) => {
             let (el, le) = expand_logs_with_assumptions(ctx, l);
             let (er, re) = expand_logs_with_assumptions(ctx, r);
             events.extend(le);
             events.extend(re);
             ctx.add(Expr::Div(el, er))
         }
-        Expr::Pow(b, e) => {
+        LogKind::Pow(b, e) => {
             let (eb, be) = expand_logs_with_assumptions(ctx, b);
             let (ee, exp_e) = expand_logs_with_assumptions(ctx, e);
             events.extend(be);
             events.extend(exp_e);
             ctx.add(Expr::Pow(eb, ee))
         }
-        Expr::Neg(e) => {
+        LogKind::Neg(e) => {
             let (ee, sub_e) = expand_logs_with_assumptions(ctx, e);
             events.extend(sub_e);
             ctx.add(Expr::Neg(ee))
         }
-        Expr::Function(name, args) => {
+        // Non-log functions: recurse into args
+        LogKind::LogFn(name, args) => {
             let mut new_args = Vec::with_capacity(args.len());
             for a in args {
                 let (expanded, sub_events) = expand_logs_with_assumptions(ctx, a);
@@ -276,7 +294,7 @@ pub fn expand_logs_with_assumptions(
             ctx.add(Expr::Function(name, new_args))
         }
         // Base cases - return as-is
-        _ => expr,
+        LogKind::Other => expr,
     };
 
     (result, events)
@@ -325,9 +343,9 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
         use crate::helpers::prove_positive;
         use crate::rule::ChainedRewrite;
 
-        let expr_data = ctx.get(expr).clone();
-        let Expr::Function(name, args) = expr_data else {
-            return None;
+        let (name, args) = match ctx.get(expr) {
+            Expr::Function(name, args) => (*name, args.clone()),
+            _ => return None,
         };
 
         // Handle ln(x) or log(base, x)
@@ -341,9 +359,9 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
         };
 
         // Match log(base, x^exp) where exp is even integer
-        let arg_data = ctx.get(arg).clone();
-        let Expr::Pow(p_base, p_exp) = arg_data else {
-            return None;
+        let (p_base, p_exp) = match ctx.get(arg) {
+            Expr::Pow(p_base, p_exp) => (*p_base, *p_exp),
+            _ => return None,
         };
 
         // Check if base == p_base (inverse composition like log(b, b^x)) - skip
@@ -501,9 +519,9 @@ impl crate::rule::Rule for LogAbsPowerRule {
         expr: ExprId,
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        let expr_data = ctx.get(expr).clone();
-        let Expr::Function(name, args) = expr_data else {
-            return None;
+        let (name, args) = match ctx.get(expr) {
+            Expr::Function(name, args) => (*name, args.clone()),
+            _ => return None,
         };
 
         // Handle ln(x) or log(base, x)
@@ -517,9 +535,9 @@ impl crate::rule::Rule for LogAbsPowerRule {
         };
 
         // Match log(base, |u|^n)
-        let arg_data = ctx.get(arg).clone();
-        let Expr::Pow(p_base, p_exp) = arg_data else {
-            return None;
+        let (p_base, p_exp) = match ctx.get(arg) {
+            Expr::Pow(p_base, p_exp) => (*p_base, *p_exp),
+            _ => return None,
         };
 
         // Check if base of power is abs(u)

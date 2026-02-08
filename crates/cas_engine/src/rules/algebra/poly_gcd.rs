@@ -751,9 +751,12 @@ impl Rule for PolyGcdRule {
         expr: ExprId,
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
-        let fn_expr = ctx.get(expr).clone();
-
-        if let Expr::Function(fn_id, args) = fn_expr {
+        let (fn_id, args) = if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            (*fn_id, args.clone())
+        } else {
+            return None;
+        };
+        {
             let name = ctx.sym_name(fn_id);
             // Match poly_gcd, pgcd with 2-4 arguments
             let is_poly_gcd = name == "poly_gcd" || name == "pgcd";

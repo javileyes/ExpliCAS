@@ -222,7 +222,9 @@ fn collect_add_terms_with_sign(
 ///
 /// Only applies when numerator is a finite literal.
 pub fn div_by_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+    let (num, den) = if let Expr::Div(num, den) = ctx.get(expr) {
+        (*num, *den)
+    } else {
         return None;
     };
 
@@ -237,7 +239,9 @@ pub fn div_by_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
 /// `0 · ∞ → Undefined`
 /// `∞ · 0 → Undefined`
 pub fn mul_zero_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-    let Expr::Mul(a, b) = ctx.get(expr).clone() else {
+    let (a, b) = if let Expr::Mul(a, b) = ctx.get(expr) {
+        (*a, *b)
+    } else {
         return None;
     };
 
@@ -284,7 +288,9 @@ fn is_negative_literal(ctx: &Context, id: ExprId) -> bool {
 /// - `(-2) * infinity → -infinity`
 /// - `x * infinity → no simplification` (conservative)
 pub fn mul_finite_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-    let Expr::Mul(a, b) = ctx.get(expr).clone() else {
+    let (a, b) = if let Expr::Mul(a, b) = ctx.get(expr) {
+        (*a, *b)
+    } else {
         return None;
     };
 
@@ -336,7 +342,9 @@ pub fn mul_finite_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
 /// - `infinity / (-3) → -infinity`
 /// - `-infinity / 2 → -infinity`
 pub fn inf_div_finite(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+    let (num, den) = if let Expr::Div(num, den) = ctx.get(expr) {
+        (*num, *den)
+    } else {
         return None;
     };
 

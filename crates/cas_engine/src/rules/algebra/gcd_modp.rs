@@ -276,7 +276,8 @@ pub fn eager_eval_poly_gcd_calls(ctx: &mut Context, expr: ExprId) -> (ExprId, Ve
 
 fn eager_eval_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<crate::Step>) -> ExprId {
     // Check if this is poly_gcd_modp - if so, evaluate and STOP descent
-    if let Expr::Function(fn_id, args) = ctx.get(expr).clone() {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let (fn_id, args) = (*fn_id, args.clone());
         let name = ctx.sym_name(fn_id).to_string();
         if (name == "poly_gcd_modp" || name == "pgcdp") && args.len() >= 2 {
             if let Some(result) = compute_gcd_modp_with_factor_extraction(ctx, args[0], args[1]) {
@@ -311,77 +312,49 @@ fn eager_eval_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<crate::
     }
 
     // Recurse into children for other expression types
-    match ctx.get(expr).clone() {
-        Expr::Add(l, r) => {
+    enum Recurse {
+        Binary(ExprId, ExprId, u8), // 0=Add, 1=Sub, 2=Mul, 3=Div, 4=Pow
+        Unary(ExprId, u8),          // 0=Neg, 1=Hold
+        Leaf,
+    }
+    let recurse = match ctx.get(expr) {
+        Expr::Add(l, r) => Recurse::Binary(*l, *r, 0),
+        Expr::Sub(l, r) => Recurse::Binary(*l, *r, 1),
+        Expr::Mul(l, r) => Recurse::Binary(*l, *r, 2),
+        Expr::Div(l, r) => Recurse::Binary(*l, *r, 3),
+        Expr::Pow(b, e) => Recurse::Binary(*b, *e, 4),
+        Expr::Neg(e) => Recurse::Unary(*e, 0),
+        Expr::Hold(inner) => Recurse::Unary(*inner, 1),
+        _ => Recurse::Leaf,
+    };
+    match recurse {
+        Recurse::Binary(l, r, op) => {
             let nl = eager_eval_recursive(ctx, l, steps);
             let nr = eager_eval_recursive(ctx, r, steps);
             if nl != l || nr != r {
-                ctx.add(Expr::Add(nl, nr))
+                match op {
+                    0 => ctx.add(Expr::Add(nl, nr)),
+                    1 => ctx.add(Expr::Sub(nl, nr)),
+                    2 => ctx.add(Expr::Mul(nl, nr)),
+                    3 => ctx.add(Expr::Div(nl, nr)),
+                    _ => ctx.add(Expr::Pow(nl, nr)),
+                }
             } else {
                 expr
             }
         }
-        Expr::Sub(l, r) => {
-            let nl = eager_eval_recursive(ctx, l, steps);
-            let nr = eager_eval_recursive(ctx, r, steps);
-            if nl != l || nr != r {
-                ctx.add(Expr::Sub(nl, nr))
-            } else {
-                expr
-            }
-        }
-        Expr::Mul(l, r) => {
-            let nl = eager_eval_recursive(ctx, l, steps);
-            let nr = eager_eval_recursive(ctx, r, steps);
-            if nl != l || nr != r {
-                ctx.add(Expr::Mul(nl, nr))
-            } else {
-                expr
-            }
-        }
-        Expr::Div(l, r) => {
-            let nl = eager_eval_recursive(ctx, l, steps);
-            let nr = eager_eval_recursive(ctx, r, steps);
-            if nl != l || nr != r {
-                ctx.add(Expr::Div(nl, nr))
-            } else {
-                expr
-            }
-        }
-        Expr::Pow(b, e) => {
-            let nb = eager_eval_recursive(ctx, b, steps);
-            let ne = eager_eval_recursive(ctx, e, steps);
-            if nb != b || ne != e {
-                ctx.add(Expr::Pow(nb, ne))
-            } else {
-                expr
-            }
-        }
-        Expr::Neg(e) => {
-            let ne = eager_eval_recursive(ctx, e, steps);
-            if ne != e {
-                ctx.add(Expr::Neg(ne))
-            } else {
-                expr
-            }
-        }
-        // Leaves - no recursion needed (Function already handled above)
-        Expr::Number(_)
-        | Expr::Variable(_)
-        | Expr::Constant(_)
-        | Expr::Matrix { .. }
-        | Expr::SessionRef(_)
-        | Expr::Function(_, _) => expr,
-
-        // Hold: recurse into inner
-        Expr::Hold(inner) => {
+        Recurse::Unary(inner, op) => {
             let ni = eager_eval_recursive(ctx, inner, steps);
             if ni != inner {
-                ctx.add(Expr::Hold(ni))
+                match op {
+                    0 => ctx.add(Expr::Neg(ni)),
+                    _ => ctx.add(Expr::Hold(ni)),
+                }
             } else {
                 expr
             }
         }
+        Recurse::Leaf => expr,
     }
 }
 
@@ -394,9 +367,12 @@ define_rule!(
     PhaseMask::CORE | PhaseMask::TRANSFORM,
     priority: 200, // High priority to evaluate early
     |ctx, expr| {
-        let fn_expr = ctx.get(expr).clone();
-
-        if let Expr::Function(fn_id, args) = fn_expr {
+        let (fn_id, args) = if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            (*fn_id, args.clone())
+        } else {
+            return None;
+        };
+        {
             let name = ctx.sym_name(fn_id).to_string();
             let is_gcd_modp = name == "poly_gcd_modp" || name == "pgcdp";
 
@@ -486,9 +462,12 @@ define_rule!(
     PhaseMask::CORE | PhaseMask::TRANSFORM,
     priority: 200,
     |ctx, expr| {
-        let fn_expr = ctx.get(expr).clone();
-
-        if let Expr::Function(fn_id, args) = fn_expr {
+        let (fn_id, args) = if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            (*fn_id, args.clone())
+        } else {
+            return None;
+        };
+        {
             let name = ctx.sym_name(fn_id).to_string();
             let is_eq_modp = name == "poly_eq_modp" || name == "peqp";
 

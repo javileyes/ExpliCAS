@@ -75,7 +75,8 @@ impl SimpleRule for PolyToExprRule {
         use crate::rules::algebra::gcd_modp::multipoly_modp_to_expr;
 
         // Match: poly_to_expr(poly_result(id)) or poly_to_expr(poly_result(id), max_terms)
-        if let Expr::Function(fn_id, args) = ctx.get(expr).clone() {
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let (fn_id, args) = (*fn_id, args.clone());
             let name = ctx.sym_name(fn_id);
             if name != "poly_to_expr" || args.is_empty() || args.len() > 2 {
                 return None;
@@ -146,7 +147,8 @@ impl SimpleRule for PolyPrintRule {
         use crate::poly_store::thread_local_get_for_materialize;
 
         // Match: poly_print(poly_result(id)) or poly_print(poly_result(id), max_terms)
-        if let Expr::Function(fn_id, args) = ctx.get(expr).clone() {
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let (fn_id, args) = (*fn_id, args.clone());
             let name = ctx.sym_name(fn_id);
             if name != "poly_print" || args.is_empty() || args.len() > 2 {
                 return None;
@@ -281,7 +283,8 @@ impl SimpleRule for PolyLatexRule {
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         use crate::poly_store::thread_local_get_for_materialize;
 
-        if let Expr::Function(fn_id, args) = ctx.get(expr).clone() {
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let (fn_id, args) = (*fn_id, args.clone());
             let name = ctx.sym_name(fn_id);
             if name != "poly_latex" || args.is_empty() || args.len() > 2 {
                 return None;

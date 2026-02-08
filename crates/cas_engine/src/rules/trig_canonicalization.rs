@@ -249,9 +249,25 @@ fn is_mixed_trig_fraction(ctx: &Context, num: ExprId, den: ExprId) -> bool {
 
 // Recursively convert trig functions to sin/cos
 fn convert_trig_to_sincos(ctx: &mut Context, expr: ExprId) -> ExprId {
-    let expr_data = ctx.get(expr).clone();
-    match expr_data {
-        Expr::Function(fn_id, args) if args.len() == 1 => {
+    enum TrigOp {
+        Function(usize, Vec<ExprId>),
+        Binary(ExprId, ExprId, u8), // 0=Add, 1=Sub, 2=Mul, 3=Div
+        Pow(ExprId, ExprId),
+        Neg(ExprId),
+        Leaf,
+    }
+    let op = match ctx.get(expr) {
+        Expr::Function(fn_id, args) if args.len() == 1 => TrigOp::Function(*fn_id, args.clone()),
+        Expr::Add(l, r) => TrigOp::Binary(*l, *r, 0),
+        Expr::Sub(l, r) => TrigOp::Binary(*l, *r, 1),
+        Expr::Mul(l, r) => TrigOp::Binary(*l, *r, 2),
+        Expr::Div(l, r) => TrigOp::Binary(*l, *r, 3),
+        Expr::Pow(base, exp) => TrigOp::Pow(*base, *exp),
+        Expr::Neg(inner) => TrigOp::Neg(*inner),
+        _ => TrigOp::Leaf,
+    };
+    match op {
+        TrigOp::Function(fn_id, args) => {
             let arg = args[0];
             let converted_arg = convert_trig_to_sincos(ctx, arg);
 
@@ -286,36 +302,26 @@ fn convert_trig_to_sincos(ctx: &mut Context, expr: ExprId) -> ExprId {
                 }
             }
         }
-        Expr::Add(l, r) => {
+        TrigOp::Binary(l, r, op_code) => {
             let new_l = convert_trig_to_sincos(ctx, l);
             let new_r = convert_trig_to_sincos(ctx, r);
-            ctx.add(Expr::Add(new_l, new_r))
+            match op_code {
+                0 => ctx.add(Expr::Add(new_l, new_r)),
+                1 => ctx.add(Expr::Sub(new_l, new_r)),
+                2 => mul2_raw(ctx, new_l, new_r),
+                _ => ctx.add(Expr::Div(new_l, new_r)),
+            }
         }
-        Expr::Sub(l, r) => {
-            let new_l = convert_trig_to_sincos(ctx, l);
-            let new_r = convert_trig_to_sincos(ctx, r);
-            ctx.add(Expr::Sub(new_l, new_r))
-        }
-        Expr::Mul(l, r) => {
-            let new_l = convert_trig_to_sincos(ctx, l);
-            let new_r = convert_trig_to_sincos(ctx, r);
-            mul2_raw(ctx, new_l, new_r)
-        }
-        Expr::Div(l, r) => {
-            let new_l = convert_trig_to_sincos(ctx, l);
-            let new_r = convert_trig_to_sincos(ctx, r);
-            ctx.add(Expr::Div(new_l, new_r))
-        }
-        Expr::Pow(base, exp) => {
+        TrigOp::Pow(base, exp) => {
             let new_base = convert_trig_to_sincos(ctx, base);
             // Don't recurse into exponent
             ctx.add(Expr::Pow(new_base, exp))
         }
-        Expr::Neg(inner) => {
+        TrigOp::Neg(inner) => {
             let new_inner = convert_trig_to_sincos(ctx, inner);
             ctx.add(Expr::Neg(new_inner))
         }
-        _ => expr, // Return as-is for other types
+        TrigOp::Leaf => expr, // Return as-is for other types
     }
 }
 

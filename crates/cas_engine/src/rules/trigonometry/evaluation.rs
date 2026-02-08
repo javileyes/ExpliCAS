@@ -15,8 +15,12 @@ define_rule!(
     EvaluateTrigTableRule,
     "Evaluate Trigonometric Functions (Table)",
     |ctx, expr| {
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Function(fn_id, args) = expr_data {
+        let (fn_id, args) = if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            (*fn_id, args.clone())
+        } else {
+            return None;
+        };
+        {
             let builtin = ctx.builtin_of(fn_id);
             // Only process known trig/inverse trig functions
             let name = match builtin {

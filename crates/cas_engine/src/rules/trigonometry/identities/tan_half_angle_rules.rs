@@ -29,7 +29,12 @@ define_rule!(
             }
 
             // Check if base is cosh(x/2) or sinh(x/2)
-            if let Expr::Function(fn_id, args) = ctx.get(*base).clone() {
+            let (fn_id, args) = if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                (*fn_id, args.clone())
+            } else {
+                return None;
+            };
+            {
                 let builtin = ctx.builtin_of(fn_id);
                 let is_cosh = matches!(builtin, Some(BuiltinFn::Cosh));
                 let is_sinh = matches!(builtin, Some(BuiltinFn::Sinh));
@@ -216,7 +221,12 @@ define_rule!(
         // Pattern: 1/cos(t) → sec(t), 1/sin(t) → csc(t)
         if let Expr::Number(n) = ctx.get(num) {
             if n.is_one() {
-                if let Expr::Function(fn_id, args) = ctx.get(den).clone() {
+                let (fn_id, args) = if let Expr::Function(fn_id, args) = ctx.get(den) {
+                    (*fn_id, args.clone())
+                } else {
+                    return None;
+                };
+                {
                     if args.len() == 1 {
                         let arg = args[0];
                         let result_info = match ctx.builtin_of(fn_id) {
@@ -237,9 +247,13 @@ define_rule!(
         }
 
         // Pattern: sin(t)/cos(t) → tan(t), cos(t)/sin(t) → cot(t)
-        if let (Expr::Function(num_fn_id, num_args), Expr::Function(den_fn_id, den_args)) =
-            (ctx.get(num).clone(), ctx.get(den).clone())
-        {
+        let matched = match (ctx.get(num), ctx.get(den)) {
+            (Expr::Function(num_fn_id, num_args), Expr::Function(den_fn_id, den_args)) => {
+                Some((*num_fn_id, num_args.clone(), *den_fn_id, den_args.clone()))
+            }
+            _ => None,
+        };
+        if let Some((num_fn_id, num_args, den_fn_id, den_args)) = matched {
             if num_args.len() == 1 && den_args.len() == 1 {
                 let num_arg = num_args[0];
                 let den_arg = den_args[0];
@@ -281,9 +295,15 @@ define_rule!(
     "Tan Double Angle Contraction",
     |ctx, expr| {
         // Match Div(numerator, denominator)
-        if let Expr::Div(num, den) = ctx.get(expr).clone() {
+        let (num, den) = if let Expr::Div(num, den) = ctx.get(expr) {
+            (*num, *den)
+        } else {
+            return None;
+        };
+        {
             // Numerator should be 2*tan(t) (or tan(t)*2)
-            let tan_arg = if let Expr::Mul(l, r) = ctx.get(num).clone() {
+            let tan_arg = if let Expr::Mul(l, r) = ctx.get(num) {
+                let (l, r) = (*l, *r);
                 let (coeff, tan_part) = if let Expr::Number(n) = ctx.get(l) {
                     if *n == num_rational::BigRational::from_integer(2.into()) {
                         (true, r)
@@ -320,11 +340,44 @@ define_rule!(
 
             if let Some(t) = tan_arg {
                 // Denominator should be 1 - tan(t)² (or equivalently: 1 + (-tan(t)²) or Sub(1, tan(t)²))
-                let den_matches = match ctx.get(den).clone() {
-                    Expr::Sub(one_part, tan2_part) => {
-                        // Check 1 - tan(t)²
-                        let one_ok = matches!(ctx.get(one_part), Expr::Number(n) if n.is_one());
-                        let tan2_ok = if let Expr::Pow(base, exp) = ctx.get(tan2_part) {
+                let den_matches = if let Expr::Sub(one_part, tan2_part) = ctx.get(den) {
+                    let (one_part, tan2_part) = (*one_part, *tan2_part);
+                    // Check 1 - tan(t)²
+                    let one_ok = matches!(ctx.get(one_part), Expr::Number(n) if n.is_one());
+                    let tan2_ok = if let Expr::Pow(base, exp) = ctx.get(tan2_part) {
+                        let exp_is_2 = matches!(ctx.get(*exp), Expr::Number(n)
+                            if *n == num_rational::BigRational::from_integer(2.into()));
+                        if exp_is_2 {
+                            if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                                matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Tan))
+                                    && args.len() == 1
+                                    && crate::ordering::compare_expr(ctx, args[0], t)
+                                        == std::cmp::Ordering::Equal
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
+                    one_ok && tan2_ok
+                } else if let Expr::Add(l, r) = ctx.get(den) {
+                    let (l, r) = (*l, *r);
+                    // Check 1 + (-tan(t)²) i.e. 1 + Neg(...)
+                    let (one_part, neg_part) = if matches!(ctx.get(l), Expr::Number(n) if n.is_one())
+                    {
+                        (l, r)
+                    } else if matches!(ctx.get(r), Expr::Number(n) if n.is_one()) {
+                        (r, l)
+                    } else {
+                        return None;
+                    };
+                    let _ = one_part;
+
+                    if let Expr::Neg(inner) = ctx.get(neg_part) {
+                        if let Expr::Pow(base, exp) = ctx.get(*inner) {
                             let exp_is_2 = matches!(ctx.get(*exp), Expr::Number(n)
                                 if *n == num_rational::BigRational::from_integer(2.into()));
                             if exp_is_2 {
@@ -341,45 +394,12 @@ define_rule!(
                             }
                         } else {
                             false
-                        };
-                        one_ok && tan2_ok
-                    }
-                    Expr::Add(l, r) => {
-                        // Check 1 + (-tan(t)²) i.e. 1 + Neg(...)
-                        let (one_part, neg_part) = if matches!(ctx.get(l), Expr::Number(n) if n.is_one())
-                        {
-                            (l, r)
-                        } else if matches!(ctx.get(r), Expr::Number(n) if n.is_one()) {
-                            (r, l)
-                        } else {
-                            return None;
-                        };
-                        let _ = one_part;
-
-                        if let Expr::Neg(inner) = ctx.get(neg_part) {
-                            if let Expr::Pow(base, exp) = ctx.get(*inner) {
-                                let exp_is_2 = matches!(ctx.get(*exp), Expr::Number(n)
-                                    if *n == num_rational::BigRational::from_integer(2.into()));
-                                if exp_is_2 {
-                                    if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                                        matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Tan))
-                                            && args.len() == 1
-                                            && crate::ordering::compare_expr(ctx, args[0], t)
-                                                == std::cmp::Ordering::Equal
-                                    } else {
-                                        false
-                                    }
-                                } else {
-                                    false
-                                }
-                            } else {
-                                false
-                            }
-                        } else {
-                            false
                         }
+                    } else {
+                        false
                     }
-                    _ => false,
+                } else {
+                    false
                 };
 
                 if den_matches {

@@ -69,32 +69,33 @@ define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
 });
 
 fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
-    let expr_data = ctx.get(expr).clone();
-
     // 1. Constant Rule: diff(c, x) = 0
     if !contains_var(ctx, expr, var) {
         return Some(ctx.num(0));
     }
 
-    match expr_data {
+    match ctx.get(expr) {
         Expr::Variable(sym_id) => {
-            if ctx.sym_name(sym_id) == var {
+            if ctx.sym_name(*sym_id) == var {
                 Some(ctx.num(1))
             } else {
                 Some(ctx.num(0))
             }
         }
         Expr::Add(l, r) => {
+            let (l, r) = (*l, *r);
             let dl = differentiate(ctx, l, var)?;
             let dr = differentiate(ctx, r, var)?;
             Some(ctx.add(Expr::Add(dl, dr)))
         }
         Expr::Sub(l, r) => {
+            let (l, r) = (*l, *r);
             let dl = differentiate(ctx, l, var)?;
             let dr = differentiate(ctx, r, var)?;
             Some(ctx.add(Expr::Sub(dl, dr)))
         }
         Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
             // Product Rule: (uv)' = u'v + uv'
             let dl = differentiate(ctx, l, var)?;
             let dr = differentiate(ctx, r, var)?;
@@ -103,6 +104,7 @@ fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
             Some(ctx.add(Expr::Add(term1, term2)))
         }
         Expr::Div(l, r) => {
+            let (l, r) = (*l, *r);
             // Quotient Rule: (u/v)' = (u'v - uv') / v^2
             let dl = differentiate(ctx, l, var)?;
             let dr = differentiate(ctx, r, var)?;
@@ -114,6 +116,7 @@ fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
             Some(ctx.add(Expr::Div(num, den)))
         }
         Expr::Pow(base, exp) => {
+            let (base, exp) = (*base, *exp);
             // Generalized Power Rule: (u^v)' = u^v * (v'*ln(u) + v*u'/u)
             // Simplified for constant exponent n: (u^n)' = n*u^(n-1)*u'
             // Simplified for exponential a^u: (a^u)' = a^u * ln(a) * u'
@@ -145,7 +148,8 @@ fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
                 Some(mul2_raw(ctx, expr, inner))
             }
         }
-        Expr::Function(fn_id, args) => {
+        Expr::Function(fn_id, ref args) => {
+            let (fn_id, args) = (*fn_id, args.clone());
             if args.len() == 1 {
                 let arg = args[0];
                 let da = differentiate(ctx, arg, var)?;
@@ -196,17 +200,37 @@ fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
 }
 
 fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
-    let expr_data = ctx.get(expr).clone();
+    // Extract variant info in one borrow, then process with owned ExprId values.
+    enum IntKind {
+        Add(ExprId, ExprId),
+        Sub(ExprId, ExprId),
+        Mul(ExprId, ExprId),
+        Pow(ExprId, ExprId),
+        Variable(usize),
+        Div(ExprId, ExprId),
+        Function(usize, Vec<ExprId>),
+        Other,
+    }
+    let kind = match ctx.get(expr) {
+        Expr::Add(l, r) => IntKind::Add(*l, *r),
+        Expr::Sub(l, r) => IntKind::Sub(*l, *r),
+        Expr::Mul(l, r) => IntKind::Mul(*l, *r),
+        Expr::Pow(b, e) => IntKind::Pow(*b, *e),
+        Expr::Variable(s) => IntKind::Variable(*s),
+        Expr::Div(n, d) => IntKind::Div(*n, *d),
+        Expr::Function(f, args) => IntKind::Function(*f, args.clone()),
+        _ => IntKind::Other,
+    };
 
     // 1. Linearity: integrate(a + b) = integrate(a) + integrate(b)
-    if let Expr::Add(l, r) = expr_data {
+    if let IntKind::Add(l, r) = kind {
         let int_l = integrate(ctx, l, var)?;
         let int_r = integrate(ctx, r, var)?;
         return Some(ctx.add(Expr::Add(int_l, int_r)));
     }
 
     // 2. Linearity: integrate(a - b) = integrate(a) - integrate(b)
-    if let Expr::Sub(l, r) = expr_data {
+    if let IntKind::Sub(l, r) = kind {
         let int_l = integrate(ctx, l, var)?;
         let int_r = integrate(ctx, r, var)?;
         return Some(ctx.add(Expr::Sub(int_l, int_r)));
@@ -214,7 +238,7 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
 
     // 3. Constant Multiple: integrate(c * f(x)) = c * integrate(f(x))
     // We need to check if one operand is constant (w.r.t var).
-    if let Expr::Mul(l, r) = expr_data {
+    if let IntKind::Mul(l, r) = kind {
         if !contains_var(ctx, l, var) {
             if let Some(int_r) = integrate(ctx, r, var) {
                 return Some(mul2_raw(ctx, l, int_r));
@@ -238,7 +262,7 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
     // Power Rule: integrate(u^n) * u' -> u^(n+1)/(n+1)
     // Here we handle u = ax+b, so u' = a.
     // integrate((ax+b)^n) = (ax+b)^(n+1) / (a*(n+1))
-    if let Expr::Pow(base, exp) = expr_data {
+    if let IntKind::Pow(base, exp) = kind {
         // Case 1: u^n where u is linear (ax+b)
         if let Some((a, _)) = get_linear_coeffs(ctx, base, var) {
             if !contains_var(ctx, exp, var) {
@@ -308,12 +332,8 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
     }
 
     // Variable itself: integrate(x) = x^2/2
-    // This is covered by Power Rule if x is treated as (1*x + 0)^1, but explicit check is faster/simpler?
-    // Actually get_linear_coeffs(x) returns (1, 0).
-    // So Pow(x, 1) would be handled above IF expr was parsed as Pow.
-    // But "x" is Expr::Variable.
-    if let Expr::Variable(sym_id) = &expr_data {
-        if ctx.sym_name(*sym_id) == var {
+    if let IntKind::Variable(sym_id) = kind {
+        if ctx.sym_name(sym_id) == var {
             let var_expr = ctx.var(var);
             let two = ctx.num(2);
             let pow_expr = ctx.add(Expr::Pow(var_expr, two));
@@ -322,7 +342,7 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
     }
 
     // 1/u case (if represented as Div(1, u))
-    if let Expr::Div(num, den) = expr_data {
+    if let IntKind::Div(num, den) = kind {
         if let Expr::Number(n) = ctx.get(num) {
             if n.is_one() {
                 if let Some((a, _)) = get_linear_coeffs(ctx, den, var) {
@@ -335,7 +355,7 @@ fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
     }
 
     // Trig Rules & Exponential with Linear Substitution
-    if let Expr::Function(fn_id, args) = expr_data {
+    if let IntKind::Function(fn_id, args) = kind {
         if args.len() == 1 {
             let arg = args[0];
             if let Some((a, _)) = get_linear_coeffs(ctx, arg, var) {
@@ -384,15 +404,14 @@ use crate::solver::contains_var;
 
 // Returns (a, b) such that expr = a*var + b
 fn get_linear_coeffs(ctx: &mut Context, expr: ExprId, var: &str) -> Option<(ExprId, ExprId)> {
-    let expr_data = ctx.get(expr).clone();
-
     if !contains_var(ctx, expr, var) {
         return Some((ctx.num(0), expr));
     }
 
-    match expr_data {
-        Expr::Variable(sym_id) if ctx.sym_name(sym_id) == var => Some((ctx.num(1), ctx.num(0))),
+    match ctx.get(expr) {
+        Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var => Some((ctx.num(1), ctx.num(0))),
         Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
             // c * x
             if !contains_var(ctx, l, var) && is_var(ctx, r, var) {
                 return Some((l, ctx.num(0)));
@@ -404,6 +423,7 @@ fn get_linear_coeffs(ctx: &mut Context, expr: ExprId, var: &str) -> Option<(Expr
             None
         }
         Expr::Add(l, r) => {
+            let (l, r) = (*l, *r);
             // (ax) + b or b + (ax)
             let l_coeffs = get_linear_coeffs(ctx, l, var);
             let r_coeffs = get_linear_coeffs(ctx, r, var);
@@ -419,6 +439,7 @@ fn get_linear_coeffs(ctx: &mut Context, expr: ExprId, var: &str) -> Option<(Expr
         }
 
         Expr::Sub(l, r) => {
+            let (l, r) = (*l, *r);
             let l_coeffs = get_linear_coeffs(ctx, l, var);
             let r_coeffs = get_linear_coeffs(ctx, r, var);
             if let (Some((a1, b1)), Some((a2, b2))) = (l_coeffs, r_coeffs) {
@@ -756,7 +777,12 @@ fn try_telescoping_rational_sum(
     end: ExprId,
 ) -> Option<ExprId> {
     // Check if summand is 1/(k*(k+a)) or 1/((k+b)*(k+c))
-    if let Expr::Div(num, den) = ctx.get(summand).clone() {
+    let (num, den) = if let Expr::Div(num, den) = ctx.get(summand) {
+        (*num, *den)
+    } else {
+        return None;
+    };
+    {
         // Numerator should be 1
         if let Expr::Number(n) = ctx.get(num) {
             if !n.is_one() {
@@ -767,7 +793,12 @@ fn try_telescoping_rational_sum(
         }
 
         // Denominator should be k*(k+a)
-        if let Expr::Mul(left, right) = ctx.get(den).clone() {
+        let (left, right) = if let Expr::Mul(left, right) = ctx.get(den) {
+            (*left, *right)
+        } else {
+            return None;
+        };
+        {
             // Try to extract (k+b) and (k+c) where c-b = integer
             let factor1_offset = extract_linear_offset(ctx, left, var)?;
             let factor2_offset = extract_linear_offset(ctx, right, var)?;
@@ -832,11 +863,9 @@ fn try_telescoping_rational_sum(
             let (simplified, _) = simplifier.simplify(result);
             *ctx = simplifier.context;
 
-            return Some(simplified);
+            Some(simplified)
         }
     }
-
-    None
 }
 
 /// Extract the constant offset from a linear expression: k+offset or k
@@ -885,48 +914,58 @@ fn get_integer(ctx: &Context, expr: ExprId) -> Option<i64> {
 
 /// Substitute variable with value in expression
 fn substitute_var(ctx: &mut Context, expr: ExprId, var: &str, value: ExprId) -> ExprId {
-    let expr_data = ctx.get(expr).clone();
-
-    match expr_data {
-        Expr::Variable(sym_id) if ctx.sym_name(sym_id) == var => value,
+    match ctx.get(expr) {
+        Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var => value,
         Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_) => expr,
         Expr::Add(l, r) => {
+            let (l, r) = (*l, *r);
             let new_l = substitute_var(ctx, l, var, value);
             let new_r = substitute_var(ctx, r, var, value);
             ctx.add(Expr::Add(new_l, new_r))
         }
         Expr::Sub(l, r) => {
+            let (l, r) = (*l, *r);
             let new_l = substitute_var(ctx, l, var, value);
             let new_r = substitute_var(ctx, r, var, value);
             ctx.add(Expr::Sub(new_l, new_r))
         }
         Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
             let new_l = substitute_var(ctx, l, var, value);
             let new_r = substitute_var(ctx, r, var, value);
             mul2_raw(ctx, new_l, new_r)
         }
         Expr::Div(l, r) => {
+            let (l, r) = (*l, *r);
             let new_l = substitute_var(ctx, l, var, value);
             let new_r = substitute_var(ctx, r, var, value);
             ctx.add(Expr::Div(new_l, new_r))
         }
         Expr::Pow(l, r) => {
+            let (l, r) = (*l, *r);
             let new_l = substitute_var(ctx, l, var, value);
             let new_r = substitute_var(ctx, r, var, value);
             ctx.add(Expr::Pow(new_l, new_r))
         }
         Expr::Neg(e) => {
+            let e = *e;
             let new_e = substitute_var(ctx, e, var, value);
             ctx.add(Expr::Neg(new_e))
         }
-        Expr::Function(name, args) => {
+        Expr::Function(name, ref args) => {
+            let (name, args) = (*name, args.clone());
             let new_args: Vec<ExprId> = args
                 .iter()
                 .map(|a| substitute_var(ctx, *a, var, value))
                 .collect();
             ctx.add(Expr::Function(name, new_args))
         }
-        Expr::Matrix { rows, cols, data } => {
+        Expr::Matrix {
+            rows,
+            cols,
+            ref data,
+        } => {
+            let (rows, cols, data) = (*rows, *cols, data.clone());
             let new_data: Vec<ExprId> = data
                 .iter()
                 .map(|a| substitute_var(ctx, *a, var, value))
@@ -941,6 +980,7 @@ fn substitute_var(ctx: &mut Context, expr: ExprId, var: &str, value: ExprId) -> 
         Expr::SessionRef(_) => expr,
         // Hold: substitute inside and rewrap
         Expr::Hold(inner) => {
+            let inner = *inner;
             let new_inner = substitute_var(ctx, inner, var, value);
             ctx.add(Expr::Hold(new_inner))
         }

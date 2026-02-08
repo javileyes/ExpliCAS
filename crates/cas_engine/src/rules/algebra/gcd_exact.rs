@@ -412,9 +412,12 @@ define_rule!(
     PhaseMask::CORE | PhaseMask::TRANSFORM,
     priority: 200, // High priority to evaluate early
     |ctx, expr| {
-        let fn_expr = ctx.get(expr).clone();
-
-        if let Expr::Function(fn_id, args) = fn_expr {
+        let (fn_id, args) = if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            (*fn_id, args.clone())
+        } else {
+            return None;
+        };
+        {
             let name = ctx.sym_name(fn_id);
             // Match poly_gcd_exact, pgcdx with 2 arguments
             let is_gcd_exact = name == "poly_gcd_exact" || name == "pgcdx";
