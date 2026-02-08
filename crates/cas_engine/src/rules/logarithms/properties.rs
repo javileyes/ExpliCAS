@@ -1,3 +1,4 @@
+use crate::helpers::{as_div, as_mul};
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
@@ -35,8 +36,11 @@ impl crate::rule::Rule for LogExpansionRule {
             return None;
         }
 
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Function(fn_id, args) = expr_data {
+        let (fn_id, args) = match ctx.get(expr) {
+            Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+            _ => return None,
+        };
+        {
             // Handle ln(x) as log(e, x), or log(b, x)
             let (base, arg) = match ctx.builtin_of(fn_id) {
                 Some(BuiltinFn::Ln) if args.len() == 1 => {
@@ -47,12 +51,11 @@ impl crate::rule::Rule for LogExpansionRule {
                 _ => return None,
             };
 
-            let arg_data = ctx.get(arg).clone();
             let mode = parent_ctx.domain_mode();
 
             // log(b, x*y) → log(b, x) + log(b, y)
             // Requires Positive(x) AND Positive(y) - Analytic class
-            if let Expr::Mul(lhs, rhs) = arg_data {
+            if let Some((lhs, rhs)) = as_mul(ctx, arg) {
                 let vd = parent_ctx.value_domain();
                 let lhs_positive = prove_positive(ctx, lhs, vd);
                 let rhs_positive = prove_positive(ctx, rhs, vd);
@@ -89,7 +92,7 @@ impl crate::rule::Rule for LogExpansionRule {
 
             // log(b, x/y) → log(b, x) - log(b, y)
             // Requires Positive(x) AND Positive(y) - Analytic class
-            if let Expr::Div(num, den) = arg_data {
+            if let Some((num, den)) = as_div(ctx, arg) {
                 let vd = parent_ctx.value_domain();
                 let num_positive = prove_positive(ctx, num, vd);
                 let den_positive = prove_positive(ctx, den, vd);
@@ -520,8 +523,9 @@ impl crate::rule::Rule for LogAbsPowerRule {
         };
 
         // Check if base of power is abs(u)
-        let Expr::Function(abs_name, abs_args) = ctx.get(p_base).clone() else {
-            return None;
+        let (abs_name, abs_args) = match ctx.get(p_base) {
+            Expr::Function(abs_name, abs_args) => (*abs_name, abs_args.clone()),
+            _ => return None,
         };
         if !ctx.is_builtin(abs_name, BuiltinFn::Abs) || abs_args.len() != 1 {
             return None;
@@ -590,14 +594,14 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
         use crate::semantics::ValueDomain;
 
         // Match ln(arg) or log(base, arg)
-        let (base_opt, arg) = match ctx.get(expr).clone() {
+        let (base_opt, arg) = match ctx.get(expr) {
             Expr::Function(fn_id, args)
-                if ctx.is_builtin(fn_id, BuiltinFn::Ln) && args.len() == 1 =>
+                if ctx.is_builtin(*fn_id, BuiltinFn::Ln) && args.len() == 1 =>
             {
                 (None, args[0])
             }
             Expr::Function(fn_id, args)
-                if ctx.is_builtin(fn_id, BuiltinFn::Log) && args.len() == 2 =>
+                if ctx.is_builtin(*fn_id, BuiltinFn::Log) && args.len() == 2 =>
             {
                 (Some(args[0]), args[1])
             }
@@ -605,9 +609,9 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
         };
 
         // Match abs(inner)
-        let inner = match ctx.get(arg).clone() {
+        let inner = match ctx.get(arg) {
             Expr::Function(fn_id, args)
-                if ctx.is_builtin(fn_id, BuiltinFn::Abs) && args.len() == 1 =>
+                if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 =>
             {
                 args[0]
             }

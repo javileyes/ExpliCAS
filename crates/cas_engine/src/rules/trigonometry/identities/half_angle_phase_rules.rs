@@ -790,9 +790,8 @@ impl crate::rule::Rule for WeierstrassSinIdentityZeroRule {
         // Only match Sub nodes: sin(x) - RHS or RHS - sin(x)
         let (left, right, negated) = if let Some((l, r)) = as_sub(ctx, expr) {
             (l, r, false)
-        } else if let Some((_l, _r)) = as_add(ctx, expr) {
+        } else if let Some((l, r)) = as_add(ctx, expr) {
             // Check if one side is negated
-            let (l, r) = as_add(ctx, expr).unwrap();
             if let Some(inner) = as_neg(ctx, r) {
                 (l, inner, false)
             } else if let Some(inner) = as_neg(ctx, l) {

@@ -1,4 +1,5 @@
 use crate::define_rule;
+use crate::helpers::{as_add, as_div, as_mul, as_pow};
 use crate::ordering::compare_expr;
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::smart_mul;
@@ -24,16 +25,19 @@ impl crate::rule::Rule for ExponentialLogRule {
         expr: cas_ast::ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Pow(base, exp) = expr_data {
-            let exp_data = ctx.get(exp).clone();
-
+        let Some((base, exp)) = as_pow(ctx, expr) else {
+            return None;
+        };
+        {
             // Helper to get log base and arg
             let get_log_parts = |ctx: &mut cas_ast::Context,
                                  e_id: cas_ast::ExprId|
              -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
-                let e_data = ctx.get(e_id).clone();
-                if let Expr::Function(name, args) = e_data {
+                let (name, args) = match ctx.get(e_id) {
+                    Expr::Function(name, args) => (*name, args.clone()),
+                    _ => return None,
+                };
+                {
                     match ctx.builtin_of(name) {
                         Some(BuiltinFn::Log) if args.len() == 2 => {
                             return Some((args[0], args[1]));
@@ -87,7 +91,7 @@ impl crate::rule::Rule for ExponentialLogRule {
 
             // Case 2: b^(c * log(b, x)) → x^c
             // Same logic as Case 1: x > 0 is IMPLICIT from log(b, x) existing.
-            if let Expr::Mul(lhs, rhs) = &exp_data {
+            if let Some((lhs, rhs)) = as_mul(ctx, exp) {
                 let vd = parent_ctx.value_domain();
                 let mode = parent_ctx.domain_mode();
 
@@ -128,10 +132,10 @@ impl crate::rule::Rule for ExponentialLogRule {
                     None
                 };
 
-                if let Some(rw) = check_log(*lhs, *rhs) {
+                if let Some(rw) = check_log(lhs, rhs) {
                     return Some(rw);
                 }
-                if let Some(rw) = check_log(*rhs, *lhs) {
+                if let Some(rw) = check_log(rhs, lhs) {
                     return Some(rw);
                 }
             }
@@ -158,12 +162,13 @@ define_rule!(
     ),
     |ctx, expr, _parent_ctx| {
     // e^(a + b) -> e^a * e^b IF a or b is a log
-    let expr_data = ctx.get(expr).clone();
-    if let Expr::Pow(base, exp) = expr_data {
+    let Some((base, exp)) = as_pow(ctx, expr) else {
+        return None;
+    };
+    {
         let base_is_e = matches!(ctx.get(base), Expr::Constant(cas_ast::Constant::E));
         if base_is_e {
-            let exp_data = ctx.get(exp).clone();
-            if let Expr::Add(lhs, rhs) = exp_data {
+            if let Some((lhs, rhs)) = as_add(ctx, exp) {
                 let lhs_is_log = is_log(ctx, lhs);
                 let rhs_is_log = is_log(ctx, rhs);
 
@@ -181,8 +186,8 @@ define_rule!(
 
 fn simplify_exp_log(context: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
     // Check if exp is log(base, x)
-    if let Expr::Function(name, args) = context.get(exp).clone() {
-        if context.is_builtin(name, BuiltinFn::Log) && args.len() == 2 {
+    if let Expr::Function(name, args) = context.get(exp) {
+        if context.is_builtin(*name, BuiltinFn::Log) && args.len() == 2 {
             let log_base = args[0];
             let log_arg = args[1];
             if log_base == base {
@@ -215,8 +220,10 @@ define_rule!(
         crate::assumptions::ConditionClass::Analytic
     ),
     |ctx, expr, _parent_ctx| {
-    let expr_data = ctx.get(expr).clone();
-    if let Expr::Pow(base, exp) = expr_data {
+    let Some((base, exp)) = as_pow(ctx, expr) else {
+        return None;
+    };
+    {
         // Check for x^(c / log(b, x))
         // exp could be Div(c, log(b, x)) or Mul(c, Pow(log(b, x), -1))
 
@@ -247,15 +254,12 @@ define_rule!(
         let mut target_b_opt: Option<Option<cas_ast::ExprId>> = None;
         let mut coeff: Option<cas_ast::ExprId> = None;
 
-        let exp_data = ctx.get(exp).clone();
-        match exp_data {
-            Expr::Div(num, den) => {
-                if let Some(b_opt) = check_log_denom(ctx, den) {
-                    target_b_opt = Some(b_opt);
-                    coeff = Some(num);
-                }
+        if let Some((num, den)) = as_div(ctx, exp) {
+            if let Some(b_opt) = check_log_denom(ctx, den) {
+                target_b_opt = Some(b_opt);
+                coeff = Some(num);
             }
-            Expr::Mul(l, r) => {
+        } else if let Some((l, r)) = as_mul(ctx, exp) {
                 // Check l * r^-1
                 if let Expr::Pow(b, e) = ctx.get(r) {
                     if let Expr::Number(n) = ctx.get(*e) {
@@ -284,20 +288,17 @@ define_rule!(
                         }
                     }
                 }
-            }
-            Expr::Pow(b, e) => {
-                // Check if it's log(b, x)^-1
-                if let Expr::Number(n) = ctx.get(e) {
-                    if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into())
-                    {
-                        if let Some(b_opt) = check_log_denom(ctx, b) {
-                            target_b_opt = Some(b_opt);
-                            coeff = Some(ctx.num(1));
-                        }
+        } else if let Some((b, e)) = as_pow(ctx, exp) {
+            // Check if it's log(b, x)^-1
+            if let Expr::Number(n) = ctx.get(e) {
+                if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into())
+                {
+                    if let Some(b_opt) = check_log_denom(ctx, b) {
+                        target_b_opt = Some(b_opt);
+                        coeff = Some(ctx.num(1));
                     }
                 }
             }
-            _ => {}
         }
 
         if let (Some(b_opt), Some(c)) = (target_b_opt, coeff) {
@@ -328,8 +329,11 @@ impl crate::rule::Rule for LogExpInverseRule {
         expr: cas_ast::ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Function(fn_id, args) = expr_data {
+        let (fn_id, args) = match ctx.get(expr) {
+            Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+            _ => return None,
+        };
+        {
             use cas_ast::BuiltinFn;
             // Handle ln(x) as log(e, x), or log(b, x)
             let (base, arg) = match ctx.builtin_of(fn_id) {
@@ -467,8 +471,11 @@ impl crate::rule::Rule for LogPowerBaseRule {
         expr: cas_ast::ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Function(fn_id, args) = expr_data {
+        let (fn_id, args) = match ctx.get(expr) {
+            Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+            _ => return None,
+        };
+        {
             // Match log(base, arg) - not ln (which has implicit base e)
             if ctx.builtin_of(fn_id) != Some(BuiltinFn::Log) || args.len() != 2 {
                 return None;
@@ -598,9 +605,10 @@ impl crate::rule::Rule for LogPowerBaseRule {
 /// - 1/a → (a, -1)
 /// - a^m/b → not handled, returns original
 fn normalize_to_power(ctx: &mut cas_ast::Context, expr: ExprId) -> (ExprId, ExprId) {
-    match ctx.get(expr).clone() {
-        Expr::Pow(base, exp) => (base, exp),
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) => (*base, *exp),
         Expr::Div(num, den) => {
+            let (num, den) = (*num, *den);
             // Check if num is 1 (literal 1)
             if matches!(ctx.get(num), Expr::Number(n) if n.is_one()) {
                 // 1/a → (a, -1)
@@ -878,11 +886,13 @@ fn expand_log_for_rule(
     events: &[crate::assumptions::AssumptionEvent],
 ) -> Option<Rewrite> {
     // Get base (ln = natural log, log with 1 arg = base 10)
-    let base = match ctx.get(_original).clone() {
-        Expr::Function(name, _) if ctx.is_builtin(name, BuiltinFn::Ln) => {
+    let base = match ctx.get(_original) {
+        Expr::Function(name, _) if ctx.is_builtin(*name, BuiltinFn::Ln) => {
             ctx.add(Expr::Constant(cas_ast::Constant::E))
         }
-        Expr::Function(fn_id, args) if ctx.is_builtin(fn_id, BuiltinFn::Log) && args.len() == 2 => {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Log) && args.len() == 2 =>
+        {
             args[0]
         }
         Expr::Function(_, _) => {
@@ -892,7 +902,7 @@ fn expand_log_for_rule(
         _ => return None,
     };
 
-    match ctx.get(arg).clone() {
+    match ctx.get(arg) {
         Expr::Mul(_, _) => {
             // Expand log(a*b*c) -> log(a) + log(b) + log(c)
             let factors = collect_mul_factors(ctx, arg);
@@ -913,6 +923,7 @@ fn expand_log_for_rule(
             Some(rewrite)
         }
         Expr::Div(num, den) => {
+            let (num, den) = (*num, *den);
             // Expand log(a/b) -> log(a) - log(b)
             let log_num = make_log(ctx, base, num);
             let log_den = make_log(ctx, base, den);
@@ -925,6 +936,7 @@ fn expand_log_for_rule(
             Some(rewrite)
         }
         Expr::Pow(pow_base, exp) => {
+            let (pow_base, exp) = (*pow_base, *exp);
             // Expand log(u^n) -> n * log(u)
             let log_base = make_log(ctx, base, pow_base);
             let result = smart_mul(ctx, exp, log_base);

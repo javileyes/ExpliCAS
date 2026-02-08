@@ -1,4 +1,5 @@
 use crate::define_rule;
+use crate::helpers::as_pow;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr};
@@ -22,26 +23,21 @@ define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
             let arg = args[0];
 
             // Case 1: abs(number)
-            let arg_data = ctx.get(arg).clone();
-            if let Expr::Number(n) = arg_data {
-                // Always evaluate to positive number
-                let abs_val = ctx.add(Expr::Number(n.abs()));
-                return Some(Rewrite::new(abs_val).desc(format!("abs({}) = {}", n, n.abs())));
+            if let Expr::Number(n) = ctx.get(arg) {
+                let n_abs = n.abs();
+                let desc = format!("abs({}) = {}", n, n_abs);
+                let abs_val = ctx.add(Expr::Number(n_abs));
+                return Some(Rewrite::new(abs_val).desc(desc));
             }
 
             // Case 2: abs(-x) -> abs(x)
             if let Expr::Neg(inner) = ctx.get(arg) {
                 // If inner is a number, we can simplify fully: abs(-5) -> 5
-                let inner_data = ctx.get(*inner).clone();
-                if let Expr::Number(n) = inner_data {
-                    let abs_val = ctx.add(Expr::Number(n.clone())); // n is already positive if it was inside Neg? No, Neg(5) means -5.
-                                                                    // Wait, Expr::Neg(inner) means the expression is -inner.
-                                                                    // If inner is 5, then arg is -5.
-                                                                    // But we already handled Expr::Number above.
-                                                                    // Expr::Number(-5) is a single node.
-                                                                    // Expr::Neg(Expr::Number(5)) is also possible depending on parser/simplifier.
-                                                                    // Let's handle it.
-                    return Some(Rewrite::new(abs_val).desc(format!("abs(-{}) = {}", n, n)));
+                if let Expr::Number(n) = ctx.get(*inner) {
+                    let n_clone = n.clone();
+                    let desc = format!("abs(-{}) = {}", n, n);
+                    let abs_val = ctx.add(Expr::Number(n_clone));
+                    return Some(Rewrite::new(abs_val).desc(desc));
                 }
 
                 let abs_inner = ctx.call("abs", vec![*inner]);
@@ -71,9 +67,9 @@ impl crate::rule::Rule for AbsPositiveSimplifyRule {
         use crate::helpers::prove_positive;
 
         // Match abs(inner)
-        let inner = match ctx.get(expr).clone() {
-            Expr::Function(fn_id, ref args)
-                if ctx.is_builtin(fn_id, BuiltinFn::Abs) && args.len() == 1 =>
+        let inner = match ctx.get(expr) {
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 =>
             {
                 args[0]
             }
@@ -172,9 +168,9 @@ impl crate::rule::Rule for AbsNonNegativeSimplifyRule {
         use crate::helpers::prove_nonnegative;
 
         // Match abs(inner)
-        let inner = match ctx.get(expr).clone() {
-            Expr::Function(fn_id, ref args)
-                if ctx.is_builtin(fn_id, BuiltinFn::Abs) && args.len() == 1 =>
+        let inner = match ctx.get(expr) {
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 =>
             {
                 args[0]
             }
@@ -277,23 +273,24 @@ impl crate::rule::Rule for AbsSquaredRule {
             }
         }
 
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Pow(base, exp) = expr_data {
-            let base_data = ctx.get(base).clone();
-            if let Expr::Function(fn_id, args) = base_data {
-                if ctx.is_builtin(fn_id, BuiltinFn::Abs) && args.len() == 1 {
-                    let inner = args[0];
+        let Some((base, exp)) = as_pow(ctx, expr) else {
+            return None;
+        };
+        {
+            let (fn_id, args) = match ctx.get(base) {
+                Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+                _ => return None,
+            };
+            if ctx.is_builtin(fn_id, BuiltinFn::Abs) && args.len() == 1 {
+                let inner = args[0];
 
-                    // Check if exponent is an even integer
-                    let exp_data = ctx.get(exp).clone();
-                    if let Expr::Number(n) = exp_data {
-                        if n.is_integer() && n.to_integer().is_even() {
-                            // abs(x)^even -> x^even
-                            let new_expr = ctx.add(Expr::Pow(inner, exp));
-                            return Some(
-                                Rewrite::new(new_expr).desc(format!("|x|^{} = x^{}", n, n)),
-                            );
-                        }
+                // Check if exponent is an even integer
+                if let Expr::Number(n) = ctx.get(exp) {
+                    if n.is_integer() && n.to_integer().is_even() {
+                        // abs(x)^even -> x^even
+                        let desc = format!("|x|^{} = x^{}", n, n);
+                        let new_expr = ctx.add(Expr::Pow(inner, exp));
+                        return Some(Rewrite::new(new_expr).desc(desc));
                     }
                 }
             }
@@ -457,8 +454,9 @@ impl crate::rule::Rule for SymbolicRootCancelRule {
         }
 
         // Match sqrt(arg, index) where arg = Pow(base, exp) and exp == index
-        let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
-            return None;
+        let (fn_id, args) = match ctx.get(expr) {
+            Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+            _ => return None,
         };
 
         if !ctx.is_builtin(fn_id, BuiltinFn::Sqrt) || args.len() != 2 {
@@ -474,7 +472,7 @@ impl crate::rule::Rule for SymbolicRootCancelRule {
         }
 
         // Arg must be Pow(base, exp)
-        let Expr::Pow(base, exp) = ctx.get(arg).clone() else {
+        let Some((base, exp)) = as_pow(ctx, arg) else {
             return None;
         };
 
@@ -589,7 +587,8 @@ define_rule!(
     "Evaluate Meta Functions",
     Some(vec!["Function"]),
     |ctx, expr| {
-        if let Expr::Function(fn_id, args) = ctx.get(expr).clone() {
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let (fn_id, args) = (*fn_id, args.clone());
             if args.len() == 1 {
                 let arg = args[0];
                 let fn_name = ctx.sym_name(fn_id);
