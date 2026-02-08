@@ -1,6 +1,6 @@
 use crate::build::mul2_raw;
 use crate::define_rule;
-use crate::helpers::is_half;
+use crate::helpers::{as_div, as_mul, as_pow, is_half};
 use crate::ordering::compare_expr;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
@@ -29,40 +29,39 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
         true
     };
 
-    let expr_data = ctx.get(expr).clone();
-    if let Expr::Mul(lhs, rhs) = expr_data {
-        let lhs_data = ctx.get(lhs).clone();
-        let rhs_data = ctx.get(rhs).clone();
+    if let Some((lhs, rhs)) = as_mul(ctx, expr) {
+        let lhs_pow = as_pow(ctx, lhs);
+        let rhs_pow = as_pow(ctx, rhs);
 
         // Case 1: Both are powers with same base: x^a * x^b
-        if let (Expr::Pow(base1, exp1), Expr::Pow(base2, exp2)) = (&lhs_data, &rhs_data) {
-            if compare_expr(ctx, *base1, *base2) == Ordering::Equal
-                && should_combine(ctx, *base1, *exp1, *exp2)
+        if let (Some((base1, exp1)), Some((base2, exp2))) = (lhs_pow, rhs_pow) {
+            if compare_expr(ctx, base1, base2) == Ordering::Equal
+                && should_combine(ctx, base1, exp1, exp2)
             {
-                let sum_exp = add_exp(ctx, *exp1, *exp2);
-                let new_expr = ctx.add(Expr::Pow(*base1, sum_exp));
+                let sum_exp = add_exp(ctx, exp1, exp2);
+                let new_expr = ctx.add(Expr::Pow(base1, sum_exp));
                 return Some(Rewrite::new(new_expr).desc("Combine powers with same base"));
             }
         }
         // Case 2: One is power, one is base: x^a * x -> x^(a+1)
         // Left is power
-        if let Expr::Pow(base1, exp1) = &lhs_data {
-            if compare_expr(ctx, *base1, rhs) == Ordering::Equal {
+        if let Some((base1, exp1)) = lhs_pow {
+            if compare_expr(ctx, base1, rhs) == Ordering::Equal {
                 let one = ctx.num(1);
-                if should_combine(ctx, *base1, *exp1, one) {
-                    let sum_exp = add_exp(ctx, *exp1, one);
-                    let new_expr = ctx.add(Expr::Pow(*base1, sum_exp));
+                if should_combine(ctx, base1, exp1, one) {
+                    let sum_exp = add_exp(ctx, exp1, one);
+                    let new_expr = ctx.add(Expr::Pow(base1, sum_exp));
                     return Some(Rewrite::new(new_expr).desc("Combine power and base"));
                 }
             }
         }
         // Right is power
-        if let Expr::Pow(base2, exp2) = &rhs_data {
-            if compare_expr(ctx, *base2, lhs) == Ordering::Equal {
+        if let Some((base2, exp2)) = rhs_pow {
+            if compare_expr(ctx, base2, lhs) == Ordering::Equal {
                 let one = ctx.num(1);
-                if should_combine(ctx, *base2, one, *exp2) {
-                    let sum_exp = add_exp(ctx, one, *exp2);
-                    let new_expr = ctx.add(Expr::Pow(*base2, sum_exp));
+                if should_combine(ctx, base2, one, exp2) {
+                    let sum_exp = add_exp(ctx, one, exp2);
+                    let new_expr = ctx.add(Expr::Pow(base2, sum_exp));
                     return Some(Rewrite::new(new_expr).desc("Combine base and power"));
                 }
             }
@@ -75,7 +74,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
         }
 
         // Case 4: Nested Multiplication: x * (x * y) -> x^2 * y
-        if let Expr::Mul(rl, rr) = rhs_data {
+        if let Some((rl, rr)) = as_mul(ctx, rhs) {
             // x * (x * y)
             if compare_expr(ctx, lhs, rl) == Ordering::Equal {
                 let two = ctx.num(2);
@@ -85,18 +84,9 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
             }
 
             // x^a * (x^b * y) -> x^(a+b) * y
-            let lhs_pow = if let Expr::Pow(b, e) = &lhs_data {
-                Some((*b, *e))
-            } else {
-                None
-            };
-            let rhs_pow = if let Expr::Pow(b, e) = ctx.get(rl) {
-                Some((*b, *e))
-            } else {
-                None
-            };
+            let rl_pow = as_pow(ctx, rl);
 
-            if let (Some((base1, exp1)), Some((base2, exp2))) = (lhs_pow, rhs_pow) {
+            if let (Some((base1, exp1)), Some((base2, exp2))) = (lhs_pow, rl_pow) {
                 if compare_expr(ctx, base1, base2) == Ordering::Equal {
                     let sum_exp = add_exp(ctx, exp1, exp2);
                     let new_pow = ctx.add(Expr::Pow(base1, sum_exp));
@@ -106,7 +96,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
             }
 
             // x * (x^a * y) -> x^(a+1) * y
-            if let Some((base2, exp2)) = rhs_pow {
+            if let Some((base2, exp2)) = rl_pow {
                 if compare_expr(ctx, lhs, base2) == Ordering::Equal {
                     let one = ctx.num(1);
                     let sum_exp = add_exp(ctx, exp2, one);
@@ -128,19 +118,9 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
             }
 
             // (c * x^a) * x^b -> c * x^(a+b)
-            if let Expr::Mul(ll, lr) = lhs_data {
+            if let Some((ll, lr)) = as_mul(ctx, lhs) {
                 if let Expr::Number(_) = ctx.get(ll) {
-                    let lr_pow = if let Expr::Pow(b, e) = ctx.get(lr) {
-                        Some((*b, *e))
-                    } else {
-                        None
-                    };
-
-                    let rhs_pow = if let Expr::Pow(b, e) = &rhs_data {
-                        Some((*b, *e))
-                    } else {
-                        None
-                    };
+                    let lr_pow = as_pow(ctx, lr);
 
                     if let (Some((base1, exp1)), Some((base2, exp2))) = (lr_pow, rhs_pow) {
                         if compare_expr(ctx, base1, base2) == Ordering::Equal {
@@ -169,14 +149,8 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
             }
 
             // (c * x) * x^a -> c * x^(a+1)
-            if let Expr::Mul(ll, lr) = lhs_data {
+            if let Some((ll, lr)) = as_mul(ctx, lhs) {
                 if let Expr::Number(_) = ctx.get(ll) {
-                    let rhs_pow = if let Expr::Pow(b, e) = &rhs_data {
-                        Some((*b, *e))
-                    } else {
-                        None
-                    };
-
                     if let Some((base2, exp2)) = rhs_pow {
                         if compare_expr(ctx, lr, base2) == Ordering::Equal {
                             let one = ctx.num(1);
@@ -192,7 +166,7 @@ define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
             }
 
             // x * (x^b * y) -> x^(1+b) * y
-            if let Some((base2, exp2)) = rhs_pow {
+            if let Some((base2, exp2)) = rl_pow {
                 if compare_expr(ctx, lhs, base2) == Ordering::Equal {
                     let one = ctx.num(1);
                     let sum_exp = ctx.add(Expr::Add(one, exp2));
@@ -214,46 +188,45 @@ define_rule!(
     None,
     PhaseMask::CORE | PhaseMask::TRANSFORM | PhaseMask::RATIONALIZE,
     |ctx, expr| {
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Mul(lhs, rhs) = expr_data {
-            let lhs_data = ctx.get(lhs).clone();
-            let rhs_data = ctx.get(rhs).clone();
+        if let Some((lhs, rhs)) = as_mul(ctx, expr) {
+            let lhs_pow = as_pow(ctx, lhs);
+            let rhs_pow = as_pow(ctx, rhs);
 
             // Case 1: Both are powers with same exponent: a^n * b^n
-            if let (Expr::Pow(base1, exp1), Expr::Pow(base2, exp2)) = (&lhs_data, &rhs_data) {
-                if compare_expr(ctx, *exp1, *exp2) == Ordering::Equal {
-                    let base1_is_num = matches!(ctx.get(*base1), Expr::Number(_));
-                    let base2_is_num = matches!(ctx.get(*base2), Expr::Number(_));
-                    let base1_has_num = base1_is_num || has_numeric_factor(ctx, *base1);
-                    let base2_has_num = base2_is_num || has_numeric_factor(ctx, *base2);
+            if let (Some((base1, exp1)), Some((base2, exp2))) = (lhs_pow, rhs_pow) {
+                if compare_expr(ctx, exp1, exp2) == Ordering::Equal {
+                    let base1_is_num = matches!(ctx.get(base1), Expr::Number(_));
+                    let base2_is_num = matches!(ctx.get(base2), Expr::Number(_));
+                    let base1_has_num = base1_is_num || has_numeric_factor(ctx, base1);
+                    let base2_has_num = base2_is_num || has_numeric_factor(ctx, base2);
 
                     if !base1_has_num && !base2_has_num {
                         return None;
                     }
 
-                    let new_base = mul2_raw(ctx, *base1, *base2);
-                    let new_expr = ctx.add(Expr::Pow(new_base, *exp1));
+                    let new_base = mul2_raw(ctx, base1, base2);
+                    let new_expr = ctx.add(Expr::Pow(new_base, exp1));
                     return Some(Rewrite::new(new_expr).desc("Combine powers with same exponent"));
                 }
             }
 
             // Case 2: Nested: a^n * (b^n * c) -> (a*b)^n * c
-            if let Expr::Pow(base1, exp1) = &lhs_data {
-                if let Expr::Mul(rl, rr) = &rhs_data {
-                    if let Expr::Pow(base2, exp2) = ctx.get(*rl) {
-                        if compare_expr(ctx, *exp1, *exp2) == Ordering::Equal {
-                            let base1_is_num = matches!(ctx.get(*base1), Expr::Number(_));
-                            let base2_is_num = matches!(ctx.get(*base2), Expr::Number(_));
-                            let base1_has_num = base1_is_num || has_numeric_factor(ctx, *base1);
-                            let base2_has_num = base2_is_num || has_numeric_factor(ctx, *base2);
+            if let Some((base1, exp1)) = lhs_pow {
+                if let Some((rl, rr)) = as_mul(ctx, rhs) {
+                    if let Some((base2, exp2)) = as_pow(ctx, rl) {
+                        if compare_expr(ctx, exp1, exp2) == Ordering::Equal {
+                            let base1_is_num = matches!(ctx.get(base1), Expr::Number(_));
+                            let base2_is_num = matches!(ctx.get(base2), Expr::Number(_));
+                            let base1_has_num = base1_is_num || has_numeric_factor(ctx, base1);
+                            let base2_has_num = base2_is_num || has_numeric_factor(ctx, base2);
 
                             if !base1_has_num && !base2_has_num {
                                 return None;
                             }
 
-                            let new_base = mul2_raw(ctx, *base1, *base2);
-                            let combined_pow = ctx.add(Expr::Pow(new_base, *exp1));
-                            let new_expr = mul2_raw(ctx, combined_pow, *rr);
+                            let new_base = mul2_raw(ctx, base1, base2);
+                            let combined_pow = ctx.add(Expr::Pow(new_base, exp1));
+                            let new_expr = mul2_raw(ctx, combined_pow, rr);
                             return Some(
                                 Rewrite::new(new_expr)
                                     .desc("Combine nested powers with same exponent"),
@@ -326,13 +299,11 @@ impl crate::rule::Rule for RootPowCancelRule {
     ) -> Option<crate::rule::Rewrite> {
         use crate::semantics::ValueDomain;
 
-        let expr_data = ctx.get(expr).clone();
-        let Expr::Pow(base, outer_exp) = expr_data else {
+        let Some((base, outer_exp)) = as_pow(ctx, expr) else {
             return None;
         };
 
-        let base_data = ctx.get(base).clone();
-        let Expr::Pow(inner_base, inner_exp) = base_data else {
+        let Some((inner_base, inner_exp)) = as_pow(ctx, base) else {
             return None;
         };
 
@@ -345,10 +316,10 @@ impl crate::rule::Rule for RootPowCancelRule {
                 combined.is_one()
             }
             _ => {
-                if let Expr::Div(num, denom) = &outer_exp_data {
-                    if let Expr::Number(n) = ctx.get(*num) {
+                if let Some((num, denom)) = as_div(ctx, outer_exp) {
+                    if let Expr::Number(n) = ctx.get(num) {
                         if n.is_one() {
-                            crate::ordering::compare_expr(ctx, *denom, inner_exp) == Ordering::Equal
+                            crate::ordering::compare_expr(ctx, denom, inner_exp) == Ordering::Equal
                         } else {
                             false
                         }
@@ -447,10 +418,8 @@ define_rule!(
     ),
     |ctx, expr, parent_ctx| {
     // (x^a)^b -> x^(a*b)
-    let expr_data = ctx.get(expr).clone();
-    if let Expr::Pow(base, outer_exp) = expr_data {
-        let base_data = ctx.get(base).clone();
-        if let Expr::Pow(inner_base, inner_exp) = base_data {
+    if let Some((base, outer_exp)) = as_pow(ctx, expr) {
+        if let Some((inner_base, inner_exp)) = as_pow(ctx, base) {
             let is_even_int = |e: ExprId| -> bool {
                 if let Expr::Number(n) = ctx.get(e) {
                     n.is_integer() && n.to_integer().is_even()
@@ -537,8 +506,8 @@ define_rule!(
                 return Some(rewrite);
             }
 
-            let is_symbolic_root_cancel = if let Expr::Div(_num, denom) = ctx.get(outer_exp) {
-                crate::ordering::compare_expr(ctx, *denom, inner_exp) == Ordering::Equal
+            let is_symbolic_root_cancel = if let Some((_num, denom)) = as_div(ctx, outer_exp) {
+                crate::ordering::compare_expr(ctx, denom, inner_exp) == Ordering::Equal
             } else {
                 false
             };
@@ -599,8 +568,7 @@ define_rule!(
     "Normalize Negative Exponent",
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Pow(base, exp) = expr_data {
+    if let Some((base, exp)) = as_pow(ctx, expr) {
             if let Expr::Number(n) = ctx.get(exp) {
                 if n.is_integer() && n.is_negative() {
                     let pos_n = -n.clone();
@@ -617,8 +585,7 @@ define_rule!(
 );
 
 define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
-    let expr_data = ctx.get(expr).clone();
-    if let Expr::Pow(base, exp) = expr_data {
+    if let Some((base, exp)) = as_pow(ctx, expr) {
         if let Some(result) = crate::const_eval::try_eval_pow_literal(ctx, base, exp) {
             return Some(Rewrite::new(result).desc("Evaluate literal power"));
         }

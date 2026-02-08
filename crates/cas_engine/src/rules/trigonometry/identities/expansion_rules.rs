@@ -1,7 +1,9 @@
 //! Expansion and contraction rules for trigonometric expressions.
 
 use crate::define_rule;
-use crate::helpers::{extract_double_angle_arg, extract_triple_angle_arg};
+use crate::helpers::{
+    as_div, as_mul, as_pow, as_sub, extract_double_angle_arg, extract_triple_angle_arg,
+};
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{BuiltinFn, Expr, ExprId};
@@ -164,7 +166,7 @@ impl crate::rule::Rule for HalfAngleTangentRule {
         use crate::implicit_domain::ImplicitCondition;
 
         // Only match Div nodes
-        let Expr::Div(num_id, den_id) = ctx.get(expr).clone() else {
+        let Some((num_id, den_id)) = as_div(ctx, expr) else {
             return None;
         };
 
@@ -456,7 +458,7 @@ impl crate::rule::Rule for DoubleAngleContractionRule {
 
         // Pattern 1: 2·sin(t)·cos(t) → sin(2t)
         // Matches Mul(2, Mul(sin(t), cos(t))) or Mul(Mul(2, sin(t)), cos(t)) etc.
-        if let Expr::Mul(l, r) = ctx.get(expr).clone() {
+        if let Some((l, r)) = as_mul(ctx, expr) {
             if let Some((sin_arg, cos_arg)) = self.extract_two_sin_cos(ctx, l, r) {
                 // Check if sin and cos have the same argument
                 if crate::ordering::compare_expr(ctx, sin_arg, cos_arg) == std::cmp::Ordering::Equal
@@ -471,7 +473,7 @@ impl crate::rule::Rule for DoubleAngleContractionRule {
         }
 
         // Pattern 2: cos²(t) - sin²(t) → cos(2t)
-        if let Expr::Sub(l, r) = ctx.get(expr).clone() {
+        if let Some((l, r)) = as_sub(ctx, expr) {
             if let Some((cos_arg, sin_arg)) = self.extract_cos2_minus_sin2(ctx, l, r) {
                 // Check if cos² and sin² have the same argument
                 if crate::ordering::compare_expr(ctx, cos_arg, sin_arg) == std::cmp::Ordering::Equal
@@ -1320,17 +1322,19 @@ define_rule!(
             return None;
         }
 
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Function(fn_id, args) = expr_data {
+        let (fn_id, args) = match ctx.get(expr) {
+            Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+            _ => return None,
+        };
+        {
             let builtin = ctx.builtin_of(fn_id);
             let is_sin = matches!(builtin, Some(BuiltinFn::Sin));
             let is_cos = matches!(builtin, Some(BuiltinFn::Cos));
             if args.len() == 1 && (is_sin || is_cos) {
                 // Check for n * x where n is integer > 2
                 let inner = args[0];
-                let inner_data = ctx.get(inner).clone();
 
-                let (n_val, x_val) = if let Expr::Mul(l, r) = inner_data {
+                let (n_val, x_val) = if let Some((l, r)) = as_mul(ctx, inner) {
                     if let Expr::Number(n) = ctx.get(l) {
                         if n.is_integer() {
                             (n.to_integer(), r)
@@ -1400,8 +1404,7 @@ define_rule!(
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
         // cos^n(x) -> (1 - sin^2(x))^(n/2) for even n
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Pow(base, exp) = expr_data {
+        if let Some((base, exp)) = as_pow(ctx, expr) {
             let n_opt = if let Expr::Number(n) = ctx.get(exp) {
                 Some(n.clone())
             } else {

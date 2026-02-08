@@ -1,5 +1,6 @@
 use crate::build::mul2_raw;
 use crate::define_rule;
+use crate::helpers::{as_add, as_div, as_mul, as_neg, as_pow, as_sub};
 use crate::ordering::compare_expr;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
@@ -14,20 +15,16 @@ define_rule!(
     "Canonicalize Negation",
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
-        let expr_data = ctx.get(expr).clone();
-
         // 1. Subtraction: a - b -> a + (-b)
-        if let Expr::Sub(lhs, rhs) = expr_data {
+        if let Some((lhs, rhs)) = as_sub(ctx, expr) {
             let neg_rhs = ctx.add(Expr::Neg(rhs));
             let new_expr = ctx.add(Expr::Add(lhs, neg_rhs));
             return Some(Rewrite::new(new_expr).desc("Convert Subtraction to Addition (a - b -> a + (-b))"));
         }
 
         // 2. Negation: -x -> -1 * x
-        if let Expr::Neg(inner) = expr_data {
-            // eprintln!("CanonicalizeNegationRule checking: {:?}", expr);
-            let inner_data = ctx.get(inner).clone();
-            if let Expr::Number(n) = inner_data {
+        if let Some(inner) = as_neg(ctx, expr) {
+            if let Expr::Number(n) = ctx.get(inner) {
                 // -(-5) -> 5 (Handled by parser usually, but good to have)
                 // Actually parser produces Neg(Number(5)).
                 // If we have Neg(Number(5)), we want Number(-5).
@@ -40,17 +37,18 @@ define_rule!(
                     neg_n
                 };
 
+                let n_display = n.clone();
                 let new_expr = ctx.add(Expr::Number(normalized_n.clone()));
-                return Some(Rewrite::new(new_expr).desc(format!("-({}) = {}", n, normalized_n)));
+                return Some(Rewrite::new(new_expr).desc(format!("-({}) = {}", n_display, normalized_n)));
             }
 
             // -(-x) -> x
-            if let Expr::Neg(double_inner) = inner_data {
+            if let Some(double_inner) = as_neg(ctx, inner) {
                 return Some(Rewrite::new(double_inner).desc("-(-x) = x"));
             }
 
             // -(a + b) -> -a + -b
-            if let Expr::Add(lhs, rhs) = inner_data {
+            if let Some((lhs, rhs)) = as_add(ctx, inner) {
                 let neg_lhs = if let Expr::Number(n) = ctx.get(lhs) {
                     ctx.add(Expr::Number(-n.clone()))
                 } else {
@@ -68,7 +66,7 @@ define_rule!(
             }
 
             // -(c * x) -> (-c) * x
-            if let Expr::Mul(lhs, rhs) = inner_data {
+            if let Some((lhs, rhs)) = as_mul(ctx, inner) {
                 if let Expr::Number(n) = ctx.get(lhs) {
                     let n = n.clone();
                     let neg_n = -n.clone();
@@ -106,19 +104,16 @@ define_rule!(
         }
 
         // 3. Multiplication: a * (-b) -> -(a * b)
-        if let Expr::Mul(lhs, rhs) = expr_data {
+        if let Some((lhs, rhs)) = as_mul(ctx, expr) {
             // Check for (-a) * b
-            if let Expr::Neg(inner_l) = ctx.get(lhs) {
-                let inner_l = *inner_l;
+            if let Some(inner_l) = as_neg(ctx, lhs) {
                 let new_mul = mul2_raw(ctx, inner_l, rhs);
                 let new_expr = ctx.add(Expr::Neg(new_mul));
                 return Some(Rewrite::new(new_expr).desc("(-a) * b = -(a * b)"));
             }
 
             // Check for a * (-b)
-            if let Expr::Neg(inner_r) = ctx.get(rhs) {
-                let inner_r = *inner_r;
-
+            if let Some(inner_r) = as_neg(ctx, rhs) {
                 // Special case: if a is a Number, we prefer (-a) * b
                 if let Expr::Number(n) = ctx.get(lhs) {
                     let n = n.clone();
@@ -137,11 +132,9 @@ define_rule!(
         // 4. Division: a / (-b) -> -(a / b) [only for denominator, NOT numerator]
         // NOTE: We do NOT convert (-a)/b -> -(a/b) because that creates a loop with
         // the -(a/b) -> (-a)/b rule at line 114. The canonical form is (-a)/b.
-        if let Expr::Div(lhs, rhs) = expr_data {
-            let rhs_data = ctx.get(rhs);
-
-            if let Expr::Neg(inner_r) = rhs_data {
-                let new_div = ctx.add(Expr::Div(lhs, *inner_r));
+        if let Some((lhs, rhs)) = as_div(ctx, expr) {
+            if let Some(inner_r) = as_neg(ctx, rhs) {
+                let new_div = ctx.add(Expr::Div(lhs, inner_r));
                 let new_expr = ctx.add(Expr::Neg(new_div));
                 return Some(Rewrite::new(new_expr).desc("a / (-b) = -(a / b)"));
             }
@@ -152,14 +145,14 @@ define_rule!(
 );
 
 define_rule!(CanonicalizeAddRule, "Canonicalize Addition", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
-    if let Expr::Add(_, _) = ctx.get(expr) {
+    if as_add(ctx, expr).is_some() {
         // 1. Flatten
         let mut terms = Vec::new();
         let mut stack = vec![expr];
         while let Some(id) = stack.pop() {
-            if let Expr::Add(lhs, rhs) = ctx.get(id) {
-                stack.push(*rhs);
-                stack.push(*lhs);
+            if let Some((lhs, rhs)) = as_add(ctx, id) {
+                stack.push(rhs);
+                stack.push(lhs);
             } else {
                 terms.push(id);
             }
@@ -200,8 +193,8 @@ define_rule!(CanonicalizeAddRule, "Canonicalize Addition", importance: crate::st
         // We want right-associative, so LHS should NOT be Add (unless it's a parenthesized group, but here we flattened it).
         // Wait, if we flatten, we treat nested Adds as part of the same sum.
         // So if LHS is an Add, it means we have (a+b)+... which we want to convert to a+(b+...).
-        if let Expr::Add(lhs, _) = ctx.get(expr) {
-            if let Expr::Add(_, _) = ctx.get(*lhs) {
+        if let Some((lhs, _)) = as_add(ctx, expr) {
+            if as_add(ctx, lhs).is_some() {
                 // Left-associative at root. Rewrite.
                 let mut new_expr = match terms.last() {
             Some(t) => *t,
@@ -222,8 +215,8 @@ define_rule!(CanonicalizeAddRule, "Canonicalize Addition", importance: crate::st
         // No, if X is not Add, it means we only have 2 terms.
         // If terms.len() > 2, then RHS MUST be Add.
         if terms.len() > 2 {
-            if let Expr::Add(_, rhs) = ctx.get(expr) {
-                if !matches!(ctx.get(*rhs), Expr::Add(_, _)) {
+            if let Some((_, rhs)) = as_add(ctx, expr) {
+                if as_add(ctx, rhs).is_none() {
                     // This case is weird if LHS is not Add.
                     // e.g. a + b. terms=[a,b]. len=2.
                     // e.g. a + (b+c). terms=[a,b,c]. len=3. RHS is Add(b,c). OK.
@@ -257,14 +250,14 @@ define_rule!(
         use crate::ordering::compare_expr;
         use std::cmp::Ordering;
 
-        if let Expr::Mul(_, _) = ctx.get(expr) {
+        if as_mul(ctx, expr).is_some() {
             // 1. Flatten the chain into factors
             let mut factors = Vec::new();
             let mut stack = vec![expr];
             while let Some(id) = stack.pop() {
-                if let Expr::Mul(lhs, rhs) = ctx.get(id) {
-                    stack.push(*rhs);
-                    stack.push(*lhs);
+                if let Some((lhs, rhs)) = as_mul(ctx, id) {
+                    stack.push(rhs);
+                    stack.push(lhs);
                 } else {
                     factors.push(id);
                 }
@@ -296,8 +289,8 @@ define_rule!(
             }
 
             // 3. Check associativity: (a*b)*c -> a*(b*c)
-            if let Expr::Mul(lhs, _) = ctx.get(expr) {
-                if let Expr::Mul(_, _) = ctx.get(*lhs) {
+            if let Some((lhs, _)) = as_mul(ctx, expr) {
+                if as_mul(ctx, lhs).is_some() {
                     let mut new_expr = match factors.last() {
             Some(f) => *f,
             None => return None,
@@ -314,8 +307,7 @@ define_rule!(
 );
 
 define_rule!(CanonicalizeDivRule, "Canonicalize Division", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
-    let expr_data = ctx.get(expr).clone();
-    if let Expr::Div(lhs, rhs) = expr_data {
+    if let Some((lhs, rhs)) = as_div(ctx, expr) {
         // x / c -> (1/c) * x
         if let Expr::Number(n) = ctx.get(rhs) {
             let n = n.clone();
@@ -331,8 +323,7 @@ define_rule!(CanonicalizeDivRule, "Canonicalize Division", importance: crate::st
 });
 
 define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
-    let expr_data = ctx.get(expr).clone();
-    if let Expr::Function(fn_id, args) = expr_data {
+    if let Expr::Function(fn_id, args) = ctx.get(expr).clone() {
         if ctx.builtin_of(fn_id) == Some(cas_ast::BuiltinFn::Sqrt) {
             if args.len() == 1 {
                 let arg = args[0];
@@ -341,7 +332,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step
                 // Complex simplification (like sqrt(x^2+2x+1)) belongs in a separate simplification rule.
 
                 // Check for simple sqrt(x^2) -> |x|
-                if let Expr::Pow(b, e) = ctx.get(arg).clone() {
+                if let Some((b, e)) = as_pow(ctx, arg) {
                     if let Expr::Number(n) = ctx.get(e) {
                         if n.is_integer() && n.to_integer().is_even() {
                             // sqrt(x^(2k)) -> |x|^k
@@ -391,12 +382,12 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step
 
 define_rule!(NormalizeSignsRule, "Normalize Signs", |ctx, expr| {
     // Pattern 1: -c + x -> x - c (if c is positive number)
-    if let Expr::Add(l, r) = ctx.get(expr) {
-        if let Expr::Neg(inner_neg) = ctx.get(*l) {
-            if let Expr::Number(n) = ctx.get(*inner_neg) {
+    if let Some((l, r)) = as_add(ctx, expr) {
+        if let Some(inner_neg) = as_neg(ctx, l) {
+            if let Expr::Number(n) = ctx.get(inner_neg) {
                 if *n > num_rational::BigRational::zero() {
                     let n_clone = n.clone();
-                    let new_expr = ctx.add(Expr::Sub(*r, *inner_neg));
+                    let new_expr = ctx.add(Expr::Sub(r, inner_neg));
                     return Some(
                         Rewrite::new(new_expr).desc(format!("-{} + x -> x - {}", n_clone, n_clone)),
                     );
@@ -404,11 +395,11 @@ define_rule!(NormalizeSignsRule, "Normalize Signs", |ctx, expr| {
             }
         }
         // Also check the opposite order: x + (-c) -> x - c
-        if let Expr::Neg(inner_neg) = ctx.get(*r) {
-            if let Expr::Number(n) = ctx.get(*inner_neg) {
+        if let Some(inner_neg) = as_neg(ctx, r) {
+            if let Expr::Number(n) = ctx.get(inner_neg) {
                 if *n > num_rational::BigRational::zero() {
                     let n_clone = n.clone();
-                    let new_expr = ctx.add(Expr::Sub(*l, *inner_neg));
+                    let new_expr = ctx.add(Expr::Sub(l, inner_neg));
                     return Some(
                         Rewrite::new(new_expr)
                             .desc(format!("x + (-{}) -> x - {}", n_clone, n_clone)),
@@ -434,11 +425,9 @@ define_rule!(
 
         // Pattern: Add(y, Neg(x)) where x < y -> Neg(Add(x, Neg(y)))
         // This converts (y - x) to -(x - y) when x should come first
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Add(l, r) = expr_data {
-            let r_data = ctx.get(r).clone();
+        if let Some((l, r)) = as_add(ctx, expr) {
             // Check if r is Neg(x) - this is the pattern for (l - x)
-            if let Expr::Neg(inner) = r_data {
+            if let Some(inner) = as_neg(ctx, r) {
                 // We have: l + (-inner) which represents (l - inner)
                 // If inner < l, we should reorder to -(inner - l) = -(inner + (-l))
                 if compare_expr(ctx, inner, l) == Ordering::Less {
@@ -723,8 +712,7 @@ impl crate::rule::Rule for ExpToEPowRule {
             return None;
         }
 
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Function(fn_id, args) = expr_data {
+        if let Expr::Function(fn_id, args) = ctx.get(expr).clone() {
             if ctx.builtin_of(fn_id) == Some(cas_ast::BuiltinFn::Exp) && args.len() == 1 {
                 let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
                 let new_expr = ctx.add(Expr::Pow(e, args[0]));

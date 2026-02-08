@@ -1,7 +1,7 @@
 //! Core trigonometric identity rules for evaluation at special values.
 
 use crate::define_rule;
-use crate::helpers::{is_pi, is_pi_over_n};
+use crate::helpers::{as_add, as_div, as_mul, as_neg, as_sub, is_pi, is_pi_over_n};
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{Expr, ExprId};
@@ -43,9 +43,11 @@ impl crate::rule::Rule for SinCosIntegerPiRule {
     ) -> Option<crate::rule::Rewrite> {
         use crate::helpers::extract_rational_pi_multiple;
 
-        let expr_data = ctx.get(expr).clone();
-
-        if let Expr::Function(fn_id, args) = expr_data {
+        let (fn_id, args) = match ctx.get(expr) {
+            Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+            _ => return None,
+        };
+        {
             let builtin = ctx.builtin_of(fn_id);
             if args.len() != 1 {
                 return None;
@@ -106,9 +108,11 @@ define_rule!(
     TrigOddEvenParityRule,
     "Trig Parity (Odd/Even)",
     |ctx, expr| {
-        let expr_data = ctx.get(expr).clone();
-
-        if let Expr::Function(fn_id, args) = expr_data {
+        let (fn_id, args) = match ctx.get(expr) {
+            Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+            _ => return None,
+        };
+        {
             let builtin = ctx.builtin_of(fn_id);
             let name = match builtin {
                 Some(b) => b.name().to_string(),
@@ -119,37 +123,32 @@ define_rule!(
             }
 
             let arg = args[0];
-            let arg_data = ctx.get(arg).clone();
 
             // Try to extract "negated form" of argument
-            let negated_info: Option<(ExprId, Option<num_rational::BigRational>)> = match &arg_data
-            {
-                // Direct negation: Neg(u)
-                Expr::Neg(inner) => Some((*inner, None)),
-
-                // Multiplication by negative number
-                Expr::Mul(a, b) => {
-                    let a_data = ctx.get(*a).clone();
-                    let b_data = ctx.get(*b).clone();
-
-                    if let Expr::Number(n) = a_data {
-                        if n < num_rational::BigRational::from_integer(0.into()) {
-                            Some((*b, Some(-n)))
+            let negated_info: Option<(ExprId, Option<num_rational::BigRational>)> =
+                if let Some(inner) = as_neg(ctx, arg) {
+                    // Direct negation: Neg(u)
+                    Some((inner, None))
+                } else if let Some((a, b)) = as_mul(ctx, arg) {
+                    // Multiplication by negative number
+                    if let Expr::Number(n) = ctx.get(a) {
+                        if *n < num_rational::BigRational::from_integer(0.into()) {
+                            Some((b, Some(-n.clone())))
                         } else {
                             None
                         }
-                    } else if let Expr::Number(n) = b_data {
-                        if n < num_rational::BigRational::from_integer(0.into()) {
-                            Some((*a, Some(-n)))
+                    } else if let Expr::Number(n) = ctx.get(b) {
+                        if *n < num_rational::BigRational::from_integer(0.into()) {
+                            Some((a, Some(-n.clone())))
                         } else {
                             None
                         }
                     } else {
                         None
                     }
-                }
-                _ => None,
-            };
+                } else {
+                    None
+                };
 
             if let Some((base, opt_coeff)) = negated_info {
                 // Build positive argument
@@ -197,8 +196,11 @@ define_rule!(
     EvaluateTrigRule,
     "Evaluate Trigonometric Functions",
     |ctx, expr| {
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Function(fn_id, args) = expr_data {
+        let (fn_id, args) = match ctx.get(expr) {
+            Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+            _ => return None,
+        };
+        {
             let name = match ctx.builtin_of(fn_id) {
                 Some(b) => b.name().to_string(),
                 None => return None,
@@ -485,8 +487,7 @@ define_rule!(
         // Look for sin(x)^2 + cos(x)^2 = 1
         // Or a*sin(x)^2 + a*cos(x)^2 = a
 
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Add(_, _) = expr_data {
+        if as_add(ctx, expr).is_some() {
             // Flatten add
             let mut terms = Vec::new();
             crate::helpers::flatten_add(ctx, expr, &mut terms);
@@ -498,7 +499,7 @@ define_rule!(
                                       term: ExprId|
              -> Vec<(ExprId, String, ExprId, bool)> {
                 let mut results = Vec::new();
-                let term_data = ctx.get(term).clone();
+                let term_data = ctx.get(term).clone(); // clone needed: inner data used across branches
 
                 // Check if term is negated: Neg(...)
                 let (inner_term, is_negated) = match term_data {
@@ -506,7 +507,7 @@ define_rule!(
                     _ => (term, false),
                 };
 
-                let inner_data = ctx.get(inner_term).clone();
+                let inner_data = ctx.get(inner_term).clone(); // clone needed: used across multiple match arms
 
                 // Check if term itself is sin^n or cos^n with n >= 2
                 if let Expr::Pow(base, exp) = inner_data.clone() {
@@ -796,8 +797,7 @@ impl crate::rule::Rule for AngleIdentityRule {
                 let inner = args[0];
                 match ctx.builtin_of(*fn_id) {
                     Some(cas_ast::BuiltinFn::Sin) => {
-                        let inner_data = ctx.get(inner).clone();
-                        if let Expr::Add(lhs, rhs) = inner_data {
+                        if let Some((lhs, rhs)) = as_add(ctx, inner) {
                             // sin(a + b) = sin(a)cos(b) + cos(a)sin(b)
                             let sin_a = ctx.call("sin", vec![lhs]);
                             let cos_b = ctx.call("cos", vec![rhs]);
@@ -812,7 +812,7 @@ impl crate::rule::Rule for AngleIdentityRule {
                                 Rewrite::new(new_expr)
                                     .desc("sin(a + b) -> sin(a)cos(b) + cos(a)sin(b)"),
                             );
-                        } else if let Expr::Sub(lhs, rhs) = inner_data {
+                        } else if let Some((lhs, rhs)) = as_sub(ctx, inner) {
                             // sin(a - b) = sin(a)cos(b) - cos(a)sin(b)
                             let sin_a = ctx.call("sin", vec![lhs]);
                             let cos_b = ctx.call("cos", vec![rhs]);
@@ -827,10 +827,9 @@ impl crate::rule::Rule for AngleIdentityRule {
                                 Rewrite::new(new_expr)
                                     .desc("sin(a - b) -> sin(a)cos(b) - cos(a)sin(b)"),
                             );
-                        } else if let Expr::Div(num, den) = inner_data {
+                        } else if let Some((num, den)) = as_div(ctx, inner) {
                             // sin((a + b) / c) -> sin(a/c + b/c) -> ...
-                            let num_data = ctx.get(num).clone();
-                            if let Expr::Add(lhs, rhs) = num_data {
+                            if let Some((lhs, rhs)) = as_add(ctx, num) {
                                 let a = ctx.add(Expr::Div(lhs, den));
                                 let b = ctx.add(Expr::Div(rhs, den));
 
@@ -850,8 +849,7 @@ impl crate::rule::Rule for AngleIdentityRule {
                         }
                     }
                     Some(cas_ast::BuiltinFn::Cos) => {
-                        let inner_data = ctx.get(inner).clone();
-                        if let Expr::Add(lhs, rhs) = inner_data {
+                        if let Some((lhs, rhs)) = as_add(ctx, inner) {
                             // cos(a + b) = cos(a)cos(b) - sin(a)sin(b)
                             let cos_a = ctx.call("cos", vec![lhs]);
                             let cos_b = ctx.call("cos", vec![rhs]);
@@ -866,7 +864,7 @@ impl crate::rule::Rule for AngleIdentityRule {
                                 Rewrite::new(new_expr)
                                     .desc("cos(a + b) -> cos(a)cos(b) - sin(a)sin(b)"),
                             );
-                        } else if let Expr::Sub(lhs, rhs) = inner_data {
+                        } else if let Some((lhs, rhs)) = as_sub(ctx, inner) {
                             // cos(a - b) = cos(a)cos(b) + sin(a)sin(b)
                             let cos_a = ctx.call("cos", vec![lhs]);
                             let cos_b = ctx.call("cos", vec![rhs]);
@@ -881,10 +879,9 @@ impl crate::rule::Rule for AngleIdentityRule {
                                 Rewrite::new(new_expr)
                                     .desc("cos(a - b) -> cos(a)cos(b) + sin(a)sin(b)"),
                             );
-                        } else if let Expr::Div(num, den) = inner_data {
+                        } else if let Some((num, den)) = as_div(ctx, inner) {
                             // cos((a + b) / c) -> cos(a/c + b/c) -> ...
-                            let num_data = ctx.get(num).clone();
-                            if let Expr::Add(lhs, rhs) = num_data {
+                            if let Some((lhs, rhs)) = as_add(ctx, num) {
                                 let a = ctx.add(Expr::Div(lhs, den));
                                 let b = ctx.add(Expr::Div(rhs, den));
 

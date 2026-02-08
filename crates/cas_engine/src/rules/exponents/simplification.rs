@@ -1,5 +1,6 @@
 use crate::build::mul2_raw;
 use crate::define_rule;
+use crate::helpers::{as_div, as_mul, as_neg, as_pow};
 use crate::ordering::compare_expr;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
@@ -22,8 +23,7 @@ define_rule!(
         use crate::domain::{DomainMode, Proof};
         use crate::helpers::prove_nonzero;
 
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Pow(base, exp) = expr_data {
+        if let Some((base, exp)) = as_pow(ctx, expr) {
             // x^1 -> x (always safe)
             if let Expr::Number(n) = ctx.get(exp) {
                 if n.is_one() {
@@ -115,13 +115,8 @@ define_rule!(
         }
 
         // (a * b)^n -> a^n * b^n
-        if let Expr::Pow(base, exp) = ctx.get(expr) {
-            let base = *base;
-            let exp = *exp;
-            if let Expr::Mul(a, b) = ctx.get(base) {
-                let a = *a;
-                let b = *b;
-
+        if let Some((base, exp)) = as_pow(ctx, expr) {
+            if let Some((a, b)) = as_mul(ctx, base) {
                 if let Expr::Number(exp_num) = ctx.get(exp) {
                     let denom = exp_num.denom();
                     if denom > &num_bigint::BigInt::from(1)
@@ -152,8 +147,7 @@ define_rule!(
 
 define_rule!(PowerQuotientRule, "Power of a Quotient", |ctx, expr| {
     // (a / b)^n -> a^n / b^n
-    let expr_data = ctx.get(expr).clone();
-    if let Expr::Pow(base, exp) = expr_data {
+    if let Some((base, exp)) = as_pow(ctx, expr) {
         if let Expr::Number(exp_num) = ctx.get(exp) {
             let denom = exp_num.denom();
             if denom > &num_bigint::BigInt::from(1) && !can_distribute_root_safely(ctx, base, denom)
@@ -162,8 +156,7 @@ define_rule!(PowerQuotientRule, "Power of a Quotient", |ctx, expr| {
             }
         }
 
-        let base_data = ctx.get(base).clone();
-        if let Expr::Div(num, den) = base_data {
+        if let Some((num, den)) = as_div(ctx, base) {
             let new_num = ctx.add(Expr::Pow(num, exp));
             let new_den = ctx.add(Expr::Pow(den, exp));
             let new_expr = ctx.add(Expr::Div(new_num, new_den));
@@ -177,18 +170,16 @@ define_rule!(PowerQuotientRule, "Power of a Quotient", |ctx, expr| {
 // ExpQuotientRule: e^a / e^b → e^(a-b)
 // ============================================================================
 define_rule!(ExpQuotientRule, "Exp Quotient", |ctx, expr| {
-    let expr_data = ctx.get(expr).clone();
-    if let Expr::Div(num, den) = expr_data {
-        let num_data = ctx.get(num).clone();
-        let den_data = ctx.get(den).clone();
+    if let Some((num, den)) = as_div(ctx, expr) {
+        let num_pow = as_pow(ctx, num);
+        let den_pow = as_pow(ctx, den);
 
-        if let (Expr::Pow(num_base, num_exp), Expr::Pow(den_base, den_exp)) = (&num_data, &den_data)
-        {
-            let num_base_is_e = matches!(ctx.get(*num_base), Expr::Constant(cas_ast::Constant::E));
-            let den_base_is_e = matches!(ctx.get(*den_base), Expr::Constant(cas_ast::Constant::E));
+        if let (Some((num_base, num_exp)), Some((den_base, den_exp))) = (num_pow, den_pow) {
+            let num_base_is_e = matches!(ctx.get(num_base), Expr::Constant(cas_ast::Constant::E));
+            let den_base_is_e = matches!(ctx.get(den_base), Expr::Constant(cas_ast::Constant::E));
 
             if num_base_is_e && den_base_is_e {
-                let diff = ctx.add(Expr::Sub(*num_exp, *den_exp));
+                let diff = ctx.add(Expr::Sub(num_exp, den_exp));
                 let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
                 let new_expr = ctx.add(Expr::Pow(e, diff));
                 return Some(Rewrite::new(new_expr).desc("e^a / e^b = e^(a-b)"));
@@ -196,11 +187,11 @@ define_rule!(ExpQuotientRule, "Exp Quotient", |ctx, expr| {
         }
 
         // e / e^b → e^(1-b)
-        if matches!(num_data, Expr::Constant(cas_ast::Constant::E)) {
-            if let Expr::Pow(den_base, den_exp) = &den_data {
-                if matches!(ctx.get(*den_base), Expr::Constant(cas_ast::Constant::E)) {
+        if matches!(ctx.get(num), Expr::Constant(cas_ast::Constant::E)) {
+            if let Some((den_base, den_exp)) = den_pow {
+                if matches!(ctx.get(den_base), Expr::Constant(cas_ast::Constant::E)) {
                     let one = ctx.num(1);
-                    let diff = ctx.add(Expr::Sub(one, *den_exp));
+                    let diff = ctx.add(Expr::Sub(one, den_exp));
                     let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
                     let new_expr = ctx.add(Expr::Pow(e, diff));
                     return Some(Rewrite::new(new_expr).desc("e / e^b = e^(1-b)"));
@@ -209,11 +200,11 @@ define_rule!(ExpQuotientRule, "Exp Quotient", |ctx, expr| {
         }
 
         // e^a / e → e^(a-1)
-        if matches!(den_data, Expr::Constant(cas_ast::Constant::E)) {
-            if let Expr::Pow(num_base, num_exp) = &num_data {
-                if matches!(ctx.get(*num_base), Expr::Constant(cas_ast::Constant::E)) {
+        if matches!(ctx.get(den), Expr::Constant(cas_ast::Constant::E)) {
+            if let Some((num_base, num_exp)) = num_pow {
+                if matches!(ctx.get(num_base), Expr::Constant(cas_ast::Constant::E)) {
                     let one = ctx.num(1);
-                    let diff = ctx.add(Expr::Sub(*num_exp, one));
+                    let diff = ctx.add(Expr::Sub(num_exp, one));
                     let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
                     let new_expr = ctx.add(Expr::Pow(e, diff));
                     return Some(Rewrite::new(new_expr).desc("e^a / e = e^(a-1)"));
@@ -379,10 +370,8 @@ impl crate::rule::Rule for MulNaryCombinePowersRule {
 
 define_rule!(NegativeBasePowerRule, "Negative Base Power", |ctx, expr| {
     // (-x)^n
-    let expr_data = ctx.get(expr).clone();
-    if let Expr::Pow(base, exp) = expr_data {
-        let base_data = ctx.get(base).clone();
-        if let Expr::Neg(inner) = base_data {
+    if let Some((base, exp)) = as_pow(ctx, expr) {
+        if let Some(inner) = as_neg(ctx, base) {
             if let Expr::Number(n) = ctx.get(exp) {
                 if n.is_integer() {
                     if n.to_integer().is_even() {
@@ -411,9 +400,8 @@ define_rule!(
         use crate::ordering::compare_expr;
         use std::cmp::Ordering;
 
-        let (base, exp) = match ctx.get(expr) {
-            Expr::Pow(b, e) => (*b, *e),
-            _ => return None,
+        let Some((base, exp)) = as_pow(ctx, expr) else {
+            return None;
         };
 
         let is_even = match ctx.get(exp) {

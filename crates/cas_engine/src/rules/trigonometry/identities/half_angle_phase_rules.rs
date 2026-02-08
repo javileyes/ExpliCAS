@@ -1,7 +1,7 @@
 //! Half-angle, phase shift, supplementary angle and Weierstrass substitution rules.
 
 use crate::define_rule;
-use crate::helpers::{is_pi, is_pi_over_n};
+use crate::helpers::{as_add, as_div, as_mul, as_neg, as_sub, is_pi, is_pi_over_n};
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{BuiltinFn, Expr, ExprId};
@@ -24,9 +24,11 @@ define_rule!(
         use crate::helpers::extract_rational_pi_multiple;
         use num_rational::BigRational;
 
-        let expr_data = ctx.get(expr).clone();
-
-        if let Expr::Function(fn_id, args) = expr_data {
+        let (fn_id, args) = match ctx.get(expr) {
+            Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+            _ => return None,
+        };
+        {
             let builtin = ctx.builtin_of(fn_id);
             if args.len() != 1 {
                 return None;
@@ -145,7 +147,7 @@ pub fn extract_phase_shift(ctx: &mut cas_ast::Context, expr: ExprId) -> Option<(
         };
 
         // Check if numerator is Add/Sub
-        if let Expr::Add(l, r) = ctx.get(num).clone() {
+        if let Some((l, r)) = as_add(ctx, num) {
             // Check both terms for π
             // Form: (base + k*pi)/denom where we want k/denom = m/2 for some integer m
 
@@ -196,14 +198,14 @@ pub fn extract_phase_shift(ctx: &mut cas_ast::Context, expr: ExprId) -> Option<(
 
     // Form 1b: Mul(1/n, Add(coeff*x, k*pi)) - the canonical form for (a + b)/n!
     // Example: (2*x + pi)/2 becomes Mul(1/2, Add(2*x, pi)); shift = 1
-    if let Expr::Mul(coeff_id, inner) = ctx.get(expr).clone() {
+    if let Some((coeff_id, inner)) = as_mul(ctx, expr) {
         // Check if coeff is 1/n (a rational with numerator 1)
         if let Expr::Number(coeff) = ctx.get(coeff_id) {
             if coeff.numer() == &num_bigint::BigInt::from(1) && !coeff.denom().is_one() {
                 let denom_val: i32 = coeff.denom().try_into().ok().unwrap_or(0);
                 if denom_val > 0 {
                     // Check if inner is Add containing pi
-                    if let Expr::Add(l, r) = ctx.get(inner).clone() {
+                    if let Some((l, r)) = as_add(ctx, inner) {
                         // Check right term for pi
                         if is_pi(ctx, r) {
                             let k = 2 / denom_val;
@@ -590,7 +592,7 @@ impl crate::rule::Rule for WeierstrassContractionRule {
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
         // Only match Div nodes
-        let Expr::Div(num_id, den_id) = ctx.get(expr).clone() else {
+        let Some((num_id, den_id)) = as_div(ctx, expr) else {
             return None;
         };
 
@@ -786,19 +788,20 @@ impl crate::rule::Rule for WeierstrassSinIdentityZeroRule {
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
         // Only match Sub nodes: sin(x) - RHS or RHS - sin(x)
-        let (left, right, negated) = match ctx.get(expr).clone() {
-            Expr::Sub(l, r) => (l, r, false),
-            Expr::Add(l, r) => {
-                // Check if one side is negated
-                if let Expr::Neg(inner) = ctx.get(r) {
-                    (l, *inner, false)
-                } else if let Expr::Neg(inner) = ctx.get(l) {
-                    (r, *inner, false)
-                } else {
-                    return None;
-                }
+        let (left, right, negated) = if let Some((l, r)) = as_sub(ctx, expr) {
+            (l, r, false)
+        } else if let Some((_l, _r)) = as_add(ctx, expr) {
+            // Check if one side is negated
+            let (l, r) = as_add(ctx, expr).unwrap();
+            if let Some(inner) = as_neg(ctx, r) {
+                (l, inner, false)
+            } else if let Some(inner) = as_neg(ctx, l) {
+                (r, inner, false)
+            } else {
+                return None;
             }
-            _ => return None,
+        } else {
+            return None;
         };
         let _ = negated;
 
@@ -882,19 +885,19 @@ impl crate::rule::Rule for WeierstrassCosIdentityZeroRule {
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
         // Only match Sub nodes: cos(x) - RHS or RHS - cos(x)
-        let (left, right) = match ctx.get(expr).clone() {
-            Expr::Sub(l, r) => (l, r),
-            Expr::Add(l, r) => {
-                // Check if one side is negated
-                if let Expr::Neg(inner) = ctx.get(r) {
-                    (l, *inner)
-                } else if let Expr::Neg(inner) = ctx.get(l) {
-                    (r, *inner)
-                } else {
-                    return None;
-                }
+        let (left, right) = if let Some((l, r)) = as_sub(ctx, expr) {
+            (l, r)
+        } else if let Some((l, r)) = as_add(ctx, expr) {
+            // Check if one side is negated
+            if let Some(inner) = as_neg(ctx, r) {
+                (l, inner)
+            } else if let Some(inner) = as_neg(ctx, l) {
+                (r, inner)
+            } else {
+                return None;
             }
-            _ => return None,
+        } else {
+            return None;
         };
 
         // Try both orderings
@@ -981,18 +984,18 @@ impl crate::rule::Rule for Sin4xIdentityZeroRule {
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
         // Only match Sub nodes or Add with negated term
-        let (left, right) = match ctx.get(expr).clone() {
-            Expr::Sub(l, r) => (l, r),
-            Expr::Add(l, r) => {
-                if let Expr::Neg(inner) = ctx.get(r) {
-                    (l, *inner)
-                } else if let Expr::Neg(inner) = ctx.get(l) {
-                    (r, *inner)
-                } else {
-                    return None;
-                }
+        let (left, right) = if let Some((l, r)) = as_sub(ctx, expr) {
+            (l, r)
+        } else if let Some((l, r)) = as_add(ctx, expr) {
+            if let Some(inner) = as_neg(ctx, r) {
+                (l, inner)
+            } else if let Some(inner) = as_neg(ctx, l) {
+                (r, inner)
+            } else {
+                return None;
             }
-            _ => return None,
+        } else {
+            return None;
         };
 
         // Try both orderings
@@ -1189,18 +1192,18 @@ impl crate::rule::Rule for TanDifferenceIdentityZeroRule {
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
         // Only match Sub nodes or Add with negated term
-        let (left, right, _negated) = match ctx.get(expr).clone() {
-            Expr::Sub(l, r) => (l, r, false),
-            Expr::Add(l, r) => {
-                if let Expr::Neg(inner) = ctx.get(r) {
-                    (l, *inner, true)
-                } else if let Expr::Neg(inner) = ctx.get(l) {
-                    (r, *inner, true)
-                } else {
-                    return None;
-                }
+        let (left, right, _negated) = if let Some((l, r)) = as_sub(ctx, expr) {
+            (l, r, false)
+        } else if let Some((l, r)) = as_add(ctx, expr) {
+            if let Some(inner) = as_neg(ctx, r) {
+                (l, inner, true)
+            } else if let Some(inner) = as_neg(ctx, l) {
+                (r, inner, true)
+            } else {
+                return None;
             }
-            _ => return None,
+        } else {
+            return None;
         };
 
         // Try both orderings: tan(a-b) - RHS or RHS - tan(a-b)
@@ -1378,20 +1381,16 @@ define_rule!(
     "Cotangent Half-Angle Difference",
     |ctx, expr| {
         // Only match Add or Sub at top level
-        let expr_data = ctx.get(expr).clone();
-
         // Normalize Sub to Add(a, Neg(b)) conceptually by handling both
-        let terms: Vec<ExprId> = match expr_data {
-            Expr::Add(_, _) => {
-                let mut ts = Vec::new();
-                crate::helpers::flatten_add(ctx, expr, &mut ts);
-                ts
-            }
-            Expr::Sub(l, r) => {
-                // Treat as [l, -r]
-                vec![l, r] // We'll handle the sign in matching
-            }
-            _ => return None,
+        let terms: Vec<ExprId> = if as_add(ctx, expr).is_some() {
+            let mut ts = Vec::new();
+            crate::helpers::flatten_add(ctx, expr, &mut ts);
+            ts
+        } else if let Some((l, r)) = as_sub(ctx, expr) {
+            // Treat as [l, -r]
+            vec![l, r] // We'll handle the sign in matching
+        } else {
+            return None;
         };
 
         if terms.len() < 2 {
