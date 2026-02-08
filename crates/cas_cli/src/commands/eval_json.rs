@@ -19,9 +19,9 @@ use cas_engine::didactic;
 
 use crate::format::{expr_hash, expr_stats, format_expr_limited};
 use crate::json_types::{
-    BudgetJson, DomainJson, ErrorJsonOutput, EvalJsonOutput, OptionsJson, RequiredConditionJson,
-    SemanticsJson, SolveStepJson, SolveSubStepJson, StepJson, SubStepJson, TimingsJson,
-    WarningJson,
+    BudgetJsonInfo, DomainJson, ErrorJsonOutput, EvalJsonOutput, OptionsJson,
+    RequiredConditionJson, SemanticsJson, SolveStepJson, SolveSubStepJson, StepJson, SubStepJson,
+    TimingsJson, WarningJson,
 };
 
 /// Arguments for eval-json subcommand
@@ -281,14 +281,15 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 },
                 options: build_options_json(args),
                 semantics: build_semantics_json(args),
-                wire: Some(build_wire_reply(
+                wire: serde_json::to_value(build_wire_reply(
                     &collect_warnings(&output),
                     &collect_required_display(&output, &engine.simplifier.context),
                     &result_str,
                     Some(&result_latex),
                     output.steps.len() + output.solve_steps.len(),
                     &args.steps,
-                )),
+                ))
+                .ok(),
             });
         }
         EvalResult::Bool(b) => {
@@ -322,14 +323,15 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 },
                 options: build_options_json(args),
                 semantics: build_semantics_json(args),
-                wire: Some(build_wire_reply(
+                wire: serde_json::to_value(build_wire_reply(
                     &collect_warnings(&output),
                     &collect_required_display(&output, &engine.simplifier.context),
                     &b.to_string(),
                     None,
                     output.steps.len(),
                     &args.steps,
-                )),
+                ))
+                .ok(),
             });
         }
         _ => {
@@ -402,7 +404,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
         },
         options: build_options_json(args),
         semantics: build_semantics_json(args),
-        wire: Some(wire),
+        wire: serde_json::to_value(&wire).ok(),
     })
 }
 
@@ -542,8 +544,8 @@ fn build_options_json(args: &EvalJsonArgs) -> OptionsJson {
     }
 }
 
-fn build_budget_json(args: &EvalJsonArgs) -> BudgetJson {
-    BudgetJson {
+fn build_budget_json(args: &EvalJsonArgs) -> BudgetJsonInfo {
+    BudgetJsonInfo {
         preset: args.budget_preset.clone(),
         mode: if args.strict {
             "strict".to_string()

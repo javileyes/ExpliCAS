@@ -1322,6 +1322,78 @@ impl ErrorJsonOutput {
     }
 }
 
+/// Result of evaluating a single expression via eval-json.
+///
+/// This is the rich output format for the `eval-json` CLI subcommand.
+/// The `wire` field uses `serde_json::Value` to avoid coupling to any
+/// specific wire-protocol crate.
+#[derive(Serialize, Debug)]
+pub struct EvalJsonOutput {
+    /// Schema version for API stability (increment on breaking changes)
+    pub schema_version: u8,
+
+    pub ok: bool,
+    pub input: String,
+
+    /// Pretty-printed result (truncated if too large)
+    pub result: String,
+    pub result_truncated: bool,
+    pub result_chars: usize,
+
+    /// LaTeX formatted result for rendering
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result_latex: Option<String>,
+
+    /// Steps mode used and count
+    pub steps_mode: String,
+    pub steps_count: usize,
+
+    /// Detailed steps when steps_mode is "on"
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<StepJson>,
+
+    /// Equation solving steps when context_mode is "solve" and steps_mode is "on"
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub solve_steps: Vec<SolveStepJson>,
+
+    /// Domain warnings from simplification
+    pub warnings: Vec<WarningJson>,
+
+    /// Required conditions (implicit domain constraints from input expression)
+    /// These are NOT assumptions - they were already implied by the input.
+    pub required_conditions: Vec<RequiredConditionJson>,
+
+    /// Human-readable required conditions for simple frontends
+    pub required_display: Vec<String>,
+
+    /// Budget information
+    pub budget: BudgetJsonInfo,
+
+    /// Domain mode information
+    pub domain: DomainJson,
+
+    /// Expression statistics
+    pub stats: ExprStatsJson,
+
+    /// Hash for identity checking without printing
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hash: Option<String>,
+
+    /// Timing breakdown in microseconds
+    pub timings_us: TimingsJson,
+
+    /// Options that were used
+    pub options: OptionsJson,
+
+    /// Complete semantics configuration
+    pub semantics: SemanticsJson,
+
+    /// Unified wire output (stable messaging format).
+    /// Serialized as opaque JSON to avoid coupling to wire-protocol types.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wire: Option<serde_json::Value>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
