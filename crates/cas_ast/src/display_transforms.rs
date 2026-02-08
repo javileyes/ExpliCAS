@@ -92,10 +92,18 @@ impl DisplayTransformRegistry {
 // =============================================================================
 
 /// Renderer that applies scoped transforms during expression rendering.
+///
+/// Combines two previously independent capabilities:
+/// - **Scoped transforms** (e.g., `x^(1/2)` → `sqrt(x)` in quadratic context)
+/// - **Style preferences** (e.g., radical notation, prefer_division)
+///
+/// When no transform intercepts a node, falls back to `DisplayExprStyled`
+/// to preserve the user's notation preferences.
 pub struct ScopedRenderer<'a> {
     pub ctx: &'a Context,
     pub scopes: &'a [ScopeTag],
     active_transforms: Vec<&'a dyn DisplayTransform>,
+    style: &'a crate::root_style::StylePreferences,
 }
 
 impl<'a> ScopedRenderer<'a> {
@@ -104,12 +112,14 @@ impl<'a> ScopedRenderer<'a> {
         ctx: &'a Context,
         scopes: &'a [ScopeTag],
         registry: &'a DisplayTransformRegistry,
+        style: &'a crate::root_style::StylePreferences,
     ) -> Self {
         let active_transforms = registry.active_for(scopes);
         Self {
             ctx,
             scopes,
             active_transforms,
+            style,
         }
     }
 
@@ -123,12 +133,8 @@ impl<'a> ScopedRenderer<'a> {
             }
         }
 
-        // Fallback to standard display
-        crate::DisplayExpr {
-            context: self.ctx,
-            id,
-        }
-        .to_string()
+        // Fallback to style-aware display (preserves radical notation, prefer_division, etc.)
+        crate::display::DisplayExprStyled::new(self.ctx, id, self.style).to_string()
     }
 }
 
@@ -251,7 +257,8 @@ mod tests {
 
         let scopes = vec![ScopeTag::Rule("QuadraticFormula")];
         let registry = DisplayTransformRegistry::with_defaults();
-        let renderer = ScopedRenderer::new(&ctx, &scopes, &registry);
+        let style = crate::root_style::StylePreferences::default();
+        let renderer = ScopedRenderer::new(&ctx, &scopes, &registry, &style);
 
         let result = renderer.render(pow);
         // Should be sqrt(3) not 3^(1/2)
@@ -305,7 +312,8 @@ mod tests {
 
         // Create renderer (this should call applies() once)
         let scopes = vec![ScopeTag::Rule("Test")];
-        let renderer = ScopedRenderer::new(&ctx, &scopes, &registry);
+        let style = crate::root_style::StylePreferences::default();
+        let renderer = ScopedRenderer::new(&ctx, &scopes, &registry, &style);
 
         // Render tree with 3 nodes
         let _ = renderer.render(root);

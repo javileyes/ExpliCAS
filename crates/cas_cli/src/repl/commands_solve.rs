@@ -696,14 +696,16 @@ impl Repl {
                             // V2.9.8: Steps are now pre-cleaned by eval.rs via solve_with_display_steps
                             // No manual cleanup needed - type-safe pipeline guarantees processing
 
-                            // Prepare scoped renderer if scopes are present
+                            // Prepare scoped renderer with style preferences
                             let registry = cas_ast::display_transforms::DisplayTransformRegistry::with_defaults();
+                            let style = StylePreferences::default();
                             let has_scopes = !output.output_scopes.is_empty();
                             let renderer = if has_scopes {
                                 Some(cas_ast::display_transforms::ScopedRenderer::new(
                                     &self.core.engine.simplifier.context,
                                     &output.output_scopes,
                                     &registry,
+                                    &style,
                                 ))
                             } else {
                                 None
@@ -780,25 +782,16 @@ impl Repl {
                             EvalResult::Set(ref sols) => {
                                 // Legacy: discrete solutions as Vec<ExprId>
                                 let ctx = &self.core.engine.simplifier.context;
-                                let sol_strs: Vec<String> = if !output.output_scopes.is_empty() {
+                                let sol_strs: Vec<String> = {
                                     let registry = cas_ast::display_transforms::DisplayTransformRegistry::with_defaults();
+                                    let style = StylePreferences::default();
                                     let renderer = cas_ast::display_transforms::ScopedRenderer::new(
                                         ctx,
                                         &output.output_scopes,
                                         &registry,
+                                        &style,
                                     );
                                     sols.iter().map(|id| renderer.render(*id)).collect()
-                                } else {
-                                    // Standard display without transforms
-                                    sols.iter()
-                                        .map(|id| {
-                                            DisplayExpr {
-                                                context: ctx,
-                                                id: *id,
-                                            }
-                                            .to_string()
-                                        })
-                                        .collect()
                                 };
                                 if sol_strs.is_empty() {
                                     lines.push("Result: No solution".to_string());

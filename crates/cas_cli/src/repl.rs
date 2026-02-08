@@ -235,17 +235,12 @@ fn render_with_rule_scope(
         _ => vec![],
     };
 
-    if scopes.is_empty() {
-        // No transforms apply - use styled display with preferences
-        DisplayExprStyled::new(ctx, id, style_prefs).to_string()
-    } else {
-        // Use scoped renderer with transforms
-        // Note: ScopedRenderer has its own display logic, so we can't easily combine with style_prefs
-        // For now, use the scoped renderer directly; future improvement could merge these systems
-        let registry = cas_ast::display_transforms::DisplayTransformRegistry::with_defaults();
-        let renderer = cas_ast::display_transforms::ScopedRenderer::new(ctx, &scopes, &registry);
-        renderer.render(id)
-    }
+    // ScopedRenderer now carries style prefs — when no transforms match,
+    // it falls through to DisplayExprStyled automatically
+    let registry = cas_ast::display_transforms::DisplayTransformRegistry::with_defaults();
+    let renderer =
+        cas_ast::display_transforms::ScopedRenderer::new(ctx, &scopes, &registry, style_prefs);
+    renderer.render(id)
 }
 
 pub struct Repl {

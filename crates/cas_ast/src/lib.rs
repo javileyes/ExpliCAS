@@ -38,9 +38,9 @@ pub use latex_highlight::{
 };
 pub use latex_no_roots::LatexNoRoots;
 pub use latex_parser::parse_latex;
-pub use root_style::{
-    detect_root_style, ParseStyleSignals, RootStyle, StylePreferences, StyledExpr,
-};
+#[allow(deprecated)]
+pub use root_style::StyledExpr;
+pub use root_style::{detect_root_style, ParseStyleSignals, RootStyle, StylePreferences};
 // Span re-export (canonical source location)
 pub use span::Span;
 // Traversal re-exports (canonical implementations)

@@ -275,14 +275,20 @@ use std::fmt;
 
 /// Expression display wrapper that respects RootStyle for consistent output.
 ///
-/// This implements the "Style Sniffing" output pattern: format roots according
-/// to the user's detected preference (radical √x or exponential x^(1/2)).
+/// **Deprecated**: Use [`DisplayExprStyled`](crate::display::styled::DisplayExprStyled) instead,
+/// which supports the full `StylePreferences` (root style, prefer_division, etc.).
+/// Create via `StylePreferences::with_root_style(style)`.
+#[deprecated(
+    since = "2.16.0",
+    note = "Use DisplayExprStyled with StylePreferences::with_root_style() instead"
+)]
 pub struct StyledExpr<'a> {
     pub context: &'a Context,
     pub id: ExprId,
     pub style: RootStyle,
 }
 
+#[allow(deprecated)]
 impl<'a> StyledExpr<'a> {
     /// Create a new styled expression with given style
     pub fn new(context: &'a Context, id: ExprId, style: RootStyle) -> Self {
@@ -607,6 +613,7 @@ impl<'a> StyledExpr<'a> {
     }
 }
 
+#[allow(deprecated)]
 impl<'a> fmt::Display for StyledExpr<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.fmt_expr(f, self.id)

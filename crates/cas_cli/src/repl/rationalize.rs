@@ -53,11 +53,12 @@ impl Repl {
                         // Simplify the result
                         let (simplified, _) = self.core.engine.simplifier.simplify(rationalized);
 
-                        // Use StyledExpr with detected style for consistent output
-                        let result_disp = cas_ast::StyledExpr::new(
+                        // Use DisplayExprStyled with detected style for consistent output
+                        let style = cas_ast::StylePreferences::with_root_style(user_style);
+                        let result_disp = cas_ast::DisplayExprStyled::new(
                             &self.core.engine.simplifier.context,
                             simplified,
-                            user_style,
+                            &style,
                         );
                         reply_output(format!("Parsed: {}\nRationalized: {}", parsed_str, result_disp))
                     }
