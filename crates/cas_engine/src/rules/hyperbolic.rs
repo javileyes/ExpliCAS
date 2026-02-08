@@ -27,31 +27,40 @@ define_rule!(
     |ctx, expr| {
         let expr_data = ctx.get(expr).clone();
         if let Expr::Function(fn_id, args) = expr_data {
-            let name = ctx.sym_name(fn_id).to_string();
             if args.len() == 1 {
                 let arg = args[0];
 
-                match name.as_str() {
+                match ctx.builtin_of(fn_id) {
                     // sinh(0) = 0, tanh(0) = 0
-                    "sinh" | "tanh" => {
+                    Some(BuiltinFn::Sinh) | Some(BuiltinFn::Tanh) => {
                         if is_zero(ctx, arg) {
+                            let name = if ctx.builtin_of(fn_id) == Some(BuiltinFn::Sinh) {
+                                "sinh"
+                            } else {
+                                "tanh"
+                            };
                             return Some(Rewrite::new(ctx.num(0)).desc(format!("{}(0) = 0", name)));
                         }
                     }
                     // cosh(0) = 1
-                    "cosh" => {
+                    Some(BuiltinFn::Cosh) => {
                         if is_zero(ctx, arg) {
                             return Some(Rewrite::new(ctx.num(1)).desc("cosh(0) = 1"));
                         }
                     }
                     // asinh(0) = 0, atanh(0) = 0
-                    "asinh" | "atanh" => {
+                    Some(BuiltinFn::Asinh) | Some(BuiltinFn::Atanh) => {
                         if is_zero(ctx, arg) {
+                            let name = if ctx.builtin_of(fn_id) == Some(BuiltinFn::Asinh) {
+                                "asinh"
+                            } else {
+                                "atanh"
+                            };
                             return Some(Rewrite::new(ctx.num(0)).desc(format!("{}(0) = 0", name)));
                         }
                     }
                     // acosh(1) = 0
-                    "acosh" => {
+                    Some(BuiltinFn::Acosh) => {
                         if is_one(ctx, arg) {
                             return Some(Rewrite::new(ctx.num(0)).desc("acosh(1) = 0"));
                         }
@@ -128,32 +137,32 @@ define_rule!(
             if args.len() == 1 {
                 let arg = args[0];
                 if let Expr::Neg(inner) = ctx.get(arg) {
-                    match ctx.sym_name(*fn_id) {
+                    match ctx.builtin_of(*fn_id) {
                         // sinh(-x) = -sinh(x) (odd function)
-                        "sinh" => {
+                        Some(BuiltinFn::Sinh) => {
                             let sinh_inner = ctx.call("sinh", vec![*inner]);
                             let new_expr = ctx.add(Expr::Neg(sinh_inner));
                             return Some(Rewrite::new(new_expr).desc("sinh(-x) = -sinh(x)"));
                         }
                         // cosh(-x) = cosh(x) (even function)
-                        "cosh" => {
+                        Some(BuiltinFn::Cosh) => {
                             let new_expr = ctx.call("cosh", vec![*inner]);
                             return Some(Rewrite::new(new_expr).desc("cosh(-x) = cosh(x)"));
                         }
                         // tanh(-x) = -tanh(x) (odd function)
-                        "tanh" => {
+                        Some(BuiltinFn::Tanh) => {
                             let tanh_inner = ctx.call("tanh", vec![*inner]);
                             let new_expr = ctx.add(Expr::Neg(tanh_inner));
                             return Some(Rewrite::new(new_expr).desc("tanh(-x) = -tanh(x)"));
                         }
                         // asinh(-x) = -asinh(x) (odd function)
-                        "asinh" => {
+                        Some(BuiltinFn::Asinh) => {
                             let asinh_inner = ctx.call("asinh", vec![*inner]);
                             let new_expr = ctx.add(Expr::Neg(asinh_inner));
                             return Some(Rewrite::new(new_expr).desc("asinh(-x) = -asinh(x)"));
                         }
                         // atanh(-x) = -atanh(x) (odd function)
-                        "atanh" => {
+                        Some(BuiltinFn::Atanh) => {
                             let atanh_inner = ctx.call("atanh", vec![*inner]);
                             let new_expr = ctx.add(Expr::Neg(atanh_inner));
                             return Some(Rewrite::new(new_expr).desc("atanh(-x) = -atanh(x)"));
@@ -320,8 +329,7 @@ define_rule!(
     Some(vec!["Function"]),
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
-            if name == "sinh" && args.len() == 1 {
+            if ctx.builtin_of(*fn_id) == Some(BuiltinFn::Sinh) && args.len() == 1 {
                 // Check if arg is 2*x or x*2
                 if let Some(inner_var) = crate::helpers::extract_double_angle_arg(ctx, args[0]) {
                     // sinh(2x) → 2·sinh(x)·cosh(x)

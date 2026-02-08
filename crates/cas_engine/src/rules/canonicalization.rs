@@ -333,8 +333,7 @@ define_rule!(CanonicalizeDivRule, "Canonicalize Division", importance: crate::st
 define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
     let expr_data = ctx.get(expr).clone();
     if let Expr::Function(fn_id, args) = expr_data {
-        let name = ctx.sym_name(fn_id);
-        if name == "sqrt" {
+        if ctx.builtin_of(fn_id) == Some(cas_ast::BuiltinFn::Sqrt) {
             if args.len() == 1 {
                 let arg = args[0];
 
@@ -373,7 +372,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step
                 let new_expr = ctx.add(Expr::Pow(args[0], exp));
                 return Some(Rewrite::new(new_expr).desc("sqrt(x, n) = x^(1/n)"));
             }
-        } else if name == "root" && args.len() == 2 {
+        } else if ctx.builtin_of(fn_id) == Some(cas_ast::BuiltinFn::Root) && args.len() == 2 {
             // root(x, n) -> x^(1/n)
             // V2.14.45: Only convert if n is numeric (known index)
             let index = args[1];
@@ -726,8 +725,7 @@ impl crate::rule::Rule for ExpToEPowRule {
 
         let expr_data = ctx.get(expr).clone();
         if let Expr::Function(fn_id, args) = expr_data {
-            let name = ctx.sym_name(fn_id);
-            if name == "exp" && args.len() == 1 {
+            if ctx.builtin_of(fn_id) == Some(cas_ast::BuiltinFn::Exp) && args.len() == 1 {
                 let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
                 let new_expr = ctx.add(Expr::Pow(e, args[0]));
                 return Some(Rewrite::new(new_expr).desc("exp(x) = e^x"));

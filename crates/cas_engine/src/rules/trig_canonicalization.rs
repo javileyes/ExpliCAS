@@ -2,7 +2,7 @@ use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::helpers::is_one;
 use crate::rule::Rewrite;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 
 // ==================== Sophisticated Context-Aware Canonicalization ====================
 // STRATEGY: Only convert when it demonstrably helps simplification
@@ -23,12 +23,34 @@ fn is_two(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
-// Check if function name is a reciprocal trig function
+fn is_reciprocal_trig_builtin(b: BuiltinFn) -> bool {
+    matches!(
+        b,
+        BuiltinFn::Tan | BuiltinFn::Cot | BuiltinFn::Sec | BuiltinFn::Csc
+    )
+}
+
+// String version kept for HashSet-based analysis
 fn is_reciprocal_trig_name(name: &str) -> bool {
     matches!(name, "tan" | "cot" | "sec" | "csc")
 }
 
-// Check if function name is an inverse trig function
+fn is_inverse_trig_builtin(b: BuiltinFn) -> bool {
+    matches!(
+        b,
+        BuiltinFn::Asin
+            | BuiltinFn::Acos
+            | BuiltinFn::Atan
+            | BuiltinFn::Acot
+            | BuiltinFn::Asec
+            | BuiltinFn::Acsc
+            | BuiltinFn::Arcsin
+            | BuiltinFn::Arccos
+            | BuiltinFn::Arctan
+    )
+}
+
+// String version kept for HashSet-based analysis
 fn is_inverse_trig_name(name: &str) -> bool {
     matches!(
         name,
@@ -54,8 +76,14 @@ fn is_trig_of_inverse_trig(ctx: &Context, expr: ExprId) -> bool {
             let inner = outer_args[0];
             match ctx.get(inner) {
                 Expr::Function(inner_fn_id, _) => {
-                    is_reciprocal_trig_name(ctx.sym_name(*outer_fn_id))
-                        && is_inverse_trig_name(ctx.sym_name(*inner_fn_id))
+                    let outer_b = ctx.builtin_of(*outer_fn_id);
+                    let inner_b = ctx.builtin_of(*inner_fn_id);
+                    match (outer_b, inner_b) {
+                        (Some(o), Some(i)) => {
+                            is_reciprocal_trig_builtin(o) && is_inverse_trig_builtin(i)
+                        }
+                        _ => false,
+                    }
                 }
                 _ => false,
             }
@@ -76,26 +104,23 @@ define_rule!(
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id).to_string();
             let args_clone = args.clone();
 
-            let canonical_name = match name.as_str() {
+            let canonical_name = match ctx.builtin_of(*fn_id) {
                 // Short forms → Canonical long forms
-                "asin" => Some("arcsin"),
-                "acos" => Some("arccos"),
-                "atan" => Some("arctan"),
-                "asec" => Some("arcsec"),
-                "acsc" => Some("arccsc"),
-                "acot" => Some("arccot"),
+                Some(BuiltinFn::Asin) => Some("arcsin"),
+                Some(BuiltinFn::Acos) => Some("arccos"),
+                Some(BuiltinFn::Atan) => Some("arctan"),
+                Some(BuiltinFn::Asec) => Some("arcsec"),
+                Some(BuiltinFn::Acsc) => Some("arccsc"),
+                Some(BuiltinFn::Acot) => Some("arccot"),
 
-                // Already canonical - no change needed
-                "arcsin" | "arccos" | "arctan" | "arcsec" | "arccsc" | "arccot" => None,
-
-                // Not an inverse trig function - skip
+                // Already canonical or not an inverse trig function - no change
                 _ => None,
             };
 
             if let Some(canonical) = canonical_name {
+                let name = ctx.sym_name(*fn_id).to_string();
                 let new_fn = ctx.call(canonical, args_clone);
                 return Some(Rewrite::new(new_fn).desc(format!("{} → {}", name, canonical)));
             }
@@ -112,10 +137,19 @@ use std::collections::HashSet;
 fn collect_trig_recursive(ctx: &Context, expr: ExprId, funcs: &mut HashSet<String>) {
     match ctx.get(expr) {
         Expr::Function(fn_id, args) => {
-            let name = ctx.sym_name(*fn_id);
-            // Add if it's a trig function
-            if matches!(name, "sin" | "cos" | "tan" | "cot" | "sec" | "csc") {
-                funcs.insert(name.to_string());
+            // Add if it's a trig function (use builtin_of for O(1))
+            if let Some(b) = ctx.builtin_of(*fn_id) {
+                if matches!(
+                    b,
+                    BuiltinFn::Sin
+                        | BuiltinFn::Cos
+                        | BuiltinFn::Tan
+                        | BuiltinFn::Cot
+                        | BuiltinFn::Sec
+                        | BuiltinFn::Csc
+                ) {
+                    funcs.insert(b.name().to_string());
+                }
             }
             // Recurse into arguments
             for &arg in args {
@@ -163,10 +197,19 @@ fn is_any_trig_function_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
             if is_two(ctx, *exp) {
                 match ctx.get(*base) {
                     Expr::Function(fn_id, args) if args.len() == 1 => {
-                        let name = ctx.sym_name(*fn_id);
                         // Check if it's a trig function (sin, cos, tan, cot, sec, csc)
-                        if matches!(name, "sin" | "cos" | "tan" | "cot" | "sec" | "csc") {
-                            return Some(args[0]);
+                        if let Some(b) = ctx.builtin_of(*fn_id) {
+                            if matches!(
+                                b,
+                                BuiltinFn::Sin
+                                    | BuiltinFn::Cos
+                                    | BuiltinFn::Tan
+                                    | BuiltinFn::Cot
+                                    | BuiltinFn::Sec
+                                    | BuiltinFn::Csc
+                            ) {
+                                return Some(args[0]);
+                            }
                         }
                     }
                     _ => {}
@@ -231,26 +274,26 @@ fn convert_trig_to_sincos(ctx: &mut Context, expr: ExprId) -> ExprId {
             let arg = args[0];
             let converted_arg = convert_trig_to_sincos(ctx, arg);
 
-            match ctx.sym_name(fn_id) {
-                "tan" => {
+            match ctx.builtin_of(fn_id) {
+                Some(BuiltinFn::Tan) => {
                     // tan(x) → sin(x)/cos(x)
                     let sin_x = ctx.call("sin", vec![converted_arg]);
                     let cos_x = ctx.call("cos", vec![converted_arg]);
                     ctx.add(Expr::Div(sin_x, cos_x))
                 }
-                "cot" => {
+                Some(BuiltinFn::Cot) => {
                     // cot(x) → cos(x)/sin(x)
                     let sin_x = ctx.call("sin", vec![converted_arg]);
                     let cos_x = ctx.call("cos", vec![converted_arg]);
                     ctx.add(Expr::Div(cos_x, sin_x))
                 }
-                "sec" => {
+                Some(BuiltinFn::Sec) => {
                     // sec(x) → 1/cos(x)
                     let one = ctx.num(1);
                     let cos_x = ctx.call("cos", vec![converted_arg]);
                     ctx.add(Expr::Div(one, cos_x))
                 }
-                "csc" => {
+                Some(BuiltinFn::Csc) => {
                     // csc(x) → 1/sin(x)
                     let one = ctx.num(1);
                     let sin_x = ctx.call("sin", vec![converted_arg]);
