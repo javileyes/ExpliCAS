@@ -3,7 +3,7 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::smart_mul;
-use crate::rules::trigonometry::{evaluation, pythagorean};
+use crate::rules::trigonometry::{evaluation, pythagorean, pythagorean_secondary};
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use num_traits::One;
 use std::cmp::Ordering;
@@ -318,10 +318,10 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(pythagorean::RecognizeSecSquaredRule));
     simplifier.add_rule(Box::new(pythagorean::RecognizeCscSquaredRule));
     // Expansion: sec(x) → 1/cos(x), csc(x) → 1/sin(x) for canonical unification
-    simplifier.add_rule(Box::new(pythagorean::SecToRecipCosRule));
-    simplifier.add_rule(Box::new(pythagorean::CscToRecipSinRule));
+    simplifier.add_rule(Box::new(pythagorean_secondary::SecToRecipCosRule));
+    simplifier.add_rule(Box::new(pythagorean_secondary::CscToRecipSinRule));
     // Expansion: cot(x) → cos(x)/sin(x) for canonical unification
-    simplifier.add_rule(Box::new(pythagorean::CotToCosSinRule));
+    simplifier.add_rule(Box::new(pythagorean_secondary::CotToCosSinRule));
 
     simplifier.add_rule(Box::new(AngleConsistencyRule));
 
@@ -332,7 +332,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SinSupplementaryAngleRule));
 
     // Fourth power difference: sin⁴(x) - cos⁴(x) → sin²(x) - cos²(x)
-    simplifier.add_rule(Box::new(pythagorean::TrigEvenPowerDifferenceRule));
+    simplifier.add_rule(Box::new(pythagorean_secondary::TrigEvenPowerDifferenceRule));
 
     // Cotangent half-angle difference: cot(u/2) - cot(u) = 1/sin(u)
     simplifier.add_rule(Box::new(CotHalfAngleDifferenceRule));

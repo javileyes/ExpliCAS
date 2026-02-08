@@ -31,10 +31,14 @@ mod cancel_rules;
 
 // Re-export rules from cancel_rules
 pub use cancel_rules::{
-    CancelCommonFactorsRule, CancelNthRootBinomialFactorRule, GeneralizedRationalizationRule,
-    RationalizeDenominatorRule, RationalizeNthRootBinomialRule, RationalizeProductDenominatorRule,
-    SqrtConjugateCollapseRule,
+    CancelNthRootBinomialFactorRule, GeneralizedRationalizationRule, RationalizeDenominatorRule,
+    RationalizeNthRootBinomialRule, SqrtConjugateCollapseRule,
 };
+
+// Factor-based cancellation rules (extracted from cancel_rules)
+mod cancel_rules_factor;
+
+pub use cancel_rules_factor::{CancelCommonFactorsRule, RationalizeProductDenominatorRule};
 
 // Properly modularized submodules (Phases 2-4)
 mod more_rules;

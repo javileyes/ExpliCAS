@@ -19,6 +19,9 @@ pub use roots::*;
 pub mod root_denesting;
 pub use root_denesting::*;
 
+pub mod root_denesting_advanced;
+pub use root_denesting_advanced::*;
+
 pub mod poly_gcd;
 pub use poly_gcd::*;
 
