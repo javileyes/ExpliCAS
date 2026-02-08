@@ -50,6 +50,42 @@ impl<'a> LocalSimplificationTransformer<'a> {
         ctx
     }
 
+    /// Returns `true` if the rule should be skipped due to disabled-list,
+    /// phase mismatch, or (optionally) solve-safety constraints.
+    ///
+    /// `check_solve_safety`: `true` for specific rules, `false` for global rules
+    /// (the original code only applied solve-safety filtering to specific rules).
+    fn should_skip_rule(&mut self, rule: &dyn crate::rule::Rule, check_solve_safety: bool) -> bool {
+        if self.disabled_rules.contains(rule.name()) {
+            self.profiler
+                .record_rejected_disabled(self.current_phase, rule.name());
+            return true;
+        }
+        let phase_mask = self.current_phase.mask();
+        if !rule.allowed_phases().contains(phase_mask) {
+            self.profiler
+                .record_rejected_phase(self.current_phase, rule.name());
+            return true;
+        }
+        if check_solve_safety {
+            match self.simplify_purpose {
+                crate::solve_safety::SimplifyPurpose::Eval => {}
+                crate::solve_safety::SimplifyPurpose::SolvePrepass => {
+                    if !rule.solve_safety().safe_for_prepass() {
+                        return true;
+                    }
+                }
+                crate::solve_safety::SimplifyPurpose::SolveTactic => {
+                    let domain_mode = self.initial_parent_ctx.domain_mode();
+                    if !rule.solve_safety().safe_for_tactic(domain_mode) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
     pub(super) fn apply_rules(&mut self, mut expr_id: ExprId) -> ExprId {
         // Note: This loop pattern with early returns is intentional for structured exit points
         #[allow(clippy::never_loop)]
@@ -65,37 +101,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
             // Try specific rules
             if let Some(specific_rules) = self.rules.get(variant) {
                 for rule in specific_rules {
-                    if self.disabled_rules.contains(rule.name()) {
-                        self.profiler
-                            .record_rejected_disabled(self.current_phase, rule.name());
+                    if self.should_skip_rule(rule.as_ref(), true) {
                         continue;
-                    }
-                    // Phase ownership: only run rule if allowed in current phase
-                    let phase_mask = self.current_phase.mask();
-                    if !rule.allowed_phases().contains(phase_mask) {
-                        self.profiler
-                            .record_rejected_phase(self.current_phase, rule.name());
-                        continue;
-                    }
-                    // SolveSafety filter: in SolvePrepass, only allow Always-safe rules
-                    // In SolveTactic, use domain_mode to determine if conditional rules are allowed
-                    match self.simplify_purpose {
-                        crate::solve_safety::SimplifyPurpose::Eval => {
-                            // Eval: all rules allowed (default behavior)
-                        }
-                        crate::solve_safety::SimplifyPurpose::SolvePrepass => {
-                            // Pre-pass: only SolveSafety::Always rules
-                            if !rule.solve_safety().safe_for_prepass() {
-                                continue;
-                            }
-                        }
-                        crate::solve_safety::SimplifyPurpose::SolveTactic => {
-                            // Tactic: check against domain_mode
-                            let domain_mode = self.initial_parent_ctx.domain_mode();
-                            if !rule.solve_safety().safe_for_tactic(domain_mode) {
-                                continue;
-                            }
-                        }
                     }
 
                     if let Some(mut rewrite) = rule.apply(self.context, expr_id, &parent_ctx) {
@@ -273,14 +280,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
             // Try global rules
             for rule in self.global_rules {
-                if self.disabled_rules.contains(rule.name()) {
-                    continue;
-                }
-                // Phase ownership: only run rule if allowed in current phase
-                let phase_mask = self.current_phase.mask();
-                if !rule.allowed_phases().contains(phase_mask) {
-                    self.profiler
-                        .record_rejected_phase(self.current_phase, rule.name());
+                if self.should_skip_rule(rule.as_ref(), false) {
                     continue;
                 }
 
