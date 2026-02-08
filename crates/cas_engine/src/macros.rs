@@ -438,4 +438,221 @@ macro_rules! define_rule {
             }
         }
     };
+
+    // =========================================================================
+    // PRIORITY FORMS
+    // =========================================================================
+
+    // Simple 2-arg form with priority only (no targets, no phase)
+    (
+        $(#[$meta:meta])*
+        $struct_name:ident,
+        $name_str:expr,
+        priority: $priority:expr,
+        | $ctx:ident, $arg:ident | $body:block
+    ) => {
+        $(#[$meta])*
+        pub struct $struct_name;
+
+        impl $crate::rule::SimpleRule for $struct_name {
+            fn name(&self) -> &str {
+                $name_str
+            }
+
+            fn apply_simple(&self, $ctx: &mut cas_ast::Context, $arg: cas_ast::ExprId) -> Option<$crate::rule::Rewrite> {
+                $body
+            }
+
+            fn priority(&self) -> i32 {
+                $priority
+            }
+        }
+    };
+
+    // Simple 2-arg form with priority + importance (no targets, no phase)
+    (
+        $(#[$meta:meta])*
+        $struct_name:ident,
+        $name_str:expr,
+        priority: $priority:expr,
+        importance: $importance:expr,
+        | $ctx:ident, $arg:ident | $body:block
+    ) => {
+        $(#[$meta])*
+        pub struct $struct_name;
+
+        impl $crate::rule::SimpleRule for $struct_name {
+            fn name(&self) -> &str {
+                $name_str
+            }
+
+            fn apply_simple(&self, $ctx: &mut cas_ast::Context, $arg: cas_ast::ExprId) -> Option<$crate::rule::Rewrite> {
+                $body
+            }
+
+            fn priority(&self) -> i32 {
+                $priority
+            }
+
+            fn importance(&self) -> $crate::step::ImportanceLevel {
+                $importance
+            }
+        }
+    };
+
+    // Domain-aware 3-arg form with priority only (no targets, no phase)
+    (
+        $(#[$meta:meta])*
+        $struct_name:ident,
+        $name_str:expr,
+        priority: $priority:expr,
+        | $ctx:ident, $arg:ident, $parent_ctx:ident | $body:block
+    ) => {
+        $(#[$meta])*
+        pub struct $struct_name;
+
+        impl $crate::rule::SimpleRule for $struct_name {
+            fn name(&self) -> &str {
+                $name_str
+            }
+
+            fn apply_simple(&self, _ctx: &mut cas_ast::Context, _expr: cas_ast::ExprId) -> Option<$crate::rule::Rewrite> {
+                unreachable!("This rule uses apply_with_context")
+            }
+
+            fn apply_with_context(
+                &self,
+                $ctx: &mut cas_ast::Context,
+                $arg: cas_ast::ExprId,
+                $parent_ctx: &$crate::parent_context::ParentContext,
+            ) -> Option<$crate::rule::Rewrite> {
+                $body
+            }
+
+            fn priority(&self) -> i32 {
+                $priority
+            }
+        }
+    };
+
+    // Domain-aware 3-arg form with priority + importance (no targets, no phase)
+    (
+        $(#[$meta:meta])*
+        $struct_name:ident,
+        $name_str:expr,
+        priority: $priority:expr,
+        importance: $importance:expr,
+        | $ctx:ident, $arg:ident, $parent_ctx:ident | $body:block
+    ) => {
+        $(#[$meta])*
+        pub struct $struct_name;
+
+        impl $crate::rule::SimpleRule for $struct_name {
+            fn name(&self) -> &str {
+                $name_str
+            }
+
+            fn apply_simple(&self, _ctx: &mut cas_ast::Context, _expr: cas_ast::ExprId) -> Option<$crate::rule::Rewrite> {
+                unreachable!("This rule uses apply_with_context")
+            }
+
+            fn apply_with_context(
+                &self,
+                $ctx: &mut cas_ast::Context,
+                $arg: cas_ast::ExprId,
+                $parent_ctx: &$crate::parent_context::ParentContext,
+            ) -> Option<$crate::rule::Rewrite> {
+                $body
+            }
+
+            fn priority(&self) -> i32 {
+                $priority
+            }
+
+            fn importance(&self) -> $crate::step::ImportanceLevel {
+                $importance
+            }
+        }
+    };
+
+    // Full form with targets, phase, AND priority (2-arg)
+    (
+        $(#[$meta:meta])*
+        $struct_name:ident,
+        $name_str:expr,
+        $targets:expr,
+        $phase:expr,
+        priority: $priority:expr,
+        | $ctx:ident, $arg:ident | $body:block
+    ) => {
+        $(#[$meta])*
+        pub struct $struct_name;
+
+        impl $crate::rule::SimpleRule for $struct_name {
+            fn name(&self) -> &str {
+                $name_str
+            }
+
+            fn apply_simple(&self, $ctx: &mut cas_ast::Context, $arg: cas_ast::ExprId) -> Option<$crate::rule::Rewrite> {
+                $body
+            }
+
+            fn target_types(&self) -> Option<Vec<&str>> {
+                $targets
+            }
+
+            fn allowed_phases(&self) -> $crate::phase::PhaseMask {
+                $phase
+            }
+
+            fn priority(&self) -> i32 {
+                $priority
+            }
+        }
+    };
+
+    // Full form with targets, phase, AND priority (3-arg, domain-aware)
+    (
+        $(#[$meta:meta])*
+        $struct_name:ident,
+        $name_str:expr,
+        $targets:expr,
+        $phase:expr,
+        priority: $priority:expr,
+        | $ctx:ident, $arg:ident, $parent_ctx:ident | $body:block
+    ) => {
+        $(#[$meta])*
+        pub struct $struct_name;
+
+        impl $crate::rule::SimpleRule for $struct_name {
+            fn name(&self) -> &str {
+                $name_str
+            }
+
+            fn apply_simple(&self, _ctx: &mut cas_ast::Context, _expr: cas_ast::ExprId) -> Option<$crate::rule::Rewrite> {
+                unreachable!("This rule uses apply_with_context")
+            }
+
+            fn apply_with_context(
+                &self,
+                $ctx: &mut cas_ast::Context,
+                $arg: cas_ast::ExprId,
+                $parent_ctx: &$crate::parent_context::ParentContext,
+            ) -> Option<$crate::rule::Rewrite> {
+                $body
+            }
+
+            fn target_types(&self) -> Option<Vec<&str>> {
+                $targets
+            }
+
+            fn allowed_phases(&self) -> $crate::phase::PhaseMask {
+                $phase
+            }
+
+            fn priority(&self) -> i32 {
+                $priority
+            }
+        }
+    };
 }

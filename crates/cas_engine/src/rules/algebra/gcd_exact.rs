@@ -3,12 +3,13 @@
 //! `poly_gcd_exact(a, b)` computes the actual polynomial GCD by converting
 //! expressions to `MultiPoly` and using the Layer 1/2/2.5 pipeline.
 
+use crate::define_rule;
 use crate::multipoly::{
     gcd_multivar_layer2, gcd_multivar_layer25, multipoly_from_expr, multipoly_to_expr, GcdBudget,
     Layer25Budget, MultiPoly, PolyBudget,
 };
 use crate::phase::PhaseMask;
-use crate::rule::{Rewrite, Rule};
+use crate::rule::Rewrite;
 use cas_ast::{Context, DisplayExpr, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
@@ -402,33 +403,15 @@ fn gcd_rational(a: &BigRational, b: &BigRational) -> BigRational {
 // Rule definition
 // =============================================================================
 
-/// Rule for poly_gcd_exact(a, b) function.
-/// Computes algebraic GCD of two polynomial expressions over ℚ.
-pub struct PolyGcdExactRule;
-
-impl Rule for PolyGcdExactRule {
-    fn name(&self) -> &str {
-        "Polynomial GCD Exact"
-    }
-
-    fn allowed_phases(&self) -> PhaseMask {
-        PhaseMask::CORE | PhaseMask::TRANSFORM
-    }
-
-    fn priority(&self) -> i32 {
-        200 // High priority to evaluate early
-    }
-
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Function"])
-    }
-
-    fn apply(
-        &self,
-        ctx: &mut Context,
-        expr: ExprId,
-        _parent_ctx: &crate::parent_context::ParentContext,
-    ) -> Option<Rewrite> {
+// Rule for poly_gcd_exact(a, b) function.
+// Computes algebraic GCD of two polynomial expressions over ℚ.
+define_rule!(
+    PolyGcdExactRule,
+    "Polynomial GCD Exact",
+    Some(vec!["Function"]),
+    PhaseMask::CORE | PhaseMask::TRANSFORM,
+    priority: 200, // High priority to evaluate early
+    |ctx, expr| {
         let fn_expr = ctx.get(expr).clone();
 
         if let Expr::Function(fn_id, args) = fn_expr {
@@ -462,7 +445,7 @@ impl Rule for PolyGcdExactRule {
 
         None
     }
-}
+);
 
 #[cfg(test)]
 mod tests {

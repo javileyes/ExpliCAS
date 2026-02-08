@@ -454,23 +454,11 @@ mod tests {
 // Domain Policy: Same as AddInverseRule - check for undefined subexpressions.
 // Uses compare_expr for structural equality (handles tan(3x) == tan(3·x)).
 // =============================================================================
-pub struct SubSelfToZeroRule;
-
-impl crate::rule::SimpleRule for SubSelfToZeroRule {
-    fn name(&self) -> &str {
-        "Subtraction Self-Cancel"
-    }
-
-    fn apply_simple(&self, _ctx: &mut cas_ast::Context, _expr: cas_ast::ExprId) -> Option<Rewrite> {
-        unreachable!("This rule uses apply_with_context")
-    }
-
-    fn apply_with_context(
-        &self,
-        ctx: &mut cas_ast::Context,
-        expr: cas_ast::ExprId,
-        parent_ctx: &crate::parent_context::ParentContext,
-    ) -> Option<Rewrite> {
+define_rule!(
+    SubSelfToZeroRule,
+    "Subtraction Self-Cancel",
+    priority: 500, // High priority: before any expansion rules
+    |ctx, expr, parent_ctx| {
         use crate::semantic_equality::SemanticEqualityChecker;
 
         // Helper: check if expression contains any Div with non-literal denominator
@@ -499,15 +487,7 @@ impl crate::rule::SimpleRule for SubSelfToZeroRule {
         }
         None
     }
-
-    fn priority(&self) -> i32 {
-        500 // High priority: before any expansion rules
-    }
-
-    fn importance(&self) -> crate::step::ImportanceLevel {
-        crate::step::ImportanceLevel::Medium
-    }
-}
+);
 
 // AddInverseRule: a + (-a) = 0
 // Domain Mode Policy: Like other cancellation rules, we must respect domain_mode

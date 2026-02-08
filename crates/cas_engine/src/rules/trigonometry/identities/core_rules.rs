@@ -24,23 +24,12 @@ use super::trig_table::{eval_inv_trig_special, eval_trig_special, InvTrigFn, Tri
 //
 // Priority: 100 (higher than most rules to ensure pre-order evaluation)
 
-pub struct SinCosIntegerPiRule;
-
-impl crate::rule::Rule for SinCosIntegerPiRule {
-    fn name(&self) -> &str {
-        "Evaluate Trig at Integer Multiple of π"
-    }
-
-    fn priority(&self) -> i32 {
-        100 // Run before expansion rules
-    }
-
-    fn apply(
-        &self,
-        ctx: &mut cas_ast::Context,
-        expr: ExprId,
-        _parent_ctx: &crate::parent_context::ParentContext,
-    ) -> Option<crate::rule::Rewrite> {
+define_rule!(
+    SinCosIntegerPiRule,
+    "Evaluate Trig at Integer Multiple of π",
+    priority: 100, // Run before expansion rules
+    importance: crate::step::ImportanceLevel::High,
+    |ctx, expr| {
         use crate::helpers::extract_rational_pi_multiple;
 
         let (fn_id, args) = match ctx.get(expr) {
@@ -86,15 +75,7 @@ impl crate::rule::Rule for SinCosIntegerPiRule {
 
         None
     }
-
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Function"])
-    }
-
-    fn importance(&self) -> crate::step::ImportanceLevel {
-        crate::step::ImportanceLevel::High
-    }
-}
+);
 
 // =============================================================================
 // TrigOddEvenParityRule: sin(-u) = -sin(u), cos(-u) = cos(u), tan(-u) = -tan(u)

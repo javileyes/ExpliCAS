@@ -2,13 +2,14 @@
 //!
 //! Exposes Zippel mod-p GCD to REPL for fast polynomial verification.
 
+use crate::define_rule;
 use crate::gcd_zippel_modp::{gcd_zippel_modp, ZippelBudget, ZippelPreset};
 use crate::phase::PhaseMask;
 use crate::poly_modp_conv::{
     expr_to_poly_modp, PolyConvError, PolyModpBudget, VarTable,
     DEFAULT_PRIME as INTERNAL_DEFAULT_PRIME,
 };
-use crate::rule::{Rewrite, Rule};
+use crate::rule::Rewrite;
 use cas_ast::{Context, DisplayExpr, Expr, ExprId};
 
 /// Re-export DEFAULT_PRIME for use by other modules
@@ -384,33 +385,15 @@ fn eager_eval_recursive(ctx: &mut Context, expr: ExprId, steps: &mut Vec<crate::
     }
 }
 
-/// Rule for poly_gcd_modp(a, b [, p]) function.
-/// Computes Zippel GCD of two polynomial expressions mod p.
-pub struct PolyGcdModpRule;
-
-impl Rule for PolyGcdModpRule {
-    fn name(&self) -> &str {
-        "Polynomial GCD mod p"
-    }
-
-    fn allowed_phases(&self) -> PhaseMask {
-        PhaseMask::CORE | PhaseMask::TRANSFORM
-    }
-
-    fn priority(&self) -> i32 {
-        200 // High priority to evaluate early
-    }
-
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Function"])
-    }
-
-    fn apply(
-        &self,
-        ctx: &mut Context,
-        expr: ExprId,
-        _parent_ctx: &crate::parent_context::ParentContext,
-    ) -> Option<Rewrite> {
+// Rule for poly_gcd_modp(a, b [, p]) function.
+// Computes Zippel GCD of two polynomial expressions mod p.
+define_rule!(
+    PolyGcdModpRule,
+    "Polynomial GCD mod p",
+    Some(vec!["Function"]),
+    PhaseMask::CORE | PhaseMask::TRANSFORM,
+    priority: 200, // High priority to evaluate early
+    |ctx, expr| {
         let fn_expr = ctx.get(expr).clone();
 
         if let Expr::Function(fn_id, args) = fn_expr {
@@ -492,35 +475,17 @@ impl Rule for PolyGcdModpRule {
 
         None
     }
-}
+);
 
-/// Rule for poly_eq_modp(a, b [, p]) function.
-/// Returns 1 if polynomials are equal mod p, 0 otherwise.
-pub struct PolyEqModpRule;
-
-impl Rule for PolyEqModpRule {
-    fn name(&self) -> &str {
-        "Polynomial equality mod p"
-    }
-
-    fn allowed_phases(&self) -> PhaseMask {
-        PhaseMask::CORE | PhaseMask::TRANSFORM
-    }
-
-    fn priority(&self) -> i32 {
-        200
-    }
-
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Function"])
-    }
-
-    fn apply(
-        &self,
-        ctx: &mut Context,
-        expr: ExprId,
-        _parent_ctx: &crate::parent_context::ParentContext,
-    ) -> Option<Rewrite> {
+// Rule for poly_eq_modp(a, b [, p]) function.
+// Returns 1 if polynomials are equal mod p, 0 otherwise.
+define_rule!(
+    PolyEqModpRule,
+    "Polynomial equality mod p",
+    Some(vec!["Function"]),
+    PhaseMask::CORE | PhaseMask::TRANSFORM,
+    priority: 200,
+    |ctx, expr| {
         let fn_expr = ctx.get(expr).clone();
 
         if let Expr::Function(fn_id, args) = fn_expr {
@@ -566,7 +531,7 @@ impl Rule for PolyEqModpRule {
 
         None
     }
-}
+);
 
 /// Extract prime from expression (must be integer)
 fn extract_prime(ctx: &Context, expr: ExprId) -> Option<u64> {
