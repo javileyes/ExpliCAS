@@ -21,8 +21,8 @@ impl crate::rule::Rule for TanTripleProductRule {
         "Triple Tangent Product (π/3)"
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Mul"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::MUL)
     }
 
     fn allowed_phases(&self) -> crate::phase::PhaseMask {
@@ -491,8 +491,8 @@ impl crate::rule::Rule for TanToSinCosRule {
         None
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Function"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::FUNCTION)
     }
 
     fn allowed_phases(&self) -> crate::phase::PhaseMask {
@@ -594,8 +594,8 @@ impl crate::rule::Rule for TrigQuotientRule {
         None
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Div"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::DIV)
     }
 
     fn allowed_phases(&self) -> crate::phase::PhaseMask {

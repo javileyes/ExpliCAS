@@ -133,8 +133,8 @@ impl crate::rule::Rule for AbsPositiveSimplifyRule {
         }
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Function"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::FUNCTION)
     }
 
     // V2.14.20: Run in POST phase only so |a| created by LogPowerRule exists first
@@ -229,8 +229,8 @@ impl crate::rule::Rule for AbsNonNegativeSimplifyRule {
         }
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Function"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::FUNCTION)
     }
 
     // Run in POST phase only, after abs values from other rules exist
@@ -296,8 +296,8 @@ impl crate::rule::Rule for AbsSquaredRule {
         None
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Pow"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::POW)
     }
 
     fn allowed_phases(&self) -> PhaseMask {
@@ -359,8 +359,8 @@ define_rule!(
 define_rule!(
     SimplifySqrtOddPowerRule,
     "Simplify Odd Half-Integer Power",
-    Some(vec!["Pow"]), // Only match Pow expressions
-    PhaseMask::POST,   // Run in POST phase after canonicalization is done
+    Some(crate::target_kind::TargetKindSet::POW), // Only match Pow expressions
+    PhaseMask::POST, // Run in POST phase after canonicalization is done
     |ctx, expr| {
         use num_traits::ToPrimitive;
 
@@ -490,8 +490,8 @@ impl crate::rule::Rule for SymbolicRootCancelRule {
         )
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Function"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::FUNCTION)
     }
 
     fn importance(&self) -> crate::step::ImportanceLevel {
@@ -583,7 +583,7 @@ mod tests {
 define_rule!(
     EvaluateMetaFunctionsRule,
     "Evaluate Meta Functions",
-    Some(vec!["Function"]),
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             let (fn_id, args) = (*fn_id, args.clone());
@@ -670,7 +670,7 @@ define_rule!(AbsOfEvenPowerRule, "Abs Of Even Power", |ctx, expr| {
 define_rule!(
     AbsProductRule,
     "Abs Product",
-    Some(vec!["Mul"]),
+    Some(crate::target_kind::TargetKindSet::MUL),
     PhaseMask::CORE | PhaseMask::TRANSFORM,
     |ctx, expr| {
         use crate::build::mul2_raw;
@@ -695,7 +695,7 @@ define_rule!(
 define_rule!(
     AbsQuotientRule,
     "Abs Quotient",
-    Some(vec!["Div"]),
+    Some(crate::target_kind::TargetKindSet::DIV),
     PhaseMask::CORE | PhaseMask::TRANSFORM,
     |ctx, expr| {
         // Match Div(abs(a), abs(b))

@@ -310,8 +310,8 @@ impl crate::rule::Rule for HeuristicPolyNormalizeAddRule {
         PhaseMask::TRANSFORM
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Add", "Sub"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::ADD_SUB)
     }
 
     fn apply(
@@ -405,8 +405,8 @@ impl crate::rule::Rule for ExpandSmallBinomialPowRule {
         PhaseMask::TRANSFORM
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Pow"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::POW)
     }
 
     fn apply(

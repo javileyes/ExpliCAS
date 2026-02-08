@@ -160,8 +160,8 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
         Some(rewrite)
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Mul"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::MUL)
     }
 
     fn importance(&self) -> crate::step::ImportanceLevel {

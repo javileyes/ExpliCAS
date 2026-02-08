@@ -50,7 +50,7 @@ enum BinaryOp {
 pub(super) struct LocalSimplificationTransformer<'a> {
     // ── Core context (borrowed from Engine) ──────────────────────────────
     pub(super) context: &'a mut Context,
-    pub(super) rules: &'a HashMap<String, Vec<Arc<dyn Rule>>>,
+    pub(super) rules: &'a HashMap<crate::target_kind::TargetKind, Vec<Arc<dyn Rule>>>,
     pub(super) global_rules: &'a Vec<Arc<dyn Rule>>,
     pub(super) disabled_rules: &'a HashSet<String>,
 

@@ -107,8 +107,8 @@ impl crate::rule::Rule for TrigSumToProductContractionRule {
         Some(Rewrite::new(result).desc("Sum-to-product: sin/cos sum → product form"))
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Add", "Sub"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::ADD_SUB)
     }
 
     fn importance(&self) -> crate::step::ImportanceLevel {

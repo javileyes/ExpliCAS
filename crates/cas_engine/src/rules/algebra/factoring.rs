@@ -52,7 +52,7 @@ define_rule!(
 define_rule!(
     FactorRule,
     "Factor Polynomial",
-    Some(vec!["Function"]), // Target Function expressions specifically
+    Some(crate::target_kind::TargetKindSet::FUNCTION), // Target Function expressions specifically
     PhaseMask::CORE | PhaseMask::POST,
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {

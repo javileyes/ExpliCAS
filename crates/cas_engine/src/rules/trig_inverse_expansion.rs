@@ -207,7 +207,7 @@ const EXPANSIONS: &[(&str, &[&str], Transform, &str)] = &[
 define_rule!(
     TrigInverseExpansionRule,
     "Trig of Inverse Trig Expansion",
-    Some(vec!["Function"]),
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
         crate::assumptions::ConditionClass::Analytic
     ),

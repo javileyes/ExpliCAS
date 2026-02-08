@@ -363,8 +363,8 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
         None
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Function"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::FUNCTION)
     }
 }
 
@@ -374,7 +374,7 @@ impl crate::rule::Rule for InverseTrigCompositionRule {
 define_rule!(
     InverseTrigSumRule,
     "Inverse Trig Sum Identity",
-    Some(vec!["Add"]),
+    Some(crate::target_kind::TargetKindSet::ADD),
     |ctx, expr| {
         // Flatten Add tree to get all terms
         let terms = crate::helpers::flatten_add_sub_chain(ctx, expr);
@@ -537,8 +537,8 @@ impl crate::rule::Rule for InverseTrigAtanRule {
         None
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Add"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::ADD)
     }
 
     fn priority(&self) -> i32 {
@@ -663,8 +663,8 @@ impl crate::rule::Rule for AtanAddRationalRule {
         None
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Add"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::ADD)
     }
 
     fn priority(&self) -> i32 {
@@ -676,7 +676,7 @@ impl crate::rule::Rule for AtanAddRationalRule {
 define_rule!(
     InverseTrigNegativeRule,
     "Inverse Trig Negative Argument",
-    Some(vec!["Function"]),
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             if args.len() == 1 {
@@ -742,7 +742,7 @@ define_rule!(
 define_rule!(
     ArcsecToArccosRule,
     "arcsec(x) → arccos(1/x)",
-    Some(vec!["Function"]),
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             if matches!(
@@ -770,7 +770,7 @@ define_rule!(
 define_rule!(
     ArccscToArcsinRule,
     "arccsc(x) → arcsin(1/x)",
-    Some(vec!["Function"]),
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             if matches!(
@@ -799,7 +799,7 @@ define_rule!(
 define_rule!(
     ArccotToArctanRule,
     "arccot(x) → arctan(1/x)",
-    Some(vec!["Function"]),
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             if matches!(
@@ -987,8 +987,8 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
         None
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Function"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::FUNCTION)
     }
 
     fn priority(&self) -> i32 {

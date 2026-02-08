@@ -23,7 +23,7 @@ fn is_two(ctx: &Context, expr: ExprId) -> bool {
 define_rule!(
     EvaluateHyperbolicRule,
     "Evaluate Hyperbolic Functions",
-    Some(vec!["Function"]),
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         let (fn_id, args) = if let Expr::Function(fn_id, args) = ctx.get(expr) {
             (*fn_id, args.clone())
@@ -84,7 +84,7 @@ define_rule!(
 define_rule!(
     HyperbolicCompositionRule,
     "Hyperbolic Composition",
-    Some(vec!["Function"]),
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
         crate::assumptions::ConditionClass::Analytic
     ),
@@ -137,7 +137,7 @@ define_rule!(
 define_rule!(
     HyperbolicNegativeRule,
     "Hyperbolic Negative Argument",
-    Some(vec!["Function"]),
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             if args.len() == 1 {
@@ -186,7 +186,7 @@ define_rule!(
 define_rule!(
     HyperbolicPythagoreanRule,
     "Hyperbolic Pythagorean Identity",
-    Some(vec!["Sub"]),
+    Some(crate::target_kind::TargetKindSet::SUB),
     |ctx, expr| {
         if let Expr::Sub(l, r) = ctx.get(expr) {
             let (l, r) = (*l, *r);
@@ -244,7 +244,7 @@ define_rule!(
 define_rule!(
     HyperbolicDoubleAngleRule,
     "Hyperbolic Double Angle",
-    Some(vec!["Add"]),
+    Some(crate::target_kind::TargetKindSet::ADD),
     |ctx, expr| {
         if let Expr::Add(l, r) = ctx.get(expr) {
             let (l, r) = (*l, *r);
@@ -294,7 +294,7 @@ define_rule!(
 define_rule!(
     TanhToSinhCoshRule,
     "tanh(x) = sinh(x)/cosh(x)",
-    Some(vec!["Function"]),
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             if ctx.is_builtin(*fn_id, BuiltinFn::Tanh) && args.len() == 1 {
@@ -332,7 +332,7 @@ define_rule!(
 define_rule!(
     SinhDoubleAngleExpansionRule,
     "sinh(2x) = 2·sinh(x)·cosh(x)",
-    Some(vec!["Function"]),
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             if ctx.builtin_of(*fn_id) == Some(BuiltinFn::Sinh) && args.len() == 1 {
@@ -357,7 +357,7 @@ define_rule!(
 define_rule!(
     SinhCoshToTanhRule,
     "sinh(x)/cosh(x) = tanh(x)",
-    Some(vec!["Div"]),
+    Some(crate::target_kind::TargetKindSet::DIV),
     |ctx, expr| {
         if let Expr::Div(num, den) = ctx.get(expr) {
             // Check if numerator is sinh(x) and denominator is cosh(x)

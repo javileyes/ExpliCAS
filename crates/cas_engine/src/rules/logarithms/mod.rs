@@ -477,8 +477,8 @@ impl crate::rule::Rule for LogContractionRule {
         None
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Add", "Sub"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::ADD_SUB)
     }
 }
 

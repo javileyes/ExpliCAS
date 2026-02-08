@@ -389,8 +389,8 @@ impl crate::rule::Rule for RootPowCancelRule {
         }
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Pow"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::POW)
     }
 
     fn priority(&self) -> i32 {

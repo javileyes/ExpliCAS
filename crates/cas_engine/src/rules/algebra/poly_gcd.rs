@@ -744,8 +744,8 @@ impl Rule for PolyGcdRule {
         200 // High priority to evaluate early
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Function"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::FUNCTION)
     }
 
     fn apply(

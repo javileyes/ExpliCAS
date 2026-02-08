@@ -311,8 +311,8 @@ impl crate::rule::Rule for HeuristicExtractCommonFactorAddRule {
         crate::phase::PhaseMask::TRANSFORM
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Add", "Sub"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::ADD_SUB)
     }
 
     fn apply(

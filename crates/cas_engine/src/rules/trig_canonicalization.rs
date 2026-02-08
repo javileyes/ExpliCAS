@@ -80,7 +80,7 @@ fn is_trig_of_inverse_trig(ctx: &Context, expr: ExprId) -> bool {
 define_rule!(
     TrigFunctionNameCanonicalizationRule,
     "Canonicalize Trig Function Names",
-    Some(vec!["Function"]),
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
@@ -335,7 +335,7 @@ fn convert_trig_to_sincos(ctx: &mut Context, expr: ExprId) -> ExprId {
 define_rule!(
     PreserveCompositionRule,
     "Preserve trig-inverse compositions",
-    Some(vec!["Function"]),
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         // If this is tan(arctan(...)), cot(arcsin(...)), etc.
         // return None to prevent any conversion
@@ -362,7 +362,7 @@ define_rule!(
 define_rule!(
     SecTanPythagoreanRule,
     "sec²(x) - tan²(x) = 1",
-    Some(vec!["Sub"]),
+    Some(crate::target_kind::TargetKindSet::SUB),
     |ctx, expr| {
         if let Expr::Sub(l, r) = ctx.get(expr) {
             let l_val = *l;
@@ -386,7 +386,7 @@ define_rule!(
 define_rule!(
     CscCotPythagoreanRule,
     "csc²(x) - cot²(x) = 1",
-    Some(vec!["Sub"]),
+    Some(crate::target_kind::TargetKindSet::SUB),
     |ctx, expr| {
         if let Expr::Sub(l, r) = ctx.get(expr) {
             let l_val = *l;
@@ -409,7 +409,7 @@ define_rule!(
 define_rule!(
     TanToSecPythagoreanRule,
     "1 + tan²(x) = sec²(x)",
-    Some(vec!["Add"]),
+    Some(crate::target_kind::TargetKindSet::ADD),
     |ctx, expr| {
         if let Expr::Add(l, r) = ctx.get(expr) {
             let l_val = *l;
@@ -440,7 +440,7 @@ define_rule!(
 define_rule!(
     CotToCscPythagoreanRule,
     "1 + cot²(x) = csc²(x)",
-    Some(vec!["Add"]),
+    Some(crate::target_kind::TargetKindSet::ADD),
     |ctx, expr| {
         if let Expr::Add(l, r) = ctx.get(expr) {
             let l_val = *l;
@@ -473,7 +473,7 @@ define_rule!(
 define_rule!(
     SecTanMinusOneIdentityRule,
     "sec²(x) - tan²(x) - 1 = 0",
-    Some(vec!["Sub"]),
+    Some(crate::target_kind::TargetKindSet::SUB),
     |ctx, expr| {
         // Pattern: (sec² - tan²) - 1
         // We know sec² - tan² = 1, so (sec² - tan²) - 1 = 0
@@ -509,7 +509,7 @@ define_rule!(
 define_rule!(
     CscCotMinusOneIdentityRule,
     "csc²(x) - cot²(x) - 1 = 0",
-    Some(vec!["Sub"]),
+    Some(crate::target_kind::TargetKindSet::SUB),
     |ctx, expr| {
         if let Expr::Sub(left, right) = ctx.get(expr) {
             let left_val = *left;
@@ -564,7 +564,7 @@ fn is_function_squared(ctx: &Context, expr: ExprId, fname: &str) -> Option<ExprI
 define_rule!(
     ConvertReciprocalProductRule,
     "Simplify reciprocal trig products",
-    Some(vec!["Mul"]),
+    Some(crate::target_kind::TargetKindSet::MUL),
     |ctx, expr| {
         if let Expr::Mul(l, r) = ctx.get(expr) {
             let l_val = *l;
@@ -610,7 +610,7 @@ fn check_reciprocal_pair(ctx: &Context, expr1: ExprId, expr2: ExprId) -> (bool, 
 define_rule!(
     ConvertForMixedFractionRule,
     "Convert Mixed Trig Fraction to sin/cos",
-    Some(vec!["Div"]),
+    Some(crate::target_kind::TargetKindSet::DIV),
     |ctx, expr| {
         if let Expr::Div(num, den) = ctx.get(expr) {
             let num = *num;

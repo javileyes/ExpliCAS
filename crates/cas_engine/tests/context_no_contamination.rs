@@ -300,8 +300,8 @@ impl Rule for OneTimeMarkerRule {
         self.priority
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Number"])
+    fn target_types(&self) -> Option<cas_engine::target_kind::TargetKindSet> {
+        Some(cas_engine::target_kind::TargetKindSet::NUMBER)
     }
 
     fn apply(

@@ -73,7 +73,7 @@ const EVAL_RULES: &[(&str, EvalCheck, ResultBuilder, &str)] = &[
 define_rule!(
     EvaluateReciprocalTrigRule,
     "Evaluate Reciprocal Trig Functions",
-    Some(vec!["Function"]),
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             let name = match ctx.builtin_of(*fn_id) {
@@ -107,7 +107,7 @@ const COMPOSITION_PAIRS: &[(&str, &str)] = &[
 define_rule!(
     ReciprocalTrigCompositionRule,
     "Reciprocal Trig Composition",
-    Some(vec!["Function"]),
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         if let Expr::Function(outer_fn_id, outer_args) = ctx.get(expr) {
             if outer_args.len() == 1 {
@@ -160,7 +160,7 @@ const NEG_BEHAVIORS: &[(&str, NegBehavior)] = &[
 define_rule!(
     ReciprocalTrigNegativeRule,
     "Reciprocal Trig Negative Argument",
-    Some(vec!["Function"]),
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             let name = match ctx.builtin_of(*fn_id) {

@@ -560,7 +560,7 @@ define_rule!(
 define_rule!(
     FactorBasedLCDRule,
     "Factor-Based LCD",
-    Some(vec!["Add"]),
+    Some(crate::target_kind::TargetKindSet::ADD),
     |ctx, expr| {
         use crate::ordering::compare_expr;
         use std::cmp::Ordering;

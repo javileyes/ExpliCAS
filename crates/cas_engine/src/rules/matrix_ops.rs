@@ -10,8 +10,8 @@ impl SimpleRule for MatrixAddRule {
         "Matrix Addition"
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Add"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::ADD)
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
@@ -47,8 +47,8 @@ impl SimpleRule for MatrixSubRule {
         "Matrix Subtraction"
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Sub"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::SUB)
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
@@ -82,8 +82,8 @@ impl SimpleRule for ScalarMatrixRule {
         "Scalar Matrix Multiplication"
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Mul"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::MUL)
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
@@ -127,8 +127,8 @@ impl SimpleRule for MatrixMultiplyRule {
         "Matrix Multiplication"
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Mul"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::MUL)
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
@@ -166,8 +166,8 @@ impl SimpleRule for MatrixFunctionRule {
         "Matrix Functions"
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Function"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::FUNCTION)
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
@@ -227,8 +227,8 @@ impl SimpleRule for TransposeProductRule {
         "Transpose of Product"
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Function"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::FUNCTION)
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {

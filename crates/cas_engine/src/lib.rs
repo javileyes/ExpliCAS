@@ -63,6 +63,7 @@ pub mod step;
 pub(crate) mod step_optimization;
 pub(crate) mod strategies;
 pub mod substitute;
+pub mod target_kind;
 pub mod telescoping;
 pub mod timeline;
 pub(crate) mod unipoly_modp;

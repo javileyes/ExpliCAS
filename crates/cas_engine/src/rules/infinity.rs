@@ -380,35 +380,35 @@ use crate::define_rule;
 define_rule!(
     AddInfinityRule,
     "Infinity Absorption in Addition",
-    Some(vec!["Add"]),
+    Some(crate::target_kind::TargetKindSet::ADD),
     |ctx, expr| { add_infinity_absorption(ctx, expr) }
 );
 
 define_rule!(
     DivByInfinityRule,
     "Division by Infinity",
-    Some(vec!["Div"]),
+    Some(crate::target_kind::TargetKindSet::DIV),
     |ctx, expr| { div_by_infinity(ctx, expr) }
 );
 
 define_rule!(
     MulZeroInfinityRule,
     "Zero Times Infinity Indeterminate",
-    Some(vec!["Mul"]),
+    Some(crate::target_kind::TargetKindSet::MUL),
     |ctx, expr| { mul_zero_infinity(ctx, expr) }
 );
 
 define_rule!(
     MulInfinityRule,
     "Finite Times Infinity",
-    Some(vec!["Mul"]),
+    Some(crate::target_kind::TargetKindSet::MUL),
     |ctx, expr| { mul_finite_infinity(ctx, expr) }
 );
 
 define_rule!(
     InfDivFiniteRule,
     "Infinity Divided by Finite",
-    Some(vec!["Div"]),
+    Some(crate::target_kind::TargetKindSet::DIV),
     |ctx, expr| { inf_div_finite(ctx, expr) }
 );
 

@@ -1,6 +1,7 @@
 use crate::parent_context::ParentContext;
 use crate::phase::PhaseMask;
 use crate::step::{ImportanceLevel, StepCategory};
+use crate::target_kind::TargetKindSet;
 use cas_ast::{Context, ExprId};
 use std::borrow::Cow;
 use std::cell::Cell;
@@ -419,7 +420,7 @@ pub trait SimpleRule {
         self.apply_simple(context, expr)
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
+    fn target_types(&self) -> Option<TargetKindSet> {
         None
     }
     /// Phases this rule is allowed to run in (default: Core + PostCleanup)
@@ -472,10 +473,9 @@ pub trait Rule {
         parent_ctx: &ParentContext,
     ) -> Option<Rewrite>;
 
-    // Optional: Return list of Expr variant names this rule targets.
-    // If None, the rule is applied to all nodes.
-    // Common variants: "Add", "Sub", "Mul", "Div", "Pow", "Neg", "Function", "Variable", "Number", "Constant"
-    fn target_types(&self) -> Option<Vec<&str>> {
+    // Optional: Return the set of Expr variant kinds this rule targets.
+    // If None, the rule is applied to all nodes (global rule).
+    fn target_types(&self) -> Option<TargetKindSet> {
         None
     }
 
@@ -531,7 +531,7 @@ impl<T: SimpleRule> Rule for T {
         self.apply_with_context(context, expr, parent_ctx)
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
+    fn target_types(&self) -> Option<TargetKindSet> {
         SimpleRule::target_types(self)
     }
 

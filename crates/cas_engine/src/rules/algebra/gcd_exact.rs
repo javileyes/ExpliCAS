@@ -408,7 +408,7 @@ fn gcd_rational(a: &BigRational, b: &BigRational) -> BigRational {
 define_rule!(
     PolyGcdExactRule,
     "Polynomial GCD Exact",
-    Some(vec!["Function"]),
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     PhaseMask::CORE | PhaseMask::TRANSFORM,
     priority: 200, // High priority to evaluate early
     |ctx, expr| {

@@ -130,8 +130,8 @@ impl crate::rule::Rule for LogExpansionRule {
         None
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Function"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::FUNCTION)
     }
 
     fn solve_safety(&self) -> crate::solve_safety::SolveSafety {
@@ -483,8 +483,8 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
         }
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Function"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::FUNCTION)
     }
 
     fn priority(&self) -> i32 {
@@ -581,8 +581,8 @@ impl crate::rule::Rule for LogAbsPowerRule {
         Some(crate::rule::Rewrite::new(result).desc("ln(|u|^n) = n·ln(|u|)"))
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Function"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::FUNCTION)
     }
 
     fn priority(&self) -> i32 {
@@ -681,8 +681,8 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
         }
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Function"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::FUNCTION)
     }
 
     // V2.14.20: Run in POST phase only so ln(|a|) created by LogPowerRule exists first
@@ -797,8 +797,8 @@ impl crate::rule::Rule for LogChainProductRule {
         None
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Mul"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::MUL)
     }
 
     fn importance(&self) -> crate::step::ImportanceLevel {

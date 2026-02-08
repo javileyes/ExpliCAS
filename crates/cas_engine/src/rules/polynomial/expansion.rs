@@ -151,8 +151,8 @@ impl crate::rule::Rule for BinomialExpansionRule {
         None
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Pow"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::POW)
     }
 }
 
@@ -357,8 +357,8 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
         None
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Pow"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::POW)
     }
 
     fn allowed_phases(&self) -> crate::phase::PhaseMask {

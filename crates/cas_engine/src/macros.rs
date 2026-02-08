@@ -21,7 +21,7 @@ macro_rules! define_rule {
                 $body
             }
 
-            fn target_types(&self) -> Option<Vec<&str>> {
+            fn target_types(&self) -> Option<$crate::target_kind::TargetKindSet> {
                 $targets
             }
 
@@ -52,7 +52,7 @@ macro_rules! define_rule {
                 $body
             }
 
-            fn target_types(&self) -> Option<Vec<&str>> {
+            fn target_types(&self) -> Option<$crate::target_kind::TargetKindSet> {
                 $targets
             }
 
@@ -102,7 +102,7 @@ macro_rules! define_rule {
                 $body
             }
 
-            fn target_types(&self) -> Option<Vec<&str>> {
+            fn target_types(&self) -> Option<$crate::target_kind::TargetKindSet> {
                 $targets
             }
         }
@@ -158,7 +158,7 @@ macro_rules! define_rule {
                 $body
             }
 
-            fn target_types(&self) -> Option<Vec<&str>> {
+            fn target_types(&self) -> Option<$crate::target_kind::TargetKindSet> {
                 $targets
             }
 
@@ -200,7 +200,7 @@ macro_rules! define_rule {
                 $body
             }
 
-            fn target_types(&self) -> Option<Vec<&str>> {
+            fn target_types(&self) -> Option<$crate::target_kind::TargetKindSet> {
                 $targets
             }
 
@@ -429,7 +429,7 @@ macro_rules! define_rule {
                 $body
             }
 
-            fn target_types(&self) -> Option<Vec<&str>> {
+            fn target_types(&self) -> Option<$crate::target_kind::TargetKindSet> {
                 $targets
             }
 
@@ -597,7 +597,7 @@ macro_rules! define_rule {
                 $body
             }
 
-            fn target_types(&self) -> Option<Vec<&str>> {
+            fn target_types(&self) -> Option<$crate::target_kind::TargetKindSet> {
                 $targets
             }
 
@@ -642,7 +642,7 @@ macro_rules! define_rule {
                 $body
             }
 
-            fn target_types(&self) -> Option<Vec<&str>> {
+            fn target_types(&self) -> Option<$crate::target_kind::TargetKindSet> {
                 $targets
             }
 

@@ -25,7 +25,7 @@ fn is_hold(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
 define_rule!(
     PolySubModpRule,
     "Polynomial Subtraction (mod p)",
-    Some(vec!["Sub"]),
+    Some(crate::target_kind::TargetKindSet::SUB),
     PhaseMask::CORE | PhaseMask::POST,
     |ctx, expr| {
         let (a, b) = match ctx.get(expr) {

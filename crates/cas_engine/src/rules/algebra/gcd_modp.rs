@@ -374,7 +374,7 @@ fn eager_eval_recursive(
 define_rule!(
     PolyGcdModpRule,
     "Polynomial GCD mod p",
-    Some(vec!["Function"]),
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     PhaseMask::CORE | PhaseMask::TRANSFORM,
     priority: 200, // High priority to evaluate early
     |ctx, expr| {
@@ -469,7 +469,7 @@ define_rule!(
 define_rule!(
     PolyEqModpRule,
     "Polynomial equality mod p",
-    Some(vec!["Function"]),
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     PhaseMask::CORE | PhaseMask::TRANSFORM,
     priority: 200,
     |ctx, expr| {

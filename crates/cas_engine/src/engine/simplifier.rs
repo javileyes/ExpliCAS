@@ -6,6 +6,7 @@
 use crate::options::StepsMode;
 use crate::profiler::RuleProfiler;
 use crate::rule::Rule;
+use crate::target_kind::TargetKind;
 use cas_ast::{Context, ExprId};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -14,7 +15,7 @@ use tracing::debug;
 
 pub struct Simplifier {
     pub context: Context,
-    pub(super) rules: HashMap<String, Vec<Arc<dyn Rule>>>,
+    pub(super) rules: HashMap<TargetKind, Vec<Arc<dyn Rule>>>,
     pub(super) global_rules: Vec<Arc<dyn Rule>>,
     /// Steps collection mode (On/Off/Compact)
     pub steps_mode: StepsMode,
@@ -327,8 +328,8 @@ impl Simplifier {
         let rule_rc: Arc<dyn Rule> = rule.into();
 
         if let Some(targets) = rule_rc.target_types() {
-            for target in targets {
-                let vec = self.rules.entry(target.to_string()).or_default();
+            for target in targets.iter() {
+                let vec = self.rules.entry(target).or_default();
                 // Insert maintaining priority order (higher first)
                 // For equal priority, preserve insertion order (append after same-priority rules)
                 let priority = rule_rc.priority();
@@ -430,7 +431,7 @@ impl Simplifier {
     }
 
     /// Get a clone of the rules map (for profile caching).
-    pub fn get_rules_clone(&self) -> HashMap<String, Vec<Arc<dyn Rule>>> {
+    pub fn get_rules_clone(&self) -> HashMap<TargetKind, Vec<Arc<dyn Rule>>> {
         self.rules.clone()
     }
 

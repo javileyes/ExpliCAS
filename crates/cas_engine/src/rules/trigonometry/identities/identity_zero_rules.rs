@@ -160,8 +160,8 @@ impl crate::rule::Rule for WeierstrassSinIdentityZeroRule {
         None
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Sub", "Add"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::ADD_SUB)
     }
 
     fn importance(&self) -> crate::step::ImportanceLevel {
@@ -255,8 +255,8 @@ impl crate::rule::Rule for WeierstrassCosIdentityZeroRule {
         None
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Sub", "Add"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::ADD_SUB)
     }
 
     fn importance(&self) -> crate::step::ImportanceLevel {
@@ -353,8 +353,8 @@ impl crate::rule::Rule for Sin4xIdentityZeroRule {
         None
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Sub", "Add"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::ADD_SUB)
     }
 
     fn priority(&self) -> i32 {
@@ -561,8 +561,8 @@ impl crate::rule::Rule for TanDifferenceIdentityZeroRule {
         None
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Sub", "Add"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::ADD_SUB)
     }
 
     fn priority(&self) -> i32 {

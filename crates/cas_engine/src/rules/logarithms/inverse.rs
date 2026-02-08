@@ -141,8 +141,8 @@ impl crate::rule::Rule for ExponentialLogRule {
         None
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Pow"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::POW)
     }
 
     fn solve_safety(&self) -> crate::solve_safety::SolveSafety {
@@ -437,8 +437,8 @@ impl crate::rule::Rule for LogExpInverseRule {
         None
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Function"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::FUNCTION)
     }
 }
 
@@ -582,8 +582,8 @@ impl crate::rule::Rule for LogPowerBaseRule {
         None
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Function"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::FUNCTION)
     }
 
     fn importance(&self) -> crate::step::ImportanceLevel {
@@ -847,8 +847,8 @@ impl crate::rule::Rule for AutoExpandLogRule {
         }
     }
 
-    fn target_types(&self) -> Option<Vec<&str>> {
-        Some(vec!["Function"])
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::FUNCTION)
     }
 
     fn allowed_phases(&self) -> crate::phase::PhaseMask {

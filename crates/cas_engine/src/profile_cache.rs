@@ -32,7 +32,7 @@ impl ProfileKey {
 #[allow(clippy::arc_with_non_send_sync)] // Rules are intentionally not Send+Sync for flexibility
 pub struct RuleProfile {
     /// Rules indexed by target type
-    pub rules: HashMap<String, Vec<Arc<dyn Rule>>>,
+    pub rules: HashMap<crate::target_kind::TargetKind, Vec<Arc<dyn Rule>>>,
     /// Global rules (apply to all expression types)
     pub global_rules: Vec<Arc<dyn Rule>>,
     /// Disabled rule names for this profile

@@ -21,7 +21,7 @@ pub const DEFAULT_PRIME: u64 = 4503599627370449;
 define_rule!(
     PolyMulModpRule,
     "Polynomial Multiplication (mod p)",
-    Some(vec!["Function"]),
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     PhaseMask::TRANSFORM,
     |ctx, expr| {
         let (name, args) = match ctx.get(expr) {
@@ -116,7 +116,7 @@ define_rule!(
 define_rule!(
     PolyStatsRule,
     "Polynomial Statistics",
-    Some(vec!["Function"]),
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     PhaseMask::TRANSFORM,
     |ctx, expr| {
         let (name, args) = match ctx.get(expr) {

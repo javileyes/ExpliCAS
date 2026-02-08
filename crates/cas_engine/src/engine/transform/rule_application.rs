@@ -91,7 +91,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
         #[allow(clippy::never_loop)]
         loop {
             let mut changed = false;
-            let variant = crate::helpers::get_variant_name(self.context.get(expr_id));
+            let target_kind = crate::target_kind::TargetKind::from_expr(self.context.get(expr_id));
 
             // PERF: Build ParentContext ONCE per node, shared by all rules.
             // Previously this was rebuilt inside the rule loop (O(rules × nodes × ancestors)).
@@ -99,7 +99,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
             // println!("apply_rules for {:?} variant: {}", expr_id, variant);
             // Try specific rules
-            if let Some(specific_rules) = self.rules.get(variant) {
+            if let Some(specific_rules) = self.rules.get(&target_kind) {
                 for rule in specific_rules {
                     if self.should_skip_rule(rule.as_ref(), true) {
                         continue;
