@@ -7,7 +7,7 @@ use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_traits::{One, Signed};
 
 /// Check if expression is the number 1
-pub fn is_one(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_one(ctx: &Context, expr: ExprId) -> bool {
     if let Expr::Number(n) = ctx.get(expr) {
         n.is_one()
     } else {
@@ -25,7 +25,8 @@ pub fn is_zero(ctx: &Context, expr: ExprId) -> bool {
 }
 
 /// Check if expression is a negative number
-pub fn is_negative(ctx: &Context, expr: ExprId) -> bool {
+#[allow(dead_code)]
+pub(crate) fn is_negative(ctx: &Context, expr: ExprId) -> bool {
     if let Expr::Number(n) = ctx.get(expr) {
         n.is_negative()
     } else {
@@ -206,7 +207,8 @@ fn prove_nonzero_depth(ctx: &Context, expr: ExprId, depth: usize) -> crate::doma
 ///
 /// Returns `true` only for `Proof::Proven`. Use `prove_nonzero()` directly
 /// for more fine-grained control.
-pub fn can_prove_nonzero(ctx: &Context, expr: ExprId) -> bool {
+#[allow(dead_code)]
+pub(crate) fn can_prove_nonzero(ctx: &Context, expr: ExprId) -> bool {
     prove_nonzero(ctx, expr).is_proven()
 }
 
@@ -430,7 +432,8 @@ fn prove_positive_depth(
 ///
 /// Returns `true` only for `Proof::Proven`. Use `prove_positive()` directly
 /// for more fine-grained control.
-pub fn can_prove_positive(
+#[allow(dead_code)]
+pub(crate) fn can_prove_positive(
     ctx: &Context,
     expr: ExprId,
     value_domain: crate::semantics::ValueDomain,
@@ -451,7 +454,7 @@ pub fn can_prove_positive(
 /// - `Proof::Proven` for expressions **provably** ≥ 0 (0, 2, π, sqrt(x), |x|, x², etc.)
 /// - `Proof::Disproven` for expressions **provably** < 0 (-3, etc.)
 /// - `Proof::Unknown` for variables, functions, and anything uncertain
-pub fn prove_nonnegative(
+pub(crate) fn prove_nonnegative(
     ctx: &Context,
     expr: ExprId,
     value_domain: crate::semantics::ValueDomain,
@@ -596,7 +599,8 @@ fn prove_nonnegative_depth(
 ///
 /// This enables simplifications like `sqrt(x)² → x` within expressions
 /// that still contain `sqrt(x)` elsewhere, without requiring explicit assumptions.
-pub fn prove_nonnegative_with_implicit(
+#[allow(dead_code)]
+pub(crate) fn prove_nonnegative_with_implicit(
     ctx: &Context,
     expr: ExprId,
     value_domain: crate::semantics::ValueDomain,
@@ -641,7 +645,8 @@ pub fn prove_nonnegative_with_implicit(
 /// let guard = ConditionSet::single(ConditionPredicate::Positive(x));
 /// // Now prove_positive_with_guards(ctx, x, RealOnly, &guard) returns Proven
 /// ```
-pub fn prove_positive_with_guards(
+#[allow(dead_code)]
+pub(crate) fn prove_positive_with_guards(
     ctx: &Context,
     expr: ExprId,
     value_domain: crate::semantics::ValueDomain,
@@ -674,7 +679,8 @@ pub fn prove_positive_with_guards(
 }
 
 /// V2.0: Prove non-zero with guard environment.
-pub fn prove_nonzero_with_guards(
+#[allow(dead_code)]
+pub(crate) fn prove_nonzero_with_guards(
     ctx: &Context,
     expr: ExprId,
     guards: &cas_ast::ConditionSet,

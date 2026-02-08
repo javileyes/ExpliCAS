@@ -10,7 +10,7 @@ use num_traits::{One, Signed, ToPrimitive};
 /// // Matches sin(x)^2
 /// is_trig_pow(ctx, expr, "sin", 2)
 /// ```
-pub fn is_trig_pow(context: &Context, expr: ExprId, name: &str, power: i64) -> bool {
+pub(crate) fn is_trig_pow(context: &Context, expr: ExprId, name: &str, power: i64) -> bool {
     if let Expr::Pow(base, exp) = context.get(expr) {
         if let Expr::Number(n) = context.get(*exp) {
             if n.is_integer() && n.to_integer() == power.into() {
@@ -29,7 +29,7 @@ pub fn is_trig_pow(context: &Context, expr: ExprId, name: &str, power: i64) -> b
 /// Extract the argument from a trigonometric power expression.
 ///
 /// For an expression like `sin(x)^2`, returns `Some(x)`.
-pub fn get_trig_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn get_trig_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
     if let Expr::Pow(base, _) = context.get(expr) {
         if let Expr::Function(_, args) = context.get(*base) {
             if args.len() == 1 {
@@ -40,7 +40,7 @@ pub fn get_trig_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
     None
 }
 
-pub fn get_square_root(context: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn get_square_root(context: &mut Context, expr: ExprId) -> Option<ExprId> {
     // We need to clone the expression to avoid borrowing issues if we need to inspect it deeply
     // But context.get returns reference.
     // We can't hold reference to context while mutating it.
@@ -84,7 +84,7 @@ pub fn get_square_root(context: &mut Context, expr: ExprId) -> Option<ExprId> {
     }
 }
 
-pub fn extract_double_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn extract_double_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
     if let Expr::Mul(lhs, rhs) = context.get(expr) {
         if let Expr::Number(n) = context.get(*lhs) {
             if n.is_integer() && n.to_integer() == 2.into() {
@@ -102,7 +102,7 @@ pub fn extract_double_angle_arg(context: &Context, expr: ExprId) -> Option<ExprI
 
 /// Extract inner variable from 3*x pattern (for triple angle identities).
 /// Matches both Mul(3, x) and Mul(x, 3).
-pub fn extract_triple_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn extract_triple_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
     if let Expr::Mul(lhs, rhs) = context.get(expr) {
         if let Expr::Number(n) = context.get(*lhs) {
             if n.is_integer() && n.to_integer() == 3.into() {
@@ -120,7 +120,7 @@ pub fn extract_triple_angle_arg(context: &Context, expr: ExprId) -> Option<ExprI
 
 /// Extract inner variable from 5*x pattern (for quintuple angle identities).
 /// Matches both Mul(5, x) and Mul(x, 5).
-pub fn extract_quintuple_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
+pub(crate) fn extract_quintuple_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
     if let Expr::Mul(lhs, rhs) = context.get(expr) {
         if let Expr::Number(n) = context.get(*lhs) {
             if n.is_integer() && n.to_integer() == 5.into() {
@@ -141,7 +141,7 @@ pub fn extract_quintuple_angle_arg(context: &Context, expr: ExprId) -> Option<Ex
 /// This only handles `Add` nodes. For handling `Sub` and `Neg`, use
 /// `flatten_add_sub_chain` instead.
 /// Uses iterative traversal to prevent stack overflow on deep expressions.
-pub fn flatten_add(ctx: &Context, root: ExprId, terms: &mut Vec<ExprId>) {
+pub(crate) fn flatten_add(ctx: &Context, root: ExprId, terms: &mut Vec<ExprId>) {
     let mut stack = vec![root];
 
     while let Some(expr) = stack.pop() {
@@ -163,7 +163,7 @@ pub fn flatten_add(ctx: &Context, root: ExprId, terms: &mut Vec<ExprId>) {
 /// - `Add(a, b)` → [a, b]
 /// - `Sub(a, b)` → [a, Neg(b)]
 /// - `Neg(Neg(x))` → [x]
-pub fn flatten_add_sub_chain(ctx: &mut Context, expr: ExprId) -> Vec<ExprId> {
+pub(crate) fn flatten_add_sub_chain(ctx: &mut Context, expr: ExprId) -> Vec<ExprId> {
     let mut terms = Vec::new();
     flatten_add_sub_recursive(ctx, expr, &mut terms, false);
     terms
@@ -204,7 +204,7 @@ fn flatten_add_sub_recursive(
 /// This only handles `Mul` nodes. For handling `Neg` as `-1 * expr`,
 /// use `flatten_mul_chain` instead.
 /// Uses iterative traversal to prevent stack overflow on deep expressions.
-pub fn flatten_mul(ctx: &Context, root: ExprId, factors: &mut Vec<ExprId>) {
+pub(crate) fn flatten_mul(ctx: &Context, root: ExprId, factors: &mut Vec<ExprId>) {
     let mut stack = vec![root];
 
     while let Some(expr) = stack.pop() {
@@ -221,7 +221,7 @@ pub fn flatten_mul(ctx: &Context, root: ExprId, factors: &mut Vec<ExprId>) {
 
 /// Flatten a Mul chain into a list of factors, handling Neg as -1 multiplication.
 /// Returns Vec<ExprId> where Neg(e) is converted to [num(-1), ...factors of e...]
-pub fn flatten_mul_chain(ctx: &mut Context, expr: ExprId) -> Vec<ExprId> {
+pub(crate) fn flatten_mul_chain(ctx: &mut Context, expr: ExprId) -> Vec<ExprId> {
     let mut factors = Vec::new();
     flatten_mul_recursive(ctx, expr, &mut factors);
     factors
@@ -246,7 +246,8 @@ fn flatten_mul_recursive(ctx: &mut Context, expr: ExprId, factors: &mut Vec<Expr
     }
 }
 
-pub fn get_parts(context: &mut Context, e: ExprId) -> (num_rational::BigRational, ExprId) {
+#[allow(dead_code)]
+pub(crate) fn get_parts(context: &mut Context, e: ExprId) -> (num_rational::BigRational, ExprId) {
     match context.get(e) {
         Expr::Mul(a, b) => {
             if let Expr::Number(n) = context.get(*a) {

@@ -38,7 +38,8 @@ pub enum LnDecision {
 /// can_take_ln_real(ctx, ctx.var("x"), DomainMode::Strict, RealOnly) // Err("cannot prove > 0")
 /// can_take_ln_real(ctx, ctx.var("x"), DomainMode::Assume, RealOnly) // Ok(AssumePositive)
 /// ```
-pub fn can_take_ln_real(
+#[allow(dead_code)]
+pub(crate) fn can_take_ln_real(
     ctx: &Context,
     arg: ExprId,
     mode: crate::domain::DomainMode,
@@ -66,7 +67,7 @@ pub fn can_take_ln_real(
 /// - Integer value doesn't fit in `i64`
 ///
 /// For BigInt extraction without i64 limitations, use `get_integer_exact`.
-pub fn get_integer(ctx: &Context, expr: ExprId) -> Option<i64> {
+pub(crate) fn get_integer(ctx: &Context, expr: ExprId) -> Option<i64> {
     if let Expr::Number(n) = ctx.get(expr) {
         if n.is_integer() {
             n.to_integer().to_i64()
@@ -85,7 +86,7 @@ pub fn get_integer(ctx: &Context, expr: ExprId) -> Option<i64> {
 /// - Also handles `Neg(e)` by recursively extracting and negating
 ///
 /// Use this for number theory operations where large integers are expected.
-pub fn get_integer_exact(ctx: &Context, expr: ExprId) -> Option<num_bigint::BigInt> {
+pub(crate) fn get_integer_exact(ctx: &Context, expr: ExprId) -> Option<num_bigint::BigInt> {
     match ctx.get(expr) {
         Expr::Number(n) => {
             if n.is_integer() {
@@ -100,7 +101,7 @@ pub fn get_integer_exact(ctx: &Context, expr: ExprId) -> Option<num_bigint::BigI
 }
 
 /// Get the variant name of an expression (for debugging/display)
-pub fn get_variant_name(expr: &Expr) -> &'static str {
+pub(crate) fn get_variant_name(expr: &Expr) -> &'static str {
     match expr {
         Expr::Number(_) => "Number",
         Expr::Variable(_) => "Variable",

@@ -24,17 +24,18 @@ mod solver_domain;
 mod trig_matchers;
 mod trig_roots_flatten;
 
-// Re-export all public items for backward compatibility
-pub use complexity::*;
-pub use destructure::*;
-pub use nf_scoring::*;
-pub use numeric::*;
-pub use numeric_eval::*;
-pub use pi::*;
+// Re-export all items for internal use
+pub(crate) use complexity::*;
+pub(crate) use destructure::*;
+pub(crate) use nf_scoring::*;
+pub(crate) use numeric::*;
+pub(crate) use numeric_eval::*;
+pub(crate) use pi::*;
+// predicates has `is_zero` and `prove_nonzero` used by integration tests — keep pub
 pub use predicates::*;
-pub use solver_domain::*;
-pub use trig_matchers::*;
-pub use trig_roots_flatten::*;
+pub(crate) use solver_domain::*;
+pub(crate) use trig_matchers::*;
+pub(crate) use trig_roots_flatten::*;
 
 #[cfg(test)]
 mod tests;

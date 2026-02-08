@@ -9,11 +9,7 @@
 // Core fraction helpers module
 mod core_rules;
 
-// Re-export helpers from core_rules (used by sibling modules)
-pub use core_rules::{
-    build_mul_from_factors_a1, check_divisible_denominators, collect_mul_factors_int_pow,
-    extract_as_fraction, is_pi_constant, is_trig_function_name,
-};
+// core_rules helpers are imported directly by sibling modules via `super::core_rules::{...}`
 
 // GCD-based cancellation rules module
 mod gcd_cancel;

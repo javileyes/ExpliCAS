@@ -6,7 +6,7 @@ use num_traits::{One, Signed};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 
-pub fn gcd_rational(a: BigRational, b: BigRational) -> BigRational {
+pub(crate) fn gcd_rational(a: BigRational, b: BigRational) -> BigRational {
     if a.is_integer() && b.is_integer() {
         use num_integer::Integer;
         let num_a = a.to_integer();
@@ -21,7 +21,7 @@ pub fn gcd_rational(a: BigRational, b: BigRational) -> BigRational {
 ///
 /// Uses canonical `cas_ast::traversal::count_nodes_matching` with variant name predicate.
 /// (See POLICY.md "Traversal Contract")
-pub fn count_nodes_of_type(ctx: &Context, expr: ExprId, variant: &str) -> usize {
+pub(crate) fn count_nodes_of_type(ctx: &Context, expr: ExprId, variant: &str) -> usize {
     cas_ast::traversal::count_nodes_matching(ctx, expr, |node| get_variant_name(node) == variant)
 }
 
@@ -31,7 +31,7 @@ pub fn count_nodes_of_type(ctx: &Context, expr: ExprId, variant: &str) -> usize 
 /// Uses `add_raw` internally to preserve operand order after simplification.
 ///
 /// Alias: `mul2_simpl` (same behavior, clearer intent)
-pub fn smart_mul(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+pub(crate) fn smart_mul(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
     if is_one(ctx, a) {
         return b;
     }
@@ -50,7 +50,8 @@ pub fn smart_mul(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
 ///
 /// For raw construction without any simplification, use local `mul2_raw`.
 #[inline]
-pub fn mul2_simpl(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+#[allow(dead_code)]
+pub(crate) fn mul2_simpl(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
     smart_mul(ctx, a, b)
 }
 
@@ -59,7 +60,8 @@ pub fn mul2_simpl(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
 /// `mul_many_raw(ctx, [a, b, c])` → `a * (b * c)` (right-associative)
 ///
 /// Returns `None` if factors is empty.
-pub fn mul_many_raw(ctx: &mut Context, factors: &[ExprId]) -> Option<ExprId> {
+#[allow(dead_code)]
+pub(crate) fn mul_many_raw(ctx: &mut Context, factors: &[ExprId]) -> Option<ExprId> {
     if factors.is_empty() {
         return None;
     }
@@ -78,7 +80,8 @@ pub fn mul_many_raw(ctx: &mut Context, factors: &[ExprId]) -> Option<ExprId> {
 /// `mul_many_simpl(ctx, [1, a, b])` → `a * b` (eliminates 1s)
 ///
 /// Returns `None` if factors is empty, or Some(1) if all factors are 1.
-pub fn mul_many_simpl(ctx: &mut Context, factors: &[ExprId]) -> Option<ExprId> {
+#[allow(dead_code)]
+pub(crate) fn mul_many_simpl(ctx: &mut Context, factors: &[ExprId]) -> Option<ExprId> {
     // Filter out 1s
     let non_ones: Vec<_> = factors
         .iter()
@@ -98,7 +101,7 @@ pub fn mul_many_simpl(ctx: &mut Context, factors: &[ExprId]) -> Option<ExprId> {
     mul_many_raw(ctx, &non_ones)
 }
 
-pub fn distribute(ctx: &mut Context, target: ExprId, multiplier: ExprId) -> ExprId {
+pub(crate) fn distribute(ctx: &mut Context, target: ExprId, multiplier: ExprId) -> ExprId {
     let target_data = ctx.get(target).clone();
     match target_data {
         Expr::Add(l, r) => {
@@ -147,7 +150,7 @@ pub fn distribute(ctx: &mut Context, target: ExprId, multiplier: ExprId) -> Expr
     }
 }
 
-pub fn get_quotient(ctx: &mut Context, dividend: ExprId, divisor: ExprId) -> Option<ExprId> {
+pub(crate) fn get_quotient(ctx: &mut Context, dividend: ExprId, divisor: ExprId) -> Option<ExprId> {
     if dividend == divisor {
         return Some(ctx.num(1));
     }
@@ -168,7 +171,7 @@ pub fn get_quotient(ctx: &mut Context, dividend: ExprId, divisor: ExprId) -> Opt
     }
 }
 
-pub fn collect_denominators(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
+pub(crate) fn collect_denominators(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
     let mut denoms = Vec::new();
     match ctx.get(expr) {
         Expr::Div(_, den) => {
@@ -199,7 +202,7 @@ pub fn collect_variables(ctx: &Context, expr: ExprId) -> HashSet<String> {
 }
 
 // Helper function: Check if two expressions are structurally opposite (e.g., a-b vs b-a)
-pub fn are_denominators_opposite(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
+pub(crate) fn are_denominators_opposite(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
     match (ctx.get(e1), ctx.get(e2)) {
         // Case 1: (a - b) vs (b - a)
         (Expr::Sub(l1, r1), Expr::Sub(l2, r2)) => {

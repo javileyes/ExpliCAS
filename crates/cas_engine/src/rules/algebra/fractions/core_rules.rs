@@ -17,7 +17,7 @@ use num_traits::{One, Zero};
 // =============================================================================
 
 /// Check if a function name is trigonometric (sin, cos, tan and inverses/hyperbolics)
-pub fn is_trig_function_name(name: &str) -> bool {
+pub(super) fn is_trig_function_name(name: &str) -> bool {
     matches!(
         name,
         "sin"
@@ -39,13 +39,13 @@ pub fn is_trig_function_name(name: &str) -> bool {
 }
 
 /// Check if a function (by SymbolId) is trigonometric
-pub fn is_trig_function(ctx: &Context, fn_id: usize) -> bool {
+pub(super) fn is_trig_function(ctx: &Context, fn_id: usize) -> bool {
     ctx.builtin_of(fn_id)
         .is_some_and(|b| is_trig_function_name(b.name()))
 }
 
 /// Check if expression is a constant involving π (e.g., pi, pi/9, 2*pi/3)
-pub fn is_pi_constant(ctx: &Context, id: ExprId) -> bool {
+pub(super) fn is_pi_constant(ctx: &Context, id: ExprId) -> bool {
     crate::helpers::extract_rational_pi_multiple(ctx, id).is_some()
 }
 
@@ -117,7 +117,7 @@ pub(super) fn poly_relation(ctx: &Context, a: ExprId, b: ExprId) -> Option<SignR
 /// - Pow(base, k) with integer k becomes (base, k)
 /// - Neg(x) is unwrapped and factors collected from x (for intersection purposes)
 /// - Everything else becomes (expr, 1)
-pub fn collect_mul_factors_int_pow(ctx: &Context, expr: ExprId) -> Vec<(ExprId, i64)> {
+pub(super) fn collect_mul_factors_int_pow(ctx: &Context, expr: ExprId) -> Vec<(ExprId, i64)> {
     let mut factors = Vec::new();
     // Unwrap top-level Neg for factor collection (enables intersection with positive terms)
     let actual_expr = match ctx.get(expr) {
@@ -173,7 +173,7 @@ fn get_integer_exponent_a1(ctx: &Context, exp: ExprId) -> Option<i64> {
 ///
 /// Uses canonical `MulBuilder` (right-fold with exponents).
 /// (See ARCHITECTURE.md "Canonical Utilities Registry")
-pub fn build_mul_from_factors_a1(ctx: &mut Context, factors: &[(ExprId, i64)]) -> ExprId {
+pub(super) fn build_mul_from_factors_a1(ctx: &mut Context, factors: &[(ExprId, i64)]) -> ExprId {
     use cas_ast::views::MulBuilder;
 
     let mut builder = MulBuilder::new_simple();
@@ -364,7 +364,7 @@ pub(super) fn try_multivar_gcd(
 /// - Mul(Number(1/n), x) or Mul(x, Number(1/n)) → (x, n, true) where numerator of coeff is ±1
 /// - Mul(Div(1,den), x) or Mul(x, Div(1,den)) → (x, den, true) for symbolic denominators
 /// - anything else → (expr, 1, false)
-pub fn extract_as_fraction(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId, bool) {
+pub(super) fn extract_as_fraction(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId, bool) {
     use num_bigint::BigInt;
     use num_rational::BigRational;
     use num_traits::Signed;
@@ -458,7 +458,7 @@ pub fn extract_as_fraction(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId, 
 /// For example:
 /// - d1=2, d2=2n → d2 = n·d1, so multiply n1 by n: (n1·n, n2, 2n, true)
 /// - d1=2n, d2=2 → d1 = n·d2, so multiply n2 by n: (n1, n2·n, 2n, true)
-pub fn check_divisible_denominators(
+pub(super) fn check_divisible_denominators(
     ctx: &mut Context,
     n1: ExprId,
     n2: ExprId,

@@ -35,7 +35,7 @@ pub struct TrigDiffMatch {
 
 /// Match Add(trig(A), trig(B)) -> UNORDERED {A,B}
 /// Returns arguments in canonical order for cache efficiency.
-pub fn match_trig_sum(ctx: &Context, expr: ExprId, fn_name: &str) -> Option<TrigSumMatch> {
+pub(crate) fn match_trig_sum(ctx: &Context, expr: ExprId, fn_name: &str) -> Option<TrigSumMatch> {
     if let Expr::Add(l, r) = ctx.get(expr) {
         let arg1 = as_fn1(ctx, *l, fn_name)?;
         let arg2 = as_fn1(ctx, *r, fn_name)?;
@@ -52,7 +52,7 @@ pub fn match_trig_sum(ctx: &Context, expr: ExprId, fn_name: &str) -> Option<Trig
 /// CRITICAL: This preserves the ORDER from the source expression.
 /// A comes from the minuend, B comes from the subtrahend.
 /// This is essential for sign-correct computation of (A-B)/2.
-pub fn match_trig_diff(ctx: &Context, expr: ExprId, fn_name: &str) -> Option<TrigDiffMatch> {
+pub(crate) fn match_trig_diff(ctx: &Context, expr: ExprId, fn_name: &str) -> Option<TrigDiffMatch> {
     // Pattern 1: Sub(trig(A), trig(B))
     if let Expr::Sub(l, r) = ctx.get(expr) {
         let a = as_fn1(ctx, *l, fn_name)?;
@@ -87,7 +87,14 @@ pub fn match_trig_diff(ctx: &Context, expr: ExprId, fn_name: &str) -> Option<Tri
 ///
 /// This is used to validate that the denominator contains the same angles
 /// as the numerator, WITHOUT reordering the numerator's extraction.
-pub fn same_args_unordered(ctx: &Context, a: ExprId, b: ExprId, c: ExprId, d: ExprId) -> bool {
+#[allow(dead_code)]
+pub(crate) fn same_args_unordered(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    c: ExprId,
+    d: ExprId,
+) -> bool {
     use crate::ordering::compare_expr;
     use std::cmp::Ordering;
 

@@ -5,7 +5,7 @@ use cas_ast::{Context, Expr, ExprId};
 /// Count total nodes in an expression tree.
 ///
 /// Delegates to canonical `cas_ast::traversal::count_all_nodes`.
-pub fn count_all_nodes(ctx: &Context, expr: ExprId) -> usize {
+pub(crate) fn count_all_nodes(ctx: &Context, expr: ExprId) -> usize {
     cas_ast::traversal::count_all_nodes(ctx, expr)
 }
 
@@ -13,7 +13,8 @@ pub fn count_all_nodes(ctx: &Context, expr: ExprId) -> usize {
 ///
 /// Wrapper calling canonical `cas_ast::traversal::count_nodes_matching`.
 /// (See POLICY.md "Traversal Contract")
-pub fn count_nodes_matching<F>(ctx: &Context, expr: ExprId, pred: F) -> usize
+#[allow(dead_code)]
+pub(crate) fn count_nodes_matching<F>(ctx: &Context, expr: ExprId, pred: F) -> usize
 where
     F: FnMut(&Expr) -> bool,
 {
@@ -28,7 +29,8 @@ where
 /// Final tie-breaker: fewer out-of-order adjacent pairs in Mul chains.
 ///
 /// For performance-critical comparisons, use `compare_nf_score_lazy` instead.
-pub fn nf_score(ctx: &Context, id: ExprId) -> (usize, usize, usize) {
+#[allow(dead_code)]
+pub(crate) fn nf_score(ctx: &Context, id: ExprId) -> (usize, usize, usize) {
     let divs_subs = count_nodes_matching(ctx, id, |e| matches!(e, Expr::Div(..) | Expr::Sub(..)));
     let total = count_all_nodes(ctx, id);
     let inversions = mul_unsorted_adjacent(ctx, id);
@@ -73,7 +75,7 @@ fn nf_score_base(ctx: &Context, id: ExprId) -> (usize, usize) {
 
 /// Compare nf_score lazily: only computes mul_unsorted_adjacent if first two components tie.
 /// Returns true if `after` is strictly better (lower) than `before`.
-pub fn nf_score_after_is_better(ctx: &Context, before: ExprId, after: ExprId) -> bool {
+pub(crate) fn nf_score_after_is_better(ctx: &Context, before: ExprId, after: ExprId) -> bool {
     let before_base = nf_score_base(ctx, before);
     let after_base = nf_score_base(ctx, after);
 
@@ -97,7 +99,7 @@ pub fn nf_score_after_is_better(ctx: &Context, before: ExprId, after: ExprId) ->
 /// - Counts how many pairs (f[i], f[i+1]) have compare_expr(f[i], f[i+1]) == Greater
 ///
 /// This metric allows canonicalizing rewrites that only reorder Mul factors.
-pub fn mul_unsorted_adjacent(ctx: &Context, root: ExprId) -> usize {
+pub(crate) fn mul_unsorted_adjacent(ctx: &Context, root: ExprId) -> usize {
     use crate::ordering::compare_expr;
     use std::cmp::Ordering;
     use std::collections::HashSet;

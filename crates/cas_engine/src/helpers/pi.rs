@@ -4,7 +4,7 @@ use cas_ast::{Context, Expr, ExprId};
 use num_traits::{One, Zero};
 
 /// Check if expression equals π/n for a given denominator (handles both Div and Mul forms)
-pub fn is_pi_over_n(ctx: &Context, expr: ExprId, denom: i32) -> bool {
+pub(crate) fn is_pi_over_n(ctx: &Context, expr: ExprId, denom: i32) -> bool {
     // Handle Div form: pi/n
     if let Expr::Div(num, den) = ctx.get(expr) {
         if let Expr::Constant(c) = ctx.get(*num) {
@@ -39,12 +39,13 @@ pub fn is_pi_over_n(ctx: &Context, expr: ExprId, denom: i32) -> bool {
 }
 
 /// Check if expression is exactly π
-pub fn is_pi(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_pi(ctx: &Context, expr: ExprId) -> bool {
     matches!(ctx.get(expr), Expr::Constant(cas_ast::Constant::Pi))
 }
 
 /// Check if expression equals a specific numeric value
-pub fn is_numeric_value(ctx: &Context, expr: ExprId, numer: i32, denom: i32) -> bool {
+#[allow(dead_code)]
+pub(crate) fn is_numeric_value(ctx: &Context, expr: ExprId, numer: i32, denom: i32) -> bool {
     if let Expr::Number(n) = ctx.get(expr) {
         *n == num_rational::BigRational::new(numer.into(), denom.into())
     } else {
@@ -53,7 +54,7 @@ pub fn is_numeric_value(ctx: &Context, expr: ExprId, numer: i32, denom: i32) -> 
 }
 
 /// Build π/n expression
-pub fn build_pi_over_n(ctx: &mut Context, denom: i64) -> ExprId {
+pub(crate) fn build_pi_over_n(ctx: &mut Context, denom: i64) -> ExprId {
     let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
     let d = ctx.num(denom);
     ctx.add(Expr::Div(pi, d))
@@ -68,7 +69,7 @@ pub fn build_pi_over_n(ctx: &mut Context, denom: i64) -> ExprId {
 /// - `k*π` where k is numeric → k
 ///
 /// Returns None if not a recognizable rational multiple of π.
-pub fn extract_rational_pi_multiple(
+pub(crate) fn extract_rational_pi_multiple(
     ctx: &Context,
     expr: ExprId,
 ) -> Option<num_rational::BigRational> {
@@ -147,7 +148,7 @@ pub fn extract_rational_pi_multiple(
 ///
 /// Returns true only if we can prove sin(θ) ≠ 0. Returns false otherwise
 /// (including cases where we cannot determine).
-pub fn is_provably_sin_nonzero(ctx: &Context, theta: ExprId) -> bool {
+pub(crate) fn is_provably_sin_nonzero(ctx: &Context, theta: ExprId) -> bool {
     if let Some(k) = extract_rational_pi_multiple(ctx, theta) {
         // sin(k·π) = 0 iff k is an integer
         // So sin(k·π) ≠ 0 iff k is NOT an integer
@@ -159,7 +160,7 @@ pub fn is_provably_sin_nonzero(ctx: &Context, theta: ExprId) -> bool {
 }
 
 /// Check if expression equals 1/2
-pub fn is_half(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn is_half(ctx: &Context, expr: ExprId) -> bool {
     if let Expr::Number(n) = ctx.get(expr) {
         *n.numer() == 1.into() && *n.denom() == 2.into()
     } else {

@@ -20,13 +20,13 @@ pub const DEFAULT_NUMERIC_EVAL_DEPTH: usize = 50;
 /// This is the canonical helper for numeric evaluation. Used by:
 /// - `SemanticEqualityChecker::try_evaluate_numeric`
 /// - `EvaluatePowerRule` for exponent matching
-pub fn as_rational_const(ctx: &Context, expr: ExprId) -> Option<num_rational::BigRational> {
+pub(crate) fn as_rational_const(ctx: &Context, expr: ExprId) -> Option<num_rational::BigRational> {
     as_rational_const_depth(ctx, expr, DEFAULT_NUMERIC_EVAL_DEPTH)
 }
 
 /// Extract a rational constant with explicit depth limit.
 /// Returns None if depth is exhausted (prevents stack overflow on deep expressions).
-pub fn as_rational_const_depth(
+pub(crate) fn as_rational_const_depth(
     ctx: &Context,
     expr: ExprId,
     depth: usize,
@@ -82,7 +82,7 @@ pub fn as_rational_const_depth(
 ///
 /// Searches the expression tree for `integrate(...)` function calls.
 /// Uses iterative traversal to avoid stack overflow on deep expressions.
-pub fn contains_integral(ctx: &Context, root: ExprId) -> bool {
+pub(crate) fn contains_integral(ctx: &Context, root: ExprId) -> bool {
     let mut stack = vec![root];
 
     while let Some(e) = stack.pop() {
@@ -126,7 +126,7 @@ pub fn contains_integral(ctx: &Context, root: ExprId) -> bool {
 /// Check if an expression contains the imaginary unit `i` or imaginary-producing expressions.
 /// Detects: Constant::I, sqrt(-1), (-1)^(1/2), and similar patterns.
 /// Uses iterative traversal to avoid stack overflow on deep expressions.
-pub fn contains_i(ctx: &Context, root: ExprId) -> bool {
+pub(crate) fn contains_i(ctx: &Context, root: ExprId) -> bool {
     let mut stack = vec![root];
 
     while let Some(e) = stack.pop() {

@@ -5,7 +5,7 @@ use cas_ast::{Context, Expr, ExprId};
 use num_traits::{One, Zero};
 
 // Use parent module's helpers
-use super::{build_mul_from_factors_a1, collect_mul_factors_int_pow};
+use super::core_rules::{build_mul_from_factors_a1, collect_mul_factors_int_pow};
 
 // =============================================================================
 // DivAddCommonFactorFromDenRule: Factor out MULTI-FACTOR from Add numerator

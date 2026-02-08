@@ -8,7 +8,7 @@ use cas_ast::{Context, ExprId};
 /// Used by the anti-worsen guard to reject rewrites that grow expressions too much.
 ///
 /// Delegates to canonical `cas_ast::traversal::count_all_nodes`.
-pub fn node_count(ctx: &Context, expr: ExprId) -> usize {
+pub(crate) fn node_count(ctx: &Context, expr: ExprId) -> usize {
     cas_ast::traversal::count_all_nodes(ctx, expr)
 }
 
@@ -19,7 +19,7 @@ pub fn node_count(ctx: &Context, expr: ExprId) -> usize {
 /// - Allow growth up to `max_growth_abs` nodes (e.g., 30)
 /// - Allow growth up to `max_growth_ratio` times original size (e.g., 1.5x)
 /// - If BOTH limits are exceeded, block the rewrite
-pub fn rewrite_worsens_too_much(
+pub(crate) fn rewrite_worsens_too_much(
     ctx: &Context,
     before: ExprId,
     after: ExprId,
