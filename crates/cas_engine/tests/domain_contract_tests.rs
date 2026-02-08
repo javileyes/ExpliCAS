@@ -39,8 +39,11 @@ fn simplify_strict(input: &str) -> String {
 
     // Use Strict domain mode
     let opts = cas_engine::SimplifyOptions {
-        semantics: cas_engine::semantics::EvalConfig {
-            domain_mode: cas_engine::DomainMode::Strict,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            semantics: cas_engine::semantics::EvalConfig {
+                domain_mode: cas_engine::DomainMode::Strict,
+                ..Default::default()
+            },
             ..Default::default()
         },
         ..Default::default()
@@ -479,8 +482,8 @@ fn simplify_with_domain_value(
     let mut engine = Engine::new();
     let mut state = SessionState::new();
 
-    state.options.semantics.domain_mode = domain;
-    state.options.semantics.value_domain = value;
+    state.options.shared.semantics.domain_mode = domain;
+    state.options.shared.semantics.value_domain = value;
 
     let parsed = cas_parser::parse(input, &mut engine.simplifier.context).expect("parse failed");
     let req = EvalRequest {
@@ -775,7 +778,7 @@ fn exp_ln_x_generic_emits_positive_require() {
     let mut state = SessionState::new();
 
     // Ensure Generic mode (default)
-    state.options.semantics.domain_mode = cas_engine::DomainMode::Generic;
+    state.options.shared.semantics.domain_mode = cas_engine::DomainMode::Generic;
 
     let parsed =
         cas_parser::parse("exp(ln(x))", &mut engine.simplifier.context).expect("parse failed");
@@ -826,7 +829,7 @@ fn blocked_hint_exp_ln_5_no_hint() {
     let mut state = SessionState::new();
 
     // Ensure Generic mode
-    state.options.semantics.domain_mode = cas_engine::DomainMode::Generic;
+    state.options.shared.semantics.domain_mode = cas_engine::DomainMode::Generic;
 
     let parsed =
         cas_parser::parse("exp(ln(5))", &mut engine.simplifier.context).expect("parse failed");
@@ -874,7 +877,7 @@ fn step_tracks_assumed_nonzero_in_generic() {
     let mut state = SessionState::new();
 
     // Ensure Generic mode
-    state.options.semantics.domain_mode = cas_engine::DomainMode::Generic;
+    state.options.shared.semantics.domain_mode = cas_engine::DomainMode::Generic;
 
     let parsed =
         cas_parser::parse("(x*y)/x", &mut engine.simplifier.context).expect("parse failed");
@@ -927,7 +930,7 @@ fn step_tracks_assumed_positive_in_assume() {
     let mut state = SessionState::new();
 
     // Use Generic mode - now works with implicit requires
-    state.options.semantics.domain_mode = cas_engine::DomainMode::Generic;
+    state.options.shared.semantics.domain_mode = cas_engine::DomainMode::Generic;
 
     let parsed =
         cas_parser::parse("exp(ln(x))", &mut engine.simplifier.context).expect("parse failed");
@@ -986,7 +989,7 @@ fn sqrt_conjugate_collapse_blocked_in_generic() {
     let mut state = SessionState::new();
 
     // Ensure Generic mode (default)
-    state.options.semantics.domain_mode = cas_engine::DomainMode::Generic;
+    state.options.shared.semantics.domain_mode = cas_engine::DomainMode::Generic;
     state.options.hints_enabled = true;
 
     // Expression: sqrt(x + sqrt(x^2 - 1)) * (x - sqrt(x^2 - 1))
@@ -1045,7 +1048,7 @@ fn sqrt_conjugate_collapse_allowed_in_assume() {
     let mut state = SessionState::new();
 
     // Use Assume mode
-    state.options.semantics.domain_mode = cas_engine::DomainMode::Assume;
+    state.options.shared.semantics.domain_mode = cas_engine::DomainMode::Assume;
 
     // Expression: sqrt(x + sqrt(x^2 - 1)) * (x - sqrt(x^2 - 1))
     let input = "sqrt(x + sqrt(x^2 - 1)) * (x - sqrt(x^2 - 1))";
@@ -1103,7 +1106,7 @@ fn simplify_generic_with_required(input: &str) -> (String, Vec<String>) {
     let mut engine = Engine::new();
     let mut state = SessionState::new();
 
-    state.options.semantics.domain_mode = cas_engine::DomainMode::Generic;
+    state.options.shared.semantics.domain_mode = cas_engine::DomainMode::Generic;
 
     let parsed = cas_parser::parse(input, &mut engine.simplifier.context).expect("parse failed");
     let req = EvalRequest {

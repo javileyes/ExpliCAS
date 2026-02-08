@@ -86,11 +86,11 @@ impl Engine {
         let mut effective = opts.clone();
 
         // Resolve ContextMode::Auto
-        if opts.context_mode == ContextMode::Auto {
+        if opts.shared.context_mode == ContextMode::Auto {
             if crate::helpers::contains_integral(&self.simplifier.context, expr) {
-                effective.context_mode = ContextMode::IntegratePrep;
+                effective.shared.context_mode = ContextMode::IntegratePrep;
             } else {
-                effective.context_mode = ContextMode::Standard;
+                effective.shared.context_mode = ContextMode::Standard;
             }
         }
 
@@ -105,8 +105,8 @@ impl Engine {
 
         // CRITICAL: Force expand_policy Off in Solve mode
         // Auto-expansion can interfere with equation solving strategies
-        if effective.context_mode == ContextMode::Solve {
-            effective.expand_policy = ExpandPolicy::Off;
+        if effective.shared.context_mode == ContextMode::Solve {
+            effective.shared.expand_policy = ExpandPolicy::Off;
         }
 
         effective

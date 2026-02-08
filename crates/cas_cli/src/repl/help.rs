@@ -41,7 +41,7 @@ impl Repl {
                     use cas_engine::options::HeuristicPoly;
                     format!(
                         "heuristic_poly: {}",
-                        if self.core.simplify_options.heuristic_poly == HeuristicPoly::On {
+                        if self.core.simplify_options.shared.heuristic_poly == HeuristicPoly::On {
                             "on"
                         } else {
                             "off"
@@ -52,7 +52,7 @@ impl Repl {
                     use cas_engine::options::AutoExpandBinomials;
                     format!(
                         "autoexpand: {}",
-                        if self.core.simplify_options.autoexpand_binomials
+                        if self.core.simplify_options.shared.autoexpand_binomials
                             == AutoExpandBinomials::On
                         {
                             "on"
@@ -104,16 +104,16 @@ impl Repl {
             },
             "autoexpand" | "autoexpand_binomials" => match parts[2] {
                 "on" | "true" | "1" => {
-                    self.core.state.options.autoexpand_binomials =
+                    self.core.state.options.shared.autoexpand_binomials =
                         cas_engine::AutoExpandBinomials::On;
-                    self.core.simplify_options.autoexpand_binomials =
+                    self.core.simplify_options.shared.autoexpand_binomials =
                         cas_engine::AutoExpandBinomials::On;
                     "Autoexpand binomials: ON (always expand)\n  (x+1)^5 will now expand to x⁵+5x⁴+10x³+10x²+5x+1".to_string()
                 }
                 "off" | "false" | "0" => {
-                    self.core.state.options.autoexpand_binomials =
+                    self.core.state.options.shared.autoexpand_binomials =
                         cas_engine::AutoExpandBinomials::Off;
-                    self.core.simplify_options.autoexpand_binomials =
+                    self.core.simplify_options.shared.autoexpand_binomials =
                         cas_engine::AutoExpandBinomials::Off;
                     "Autoexpand binomials: OFF (default, keep factored form)".to_string()
                 }
@@ -121,13 +121,15 @@ impl Repl {
             },
             "heuristic_poly" => match parts[2] {
                 "on" | "true" | "1" => {
-                    self.core.state.options.heuristic_poly = cas_engine::HeuristicPoly::On;
-                    self.core.simplify_options.heuristic_poly = cas_engine::HeuristicPoly::On;
+                    self.core.state.options.shared.heuristic_poly = cas_engine::HeuristicPoly::On;
+                    self.core.simplify_options.shared.heuristic_poly =
+                        cas_engine::HeuristicPoly::On;
                     "Heuristic polynomial simplification: ON\n  - Extract common factors in Add/Sub\n  - Poly normalize if no factor found\n  Example: (x+1)^4 + 4·(x+1)^3 → (x+1)³·(x+5)".to_string()
                 }
                 "off" | "false" | "0" => {
-                    self.core.state.options.heuristic_poly = cas_engine::HeuristicPoly::Off;
-                    self.core.simplify_options.heuristic_poly = cas_engine::HeuristicPoly::Off;
+                    self.core.state.options.shared.heuristic_poly = cas_engine::HeuristicPoly::Off;
+                    self.core.simplify_options.shared.heuristic_poly =
+                        cas_engine::HeuristicPoly::Off;
                     "Heuristic polynomial simplification: OFF (default)".to_string()
                 }
                 _ => "Usage: set heuristic_poly <off|on>".to_string(),
@@ -273,7 +275,7 @@ impl Repl {
         ));
         s.push_str(&format!(
             "  heuristic_poly: {}\n",
-            if self.core.simplify_options.heuristic_poly == HeuristicPoly::On {
+            if self.core.simplify_options.shared.heuristic_poly == HeuristicPoly::On {
                 "on"
             } else {
                 "off"
@@ -281,7 +283,7 @@ impl Repl {
         ));
         s.push_str(&format!(
             "  autoexpand: {}\n",
-            if self.core.simplify_options.autoexpand_binomials == AutoExpandBinomials::On {
+            if self.core.simplify_options.shared.autoexpand_binomials == AutoExpandBinomials::On {
                 "on"
             } else {
                 "off"

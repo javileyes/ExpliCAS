@@ -34,11 +34,14 @@ fn simplify_with(input: &str, opts: &EvalOptions) -> String {
 fn complex_on_opts() -> EvalOptions {
     EvalOptions {
         branch_mode: BranchMode::Strict,
-        context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::On,
         steps_mode: StepsMode::On,
-        semantics: cas_engine::semantics::EvalConfig {
-            value_domain: cas_engine::semantics::ValueDomain::ComplexEnabled,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            context_mode: ContextMode::Standard,
+            semantics: cas_engine::semantics::EvalConfig {
+                value_domain: cas_engine::semantics::ValueDomain::ComplexEnabled,
+                ..Default::default()
+            },
             ..Default::default()
         },
         ..Default::default()
@@ -47,20 +50,27 @@ fn complex_on_opts() -> EvalOptions {
 
 /// Complex mode On + Auto-expand: for identity tests that need expansion
 fn complex_on_autoexpand_opts() -> EvalOptions {
+    let base = complex_on_opts();
     EvalOptions {
-        expand_policy: ExpandPolicy::Auto,
-        ..complex_on_opts()
+        shared: cas_engine::phase::SharedSemanticConfig {
+            expand_policy: ExpandPolicy::Auto,
+            ..base.shared
+        },
+        ..base
     }
 }
 
 fn complex_off_opts() -> EvalOptions {
     EvalOptions {
         branch_mode: BranchMode::Strict,
-        context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Off,
         steps_mode: StepsMode::On,
-        semantics: cas_engine::semantics::EvalConfig {
-            value_domain: cas_engine::semantics::ValueDomain::ComplexEnabled,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            context_mode: ContextMode::Standard,
+            semantics: cas_engine::semantics::EvalConfig {
+                value_domain: cas_engine::semantics::ValueDomain::ComplexEnabled,
+                ..Default::default()
+            },
             ..Default::default()
         },
         ..Default::default()
@@ -70,11 +80,14 @@ fn complex_off_opts() -> EvalOptions {
 fn complex_auto_opts() -> EvalOptions {
     EvalOptions {
         branch_mode: BranchMode::Strict,
-        context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On,
-        semantics: cas_engine::semantics::EvalConfig {
-            value_domain: cas_engine::semantics::ValueDomain::ComplexEnabled,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            context_mode: ContextMode::Standard,
+            semantics: cas_engine::semantics::EvalConfig {
+                value_domain: cas_engine::semantics::ValueDomain::ComplexEnabled,
+                ..Default::default()
+            },
             ..Default::default()
         },
         ..Default::default()

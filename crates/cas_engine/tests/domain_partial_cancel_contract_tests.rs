@@ -22,8 +22,11 @@ fn simplify_strict(input: &str) -> String {
     let expr = parse(input, &mut simplifier.context).expect("parse failed");
 
     let opts = cas_engine::SimplifyOptions {
-        semantics: cas_engine::semantics::EvalConfig {
-            domain_mode: cas_engine::DomainMode::Strict,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            semantics: cas_engine::semantics::EvalConfig {
+                domain_mode: cas_engine::DomainMode::Strict,
+                ..Default::default()
+            },
             ..Default::default()
         },
         ..Default::default()

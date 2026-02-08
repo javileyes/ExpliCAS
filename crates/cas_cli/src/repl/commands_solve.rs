@@ -450,9 +450,9 @@ impl Repl {
                 // Call solver with step collection enabled and semantic options
                 self.core.engine.simplifier.set_collect_steps(true);
                 let solver_opts = cas_engine::solver::SolverOptions {
-                    value_domain: self.core.state.options.semantics.value_domain,
-                    domain_mode: self.core.state.options.semantics.domain_mode,
-                    assume_scope: self.core.state.options.semantics.assume_scope,
+                    value_domain: self.core.state.options.shared.semantics.value_domain,
+                    domain_mode: self.core.state.options.shared.semantics.domain_mode,
+                    assume_scope: self.core.state.options.shared.semantics.assume_scope,
                     budget: self.core.state.options.budget,
                     ..Default::default()
                 };
@@ -985,18 +985,18 @@ impl Repl {
                                 }
 
                                 // Contextual suggestion
-                                let suggestion = match self.core.state.options.semantics.domain_mode
-                                {
-                                    cas_engine::DomainMode::Strict => {
-                                        "tip: use `domain generic` or `domain assume` to allow"
-                                    }
-                                    cas_engine::DomainMode::Generic => {
-                                        "tip: use `semantics set domain assume` to allow"
-                                    }
-                                    cas_engine::DomainMode::Assume => {
-                                        "tip: assumptions already enabled"
-                                    }
-                                };
+                                let suggestion =
+                                    match self.core.state.options.shared.semantics.domain_mode {
+                                        cas_engine::DomainMode::Strict => {
+                                            "tip: use `domain generic` or `domain assume` to allow"
+                                        }
+                                        cas_engine::DomainMode::Generic => {
+                                            "tip: use `semantics set domain assume` to allow"
+                                        }
+                                        cas_engine::DomainMode::Assume => {
+                                            "tip: assumptions already enabled"
+                                        }
+                                    };
                                 lines.push(format!("  {}", suggestion));
                             }
                         } else if has_blocked && self.core.state.options.hints_enabled {
@@ -1016,15 +1016,16 @@ impl Repl {
                                 }
                             };
 
-                            let suggestion = match self.core.state.options.semantics.domain_mode {
-                                cas_engine::DomainMode::Strict => {
-                                    "use `domain generic` or `domain assume` to allow"
-                                }
-                                cas_engine::DomainMode::Generic => {
-                                    "use `semantics set domain assume` to allow"
-                                }
-                                cas_engine::DomainMode::Assume => "assumptions already enabled",
-                            };
+                            let suggestion =
+                                match self.core.state.options.shared.semantics.domain_mode {
+                                    cas_engine::DomainMode::Strict => {
+                                        "use `domain generic` or `domain assume` to allow"
+                                    }
+                                    cas_engine::DomainMode::Generic => {
+                                        "use `semantics set domain assume` to allow"
+                                    }
+                                    cas_engine::DomainMode::Assume => "assumptions already enabled",
+                                };
 
                             lines.push(String::new());
                             lines.push("ℹ️ Blocked simplifications:".to_string());

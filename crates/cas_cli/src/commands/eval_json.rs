@@ -411,7 +411,7 @@ fn configure_options(opts: &mut cas_engine::options::EvalOptions, args: &EvalJso
     use cas_engine::phase::ExpandPolicy;
 
     // Context mode
-    opts.context_mode = match args.context.as_str() {
+    opts.shared.context_mode = match args.context.as_str() {
         "standard" => ContextMode::Standard,
         "solve" => ContextMode::Solve,
         "integrate" => ContextMode::IntegratePrep,
@@ -439,36 +439,36 @@ fn configure_options(opts: &mut cas_engine::options::EvalOptions, args: &EvalJso
     };
 
     // Expand policy
-    opts.expand_policy = match args.autoexpand.as_str() {
+    opts.shared.expand_policy = match args.autoexpand.as_str() {
         "auto" => ExpandPolicy::Auto,
         _ => ExpandPolicy::Off,
     };
 
     // Domain mode
-    opts.semantics.domain_mode = match args.domain.as_str() {
+    opts.shared.semantics.domain_mode = match args.domain.as_str() {
         "strict" => cas_engine::DomainMode::Strict,
         "assume" => cas_engine::DomainMode::Assume,
         _ => cas_engine::DomainMode::Generic,
     };
 
     // Inverse trig policy
-    opts.semantics.inv_trig = match args.inv_trig.as_str() {
+    opts.shared.semantics.inv_trig = match args.inv_trig.as_str() {
         "principal" => cas_engine::InverseTrigPolicy::PrincipalValue,
         _ => cas_engine::InverseTrigPolicy::Strict,
     };
 
     // Value domain
-    opts.semantics.value_domain = match args.value_domain.as_str() {
+    opts.shared.semantics.value_domain = match args.value_domain.as_str() {
         "complex" => cas_engine::ValueDomain::ComplexEnabled,
         _ => cas_engine::ValueDomain::RealOnly,
     };
 
     // Branch policy (only Principal for now)
     let _ = args.complex_branch.as_str(); // Parse but only one option
-    opts.semantics.branch = cas_engine::BranchPolicy::Principal;
+    opts.shared.semantics.branch = cas_engine::BranchPolicy::Principal;
 
     // Assume scope
-    opts.semantics.assume_scope = match args.assume_scope.as_str() {
+    opts.shared.semantics.assume_scope = match args.assume_scope.as_str() {
         "wildcard" => cas_engine::AssumeScope::Wildcard,
         _ => cas_engine::AssumeScope::Real,
     };

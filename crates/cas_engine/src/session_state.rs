@@ -89,7 +89,7 @@ impl SessionState {
         use crate::session::{resolve_session_refs_with_mode, RefMode, SimplifyCacheKey};
 
         // Create cache key from current options
-        let cache_key = SimplifyCacheKey::from_context(self.options.semantics.domain_mode);
+        let cache_key = SimplifyCacheKey::from_context(self.options.shared.semantics.domain_mode);
 
         // 1. Resolve session refs with cache checking
         let resolved = resolve_session_refs_with_mode(

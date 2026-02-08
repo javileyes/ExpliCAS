@@ -262,7 +262,7 @@ fn simplify_options_has_assumption_reporting() {
 
     let opts = SimplifyOptions::default();
     // Default should be Off
-    assert_eq!(opts.assumption_reporting, AssumptionReporting::Off);
+    assert_eq!(opts.shared.assumption_reporting, AssumptionReporting::Off);
 }
 
 /// Test: EvalOptions includes assumption_reporting
@@ -272,7 +272,7 @@ fn eval_options_has_assumption_reporting() {
 
     let opts = EvalOptions::default();
     // Default should be Off
-    assert_eq!(opts.assumption_reporting, AssumptionReporting::Off);
+    assert_eq!(opts.shared.assumption_reporting, AssumptionReporting::Off);
 }
 
 /// Test: Options propagate through to_simplify_options
@@ -281,13 +281,16 @@ fn options_propagation() {
     use cas_engine::options::EvalOptions;
 
     let eval_opts = EvalOptions {
-        assumption_reporting: AssumptionReporting::Summary,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            assumption_reporting: AssumptionReporting::Summary,
+            ..Default::default()
+        },
         ..Default::default()
     };
 
     let simplify_opts = eval_opts.to_simplify_options();
     assert_eq!(
-        simplify_opts.assumption_reporting,
+        simplify_opts.shared.assumption_reporting,
         AssumptionReporting::Summary
     );
 }

@@ -273,6 +273,47 @@ impl ExpandBudget {
     }
 }
 
+/// Shared configuration axes used by both `EvalOptions` (REPL/session level)
+/// and `SimplifyOptions` (pipeline level).
+///
+/// Extracting these into a single struct eliminates the manual
+/// `to_simplify_options()` bridge for the 8 duplicated fields and ensures
+/// that any new config axis only needs to be added in one place.
+#[derive(Debug, Clone)]
+pub struct SharedSemanticConfig {
+    /// Auto-expand policy: Off (default) or Auto (expand cheap cases).
+    pub expand_policy: ExpandPolicy,
+    /// Budget limits for auto-expansion (only used when expand_policy=Auto).
+    pub expand_budget: ExpandBudget,
+    /// Auto-expand policy for logarithms: Off (default) or Auto.
+    pub log_expand_policy: ExpandPolicy,
+    /// Context mode (Standard, Solve, etc.) - Solve mode blocks auto-expand.
+    pub context_mode: crate::options::ContextMode,
+    /// Semantic configuration: domain_mode, value_domain, branch, inv_trig, assume_scope.
+    pub semantics: crate::semantics::EvalConfig,
+    /// Assumption reporting level (Off, Summary, Trace).
+    pub assumption_reporting: crate::assumptions::AssumptionReporting,
+    /// V2.15.8: Auto-expand small binomial powers.
+    pub autoexpand_binomials: crate::options::AutoExpandBinomials,
+    /// V2.15.9: Smart polynomial simplification in Add/Sub contexts.
+    pub heuristic_poly: crate::options::HeuristicPoly,
+}
+
+impl Default for SharedSemanticConfig {
+    fn default() -> Self {
+        Self {
+            expand_policy: ExpandPolicy::default(),
+            expand_budget: ExpandBudget::default(),
+            log_expand_policy: ExpandPolicy::Off,
+            context_mode: crate::options::ContextMode::default(),
+            semantics: crate::semantics::EvalConfig::default(),
+            assumption_reporting: crate::assumptions::AssumptionReporting::Off,
+            autoexpand_binomials: crate::options::AutoExpandBinomials::Off,
+            heuristic_poly: crate::options::HeuristicPoly::On,
+        }
+    }
+}
+
 /// Options controlling the simplification pipeline.
 #[derive(Debug, Clone)]
 pub struct SimplifyOptions {
@@ -294,23 +335,8 @@ pub struct SimplifyOptions {
     /// When true, bypasses educational guards that preserve factored forms.
     pub expand_mode: bool,
 
-    /// Auto-expand policy: Off (default) or Auto (expand cheap cases).
-    pub expand_policy: ExpandPolicy,
-
-    /// Budget limits for auto-expansion (only used when expand_policy=Auto).
-    pub expand_budget: ExpandBudget,
-
-    /// Auto-expand policy for logarithms: Off (default) or Auto.
-    pub log_expand_policy: ExpandPolicy,
-
-    /// Context mode (Standard, Solve, etc.) - Solve mode blocks auto-expand.
-    pub context_mode: crate::options::ContextMode,
-
-    /// Semantic configuration: domain_mode, value_domain, branch, inv_trig, assume_scope
-    pub semantics: crate::semantics::EvalConfig,
-
-    /// Assumption reporting level (Off, Summary, Trace).
-    pub assumption_reporting: crate::assumptions::AssumptionReporting,
+    /// Shared configuration (expand policy, semantics, context, etc.)
+    pub shared: SharedSemanticConfig,
 
     /// Transformation goal: controls which inverse rules are gated out.
     /// - Simplify (default): all rules allowed
@@ -325,15 +351,6 @@ pub struct SimplifyOptions {
     /// - SolvePrepass: only SolveSafety::Always rules (no conditional rules)
     /// - SolveTactic: allows conditional rules based on DomainMode
     pub simplify_purpose: crate::solve_safety::SimplifyPurpose,
-
-    /// V2.15.8: Auto-expand small binomial powers (e.g., (x+1)^5 → x^5+5x^4+...).
-    /// - Off: Never auto-expand (default)
-    /// - On: Always expand small binomials
-    pub autoexpand_binomials: crate::options::AutoExpandBinomials,
-    /// V2.15.9: Smart polynomial simplification in Add/Sub contexts.
-    /// - Off: Only identity → 0 (default)
-    /// - On: Extract common factor + poly normalize
-    pub heuristic_poly: crate::options::HeuristicPoly,
 }
 
 impl Default for SimplifyOptions {
@@ -344,16 +361,9 @@ impl Default for SimplifyOptions {
             budgets: PhaseBudgets::default(),
             collect_steps: true,
             expand_mode: false,
-            expand_policy: ExpandPolicy::default(),
-            expand_budget: ExpandBudget::default(),
-            log_expand_policy: ExpandPolicy::Off, // On by default to avoid surprises
-            context_mode: crate::options::ContextMode::default(),
-            semantics: crate::semantics::EvalConfig::default(),
-            assumption_reporting: crate::assumptions::AssumptionReporting::Off, // Default to Off (conservador)
-            goal: crate::semantics::NormalFormGoal::default(),                  // Simplify
-            simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),  // Eval
-            autoexpand_binomials: crate::options::AutoExpandBinomials::Off, // V2.15.8: On by default
-            heuristic_poly: crate::options::HeuristicPoly::On, // V2.15.9: On by default
+            shared: SharedSemanticConfig::default(),
+            goal: crate::semantics::NormalFormGoal::default(),
+            simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),
         }
     }
 }
@@ -398,8 +408,11 @@ impl SimplifyOptions {
     pub fn for_solve_tactic(domain_mode: crate::domain::DomainMode) -> Self {
         Self {
             simplify_purpose: crate::solve_safety::SimplifyPurpose::SolveTactic,
-            semantics: crate::semantics::EvalConfig {
-                domain_mode,
+            shared: SharedSemanticConfig {
+                semantics: crate::semantics::EvalConfig {
+                    domain_mode,
+                    ..Default::default()
+                },
                 ..Default::default()
             },
             ..Default::default()

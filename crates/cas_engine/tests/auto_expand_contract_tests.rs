@@ -41,7 +41,7 @@ fn simplify_standard(input: &str) -> String {
 /// Helper for auto-expand mode
 fn simplify_auto(input: &str) -> String {
     let mut opts = SimplifyOptions::default();
-    opts.expand_policy = ExpandPolicy::Auto;
+    opts.shared.expand_policy = ExpandPolicy::Auto;
     simplify_with_opts(input, &opts)
 }
 
@@ -49,9 +49,9 @@ fn simplify_auto(input: &str) -> String {
 fn simplify_solve_with_auto(input: &str) -> String {
     use cas_engine::options::HeuristicPoly;
     let mut opts = SimplifyOptions::default();
-    opts.expand_policy = ExpandPolicy::Auto;
-    opts.context_mode = ContextMode::Solve;
-    opts.heuristic_poly = HeuristicPoly::Off; // Disable heuristic poly in Solve mode tests
+    opts.shared.expand_policy = ExpandPolicy::Auto;
+    opts.shared.context_mode = ContextMode::Solve;
+    opts.shared.heuristic_poly = HeuristicPoly::Off; // Disable heuristic poly in Solve mode tests
     simplify_with_opts(input, &opts)
 }
 

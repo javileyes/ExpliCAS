@@ -53,9 +53,12 @@ fn assert_rule_fired(steps: &[Step], rule_name: &str) {
 fn standard_opts() -> EvalOptions {
     EvalOptions {
         branch_mode: BranchMode::Strict,
-        context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            context_mode: ContextMode::Standard,
+            ..Default::default()
+        },
         ..Default::default()
     }
 }
@@ -63,9 +66,12 @@ fn standard_opts() -> EvalOptions {
 fn solve_opts() -> EvalOptions {
     EvalOptions {
         branch_mode: BranchMode::Strict,
-        context_mode: ContextMode::Solve,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            context_mode: ContextMode::Solve,
+            ..Default::default()
+        },
         ..Default::default()
     }
 }
@@ -73,9 +79,12 @@ fn solve_opts() -> EvalOptions {
 fn integrate_opts() -> EvalOptions {
     EvalOptions {
         branch_mode: BranchMode::Strict,
-        context_mode: ContextMode::IntegratePrep,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            context_mode: ContextMode::IntegratePrep,
+            ..Default::default()
+        },
         ..Default::default()
     }
 }

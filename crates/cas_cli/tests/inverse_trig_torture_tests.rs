@@ -30,8 +30,11 @@ fn simplify_str_assume(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();
     let expr = parse(input, &mut simplifier.context).unwrap();
     let opts = cas_engine::SimplifyOptions {
-        semantics: cas_engine::semantics::EvalConfig {
-            domain_mode: cas_engine::DomainMode::Assume,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            semantics: cas_engine::semantics::EvalConfig {
+                domain_mode: cas_engine::DomainMode::Assume,
+                ..Default::default()
+            },
             ..Default::default()
         },
         ..Default::default()

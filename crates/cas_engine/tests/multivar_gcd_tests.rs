@@ -11,9 +11,12 @@ use cas_parser::parse;
 fn simplify(input: &str) -> String {
     let opts = EvalOptions {
         branch_mode: BranchMode::Strict,
-        context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            context_mode: ContextMode::Standard,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let mut ctx = Context::new();

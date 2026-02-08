@@ -50,7 +50,10 @@ fn test_expand_no_hold_leak() {
 #[test]
 fn test_autoexpand_no_hold_leak() {
     let opts = EvalOptions {
-        expand_policy: ExpandPolicy::Auto,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            expand_policy: ExpandPolicy::Auto,
+            ..Default::default()
+        },
         ..EvalOptions::default()
     };
     let mut simplifier = Simplifier::with_profile(&opts);

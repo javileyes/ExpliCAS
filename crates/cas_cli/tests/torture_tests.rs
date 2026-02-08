@@ -268,8 +268,11 @@ fn test_log_cancellation() {
 
     // Use Assume mode since Generic now blocks Analytic conditions (Positive)
     let opts = cas_engine::SimplifyOptions {
-        semantics: cas_engine::semantics::EvalConfig {
-            domain_mode: cas_engine::DomainMode::Assume,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            semantics: cas_engine::semantics::EvalConfig {
+                domain_mode: cas_engine::DomainMode::Assume,
+                ..Default::default()
+            },
             ..Default::default()
         },
         ..Default::default()
@@ -558,8 +561,11 @@ fn test_torture_6_conjugate() {
 
     // Use Assume mode to allow sqrt(x)^2 -> x
     let opts = cas_engine::SimplifyOptions {
-        semantics: cas_engine::semantics::EvalConfig {
-            domain_mode: cas_engine::DomainMode::Assume,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            semantics: cas_engine::semantics::EvalConfig {
+                domain_mode: cas_engine::DomainMode::Assume,
+                ..Default::default()
+            },
             ..Default::default()
         },
         ..Default::default()
@@ -921,8 +927,11 @@ fn test_log_sqrt_simplification() {
     let input = "ln(sqrt(x^2 + 2*x + 1)) - ln(x + 1)";
     let expr = parse(input, &mut simplifier.context).unwrap();
     let opts = cas_engine::SimplifyOptions {
-        semantics: cas_engine::semantics::EvalConfig {
-            domain_mode: cas_engine::DomainMode::Assume,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            semantics: cas_engine::semantics::EvalConfig {
+                domain_mode: cas_engine::DomainMode::Assume,
+                ..Default::default()
+            },
             ..Default::default()
         },
         ..Default::default()

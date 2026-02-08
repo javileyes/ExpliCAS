@@ -243,7 +243,7 @@ fn session_propagated_no_assumed_blocked_contamination() {
     let mut state = SessionState::default();
 
     // Use Assume mode to generate assumed events
-    state.options.semantics.domain_mode = cas_engine::DomainMode::Assume;
+    state.options.shared.semantics.domain_mode = cas_engine::DomainMode::Assume;
 
     // Step 1: Evaluate exp(ln(x)) in Assume mode
     // This should simplify to x and record Positive(x) as assumed

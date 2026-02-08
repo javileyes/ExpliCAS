@@ -855,22 +855,22 @@ impl Repl {
 
         let mut lines = Vec::new();
 
-        let domain = match self.core.simplify_options.semantics.domain_mode {
+        let domain = match self.core.simplify_options.shared.semantics.domain_mode {
             DomainMode::Strict => "strict",
             DomainMode::Assume => "assume",
             DomainMode::Generic => "generic",
         };
 
-        let value = match self.core.simplify_options.semantics.value_domain {
+        let value = match self.core.simplify_options.shared.semantics.value_domain {
             ValueDomain::RealOnly => "real",
             ValueDomain::ComplexEnabled => "complex",
         };
 
-        let branch = match self.core.simplify_options.semantics.branch {
+        let branch = match self.core.simplify_options.shared.semantics.branch {
             BranchPolicy::Principal => "principal",
         };
 
-        let inv_trig = match self.core.simplify_options.semantics.inv_trig {
+        let inv_trig = match self.core.simplify_options.shared.semantics.inv_trig {
             InverseTrigPolicy::Strict => "strict",
             InverseTrigPolicy::PrincipalValue => "principal",
         };
@@ -880,7 +880,7 @@ impl Repl {
         lines.push(format!("  value_domain: {}", value));
 
         // Show branch with inactive note if value=real
-        if self.core.simplify_options.semantics.value_domain == ValueDomain::RealOnly {
+        if self.core.simplify_options.shared.semantics.value_domain == ValueDomain::RealOnly {
             lines.push(format!(
                 "  branch: {} (inactive: value_domain=real)",
                 branch
@@ -897,7 +897,7 @@ impl Repl {
         };
         lines.push(format!("  const_fold: {}", const_fold));
 
-        let assumptions = match self.core.state.options.assumption_reporting {
+        let assumptions = match self.core.state.options.shared.assumption_reporting {
             cas_engine::AssumptionReporting::Off => "off",
             cas_engine::AssumptionReporting::Summary => "summary",
             cas_engine::AssumptionReporting::Trace => "trace",
@@ -905,11 +905,11 @@ impl Repl {
         lines.push(format!("  assumptions: {}", assumptions));
 
         // Show assume_scope with inactive note if domain_mode != Assume
-        let assume_scope = match self.core.simplify_options.semantics.assume_scope {
+        let assume_scope = match self.core.simplify_options.shared.semantics.assume_scope {
             cas_engine::AssumeScope::Real => "real",
             cas_engine::AssumeScope::Wildcard => "wildcard",
         };
-        if self.core.simplify_options.semantics.domain_mode != DomainMode::Assume {
+        if self.core.simplify_options.shared.semantics.domain_mode != DomainMode::Assume {
             lines.push(format!(
                 "  assume_scope: {} (inactive: domain_mode != assume)",
                 assume_scope
@@ -950,7 +950,7 @@ impl Repl {
 
         match axis {
             "domain" => {
-                let current = match self.core.simplify_options.semantics.domain_mode {
+                let current = match self.core.simplify_options.shared.semantics.domain_mode {
                     DomainMode::Strict => "strict",
                     DomainMode::Assume => "assume",
                     DomainMode::Generic => "generic",
@@ -962,7 +962,7 @@ impl Repl {
                 lines.push("  assume:  Use assumptions with warnings".to_string());
             }
             "value" => {
-                let current = match self.core.simplify_options.semantics.value_domain {
+                let current = match self.core.simplify_options.shared.semantics.value_domain {
                     ValueDomain::RealOnly => "real",
                     ValueDomain::ComplexEnabled => "complex",
                 };
@@ -972,11 +972,11 @@ impl Repl {
                 lines.push("  complex: ℂ enabled (sqrt(-1) = i)".to_string());
             }
             "branch" => {
-                let current = match self.core.simplify_options.semantics.branch {
+                let current = match self.core.simplify_options.shared.semantics.branch {
                     BranchPolicy::Principal => "principal",
                 };
-                let inactive =
-                    self.core.simplify_options.semantics.value_domain == ValueDomain::RealOnly;
+                let inactive = self.core.simplify_options.shared.semantics.value_domain
+                    == ValueDomain::RealOnly;
                 if inactive {
                     lines.push(format!("branch: {} (inactive: value=real)", current));
                 } else {
@@ -991,7 +991,7 @@ impl Repl {
                 }
             }
             "inv_trig" => {
-                let current = match self.core.simplify_options.semantics.inv_trig {
+                let current = match self.core.simplify_options.shared.semantics.inv_trig {
                     InverseTrigPolicy::Strict => "strict",
                     InverseTrigPolicy::PrincipalValue => "principal",
                 };
@@ -1011,7 +1011,7 @@ impl Repl {
                 lines.push("  safe: Fold literals (2^3 → 8, sqrt(-1) → i if complex)".to_string());
             }
             "assumptions" => {
-                let current = match self.core.state.options.assumption_reporting {
+                let current = match self.core.state.options.shared.assumption_reporting {
                     cas_engine::AssumptionReporting::Off => "off",
                     cas_engine::AssumptionReporting::Summary => "summary",
                     cas_engine::AssumptionReporting::Trace => "trace",
@@ -1023,12 +1023,12 @@ impl Repl {
                 lines.push("  trace:   Detailed trace (future)".to_string());
             }
             "assume_scope" => {
-                let current = match self.core.simplify_options.semantics.assume_scope {
+                let current = match self.core.simplify_options.shared.semantics.assume_scope {
                     cas_engine::AssumeScope::Real => "real",
                     cas_engine::AssumeScope::Wildcard => "wildcard",
                 };
                 let inactive =
-                    self.core.simplify_options.semantics.domain_mode != DomainMode::Assume;
+                    self.core.simplify_options.shared.semantics.domain_mode != DomainMode::Assume;
                 if inactive {
                     lines.push(format!(
                         "assume_scope: {} (inactive: domain_mode != assume)",
@@ -1239,23 +1239,23 @@ Presets:
                 // Apply preset
                 if let Some(p) = presets.iter().find(|preset| preset.name == *name) {
                     // Capture old values for diff
-                    let old_domain = self.core.simplify_options.semantics.domain_mode;
-                    let old_value = self.core.simplify_options.semantics.value_domain;
-                    let old_branch = self.core.simplify_options.semantics.branch;
-                    let old_inv_trig = self.core.simplify_options.semantics.inv_trig;
+                    let old_domain = self.core.simplify_options.shared.semantics.domain_mode;
+                    let old_value = self.core.simplify_options.shared.semantics.value_domain;
+                    let old_branch = self.core.simplify_options.shared.semantics.branch;
+                    let old_inv_trig = self.core.simplify_options.shared.semantics.inv_trig;
                     let old_const_fold = self.core.state.options.const_fold;
 
                     // Apply preset
-                    self.core.simplify_options.semantics.domain_mode = p.domain;
-                    self.core.simplify_options.semantics.value_domain = p.value;
-                    self.core.simplify_options.semantics.branch = p.branch;
-                    self.core.simplify_options.semantics.inv_trig = p.inv_trig;
+                    self.core.simplify_options.shared.semantics.domain_mode = p.domain;
+                    self.core.simplify_options.shared.semantics.value_domain = p.value;
+                    self.core.simplify_options.shared.semantics.branch = p.branch;
+                    self.core.simplify_options.shared.semantics.inv_trig = p.inv_trig;
                     self.core.state.options.const_fold = p.const_fold;
                     // Sync to state.options (used by evaluation pipeline)
-                    self.core.state.options.semantics.domain_mode = p.domain;
-                    self.core.state.options.semantics.value_domain = p.value;
-                    self.core.state.options.semantics.branch = p.branch;
-                    self.core.state.options.semantics.inv_trig = p.inv_trig;
+                    self.core.state.options.shared.semantics.domain_mode = p.domain;
+                    self.core.state.options.shared.semantics.value_domain = p.value;
+                    self.core.state.options.shared.semantics.branch = p.branch;
+                    self.core.state.options.shared.semantics.inv_trig = p.inv_trig;
 
                     self.sync_config_to_simplifier();
 

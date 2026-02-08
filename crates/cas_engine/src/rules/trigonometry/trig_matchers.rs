@@ -10,7 +10,7 @@
 // extracted from the numerator when the numerator is non-commutative.
 // =============================================================================
 
-use super::destructure::as_fn1;
+use crate::helpers::as_fn1;
 use cas_ast::{Context, Expr, ExprId};
 
 /// Result of matching a sum of trigonometric functions.

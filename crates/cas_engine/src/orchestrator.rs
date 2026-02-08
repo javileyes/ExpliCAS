@@ -78,9 +78,11 @@ impl Orchestrator {
             // Auto-expand scanner: mark cancellation contexts (difference quotients)
             // Only skip in Solve mode (which should never auto-expand to preserve structure)
             // The scanner has its own strict budgets (n=2, base_terms<=3) so it's safe to always run
-            let is_solve_mode = self.options.context_mode == crate::options::ContextMode::Solve;
-            let global_auto_expand =
-                self.options.expand_policy == crate::phase::ExpandPolicy::Auto && !is_solve_mode;
+            let is_solve_mode =
+                self.options.shared.context_mode == crate::options::ContextMode::Solve;
+            let global_auto_expand = self.options.shared.expand_policy
+                == crate::phase::ExpandPolicy::Auto
+                && !is_solve_mode;
 
             // Always scan for cancellation contexts (unless in Solve mode)
             // This enables Smart Expansion: auto-expand only when it leads to cancellation
@@ -88,7 +90,7 @@ impl Orchestrator {
                 crate::auto_expand_scan::mark_auto_expand_candidates(
                     &simplifier.context,
                     current,
-                    &self.options.expand_budget,
+                    &self.options.shared.expand_budget,
                     &mut self.pattern_marks,
                 );
             }
@@ -96,15 +98,15 @@ impl Orchestrator {
                 phase,
                 expand_mode: self.options.expand_mode,
                 auto_expand: global_auto_expand,
-                expand_budget: self.options.expand_budget,
-                domain_mode: self.options.semantics.domain_mode,
-                inv_trig: self.options.semantics.inv_trig,
-                value_domain: self.options.semantics.value_domain,
+                expand_budget: self.options.shared.expand_budget,
+                domain_mode: self.options.shared.semantics.domain_mode,
+                inv_trig: self.options.shared.semantics.inv_trig,
+                value_domain: self.options.shared.semantics.value_domain,
                 goal: self.options.goal,
                 simplify_purpose: self.options.simplify_purpose,
-                context_mode: self.options.context_mode,
-                autoexpand_binomials: self.options.autoexpand_binomials,
-                heuristic_poly: self.options.heuristic_poly,
+                context_mode: self.options.shared.context_mode,
+                autoexpand_binomials: self.options.shared.autoexpand_binomials,
+                heuristic_poly: self.options.shared.heuristic_poly,
             };
             let (next, steps, pass_stats) =
                 simplifier.apply_rules_loop_with_config(current, &self.pattern_marks, &config);
@@ -203,7 +205,7 @@ impl Orchestrator {
         // V2.15.8: Set sticky implicit domain from original input to propagate inherited requires
         // across all phases. This allows AbsNonNegativeSimplifyRule to see x≥0 from sqrt(x)
         // even after the sqrt witness is consumed.
-        simplifier.set_sticky_implicit_domain(expr, self.options.semantics.value_domain);
+        simplifier.set_sticky_implicit_domain(expr, self.options.shared.semantics.value_domain);
 
         // Clear thread-local PolyStore before evaluation
         clear_thread_local_store();
@@ -353,7 +355,7 @@ impl Orchestrator {
         // Final collection for canonical form - RESPECTS domain mode
         // Use collect_with_semantics to preserve Strict definedness invariant
         let final_parent_ctx = crate::parent_context::ParentContext::root()
-            .with_domain_mode(self.options.semantics.domain_mode);
+            .with_domain_mode(self.options.shared.semantics.domain_mode);
         let final_collected = match crate::collect::collect_with_semantics(
             &mut simplifier.context,
             current,
@@ -402,7 +404,8 @@ impl Orchestrator {
 
         // Collect assumptions from steps if reporting is enabled
         // Priority: 1) structured assumption_events, 2) legacy domain_assumption string parsing
-        if self.options.assumption_reporting != crate::assumptions::AssumptionReporting::Off {
+        if self.options.shared.assumption_reporting != crate::assumptions::AssumptionReporting::Off
+        {
             let mut collector = crate::assumptions::AssumptionCollector::new();
             for step in &optimized_steps {
                 // Collect structured assumption_events

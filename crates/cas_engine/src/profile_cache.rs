@@ -20,7 +20,7 @@ impl ProfileKey {
     pub fn from_options(opts: &EvalOptions) -> Self {
         Self {
             branch_mode: opts.branch_mode,
-            context_mode: opts.context_mode,
+            context_mode: opts.shared.context_mode,
             complex_mode: opts.complex_mode,
         }
     }
@@ -134,7 +134,10 @@ mod tests {
 
         let standard_opts = EvalOptions::default();
         let integrate_opts = EvalOptions {
-            context_mode: ContextMode::IntegratePrep,
+            shared: crate::phase::SharedSemanticConfig {
+                context_mode: ContextMode::IntegratePrep,
+                ..Default::default()
+            },
             ..Default::default()
         };
 

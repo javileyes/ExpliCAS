@@ -86,8 +86,11 @@ pub fn verify_solution(
 
     // Step 3: Simplify with Strict mode (no assumptions allowed)
     let opts = crate::SimplifyOptions {
-        semantics: crate::semantics::EvalConfig {
-            domain_mode: crate::domain::DomainMode::Strict,
+        shared: crate::phase::SharedSemanticConfig {
+            semantics: crate::semantics::EvalConfig {
+                domain_mode: crate::domain::DomainMode::Strict,
+                ..Default::default()
+            },
             ..Default::default()
         },
         ..Default::default()

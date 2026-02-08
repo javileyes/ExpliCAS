@@ -167,8 +167,8 @@ impl Engine {
             let mut budget = crate::budget::Budget::preset_cli();
             // Use effective_opts to propagate value_domain to const_fold
             let cfg = crate::semantics::EvalConfig {
-                value_domain: effective_opts.semantics.value_domain,
-                branch: effective_opts.semantics.branch,
+                value_domain: effective_opts.shared.semantics.value_domain,
+                branch: effective_opts.shared.semantics.branch,
                 ..Default::default()
             };
             if let Ok(fold_result) = crate::const_fold::fold_constants(
@@ -199,7 +199,7 @@ impl Engine {
             let input_domain = infer_implicit_domain(
                 &self.simplifier.context,
                 resolved,
-                effective_opts.semantics.value_domain,
+                effective_opts.shared.semantics.value_domain,
             );
             let global_requires: Vec<_> = input_domain.conditions().iter().cloned().collect();
             let mut dc = DomainContext::new(global_requires);
@@ -218,7 +218,7 @@ impl Engine {
         let mut warnings = collect_domain_warnings(&steps);
 
         // Add warning if i is used in RealOnly mode
-        if effective_opts.semantics.value_domain == crate::semantics::ValueDomain::RealOnly
+        if effective_opts.shared.semantics.value_domain == crate::semantics::ValueDomain::RealOnly
             && crate::helpers::contains_i(&self.simplifier.context, resolved)
         {
             let i_warning = DomainWarning {
@@ -306,16 +306,16 @@ impl Engine {
 
         // Call solver with semantic options and assumption collection
         let solver_opts = crate::solver::SolverOptions {
-            value_domain: state.options.semantics.value_domain,
-            domain_mode: state.options.semantics.domain_mode,
-            assume_scope: state.options.semantics.assume_scope,
+            value_domain: state.options.shared.semantics.value_domain,
+            domain_mode: state.options.shared.semantics.domain_mode,
+            assume_scope: state.options.shared.semantics.assume_scope,
             budget: state.options.budget,
             ..Default::default()
         };
 
         // RAII guard for assumption collection (handles nested solves safely)
-        let collect_assumptions =
-            state.options.assumption_reporting != crate::assumptions::AssumptionReporting::Off;
+        let collect_assumptions = state.options.shared.assumption_reporting
+            != crate::assumptions::AssumptionReporting::Off;
         let assumption_guard = crate::solver::SolveAssumptionsGuard::new(collect_assumptions);
 
         // V2.9.8: Use type-safe API that guarantees cleanup is applied

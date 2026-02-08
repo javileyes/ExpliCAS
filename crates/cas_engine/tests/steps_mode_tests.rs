@@ -14,9 +14,12 @@ use cas_parser::parse;
 fn simplify_with_mode(input: &str, mode: StepsMode) -> (String, Vec<cas_engine::Step>, StepsMode) {
     let opts = EvalOptions {
         branch_mode: BranchMode::Strict,
-        context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
         steps_mode: mode,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            context_mode: ContextMode::Standard,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let mut ctx = Context::new();
@@ -181,9 +184,12 @@ fn simplify_morrie_with_mode(mode: StepsMode) -> (String, Vec<cas_engine::Step>,
     // Use IntegratePrep context to enable CosProductTelescopingRule
     let opts = EvalOptions {
         branch_mode: BranchMode::Strict,
-        context_mode: ContextMode::IntegratePrep,
         complex_mode: ComplexMode::Auto,
         steps_mode: mode,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            context_mode: ContextMode::IntegratePrep,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let input = "cos(x)*cos(2*x)*cos(4*x)"; // Morrie product - triggers domain_assumption
@@ -244,9 +250,12 @@ fn warnings_survive_steps_off() {
     // The key test: domain_warnings must survive even when steps_mode is Off
     let opts = EvalOptions {
         branch_mode: BranchMode::Strict,
-        context_mode: ContextMode::IntegratePrep, // Enables Morrie telescoping
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::Off,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            context_mode: ContextMode::IntegratePrep,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let input = "cos(x)*cos(2*x)*cos(4*x)"; // Morrie product - triggers domain_assumption

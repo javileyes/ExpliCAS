@@ -21,7 +21,10 @@ fn simplify_with_heuristic_poly(input: &str, mode: HeuristicPoly) -> String {
     simplifier.context = ctx;
 
     let opts = SimplifyOptions {
-        heuristic_poly: mode,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            heuristic_poly: mode,
+            ..Default::default()
+        },
         ..Default::default()
     };
 
@@ -50,8 +53,11 @@ fn simplify_with_mode(input: &str, mode: AutoExpandBinomials) -> String {
     };
 
     let opts = SimplifyOptions {
-        autoexpand_binomials: mode,
-        heuristic_poly: heuristic_mode,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            autoexpand_binomials: mode,
+            heuristic_poly: heuristic_mode,
+            ..Default::default()
+        },
         ..Default::default()
     };
 

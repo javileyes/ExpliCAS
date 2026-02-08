@@ -10,9 +10,12 @@ use cas_parser::parse;
 fn simplify(input: &str) -> String {
     let opts = EvalOptions {
         branch_mode: BranchMode::Strict,
-        context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            context_mode: ContextMode::Standard,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let mut ctx = Context::new();
@@ -206,7 +209,8 @@ fn simplify_complex(input: &str) -> String {
     let mut state = SessionState::new();
 
     // Set ComplexEnabled for these tests
-    state.options.semantics.value_domain = cas_engine::semantics::ValueDomain::ComplexEnabled;
+    state.options.shared.semantics.value_domain =
+        cas_engine::semantics::ValueDomain::ComplexEnabled;
 
     let parsed = parse(input, &mut engine.simplifier.context).expect("parse failed");
     let req = EvalRequest {
@@ -294,9 +298,12 @@ fn test_monomial_gcd_still_works() {
 fn simplify_with_steps(input: &str) -> Vec<String> {
     let opts = EvalOptions {
         branch_mode: BranchMode::Strict,
-        context_mode: ContextMode::Standard,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            context_mode: ContextMode::Standard,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let mut ctx = Context::new();

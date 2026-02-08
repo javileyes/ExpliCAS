@@ -42,8 +42,11 @@ fn pre_evaluate_for_gcd(ctx: &mut Context, expr: ExprId) -> ExprId {
         if matches!(ctx.builtin_of(fn_id), Some(cas_ast::BuiltinFn::Expand)) {
             // expand() is explicitly requested by user - evaluate it
             let opts = EvalOptions {
-                steps_mode: StepsMode::Off,       // No step tracking
-                expand_policy: ExpandPolicy::Off, // Don't auto-expand other things
+                steps_mode: StepsMode::Off,
+                shared: crate::phase::SharedSemanticConfig {
+                    expand_policy: ExpandPolicy::Off,
+                    ..Default::default()
+                },
                 ..Default::default()
             };
             let mut simplifier = Simplifier::with_profile(&opts);

@@ -115,24 +115,12 @@ pub enum StepsMode {
 pub struct EvalOptions {
     /// How to handle inverse function compositions
     pub branch_mode: BranchMode,
-    /// Which context-specific rules to enable
-    pub context_mode: ContextMode,
     /// Whether to apply complex number rules
     pub complex_mode: ComplexMode,
     /// Whether to collect simplification steps (runtime, not cached)
     pub steps_mode: StepsMode,
-    /// Auto-expand policy: Off (default) or Auto (expand cheap cases)
-    pub expand_policy: crate::phase::ExpandPolicy,
-    /// Budget for auto-expand (only used when expand_policy=Auto)
-    pub expand_budget: crate::phase::ExpandBudget,
-    /// Auto-expand policy for logarithms: Off (default) or Auto
-    pub log_expand_policy: crate::phase::ExpandPolicy,
-    /// Semantic configuration: domain_mode, value_domain, branch, inv_trig, assume_scope
-    pub semantics: crate::semantics::EvalConfig,
     /// Constant folding mode (Off or Safe)
     pub const_fold: crate::const_fold::ConstFoldMode,
-    /// Assumption reporting level (Off, Summary, Trace)
-    pub assumption_reporting: crate::assumptions::AssumptionReporting,
     /// Whether to display blocked hints in REPL (default: true)
     pub hints_enabled: bool,
     /// Explain mode: show assumption summary after each evaluation (default: false)
@@ -143,10 +131,8 @@ pub struct EvalOptions {
     pub check_solutions: bool,
     /// Display level for required conditions (Essential hides witness-surviving requires)
     pub requires_display: crate::implicit_domain::RequiresDisplayLevel,
-    /// V2.15.8: Auto-expand small binomial powers (education mode)
-    pub autoexpand_binomials: AutoExpandBinomials,
-    /// V2.15.9: Smart polynomial simplification in Add/Sub contexts
-    pub heuristic_poly: HeuristicPoly,
+    /// Shared configuration (expand policy, semantics, context, etc.)
+    pub shared: crate::phase::SharedSemanticConfig,
 }
 
 impl EvalOptions {
@@ -154,7 +140,10 @@ impl EvalOptions {
     pub fn strict() -> Self {
         Self {
             branch_mode: BranchMode::Strict,
-            context_mode: ContextMode::Standard,
+            shared: crate::phase::SharedSemanticConfig {
+                context_mode: ContextMode::Standard,
+                ..Default::default()
+            },
             complex_mode: ComplexMode::Auto,
             steps_mode: StepsMode::On,
             ..Default::default()
@@ -165,7 +154,6 @@ impl EvalOptions {
     pub fn principal_branch() -> Self {
         Self {
             branch_mode: BranchMode::PrincipalBranch,
-            context_mode: ContextMode::Auto,
             complex_mode: ComplexMode::Auto,
             steps_mode: StepsMode::On,
             ..Default::default()
@@ -176,7 +164,10 @@ impl EvalOptions {
     pub fn integrate_prep() -> Self {
         Self {
             branch_mode: BranchMode::Strict,
-            context_mode: ContextMode::IntegratePrep,
+            shared: crate::phase::SharedSemanticConfig {
+                context_mode: ContextMode::IntegratePrep,
+                ..Default::default()
+            },
             complex_mode: ComplexMode::Auto,
             steps_mode: StepsMode::On,
             ..Default::default()
@@ -187,7 +178,10 @@ impl EvalOptions {
     pub fn solve() -> Self {
         Self {
             branch_mode: BranchMode::Strict,
-            context_mode: ContextMode::Solve,
+            shared: crate::phase::SharedSemanticConfig {
+                context_mode: ContextMode::Solve,
+                ..Default::default()
+            },
             complex_mode: ComplexMode::Auto,
             steps_mode: StepsMode::On,
             ..Default::default()
@@ -198,15 +192,8 @@ impl EvalOptions {
     /// This bridges EvalOptions (REPL/Session level) to SimplifyOptions (pipeline level).
     pub fn to_simplify_options(&self) -> crate::phase::SimplifyOptions {
         crate::phase::SimplifyOptions {
-            expand_policy: self.expand_policy,
-            expand_budget: self.expand_budget,
-            log_expand_policy: self.log_expand_policy,
-            context_mode: self.context_mode,
+            shared: self.shared.clone(),
             collect_steps: !matches!(self.steps_mode, StepsMode::Off),
-            semantics: self.semantics,
-            assumption_reporting: self.assumption_reporting,
-            autoexpand_binomials: self.autoexpand_binomials, // V2.15.8
-            heuristic_poly: self.heuristic_poly,             // V2.15.9
             ..Default::default()
         }
     }
@@ -219,22 +206,15 @@ impl Default for EvalOptions {
     fn default() -> Self {
         Self {
             branch_mode: BranchMode::default(),
-            context_mode: ContextMode::default(),
             complex_mode: ComplexMode::default(),
             steps_mode: StepsMode::default(),
-            expand_policy: crate::phase::ExpandPolicy::default(),
-            expand_budget: crate::phase::ExpandBudget::default(),
-            log_expand_policy: crate::phase::ExpandPolicy::Off, // On by default to avoid surprises
-            semantics: crate::semantics::EvalConfig::default(),
             const_fold: crate::const_fold::ConstFoldMode::default(),
-            assumption_reporting: crate::assumptions::AssumptionReporting::default(),
-            hints_enabled: true, // Pedagogical hints on by default
-            explain_mode: false, // Explain mode off by default
+            hints_enabled: true,
+            explain_mode: false,
             budget: crate::solver::SolveBudget::default(),
-            check_solutions: false, // Solution verification off by default
+            check_solutions: false,
             requires_display: crate::implicit_domain::RequiresDisplayLevel::Essential,
-            autoexpand_binomials: AutoExpandBinomials::Off, // V2.15.8: On by default
-            heuristic_poly: HeuristicPoly::On,              // V2.15.9: On by default
+            shared: crate::phase::SharedSemanticConfig::default(),
         }
     }
 }

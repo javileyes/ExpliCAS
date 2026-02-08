@@ -19,7 +19,7 @@ fn build_prompt_indicators(opts: &EvalOptions) -> String {
     }
 
     // Show context mode if not Auto (default)
-    match opts.context_mode {
+    match opts.shared.context_mode {
         ContextMode::IntegratePrep => indicators.push("[ctx:integrate]"),
         ContextMode::Solve => indicators.push("[ctx:solve]"),
         ContextMode::Standard => indicators.push("[ctx:standard]"),
@@ -40,7 +40,7 @@ fn build_prompt_indicators(opts: &EvalOptions) -> String {
     }
 
     // Show expand_policy if Auto (not default Off)
-    if opts.expand_policy == ExpandPolicy::Auto {
+    if opts.shared.expand_policy == ExpandPolicy::Auto {
         indicators.push("[autoexp:on]");
     }
 
@@ -78,7 +78,10 @@ fn steps_compact_only() {
 #[test]
 fn context_integrate_only() {
     let opts = EvalOptions {
-        context_mode: ContextMode::IntegratePrep,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            context_mode: ContextMode::IntegratePrep,
+            ..Default::default()
+        },
         ..Default::default()
     };
     assert_eq!(build_prompt_indicators(&opts), "[ctx:integrate] > ");
@@ -105,7 +108,10 @@ fn complex_on_only() {
 #[test]
 fn autoexpand_on_only() {
     let opts = EvalOptions {
-        expand_policy: ExpandPolicy::Auto,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            expand_policy: ExpandPolicy::Auto,
+            ..Default::default()
+        },
         ..Default::default()
     };
     assert_eq!(build_prompt_indicators(&opts), "[autoexp:on] > ");
@@ -115,7 +121,10 @@ fn autoexpand_on_only() {
 fn combined_steps_and_context() {
     let opts = EvalOptions {
         steps_mode: StepsMode::Off,
-        context_mode: ContextMode::IntegratePrep,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            context_mode: ContextMode::IntegratePrep,
+            ..Default::default()
+        },
         ..Default::default()
     };
     assert_eq!(
@@ -128,10 +137,13 @@ fn combined_steps_and_context() {
 fn combined_all_non_default() {
     let opts = EvalOptions {
         steps_mode: StepsMode::Off,
-        context_mode: ContextMode::IntegratePrep,
         branch_mode: BranchMode::PrincipalBranch,
         complex_mode: ComplexMode::On,
-        expand_policy: ExpandPolicy::Auto,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            context_mode: ContextMode::IntegratePrep,
+            expand_policy: ExpandPolicy::Auto,
+            ..Default::default()
+        },
         ..Default::default()
     };
     assert_eq!(
@@ -145,10 +157,13 @@ fn order_is_deterministic() {
     // Order: steps, context, branch, complex, autoexp
     let opts = EvalOptions {
         steps_mode: StepsMode::Compact,
-        context_mode: ContextMode::Solve,
         branch_mode: BranchMode::PrincipalBranch,
         complex_mode: ComplexMode::Off,
-        expand_policy: ExpandPolicy::Auto,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            context_mode: ContextMode::Solve,
+            expand_policy: ExpandPolicy::Auto,
+            ..Default::default()
+        },
         ..Default::default()
     };
     // Run multiple times to ensure determinism

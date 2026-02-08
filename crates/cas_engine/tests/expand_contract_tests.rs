@@ -158,7 +158,10 @@ fn test_solve_context_no_expansion() {
     use cas_engine::options::{ContextMode, EvalOptions};
 
     let opts = EvalOptions {
-        context_mode: ContextMode::Solve,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            context_mode: ContextMode::Solve,
+            ..Default::default()
+        },
         ..Default::default()
     };
 

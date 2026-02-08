@@ -72,16 +72,16 @@ impl Repl {
         match axis {
             "domain" => match value {
                 "strict" => {
-                    self.core.simplify_options.semantics.domain_mode = DomainMode::Strict;
-                    self.core.state.options.semantics.domain_mode = DomainMode::Strict;
+                    self.core.simplify_options.shared.semantics.domain_mode = DomainMode::Strict;
+                    self.core.state.options.shared.semantics.domain_mode = DomainMode::Strict;
                 }
                 "generic" => {
-                    self.core.simplify_options.semantics.domain_mode = DomainMode::Generic;
-                    self.core.state.options.semantics.domain_mode = DomainMode::Generic;
+                    self.core.simplify_options.shared.semantics.domain_mode = DomainMode::Generic;
+                    self.core.state.options.shared.semantics.domain_mode = DomainMode::Generic;
                 }
                 "assume" => {
-                    self.core.simplify_options.semantics.domain_mode = DomainMode::Assume;
-                    self.core.state.options.semantics.domain_mode = DomainMode::Assume;
+                    self.core.simplify_options.shared.semantics.domain_mode = DomainMode::Assume;
+                    self.core.state.options.shared.semantics.domain_mode = DomainMode::Assume;
                 }
                 _ => {
                     return Some(format!(
@@ -92,12 +92,15 @@ impl Repl {
             },
             "value" => match value {
                 "real" => {
-                    self.core.simplify_options.semantics.value_domain = ValueDomain::RealOnly;
-                    self.core.state.options.semantics.value_domain = ValueDomain::RealOnly;
+                    self.core.simplify_options.shared.semantics.value_domain =
+                        ValueDomain::RealOnly;
+                    self.core.state.options.shared.semantics.value_domain = ValueDomain::RealOnly;
                 }
                 "complex" => {
-                    self.core.simplify_options.semantics.value_domain = ValueDomain::ComplexEnabled;
-                    self.core.state.options.semantics.value_domain = ValueDomain::ComplexEnabled;
+                    self.core.simplify_options.shared.semantics.value_domain =
+                        ValueDomain::ComplexEnabled;
+                    self.core.state.options.shared.semantics.value_domain =
+                        ValueDomain::ComplexEnabled;
                 }
                 _ => {
                     return Some(format!(
@@ -108,8 +111,8 @@ impl Repl {
             },
             "branch" => match value {
                 "principal" => {
-                    self.core.simplify_options.semantics.branch = BranchPolicy::Principal;
-                    self.core.state.options.semantics.branch = BranchPolicy::Principal;
+                    self.core.simplify_options.shared.semantics.branch = BranchPolicy::Principal;
+                    self.core.state.options.shared.semantics.branch = BranchPolicy::Principal;
                 }
                 _ => {
                     return Some(format!(
@@ -120,13 +123,15 @@ impl Repl {
             },
             "inv_trig" => match value {
                 "strict" => {
-                    self.core.simplify_options.semantics.inv_trig = InverseTrigPolicy::Strict;
-                    self.core.state.options.semantics.inv_trig = InverseTrigPolicy::Strict;
+                    self.core.simplify_options.shared.semantics.inv_trig =
+                        InverseTrigPolicy::Strict;
+                    self.core.state.options.shared.semantics.inv_trig = InverseTrigPolicy::Strict;
                 }
                 "principal" => {
-                    self.core.simplify_options.semantics.inv_trig =
+                    self.core.simplify_options.shared.semantics.inv_trig =
                         InverseTrigPolicy::PrincipalValue;
-                    self.core.state.options.semantics.inv_trig = InverseTrigPolicy::PrincipalValue;
+                    self.core.state.options.shared.semantics.inv_trig =
+                        InverseTrigPolicy::PrincipalValue;
                 }
                 _ => {
                     return Some(format!(
@@ -154,21 +159,21 @@ impl Repl {
             }
             "assumptions" => match value {
                 "off" => {
-                    self.core.state.options.assumption_reporting =
+                    self.core.state.options.shared.assumption_reporting =
                         cas_engine::AssumptionReporting::Off;
-                    self.core.simplify_options.assumption_reporting =
+                    self.core.simplify_options.shared.assumption_reporting =
                         cas_engine::AssumptionReporting::Off;
                 }
                 "summary" => {
-                    self.core.state.options.assumption_reporting =
+                    self.core.state.options.shared.assumption_reporting =
                         cas_engine::AssumptionReporting::Summary;
-                    self.core.simplify_options.assumption_reporting =
+                    self.core.simplify_options.shared.assumption_reporting =
                         cas_engine::AssumptionReporting::Summary;
                 }
                 "trace" => {
-                    self.core.state.options.assumption_reporting =
+                    self.core.state.options.shared.assumption_reporting =
                         cas_engine::AssumptionReporting::Trace;
-                    self.core.simplify_options.assumption_reporting =
+                    self.core.simplify_options.shared.assumption_reporting =
                         cas_engine::AssumptionReporting::Trace;
                 }
                 _ => {
@@ -180,14 +185,15 @@ impl Repl {
             },
             "assume_scope" => match value {
                 "real" => {
-                    self.core.simplify_options.semantics.assume_scope =
+                    self.core.simplify_options.shared.semantics.assume_scope =
                         cas_engine::AssumeScope::Real;
-                    self.core.state.options.semantics.assume_scope = cas_engine::AssumeScope::Real;
+                    self.core.state.options.shared.semantics.assume_scope =
+                        cas_engine::AssumeScope::Real;
                 }
                 "wildcard" => {
-                    self.core.simplify_options.semantics.assume_scope =
+                    self.core.simplify_options.shared.semantics.assume_scope =
                         cas_engine::AssumeScope::Wildcard;
-                    self.core.state.options.semantics.assume_scope =
+                    self.core.state.options.shared.semantics.assume_scope =
                         cas_engine::AssumeScope::Wildcard;
                 }
                 _ => {
@@ -266,7 +272,7 @@ impl Repl {
         match args.get(1) {
             None => {
                 // Just "context" - show current context
-                let ctx_str = match self.core.state.options.context_mode {
+                let ctx_str = match self.core.state.options.shared.context_mode {
                     ContextMode::Auto => "auto",
                     ContextMode::Standard => "standard",
                     ContextMode::Solve => "solve",
@@ -278,28 +284,28 @@ impl Repl {
                 ))
             }
             Some(&"auto") => {
-                self.core.state.options.context_mode = ContextMode::Auto;
+                self.core.state.options.shared.context_mode = ContextMode::Auto;
                 self.core.engine.simplifier =
                     cas_engine::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
                 reply_output("Context: auto (infers from expression)")
             }
             Some(&"standard") => {
-                self.core.state.options.context_mode = ContextMode::Standard;
+                self.core.state.options.shared.context_mode = ContextMode::Standard;
                 self.core.engine.simplifier =
                     cas_engine::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
                 reply_output("Context: standard (safe simplification only)")
             }
             Some(&"solve") => {
-                self.core.state.options.context_mode = ContextMode::Solve;
+                self.core.state.options.shared.context_mode = ContextMode::Solve;
                 self.core.engine.simplifier =
                     cas_engine::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
                 reply_output("Context: solve (preserves solver-friendly forms)")
             }
             Some(&"integrate") => {
-                self.core.state.options.context_mode = ContextMode::IntegratePrep;
+                self.core.state.options.shared.context_mode = ContextMode::IntegratePrep;
                 self.core.engine.simplifier =
                     cas_engine::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
@@ -426,11 +432,11 @@ impl Repl {
         match args.get(1) {
             None => {
                 // Just "autoexpand" - show current mode
-                let policy_str = match self.core.state.options.expand_policy {
+                let policy_str = match self.core.state.options.shared.expand_policy {
                     ExpandPolicy::Off => "off",
                     ExpandPolicy::Auto => "on",
                 };
-                let budget = &self.core.state.options.expand_budget;
+                let budget = &self.core.state.options.shared.expand_budget;
                 reply_output(format!(
                     "Auto-expand: {}\n\
                        Budget: pow<={}, base_terms<={}, gen_terms<={}, vars<={}\n\
@@ -443,11 +449,11 @@ impl Repl {
                 ))
             }
             Some(&"on") => {
-                self.core.state.options.expand_policy = ExpandPolicy::Auto;
+                self.core.state.options.shared.expand_policy = ExpandPolicy::Auto;
                 self.core.engine.simplifier =
                     cas_engine::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
-                let budget = &self.core.state.options.expand_budget;
+                let budget = &self.core.state.options.shared.expand_budget;
                 reply_output(format!(
                     "Auto-expand: on\n\
                        Budget: pow<={}, base_terms<={}, gen_terms<={}, vars<={}\n\
@@ -459,7 +465,7 @@ impl Repl {
                 ))
             }
             Some(&"off") => {
-                self.core.state.options.expand_policy = ExpandPolicy::Off;
+                self.core.state.options.shared.expand_policy = ExpandPolicy::Off;
                 self.core.engine.simplifier =
                     cas_engine::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();

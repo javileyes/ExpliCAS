@@ -34,9 +34,9 @@ fn simplify_options_includes_new_axes() {
     let opts = SimplifyOptions::default();
 
     // New axes should be present with defaults
-    assert_eq!(opts.semantics.inv_trig, InverseTrigPolicy::Strict);
-    assert_eq!(opts.semantics.value_domain, ValueDomain::RealOnly);
-    assert_eq!(opts.semantics.branch, BranchPolicy::Principal);
+    assert_eq!(opts.shared.semantics.inv_trig, InverseTrigPolicy::Strict);
+    assert_eq!(opts.shared.semantics.value_domain, ValueDomain::RealOnly);
+    assert_eq!(opts.shared.semantics.branch, BranchPolicy::Principal);
 }
 
 // =============================================================================
@@ -84,9 +84,18 @@ fn eval_options_propagates_new_axes_to_simplify_options() {
     let simplify_opts = eval_opts.to_simplify_options();
 
     // All new axes should propagate correctly
-    assert_eq!(simplify_opts.semantics.inv_trig, InverseTrigPolicy::Strict);
-    assert_eq!(simplify_opts.semantics.value_domain, ValueDomain::RealOnly);
-    assert_eq!(simplify_opts.semantics.branch, BranchPolicy::Principal);
+    assert_eq!(
+        simplify_opts.shared.semantics.inv_trig,
+        InverseTrigPolicy::Strict
+    );
+    assert_eq!(
+        simplify_opts.shared.semantics.value_domain,
+        ValueDomain::RealOnly
+    );
+    assert_eq!(
+        simplify_opts.shared.semantics.branch,
+        BranchPolicy::Principal
+    );
 }
 
 // =============================================================================

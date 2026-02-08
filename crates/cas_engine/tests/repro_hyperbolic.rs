@@ -6,7 +6,10 @@ use cas_parser::parse;
 /// Options with auto-expand enabled for identity tests
 fn opts_autoexpand() -> EvalOptions {
     EvalOptions {
-        expand_policy: ExpandPolicy::Auto,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            expand_policy: ExpandPolicy::Auto,
+            ..Default::default()
+        },
         ..Default::default()
     }
 }

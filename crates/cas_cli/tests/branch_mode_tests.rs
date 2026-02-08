@@ -26,8 +26,11 @@ fn simplify_principal_branch(input: &str) -> (String, Vec<String>) {
     let expr = cas_parser::parse(input, &mut simplifier.context).expect("parse failed");
     // Set inv_trig = PrincipalValue to enable principal branch rules
     let opts = SimplifyOptions {
-        semantics: cas_engine::semantics::EvalConfig {
-            inv_trig: InverseTrigPolicy::PrincipalValue,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            semantics: cas_engine::semantics::EvalConfig {
+                inv_trig: InverseTrigPolicy::PrincipalValue,
+                ..Default::default()
+            },
             ..Default::default()
         },
         ..Default::default()

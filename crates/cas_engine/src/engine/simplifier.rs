@@ -121,7 +121,7 @@ impl Simplifier {
         let mut s = Self::with_default_rules();
 
         // Apply context mode rules (placeholder for future rule bundles)
-        match opts.context_mode {
+        match opts.shared.context_mode {
             ContextMode::IntegratePrep => {
                 crate::rules::integration::register_integration_prep(&mut s);
                 // Disable angle expansion rules that destroy telescoping patterns

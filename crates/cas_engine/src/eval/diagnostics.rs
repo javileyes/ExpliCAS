@@ -154,7 +154,7 @@ impl Engine {
                     use crate::session::{SimplifiedCache, SimplifyCacheKey};
 
                     let cache_key =
-                        SimplifyCacheKey::from_context(state.options.semantics.domain_mode);
+                        SimplifyCacheKey::from_context(state.options.shared.semantics.domain_mode);
                     let cache = SimplifiedCache {
                         key: cache_key,
                         expr: *simplified_expr,

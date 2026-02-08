@@ -1,4 +1,4 @@
-// ========== Solver Domain Helpers ==========
+// ========== Expression Value Extraction ==========
 
 use cas_ast::{Context, Expr, ExprId};
 use num_traits::ToPrimitive;

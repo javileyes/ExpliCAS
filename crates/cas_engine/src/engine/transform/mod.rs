@@ -48,24 +48,41 @@ enum BinaryOp {
 }
 
 pub(super) struct LocalSimplificationTransformer<'a> {
+    // ── Core context (borrowed from Engine) ──────────────────────────────
     pub(super) context: &'a mut Context,
     pub(super) rules: &'a HashMap<String, Vec<Arc<dyn Rule>>>,
     pub(super) global_rules: &'a Vec<Arc<dyn Rule>>,
     pub(super) disabled_rules: &'a HashSet<String>,
+
+    // ── Step recording & diagnostics ─────────────────────────────────────
     pub(super) steps_mode: StepsMode,
     pub(super) steps: Vec<Step>,
     /// Domain warnings collected regardless of steps_mode (for Off mode warning survival)
     pub(super) domain_warnings: Vec<(String, String)>, // (message, rule_name)
+
+    // ── Traversal state ──────────────────────────────────────────────────
     pub(super) cache: HashMap<ExprId, ExprId>,
     pub(super) current_path: Vec<crate::step::PathStep>,
+    /// Stack of ancestor ExprIds for parent context propagation to rules
+    pub(super) ancestor_stack: Vec<ExprId>,
+    /// Current recursion depth for stack overflow prevention
+    pub(super) current_depth: usize,
+    /// Flag to track if we already warned about depth overflow (to avoid spamming)
+    pub(super) depth_overflow_warned: bool,
+    /// The current root expression being simplified, used to compute global_after for steps
+    pub(super) root_expr: ExprId,
+
+    // ── Rule context & filtering ─────────────────────────────────────────
     pub(super) profiler: &'a mut RuleProfiler,
     #[allow(dead_code)]
     pub(super) pattern_marks: crate::pattern_marks::PatternMarks, // For context-aware guards (used via initial_parent_ctx)
     pub(super) initial_parent_ctx: crate::parent_context::ParentContext, // Carries marks to rules
-    /// The current root expression being simplified, used to compute global_after for steps
-    pub(super) root_expr: ExprId,
     /// Current phase of the simplification pipeline (controls which rules can run)
     pub(super) current_phase: crate::phase::SimplifyPhase,
+    /// Purpose of simplification: controls which rules are filtered by solve_safety()
+    pub(super) simplify_purpose: crate::solve_safety::SimplifyPurpose,
+
+    // ── Cycle detection ──────────────────────────────────────────────────
     /// Cycle detector for ping-pong detection (always-on as of V2.14.30)
     pub(super) cycle_detector: Option<crate::cycle_detector::CycleDetector>,
     /// Phase that the cycle detector was initialized for (reset when phase changes)
@@ -76,13 +93,8 @@ pub(super) struct LocalSimplificationTransformer<'a> {
     pub(super) last_cycle: Option<crate::cycle_detector::CycleInfo>,
     /// Blocked (fingerprint, rule) pairs to prevent cycle re-entry
     pub(super) blocked_rules: std::collections::HashSet<(u64, String)>,
-    /// Current recursion depth for stack overflow prevention
-    pub(super) current_depth: usize,
-    /// Flag to track if we already warned about depth overflow (to avoid spamming)
-    pub(super) depth_overflow_warned: bool,
-    /// Stack of ancestor ExprIds for parent context propagation to rules
-    pub(super) ancestor_stack: Vec<ExprId>,
-    // === Budget tracking (Phase 2 unified) ===
+
+    // ── Budget tracking ──────────────────────────────────────────────────
     /// Count of rewrites accepted in this pass (charged to Budget at end of pass)
     pub(super) rewrite_count: u64,
     /// Snapshot of nodes_created at start of pass (for delta charging)
@@ -91,8 +103,8 @@ pub(super) struct LocalSimplificationTransformer<'a> {
     pub(super) budget_op: crate::budget::Operation,
     /// Set when budget exceeded - contains the error details for the caller
     pub(super) stop_reason: Option<crate::budget::BudgetExceeded>,
-    /// Purpose of simplification: controls which rules are filtered by solve_safety()
-    pub(super) simplify_purpose: crate::solve_safety::SimplifyPurpose,
+
+    // ── Performance caches ───────────────────────────────────────────────
     /// PERF: Reusable cache for normalize_core, avoids per-call HashMap allocation.
     pub(super) normalize_cache: std::collections::HashMap<cas_ast::ExprId, cas_ast::ExprId>,
 }

@@ -153,8 +153,8 @@ impl Repl {
         let mut opts = self.core.state.options.to_simplify_options();
         opts.collect_steps = self.core.engine.simplifier.collect_steps();
         // V2.15.8: Copy autoexpand_binomials from simplify_options (set by 'set autoexpand_binomials on')
-        opts.autoexpand_binomials = self.core.simplify_options.autoexpand_binomials;
-        opts.heuristic_poly = self.core.simplify_options.heuristic_poly;
+        opts.shared.autoexpand_binomials = self.core.simplify_options.shared.autoexpand_binomials;
+        opts.shared.heuristic_poly = self.core.simplify_options.shared.heuristic_poly;
 
         // Note: Tool dispatcher for collect/expand_log is in Engine::eval (cas_engine/src/eval.rs)
         // This function is dead code but kept for internal use; no dispatcher needed here.
@@ -206,7 +206,8 @@ impl Repl {
         self.core.last_stats = Some(stats.clone());
 
         // Print assumptions summary if reporting is enabled and there are assumptions
-        if self.core.state.options.assumption_reporting != cas_engine::AssumptionReporting::Off
+        if self.core.state.options.shared.assumption_reporting
+            != cas_engine::AssumptionReporting::Off
             && !stats.assumptions.is_empty()
         {
             // Build summary line
@@ -427,7 +428,7 @@ impl Repl {
         }
 
         // Show context mode if not Auto (default)
-        match self.core.state.options.context_mode {
+        match self.core.state.options.shared.context_mode {
             ContextMode::IntegratePrep => indicators.push("[ctx:integrate]"),
             ContextMode::Solve => indicators.push("[ctx:solve]"),
             ContextMode::Standard => indicators.push("[ctx:standard]"),
@@ -449,7 +450,7 @@ impl Repl {
 
         // Show expand_policy if Auto (not default Off)
         use cas_engine::phase::ExpandPolicy;
-        if self.core.state.options.expand_policy == ExpandPolicy::Auto {
+        if self.core.state.options.shared.expand_policy == ExpandPolicy::Auto {
             indicators.push("[autoexp:on]");
         }
 

@@ -10,6 +10,7 @@
 pub mod evaluation;
 pub mod identities;
 pub mod pythagorean;
+pub(crate) mod trig_matchers;
 pub mod values;
 pub mod weierstrass;
 

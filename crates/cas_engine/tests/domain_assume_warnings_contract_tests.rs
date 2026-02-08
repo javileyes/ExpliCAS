@@ -24,8 +24,11 @@ fn simplify_assume_with_steps(input: &str) -> (String, Vec<Step>) {
     let expr = parse(input, &mut simplifier.context).expect("parse failed");
 
     let opts = cas_engine::SimplifyOptions {
-        semantics: cas_engine::semantics::EvalConfig {
-            domain_mode: cas_engine::DomainMode::Assume,
+        shared: cas_engine::phase::SharedSemanticConfig {
+            semantics: cas_engine::semantics::EvalConfig {
+                domain_mode: cas_engine::DomainMode::Assume,
+                ..Default::default()
+            },
             ..Default::default()
         },
         collect_steps: true,

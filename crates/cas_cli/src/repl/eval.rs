@@ -132,7 +132,7 @@ impl Repl {
 
                         // Collect assumptions from steps for assumption reporting (before steps are consumed)
                         // Deduplicate by (condition_kind, expr_fingerprint) and group by rule
-                        let show_assumptions = self.core.state.options.assumption_reporting
+                        let show_assumptions = self.core.state.options.shared.assumption_reporting
                             != cas_engine::AssumptionReporting::Off;
                         let assumed_conditions: Vec<(String, String)> = if show_assumptions {
                             let mut seen: std::collections::HashSet<u64> =
@@ -298,7 +298,7 @@ impl Repl {
                             }
 
                             // Contextual suggestion based on current mode
-                            let suggestion = match self.core.state.options.semantics.domain_mode {
+                            let suggestion = match self.core.state.options.shared.semantics.domain_mode {
                                 cas_engine::DomainMode::Strict => {
                                     "use `domain generic` or `domain assume` to allow"
                                 }
