@@ -57,16 +57,17 @@ impl Rule for ProductToSumRule {
                         coeff_idx = Some(i);
                     }
                 }
-                Expr::Function(fn_id, args) if args.len() == 1 => {
-                    let name = ctx.sym_name(*fn_id);
-                    if name == "sin" && sin_idx.is_none() {
+                Expr::Function(fn_id, args) if args.len() == 1 => match ctx.builtin_of(*fn_id) {
+                    Some(cas_ast::BuiltinFn::Sin) if sin_idx.is_none() => {
                         sin_idx = Some(i);
                         sin_arg = Some(args[0]);
-                    } else if name == "cos" && cos_idx.is_none() {
+                    }
+                    Some(cas_ast::BuiltinFn::Cos) if cos_idx.is_none() => {
                         cos_idx = Some(i);
                         cos_arg = Some(args[0]);
                     }
-                }
+                    _ => {}
+                },
                 _ => {}
             }
         }
@@ -137,8 +138,7 @@ impl Rule for CosProductTelescopingRule {
 
         for (i, &f) in factors.iter().enumerate() {
             if let Expr::Function(fn_id, args) = ctx.get(f) {
-                let name = ctx.sym_name(*fn_id);
-                if name == "cos" && args.len() == 1 {
+                if ctx.builtin_of(*fn_id) == Some(cas_ast::BuiltinFn::Cos) && args.len() == 1 {
                     let arg = args[0];
                     // Try to extract k and u from: k*u or just u (k=1)
                     let (k, u) = extract_multiplier_and_base(ctx, arg);

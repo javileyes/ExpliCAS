@@ -454,8 +454,7 @@ define_rule!(
 
         // Match: sqrt(arg) where arg is a negative number
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
-            if name != "sqrt" || args.len() != 1 {
+            if ctx.builtin_of(*fn_id) != Some(cas_ast::BuiltinFn::Sqrt) || args.len() != 1 {
                 return None;
             }
 

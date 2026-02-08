@@ -73,6 +73,9 @@ pub enum BuiltinFn {
     Arcsin,
     Arccos,
     Arctan,
+    Arcsec,
+    Arccsc,
+    Arccot,
 
     // Hyperbolic
     Sinh,
@@ -117,7 +120,7 @@ pub enum BuiltinFn {
 impl BuiltinFn {
     /// Total number of builtin functions.
     /// Update this when adding new variants!
-    pub const COUNT: usize = 40;
+    pub const COUNT: usize = 43;
 
     /// Get the string name of this builtin function.
     #[inline]
@@ -143,6 +146,9 @@ impl BuiltinFn {
             BuiltinFn::Arcsin => "arcsin",
             BuiltinFn::Arccos => "arccos",
             BuiltinFn::Arctan => "arctan",
+            BuiltinFn::Arcsec => "arcsec",
+            BuiltinFn::Arccsc => "arccsc",
+            BuiltinFn::Arccot => "arccot",
 
             // Hyperbolic
             BuiltinFn::Sinh => "sinh",
@@ -210,6 +216,9 @@ pub const ALL_BUILTINS: [BuiltinFn; BuiltinFn::COUNT] = [
     BuiltinFn::Arcsin,
     BuiltinFn::Arccos,
     BuiltinFn::Arctan,
+    BuiltinFn::Arcsec,
+    BuiltinFn::Arccsc,
+    BuiltinFn::Arccot,
     BuiltinFn::Sinh,
     BuiltinFn::Cosh,
     BuiltinFn::Tanh,

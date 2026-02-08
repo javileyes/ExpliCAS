@@ -72,11 +72,6 @@ fn extract_numeric_value(ctx: &Context, expr: &Expr) -> Option<num_rational::Big
     }
 }
 
-/// Check if function name is atan/arctan
-fn is_atan_name(name: &str) -> bool {
-    name == "atan" || name == "arctan"
-}
-
 /// Check if any reciprocal atan pairs exist in the list of terms
 /// This helps Machin rule avoid combining terms when reciprocal pairs should be matched first
 fn has_reciprocal_atan_pair(ctx: &Context, terms: &[ExprId]) -> bool {
@@ -84,9 +79,10 @@ fn has_reciprocal_atan_pair(ctx: &Context, terms: &[ExprId]) -> bool {
     let mut atan_args: Vec<ExprId> = Vec::new();
     for &term in terms {
         if let Expr::Function(fn_id, args) = ctx.get(term) {
-            let name = ctx.sym_name(*fn_id);
-            if is_atan_name(name) && args.len() == 1 {
-                atan_args.push(args[0]);
+            if let Some(b) = ctx.builtin_of(*fn_id) {
+                if matches!(b, BuiltinFn::Atan | BuiltinFn::Arctan) && args.len() == 1 {
+                    atan_args.push(args[0]);
+                }
             }
         }
     }
@@ -431,14 +427,24 @@ define_rule!(
                                         == std::cmp::Ordering::Equal;
 
                                 if args_equal {
-                                    // Check for both "asin"/"arcsin" and "acos"/"arccos" variants
-                                    let is_arcsin = |name: &str| name == "arcsin" || name == "asin";
-                                    let is_arccos = |name: &str| name == "arccos" || name == "acos";
-                                    let name_i_str = ctx.sym_name(*name_i);
-                                    let name_j_str = ctx.sym_name(*name_j);
+                                    let is_i_arcsin = matches!(
+                                        ctx.builtin_of(*name_i),
+                                        Some(BuiltinFn::Arcsin | BuiltinFn::Asin)
+                                    );
+                                    let is_j_arcsin = matches!(
+                                        ctx.builtin_of(*name_j),
+                                        Some(BuiltinFn::Arcsin | BuiltinFn::Asin)
+                                    );
+                                    let is_i_arccos = matches!(
+                                        ctx.builtin_of(*name_i),
+                                        Some(BuiltinFn::Arccos | BuiltinFn::Acos)
+                                    );
+                                    let is_j_arccos = matches!(
+                                        ctx.builtin_of(*name_j),
+                                        Some(BuiltinFn::Arccos | BuiltinFn::Acos)
+                                    );
 
-                                    if (is_arcsin(name_i_str) && is_arccos(name_j_str))
-                                        || (is_arccos(name_i_str) && is_arcsin(name_j_str))
+                                    if (is_i_arcsin && is_j_arccos) || (is_i_arccos && is_j_arcsin)
                                     {
                                         // Found asin(x) + acos(x)! Build π/2
                                         let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
@@ -522,10 +528,16 @@ impl crate::rule::Rule for InverseTrigAtanRule {
                         if let (Expr::Function(name_i, args_i), Expr::Function(name_j, args_j)) =
                             (expr_i, expr_j)
                         {
-                            let name_i_str = ctx.sym_name(*name_i);
-                            let name_j_str = ctx.sym_name(*name_j);
-                            if is_atan_name(name_i_str)
-                                && is_atan_name(name_j_str)
+                            let is_i_atan = matches!(
+                                ctx.builtin_of(*name_i),
+                                Some(BuiltinFn::Atan | BuiltinFn::Arctan)
+                            );
+                            let is_j_atan = matches!(
+                                ctx.builtin_of(*name_j),
+                                Some(BuiltinFn::Atan | BuiltinFn::Arctan)
+                            );
+                            if is_i_atan
+                                && is_j_atan
                                 && args_i.len() == 1
                                 && args_j.len() == 1
                                 && are_reciprocals(ctx, args_i[0], args_j[0])
@@ -613,13 +625,15 @@ impl crate::rule::Rule for AtanAddRationalRule {
                 if let (Expr::Function(name_i, args_i), Expr::Function(name_j, args_j)) =
                     (&term_i_data, &term_j_data)
                 {
-                    let name_i_str = ctx.sym_name(*name_i);
-                    let name_j_str = ctx.sym_name(*name_j);
-                    if is_atan_name(name_i_str)
-                        && is_atan_name(name_j_str)
-                        && args_i.len() == 1
-                        && args_j.len() == 1
-                    {
+                    let is_i_atan = matches!(
+                        ctx.builtin_of(*name_i),
+                        Some(BuiltinFn::Atan | BuiltinFn::Arctan)
+                    );
+                    let is_j_atan = matches!(
+                        ctx.builtin_of(*name_j),
+                        Some(BuiltinFn::Atan | BuiltinFn::Arctan)
+                    );
+                    if is_i_atan && is_j_atan && args_i.len() == 1 && args_j.len() == 1 {
                         let arg_i = args_i[0];
                         let arg_j = args_j[0];
 
@@ -718,20 +732,20 @@ define_rule!(
                 };
 
                 if let Some(inner) = inner_opt {
-                    match ctx.sym_name(*fn_id) {
-                        "arcsin" => {
+                    match ctx.builtin_of(*fn_id) {
+                        Some(BuiltinFn::Arcsin) => {
                             // arcsin(-x) = -arcsin(x)
                             let arcsin_inner = ctx.call("arcsin", vec![inner]);
                             let new_expr = ctx.add(Expr::Neg(arcsin_inner));
                             return Some(Rewrite::new(new_expr).desc("arcsin(-x) = -arcsin(x)"));
                         }
-                        "arctan" => {
+                        Some(BuiltinFn::Arctan) => {
                             // arctan(-x) = -arctan(x)
                             let arctan_inner = ctx.call("arctan", vec![inner]);
                             let new_expr = ctx.add(Expr::Neg(arctan_inner));
                             return Some(Rewrite::new(new_expr).desc("arctan(-x) = -arctan(x)"));
                         }
-                        "arccos" => {
+                        Some(BuiltinFn::Arccos) => {
                             // arccos(-x) = π - arccos(x)
                             let arccos_inner = ctx.call("arccos", vec![inner]);
                             let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
@@ -757,8 +771,11 @@ define_rule!(
     Some(vec!["Function"]),
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
-            if (name == "arcsec" || name == "asec") && args.len() == 1 {
+            if matches!(
+                ctx.builtin_of(*fn_id),
+                Some(BuiltinFn::Asec | BuiltinFn::Arcsec)
+            ) && args.len() == 1
+            {
                 let arg = args[0];
 
                 // Build 1/arg
@@ -782,8 +799,11 @@ define_rule!(
     Some(vec!["Function"]),
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
-            if (name == "arccsc" || name == "acsc") && args.len() == 1 {
+            if matches!(
+                ctx.builtin_of(*fn_id),
+                Some(BuiltinFn::Acsc | BuiltinFn::Arccsc)
+            ) && args.len() == 1
+            {
                 let arg = args[0];
 
                 // Build 1/arg
@@ -808,8 +828,11 @@ define_rule!(
     Some(vec!["Function"]),
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
-            if (name == "arccot" || name == "acot") && args.len() == 1 {
+            if matches!(
+                ctx.builtin_of(*fn_id),
+                Some(BuiltinFn::Acot | BuiltinFn::Arccot)
+            ) && args.len() == 1
+            {
                 let arg = args[0];
 
                 // Build 1/arg

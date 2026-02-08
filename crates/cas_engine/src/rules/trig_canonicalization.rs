@@ -50,25 +50,6 @@ fn is_inverse_trig_builtin(b: BuiltinFn) -> bool {
     )
 }
 
-// String version kept for HashSet-based analysis
-fn is_inverse_trig_name(name: &str) -> bool {
-    matches!(
-        name,
-        "asin"
-            | "acos"
-            | "atan"
-            | "acot"
-            | "asec"
-            | "acsc"
-            | "arcsin"
-            | "arccos"
-            | "arctan"
-            | "arccot"
-            | "arcsec"
-            | "arccsc"
-    )
-}
-
 // Check if expression is a composition like tan(arctan(x))
 fn is_trig_of_inverse_trig(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
