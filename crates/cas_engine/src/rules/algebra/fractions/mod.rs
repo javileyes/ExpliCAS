@@ -6,35 +6,38 @@
 //! - Combining (AddFractionsRule, FoldAddIntoFractionRule)
 //! - Rationalization (RationalizeDenominatorRule, etc.)
 
-// Core fraction rules module (Phase 5.1)
+// Core fraction helpers module
 mod core_rules;
 
-// Re-export rules and helpers from core_rules
+// Re-export helpers from core_rules (used by sibling modules)
 pub use core_rules::{
-    // Helpers for sibling modules
-    build_mul_from_factors_a1,
-    check_divisible_denominators,
-    collect_mul_factors_int_pow,
-    extract_as_fraction,
-    is_pi_constant,
-    is_trig_function_name,
-    // Rules
-    CancelIdenticalFractionRule,
-    CancelPowerFractionRule,
-    CancelPowersDivisionRule,
-    NestedFractionRule,
-    SimplifyFractionRule,
-    SimplifyMulDivRule,
+    build_mul_from_factors_a1, check_divisible_denominators, collect_mul_factors_int_pow,
+    extract_as_fraction, is_pi_constant, is_trig_function_name,
 };
 
-// Cancel rules module (Phase 5.2)
+// GCD-based cancellation rules module
+mod gcd_cancel;
+
+// Re-export rules from gcd_cancel
+pub use gcd_cancel::{
+    CancelIdenticalFractionRule, CancelPowerFractionRule, CancelPowersDivisionRule,
+    NestedFractionRule, SimplifyFractionRule, SimplifyMulDivRule,
+};
+
+// Addition rules module (fraction addition)
+mod addition_rules;
+
+// Re-export rules from addition_rules
+pub use addition_rules::{AddFractionsRule, FoldAddIntoFractionRule};
+
+// Cancel rules module (rationalization and cancellation)
 mod cancel_rules;
 
 // Re-export rules from cancel_rules
 pub use cancel_rules::{
-    AddFractionsRule, CancelCommonFactorsRule, CancelNthRootBinomialFactorRule,
-    FoldAddIntoFractionRule, GeneralizedRationalizationRule, RationalizeDenominatorRule,
-    RationalizeNthRootBinomialRule, RationalizeProductDenominatorRule, SqrtConjugateCollapseRule,
+    CancelCommonFactorsRule, CancelNthRootBinomialFactorRule, GeneralizedRationalizationRule,
+    RationalizeDenominatorRule, RationalizeNthRootBinomialRule, RationalizeProductDenominatorRule,
+    SqrtConjugateCollapseRule,
 };
 
 // Properly modularized submodules (Phases 2-4)

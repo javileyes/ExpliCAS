@@ -23,8 +23,12 @@ pub use values_rules::{
 // --- Angle expansion and contraction ---
 mod expansion_rules;
 pub use expansion_rules::{
-    CanonicalizeTrigSquareRule, DoubleAngleContractionRule, DoubleAngleRule, HalfAngleTangentRule,
-    QuintupleAngleRule, RecursiveTrigExpansionRule, TrigSumToProductRule, TripleAngleRule,
+    DoubleAngleContractionRule, DoubleAngleRule, HalfAngleTangentRule, TrigSumToProductRule,
+};
+
+mod multi_angle_rules;
+pub use multi_angle_rules::{
+    CanonicalizeTrigSquareRule, QuintupleAngleRule, RecursiveTrigExpansionRule, TripleAngleRule,
 };
 
 mod angle_expansion_rules;
