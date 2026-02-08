@@ -127,20 +127,12 @@ pub struct EvalOptions {
     pub expand_budget: crate::phase::ExpandBudget,
     /// Auto-expand policy for logarithms: Off (default) or Auto
     pub log_expand_policy: crate::phase::ExpandPolicy,
-    /// Domain mode for cancellation rules (Strict, Generic, Assume)
-    pub domain_mode: crate::DomainMode,
-    /// Inverse trig composition policy
-    pub inv_trig: crate::semantics::InverseTrigPolicy,
-    /// Value domain for constants (RealOnly, ComplexEnabled)
-    pub value_domain: crate::semantics::ValueDomain,
-    /// Branch policy for multi-valued functions
-    pub branch: crate::semantics::BranchPolicy,
+    /// Semantic configuration: domain_mode, value_domain, branch, inv_trig, assume_scope
+    pub semantics: crate::semantics::EvalConfig,
     /// Constant folding mode (Off or Safe)
     pub const_fold: crate::const_fold::ConstFoldMode,
     /// Assumption reporting level (Off, Summary, Trace)
     pub assumption_reporting: crate::assumptions::AssumptionReporting,
-    /// Scope for assumptions (only active if domain_mode=Assume)
-    pub assume_scope: crate::semantics::AssumeScope,
     /// Whether to display blocked hints in REPL (default: true)
     pub hints_enabled: bool,
     /// Explain mode: show assumption summary after each evaluation (default: false)
@@ -211,12 +203,8 @@ impl EvalOptions {
             log_expand_policy: self.log_expand_policy,
             context_mode: self.context_mode,
             collect_steps: !matches!(self.steps_mode, StepsMode::Off),
-            domain: self.domain_mode,
-            inv_trig: self.inv_trig,
-            value_domain: self.value_domain,
-            branch: self.branch,
+            semantics: self.semantics,
             assumption_reporting: self.assumption_reporting,
-            assume_scope: self.assume_scope,
             autoexpand_binomials: self.autoexpand_binomials, // V2.15.8
             heuristic_poly: self.heuristic_poly,             // V2.15.9
             ..Default::default()
@@ -237,13 +225,9 @@ impl Default for EvalOptions {
             expand_policy: crate::phase::ExpandPolicy::default(),
             expand_budget: crate::phase::ExpandBudget::default(),
             log_expand_policy: crate::phase::ExpandPolicy::Off, // On by default to avoid surprises
-            domain_mode: crate::DomainMode::default(),
-            inv_trig: crate::semantics::InverseTrigPolicy::default(),
-            value_domain: crate::semantics::ValueDomain::default(),
-            branch: crate::semantics::BranchPolicy::default(),
+            semantics: crate::semantics::EvalConfig::default(),
             const_fold: crate::const_fold::ConstFoldMode::default(),
             assumption_reporting: crate::assumptions::AssumptionReporting::default(),
-            assume_scope: crate::semantics::AssumeScope::default(),
             hints_enabled: true, // Pedagogical hints on by default
             explain_mode: false, // Explain mode off by default
             budget: crate::solver::SolveBudget::default(),

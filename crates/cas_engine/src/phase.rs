@@ -306,24 +306,8 @@ pub struct SimplifyOptions {
     /// Context mode (Standard, Solve, etc.) - Solve mode blocks auto-expand.
     pub context_mode: crate::options::ContextMode,
 
-    /// Domain assumption mode: Strict, Assume, or Generic (default).
-    ///
-    /// - Strict: No domain assumptions, only proven-safe simplifications
-    /// - Assume: Use user-provided assumptions (future)
-    /// - Generic: Classic CAS behavior, "almost everywhere" algebra (default)
-    pub domain: crate::domain::DomainMode,
-
-    /// Inverse trig composition policy (arctan(tan(x)), etc.).
-    ///
-    /// - Strict: Do not simplify inverse compositions
-    /// - PrincipalValue: Simplify with principal domain warning
-    pub inv_trig: crate::semantics::InverseTrigPolicy,
-
-    /// Value domain for constant evaluation (ℝ vs ℂ).
-    pub value_domain: crate::semantics::ValueDomain,
-
-    /// Branch policy for multi-valued functions (only if ComplexEnabled).
-    pub branch: crate::semantics::BranchPolicy,
+    /// Semantic configuration: domain_mode, value_domain, branch, inv_trig, assume_scope
+    pub semantics: crate::semantics::EvalConfig,
 
     /// Assumption reporting level (Off, Summary, Trace).
     pub assumption_reporting: crate::assumptions::AssumptionReporting,
@@ -334,11 +318,6 @@ pub struct SimplifyOptions {
     /// - Collected: don't distribute
     /// - ExpandedLog: don't contract logs
     pub goal: crate::semantics::NormalFormGoal,
-
-    /// Scope for assumptions (only active if domain=Assume).
-    /// - Real: assume for ℝ, error if ℂ needed
-    /// - Wildcard: assume for ℝ, residual+warning if ℂ needed
-    pub assume_scope: crate::semantics::AssumeScope,
 
     /// Purpose of simplification: Eval (default), SolvePrepass, or SolveTactic.
     /// Controls which rules are filtered based on their solve_safety() labels.
@@ -369,13 +348,9 @@ impl Default for SimplifyOptions {
             expand_budget: ExpandBudget::default(),
             log_expand_policy: ExpandPolicy::Off, // On by default to avoid surprises
             context_mode: crate::options::ContextMode::default(),
-            domain: crate::domain::DomainMode::default(), // Generic
-            inv_trig: crate::semantics::InverseTrigPolicy::default(), // Strict
-            value_domain: crate::semantics::ValueDomain::default(), // RealOnly
-            branch: crate::semantics::BranchPolicy::default(), // Principal
+            semantics: crate::semantics::EvalConfig::default(),
             assumption_reporting: crate::assumptions::AssumptionReporting::Off, // Default to Off (conservador)
             goal: crate::semantics::NormalFormGoal::default(),                  // Simplify
-            assume_scope: crate::semantics::AssumeScope::default(),             // Real
             simplify_purpose: crate::solve_safety::SimplifyPurpose::default(),  // Eval
             autoexpand_binomials: crate::options::AutoExpandBinomials::Off, // V2.15.8: On by default
             heuristic_poly: crate::options::HeuristicPoly::On, // V2.15.9: On by default
@@ -423,7 +398,10 @@ impl SimplifyOptions {
     pub fn for_solve_tactic(domain_mode: crate::domain::DomainMode) -> Self {
         Self {
             simplify_purpose: crate::solve_safety::SimplifyPurpose::SolveTactic,
-            domain: domain_mode,
+            semantics: crate::semantics::EvalConfig {
+                domain_mode,
+                ..Default::default()
+            },
             ..Default::default()
         }
     }

@@ -364,8 +364,8 @@ impl Engine {
                     let mut budget = crate::budget::Budget::preset_cli();
                     // Use effective_opts to propagate value_domain to const_fold
                     let cfg = crate::semantics::EvalConfig {
-                        value_domain: effective_opts.value_domain,
-                        branch: effective_opts.branch,
+                        value_domain: effective_opts.semantics.value_domain,
+                        branch: effective_opts.semantics.branch,
                         ..Default::default()
                     };
                     if let Ok(fold_result) = crate::const_fold::fold_constants(
@@ -396,7 +396,7 @@ impl Engine {
                     let input_domain = infer_implicit_domain(
                         &self.simplifier.context,
                         resolved,
-                        effective_opts.value_domain,
+                        effective_opts.semantics.value_domain,
                     );
                     let global_requires: Vec<_> =
                         input_domain.conditions().iter().cloned().collect();
@@ -416,7 +416,7 @@ impl Engine {
                 let mut warnings = collect_domain_warnings(&steps);
 
                 // Add warning if i is used in RealOnly mode
-                if effective_opts.value_domain == crate::semantics::ValueDomain::RealOnly
+                if effective_opts.semantics.value_domain == crate::semantics::ValueDomain::RealOnly
                     && crate::helpers::contains_i(&self.simplifier.context, resolved)
                 {
                     let i_warning = DomainWarning {
@@ -512,9 +512,9 @@ impl Engine {
 
                 // Call solver with semantic options and assumption collection
                 let solver_opts = crate::solver::SolverOptions {
-                    value_domain: state.options.value_domain,
-                    domain_mode: state.options.domain_mode,
-                    assume_scope: state.options.assume_scope,
+                    value_domain: state.options.semantics.value_domain,
+                    domain_mode: state.options.semantics.domain_mode,
+                    assume_scope: state.options.semantics.assume_scope,
                     budget: state.options.budget,
                     ..Default::default()
                 };
@@ -755,7 +755,7 @@ impl Engine {
             if let EvalResult::Expr(simplified_expr) = &result {
                 use crate::session::{SimplifiedCache, SimplifyCacheKey};
 
-                let cache_key = SimplifyCacheKey::from_context(state.options.domain_mode);
+                let cache_key = SimplifyCacheKey::from_context(state.options.semantics.domain_mode);
                 let cache = SimplifiedCache {
                     key: cache_key,
                     expr: *simplified_expr,

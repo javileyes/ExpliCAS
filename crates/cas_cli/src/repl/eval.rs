@@ -298,7 +298,7 @@ impl Repl {
                             }
 
                             // Contextual suggestion based on current mode
-                            let suggestion = match self.core.state.options.domain_mode {
+                            let suggestion = match self.core.state.options.semantics.domain_mode {
                                 cas_engine::DomainMode::Strict => {
                                     "use `domain generic` or `domain assume` to allow"
                                 }

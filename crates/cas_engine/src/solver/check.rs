@@ -86,7 +86,10 @@ pub fn verify_solution(
 
     // Step 3: Simplify with Strict mode (no assumptions allowed)
     let opts = crate::SimplifyOptions {
-        domain: crate::domain::DomainMode::Strict,
+        semantics: crate::semantics::EvalConfig {
+            domain_mode: crate::domain::DomainMode::Strict,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let (simplified, _, _) = simplifier.simplify_with_stats(diff, opts);

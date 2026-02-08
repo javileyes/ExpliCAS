@@ -21,7 +21,10 @@ fn simplify_with_mode(input: &str, mode: DomainMode) -> String {
     let expr = parse(input, &mut simplifier.context).expect("parse failed");
 
     let opts = SimplifyOptions {
-        domain: mode,
+        semantics: cas_engine::semantics::EvalConfig {
+            domain_mode: mode,
+            ..Default::default()
+        },
         ..Default::default()
     };
 

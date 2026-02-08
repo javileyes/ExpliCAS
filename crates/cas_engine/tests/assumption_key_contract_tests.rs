@@ -21,7 +21,10 @@ fn simplify_with_assume_steps(input: &str) -> Vec<Step> {
     let expr = parse(input, &mut simplifier.context).expect("parse failed");
 
     let opts = SimplifyOptions {
-        domain: DomainMode::Assume,
+        semantics: cas_engine::semantics::EvalConfig {
+            domain_mode: DomainMode::Assume,
+            ..Default::default()
+        },
         collect_steps: true,
         ..Default::default()
     };
@@ -37,8 +40,11 @@ fn simplify_with_principal_inv_trig(input: &str) -> Vec<Step> {
     let expr = parse(input, &mut simplifier.context).expect("parse failed");
 
     let opts = SimplifyOptions {
-        domain: DomainMode::Generic,
-        inv_trig: InverseTrigPolicy::PrincipalValue,
+        semantics: cas_engine::semantics::EvalConfig {
+            domain_mode: DomainMode::Generic,
+            inv_trig: InverseTrigPolicy::PrincipalValue,
+            ..Default::default()
+        },
         collect_steps: true,
         ..Default::default()
     };
@@ -138,7 +144,10 @@ fn positive_emitted_for_log_product_expansion() {
 
     let expr = parse("ln(x*y)", &mut simplifier.context).expect("parse failed");
     let opts = SimplifyOptions {
-        domain: DomainMode::Assume,
+        semantics: cas_engine::semantics::EvalConfig {
+            domain_mode: DomainMode::Assume,
+            ..Default::default()
+        },
         collect_steps: true,
         ..Default::default()
     };
@@ -173,7 +182,10 @@ fn positive_emitted_for_exp_ln_inverse() {
     let expr = parse("exp(ln(x))", &mut simplifier.context).expect("parse failed");
 
     let opts = SimplifyOptions {
-        domain: DomainMode::Generic,
+        semantics: cas_engine::semantics::EvalConfig {
+            domain_mode: DomainMode::Generic,
+            ..Default::default()
+        },
         collect_steps: true,
         ..Default::default()
     };
@@ -213,7 +225,10 @@ fn no_assumption_for_log_exp_inverse() {
     let expr = parse("ln(exp(x))", &mut simplifier.context).expect("parse failed");
 
     let opts = SimplifyOptions {
-        domain: DomainMode::Generic,
+        semantics: cas_engine::semantics::EvalConfig {
+            domain_mode: DomainMode::Generic,
+            ..Default::default()
+        },
         collect_steps: true,
         ..Default::default()
     };

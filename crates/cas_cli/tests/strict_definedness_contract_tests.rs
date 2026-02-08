@@ -19,7 +19,10 @@ fn simplify_strict(input: &str) -> String {
     let expr = cas_parser::parse(input, &mut simplifier.context).expect("parse failed");
 
     let opts = cas_engine::SimplifyOptions {
-        domain: cas_engine::DomainMode::Strict,
+        semantics: cas_engine::semantics::EvalConfig {
+            domain_mode: cas_engine::DomainMode::Strict,
+            ..Default::default()
+        },
         ..Default::default()
     };
 
@@ -39,7 +42,10 @@ fn simplify_assume(input: &str) -> String {
     let expr = cas_parser::parse(input, &mut simplifier.context).expect("parse failed");
 
     let opts = cas_engine::SimplifyOptions {
-        domain: cas_engine::DomainMode::Assume,
+        semantics: cas_engine::semantics::EvalConfig {
+            domain_mode: cas_engine::DomainMode::Assume,
+            ..Default::default()
+        },
         ..Default::default()
     };
 

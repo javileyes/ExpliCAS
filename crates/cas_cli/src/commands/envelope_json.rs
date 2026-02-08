@@ -67,13 +67,13 @@ fn run_inner(args: &EnvelopeJsonArgs) -> Result<OutputEnvelope> {
     let mut state = SessionState::new();
 
     // Configure options from args
-    state.options.domain_mode = match args.domain.as_str() {
+    state.options.semantics.domain_mode = match args.domain.as_str() {
         "strict" => cas_engine::DomainMode::Strict,
         "assume" => cas_engine::DomainMode::Assume,
         _ => cas_engine::DomainMode::Generic,
     };
 
-    state.options.value_domain = match args.value_domain.as_str() {
+    state.options.semantics.value_domain = match args.value_domain.as_str() {
         "complex" => cas_engine::ValueDomain::ComplexEnabled,
         _ => cas_engine::ValueDomain::RealOnly,
     };

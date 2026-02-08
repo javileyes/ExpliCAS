@@ -38,8 +38,8 @@ fn simplify_with_config(
     let mut engine = Engine::new();
     let mut state = SessionState::new();
 
-    state.options.value_domain = value_domain;
-    state.options.domain_mode = domain_mode;
+    state.options.semantics.value_domain = value_domain;
+    state.options.semantics.domain_mode = domain_mode;
 
     let parsed = parse(input, &mut engine.simplifier.context).expect("parse failed");
     let req = EvalRequest {

@@ -111,7 +111,10 @@ fn test_dyadic_cos_product_assume_symbolic_allowed() {
 
     let opts = EvalOptions {
         steps_mode: StepsMode::On,
-        domain_mode: DomainMode::Assume,
+        semantics: cas_engine::semantics::EvalConfig {
+            domain_mode: DomainMode::Assume,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let mut ctx = Context::new();

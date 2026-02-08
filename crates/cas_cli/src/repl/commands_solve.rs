@@ -451,9 +451,9 @@ impl Repl {
                 // Call solver with step collection enabled and semantic options
                 self.core.engine.simplifier.set_collect_steps(true);
                 let solver_opts = cas_engine::solver::SolverOptions {
-                    value_domain: self.core.state.options.value_domain,
-                    domain_mode: self.core.state.options.domain_mode,
-                    assume_scope: self.core.state.options.assume_scope,
+                    value_domain: self.core.state.options.semantics.value_domain,
+                    domain_mode: self.core.state.options.semantics.domain_mode,
+                    assume_scope: self.core.state.options.semantics.assume_scope,
                     budget: self.core.state.options.budget,
                     ..Default::default()
                 };
@@ -986,7 +986,8 @@ impl Repl {
                                 }
 
                                 // Contextual suggestion
-                                let suggestion = match self.core.state.options.domain_mode {
+                                let suggestion = match self.core.state.options.semantics.domain_mode
+                                {
                                     cas_engine::DomainMode::Strict => {
                                         "tip: use `domain generic` or `domain assume` to allow"
                                     }
@@ -1016,7 +1017,7 @@ impl Repl {
                                 }
                             };
 
-                            let suggestion = match self.core.state.options.domain_mode {
+                            let suggestion = match self.core.state.options.semantics.domain_mode {
                                 cas_engine::DomainMode::Strict => {
                                     "use `domain generic` or `domain assume` to allow"
                                 }

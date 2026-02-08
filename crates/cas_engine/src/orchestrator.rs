@@ -97,9 +97,9 @@ impl Orchestrator {
                 expand_mode: self.options.expand_mode,
                 auto_expand: global_auto_expand,
                 expand_budget: self.options.expand_budget,
-                domain_mode: self.options.domain,
-                inv_trig: self.options.inv_trig,
-                value_domain: self.options.value_domain,
+                domain_mode: self.options.semantics.domain_mode,
+                inv_trig: self.options.semantics.inv_trig,
+                value_domain: self.options.semantics.value_domain,
                 goal: self.options.goal,
                 simplify_purpose: self.options.simplify_purpose,
                 context_mode: self.options.context_mode,
@@ -203,7 +203,7 @@ impl Orchestrator {
         // V2.15.8: Set sticky implicit domain from original input to propagate inherited requires
         // across all phases. This allows AbsNonNegativeSimplifyRule to see x≥0 from sqrt(x)
         // even after the sqrt witness is consumed.
-        simplifier.set_sticky_implicit_domain(expr, self.options.value_domain);
+        simplifier.set_sticky_implicit_domain(expr, self.options.semantics.value_domain);
 
         // Clear thread-local PolyStore before evaluation
         clear_thread_local_store();
@@ -347,8 +347,8 @@ impl Orchestrator {
 
         // Final collection for canonical form - RESPECTS domain mode
         // Use collect_with_semantics to preserve Strict definedness invariant
-        let final_parent_ctx =
-            crate::parent_context::ParentContext::root().with_domain_mode(self.options.domain);
+        let final_parent_ctx = crate::parent_context::ParentContext::root()
+            .with_domain_mode(self.options.semantics.domain_mode);
         let final_collected = match crate::collect::collect_with_semantics(
             &mut simplifier.context,
             current,

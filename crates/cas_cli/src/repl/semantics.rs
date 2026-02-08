@@ -72,16 +72,16 @@ impl Repl {
         match axis {
             "domain" => match value {
                 "strict" => {
-                    self.core.simplify_options.domain = DomainMode::Strict;
-                    self.core.state.options.domain_mode = DomainMode::Strict;
+                    self.core.simplify_options.semantics.domain_mode = DomainMode::Strict;
+                    self.core.state.options.semantics.domain_mode = DomainMode::Strict;
                 }
                 "generic" => {
-                    self.core.simplify_options.domain = DomainMode::Generic;
-                    self.core.state.options.domain_mode = DomainMode::Generic;
+                    self.core.simplify_options.semantics.domain_mode = DomainMode::Generic;
+                    self.core.state.options.semantics.domain_mode = DomainMode::Generic;
                 }
                 "assume" => {
-                    self.core.simplify_options.domain = DomainMode::Assume;
-                    self.core.state.options.domain_mode = DomainMode::Assume;
+                    self.core.simplify_options.semantics.domain_mode = DomainMode::Assume;
+                    self.core.state.options.semantics.domain_mode = DomainMode::Assume;
                 }
                 _ => {
                     return Some(format!(
@@ -92,12 +92,12 @@ impl Repl {
             },
             "value" => match value {
                 "real" => {
-                    self.core.simplify_options.value_domain = ValueDomain::RealOnly;
-                    self.core.state.options.value_domain = ValueDomain::RealOnly;
+                    self.core.simplify_options.semantics.value_domain = ValueDomain::RealOnly;
+                    self.core.state.options.semantics.value_domain = ValueDomain::RealOnly;
                 }
                 "complex" => {
-                    self.core.simplify_options.value_domain = ValueDomain::ComplexEnabled;
-                    self.core.state.options.value_domain = ValueDomain::ComplexEnabled;
+                    self.core.simplify_options.semantics.value_domain = ValueDomain::ComplexEnabled;
+                    self.core.state.options.semantics.value_domain = ValueDomain::ComplexEnabled;
                 }
                 _ => {
                     return Some(format!(
@@ -108,8 +108,8 @@ impl Repl {
             },
             "branch" => match value {
                 "principal" => {
-                    self.core.simplify_options.branch = BranchPolicy::Principal;
-                    self.core.state.options.branch = BranchPolicy::Principal;
+                    self.core.simplify_options.semantics.branch = BranchPolicy::Principal;
+                    self.core.state.options.semantics.branch = BranchPolicy::Principal;
                 }
                 _ => {
                     return Some(format!(
@@ -120,12 +120,13 @@ impl Repl {
             },
             "inv_trig" => match value {
                 "strict" => {
-                    self.core.simplify_options.inv_trig = InverseTrigPolicy::Strict;
-                    self.core.state.options.inv_trig = InverseTrigPolicy::Strict;
+                    self.core.simplify_options.semantics.inv_trig = InverseTrigPolicy::Strict;
+                    self.core.state.options.semantics.inv_trig = InverseTrigPolicy::Strict;
                 }
                 "principal" => {
-                    self.core.simplify_options.inv_trig = InverseTrigPolicy::PrincipalValue;
-                    self.core.state.options.inv_trig = InverseTrigPolicy::PrincipalValue;
+                    self.core.simplify_options.semantics.inv_trig =
+                        InverseTrigPolicy::PrincipalValue;
+                    self.core.state.options.semantics.inv_trig = InverseTrigPolicy::PrincipalValue;
                 }
                 _ => {
                     return Some(format!(
@@ -179,12 +180,15 @@ impl Repl {
             },
             "assume_scope" => match value {
                 "real" => {
-                    self.core.simplify_options.assume_scope = cas_engine::AssumeScope::Real;
-                    self.core.state.options.assume_scope = cas_engine::AssumeScope::Real;
+                    self.core.simplify_options.semantics.assume_scope =
+                        cas_engine::AssumeScope::Real;
+                    self.core.state.options.semantics.assume_scope = cas_engine::AssumeScope::Real;
                 }
                 "wildcard" => {
-                    self.core.simplify_options.assume_scope = cas_engine::AssumeScope::Wildcard;
-                    self.core.state.options.assume_scope = cas_engine::AssumeScope::Wildcard;
+                    self.core.simplify_options.semantics.assume_scope =
+                        cas_engine::AssumeScope::Wildcard;
+                    self.core.state.options.semantics.assume_scope =
+                        cas_engine::AssumeScope::Wildcard;
                 }
                 _ => {
                     return Some(format!(
