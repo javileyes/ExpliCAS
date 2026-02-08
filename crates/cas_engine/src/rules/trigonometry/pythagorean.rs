@@ -256,11 +256,11 @@ fn extract_all_trig_squared_candidates(
         if let Expr::Number(n) = ctx.get(*exp) {
             if *n == num_rational::BigRational::from_integer(2.into()) {
                 if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                    let name = ctx.sym_name(*fn_id);
+                    let builtin = ctx.builtin_of(*fn_id);
                     if args.len() == 1 {
-                        if name == "sin" {
+                        if matches!(builtin, Some(cas_ast::BuiltinFn::Sin)) {
                             results.push((true, args[0], vec![]));
-                        } else if name == "cos" {
+                        } else if matches!(builtin, Some(cas_ast::BuiltinFn::Cos)) {
                             results.push((false, args[0], vec![]));
                         }
                     }
@@ -289,8 +289,13 @@ fn extract_all_trig_squared_candidates(
                 if let Expr::Number(n) = ctx.get(*exp) {
                     if *n == num_rational::BigRational::from_integer(2.into()) {
                         if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                            let name = ctx.sym_name(*fn_id);
-                            if args.len() == 1 && (name == "sin" || name == "cos") {
+                            let builtin = ctx.builtin_of(*fn_id);
+                            if args.len() == 1
+                                && matches!(
+                                    builtin,
+                                    Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
+                                )
+                            {
                                 // Build coefficient from all OTHER factors
                                 let coef_factors: Vec<ExprId> = factors
                                     .iter()
@@ -299,7 +304,7 @@ fn extract_all_trig_squared_candidates(
                                     .map(|(_, &g)| g)
                                     .collect();
 
-                                let is_sin = name == "sin";
+                                let is_sin = matches!(builtin, Some(cas_ast::BuiltinFn::Sin));
                                 results.push((is_sin, args[0], coef_factors));
                             }
                         }
@@ -669,9 +674,18 @@ fn decompose_term_with_residual_multi(
             if let Expr::Number(n) = ctx.get(*exp) {
                 if *n == BigRational::from_integer(2.into()) {
                     if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                        let name = ctx.sym_name(*fn_id);
-                        if args.len() == 1 && (name == "sin" || name == "cos") {
-                            trig_indices.push((i, name == "sin", args[0]));
+                        let builtin = ctx.builtin_of(*fn_id);
+                        if args.len() == 1
+                            && matches!(
+                                builtin,
+                                Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
+                            )
+                        {
+                            trig_indices.push((
+                                i,
+                                matches!(builtin, Some(cas_ast::BuiltinFn::Sin)),
+                                args[0],
+                            ));
                         }
                     }
                 }
@@ -782,9 +796,13 @@ fn extract_trig_squared(
         if let Expr::Number(n) = ctx.get(*exp) {
             if *n == BigRational::from_integer(2.into()) {
                 if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                    let name = ctx.sym_name(*fn_id);
-                    if (name == "sin" || name == "cos") && args.len() == 1 {
-                        return Some((name.to_string(), args[0], coef));
+                    let builtin = ctx.builtin_of(*fn_id);
+                    if matches!(
+                        builtin,
+                        Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
+                    ) && args.len() == 1
+                    {
+                        return Some((builtin.unwrap().name().to_string(), args[0], coef));
                     }
                 }
             }
@@ -800,9 +818,17 @@ fn extract_trig_squared(
                     if let Expr::Number(e) = ctx.get(*exp) {
                         if *e == BigRational::from_integer(2.into()) {
                             if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                                let name = ctx.sym_name(*fn_id);
-                                if (name == "sin" || name == "cos") && args.len() == 1 {
-                                    return Some((name.to_string(), args[0], coef * n.clone()));
+                                let builtin = ctx.builtin_of(*fn_id);
+                                if matches!(
+                                    builtin,
+                                    Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
+                                ) && args.len() == 1
+                                {
+                                    return Some((
+                                        builtin.unwrap().name().to_string(),
+                                        args[0],
+                                        coef * n.clone(),
+                                    ));
                                 }
                             }
                         }
@@ -983,9 +1009,13 @@ fn extract_tan_or_cot_squared(
         if let Expr::Number(n) = ctx.get(*exp) {
             if *n == BigRational::from_integer(2.into()) {
                 if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                    let name = ctx.sym_name(*fn_id);
-                    if (name == "tan" || name == "cot") && args.len() == 1 {
-                        return Some((name.to_string(), args[0], coef));
+                    let builtin = ctx.builtin_of(*fn_id);
+                    if matches!(
+                        builtin,
+                        Some(cas_ast::BuiltinFn::Tan | cas_ast::BuiltinFn::Cot)
+                    ) && args.len() == 1
+                    {
+                        return Some((builtin.unwrap().name().to_string(), args[0], coef));
                     }
                 }
             }
@@ -1000,9 +1030,17 @@ fn extract_tan_or_cot_squared(
                     if let Expr::Number(e) = ctx.get(*exp) {
                         if *e == BigRational::from_integer(2.into()) {
                             if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                                let name = ctx.sym_name(*fn_id);
-                                if (name == "tan" || name == "cot") && args.len() == 1 {
-                                    return Some((name.to_string(), args[0], coef * n.clone()));
+                                let builtin = ctx.builtin_of(*fn_id);
+                                if matches!(
+                                    builtin,
+                                    Some(cas_ast::BuiltinFn::Tan | cas_ast::BuiltinFn::Cot)
+                                ) && args.len() == 1
+                                {
+                                    return Some((
+                                        builtin.unwrap().name().to_string(),
+                                        args[0],
+                                        coef * n.clone(),
+                                    ));
                                 }
                             }
                         }
@@ -1025,8 +1063,8 @@ define_rule!(
     "Secant to Reciprocal Cosine",
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
-            if name == "sec" && args.len() == 1 {
+            let builtin = ctx.builtin_of(*fn_id);
+            if matches!(builtin, Some(cas_ast::BuiltinFn::Sec)) && args.len() == 1 {
                 let arg = args[0];
                 let cos_func = ctx.call("cos", vec![arg]);
                 let one = ctx.num(1);
@@ -1047,8 +1085,8 @@ define_rule!(
     "Cosecant to Reciprocal Sine",
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
-            if name == "csc" && args.len() == 1 {
+            let builtin = ctx.builtin_of(*fn_id);
+            if matches!(builtin, Some(cas_ast::BuiltinFn::Csc)) && args.len() == 1 {
                 let arg = args[0];
                 let sin_func = ctx.call("sin", vec![arg]);
                 let one = ctx.num(1);
@@ -1070,8 +1108,8 @@ define_rule!(
     "Cotangent to Cosine over Sine",
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
-            if name == "cot" && args.len() == 1 {
+            let builtin = ctx.builtin_of(*fn_id);
+            if matches!(builtin, Some(cas_ast::BuiltinFn::Cot)) && args.len() == 1 {
                 let arg = args[0];
                 let cos_func = ctx.call("cos", vec![arg]);
                 let sin_func = ctx.call("sin", vec![arg]);
@@ -1119,10 +1157,14 @@ fn check_pythagorean_pattern(
             if let Expr::Number(n) = ctx.get(*exp) {
                 if *n == num_rational::BigRational::from_integer(2.into()) {
                     if let Expr::Function(fn_id, args) = ctx.get(*b) {
-                        let name = ctx.sym_name(*fn_id);
-                        if (name == "sin" || name == "cos") && args.len() == 1 {
+                        let builtin = ctx.builtin_of(*fn_id);
+                        if matches!(
+                            builtin,
+                            Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
+                        ) && args.len() == 1
+                        {
                             trig_idx = Some(i);
-                            func_name = name.to_string();
+                            func_name = builtin.unwrap().name().to_string();
                             arg = Some(args[0]);
                             break;
                         }
@@ -1366,9 +1408,13 @@ fn extract_trig_fourth_power(
             if let Expr::Number(n) = ctx.get(*exp) {
                 if *n == BigRational::from_integer(4.into()) {
                     if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                        let name = ctx.sym_name(*fn_id);
-                        if (name == "sin" || name == "cos") && args.len() == 1 {
-                            trig_func_name = Some(name.to_string());
+                        let builtin = ctx.builtin_of(*fn_id);
+                        if matches!(
+                            builtin,
+                            Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
+                        ) && args.len() == 1
+                        {
+                            trig_func_name = Some(builtin.unwrap().name().to_string());
                             trig_arg = Some(args[0]);
                             trig_idx = Some(i);
                         }

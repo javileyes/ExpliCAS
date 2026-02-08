@@ -23,9 +23,12 @@ pub const DEFAULT_PRIME: u64 = INTERNAL_DEFAULT_PRIME;
 fn strip_expand_wrapper(ctx: &Context, mut expr: ExprId) -> ExprId {
     loop {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
-            let is_hold = ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Hold);
-            if (name == "expand" || is_hold) && args.len() == 1 {
+            let builtin = ctx.builtin_of(*fn_id);
+            if matches!(
+                builtin,
+                Some(cas_ast::BuiltinFn::Expand | cas_ast::BuiltinFn::Hold)
+            ) && args.len() == 1
+            {
                 expr = args[0];
                 continue;
             }

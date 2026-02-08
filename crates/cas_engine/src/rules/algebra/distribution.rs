@@ -23,8 +23,8 @@ define_rule!(
     PhaseMask::TRANSFORM,
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
-            if name == "expand" && args.len() == 1 {
+            if matches!(ctx.builtin_of(*fn_id), Some(cas_ast::BuiltinFn::Expand)) && args.len() == 1
+            {
                 let arg = args[0];
 
                 // Estimate output terms
@@ -77,8 +77,8 @@ define_rule!(
     PhaseMask::TRANSFORM,
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
-            if name == "expand" && args.len() == 1 {
+            if matches!(ctx.builtin_of(*fn_id), Some(cas_ast::BuiltinFn::Expand)) && args.len() == 1
+            {
                 let arg = args[0];
                 let expanded = crate::expand::expand(ctx, arg);
                 // Strip all nested __hold wrappers so user sees clean result

@@ -46,13 +46,13 @@ impl crate::rule::Rule for SinCosIntegerPiRule {
         let expr_data = ctx.get(expr).clone();
 
         if let Expr::Function(fn_id, args) = expr_data {
-            let name = ctx.sym_name(fn_id);
+            let builtin = ctx.builtin_of(fn_id);
             if args.len() != 1 {
                 return None;
             }
 
-            let is_sin = name == "sin";
-            let is_cos = name == "cos";
+            let is_sin = matches!(builtin, Some(cas_ast::BuiltinFn::Sin));
+            let is_cos = matches!(builtin, Some(cas_ast::BuiltinFn::Cos));
             if !is_sin && !is_cos {
                 return None;
             }
@@ -109,7 +109,11 @@ define_rule!(
         let expr_data = ctx.get(expr).clone();
 
         if let Expr::Function(fn_id, args) = expr_data {
-            let name = ctx.sym_name(fn_id).to_string();
+            let builtin = ctx.builtin_of(fn_id);
+            let name = builtin
+                .map(|b| b.name())
+                .unwrap_or_else(|| ctx.sym_name(fn_id));
+            let name = name.to_string();
             if args.len() != 1 {
                 return None;
             }
@@ -508,9 +512,13 @@ define_rule!(
                             && n.is_integer()
                         {
                             let trig_info = if let Expr::Function(fn_id, args) = ctx.get(base) {
-                                let name = ctx.sym_name(*fn_id);
-                                if (name == "sin" || name == "cos") && args.len() == 1 {
-                                    Some((name.to_string(), args[0]))
+                                let builtin = ctx.builtin_of(*fn_id);
+                                if matches!(
+                                    builtin,
+                                    Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
+                                ) && args.len() == 1
+                                {
+                                    Some((builtin.unwrap().name().to_string(), args[0]))
                                 } else {
                                     None
                                 }
@@ -553,11 +561,15 @@ define_rule!(
                                     && n.is_integer()
                                 {
                                     if let Expr::Function(fn_id, args) = ctx.get(base) {
-                                        let name = ctx.sym_name(*fn_id);
-                                        if (name == "sin" || name == "cos") && args.len() == 1 {
+                                        let builtin = ctx.builtin_of(*fn_id);
+                                        if matches!(
+                                            builtin,
+                                            Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
+                                        ) && args.len() == 1
+                                        {
                                             // Clone args[0] and name before mutable borrows
                                             let arg = args[0];
-                                            let name_str = name.to_string();
+                                            let name_str = builtin.unwrap().name().to_string();
 
                                             // Calculate remaining power if n > 2
                                             let two =
@@ -727,9 +739,12 @@ impl crate::rule::Rule for AngleIdentityRule {
         // This guard blocks the expansion at the source.
         if !parent_ctx.is_expand_mode() {
             if let Expr::Function(fn_id, args) = ctx.get(expr) {
-                let name = ctx.sym_name(*fn_id);
-                if (name == "sin" || name == "cos" || name == "tan")
-                    && args.len() == 1
+                if matches!(
+                    ctx.builtin_of(*fn_id),
+                    Some(
+                        cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos | cas_ast::BuiltinFn::Tan
+                    )
+                ) && args.len() == 1
                     && has_large_coefficient(ctx, args[0])
                 {
                     return None;
@@ -758,8 +773,11 @@ impl crate::rule::Rule for AngleIdentityRule {
         // - This would cause exponential expansion: sin(12x + 4x) → huge tree
         // Note: We allow sin(x + y) with distinct variables, only block multiples of same var
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let name = ctx.sym_name(*fn_id);
-            if (name == "sin" || name == "cos") && args.len() == 1 {
+            if matches!(
+                ctx.builtin_of(*fn_id),
+                Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
+            ) && args.len() == 1
+            {
                 let inner = args[0];
                 if let Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) = ctx.get(inner) {
                     // Check if either side is a multiple angle that would cause explosion
@@ -773,8 +791,8 @@ impl crate::rule::Rule for AngleIdentityRule {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             if args.len() == 1 {
                 let inner = args[0];
-                match ctx.sym_name(*fn_id) {
-                    "sin" => {
+                match ctx.builtin_of(*fn_id) {
+                    Some(cas_ast::BuiltinFn::Sin) => {
                         let inner_data = ctx.get(inner).clone();
                         if let Expr::Add(lhs, rhs) = inner_data {
                             // sin(a + b) = sin(a)cos(b) + cos(a)sin(b)
@@ -828,7 +846,7 @@ impl crate::rule::Rule for AngleIdentityRule {
                             }
                         }
                     }
-                    "cos" => {
+                    Some(cas_ast::BuiltinFn::Cos) => {
                         let inner_data = ctx.get(inner).clone();
                         if let Expr::Add(lhs, rhs) = inner_data {
                             // cos(a + b) = cos(a)cos(b) - sin(a)sin(b)

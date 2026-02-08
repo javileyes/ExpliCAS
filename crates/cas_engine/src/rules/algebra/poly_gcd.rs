@@ -35,40 +35,40 @@ fn pre_evaluate_for_gcd(ctx: &mut Context, expr: ExprId) -> ExprId {
 
     // Only process specific wrappers that need evaluation
     if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        match ctx.sym_name(*fn_id) {
+        let fn_id = *fn_id;
+        let args = args.clone();
+
+        // Check for expand() via builtin
+        if matches!(ctx.builtin_of(fn_id), Some(cas_ast::BuiltinFn::Expand)) {
             // expand() is explicitly requested by user - evaluate it
-            "expand" => {
-                // Create a minimal, safe simplifier
-                let opts = EvalOptions {
-                    steps_mode: StepsMode::Off,       // No step tracking
-                    expand_policy: ExpandPolicy::Off, // Don't auto-expand other things
-                    ..Default::default()
-                };
-                let mut simplifier = Simplifier::with_profile(&opts);
-                simplifier.set_steps_mode(StepsMode::Off);
+            let opts = EvalOptions {
+                steps_mode: StepsMode::Off,       // No step tracking
+                expand_policy: ExpandPolicy::Off, // Don't auto-expand other things
+                ..Default::default()
+            };
+            let mut simplifier = Simplifier::with_profile(&opts);
+            simplifier.set_steps_mode(StepsMode::Off);
 
-                // Transfer context
-                std::mem::swap(&mut simplifier.context, ctx);
-                let (result, _) = simplifier.expand(expr); // Use expand() specifically
-                                                           // Transfer back
-                std::mem::swap(&mut simplifier.context, ctx);
-                return result;
-            }
+            // Transfer context
+            std::mem::swap(&mut simplifier.context, ctx);
+            let (result, _) = simplifier.expand(expr); // Use expand() specifically
+                                                       // Transfer back
+            std::mem::swap(&mut simplifier.context, ctx);
+            return result;
+        }
 
-            // __hold is an internal wrapper - unwrap it using canonical helper
-            _ if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Hold) && !args.is_empty() => {
-                return args[0]; // Just unwrap, don't recurse
-            }
+        // __hold is an internal wrapper - unwrap it using canonical helper
+        if ctx.is_builtin(fn_id, cas_ast::BuiltinFn::Hold) && !args.is_empty() {
+            return args[0]; // Just unwrap, don't recurse
+        }
 
-            // factor() and simplify() are TOO EXPENSIVE for GCD path
-            // Leave them as-is and let the converter handle or fail gracefully
-            "factor" | "simplify" => {
-                // Don't pre-evaluate these - they could be O(expensive)
-                // The GCD will fall back to structural if conversion fails
-                return expr;
-            }
-
-            _ => {}
+        // factor() and simplify() are TOO EXPENSIVE for GCD path
+        // Leave them as-is and let the converter handle or fail gracefully
+        let name = ctx.sym_name(fn_id);
+        if name == "factor" || name == "simplify" {
+            // Don't pre-evaluate these - they could be O(expensive)
+            // The GCD will fall back to structural if conversion fails
+            return expr;
         }
     }
     expr
