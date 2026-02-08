@@ -260,17 +260,6 @@ impl Rewrite {
             .local(before_local, after_local)
     }
 
-    /// Create a rewrite with domain assumption warning
-    /// DEPRECATED: Use `.assume()` fluent method instead
-    #[must_use]
-    pub fn with_domain_assumption(
-        new_expr: ExprId,
-        description: impl Into<Cow<'static, str>>,
-        _assumption: &'static str,
-    ) -> Self {
-        Self::new(new_expr).desc(description)
-    }
-
     /// Create a rewrite with polynomial proof data (for PolyZero airbag)
     /// Used by PolynomialIdentityZeroRule to attach normalization info for didactic display
     #[must_use]

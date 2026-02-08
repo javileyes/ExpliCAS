@@ -147,28 +147,10 @@ impl Repl {
             return reply;
         }
 
-        // "mode" - DEPRECATED: redirect to semantics
-        if line == "mode" || line.starts_with("mode ") {
-            return reply_output(
-                "⚠️  The 'mode' command is deprecated.\n\
-                 Use 'semantics set inv_trig strict|principal' instead.\n\
-                 Run 'semantics' to see current settings.",
-            );
-        }
-
         // "context" - show/switch context mode (auto, standard, solve, integrate)
         if line == "context" || line.starts_with("context ") {
             self.handle_context_command(&line);
             return reply;
-        }
-
-        // "complex" - DEPRECATED: redirect to semantics
-        if line == "complex" || line.starts_with("complex ") {
-            return reply_output(
-                "⚠️  The 'complex' command is deprecated.\n\
-                 Use 'semantics set value real|complex' instead.\n\
-                 Run 'semantics' to see current settings.",
-            );
         }
 
         // "steps" - show/switch steps collection mode (on, off, compact)

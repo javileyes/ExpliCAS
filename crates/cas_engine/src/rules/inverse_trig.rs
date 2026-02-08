@@ -841,13 +841,6 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(PrincipalBranchInverseTrigRule));
 }
 
-/// Deprecated: PrincipalBranchInverseTrigRule is now self-gated and always registered.
-/// This function is kept for backward compatibility but does nothing.
-#[deprecated(note = "PrincipalBranchInverseTrigRule is now self-gated; use register() instead")]
-pub fn register_principal_branch(_simplifier: &mut crate::Simplifier) {
-    // No-op: rule is already registered in register() and self-gated
-}
-
 // ==================== Principal Branch Rules (Educational) ====================
 //
 // These rules simplify inverse∘function compositions like arctan(tan(u)) → u.

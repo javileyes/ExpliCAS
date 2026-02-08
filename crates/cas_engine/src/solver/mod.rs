@@ -403,28 +403,6 @@ impl Drop for SolveAssumptionsGuard {
     }
 }
 
-/// Start assumption collection for solver.
-/// DEPRECATED: Use SolveAssumptionsGuard for RAII safety.
-/// Returns true if collection was started (false if already active).
-pub fn start_assumption_collection() -> bool {
-    SOLVE_ASSUMPTIONS.with(|c| {
-        let mut collector = c.borrow_mut();
-        if collector.is_none() {
-            *collector = Some(crate::assumptions::AssumptionCollector::new());
-            true
-        } else {
-            false
-        }
-    })
-}
-
-/// Finish assumption collection and return the collector.
-/// DEPRECATED: Use SolveAssumptionsGuard for RAII safety.
-/// Returns None if collection wasn't started.
-pub fn finish_assumption_collection() -> Option<crate::assumptions::AssumptionCollector> {
-    SOLVE_ASSUMPTIONS.with(|c| c.borrow_mut().take())
-}
-
 /// Note an assumption during solver operation (internal use).
 pub(crate) fn note_assumption(event: crate::assumptions::AssumptionEvent) {
     SOLVE_ASSUMPTIONS.with(|c| {

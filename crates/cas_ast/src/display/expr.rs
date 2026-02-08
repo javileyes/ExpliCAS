@@ -787,19 +787,6 @@ pub(super) fn check_negative(
     }
 }
 
-/// Count all nodes in an expression tree.
-///
-/// Wrapper calling canonical `crate::traversal::count_all_nodes`.
-/// (See POLICY.md "Traversal Contract")
-#[deprecated(
-    since = "0.1.0",
-    note = "Use crate::traversal::count_all_nodes instead"
-)]
-#[allow(dead_code)]
-pub fn count_nodes(context: &Context, id: ExprId) -> usize {
-    crate::traversal::count_all_nodes(context, id)
-}
-
 // ============================================================================
 // RawDisplayExpr
 // ============================================================================

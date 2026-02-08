@@ -3,9 +3,9 @@
 //! These tests verify that the solver correctly derives implicit domain
 //! conditions during solving (e.g., "positive(y)" for 2^x = y).
 //!
-//! NOTE: The original tests expected "assumptions" to be collected via
-//! start/finish_assumption_collection(). However, with the V2.2+ domain
-//! inference system, these conditions are now captured as "required conditions"
+//! NOTE: Earlier versions collected assumptions via
+//! start/finish_assumption_collection() (now deleted). With the V2.2+ domain
+//! inference system, conditions are captured as "required conditions"
 //! via derive_requires_from_equation(). This is the correct semantic:
 //! - Required: structural domain facts derived from equation
 //! - Assumptions: runtime assertions made during simplification (different system)
