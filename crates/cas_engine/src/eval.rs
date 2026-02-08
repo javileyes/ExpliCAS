@@ -753,16 +753,26 @@ impl Engine {
             // V2.15.36: Populate simplified cache for session reference caching
             // This enables `#N` to use the cached simplified result instead of re-simplifying
             if let EvalResult::Expr(simplified_expr) = &result {
-                use crate::session::{SimplifiedCache, SimplifyCacheKey};
+                // Skip caching poly_result(id) handles.
+                // The thread-local PolyStore is cleared before each evaluation,
+                // so poly_result handles become dangling references in later evals.
+                // By NOT caching, `#N` resolution falls back to the raw parsed
+                // expression (e.g. `expand(...)`) which re-enters the full eval
+                // pipeline and is correctly handled by the orchestrator's
+                // eager-eval + poly_lower pre-passes.
+                if !crate::poly_result::is_poly_result(&self.simplifier.context, *simplified_expr) {
+                    use crate::session::{SimplifiedCache, SimplifyCacheKey};
 
-                let cache_key = SimplifyCacheKey::from_context(state.options.semantics.domain_mode);
-                let cache = SimplifiedCache {
-                    key: cache_key,
-                    expr: *simplified_expr,
-                    requires: diagnostics.requires.clone(),
-                    steps: Some(std::sync::Arc::new(steps.clone())),
-                };
-                state.store.update_simplified(id, cache);
+                    let cache_key =
+                        SimplifyCacheKey::from_context(state.options.semantics.domain_mode);
+                    let cache = SimplifiedCache {
+                        key: cache_key,
+                        expr: *simplified_expr,
+                        requires: diagnostics.requires.clone(),
+                        steps: Some(std::sync::Arc::new(steps.clone())),
+                    };
+                    state.store.update_simplified(id, cache);
+                }
             }
         }
 
