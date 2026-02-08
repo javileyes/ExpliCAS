@@ -13,6 +13,7 @@ mod core_rules;
 
 // GCD-based cancellation rules module
 mod gcd_cancel;
+mod gcd_cancel_didactic;
 
 // Re-export rules from gcd_cancel
 pub use gcd_cancel::{
