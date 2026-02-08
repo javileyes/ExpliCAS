@@ -34,12 +34,15 @@ impl crate::rule::Rule for ExponentialLogRule {
              -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
                 let e_data = ctx.get(e_id).clone();
                 if let Expr::Function(name, args) = e_data {
-                    let name_str = ctx.sym_name(name);
-                    if name_str == "log" && args.len() == 2 {
-                        return Some((args[0], args[1]));
-                    } else if name_str == "ln" && args.len() == 1 {
-                        let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
-                        return Some((e, args[0]));
+                    match ctx.builtin_of(name) {
+                        Some(BuiltinFn::Log) if args.len() == 2 => {
+                            return Some((args[0], args[1]));
+                        }
+                        Some(BuiltinFn::Ln) if args.len() == 1 => {
+                            let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+                            return Some((e, args[0]));
+                        }
+                        _ => {}
                     }
                 }
                 None
@@ -179,8 +182,7 @@ define_rule!(
 fn simplify_exp_log(context: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
     // Check if exp is log(base, x)
     if let Expr::Function(name, args) = context.get(exp).clone() {
-        let name_str = context.sym_name(name);
-        if name_str == "log" && args.len() == 2 {
+        if context.is_builtin(name, BuiltinFn::Log) && args.len() == 2 {
             let log_base = args[0];
             let log_arg = args[1];
             if log_base == base {
@@ -195,8 +197,9 @@ fn simplify_exp_log(context: &mut Context, base: ExprId, exp: ExprId) -> ExprId 
 
 fn is_log(context: &Context, expr: ExprId) -> bool {
     if let Expr::Function(name, _) = context.get(expr) {
-        let name_str = context.sym_name(*name);
-        return name_str == "log" || name_str == "ln";
+        if let Some(b) = context.builtin_of(*name) {
+            return b == BuiltinFn::Log || b == BuiltinFn::Ln;
+        }
     }
     // Also check for n*log(x)
     if let Expr::Mul(l, r) = context.get(expr) {
@@ -220,19 +223,22 @@ define_rule!(
         // Returns Some(Some(base)) for log(b, x), Some(None) for ln(x) -> base e
         let check_log_denom =
             |ctx: &Context, denom: cas_ast::ExprId| -> Option<Option<cas_ast::ExprId>> {
-                if let Expr::Function(fn_id, args) = ctx.get(denom) { let name = ctx.sym_name(*fn_id);
-                    if name == "log" && args.len() == 2 {
-                        let log_base = args[0];
-                        let log_arg = args[1];
-                        // Check if log_arg == base
-                        if compare_expr(ctx, log_arg, base) == Ordering::Equal {
-                            return Some(Some(log_base));
+                if let Expr::Function(fn_id, args) = ctx.get(denom) {
+                    match ctx.builtin_of(*fn_id) {
+                        Some(BuiltinFn::Log) if args.len() == 2 => {
+                            let log_base = args[0];
+                            let log_arg = args[1];
+                            if compare_expr(ctx, log_arg, base) == Ordering::Equal {
+                                return Some(Some(log_base));
+                            }
                         }
-                    } else if name == "ln" && args.len() == 1 {
-                        let log_arg = args[0];
-                        if compare_expr(ctx, log_arg, base) == Ordering::Equal {
-                            return Some(None); // Base e
+                        Some(BuiltinFn::Ln) if args.len() == 1 => {
+                            let log_arg = args[0];
+                            if compare_expr(ctx, log_arg, base) == Ordering::Equal {
+                                return Some(None);
+                            }
                         }
+                        _ => {}
                     }
                 }
                 None
@@ -324,15 +330,15 @@ impl crate::rule::Rule for LogExpInverseRule {
     ) -> Option<crate::rule::Rewrite> {
         let expr_data = ctx.get(expr).clone();
         if let Expr::Function(fn_id, args) = expr_data {
-            let name = ctx.sym_name(fn_id);
+            use cas_ast::BuiltinFn;
             // Handle ln(x) as log(e, x), or log(b, x)
-            let (base, arg) = if name == "ln" && args.len() == 1 {
-                let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
-                (e, args[0])
-            } else if name == "log" && args.len() == 2 {
-                (args[0], args[1])
-            } else {
-                return None;
+            let (base, arg) = match ctx.builtin_of(fn_id) {
+                Some(BuiltinFn::Ln) if args.len() == 1 => {
+                    let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+                    (e, args[0])
+                }
+                Some(BuiltinFn::Log) if args.len() == 2 => (args[0], args[1]),
+                _ => return None,
             };
 
             let arg_data = ctx.get(arg).clone();
@@ -463,9 +469,8 @@ impl crate::rule::Rule for LogPowerBaseRule {
     ) -> Option<crate::rule::Rewrite> {
         let expr_data = ctx.get(expr).clone();
         if let Expr::Function(fn_id, args) = expr_data {
-            let name = ctx.sym_name(fn_id);
             // Match log(base, arg) - not ln (which has implicit base e)
-            if name != "log" || args.len() != 2 {
+            if ctx.builtin_of(fn_id) != Some(BuiltinFn::Log) || args.len() != 2 {
                 return None;
             }
             let base = args[0];

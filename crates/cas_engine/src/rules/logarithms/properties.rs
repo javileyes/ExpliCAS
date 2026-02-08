@@ -37,15 +37,14 @@ impl crate::rule::Rule for LogExpansionRule {
 
         let expr_data = ctx.get(expr).clone();
         if let Expr::Function(fn_id, args) = expr_data {
-            let name = ctx.sym_name(fn_id);
             // Handle ln(x) as log(e, x), or log(b, x)
-            let (base, arg) = if name == "ln" && args.len() == 1 {
-                let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
-                (e, args[0])
-            } else if name == "log" && args.len() == 2 {
-                (args[0], args[1])
-            } else {
-                return None;
+            let (base, arg) = match ctx.builtin_of(fn_id) {
+                Some(BuiltinFn::Ln) if args.len() == 1 => {
+                    let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+                    (e, args[0])
+                }
+                Some(BuiltinFn::Log) if args.len() == 2 => (args[0], args[1]),
+                _ => return None,
             };
 
             let arg_data = ctx.get(arg).clone();
@@ -156,21 +155,21 @@ pub fn expand_logs_with_assumptions(
 
     let result = match expr_data {
         Expr::Function(name, ref args)
-            if {
-                let n = ctx.sym_name(name);
-                n == "ln" || n == "log"
-            } =>
+            if matches!(
+                ctx.builtin_of(name),
+                Some(BuiltinFn::Ln) | Some(BuiltinFn::Log)
+            ) =>
         {
-            let name_str = ctx.sym_name(name);
             // Try to expand this log
             // Sentinel: base-10 log uses ExprId::from_raw(u32::MAX - 1) as base indicator
             let sentinel_log10 = cas_ast::ExprId::from_raw(u32::MAX - 1);
-            let (base, arg) = if name_str == "ln" && args.len() == 1 {
+            let builtin = ctx.builtin_of(name);
+            let (base, arg) = if builtin == Some(BuiltinFn::Ln) && args.len() == 1 {
                 let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
                 (e, args[0])
-            } else if name_str == "log" && args.len() == 2 {
+            } else if builtin == Some(BuiltinFn::Log) && args.len() == 2 {
                 (args[0], args[1])
-            } else if name_str == "log" && args.len() == 1 {
+            } else if builtin == Some(BuiltinFn::Log) && args.len() == 1 {
                 // log(x) = base-10 log
                 (sentinel_log10, args[0])
             } else {
@@ -329,14 +328,13 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
         };
 
         // Handle ln(x) or log(base, x)
-        let name_str = ctx.sym_name(name);
-        let (base, arg) = if name_str == "ln" && args.len() == 1 {
-            let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
-            (e, args[0])
-        } else if name_str == "log" && args.len() == 2 {
-            (args[0], args[1])
-        } else {
-            return None;
+        let (base, arg) = match ctx.builtin_of(name) {
+            Some(BuiltinFn::Ln) if args.len() == 1 => {
+                let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+                (e, args[0])
+            }
+            Some(BuiltinFn::Log) if args.len() == 2 => (args[0], args[1]),
+            _ => return None,
         };
 
         // Match log(base, x^exp) where exp is even integer
@@ -506,14 +504,13 @@ impl crate::rule::Rule for LogAbsPowerRule {
         };
 
         // Handle ln(x) or log(base, x)
-        let name_str = ctx.sym_name(name);
-        let (base, arg) = if name_str == "ln" && args.len() == 1 {
-            let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
-            (e, args[0])
-        } else if name_str == "log" && args.len() == 2 {
-            (args[0], args[1])
-        } else {
-            return None;
+        let (base, arg) = match ctx.builtin_of(name) {
+            Some(BuiltinFn::Ln) if args.len() == 1 => {
+                let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+                (e, args[0])
+            }
+            Some(BuiltinFn::Log) if args.len() == 2 => (args[0], args[1]),
+            _ => return None,
         };
 
         // Match log(base, |u|^n)

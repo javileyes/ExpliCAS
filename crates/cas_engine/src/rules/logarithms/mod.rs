@@ -154,15 +154,15 @@ use std::collections::HashMap;
 define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
     let expr_data = ctx.get(expr).clone();
     if let Expr::Function(fn_id, args) = expr_data {
-        let name = ctx.sym_name(fn_id);
+        use cas_ast::BuiltinFn;
         // Handle ln(x) as log(e, x)
-        let (base, arg) = if name == "ln" && args.len() == 1 {
-            let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
-            (e, args[0])
-        } else if name == "log" && args.len() == 2 {
-            (args[0], args[1])
-        } else {
-            return None;
+        let (base, arg) = match ctx.builtin_of(fn_id) {
+            Some(BuiltinFn::Ln) if args.len() == 1 => {
+                let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+                (e, args[0])
+            }
+            Some(BuiltinFn::Log) if args.len() == 2 => (args[0], args[1]),
+            _ => return None,
         };
 
         let arg_data = ctx.get(arg).clone();
@@ -295,8 +295,7 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
 define_rule!(LnEProductRule, "Factor e from ln Product", |ctx, expr| {
     // Match ln(arg)
     if let Expr::Function(fn_id, args) = ctx.get(expr).clone() {
-        let name = ctx.sym_name(fn_id);
-        if name != "ln" || args.len() != 1 {
+        if ctx.builtin_of(fn_id) != Some(cas_ast::BuiltinFn::Ln) || args.len() != 1 {
             return None;
         }
         let arg = args[0];
@@ -335,8 +334,7 @@ define_rule!(LnEProductRule, "Factor e from ln Product", |ctx, expr| {
 define_rule!(LnEDivRule, "Factor e from ln Quotient", |ctx, expr| {
     // Match ln(arg)
     if let Expr::Function(fn_id, args) = ctx.get(expr).clone() {
-        let name = ctx.sym_name(fn_id);
-        if name != "ln" || args.len() != 1 {
+        if ctx.builtin_of(fn_id) != Some(cas_ast::BuiltinFn::Ln) || args.len() != 1 {
             return None;
         }
         let arg = args[0];
@@ -482,14 +480,15 @@ pub(super) fn extract_log_parts(
     expr: cas_ast::ExprId,
 ) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
     if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        let name = ctx.sym_name(*fn_id);
-        if name == "ln" && args.len() == 1 {
-            // For ln(x), base is implicitly e - we need to create it
-            // But we can't mutate ctx here. Instead we'll use a sentinel value.
-            // Actually, let's handle ln specially in bases_equal
-            return Some((cas_ast::ExprId::from_raw(u32::MAX), args[0])); // Sentinel for "e"
-        } else if name == "log" && args.len() == 2 {
-            return Some((args[0], args[1]));
+        use cas_ast::BuiltinFn;
+        match ctx.builtin_of(*fn_id) {
+            Some(BuiltinFn::Ln) if args.len() == 1 => {
+                return Some((cas_ast::ExprId::from_raw(u32::MAX), args[0]));
+            }
+            Some(BuiltinFn::Log) if args.len() == 2 => {
+                return Some((args[0], args[1]));
+            }
+            _ => {}
         }
     }
     None

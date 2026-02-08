@@ -34,6 +34,7 @@
 //! The Context initialization will automatically cache the new builtin.
 
 use crate::symbol::SymbolId;
+use std::collections::HashMap;
 
 /// Known built-in functions with cached SymbolIds.
 ///
@@ -245,6 +246,8 @@ pub struct BuiltinIds {
     /// Cached SymbolIds, indexed by BuiltinFn discriminant.
     /// SymbolId(0) means "not yet initialized" (valid after init).
     ids: [SymbolId; BuiltinFn::COUNT],
+    /// Reverse map: SymbolId → BuiltinFn for O(1) lookup.
+    reverse: HashMap<SymbolId, BuiltinFn>,
     /// Whether the cache has been initialized
     initialized: bool,
 }
@@ -253,6 +256,7 @@ impl Default for BuiltinIds {
     fn default() -> Self {
         Self {
             ids: [0; BuiltinFn::COUNT],
+            reverse: HashMap::new(),
             initialized: false,
         }
     }
@@ -284,6 +288,14 @@ impl BuiltinIds {
     #[inline]
     pub fn set(&mut self, builtin: BuiltinFn, id: SymbolId) {
         self.ids[builtin as usize] = id;
+        self.reverse.insert(id, builtin);
+    }
+
+    /// Reverse lookup: get the BuiltinFn for a SymbolId (O(1)).
+    #[inline]
+    pub fn lookup(&self, id: SymbolId) -> Option<BuiltinFn> {
+        debug_assert!(self.initialized, "BuiltinIds not initialized");
+        self.reverse.get(&id).copied()
     }
 
     /// Mark as initialized.

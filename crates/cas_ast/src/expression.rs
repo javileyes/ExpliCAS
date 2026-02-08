@@ -720,6 +720,25 @@ impl Context {
         fn_id == self.builtin_id(builtin)
     }
 
+    /// Reverse lookup: get the BuiltinFn variant for a SymbolId (O(1)).
+    ///
+    /// Returns `None` if the SymbolId doesn't correspond to any builtin.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// if let Expr::Function(fn_id, args) = ctx.get(expr) {
+    ///     match ctx.builtin_of(*fn_id) {
+    ///         Some(BuiltinFn::Sin) => { /* handle sin */ }
+    ///         Some(BuiltinFn::Cos) => { /* handle cos */ }
+    ///         _ => {}
+    ///     }
+    /// }
+    /// ```
+    #[inline]
+    pub fn builtin_of(&self, fn_id: SymbolId) -> Option<BuiltinFn> {
+        self.builtins.lookup(fn_id)
+    }
+
     /// Create a function call using a builtin.
     ///
     /// Slightly more efficient than `call("sqrt", args)` since it uses
