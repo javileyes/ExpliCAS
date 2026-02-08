@@ -49,8 +49,7 @@ define_rule!(
         }
 
         // Try different denominator patterns
-        // CLONE_OK: Multi-branch match extracting sqrt value from Mul product
-        let (sqrt_n_value, other_den_factors): (i64, Vec<ExprId>) = match ctx.get(den).clone() {
+        let (sqrt_n_value, other_den_factors): (i64, Vec<ExprId>) = match ctx.get(den) {
             // Case 1: Denominator is just √n
             Expr::Pow(_, _) => {
                 if let Some(n) = is_numeric_sqrt(ctx, den) {
@@ -62,6 +61,7 @@ define_rule!(
 
             // Case 2: Denominator is k * √n or √n * k (one level of Mul)
             Expr::Mul(l, r) => {
+                let (l, r) = (*l, *r);
                 if let Some(n) = is_numeric_sqrt(ctx, l) {
                     // √n * k form
                     (n, vec![r])
@@ -77,7 +77,7 @@ define_rule!(
 
             // Case 3: Function("sqrt", [n])
             Expr::Function(name, ref args)
-                if ctx.is_builtin(name, cas_ast::BuiltinFn::Sqrt) && args.len() == 1 =>
+                if ctx.is_builtin(*name, cas_ast::BuiltinFn::Sqrt) && args.len() == 1 =>
             {
                 if let Expr::Number(n) = ctx.get(args[0]) {
                     if n.is_integer() {

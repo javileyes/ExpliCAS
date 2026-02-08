@@ -333,9 +333,9 @@ impl crate::rule::Rule for HeuristicExtractCommonFactorAddRule {
         }
 
         // === SAFE MODE: Only handle Add(A, B) or Sub(A, B) with exactly 2 terms ===
-        let (term1_id, term2_id, term2_positive) = match ctx.get(expr).clone() {
-            Expr::Add(l, r) => (l, r, true),
-            Expr::Sub(l, r) => (l, r, false),
+        let (term1_id, term2_id, term2_positive) = match ctx.get(expr) {
+            Expr::Add(l, r) => (*l, *r, true),
+            Expr::Sub(l, r) => (*l, *r, false),
             _ => return None,
         };
 

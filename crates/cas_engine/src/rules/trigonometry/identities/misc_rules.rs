@@ -37,9 +37,9 @@ impl crate::rule::Rule for TrigSumToProductContractionRule {
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
         // Match Add or Sub of two trig functions
-        let (left, right, is_add) = match ctx.get(expr).clone() {
-            Expr::Add(l, r) => (l, r, true),
-            Expr::Sub(l, r) => (l, r, false),
+        let (left, right, is_add) = match ctx.get(expr) {
+            Expr::Add(l, r) => (*l, *r, true),
+            Expr::Sub(l, r) => (*l, *r, false),
             _ => return None,
         };
 
@@ -155,8 +155,9 @@ fn extract_coef_and_base(
     ctx: &cas_ast::Context,
     expr: ExprId,
 ) -> (num_rational::BigRational, ExprId) {
-    match ctx.get(expr).clone() {
+    match ctx.get(expr) {
         Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
             // Check if left is a number
             if let Expr::Number(n) = ctx.get(l) {
                 return (n.clone(), r);
@@ -174,6 +175,7 @@ fn extract_coef_and_base(
             (n.clone(), expr)
         }
         Expr::Neg(inner) => {
+            let inner = *inner;
             // -t → (-1, t)
             let (inner_coef, inner_base) = extract_coef_and_base(ctx, inner);
             (-inner_coef, inner_base)

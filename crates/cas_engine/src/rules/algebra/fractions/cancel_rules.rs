@@ -892,9 +892,6 @@ define_rule!(
         // Capture domain mode once at start
         let domain_mode = parent_ctx.domain_mode();
 
-        // CLONE_OK: Multi-branch match on Div/Pow/Mul requires owned Expr
-        let expr_data = ctx.get(expr).clone();
-
         // Helper to collect factors
         fn collect_factors(ctx: &Context, e: ExprId) -> Vec<ExprId> {
             let mut factors = Vec::new();
@@ -910,9 +907,10 @@ define_rule!(
             factors
         }
 
-        let (mut num_factors, mut den_factors) = match expr_data {
-            Expr::Div(n, d) => (collect_factors(ctx, n), collect_factors(ctx, d)),
+        let (mut num_factors, mut den_factors) = match ctx.get(expr) {
+            Expr::Div(n, d) => (collect_factors(ctx, *n), collect_factors(ctx, *d)),
             Expr::Pow(b, e) => {
+                let (b, e) = (*b, *e);
                 if let Expr::Number(n) = ctx.get(e) {
                     if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into())
                     {

@@ -618,9 +618,7 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
     }
 
     // Only process Add/Sub expressions
-    // CLONE_OK: Multi-branch match on Mul/Add/Sub/Pow requires owned Expr
-    let expr_data = ctx.get(expr).clone();
-    if !matches!(expr_data, Expr::Add(_, _) | Expr::Sub(_, _)) {
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
         return None;
     }
 

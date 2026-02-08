@@ -23,9 +23,9 @@ use super::extract_phase_shift;
 define_rule!(ProductToSumRule, "Product to Sum", |ctx, expr| {
     // Look for patterns like: 2 * sin(a) * cos(b)
     // or: sin(a) * cos(b) * 2
-    let expr_data = ctx.get(expr).clone();
+    let expr_ref = ctx.get(expr);
 
-    if let Expr::Mul(_, _) = expr_data {
+    if let Expr::Mul(_, _) = expr_ref {
         let mut factors = Vec::new();
         crate::helpers::flatten_mul(ctx, expr, &mut factors);
 
@@ -142,9 +142,9 @@ define_rule!(ProductToSumRule, "Product to Sum", |ctx, expr| {
 // Also handles canonical form: sin((2*x + π)/2) where arg = (2*x + π)/2
 
 define_rule!(TrigPhaseShiftRule, "Trig Phase Shift", |ctx, expr| {
-    let expr_data = ctx.get(expr).clone();
-
-    if let Expr::Function(fn_id, args) = expr_data {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        let fn_id = *fn_id;
+        let args = args.clone();
         if args.len() != 1 {
             return None;
         }

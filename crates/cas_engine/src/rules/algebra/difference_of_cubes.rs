@@ -150,8 +150,11 @@ define_rule!(
     PhaseMask::CORE, // Run early in Core phase
     |ctx, expr| {
         // Match: Div(num, den)
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Div(num, den) = expr_data {
+        let div_fields = match ctx.get(expr) {
+            Expr::Div(n, d) => Some((*n, *d)),
+            _ => None,
+        };
+        if let Some((num, den)) = div_fields {
             // Try to match numerator: x - b³
             let (base_x, cube_val) = match_x_minus_const(ctx, num)?;
 
@@ -166,7 +169,6 @@ define_rule!(
 
             // Check denominator structure - can be Add of 3 terms
             // For now, check the specific structure of nested Adds
-            let _den_data = ctx.get(den).clone();
 
             // Helper to collect additive terms
             fn collect_add_terms(ctx: &Context, e: ExprId) -> Vec<ExprId> {

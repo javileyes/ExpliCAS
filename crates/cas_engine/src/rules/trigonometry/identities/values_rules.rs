@@ -528,13 +528,23 @@ impl crate::rule::Rule for TrigQuotientRule {
         use cas_ast::Expr;
 
         let (num, den) = as_div(ctx, expr)?;
-        // Extract function names and arguments from numerator and denominator
-        let num_data = ctx.get(num).clone();
-        let den_data = ctx.get(den).clone();
+
+        // Extract function info from num and den without cloning
+        // We need fn_id and args for both, so extract them in scoped borrows
+        let num_fn_info = if let Expr::Function(fn_id, args) = ctx.get(num) {
+            Some((*fn_id, args.clone()))
+        } else {
+            None
+        };
+        let den_fn_info = if let Expr::Function(fn_id, args) = ctx.get(den) {
+            Some((*fn_id, args.clone()))
+        } else {
+            None
+        };
 
         // Pattern: sin(x)/cos(x) → tan(x)
-        if let (Expr::Function(num_fn_id, num_args), Expr::Function(den_fn_id, den_args)) =
-            (&num_data, &den_data)
+        if let (Some((num_fn_id, ref num_args)), Some((den_fn_id, ref den_args))) =
+            (&num_fn_info, &den_fn_info)
         {
             let num_builtin = ctx.builtin_of(*num_fn_id);
             let den_builtin = ctx.builtin_of(*den_fn_id);
@@ -564,8 +574,8 @@ impl crate::rule::Rule for TrigQuotientRule {
 
         // Pattern: 1/sin(x) → csc(x)
         if crate::helpers::is_one(ctx, num) {
-            if let Expr::Function(den_fn_id, den_args) = &den_data {
-                let den_builtin = ctx.builtin_of(*den_fn_id);
+            if let Some((den_fn_id, ref den_args)) = den_fn_info {
+                let den_builtin = ctx.builtin_of(den_fn_id);
                 if matches!(den_builtin, Some(BuiltinFn::Sin)) && den_args.len() == 1 {
                     let csc_x = ctx.call("csc", vec![den_args[0]]);
                     return Some(crate::rule::Rewrite::new(csc_x).desc("1/sin(x) → csc(x)"));

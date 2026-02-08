@@ -63,12 +63,12 @@ impl crate::rule::Rule for BinomialExpansionRule {
         }
 
         // (a + b)^n - ONLY true binomials (exactly 2 terms)
-        // CLONE_OK: Multi-branch match on Pow followed by nested Number checks
-        let expr_data = ctx.get(expr).clone();
-        if let Expr::Pow(base, exp) = expr_data {
-            // CLONE_OK: Nested Add inspection after Pow destructuring
-            let base_data = ctx.get(base).clone();
-
+        // Extract Pow fields via ref-and-copy
+        let pow_fields = match ctx.get(expr) {
+            Expr::Pow(b, e) => Some((*b, *e)),
+            _ => None,
+        };
+        if let Some((base, exp)) = pow_fields {
             // CRITICAL GUARD: Only expand if base has exactly 2 terms
             // This prevents multinomial expansion like (1 + x1 + x2 + ... + x7)^7
             // which would produce thousands of terms
@@ -77,9 +77,11 @@ impl crate::rule::Rule for BinomialExpansionRule {
                 return None; // Not a binomial, skip expansion
             }
 
-            let (a, b) = match base_data {
-                Expr::Add(a, b) => (a, b),
+            let (a, b) = match ctx.get(base) {
+                Expr::Add(a, b) => (*a, *b),
                 Expr::Sub(a, b) => {
+                    let b = *b;
+                    let a = *a;
                     let neg_b = ctx.add(Expr::Neg(b));
                     (a, neg_b)
                 }
@@ -87,8 +89,7 @@ impl crate::rule::Rule for BinomialExpansionRule {
             };
 
             // CLONE_OK: Exponent inspection for Neg/Number patterns
-            let exp_data = ctx.get(exp).clone();
-            if let Expr::Number(n) = exp_data {
+            if let Expr::Number(n) = ctx.get(exp) {
                 if n.is_integer() && !n.is_negative() {
                     if let Some(n_val) = n.to_integer().to_u32() {
                         // Only expand binomials in explicit expand mode

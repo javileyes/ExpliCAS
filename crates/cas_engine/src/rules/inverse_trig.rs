@@ -877,11 +877,23 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
                 return None;
             }
             let inner = outer_args[0];
-            let inner_data = ctx.get(inner).clone();
+
+            // Extract function info from inner without cloning
+            let inner_fn_info = if let Expr::Function(fn_id, args) = ctx.get(inner) {
+                Some((*fn_id, args.clone()))
+            } else {
+                None
+            };
+            // Check for Div pattern
+            let inner_div = if let Expr::Div(n, d) = ctx.get(inner) {
+                Some((*n, *d))
+            } else {
+                None
+            };
 
             // Pattern: arcsin(sin(u)) → u (assuming u ∈ [-π/2, π/2])
             if ctx.is_builtin(*outer_name, BuiltinFn::Arcsin) {
-                if let Expr::Function(inner_name, inner_args) = &inner_data {
+                if let Some((ref inner_name, ref inner_args)) = inner_fn_info {
                     if ctx.is_builtin(*inner_name, BuiltinFn::Sin) && inner_args.len() == 1 {
                         let u = inner_args[0];
                         return Some(
@@ -900,7 +912,7 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
 
             // Pattern: arccos(cos(u)) → u (assuming u ∈ [0, π])
             if ctx.is_builtin(*outer_name, BuiltinFn::Arccos) {
-                if let Expr::Function(inner_name, inner_args) = &inner_data {
+                if let Some((ref inner_name, ref inner_args)) = inner_fn_info {
                     if ctx.is_builtin(*inner_name, BuiltinFn::Cos) && inner_args.len() == 1 {
                         let u = inner_args[0];
                         return Some(
@@ -919,7 +931,7 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
 
             // Pattern: arctan(tan(u)) → u (assuming u ∈ (-π/2, π/2))
             if ctx.is_builtin(*outer_name, BuiltinFn::Arctan) {
-                if let Expr::Function(inner_name, inner_args) = &inner_data {
+                if let Some((ref inner_name, ref inner_args)) = inner_fn_info {
                     if ctx.is_builtin(*inner_name, BuiltinFn::Tan) && inner_args.len() == 1 {
                         let u = inner_args[0];
                         return Some(
@@ -938,14 +950,22 @@ impl crate::rule::Rule for PrincipalBranchInverseTrigRule {
 
             // Pattern: arctan(sin(u)/cos(u)) → u (tan(u) in disguise)
             if ctx.is_builtin(*outer_name, BuiltinFn::Arctan) {
-                if let Expr::Div(num, den) = &inner_data {
-                    let num_data = ctx.get(*num).clone();
-                    let den_data = ctx.get(*den).clone();
-                    if let (Expr::Function(n_name, n_args), Expr::Function(d_name, d_args)) =
-                        (&num_data, &den_data)
+                if let Some((num, den)) = inner_div {
+                    let num_fn_info = if let Expr::Function(n, a) = ctx.get(num) {
+                        Some((*n, a.clone()))
+                    } else {
+                        None
+                    };
+                    let den_fn_info = if let Expr::Function(n, a) = ctx.get(den) {
+                        Some((*n, a.clone()))
+                    } else {
+                        None
+                    };
+                    if let (Some((n_name, ref n_args)), Some((d_name, ref d_args))) =
+                        (num_fn_info, den_fn_info)
                     {
-                        if ctx.is_builtin(*n_name, BuiltinFn::Sin)
-                            && ctx.is_builtin(*d_name, BuiltinFn::Cos)
+                        if ctx.is_builtin(n_name, BuiltinFn::Sin)
+                            && ctx.is_builtin(d_name, BuiltinFn::Cos)
                             && n_args.len() == 1
                             && d_args.len() == 1
                             && (n_args[0] == d_args[0]

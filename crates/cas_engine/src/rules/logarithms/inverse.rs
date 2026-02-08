@@ -339,10 +339,14 @@ impl crate::rule::Rule for LogExpInverseRule {
                 _ => return None,
             };
 
-            let arg_data = ctx.get(arg).clone();
+            let (p_base, p_exp) = if let Expr::Pow(b, e) = ctx.get(arg) {
+                (*b, *e)
+            } else {
+                return None;
+            };
 
             // log(b, b^x) → x (when b matches)
-            if let Expr::Pow(p_base, p_exp) = arg_data {
+            {
                 if p_base == base || ctx.get(p_base) == ctx.get(base) {
                     // For numeric exponents like log(x, x^2) → 2, always simplify
                     let is_numeric_exponent = matches!(ctx.get(p_exp), Expr::Number(_));

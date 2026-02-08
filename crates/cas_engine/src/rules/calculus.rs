@@ -1117,7 +1117,8 @@ fn try_telescoping_product(
     end: ExprId,
 ) -> Option<ExprId> {
     // Check if factor is (k+a)/(k+b) pattern
-    if let Expr::Div(num, den) = ctx.get(factor).clone() {
+    if let Expr::Div(num, den) = ctx.get(factor) {
+        let (num, den) = (*num, *den);
         // Extract offsets from numerator and denominator
         let num_offset = extract_linear_offset(ctx, num, var)?;
         let den_offset = extract_linear_offset(ctx, den, var)?;

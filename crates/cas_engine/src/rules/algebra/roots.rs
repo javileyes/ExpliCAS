@@ -5,37 +5,44 @@ use cas_ast::{BuiltinFn, Context, Expr};
 use num_traits::{Signed, Zero};
 
 define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
-    let expr_data = ctx.get(expr).clone();
-
-    // We look for sqrt(A + B) or sqrt(A - B)
-    // Also handle Pow(inner, 1/2)
-    let inner = if let Expr::Function(fn_id, args) = &expr_data {
-        if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 {
-            Some(args[0])
-        } else {
-            None
+    // Extract shape of expr: Function(sqrt, args) or Pow(b, 1/2)
+    enum RootShape {
+        Sqrt(cas_ast::ExprId),
+        HalfPow(cas_ast::ExprId),
+        Other,
+    }
+    let shape = match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
+        {
+            RootShape::Sqrt(args[0])
         }
-    } else if let Expr::Pow(b, e) = &expr_data {
-        if let Expr::Number(n) = ctx.get(*e) {
-            if *n.numer() == 1.into() && *n.denom() == 2.into() {
-                Some(*b)
+        Expr::Pow(b, e) => {
+            let b = *b;
+            let e = *e;
+            if let Expr::Number(n) = ctx.get(e) {
+                if *n.numer() == 1.into() && *n.denom() == 2.into() {
+                    RootShape::HalfPow(b)
+                } else {
+                    RootShape::Other
+                }
             } else {
-                None
+                RootShape::Other
             }
-        } else {
-            None
         }
-    } else {
-        None
+        _ => RootShape::Other,
+    };
+
+    let inner = match shape {
+        RootShape::Sqrt(i) | RootShape::HalfPow(i) => Some(i),
+        RootShape::Other => None,
     };
 
     let inner = inner?;
-    let inner_data = ctx.get(inner).clone();
-    //println!("RootDenesting checking inner: {:?}", inner_data);
 
-    let (a, b, is_add) = match inner_data {
-        Expr::Add(l, r) => (l, r, true),
-        Expr::Sub(l, r) => (l, r, false),
+    let (a, b, is_add) = match ctx.get(inner) {
+        Expr::Add(l, r) => (*l, *r, true),
+        Expr::Sub(l, r) => (*l, *r, false),
         _ => return None,
     };
 

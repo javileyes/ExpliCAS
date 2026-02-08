@@ -403,51 +403,58 @@ pub fn build_avg(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> ExprId {
 fn simplify_numeric_div(ctx: &mut cas_ast::Context, expr: ExprId) -> ExprId {
     use crate::helpers::as_i64;
 
-    if let Expr::Div(num, den) = ctx.get(expr).clone() {
-        // Check if denominator is a small integer
-        if let Some(den_val) = as_i64(ctx, den) {
-            if den_val == 0 {
-                return expr; // Avoid division by zero
-            }
+    let (num, den) = if let Expr::Div(n, d) = ctx.get(expr) {
+        (*n, *d)
+    } else {
+        return expr;
+    };
 
-            // Check if numerator is a product k*x where k is divisible by den
-            if let Expr::Mul(l, r) = ctx.get(num).clone() {
-                if let Some(coeff) = as_i64(ctx, l) {
-                    if coeff % den_val == 0 {
-                        let new_coeff = coeff / den_val;
-                        if new_coeff == 1 {
-                            return r; // 2x/2 → x
-                        } else if new_coeff == -1 {
-                            return ctx.add(Expr::Neg(r)); // -2x/2 → -x
-                        } else {
-                            let new_coeff_expr = ctx.num(new_coeff);
-                            return ctx.add(Expr::Mul(new_coeff_expr, r)); // 4x/2 → 2x
-                        }
-                    }
-                }
-                if let Some(coeff) = as_i64(ctx, r) {
-                    if coeff % den_val == 0 {
-                        let new_coeff = coeff / den_val;
-                        if new_coeff == 1 {
-                            return l; // x*2/2 → x
-                        } else if new_coeff == -1 {
-                            return ctx.add(Expr::Neg(l)); // x*(-2)/2 → -x
-                        } else {
-                            let new_coeff_expr = ctx.num(new_coeff);
-                            return ctx.add(Expr::Mul(l, new_coeff_expr)); // x*4/2 → x*2
-                        }
-                    }
+    // Check if denominator is a small integer
+    let Some(den_val) = as_i64(ctx, den) else {
+        return expr;
+    };
+    if den_val == 0 {
+        return expr; // Avoid division by zero
+    }
+
+    // Check if numerator is a product k*x where k is divisible by den
+    if let Expr::Mul(l, r) = ctx.get(num) {
+        let (l, r) = (*l, *r);
+        if let Some(coeff) = as_i64(ctx, l) {
+            if coeff % den_val == 0 {
+                let new_coeff = coeff / den_val;
+                if new_coeff == 1 {
+                    return r; // 2x/2 → x
+                } else if new_coeff == -1 {
+                    return ctx.add(Expr::Neg(r)); // -2x/2 → -x
+                } else {
+                    let new_coeff_expr = ctx.num(new_coeff);
+                    return ctx.add(Expr::Mul(new_coeff_expr, r)); // 4x/2 → 2x
                 }
             }
-
-            // Check if numerator is a plain number divisible by den
-            if let Some(num_val) = as_i64(ctx, num) {
-                if num_val % den_val == 0 {
-                    return ctx.num(num_val / den_val); // 4/2 → 2
+        }
+        if let Some(coeff) = as_i64(ctx, r) {
+            if coeff % den_val == 0 {
+                let new_coeff = coeff / den_val;
+                if new_coeff == 1 {
+                    return l; // x*2/2 → x
+                } else if new_coeff == -1 {
+                    return ctx.add(Expr::Neg(l)); // x*(-2)/2 → -x
+                } else {
+                    let new_coeff_expr = ctx.num(new_coeff);
+                    return ctx.add(Expr::Mul(l, new_coeff_expr)); // x*4/2 → x*2
                 }
             }
         }
     }
+
+    // Check if numerator is a plain number divisible by den
+    if let Some(num_val) = as_i64(ctx, num) {
+        if num_val % den_val == 0 {
+            return ctx.num(num_val / den_val); // 4/2 → 2
+        }
+    }
+
     expr
 }
 
@@ -469,7 +476,9 @@ define_rule!(
     "Sum-to-Product Quotient",
     |ctx, expr| {
         // Only match Div nodes
-        let Expr::Div(num_id, den_id) = ctx.get(expr).clone() else {
+        let (num_id, den_id) = if let Expr::Div(n, d) = ctx.get(expr) {
+            (*n, *d)
+        } else {
             return None;
         };
 

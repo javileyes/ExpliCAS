@@ -483,14 +483,13 @@ fn expand_trig_angle(
     large_angle: ExprId,
     small_angle: ExprId,
 ) -> ExprId {
-    let expr_data = ctx.get(expr).clone();
-
     // Check if this node is trig(large_angle)
-    if let Expr::Function(fn_id, args) = &expr_data {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
         if args.len() == 1
             && crate::ordering::compare_expr(ctx, args[0], large_angle) == Ordering::Equal
         {
-            match ctx.builtin_of(*fn_id) {
+            let fn_id = *fn_id;
+            match ctx.builtin_of(fn_id) {
                 Some(BuiltinFn::Sin) => {
                     // sin(A) -> 2sin(A/2)cos(A/2)
                     let two = ctx.num(2);
@@ -525,9 +524,31 @@ fn expand_trig_angle(
         }
     }
 
-    // Recurse
-    match expr_data {
-        Expr::Add(l, r) => {
+    // Recurse — extract ExprId fields via ref-and-copy
+    enum Shape {
+        Add(ExprId, ExprId),
+        Sub(ExprId, ExprId),
+        Mul(ExprId, ExprId),
+        Div(ExprId, ExprId),
+        Pow(ExprId, ExprId),
+        Neg(ExprId),
+        Func(usize, Vec<ExprId>),
+        Other,
+    }
+
+    let shape = match ctx.get(expr) {
+        Expr::Add(l, r) => Shape::Add(*l, *r),
+        Expr::Sub(l, r) => Shape::Sub(*l, *r),
+        Expr::Mul(l, r) => Shape::Mul(*l, *r),
+        Expr::Div(l, r) => Shape::Div(*l, *r),
+        Expr::Pow(b, e) => Shape::Pow(*b, *e),
+        Expr::Neg(e) => Shape::Neg(*e),
+        Expr::Function(fn_id, args) => Shape::Func(*fn_id, args.clone()),
+        _ => Shape::Other,
+    };
+
+    match shape {
+        Shape::Add(l, r) => {
             let nl = expand_trig_angle(ctx, l, large_angle, small_angle);
             let nr = expand_trig_angle(ctx, r, large_angle, small_angle);
             if nl != l || nr != r {
@@ -536,7 +557,7 @@ fn expand_trig_angle(
                 expr
             }
         }
-        Expr::Sub(l, r) => {
+        Shape::Sub(l, r) => {
             let nl = expand_trig_angle(ctx, l, large_angle, small_angle);
             let nr = expand_trig_angle(ctx, r, large_angle, small_angle);
             if nl != l || nr != r {
@@ -545,7 +566,7 @@ fn expand_trig_angle(
                 expr
             }
         }
-        Expr::Mul(l, r) => {
+        Shape::Mul(l, r) => {
             let nl = expand_trig_angle(ctx, l, large_angle, small_angle);
             let nr = expand_trig_angle(ctx, r, large_angle, small_angle);
             if nl != l || nr != r {
@@ -554,7 +575,7 @@ fn expand_trig_angle(
                 expr
             }
         }
-        Expr::Div(l, r) => {
+        Shape::Div(l, r) => {
             let nl = expand_trig_angle(ctx, l, large_angle, small_angle);
             let nr = expand_trig_angle(ctx, r, large_angle, small_angle);
             if nl != l || nr != r {
@@ -563,7 +584,7 @@ fn expand_trig_angle(
                 expr
             }
         }
-        Expr::Pow(b, e) => {
+        Shape::Pow(b, e) => {
             let nb = expand_trig_angle(ctx, b, large_angle, small_angle);
             let ne = expand_trig_angle(ctx, e, large_angle, small_angle);
             if nb != b || ne != e {
@@ -572,7 +593,7 @@ fn expand_trig_angle(
                 expr
             }
         }
-        Expr::Neg(e) => {
+        Shape::Neg(e) => {
             let ne = expand_trig_angle(ctx, e, large_angle, small_angle);
             if ne != e {
                 ctx.add(Expr::Neg(ne))
@@ -580,7 +601,7 @@ fn expand_trig_angle(
                 expr
             }
         }
-        Expr::Function(fn_id, args) => {
+        Shape::Func(fn_id, args) => {
             let fn_name = ctx
                 .builtin_of(fn_id)
                 .map(|b| b.name().to_string())
@@ -600,6 +621,6 @@ fn expand_trig_angle(
                 expr
             }
         }
-        _ => expr,
+        Shape::Other => expr,
     }
 }

@@ -102,19 +102,32 @@ pub(crate) fn mul_many_simpl(ctx: &mut Context, factors: &[ExprId]) -> Option<Ex
 }
 
 pub(crate) fn distribute(ctx: &mut Context, target: ExprId, multiplier: ExprId) -> ExprId {
-    let target_data = ctx.get(target).clone();
-    match target_data {
-        Expr::Add(l, r) => {
+    enum Shape {
+        Add(ExprId, ExprId),
+        Sub(ExprId, ExprId),
+        Mul(ExprId, ExprId),
+        Div(ExprId, ExprId),
+        Other,
+    }
+    let shape = match ctx.get(target) {
+        Expr::Add(l, r) => Shape::Add(*l, *r),
+        Expr::Sub(l, r) => Shape::Sub(*l, *r),
+        Expr::Mul(l, r) => Shape::Mul(*l, *r),
+        Expr::Div(l, r) => Shape::Div(*l, *r),
+        _ => Shape::Other,
+    };
+    match shape {
+        Shape::Add(l, r) => {
             let dl = distribute(ctx, l, multiplier);
             let dr = distribute(ctx, r, multiplier);
             ctx.add(Expr::Add(dl, dr))
         }
-        Expr::Sub(l, r) => {
+        Shape::Sub(l, r) => {
             let dl = distribute(ctx, l, multiplier);
             let dr = distribute(ctx, r, multiplier);
             ctx.add(Expr::Sub(dl, dr))
         }
-        Expr::Mul(l, r) => {
+        Shape::Mul(l, r) => {
             // Try to distribute into the side that has denominators
             let l_denoms = collect_denominators(ctx, l);
             if !l_denoms.is_empty() {
@@ -133,7 +146,7 @@ pub(crate) fn distribute(ctx: &mut Context, target: ExprId, multiplier: ExprId) 
             // If neither has explicit denominators, just multiply
             smart_mul(ctx, target, multiplier)
         }
-        Expr::Div(l, r) => {
+        Shape::Div(l, r) => {
             // (l / r) * m.
             // Check if m is a multiple of r.
             if let Some(quotient) = get_quotient(ctx, multiplier, r) {
@@ -142,11 +155,10 @@ pub(crate) fn distribute(ctx: &mut Context, target: ExprId, multiplier: ExprId) 
                 return smart_mul(ctx, l, quotient);
             }
             // If not, we are stuck with (l/r)*m.
-            // eprintln!("distribute failed to divide: {:?} / {:?} by {:?}", multiplier, r, multiplier);
             let div_expr = ctx.add(Expr::Div(l, r));
             smart_mul(ctx, div_expr, multiplier)
         }
-        _ => smart_mul(ctx, target, multiplier),
+        Shape::Other => smart_mul(ctx, target, multiplier),
     }
 }
 
@@ -155,20 +167,20 @@ pub(crate) fn get_quotient(ctx: &mut Context, dividend: ExprId, divisor: ExprId)
         return Some(ctx.num(1));
     }
 
-    let dividend_data = ctx.get(dividend).clone();
-
-    match dividend_data {
-        Expr::Mul(l, r) => {
-            if let Some(q) = get_quotient(ctx, l, divisor) {
-                return Some(smart_mul(ctx, q, r));
-            }
-            if let Some(q) = get_quotient(ctx, r, divisor) {
-                return Some(smart_mul(ctx, l, q));
-            }
-            None
-        }
+    let mul_parts = match ctx.get(dividend) {
+        Expr::Mul(l, r) => Some((*l, *r)),
         _ => None,
+    };
+
+    if let Some((l, r)) = mul_parts {
+        if let Some(q) = get_quotient(ctx, l, divisor) {
+            return Some(smart_mul(ctx, q, r));
+        }
+        if let Some(q) = get_quotient(ctx, r, divisor) {
+            return Some(smart_mul(ctx, l, q));
+        }
     }
+    None
 }
 
 pub(crate) fn collect_denominators(ctx: &Context, expr: ExprId) -> Vec<ExprId> {

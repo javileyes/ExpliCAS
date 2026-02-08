@@ -480,18 +480,22 @@ define_rule!(
                                       term: ExprId|
              -> Vec<(ExprId, String, ExprId, bool)> {
                 let mut results = Vec::new();
-                let term_data = ctx.get(term).clone(); // clone needed: inner data used across branches
 
                 // Check if term is negated: Neg(...)
-                let (inner_term, is_negated) = match term_data {
-                    Expr::Neg(inner) => (inner, true),
+                let (inner_term, is_negated) = match ctx.get(term) {
+                    Expr::Neg(inner) => (*inner, true),
                     _ => (term, false),
                 };
 
-                let inner_data = ctx.get(inner_term).clone(); // clone needed: used across multiple match arms
+                // Extract shape of inner_term via ref-and-copy
+                let inner_shape = match ctx.get(inner_term) {
+                    Expr::Pow(b, e) => Some((*b, *e)),
+                    _ => None,
+                };
+                let is_mul = matches!(ctx.get(inner_term), Expr::Mul(_, _));
 
                 // Check if term itself is sin^n or cos^n with n >= 2
-                if let Expr::Pow(base, exp) = inner_data.clone() {
+                if let Some((base, exp)) = inner_shape {
                     if let Expr::Number(n) = ctx.get(exp) {
                         if n.clone() >= num_rational::BigRational::from_integer(2.into())
                             && n.is_integer()
@@ -534,13 +538,17 @@ define_rule!(
 
                 // Check if inner term is Mul containing sin^n or cos^n
                 // IMPORTANT: Generate ALL possible candidates (one per trig^n factor)
-                if let Expr::Mul(_, _) = inner_data {
+                if is_mul {
                     let mut factors = Vec::new();
                     crate::helpers::flatten_mul(ctx, inner_term, &mut factors);
 
                     // Find ALL trig^n factors (not just the first)
                     for (i, &factor) in factors.iter().enumerate() {
-                        if let Expr::Pow(base, exp) = ctx.get(factor).clone() {
+                        let pow_data = match ctx.get(factor) {
+                            Expr::Pow(b, e) => Some((*b, *e)),
+                            _ => None,
+                        };
+                        if let Some((base, exp)) = pow_data {
                             if let Expr::Number(n) = ctx.get(exp) {
                                 if n.clone() >= num_rational::BigRational::from_integer(2.into())
                                     && n.is_integer()

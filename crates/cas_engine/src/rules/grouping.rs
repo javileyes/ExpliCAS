@@ -133,15 +133,14 @@ fn extract_coeff_degree(ctx: &mut Context, term: ExprId, var: &str) -> (ExprId, 
     let mut coeff_factors = Vec::new();
 
     for factor in factors {
-        let factor_data = ctx.get(factor).clone();
-        match factor_data {
-            Expr::Variable(sym_id) if ctx.sym_name(sym_id) == var => {
+        match ctx.get(factor) {
+            Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var => {
                 degree += 1;
             }
             Expr::Pow(base, exp) => {
-                if let Expr::Variable(sym_id) = ctx.get(base) {
+                if let Expr::Variable(sym_id) = ctx.get(*base) {
                     if ctx.sym_name(*sym_id) == var {
-                        if let Expr::Number(n) = ctx.get(exp) {
+                        if let Expr::Number(n) = ctx.get(*exp) {
                             if n.is_integer() {
                                 degree += n.to_integer().try_into().unwrap_or(0);
                                 continue;

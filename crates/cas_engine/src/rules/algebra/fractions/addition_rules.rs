@@ -98,13 +98,15 @@ define_rule!(
         let (l, r) = crate::helpers::as_add(ctx, expr)?;
 
         // Determine which is the fraction
-        let (term, p, q, swapped) = if let Expr::Div(p, q) = ctx.get(r).clone() {
+        let (term, p, q, swapped) = if let Expr::Div(p, q) = ctx.get(r) {
+            let (p, q) = (*p, *q);
             // l + p/q
             if matches!(ctx.get(l), Expr::Div(_, _)) {
                 return None; // Both fractions: let AddFractionsRule handle it
             }
             (l, p, q, false)
-        } else if let Expr::Div(p, q) = ctx.get(l).clone() {
+        } else if let Expr::Div(p, q) = ctx.get(l) {
+            let (p, q) = (*p, *q);
             // p/q + r
             if matches!(ctx.get(r), Expr::Div(_, _)) {
                 return None;

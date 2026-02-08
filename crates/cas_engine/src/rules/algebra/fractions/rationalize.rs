@@ -406,17 +406,22 @@ define_rule!(
         }
 
         let (num, den, _) = fp.to_num_den(ctx);
-        // CLONE_OK: Multi-branch match on Add/Mul/Pow patterns
-        let num_data = ctx.get(num).clone();
-        // CLONE_OK: Denominator inspection for sign normalization
-        let den_data = ctx.get(den).clone();
+        // Extract Pow fields from num and den via ref-and-copy
+        let num_pow = match ctx.get(num) {
+            Expr::Pow(b, e) => Some((*b, *e)),
+            _ => None,
+        };
+        let den_pow = match ctx.get(den) {
+            Expr::Pow(b, e) => Some((*b, *e)),
+            _ => None,
+        };
 
         // Case 1: a^n / a^m where both are Pow
-        if let (Expr::Pow(b_n, e_n), Expr::Pow(b_d, e_d)) = (&num_data, &den_data) {
+        if let (Some((b_n, e_n)), Some((b_d, e_d))) = (num_pow, den_pow) {
             // Check same base
-            if crate::ordering::compare_expr(ctx, *b_n, *b_d) == std::cmp::Ordering::Equal {
+            if crate::ordering::compare_expr(ctx, b_n, b_d) == std::cmp::Ordering::Equal {
                 // Check if exponents are numeric (so we can subtract)
-                if let (Expr::Number(n), Expr::Number(m)) = (ctx.get(*e_n), ctx.get(*e_d)) {
+                if let (Expr::Number(n), Expr::Number(m)) = (ctx.get(e_n), ctx.get(e_d)) {
                     // Only handle fractional exponents here - integer case is in CancelCommonFactors
                     if n.is_integer() && m.is_integer() {
                         return None;
@@ -426,13 +431,13 @@ define_rule!(
                     if diff.is_zero() {
                         // a^n / a^n = 1
                         // DOMAIN GATE: check if base is provably non-zero
-                        let proof = prove_nonzero(ctx, *b_n);
-                        let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, *b_n);
+                        let proof = prove_nonzero(ctx, b_n);
+                        let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, b_n);
                         let decision = crate::domain::can_cancel_factor_with_hint(
                             domain_mode,
                             proof,
                             key,
-                            *b_n,
+                            b_n,
                             "Quotient of Powers",
                         );
                         if !decision.allow {
@@ -441,7 +446,7 @@ define_rule!(
                         return Some(Rewrite::new(ctx.num(1)).desc("a^n / a^n = 1"));
                     } else if diff.is_one() {
                         // Result is just the base
-                        return Some(Rewrite::new(*b_n).desc("a^n / a^m = a^(n-m)"));
+                        return Some(Rewrite::new(b_n).desc("a^n / a^m = a^(n-m)"));
                     } else {
                         // Guard: Don't produce negative fractional exponents (anti-pattern for rationalization)
                         // E.g., sqrt(x)/x should NOT become x^(-1/2) as it undoes rationalization
@@ -449,7 +454,7 @@ define_rule!(
                             return None;
                         }
                         let new_exp = ctx.add(Expr::Number(diff));
-                        let new_expr = ctx.add(Expr::Pow(*b_n, new_exp));
+                        let new_expr = ctx.add(Expr::Pow(b_n, new_exp));
                         return Some(Rewrite::new(new_expr).desc("a^n / a^m = a^(n-m)"));
                     }
                 }
@@ -457,9 +462,9 @@ define_rule!(
         }
 
         // Case 2: a^n / a (denominator has implicit exponent 1)
-        if let Expr::Pow(b_n, e_n) = &num_data {
-            if crate::ordering::compare_expr(ctx, *b_n, den) == std::cmp::Ordering::Equal {
-                if let Expr::Number(n) = ctx.get(*e_n) {
+        if let Some((b_n, e_n)) = num_pow {
+            if crate::ordering::compare_expr(ctx, b_n, den) == std::cmp::Ordering::Equal {
+                if let Expr::Number(n) = ctx.get(e_n) {
                     if !n.is_integer() {
                         let new_exp_val = n - num_rational::BigRational::one();
                         // Guard: Don't produce negative fractional exponents
@@ -467,10 +472,10 @@ define_rule!(
                             return None;
                         }
                         if new_exp_val.is_one() {
-                            return Some(Rewrite::new(*b_n).desc("a^n / a = a^(n-1)"));
+                            return Some(Rewrite::new(b_n).desc("a^n / a = a^(n-1)"));
                         } else {
                             let new_exp = ctx.add(Expr::Number(new_exp_val));
-                            let new_expr = ctx.add(Expr::Pow(*b_n, new_exp));
+                            let new_expr = ctx.add(Expr::Pow(b_n, new_exp));
                             return Some(Rewrite::new(new_expr).desc("a^n / a = a^(n-1)"));
                         }
                     }
@@ -479,9 +484,9 @@ define_rule!(
         }
 
         // Case 3: a / a^m (numerator has implicit exponent 1)
-        if let Expr::Pow(b_d, e_d) = &den_data {
-            if crate::ordering::compare_expr(ctx, num, *b_d) == std::cmp::Ordering::Equal {
-                if let Expr::Number(m) = ctx.get(*e_d) {
+        if let Some((b_d, e_d)) = den_pow {
+            if crate::ordering::compare_expr(ctx, num, b_d) == std::cmp::Ordering::Equal {
+                if let Expr::Number(m) = ctx.get(e_d) {
                     if !m.is_integer() {
                         let new_exp_val = num_rational::BigRational::one() - m;
                         // Guard: Don't produce negative fractional exponents
@@ -513,9 +518,18 @@ define_rule!(
             return None;
         };
 
-        // CLONE_OK: Multi-branch match on Add/Mul/Number patterns
-        let num_data = ctx.get(n).clone();
-        if let Expr::Mul(l, r) = num_data {
+        // Extract Mul or Neg shape from numerator via ref-and-copy
+        enum NumShape {
+            Mul(ExprId, ExprId),
+            Neg(ExprId),
+            Other,
+        }
+        let num_shape = match ctx.get(n) {
+            Expr::Mul(l, r) => NumShape::Mul(*l, *r),
+            Expr::Neg(inner) => NumShape::Neg(*inner),
+            _ => NumShape::Other,
+        };
+        if let NumShape::Mul(l, r) = num_shape {
             // Check if l or r is a number/constant
             let l_is_const = matches!(ctx.get(l), Expr::Number(_) | Expr::Constant(_));
             let r_is_const = matches!(ctx.get(r), Expr::Number(_) | Expr::Constant(_));
@@ -533,7 +547,7 @@ define_rule!(
             }
         }
         // Also handle Neg: (-x) / y -> -1 * (x / y)
-        if let Expr::Neg(inner) = num_data {
+        if let NumShape::Neg(inner) = num_shape {
             let minus_one = ctx.num(-1);
             let div = ctx.add(Expr::Div(inner, d));
             let new_expr = mul2_raw(ctx, minus_one, div);
@@ -554,31 +568,42 @@ define_rule!(
         // Normalize a binomial to canonical form: (a-b) where a < b alphabetically
         // Returns (canonical_expr, sign_flip) where sign_flip is true if we negated
         let normalize_binomial = |ctx: &mut Context, e: ExprId| -> (ExprId, bool) {
-            match ctx.get(e).clone() {
-                Expr::Add(l, r) => {
-                    if let Expr::Neg(inner) = ctx.get(r).clone() {
-                        // Form: l + (-inner) = l - inner
-                        if compare_expr(ctx, l, inner) == Ordering::Less {
-                            (e, false) // Already canonical
-                        } else {
-                            // Create: -(inner - l) = (l - inner) negated
-                            let neg_l = ctx.add(Expr::Neg(l));
-                            let canonical = ctx.add(Expr::Add(inner, neg_l));
-                            (canonical, true)
-                        }
+            let add_parts = match ctx.get(e) {
+                Expr::Add(l, r) => Some((*l, *r)),
+                _ => None,
+            };
+            let sub_parts = match ctx.get(e) {
+                Expr::Sub(l, r) => Some((*l, *r)),
+                _ => None,
+            };
+
+            if let Some((l, r)) = add_parts {
+                let neg_inner = match ctx.get(r) {
+                    Expr::Neg(inner) => Some(*inner),
+                    _ => None,
+                };
+                if let Some(inner) = neg_inner {
+                    // Form: l + (-inner) = l - inner
+                    if compare_expr(ctx, l, inner) == Ordering::Less {
+                        (e, false) // Already canonical
                     } else {
-                        (e, false) // Not a subtraction pattern
-                    }
-                }
-                Expr::Sub(l, r) => {
-                    if compare_expr(ctx, l, r) == Ordering::Less {
-                        (e, false)
-                    } else {
-                        let canonical = ctx.add(Expr::Sub(r, l));
+                        // Create: -(inner - l) = (l - inner) negated
+                        let neg_l = ctx.add(Expr::Neg(l));
+                        let canonical = ctx.add(Expr::Add(inner, neg_l));
                         (canonical, true)
                     }
+                } else {
+                    (e, false) // Not a subtraction pattern
                 }
-                _ => (e, false),
+            } else if let Some((l, r)) = sub_parts {
+                if compare_expr(ctx, l, r) == Ordering::Less {
+                    (e, false)
+                } else {
+                    let canonical = ctx.add(Expr::Sub(r, l));
+                    (canonical, true)
+                }
+            } else {
+                (e, false)
             }
         };
 
