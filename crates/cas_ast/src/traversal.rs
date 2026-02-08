@@ -8,6 +8,7 @@
 //! - [`count_all_nodes`]: Count total nodes in a tree
 //! - [`count_nodes_matching`]: Count nodes matching a predicate
 //! - [`count_nodes_and_max_depth`]: Get both node count and max depth
+//! - [`collect_variables`]: Collect all unique variable names
 //!
 //! # Why Iterative?
 //!
@@ -19,6 +20,7 @@
 //! - POLICY.md "Traversal Contract" for contribution rules
 
 use crate::expression::{Context, Expr, ExprId};
+use std::collections::HashSet;
 
 /// Count all nodes in an expression tree.
 ///
@@ -140,6 +142,32 @@ fn push_children(node: &Expr, stack: &mut Vec<ExprId>) {
     }
 }
 
+/// Collect all unique variable names in an expression tree.
+///
+/// **CANONICAL traversal function for variable discovery.**
+///
+/// Stack-safe (iterative implementation using explicit stack).
+///
+/// # Example
+/// ```ignore
+/// let vars = collect_variables(&ctx, root);
+/// assert!(vars.contains("x"));
+/// ```
+pub fn collect_variables(ctx: &Context, root: ExprId) -> HashSet<String> {
+    let mut vars = HashSet::new();
+    let mut stack = vec![root];
+
+    while let Some(id) = stack.pop() {
+        let node = ctx.get(id);
+        if let Expr::Variable(sym_id) = node {
+            vars.insert(ctx.sym_name(*sym_id).to_string());
+        }
+        push_children(node, &mut stack);
+    }
+
+    vars
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -216,5 +244,46 @@ mod tests {
         // 100 Add nodes + 101 variables = 201 nodes
         assert_eq!(nodes, 201);
         assert_eq!(depth, 100);
+    }
+
+    #[test]
+    fn test_collect_variables_basic() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let two = ctx.add_raw(Expr::Number(num_rational::BigRational::from_integer(
+            2.into(),
+        )));
+        // 2*x + y
+        let mul = ctx.add_raw(Expr::Mul(two, x));
+        let expr = ctx.add_raw(Expr::Add(mul, y));
+
+        let vars = collect_variables(&ctx, expr);
+        assert_eq!(vars.len(), 2);
+        assert!(vars.contains("x"));
+        assert!(vars.contains("y"));
+    }
+
+    #[test]
+    fn test_collect_variables_no_duplicates() {
+        let mut ctx = Context::new();
+        let x1 = ctx.var("x");
+        let x2 = ctx.var("x");
+        // x + x — should yield {"x"}, not 2 entries
+        let expr = ctx.add_raw(Expr::Add(x1, x2));
+
+        let vars = collect_variables(&ctx, expr);
+        assert_eq!(vars.len(), 1);
+        assert!(vars.contains("x"));
+    }
+
+    #[test]
+    fn test_collect_variables_constant_only() {
+        let mut ctx = Context::new();
+        let n = ctx.add_raw(Expr::Number(num_rational::BigRational::from_integer(
+            42.into(),
+        )));
+        let vars = collect_variables(&ctx, n);
+        assert!(vars.is_empty());
     }
 }

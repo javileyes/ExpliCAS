@@ -44,7 +44,9 @@ pub use root_style::{
 // Span re-export (canonical source location)
 pub use span::Span;
 // Traversal re-exports (canonical implementations)
-pub use traversal::{count_all_nodes, count_nodes_and_max_depth, count_nodes_matching};
+pub use traversal::{
+    collect_variables, count_all_nodes, count_nodes_and_max_depth, count_nodes_matching,
+};
 // Legacy alias for backward compatibility
 pub use traversal::count_all_nodes as count_nodes;
 pub use visitor::{Transformer, Visitor};

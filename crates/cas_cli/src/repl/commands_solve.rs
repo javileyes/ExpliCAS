@@ -15,8 +15,7 @@ impl Repl {
         ctx: &cas_ast::Context,
         expr: cas_ast::ExprId,
     ) -> Result<Option<String>, Vec<String>> {
-        // TODO: Consider moving collect_variables to cas_ast::analysis to avoid CLI->rules coupling
-        let all_vars = cas_engine::rules::algebra::helpers::collect_variables(ctx, expr);
+        let all_vars = cas_ast::collect_variables(ctx, expr);
 
         // Filter out known constants and internal symbols
         let free_vars: Vec<String> = all_vars

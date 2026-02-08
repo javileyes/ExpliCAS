@@ -195,12 +195,7 @@ pub fn collect_denominators(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
 }
 
 pub fn collect_variables(ctx: &Context, expr: ExprId) -> HashSet<String> {
-    use crate::visitors::VariableCollector;
-    use cas_ast::Visitor;
-
-    let mut collector = VariableCollector::new();
-    collector.visit_expr(ctx, expr);
-    collector.vars
+    cas_ast::collect_variables(ctx, expr)
 }
 
 // Helper function: Check if two expressions are structurally opposite (e.g., a-b vs b-a)
