@@ -46,6 +46,7 @@ pub use span::Span;
 // Traversal re-exports (canonical implementations)
 pub use traversal::{
     collect_variables, count_all_nodes, count_nodes_and_max_depth, count_nodes_matching,
+    substitute_expr_by_id,
 };
 // Legacy alias for backward compatibility
 pub use traversal::count_all_nodes as count_nodes;

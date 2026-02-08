@@ -9,6 +9,7 @@
 //! - [`count_nodes_matching`]: Count nodes matching a predicate
 //! - [`count_nodes_and_max_depth`]: Get both node count and max depth
 //! - [`collect_variables`]: Collect all unique variable names
+//! - [`substitute_expr_by_id`]: Replace a subtree by ExprId
 //!
 //! # Why Iterative?
 //!
@@ -166,6 +167,133 @@ pub fn collect_variables(ctx: &Context, root: ExprId) -> HashSet<String> {
     }
 
     vars
+}
+
+/// Substitute occurrences of `target` with `replacement` anywhere in the expression tree.
+///
+/// **CANONICAL traversal function for id-based substitution.**
+///
+/// Returns a new `ExprId` if any substitution occurred, otherwise returns the original `root`.
+/// The match uses exhaustive pattern matching on `Expr` variants so the compiler will
+/// force an update here when new variants are added.
+///
+/// # Example
+/// ```ignore
+/// let new_root = substitute_expr_by_id(&mut ctx, root, old_id, new_id);
+/// ```
+pub fn substitute_expr_by_id(
+    ctx: &mut Context,
+    root: ExprId,
+    target: ExprId,
+    replacement: ExprId,
+) -> ExprId {
+    if root == target {
+        return replacement;
+    }
+
+    let expr = ctx.get(root).clone();
+    match expr {
+        Expr::Add(l, r) => {
+            let new_l = substitute_expr_by_id(ctx, l, target, replacement);
+            let new_r = substitute_expr_by_id(ctx, r, target, replacement);
+            if new_l != l || new_r != r {
+                ctx.add(Expr::Add(new_l, new_r))
+            } else {
+                root
+            }
+        }
+        Expr::Sub(l, r) => {
+            let new_l = substitute_expr_by_id(ctx, l, target, replacement);
+            let new_r = substitute_expr_by_id(ctx, r, target, replacement);
+            if new_l != l || new_r != r {
+                ctx.add(Expr::Sub(new_l, new_r))
+            } else {
+                root
+            }
+        }
+        Expr::Mul(l, r) => {
+            let new_l = substitute_expr_by_id(ctx, l, target, replacement);
+            let new_r = substitute_expr_by_id(ctx, r, target, replacement);
+            if new_l != l || new_r != r {
+                ctx.add(Expr::Mul(new_l, new_r))
+            } else {
+                root
+            }
+        }
+        Expr::Div(l, r) => {
+            let new_l = substitute_expr_by_id(ctx, l, target, replacement);
+            let new_r = substitute_expr_by_id(ctx, r, target, replacement);
+            if new_l != l || new_r != r {
+                ctx.add(Expr::Div(new_l, new_r))
+            } else {
+                root
+            }
+        }
+        Expr::Pow(b, e) => {
+            let new_b = substitute_expr_by_id(ctx, b, target, replacement);
+            let new_e = substitute_expr_by_id(ctx, e, target, replacement);
+            if new_b != b || new_e != e {
+                ctx.add(Expr::Pow(new_b, new_e))
+            } else {
+                root
+            }
+        }
+        Expr::Neg(inner) => {
+            let new_inner = substitute_expr_by_id(ctx, inner, target, replacement);
+            if new_inner != inner {
+                ctx.add(Expr::Neg(new_inner))
+            } else {
+                root
+            }
+        }
+        Expr::Function(name, args) => {
+            let mut new_args = Vec::new();
+            let mut changed = false;
+            for arg in args.iter() {
+                let new_arg = substitute_expr_by_id(ctx, *arg, target, replacement);
+                if new_arg != *arg {
+                    changed = true;
+                }
+                new_args.push(new_arg);
+            }
+            if changed {
+                ctx.add(Expr::Function(name, new_args))
+            } else {
+                root
+            }
+        }
+        Expr::Matrix { rows, cols, data } => {
+            let mut new_data = Vec::new();
+            let mut changed = false;
+            for elem in data.iter() {
+                let new_elem = substitute_expr_by_id(ctx, *elem, target, replacement);
+                if new_elem != *elem {
+                    changed = true;
+                }
+                new_data.push(new_elem);
+            }
+            if changed {
+                ctx.add(Expr::Matrix {
+                    rows,
+                    cols,
+                    data: new_data,
+                })
+            } else {
+                root
+            }
+        }
+        Expr::Hold(inner) => {
+            let new_inner = substitute_expr_by_id(ctx, inner, target, replacement);
+            if new_inner != inner {
+                ctx.add(Expr::Hold(new_inner))
+            } else {
+                root
+            }
+        }
+        // Leaves — no children to recurse into.
+        // Explicit listing so `rustc` catches missing variants when Expr grows.
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => root,
+    }
 }
 
 #[cfg(test)]
