@@ -231,6 +231,79 @@
             font-family: 'Fira Code', monospace;
         }
 
+        .expression-header {
+            overflow: visible;
+        }
+
+        .expression-header-left {
+            overflow: visible;
+        }
+
+        .expression-input-wrapper {
+            position: relative;
+            display: inline-flex;
+            flex-direction: column;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .expression-latex-main {
+            font-size: 1.15em;
+            overflow-x: auto;
+            max-width: 100%;
+            cursor: default;
+        }
+
+        .expression-plain-tooltip {
+            display: none;
+            margin-top: 6px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 6px 12px;
+            align-items: center;
+            gap: 8px;
+            width: fit-content;
+            max-width: 100%;
+        }
+
+        .expression-input-wrapper:hover .expression-plain-tooltip {
+            display: flex;
+        }
+
+        .expression-plain-text {
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 0.85em;
+            color: var(--text-secondary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .copy-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 3px 7px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .copy-btn:hover {
+            background: rgba(139, 92, 246, 0.2);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .copy-btn.copied {
+            color: var(--success);
+            border-color: var(--success);
+        }
+
+        /* Keep .expression-input for fallback when no LaTeX is available */
         .expression-input {
             font-family: 'Fira Code', 'Consolas', monospace;
             font-size: 1.1em;
@@ -1154,6 +1227,7 @@
                 // Map cas_cli JSON response to our format
                 return {
                     input: data.input || expr,
+                    input_latex: data.input_latex || null,
                     result: data.result || '',
                     result_latex: data.result_latex || data.result || '',
                     steps: data.steps || [],
@@ -1213,11 +1287,22 @@
 
             if (isAssignment) {
                 // Special card for variable assignments - no #ref
+                const assignLatex = result.result_latex;
+                const assignPlain = result.result || '';
                 card.innerHTML = `
                     <div class="expression-header">
                         <div class="expression-header-left">
                             <span class="var-badge">${escapeHtml(result.assignment)} :=</span>
-                            <span class="expression-input">${escapeHtml(result.result)}</span>
+                            ${assignLatex
+                        ? `<span class="expression-input-wrapper">
+                                       <span class="expression-latex-main">$${assignLatex}$</span>
+                                       <span class="expression-plain-tooltip">
+                                           <span class="expression-plain-text">${escapeHtml(assignPlain)}</span>
+                                           <button class="copy-btn" onclick="event.stopPropagation(); copyExpression(this, '${escapeHtml(assignPlain).replace(/'/g, "\\'")}')">📋</button>
+                                       </span>
+                                   </span>`
+                        : `<span class="expression-input">${escapeHtml(assignPlain)}</span>`
+                    }
                         </div>
                         <div class="expression-header-right">
                             <span class="expression-time">${timeMs}ms</span>
@@ -1227,11 +1312,22 @@
                 `;
             } else {
                 // Regular expression card with #ref
+                const inputLatex = result.input_latex;
+                const inputPlain = expr;
                 card.innerHTML = `
                     <div class="expression-header">
                         <div class="expression-header-left">
                             <span class="expression-ref">#${ref}</span>
-                            <span class="expression-input">${escapeHtml(expr)}</span>
+                            ${inputLatex
+                        ? `<span class="expression-input-wrapper">
+                                       <span class="expression-latex-main">$${inputLatex}$</span>
+                                       <span class="expression-plain-tooltip">
+                                           <span class="expression-plain-text">${escapeHtml(inputPlain)}</span>
+                                           <button class="copy-btn" onclick="event.stopPropagation(); copyExpression(this, '${escapeHtml(inputPlain).replace(/'/g, "\\'")}')">📋</button>
+                                       </span>
+                                   </span>`
+                        : `<span class="expression-input">${escapeHtml(inputPlain)}</span>`
+                    }
                         </div>
                         <div class="expression-header-right">
                             <span class="expression-time">${timeMs}ms</span>
@@ -1289,8 +1385,7 @@
             // Scroll to new card
             card.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-            // Re-render MathJax
-            if (window.MathJax && !isPolyResult && !isAssignment) {
+            if (window.MathJax && !isPolyResult) {
                 MathJax.typesetPromise([card]);
             }
         }
@@ -1586,6 +1681,28 @@
             return div.innerHTML;
         }
 
+        function copyExpression(btn, text) {
+            navigator.clipboard.writeText(text).then(() => {
+                btn.classList.add('copied');
+                const original = btn.textContent;
+                btn.textContent = '✓';
+                setTimeout(() => {
+                    btn.classList.remove('copied');
+                    btn.textContent = original;
+                }, 1200);
+            }).catch(() => {
+                // Fallback for older browsers
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                btn.textContent = '✓';
+                setTimeout(() => { btn.textContent = '📋'; }, 1200);
+            });
+        }
+
         // Theme toggle
         function toggleTheme() {
             const html = document.documentElement;
@@ -1805,13 +1922,22 @@
                     if (isAssignment && entry.assignment_name) {
                         // Variable assignment card (no #ref)
                         card.id = `expr-var-${entry.assignment_name}`;
-                        // Use assignment_value for the displayed value
                         const displayValue = entry.assignment_value || entry.input || '';
+                        const assignLatex = entry.result_latex;
                         cardHtml = `
                             <div class="expression-header">
                                 <div class="expression-header-left">
                                     <span class="var-badge">${escapeHtml(entry.assignment_name)} :=</span>
-                                    <span class="expression-input">${escapeHtml(displayValue)}</span>
+                                    ${assignLatex
+                                ? `<span class="expression-input-wrapper">
+                                               <span class="expression-latex-main">$${assignLatex}$</span>
+                                               <span class="expression-plain-tooltip">
+                                                   <span class="expression-plain-text">${escapeHtml(displayValue)}</span>
+                                                   <button class="copy-btn" onclick="event.stopPropagation(); copyExpression(this, '${escapeHtml(displayValue).replace(/'/g, "\\'")}')">📋</button>
+                                               </span>
+                                           </span>`
+                                : `<span class="expression-input">${escapeHtml(displayValue)}</span>`
+                            }
                                 </div>
                                 <div class="expression-header-right">
                                     <button class="delete-btn" onclick="deleteVariableCard('${escapeHtml(entry.assignment_name)}')" title="Delete variable">🗑️</button>
@@ -1819,12 +1945,23 @@
                             </div>
                         `;
                     } else {
-                        // Regular expression card with #ref - match addExpressionCard structure exactly
+                        // Regular expression card with #ref
+                        const inputLatex = entry.input_latex;
+                        const inputPlain = entry.input;
                         cardHtml = `
                             <div class="expression-header">
                                 <div class="expression-header-left">
                                     <span class="expression-ref">#${refNum}</span>
-                                    <span class="expression-input">${escapeHtml(entry.input)}</span>
+                                    ${inputLatex
+                                ? `<span class="expression-input-wrapper">
+                                               <span class="expression-latex-main">$${inputLatex}$</span>
+                                               <span class="expression-plain-tooltip">
+                                                   <span class="expression-plain-text">${escapeHtml(inputPlain)}</span>
+                                                   <button class="copy-btn" onclick="event.stopPropagation(); copyExpression(this, '${escapeHtml(inputPlain).replace(/'/g, "\\'")}')">📋</button>
+                                               </span>
+                                           </span>`
+                                : `<span class="expression-input">${escapeHtml(inputPlain)}</span>`
+                            }
                                 </div>
                                 <div class="expression-header-right">
                                     <button class="delete-btn" onclick="deleteCard('${refNum}')" title="Delete this expression">🗑️</button>

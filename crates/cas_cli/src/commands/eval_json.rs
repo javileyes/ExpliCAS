@@ -233,10 +233,36 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
     };
     let parse_us = parse_start.elapsed().as_micros() as u64;
 
+    // Capture parsed info before eval() consumes the request
+    let input_kind = req.kind.clone();
+
     // Evaluate
     let simplify_start = Instant::now();
     let output = engine.eval(&mut state, req)?;
     let simplify_us = simplify_start.elapsed().as_micros() as u64;
+
+    // Generate LaTeX for input expression
+    // For equations, render as "lhs = rhs" instead of "Equal(lhs, rhs)"
+    let input_latex = Some(match &input_kind {
+        cas_engine::EntryKind::Eq { lhs, rhs } => {
+            let lhs_latex = cas_ast::LaTeXExpr {
+                context: &engine.simplifier.context,
+                id: *lhs,
+            }
+            .to_latex();
+            let rhs_latex = cas_ast::LaTeXExpr {
+                context: &engine.simplifier.context,
+                id: *rhs,
+            }
+            .to_latex();
+            format!("{} = {}", lhs_latex, rhs_latex)
+        }
+        cas_engine::EntryKind::Expr(id) => cas_ast::LaTeXExpr {
+            context: &engine.simplifier.context,
+            id: *id,
+        }
+        .to_latex(),
+    });
 
     // Save session snapshot if using persistent session
     if let Some(ref path) = args.session {
@@ -256,6 +282,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 schema_version: 1,
                 ok: true,
                 input: args.expr.clone(),
+                input_latex: input_latex.clone(),
                 result: result_str.clone(),
                 result_truncated: false,
                 result_chars: result_str.len(),
@@ -298,6 +325,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 schema_version: 1,
                 ok: true,
                 input: args.expr.clone(),
+                input_latex: input_latex.clone(),
                 result: b.to_string(),
                 result_truncated: false,
                 result_chars: b.to_string().len(),
@@ -382,6 +410,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
         schema_version: 1,
         ok: true,
         input: args.expr.clone(),
+        input_latex,
         result: result_str,
         result_truncated: truncated,
         result_chars: char_count,

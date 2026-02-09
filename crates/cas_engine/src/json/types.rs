@@ -415,6 +415,10 @@ pub struct EvalJsonOutput {
     pub ok: bool,
     pub input: String,
 
+    /// LaTeX formatted input expression for rendering
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_latex: Option<String>,
+
     /// Pretty-printed result (truncated if too large)
     pub result: String,
     pub result_truncated: bool,
