@@ -974,6 +974,7 @@ fn check_numeric_equiv_1var_stats(
 
 /// Check if two expressions are numerically equivalent for 2 variables.
 /// Returns Ok(valid_count) or Err(message).
+#[allow(clippy::too_many_arguments)]
 fn check_numeric_equiv_2var(
     ctx: &Context,
     a: ExprId,
@@ -981,6 +982,8 @@ fn check_numeric_equiv_2var(
     var1: &str,
     var2: &str,
     config: &MetatestConfig,
+    filter1: &FilterSpec,
+    filter2: &FilterSpec,
 ) -> Result<usize, String> {
     let (lo, hi) = config.sample_range;
     let mut valid = 0usize;
@@ -1011,6 +1014,12 @@ fn check_numeric_equiv_2var(
             let mut var_map = HashMap::new();
             var_map.insert(var1.to_string(), x);
             var_map.insert(var2.to_string(), y);
+
+            // Apply per-variable domain filters
+            if !filter1.accept(x) || !filter2.accept(y) {
+                domain_error += 1;
+                continue;
+            }
 
             let va = eval_f64_checked(ctx, a, &var_map, &opts);
             let vb = eval_f64_checked(ctx, b, &var_map, &opts);
@@ -1187,6 +1196,8 @@ fn assert_metamorphic_combine(
             vars[0],
             vars[1],
             &config,
+            &FilterSpec::None,
+            &FilterSpec::None,
         )
     };
 
@@ -2564,6 +2575,8 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
                         &pair1.vars[0],
                         "u",
                         &config,
+                        &pair1.filter_spec,
+                        &pair2.filter_spec,
                     );
 
                     if result.is_ok() {
@@ -3030,6 +3043,8 @@ fn metatest_individual_identities_impl() {
                         &pair.vars[0],
                         &pair.vars[1],
                         &config,
+                        &pair.filter_spec,
+                        &FilterSpec::None,
                     ),
                     None,
                 ),

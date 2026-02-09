@@ -241,32 +241,70 @@ define_rule!(
 /// For a term like cos(u)²*sin(x)², returns TWO candidates:
 ///   1. (true, x, [cos(u)²])   -- interpreting sin(x)² as the trig, cos(u)² as coef
 ///   2. (false, u, [sin(x)²])  -- interpreting cos(u)² as the trig, sin(x)² as coef
+///
+/// Also decomposes trig^n (n ≥ 3) into trig^(n-2) · trig², so cos³(u) emits
+/// candidate (false, u, [cos(u)]) — enabling Pythagorean matches on higher powers.
 fn extract_all_trig_squared_candidates(
-    ctx: &Context,
+    ctx: &mut Context,
     term: ExprId,
 ) -> Vec<(bool, ExprId, Vec<ExprId>)> {
     let mut results = Vec::new();
 
-    // Case 1: Direct trig² (no coefficient)
-    if let Expr::Pow(base, exp) = ctx.get(term) {
-        if let Expr::Number(n) = ctx.get(*exp) {
-            if *n == num_rational::BigRational::from_integer(2.into()) {
-                if let Expr::Function(fn_id, args) = ctx.get(*base) {
+    // Case 1: Direct trig^n (no multiplication coefficient)
+    // Extract all needed info from ctx.get() first, then call ctx.add() separately
+    {
+        let mut case1_info = None; // (is_sin, arg, base_id, remainder_exp_opt)
+        if let Expr::Pow(base, exp) = ctx.get(term) {
+            let base = *base;
+            let exp = *exp;
+            if let Expr::Number(n) = ctx.get(exp) {
+                if let Expr::Function(fn_id, args) = ctx.get(base) {
                     let builtin = ctx.builtin_of(*fn_id);
-                    if args.len() == 1 {
-                        if matches!(builtin, Some(cas_ast::BuiltinFn::Sin)) {
-                            results.push((true, args[0], vec![]));
-                        } else if matches!(builtin, Some(cas_ast::BuiltinFn::Cos)) {
-                            results.push((false, args[0], vec![]));
+                    if args.len() == 1
+                        && matches!(
+                            builtin,
+                            Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
+                        )
+                    {
+                        let is_sin = matches!(builtin, Some(cas_ast::BuiltinFn::Sin));
+                        let arg = args[0];
+                        let two = num_rational::BigRational::from_integer(2.into());
+                        if *n == two {
+                            case1_info = Some((is_sin, arg, base, None));
+                        } else if *n > two && n.is_integer() {
+                            let remainder = n - &two;
+                            case1_info = Some((is_sin, arg, base, Some(remainder)));
                         }
                     }
                 }
             }
         }
-        return results;
+
+        if let Some((is_sin, arg, base, remainder_opt)) = case1_info {
+            match remainder_opt {
+                None => {
+                    results.push((is_sin, arg, vec![]));
+                }
+                Some(remainder) => {
+                    let one = num_rational::BigRational::from_integer(1.into());
+                    let leftover = if remainder == one {
+                        base // trig^3 → trig · trig², leftover is just trig
+                    } else {
+                        let remainder_id = ctx.add(Expr::Number(remainder));
+                        ctx.add(Expr::Pow(base, remainder_id))
+                    };
+                    results.push((is_sin, arg, vec![leftover]));
+                }
+            }
+            return results;
+        }
+        // If we matched Pow but no trig was found, still return (no candidates from non-trig Pow)
+        if matches!(ctx.get(term), Expr::Pow(_, _)) {
+            return results;
+        }
     }
 
-    // Case 2: Mul - flatten and find ALL sin²/cos² factors
+    // Case 2: Mul - flatten and find ALL sin²/cos² factors (including higher powers)
     if let Expr::Mul(_, _) = ctx.get(term) {
         let mut factors = Vec::new();
         let mut stack = vec![term];
@@ -279,34 +317,77 @@ fn extract_all_trig_squared_candidates(
             }
         }
 
-        // Find ALL trig² factors
+        // First pass: collect all candidate info without mutating ctx
+        struct CandidateInfo {
+            factor_idx: usize,
+            is_sin: bool,
+            arg: ExprId,
+            base: ExprId,
+            remainder: Option<num_rational::BigRational>, // None = exact trig²
+        }
+        let mut candidates_info: Vec<CandidateInfo> = Vec::new();
+
         for (i, &f) in factors.iter().enumerate() {
             if let Expr::Pow(base, exp) = ctx.get(f) {
-                if let Expr::Number(n) = ctx.get(*exp) {
-                    if *n == num_rational::BigRational::from_integer(2.into()) {
-                        if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                            let builtin = ctx.builtin_of(*fn_id);
-                            if args.len() == 1
-                                && matches!(
-                                    builtin,
-                                    Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
-                                )
-                            {
-                                // Build coefficient from all OTHER factors
-                                let coef_factors: Vec<ExprId> = factors
-                                    .iter()
-                                    .enumerate()
-                                    .filter(|(j, _)| *j != i)
-                                    .map(|(_, &g)| g)
-                                    .collect();
-
-                                let is_sin = matches!(builtin, Some(cas_ast::BuiltinFn::Sin));
-                                results.push((is_sin, args[0], coef_factors));
+                let base = *base;
+                let exp = *exp;
+                if let Expr::Number(n) = ctx.get(exp) {
+                    if let Expr::Function(fn_id, args) = ctx.get(base) {
+                        let builtin = ctx.builtin_of(*fn_id);
+                        if args.len() == 1
+                            && matches!(
+                                builtin,
+                                Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
+                            )
+                        {
+                            let is_sin = matches!(builtin, Some(cas_ast::BuiltinFn::Sin));
+                            let arg = args[0];
+                            let two = num_rational::BigRational::from_integer(2.into());
+                            if *n == two {
+                                candidates_info.push(CandidateInfo {
+                                    factor_idx: i,
+                                    is_sin,
+                                    arg,
+                                    base,
+                                    remainder: None,
+                                });
+                            } else if *n > two && n.is_integer() {
+                                let rem = n - &two;
+                                candidates_info.push(CandidateInfo {
+                                    factor_idx: i,
+                                    is_sin,
+                                    arg,
+                                    base,
+                                    remainder: Some(rem),
+                                });
                             }
                         }
                     }
                 }
             }
+        }
+
+        // Second pass: build results, calling ctx.add() only for higher-power decompositions
+        for info in candidates_info {
+            let mut coef_factors: Vec<ExprId> = factors
+                .iter()
+                .enumerate()
+                .filter(|(j, _)| *j != info.factor_idx)
+                .map(|(_, &g)| g)
+                .collect();
+
+            if let Some(remainder) = info.remainder {
+                let one = num_rational::BigRational::from_integer(1.into());
+                let leftover = if remainder == one {
+                    info.base // trig^3 → trig · trig², leftover is just trig
+                } else {
+                    let remainder_id = ctx.add(Expr::Number(remainder));
+                    ctx.add(Expr::Pow(info.base, remainder_id))
+                };
+                coef_factors.push(leftover);
+            }
+
+            results.push((info.is_sin, info.arg, coef_factors));
         }
     }
 
