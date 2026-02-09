@@ -9,34 +9,6 @@ pub(crate) fn count_all_nodes(ctx: &Context, expr: ExprId) -> usize {
     cas_ast::traversal::count_all_nodes(ctx, expr)
 }
 
-/// Count nodes matching a predicate.
-///
-/// Wrapper calling canonical `cas_ast::traversal::count_nodes_matching`.
-/// (See POLICY.md "Traversal Contract")
-#[allow(dead_code)]
-pub(crate) fn count_nodes_matching<F>(ctx: &Context, expr: ExprId, pred: F) -> usize
-where
-    F: FnMut(&Expr) -> bool,
-{
-    cas_ast::traversal::count_nodes_matching(ctx, expr, pred)
-}
-
-/// Score expression for normal form quality (lower is better).
-/// Returns (divs_subs, total_nodes, mul_inversions) for lexicographic comparison.
-///
-/// Expressions with fewer Div/Sub nodes are preferred (C2 canonical form).
-/// Ties are broken by total node count (simpler is better).
-/// Final tie-breaker: fewer out-of-order adjacent pairs in Mul chains.
-///
-/// For performance-critical comparisons, use `compare_nf_score_lazy` instead.
-#[allow(dead_code)]
-pub(crate) fn nf_score(ctx: &Context, id: ExprId) -> (usize, usize, usize) {
-    let divs_subs = count_nodes_matching(ctx, id, |e| matches!(e, Expr::Div(..) | Expr::Sub(..)));
-    let total = count_all_nodes(ctx, id);
-    let inversions = mul_unsorted_adjacent(ctx, id);
-    (divs_subs, total, inversions)
-}
-
 /// First two components of nf_score: (divs_subs, total_nodes)
 /// Uses single traversal for efficiency (counts both in one pass).
 fn nf_score_base(ctx: &Context, id: ExprId) -> (usize, usize) {

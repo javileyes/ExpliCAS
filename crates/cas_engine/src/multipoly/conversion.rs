@@ -12,39 +12,12 @@ use super::{Monomial, MultiPoly, PolyBudget, PolyError};
 // AST → MultiPoly
 // =============================================================================
 
-/// Collect all variable names from expression
+/// Collect all variable names from expression.
+///
+/// Delegates to the canonical `cas_ast::collect_variables` traversal,
+/// converting to `BTreeSet` for deterministic variable ordering.
 pub fn collect_poly_vars(ctx: &Context, expr: ExprId) -> BTreeSet<String> {
-    let mut vars = BTreeSet::new();
-    collect_vars_recursive(ctx, expr, &mut vars);
-    vars
-}
-
-fn collect_vars_recursive(ctx: &Context, expr: ExprId, vars: &mut BTreeSet<String>) {
-    match ctx.get(expr) {
-        Expr::Variable(sym_id) => {
-            vars.insert(ctx.sym_name(*sym_id).to_string());
-        }
-        Expr::Number(_) | Expr::Constant(_) => {}
-        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Div(a, b) | Expr::Pow(a, b) => {
-            collect_vars_recursive(ctx, *a, vars);
-            collect_vars_recursive(ctx, *b, vars);
-        }
-        Expr::Neg(a) | Expr::Hold(a) => {
-            collect_vars_recursive(ctx, *a, vars);
-        }
-        Expr::Function(_, args) => {
-            for arg in args {
-                collect_vars_recursive(ctx, *arg, vars);
-            }
-        }
-        Expr::Matrix { data, .. } => {
-            for elem in data {
-                collect_vars_recursive(ctx, *elem, vars);
-            }
-        }
-        // Leaves
-        Expr::SessionRef(_) => {}
-    }
+    cas_ast::collect_variables(ctx, expr).into_iter().collect()
 }
 
 /// Convert expression to MultiPoly

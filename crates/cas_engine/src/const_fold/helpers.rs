@@ -168,29 +168,6 @@ fn is_neg_of_i(ctx: &Context, id: ExprId) -> bool {
     }
 }
 
-// =============================================================================
-// Literal extraction helpers for fold_pow
-// =============================================================================
-
-/// Extract integer from a Number literal.
-/// Also handles Neg(Number) for cases like `-1`.
-#[allow(dead_code)] // Reserved for PR2.2: negative exponents
-pub fn literal_int(ctx: &Context, id: ExprId) -> Option<num_bigint::BigInt> {
-    match ctx.get(id) {
-        Expr::Number(n) if n.is_integer() => Some(n.numer().clone()),
-        Expr::Neg(inner) => {
-            // Handle Neg(n) as -n
-            if let Expr::Number(n) = ctx.get(*inner) {
-                if n.is_integer() {
-                    return Some(-n.numer().clone());
-                }
-            }
-            None
-        }
-        _ => None,
-    }
-}
-
 /// Extract rational from a Number literal.
 /// Also handles Neg(Number) for cases like `-1/2`.
 pub fn literal_rat(ctx: &Context, id: ExprId) -> Option<BigRational> {
