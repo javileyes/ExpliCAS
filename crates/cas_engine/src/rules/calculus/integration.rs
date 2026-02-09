@@ -78,7 +78,7 @@ pub(crate) fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<Ex
                 if let Expr::Number(n) = ctx.get(exp) {
                     if *n == BigRational::from_integer((-1).into()) {
                         // ln(u) / a
-                        let ln_u = ctx.call("ln", vec![base]);
+                        let ln_u = ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![base]);
                         return Some(ctx.add(Expr::Div(ln_u, a)));
                     }
                 }
@@ -128,7 +128,7 @@ pub(crate) fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<Ex
                 }
 
                 // General base c
-                let ln_c = ctx.call("ln", vec![base]);
+                let ln_c = ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![base]);
                 let denom = if is_a_one {
                     ln_c
                 } else {
@@ -155,7 +155,7 @@ pub(crate) fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<Ex
             if n.is_one() {
                 if let Some((a, _)) = get_linear_coeffs(ctx, den, var) {
                     // integrate(1/(ax+b)) = ln(ax+b)/a
-                    let ln_den = ctx.call("ln", vec![den]);
+                    let ln_den = ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![den]);
                     return Some(ctx.add(Expr::Div(ln_den, a)));
                 }
             }
@@ -176,7 +176,7 @@ pub(crate) fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<Ex
                 match ctx.builtin_of(fn_id) {
                     Some(BuiltinFn::Sin) => {
                         // integrate(sin(ax+b)) = -cos(ax+b)/a
-                        let cos_arg = ctx.call("cos", vec![arg]);
+                        let cos_arg = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![arg]);
                         let integral = ctx.add(Expr::Neg(cos_arg));
                         if is_a_one {
                             return Some(integral);
@@ -185,7 +185,7 @@ pub(crate) fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<Ex
                     }
                     Some(BuiltinFn::Cos) => {
                         // integrate(cos(ax+b)) = sin(ax+b)/a
-                        let integral = ctx.call("sin", vec![arg]);
+                        let integral = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![arg]);
                         if is_a_one {
                             return Some(integral);
                         }

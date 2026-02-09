@@ -107,7 +107,7 @@ mod tests {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let id_expr = ctx.num(42);
-        let poly_result = ctx.call("poly_result", vec![id_expr]);
+        let poly_result = ctx.call_builtin(cas_ast::BuiltinFn::PolyResult, vec![id_expr]);
 
         assert!(!is_poly_result(&ctx, x));
         assert!(!is_poly_result(&ctx, id_expr));
@@ -118,7 +118,7 @@ mod tests {
     fn test_poly_result_arg() {
         let mut ctx = Context::new();
         let id_expr = ctx.num(42);
-        let poly_result = ctx.call("poly_result", vec![id_expr]);
+        let poly_result = ctx.call_builtin(cas_ast::BuiltinFn::PolyResult, vec![id_expr]);
 
         assert_eq!(poly_result_arg(&ctx, poly_result), Some(id_expr));
         assert_eq!(poly_result_arg(&ctx, id_expr), None);
@@ -128,7 +128,7 @@ mod tests {
     fn test_parse_poly_result_id() {
         let mut ctx = Context::new();
         let id_expr = ctx.num(42);
-        let poly_result = ctx.call("poly_result", vec![id_expr]);
+        let poly_result = ctx.call_builtin(cas_ast::BuiltinFn::PolyResult, vec![id_expr]);
 
         assert_eq!(parse_poly_result_id(&ctx, poly_result), Some(42));
 
@@ -137,7 +137,7 @@ mod tests {
 
         // Negative number
         let neg = ctx.num(-1);
-        let bad_poly_result = ctx.call("poly_result", vec![neg]);
+        let bad_poly_result = ctx.call_builtin(cas_ast::BuiltinFn::PolyResult, vec![neg]);
         assert_eq!(parse_poly_result_id(&ctx, bad_poly_result), None);
     }
 

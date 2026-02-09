@@ -48,7 +48,7 @@ fn off_mode_is_noop() {
 fn off_mode_preserves_sqrt_negative() {
     let mut ctx = Context::new();
     let neg_one = ctx.num(-1);
-    let sqrt_neg_one = ctx.call("sqrt", vec![neg_one]);
+    let sqrt_neg_one = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![neg_one]);
 
     let result = fold(
         &mut ctx,
@@ -68,7 +68,7 @@ fn off_mode_complex_preserves_sqrt_negative() {
     // ValueDomain defines available semantics, but const_fold(off) doesn't apply them
     let mut ctx = Context::new();
     let neg_one = ctx.num(-1);
-    let sqrt_neg_one = ctx.call("sqrt", vec![neg_one]);
+    let sqrt_neg_one = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![neg_one]);
 
     let result = fold(
         &mut ctx,
@@ -90,7 +90,7 @@ fn off_mode_complex_preserves_sqrt_negative() {
 fn realonly_sqrt_negative_becomes_undefined() {
     let mut ctx = Context::new();
     let neg_one = ctx.num(-1);
-    let sqrt_neg_one = ctx.call("sqrt", vec![neg_one]);
+    let sqrt_neg_one = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![neg_one]);
 
     let result = fold(
         &mut ctx,
@@ -111,7 +111,7 @@ fn realonly_sqrt_negative_becomes_undefined() {
 fn realonly_sqrt_perfect_square() {
     let mut ctx = Context::new();
     let four = ctx.num(4);
-    let sqrt_four = ctx.call("sqrt", vec![four]);
+    let sqrt_four = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![four]);
 
     let result = fold(
         &mut ctx,
@@ -135,7 +135,7 @@ fn realonly_sqrt_perfect_square() {
 fn complex_sqrt_minus_one_produces_i_times_sqrt() {
     let mut ctx = Context::new();
     let neg_one = ctx.num(-1);
-    let sqrt_neg_one = ctx.call("sqrt", vec![neg_one]);
+    let sqrt_neg_one = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![neg_one]);
 
     let result = fold(
         &mut ctx,
@@ -195,7 +195,7 @@ fn realonly_i_times_i_not_folded() {
 fn safe_does_not_fold_nonconstant() {
     let mut ctx = Context::new();
     let x = ctx.var("x");
-    let sqrt_x = ctx.call("sqrt", vec![x]);
+    let sqrt_x = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![x]);
 
     let result = fold(&mut ctx, sqrt_x, ConstFoldMode::Safe, ValueDomain::RealOnly);
 
@@ -207,7 +207,7 @@ fn safe_does_not_fold_nonconstant() {
 fn safe_preserves_non_perfect_sqrt() {
     let mut ctx = Context::new();
     let two = ctx.num(2);
-    let sqrt_two = ctx.call("sqrt", vec![two]);
+    let sqrt_two = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![two]);
 
     let result = fold(
         &mut ctx,

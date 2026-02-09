@@ -260,7 +260,7 @@ fn test_resolve_with_mode_cache_hit() {
 
     // Store raw expr: 5*sqrt(x)/sqrt(x) as #1
     let x = ctx.var("x");
-    let sqrt_x = ctx.call("sqrt", vec![x]);
+    let sqrt_x = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![x]);
     let five = ctx.num(5);
     let mul = ctx.add(Expr::Mul(five, sqrt_x));
     let raw_expr = ctx.add(Expr::Div(mul, sqrt_x));

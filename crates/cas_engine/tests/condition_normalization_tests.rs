@@ -103,7 +103,7 @@ fn test_non_polynomial_condition_stable() {
 
     // Build sin(x)
     let x = ctx.var("x");
-    let sin_x = ctx.call("sin", vec![x]);
+    let sin_x = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![x]);
 
     let cond = ImplicitCondition::NonZero(sin_x);
     let normalized = normalize_condition(&mut ctx, &cond);

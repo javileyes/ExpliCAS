@@ -121,7 +121,7 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
             match domain_mode {
                 crate::domain::DomainMode::Generic | crate::domain::DomainMode::Strict => {
                     // Block with hint
-                    let sin_theta = ctx.call("sin", vec![theta]);
+                    let sin_theta = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![theta]);
                     crate::domain::register_blocked_hint(crate::domain::BlockedHint {
                         rule: "Dyadic Cos Product".to_string(),
                         expr_id: sin_theta,
@@ -139,8 +139,8 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
         // Build result: sin(2^n · θ) / sin(θ)
         let two_pow_n = ctx.num((1u64 << n) as i64);
         let scaled_theta = smart_mul(ctx, two_pow_n, theta);
-        let sin_scaled = ctx.call("sin", vec![scaled_theta]);
-        let sin_theta = ctx.call("sin", vec![theta]);
+        let sin_scaled = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![scaled_theta]);
+        let sin_theta = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![theta]);
         let result = ctx.add(Expr::Div(sin_scaled, sin_theta));
 
         // Build description
@@ -493,8 +493,8 @@ fn expand_trig_angle(
                 Some(BuiltinFn::Sin) => {
                     // sin(A) -> 2sin(A/2)cos(A/2)
                     let two = ctx.num(2);
-                    let sin_half = ctx.call("sin", vec![small_angle]);
-                    let cos_half = ctx.call("cos", vec![small_angle]);
+                    let sin_half = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![small_angle]);
+                    let cos_half = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![small_angle]);
                     let term = smart_mul(ctx, sin_half, cos_half);
                     return smart_mul(ctx, two, term);
                 }
@@ -502,7 +502,7 @@ fn expand_trig_angle(
                     // cos(A) -> 2cos^2(A/2) - 1
                     let two = ctx.num(2);
                     let one = ctx.num(1);
-                    let cos_half = ctx.call("cos", vec![small_angle]);
+                    let cos_half = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![small_angle]);
                     let cos_sq = ctx.add(Expr::Pow(cos_half, two));
                     let term = smart_mul(ctx, two, cos_sq);
                     return ctx.add(Expr::Sub(term, one));
@@ -511,7 +511,7 @@ fn expand_trig_angle(
                     // tan(A) -> 2tan(A/2) / (1 - tan^2(A/2))
                     let two = ctx.num(2);
                     let one = ctx.num(1);
-                    let tan_half = ctx.call("tan", vec![small_angle]);
+                    let tan_half = ctx.call_builtin(cas_ast::BuiltinFn::Tan, vec![small_angle]);
                     let num = smart_mul(ctx, two, tan_half);
 
                     let tan_sq = ctx.add(Expr::Pow(tan_half, two));

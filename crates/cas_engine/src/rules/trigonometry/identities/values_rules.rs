@@ -84,7 +84,7 @@ impl crate::rule::Rule for TanTripleProductRule {
                 // Build tan(3u)
                 let three = ctx.num(3);
                 let three_u = smart_mul(ctx, three, u);
-                let tan_3u = ctx.call("tan", vec![three_u]);
+                let tan_3u = ctx.call_builtin(cas_ast::BuiltinFn::Tan, vec![three_u]);
 
                 // If there are other factors beyond the 3 tans, multiply them
                 let other_factors: Vec<ExprId> = factors
@@ -113,9 +113,9 @@ impl crate::rule::Rule for TanTripleProductRule {
                 let pi_over_3 = ctx.add(Expr::Div(pi, three));
                 let u_plus_pi3 = ctx.add(Expr::Add(u, pi_over_3));
                 let pi3_minus_u = ctx.add(Expr::Sub(pi_over_3, u));
-                let cos_u = ctx.call("cos", vec![u]);
-                let cos_u_plus = ctx.call("cos", vec![u_plus_pi3]);
-                let cos_pi3_minus = ctx.call("cos", vec![pi3_minus_u]);
+                let cos_u = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![u]);
+                let cos_u_plus = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![u_plus_pi3]);
+                let cos_pi3_minus = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![pi3_minus_u]);
 
                 // Format u for display in substeps
                 let u_str = cas_ast::DisplayExpr {
@@ -483,8 +483,8 @@ impl crate::rule::Rule for TanToSinCosRule {
         // Original conversion logic
         if matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Tan)) && args.len() == 1 {
             // tan(x) -> sin(x) / cos(x)
-            let sin_x = ctx.call("sin", vec![args[0]]);
-            let cos_x = ctx.call("cos", vec![args[0]]);
+            let sin_x = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![args[0]]);
+            let cos_x = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![args[0]]);
             let new_expr = ctx.add(Expr::Div(sin_x, cos_x));
             return Some(crate::rule::Rewrite::new(new_expr).desc("tan(x) -> sin(x)/cos(x)"));
         }
@@ -555,7 +555,7 @@ impl crate::rule::Rule for TrigQuotientRule {
                 && crate::ordering::compare_expr(ctx, num_args[0], den_args[0])
                     == std::cmp::Ordering::Equal
             {
-                let tan_x = ctx.call("tan", vec![num_args[0]]);
+                let tan_x = ctx.call_builtin(cas_ast::BuiltinFn::Tan, vec![num_args[0]]);
                 return Some(crate::rule::Rewrite::new(tan_x).desc("sin(x)/cos(x) → tan(x)"));
             }
 
@@ -567,7 +567,7 @@ impl crate::rule::Rule for TrigQuotientRule {
                 && crate::ordering::compare_expr(ctx, num_args[0], den_args[0])
                     == std::cmp::Ordering::Equal
             {
-                let cot_x = ctx.call("cot", vec![num_args[0]]);
+                let cot_x = ctx.call_builtin(cas_ast::BuiltinFn::Cot, vec![num_args[0]]);
                 return Some(crate::rule::Rewrite::new(cot_x).desc("cos(x)/sin(x) → cot(x)"));
             }
         }
@@ -577,15 +577,15 @@ impl crate::rule::Rule for TrigQuotientRule {
             if let Some((den_fn_id, ref den_args)) = den_fn_info {
                 let den_builtin = ctx.builtin_of(den_fn_id);
                 if matches!(den_builtin, Some(BuiltinFn::Sin)) && den_args.len() == 1 {
-                    let csc_x = ctx.call("csc", vec![den_args[0]]);
+                    let csc_x = ctx.call_builtin(cas_ast::BuiltinFn::Csc, vec![den_args[0]]);
                     return Some(crate::rule::Rewrite::new(csc_x).desc("1/sin(x) → csc(x)"));
                 }
                 if matches!(den_builtin, Some(BuiltinFn::Cos)) && den_args.len() == 1 {
-                    let sec_x = ctx.call("sec", vec![den_args[0]]);
+                    let sec_x = ctx.call_builtin(cas_ast::BuiltinFn::Sec, vec![den_args[0]]);
                     return Some(crate::rule::Rewrite::new(sec_x).desc("1/cos(x) → sec(x)"));
                 }
                 if matches!(den_builtin, Some(BuiltinFn::Tan)) && den_args.len() == 1 {
-                    let cot_x = ctx.call("cot", vec![den_args[0]]);
+                    let cot_x = ctx.call_builtin(cas_ast::BuiltinFn::Cot, vec![den_args[0]]);
                     return Some(crate::rule::Rewrite::new(cot_x).desc("1/tan(x) → cot(x)"));
                 }
             }

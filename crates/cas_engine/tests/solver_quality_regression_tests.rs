@@ -27,7 +27,7 @@ fn abs_equation_no_spurious_requires() {
 
     let two_x = ctx.add(Expr::Mul(two, x));
     let two_x_plus_1 = ctx.add(Expr::Add(two_x, one));
-    let abs_expr = ctx.call("abs", vec![two_x_plus_1]);
+    let abs_expr = ctx.call_builtin(cas_ast::BuiltinFn::Abs, vec![two_x_plus_1]);
 
     let eq = Equation {
         lhs: abs_expr,

@@ -31,12 +31,12 @@ pub(super) fn make_log(ctx: &mut Context, base: ExprId, arg: ExprId) -> ExprId {
     // Check for log10 sentinel first (before accessing ctx.get which would panic)
     let sentinel_log10 = ExprId::from_raw(u32::MAX - 1);
     if base == sentinel_log10 {
-        return ctx.call("log", vec![arg]);
+        return ctx.call_builtin(cas_ast::BuiltinFn::Log, vec![arg]);
     }
     if let Expr::Constant(cas_ast::Constant::E) = ctx.get(base) {
-        ctx.call("ln", vec![arg])
+        ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![arg])
     } else {
-        ctx.call("log", vec![base, arg])
+        ctx.call_builtin(cas_ast::BuiltinFn::Log, vec![base, arg])
     }
 }
 
@@ -319,7 +319,7 @@ define_rule!(LnEProductRule, "Factor e from ln Product", |ctx, expr| {
 
             if let Some(x) = other {
                 let one = ctx.num(1);
-                let ln_x = ctx.call("ln", vec![x]);
+                let ln_x = ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![x]);
                 let result = ctx.add(Expr::Add(one, ln_x));
                 return Some(Rewrite::new(result).desc("ln(e*x) = 1 + ln(x)"));
             }
@@ -351,14 +351,14 @@ define_rule!(LnEDivRule, "Factor e from ln Quotient", |ctx, expr| {
 
             if den_is_e && !num_is_e {
                 // ln(x/e) → ln(x) - 1
-                let ln_x = ctx.call("ln", vec![num]);
+                let ln_x = ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![num]);
                 let one = ctx.num(1);
                 let result = ctx.add(Expr::Sub(ln_x, one));
                 return Some(Rewrite::new(result).desc("ln(x/e) = ln(x) - 1"));
             } else if num_is_e && !den_is_e {
                 // ln(e/x) → 1 - ln(x)
                 let one = ctx.num(1);
-                let ln_x = ctx.call("ln", vec![den]);
+                let ln_x = ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![den]);
                 let result = ctx.add(Expr::Sub(one, ln_x));
                 return Some(Rewrite::new(result).desc("ln(e/x) = 1 - ln(x)"));
             }
@@ -441,7 +441,7 @@ impl crate::rule::Rule for LogContractionRule {
                     // If base is sentinel (ln case), create ln(), otherwise log()
                     let sentinel = cas_ast::ExprId::from_raw(u32::MAX);
                     let new_expr = if base_l == sentinel {
-                        ctx.call("ln", vec![product])
+                        ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![product])
                     } else {
                         make_log(ctx, base_l, product)
                     };
@@ -463,7 +463,7 @@ impl crate::rule::Rule for LogContractionRule {
                     // If base is sentinel (ln case), create ln(), otherwise log()
                     let sentinel = cas_ast::ExprId::from_raw(u32::MAX);
                     let new_expr = if base_l == sentinel {
-                        ctx.call("ln", vec![quotient])
+                        ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![quotient])
                     } else {
                         make_log(ctx, base_l, quotient)
                     };

@@ -56,16 +56,16 @@ define_rule!(
                 if let Some(inner) = inner_opt {
                     match name.as_str() {
                         "sin" => {
-                            let sin_inner = ctx.call("sin", vec![inner]);
+                            let sin_inner = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![inner]);
                             let new_expr = ctx.add(Expr::Neg(sin_inner));
                             return Some(Rewrite::new(new_expr).desc("sin(-x) = -sin(x)"));
                         }
                         "cos" => {
-                            let new_expr = ctx.call("cos", vec![inner]);
+                            let new_expr = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![inner]);
                             return Some(Rewrite::new(new_expr).desc("cos(-x) = cos(x)"));
                         }
                         "tan" => {
-                            let tan_inner = ctx.call("tan", vec![inner]);
+                            let tan_inner = ctx.call_builtin(cas_ast::BuiltinFn::Tan, vec![inner]);
                             let new_expr = ctx.add(Expr::Neg(tan_inner));
                             return Some(Rewrite::new(new_expr).desc("tan(-x) = -tan(x)"));
                         }
@@ -111,7 +111,7 @@ mod tests {
     fn test_sin_zero() {
         let mut ctx = Context::new();
         let zero = ctx.num(0);
-        let sin_zero = ctx.call("sin", vec![zero]);
+        let sin_zero = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![zero]);
 
         let rule = EvaluateTrigTableRule;
         let parent_ctx = ParentContext::root();
@@ -130,7 +130,7 @@ mod tests {
     fn test_cos_pi() {
         let mut ctx = Context::new();
         let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
-        let cos_pi = ctx.call("cos", vec![pi]);
+        let cos_pi = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![pi]);
 
         let rule = EvaluateTrigTableRule;
         let parent_ctx = ParentContext::root();

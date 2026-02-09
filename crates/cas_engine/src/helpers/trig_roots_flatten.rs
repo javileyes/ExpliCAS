@@ -138,9 +138,14 @@ pub(crate) fn extract_quintuple_angle_arg(context: &Context, expr: ExprId) -> Op
 
 /// Flatten an Add chain into a list of terms (simple version).
 ///
-/// This only handles `Add` nodes. For handling `Sub` and `Neg`, use
-/// `flatten_add_sub_chain` instead.
+/// This only handles `Add` nodes — `Sub` and `Neg` are treated as atomic
+/// (leaf) terms. For handling `Sub` and `Neg`, use `flatten_add_sub_chain`.
+///
 /// Uses iterative traversal to prevent stack overflow on deep expressions.
+///
+/// **NOTE**: This is intentionally NOT delegated to `nary::add_terms_no_sign`
+/// because that function also flattens through Sub/Neg, which changes semantics
+/// for callers that expect Sub(a,b) to be a single term.
 pub(crate) fn flatten_add(ctx: &Context, root: ExprId, terms: &mut Vec<ExprId>) {
     let mut stack = vec![root];
 
@@ -203,7 +208,12 @@ fn flatten_add_sub_recursive(
 ///
 /// This only handles `Mul` nodes. For handling `Neg` as `-1 * expr`,
 /// use `flatten_mul_chain` instead.
+///
 /// Uses iterative traversal to prevent stack overflow on deep expressions.
+///
+/// **NOTE**: This is intentionally NOT delegated to `nary::mul_factors`
+/// because that function handles `__hold` unwrapping and poly_ref atomicity,
+/// which changes semantics for callers that expect raw Mul-only traversal.
 pub(crate) fn flatten_mul(ctx: &Context, root: ExprId, factors: &mut Vec<ExprId>) {
     let mut stack = vec![root];
 

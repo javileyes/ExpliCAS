@@ -67,8 +67,8 @@ define_rule!(
             2.into(),
         )));
         let half_arg = smart_mul(ctx, half, arg);
-        let sin_half = ctx.call("sin", vec![half_arg]);
-        let cos_half = ctx.call("cos", vec![half_arg]);
+        let sin_half = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![half_arg]);
+        let cos_half = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_arg]);
         let t = ctx.add(Expr::Div(sin_half, cos_half)); // t = tan(x/2)
 
         let (new_expr, desc) = match name {
@@ -247,7 +247,7 @@ define_rule!(
         }
 
         // Match! This is sin(x)
-        let sin_x = ctx.call("sin", vec![original_angle]);
+        let sin_x = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![original_angle]);
         Some(crate::rule::Rewrite::new(sin_x).desc_lazy(|| {
             format!(
                 "Reverse Weierstrass: 2t/(1+t²) = sin({})",

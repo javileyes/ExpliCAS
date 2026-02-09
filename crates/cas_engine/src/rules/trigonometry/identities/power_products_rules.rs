@@ -212,8 +212,8 @@ define_rule!(
         let two = ctx.num(2);
         let three = ctx.num(3);
 
-        let sin_arg = ctx.call("sin", vec![arg]);
-        let cos_arg = ctx.call("cos", vec![arg]);
+        let sin_arg = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![arg]);
+        let cos_arg = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![arg]);
         let sin2 = ctx.add(Expr::Pow(sin_arg, two));
         let two_again = ctx.num(2);
         let cos2 = ctx.add(Expr::Pow(cos_arg, two_again));
@@ -531,14 +531,14 @@ define_rule!(
             // Cancel 2·cos(avg) → sin(half_diff)/cos(half_diff) = tan(half_diff)
             // Build sin/cos quotient form for intermediate display
 
-            let sin_half_diff = ctx.call("sin", vec![half_diff]);
-            let cos_half_diff = ctx.call("cos", vec![half_diff_for_cos]);
+            let sin_half_diff = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![half_diff]);
+            let cos_half_diff = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_diff_for_cos]);
             let quotient_result = ctx.add(Expr::Div(sin_half_diff, cos_half_diff));
 
             // Intermediate states
             let two = ctx.num(2);
-            let cos_avg = ctx.call("cos", vec![avg_normalized]);
-            let sin_half = ctx.call("sin", vec![half_diff]);
+            let cos_avg = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![avg_normalized]);
+            let sin_half = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![half_diff]);
 
             // Intermediate numerator: 2·cos(avg)·sin(half_diff)
             let num_product = smart_mul(ctx, cos_avg, sin_half);
@@ -546,8 +546,8 @@ define_rule!(
 
             // Intermediate denominator: 2·cos(avg)·cos(half_diff)
             let two_2 = ctx.num(2);
-            let cos_avg_2 = ctx.call("cos", vec![avg_normalized]);
-            let cos_half = ctx.call("cos", vec![half_diff_for_cos]);
+            let cos_avg_2 = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![avg_normalized]);
+            let cos_half = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_diff_for_cos]);
             let den_product = smart_mul(ctx, cos_avg_2, cos_half);
             let intermediate_den = smart_mul(ctx, two_2, den_product);
 
@@ -578,23 +578,25 @@ define_rule!(
             let half_diff_normalized = normalize_for_even_fn(ctx, half_diff);
 
             // Final result: sin(avg)/cos(avg)
-            let sin_avg = ctx.call("sin", vec![avg]);
-            let cos_avg = ctx.call("cos", vec![avg]);
+            let sin_avg = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![avg]);
+            let cos_avg = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![avg]);
             let final_result = ctx.add(Expr::Div(sin_avg, cos_avg));
 
             // Intermediate states
             let two = ctx.num(2);
-            let cos_half_diff = ctx.call("cos", vec![half_diff_normalized]);
+            let cos_half_diff =
+                ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_diff_normalized]);
 
             // Intermediate numerator: 2·sin(avg)·cos(half_diff)
-            let sin_avg_for_num = ctx.call("sin", vec![avg]);
+            let sin_avg_for_num = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![avg]);
             let num_product = smart_mul(ctx, sin_avg_for_num, cos_half_diff);
             let intermediate_num = smart_mul(ctx, two, num_product);
 
             // Intermediate denominator: 2·cos(avg)·cos(half_diff)
             let two_2 = ctx.num(2);
-            let cos_avg_for_den = ctx.call("cos", vec![avg]);
-            let cos_half_diff_2 = ctx.call("cos", vec![half_diff_normalized]);
+            let cos_avg_for_den = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![avg]);
+            let cos_half_diff_2 =
+                ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_diff_normalized]);
             let den_product = smart_mul(ctx, cos_avg_for_den, cos_half_diff_2);
             let intermediate_den = smart_mul(ctx, two_2, den_product);
 

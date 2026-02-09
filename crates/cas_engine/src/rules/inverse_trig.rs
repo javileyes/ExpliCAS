@@ -635,7 +635,8 @@ impl crate::rule::Rule for AtanAddRationalRule {
 
                             // Build the result expression: arctan((a+b)/(1-ab))
                             let result_num = ctx.add(Expr::Number(result_val));
-                            let result_atan = ctx.call("arctan", vec![result_num]);
+                            let result_atan =
+                                ctx.call_builtin(cas_ast::BuiltinFn::Arctan, vec![result_num]);
 
                             // Build remaining terms (if any)
                             let remaining = build_sum_without(ctx, &terms, i, j);
@@ -709,19 +710,22 @@ define_rule!(
                     match ctx.builtin_of(*fn_id) {
                         Some(BuiltinFn::Arcsin) => {
                             // arcsin(-x) = -arcsin(x)
-                            let arcsin_inner = ctx.call("arcsin", vec![inner]);
+                            let arcsin_inner =
+                                ctx.call_builtin(cas_ast::BuiltinFn::Arcsin, vec![inner]);
                             let new_expr = ctx.add(Expr::Neg(arcsin_inner));
                             return Some(Rewrite::new(new_expr).desc("arcsin(-x) = -arcsin(x)"));
                         }
                         Some(BuiltinFn::Arctan) => {
                             // arctan(-x) = -arctan(x)
-                            let arctan_inner = ctx.call("arctan", vec![inner]);
+                            let arctan_inner =
+                                ctx.call_builtin(cas_ast::BuiltinFn::Arctan, vec![inner]);
                             let new_expr = ctx.add(Expr::Neg(arctan_inner));
                             return Some(Rewrite::new(new_expr).desc("arctan(-x) = -arctan(x)"));
                         }
                         Some(BuiltinFn::Arccos) => {
                             // arccos(-x) = π - arccos(x)
-                            let arccos_inner = ctx.call("arccos", vec![inner]);
+                            let arccos_inner =
+                                ctx.call_builtin(cas_ast::BuiltinFn::Arccos, vec![inner]);
                             let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
                             let new_expr = ctx.add(Expr::Sub(pi, arccos_inner));
                             return Some(Rewrite::new(new_expr).desc("arccos(-x) = π - arccos(x)"));
@@ -757,7 +761,7 @@ define_rule!(
                 let reciprocal = ctx.add(Expr::Div(one, arg));
 
                 // Build arccos(1/arg)
-                let result = ctx.call("arccos", vec![reciprocal]);
+                let result = ctx.call_builtin(cas_ast::BuiltinFn::Arccos, vec![reciprocal]);
 
                 return Some(Rewrite::new(result).desc("arcsec(x) → arccos(1/x)"));
             }
@@ -785,7 +789,7 @@ define_rule!(
                 let reciprocal = ctx.add(Expr::Div(one, arg));
 
                 // Build arcsin(1/arg)
-                let result = ctx.call("arcsin", vec![reciprocal]);
+                let result = ctx.call_builtin(cas_ast::BuiltinFn::Arcsin, vec![reciprocal]);
 
                 return Some(Rewrite::new(result).desc("arccsc(x) → arcsin(1/x)"));
             }
@@ -814,7 +818,7 @@ define_rule!(
                 let reciprocal = ctx.add(Expr::Div(one, arg));
 
                 // Build arctan(1/arg)
-                let result = ctx.call("arctan", vec![reciprocal]);
+                let result = ctx.call_builtin(cas_ast::BuiltinFn::Arctan, vec![reciprocal]);
 
                 return Some(Rewrite::new(result).desc("arccot(x) → arctan(1/x)"));
             }

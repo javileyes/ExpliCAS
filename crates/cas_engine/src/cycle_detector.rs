@@ -401,8 +401,8 @@ mod tests {
         let mut memo = FingerprintMemo::new();
 
         let x = ctx.var("x");
-        let sin_x = ctx.call("sin", vec![x]);
-        let cos_x = ctx.call("cos", vec![x]);
+        let sin_x = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![x]);
+        let cos_x = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![x]);
 
         let h1 = expr_fingerprint(&ctx, sin_x, &mut memo);
         let h2 = expr_fingerprint(&ctx, cos_x, &mut memo);

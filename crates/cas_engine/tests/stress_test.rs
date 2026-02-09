@@ -262,8 +262,8 @@ fn test_stress_single() {
     let two = ctx.num(2);
     let three = ctx.num(3);
     let one = ctx.num(1);
-    let sin_x = ctx.call("sin", vec![x]);
-    let cos_x = ctx.call("cos", vec![x]);
+    let sin_x = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![x]);
+    let cos_x = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![x]);
     let sin_sq = ctx.add(Expr::Pow(sin_x, two));
     let cos_sq = ctx.add(Expr::Pow(cos_x, two));
     let sum = ctx.add(Expr::Add(sin_sq, cos_sq));

@@ -394,7 +394,7 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
         }
 
         // Even exponent: ln(x^(2k)) = 2k·ln(|x|)
-        let abs_base = ctx.call("abs", vec![p_base]);
+        let abs_base = ctx.call_builtin(cas_ast::BuiltinFn::Abs, vec![p_base]);
         let log_abs = make_log(ctx, base, abs_base);
         let mid_expr = smart_mul(ctx, p_exp, log_abs);
 
@@ -643,8 +643,8 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
         // Helper to rebuild ln/log with inner (without abs)
         let mk_log = |ctx: &mut Context| -> ExprId {
             match base_opt {
-                Some(base) => ctx.call("log", vec![base, inner]),
-                None => ctx.call("ln", vec![inner]),
+                Some(base) => ctx.call_builtin(cas_ast::BuiltinFn::Log, vec![base, inner]),
+                None => ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![inner]),
             }
         };
 

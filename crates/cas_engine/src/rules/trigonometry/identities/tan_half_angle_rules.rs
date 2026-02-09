@@ -76,7 +76,7 @@ define_rule!(
                     };
 
                     if let Some(x) = full_angle {
-                        let cosh_x = ctx.call("cosh", vec![x]);
+                        let cosh_x = ctx.call_builtin(cas_ast::BuiltinFn::Cosh, vec![x]);
                         let one = ctx.num(1);
                         let half = ctx.add(Expr::Number(num_rational::BigRational::new(
                             1.into(),
@@ -176,7 +176,7 @@ define_rule!(
 
                     let two_expr = ctx.num(2);
                     let double_arg = ctx.add(Expr::Mul(two_expr, s_arg));
-                    let sin_2t = ctx.call("sin", vec![double_arg]);
+                    let sin_2t = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![double_arg]);
 
                     // Build the result: (k/2)*sin(2t) * [remaining factors]
                     let contracted = ctx.add(Expr::Mul(half_coef_expr, sin_2t));
@@ -405,7 +405,7 @@ define_rule!(
                     // Build tan(2*t)
                     let two = ctx.num(2);
                     let double_t = ctx.add(Expr::Mul(two, t));
-                    let result = ctx.call("tan", vec![double_t]);
+                    let result = ctx.call_builtin(cas_ast::BuiltinFn::Tan, vec![double_t]);
                     return Some(Rewrite::new(result).desc("2·tan(t)/(1-tan²(t)) = tan(2t)"));
                 }
             }

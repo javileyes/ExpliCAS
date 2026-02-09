@@ -290,8 +290,8 @@ mod tests {
 
         // Build: sec²(x) - tan²(x) - 1
         let x = ctx.var("x");
-        let sec_x = ctx.call("sec", vec![x]);
-        let tan_x = ctx.call("tan", vec![x]);
+        let sec_x = ctx.call_builtin(cas_ast::BuiltinFn::Sec, vec![x]);
+        let tan_x = ctx.call_builtin(cas_ast::BuiltinFn::Tan, vec![x]);
         let two = ctx.num(2);
         let sec_sq = ctx.add(Expr::Pow(sec_x, two));
         let tan_sq = ctx.add(Expr::Pow(tan_x, two));
@@ -320,8 +320,8 @@ mod tests {
 
         // Build: sec²(x) - tan²(x)
         let x = ctx.var("x");
-        let sec_x = ctx.call("sec", vec![x]);
-        let tan_x = ctx.call("tan", vec![x]);
+        let sec_x = ctx.call_builtin(cas_ast::BuiltinFn::Sec, vec![x]);
+        let tan_x = ctx.call_builtin(cas_ast::BuiltinFn::Tan, vec![x]);
         let two = ctx.num(2);
         let sec_sq = ctx.add(Expr::Pow(sec_x, two));
         let tan_sq = ctx.add(Expr::Pow(tan_x, two));

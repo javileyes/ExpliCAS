@@ -155,11 +155,11 @@ define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
 
                         let term1_num = ctx.add(Expr::Add(term_a, z_val));
                         let term1_frac = ctx.add(Expr::Div(term1_num, two));
-                        let term1 = ctx.call("sqrt", vec![term1_frac]);
+                        let term1 = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![term1_frac]);
 
                         let term2_num = ctx.add(Expr::Sub(term_a, z_val));
                         let term2_frac = ctx.add(Expr::Div(term2_num, two));
-                        let term2 = ctx.call("sqrt", vec![term2_frac]);
+                        let term2 = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![term2_frac]);
 
                         // Check sign of C - use our cloned value
                         let c_is_negative = val_c < num_rational::BigRational::zero();
@@ -291,7 +291,8 @@ define_rule!(
                                     };
 
                                     // sqrt((dx+e)²) = |dx+e|
-                                    let abs_linear = ctx.call("abs", vec![linear]);
+                                    let abs_linear =
+                                        ctx.call_builtin(cas_ast::BuiltinFn::Abs, vec![linear]);
 
                                     return Some(
                                         Rewrite::new(abs_linear)
@@ -313,7 +314,8 @@ define_rule!(
                                 let k = count / 2;
                                 let rem = count % 2;
 
-                                let abs_base = ctx.call("abs", vec![base]);
+                                let abs_base =
+                                    ctx.call_builtin(cas_ast::BuiltinFn::Abs, vec![base]);
 
                                 let term1 = if k == 1 {
                                     abs_base
@@ -327,7 +329,8 @@ define_rule!(
                                         Rewrite::new(term1).desc("Simplify perfect square root"),
                                     );
                                 } else {
-                                    let sqrt_base = ctx.call("sqrt", vec![base]);
+                                    let sqrt_base =
+                                        ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![base]);
                                     let new_expr = smart_mul(ctx, term1, sqrt_base);
                                     return Some(
                                         Rewrite::new(new_expr).desc("Simplify square root factors"),

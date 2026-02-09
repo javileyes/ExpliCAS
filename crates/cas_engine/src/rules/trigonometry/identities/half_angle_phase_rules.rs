@@ -255,7 +255,7 @@ impl crate::rule::Rule for WeierstrassContractionRule {
                     if crate::ordering::compare_expr(ctx, tan_arg, full_angle)
                         == std::cmp::Ordering::Equal
                     {
-                        let sin_x = ctx.call("sin", vec![full_angle]);
+                        let sin_x = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![full_angle]);
                         return Some(
                             Rewrite::new(sin_x).desc("2·tan(x/2)/(1 + tan²(x/2)) = sin(x)"),
                         );
@@ -295,7 +295,7 @@ impl WeierstrassContractionRule {
                 if crate::ordering::compare_expr(ctx, num_angle, den_angle)
                     == std::cmp::Ordering::Equal
                 {
-                    let cos_x = ctx.call("cos", vec![num_angle]);
+                    let cos_x = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![num_angle]);
                     return Some(
                         Rewrite::new(cos_x).desc("(1 - tan²(x/2))/(1 + tan²(x/2)) = cos(x)"),
                     );
@@ -410,7 +410,7 @@ define_rule!(
                     if t_half.is_positive && !t_full.is_positive {
                         // cot(u/2) - cot(u) → 1/sin(u)
                         let one = ctx.num(1);
-                        let sin_u = ctx.call("sin", vec![t_full.arg]);
+                        let sin_u = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![t_full.arg]);
                         let result = ctx.add(Expr::Div(one, sin_u));
 
                         // Apply coefficient if present
@@ -446,7 +446,7 @@ define_rule!(
                     } else if !t_half.is_positive && t_full.is_positive {
                         // -cot(u/2) + cot(u) → -1/sin(u)
                         let one = ctx.num(1);
-                        let sin_u = ctx.call("sin", vec![t_full.arg]);
+                        let sin_u = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![t_full.arg]);
                         let result = ctx.add(Expr::Div(one, sin_u));
                         let neg_result = ctx.add(Expr::Neg(result));
 
@@ -501,13 +501,13 @@ define_rule!(TanDifferenceRule, "Tangent Difference", |ctx, expr| {
                 let b = *b;
 
                 // Build tan(a) - tan(b)
-                let tan_a = ctx.call("tan", vec![a]);
-                let tan_b = ctx.call("tan", vec![b]);
+                let tan_a = ctx.call_builtin(cas_ast::BuiltinFn::Tan, vec![a]);
+                let tan_b = ctx.call_builtin(cas_ast::BuiltinFn::Tan, vec![b]);
                 let numerator = ctx.add(Expr::Sub(tan_a, tan_b));
 
                 // Build 1 + tan(a)*tan(b)
-                let tan_a2 = ctx.call("tan", vec![a]);
-                let tan_b2 = ctx.call("tan", vec![b]);
+                let tan_a2 = ctx.call_builtin(cas_ast::BuiltinFn::Tan, vec![a]);
+                let tan_b2 = ctx.call_builtin(cas_ast::BuiltinFn::Tan, vec![b]);
                 let product = ctx.add(Expr::Mul(tan_a2, tan_b2));
                 let one = ctx.num(1);
                 let denominator = ctx.add(Expr::Add(one, product));
@@ -576,7 +576,7 @@ define_rule!(
         // If we found 1 and -tanh²(x), replace with 1/cosh²(x)
         if let (Some(one_i), Some(tanh_i), Some(arg)) = (one_idx, tanh2_idx, tanh_arg) {
             if is_negative_tanh2 {
-                let cosh_func = ctx.call("cosh", vec![arg]);
+                let cosh_func = ctx.call_builtin(cas_ast::BuiltinFn::Cosh, vec![arg]);
                 let two = ctx.num(2);
                 let cosh_squared = ctx.add(Expr::Pow(cosh_func, two));
                 let one = ctx.num(1);

@@ -73,13 +73,13 @@ pub(crate) fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Optio
                 Some(mul2_raw(ctx, term, db))
             } else if !contains_var(ctx, base, var) {
                 // a^u * ln(a) * u'
-                let ln_a = ctx.call("ln", vec![base]);
+                let ln_a = ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![base]);
                 let term = mul2_raw(ctx, expr, ln_a);
                 Some(mul2_raw(ctx, term, de))
             } else {
                 // Full rule: u^v * (v'*ln(u) + v*u'/u)
                 // = u^v * (de * ln(base) + exp * db / base)
-                let ln_base = ctx.call("ln", vec![base]);
+                let ln_base = ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![base]);
                 let term1 = mul2_raw(ctx, de, ln_base);
                 let term2_num = mul2_raw(ctx, exp, db);
                 let term2 = ctx.add(Expr::Div(term2_num, base));
@@ -96,18 +96,18 @@ pub(crate) fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Optio
                 match ctx.builtin_of(fn_id) {
                     Some(BuiltinFn::Sin) => {
                         // cos(u) * u'
-                        let cos_u = ctx.call("cos", vec![arg]);
+                        let cos_u = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![arg]);
                         Some(mul2_raw(ctx, cos_u, da))
                     }
                     Some(BuiltinFn::Cos) => {
                         // -sin(u) * u'
-                        let sin_u = ctx.call("sin", vec![arg]);
+                        let sin_u = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![arg]);
                         let neg_sin = ctx.add(Expr::Neg(sin_u));
                         Some(mul2_raw(ctx, neg_sin, da))
                     }
                     Some(BuiltinFn::Tan) => {
                         // sec^2(u) * u' = (1/cos^2(u)) * u'
-                        let cos_u = ctx.call("cos", vec![arg]);
+                        let cos_u = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![arg]);
                         let two = ctx.num(2);
                         let cos_sq = ctx.add(Expr::Pow(cos_u, two));
                         let one = ctx.num(1);

@@ -339,7 +339,7 @@ impl crate::rule::Rule for RootPowCancelRule {
                 let is_even = n_int.is_even();
 
                 if is_even {
-                    let abs_base = ctx.call("abs", vec![inner_base]);
+                    let abs_base = ctx.call_builtin(cas_ast::BuiltinFn::Abs, vec![inner_base]);
                     return Some(
                         crate::rule::Rewrite::new(abs_base).desc("(x^n)^(1/n) = |x| for even n"),
                     );
@@ -422,7 +422,7 @@ define_rule!(
 
             if is_even_int(inner_exp) && is_half(ctx, outer_exp) {
                 let prod_exp = mul_exp(ctx, inner_exp, outer_exp);
-                let abs_base = ctx.call("abs", vec![inner_base]);
+                let abs_base = ctx.call_builtin(cas_ast::BuiltinFn::Abs, vec![inner_base]);
                 let new_expr = ctx.add(Expr::Pow(abs_base, prod_exp));
                 return Some(Rewrite::new(new_expr).desc("Power of power with even root: (x^2k)^(1/2) -> |x|^k"));
             }

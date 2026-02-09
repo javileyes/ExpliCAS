@@ -444,16 +444,16 @@ define_rule!(
                 if let Some(inner) = inner_opt {
                     match name.as_str() {
                         "sin" => {
-                            let sin_inner = ctx.call("sin", vec![inner]);
+                            let sin_inner = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![inner]);
                             let new_expr = ctx.add(Expr::Neg(sin_inner));
                             return Some(Rewrite::new(new_expr).desc("sin(-x) = -sin(x)"));
                         }
                         "cos" => {
-                            let new_expr = ctx.call("cos", vec![inner]);
+                            let new_expr = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![inner]);
                             return Some(Rewrite::new(new_expr).desc("cos(-x) = cos(x)"));
                         }
                         "tan" => {
-                            let tan_inner = ctx.call("tan", vec![inner]);
+                            let tan_inner = ctx.call_builtin(cas_ast::BuiltinFn::Tan, vec![inner]);
                             let new_expr = ctx.add(Expr::Neg(tan_inner));
                             return Some(Rewrite::new(new_expr).desc("tan(-x) = -tan(x)"));
                         }
@@ -795,12 +795,12 @@ impl crate::rule::Rule for AngleIdentityRule {
                     Some(cas_ast::BuiltinFn::Sin) => {
                         if let Some((lhs, rhs)) = as_add(ctx, inner) {
                             // sin(a + b) = sin(a)cos(b) + cos(a)sin(b)
-                            let sin_a = ctx.call("sin", vec![lhs]);
-                            let cos_b = ctx.call("cos", vec![rhs]);
+                            let sin_a = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![lhs]);
+                            let cos_b = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![rhs]);
                             let term1 = smart_mul(ctx, sin_a, cos_b);
 
-                            let cos_a = ctx.call("cos", vec![lhs]);
-                            let sin_b = ctx.call("sin", vec![rhs]);
+                            let cos_a = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![lhs]);
+                            let sin_b = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![rhs]);
                             let term2 = smart_mul(ctx, cos_a, sin_b);
 
                             let new_expr = ctx.add(Expr::Add(term1, term2));
@@ -810,12 +810,12 @@ impl crate::rule::Rule for AngleIdentityRule {
                             );
                         } else if let Some((lhs, rhs)) = as_sub(ctx, inner) {
                             // sin(a - b) = sin(a)cos(b) - cos(a)sin(b)
-                            let sin_a = ctx.call("sin", vec![lhs]);
-                            let cos_b = ctx.call("cos", vec![rhs]);
+                            let sin_a = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![lhs]);
+                            let cos_b = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![rhs]);
                             let term1 = smart_mul(ctx, sin_a, cos_b);
 
-                            let cos_a = ctx.call("cos", vec![lhs]);
-                            let sin_b = ctx.call("sin", vec![rhs]);
+                            let cos_a = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![lhs]);
+                            let sin_b = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![rhs]);
                             let term2 = smart_mul(ctx, cos_a, sin_b);
 
                             let new_expr = ctx.add(Expr::Sub(term1, term2));
@@ -829,12 +829,12 @@ impl crate::rule::Rule for AngleIdentityRule {
                                 let a = ctx.add(Expr::Div(lhs, den));
                                 let b = ctx.add(Expr::Div(rhs, den));
 
-                                let sin_a = ctx.call("sin", vec![a]);
-                                let cos_b = ctx.call("cos", vec![b]);
+                                let sin_a = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![a]);
+                                let cos_b = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![b]);
                                 let term1 = smart_mul(ctx, sin_a, cos_b);
 
-                                let cos_a = ctx.call("cos", vec![a]);
-                                let sin_b = ctx.call("sin", vec![b]);
+                                let cos_a = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![a]);
+                                let sin_b = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![b]);
                                 let term2 = smart_mul(ctx, cos_a, sin_b);
 
                                 let new_expr = ctx.add(Expr::Add(term1, term2));
@@ -847,12 +847,12 @@ impl crate::rule::Rule for AngleIdentityRule {
                     Some(cas_ast::BuiltinFn::Cos) => {
                         if let Some((lhs, rhs)) = as_add(ctx, inner) {
                             // cos(a + b) = cos(a)cos(b) - sin(a)sin(b)
-                            let cos_a = ctx.call("cos", vec![lhs]);
-                            let cos_b = ctx.call("cos", vec![rhs]);
+                            let cos_a = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![lhs]);
+                            let cos_b = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![rhs]);
                             let term1 = smart_mul(ctx, cos_a, cos_b);
 
-                            let sin_a = ctx.call("sin", vec![lhs]);
-                            let sin_b = ctx.call("sin", vec![rhs]);
+                            let sin_a = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![lhs]);
+                            let sin_b = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![rhs]);
                             let term2 = smart_mul(ctx, sin_a, sin_b);
 
                             let new_expr = ctx.add(Expr::Sub(term1, term2));
@@ -862,12 +862,12 @@ impl crate::rule::Rule for AngleIdentityRule {
                             );
                         } else if let Some((lhs, rhs)) = as_sub(ctx, inner) {
                             // cos(a - b) = cos(a)cos(b) + sin(a)sin(b)
-                            let cos_a = ctx.call("cos", vec![lhs]);
-                            let cos_b = ctx.call("cos", vec![rhs]);
+                            let cos_a = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![lhs]);
+                            let cos_b = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![rhs]);
                             let term1 = smart_mul(ctx, cos_a, cos_b);
 
-                            let sin_a = ctx.call("sin", vec![lhs]);
-                            let sin_b = ctx.call("sin", vec![rhs]);
+                            let sin_a = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![lhs]);
+                            let sin_b = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![rhs]);
                             let term2 = smart_mul(ctx, sin_a, sin_b);
 
                             let new_expr = ctx.add(Expr::Add(term1, term2));
@@ -881,12 +881,12 @@ impl crate::rule::Rule for AngleIdentityRule {
                                 let a = ctx.add(Expr::Div(lhs, den));
                                 let b = ctx.add(Expr::Div(rhs, den));
 
-                                let cos_a = ctx.call("cos", vec![a]);
-                                let cos_b = ctx.call("cos", vec![b]);
+                                let cos_a = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![a]);
+                                let cos_b = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![b]);
                                 let term1 = smart_mul(ctx, cos_a, cos_b);
 
-                                let sin_a = ctx.call("sin", vec![a]);
-                                let sin_b = ctx.call("sin", vec![b]);
+                                let sin_a = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![a]);
+                                let sin_b = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![b]);
                                 let term2 = smart_mul(ctx, sin_a, sin_b);
 
                                 let new_expr = ctx.add(Expr::Sub(term1, term2));

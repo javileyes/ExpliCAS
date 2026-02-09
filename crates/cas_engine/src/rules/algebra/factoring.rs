@@ -674,7 +674,7 @@ mod tests {
         // Verify that DifferenceOfSquaresRule was applied (indicated by step name)
         let dos_applied = steps
             .iter()
-            .any(|s| s.rule_name.contains("Difference of Squares"));
+            .any(|s| s.rule_name.starts_with("Difference of Squares"));
         assert!(
             dos_applied,
             "DifferenceOfSquaresRule should be applied during simplification"

@@ -41,7 +41,7 @@ define_rule!(
                             let three = ctx.num(3);
                             let four = ctx.num(4);
                             let exp_three = ctx.num(3); // Separate for Pow exponent
-                            let sin_x = ctx.call("sin", vec![inner_var]);
+                            let sin_x = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![inner_var]);
 
                             // 3*sin(x)
                             let term1 = smart_mul(ctx, three, sin_x);
@@ -62,7 +62,7 @@ define_rule!(
                             let three = ctx.num(3);
                             let four = ctx.num(4);
                             let exp_three = ctx.num(3); // Separate for Pow exponent
-                            let cos_x = ctx.call("cos", vec![inner_var]);
+                            let cos_x = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![inner_var]);
 
                             // cos³(x) = cos(x)^3
                             let cos_cubed = ctx.add(Expr::Pow(cos_x, exp_three));
@@ -84,7 +84,7 @@ define_rule!(
                             let three = ctx.num(3);
                             let exp_two = ctx.num(2);
                             let exp_three = ctx.num(3);
-                            let tan_x = ctx.call("tan", vec![inner_var]);
+                            let tan_x = ctx.call_builtin(cas_ast::BuiltinFn::Tan, vec![inner_var]);
 
                             // Numerator: 3tan(x) - tan³(x)
                             let three_tan = smart_mul(ctx, three, tan_x);
@@ -141,7 +141,7 @@ define_rule!(
                             let twenty = ctx.num(20);
                             let exp_three = ctx.num(3);
                             let exp_five = ctx.num(5);
-                            let sin_x = ctx.call("sin", vec![inner_var]);
+                            let sin_x = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![inner_var]);
 
                             // 16sin⁵(x)
                             let sin_5 = ctx.add(Expr::Pow(sin_x, exp_five));
@@ -169,7 +169,7 @@ define_rule!(
                             let twenty = ctx.num(20);
                             let exp_three = ctx.num(3);
                             let exp_five = ctx.num(5);
-                            let cos_x = ctx.call("cos", vec![inner_var]);
+                            let cos_x = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![inner_var]);
 
                             // 16cos⁵(x)
                             let cos_5 = ctx.add(Expr::Pow(cos_x, exp_five));
@@ -337,10 +337,10 @@ define_rule!(
                     // sin(nx) = sin((n-1)x)cos(x) + cos((n-1)x)sin(x)
                     // cos(nx) = cos((n-1)x)cos(x) - sin((n-1)x)sin(x)
 
-                    let sin_nm1 = ctx.call("sin", vec![term_nm1]);
-                    let cos_nm1 = ctx.call("cos", vec![term_nm1]);
-                    let sin_x = ctx.call("sin", vec![x_val]);
-                    let cos_x = ctx.call("cos", vec![x_val]);
+                    let sin_nm1 = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![term_nm1]);
+                    let cos_nm1 = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![term_nm1]);
+                    let sin_x = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![x_val]);
+                    let cos_x = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![x_val]);
 
                     if is_sin {
                         let t1 = smart_mul(ctx, sin_nm1, cos_x);
@@ -392,7 +392,7 @@ define_rule!(
                                 let arg = args[0];
                                 // (1 - sin^2(x))^(n/2)
                                 let one = ctx.num(1);
-                                let sin_x = ctx.call("sin", vec![arg]);
+                                let sin_x = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![arg]);
                                 let two = ctx.num(2);
                                 let sin_sq = ctx.add(Expr::Pow(sin_x, two));
                                 let base_term = ctx.add(Expr::Sub(one, sin_sq));

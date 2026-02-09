@@ -21,7 +21,7 @@ define_rule!(
             let builtin = ctx.builtin_of(*fn_id);
             if matches!(builtin, Some(cas_ast::BuiltinFn::Sec)) && args.len() == 1 {
                 let arg = args[0];
-                let cos_func = ctx.call("cos", vec![arg]);
+                let cos_func = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![arg]);
                 let one = ctx.num(1);
                 let result = ctx.add(Expr::Div(one, cos_func));
                 return Some(Rewrite::new(result).desc("sec(x) = 1/cos(x)"));
@@ -43,7 +43,7 @@ define_rule!(
             let builtin = ctx.builtin_of(*fn_id);
             if matches!(builtin, Some(cas_ast::BuiltinFn::Csc)) && args.len() == 1 {
                 let arg = args[0];
-                let sin_func = ctx.call("sin", vec![arg]);
+                let sin_func = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![arg]);
                 let one = ctx.num(1);
                 let result = ctx.add(Expr::Div(one, sin_func));
                 return Some(Rewrite::new(result).desc("csc(x) = 1/sin(x)"));
@@ -66,8 +66,8 @@ define_rule!(
             let builtin = ctx.builtin_of(*fn_id);
             if matches!(builtin, Some(cas_ast::BuiltinFn::Cot)) && args.len() == 1 {
                 let arg = args[0];
-                let cos_func = ctx.call("cos", vec![arg]);
-                let sin_func = ctx.call("sin", vec![arg]);
+                let cos_func = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![arg]);
+                let sin_func = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![arg]);
                 let result = ctx.add(Expr::Div(cos_func, sin_func));
                 return Some(Rewrite::new(result).desc("cot(x) = cos(x)/sin(x)"));
             }
@@ -132,8 +132,8 @@ define_rule!(
                 let arg = *sin_arg;
                 let coef = sin_coef.clone();
 
-                let sin_func = ctx.call("sin", vec![arg]);
-                let cos_func = ctx.call("cos", vec![arg]);
+                let sin_func = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![arg]);
+                let cos_func = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![arg]);
                 let two = ctx.num(2);
                 let sin_sq = ctx.add(Expr::Pow(sin_func, two));
                 let cos_sq = ctx.add(Expr::Pow(cos_func, two));

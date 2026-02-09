@@ -334,7 +334,7 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step
                         if n.is_integer() && n.to_integer().is_even() {
                             let two = ctx.num(2);
                             let k = ctx.add(Expr::Div(e, two));
-                            let abs_base = ctx.call("abs", vec![b]);
+                            let abs_base = ctx.call_builtin(cas_ast::BuiltinFn::Abs, vec![b]);
                             let new_expr = ctx.add(Expr::Pow(abs_base, k));
                             return Some(Rewrite::new(new_expr).desc("sqrt(x^2k) -> |x|^k"));
                         }
@@ -778,7 +778,7 @@ mod tests {
         let rule = CanonicalizeRootRule;
         // sqrt(x)
         let x = ctx.var("x");
-        let expr = ctx.call("sqrt", vec![x]);
+        let expr = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![x]);
         let rewrite = rule
             .apply(
                 &mut ctx,
@@ -807,7 +807,7 @@ mod tests {
         // sqrt(x, 3) -> x^(1/3)
         let x = ctx.var("x");
         let three = ctx.num(3);
-        let expr = ctx.call("sqrt", vec![x, three]);
+        let expr = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![x, three]);
         let rewrite = rule
             .apply(
                 &mut ctx,
@@ -828,7 +828,7 @@ mod tests {
 
         // root(x, 4) -> x^(1/4)
         let four = ctx.num(4);
-        let expr2 = ctx.call("root", vec![x, four]);
+        let expr2 = ctx.call_builtin(cas_ast::BuiltinFn::Root, vec![x, four]);
         let rewrite2 = rule
             .apply(
                 &mut ctx,

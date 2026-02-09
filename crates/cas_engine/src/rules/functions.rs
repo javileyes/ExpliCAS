@@ -40,7 +40,7 @@ define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
                     return Some(Rewrite::new(abs_val).desc(desc));
                 }
 
-                let abs_inner = ctx.call("abs", vec![*inner]);
+                let abs_inner = ctx.call_builtin(cas_ast::BuiltinFn::Abs, vec![*inner]);
                 return Some(Rewrite::new(abs_inner).desc("abs(-x) = abs(x)"));
             }
         }
@@ -340,7 +340,7 @@ define_rule!(
                     // Check if exponent is 2
                     if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
                         // sqrt(base^2) -> |base|
-                        let abs_base = ctx.call("abs", vec![*base]);
+                        let abs_base = ctx.call_builtin(cas_ast::BuiltinFn::Abs, vec![*base]);
                         return Some(Rewrite::new(abs_base).desc("sqrt(x^2) = |x|"));
                     }
                 }
@@ -389,8 +389,8 @@ define_rule!(
 
         if let (Some(base), Some((n, k))) = (base, k) {
             // Build: |x|^k * sqrt(x)
-            let abs_base = ctx.call("abs", vec![base]);
-            let sqrt_base = ctx.call("sqrt", vec![base]);
+            let abs_base = ctx.call_builtin(cas_ast::BuiltinFn::Abs, vec![base]);
+            let sqrt_base = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![base]);
 
             let result = if k == 1 {
                 // |x| * sqrt(x)
@@ -680,7 +680,7 @@ define_rule!(
             if let (Some(a), Some(b)) = (try_unwrap_abs(ctx, *lhs), try_unwrap_abs(ctx, *rhs)) {
                 // |a| * |b| → |a * b|
                 let product = mul2_raw(ctx, a, b);
-                let abs_product = ctx.call("abs", vec![product]);
+                let abs_product = ctx.call_builtin(cas_ast::BuiltinFn::Abs, vec![product]);
                 return Some(Rewrite::new(abs_product).desc("|x|·|y| = |x·y|"));
             }
         }
@@ -703,7 +703,7 @@ define_rule!(
             if let (Some(a), Some(b)) = (try_unwrap_abs(ctx, *lhs), try_unwrap_abs(ctx, *rhs)) {
                 // |a| / |b| → |a / b|
                 let quotient = ctx.add(Expr::Div(a, b));
-                let abs_quotient = ctx.call("abs", vec![quotient]);
+                let abs_quotient = ctx.call_builtin(cas_ast::BuiltinFn::Abs, vec![quotient]);
                 return Some(Rewrite::new(abs_quotient).desc("|x| / |y| = |x / y|"));
             }
         }

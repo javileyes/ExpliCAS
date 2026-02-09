@@ -390,8 +390,8 @@ mod tests {
         let one_const = ctx.num(1);
         let two = ctx.num(2);
         let three = ctx.num(3);
-        let sqrt2 = ctx.call("sqrt", vec![two]);
-        let sqrt3 = ctx.call("sqrt", vec![three]);
+        let sqrt2 = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![two]);
+        let sqrt3 = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![three]);
         let sum1 = ctx.add(Expr::Add(one_const, sqrt2));
         let den = ctx.add(Expr::Add(sum1, sqrt3));
         let frac = ctx.add(Expr::Div(one, den));

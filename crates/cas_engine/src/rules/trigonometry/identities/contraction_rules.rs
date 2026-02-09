@@ -214,10 +214,10 @@ impl crate::rule::Rule for HalfAngleTangentRule {
             }
         };
 
-        let tan_x = ctx.call("tan", vec![x]);
+        let tan_x = ctx.call_builtin(cas_ast::BuiltinFn::Tan, vec![x]);
 
         // Build cos(x) for the NonZero require
-        let cos_x = ctx.call("cos", vec![x]);
+        let cos_x = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![x]);
 
         // Create rewrite with requires:
         // 1. Original denominator ≠ 0 (inherited from the division)
@@ -280,7 +280,7 @@ impl crate::rule::Rule for DoubleAngleContractionRule {
                     // Build sin(2*t)
                     let two = ctx.num(2);
                     let double_arg = ctx.add(Expr::Mul(two, sin_arg));
-                    let sin_2t = ctx.call("sin", vec![double_arg]);
+                    let sin_2t = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![double_arg]);
                     return Some(Rewrite::new(sin_2t).desc("2·sin(t)·cos(t) = sin(2t)"));
                 }
             }
@@ -295,7 +295,7 @@ impl crate::rule::Rule for DoubleAngleContractionRule {
                     // Build cos(2*t)
                     let two = ctx.num(2);
                     let double_arg = ctx.add(Expr::Mul(two, cos_arg));
-                    let cos_2t = ctx.call("cos", vec![double_arg]);
+                    let cos_2t = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![double_arg]);
                     return Some(Rewrite::new(cos_2t).desc("cos²(t) - sin²(t) = cos(2t)"));
                 }
             }

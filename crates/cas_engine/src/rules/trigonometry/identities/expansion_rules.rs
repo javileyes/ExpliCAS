@@ -81,8 +81,8 @@ define_rule!(
         let (result, desc) = match (fn_name, is_diff) {
             // sin(A) + sin(B) → 2·sin(avg)·cos(half_diff)
             ("sin", false) => {
-                let sin_avg = ctx.call("sin", vec![avg]);
-                let cos_half = ctx.call("cos", vec![half_diff]);
+                let sin_avg = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![avg]);
+                let cos_half = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_diff]);
                 let product = smart_mul(ctx, sin_avg, cos_half);
                 let result = smart_mul(ctx, two, product);
                 (result, "sin(A)+sin(B) = 2·sin((A+B)/2)·cos((A-B)/2)")
@@ -90,8 +90,8 @@ define_rule!(
             // sin(A) - sin(B) → 2·cos(avg)·sin(half_diff)
             // Note: half_diff preserves order (A-B)/2 for correct sign
             ("sin", true) => {
-                let cos_avg = ctx.call("cos", vec![avg]);
-                let sin_half = ctx.call("sin", vec![half_diff]);
+                let cos_avg = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![avg]);
+                let sin_half = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![half_diff]);
                 let product = smart_mul(ctx, cos_avg, sin_half);
                 let result = smart_mul(ctx, two, product);
                 (result, "sin(A)-sin(B) = 2·cos((A+B)/2)·sin((A-B)/2)")
@@ -100,16 +100,17 @@ define_rule!(
             ("cos", false) => {
                 // For cos, half_diff sign doesn't matter (even function)
                 let half_diff_normalized = normalize_for_even_fn(ctx, half_diff);
-                let cos_avg = ctx.call("cos", vec![avg]);
-                let cos_half = ctx.call("cos", vec![half_diff_normalized]);
+                let cos_avg = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![avg]);
+                let cos_half =
+                    ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_diff_normalized]);
                 let product = smart_mul(ctx, cos_avg, cos_half);
                 let result = smart_mul(ctx, two, product);
                 (result, "cos(A)+cos(B) = 2·cos((A+B)/2)·cos((A-B)/2)")
             }
             // cos(A) - cos(B) → -2·sin(avg)·sin(half_diff)
             ("cos", true) => {
-                let sin_avg = ctx.call("sin", vec![avg]);
-                let sin_half = ctx.call("sin", vec![half_diff]);
+                let sin_avg = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![avg]);
+                let sin_half = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![half_diff]);
                 let product = smart_mul(ctx, sin_avg, sin_half);
                 let two_product = smart_mul(ctx, two, product);
                 let result = ctx.add(Expr::Neg(two_product));
@@ -160,8 +161,8 @@ define_rule!(
                         Some(BuiltinFn::Sin) => {
                             // sin(2x) -> 2sin(x)cos(x)
                             let two = ctx.num(2);
-                            let sin_x = ctx.call("sin", vec![inner_var]);
-                            let cos_x = ctx.call("cos", vec![inner_var]);
+                            let sin_x = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![inner_var]);
+                            let cos_x = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![inner_var]);
                             let sin_cos = smart_mul(ctx, sin_x, cos_x);
                             let new_expr = smart_mul(ctx, two, sin_cos);
                             return Some(Rewrite::new(new_expr).desc("sin(2x) -> 2sin(x)cos(x)"));
@@ -169,10 +170,10 @@ define_rule!(
                         Some(BuiltinFn::Cos) => {
                             // cos(2x) -> cos^2(x) - sin^2(x)
                             let two = ctx.num(2);
-                            let cos_x = ctx.call("cos", vec![inner_var]);
+                            let cos_x = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![inner_var]);
                             let cos2 = ctx.add(Expr::Pow(cos_x, two));
 
-                            let sin_x = ctx.call("sin", vec![inner_var]);
+                            let sin_x = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![inner_var]);
                             let sin2 = ctx.add(Expr::Pow(sin_x, two));
 
                             let new_expr = ctx.add(Expr::Sub(cos2, sin2));

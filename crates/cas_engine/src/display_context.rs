@@ -68,7 +68,7 @@ pub fn build_display_context_with_result(
 
     // Fourth: capture hints from Canonicalize Roots steps
     for step in steps {
-        if step.rule_name.contains("Canonicalize Roots") {
+        if step.rule_name == "Canonicalize Roots" {
             if let Some(index) = extract_root_index(ctx, step.before) {
                 display_ctx.insert(step.after, DisplayHint::AsRoot { index });
             }
@@ -279,7 +279,7 @@ mod tests {
     fn test_extract_root_index_sqrt() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
-        let sqrt_x = ctx.call("sqrt", vec![x]);
+        let sqrt_x = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![x]);
 
         let index = extract_root_index(&ctx, sqrt_x);
         assert_eq!(index, Some(2));
@@ -290,7 +290,7 @@ mod tests {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let three = ctx.num(3);
-        let cbrt_x = ctx.call("sqrt", vec![x, three]);
+        let cbrt_x = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![x, three]);
 
         let index = extract_root_index(&ctx, cbrt_x);
         assert_eq!(index, Some(3));
@@ -300,7 +300,7 @@ mod tests {
     fn test_build_display_context() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
-        let sqrt_x = ctx.call("sqrt", vec![x]);
+        let sqrt_x = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![x]);
         let half = ctx.rational(1, 2);
         let x_half = ctx.add(Expr::Pow(x, half));
 

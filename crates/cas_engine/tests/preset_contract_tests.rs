@@ -85,7 +85,7 @@ fn const_fold_safe_enables_sqrt_negative_to_i() {
 
     let mut ctx = Context::new();
     let neg_one = ctx.num(-1);
-    let sqrt_neg_one = ctx.call("sqrt", vec![neg_one]);
+    let sqrt_neg_one = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![neg_one]);
 
     let cfg = EvalConfig {
         value_domain: ValueDomain::ComplexEnabled,
@@ -124,7 +124,7 @@ fn const_fold_off_preserves_sqrt_negative() {
 
     let mut ctx = Context::new();
     let neg_one = ctx.num(-1);
-    let sqrt_neg_one = ctx.call("sqrt", vec![neg_one]);
+    let sqrt_neg_one = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![neg_one]);
 
     let cfg = EvalConfig {
         value_domain: ValueDomain::ComplexEnabled,

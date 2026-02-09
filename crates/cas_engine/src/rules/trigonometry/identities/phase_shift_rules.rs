@@ -91,7 +91,8 @@ define_rule!(
                             // sin(n·π - x) = (-1)^(n+1) · sin(x)
                             // n odd → (-1)^(n+1) = 1, so sin(x)
                             // n even → (-1)^(n+1) = -1, so -sin(x)
-                            let new_trig = ctx.call("sin", vec![new_angle]);
+                            let new_trig =
+                                ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![new_angle]);
                             if n_parity_odd {
                                 (new_trig, format!("sin({}π - x) = sin(x)", n_candidate))
                             } else {
@@ -103,7 +104,8 @@ define_rule!(
                         } else {
                             // cos(n·π - x) = (-1)^n · cos(x)
                             // n odd → -cos(x), n even → cos(x)
-                            let new_trig = ctx.call("cos", vec![new_angle]);
+                            let new_trig =
+                                ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![new_angle]);
                             if n_parity_odd {
                                 (
                                     ctx.add(Expr::Neg(new_trig)),

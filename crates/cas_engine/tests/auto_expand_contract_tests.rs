@@ -338,7 +338,7 @@ fn scanner_does_not_mark_sub_without_polynomial_rhs() {
     let lhs = ctx.add(Expr::Pow(x_plus_one, two));
 
     // sin(x)
-    let sin_x = ctx.call("sin", vec![x]);
+    let sin_x = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![x]);
 
     // Sub
     let sub = ctx.add(Expr::Sub(lhs, sin_x));

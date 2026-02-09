@@ -504,19 +504,19 @@ define_rule!(
                     } else {
                         // Not perfect square: sqrt(-2) = i * sqrt(2)
                         let abs_num = ctx.add(Expr::Number(abs_value));
-                        let sqrt_abs = ctx.call("sqrt", vec![abs_num]);
+                        let sqrt_abs = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![abs_num]);
                         ctx.add(Expr::Mul(i, sqrt_abs))
                     }
                 } else {
                     // Large integer - just use i * sqrt(n) form
                     let abs_num = ctx.add(Expr::Number(abs_value));
-                    let sqrt_abs = ctx.call("sqrt", vec![abs_num]);
+                    let sqrt_abs = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![abs_num]);
                     ctx.add(Expr::Mul(i, sqrt_abs))
                 }
             } else {
                 // Non-integer rational: i * sqrt(n)
                 let abs_num = ctx.add(Expr::Number(abs_value));
-                let sqrt_abs = ctx.call("sqrt", vec![abs_num]);
+                let sqrt_abs = ctx.call_builtin(cas_ast::BuiltinFn::Sqrt, vec![abs_num]);
                 ctx.add(Expr::Mul(i, sqrt_abs))
             };
 

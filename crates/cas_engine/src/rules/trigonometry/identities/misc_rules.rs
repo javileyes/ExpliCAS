@@ -74,29 +74,29 @@ impl crate::rule::Rule for TrigSumToProductContractionRule {
         let result = match (l_name.as_str(), is_add) {
             ("sin", true) => {
                 // sin(a) + sin(b) → 2*sin((a+b)/2)*cos((a-b)/2)
-                let sin_half_sum = ctx.call("sin", vec![half_sum_arg]);
-                let cos_half_diff = ctx.call("cos", vec![half_diff_arg]);
+                let sin_half_sum = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![half_sum_arg]);
+                let cos_half_diff = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_diff_arg]);
                 let product = ctx.add(Expr::Mul(sin_half_sum, cos_half_diff));
                 ctx.add(Expr::Mul(two_id, product))
             }
             ("sin", false) => {
                 // sin(a) - sin(b) → 2*cos((a+b)/2)*sin((a-b)/2)
-                let cos_half_sum = ctx.call("cos", vec![half_sum_arg]);
-                let sin_half_diff = ctx.call("sin", vec![half_diff_arg]);
+                let cos_half_sum = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_sum_arg]);
+                let sin_half_diff = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![half_diff_arg]);
                 let product = ctx.add(Expr::Mul(cos_half_sum, sin_half_diff));
                 ctx.add(Expr::Mul(two_id, product))
             }
             ("cos", true) => {
                 // cos(a) + cos(b) → 2*cos((a+b)/2)*cos((a-b)/2)
-                let cos_half_sum = ctx.call("cos", vec![half_sum_arg]);
-                let cos_half_diff = ctx.call("cos", vec![half_diff_arg]);
+                let cos_half_sum = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_sum_arg]);
+                let cos_half_diff = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![half_diff_arg]);
                 let product = ctx.add(Expr::Mul(cos_half_sum, cos_half_diff));
                 ctx.add(Expr::Mul(two_id, product))
             }
             ("cos", false) => {
                 // cos(a) - cos(b) → -2*sin((a+b)/2)*sin((a-b)/2)
-                let sin_half_sum = ctx.call("sin", vec![half_sum_arg]);
-                let sin_half_diff = ctx.call("sin", vec![half_diff_arg]);
+                let sin_half_sum = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![half_sum_arg]);
+                let sin_half_diff = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![half_diff_arg]);
                 let product = ctx.add(Expr::Mul(sin_half_sum, sin_half_diff));
                 let two_times = ctx.add(Expr::Mul(two_id, product));
                 ctx.add(Expr::Neg(two_times))
