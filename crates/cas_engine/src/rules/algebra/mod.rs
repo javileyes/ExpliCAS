@@ -59,6 +59,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifyMulDivRule));
     simplifier.add_rule(Box::new(FoldAddIntoFractionRule));
     simplifier.add_rule(Box::new(AddFractionsRule));
+    simplifier.add_rule(Box::new(SubFractionsRule));
     simplifier.add_rule(Box::new(CombineSameDenominatorFractionsRule));
     // Compact rationalization rules (Level 0, 1) - should apply first
     simplifier.add_rule(Box::new(RationalizeSingleSurdRule));

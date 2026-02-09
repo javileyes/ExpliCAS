@@ -25,7 +25,7 @@ pub use gcd_cancel::{
 mod addition_rules;
 
 // Re-export rules from addition_rules
-pub use addition_rules::{AddFractionsRule, FoldAddIntoFractionRule};
+pub use addition_rules::{AddFractionsRule, FoldAddIntoFractionRule, SubFractionsRule};
 
 // Cancel rules module (rationalization and cancellation)
 mod cancel_rules;

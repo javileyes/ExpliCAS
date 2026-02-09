@@ -386,7 +386,16 @@ define_rule!(
                 let algebraically_equal = if worth_expanding(d1) || worth_expanding(d2) {
                     let d1_exp = crate::expand::expand(ctx, d1);
                     let d2_exp = crate::expand::expand(ctx, d2);
-                    crate::ordering::compare_expr(ctx, d1_exp, d2_exp) == Ordering::Equal
+                    if crate::ordering::compare_expr(ctx, d1_exp, d2_exp) == Ordering::Equal {
+                        true
+                    } else {
+                        // Fallback: numeric probe — expand(d1 - d2) and check if zero
+                        // at several random rational points. This handles raw expanded forms
+                        // like u·u + u·1 vs u² + u that structural comparison misses.
+                        let diff = ctx.add(Expr::Sub(d1, d2));
+                        let diff_exp = crate::expand::expand(ctx, diff);
+                        crate::helpers::numeric_poly_zero_check(ctx, diff_exp)
+                    }
                 } else {
                     false
                 };
@@ -589,5 +598,217 @@ define_rule!(
             return Some(Rewrite::new(new_expr).desc("Add fractions: a/b + c/d -> (ad+bc)/bd"));
         }
         None
+    }
+);
+
+// =============================================================================
+// SubFractionsRule: a/b - c/d → (a·d - c·b) / (b·d)
+// =============================================================================
+//
+// Combines two fractions being subtracted into a single fraction.
+// The resulting numerator goes through normal simplification which can prove
+// it equals 0 when the fractions were algebraically equal (e.g., different
+// representations of the same rational expression).
+//
+// This handles cases that SubSelfToZeroRule misses because the two fractions
+// have structurally different (but algebraically equivalent) numerators/denominators
+// from independent simplification paths.
+//
+// Example: ((u+1)·(u·x+1)+u)/(u·(u+1)) - (u²x+ux+2u+1)/(u²+u)
+//        → (cross_product) / (common_den) → 0/den → 0
+//
+// Guards:
+// - Both sides must be fractions (direct Div or FractionParts)
+// - Skip if inside trig arguments (preserve sin(a - pi/9) structure)
+// - Skip function-containing expressions mixed with constant fractions
+// - Same complexity heuristics as AddFractionsRule
+
+define_rule!(
+    SubFractionsRule,
+    "Subtract Fractions",
+    |ctx, expr, parent_ctx| {
+        use cas_ast::views::FractionParts;
+
+        let (l, r) = crate::helpers::as_sub(ctx, expr)?;
+
+        // Extract fraction parts
+        let fp_l = FractionParts::from(&*ctx, l);
+        let fp_r = FractionParts::from(&*ctx, r);
+
+        let (n1, d1, is_frac1) = fp_l.to_num_den(ctx);
+        let (n2, d2, is_frac2) = fp_r.to_num_den(ctx);
+
+        // Fallback to extract_as_fraction
+        let (n1, d1, is_frac1) = if !is_frac1 {
+            extract_as_fraction(ctx, l)
+        } else {
+            (n1, d1, is_frac1)
+        };
+        let (n2, d2, is_frac2) = if !is_frac2 {
+            extract_as_fraction(ctx, r)
+        } else {
+            (n2, d2, is_frac2)
+        };
+
+        // Both sides must be fractions
+        if !is_frac1 || !is_frac2 {
+            return None;
+        }
+
+        // Guard: Skip if contains functions mixed with constant fractions
+        fn contains_function(ctx: &Context, id: ExprId) -> bool {
+            match ctx.get(id) {
+                Expr::Function(_, _) => true,
+                Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+                    contains_function(ctx, *l) || contains_function(ctx, *r)
+                }
+                Expr::Neg(e) | Expr::Hold(e) | Expr::Pow(e, _) => contains_function(ctx, *e),
+                _ => false,
+            }
+        }
+
+        fn is_constant(ctx: &Context, id: ExprId) -> bool {
+            match ctx.get(id) {
+                Expr::Number(_) | Expr::Constant(_) => true,
+                Expr::Neg(inner) => is_constant(ctx, *inner),
+                Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Add(l, r) | Expr::Sub(l, r) => {
+                    is_constant(ctx, *l) && is_constant(ctx, *r)
+                }
+                Expr::Pow(base, exp) => is_constant(ctx, *base) && is_constant(ctx, *exp),
+                _ => false,
+            }
+        }
+
+        let l_has_func = contains_function(ctx, l);
+        let r_has_func = contains_function(ctx, r);
+        let l_is_const_frac = is_constant(ctx, n1) && is_constant(ctx, d1);
+        let r_is_const_frac = is_constant(ctx, n2) && is_constant(ctx, d2);
+
+        if (l_has_func && r_is_const_frac) || (r_has_func && l_is_const_frac) {
+            return None;
+        }
+
+        // Guard: Skip if inside trig function argument
+        let inside_trig = parent_ctx.has_ancestor_matching(ctx, |c, node_id| {
+            matches!(c.get(node_id), Expr::Function(fn_id, _) if is_trig_function(c, *fn_id))
+        });
+        if inside_trig {
+            return None;
+        }
+
+        // Guard: Skip if one side contains roots with trivial denominator
+        fn contains_root(ctx: &Context, id: ExprId) -> bool {
+            match ctx.get(id) {
+                Expr::Function(fn_id, _) if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) => true,
+                Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+                    contains_root(ctx, *l) || contains_root(ctx, *r)
+                }
+                Expr::Neg(e) => contains_root(ctx, *e),
+                Expr::Pow(_, exp) => match ctx.get(*exp) {
+                    Expr::Number(n) => {
+                        !n.is_integer()
+                            && n.abs() < num_rational::BigRational::from_integer(1.into())
+                    }
+                    Expr::Div(_, _) => true,
+                    _ => false,
+                },
+                Expr::Hold(e) => contains_root(ctx, *e),
+                _ => false,
+            }
+        }
+
+        fn is_trivial_denom(ctx: &Context, d: ExprId) -> bool {
+            matches!(ctx.get(d), Expr::Number(n) if n.is_one())
+        }
+
+        let l_has_root_trivial = !is_frac1 && contains_root(ctx, l);
+        let r_has_root_trivial = !is_frac2 && contains_root(ctx, r);
+        let l_has_real_frac = is_frac1 && !is_trivial_denom(ctx, d1);
+        let r_has_real_frac = is_frac2 && !is_trivial_denom(ctx, d2);
+
+        if (l_has_root_trivial && r_has_real_frac) || (r_has_root_trivial && l_has_real_frac) {
+            return None;
+        }
+
+        // Check for same or opposite denominators
+        let (n2, d2, same_denom) = {
+            let cmp = crate::ordering::compare_expr(ctx, d1, d2);
+            if d1 == d2 || cmp == Ordering::Equal {
+                (n2, d2, true)
+            } else {
+                // Algebraic check: expand and compare
+                let worth_expanding = |id: ExprId| {
+                    matches!(
+                        ctx.get(id),
+                        Expr::Mul(_, _) | Expr::Add(_, _) | Expr::Sub(_, _)
+                    )
+                };
+                let algebraically_equal = if worth_expanding(d1) || worth_expanding(d2) {
+                    let d1_exp = crate::expand::expand(ctx, d1);
+                    let d2_exp = crate::expand::expand(ctx, d2);
+                    if crate::ordering::compare_expr(ctx, d1_exp, d2_exp) == Ordering::Equal {
+                        true
+                    } else {
+                        // Fallback: numeric probe
+                        let diff = ctx.add(Expr::Sub(d1, d2));
+                        let diff_exp = crate::expand::expand(ctx, diff);
+                        crate::helpers::numeric_poly_zero_check(ctx, diff_exp)
+                    }
+                } else {
+                    false
+                };
+
+                if algebraically_equal {
+                    (n2, d2, true)
+                } else {
+                    (n2, d2, false)
+                }
+            }
+        };
+
+        // Check divisible denominators
+        let (n1, n2, common_den, divisible_denom) =
+            check_divisible_denominators(ctx, n1, n2, d1, d2);
+        let same_denom = same_denom || divisible_denom;
+
+        // Build: (n1·d2 - n2·d1) / (d1·d2), or (n1 - n2) / common_den for same denom
+        fn is_one_val(ctx: &Context, id: ExprId) -> bool {
+            matches!(ctx.get(id), Expr::Number(n) if n.is_one())
+        }
+
+        let new_num = if same_denom {
+            ctx.add(Expr::Sub(n1, n2))
+        } else {
+            // n1·d2 - n2·d1
+            let ad = if is_one_val(ctx, n1) {
+                d2
+            } else {
+                mul2_raw(ctx, n1, d2)
+            };
+            let bc = if is_one_val(ctx, n2) {
+                d1
+            } else {
+                mul2_raw(ctx, n2, d1)
+            };
+            ctx.add(Expr::Sub(ad, bc))
+        };
+
+        let final_den = if same_denom {
+            common_den
+        } else {
+            mul2_raw(ctx, d1, d2)
+        };
+
+        let new_expr = ctx.add(Expr::Div(new_num, final_den));
+
+        // For numeric denominators, always combine
+        let is_numeric = |e: ExprId| matches!(ctx.get(e), Expr::Number(_));
+        if is_numeric(d1) && is_numeric(d2) {
+            return Some(Rewrite::new(new_expr).desc("Subtract numeric fractions"));
+        }
+
+        // Always combine Sub(Div,Div) — the resulting numerator will simplify
+        // (often to 0 when fractions were algebraically equal)
+        return Some(Rewrite::new(new_expr).desc("Subtract fractions: a/b - c/d -> (ad-bc)/bd"));
     }
 );

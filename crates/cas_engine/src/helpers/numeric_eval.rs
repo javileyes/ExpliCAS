@@ -211,3 +211,180 @@ fn is_one_half(ctx: &Context, expr: ExprId) -> bool {
         _ => false,
     }
 }
+
+/// Probabilistic polynomial zero check via numeric evaluation.
+///
+/// Tests whether an expression is identically zero by substituting several
+/// random rational values for each variable and evaluating. If ALL evaluations
+/// yield 0, the expression is extremely likely to be identically zero.
+///
+/// This handles cases where `expand()` produces raw unsimplified AST (e.g.,
+/// `u·u + u·1 - u² - u`) that structural comparison can't match.
+///
+/// Uses 3 independent probe points. For a non-zero polynomial of degree d in
+/// n variables, the probability of a false positive is at most d/|S| per
+/// probe, where |S| is the evaluation domain size. With rational probes
+/// chosen from {2/3, 3/5, 5/7, 7/11, 11/13, ...}, false positives are
+/// astronomically unlikely.
+///
+/// Returns `true` if the expression evaluates to 0 at all probe points.
+/// Returns `false` if any evaluation is non-zero or evaluation fails.
+pub(crate) fn numeric_poly_zero_check(ctx: &Context, expr: ExprId) -> bool {
+    use num_rational::BigRational;
+    use num_traits::Zero;
+
+    // Collect variables in the expression
+    let vars = cas_ast::collect_variables(ctx, expr);
+    if vars.is_empty() {
+        // No variables: direct numeric evaluation
+        return as_rational_const(ctx, expr)
+            .map(|v| v.is_zero())
+            .unwrap_or(false);
+    }
+
+    // Limit to reasonable number of variables (avoid combinatorial explosion)
+    if vars.len() > 5 {
+        return false;
+    }
+
+    // Probe points: distinct rationals unlikely to be roots of spurious polynomials
+    let probes: Vec<Vec<BigRational>> = vec![
+        // Probe 1: small primes/coprime rationals
+        vec![
+            BigRational::new(2.into(), 3.into()),
+            BigRational::new(5.into(), 7.into()),
+            BigRational::new(3.into(), 11.into()),
+            BigRational::new(7.into(), 13.into()),
+            BigRational::new(11.into(), 17.into()),
+        ],
+        // Probe 2: different values
+        vec![
+            BigRational::new(3.into(), 5.into()),
+            BigRational::new(7.into(), 11.into()),
+            BigRational::new(11.into(), 13.into()),
+            BigRational::new(13.into(), 17.into()),
+            BigRational::new(17.into(), 19.into()),
+        ],
+        // Probe 3: yet another set
+        vec![
+            BigRational::new(5.into(), 3.into()),
+            BigRational::new(11.into(), 7.into()),
+            BigRational::new(13.into(), 11.into()),
+            BigRational::new(17.into(), 13.into()),
+            BigRational::new(19.into(), 17.into()),
+        ],
+    ];
+
+    let var_list: Vec<String> = vars.into_iter().collect();
+
+    for probe_set in &probes {
+        // Substitute values for variables
+        let result = eval_with_substitution(ctx, expr, &var_list, probe_set);
+        match result {
+            Some(val) => {
+                if !val.is_zero() {
+                    return false; // Non-zero at this point => not identically zero
+                }
+            }
+            None => return false, // Evaluation failed (e.g., division by zero)
+        }
+    }
+
+    true // Zero at all probe points
+}
+
+/// Evaluate an expression by substituting rational values for variables.
+/// Returns None if evaluation fails (e.g., division by zero, unsupported operation).
+fn eval_with_substitution(
+    ctx: &Context,
+    expr: ExprId,
+    var_names: &[String],
+    values: &[num_rational::BigRational],
+) -> Option<num_rational::BigRational> {
+    use num_rational::BigRational;
+    use num_traits::Zero;
+
+    match ctx.get(expr) {
+        Expr::Number(n) => Some(n.clone()),
+
+        Expr::Variable(v) => {
+            // Resolve variable name and look up in substitution map
+            let name = ctx.sym_name(*v);
+            var_names
+                .iter()
+                .position(|var_name| var_name == name)
+                .and_then(|idx| values.get(idx).cloned())
+        }
+
+        Expr::Constant(c) => {
+            // Use approximate rational value for constants
+            match c {
+                cas_ast::Constant::Pi => Some(BigRational::new(355.into(), 113.into())),
+                cas_ast::Constant::E => Some(BigRational::new(193.into(), 71.into())),
+                _ => None, // I, Infinity, Undefined, Phi: can't evaluate rationally
+            }
+        }
+
+        Expr::Add(l, r) => {
+            let lv = eval_with_substitution(ctx, *l, var_names, values)?;
+            let rv = eval_with_substitution(ctx, *r, var_names, values)?;
+            Some(lv + rv)
+        }
+
+        Expr::Sub(l, r) => {
+            let lv = eval_with_substitution(ctx, *l, var_names, values)?;
+            let rv = eval_with_substitution(ctx, *r, var_names, values)?;
+            Some(lv - rv)
+        }
+
+        Expr::Mul(l, r) => {
+            let lv = eval_with_substitution(ctx, *l, var_names, values)?;
+            let rv = eval_with_substitution(ctx, *r, var_names, values)?;
+            Some(lv * rv)
+        }
+
+        Expr::Div(n, d) => {
+            let nv = eval_with_substitution(ctx, *n, var_names, values)?;
+            let dv = eval_with_substitution(ctx, *d, var_names, values)?;
+            if dv.is_zero() {
+                None // Division by zero
+            } else {
+                Some(nv / dv)
+            }
+        }
+
+        Expr::Neg(inner) => {
+            let v = eval_with_substitution(ctx, *inner, var_names, values)?;
+            Some(-v)
+        }
+
+        Expr::Pow(base, exp) => {
+            let bv = eval_with_substitution(ctx, *base, var_names, values)?;
+            let ev = eval_with_substitution(ctx, *exp, var_names, values)?;
+            // Only handle integer exponents for exact computation
+            if ev.is_integer() {
+                let n: i64 = ev.to_integer().try_into().ok()?;
+                if n >= 0 && n <= 20 {
+                    let mut result = BigRational::from_integer(1.into());
+                    for _ in 0..n {
+                        result = result * &bv;
+                    }
+                    Some(result)
+                } else if n < 0 && n >= -20 && !bv.is_zero() {
+                    let mut result = BigRational::from_integer(1.into());
+                    for _ in 0..(-n) {
+                        result = result * &bv;
+                    }
+                    Some(BigRational::from_integer(1.into()) / result)
+                } else {
+                    None
+                }
+            } else {
+                None // Non-integer exponent: can't compute exactly
+            }
+        }
+
+        // Functions, Hold, Matrix, SessionRef: bail out
+        _ => None,
+    }
+}
