@@ -68,7 +68,7 @@ Sessions automatically expire after **2 hours of inactivity**.
 **Memory Safety**:
 - Closing a browser tab removes the session ID from `sessionStorage`
 - Server data persists until timeout or explicit clear
-- No memory leaks: all sessions eventually expire
+- No memory leaks: all sessions eventually expire 
 
 ## API Endpoints
 
