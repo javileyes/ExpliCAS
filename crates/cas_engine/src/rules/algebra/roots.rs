@@ -378,3 +378,128 @@ pub(crate) fn rational_sqrt(r: &num_rational::BigRational) -> Option<num_rationa
 
     Some(num_rational::BigRational::new(numer_sqrt, denom_sqrt))
 }
+
+// Rule: (k²·a)^(1/2) → k·a^(1/2)  (and more generally (k^n·a)^(1/n) → k·a^(1/n))
+// Extracts the largest perfect-square numeric factor from under a square root.
+// Examples:
+//   sqrt(4u) → 2·√u
+//   sqrt(9u) → 3·√u
+//   sqrt(8u) → 2·√(2u)
+//   (4u)^(1/2) → 2·u^(1/2)
+define_rule!(
+    ExtractPerfectSquareFromRadicandRule,
+    "Extract Perfect Square from Radicand",
+    Some(crate::target_kind::TargetKindSet::POW),
+    |ctx, expr| {
+        // Match Pow(base, exponent) where exponent = 1/n for positive integer n
+        let (base, exp_id) = if let Expr::Pow(b, e) = ctx.get(expr) {
+            (*b, *e)
+        } else {
+            return None;
+        };
+
+        // Check that exponent is 1/n for positive n >= 2
+        let root_index: u32 = if let Expr::Number(n) = ctx.get(exp_id) {
+            if n.numer() == &1.into() {
+                let d = n.denom();
+                if let Some(d_u32) = d.to_u32_digits().1.first().copied() {
+                    if d_u32 >= 2 && d.sign() == num_bigint::Sign::Plus && d.bits() <= 32 {
+                        // Check it's actually 1/d (numer=1, denom=d)
+                        if *n.numer() == 1.into() {
+                            d_u32
+                        } else {
+                            return None;
+                        }
+                    } else {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+            } else {
+                return None;
+            }
+        } else {
+            return None;
+        };
+
+        // Extract numeric coefficient from the Mul base
+        // We support: Mul(Number, expr) and Mul(expr, Number) (canonicalized form usually has Number on left)
+        let (num_val, rest) = if let Expr::Mul(l, r) = ctx.get(base) {
+            let (l, r) = (*l, *r);
+            if let Expr::Number(n) = ctx.get(l) {
+                (n.clone(), r)
+            } else if let Expr::Number(n) = ctx.get(r) {
+                (n.clone(), l)
+            } else {
+                return None;
+            }
+        } else {
+            return None;
+        };
+
+        // Only handle positive numeric coefficients
+        if !num_val.is_positive() || !num_val.is_integer() {
+            return None;
+        }
+
+        let int_val = num_val.to_integer();
+
+        // Find the largest perfect n-th power factor
+        // For sqrt (n=2): find largest k such that k² divides int_val
+        // For cbrt (n=3): find largest k such that k³ divides int_val
+        let root_idx = root_index as u32;
+        let mut k = num_bigint::BigInt::from(1);
+        let mut remaining = int_val.clone();
+
+        // Trial division to extract perfect power factors
+        let mut trial: num_bigint::BigInt = 2.into();
+        loop {
+            if &trial * &trial > remaining {
+                break;
+            }
+            let mut count: u32 = 0;
+            while (&remaining % &trial).is_zero() {
+                remaining /= &trial;
+                count += 1;
+            }
+            let extracted = count / root_idx;
+            if extracted > 0 {
+                for _ in 0..extracted {
+                    k *= &trial;
+                }
+            }
+            trial += 1;
+        }
+
+        // If k == 1, no perfect-power factor was found
+        if k == num_bigint::BigInt::from(1) {
+            return None;
+        }
+
+        // Compute the remaining radicand: int_val / k^n
+        let mut k_power = num_bigint::BigInt::from(1);
+        for _ in 0..root_idx {
+            k_power *= &k;
+        }
+        let new_coeff = &int_val / &k_power;
+
+        // Build: k · (new_coeff · rest)^(1/n)
+        let k_expr = ctx.add(Expr::Number(num_rational::BigRational::from_integer(k)));
+
+        let new_radicand = if new_coeff == num_bigint::BigInt::from(1) {
+            // (k²·a)^(1/n) → k·a^(1/n), no numeric factor remains
+            rest
+        } else {
+            let new_coeff_expr = ctx.add(Expr::Number(num_rational::BigRational::from_integer(
+                new_coeff,
+            )));
+            smart_mul(ctx, new_coeff_expr, rest)
+        };
+
+        let new_root = ctx.add(Expr::Pow(new_radicand, exp_id));
+        let result = smart_mul(ctx, k_expr, new_root);
+
+        Some(Rewrite::new(result).desc("Extract perfect square from under radical"))
+    }
+);

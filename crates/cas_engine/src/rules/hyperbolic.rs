@@ -357,6 +357,115 @@ define_rule!(
     }
 );
 
+// Rule: cosh(2x) - cosh²(x) - sinh²(x) → 0
+// After canonicalization, Sub nodes become Add+Neg, so the actual pattern is:
+//   Add-chain containing: cosh(2x), Neg(cosh²(x)), Neg(sinh²(x))
+// When found, these three terms cancel to 0 and are removed from the sum.
+define_rule!(
+    HyperbolicDoubleAngleSubRule,
+    "Hyperbolic Double Angle Subtraction",
+    Some(crate::target_kind::TargetKindSet::ADD),
+    |ctx, expr| {
+        // Flatten the Add-chain into terms
+        let mut terms = Vec::new();
+        let mut stack = vec![expr];
+        while let Some(id) = stack.pop() {
+            if let Expr::Add(l, r) = ctx.get(id) {
+                stack.push(*l);
+                stack.push(*r);
+            } else {
+                terms.push(id);
+            }
+        }
+
+        if terms.len() < 3 {
+            return None;
+        }
+
+        // Helper: check if expr is cosh(2·x) and return (index, x)
+        let find_cosh_double = |terms: &[ExprId]| -> Option<(usize, ExprId)> {
+            for (i, &t) in terms.iter().enumerate() {
+                if let Expr::Function(fn_id, args) = ctx.get(t) {
+                    if ctx.builtin_of(*fn_id) == Some(BuiltinFn::Cosh) && args.len() == 1 {
+                        if let Some(x) = crate::helpers::extract_double_angle_arg(ctx, args[0]) {
+                            return Some((i, x));
+                        }
+                    }
+                }
+            }
+            None
+        };
+
+        // Helper: check if expr is Neg(cosh²(x)) or Neg(sinh²(x))
+        // Returns (arg, is_cosh)
+        let as_neg_hyp_squared = |e: ExprId| -> Option<(ExprId, bool)> {
+            if let Expr::Neg(inner) = ctx.get(e) {
+                if let Expr::Pow(base, exp) = ctx.get(*inner) {
+                    if is_two(ctx, *exp) {
+                        if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                            if args.len() == 1 {
+                                if ctx.is_builtin(*fn_id, BuiltinFn::Cosh) {
+                                    return Some((args[0], true));
+                                }
+                                if ctx.is_builtin(*fn_id, BuiltinFn::Sinh) {
+                                    return Some((args[0], false));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        };
+
+        // Find cosh(2x) in the terms
+        let (cosh_idx, x_arg) = find_cosh_double(&terms)?;
+
+        // Find Neg(cosh²(x)) and Neg(sinh²(x)) with the same argument
+        let mut neg_cosh_idx = None;
+        let mut neg_sinh_idx = None;
+
+        for (i, &t) in terms.iter().enumerate() {
+            if i == cosh_idx {
+                continue;
+            }
+            if let Some((arg, is_cosh)) = as_neg_hyp_squared(t) {
+                if crate::ordering::compare_expr(ctx, arg, x_arg) == Ordering::Equal {
+                    if is_cosh && neg_cosh_idx.is_none() {
+                        neg_cosh_idx = Some(i);
+                    } else if !is_cosh && neg_sinh_idx.is_none() {
+                        neg_sinh_idx = Some(i);
+                    }
+                }
+            }
+        }
+
+        // Need both Neg(cosh²) and Neg(sinh²)
+        let nc_idx = neg_cosh_idx?;
+        let ns_idx = neg_sinh_idx?;
+
+        // Remove the three matched terms
+        let mut remaining: Vec<ExprId> = terms
+            .iter()
+            .enumerate()
+            .filter(|&(i, _)| i != cosh_idx && i != nc_idx && i != ns_idx)
+            .map(|(_, &t)| t)
+            .collect();
+
+        if remaining.is_empty() {
+            return Some(Rewrite::new(ctx.num(0)).desc("cosh(2x) - cosh²(x) - sinh²(x) = 0"));
+        }
+
+        // Rebuild the sum from remaining terms (right-associative)
+        let mut result = remaining.pop().unwrap();
+        while let Some(t) = remaining.pop() {
+            result = ctx.add(Expr::Add(t, result));
+        }
+
+        Some(Rewrite::new(result).desc("cosh(2x) - cosh²(x) - sinh²(x) = 0"))
+    }
+);
+
 // Rule: sinh(x) / cosh(x) → tanh(x)
 // Contraction rule (inverse of TanhToSinhCoshRule) - safe direction that doesn't break composition tests
 define_rule!(
@@ -645,6 +754,7 @@ pub fn register(simplifier: &mut crate::engine::Simplifier) {
     simplifier.add_rule(Box::new(HyperbolicNegativeRule));
     simplifier.add_rule(Box::new(HyperbolicPythagoreanRule));
     simplifier.add_rule(Box::new(HyperbolicDoubleAngleRule));
+    simplifier.add_rule(Box::new(HyperbolicDoubleAngleSubRule));
     // DISABLED: TanhToSinhCoshRule breaks tanh(atanh(x))→x and tanh(-x)→-tanh(x) paths
     // simplifier.add_rule(Box::new(TanhToSinhCoshRule)); // tanh(x) → sinh(x)/cosh(x)
     simplifier.add_rule(Box::new(SinhCoshToTanhRule)); // sinh(x)/cosh(x) → tanh(x) (contraction)
