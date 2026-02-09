@@ -342,25 +342,15 @@ impl CancelDecision {
 /// // Apply rewrite, use decision.assumption if present
 /// ```
 pub fn can_cancel_factor(mode: DomainMode, proof: Proof) -> CancelDecision {
-    use crate::assumptions::ConditionClass;
-
-    match proof {
-        // Always allow if proven (explicit or implicit)
-        Proof::Proven | Proof::ProvenImplicit => CancelDecision::allow(),
-
-        // Never allow if disproven (division by 0)
-        Proof::Disproven => CancelDecision::deny(),
-
-        // Unknown: use ConditionClass gate
-        Proof::Unknown => {
-            // NonZero is Definability class
-            if mode.allows_unproven(ConditionClass::Definability) {
-                CancelDecision::allow_with_assumption("cancelled factor assumed nonzero")
-            } else {
-                CancelDecision::deny()
-            }
-        }
-    }
+    // Delegate to unified domain_facts::decide_by_class().
+    // NonZero cancellation uses Definability condition class.
+    let strength = crate::domain_facts::proof_to_strength(proof);
+    crate::domain_facts::decide_by_class(
+        mode,
+        crate::assumptions::ConditionClass::Definability,
+        strength,
+        "cancelled factor assumed nonzero",
+    )
 }
 
 /// Rich version of `can_cancel_factor` that emits pedagogical hints when Strict blocks.
@@ -432,26 +422,15 @@ pub fn can_cancel_factor_with_hint(
 /// - `allow: false` in Strict and Generic modes for unproven
 /// - `allow: true` with assumption only in Assume mode
 pub fn can_apply_analytic(mode: DomainMode, proof: Proof) -> CancelDecision {
-    use crate::assumptions::ConditionClass;
-
-    match proof {
-        // Always allow if proven (explicit or implicit)
-        Proof::Proven | Proof::ProvenImplicit => CancelDecision::allow(),
-
-        // Never allow if disproven (definitely ≤ 0)
-        Proof::Disproven => CancelDecision::deny(),
-
-        // Unknown: use Analytic ConditionClass gate
-        Proof::Unknown => {
-            // Positive/NonNegative is Analytic class (only Assume allows)
-            if mode.allows_unproven(ConditionClass::Analytic) {
-                CancelDecision::allow_with_assumption("assumed positive")
-            } else {
-                // Strict and Generic block - no hint in this version
-                CancelDecision::deny()
-            }
-        }
-    }
+    // Delegate to unified domain_facts::decide_by_class().
+    // Analytic conditions (Positive, NonNegative) use Analytic condition class.
+    let strength = crate::domain_facts::proof_to_strength(proof);
+    crate::domain_facts::decide_by_class(
+        mode,
+        crate::assumptions::ConditionClass::Analytic,
+        strength,
+        "assumed positive",
+    )
 }
 
 /// Rich version of `can_apply_analytic` that includes pedagogical hint for Generic blocks.

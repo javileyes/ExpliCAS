@@ -15,6 +15,8 @@ pub mod diagnostics;
 pub mod didactic;
 pub(crate) mod display_context;
 pub mod domain;
+pub mod domain_facts;
+pub mod domain_oracle;
 pub mod engine;
 pub mod env;
 pub mod eval;
