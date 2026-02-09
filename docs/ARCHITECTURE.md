@@ -1753,7 +1753,7 @@ impl LatexNoRoots {
 
 ###### Decisión Contextual
 ```rust
-// En timeline.rs
+// En timeline/ (módulo directorio)
 let should_preserve_exponents = step.rule_name.contains("Multiply exponents")
     || step.rule_name.contains("Power of a Power");
 
@@ -3647,8 +3647,8 @@ Esta sección documenta las ubicaciones canónicas de utilidades compartidas par
 | Utilidad | Canónica | Prohibido duplicar | Contrato |
 |----------|----------|-------------------|----------|
 | `__hold` helpers | `cas_ast::hold` | `fn strip_hold` locales | Strip en boundaries |
-| Add flattening | `cas_engine::nary::AddView` | `fn flatten_add*` locales | Shape-independent |
-| Mul flattening | `cas_ast::views::MulChainView` | `fn flatten_mul*` locales | Order-preserving |
+| Add flattening | `cas_engine::nary::add_leaves` | `fn flatten_add*` locales | Shape-independent |
+| Mul flattening | `cas_engine::nary::mul_leaves` | `fn flatten_mul*` locales | Order-preserving |
 | Predicates | `cas_engine::helpers` | `fn is_zero/is_one/is_negative` | Semántica exacta |
 | Integer extract | `cas_engine::helpers::get_integer` | `fn get_integer` locales | Returns `Option<i64>` |
 | Product builders | `cas_ast::views::MulBuilder` | `fn build_mul_from_factors` | Unified edge cases |
@@ -3728,10 +3728,10 @@ make lint  # Includes duplicate detection
 | Pattern | Status | Target PR |
 |---------|--------|-----------|
 | `strip_hold` | ✅ Migrated | — |
-| `flatten_add` | 🔸 In progress | PR2 |
-| `flatten_mul` | 🔸 Planned | PR3 |
-| Predicates | 🔸 Planned | PR4 |
-| Builders | 🔸 Planned | PR5 |
+| `flatten_add` | ✅ Migrated (`nary::add_leaves`) | — |
+| `flatten_mul` | ✅ Migrated (`nary::mul_leaves`) | — |
+| Predicates | ✅ Migrated (`helpers/`) | — |
+| Builders | ✅ Migrated (`MulBuilder`) | — |
 
 ---
 

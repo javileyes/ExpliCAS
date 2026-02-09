@@ -439,7 +439,7 @@ Steps:
 Result: (-infinity, -5) U (5, infinity)
 ```
 
-#### 6. Equivalence Checking
+#### 11. Equivalence Checking
 Verify if two expressions are mathematically equivalent. The command returns:
 - **True** — Unconditionally equivalent
 - **True (conditional)** — Equivalent under domain conditions
@@ -466,7 +466,7 @@ True (conditional)
   • cos(pi / 3 - x) ≠ 0
 ```
 
-#### 6. Equation Solving
+#### 12. Equation Solving
 ```text
 > solve 2 * sin(x) = 1
 ```
@@ -482,7 +482,7 @@ Steps:
 Result: x = pi / 6
 ```
 
-#### 7. Variable Substitution
+#### 13. Variable Substitution
 ```text
 > subst x^2 + x, x, 3
 ```
@@ -890,12 +890,25 @@ See [docs/METAMORPHIC_TESTING.md](docs/METAMORPHIC_TESTING.md) for full document
 
 ## Project Structure
 
--   `crates/cas_ast`: Core mathematical data structures and LaTeX rendering.
-    -   `latex.rs`: Standard LaTeX rendering (converts fractional exponents to roots).
-    -   `latex_no_roots.rs`: Specialized LaTeX rendering that preserves exponent notation.
--   `crates/cas_parser`: Parsing logic (String -> AST).
--   `crates/cas_engine`: Simplification rules and step tracer.
+-   `crates/cas_ast`: Core mathematical data structures, expression tree, and LaTeX rendering.
+    -   `expression.rs`: `Expr` enum and `Context` (symbol interning).
+    -   `latex.rs`: Standard LaTeX rendering (fractional exponents → roots).
+    -   `latex_no_roots.rs`: LaTeX rendering preserving exponent notation.
+    -   `traversal.rs`: Tree traversal utilities (`collect_variables`, `count_nodes`, `substitute_expr_by_id`).
+    -   `views.rs`: Zero-copy views (`AddView`, `MulChainView`, `MulBuilder`).
+-   `crates/cas_parser`: Parsing logic (String → AST).
+-   `crates/cas_engine`: Simplification engine, solver, and step tracer.
+    -   `engine/`: Core simplification loop (`simplifier.rs`, `evaluator.rs`).
+    -   `eval/`: Evaluation orchestration and equivalence checking.
+    -   `json/`: JSON API (`response.rs`, `eval.rs`, `substitute.rs`, `types.rs`).
+    -   `rules/`: All simplification rules, organized by domain.
+    -   `helpers/`: Shared utilities (`predicates.rs`, `destructure.rs`, `nf_scoring.rs`).
+    -   `timeline/`: HTML timeline generation with intelligent step filtering.
+    -   `didactic/`: Didactic substep generation for educational explanations.
     -   `step.rs`: Step importance classification system.
-    -   `timeline.rs`: HTML timeline generation with intelligent filtering.
     -   `strategies.rs`: Global state filtering for non-productive steps.
--   `crates/cas_cli`: Command-line interface.
+-   `crates/cas_cli`: Command-line interface and interactive REPL.
+    -   `src/repl/`: REPL modules — `commands_analysis.rs`, `commands_session.rs`, `commands_semantics.rs`, `commands_solve.rs`, `commands_algebra.rs`, `commands_system.rs`.
+    -   `src/commands/`: Batch commands (`eval_json.rs`).
+-   `crates/cas_android_ffi`: Android FFI bridge via JNI.
+-   `web/`: Web-based REPL frontend (HTML/JS/CSS).

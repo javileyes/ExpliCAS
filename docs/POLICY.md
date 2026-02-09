@@ -288,7 +288,7 @@ consistent value extraction and type checking across the engine.
 
 ### Canonical Implementation
 
-**Location**: `crates/cas_engine/src/helpers.rs`
+**Location**: `crates/cas_engine/src/helpers/` (directory module)
 
 ```rust
 pub fn is_zero(ctx, expr) -> bool;      // Number(0) literal

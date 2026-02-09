@@ -89,7 +89,7 @@ The project is organized as a workspace with several crates:
 | Category | Canonical Location | Don't Redefine |
 |----------|-------------------|----------------|
 | **hold** | `cas_ast::hold` | `strip_hold`, `unwrap_hold` |
-| **flatten** | `cas_ast::views` | `flatten_add`, `flatten_mul` |
+| **flatten** | `cas_engine::nary` | `flatten_add`, `flatten_mul` |
 | **predicates** | `cas_engine::helpers` | `is_zero`, `is_one`, `is_negative`, `get_integer` |
 | **builders** | `cas_ast::views::MulBuilder`, `Context::build_balanced_mul` | `build_mul_from_factors`, `build_balanced_mul` |
 | **traversal** | `cas_ast::traversal` | `count_nodes`, `count_nodes_matching` |
@@ -440,15 +440,7 @@ When pattern detection isn't working:
 - [ ] AST structure matches expectation (a - b is Add+Neg!)
 - [ ] Rule is registered in `register()` function
 - [ ] Tests pass: `cargo test pattern`
--   [ ] Pattern scanner finds the pattern (add debug output)
--   [ ] Expression is marked in `PatternMarks`
--   [ ] `ParentContext` is created with marks in `apply_rules_loop`
--   [ ] `ParentContext` is extended correctly when recursing
--   [ ] Rule receives `parent_ctx` parameter (check signature)
--   [ ] Guard checks `parent_ctx.pattern_marks()` correctly
--   [ ] AST structure matches expectation (a - b is Add+Neg!)
--   [ ] Rule is registered in `register()` function
--   [ ] Tests pass: `cargo test pattern`
+
 
 ## 3. Extending the CAS
 

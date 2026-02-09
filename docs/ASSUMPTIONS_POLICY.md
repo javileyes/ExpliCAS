@@ -338,7 +338,7 @@ semantics set reporting trace   # Future: include step refs
 2. Migrated all 18 hotspot rules to emit structured `AssumptionEvent`s
 3. **Removed legacy `domain_assumption` field** from `Rewrite` and `Step` (316+ instances via codemod)
 4. Updated engine propagation: `rewrite.assumption_events` → `step.assumption_events`
-5. Updated `eval.rs`, `orchestrator.rs`, `timeline.rs` to use only `assumption_events`
+5. Updated `eval.rs`, `orchestrator.rs`, `timeline/` module to use only `assumption_events`
 
 **Codemod Pattern Used**: Python dry-run script with brace-counting (see `scripts/remove_domain_assumption.py`)
 

@@ -1,3 +1,8 @@
+> [!NOTE]
+> **Archived Plan (Dec 2025)** — This task file documents a completed refactoring session.
+> File paths (e.g., `helpers.rs`, `timeline.rs`) may reference pre-refactor locations.
+> See [ARCHITECTURE.md](ARCHITECTURE.md) for current project structure.
+
 # Evaluación Sistemática del CAS Engine
 
 ## Objetivo

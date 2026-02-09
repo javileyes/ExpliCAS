@@ -1,3 +1,8 @@
+> [!NOTE]
+> **Archived Plan (Dec 2025)** — This implementation plan documents a proposed algebra.rs split that was deferred.
+> File paths (e.g., `timeline.rs`) may reference pre-refactor locations.
+> See [ARCHITECTURE.md](ARCHITECTURE.md) for current project structure.
+
 # Fase 3: División de Archivos Grandes
 
 Dividir [algebra.rs](file:///Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/algebra.rs) (2649 líneas) en módulos más pequeños y manejables.
