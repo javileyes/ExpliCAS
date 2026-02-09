@@ -114,8 +114,7 @@ define_rule!(
         // Only match Mul at top level
         if let Expr::Mul(_l, _r) = ctx.get(expr) {
             // Flatten the multiplication to find all factors
-            let mut factors = Vec::new();
-            crate::helpers::flatten_mul(ctx, expr, &mut factors);
+            let factors = crate::nary::mul_leaves(ctx, expr);
 
             if factors.len() < 3 {
                 return None;

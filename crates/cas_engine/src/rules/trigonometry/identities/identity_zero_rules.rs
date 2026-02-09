@@ -402,8 +402,7 @@ impl Sin4xIdentityZeroRule {
 
             // RHS should be 4*sin(t)*cos(t)*(cos(t)^2 - sin(t)^2)
             // Flatten multiplication to get factors
-            let mut factors = Vec::new();
-            crate::helpers::flatten_mul(ctx, rhs, &mut factors);
+            let factors = crate::nary::mul_leaves(ctx, rhs);
 
             if factors.len() < 4 {
                 return None;

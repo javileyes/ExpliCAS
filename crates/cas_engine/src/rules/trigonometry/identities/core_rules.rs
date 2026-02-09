@@ -477,8 +477,7 @@ define_rule!(
 
         if as_add(ctx, expr).is_some() {
             // Flatten add
-            let mut terms = Vec::new();
-            crate::helpers::flatten_add(ctx, expr, &mut terms);
+            let terms = crate::nary::add_leaves(ctx, expr);
 
             // Helper to extract ALL (coeff, func_name, arg, is_negated) candidates from a term
             // Returns Vec of candidates - for terms like sin²*cos², returns multiple candidates
@@ -546,8 +545,7 @@ define_rule!(
                 // Check if inner term is Mul containing sin^n or cos^n
                 // IMPORTANT: Generate ALL possible candidates (one per trig^n factor)
                 if is_mul {
-                    let mut factors = Vec::new();
-                    crate::helpers::flatten_mul(ctx, inner_term, &mut factors);
+                    let factors = crate::nary::mul_leaves(ctx, inner_term);
 
                     // Find ALL trig^n factors (not just the first)
                     for (i, &factor) in factors.iter().enumerate() {

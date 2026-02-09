@@ -47,8 +47,7 @@ fn test_get_integer() {
 fn test_flatten_add() {
     let mut ctx = Context::new();
     let expr = parse("a + b + c", &mut ctx).unwrap();
-    let mut terms = Vec::new();
-    flatten_add(&ctx, expr, &mut terms);
+    let terms = crate::nary::add_leaves(&ctx, expr);
     assert_eq!(terms.len(), 3);
 }
 
@@ -65,8 +64,7 @@ fn test_flatten_add_sub_chain() {
 fn test_flatten_mul() {
     let mut ctx = Context::new();
     let expr = parse("a * b * c", &mut ctx).unwrap();
-    let mut factors = Vec::new();
-    flatten_mul(&ctx, expr, &mut factors);
+    let factors = crate::nary::mul_leaves(&ctx, expr);
     assert_eq!(factors.len(), 3);
 }
 

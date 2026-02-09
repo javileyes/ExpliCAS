@@ -314,9 +314,7 @@ define_rule!(
         // Only match Add or Sub at top level
         // Normalize Sub to Add(a, Neg(b)) conceptually by handling both
         let terms: Vec<ExprId> = if as_add(ctx, expr).is_some() {
-            let mut ts = Vec::new();
-            crate::helpers::flatten_add(ctx, expr, &mut ts);
-            ts
+            crate::nary::add_leaves(ctx, expr).to_vec()
         } else if let Some((l, r)) = as_sub(ctx, expr) {
             // Treat as [l, -r]
             vec![l, r] // We'll handle the sign in matching
@@ -532,8 +530,7 @@ define_rule!(
     "Hyperbolic Tanh Pythagorean",
     |ctx, expr| {
         // Flatten the additive chain
-        let mut terms = Vec::new();
-        crate::helpers::flatten_add(ctx, expr, &mut terms);
+        let terms = crate::nary::add_leaves(ctx, expr);
 
         if terms.len() < 2 {
             return None;

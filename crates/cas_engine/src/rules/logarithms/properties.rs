@@ -727,16 +727,13 @@ impl crate::rule::Rule for LogChainProductRule {
         expr: cas_ast::ExprId,
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        use crate::helpers::flatten_mul;
-
         // Only match Mul nodes
         if !matches!(ctx.get(expr), Expr::Mul(_, _)) {
             return None;
         }
 
         // Flatten the multiplication chain
-        let mut factors: Vec<ExprId> = Vec::new();
-        flatten_mul(ctx, expr, &mut factors);
+        let factors = crate::nary::mul_leaves(ctx, expr);
 
         // Extract log parts from all factors
         // log_parts[i] = Some((base, arg)) if factor[i] is log(base, arg)

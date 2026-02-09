@@ -89,8 +89,7 @@ define_rule!(
     "Trig Fourth Power Difference",
     |ctx, expr| {
         // Collect all additive terms
-        let mut terms = Vec::new();
-        crate::helpers::flatten_add(ctx, expr, &mut terms);
+        let terms = crate::nary::add_leaves(ctx, expr);
 
         if terms.len() < 2 {
             return None;

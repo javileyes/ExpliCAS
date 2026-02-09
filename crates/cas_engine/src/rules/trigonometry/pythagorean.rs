@@ -21,8 +21,7 @@ define_rule!(
         // Only apply to Add expressions (Sub is represented as Add with Neg)
 
         // We need exactly 2 terms: constant and trig term
-        let mut terms = Vec::new();
-        crate::helpers::flatten_add(ctx, expr, &mut terms);
+        let terms = crate::nary::add_leaves(ctx, expr);
         if terms.len() != 2 {
             return None;
         }
@@ -54,8 +53,7 @@ define_rule!(
     "Pythagorean Chain Identity",
     |ctx, expr| {
         // Flatten the additive chain
-        let mut terms = Vec::new();
-        crate::helpers::flatten_add(ctx, expr, &mut terms);
+        let terms = crate::nary::add_leaves(ctx, expr);
 
         if terms.len() < 2 {
             return None;
@@ -138,8 +136,7 @@ define_rule!(
     "Pythagorean with Generic Coefficient",
     |ctx, expr| {
         // Flatten the additive chain
-        let mut terms = Vec::new();
-        crate::helpers::flatten_add(ctx, expr, &mut terms);
+        let terms = crate::nary::add_leaves(ctx, expr);
 
         if terms.len() < 2 {
             return None;
@@ -332,8 +329,7 @@ define_rule!(
         use num_traits::{One, Zero};
 
         // Flatten the additive chain
-        let mut terms = Vec::new();
-        crate::helpers::flatten_add(ctx, expr, &mut terms);
+        let terms = crate::nary::add_leaves(ctx, expr);
 
         if terms.len() < 2 {
             return None;
@@ -485,8 +481,7 @@ define_rule!(
         use num_traits::{One, Zero};
 
         // Flatten the additive chain
-        let mut terms = Vec::new();
-        crate::helpers::flatten_add(ctx, expr, &mut terms);
+        let terms = crate::nary::add_leaves(ctx, expr);
 
         if terms.len() < 3 {
             return None;
@@ -851,8 +846,7 @@ define_rule!(
     "Recognize Secant Squared",
     |ctx, expr| {
         // Flatten the additive chain
-        let mut terms = Vec::new();
-        crate::helpers::flatten_add(ctx, expr, &mut terms);
+        let terms = crate::nary::add_leaves(ctx, expr);
 
         if terms.len() < 2 {
             return None;
@@ -923,8 +917,7 @@ define_rule!(
     "Recognize Cosecant Squared",
     |ctx, expr| {
         // Flatten the additive chain
-        let mut terms = Vec::new();
-        crate::helpers::flatten_add(ctx, expr, &mut terms);
+        let terms = crate::nary::add_leaves(ctx, expr);
 
         if terms.len() < 2 {
             return None;

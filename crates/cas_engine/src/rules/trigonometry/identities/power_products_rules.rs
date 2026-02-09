@@ -138,8 +138,7 @@ define_rule!(
         }
 
         // Flatten the sum to get all terms
-        let mut terms = Vec::new();
-        crate::helpers::flatten_add(ctx, expr, &mut terms);
+        let terms = crate::nary::add_leaves(ctx, expr);
 
         // We need exactly 3 terms for the pattern
         if terms.len() != 3 {
@@ -248,10 +247,7 @@ fn extract_trig_two_term_sum(
     expr: ExprId,
     fn_name: &str,
 ) -> Option<(ExprId, ExprId)> {
-    use crate::helpers::flatten_add;
-
-    let mut terms = Vec::new();
-    flatten_add(ctx, expr, &mut terms);
+    let terms = crate::nary::add_leaves(ctx, expr);
 
     // Must have exactly 2 terms (both same trig function)
     if terms.len() != 2 {

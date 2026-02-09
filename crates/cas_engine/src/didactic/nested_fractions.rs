@@ -674,7 +674,6 @@ pub(crate) fn generate_sum_three_cubes_substeps(
     ctx: &Context,
     step: &crate::step::Step,
 ) -> Vec<SubStep> {
-    use crate::helpers::flatten_add;
     use cas_ast::DisplayExpr;
 
     let mut sub_steps = Vec::new();
@@ -683,8 +682,7 @@ pub(crate) fn generate_sum_three_cubes_substeps(
     let before_expr = step.before;
 
     // Flatten the sum to get individual terms
-    let mut terms = Vec::new();
-    flatten_add(ctx, before_expr, &mut terms);
+    let terms = crate::nary::add_leaves(ctx, before_expr);
 
     if terms.len() != 3 {
         return sub_steps; // Not the expected pattern

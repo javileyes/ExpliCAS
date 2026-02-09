@@ -56,7 +56,7 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
         expr: ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        use crate::helpers::{as_number, flatten_mul, is_provably_sin_nonzero};
+        use crate::helpers::{as_number, is_provably_sin_nonzero};
         use crate::rule::Rewrite;
         use num_bigint::BigInt;
         use num_rational::BigRational;
@@ -67,8 +67,7 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
         }
 
         // Flatten the multiplication
-        let mut factors = Vec::new();
-        flatten_mul(ctx, expr, &mut factors);
+        let factors = crate::nary::mul_leaves(ctx, expr);
 
         // Separate numeric coefficient from cos factors
         let mut numeric_coeff = BigRational::one();

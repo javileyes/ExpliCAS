@@ -83,8 +83,7 @@ define_rule!(
         }
 
         // 2. Flatten the chain
-        let mut terms = Vec::new();
-        crate::helpers::flatten_add(ctx, expr, &mut terms);
+        let terms = crate::nary::add_leaves(ctx, expr);
 
         // 3. Separate into potential squares and negative squares
         // We look for pairs (A, B) where A is a square and B is a negative square (B = -C^2)
@@ -351,17 +350,8 @@ define_rule!(
     SumThreeCubesZeroRule,
     "Sum of Three Cubes (Zero Sum Identity)",
     |ctx, expr| {
-        use crate::helpers::flatten_add;
-
-        // Match Add expressions only
-        match ctx.get(expr) {
-            Expr::Add(_, _) => {}
-            _ => return None,
-        }
-
         // Flatten the sum
-        let mut terms = Vec::new();
-        flatten_add(ctx, expr, &mut terms);
+        let terms = crate::nary::add_leaves(ctx, expr);
 
         // We need at least 3 cube terms (and no more for the pure identity)
         // For safety, only match exactly 3 cubes with no other terms

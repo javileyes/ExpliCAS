@@ -136,35 +136,10 @@ pub(crate) fn extract_quintuple_angle_arg(context: &Context, expr: ExprId) -> Op
     None
 }
 
-/// Flatten an Add chain into a list of terms (simple version).
-///
-/// This only handles `Add` nodes — `Sub` and `Neg` are treated as atomic
-/// (leaf) terms. For handling `Sub` and `Neg`, use `flatten_add_sub_chain`.
-///
-/// Uses iterative traversal to prevent stack overflow on deep expressions.
-///
-/// **NOTE**: This is intentionally NOT delegated to `nary::add_terms_no_sign`
-/// because that function also flattens through Sub/Neg, which changes semantics
-/// for callers that expect Sub(a,b) to be a single term.
-pub(crate) fn flatten_add(ctx: &Context, root: ExprId, terms: &mut Vec<ExprId>) {
-    let mut stack = vec![root];
-
-    while let Some(expr) = stack.pop() {
-        match ctx.get(expr) {
-            Expr::Add(l, r) => {
-                // Push right first so left is processed first
-                stack.push(*r);
-                stack.push(*l);
-            }
-            _ => terms.push(expr),
-        }
-    }
-}
-
 /// Flatten an Add/Sub chain into a list of terms, converting subtractions to Neg.
 /// This is used by collect and grouping modules for like-term collection.
 ///
-/// Unlike `flatten_add`, this handles:
+/// Unlike `nary::add_leaves`, this handles:
 /// - `Add(a, b)` → [a, b]
 /// - `Sub(a, b)` → [a, Neg(b)]
 /// - `Neg(Neg(x))` → [x]
@@ -200,31 +175,6 @@ fn flatten_add_sub_recursive(
             } else {
                 terms.push(expr);
             }
-        }
-    }
-}
-
-/// Flatten a Mul chain into a list of factors (simple version).
-///
-/// This only handles `Mul` nodes. For handling `Neg` as `-1 * expr`,
-/// use `flatten_mul_chain` instead.
-///
-/// Uses iterative traversal to prevent stack overflow on deep expressions.
-///
-/// **NOTE**: This is intentionally NOT delegated to `nary::mul_factors`
-/// because that function handles `__hold` unwrapping and poly_ref atomicity,
-/// which changes semantics for callers that expect raw Mul-only traversal.
-pub(crate) fn flatten_mul(ctx: &Context, root: ExprId, factors: &mut Vec<ExprId>) {
-    let mut stack = vec![root];
-
-    while let Some(expr) = stack.pop() {
-        match ctx.get(expr) {
-            Expr::Mul(l, r) => {
-                // Push right first so left is processed first
-                stack.push(*r);
-                stack.push(*l);
-            }
-            _ => factors.push(expr),
         }
     }
 }

@@ -133,8 +133,6 @@ pub(super) fn is_nary_conjugate_pair(
     /// coefficients, sort the factors canonically, and rebuild. This ensures that
     /// `2*a*b` compares equal regardless of tree structure (left vs right associative).
     fn normalize_term(ctx: &mut cas_ast::Context, term: cas_ast::ExprId) -> (cas_ast::ExprId, i32) {
-        use crate::helpers::flatten_mul;
-
         // Pre-extract variant info from borrow to avoid cloning full Expr
         enum TermKind {
             Neg(cas_ast::ExprId),
@@ -164,8 +162,7 @@ pub(super) fn is_nary_conjugate_pair(
             }
             TermKind::Mul => {
                 // Flatten the product to get all factors
-                let mut factors: Vec<cas_ast::ExprId> = Vec::new();
-                flatten_mul(ctx, term, &mut factors);
+                let factors = crate::nary::mul_leaves(ctx, term);
 
                 // Extract sign from any negative numeric coefficient
                 let mut overall_sign: i32 = 1;

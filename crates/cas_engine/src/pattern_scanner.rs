@@ -172,8 +172,7 @@ fn check_and_mark_trig_square_pattern(ctx: &Context, expr_id: ExprId, marks: &mu
     }
 
     // Flatten the Add to get all terms
-    let mut terms = Vec::new();
-    crate::helpers::flatten_add(ctx, expr_id, &mut terms);
+    let terms = crate::nary::add_leaves(ctx, expr_id);
 
     // Extract (func_name, func_id, arg_id) from terms that are sin²/cos²
     // Returns: ("sin"|"cos", function ExprId, argument ExprId)
@@ -274,8 +273,7 @@ fn check_and_mark_sum_quotient_pattern(ctx: &Context, expr_id: ExprId, marks: &m
         expr: ExprId,
         fn_name: &str,
     ) -> Option<(ExprId, ExprId, ExprId, ExprId)> {
-        let mut terms = Vec::new();
-        crate::helpers::flatten_add(ctx, expr, &mut terms);
+        let terms = crate::nary::add_leaves(ctx, expr);
 
         if terms.len() != 2 {
             return None;

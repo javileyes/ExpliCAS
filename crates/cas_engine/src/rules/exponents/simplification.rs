@@ -235,8 +235,7 @@ impl crate::rule::Rule for MulNaryCombinePowersRule {
             return None;
         }
 
-        let mut factors = Vec::new();
-        crate::helpers::flatten_mul(ctx, expr, &mut factors);
+        let factors = crate::nary::mul_leaves(ctx, expr);
 
         if factors.len() > 12 || factors.len() < 2 {
             return None;

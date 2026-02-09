@@ -497,6 +497,73 @@ pub fn mul_factors(ctx: &Context, root: ExprId) -> SmallVec<[ExprId; 8]> {
 }
 
 // ============================================================================
+// Add-only / Mul-only leaf flatteners
+// ============================================================================
+
+/// Flatten **only** `Add` nodes into a list of leaf terms.
+///
+/// Unlike [`add_terms_no_sign`], this does **not** decompose `Sub` or `Neg`:
+/// - `Add(a, b)` → `[a, b]` (recursive)
+/// - `Sub(a, b)` → `[Sub(a, b)]` ← **atomic leaf**
+/// - `Neg(x)` → `[Neg(x)]` ← **atomic leaf**
+///
+/// This is the canonical replacement for `helpers::flatten_add()`.
+/// Use [`add_terms_no_sign`] or [`add_terms_signed`] when you want full
+/// Add/Sub/Neg decomposition with sign tracking.
+///
+/// # Stack safety
+/// Uses iterative traversal (explicit stack) — safe for arbitrarily deep trees.
+pub fn add_leaves(ctx: &Context, root: ExprId) -> SmallVec<[ExprId; 8]> {
+    let mut terms = SmallVec::new();
+    let mut stack = SmallVec::<[ExprId; 16]>::new();
+    stack.push(root);
+
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Add(l, r) => {
+                // Push right first so left is processed first (preserves order)
+                stack.push(*r);
+                stack.push(*l);
+            }
+            _ => terms.push(expr),
+        }
+    }
+    terms
+}
+
+/// Flatten **only** `Mul` nodes into a list of leaf factors.
+///
+/// Unlike [`mul_factors`], this does **not** unwrap `__hold` or treat
+/// `poly_ref` specially:
+/// - `Mul(a, b)` → `[a, b]` (recursive)
+/// - `Neg(x)` → `[Neg(x)]` ← **atomic leaf**
+/// - `__hold(x)` → `[__hold(x)]` ← **atomic leaf**
+///
+/// This is the canonical replacement for `helpers::flatten_mul()`.
+/// Use [`mul_factors`] when you want full `MulView` semantics with
+/// `__hold` transparency and `poly_ref` atomicity.
+///
+/// # Stack safety
+/// Uses iterative traversal (explicit stack) — safe for arbitrarily deep trees.
+pub fn mul_leaves(ctx: &Context, root: ExprId) -> SmallVec<[ExprId; 8]> {
+    let mut factors = SmallVec::new();
+    let mut stack = SmallVec::<[ExprId; 16]>::new();
+    stack.push(root);
+
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Mul(l, r) => {
+                // Push right first so left is processed first (preserves order)
+                stack.push(*r);
+                stack.push(*l);
+            }
+            _ => factors.push(expr),
+        }
+    }
+    factors
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 

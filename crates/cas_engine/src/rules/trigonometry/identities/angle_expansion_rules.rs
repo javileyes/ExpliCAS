@@ -26,8 +26,7 @@ define_rule!(ProductToSumRule, "Product to Sum", |ctx, expr| {
     let expr_ref = ctx.get(expr);
 
     if let Expr::Mul(_, _) = expr_ref {
-        let mut factors = Vec::new();
-        crate::helpers::flatten_mul(ctx, expr, &mut factors);
+        let factors = crate::nary::mul_leaves(ctx, expr);
 
         // Find the coefficient 2 and two trig functions
         let mut has_two = false;
