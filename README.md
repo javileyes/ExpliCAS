@@ -2,6 +2,12 @@
 
 ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to provide **step-by-step mathematical explanations**. It is built with portability and educational utility in mind.
 
+## Live Demo
+
+🌐 **Try it online:** [https://sanjuanbosco.javiergimenez.es/](https://sanjuanbosco.javiergimenez.es/)
+
+![ExpliCAS Web Demo](docs/explicas_web_demo.png)
+
 ## Features
 
 -   **Step-by-Step Simplification**: Shows every rule applied to transform an expression.
