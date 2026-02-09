@@ -25,7 +25,9 @@ mod expansion_rules;
 pub use expansion_rules::{DoubleAngleRule, TrigSumToProductRule};
 
 mod contraction_rules;
-pub use contraction_rules::{DoubleAngleContractionRule, HalfAngleTangentRule};
+pub use contraction_rules::{
+    Cos2xAdditiveContractionRule, DoubleAngleContractionRule, HalfAngleTangentRule,
+};
 
 mod multi_angle_rules;
 pub use multi_angle_rules::{

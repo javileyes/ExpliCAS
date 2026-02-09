@@ -270,6 +270,12 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(DyadicCosProductToSinRule));
     simplifier.add_rule(Box::new(DoubleAngleRule));
     simplifier.add_rule(Box::new(DoubleAngleContractionRule)); // 2sin·cos→sin(2t), cos²-sin²→cos(2t)
+                                                               // DISABLED: Cos2xAdditiveContractionRule causes +435 numeric-only regression in metamorphic
+                                                               // combination tests. While it correctly contracts 1-2sin²→cos(2t) and 2cos²-1→cos(2t)
+                                                               // for standalone expressions (+131 NF-convergent), it changes the NF landscape causing
+                                                               // 566 proved-symbolic results to become numeric-only. The expand-first strategy
+                                                               // (sin/cos basis) is better for combination equivalence proofs.
+                                                               // simplifier.add_rule(Box::new(Cos2xAdditiveContractionRule));
                                                                // Sum-to-Product Quotient: runs BEFORE TripleAngleRule to avoid polynomial explosion
     simplifier.add_rule(Box::new(SinCosSumQuotientRule));
     // Standalone Sum-to-Product: sin(A)+sin(B), cos(A)+cos(B) etc. when args are k*π

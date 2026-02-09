@@ -474,3 +474,223 @@ impl DoubleAngleContractionRule {
         None
     }
 }
+
+// =============================================================================
+// Cos2xAdditiveContractionRule: 1 - 2·sin²(t) → cos(2t), 2·cos²(t) - 1 → cos(2t)
+// =============================================================================
+// These are alternate forms of the double-angle cosine identity that the
+// existing DoubleAngleContractionRule does not handle (it only handles
+// cos²(t) - sin²(t) → cos(2t)).
+//
+// Mathematical identities:
+//   cos(2t) = 1 - 2·sin²(t)
+//   cos(2t) = 2·cos²(t) - 1
+//
+// We scan additive leaves for a pair: constant ±1 and ∓2·trig²(t).
+
+pub struct Cos2xAdditiveContractionRule;
+
+impl crate::rule::Rule for Cos2xAdditiveContractionRule {
+    fn name(&self) -> &str {
+        "Cos 2x Additive Contraction"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        // Only apply to Add/Sub expressions
+        if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+            return None;
+        }
+
+        // Only apply to exactly 2-term additive expressions to avoid
+        // disrupting larger Pythagorean chains where the contraction would
+        // prevent downstream symbolic cancellation.
+        let terms = crate::nary::add_leaves(ctx, expr);
+        if terms.len() != 2 {
+            return None;
+        }
+
+        let one_rat = num_rational::BigRational::from_integer(1.into());
+        let two_rat = num_rational::BigRational::from_integer(2.into());
+        let neg_two_rat = num_rational::BigRational::from_integer((-2).into());
+
+        // Find a constant ±1 term
+        for (i, &term_i) in terms.iter().enumerate() {
+            let term_val = match ctx.get(term_i) {
+                Expr::Number(n) => n.clone(),
+                Expr::Neg(inner) => {
+                    if let Expr::Number(n) = ctx.get(*inner) {
+                        -n.clone()
+                    } else {
+                        continue;
+                    }
+                }
+                _ => continue,
+            };
+
+            // Check if this is +1 or -1
+            let is_pos_one = term_val == one_rat;
+            let is_neg_one = term_val == -one_rat.clone();
+            if !is_pos_one && !is_neg_one {
+                continue;
+            }
+
+            // Look for a matching ±2·trig²(t) in the remaining terms
+            for (j, &term_j) in terms.iter().enumerate() {
+                if j == i {
+                    continue;
+                }
+
+                if let Some((trig_arg, trig_is_sin, coeff)) =
+                    Self::extract_coeff_trig_squared(ctx, term_j)
+                {
+                    // Pattern A: 1 - 2·sin²(t) → cos(2t)
+                    //   Requires: is_pos_one=true, trig_is_sin=true, coeff=-2
+                    // Pattern B: 2·cos²(t) - 1 → cos(2t)
+                    //   Requires: is_neg_one=true, trig_is_sin=false, coeff=+2
+                    // Pattern C: -1 + 2·cos²(t) → cos(2t)
+                    //   Requires: is_neg_one=true, trig_is_sin=false, coeff=+2
+                    // Pattern D: -2·sin²(t) + 1 → cos(2t)
+                    //   Same as A with different ordering
+
+                    let matches = (is_pos_one && trig_is_sin && coeff == neg_two_rat)
+                        || (is_neg_one && !trig_is_sin && coeff == two_rat);
+
+                    if !matches {
+                        continue;
+                    }
+
+                    // Build cos(2t)
+                    let two = ctx.num(2);
+                    let double_arg = ctx.add(Expr::Mul(two, trig_arg));
+                    let cos_2t = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![double_arg]);
+
+                    // Build remaining terms (excluding i and j)
+                    let remaining: Vec<ExprId> = terms
+                        .iter()
+                        .enumerate()
+                        .filter(|(k, _)| *k != i && *k != j)
+                        .map(|(_, &t)| t)
+                        .collect();
+
+                    let result = if remaining.is_empty() {
+                        cos_2t
+                    } else {
+                        let mut acc = cos_2t;
+                        for &t in &remaining {
+                            acc = ctx.add(Expr::Add(acc, t));
+                        }
+                        acc
+                    };
+
+                    let desc = if trig_is_sin {
+                        "1 - 2·sin²(t) = cos(2t)"
+                    } else {
+                        "2·cos²(t) - 1 = cos(2t)"
+                    };
+
+                    return Some(Rewrite::new(result).desc(desc));
+                }
+            }
+        }
+
+        None
+    }
+
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::ADD.union(crate::target_kind::TargetKindSet::SUB))
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+
+    fn priority(&self) -> i32 {
+        200
+    }
+}
+
+impl Cos2xAdditiveContractionRule {
+    /// Extract (trig_arg, is_sin, coefficient) from a term like ±k·sin²(t) or ±k·cos²(t).
+    /// Returns the argument to the trig function, whether it's sin (true) or cos (false),
+    /// and the signed coefficient (including the sign from Neg).
+    fn extract_coeff_trig_squared(
+        ctx: &cas_ast::Context,
+        term: ExprId,
+    ) -> Option<(ExprId, bool, num_rational::BigRational)> {
+        let two_rat = num_rational::BigRational::from_integer(2.into());
+
+        // Handle negation: Neg(inner) → extract from inner with negated coeff
+        let (base_term, sign) = if let Expr::Neg(inner) = ctx.get(term) {
+            (*inner, num_rational::BigRational::from_integer((-1).into()))
+        } else {
+            (term, num_rational::BigRational::from_integer(1.into()))
+        };
+
+        // Flatten multiplication factors
+        let mut factors = Vec::new();
+        let mut stack = vec![base_term];
+        while let Some(curr) = stack.pop() {
+            if let Expr::Mul(l, r) = ctx.get(curr) {
+                stack.push(*l);
+                stack.push(*r);
+            } else {
+                factors.push(curr);
+            }
+        }
+
+        // Find trig²(t) factor and numeric coefficient
+        let mut trig_arg = None;
+        let mut is_sin = false;
+        let mut trig_idx = None;
+        let mut numeric_coeff = sign;
+
+        for (i, &f) in factors.iter().enumerate() {
+            // Check for trig²(t) = Pow(trig(t), 2)
+            if let Expr::Pow(base, exp) = ctx.get(f) {
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    if *n == two_rat {
+                        if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                            if args.len() == 1 {
+                                let builtin = ctx.builtin_of(*fn_id);
+                                if matches!(builtin, Some(cas_ast::BuiltinFn::Sin)) {
+                                    trig_arg = Some(args[0]);
+                                    is_sin = true;
+                                    trig_idx = Some(i);
+                                    break;
+                                } else if matches!(builtin, Some(cas_ast::BuiltinFn::Cos)) {
+                                    trig_arg = Some(args[0]);
+                                    is_sin = false;
+                                    trig_idx = Some(i);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let trig_arg = trig_arg?;
+        let trig_idx = trig_idx?;
+
+        // Multiply remaining factors to get the coefficient
+        for (i, &f) in factors.iter().enumerate() {
+            if i == trig_idx {
+                continue;
+            }
+            if let Expr::Number(n) = ctx.get(f) {
+                numeric_coeff *= n.clone();
+            } else {
+                // Non-numeric factor: this isn't a simple k·trig²(t) pattern
+                return None;
+            }
+        }
+
+        Some((trig_arg, is_sin, numeric_coeff))
+    }
+}
