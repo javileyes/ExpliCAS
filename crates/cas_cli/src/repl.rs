@@ -379,7 +379,9 @@ impl Default for Repl {
 //   init.rs             - Constructor and configuration sync
 //   dispatch.rs         - Command dispatch and routing
 //   help.rs             - Help system and documentation
-//   commands_misc.rs    - Miscellaneous commands (set, show, debug, etc.)
+//   commands_analysis.rs - Analysis commands (equiv, subst, timeline, visualize, explain)
+//   commands_session.rs  - Session environment (let, vars, clear, reset, cache)
+//   commands_semantics.rs - Semantics commands (semantics, presets)
 //   semantics.rs        - Semantic analysis commands
 //   commands_algebra.rs - Algebra commands (factor, expand, etc.)
 //   commands_solve.rs   - Solve command and equation handling
@@ -392,7 +394,9 @@ impl Default for Repl {
 // =============================================================================
 
 mod commands_algebra;
-mod commands_misc;
+mod commands_analysis;
+mod commands_semantics;
+mod commands_session;
 mod commands_solve;
 mod commands_system;
 mod core;
