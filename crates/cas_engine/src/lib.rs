@@ -84,7 +84,7 @@ pub(crate) mod build;
 pub mod error;
 pub mod json; // Canonical JSON API types (PR-B)
 pub mod nary;
-pub mod visitors;
+pub(crate) mod visitors;
 #[macro_use]
 pub mod macros;
 

@@ -74,3 +74,16 @@ pub(crate) fn as_fn1(ctx: &Context, id: ExprId, name: &str) -> Option<ExprId> {
         _ => None,
     }
 }
+
+/// Destruct Function(fn_id, args) -> Some((fn_id, &[ExprId])), else None.
+/// Returns SymbolId and args slice without cloning the args Vec.
+#[inline]
+pub(crate) fn as_function(
+    ctx: &Context,
+    id: ExprId,
+) -> Option<(cas_ast::symbol::SymbolId, &[ExprId])> {
+    match ctx.get(id) {
+        Expr::Function(fn_id, args) => Some((*fn_id, args.as_slice())),
+        _ => None,
+    }
+}

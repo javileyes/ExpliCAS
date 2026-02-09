@@ -323,22 +323,17 @@ define_rule!(CanonicalizeDivRule, "Canonicalize Division", importance: crate::st
 });
 
 define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
-    if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        let (fn_id, args) = (*fn_id, args.clone());
+    if let Some((fn_id, args)) = crate::helpers::as_function(ctx, expr) {
         if ctx.builtin_of(fn_id) == Some(cas_ast::BuiltinFn::Sqrt) {
             if args.len() == 1 {
                 let arg = args[0];
-
-                // Simplified: Just convert to power.
-                // Complex simplification (like sqrt(x^2+2x+1)) belongs in a separate simplification rule.
 
                 // Check for simple sqrt(x^2) -> |x|
                 if let Some((b, e)) = as_pow(ctx, arg) {
                     if let Expr::Number(n) = ctx.get(e) {
                         if n.is_integer() && n.to_integer().is_even() {
-                            // sqrt(x^(2k)) -> |x|^k
                             let two = ctx.num(2);
-                            let k = ctx.add(Expr::Div(e, two)); // This will simplify to integer
+                            let k = ctx.add(Expr::Div(e, two));
                             let abs_base = ctx.call("abs", vec![b]);
                             let new_expr = ctx.add(Expr::Pow(abs_base, k));
                             return Some(Rewrite::new(new_expr).desc("sqrt(x^2k) -> |x|^k"));
@@ -348,33 +343,28 @@ define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step
 
                 // sqrt(x) -> x^(1/2)
                 let half = ctx.rational(1, 2);
-                let new_expr = ctx.add(Expr::Pow(args[0], half));
+                let new_expr = ctx.add(Expr::Pow(arg, half));
                 return Some(Rewrite::new(new_expr).desc("sqrt(x) = x^(1/2)"));
             } else if args.len() == 2 {
                 // sqrt(x, n) -> x^(1/n)
-                // V2.14.45: Only convert if n is numeric (known index)
-                // If n is symbolic, keep sqrt form for better visualization and matching
-                let index = args[1];
+                let (base_arg, index) = (args[0], args[1]);
                 if !matches!(ctx.get(index), Expr::Number(_)) {
-                    // Symbolic index: don't convert, keep sqrt(x, n) form
                     return None;
                 }
                 let one = ctx.num(1);
                 let exp = ctx.add(Expr::Div(one, index));
-                let new_expr = ctx.add(Expr::Pow(args[0], exp));
+                let new_expr = ctx.add(Expr::Pow(base_arg, exp));
                 return Some(Rewrite::new(new_expr).desc("sqrt(x, n) = x^(1/n)"));
             }
         } else if ctx.builtin_of(fn_id) == Some(cas_ast::BuiltinFn::Root) && args.len() == 2 {
             // root(x, n) -> x^(1/n)
-            // V2.14.45: Only convert if n is numeric (known index)
-            let index = args[1];
+            let (base_arg, index) = (args[0], args[1]);
             if !matches!(ctx.get(index), Expr::Number(_)) {
-                // Symbolic index: don't convert, keep root(x, n) form
                 return None;
             }
             let one = ctx.num(1);
             let exp = ctx.add(Expr::Div(one, index));
-            let new_expr = ctx.add(Expr::Pow(args[0], exp));
+            let new_expr = ctx.add(Expr::Pow(base_arg, exp));
             return Some(Rewrite::new(new_expr).desc("root(x, n) = x^(1/n)"));
         }
     }
@@ -714,11 +704,11 @@ impl crate::rule::Rule for ExpToEPowRule {
             return None;
         }
 
-        if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let (fn_id, args) = (*fn_id, args.clone());
+        if let Some((fn_id, args)) = crate::helpers::as_function(ctx, expr) {
             if ctx.builtin_of(fn_id) == Some(cas_ast::BuiltinFn::Exp) && args.len() == 1 {
+                let arg = args[0];
                 let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
-                let new_expr = ctx.add(Expr::Pow(e, args[0]));
+                let new_expr = ctx.add(Expr::Pow(e, arg));
                 return Some(Rewrite::new(new_expr).desc("exp(x) = e^x"));
             }
         }
