@@ -104,8 +104,8 @@ fn test_large_numbers() {
 #[test]
 fn test_variables_and_roots() {
     // sqrt(8 * x^2) = sqrt(8) * sqrt(x^2) = 2*sqrt(2) * |x|
-    // Output: 2 * |x| * 2^(1/2)
-    test_simplify("sqrt(8 * x^2)", "2 * |x| * 2^(1/2)");
+    // Output: 2 * 2^(1/2) * |x|
+    test_simplify("sqrt(8 * x^2)", "2 * 2^(1/2) * |x|");
 
     // sqrt(12 * x^3) - x^3 is NOT a perfect square, so distribution is blocked
     // The expression stays as (12 * x^3)^(1/2)

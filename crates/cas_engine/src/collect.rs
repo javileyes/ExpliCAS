@@ -292,12 +292,41 @@ fn extract_numerical_coeff(ctx: &mut Context, expr: ExprId) -> (BigRational, Exp
             let (c, t) = extract_numerical_coeff(ctx, e);
             (-c, t)
         }
-        Expr::Mul(l, r) => {
-            // Check if l is number
-            if let Expr::Number(n) = ctx.get(l) {
-                (n.clone(), r)
-            } else {
+        Expr::Mul(_l, _r) => {
+            // Flatten nested Mul chains to extract ALL numeric factors.
+            // e.g. Mul(2, Mul(2, sin·cos)) → coeff=4, core=sin·cos
+            let mut factors = Vec::new();
+            let mut stack = vec![expr];
+            while let Some(id) = stack.pop() {
+                if let Expr::Mul(a, b) = ctx.get(id) {
+                    stack.push(*a);
+                    stack.push(*b);
+                } else {
+                    factors.push(id);
+                }
+            }
+            let mut coeff = BigRational::one();
+            let mut non_numeric: Vec<ExprId> = Vec::new();
+            for f in factors {
+                if let Expr::Number(n) = ctx.get(f) {
+                    coeff *= n.clone();
+                } else {
+                    non_numeric.push(f);
+                }
+            }
+            if non_numeric.is_empty() {
+                // All factors are numeric — treat as pure number
+                (coeff, ctx.num(1))
+            } else if coeff.is_one() {
+                // No numeric factors found — return original
                 (BigRational::one(), expr)
+            } else {
+                // Rebuild the non-numeric core
+                let mut core = non_numeric[0];
+                for &f in &non_numeric[1..] {
+                    core = mul2_raw(ctx, core, f);
+                }
+                (coeff, core)
             }
         }
         Expr::Add(_, _)
