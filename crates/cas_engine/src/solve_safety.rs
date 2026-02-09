@@ -9,7 +9,9 @@ use crate::assumptions::ConditionClass;
 ///
 /// # Classification Guide
 /// - **Always**: Global equivalence, safe in all contexts (e.g., `x + 0 → x`)
-/// - **NeedsCondition**: Valid under conditions, requires assumptions (e.g., `x/x → 1` needs `x ≠ 0`)
+/// - **IntrinsicCondition**: Condition is intrinsic to the input expression (e.g., `exp(ln(x))→x`;
+///   `ln(x)` already guarantees `x > 0`). Allowed in SolveTactic(Generic/Assume).
+/// - **NeedsCondition**: Valid under conditions that must be introduced (e.g., `x/x → 1` needs `x ≠ 0`)
 /// - **Never**: Never use in solver context (reserved for truly dangerous rewrites)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SolveSafety {
@@ -17,6 +19,15 @@ pub enum SolveSafety {
     /// These rules preserve solution sets unconditionally.
     #[default]
     Always,
+
+    /// Type B-intrinsic: Condition is already guaranteed by the input AST.
+    /// The rule's requirement is a precondition of an operator already present
+    /// in the expression (e.g., `ln(x)` intrinsically requires `x > 0`).
+    ///
+    /// In SolvePrepass: BLOCKED (prepass must not change structure)
+    /// In SolveTactic(Generic/Assume): ALLOWED (condition is inherited, not introduced)
+    /// In SolveTactic(Strict): BLOCKED (Strict requires formal proof)
+    IntrinsicCondition(ConditionClass),
 
     /// Type B/C: Requires conditions to be valid.
     /// - Definability (B): Requires ≠0 or "is defined" conditions
@@ -47,6 +58,11 @@ impl SolveSafety {
     pub fn safe_for_tactic(&self, domain_mode: crate::domain::DomainMode) -> bool {
         match self {
             SolveSafety::Always => true,
+            SolveSafety::IntrinsicCondition(_class) => {
+                // Intrinsic conditions are inherited from the input AST, not introduced.
+                // Allowed in Generic and Assume; blocked in Strict (requires formal proof).
+                domain_mode != crate::domain::DomainMode::Strict
+            }
             SolveSafety::NeedsCondition(class) => domain_mode.allows_unproven(*class),
             SolveSafety::Never => false,
         }
@@ -93,6 +109,27 @@ mod tests {
     }
 
     #[test]
+    fn test_intrinsic_condition_allowed_in_generic() {
+        let safety = SolveSafety::IntrinsicCondition(ConditionClass::Analytic);
+        assert!(
+            !safety.safe_for_prepass(),
+            "Intrinsic still blocked in prepass"
+        );
+        assert!(
+            !safety.safe_for_tactic(DomainMode::Strict),
+            "Strict requires proof"
+        );
+        assert!(
+            safety.safe_for_tactic(DomainMode::Generic),
+            "Generic inherits intrinsic"
+        );
+        assert!(
+            safety.safe_for_tactic(DomainMode::Assume),
+            "Assume allows all"
+        );
+    }
+
+    #[test]
     fn test_definability_blocked_in_prepass() {
         let safety = SolveSafety::NeedsCondition(ConditionClass::Definability);
         assert!(!safety.safe_for_prepass());
@@ -106,7 +143,7 @@ mod tests {
     fn test_analytic_blocked_in_prepass() {
         let safety = SolveSafety::NeedsCondition(ConditionClass::Analytic);
         assert!(!safety.safe_for_prepass());
-        // Analytic only allowed in Assume
+        // Analytic only allowed in Assume (introduced, not intrinsic)
         assert!(!safety.safe_for_tactic(DomainMode::Strict));
         assert!(!safety.safe_for_tactic(DomainMode::Generic));
         assert!(safety.safe_for_tactic(DomainMode::Assume));

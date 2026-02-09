@@ -364,16 +364,16 @@ fn eval_with_substitution(
             // Only handle integer exponents for exact computation
             if ev.is_integer() {
                 let n: i64 = ev.to_integer().try_into().ok()?;
-                if n >= 0 && n <= 20 {
+                if (0..=20).contains(&n) {
                     let mut result = BigRational::from_integer(1.into());
                     for _ in 0..n {
-                        result = result * &bv;
+                        result *= &bv;
                     }
                     Some(result)
-                } else if n < 0 && n >= -20 && !bv.is_zero() {
+                } else if (-20..0).contains(&n) && !bv.is_zero() {
                     let mut result = BigRational::from_integer(1.into());
                     for _ in 0..(-n) {
-                        result = result * &bv;
+                        result *= &bv;
                     }
                     Some(BigRational::from_integer(1.into()) / result)
                 } else {

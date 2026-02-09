@@ -146,7 +146,9 @@ impl crate::rule::Rule for ExponentialLogRule {
     }
 
     fn solve_safety(&self) -> crate::solve_safety::SolveSafety {
-        crate::solve_safety::SolveSafety::NeedsCondition(
+        // Intrinsic: the condition x > 0 is already guaranteed by ln(x)/log(b,x)
+        // being present in the input expression. This is inherited, not introduced.
+        crate::solve_safety::SolveSafety::IntrinsicCondition(
             crate::assumptions::ConditionClass::Analytic,
         )
     }

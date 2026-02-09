@@ -134,9 +134,11 @@ mod solve_tactic_tests {
         );
     }
 
-    /// SolveTactic in Generic mode should NOT allow Analytic rules.
+    /// SolveTactic in Generic mode SHOULD allow intrinsic Analytic rules.
+    /// exp(ln(x)) → x is allowed because ln(x) intrinsically requires x > 0;
+    /// this is an inherited condition, not an introduced one.
     #[test]
-    fn tactic_in_generic_blocks_analytic_rules() {
+    fn tactic_in_generic_allows_intrinsic_analytic_rules() {
         let mut simplifier = Simplifier::with_default_rules();
         let expr = parse_expr(&mut simplifier, "exp(ln(x))");
 
@@ -151,10 +153,10 @@ mod solve_tactic_tests {
             }
         );
 
-        // In Generic mode, Analytic rules should be blocked
-        assert!(
-            result_str.contains("ln") || result_str.contains("e"),
-            "SolveTactic(Generic) should block exp(ln(x))→x, got: {}",
+        // In Generic mode, intrinsic conditions (from ln(x)) are inherited
+        assert_eq!(
+            result_str, "x",
+            "SolveTactic(Generic) should allow exp(ln(x))→x (intrinsic x>0 from ln), got: {}",
             result_str
         );
     }

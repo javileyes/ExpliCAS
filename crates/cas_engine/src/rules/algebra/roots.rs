@@ -448,7 +448,7 @@ define_rule!(
         // Find the largest perfect n-th power factor
         // For sqrt (n=2): find largest k such that k² divides int_val
         // For cbrt (n=3): find largest k such that k³ divides int_val
-        let root_idx = root_index as u32;
+        let root_idx = root_index;
         let mut k = num_bigint::BigInt::from(1);
         let mut remaining = int_val.clone();
 
