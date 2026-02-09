@@ -8,6 +8,7 @@ use num_rational::BigRational;
 use num_traits::{One, Zero};
 
 /// A group of terms that cancelled to zero (e.g., 5 + (-5) → 0)
+#[allow(dead_code)] // Fields populated for future didactic focus display
 #[derive(Debug, Clone)]
 pub struct CancelledGroup {
     /// The canonical key (term part) that identified this group
@@ -19,6 +20,7 @@ pub struct CancelledGroup {
 }
 
 /// A group of terms that were combined (e.g., x + x → 2x)
+#[allow(dead_code)] // Fields populated for future didactic focus display
 #[derive(Debug, Clone)]
 pub struct CombinedGroup {
     /// The canonical key (term part) that identifies this group
@@ -34,6 +36,7 @@ pub struct CombinedGroup {
 #[derive(Debug, Clone)]
 pub struct CollectResult {
     pub new_expr: ExprId,
+    #[allow(dead_code)] // Set for future Assume-mode reporting
     pub assumption: Option<String>,
     /// Groups of terms that cancelled to zero
     pub cancelled: Vec<CancelledGroup>,
@@ -325,6 +328,7 @@ fn is_one_term(ctx: &Context, expr: ExprId) -> bool {
 /// Simplify numeric sums in exponents throughout an expression tree.
 /// e.g., x^(1/2 + 1/3) → x^(5/6)
 /// This is applied during the collect phase for early, visible simplification.
+#[allow(dead_code)] // Infrastructure: tested, reserved for collect pipeline
 pub fn simplify_numeric_exponents(ctx: &mut Context, expr: ExprId) -> ExprId {
     let expr_data = ctx.get(expr).clone();
 

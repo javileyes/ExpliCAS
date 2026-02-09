@@ -64,6 +64,7 @@ pub fn inv_mod(a: u64, p: u64) -> Option<u64> {
 }
 
 /// Modular division: (a / b) mod p = a * b^(-1) mod p
+#[allow(dead_code)] // Modular arithmetic infrastructure, used in tests
 #[inline]
 pub fn div_mod(a: u64, b: u64, p: u64) -> Option<u64> {
     inv_mod(b, p).map(|b_inv| mul_mod(a, b_inv, p))
@@ -86,10 +87,11 @@ pub fn pow_mod(mut base: u64, mut exp: u64, p: u64) -> u64 {
     result
 }
 
-/// A commonly used large prime for modular GCD (fits in u64)
+#[allow(dead_code)] // Canonical prime, re-exported by gcd_modp for production use
 pub const DEFAULT_PRIME: u64 = 0xFFFF_FFFF_FFFF_FFC5; // 2^64 - 59, a prime
 
 /// Smaller prime for testing
+#[allow(dead_code)] // Used in modp tests
 pub const TEST_PRIME: u64 = 1_000_000_007; // 10^9 + 7
 
 #[cfg(test)]

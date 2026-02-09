@@ -100,6 +100,7 @@ impl Default for ZippelBudget {
 
 /// Tuned budget for mm_gcd benchmark (7 variables, degree 7)
 /// Prefer using ZippelBudget::for_preset(ZippelPreset::MmGcd) instead.
+#[allow(dead_code)] // Benchmark infrastructure
 pub fn budget_for_mm_gcd() -> ZippelBudget {
     ZippelBudget::for_preset(ZippelPreset::MmGcd)
 }
@@ -127,6 +128,7 @@ pub fn gcd_zippel_modp(
 }
 
 /// Compute GCD with forced main variable (useful for benchmarks).
+#[allow(dead_code)] // Benchmark/test infrastructure: forced main variable
 pub fn gcd_zippel_modp_with_main(
     p: &MultiPolyModP,
     q: &MultiPolyModP,
