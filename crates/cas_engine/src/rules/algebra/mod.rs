@@ -61,6 +61,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(AddFractionsRule));
     simplifier.add_rule(Box::new(SubFractionsRule));
     simplifier.add_rule(Box::new(CombineSameDenominatorFractionsRule));
+    // Distribute numeric denominator into sums: (2x+4)/2 → x+2
+    simplifier.add_rule(Box::new(DivScalarIntoAddRule));
     // Compact rationalization rules (Level 0, 1) - should apply first
     simplifier.add_rule(Box::new(RationalizeSingleSurdRule));
     simplifier.add_rule(Box::new(RationalizeBinomialSurdRule));

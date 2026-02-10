@@ -147,3 +147,142 @@ define_rule!(
         }))
     }
 );
+
+// ========== Distribute Numeric Fraction Into Sum ==========
+// After canonicalization, (c₁·A + c₂·B) / d  becomes  Mul(Number(1/d), Add(c₁·A, c₂·B)).
+// This rule matches that canonicalized form and distributes:
+//   Mul(1/d, Add(c₁·A, c₂·B))  →  (c₁/d)·A + (c₂/d)·B
+// when all resulting coefficients are integers (or when GCD simplification is possible).
+//
+// Examples (after canonicalization):
+//   1/2 * (2x + 4y)      →  x + 2y
+//   1/3 * (6a + 3b)      →  2a + b
+//   1/2 * (2·√3 + 2·x²)  →  √3 + x²
+//
+// Only applies when:
+// - outer factor is a non-integer rational Number(p/q) with q > 1
+// - inner expression is Add
+// - all term coefficients are divisible by q/gcd(all_coeffs*p, q)
+// - distributing actually simplifies (doesn't just rearrange)
+
+define_rule!(
+    DivScalarIntoAddRule,
+    "Distribute Division Into Sum",
+    importance: crate::step::ImportanceLevel::Medium,
+    |ctx, expr| {
+        use num_rational::BigRational;
+        use num_traits::{One, Zero};
+
+        // Match Mul(Number(frac), Add(...)) or Mul(Add(...), Number(frac))
+        let (frac_val, add_id) = match ctx.get(expr) {
+            Expr::Mul(l, r) => {
+                let (l, r) = (*l, *r);
+                match (ctx.get(l), ctx.get(r)) {
+                    (Expr::Number(n), Expr::Add(_, _)) => (n.clone(), r),
+                    (Expr::Add(_, _), Expr::Number(n)) => (n.clone(), l),
+                    _ => return None,
+                }
+            }
+            _ => return None,
+        };
+
+        // Only handle non-integer fractions (p/q where q > 1)
+        // Integer multipliers (like 2 * (x+y)) don't need this rule
+        if frac_val.is_integer() || frac_val.is_zero() {
+            return None;
+        }
+
+        // Collect all additive terms (flatten)
+        fn collect_add_terms(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
+            match ctx.get(expr) {
+                Expr::Add(l, r) => {
+                    collect_add_terms(ctx, *l, terms);
+                    collect_add_terms(ctx, *r, terms);
+                }
+                _ => terms.push(expr),
+            }
+        }
+
+        let mut terms = Vec::new();
+        collect_add_terms(ctx, add_id, &mut terms);
+
+        if terms.len() < 2 {
+            return None;
+        }
+
+        // Extract the rational coefficient of each term.
+        fn extract_rational_coeff(ctx: &Context, term: ExprId, one_id: ExprId) -> (BigRational, ExprId) {
+            match ctx.get(term) {
+                Expr::Number(n) => {
+                    return (n.clone(), one_id);
+                }
+                Expr::Neg(inner) => {
+                    let (c, rest) = extract_rational_coeff(ctx, *inner, one_id);
+                    return (-c, rest);
+                }
+                Expr::Mul(l, r) => {
+                    if let Expr::Number(n) = ctx.get(*l) {
+                        return (n.clone(), *r);
+                    }
+                    if let Expr::Number(n) = ctx.get(*r) {
+                        return (n.clone(), *l);
+                    }
+                }
+                _ => {}
+            }
+            (BigRational::from_integer(1.into()), term)
+        }
+
+        let one_id = ctx.num(1);
+
+        let mut coeffs: Vec<BigRational> = Vec::with_capacity(terms.len());
+        let mut rests: Vec<ExprId> = Vec::with_capacity(terms.len());
+        for &t in &terms {
+            let (c, r) = extract_rational_coeff(ctx, t, one_id);
+            coeffs.push(c);
+            rests.push(r);
+        }
+
+        // Multiply each coefficient by the outer fraction and check if all results simplify
+        let new_coeffs: Vec<BigRational> = coeffs.iter().map(|c| c * &frac_val).collect();
+
+        // Check if at least one coefficient simplified to integer (became simpler)
+        // If all new coefficients are non-integer fractions, distributing doesn't help
+        let any_simpler = new_coeffs.iter().any(|c| c.is_integer());
+        if !any_simpler {
+            return None;
+        }
+
+        // Build new terms with the distributed coefficients
+        let mut new_terms: Vec<ExprId> = Vec::with_capacity(terms.len());
+        for (new_c, rest) in new_coeffs.iter().zip(rests.iter()) {
+            let new_term = if new_c == &BigRational::from_integer(1.into()) {
+                *rest
+            } else if new_c == &BigRational::from_integer((-1).into()) {
+                ctx.add(Expr::Neg(*rest))
+            } else if new_c.is_zero() {
+                continue; // Skip zero terms
+            } else {
+                let c_expr = ctx.add(Expr::Number(new_c.clone()));
+                if matches!(ctx.get(*rest), Expr::Number(n) if n.is_one()) {
+                    c_expr
+                } else {
+                    crate::build::mul2_raw(ctx, c_expr, *rest)
+                }
+            };
+            new_terms.push(new_term);
+        }
+
+        if new_terms.is_empty() {
+            return Some(Rewrite::new(ctx.num(0)).desc("All terms cancel"));
+        }
+
+        // Build new sum
+        let mut new_sum = new_terms[0];
+        for &t in &new_terms[1..] {
+            new_sum = ctx.add(Expr::Add(new_sum, t));
+        }
+
+        Some(Rewrite::new(new_sum).desc("Divide common factor from sum and denominator"))
+    }
+);

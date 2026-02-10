@@ -9,3 +9,4 @@ cc b096913b02bf550192e4dbdf55faf904265e5e298cf6533f1e0be9100283754d # shrinks to
 cc ed56528a17d77f36cb28a7a4bfd31d095524f76271e580c4b04e3fdafda20dcf # shrinks to re = Function("ln", [Number(0)])
 cc af0d671008c9e2f923782f743f80ff78ea3b9a29920727f91e1ef38853bbfbf4 # shrinks to re = Sub(Constant(Pi), Constant(Pi))
 cc b1a14290911971001fb06d0e38e2919ddf8ade9f2dec684e240195012608fb98 # shrinks to re = Pow(Add(Constant(Pi), Variable("a")), Number(2))
+cc 3e83c22c995d1ed564768ce8282ea5df9f518f5d5974ade3b0aa3204fe393e1f # shrinks to re = Sub(Div(Variable("a"), Number(-2)), Pow(Number(-1), Constant(Pi)))
