@@ -152,3 +152,19 @@ Rules declare their safety level for solver contexts via `SolveSafety`:
 | `NeedsCondition(Definability)` | ⛔ | ✅ | ✅ | ⛔ |
 | `NeedsCondition(Analytic)` | ⛔ | ⛔ | ✅ | ⛔ |
 | `Never` | ⛔ | ⛔ | ⛔ | ⛔ |
+
+---
+
+### RequirementDescriptor Bridge (Feb 2026)
+
+The `RequirementDescriptor` makes the `SolveSafety` → domain vocabulary mapping machine-queryable:
+
+| `SolveSafety` | `class` | `provenance` |
+|---|---|---|
+| `IntrinsicCondition(c)` | `c` | `Intrinsic` |
+| `NeedsCondition(c)` | `c` | `Introduced` |
+| `Always` / `Never` | — | `None` |
+
+Consumers (e.g., `domain_airbag.rs`) use `rule.solve_safety().requirement_descriptor()` instead of pattern-matching on `SolveSafety` variants directly.
+
+See [SEMANTICS_POLICY.md § Domain Oracle Architecture](./SEMANTICS_POLICY.md#domain-oracle-architecture-v151--feb-2026) for the full three-layer stack.

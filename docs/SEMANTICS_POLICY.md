@@ -200,6 +200,8 @@ Conditions required by transformations are classified into two types:
 - **Gate Functions**: `can_cancel_factor()` (Definability), `can_apply_analytic()` (Analytic)
 - **Central Logic**: `DomainMode::allows_unproven(ConditionClass)`
 - **Condition Types**: `AssumptionKey::class()` returns `ConditionClass`
+- **Oracle Entry Point**: `oracle_allows_with_hint()` unifies prove + gate + hint (see [§ Domain Oracle Architecture](./SEMANTICS_POLICY.md#domain-oracle-architecture-v151--feb-2026))
+- **Domain Vocabulary**: `Predicate`, `Provenance`, `FactStrength` (in `domain_facts.rs`)
 
 ### Affected Rules
 
