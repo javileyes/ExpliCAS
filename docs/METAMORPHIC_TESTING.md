@@ -444,27 +444,48 @@ METATEST_LEGACY_BUCKET=unconditional cargo test ...
 
 ### Test de Combinaciones
 
+Los tests de combinaciones generan miles de expresiones compuestas a partir del CSV de identidades,
+combinando pares con distintas operaciones (Add, Sub, Mul).
+
+#### Operaciones Disponibles (`CombineOp`)
+
+| Test | Op | Pares | Triples | Modo |
+|------|-----|-------|---------|------|
+| `metatest_csv_combinations_small` | **Add** | 30 | No | CI (no-ignore) |
+| `metatest_csv_combinations_full` | **Add** | 100 | Sí (100) | `--ignored` |
+| `metatest_csv_combinations_sub` | **Sub** | 100 | No | `--ignored` |
+| `metatest_csv_combinations_mul` | **Mul** | 10 | No | `--ignored` |
+
+**Nota sobre Mul:** Solo 10 pares porque la expansión de productos es mucho más costosa
+computacionalmente. Budget reducido (`max_total_rewrites=30`) para limitar el coste por combinación.
+
+#### Comandos
+
 ```bash
-# Pequeño (CI, 30 pares = ~435 combinaciones dobles)
+# CI (Add, 30 pares, ~435 combinaciones dobles)
 cargo test -p cas_engine --test metamorphic_simplification_tests \
     metatest_csv_combinations_small -- --nocapture 2>&1
 
-# Completo (100 pares + triples)
+# Add completo (100 pares + triples)
 cargo test -p cas_engine --test metamorphic_simplification_tests \
     metatest_csv_combinations_full -- --nocapture --ignored 2>&1
+
+# Subtraction (100 pares)
+cargo test -p cas_engine --test metamorphic_simplification_tests \
+    metatest_csv_combinations_sub -- --nocapture --ignored 2>&1
+
+# Multiplication (10 pares)
+cargo test -p cas_engine --test metamorphic_simplification_tests \
+    metatest_csv_combinations_mul -- --nocapture --ignored 2>&1
 ```
 
-#### Modo Verbose para Combinaciones
+#### Modo Verbose
 
 Para ver el **informe detallado con clasificación por niveles**:
 
 ```bash
-# Verbose con 10 ejemplos (default)
-METATEST_VERBOSE=1 cargo test -p cas_engine --test metamorphic_simplification_tests \
-    metatest_csv_combinations_small -- --nocapture 2>&1
-
-# Verbose con más ejemplos + offset
-METATEST_VERBOSE=1 METATEST_MAX_EXAMPLES=50 cargo test -p cas_engine \
+# Verbose con offset (útil para explorar distintas ventanas del CSV)
+METATEST_VERBOSE=1 METATEST_START_OFFSET=200 cargo test -p cas_engine \
     --test metamorphic_simplification_tests metatest_csv_combinations_full \
     -- --nocapture --ignored 2>&1
 ```
@@ -475,11 +496,11 @@ METATEST_VERBOSE=1 METATEST_MAX_EXAMPLES=50 cargo test -p cas_engine \
 |----------|---------|-------------|
 | `METATEST_VERBOSE` | (desactivado) | Activa informe detallado con ejemplos y clasificadores |
 | `METATEST_MAX_EXAMPLES` | `10` | Número máximo de ejemplos a mostrar por categoría |
-| `METATEST_START_OFFSET` | `0` | Saltar las primeras N identidades del CSV |
+| `METATEST_START_OFFSET` | `0` | Saltar las primeras N identidades del CSV (para explorar distintas ventanas) |
 
-#### Clasificación de Combinaciones (3 niveles)
+#### Clasificación de Combinaciones (4 niveles)
 
-Cada combinación `(identity_i + identity_j)` se clasifica en:
+Cada combinación `(identity_i ⊕ identity_j)` se clasifica en:
 
 | Nivel | Emoji | Significado |
 |-------|-------|-------------|
@@ -488,13 +509,12 @@ Cada combinación `(identity_i + identity_j)` se clasifica en:
 | **Numeric-only** | 🌡️ | **Equivalencia numérica** — solo pasa por muestreo numérico, no hay prueba simbólica |
 | **Failed** | ❌ | **Error** — falla incluso la equivalencia numérica |
 
-**Output ejemplo (sin verbose):**
+#### Output Ejemplo
 
 ```
-📊 Running CSV combination tests with 100 pairs (offset 0)
-✅ Double combinations: 4278 passed, 0 failed
-   📐 NF-convergent: 2440 | 🔢 Proved-symbolic: 1814 | 🌡️ Numeric-only: 24
-✅ Triple combinations: 100 passed, 0 failed (of 100 tested)
+📊 Running CSV combination tests [add] with 30 pairs (offset 0, shuffled)
+✅ Double combinations [add]: 406 passed, 0 failed, 0 skipped (timeout)
+   📐 NF-convergent: 278 | 🔢 Proved-symbolic: 127 | 🌡️ Numeric-only: 1
 ```
 
 #### Secciones del Informe Verbose
@@ -557,10 +577,27 @@ es que `Failed = 0`. Los clasificadores ayudan a **priorizar qué reglas de simp
 ### Test de Combinaciones — Salida Típica
 
 ```
-✅ Double combinations: 4278 passed, 0 failed
-   📐 NF-convergent: 2440 | 🔢 Proved-symbolic: 1814 | 🌡️ Numeric-only: 24
-✅ Triple combinations: 100 passed, 0 failed (of 100 tested)
+✅ Double combinations [add]: 406 passed, 0 failed, 0 skipped (timeout)
+   📐 NF-convergent: 278 | 🔢 Proved-symbolic: 127 | 🌡️ Numeric-only: 1
 ```
+
+### Baselines de Combinaciones (Feb 2026)
+
+Resultados de referencia tras la implementación de `DivScalarIntoAddRule` (GCD-based):
+
+| Op | Offset | Pairs | NF-conv | Proved | Numeric | Failed |
+|----|--------|-------|---------|--------|---------|--------|
+| Add | 0 | 30 | 278 | 127 | 1 | 0 |
+| Add | 200 | 100 | — | — | 186 | 0 |
+| Add | 300 | 100 | — | — | 23 | 0 |
+| Sub | — | 100 | — | — | (pendiente) | 0 |
+| Mul | — | 10 | — | — | (pendiente) | 0 |
+
+**Familias dominantes en numeric-only (Add, offset 200):**
+- `tan (without sec/csc)` — 84 casos
+- `ln/log` — 63 casos (residuo: `(2·ln(y·√u) - ln(u) - 2·ln(y))/2`)
+- `sec/csc` — 16 casos
+- `sqrt/roots` — 8 casos
 
 ### Qué Significan
 
