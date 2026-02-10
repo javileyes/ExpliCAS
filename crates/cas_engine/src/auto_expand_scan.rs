@@ -548,8 +548,13 @@ fn try_mark_log_cancellation(ctx: &Context, id: ExprId, marks: &mut PatternMarks
             } else {
                 simple_log_count += 1;
             }
-        } else if is_coefficient_times_log(ctx, *term) {
-            simple_log_count += 1;
+        } else if let Some(info) = extract_log_from_coefficient(ctx, *term) {
+            // Term is k * log(...) — check if the inner log is expandable
+            if is_expandable_log_arg(ctx, info.arg) {
+                expandable_log_count += 1;
+            } else {
+                simple_log_count += 1;
+            }
         }
     }
 
@@ -619,20 +624,25 @@ fn is_expandable_log_arg(ctx: &Context, arg: ExprId) -> bool {
     }
 }
 
-/// Check if term is of form `k * log(x)` or `k * ln(x)` (coefficient times log)
-fn is_coefficient_times_log(ctx: &Context, id: ExprId) -> bool {
+/// Extract log info from a term of form `k * log(x)` or `k * ln(x)` (coefficient times log).
+/// Returns the LogInfo of the inner log, allowing callers to check expandability.
+fn extract_log_from_coefficient(ctx: &Context, id: ExprId) -> Option<LogInfo> {
     match ctx.get(id) {
         Expr::Mul(l, r) => {
             // Check if one side is a number and the other is a log
             let l_is_num = matches!(ctx.get(*l), Expr::Number(_));
             let r_is_num = matches!(ctx.get(*r), Expr::Number(_));
-            let l_is_log = extract_log_info(ctx, *l).is_some();
-            let r_is_log = extract_log_info(ctx, *r).is_some();
 
-            (l_is_num && r_is_log) || (r_is_num && l_is_log)
+            if l_is_num {
+                extract_log_info(ctx, *r)
+            } else if r_is_num {
+                extract_log_info(ctx, *l)
+            } else {
+                None
+            }
         }
-        Expr::Neg(inner) => is_coefficient_times_log(ctx, *inner),
-        _ => false,
+        Expr::Neg(inner) => extract_log_from_coefficient(ctx, *inner),
+        _ => None,
     }
 }
 
