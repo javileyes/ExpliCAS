@@ -30,12 +30,13 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
         // Optionally gate on NeedsCondition(Analytic) solve_safety
         if skip_unless_analytic {
-            let needs_analytic_check = matches!(
-                rule.solve_safety(),
-                crate::solve_safety::SolveSafety::NeedsCondition(
-                    crate::assumptions::ConditionClass::Analytic
-                )
-            );
+            let needs_analytic_check =
+                rule.solve_safety()
+                    .requirement_descriptor()
+                    .is_some_and(|req| {
+                        req.class == crate::assumptions::ConditionClass::Analytic
+                            && req.provenance == crate::domain_facts::Provenance::Introduced
+                    });
             if !needs_analytic_check {
                 return false; // Not blocked
             }

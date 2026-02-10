@@ -2,8 +2,16 @@
 //!
 //! Classifies rules by their safety for use during equation solving.
 //! Prevents solution set corruption by filtering dangerous rules in solver pre-pass.
+//!
+//! # Bridge to Domain Vocabulary
+//!
+//! [`RequirementDescriptor`] maps the static rule metadata (`SolveSafety`) to
+//! the dynamic domain vocabulary (`ConditionClass` + `Provenance`), making
+//! the relationship machine-queryable without collapsing two distinct concerns
+//! into a single type.
 
 use crate::assumptions::ConditionClass;
+use crate::domain_facts::Provenance;
 
 /// Safety classification for rules when used during equation solving.
 ///
@@ -42,6 +50,32 @@ pub enum SolveSafety {
     Never,
 }
 
+// =============================================================================
+// RequirementDescriptor — Bridge to domain vocabulary
+// =============================================================================
+
+/// Bridge between static rule safety metadata and the dynamic domain vocabulary.
+///
+/// Preserves both the condition class (Definability vs Analytic) and the
+/// provenance (Intrinsic vs Introduced), allowing consumers to query
+/// "what kind of condition does this rule need?" without pattern-matching
+/// on `SolveSafety` variants directly.
+///
+/// # Mapping
+///
+/// | `SolveSafety` | `class` | `provenance` |
+/// |---|---|---|
+/// | `IntrinsicCondition(c)` | `c` | `Intrinsic` |
+/// | `NeedsCondition(c)` | `c` | `Introduced` |
+/// | `Always` / `Never` | — | — (returns `None`) |
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RequirementDescriptor {
+    /// What kind of condition the rule needs (Definability or Analytic).
+    pub class: ConditionClass,
+    /// Where the condition comes from: inherited from the AST or introduced by the rule.
+    pub provenance: Provenance,
+}
+
 impl SolveSafety {
     /// Returns true if this rule is safe in solver pre-pass (cleanup phase).
     /// Only `Always` rules are allowed in pre-pass.
@@ -65,6 +99,27 @@ impl SolveSafety {
             }
             SolveSafety::NeedsCondition(class) => domain_mode.allows_unproven(*class),
             SolveSafety::Never => false,
+        }
+    }
+
+    /// Bridge to domain vocabulary: maps this safety classification to a
+    /// [`RequirementDescriptor`] containing `ConditionClass` + `Provenance`.
+    ///
+    /// Returns `None` for `Always` (no condition needed) and `Never`
+    /// (unconditionally blocked — no meaningful condition to describe).
+    #[inline]
+    pub fn requirement_descriptor(&self) -> Option<RequirementDescriptor> {
+        match self {
+            SolveSafety::Always => None,
+            SolveSafety::IntrinsicCondition(class) => Some(RequirementDescriptor {
+                class: *class,
+                provenance: Provenance::Intrinsic,
+            }),
+            SolveSafety::NeedsCondition(class) => Some(RequirementDescriptor {
+                class: *class,
+                provenance: Provenance::Introduced,
+            }),
+            SolveSafety::Never => None,
         }
     }
 }
@@ -98,6 +153,7 @@ mod tests {
     use super::*;
     use crate::assumptions::ConditionClass;
     use crate::domain::DomainMode;
+    use crate::domain_facts::Provenance;
 
     #[test]
     fn test_always_safe_everywhere() {
@@ -156,5 +212,68 @@ mod tests {
         assert!(!safety.safe_for_tactic(DomainMode::Strict));
         assert!(!safety.safe_for_tactic(DomainMode::Generic));
         assert!(!safety.safe_for_tactic(DomainMode::Assume));
+    }
+
+    // =====================================================================
+    // RequirementDescriptor bridge tests
+    // =====================================================================
+
+    #[test]
+    fn test_always_has_no_descriptor() {
+        assert!(SolveSafety::Always.requirement_descriptor().is_none());
+    }
+
+    #[test]
+    fn test_never_has_no_descriptor() {
+        assert!(SolveSafety::Never.requirement_descriptor().is_none());
+    }
+
+    #[test]
+    fn test_intrinsic_analytic_descriptor() {
+        let desc = SolveSafety::IntrinsicCondition(ConditionClass::Analytic)
+            .requirement_descriptor()
+            .expect("IntrinsicCondition should produce a descriptor");
+        assert_eq!(desc.class, ConditionClass::Analytic);
+        assert_eq!(desc.provenance, Provenance::Intrinsic);
+    }
+
+    #[test]
+    fn test_intrinsic_definability_descriptor() {
+        let desc = SolveSafety::IntrinsicCondition(ConditionClass::Definability)
+            .requirement_descriptor()
+            .expect("IntrinsicCondition should produce a descriptor");
+        assert_eq!(desc.class, ConditionClass::Definability);
+        assert_eq!(desc.provenance, Provenance::Intrinsic);
+    }
+
+    #[test]
+    fn test_needs_analytic_descriptor() {
+        let desc = SolveSafety::NeedsCondition(ConditionClass::Analytic)
+            .requirement_descriptor()
+            .expect("NeedsCondition should produce a descriptor");
+        assert_eq!(desc.class, ConditionClass::Analytic);
+        assert_eq!(desc.provenance, Provenance::Introduced);
+    }
+
+    #[test]
+    fn test_needs_definability_descriptor() {
+        let desc = SolveSafety::NeedsCondition(ConditionClass::Definability)
+            .requirement_descriptor()
+            .expect("NeedsCondition should produce a descriptor");
+        assert_eq!(desc.class, ConditionClass::Definability);
+        assert_eq!(desc.provenance, Provenance::Introduced);
+    }
+
+    #[test]
+    fn test_descriptor_distinguishes_intrinsic_from_introduced() {
+        let intrinsic = SolveSafety::IntrinsicCondition(ConditionClass::Analytic)
+            .requirement_descriptor()
+            .unwrap();
+        let introduced = SolveSafety::NeedsCondition(ConditionClass::Analytic)
+            .requirement_descriptor()
+            .unwrap();
+        // Same class, different provenance
+        assert_eq!(intrinsic.class, introduced.class);
+        assert_ne!(intrinsic.provenance, introduced.provenance);
     }
 }
