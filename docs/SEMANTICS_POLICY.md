@@ -780,9 +780,10 @@ Each rule declares its **SolveSafety classification**, and the solver uses a res
 
 ```rust
 pub enum SolveSafety {
-    Always,                         // Safe for solver pre-pass
-    NeedsCondition(ConditionClass), // Requires condition, blocks in prepass
-    Never,                          // Never safe in solver
+    Always,                              // Safe for solver pre-pass
+    IntrinsicCondition(ConditionClass),  // Inherited from input AST
+    NeedsCondition(ConditionClass),      // Requires introduced condition
+    Never,                               // Never safe in solver
 }
 ```
 
@@ -877,3 +878,96 @@ Guardrail tests ensure new dangerous rules are properly marked:
 4. Add to guardrail test in `solve_safety_contract_tests.rs`
 
 See [SOLVER_SIMPLIFY_POLICY.md](SOLVER_SIMPLIFY_POLICY.md) for complete policy.
+
+---
+
+## Domain Oracle Architecture (V1.5.1 — Feb 2026)
+
+The **Domain Oracle** is a unification layer that replaces scattered `prove_X` + `can_apply_X_with_hint` call sequences with a single entry point. It does **not** change user-facing semantics — all `semantics` commands (`domain`, `branch`, `inv_trig`, etc.) work identically.
+
+### Three-Layer Stack
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Layer 3: Rule Logic                                │
+│  rule.apply_with_context(ctx, expr, parent_ctx)     │
+│  Calls: oracle_allows_with_hint(ctx, mode, vd,      │
+│         &Predicate::NonZero(expr), "Rule Name")     │
+└──────────────────────┬──────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────┐
+│  Layer 2: Domain Oracle (domain_oracle.rs)          │
+│  oracle_allows_with_hint()                          │
+│  1. Dispatches to prove_nonzero/positive/nonneg     │
+│  2. Maps Predicate → ConditionClass                 │
+│  3. Delegates to decide_by_class()                  │
+└──────────────────────┬──────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────┐
+│  Layer 1: Domain Vocabulary (domain_facts.rs)       │
+│  Predicate, Provenance, FactStrength, DomainFact    │
+│  decide_by_class(mode, class, strength)             │
+│  → CancelDecision (Allow/Block/AllowWithKeys)       │
+└─────────────────────────────────────────────────────┘
+```
+
+### Key Types
+
+| Type | File | Purpose |
+|------|------|---------|
+| `Predicate` | `domain_facts.rs` | What to prove: `NonZero(e)`, `Positive(e)`, `NonNegative(e)` |
+| `Provenance` | `domain_facts.rs` | Where a fact came from: `Intrinsic`, `Proven`, `Assumed`, `Introduced` |
+| `FactStrength` | `domain_facts.rs` | Evidence quality: `Proven`, `Unknown`, `Disproven` |
+| `RequirementDescriptor` | `solve_safety.rs` | Bridge: maps `SolveSafety` → `(ConditionClass, Provenance)` |
+| `StandardOracle` | `domain_oracle.rs` | Oracle implementation with `oracle_allows_with_hint()` |
+
+### RequirementDescriptor Bridge
+
+`SolveSafety` (static rule metadata) and `DomainFact`/`Predicate` (dynamic expression facts) serve different planes. The `RequirementDescriptor` bridges them:
+
+```rust
+pub struct RequirementDescriptor {
+    pub class: ConditionClass,      // Definability or Analytic
+    pub provenance: Provenance,     // Intrinsic or Introduced
+}
+
+impl SolveSafety {
+    pub fn requirement_descriptor(&self) -> Option<RequirementDescriptor> { ... }
+}
+```
+
+| `SolveSafety` | `class` | `provenance` |
+|---|---|---|
+| `IntrinsicCondition(c)` | `c` | `Intrinsic` |
+| `NeedsCondition(c)` | `c` | `Introduced` |
+| `Always` / `Never` | — | `None` |
+
+### What Did NOT Change
+
+| Component | Changed? | Notes |
+|-----------|:--------:|-------|
+| `semantics domain/branch/inv_trig` commands | ❌ | User-facing API untouched |
+| `DomainMode::allows_unproven(class)` | ❌ | Still the decision point |
+| `ParentContext` propagation | ❌ | Still propagates `domain_mode()`, `value_domain()` |
+| `can_cancel_factor` / `can_apply_analytic` signatures | ❌ | Internal delegation changed, external API same |
+| Rule `solve_safety:` declarations | ❌ | All 19 declarations unchanged |
+
+### Migration Pattern (for rule authors)
+
+**Before** (3 separate calls):
+```rust
+let proof = prove_nonzero(ctx, expr, vd);
+let key = AssumptionKey::nonzero_key(ctx, expr);
+let decision = can_cancel_factor_with_hint(mode, proof, key, expr, "Rule Name");
+```
+
+**After** (1 oracle call):
+```rust
+let decision = oracle_allows_with_hint(
+    ctx, mode, vd,
+    &Predicate::NonZero(expr),
+    "Rule Name",
+);
+```
+
+Both produce the same `CancelDecision` — the oracle just encapsulates the proof + key + dispatch.

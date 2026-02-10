@@ -223,6 +223,17 @@ This classification interacts with assumption provenance:
 | `NeedsCondition(Analytic)` | Introduced | ⛔ | ⛔ | ✅ | ⛔ |
 | `Never` | — | ⛔ | ⛔ | ⛔ | ⛔ |
 
+The relationship to `Provenance` is machine-queryable via `RequirementDescriptor`:
+
+```rust
+// Bridge: SolveSafety → domain vocabulary
+let desc = rule.solve_safety().requirement_descriptor();
+// desc.class: ConditionClass (Definability / Analytic)
+// desc.provenance: Provenance (Intrinsic / Introduced)
+```
+
+See [SEMANTICS_POLICY.md § Domain Oracle Architecture](./SEMANTICS_POLICY.md#domain-oracle-architecture-v151--feb-2026) for the complete architecture.
+
 ### Three Domain Invariants
 
 1. **Invariant A — No introduced requires in Generic.**
