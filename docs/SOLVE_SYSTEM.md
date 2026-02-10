@@ -6,7 +6,7 @@ General solver for n×n linear equation systems:
 - 2×2, 3×3: Cramer's rule
 - n≥4: Gaussian elimination with partial pivoting
 
-Uses exact `BigRational` arithmetic.
+Uses exact `BigRational` arithmetic — no floating-point approximations.
 
 ## Syntax
 
@@ -79,11 +79,18 @@ Inequalities (<, >, <=, >=, !=) are not supported.
    - `x = (d₁b₂ - b₁d₂) / det` where `d = -c`
    - `y = (a₁d₂ - d₁a₂) / det`
 
-### 3x3 Systems
-Same as 2x2, but with:
+### 3×3 Systems
+Same as 2×2, but with:
 - Extract 3 coefficients per equation: `ax + by + cz + d = 0`
 - Compute 3×3 determinant via cofactor expansion (Sarrus rule)
 - Apply Cramer's rule with column substitution for each variable
+
+### n×n Systems (n ≥ 4)
+Uses Gaussian elimination with partial pivoting:
+1. **Build** augmented matrix `[A|b]` from coefficient extraction
+2. **Forward elimination** with partial pivoting (swap largest pivot)
+3. **Back-substitution** to recover solution vector
+4. **Degeneracy detection**: rank-deficient → Infinite/No Solution classification
 
 ## Implementation Details
 
@@ -109,14 +116,12 @@ A system is considered linear if:
 
 ## Limitations
 
-1. **2×2 and 3×3 only**: No support for 4×4 or larger systems (yet)
-2. **Rational coefficients**: Symbolic coefficients not supported
-3. **Equalities only**: No inequality systems
-4. **No parametric solutions**: Degenerate systems return error, not general solution
+1. **Rational coefficients**: Symbolic coefficients not supported
+2. **Equalities only**: No inequality systems
+3. **No parametric solutions**: Degenerate systems return error, not general solution
 
 ## Future Extensions
 
-- 4×4+ systems via LU decomposition
 - Parametric solutions for dependent systems
 - Integration with standard `solve` for automatic system detection
 

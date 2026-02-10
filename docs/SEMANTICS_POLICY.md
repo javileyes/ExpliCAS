@@ -821,9 +821,9 @@ pub enum SimplifyPurpose {
 
 | Rule | File | Condition |
 |------|------|-----------|
-| `CancelCommonFactorsRule` | fractions.rs | factor ≠ 0 |
-| `SimplifyFractionRule` | fractions.rs | denom ≠ 0 |
-| `QuotientOfPowersRule` | fractions.rs | base ≠ 0 |
+| `CancelCommonFactorsRule` | algebra/fractions/ | factor ≠ 0 |
+| `SimplifyFractionRule` | algebra/fractions/ | denom ≠ 0 |
+| `QuotientOfPowersRule` | algebra/fractions/ | base ≠ 0 |
 | `IdentityPowerRule` | exponents.rs | x^0 needs x ≠ 0 |
 | `MulZeroRule` | arithmetic.rs | hides undefined |
 | `DivZeroRule` | arithmetic.rs | 0/d needs d ≠ 0 |

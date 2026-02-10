@@ -12,18 +12,18 @@ Rule inventory and ownership for the CAS engine.
 
 | Rule | File | Name String | PhaseMask | Intent | Churn Risk |
 |------|------|-------------|-----------|--------|------------|
-| `DistributeRule` | `polynomial.rs` | "Distributive Property" | CORE\|POST (default) | Complex distribution with guards for binomials, fraction GCD | LOW |
-| `DistributeRule` | `distribution.rs` | "Distributive Property (Simple)" | TRANSFORM | Simple a*(b+c) distribution, no guards | MEDIUM |
-| `ExpandRule` | `distribution.rs` | "Expand Polynomial" | TRANSFORM | Handles `expand(expr)` function call | LOW |
-| `ConservativeExpandRule` | `distribution.rs` | "Conservative Expand" | TRANSFORM | Implicit expansion only if ≤ node count | LOW |
-| `BinomialExpansionRule` | `polynomial.rs` | "Binomial Expansion" | CORE\|POST | (a+b)^n expansion via binomial theorem | MEDIUM |
-| `DifferenceOfSquaresRule` | `factoring.rs` | "Difference of Squares (Product to Difference)" | CORE\|POST | (a-b)(a+b) → a²-b² | LOW |
+| `DistributeRule` | `polynomial/` | "Distributive Property" | CORE\|POST (default) | Complex distribution with guards for binomials, fraction GCD | LOW |
+| `DistributeRule` | `algebra/distribution.rs` | "Distributive Property (Simple)" | TRANSFORM | Simple a*(b+c) distribution, no guards | MEDIUM |
+| `ExpandRule` | `algebra/distribution.rs` | "Expand Polynomial" | TRANSFORM | Handles `expand(expr)` function call | LOW |
+| `ConservativeExpandRule` | `algebra/distribution.rs` | "Conservative Expand" | TRANSFORM | Implicit expansion only if ≤ node count | LOW |
+| `BinomialExpansionRule` | `polynomial/` | "Binomial Expansion" | CORE\|POST | (a+b)^n expansion via binomial theorem | MEDIUM |
+| `DifferenceOfSquaresRule` | `algebra/factoring.rs` | "Difference of Squares (Product to Difference)" | CORE\|POST | (a-b)(a+b) → a²-b² | LOW |
 
 ### Semantic Duplicates
 
 **Two DistributeRules exist** with different behaviors:
 
-| Aspect | polynomial.rs | distribution.rs |
+| Aspect | polynomial/ | algebra/distribution.rs |
 |--------|---------------|-----------------|
 | Name | "Distributive Property" | "Distributive Property (Simple)" |
 | Phase | CORE\|POST | TRANSFORM only |
@@ -31,8 +31,8 @@ Rule inventory and ownership for the CAS engine.
 | Registered | `polynomial::register()` | NOT registered by default |
 
 **Recommendation**: 
-- The `polynomial.rs` version is the "source of truth" for simplify behavior
-- The `distribution.rs` version is designed for explicit `expand()` phase
+- The `polynomial/` version is the "source of truth" for simplify behavior
+- The `algebra/distribution.rs` version is designed for explicit `expand()` phase
 - Keep both, they serve different purposes
 
 ---
@@ -41,9 +41,9 @@ Rule inventory and ownership for the CAS engine.
 
 | Rule | File | Name String | PhaseMask | Intent | Churn Risk |
 |------|------|-------------|-----------|--------|------------|
-| `FactorRule` | `factoring.rs` | "Factor Polynomial" | CORE\|POST | Handles `factor(expr)` function | LOW |
-| `FactorDifferenceSquaresRule` | `factoring.rs` | "Factor Difference of Squares" | **DISABLED** | a²-b² → (a-b)(a+b) | HIGH - loops with DistributeRule |
-| `AutomaticFactorRule` | `factoring.rs` | "Automatic Factorization" | CORE\|POST | Auto-factor only if reduces size | MEDIUM |
+| `FactorRule` | `algebra/factoring.rs` | "Factor Polynomial" | CORE\|POST | Handles `factor(expr)` function | LOW |
+| `FactorDifferenceSquaresRule` | `algebra/factoring.rs` | "Factor Difference of Squares" | **DISABLED** | a²-b² → (a-b)(a+b) | HIGH - loops with DistributeRule |
+| `AutomaticFactorRule` | `algebra/factoring.rs` | "Automatic Factorization" | CORE\|POST | Auto-factor only if reduces size | MEDIUM |
 
 ---
 
@@ -51,10 +51,10 @@ Rule inventory and ownership for the CAS engine.
 
 | Rule | File | Name String | PhaseMask | Intent | Churn Risk |
 |------|------|-------------|-----------|--------|------------|
-| `RationalizeDenominatorRule` | `fractions.rs` | "Rationalize Denominator" | RATIONALIZE | General rationalization | LOW |
-| `RationalizeSingleSurdRule` | `fractions.rs` | "Rationalize Single Surd" | RATIONALIZE | Simple √n denominator | LOW |
-| `RationalizeBinomialSurdRule` | `fractions.rs` | "Rationalize Binomial Surd" | RATIONALIZE | Conjugate multiplication | LOW |
-| `RationalizeProductDenominatorRule` | `fractions.rs` | "Rationalize Product Denominator" | RATIONALIZE | k/√n cases | LOW |
+| `RationalizeDenominatorRule` | `algebra/fractions/rationalize.rs` | "Rationalize Denominator" | RATIONALIZE | General rationalization | LOW |
+| `RationalizeSingleSurdRule` | `algebra/fractions/rationalize.rs` | "Rationalize Single Surd" | RATIONALIZE | Simple √n denominator | LOW |
+| `RationalizeBinomialSurdRule` | `algebra/fractions/rationalize.rs` | "Rationalize Binomial Surd" | RATIONALIZE | Conjugate multiplication | LOW |
+| `RationalizeProductDenominatorRule` | `algebra/fractions/rationalize.rs` | "Rationalize Product Denominator" | RATIONALIZE | k/√n cases | LOW |
 
 ---
 

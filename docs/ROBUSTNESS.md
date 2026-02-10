@@ -206,10 +206,10 @@ make lint-no-stringly-ir
 | Node | Status | Baseline | Helpers |
 |------|--------|----------|---------|
 | `poly_result` | **Enforced** | 0 | `is_poly_result`, `parse_poly_result_id`, `wrap_poly_result` |
-| `__hold` | Tracking | 29 | `is_hold`, `unwrap_hold`, `strip_all_holds` |
+| `__hold` | **Enforced** | 0 | `is_hold`, `unwrap_hold`, `strip_all_holds` |
 
 * `poly_result`: **hard gate** in CI. Any string comparison (e.g., `name == "poly_result"`) outside `poly_result.rs` fails the build.
-* `__hold`: **no regression** policy. Violations above baseline (29) fail CI. Migration to 0 is in progress.
+* `__hold`: **hard gate** in CI. ✅ Enforced at 0 violations (Jan 2026). All access goes through canonical helpers in `cas_ast::hold`.
 
 ### Canonical modules
 

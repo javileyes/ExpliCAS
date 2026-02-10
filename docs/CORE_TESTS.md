@@ -92,7 +92,7 @@ These tests verify the **simplify vs expand contract** defined in Policy A+.
 - **Test**: `test_normalize_core_no_nested_pow`
 
 ### Policy A+: Fractional Distribution Guard
-- **Guard in**: `DistributeRule` (polynomial.rs)
+- **Guard in**: `DistributeRule` (polynomial/ and algebra/distribution.rs)
 - **Bypass**: `expand()` uses `expand.rs` directly
 - **Test**: `test_contract_fractional_binomial_style_only`
 

@@ -19,6 +19,7 @@ This document defines the `SolveSafety` contract for the ExpliCAS solver simplif
 | Class | Description | Example |
 |-------|-------------|---------|
 | `Always` | Global equivalence, never changes solution set | `a + 0 → a` |
+| `IntrinsicCondition(class)` | Condition inherited from input AST | `exp(ln(x)) → x` (x>0 from ln) |
 | `NeedsCondition(Definability)` | Requires ≠0 conditions | `(xy)/x → y` (x≠0) |
 | `NeedsCondition(Analytic)` | Requires sign/range conditions | `ln(xy) → ln(x)+ln(y)` (x,y>0) |
 | `Never` | Never safe in solver | (reserved) |
@@ -32,34 +33,42 @@ SolvePrepass:
 SolveTactic:
   rule.solve_safety().safe_for_tactic(domain_mode)
     - Strict: only Always
-    - Generic: Always + Definability
-    - Assume: Always + Definability + Analytic
+    - Generic: Always + IntrinsicCondition + Definability
+    - Assume: Always + IntrinsicCondition + Definability + Analytic
 ```
 
 ---
 
-## Marked Rules (13 total)
+## Marked Rules (17 total)
 
-### Definability (6)
+### Definability (9)
 | Rule | File | Reason |
 |------|------|--------|
-| `CancelCommonFactorsRule` | fractions.rs | factor≠0 |
-| `SimplifyFractionRule` | fractions.rs | denom≠0 |
-| `QuotientOfPowersRule` | fractions.rs | base≠0 |
-| `IdentityPowerRule` | exponents.rs | x^0→1 needs x≠0 |
+| `CancelPowersDivisionRule` | algebra/fractions/gcd_cancel.rs | base≠0 |
+| `CancelIdenticalFractionRule` | algebra/fractions/gcd_cancel.rs | denom≠0 |
+| `CancelPowerFractionRule` | algebra/fractions/gcd_cancel.rs | denom≠0 |
+| `SimplifyFractionRule` | algebra/fractions/gcd_cancel.rs | denom≠0 |
+| `CancelCommonFactorsRule` | algebra/fractions/cancel_rules_factor.rs | factor≠0 |
+| `QuotientOfPowersRule` | algebra/fractions/rationalize.rs | base≠0 |
+| `IdentityPowerRule` | exponents/simplification.rs | x^0→1 needs x≠0 |
 | `MulZeroRule` | arithmetic.rs | hides undefined |
 | `DivZeroRule` | arithmetic.rs | 0/d→0 needs d≠0 |
 
 ### Analytic (7)
 | Rule | File | Reason |
 |------|------|--------|
-| `LogExpansionRule` | logarithms.rs | x,y>0 |
-| `ExponentialLogRule` | logarithms.rs | x>0 |
-| `LogInversePowerRule` | logarithms.rs | range |
-| `SplitLogExponentsRule` | logarithms.rs | x>0 |
+| `LogExpansionRule` | logarithms/properties.rs | x,y>0 |
+| `SplitLogExponentsRule` | logarithms/inverse.rs | x>0 |
+| `LogInversePowerRule` | logarithms/inverse.rs | range |
+| `SqrtConjugateCollapseRule` | algebra/fractions/cancel_rules.rs | other ≥ 0 |
+| `PowerPowerRule` | exponents/power_rules.rs | non-integer exp |
 | `HyperbolicCompositionRule` | hyperbolic.rs | range |
 | `TrigInverseExpansionRule` | trig_inverse_expansion.rs | range |
-| `PowerPowerRule` | exponents.rs | non-integer exp |
+
+### IntrinsicCondition/Analytic (1)
+| Rule | File | Reason |
+|------|------|--------|
+| `ExponentialLogRule` | logarithms/inverse.rs | x>0 inherited from ln(x) |
 
 ---
 
@@ -84,7 +93,7 @@ let opts = SimplifyOptions::for_solve_tactic(DomainMode::Assume);
 4. Add to the contract test in `solve_safety_contract_tests.rs`
 
 **Modules requiring explicit `solve_safety`:**
-- `fractions.rs` - any cancellation
+- `algebra/fractions/` - any cancellation
 - `logarithms.rs` - any log manipulation
 - `exponents.rs` - x^0, power-power
 - `trig_inverse_*.rs` - all compositions

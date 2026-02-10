@@ -429,7 +429,7 @@ All 18 rules that previously emitted `domain_assumption` strings have been migra
 | Rule | File | Assumption Kind | Factory Used |
 |------|------|-----------------|--------------|
 | `DivZeroRule` | arithmetic.rs | NonZero | `AssumptionEvent::nonzero()` |
-| `SimplifyFractionRule` (GCD) | fractions.rs | NonZero | `AssumptionEvent::nonzero()` |
+| `SimplifyFractionRule` (GCD) | algebra/fractions/ | NonZero | `AssumptionEvent::nonzero()` |
 | `AddInverseRule` | arithmetic.rs | Defined | `AssumptionEvent::defined()` |
 | `IdentityPowerRule` (x^0) | exponents.rs | NonZero | `AssumptionEvent::nonzero()` |
 | `IdentityPowerRule` (0^x) | exponents.rs | Positive | `AssumptionEvent::positive()` |
@@ -438,7 +438,7 @@ All 18 rules that previously emitted `domain_assumption` strings have been migra
 | `ExponentialLogRule` | logarithms.rs | Positive | `AssumptionEvent::positive()` |
 | `LogExpInverseRule` | logarithms.rs | Positive | `AssumptionEvent::positive()` |
 | `CosProductTelescopingRule` | integration.rs | NonZero | `AssumptionEvent::nonzero()` |
-| `LiftConjugateToSqrtRule` | fractions.rs | Defined | `AssumptionEvent::defined()` |
+| `LiftConjugateToSqrtRule` | algebra/fractions/ | Defined | `AssumptionEvent::defined()` |
 | `PrincipalBranchInverseTrigRule` | inverse_trig.rs | InvTrigPrincipalRange | `AssumptionEvent::inv_trig_principal_range()` |
 | `InverseTrigCompositionRule` (sin∘arcsin) | inverse_trig.rs | Defined | `AssumptionEvent::defined()` |
 | `InverseTrigCompositionRule` (cos∘arccos) | inverse_trig.rs | Defined | `AssumptionEvent::defined()` |
