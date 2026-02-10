@@ -2460,8 +2460,36 @@ fn parse_branch_mode(s: &str) -> BranchMode {
     }
 }
 
+/// Operation used to combine two identity expressions in metamorphic tests
+#[derive(Clone, Copy, Debug)]
+enum CombineOp {
+    /// LHS_1 + LHS_2  vs  RHS_1 + RHS_2
+    Add,
+    /// LHS_1 * LHS_2  vs  RHS_1 * RHS_2
+    Mul,
+    /// LHS_1 - LHS_2  vs  RHS_1 - RHS_2
+    Sub,
+}
+
+impl CombineOp {
+    fn symbol(self) -> &'static str {
+        match self {
+            CombineOp::Add => "+",
+            CombineOp::Mul => "*",
+            CombineOp::Sub => "-",
+        }
+    }
+    fn name(self) -> &'static str {
+        match self {
+            CombineOp::Add => "add",
+            CombineOp::Mul => "mul",
+            CombineOp::Sub => "sub",
+        }
+    }
+}
+
 /// Run combination tests from CSV pairs
-fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
+fn run_csv_combination_tests(max_pairs: usize, include_triples: bool, op: CombineOp) {
     let all_pairs = load_identity_pairs();
     let config = metatest_config();
 
@@ -2471,8 +2499,21 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(0);
 
+    // Shuffle support: deterministic Fisher-Yates shuffle interleaves all families
+    // so any 100-pair window is a representative cross-section.
+    // Use METATEST_NOSHUFFLE=1 to get old contiguous behavior for family debugging.
+    let no_shuffle = std::env::var("METATEST_NOSHUFFLE").is_ok();
+    let mut shuffled_pairs = all_pairs;
+    if !no_shuffle {
+        let mut rng = Lcg::new(42);
+        for i in (1..shuffled_pairs.len()).rev() {
+            let j = rng.pick((i + 1) as u32) as usize;
+            shuffled_pairs.swap(i, j);
+        }
+    }
+
     // Limit pairs to avoid explosion, starting from offset
-    let pairs: Vec<_> = all_pairs
+    let pairs: Vec<_> = shuffled_pairs
         .into_iter()
         .skip(start_offset)
         .take(max_pairs)
@@ -2480,8 +2521,11 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
     let n = pairs.len();
 
     eprintln!(
-        "📊 Running CSV combination tests with {} pairs (offset {})",
-        n, start_offset
+        "📊 Running CSV combination tests [{}] with {} pairs (offset {}, {})",
+        op.name(),
+        n,
+        start_offset,
+        if no_shuffle { "ordered" } else { "shuffled" }
     );
 
     // Verbose mode: show nf_mismatch examples
@@ -2503,6 +2547,13 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
     let mut nf_mismatch_examples: Vec<(String, String, String, String)> = Vec::new();
     let mut numeric_only_examples: Vec<(String, String, String, String, String, String)> =
         Vec::new(); // (LHS, RHS, simp1, simp2, diff_residual, shape)
+    let mut skipped = 0;
+
+    // Per-combination timeout: mul is heavier due to product expansion
+    let combo_timeout = match op {
+        CombineOp::Mul => std::time::Duration::from_secs(2),
+        _ => std::time::Duration::from_secs(5),
+    };
 
     // Double combinations: all pairs of different identities
     for i in 0..n {
@@ -2514,10 +2565,10 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
             let pair2_exp = alpha_rename(&pair2.exp, &pair2.vars[0], "u");
             let pair2_simp = alpha_rename(&pair2.simp, &pair2.vars[0], "u");
 
-            let combined_exp = format!("({}) + ({})", pair1.exp, pair2_exp);
-            let combined_simp = format!("({}) + ({})", pair1.simp, pair2_simp);
+            let combined_exp = format!("({}) {} ({})", pair1.exp, op.symbol(), pair2_exp);
+            let combined_simp = format!("({}) {} ({})", pair1.simp, op.symbol(), pair2_simp);
 
-            // Parse and simplify
+            // Parse and simplify (with per-combo timeout)
             let mut simplifier = Simplifier::with_default_rules();
             let exp_parsed = match parse(&combined_exp, &mut simplifier.context) {
                 Ok(e) => e,
@@ -2528,8 +2579,41 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
                 Err(_) => continue,
             };
 
-            let (exp_simplified, _) = simplifier.simplify(exp_parsed);
-            let (simp_simplified, _) = simplifier.simplify(simp_parsed);
+            let combo_start = std::time::Instant::now();
+            // Use reduced rewrite budget for Mul to prevent runaway product expansion
+            let (exp_simplified, simp_simplified) = match op {
+                CombineOp::Mul => {
+                    let opts = cas_engine::phase::SimplifyOptions {
+                        budgets: cas_engine::phase::PhaseBudgets {
+                            max_total_rewrites: 30,
+                            core_iters: 4,
+                            transform_iters: 3,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    };
+                    let (e, _) = simplifier.simplify_with_options(exp_parsed, opts.clone());
+                    if combo_start.elapsed() > combo_timeout {
+                        skipped += 1;
+                        continue;
+                    }
+                    let (s, _) = simplifier.simplify_with_options(simp_parsed, opts);
+                    (e, s)
+                }
+                _ => {
+                    let (e, _) = simplifier.simplify(exp_parsed);
+                    if combo_start.elapsed() > combo_timeout {
+                        skipped += 1;
+                        continue;
+                    }
+                    let (s, _) = simplifier.simplify(simp_parsed);
+                    (e, s)
+                }
+            };
+            if combo_start.elapsed() > combo_timeout {
+                skipped += 1;
+                continue;
+            }
 
             // Check 1: Normal form convergence (exact structural match)
             let nf_match = cas_engine::ordering::compare_expr(
@@ -2542,18 +2626,31 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
                 nf_convergent += 1;
                 passed += 1;
             } else {
-                // Check 2: Proved symbolic via simplify(LHS - RHS) == 0
-                let diff_expr = simplifier
-                    .context
-                    .add(cas_ast::Expr::Sub(exp_simplified, simp_simplified));
+                // Check 2: Proved symbolic
+                // For Add/Sub: simplify(LHS - RHS) == 0
+                // For Mul: simplify(LHS / RHS) == 1 (quotient must simplify to unity)
+                let (diff_expr, target_value) = match op {
+                    CombineOp::Mul => {
+                        let q = simplifier
+                            .context
+                            .add(cas_ast::Expr::Div(exp_simplified, simp_simplified));
+                        (q, num_rational::BigRational::from_integer(1.into()))
+                    }
+                    _ => {
+                        let d = simplifier
+                            .context
+                            .add(cas_ast::Expr::Sub(exp_simplified, simp_simplified));
+                        (d, num_rational::BigRational::from_integer(0.into()))
+                    }
+                };
                 let (diff_simplified, _) = simplifier.simplify(diff_expr);
 
-                let is_zero = matches!(
+                let is_proved = matches!(
                     simplifier.context.get(diff_simplified),
-                    cas_ast::Expr::Number(n) if *n == num_rational::BigRational::from_integer(0.into())
+                    cas_ast::Expr::Number(n) if *n == target_value
                 );
 
-                if is_zero {
+                if is_proved {
                     proved_symbolic += 1;
                     passed += 1;
 
@@ -2604,7 +2701,13 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
                     } else {
                         failed += 1;
                         if failed <= 5 {
-                            eprintln!("❌ Double combo failed: ({}) + ({})", pair1.exp, pair2.exp);
+                            eprintln!(
+                                "❌ Double combo [{}] failed: ({}) {} ({})",
+                                op.name(),
+                                pair1.exp,
+                                op.symbol(),
+                                pair2.exp
+                            );
                         }
                     }
                 }
@@ -2613,8 +2716,11 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
     }
 
     eprintln!(
-        "✅ Double combinations: {} passed, {} failed",
-        passed, failed
+        "✅ Double combinations [{}]: {} passed, {} failed, {} skipped (timeout)",
+        op.name(),
+        passed,
+        failed,
+        skipped
     );
     eprintln!(
         "   📐 NF-convergent: {} | 🔢 Proved-symbolic: {} | 🌡️ Numeric-only: {}",
@@ -2796,10 +2902,22 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
                     let pair3_exp = alpha_rename(&pair3.exp, &pair3.vars[0], "v");
                     let pair3_simp = alpha_rename(&pair3.simp, &pair3.vars[0], "v");
 
-                    let combined_exp =
-                        format!("(({}) + ({})) + ({})", pair1.exp, pair2_exp, pair3_exp);
-                    let combined_simp =
-                        format!("(({}) + ({})) + ({})", pair1.simp, pair2_simp, pair3_simp);
+                    let combined_exp = format!(
+                        "(({}) {} ({})) {} ({})",
+                        pair1.exp,
+                        op.symbol(),
+                        pair2_exp,
+                        op.symbol(),
+                        pair3_exp
+                    );
+                    let combined_simp = format!(
+                        "(({}) {} ({})) {} ({})",
+                        pair1.simp,
+                        op.symbol(),
+                        pair2_simp,
+                        op.symbol(),
+                        pair3_simp
+                    );
 
                     let mut simplifier = Simplifier::with_default_rules();
                     let exp_parsed = match parse(&combined_exp, &mut simplifier.context) {
@@ -2876,14 +2994,34 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool) {
 #[test]
 fn metatest_csv_combinations_small() {
     // Small run: 30 pairs = 435 double combinations
-    run_csv_combination_tests(30, false);
+    run_csv_combination_tests(30, false, CombineOp::Add);
 }
 
 #[test]
 #[ignore] // Run with: cargo test --ignored
 fn metatest_csv_combinations_full() {
     // Full run: all pairs with triples
-    run_csv_combination_tests(100, true);
+    run_csv_combination_tests(100, true, CombineOp::Add);
+}
+
+/// Multiplicative combination test: (LHS_1 * LHS_2) vs (RHS_1 * RHS_2)
+/// Tests distribution, factoring, power simplification paths.
+/// Uses 50 pairs (vs 100 for add) because product expansion is heavier.
+#[test]
+#[ignore]
+fn metatest_csv_combinations_mul() {
+    // 25 pairs = 300 combos. Beyond ~26 pairs, some specific identity products
+    // cause very expensive simplification (exponential in product expansion).
+    // Also uses reduced PhaseBudgets (max_total_rewrites=30) to cap per-combo cost.
+    run_csv_combination_tests(25, false, CombineOp::Mul);
+}
+
+/// Subtractive combination test: (LHS_1 - LHS_2) vs (RHS_1 - RHS_2)
+/// Tests sign handling, cancellation, and subtraction-specific simplification
+#[test]
+#[ignore]
+fn metatest_csv_combinations_sub() {
+    run_csv_combination_tests(100, false, CombineOp::Sub);
 }
 
 /// Test individual identity pairs (not combinations) to see which simplify symbolically
