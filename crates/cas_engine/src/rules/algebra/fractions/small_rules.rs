@@ -171,7 +171,7 @@ define_rule!(
     importance: crate::step::ImportanceLevel::Medium,
     |ctx, expr| {
         use num_rational::BigRational;
-        use num_traits::{One, Zero};
+        use num_traits::{One, Signed, Zero};
 
         // Match Mul(Number(frac), Add(...)) or Mul(Add(...), Number(frac))
         let (frac_val, add_id) = match ctx.get(expr) {
@@ -243,27 +243,62 @@ define_rule!(
             rests.push(r);
         }
 
-        // Multiply each coefficient by the outer fraction and check if all results simplify
-        let new_coeffs: Vec<BigRational> = coeffs.iter().map(|c| c * &frac_val).collect();
+        // ── GCD-based simplification ──
+        // Instead of naively multiplying each coefficient by frac_val (which would
+        // cause oscillation with AddFractionsRule when not all results are integers),
+        // we compute g = gcd(|c₁|, |c₂|, ...) of the NUMERATOR coefficients.
+        //
+        // If g > 1, we can factor it out:
+        //   (p/q) * (c₁·A + c₂·B)  →  (p·g/q) * ((c₁/g)·A + (c₂/g)·B)
+        //
+        // This approach:
+        //   - Handles partial cancellation: (4x+2y)/6 → (2x+y)/3  [g=2]
+        //   - Avoids oscillation: (-2·(-1)^π - a)/2 → skip [g=gcd(2,1)=1]
+        //   - Fully cancels when possible: (2x+4y)/2 → x+2y  [g=2, new_frac=1]
 
-        // Check if at least one coefficient simplified to integer (became simpler)
-        // If all new coefficients are non-integer fractions, distributing doesn't help
-        let any_simpler = new_coeffs.iter().any(|c| c.is_integer());
-        if !any_simpler {
+
+        // Extract integer numerators for GCD computation.
+        // Each coefficient is a BigRational(p, q). We need the integer GCD across
+        // all coefficients, treating them as fractions.
+        // rational gcd: gcd(a/b, c/d) = gcd(a,c) / lcm(b,d)
+        fn rational_gcd(a: &BigRational, b: &BigRational) -> BigRational {
+            use num_integer::Integer;
+            if a.is_zero() { return b.abs(); }
+            if b.is_zero() { return a.abs(); }
+            let num_gcd = a.numer().gcd(b.numer());
+            let den_lcm = a.denom().lcm(b.denom());
+            BigRational::new(num_gcd, den_lcm)
+        }
+
+        let mut g = coeffs[0].abs();
+        for c in &coeffs[1..] {
+            g = rational_gcd(&g, c);
+            if g.is_one() {
+                return None; // GCD is 1 → no common factor → skip
+            }
+        }
+
+        if g <= BigRational::one() {
             return None;
         }
 
-        // Build new terms with the distributed coefficients
+        // Divide each coefficient by g
+        let reduced_coeffs: Vec<BigRational> = coeffs.iter().map(|c| c / &g).collect();
+
+        // New outer fraction = frac_val * g = (p/q) * g
+        let new_frac = &frac_val * &g;
+
+        // Build new terms with the reduced coefficients
         let mut new_terms: Vec<ExprId> = Vec::with_capacity(terms.len());
-        for (new_c, rest) in new_coeffs.iter().zip(rests.iter()) {
-            let new_term = if new_c == &BigRational::from_integer(1.into()) {
+        for (rc, rest) in reduced_coeffs.iter().zip(rests.iter()) {
+            let new_term = if rc == &BigRational::from_integer(1.into()) {
                 *rest
-            } else if new_c == &BigRational::from_integer((-1).into()) {
+            } else if rc == &BigRational::from_integer((-1).into()) {
                 ctx.add(Expr::Neg(*rest))
-            } else if new_c.is_zero() {
-                continue; // Skip zero terms
+            } else if rc.is_zero() {
+                continue;
             } else {
-                let c_expr = ctx.add(Expr::Number(new_c.clone()));
+                let c_expr = ctx.add(Expr::Number(rc.clone()));
                 if matches!(ctx.get(*rest), Expr::Number(n) if n.is_one()) {
                     c_expr
                 } else {
@@ -283,6 +318,22 @@ define_rule!(
             new_sum = ctx.add(Expr::Add(new_sum, t));
         }
 
-        Some(Rewrite::new(new_sum).desc("Divide common factor from sum and denominator"))
+        // Build result based on the new outer fraction
+        let result = if new_frac == BigRational::from_integer(1.into()) {
+            // Fraction fully absorbed → just the sum
+            new_sum
+        } else if new_frac == BigRational::from_integer((-1).into()) {
+            ctx.add(Expr::Neg(new_sum))
+        } else if new_frac.is_integer() {
+            // Integer multiplier: Mul(n, sum)
+            let n_expr = ctx.add(Expr::Number(new_frac.clone()));
+            crate::build::mul2_raw(ctx, n_expr, new_sum)
+        } else {
+            // Still fractional but with smaller denominator: Mul(p/q, sum)
+            let frac_expr = ctx.add(Expr::Number(new_frac.clone()));
+            crate::build::mul2_raw(ctx, frac_expr, new_sum)
+        };
+
+        Some(Rewrite::new(result).desc("Factor common coefficient from sum"))
     }
 );
