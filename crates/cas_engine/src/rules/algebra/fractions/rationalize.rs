@@ -274,7 +274,13 @@ define_rule!(
             let mut new_terms = Vec::new();
 
             for term_id in terms {
-                let term_factors = collect_mul_factors_int_pow(ctx, *term_id);
+                // Detect and preserve Neg wrapper (collect_mul_factors_int_pow strips it)
+                let (actual_term, is_negated) = match ctx.get(*term_id) {
+                    Expr::Neg(inner) => (*inner, true),
+                    _ => (*term_id, false),
+                };
+
+                let term_factors = collect_mul_factors_int_pow(ctx, actual_term);
                 let mut quotient_factors: Vec<(ExprId, i64)> = Vec::new();
 
                 for (base, exp) in term_factors {
@@ -291,7 +297,11 @@ define_rule!(
                     }
                 }
 
-                let quotient = build_mul_from_factors_a1(ctx, &quotient_factors);
+                let mut quotient = build_mul_from_factors_a1(ctx, &quotient_factors);
+                // Re-apply Neg if the original term was negated
+                if is_negated {
+                    quotient = ctx.add(Expr::Neg(quotient));
+                }
                 new_terms.push(quotient);
             }
 
