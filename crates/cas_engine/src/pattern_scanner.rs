@@ -55,6 +55,7 @@ fn scan_recursive(ctx: &Context, root: ExprId, marks: &mut PatternMarks) {
         check_and_mark_tan_triple_product_pattern(ctx, expr_id, marks);
         check_and_mark_tan_difference_identity_pattern(ctx, expr_id, marks);
         check_and_mark_sin4x_identity_pattern(ctx, expr_id, marks);
+        check_and_mark_tan_double_angle_pattern(ctx, expr_id, marks);
     }
 }
 
@@ -939,6 +940,137 @@ fn is_1_minus_2sin_sq(ctx: &Context, lhs: ExprId, rhs: ExprId, t: ExprId) -> boo
         }
     }
     false
+}
+
+/// Detect 2·tan(t)/(1 - tan²(t)) patterns.
+/// Mark tan(t) nodes for protection so TanToSinCosRule won't expand them,
+/// allowing TanDoubleAngleContractionRule to fire.
+fn check_and_mark_tan_double_angle_pattern(
+    ctx: &Context,
+    expr_id: ExprId,
+    marks: &mut PatternMarks,
+) {
+    // Only check Div nodes: 2·tan(t) / (1 - tan²(t))
+    let Expr::Div(num_id, den_id) = ctx.get(expr_id) else {
+        return;
+    };
+    let num_id = *num_id;
+    let den_id = *den_id;
+
+    // Numerator: 2·tan(t) — extract the tan argument
+    let Some(t) = extract_2_times_tan(ctx, num_id) else {
+        return;
+    };
+
+    // Denominator: 1 - tan²(t) in any canonical form
+    if !is_one_minus_tan_squared(ctx, den_id, t) {
+        return;
+    }
+
+    // Found pattern! Mark all tan(t) nodes in the expression for protection.
+    mark_tan_nodes_in_subtree(ctx, expr_id, t, marks);
+}
+
+/// Extract argument t from 2·tan(t) pattern (handles Mul(2, tan(t)) and Mul(tan(t), 2))
+fn extract_2_times_tan(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Mul(l, r) = ctx.get(expr) else {
+        return None;
+    };
+    let (l, r) = (*l, *r);
+    let two = num_rational::BigRational::from_integer(2.into());
+
+    if let Expr::Number(n) = ctx.get(l) {
+        if *n == two {
+            return extract_tan_arg(ctx, r);
+        }
+    }
+    if let Expr::Number(n) = ctx.get(r) {
+        if *n == two {
+            return extract_tan_arg(ctx, l);
+        }
+    }
+    None
+}
+
+/// Extract argument t from tan(t) function
+fn extract_tan_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        if ctx.is_builtin(*fn_id, BuiltinFn::Tan) && args.len() == 1 {
+            return Some(args[0]);
+        }
+    }
+    None
+}
+
+/// Check if expr matches 1 - tan²(t) in any canonical form
+fn is_one_minus_tan_squared(ctx: &Context, expr: ExprId, t: ExprId) -> bool {
+    // Form 1: Sub(1, tan²(t))
+    if let Expr::Sub(l, r) = ctx.get(expr) {
+        if matches!(ctx.get(*l), Expr::Number(n) if *n == num_rational::BigRational::from_integer(1.into()))
+        {
+            return is_tan_squared_of_t(ctx, *r, t);
+        }
+    }
+    // Form 2: Add(1, Neg(tan²(t))) or Add(Neg(tan²(t)), 1)
+    if let Expr::Add(l, r) = ctx.get(expr) {
+        let (l, r) = (*l, *r);
+        if matches!(ctx.get(l), Expr::Number(n) if *n == num_rational::BigRational::from_integer(1.into()))
+        {
+            if let Expr::Neg(inner) = ctx.get(r) {
+                return is_tan_squared_of_t(ctx, *inner, t);
+            }
+        }
+        if matches!(ctx.get(r), Expr::Number(n) if *n == num_rational::BigRational::from_integer(1.into()))
+        {
+            if let Expr::Neg(inner) = ctx.get(l) {
+                return is_tan_squared_of_t(ctx, *inner, t);
+            }
+        }
+    }
+    false
+}
+
+/// Check if expr is tan(t)² with the given argument t
+fn is_tan_squared_of_t(ctx: &Context, expr: ExprId, t: ExprId) -> bool {
+    if let Expr::Pow(base, exp) = ctx.get(expr) {
+        let two = num_rational::BigRational::from_integer(2.into());
+        if let Expr::Number(n) = ctx.get(*exp) {
+            if *n == two {
+                if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                    return ctx.is_builtin(*fn_id, BuiltinFn::Tan)
+                        && args.len() == 1
+                        && crate::ordering::compare_expr(ctx, args[0], t)
+                            == std::cmp::Ordering::Equal;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Mark all tan(t) function nodes in a subtree
+fn mark_tan_nodes_in_subtree(ctx: &Context, expr_id: ExprId, t: ExprId, marks: &mut PatternMarks) {
+    match ctx.get(expr_id) {
+        Expr::Function(fn_id, args) => {
+            if ctx.is_builtin(*fn_id, BuiltinFn::Tan)
+                && args.len() == 1
+                && crate::ordering::compare_expr(ctx, args[0], t) == std::cmp::Ordering::Equal
+            {
+                marks.mark_tan_double_angle(expr_id);
+            }
+            for &arg in args {
+                mark_tan_nodes_in_subtree(ctx, arg, t, marks);
+            }
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            mark_tan_nodes_in_subtree(ctx, *l, t, marks);
+            mark_tan_nodes_in_subtree(ctx, *r, t, marks);
+        }
+        Expr::Neg(inner) => {
+            mark_tan_nodes_in_subtree(ctx, *inner, t, marks);
+        }
+        _ => {}
+    }
 }
 
 #[cfg(test)]

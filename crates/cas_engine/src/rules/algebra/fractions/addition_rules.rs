@@ -247,6 +247,70 @@ define_rule!(
     }
 );
 
+// =============================================================================
+// SubTermMatchesDenomRule: a - b/a → (a² - b)/a
+// =============================================================================
+//
+// When the denominator of a subtracted fraction matches the other term,
+// combine them into a single fraction. This pattern always reduces nesting
+// and is essential for trig simplification:
+//   cos(x) - sin²(x)/cos(x) → (cos²(x) - sin²(x))/cos(x) → cos(2x)/cos(x)
+//
+// This rule complements FoldAddIntoFractionRule (which handles Add only)
+// by specifically targeting the Sub case where the denominator matches.
+//
+// Guard: Skip inside trig arguments and inside fractions (same as FoldAddIntoFraction).
+
+define_rule!(
+    SubTermMatchesDenomRule,
+    "Combine Same Denominator Sub",
+    |ctx, expr, parent_ctx| {
+        // After canonicalization, Sub(a, b) becomes Add(a, Neg(b)).
+        // So we match Add(term, Neg(Div(p, q))) where q == term.
+        // Also handles Add(Neg(Div(p, q)), term) where q == term.
+        let (l, r) = crate::helpers::as_add(ctx, expr)?;
+
+        // Try both orderings: Add(term, Neg(Div(p, q))) and Add(Neg(Div(p, q)), term)
+        let (term, p, q) = if let Expr::Neg(inner) = ctx.get(r) {
+            // r = Neg(Div(p, q))
+            if let Expr::Div(p, q) = ctx.get(*inner) {
+                (l, *p, *q)
+            } else {
+                return None;
+            }
+        } else if let Expr::Neg(inner) = ctx.get(l) {
+            // l = Neg(Div(p, q))
+            if let Expr::Div(p, q) = ctx.get(*inner) {
+                (r, *p, *q)
+            } else {
+                return None;
+            }
+        } else {
+            return None;
+        };
+
+        // Key check: denominator q must structurally match term
+        if crate::ordering::compare_expr(ctx, q, term) != std::cmp::Ordering::Equal {
+            return None;
+        }
+
+        // Guard: Skip if inside trig function argument
+        let inside_trig = parent_ctx.has_ancestor_matching(ctx, |c, node_id| {
+            matches!(c.get(node_id), Expr::Function(fn_id, _) if is_trig_function(c, *fn_id))
+        });
+        if inside_trig {
+            return None;
+        }
+
+        // Build: (term·term - p) / term  = (term² - p) / term
+        let term_squared = mul2_raw(ctx, term, term);
+        let new_num = ctx.add(Expr::Sub(term_squared, p));
+        let new_expr = ctx.add(Expr::Div(new_num, term));
+
+        Some(Rewrite::new(new_expr).desc("Common denominator: a - b/a → (a² - b)/a"))
+    }
+);
+
 define_rule!(
     AddFractionsRule,
     "Add Fractions",

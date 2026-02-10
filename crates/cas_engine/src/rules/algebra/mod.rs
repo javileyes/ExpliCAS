@@ -58,6 +58,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(NestedFractionRule));
     simplifier.add_rule(Box::new(SimplifyMulDivRule));
     simplifier.add_rule(Box::new(FoldAddIntoFractionRule));
+    simplifier.add_rule(Box::new(SubTermMatchesDenomRule)); // a - b/a → (a²-b)/a
     simplifier.add_rule(Box::new(AddFractionsRule));
     simplifier.add_rule(Box::new(SubFractionsRule));
     simplifier.add_rule(Box::new(CombineSameDenominatorFractionsRule));

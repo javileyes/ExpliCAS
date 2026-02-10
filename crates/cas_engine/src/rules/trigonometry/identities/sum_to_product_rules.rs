@@ -15,9 +15,10 @@ use super::{
     HyperbolicTanhPythRule, PythagoreanIdentityRule, QuintupleAngleRule,
     RecursiveTrigExpansionRule, SecTanPythagoreanRule, Sin4xIdentityZeroRule, SinCosIntegerPiRule,
     SinCosSumQuotientRule, SinSupplementaryAngleRule, TanDifferenceIdentityZeroRule,
-    TanDifferenceRule, TanToSinCosRule, TanTripleProductRule, TrigHiddenCubicIdentityRule,
-    TrigOddEvenParityRule, TrigQuotientRule, TrigSumToProductRule, TripleAngleRule,
-    WeierstrassContractionRule, WeierstrassCosIdentityZeroRule, WeierstrassSinIdentityZeroRule,
+    TanDifferenceRule, TanDoubleAngleContractionRule, TanToSinCosRule, TanTripleProductRule,
+    TrigHiddenCubicIdentityRule, TrigOddEvenParityRule, TrigQuotientRule, TrigSumToProductRule,
+    TripleAngleRule, WeierstrassContractionRule, WeierstrassCosIdentityZeroRule,
+    WeierstrassSinIdentityZeroRule,
 };
 // Import migration Phase 1-3 rules
 use super::{GeneralizedSinCosContractionRule, HyperbolicHalfAngleSquaresRule, TrigPhaseShiftRule};
@@ -242,9 +243,11 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // sin(-u) = -sin(u), cos(-u) = cos(u), tan(-u) = -tan(u)
     simplifier.add_rule(Box::new(TrigOddEvenParityRule));
 
-    // NOTE: TrigQuotientToNamedRule and TanDoubleAngleContractionRule are defined but NOT registered
-    // They cause 9→16 numeric-only regression due to conflict with SecToRecipCosRule (ping-pong).
-    // To enable, first disable SecToRecipCosRule, CscToRecipSinRule, and TanToSinCosRule.
+    // NOTE: TrigQuotientToNamedRule is defined but NOT registered.
+    // It causes numeric-only regression due to conflict with SecToRecipCosRule (ping-pong).
+    // TanDoubleAngleContractionRule is now enabled BEFORE TanToSinCosRule so contraction
+    // has priority over expansion: 2·tan(t)/(1-tan²(t)) → tan(2t) directly.
+    simplifier.add_rule(Box::new(TanDoubleAngleContractionRule));
 
     // Use the new data-driven EvaluateTrigTableRule instead of deprecated EvaluateTrigRule
     simplifier.add_rule(Box::new(evaluation::EvaluateTrigTableRule));

@@ -51,6 +51,9 @@ pub struct PatternMarks {
     /// like tan(a-b) - (tan(a)-tan(b))/(1+tan(a)*tan(b)).
     /// Protected from TanToSinCosRule expansion to allow TanDifferenceIdentityZeroRule to fire.
     pub identity_cancellation_protected: HashSet<ExprId>,
+    /// ExprIds of tan() nodes that are part of 2·tan(t)/(1-tan²(t)) double angle pattern.
+    /// Protected from TanToSinCosRule expansion to allow TanDoubleAngleContractionRule to fire.
+    pub tan_double_angle_protected: HashSet<ExprId>,
     /// Global flag: true if the expression contains a tan difference identity pattern.
     /// When true, ALL tan→sin/cos expansions are blocked to allow IdentityZeroRule to fire.
     pub has_tan_identity_pattern: bool,
@@ -70,6 +73,7 @@ impl PatternMarks {
             sum_quotient_protected: HashSet::new(),
             tan_triple_product_protected: HashSet::new(),
             identity_cancellation_protected: HashSet::new(),
+            tan_double_angle_protected: HashSet::new(),
             has_tan_identity_pattern: false,
             has_sin4x_identity_pattern: false,
         }
@@ -155,6 +159,17 @@ impl PatternMarks {
     /// Mark an expression as part of tan triple product pattern
     pub fn mark_tan_triple_product(&mut self, expr: ExprId) {
         self.tan_triple_product_protected.insert(expr);
+    }
+
+    /// Check if an expression is protected as part of tan double angle pattern
+    /// (e.g., tan(x) in 2·tan(x)/(1-tan²(x)) should not be converted to sin/cos)
+    pub fn is_tan_double_angle_protected(&self, expr: ExprId) -> bool {
+        self.tan_double_angle_protected.contains(&expr)
+    }
+
+    /// Mark an expression as part of tan double angle pattern
+    pub fn mark_tan_double_angle(&mut self, expr: ExprId) {
+        self.tan_double_angle_protected.insert(expr);
     }
 
     /// Check if an expression is protected as part of identity cancellation pattern

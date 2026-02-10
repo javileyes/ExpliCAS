@@ -427,6 +427,11 @@ impl crate::rule::Rule for TanToSinCosRule {
             if marks.is_tan_triple_product_protected(expr) {
                 return None;
             }
+            // Tan double angle protection: 2·tan(t)/(1-tan²(t)) = tan(2t)
+            // Don't expand tan() if part of this pattern - let TanDoubleAngleContractionRule handle it.
+            if marks.is_tan_double_angle_protected(expr) {
+                return None;
+            }
             // Identity cancellation protection: tan(a-b) - (tan(a)-tan(b))/(1+tan(a)*tan(b))
             // Don't expand tan() if part of this pattern - let TanDifferenceIdentityZeroRule handle it.
             if marks.is_identity_cancellation_protected(expr) {
