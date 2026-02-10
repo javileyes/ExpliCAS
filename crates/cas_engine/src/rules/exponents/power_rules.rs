@@ -435,7 +435,7 @@ define_rule!(
             };
 
             if inner_is_even_root {
-                use crate::domain::{can_apply_analytic_with_hint, Proof};
+                use crate::domain::Proof;
                 use crate::helpers::prove_nonnegative;
                 use crate::implicit_domain::{witness_survives_in_context, WitnessKind};
 
@@ -475,12 +475,11 @@ define_rule!(
                     return Some(Rewrite::new(new_expr).desc("Multiply exponents"));
                 }
 
-                let key = crate::assumptions::AssumptionKey::nonnegative_key(ctx, inner_base);
-                let decision = can_apply_analytic_with_hint(
+                let decision = crate::domain_oracle::oracle_allows_with_hint(
+                    ctx,
                     mode,
-                    proof,
-                    key,
-                    inner_base,
+                    vd,
+                    &crate::domain_facts::Predicate::NonNegative(inner_base),
                     "Power of a Power",
                 );
 

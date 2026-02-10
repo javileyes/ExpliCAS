@@ -394,7 +394,7 @@ define_rule!(
         crate::assumptions::ConditionClass::Definability
     ),
     |ctx, expr, parent_ctx| {
-        use crate::helpers::prove_nonzero;
+        use crate::domain_facts::Predicate;
         use cas_ast::views::FractionParts;
 
         // Capture domain mode for cancellation decisions
@@ -431,13 +431,11 @@ define_rule!(
                     if diff.is_zero() {
                         // a^n / a^n = 1
                         // DOMAIN GATE: check if base is provably non-zero
-                        let proof = prove_nonzero(ctx, b_n);
-                        let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, b_n);
-                        let decision = crate::domain::can_cancel_factor_with_hint(
+                        let decision = crate::domain_oracle::oracle_allows_with_hint(
+                            ctx,
                             domain_mode,
-                            proof,
-                            key,
-                            b_n,
+                            parent_ctx.value_domain(),
+                            &Predicate::NonZero(b_n),
                             "Quotient of Powers",
                         );
                         if !decision.allow {

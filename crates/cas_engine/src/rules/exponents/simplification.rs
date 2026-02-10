@@ -77,15 +77,12 @@ define_rule!(
                         }
                         return None;
                     }
-                    let mode = parent_ctx.domain_mode();
-                    let vd = parent_ctx.value_domain();
-                    let proof = crate::helpers::prove_positive(ctx, exp, vd);
-                    let key = crate::assumptions::AssumptionKey::positive_key(ctx, exp);
-                    let decision = crate::domain::can_apply_analytic_with_hint(
-                        mode,
-                        proof,
-                        key,
-                        exp,
+                    // Use unified oracle for Positive condition (Analytic class)
+                    let decision = crate::domain_oracle::oracle_allows_with_hint(
+                        ctx,
+                        parent_ctx.domain_mode(),
+                        parent_ctx.value_domain(),
+                        &crate::domain_facts::Predicate::Positive(exp),
                         "Evaluate Power",
                     );
 

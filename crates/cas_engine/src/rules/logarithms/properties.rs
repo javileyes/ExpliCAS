@@ -28,11 +28,10 @@ impl crate::rule::Rule for LogExpansionRule {
         expr: cas_ast::ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        use crate::helpers::prove_positive;
-        use crate::semantics::ValueDomain;
+        use crate::domain_facts::Predicate;
 
         // GATE 1: Never expand in complex domain (principal branch causes 2πi jumps)
-        if parent_ctx.value_domain() == ValueDomain::ComplexEnabled {
+        if parent_ctx.value_domain() == crate::semantics::ValueDomain::ComplexEnabled {
             return None;
         }
 
@@ -52,17 +51,26 @@ impl crate::rule::Rule for LogExpansionRule {
             };
 
             let mode = parent_ctx.domain_mode();
+            let vd = parent_ctx.value_domain();
 
             // log(b, x*y) → log(b, x) + log(b, y)
             // Requires Positive(x) AND Positive(y) - Analytic class
             if let Some((lhs, rhs)) = as_mul(ctx, arg) {
-                let vd = parent_ctx.value_domain();
-                let lhs_positive = prove_positive(ctx, lhs, vd);
-                let rhs_positive = prove_positive(ctx, rhs, vd);
-
-                // Use Analytic gate for each factor
-                let lhs_decision = crate::domain::can_apply_analytic(mode, lhs_positive);
-                let rhs_decision = crate::domain::can_apply_analytic(mode, rhs_positive);
+                // Use oracle for each factor
+                let lhs_decision = crate::domain_oracle::oracle_allows_with_hint(
+                    ctx,
+                    mode,
+                    vd,
+                    &Predicate::Positive(lhs),
+                    "Log Expansion",
+                );
+                let rhs_decision = crate::domain_oracle::oracle_allows_with_hint(
+                    ctx,
+                    mode,
+                    vd,
+                    &Predicate::Positive(rhs),
+                    "Log Expansion",
+                );
 
                 // Both must be allowed
                 if !lhs_decision.allow || !rhs_decision.allow {
@@ -93,13 +101,21 @@ impl crate::rule::Rule for LogExpansionRule {
             // log(b, x/y) → log(b, x) - log(b, y)
             // Requires Positive(x) AND Positive(y) - Analytic class
             if let Some((num, den)) = as_div(ctx, arg) {
-                let vd = parent_ctx.value_domain();
-                let num_positive = prove_positive(ctx, num, vd);
-                let den_positive = prove_positive(ctx, den, vd);
-
-                // Use Analytic gate for each factor
-                let num_decision = crate::domain::can_apply_analytic(mode, num_positive);
-                let den_decision = crate::domain::can_apply_analytic(mode, den_positive);
+                // Use oracle for each factor
+                let num_decision = crate::domain_oracle::oracle_allows_with_hint(
+                    ctx,
+                    mode,
+                    vd,
+                    &Predicate::Positive(num),
+                    "Log Expansion",
+                );
+                let den_decision = crate::domain_oracle::oracle_allows_with_hint(
+                    ctx,
+                    mode,
+                    vd,
+                    &Predicate::Positive(den),
+                    "Log Expansion",
+                );
 
                 // Both must be allowed
                 if !num_decision.allow || !den_decision.allow {

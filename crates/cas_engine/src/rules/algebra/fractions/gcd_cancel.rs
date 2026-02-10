@@ -35,7 +35,7 @@ define_rule!(
         crate::assumptions::ConditionClass::Definability
     ),
     |ctx, expr, parent_ctx| {
-        use crate::helpers::prove_nonzero;
+        use crate::domain_facts::Predicate;
         use crate::implicit_domain::ImplicitCondition;
 
         // Match Div(Pow(base_num, exp_num), Pow(base_den, exp_den))
@@ -60,13 +60,11 @@ define_rule!(
 
         // DOMAIN GATE: need base ≠ 0 (derived from original denominator P^n ≠ 0)
         let domain_mode = parent_ctx.domain_mode();
-        let proof = prove_nonzero(ctx, base_num);
-        let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, base_num);
-        let decision = crate::domain::can_cancel_factor_with_hint(
+        let decision = crate::domain_oracle::oracle_allows_with_hint(
+            ctx,
             domain_mode,
-            proof,
-            key,
-            base_num,
+            parent_ctx.value_domain(),
+            &Predicate::NonZero(base_num),
             "Cancel Same-Base Powers",
         );
 
@@ -125,7 +123,7 @@ define_rule!(
         crate::assumptions::ConditionClass::Definability
     ),
     |ctx, expr, parent_ctx| {
-        use crate::helpers::prove_nonzero;
+        use crate::domain_facts::Predicate;
         use crate::implicit_domain::ImplicitCondition;
 
         // Match Div(num, den)
@@ -138,13 +136,11 @@ define_rule!(
 
         // DOMAIN GATE: In Strict mode, only cancel if den is provably non-zero
         let domain_mode = parent_ctx.domain_mode();
-        let proof = prove_nonzero(ctx, den);
-        let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, den);
-        let decision = crate::domain::can_cancel_factor_with_hint(
+        let decision = crate::domain_oracle::oracle_allows_with_hint(
+            ctx,
             domain_mode,
-            proof,
-            key,
-            den,
+            parent_ctx.value_domain(),
+            &Predicate::NonZero(den),
             "Cancel Identical Numerator/Denominator",
         );
 
@@ -173,7 +169,7 @@ define_rule!(
         crate::assumptions::ConditionClass::Definability
     ),
     |ctx, expr, parent_ctx| {
-        use crate::helpers::prove_nonzero;
+        use crate::domain_facts::Predicate;
         use crate::implicit_domain::ImplicitCondition;
 
         // Match Div(Pow(base, exp), den)
@@ -191,13 +187,11 @@ define_rule!(
 
         // DOMAIN GATE
         let domain_mode = parent_ctx.domain_mode();
-        let proof = prove_nonzero(ctx, den);
-        let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, den);
-        let decision = crate::domain::can_cancel_factor_with_hint(
+        let decision = crate::domain_oracle::oracle_allows_with_hint(
+            ctx,
             domain_mode,
-            proof,
-            key,
-            den,
+            parent_ctx.value_domain(),
+            &Predicate::NonZero(den),
             "Cancel Power Fraction",
         );
 
@@ -250,7 +244,7 @@ define_rule!(
         crate::assumptions::ConditionClass::Definability
     ),
     |ctx, expr, parent_ctx| {
-        use crate::helpers::prove_nonzero;
+        use crate::domain_facts::Predicate;
         use cas_ast::views::RationalFnView;
 
         // Capture domain mode for cancellation decisions
@@ -301,15 +295,11 @@ define_rule!(
             if let Some((new_num, new_den, gcd_expr, layer)) = try_multivar_gcd(ctx, num, den) {
                 // DOMAIN GATE: Check if we can cancel by this GCD
                 // In Strict mode, only allow if GCD is provably non-zero
-                let gcd_proof = prove_nonzero(ctx, gcd_expr);
-
-                // Use can_cancel_factor_with_hint for pedagogical hints in Strict mode
-                let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, gcd_expr);
-                let decision = crate::domain::can_cancel_factor_with_hint(
+                let decision = crate::domain_oracle::oracle_allows_with_hint(
+                    ctx,
                     domain_mode,
-                    gcd_proof,
-                    key,
-                    gcd_expr,
+                    parent_ctx.value_domain(),
+                    &Predicate::NonZero(gcd_expr),
                     "Simplify Nested Fraction",
                 );
                 if !decision.allow {
@@ -444,13 +434,11 @@ define_rule!(
 
         // DOMAIN GATE: Check if we can cancel by this GCD
         // In Strict mode, only allow if GCD is provably non-zero
-        let gcd_proof = prove_nonzero(ctx, gcd_expr);
-        let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, gcd_expr);
-        let decision = crate::domain::can_cancel_factor_with_hint(
+        let decision = crate::domain_oracle::oracle_allows_with_hint(
+            ctx,
             domain_mode,
-            gcd_proof,
-            key,
-            gcd_expr,
+            parent_ctx.value_domain(),
+            &Predicate::NonZero(gcd_expr),
             "Simplify Nested Fraction",
         );
         if !decision.allow {

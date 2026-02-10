@@ -116,7 +116,7 @@ define_rule!(
 
 // DivZeroRule: 0/d → 0
 // Domain Mode Policy: 0/d → 0 changes the domain of definition if d can be 0.
-// Uses ConditionClass taxonomy via can_cancel_factor():
+// Uses unified DomainOracle via oracle_allows_with_hint:
 // - Strict: only apply if prove_nonzero(d) == Proven
 // - Generic: apply with NonZero(d) assumption (Definability class)
 // - Assume: apply with NonZero(d) assumption
@@ -128,7 +128,7 @@ define_rule!(
     ),
     |ctx, expr, parent_ctx| {
         use crate::domain::Proof;
-        use crate::helpers::prove_nonzero;
+        use crate::domain_facts::Predicate;
 
         let (num, den) = as_div(ctx, expr)?;
 
@@ -146,14 +146,12 @@ define_rule!(
             }
         }
 
-        // Use central gate for NonZero condition (Definability class)
-        let den_proof = prove_nonzero(ctx, den);
-        let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, den);
-        let decision = crate::domain::can_cancel_factor_with_hint(
+        // Use unified oracle for NonZero condition (Definability class)
+        let decision = crate::domain_oracle::oracle_allows_with_hint(
+            ctx,
             parent_ctx.domain_mode(),
-            den_proof,
-            key,
-            den,
+            parent_ctx.value_domain(),
+            &Predicate::NonZero(den),
             "Zero Property of Division",
         );
 
@@ -162,6 +160,7 @@ define_rule!(
         }
 
         // Build assumption events if needed
+        let den_proof = crate::helpers::prove_nonzero(ctx, den);
         let assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]> = if decision.assumption.is_some() && den_proof != Proof::Proven {
             smallvec::smallvec![crate::assumptions::AssumptionEvent::nonzero(ctx, den)]
         } else {

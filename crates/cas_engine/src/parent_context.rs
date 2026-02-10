@@ -197,6 +197,23 @@ impl ParentContext {
         self.domain_mode
     }
 
+    /// Create a `StandardOracle` for domain queries in this context.
+    ///
+    /// The oracle combines the current `DomainMode` and `ValueDomain` with
+    /// the given AST context to provide unified domain fact queries.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let oracle = parent_ctx.make_oracle(ctx);
+    /// let decision = oracle.allows(&Predicate::NonZero(factor_id));
+    /// ```
+    pub fn make_oracle<'a>(
+        &self,
+        ctx: &'a cas_ast::Context,
+    ) -> crate::domain_oracle::StandardOracle<'a> {
+        crate::domain_oracle::StandardOracle::new(ctx, self.domain_mode, self.value_domain)
+    }
+
     /// Set domain_mode flag, returning a new context
     pub fn with_domain_mode(mut self, mode: crate::domain::DomainMode) -> Self {
         self.domain_mode = mode;

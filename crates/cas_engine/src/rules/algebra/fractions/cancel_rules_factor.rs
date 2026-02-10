@@ -195,7 +195,7 @@ define_rule!(
         crate::assumptions::ConditionClass::Definability
     ),
     |ctx, expr, parent_ctx| {
-        use crate::helpers::prove_nonzero;
+        use crate::domain_facts::Predicate;
 
         // Capture domain mode once at start
         let domain_mode = parent_ctx.domain_mode();
@@ -271,13 +271,11 @@ define_rule!(
                 // Check exact match
                 if crate::ordering::compare_expr(ctx, nf, df) == std::cmp::Ordering::Equal {
                     // DOMAIN GATE: use canonical helper
-                    let proof = prove_nonzero(ctx, nf);
-                    let key = crate::assumptions::AssumptionKey::nonzero_key(ctx, nf);
-                    let decision = crate::domain::can_cancel_factor_with_hint(
+                    let decision = crate::domain_oracle::oracle_allows_with_hint(
+                        ctx,
                         domain_mode,
-                        proof,
-                        key,
-                        nf,
+                        parent_ctx.value_domain(),
+                        &Predicate::NonZero(nf),
                         "Cancel Common Factors",
                     );
                     if !decision.allow {
@@ -313,15 +311,11 @@ define_rule!(
                                 let new_exp = n - num_rational::BigRational::one();
                                 if new_exp.is_zero() {
                                     // x^1 / x = 1, remove both factors
-                                    // DOMAIN GATE: check base is provably non-zero
-                                    let proof = prove_nonzero(ctx, b);
-                                    let key =
-                                        crate::assumptions::AssumptionKey::nonzero_key(ctx, b);
-                                    let decision = crate::domain::can_cancel_factor_with_hint(
+                                    let decision = crate::domain_oracle::oracle_allows_with_hint(
+                                        ctx,
                                         domain_mode,
-                                        proof,
-                                        key,
-                                        b,
+                                        parent_ctx.value_domain(),
+                                        &Predicate::NonZero(b),
                                         "Cancel Common Factors",
                                     );
                                     if !decision.allow {
@@ -371,15 +365,11 @@ define_rule!(
                                 let new_exp = m - num_rational::BigRational::one();
                                 if new_exp.is_zero() {
                                     // x / x^1 = 1, remove both factors
-                                    // DOMAIN GATE: check base is provably non-zero
-                                    let proof = prove_nonzero(ctx, b);
-                                    let key =
-                                        crate::assumptions::AssumptionKey::nonzero_key(ctx, b);
-                                    let decision = crate::domain::can_cancel_factor_with_hint(
+                                    let decision = crate::domain_oracle::oracle_allows_with_hint(
+                                        ctx,
                                         domain_mode,
-                                        proof,
-                                        key,
-                                        b,
+                                        parent_ctx.value_domain(),
+                                        &Predicate::NonZero(b),
                                         "Cancel Common Factors",
                                     );
                                     if !decision.allow {
@@ -443,15 +433,11 @@ define_rule!(
                                     break;
                                 } else {
                                     // x^n / x^n (n == m), remove both factors
-                                    // DOMAIN GATE: check base is provably non-zero
-                                    let proof = prove_nonzero(ctx, b_n);
-                                    let key =
-                                        crate::assumptions::AssumptionKey::nonzero_key(ctx, b_n);
-                                    let decision = crate::domain::can_cancel_factor_with_hint(
+                                    let decision = crate::domain_oracle::oracle_allows_with_hint(
+                                        ctx,
                                         domain_mode,
-                                        proof,
-                                        key,
-                                        b_n,
+                                        parent_ctx.value_domain(),
+                                        &Predicate::NonZero(b_n),
                                         "Cancel Common Factors",
                                     );
                                     if !decision.allow {

@@ -511,7 +511,6 @@ define_rule!(
     |ctx, expr, parent_ctx| {
         use cas_ast::views::MulChainView;
         use num_rational::BigRational;
-        use crate::domain::{can_apply_analytic_with_hint, Proof};
         use crate::semantics::ValueDomain;
 
         // Guard: Only apply in RealOnly domain (in Complex, sqrt has branch cuts)
@@ -612,18 +611,11 @@ define_rule!(
         // Analytic Gate: sqrt(other) requires other ≥ 0 (NonNegative)
         // This is an Analytic condition, blocked in Generic, allowed in Assume
         // ================================================================
-        let mode = parent_ctx.domain_mode();
-        let key = crate::assumptions::AssumptionKey::nonnegative_key(ctx, other);
-
-        // We don't have a proof for this - it's positivity from structure
-        // The conjugate product could be positive or negative depending on x
-        let proof = Proof::Unknown;
-
-        let decision = can_apply_analytic_with_hint(
-            mode,
-            proof,
-            key,
-            other,
+        let decision = crate::domain_oracle::oracle_allows_with_hint(
+            ctx,
+            parent_ctx.domain_mode(),
+            parent_ctx.value_domain(),
+            &crate::domain_facts::Predicate::NonNegative(other),
             "Collapse Sqrt Conjugate Product",
         );
 
