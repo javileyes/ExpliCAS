@@ -2816,6 +2816,72 @@ fn run_csv_combination_tests(
                             return;
                         }
 
+                        // Check 2a: Pairwise factor quotient —
+                        // When LHS = A*B and RHS = C*D, try simplify(A/C)==1 && simplify(B/D)==1
+                        // This catches the case where individual identities simplify but their
+                        // compound product quotient doesn't (engine's cross-factor weakness).
+                        if let (cas_ast::Expr::Mul(a, b), cas_ast::Expr::Mul(c, d)) = (
+                            simplifier.context.get(exp_parsed).clone(),
+                            simplifier.context.get(simp_parsed).clone(),
+                        ) {
+                            let target_one = num_rational::BigRational::from_integer(1.into());
+                            // Try both pairings: (A/C, B/D) and (A/D, B/C)
+                            for (n1, d1, n2, d2) in [(a, c, b, d), (a, d, b, c)] {
+                                let q1 = simplifier.context.add(cas_ast::Expr::Div(n1, d1));
+                                let (q1s, _) = simplifier.simplify_with_options(q1, opts.clone());
+                                let q1_is_one = matches!(
+                                    simplifier.context.get(q1s),
+                                    cas_ast::Expr::Number(n) if *n == target_one
+                                );
+                                if q1_is_one {
+                                    let q2 = simplifier.context.add(cas_ast::Expr::Div(n2, d2));
+                                    let (q2s, _) =
+                                        simplifier.simplify_with_options(q2, opts.clone());
+                                    let q2_is_one = matches!(
+                                        simplifier.context.get(q2s),
+                                        cas_ast::Expr::Number(n) if *n == target_one
+                                    );
+                                    if q2_is_one {
+                                        let _ = tx.send(Some((
+                                            "proved-q".to_string(),
+                                            String::new(),
+                                            String::new(),
+                                        )));
+                                        return;
+                                    }
+                                }
+                            }
+                            // Check 2a-bis: Pairwise factor difference —
+                            // When pairwise quotient fails, try simplify(A-C)==0 && simplify(B-D)==0
+                            // Catches ln/log cases: ln(√u·y)/(ln(u)/2+ln(y)) ≠ 1 but their diff = 0
+                            let target_zero = num_rational::BigRational::from_integer(0.into());
+                            for (n1, d1, n2, d2) in [(a, c, b, d), (a, d, b, c)] {
+                                let s1 = simplifier.context.add(cas_ast::Expr::Sub(n1, d1));
+                                let (s1r, _) = simplifier.simplify_with_options(s1, opts.clone());
+                                let s1_zero = matches!(
+                                    simplifier.context.get(s1r),
+                                    cas_ast::Expr::Number(n) if *n == target_zero
+                                );
+                                if s1_zero {
+                                    let s2 = simplifier.context.add(cas_ast::Expr::Sub(n2, d2));
+                                    let (s2r, _) =
+                                        simplifier.simplify_with_options(s2, opts.clone());
+                                    let s2_zero = matches!(
+                                        simplifier.context.get(s2r),
+                                        cas_ast::Expr::Number(n) if *n == target_zero
+                                    );
+                                    if s2_zero {
+                                        let _ = tx.send(Some((
+                                            "proved-d".to_string(),
+                                            String::new(),
+                                            String::new(),
+                                        )));
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+
                         // Check 2b: Difference fallback — simplify(LHS - RHS) == 0
                         // Many trig/log identities cancel better via subtraction than division.
                         let d = simplifier.context.add(cas_ast::Expr::Sub(e, s));
