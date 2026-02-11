@@ -77,7 +77,7 @@ pub(crate) fn is_conjugate(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     }
 }
 
-pub(super) fn is_negation(ctx: &Context, a: ExprId, b: ExprId) -> bool {
+pub(crate) fn is_negation(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     // Check if b is Neg(a) or Mul(-1, a)
     if check_negation_structure(ctx, b, a) {
         return true;

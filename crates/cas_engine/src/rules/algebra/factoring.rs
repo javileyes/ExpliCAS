@@ -9,6 +9,7 @@ use super::factoring_helpers::{is_conjugate_pair, is_nary_conjugate_pair, is_str
 // DifferenceOfSquaresRule: Expands conjugate products
 // (a - b) * (a + b) → a² - b²
 // Now supports N-ary sums: (U + V)(U - V) → U² - V²
+// Also scans n-ary product chains: (a+b) * (a-b) * f(x) → (a²-b²) * f(x)
 // Phase: CORE | POST (structural simplification, not expansion)
 define_rule!(
     DifferenceOfSquaresRule,
@@ -44,10 +45,63 @@ define_rule!(
                     Rewrite::new(new_expr).desc("(U+V)(U-V) = U² - V² (conjugate product)"),
                 );
             }
+
+            // N-ary product scan: flatten Mul chains and look for conjugate factor pairs.
+            // E.g. (sqrt(5)+sqrt(2)) * (sqrt(5)-sqrt(2)) * (x+1)^6 → 3 * (x+1)^6
+            let factors = flatten_mul_factors(ctx, expr);
+            if factors.len() >= 3 {
+                // Scan all pairs for conjugate matches (O(n²), but n is small)
+                for i in 0..factors.len() {
+                    for j in (i + 1)..factors.len() {
+                        let fi = factors[i];
+                        let fj = factors[j];
+
+                        // Try binary conjugate
+                        let conjugate = is_conjugate_pair(ctx, fi, fj)
+                            .or_else(|| is_nary_conjugate_pair(ctx, fi, fj));
+
+                        if let Some((a, b)) = conjugate {
+                            // Build a² - b²
+                            let two = ctx.num(2);
+                            let a_sq = ctx.add(Expr::Pow(a, two));
+                            let b_sq = ctx.add(Expr::Pow(b, two));
+                            let dos = ctx.add(Expr::Sub(a_sq, b_sq));
+
+                            // Rebuild product: dos * remaining factors
+                            let mut result = dos;
+                            for (k, &fk) in factors.iter().enumerate() {
+                                if k != i && k != j {
+                                    result = ctx.add(Expr::Mul(result, fk));
+                                }
+                            }
+
+                            return Some(
+                                Rewrite::new(result).desc("(a-b)(a+b)·… = (a²-b²)·… (n-ary scan)"),
+                            );
+                        }
+                    }
+                }
+            }
         }
         None
     }
 );
+
+/// Flatten a binary Mul chain into a list of leaf factors.
+/// E.g. Mul(Mul(a, b), c) → [a, b, c]
+fn flatten_mul_factors(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> Vec<cas_ast::ExprId> {
+    let mut factors = Vec::new();
+    let mut stack = vec![expr];
+    while let Some(e) = stack.pop() {
+        if let Expr::Mul(l, r) = ctx.get(e) {
+            stack.push(*r);
+            stack.push(*l);
+        } else {
+            factors.push(e);
+        }
+    }
+    factors
+}
 
 define_rule!(
     FactorRule,

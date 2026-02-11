@@ -8,7 +8,7 @@
 mod expansion;
 mod expansion_normalize;
 mod factoring;
-mod polynomial_helpers;
+pub(crate) mod polynomial_helpers;
 
 pub use expansion::{AutoExpandPowSumRule, AutoExpandSubCancelRule, BinomialExpansionRule};
 pub use expansion_normalize::{
@@ -106,6 +106,18 @@ define_rule!(
                 return None;
             }
 
+            // N-ary conjugate protection (secondary defense).
+            // Primary defense is the pre-order conjugate pair contraction in
+            // transform_binary. This guards against cases where the parent
+            // references are still in the same form.
+            if let Some(parent_id) = parent_ctx.immediate_parent() {
+                if let Expr::Mul(pl, pr) = ctx.get(parent_id) {
+                    if is_conjugate(ctx, r, *pl) || is_conjugate(ctx, r, *pr) {
+                        return None;
+                    }
+                }
+            }
+
             // CRITICAL: Don't expand binomial*binomial products like (a-b)*(a-c)
             // This preserves factored form for opposite denominator detection
             if is_binomial(ctx, l) && is_binomial(ctx, r) {
@@ -151,6 +163,15 @@ define_rule!(
             // CRITICAL: Avoid undoing FactorDifferenceSquaresRule
             if is_conjugate(ctx, l, r) {
                 return None;
+            }
+
+            // N-ary conjugate protection (mirror of RHS case above)
+            if let Some(parent_id) = parent_ctx.immediate_parent() {
+                if let Expr::Mul(pl, pr) = ctx.get(parent_id) {
+                    if is_conjugate(ctx, l, *pl) || is_conjugate(ctx, l, *pr) {
+                        return None;
+                    }
+                }
             }
 
             // CRITICAL: Don't expand binomial*binomial products (Policy A+)

@@ -16,6 +16,17 @@ impl<'a> LocalSimplificationTransformer<'a> {
         r: ExprId,
         op: BinaryOp,
     ) -> ExprId {
+        // PRE-ORDER: For Mul, detect conjugate pairs in the factor chain BEFORE
+        // child simplification. This prevents canonicalization (sqrt→Pow) from
+        // breaking structural matching, and prevents DistributeRule from splitting
+        // the conjugate pair across inner Mul nodes after factor reordering.
+        // Pattern: (a+b)*(a-b)*... → (a²-b²)*...
+        if matches!(op, BinaryOp::Mul) {
+            if let Some(result) = self.try_conjugate_pair_contraction(id) {
+                return result;
+            }
+        }
+
         if self.steps_mode != StepsMode::Off {
             self.current_path.push(crate::step::PathStep::Left);
         }
@@ -46,6 +57,97 @@ impl<'a> LocalSimplificationTransformer<'a> {
             self.context.add(expr)
         } else {
             id
+        }
+    }
+
+    /// PRE-ORDER: Flatten a Mul chain and detect conjugate factor pairs.
+    ///
+    /// If found, contracts (a+b)*(a-b) → (a²-b²), rebuilds the product with
+    /// remaining factors, records a step, and re-enters simplification.
+    /// Returns None if no conjugate pair is found.
+    #[inline(never)]
+    fn try_conjugate_pair_contraction(&mut self, id: ExprId) -> Option<ExprId> {
+        use crate::rules::polynomial::polynomial_helpers::is_conjugate;
+
+        // Flatten Mul chain into a list of factors (canonical utility)
+        let factors = crate::nary::mul_factors(self.context, id);
+        if factors.len() < 2 {
+            return None;
+        }
+
+        // Scan all pairs for conjugate match (O(n²), but n is small — typically 2-4)
+        for i in 0..factors.len() {
+            for j in (i + 1)..factors.len() {
+                let fi = factors[i];
+                let fj = factors[j];
+
+                if is_conjugate(self.context, fi, fj) {
+                    // Extract the a and b from the conjugate pair
+                    let (a, b) = self.extract_conjugate_terms(fi, fj)?;
+
+                    // Build a² - b²
+                    let two = self.context.num(2);
+                    let a_sq = self.context.add(Expr::Pow(a, two));
+                    let b_sq = self.context.add(Expr::Pow(b, two));
+                    let dos = self.context.add(Expr::Sub(a_sq, b_sq));
+
+                    // Rebuild product with remaining factors
+                    let mut result = dos;
+                    for (k, &fk) in factors.iter().enumerate() {
+                        if k != i && k != j {
+                            result = self.context.add(Expr::Mul(result, fk));
+                        }
+                    }
+
+                    // Record step
+                    self.record_step("(a+b)(a-b) = a²-b²", "Difference of Squares", id, result);
+
+                    // Re-enter simplification on the contracted product
+                    return Some(self.transform_expr_recursive(result));
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Extract (a, b) from a conjugate pair: one is (a+b), the other is (a-b).
+    /// Returns the terms in canonical order so a²-b² is correct.
+    fn extract_conjugate_terms(&self, x: ExprId, y: ExprId) -> Option<(ExprId, ExprId)> {
+        let x_expr = self.context.get(x);
+        let y_expr = self.context.get(y);
+
+        match (x_expr, y_expr) {
+            (Expr::Add(a1, a2), Expr::Sub(b1, _b2)) => {
+                // (a+b) and (a-b) — check which order
+                use crate::ordering::compare_expr;
+                use std::cmp::Ordering;
+                if compare_expr(self.context, *a1, *b1) == Ordering::Equal {
+                    Some((*a1, *a2))
+                } else {
+                    // Commutative: (b+a) and (a-b)
+                    Some((*a2, *a1))
+                }
+            }
+            (Expr::Sub(b1, b2), Expr::Add(_, _)) => {
+                // Reverse: (a-b) and (a+b)
+                Some((*b1, *b2))
+            }
+            (Expr::Add(a1, a2), Expr::Add(b1, b2)) => {
+                // (A+B) and (A+(-B)) — where negation can be on either B term
+                use crate::rules::polynomial::polynomial_helpers::is_negation;
+                // Cases where B is negated: a2 vs b2 or a2 vs b1
+                if is_negation(self.context, *a2, *b2) || is_negation(self.context, *a2, *b1) {
+                    Some((*a1, *a2))
+                } else if is_negation(self.context, *a1, *b2) || is_negation(self.context, *a1, *b1)
+                {
+                    // A is negated, so the shared term is B
+                    Some((*a2, *a1))
+                } else {
+                    None
+                }
+            }
+            _ => None,
         }
     }
 
