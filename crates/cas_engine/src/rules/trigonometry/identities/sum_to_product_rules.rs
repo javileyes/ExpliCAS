@@ -14,11 +14,11 @@ use super::{
     CscCotPythagoreanRule, DoubleAngleContractionRule, DoubleAngleRule, HalfAngleTangentRule,
     HyperbolicTanhPythRule, PythagoreanIdentityRule, QuintupleAngleRule,
     RecursiveTrigExpansionRule, SecTanPythagoreanRule, Sin4xIdentityZeroRule, SinCosIntegerPiRule,
-    SinCosSumQuotientRule, SinSupplementaryAngleRule, TanDifferenceIdentityZeroRule,
-    TanDifferenceRule, TanDoubleAngleContractionRule, TanToSinCosRule, TanTripleProductRule,
-    TrigHiddenCubicIdentityRule, TrigOddEvenParityRule, TrigQuotientRule, TrigSumToProductRule,
-    TripleAngleRule, WeierstrassContractionRule, WeierstrassCosIdentityZeroRule,
-    WeierstrassSinIdentityZeroRule,
+    SinCosQuarticSumRule, SinCosSumQuotientRule, SinSupplementaryAngleRule,
+    TanDifferenceIdentityZeroRule, TanDifferenceRule, TanDoubleAngleContractionRule,
+    TanToSinCosRule, TanTripleProductRule, TrigHiddenCubicIdentityRule, TrigOddEvenParityRule,
+    TrigQuotientRule, TrigSumToProductRule, TripleAngleRule, WeierstrassContractionRule,
+    WeierstrassCosIdentityZeroRule, WeierstrassSinIdentityZeroRule,
 };
 // Import migration Phase 1-3 rules
 use super::{GeneralizedSinCosContractionRule, HyperbolicHalfAngleSquaresRule, TrigPhaseShiftRule};
@@ -258,6 +258,9 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // Hidden Cubic Identity: sin^6 + cos^6 + 3sin^2cos^2 = (sin^2+cos^2)^3
     // Should run in TRANSFORM phase before power expansions
     simplifier.add_rule(Box::new(TrigHiddenCubicIdentityRule));
+
+    // Quartic Pythagorean: sin^4(x) + cos^4(x) = 1 − 2·sin²(x)·cos²(x)
+    simplifier.add_rule(Box::new(SinCosQuarticSumRule));
 
     simplifier.add_rule(Box::new(AngleIdentityRule));
     // Triple tangent product: tan(u)·tan(π/3+u)·tan(π/3-u) → tan(3u)

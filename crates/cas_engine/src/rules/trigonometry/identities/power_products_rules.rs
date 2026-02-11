@@ -226,6 +226,124 @@ define_rule!(
 );
 
 // =============================================================================
+// QUARTIC TRIG IDENTITY
+// sin^4(x) + cos^4(x) = 1 − 2·sin²(x)·cos²(x)
+//
+// Derivation: (sin²+cos²)² = sin⁴ + 2sin²cos² + cos⁴ = 1
+// Therefore:  sin⁴ + cos⁴ = 1 − 2sin²cos²
+// =============================================================================
+
+/// Extract sin(arg)^4 or cos(arg)^4 from a term.
+/// Returns Some((arg, "sin"|"cos")) if matched.
+fn extract_trig_pow4(ctx: &cas_ast::Context, term: ExprId) -> Option<(ExprId, &'static str)> {
+    if let Expr::Pow(base, exp) = ctx.get(term) {
+        // Check exponent is 4
+        if let Expr::Number(n) = ctx.get(*exp) {
+            if n.is_integer() && *n.numer() == 4.into() {
+                // Check base is sin(arg) or cos(arg)
+                if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                    if args.len() == 1 {
+                        match ctx.builtin_of(*fn_id) {
+                            Some(BuiltinFn::Sin) => return Some((args[0], "sin")),
+                            Some(BuiltinFn::Cos) => return Some((args[0], "cos")),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+define_rule!(
+    SinCosQuarticSumRule,
+    "Quartic Pythagorean Identity",
+    None,
+    crate::phase::PhaseMask::CORE,
+    |ctx, expr| {
+        // Only match Add nodes (sums)
+        if !matches!(ctx.get(expr), Expr::Add(_, _)) {
+            return None;
+        }
+
+        // Flatten the sum to get all terms
+        let terms = crate::nary::add_leaves(ctx, expr);
+
+        if terms.len() < 2 {
+            return None;
+        }
+
+        // Find sin^4(arg) and cos^4(arg) with matching arguments
+        let mut sin4_arg: Option<ExprId> = None;
+        let mut cos4_arg: Option<ExprId> = None;
+        let mut sin4_idx: Option<usize> = None;
+        let mut cos4_idx: Option<usize> = None;
+
+        for (i, &term) in terms.iter().enumerate() {
+            if let Some((arg, name)) = extract_trig_pow4(ctx, term) {
+                match name {
+                    "sin" if sin4_arg.is_none() => {
+                        sin4_arg = Some(arg);
+                        sin4_idx = Some(i);
+                    }
+                    "cos" if cos4_arg.is_none() => {
+                        cos4_arg = Some(arg);
+                        cos4_idx = Some(i);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        let sin4_a = sin4_arg?;
+        let cos4_a = cos4_arg?;
+        let si = sin4_idx?;
+        let ci = cos4_idx?;
+
+        // Verify arguments match
+        if crate::ordering::compare_expr(ctx, sin4_a, cos4_a) != Ordering::Equal {
+            return None;
+        }
+
+        // Build replacement: 1 − 2·sin²(a)·cos²(a)
+        let arg = sin4_a;
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let two_exp = ctx.num(2);
+        let two_exp2 = ctx.num(2);
+
+        let sin_a = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
+        let cos_a = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
+        let sin2 = ctx.add(Expr::Pow(sin_a, two_exp));
+        let cos2 = ctx.add(Expr::Pow(cos_a, two_exp2));
+        let product = ctx.add(Expr::Mul(sin2, cos2));
+        let two_product = ctx.add(Expr::Mul(two, product));
+        let replacement = ctx.add(Expr::Sub(one, two_product));
+
+        // If there are other terms beyond sin⁴ and cos⁴, preserve them
+        let remaining: Vec<ExprId> = terms
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != si && *i != ci)
+            .map(|(_, &t)| t)
+            .collect();
+
+        let result = if remaining.is_empty() {
+            replacement
+        } else {
+            let mut acc = replacement;
+            for &t in &remaining {
+                acc = ctx.add(Expr::Add(acc, t));
+            }
+            acc
+        };
+
+        Some(Rewrite::new(result).desc("sin⁴(x) + cos⁴(x) = 1 − 2·sin²(x)·cos²(x)"))
+    }
+);
+
+// =============================================================================
 // SUM-TO-PRODUCT QUOTIENT RULE
 // (sin(A)+sin(B))/(cos(A)+cos(B)) → sin((A+B)/2)/cos((A+B)/2)
 // =============================================================================

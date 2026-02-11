@@ -46,7 +46,9 @@ mod power_products_rules;
 pub use power_products_rules::{
     build_avg, build_half_diff, extract_trig_arg, normalize_for_even_fn,
 };
-pub use power_products_rules::{SinCosSumQuotientRule, TrigHiddenCubicIdentityRule};
+pub use power_products_rules::{
+    SinCosQuarticSumRule, SinCosSumQuotientRule, TrigHiddenCubicIdentityRule,
+};
 
 // --- Phase shift and supplementary angle ---
 mod phase_shift_rules;

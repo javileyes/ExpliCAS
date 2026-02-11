@@ -2649,16 +2649,8 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool, op: Combin
                             }
                         };
 
-                        let opts = cas_engine::phase::SimplifyOptions {
-                            budgets: cas_engine::phase::PhaseBudgets {
-                                max_total_rewrites: 15,
-                                core_iters: 3,
-                                transform_iters: 2,
-                                rationalize_iters: 1,
-                                post_iters: 2,
-                            },
-                            ..Default::default()
-                        };
+                        // Use default budget — the thread-based 2s timeout prevents hangs
+                        let opts = cas_engine::phase::SimplifyOptions::default();
 
                         let (e, _) = simplifier.simplify_with_options(exp_parsed, opts.clone());
                         let (s, _) = simplifier.simplify_with_options(simp_parsed, opts.clone());
