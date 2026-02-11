@@ -588,6 +588,76 @@ fn eval_f64_with_substitution(
                         None
                     }
                 }
+                "exp" if args.len() == 1 => {
+                    let av = eval_f64_with_substitution(ctx, args[0], var_names, values)?;
+                    let result = av.exp();
+                    if result.is_finite() {
+                        Some(result)
+                    } else {
+                        None
+                    }
+                }
+                "sinh" if args.len() == 1 => {
+                    let av = eval_f64_with_substitution(ctx, args[0], var_names, values)?;
+                    let result = av.sinh();
+                    if result.is_finite() {
+                        Some(result)
+                    } else {
+                        None
+                    }
+                }
+                "cosh" if args.len() == 1 => {
+                    let av = eval_f64_with_substitution(ctx, args[0], var_names, values)?;
+                    let result = av.cosh();
+                    if result.is_finite() {
+                        Some(result)
+                    } else {
+                        None
+                    }
+                }
+                "tanh" if args.len() == 1 => {
+                    let av = eval_f64_with_substitution(ctx, args[0], var_names, values)?;
+                    Some(av.tanh())
+                }
+                "cot" if args.len() == 1 => {
+                    let av = eval_f64_with_substitution(ctx, args[0], var_names, values)?;
+                    let s = av.sin();
+                    if s.abs() < 1e-15 {
+                        return None;
+                    }
+                    let result = av.cos() / s;
+                    if result.is_finite() {
+                        Some(result)
+                    } else {
+                        None
+                    }
+                }
+                "sec" if args.len() == 1 => {
+                    let av = eval_f64_with_substitution(ctx, args[0], var_names, values)?;
+                    let c = av.cos();
+                    if c.abs() < 1e-15 {
+                        return None;
+                    }
+                    let result = 1.0 / c;
+                    if result.is_finite() {
+                        Some(result)
+                    } else {
+                        None
+                    }
+                }
+                "csc" if args.len() == 1 => {
+                    let av = eval_f64_with_substitution(ctx, args[0], var_names, values)?;
+                    let s = av.sin();
+                    if s.abs() < 1e-15 {
+                        return None;
+                    }
+                    let result = 1.0 / s;
+                    if result.is_finite() {
+                        Some(result)
+                    } else {
+                        None
+                    }
+                }
                 _ => None, // Unsupported function
             }
         }

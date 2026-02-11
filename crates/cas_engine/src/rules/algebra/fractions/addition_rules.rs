@@ -535,19 +535,29 @@ define_rule!(
             new_den
         };
 
-        // Early zero-numerator check: expand the cross-multiplied numerator
-        // and check if it simplifies to 0. This catches partial-fraction recombination
-        // cases like 1/(x·(x+1)) + 1/√3 - (1/x - 1/(x+1) + √3/3) where the
-        // numerator is zero after expansion but unexpanded products block cancellation.
-        // This check runs BEFORE the complexity gate so it can't be blocked by growth.
-        if !same_denom && !opposite_denom {
+        // Early zero-numerator check: expand the numerator and check if it
+        // simplifies to 0. Catches partial-fraction recombination and combined-
+        // identity cases where the numerator is zero after expansion.
+        // Runs for ALL denominator cases (same, opposite, or different) and
+        // BEFORE the complexity gate so it can't be blocked by growth.
+        {
             // Two-pass expansion: the first expand distributes outer products but may
             // leave Neg(Sum)·factor undistributed. The second pass finishes distribution.
             let num_pass1 = crate::expand::expand(ctx, new_num);
             let num_pass2 = crate::expand::expand(ctx, num_pass1);
             if crate::helpers::numeric_poly_zero_check(ctx, num_pass2) {
                 let zero = ctx.num(0);
-                return Some(Rewrite::new(zero).desc("Add fractions: numerator cancels to 0"));
+                // Return 0/den when denominator has variables (preserves domain
+                // restrictions for strict definedness). Return plain 0 otherwise.
+                let den_vars = cas_ast::collect_variables(ctx, common_den);
+                if den_vars.is_empty() {
+                    return Some(Rewrite::new(zero).desc("Add fractions: numerator cancels to 0"));
+                } else {
+                    let zero_frac = ctx.add(Expr::Div(zero, common_den));
+                    return Some(
+                        Rewrite::new(zero_frac).desc("Add fractions: numerator cancels to 0"),
+                    );
+                }
             }
         }
 
@@ -873,14 +883,33 @@ define_rule!(
             ctx.add(Expr::Sub(ad, bc))
         };
 
-        // Early zero-numerator check: expand the cross-multiplied numerator
-        // and check if it simplifies to 0. This catches partial-fraction recombination
-        // cases where the numerator is zero after expansion.
-        if !same_denom {
-            let num_expanded = crate::expand::expand(ctx, new_num);
-            if crate::helpers::numeric_poly_zero_check(ctx, num_expanded) {
+        // Early zero-numerator check: expand the numerator and check if it
+        // simplifies to 0. Catches partial-fraction recombination and combined-
+        // identity cases where the numerator is zero after expansion.
+        // Runs for ALL denominator cases (same or different).
+        {
+            let num_pass1 = crate::expand::expand(ctx, new_num);
+            let num_pass2 = crate::expand::expand(ctx, num_pass1);
+            if crate::helpers::numeric_poly_zero_check(ctx, num_pass2) {
                 let zero = ctx.num(0);
-                return Some(Rewrite::new(zero).desc("Subtract fractions: numerator cancels to 0"));
+                // Return 0/den when denominator has variables (preserves domain
+                // restrictions for strict definedness). Return plain 0 otherwise.
+                let eff_den = if same_denom {
+                    common_den
+                } else {
+                    mul2_raw(ctx, d1, d2)
+                };
+                let den_vars = cas_ast::collect_variables(ctx, eff_den);
+                if den_vars.is_empty() {
+                    return Some(
+                        Rewrite::new(zero).desc("Subtract fractions: numerator cancels to 0"),
+                    );
+                } else {
+                    let zero_frac = ctx.add(Expr::Div(zero, eff_den));
+                    return Some(
+                        Rewrite::new(zero_frac).desc("Subtract fractions: numerator cancels to 0"),
+                    );
+                }
             }
         }
 
