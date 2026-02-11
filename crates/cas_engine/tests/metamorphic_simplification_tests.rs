@@ -2521,15 +2521,19 @@ struct ComboMetrics {
     families: usize,
     combos: usize,
     nf_convergent: usize,
-    proved_symbolic: usize,
+    proved_quotient: usize,
+    proved_difference: usize,
     numeric_only: usize,
     failed: usize,
     skipped: usize,
 }
 
 impl ComboMetrics {
+    fn proved_symbolic(&self) -> usize {
+        self.proved_quotient + self.proved_difference
+    }
     fn passed(&self) -> usize {
-        self.nf_convergent + self.proved_symbolic + self.numeric_only
+        self.nf_convergent + self.proved_symbolic() + self.numeric_only
     }
 
     fn nf_rate(&self) -> f64 {
@@ -2681,10 +2685,12 @@ fn run_csv_combination_tests(
     let mut failed = 0;
     // Classification counters:
     // - nf_convergent: simplify(LHS) == simplify(RHS) structurally (ideal)
-    // - proved_symbolic: simplify(LHS - RHS) == 0 (correct but different normal forms)
+    // - proved_quotient: simplify(LHS/RHS)==1 for Mul/Div, or simplify(LHS-RHS)==0 for Add/Sub
+    // - proved_difference: simplify(LHS-RHS)==0 fallback for Mul/Div (engine weakness signal)
     // - numeric_only: only passes numeric check (potential issue or branch-sensitive)
     let mut nf_convergent = 0;
-    let mut proved_symbolic = 0;
+    let mut proved_quotient = 0;
+    let mut proved_difference = 0;
     let mut numeric_only = 0;
     let mut nf_mismatch_examples: Vec<(String, String, String, String)> = Vec::new();
     let mut numeric_only_examples: Vec<(String, String, String, String, String, String)> =
@@ -2802,8 +2808,11 @@ fn run_csv_combination_tests(
                             cas_ast::Expr::Number(n) if *n == target
                         );
                         if is_proved {
-                            let _ =
-                                tx.send(Some(("proved".to_string(), String::new(), String::new())));
+                            let _ = tx.send(Some((
+                                "proved-q".to_string(),
+                                String::new(),
+                                String::new(),
+                            )));
                             return;
                         }
 
@@ -2817,8 +2826,11 @@ fn run_csv_combination_tests(
                             cas_ast::Expr::Number(n) if *n == zero
                         );
                         if is_zero {
-                            let _ =
-                                tx.send(Some(("proved".to_string(), String::new(), String::new())));
+                            let _ = tx.send(Some((
+                                "proved-d".to_string(),
+                                String::new(),
+                                String::new(),
+                            )));
                             return;
                         }
 
@@ -2861,8 +2873,12 @@ fn run_csv_combination_tests(
                             nf_convergent += 1;
                             passed += 1;
                         }
-                        "proved" => {
-                            proved_symbolic += 1;
+                        "proved-q" | "proved-d" => {
+                            if kind.as_str() == "proved-q" {
+                                proved_quotient += 1;
+                            } else {
+                                proved_difference += 1;
+                            }
                             passed += 1;
                             if verbose && nf_mismatch_examples.len() < max_examples {
                                 nf_mismatch_examples.push((
@@ -3003,7 +3019,7 @@ fn run_csv_combination_tests(
                         passed += 1;
                     }
                     "proved" => {
-                        proved_symbolic += 1;
+                        proved_quotient += 1;
                         passed += 1;
                         if verbose && nf_mismatch_examples.len() < max_examples {
                             nf_mismatch_examples.push((
@@ -3061,8 +3077,8 @@ fn run_csv_combination_tests(
         skipped
     );
     eprintln!(
-        "   📐 NF-convergent: {} | 🔢 Proved-symbolic: {} | 🌡️ Numeric-only: {}",
-        nf_convergent, proved_symbolic, numeric_only
+        "   📐 NF-convergent: {} | 🔢 Proved-symbolic: {} (quotient: {}, diff: {}) | 🌡️ Numeric-only: {}",
+        nf_convergent, proved_quotient + proved_difference, proved_quotient, proved_difference, numeric_only
     );
 
     // Print NF-mismatch examples if verbose (proved_symbolic but different normal forms)
@@ -3073,10 +3089,10 @@ fn run_csv_combination_tests(
             eprintln!("       RHS: {}", rhs);
             eprintln!("       (simplifies: {} + {})", simp1, simp2);
         }
-        if proved_symbolic > max_examples {
+        if proved_quotient + proved_difference > max_examples {
             eprintln!(
                 "   ... and {} more (set METATEST_MAX_EXAMPLES=N to show more)",
-                proved_symbolic - max_examples
+                proved_quotient + proved_difference - max_examples
             );
         }
         eprintln!();
@@ -3327,7 +3343,8 @@ fn run_csv_combination_tests(
         families: num_families,
         combos: passed + failed + skipped,
         nf_convergent,
-        proved_symbolic,
+        proved_quotient,
+        proved_difference,
         numeric_only,
         failed,
         skipped,
@@ -3448,10 +3465,10 @@ fn metatest_benchmark_all_ops() {
         "╠═════╤════════╤══════════╤══════════════╤════════════════╤══════════════╤══════════╣"
     );
     eprintln!(
-        "║ Op  │ Pairs  │ Families │ NF-convergent│ Proved-symbolic│ Numeric-only │ Failed   ║"
+        "║ Op  │ Pairs  │ Families │ NF-convergent│ Proved-sym (Q+D)│ Numeric-only │ Failed   ║"
     );
     eprintln!(
-        "╠═════╪════════╪══════════╪══════════════╪════════════════╪══════════════╪══════════╣"
+        "╠═════╪════════╪══════════╪══════════════╪═════════════════╪══════════════╪══════════╣"
     );
 
     let mut total_nf = 0;
@@ -3463,19 +3480,21 @@ fn metatest_benchmark_all_ops() {
 
     for m in &all_metrics {
         let effective = m.combos - m.skipped;
+        let proved = m.proved_symbolic();
         eprintln!(
-            "║ {:<3} │ {:>5}  │ {:>7}  │ {:>6} {:>5.1}% │ {:>6}  {:>5.1}% │ {:>6} {:>5.1}% │ {:>6}   ║",
+            "║ {:<3} │ {:>5}  │ {:>7}  │ {:>6} {:>5.1}% │{:>5}+{:<4}{:>5.1}% │ {:>6} {:>5.1}% │ {:>6}   ║",
             m.op, m.pairs, m.families,
             m.nf_convergent,
             if effective > 0 { m.nf_convergent as f64 / effective as f64 * 100.0 } else { 0.0 },
-            m.proved_symbolic,
-            if effective > 0 { m.proved_symbolic as f64 / effective as f64 * 100.0 } else { 0.0 },
+            m.proved_quotient,
+            m.proved_difference,
+            if effective > 0 { proved as f64 / effective as f64 * 100.0 } else { 0.0 },
             m.numeric_only,
             if effective > 0 { m.numeric_only as f64 / effective as f64 * 100.0 } else { 0.0 },
             m.failed,
         );
         total_nf += m.nf_convergent;
-        total_proved += m.proved_symbolic;
+        total_proved += proved;
         total_numeric += m.numeric_only;
         total_combos += m.combos;
         total_skipped += m.skipped;
@@ -3484,10 +3503,10 @@ fn metatest_benchmark_all_ops() {
 
     let total_effective = total_combos - total_skipped;
     eprintln!(
-        "╠═════╪════════╪══════════╪══════════════╪════════════════╪══════════════╪══════════╣"
+        "╠═════╪════════╪══════════╪══════════════╪═════════════════╪══════════════╪══════════╣"
     );
     eprintln!(
-        "║ ALL │        │          │ {:>6} {:>5.1}% │ {:>6}  {:>5.1}% │ {:>6} {:>5.1}% │ {:>6}   ║",
+        "║ ALL │        │          │ {:>6} {:>5.1}% │     {:>5}{:>5.1}% │ {:>6} {:>5.1}% │ {:>6}   ║",
         total_nf,
         if total_effective > 0 {
             total_nf as f64 / total_effective as f64 * 100.0
@@ -3509,7 +3528,7 @@ fn metatest_benchmark_all_ops() {
         total_f,
     );
     eprintln!(
-        "╚═════╧════════╧══════════╧══════════════╧════════════════╧══════════════╧══════════╝"
+        "╚═════╧════════╧══════════╧══════════════╧═════════════════╧══════════════╧══════════╝"
     );
     eprintln!(
         "   Total combos: {} (skipped: {})",

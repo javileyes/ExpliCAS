@@ -456,8 +456,12 @@ cobertura diversa con un número manejable de pares:
 2. **Fase 2**: Rellena los slots restantes (`max_pairs - num_families`) desde pares no seleccionados
 3. **Shuffle final**: Las selecciones se barajan para randomizar el orden de combinaciones
 
-Esto reemplaza el enfoque anterior de "ventana con offset" (`METATEST_START_OFFSET`) que podía
-dejar familias enteras sin cubrir.
+**Seed configurable**: La semilla del LCG se controla con `METATEST_SEED=<u64>` (default `0xC0FFEE`).
+Distintas semillas seleccionan distintos pares, permitiendo exploración multi-seed para descubrir
+edge cases. Ejemplo: `METATEST_SEED=42 cargo test ...`
+
+**Modo legacy**: Con `METATEST_NOSHUFFLE=1` se usa el enfoque anterior de ventana contígua
+(combinado con `METATEST_START_OFFSET=N` para desplazar la ventana).
 
 #### Tests Disponibles
 
@@ -518,19 +522,29 @@ Output de ejemplo:
 ```
 ╔═══════════════════════════════════════════════════════════════════════════════════╗
 ║                     METAMORPHIC BENCHMARK RESULTS                                ║
-╠═════╤════════╤══════════╤══════════════╤════════════════╤══════════════╤══════════╣
-║ Op  │ Pairs  │ Families │ NF-convergent│ Proved-symbolic│ Numeric-only │ Failed   ║
-╠═════╪════════╪══════════╪══════════════╪════════════════╪══════════════╪══════════╣
-║ Add │   150  │     134  │   6543  60.1%│   2987   27.4%│   1356  12.5%│      0   ║
-║ Sub │   150  │     134  │   6201  57.0%│   3102   28.5%│   1583  14.5%│      0   ║
-║ Mul │   150  │     134  │   5754  67.1%│   1898   22.1%│    933  10.9%│      0   ║
-║ Div │    50  │      50  │    601  50.5%│    312   26.2%│    278  23.3%│      0   ║
-╠═════╪════════╪══════════╪══════════════╪════════════════╪══════════════╪══════════╣
-║ ALL │        │          │  19099  60.0%│   8299   26.1%│   4150  13.0%│      0   ║
-╚═════╧════════╧══════════╧══════════════╧════════════════╧══════════════╧══════════╝
+╠═════╤════════╤══════════╤══════════════╤═════════════════╤══════════════╤══════════╣
+║ Op  │ Pairs  │ Families │ NF-convergent│ Proved-sym (Q+D)│ Numeric-only │ Failed   ║
+╠═════╪════════╪══════════╪══════════════╪═════════════════╪══════════════╪══════════╣
+║ add │   150  │     134  │   5797  67.0% │ 2788+0    32.2% │     61   0.7% │      0   ║
+║ sub │   150  │     134  │   6082  70.3% │ 2532+0    29.3% │     32   0.4% │      0   ║
+║ mul │   150  │     134  │   5860  68.3% │ 2033+375  28.1% │    316   3.7% │      0   ║
+║ div │    50  │      50  │    489  59.1% │  282+34   38.2% │     22   2.7% │      0   ║
+╠═════╪════════╪══════════╪══════════════╪═════════════════╪══════════════╪══════════╣
+║ ALL │        │          │  18228  68.3% │      8044 30.1% │    431   1.6% │      0   ║
+╚═════╧════════╧══════════╧══════════════╧═════════════════╧══════════════╧══════════╝
 ```
 
+**Lectura de la columna `Proved-sym (Q+D)`:**
+- **Q** (quotient) = el motor simplifica `A/B → 1` nativamente (para Mul/Div)
+  o `A−B → 0` nativamente (para Add/Sub).
+- **D** (difference fallback) = el motor **NO** puede simplificar `A/B → 1`, pero SÍ
+  `A−B → 0`. Señal de **debilidad del motor** para simplificación de cocientes.
+
+Para Add/Sub, D siempre es 0 (la diferencia ES la verificación nativa).
+Para Mul/Div, D > 0 indica identidades que el motor no puede cancelar en forma de cociente.
+
 Uso típico: comparar métricas antes/después de añadir una regla de simplificación.
+La columna D indica el número de casos que mejorarían si se mejorara la simplificación de cocientes.
 
 #### Modo Verbose
 
@@ -542,13 +556,15 @@ METATEST_VERBOSE=1 cargo test --release -p cas_engine \
     -- --nocapture --ignored 2>&1
 ```
 
-**Variables de entorno:**
+**Variables de entorno para combinaciones:**
 
 | Variable | Default | Descripción |
 |----------|---------|-------------|
 | `METATEST_VERBOSE` | (desactivado) | Activa informe detallado con ejemplos y clasificadores |
 | `METATEST_MAX_EXAMPLES` | `10` | Número máximo de ejemplos a mostrar por categoría |
-| `METATEST_START_OFFSET` | `0` | Offset para LCG seed (varía la selección estratificada) |
+| `METATEST_SEED` | `0xC0FFEE` | Semilla para el LCG del muestreo estratificado |
+| `METATEST_NOSHUFFLE` | (desactivado) | Modo legacy: ventana contígua en vez de estratificado |
+| `METATEST_START_OFFSET` | `0` | Offset para ventana legacy (solo con `METATEST_NOSHUFFLE=1`) |
 
 #### Clasificación de Combinaciones (4 niveles)
 
@@ -557,16 +573,29 @@ Cada combinación `(identity_i ⊕ identity_j)` se clasifica en:
 | Nivel | Emoji | Significado |
 |-------|-------|-------------|
 | **NF-convergent** | 📐 | **Equivalencia simbólica pura** — `simplify(LHS) == simplify(RHS)` estructuralmente idénticos |
-| **Proved-symbolic** | 🔢 | **Equivalencia simbólica con cambios** — las formas normales difieren pero `simplify(LHS - RHS) == 0` |
+| **Proved-quotient** | 🔢 Q | **Equivalencia nativa** — `simplify(LHS/RHS) == 1` (Mul/Div) o `simplify(LHS-RHS) == 0` (Add/Sub) |
+| **Proved-difference** | 🔢 D | **Fallback** — `simplify(LHS-RHS) == 0` cuando el cociente no simplifica. **Señal de debilidad del motor** |
 | **Numeric-only** | 🌡️ | **Equivalencia numérica** — solo pasa por muestreo numérico, no hay prueba simbólica |
 | **Failed** | ❌ | **Error** — falla incluso la equivalencia numérica |
+
+> [!NOTE]
+> Para **Add/Sub**, el check nativo ya usa diferencia, así que D siempre es 0.
+> Para **Mul/Div**, D > 0 indica combinaciones donde el motor no puede cancelar el cociente
+> `A/B → 1`, pero sí puede demostrar `A−B → 0`. El número D es un indicador directo de
+> mejoras posibles en la simplificación de cocientes.
+
+#### Robustez: `catch_unwind`
+
+El path inline de Add/Sub está protegido con `std::panic::catch_unwind` para capturar panics
+latentes (p.ej. `num-rational` con denominador cero en combinaciones específicas). Los panics
+se clasifican como skips, no como fallos.
 
 #### Output Ejemplo
 
 ```
-📊 Running CSV combination tests [mul] with 150 pairs from 134 families (offset 0, stratified)
-✅ Double combinations [mul]: 8585 passed, 0 failed, 61 skipped (timeout)
-   📐 NF-convergent: 5754 | 🔢 Proved-symbolic: 1898 | 🌡️ Numeric-only: 933
+📊 Running CSV combination tests [mul] with 150 pairs from 134 families (seed 12648430, offset 0, stratified)
+✅ Double combinations [mul]: 8584 passed, 0 failed, 0 skipped (timeout)
+   📐 NF-convergent: 5860 | 🔢 Proved-symbolic: 2408 (quotient: 2033, diff: 375) | 🌡️ Numeric-only: 316
 ```
 
 #### Secciones del Informe Verbose
@@ -611,16 +640,22 @@ Marcadores: `[NEG_EXP]` = exponentes negativos, `[DIV]` = divisiones. Apuntan a 
 diferentes pero matemáticamente equivalentes. Esto es normal y **no es un error** — lo importante
 es que `Failed = 0`. Los clasificadores ayudan a **priorizar qué reglas de simplificación añadir**.
 
-### Baselines de Combinaciones (Feb 2026)
+### Baselines de Combinaciones (Feb 2026, Seed 42)
 
-Resultados de referencia con muestreo estratificado (post pre-order conjugate pair contraction):
+Resultados de referencia con muestreo estratificado, difference fallback, y Q/D split:
 
-| Op | Pairs | Families | NF-conv | Proved | Numeric | Failed |
-|----|-------|----------|---------|--------|---------|--------|
-| Add | 150 | 134 | ~6500 | ~3000 | ~1350 | 0 |
-| Sub | 150 | 134 | ~6200 | ~3100 | ~1580 | 0 |
-| Mul | 150 | 134 | 5754 | 1898 | 933 | 0 |
-| Div | 50 | 50 | ~600 | ~310 | ~280 | 0 |
+| Op | Pairs | Families | NF-conv | Proved (Q+D) | Numeric | Failed |
+|----|-------|----------|---------|--------------|---------|--------|
+| Add | 150 | 134 | 5797 | 2788+0 | 61 | 0 |
+| Sub | 150 | 134 | 6082 | 2532+0 | 32 | 0 |
+| Mul | 150 | 134 | 5860 | 2033+375 | 316 | 0 |
+| Div | 50 | 50 | 489 | 282+34 | 22 | 0 |
+
+> [!IMPORTANT]
+> Los 375 Mul y 34 Div en la columna D son **debilidades del motor**: el engine
+> no puede simplificar `A/B → 1` pero sí `A−B → 0`. Mejorar la simplificación
+> de cocientes (trig normalization, polynomial cancellation, ln expansion)
+> reduciría estos números.
 
 ### Qué Significan
 
@@ -632,7 +667,8 @@ Resultados de referencia con muestreo estratificado (post pre-order conjugate pa
 
 **Combinaciones:**
 - **NF-convergent**: Ambos lados simplifican a la misma expresión exacta (ideal)
-- **Proved-symbolic**: Formas normales difieren, pero `simplify(LHS - RHS) == 0`
+- **Proved-quotient (Q)**: El motor simplifica `A/B → 1` o `A−B → 0` nativamente
+- **Proved-difference (D)**: Solo `simplify(A−B) == 0` funciona, no el cociente (debilidad del motor)
 - **Numeric-only**: Solo equivalencia numérica — oportunidad de mejora del engine
 
 ### Mejorar el Engine
@@ -673,7 +709,9 @@ Resultados de referencia con muestreo estratificado (post pre-order conjugate pa
 | `METATEST_UPDATE_BASELINE` | `0`/`1` | `0` | Regenera archivo baseline |
 | `METATEST_VERBOSE` | `0`/`1` | `0` | Informe detallado: ejemplos, familias, shapes |
 | `METATEST_MAX_EXAMPLES` | número | `10` | Máximos ejemplos a mostrar por categoría |
-| `METATEST_START_OFFSET` | número | `0` | Offset para LCG seed en muestreo estratificado |
+| `METATEST_SEED` | `u64` | `0xC0FFEE` | Semilla para LCG del muestreo estratificado |
+| `METATEST_NOSHUFFLE` | `0`/`1` | `0` | Modo legacy: ventana contígua en vez de estratificado |
+| `METATEST_START_OFFSET` | número | `0` | Offset para ventana legacy (solo con `METATEST_NOSHUFFLE=1`) |
 
 ---
 
