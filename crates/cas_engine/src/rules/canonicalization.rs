@@ -312,6 +312,17 @@ define_rule!(CanonicalizeDivRule, "Canonicalize Division", importance: crate::st
         if let Expr::Number(n) = ctx.get(rhs) {
             let n = n.clone();
             if !n.is_zero() {
+                // SPECIAL CASE: (a/b) / c → a / (b·c)
+                // Flatten nested division instead of creating (1/c)*(a/b),
+                // which would diverge from the canonical flat form a/(b·c).
+                // This ensures "(sqrt(5)/x²)/5" and "sqrt(5)/(5·x²)" converge.
+                if let Some((inner_num, inner_den)) = as_div(ctx, lhs) {
+                    let c_expr = ctx.add(Expr::Number(n.clone()));
+                    let new_den = smart_mul(ctx, inner_den, c_expr);
+                    let new_expr = ctx.add(Expr::Div(inner_num, new_den));
+                    return Some(Rewrite::new(new_expr).desc_lazy(|| format!("(a/b) / {} = a / (b·{})", n, n)));
+                }
+
                 let inv = n.recip();
                 let inv_expr = ctx.add(Expr::Number(inv));
                 let new_expr = smart_mul(ctx, inv_expr, lhs);

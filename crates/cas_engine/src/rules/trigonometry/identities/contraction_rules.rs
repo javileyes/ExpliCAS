@@ -4,6 +4,7 @@
 //! to compact representations (half-angle tangent, double angle contraction).
 
 use crate::helpers::{as_div, as_mul, as_neg, as_sub};
+use crate::nary::Sign;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 
@@ -506,11 +507,16 @@ impl crate::rule::Rule for Cos2xAdditiveContractionRule {
             return None;
         }
 
+        // Use add_terms_signed to properly decompose both Add and Sub nodes.
+        // add_leaves only flattens Add, so Sub(2cos²t, 1) would be a single
+        // term and never match. add_terms_signed decomposes it into
+        // [(2cos²t, +), (1, -)].
+        let signed_terms = crate::nary::add_terms_signed(ctx, expr);
+
         // Only apply to exactly 2-term additive expressions to avoid
         // disrupting larger Pythagorean chains where the contraction would
         // prevent downstream symbolic cancellation.
-        let terms = crate::nary::add_leaves(ctx, expr);
-        if terms.len() != 2 {
+        if signed_terms.len() != 2 {
             return None;
         }
 
@@ -518,21 +524,20 @@ impl crate::rule::Rule for Cos2xAdditiveContractionRule {
         let two_rat = num_rational::BigRational::from_integer(2.into());
         let neg_two_rat = num_rational::BigRational::from_integer((-2).into());
 
-        // Find a constant ±1 term
-        for (i, &term_i) in terms.iter().enumerate() {
+        // Find a constant ±1 term (sign is tracked by the signed_terms flag)
+        for (i, &(term_i, sign_i)) in signed_terms.iter().enumerate() {
             let term_val = match ctx.get(term_i) {
-                Expr::Number(n) => n.clone(),
-                Expr::Neg(inner) => {
-                    if let Expr::Number(n) = ctx.get(*inner) {
-                        -n.clone()
+                Expr::Number(n) => {
+                    if sign_i == Sign::Pos {
+                        n.clone()
                     } else {
-                        continue;
+                        -n.clone()
                     }
                 }
                 _ => continue,
             };
 
-            // Check if this is +1 or -1
+            // Check if this is +1 or -1 (after accounting for sign)
             let is_pos_one = term_val == one_rat;
             let is_neg_one = term_val == -one_rat.clone();
             if !is_pos_one && !is_neg_one {
@@ -540,14 +545,19 @@ impl crate::rule::Rule for Cos2xAdditiveContractionRule {
             }
 
             // Look for a matching ±2·trig²(t) in the remaining terms
-            for (j, &term_j) in terms.iter().enumerate() {
+            for (j, &(term_j, sign_j)) in signed_terms.iter().enumerate() {
                 if j == i {
                     continue;
                 }
 
-                if let Some((trig_arg, trig_is_sin, coeff)) =
+                if let Some((trig_arg, trig_is_sin, mut coeff)) =
                     Self::extract_coeff_trig_squared(ctx, term_j)
                 {
+                    // Account for the additive sign from the signed decomposition
+                    if sign_j == Sign::Neg {
+                        coeff = -coeff;
+                    }
+
                     // Pattern A: 1 - 2·sin²(t) → cos(2t)
                     //   Requires: is_pos_one=true, trig_is_sin=true, coeff=-2
                     // Pattern B: 2·cos²(t) - 1 → cos(2t)
@@ -569,31 +579,13 @@ impl crate::rule::Rule for Cos2xAdditiveContractionRule {
                     let double_arg = ctx.add(Expr::Mul(two, trig_arg));
                     let cos_2t = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![double_arg]);
 
-                    // Build remaining terms (excluding i and j)
-                    let remaining: Vec<ExprId> = terms
-                        .iter()
-                        .enumerate()
-                        .filter(|(k, _)| *k != i && *k != j)
-                        .map(|(_, &t)| t)
-                        .collect();
-
-                    let result = if remaining.is_empty() {
-                        cos_2t
-                    } else {
-                        let mut acc = cos_2t;
-                        for &t in &remaining {
-                            acc = ctx.add(Expr::Add(acc, t));
-                        }
-                        acc
-                    };
-
                     let desc = if trig_is_sin {
                         "1 - 2·sin²(t) = cos(2t)"
                     } else {
                         "2·cos²(t) - 1 = cos(2t)"
                     };
 
-                    return Some(Rewrite::new(result).desc(desc));
+                    return Some(Rewrite::new(cos_2t).desc(desc));
                 }
             }
         }

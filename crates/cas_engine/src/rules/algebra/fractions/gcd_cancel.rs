@@ -654,6 +654,62 @@ define_rule!(
             }
         }
 
+        // Handle Number(p/q) * fraction: decompose rational and merge into fraction.
+        // (p/q) * (a/b) → (p*a) / (q*b) — ensures (1/5)*sqrt(5)/x² → sqrt(5)/(5*x²).
+        // This must fire BEFORE the constant guard below, which would block combination.
+        {
+            use cas_ast::views::Factor;
+            let check_rational_with_fraction =
+                |num_side: ExprId,
+                 frac_side: ExprId|
+                 -> Option<(num_rational::BigRational, FractionParts)> {
+                    if let Expr::Number(n) = ctx.get(num_side) {
+                        if !n.is_integer() {
+                            let fp = FractionParts::from(&*ctx, frac_side);
+                            if fp.is_fraction() {
+                                return Some((n.clone(), fp));
+                            }
+                        }
+                    }
+                    None
+                };
+
+            if let Some((rational, fp_frac)) =
+                check_rational_with_fraction(l, r).or_else(|| check_rational_with_fraction(r, l))
+            {
+                let (p, q) = (rational.numer().clone(), rational.denom().clone());
+                let p_expr = ctx.add(Expr::Number(num_rational::BigRational::from_integer(p)));
+                let q_expr = ctx.add(Expr::Number(num_rational::BigRational::from_integer(q)));
+
+                // Build new numerator: p * original_num_factors
+                let mut new_num = vec![Factor {
+                    base: p_expr,
+                    exp: 1,
+                }];
+                new_num.extend(fp_frac.num.iter().cloned());
+
+                // Build new denominator: q * original_den_factors
+                let mut new_den = vec![Factor {
+                    base: q_expr,
+                    exp: 1,
+                }];
+                new_den.extend(fp_frac.den.iter().cloned());
+
+                let result_fp = FractionParts {
+                    sign: fp_frac.sign,
+                    num: new_num,
+                    den: new_den,
+                };
+
+                let new_expr = result_fp.build_as_div(ctx);
+                if new_expr != expr {
+                    return Some(
+                        Rewrite::new(new_expr).desc("Combine fractions in multiplication"),
+                    );
+                }
+            }
+        }
+
         // Avoid combining if either side is just a constant (prefer k * (a/b) for CombineLikeTerms)
         if matches!(ctx.get(l), Expr::Number(_) | Expr::Constant(_))
             || matches!(ctx.get(r), Expr::Number(_) | Expr::Constant(_))
@@ -673,6 +729,41 @@ define_rule!(
             let mut combined_den = Vec::new();
             combined_den.extend(fp_l.den.iter().cloned());
             combined_den.extend(fp_r.den.iter().cloned());
+
+            // Normalize: decompose any Number(p/q) with q>1 in the numerator.
+            // Move q to denominator so (1/5 * sqrt(5)) / x² → sqrt(5) / (5·x²).
+            // This ensures fraction forms converge regardless of construction order.
+            {
+                use cas_ast::views::Factor;
+                let mut new_num = Vec::with_capacity(combined_num.len());
+                for f in &combined_num {
+                    if f.exp == 1 {
+                        if let Expr::Number(n) = ctx.get(f.base) {
+                            let n = n.clone();
+                            if !n.is_integer() {
+                                let (p, q) = (n.numer().clone(), n.denom().clone());
+                                let p_expr = ctx
+                                    .add(Expr::Number(num_rational::BigRational::from_integer(p)));
+                                let q_expr = ctx
+                                    .add(Expr::Number(num_rational::BigRational::from_integer(q)));
+                                // Replace p/q in numerator with just p
+                                new_num.push(Factor {
+                                    base: p_expr,
+                                    exp: 1,
+                                });
+                                // Push q to denominator
+                                combined_den.push(Factor {
+                                    base: q_expr,
+                                    exp: 1,
+                                });
+                                continue;
+                            }
+                        }
+                    }
+                    new_num.push(*f);
+                }
+                combined_num = new_num;
+            }
 
             let combined_sign = (fp_l.sign as i16 * fp_r.sign as i16) as i8;
 
