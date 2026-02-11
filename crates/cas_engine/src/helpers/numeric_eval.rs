@@ -430,7 +430,7 @@ fn eval_f64(ctx: &Context, expr: ExprId) -> Option<f64> {
 /// Evaluate an expression by substituting f64 values for variables.
 /// Supports fractional exponents via `f64::powf()`.
 /// Returns None if evaluation fails (division by zero, NaN, unsupported operations).
-fn eval_f64_with_substitution(
+pub fn eval_f64_with_substitution(
     ctx: &Context,
     expr: ExprId,
     var_names: &[String],

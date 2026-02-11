@@ -2461,7 +2461,7 @@ fn parse_branch_mode(s: &str) -> BranchMode {
 }
 
 /// Operation used to combine two identity expressions in metamorphic tests
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum CombineOp {
     /// LHS_1 + LHS_2  vs  RHS_1 + RHS_2
     Add,
@@ -2469,6 +2469,8 @@ enum CombineOp {
     Mul,
     /// LHS_1 - LHS_2  vs  RHS_1 - RHS_2
     Sub,
+    /// LHS_1 / LHS_2  vs  RHS_1 / RHS_2
+    Div,
 }
 
 impl CombineOp {
@@ -2477,6 +2479,7 @@ impl CombineOp {
             CombineOp::Add => "+",
             CombineOp::Mul => "*",
             CombineOp::Sub => "-",
+            CombineOp::Div => "/",
         }
     }
     fn name(self) -> &'static str {
@@ -2484,7 +2487,12 @@ impl CombineOp {
             CombineOp::Add => "add",
             CombineOp::Mul => "mul",
             CombineOp::Sub => "sub",
+            CombineOp::Div => "div",
         }
+    }
+    /// Returns true if this operator uses multiplicative equivalence (LHS/RHS == 1)
+    fn is_multiplicative(self) -> bool {
+        matches!(self, CombineOp::Mul | CombineOp::Div)
     }
 }
 
@@ -2556,10 +2564,39 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool, op: Combin
         Vec::new(); // (LHS, RHS, simp1, simp2, diff_residual, shape)
     let mut skipped = 0;
 
-    // Per-combination timeout: mul is heavier due to product expansion
+    // Per-combination timeout: mul/div are heavier due to product/quotient expansion
     let combo_timeout = match op {
-        CombineOp::Mul => std::time::Duration::from_secs(2),
+        CombineOp::Mul | CombineOp::Div => std::time::Duration::from_secs(2),
         _ => std::time::Duration::from_secs(5),
+    };
+
+    // For Div, pre-check which identities are safe to use as divisors (not near zero)
+    // by evaluating at sample points. This avoids division-by-zero in test combinations.
+    let divisor_safe: Vec<bool> = if op == CombineOp::Div {
+        pairs
+            .iter()
+            .map(|p| {
+                let mut s = Simplifier::with_default_rules();
+                let sample_points = [0.7, 1.3, 2.1];
+                if let Ok(e) = parse(&p.exp, &mut s.context) {
+                    let var = &p.vars[0];
+                    sample_points.iter().all(|&x| {
+                        let var_names = vec![var.clone()];
+                        let val = cas_engine::helpers::eval_f64_with_substitution(
+                            &s.context,
+                            e,
+                            &var_names,
+                            &[x],
+                        );
+                        matches!(val, Some(v) if v.abs() > 0.01)
+                    })
+                } else {
+                    false
+                }
+            })
+            .collect()
+    } else {
+        vec![true; n]
     };
 
     // Double combinations: all pairs of different identities
@@ -2568,6 +2605,11 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool, op: Combin
             let pair1 = &pairs[i];
             let pair2 = &pairs[j];
 
+            // For Div: pair2 is the divisor, skip if it can be zero
+            if op == CombineOp::Div && !divisor_safe[j] {
+                continue;
+            }
+
             // Alpha-rename pair2
             let pair2_exp = alpha_rename(&pair2.exp, &pair2.vars[0], "u");
             let pair2_simp = alpha_rename(&pair2.simp, &pair2.vars[0], "u");
@@ -2575,7 +2617,164 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool, op: Combin
             let combined_exp = format!("({}) {} ({})", pair1.exp, op.symbol(), pair2_exp);
             let combined_simp = format!("({}) {} ({})", pair1.simp, op.symbol(), pair2_simp);
 
-            // Parse and simplify (with per-combo timeout)
+            // For Mul/Div: run the entire combo in a thread with hard timeout
+            // to prevent hangs when simplify_with_options gets stuck.
+            if op.is_multiplicative() {
+                let exp_clone = combined_exp.clone();
+                let simp_clone = combined_simp.clone();
+                let p1_var = pair1.vars[0].clone();
+                let p1_filter = pair1.filter_spec.clone();
+                let p2_filter = pair2.filter_spec.clone();
+                let config_clone = config.clone();
+                let v = verbose;
+                let timeout = combo_timeout;
+
+                let (tx, rx) = std::sync::mpsc::channel();
+                let _handle = std::thread::Builder::new()
+                    .stack_size(8 * 1024 * 1024)
+                    .spawn(move || {
+                        let mut simplifier = Simplifier::with_default_rules();
+                        let exp_parsed = match parse(&exp_clone, &mut simplifier.context) {
+                            Ok(e) => e,
+                            Err(_) => {
+                                let _ = tx.send(None);
+                                return;
+                            }
+                        };
+                        let simp_parsed = match parse(&simp_clone, &mut simplifier.context) {
+                            Ok(e) => e,
+                            Err(_) => {
+                                let _ = tx.send(None);
+                                return;
+                            }
+                        };
+
+                        let opts = cas_engine::phase::SimplifyOptions {
+                            budgets: cas_engine::phase::PhaseBudgets {
+                                max_total_rewrites: 15,
+                                core_iters: 3,
+                                transform_iters: 2,
+                                rationalize_iters: 1,
+                                post_iters: 2,
+                            },
+                            ..Default::default()
+                        };
+
+                        let (e, _) = simplifier.simplify_with_options(exp_parsed, opts.clone());
+                        let (s, _) = simplifier.simplify_with_options(simp_parsed, opts.clone());
+
+                        // Check 1: NF convergence
+                        let nf_match =
+                            cas_engine::ordering::compare_expr(&simplifier.context, e, s)
+                                == std::cmp::Ordering::Equal;
+
+                        if nf_match {
+                            let _ = tx.send(Some(("nf".to_string(), String::new(), String::new())));
+                            return;
+                        }
+
+                        // Check 2: Proved symbolic (quotient == 1)
+                        let q = simplifier.context.add(cas_ast::Expr::Div(e, s));
+                        let (diff_simplified, _) = simplifier.simplify_with_options(q, opts);
+                        let target = num_rational::BigRational::from_integer(1.into());
+                        let is_proved = matches!(
+                            simplifier.context.get(diff_simplified),
+                            cas_ast::Expr::Number(n) if *n == target
+                        );
+                        if is_proved {
+                            let _ =
+                                tx.send(Some(("proved".to_string(), String::new(), String::new())));
+                            return;
+                        }
+
+                        // Check 3: Numeric equivalence
+                        let result = check_numeric_equiv_2var(
+                            &simplifier.context,
+                            e,
+                            s,
+                            &p1_var,
+                            "u",
+                            &config_clone,
+                            &p1_filter,
+                            &p2_filter,
+                        );
+                        if result.is_ok() {
+                            let diff_str = if v {
+                                cas_ast::LaTeXExpr {
+                                    context: &simplifier.context,
+                                    id: diff_simplified,
+                                }
+                                .to_latex()
+                            } else {
+                                String::new()
+                            };
+                            let shape = if v {
+                                expr_shape_signature(&simplifier.context, diff_simplified)
+                            } else {
+                                String::new()
+                            };
+                            let _ = tx.send(Some(("numeric".to_string(), diff_str, shape)));
+                        } else {
+                            let _ =
+                                tx.send(Some(("failed".to_string(), String::new(), String::new())));
+                        }
+                    });
+
+                match rx.recv_timeout(timeout) {
+                    Ok(Some((kind, diff_str, shape))) => match kind.as_str() {
+                        "nf" => {
+                            nf_convergent += 1;
+                            passed += 1;
+                        }
+                        "proved" => {
+                            proved_symbolic += 1;
+                            passed += 1;
+                            if verbose && nf_mismatch_examples.len() < max_examples {
+                                nf_mismatch_examples.push((
+                                    combined_exp.clone(),
+                                    combined_simp.clone(),
+                                    pair1.simp.clone(),
+                                    pair2.simp.clone(),
+                                ));
+                            }
+                        }
+                        "numeric" => {
+                            numeric_only += 1;
+                            passed += 1;
+                            if verbose {
+                                numeric_only_examples.push((
+                                    combined_exp.clone(),
+                                    combined_simp.clone(),
+                                    pair1.simp.clone(),
+                                    pair2.simp.clone(),
+                                    diff_str,
+                                    shape,
+                                ));
+                            }
+                        }
+                        _ => {
+                            failed += 1;
+                            if failed <= 5 {
+                                eprintln!(
+                                    "❌ Double combo [{}] failed: ({}) {} ({})",
+                                    op.name(),
+                                    pair1.exp,
+                                    op.symbol(),
+                                    pair2.exp
+                                );
+                            }
+                        }
+                    },
+                    Ok(None) => { /* parse error, skip */ }
+                    Err(_) => {
+                        // Timeout — thread is still running but we move on
+                        skipped += 1;
+                    }
+                }
+                continue; // skip the inline path below
+            }
+
+            // Inline path for Add/Sub (no thread needed, cooperative timeout is sufficient)
             let mut simplifier = Simplifier::with_default_rules();
             let exp_parsed = match parse(&combined_exp, &mut simplifier.context) {
                 Ok(e) => e,
@@ -2587,36 +2786,14 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool, op: Combin
             };
 
             let combo_start = std::time::Instant::now();
-            // Use reduced rewrite budget for Mul to prevent runaway product expansion
-            let (exp_simplified, simp_simplified) = match op {
-                CombineOp::Mul => {
-                    let opts = cas_engine::phase::SimplifyOptions {
-                        budgets: cas_engine::phase::PhaseBudgets {
-                            max_total_rewrites: 15,
-                            core_iters: 3,
-                            transform_iters: 2,
-                            rationalize_iters: 1,
-                            post_iters: 2,
-                        },
-                        ..Default::default()
-                    };
-                    let (e, _) = simplifier.simplify_with_options(exp_parsed, opts.clone());
-                    if combo_start.elapsed() > combo_timeout {
-                        skipped += 1;
-                        continue;
-                    }
-                    let (s, _) = simplifier.simplify_with_options(simp_parsed, opts);
-                    (e, s)
+            let (exp_simplified, simp_simplified) = {
+                let (e, _) = simplifier.simplify(exp_parsed);
+                if combo_start.elapsed() > combo_timeout {
+                    skipped += 1;
+                    continue;
                 }
-                _ => {
-                    let (e, _) = simplifier.simplify(exp_parsed);
-                    if combo_start.elapsed() > combo_timeout {
-                        skipped += 1;
-                        continue;
-                    }
-                    let (s, _) = simplifier.simplify(simp_parsed);
-                    (e, s)
-                }
+                let (s, _) = simplifier.simplify(simp_parsed);
+                (e, s)
             };
             if combo_start.elapsed() > combo_timeout {
                 skipped += 1;
@@ -2634,24 +2811,12 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool, op: Combin
                 nf_convergent += 1;
                 passed += 1;
             } else {
-                // Check 2: Proved symbolic
-                // For Add/Sub: simplify(LHS - RHS) == 0
-                // For Mul: simplify(LHS / RHS) == 1 (quotient must simplify to unity)
-                let (diff_expr, target_value) = match op {
-                    CombineOp::Mul => {
-                        let q = simplifier
-                            .context
-                            .add(cas_ast::Expr::Div(exp_simplified, simp_simplified));
-                        (q, num_rational::BigRational::from_integer(1.into()))
-                    }
-                    _ => {
-                        let d = simplifier
-                            .context
-                            .add(cas_ast::Expr::Sub(exp_simplified, simp_simplified));
-                        (d, num_rational::BigRational::from_integer(0.into()))
-                    }
-                };
-                let (diff_simplified, _) = simplifier.simplify(diff_expr);
+                // Check 2: Proved symbolic — simplify(LHS - RHS) == 0
+                let d = simplifier
+                    .context
+                    .add(cas_ast::Expr::Sub(exp_simplified, simp_simplified));
+                let target_value = num_rational::BigRational::from_integer(0.into());
+                let (diff_simplified, _) = simplifier.simplify(d);
 
                 let is_proved = matches!(
                     simplifier.context.get(diff_simplified),
@@ -3018,10 +3183,9 @@ fn metatest_csv_combinations_full() {
 #[test]
 #[ignore]
 fn metatest_csv_combinations_mul() {
-    // 25 pairs = 300 combos. Beyond ~26 pairs, some specific identity products
-    // cause very expensive simplification (exponential in product expansion).
-    // Also uses reduced PhaseBudgets (max_total_rewrites=30) to cap per-combo cost.
-    run_csv_combination_tests(10, false, CombineOp::Mul);
+    // 15 pairs = 105 combos. Uses reduced PhaseBudgets (max_total_rewrites=15)
+    // and 2s per-combo timeout to cap cost. Timeout skips expensive products.
+    run_csv_combination_tests(15, false, CombineOp::Mul);
 }
 
 /// Subtractive combination test: (LHS_1 - LHS_2) vs (RHS_1 - RHS_2)
@@ -3030,6 +3194,15 @@ fn metatest_csv_combinations_mul() {
 #[ignore]
 fn metatest_csv_combinations_sub() {
     run_csv_combination_tests(100, false, CombineOp::Sub);
+}
+
+/// Division combination test: (LHS_1 / LHS_2) vs (RHS_1 / RHS_2)
+/// Tests fraction simplification, quotient cancellation, and cross-multiplication paths.
+/// Includes a divisor safety guard: identities that evaluate near zero are skipped as divisors.
+#[test]
+#[ignore]
+fn metatest_csv_combinations_div() {
+    run_csv_combination_tests(15, false, CombineOp::Div);
 }
 
 /// Test individual identity pairs (not combinations) to see which simplify symbolically

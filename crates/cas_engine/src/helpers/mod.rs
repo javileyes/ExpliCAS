@@ -28,6 +28,8 @@ pub(crate) use extraction::*;
 pub(crate) use nf_scoring::*;
 pub(crate) use numeric::*;
 pub(crate) use numeric_eval::*;
+// eval_f64_with_substitution is used by integration tests (metamorphic divisor safety guard)
+pub use numeric_eval::eval_f64_with_substitution;
 pub(crate) use pi::*;
 // predicates has `is_zero` and `prove_nonzero` used by integration tests — keep pub
 pub use predicates::*;
