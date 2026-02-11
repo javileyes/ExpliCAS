@@ -535,6 +535,22 @@ define_rule!(
             new_den
         };
 
+        // Early zero-numerator check: expand the cross-multiplied numerator
+        // and check if it simplifies to 0. This catches partial-fraction recombination
+        // cases like 1/(x·(x+1)) + 1/√3 - (1/x - 1/(x+1) + √3/3) where the
+        // numerator is zero after expansion but unexpanded products block cancellation.
+        // This check runs BEFORE the complexity gate so it can't be blocked by growth.
+        if !same_denom && !opposite_denom {
+            // Two-pass expansion: the first expand distributes outer products but may
+            // leave Neg(Sum)·factor undistributed. The second pass finishes distribution.
+            let num_pass1 = crate::expand::expand(ctx, new_num);
+            let num_pass2 = crate::expand::expand(ctx, num_pass1);
+            if crate::helpers::numeric_poly_zero_check(ctx, num_pass2) {
+                let zero = ctx.num(0);
+                return Some(Rewrite::new(zero).desc("Add fractions: numerator cancels to 0"));
+            }
+        }
+
         let new_expr = ctx.add(Expr::Div(new_num, common_den));
         let new_complexity = count_nodes(ctx, new_expr);
 
@@ -856,6 +872,17 @@ define_rule!(
             };
             ctx.add(Expr::Sub(ad, bc))
         };
+
+        // Early zero-numerator check: expand the cross-multiplied numerator
+        // and check if it simplifies to 0. This catches partial-fraction recombination
+        // cases where the numerator is zero after expansion.
+        if !same_denom {
+            let num_expanded = crate::expand::expand(ctx, new_num);
+            if crate::helpers::numeric_poly_zero_check(ctx, num_expanded) {
+                let zero = ctx.num(0);
+                return Some(Rewrite::new(zero).desc("Subtract fractions: numerator cancels to 0"));
+            }
+        }
 
         let final_den = if same_denom {
             common_den

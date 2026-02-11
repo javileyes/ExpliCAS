@@ -237,9 +237,14 @@ pub(crate) fn numeric_poly_zero_check(ctx: &Context, expr: ExprId) -> bool {
     let vars = cas_ast::collect_variables(ctx, expr);
     if vars.is_empty() {
         // No variables: direct numeric evaluation
-        return as_rational_const(ctx, expr)
-            .map(|v| v.is_zero())
-            .unwrap_or(false);
+        if let Some(v) = as_rational_const(ctx, expr) {
+            return v.is_zero();
+        }
+        // Fallback: try f64 evaluation for constant expressions with surds
+        if let Some(v) = eval_f64(ctx, expr) {
+            return v.abs() < 1e-10;
+        }
+        return false;
     }
 
     // Limit to reasonable number of variables (avoid combinatorial explosion)
@@ -277,8 +282,9 @@ pub(crate) fn numeric_poly_zero_check(ctx: &Context, expr: ExprId) -> bool {
 
     let var_list: Vec<String> = vars.into_iter().collect();
 
+    // Try exact BigRational evaluation first
+    let mut exact_failed = false;
     for probe_set in &probes {
-        // Substitute values for variables
         let result = eval_with_substitution(ctx, expr, &var_list, probe_set);
         match result {
             Some(val) => {
@@ -286,11 +292,37 @@ pub(crate) fn numeric_poly_zero_check(ctx: &Context, expr: ExprId) -> bool {
                     return false; // Non-zero at this point => not identically zero
                 }
             }
-            None => return false, // Evaluation failed (e.g., division by zero)
+            None => {
+                exact_failed = true;
+                break;
+            }
         }
     }
 
-    true // Zero at all probe points
+    if !exact_failed {
+        return true; // Zero at all probe points (exact)
+    }
+
+    // Fallback: f64 evaluation for expressions with surds/fractional exponents
+    let f64_probes: Vec<Vec<f64>> = vec![
+        vec![2.0 / 3.0, 5.0 / 7.0, 3.0 / 11.0, 7.0 / 13.0, 11.0 / 17.0],
+        vec![3.0 / 5.0, 7.0 / 11.0, 11.0 / 13.0, 13.0 / 17.0, 17.0 / 19.0],
+        vec![5.0 / 3.0, 11.0 / 7.0, 13.0 / 11.0, 17.0 / 13.0, 19.0 / 17.0],
+    ];
+
+    for probe_set in &f64_probes {
+        let result = eval_f64_with_substitution(ctx, expr, &var_list, probe_set);
+        match result {
+            Some(val) => {
+                if val.abs() > 1e-10 {
+                    return false; // Non-zero at this point
+                }
+            }
+            None => return false, // Evaluation failed
+        }
+    }
+
+    true // Near-zero at all probe points
 }
 
 /// Evaluate an expression by substituting rational values for variables.
@@ -385,6 +417,184 @@ fn eval_with_substitution(
         }
 
         // Functions, Hold, Matrix, SessionRef: bail out
+        _ => None,
+    }
+}
+
+/// Evaluate a constant expression (no variables) to f64.
+/// Handles fractional exponents via `f64::powf()`, enabling evaluation of surds like `3^(1/2)`.
+fn eval_f64(ctx: &Context, expr: ExprId) -> Option<f64> {
+    eval_f64_with_substitution(ctx, expr, &[], &[])
+}
+
+/// Evaluate an expression by substituting f64 values for variables.
+/// Supports fractional exponents via `f64::powf()`.
+/// Returns None if evaluation fails (division by zero, NaN, unsupported operations).
+fn eval_f64_with_substitution(
+    ctx: &Context,
+    expr: ExprId,
+    var_names: &[String],
+    values: &[f64],
+) -> Option<f64> {
+    match ctx.get(expr) {
+        Expr::Number(n) => {
+            use num_traits::ToPrimitive;
+            let f = n.numer().to_f64()? / n.denom().to_f64()?;
+            if f.is_finite() {
+                Some(f)
+            } else {
+                None
+            }
+        }
+
+        Expr::Variable(v) => {
+            let name = ctx.sym_name(*v);
+            var_names
+                .iter()
+                .position(|var_name| var_name == name)
+                .and_then(|idx| values.get(idx).copied())
+        }
+
+        Expr::Constant(c) => match c {
+            cas_ast::Constant::Pi => Some(std::f64::consts::PI),
+            cas_ast::Constant::E => Some(std::f64::consts::E),
+            cas_ast::Constant::Phi => Some(1.618033988749895),
+            _ => None,
+        },
+
+        Expr::Add(l, r) => {
+            let lv = eval_f64_with_substitution(ctx, *l, var_names, values)?;
+            let rv = eval_f64_with_substitution(ctx, *r, var_names, values)?;
+            let result = lv + rv;
+            if result.is_finite() {
+                Some(result)
+            } else {
+                None
+            }
+        }
+
+        Expr::Sub(l, r) => {
+            let lv = eval_f64_with_substitution(ctx, *l, var_names, values)?;
+            let rv = eval_f64_with_substitution(ctx, *r, var_names, values)?;
+            let result = lv - rv;
+            if result.is_finite() {
+                Some(result)
+            } else {
+                None
+            }
+        }
+
+        Expr::Mul(l, r) => {
+            let lv = eval_f64_with_substitution(ctx, *l, var_names, values)?;
+            let rv = eval_f64_with_substitution(ctx, *r, var_names, values)?;
+            let result = lv * rv;
+            if result.is_finite() {
+                Some(result)
+            } else {
+                None
+            }
+        }
+
+        Expr::Div(n, d) => {
+            let nv = eval_f64_with_substitution(ctx, *n, var_names, values)?;
+            let dv = eval_f64_with_substitution(ctx, *d, var_names, values)?;
+            if dv.abs() < 1e-15 {
+                return None;
+            } // Avoid division by near-zero
+            let result = nv / dv;
+            if result.is_finite() {
+                Some(result)
+            } else {
+                None
+            }
+        }
+
+        Expr::Neg(inner) => {
+            let v = eval_f64_with_substitution(ctx, *inner, var_names, values)?;
+            Some(-v)
+        }
+
+        Expr::Pow(base, exp) => {
+            let bv = eval_f64_with_substitution(ctx, *base, var_names, values)?;
+            let ev = eval_f64_with_substitution(ctx, *exp, var_names, values)?;
+            let result = bv.powf(ev);
+            if result.is_finite() {
+                Some(result)
+            } else {
+                None
+            }
+        }
+
+        Expr::Function(fn_id, args) => {
+            let name = ctx.sym_name(*fn_id);
+            match name {
+                "sqrt" if args.len() == 1 => {
+                    let av = eval_f64_with_substitution(ctx, args[0], var_names, values)?;
+                    if av >= 0.0 {
+                        let result = av.sqrt();
+                        if result.is_finite() {
+                            Some(result)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                "abs" if args.len() == 1 => {
+                    let av = eval_f64_with_substitution(ctx, args[0], var_names, values)?;
+                    Some(av.abs())
+                }
+                "sin" if args.len() == 1 => {
+                    let av = eval_f64_with_substitution(ctx, args[0], var_names, values)?;
+                    Some(av.sin())
+                }
+                "cos" if args.len() == 1 => {
+                    let av = eval_f64_with_substitution(ctx, args[0], var_names, values)?;
+                    Some(av.cos())
+                }
+                "tan" if args.len() == 1 => {
+                    let av = eval_f64_with_substitution(ctx, args[0], var_names, values)?;
+                    let result = av.tan();
+                    if result.is_finite() {
+                        Some(result)
+                    } else {
+                        None
+                    }
+                }
+                "ln" if args.len() == 1 => {
+                    let av = eval_f64_with_substitution(ctx, args[0], var_names, values)?;
+                    if av > 0.0 {
+                        let result = av.ln();
+                        if result.is_finite() {
+                            Some(result)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                "log" if args.len() == 1 => {
+                    let av = eval_f64_with_substitution(ctx, args[0], var_names, values)?;
+                    if av > 0.0 {
+                        let result = av.log10();
+                        if result.is_finite() {
+                            Some(result)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                _ => None, // Unsupported function
+            }
+        }
+
+        Expr::Hold(inner) => eval_f64_with_substitution(ctx, *inner, var_names, values),
+
+        // Matrix, SessionRef: bail out
         _ => None,
     }
 }
