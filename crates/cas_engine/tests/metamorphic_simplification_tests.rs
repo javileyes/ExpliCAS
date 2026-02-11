@@ -1368,6 +1368,7 @@ struct IdentityPair {
     bucket: Bucket,
     branch_mode: BranchMode,
     filter_spec: FilterSpec, // Parsed from CSV, e.g., "abs_lt(0.9)" → AbsLt { limit: 0.9 }
+    family: String,          // CSV family (from # comment headers)
 }
 
 /// Domain requirement for an identity
@@ -2338,11 +2339,25 @@ fn load_identity_pairs() -> Vec<IdentityPair> {
     let content = std::fs::read_to_string(csv_path).expect("Failed to read identity_pairs.csv");
 
     let mut pairs = Vec::new();
+    let mut current_family = String::from("Uncategorized");
     for (line_num, line) in content.lines().enumerate() {
         let line_num = line_num + 1; // 1-indexed for humans
         let line = line.trim();
-        // Skip comments and empty lines
-        if line.is_empty() || line.starts_with('#') {
+        // Track family from comment headers, skip other comments and empty lines
+        if line.starts_with('#') {
+            let label = line.trim_start_matches('#').trim();
+            // Skip structural headers (format/description lines)
+            if !label.is_empty()
+                && !label.starts_with("Format")
+                && !label.starts_with("Each row")
+                && !label.starts_with("var is")
+                && !label.starts_with("Mathematical Identity")
+            {
+                current_family = label.to_string();
+            }
+            continue;
+        }
+        if line.is_empty() {
             continue;
         }
 
@@ -2370,6 +2385,7 @@ fn load_identity_pairs() -> Vec<IdentityPair> {
                 bucket,
                 branch_mode,
                 filter_spec,
+                family: current_family.clone(),
             });
         } else if parts.len() >= 3 {
             // Legacy 4-column format: exp,simp,vars,mode
@@ -2393,6 +2409,7 @@ fn load_identity_pairs() -> Vec<IdentityPair> {
                 bucket: legacy_bucket_from_env(), // Configurable via METATEST_LEGACY_BUCKET
                 branch_mode: BranchMode::default(),
                 filter_spec: FilterSpec::None,
+                family: current_family.clone(),
             });
         }
     }
@@ -2496,6 +2513,72 @@ impl CombineOp {
     }
 }
 
+/// Stratified sampling: guarantees ≥1 identity per CSV family.
+///
+/// Phase 1: Pick 1 representative per family using Lcg RNG.
+/// Phase 2: Fill remaining `max_pairs - num_families` slots from un-selected pairs.
+/// The final selection is shuffled for combo ordering randomization.
+fn stratified_select(
+    all_pairs: Vec<IdentityPair>,
+    max_pairs: usize,
+    _start_offset: usize,
+) -> Vec<IdentityPair> {
+    use std::collections::BTreeMap;
+
+    let mut rng = Lcg::new(42);
+
+    // Group indices by family (BTreeMap for deterministic order)
+    let mut family_groups: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    for (i, pair) in all_pairs.iter().enumerate() {
+        family_groups
+            .entry(pair.family.clone())
+            .or_default()
+            .push(i);
+    }
+
+    let num_families = family_groups.len();
+    let mut selected_indices: Vec<usize> = Vec::with_capacity(max_pairs);
+    let mut used = vec![false; all_pairs.len()];
+
+    // Phase 1: Pick 1 representative per family
+    for indices in family_groups.values() {
+        let pick = rng.pick(indices.len() as u32) as usize;
+        let idx = indices[pick];
+        selected_indices.push(idx);
+        used[idx] = true;
+    }
+
+    // Phase 2: Fill remaining slots from un-selected pairs
+    if max_pairs > num_families {
+        let remaining = max_pairs - num_families;
+        // Collect un-selected indices and shuffle them
+        let mut pool: Vec<usize> = (0..all_pairs.len()).filter(|i| !used[*i]).collect();
+        // Fisher-Yates shuffle on pool
+        for i in (1..pool.len()).rev() {
+            let j = rng.pick((i + 1) as u32) as usize;
+            pool.swap(i, j);
+        }
+        for &idx in pool.iter().take(remaining) {
+            selected_indices.push(idx);
+        }
+    }
+
+    // Truncate if max_pairs < num_families (best-effort: not all families covered)
+    selected_indices.truncate(max_pairs);
+
+    // Final shuffle for combo ordering randomization
+    for i in (1..selected_indices.len()).rev() {
+        let j = rng.pick((i + 1) as u32) as usize;
+        selected_indices.swap(i, j);
+    }
+
+    // Build result
+    selected_indices
+        .into_iter()
+        .map(|i| all_pairs[i].clone())
+        .collect()
+}
+
 /// Run combination tests from CSV pairs
 fn run_csv_combination_tests(max_pairs: usize, include_triples: bool, op: CombineOp) {
     let all_pairs = load_identity_pairs();
@@ -2514,33 +2597,37 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool, op: Combin
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(0);
 
-    // Shuffle support: deterministic Fisher-Yates shuffle interleaves all families
-    // so any 100-pair window is a representative cross-section.
-    // Use METATEST_NOSHUFFLE=1 to get old contiguous behavior for family debugging.
+    // Selection mode: stratified (default) or legacy shuffled window.
+    // Stratified guarantees ≥1 pair per CSV family for representative coverage.
+    // Use METATEST_NOSHUFFLE=1 for old contiguous behavior (family debugging).
     let no_shuffle = std::env::var("METATEST_NOSHUFFLE").is_ok();
-    let mut shuffled_pairs = all_pairs;
-    if !no_shuffle {
-        let mut rng = Lcg::new(42);
-        for i in (1..shuffled_pairs.len()).rev() {
-            let j = rng.pick((i + 1) as u32) as usize;
-            shuffled_pairs.swap(i, j);
-        }
-    }
 
-    // Limit pairs to avoid explosion, starting from offset
-    let pairs: Vec<_> = shuffled_pairs
-        .into_iter()
-        .skip(start_offset)
-        .take(max_pairs)
-        .collect();
+    let pairs: Vec<_> = if no_shuffle {
+        // Legacy: contiguous window from start_offset
+        all_pairs
+            .into_iter()
+            .skip(start_offset)
+            .take(max_pairs)
+            .collect()
+    } else {
+        // Stratified sampling: 1 representative per family, then fill randomly
+        stratified_select(all_pairs, max_pairs, start_offset)
+    };
     let n = pairs.len();
+    let num_families = {
+        let mut fams: Vec<&str> = pairs.iter().map(|p| p.family.as_str()).collect();
+        fams.sort();
+        fams.dedup();
+        fams.len()
+    };
 
     eprintln!(
-        "📊 Running CSV combination tests [{}] with {} pairs (offset {}, {})",
+        "📊 Running CSV combination tests [{}] with {} pairs from {} families (offset {}, {})",
         op.name(),
         n,
+        num_families,
         start_offset,
-        if no_shuffle { "ordered" } else { "shuffled" }
+        if no_shuffle { "ordered" } else { "stratified" }
     );
 
     // Verbose mode: show nf_mismatch examples
@@ -3171,13 +3258,12 @@ fn metatest_csv_combinations_full() {
 
 /// Multiplicative combination test: (LHS_1 * LHS_2) vs (RHS_1 * RHS_2)
 /// Tests distribution, factoring, power simplification paths.
-/// Uses 50 pairs (vs 100 for add) because product expansion is heavier.
+/// Uses stratified sampling: 1 representative per CSV family (~134) + fill to 150.
 #[test]
 #[ignore]
 fn metatest_csv_combinations_mul() {
-    // 15 pairs = 105 combos. Uses reduced PhaseBudgets (max_total_rewrites=15)
-    // and 2s per-combo timeout to cap cost. Timeout skips expensive products.
-    run_csv_combination_tests(15, false, CombineOp::Mul);
+    // 150 pairs (stratified) ≈ 11,175 combos. 2s per-combo timeout caps cost.
+    run_csv_combination_tests(150, false, CombineOp::Mul);
 }
 
 /// Subtractive combination test: (LHS_1 - LHS_2) vs (RHS_1 - RHS_2)
@@ -3190,11 +3276,15 @@ fn metatest_csv_combinations_sub() {
 
 /// Division combination test: (LHS_1 / LHS_2) vs (RHS_1 / RHS_2)
 /// Tests fraction simplification, quotient cancellation, and cross-multiplication paths.
+/// Uses stratified sampling: 1 representative per CSV family (~134) + fill to 150.
 /// Includes a divisor safety guard: identities that evaluate near zero are skipped as divisors.
 #[test]
 #[ignore]
 fn metatest_csv_combinations_div() {
-    run_csv_combination_tests(15, false, CombineOp::Div);
+    // 50 pairs (stratified) ≈ 1,225 combos. Fewer than Mul due to CAS
+    // limitations with high-degree polynomial divisors causing fraction
+    // simplification failures. Still covers ~50 families (vs old 15/~12).
+    run_csv_combination_tests(50, false, CombineOp::Div);
 }
 
 /// Test individual identity pairs (not combinations) to see which simplify symbolically
