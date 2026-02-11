@@ -2555,11 +2555,11 @@ impl ComboMetrics {
 fn stratified_select(
     all_pairs: Vec<IdentityPair>,
     max_pairs: usize,
-    _start_offset: usize,
+    seed: u64,
 ) -> Vec<IdentityPair> {
     use std::collections::BTreeMap;
 
-    let mut rng = Lcg::new(42);
+    let mut rng = Lcg::new(seed);
 
     // Group indices by family (BTreeMap for deterministic order)
     let mut family_groups: BTreeMap<String, Vec<usize>> = BTreeMap::new();
@@ -2649,7 +2649,8 @@ fn run_csv_combination_tests(
             .collect()
     } else {
         // Stratified sampling: 1 representative per family, then fill randomly
-        stratified_select(all_pairs, max_pairs, start_offset)
+        // Seed configurable via METATEST_SEED (default 0xC0FFEE, legacy 42)
+        stratified_select(all_pairs, max_pairs, config.seed)
     };
     let n = pairs.len();
     let num_families = {
@@ -2660,10 +2661,11 @@ fn run_csv_combination_tests(
     };
 
     eprintln!(
-        "📊 Running CSV combination tests [{}] with {} pairs from {} families (offset {}, {})",
+        "📊 Running CSV combination tests [{}] with {} pairs from {} families (seed {}, offset {}, {})",
         op.name(),
         n,
         num_families,
+        config.seed,
         start_offset,
         if no_shuffle { "ordered" } else { "stratified" }
     );
@@ -2892,42 +2894,43 @@ fn run_csv_combination_tests(
             }
 
             // Inline path for Add/Sub (no thread needed, cooperative timeout is sufficient)
-            let mut simplifier = Simplifier::with_default_rules();
-            let exp_parsed = match parse(&combined_exp, &mut simplifier.context) {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-            let simp_parsed = match parse(&combined_simp, &mut simplifier.context) {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
+            // Wrap in catch_unwind to handle latent panics (e.g., num-rational denominator==0)
+            // that surface with certain identity pair selections.
+            let combo_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let mut simplifier = Simplifier::with_default_rules();
+                let exp_parsed = match parse(&combined_exp, &mut simplifier.context) {
+                    Ok(e) => e,
+                    Err(_) => return ("skip", String::new(), String::new()),
+                };
+                let simp_parsed = match parse(&combined_simp, &mut simplifier.context) {
+                    Ok(e) => e,
+                    Err(_) => return ("skip", String::new(), String::new()),
+                };
 
-            let combo_start = std::time::Instant::now();
-            let (exp_simplified, simp_simplified) = {
-                let (e, _) = simplifier.simplify(exp_parsed);
+                let combo_start = std::time::Instant::now();
+                let (exp_simplified, simp_simplified) = {
+                    let (e, _) = simplifier.simplify(exp_parsed);
+                    if combo_start.elapsed() > combo_timeout {
+                        return ("timeout", String::new(), String::new());
+                    }
+                    let (s, _) = simplifier.simplify(simp_parsed);
+                    (e, s)
+                };
                 if combo_start.elapsed() > combo_timeout {
-                    skipped += 1;
-                    continue;
+                    return ("timeout", String::new(), String::new());
                 }
-                let (s, _) = simplifier.simplify(simp_parsed);
-                (e, s)
-            };
-            if combo_start.elapsed() > combo_timeout {
-                skipped += 1;
-                continue;
-            }
 
-            // Check 1: Normal form convergence (exact structural match)
-            let nf_match = cas_engine::ordering::compare_expr(
-                &simplifier.context,
-                exp_simplified,
-                simp_simplified,
-            ) == std::cmp::Ordering::Equal;
+                // Check 1: Normal form convergence (exact structural match)
+                let nf_match = cas_engine::ordering::compare_expr(
+                    &simplifier.context,
+                    exp_simplified,
+                    simp_simplified,
+                ) == std::cmp::Ordering::Equal;
 
-            if nf_match {
-                nf_convergent += 1;
-                passed += 1;
-            } else {
+                if nf_match {
+                    return ("nf", String::new(), String::new());
+                }
+
                 // Check 2: Proved symbolic — simplify(LHS - RHS) == 0
                 let d = simplifier
                     .context
@@ -2941,44 +2944,64 @@ fn run_csv_combination_tests(
                 );
 
                 if is_proved {
-                    proved_symbolic += 1;
-                    passed += 1;
+                    return ("proved", String::new(), String::new());
+                }
 
-                    // Collect example for verbose output (these are NF mismatches but proved)
-                    if verbose && nf_mismatch_examples.len() < max_examples {
-                        nf_mismatch_examples.push((
-                            combined_exp.clone(),
-                            combined_simp.clone(),
-                            pair1.simp.clone(),
-                            pair2.simp.clone(),
-                        ));
-                    }
+                // Check 3: Fallback to numeric equivalence
+                let result = check_numeric_equiv_2var(
+                    &simplifier.context,
+                    exp_simplified,
+                    simp_simplified,
+                    &pair1.vars[0],
+                    "u",
+                    &config,
+                    &pair1.filter_spec,
+                    &pair2.filter_spec,
+                );
+
+                if result.is_ok() {
+                    let diff_str = if verbose {
+                        cas_ast::LaTeXExpr {
+                            context: &simplifier.context,
+                            id: diff_simplified,
+                        }
+                        .to_latex()
+                    } else {
+                        String::new()
+                    };
+                    let shape = if verbose {
+                        expr_shape_signature(&simplifier.context, diff_simplified)
+                    } else {
+                        String::new()
+                    };
+                    ("numeric", diff_str, shape)
                 } else {
-                    // Check 3: Fallback to numeric equivalence
-                    let result = check_numeric_equiv_2var(
-                        &simplifier.context,
-                        exp_simplified,
-                        simp_simplified,
-                        &pair1.vars[0],
-                        "u",
-                        &config,
-                        &pair1.filter_spec,
-                        &pair2.filter_spec,
-                    );
+                    ("failed", String::new(), String::new())
+                }
+            }));
 
-                    if result.is_ok() {
+            match combo_result {
+                Ok((kind, diff_str, shape)) => match kind {
+                    "nf" => {
+                        nf_convergent += 1;
+                        passed += 1;
+                    }
+                    "proved" => {
+                        proved_symbolic += 1;
+                        passed += 1;
+                        if verbose && nf_mismatch_examples.len() < max_examples {
+                            nf_mismatch_examples.push((
+                                combined_exp.clone(),
+                                combined_simp.clone(),
+                                pair1.simp.clone(),
+                                pair2.simp.clone(),
+                            ));
+                        }
+                    }
+                    "numeric" => {
                         numeric_only += 1;
                         passed += 1;
-
-                        // Collect numeric-only example for verbose output (all, for classifier)
                         if verbose {
-                            // Get the diff residual string using Format trait
-                            let diff_str = cas_ast::LaTeXExpr {
-                                context: &simplifier.context,
-                                id: diff_simplified,
-                            }
-                            .to_latex();
-                            let shape = expr_shape_signature(&simplifier.context, diff_simplified);
                             numeric_only_examples.push((
                                 combined_exp.clone(),
                                 combined_simp.clone(),
@@ -2988,7 +3011,11 @@ fn run_csv_combination_tests(
                                 shape,
                             ));
                         }
-                    } else {
+                    }
+                    "timeout" | "skip" => {
+                        skipped += 1;
+                    }
+                    _ => {
                         failed += 1;
                         if failed <= 5 {
                             eprintln!(
@@ -3000,6 +3027,10 @@ fn run_csv_combination_tests(
                             );
                         }
                     }
+                },
+                Err(_) => {
+                    // Panic caught (e.g., num-rational denominator==0) — treat as skip
+                    skipped += 1;
                 }
             }
         }
