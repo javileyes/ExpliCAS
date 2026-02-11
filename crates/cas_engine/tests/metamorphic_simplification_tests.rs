@@ -2513,6 +2513,40 @@ impl CombineOp {
     }
 }
 
+/// Metrics returned by combination tests for benchmarking/regression tracking
+#[derive(Debug, Clone)]
+struct ComboMetrics {
+    op: String,
+    pairs: usize,
+    families: usize,
+    combos: usize,
+    nf_convergent: usize,
+    proved_symbolic: usize,
+    numeric_only: usize,
+    failed: usize,
+    skipped: usize,
+}
+
+impl ComboMetrics {
+    fn passed(&self) -> usize {
+        self.nf_convergent + self.proved_symbolic + self.numeric_only
+    }
+
+    fn nf_rate(&self) -> f64 {
+        if self.combos == 0 {
+            return 0.0;
+        }
+        self.nf_convergent as f64 / self.combos as f64 * 100.0
+    }
+
+    fn numeric_rate(&self) -> f64 {
+        if self.combos == 0 {
+            return 0.0;
+        }
+        self.numeric_only as f64 / self.combos as f64 * 100.0
+    }
+}
+
 /// Stratified sampling: guarantees ≥1 identity per CSV family.
 ///
 /// Phase 1: Pick 1 representative per family using Lcg RNG.
@@ -2580,7 +2614,11 @@ fn stratified_select(
 }
 
 /// Run combination tests from CSV pairs
-fn run_csv_combination_tests(max_pairs: usize, include_triples: bool, op: CombineOp) {
+fn run_csv_combination_tests(
+    max_pairs: usize,
+    include_triples: bool,
+    op: CombineOp,
+) -> ComboMetrics {
     let all_pairs = load_identity_pairs();
     let config = metatest_config();
 
@@ -3235,7 +3273,17 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool, op: Combin
         );
     }
 
-    assert_eq!(failed, 0, "Some CSV combination tests failed");
+    ComboMetrics {
+        op: op.name().to_string(),
+        pairs: n,
+        families: num_families,
+        combos: passed + failed + skipped,
+        nf_convergent,
+        proved_symbolic,
+        numeric_only,
+        failed,
+        skipped,
+    }
 }
 // =============================================================================
 // CSV-BASED AUTOMATIC COMBINATION TESTS
@@ -3245,15 +3293,17 @@ fn run_csv_combination_tests(max_pairs: usize, include_triples: bool, op: Combin
 /// This generates thousands of test cases from ~180 identity pairs
 #[test]
 fn metatest_csv_combinations_small() {
-    // Small run: 30 pairs = 435 double combinations
-    run_csv_combination_tests(30, false, CombineOp::Add);
+    // Small run: 30 pairs (stratified) = ~351 double combinations
+    let m = run_csv_combination_tests(30, false, CombineOp::Add);
+    assert_eq!(m.failed, 0, "Some CSV combination tests failed");
 }
 
 #[test]
 #[ignore] // Run with: cargo test --ignored
 fn metatest_csv_combinations_full() {
     // Full run: all pairs with triples
-    run_csv_combination_tests(100, true, CombineOp::Add);
+    let m = run_csv_combination_tests(100, true, CombineOp::Add);
+    assert_eq!(m.failed, 0, "Some CSV combination tests failed");
 }
 
 /// Multiplicative combination test: (LHS_1 * LHS_2) vs (RHS_1 * RHS_2)
@@ -3263,20 +3313,34 @@ fn metatest_csv_combinations_full() {
 #[ignore]
 fn metatest_csv_combinations_mul() {
     // 150 pairs (stratified) ≈ 11,175 combos. 2s per-combo timeout caps cost.
-    run_csv_combination_tests(150, false, CombineOp::Mul);
+    let m = run_csv_combination_tests(150, false, CombineOp::Mul);
+    assert_eq!(m.failed, 0, "Some CSV combination tests failed");
 }
 
-/// Subtractive combination test: (LHS_1 - LHS_2) vs (RHS_1 - RHS_2)
+/// Additive combination test with stratified coverage
+/// (LHS_1 + LHS_2) vs (RHS_1 + RHS_2)
+#[test]
+#[ignore]
+fn metatest_csv_combinations_add() {
+    // 150 pairs (stratified) ≈ 11,175 combos. Add is fast (≈5s timeout).
+    let m = run_csv_combination_tests(150, false, CombineOp::Add);
+    assert_eq!(m.failed, 0, "Some CSV combination tests failed");
+}
+
+/// Subtractive combination test with stratified coverage
+/// (LHS_1 - LHS_2) vs (RHS_1 - RHS_2)
 /// Tests sign handling, cancellation, and subtraction-specific simplification
 #[test]
 #[ignore]
 fn metatest_csv_combinations_sub() {
-    run_csv_combination_tests(100, false, CombineOp::Sub);
+    // 150 pairs (stratified) ≈ 11,175 combos. Sub is fast (≈5s timeout).
+    let m = run_csv_combination_tests(150, false, CombineOp::Sub);
+    assert_eq!(m.failed, 0, "Some CSV combination tests failed");
 }
 
 /// Division combination test: (LHS_1 / LHS_2) vs (RHS_1 / RHS_2)
 /// Tests fraction simplification, quotient cancellation, and cross-multiplication paths.
-/// Uses stratified sampling: 1 representative per CSV family (~134) + fill to 150.
+/// Uses stratified sampling: 1 representative per CSV family (~134) + fill to 50.
 /// Includes a divisor safety guard: identities that evaluate near zero are skipped as divisors.
 #[test]
 #[ignore]
@@ -3284,7 +3348,133 @@ fn metatest_csv_combinations_div() {
     // 50 pairs (stratified) ≈ 1,225 combos. Fewer than Mul due to CAS
     // limitations with high-degree polynomial divisors causing fraction
     // simplification failures. Still covers ~50 families (vs old 15/~12).
-    run_csv_combination_tests(50, false, CombineOp::Div);
+    let m = run_csv_combination_tests(50, false, CombineOp::Div);
+    assert_eq!(m.failed, 0, "Some CSV combination tests failed");
+}
+
+/// UNIFIED BENCHMARK: run all 4 operations and print a regression/improvement table.
+///
+/// This test does NOT assert on failures — it prints metrics for comparison.
+/// Use it as a diagnostic benchmark before/after rule changes:
+///
+/// ```text
+/// cargo test --release -p cas_engine --test metamorphic_simplification_tests \
+///     -- metatest_benchmark_all_ops --ignored --nocapture
+/// ```
+///
+/// Key metrics:
+/// - NF-convergent: simplify(LHS) ≡ simplify(RHS) structurally (ideal)
+/// - Proved-symbolic: simplify(LHS - RHS) = 0 (correct but different NFs)
+/// - Numeric-only: only passes numeric check (target for improvement)
+/// - Failed: semantic mismatches (regressions)
+#[test]
+#[ignore]
+fn metatest_benchmark_all_ops() {
+    // Pair counts per operation (stratified sampling)
+    let configs: Vec<(CombineOp, usize)> = vec![
+        (CombineOp::Add, 150),
+        (CombineOp::Sub, 150),
+        (CombineOp::Mul, 150),
+        (CombineOp::Div, 50),
+    ];
+
+    let mut all_metrics: Vec<ComboMetrics> = Vec::new();
+    let mut total_failed = 0;
+
+    for (op, pairs) in &configs {
+        // Run without internal assert — collect metrics only
+        let metrics = run_csv_combination_tests(*pairs, false, *op);
+        total_failed += metrics.failed;
+        all_metrics.push(metrics);
+    }
+
+    // Print unified benchmark table
+    eprintln!();
+    eprintln!(
+        "╔═══════════════════════════════════════════════════════════════════════════════════╗"
+    );
+    eprintln!(
+        "║                     METAMORPHIC BENCHMARK RESULTS                                ║"
+    );
+    eprintln!(
+        "╠═════╤════════╤══════════╤══════════════╤════════════════╤══════════════╤══════════╣"
+    );
+    eprintln!(
+        "║ Op  │ Pairs  │ Families │ NF-convergent│ Proved-symbolic│ Numeric-only │ Failed   ║"
+    );
+    eprintln!(
+        "╠═════╪════════╪══════════╪══════════════╪════════════════╪══════════════╪══════════╣"
+    );
+
+    let mut total_nf = 0;
+    let mut total_proved = 0;
+    let mut total_numeric = 0;
+    let mut total_combos = 0;
+    let mut total_skipped = 0;
+    let mut total_f = 0;
+
+    for m in &all_metrics {
+        let effective = m.combos - m.skipped;
+        eprintln!(
+            "║ {:<3} │ {:>5}  │ {:>7}  │ {:>6} {:>5.1}% │ {:>6}  {:>5.1}% │ {:>6} {:>5.1}% │ {:>6}   ║",
+            m.op, m.pairs, m.families,
+            m.nf_convergent,
+            if effective > 0 { m.nf_convergent as f64 / effective as f64 * 100.0 } else { 0.0 },
+            m.proved_symbolic,
+            if effective > 0 { m.proved_symbolic as f64 / effective as f64 * 100.0 } else { 0.0 },
+            m.numeric_only,
+            if effective > 0 { m.numeric_only as f64 / effective as f64 * 100.0 } else { 0.0 },
+            m.failed,
+        );
+        total_nf += m.nf_convergent;
+        total_proved += m.proved_symbolic;
+        total_numeric += m.numeric_only;
+        total_combos += m.combos;
+        total_skipped += m.skipped;
+        total_f += m.failed;
+    }
+
+    let total_effective = total_combos - total_skipped;
+    eprintln!(
+        "╠═════╪════════╪══════════╪══════════════╪════════════════╪══════════════╪══════════╣"
+    );
+    eprintln!(
+        "║ ALL │        │          │ {:>6} {:>5.1}% │ {:>6}  {:>5.1}% │ {:>6} {:>5.1}% │ {:>6}   ║",
+        total_nf,
+        if total_effective > 0 {
+            total_nf as f64 / total_effective as f64 * 100.0
+        } else {
+            0.0
+        },
+        total_proved,
+        if total_effective > 0 {
+            total_proved as f64 / total_effective as f64 * 100.0
+        } else {
+            0.0
+        },
+        total_numeric,
+        if total_effective > 0 {
+            total_numeric as f64 / total_effective as f64 * 100.0
+        } else {
+            0.0
+        },
+        total_f,
+    );
+    eprintln!(
+        "╚═════╧════════╧══════════╧══════════════╧════════════════╧══════════════╧══════════╝"
+    );
+    eprintln!(
+        "   Total combos: {} (skipped: {})",
+        total_combos, total_skipped
+    );
+    eprintln!();
+
+    if total_failed > 0 {
+        eprintln!(
+            "⚠️  {} semantic failures detected — investigate before merging.",
+            total_failed
+        );
+    }
 }
 
 /// Test individual identity pairs (not combinations) to see which simplify symbolically
