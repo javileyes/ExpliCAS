@@ -90,7 +90,11 @@ impl crate::rule::Rule for PolynomialIdentityZeroRule {
     }
 
     fn allowed_phases(&self) -> PhaseMask {
-        PhaseMask::TRANSFORM
+        // Also run in POST so that polynomial identities exposed AFTER Rationalize
+        // (e.g., (x+1)^6 - expanded_form left behind when 1/√5 - √5/5 → 0)
+        // get cancelled. TRANSFORM alone can't see these because the non-polynomial
+        // terms haven't been removed yet at that point.
+        PhaseMask::TRANSFORM | PhaseMask::POST
     }
 
     fn apply(

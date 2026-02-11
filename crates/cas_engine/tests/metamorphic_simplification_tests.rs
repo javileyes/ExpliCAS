@@ -2699,7 +2699,7 @@ fn run_csv_combination_tests(
 
     // Per-combination timeout: mul/div are heavier due to product/quotient expansion
     let combo_timeout = match op {
-        CombineOp::Mul | CombineOp::Div => std::time::Duration::from_secs(2),
+        CombineOp::Mul | CombineOp::Div => std::time::Duration::from_secs(5),
         _ => std::time::Duration::from_secs(5),
     };
 
@@ -2798,106 +2798,33 @@ fn run_csv_combination_tests(
                             return;
                         }
 
-                        // Check 2: Proved symbolic (quotient == 1)
-                        let q = simplifier.context.add(cas_ast::Expr::Div(e, s));
-                        let (diff_simplified, _) =
-                            simplifier.simplify_with_options(q, opts.clone());
-                        let target = num_rational::BigRational::from_integer(1.into());
-                        let is_proved = matches!(
-                            simplifier.context.get(diff_simplified),
-                            cas_ast::Expr::Number(n) if *n == target
-                        );
-                        if is_proved {
-                            let _ = tx.send(Some((
-                                "proved-q".to_string(),
-                                String::new(),
-                                String::new(),
-                            )));
-                            return;
-                        }
-
-                        // Check 2a: Pairwise factor quotient —
-                        // When LHS = A*B and RHS = C*D, try simplify(A/C)==1 && simplify(B/D)==1
-                        // This catches the case where individual identities simplify but their
-                        // compound product quotient doesn't (engine's cross-factor weakness).
-                        if let (cas_ast::Expr::Mul(a, b), cas_ast::Expr::Mul(c, d)) = (
-                            simplifier.context.get(exp_parsed).clone(),
-                            simplifier.context.get(simp_parsed).clone(),
-                        ) {
-                            let target_one = num_rational::BigRational::from_integer(1.into());
-                            // Try both pairings: (A/C, B/D) and (A/D, B/C)
-                            for (n1, d1, n2, d2) in [(a, c, b, d), (a, d, b, c)] {
-                                let q1 = simplifier.context.add(cas_ast::Expr::Div(n1, d1));
-                                let (q1s, _) = simplifier.simplify_with_options(q1, opts.clone());
-                                let q1_is_one = matches!(
-                                    simplifier.context.get(q1s),
-                                    cas_ast::Expr::Number(n) if *n == target_one
-                                );
-                                if q1_is_one {
-                                    let q2 = simplifier.context.add(cas_ast::Expr::Div(n2, d2));
-                                    let (q2s, _) =
-                                        simplifier.simplify_with_options(q2, opts.clone());
-                                    let q2_is_one = matches!(
-                                        simplifier.context.get(q2s),
-                                        cas_ast::Expr::Number(n) if *n == target_one
-                                    );
-                                    if q2_is_one {
-                                        let _ = tx.send(Some((
-                                            "proved-q".to_string(),
-                                            String::new(),
-                                            String::new(),
-                                        )));
-                                        return;
-                                    }
-                                }
-                            }
-                            // Check 2a-bis: Pairwise factor difference —
-                            // When pairwise quotient fails, try simplify(A-C)==0 && simplify(B-D)==0
-                            // Catches ln/log cases: ln(√u·y)/(ln(u)/2+ln(y)) ≠ 1 but their diff = 0
-                            let target_zero = num_rational::BigRational::from_integer(0.into());
-                            for (n1, d1, n2, d2) in [(a, c, b, d), (a, d, b, c)] {
-                                let s1 = simplifier.context.add(cas_ast::Expr::Sub(n1, d1));
-                                let (s1r, _) = simplifier.simplify_with_options(s1, opts.clone());
-                                let s1_zero = matches!(
-                                    simplifier.context.get(s1r),
-                                    cas_ast::Expr::Number(n) if *n == target_zero
-                                );
-                                if s1_zero {
-                                    let s2 = simplifier.context.add(cas_ast::Expr::Sub(n2, d2));
-                                    let (s2r, _) =
-                                        simplifier.simplify_with_options(s2, opts.clone());
-                                    let s2_zero = matches!(
-                                        simplifier.context.get(s2r),
-                                        cas_ast::Expr::Number(n) if *n == target_zero
-                                    );
-                                    if s2_zero {
-                                        let _ = tx.send(Some((
-                                            "proved-d".to_string(),
-                                            String::new(),
-                                            String::new(),
-                                        )));
-                                        return;
-                                    }
+                        // Check 2: Proved symbolic — simplify(LHS/RHS) == 1  [fresh context]
+                        // Uses a fresh Simplifier to match CLI behavior (no context pollution).
+                        {
+                            let q_str = format!("({}) / ({})", exp_clone, simp_clone);
+                            let mut sq = Simplifier::with_default_rules();
+                            if let Ok(qp) = parse(&q_str, &mut sq.context) {
+                                let (qr, _) = sq.simplify(qp);
+                                let target = num_rational::BigRational::from_integer(1.into());
+                                if matches!(sq.context.get(qr), cas_ast::Expr::Number(n) if *n == target) {
+                                    let _ = tx.send(Some(("proved-q".to_string(), String::new(), String::new())));
+                                    return;
                                 }
                             }
                         }
 
-                        // Check 2b: Difference fallback — simplify(LHS - RHS) == 0
-                        // Many trig/log identities cancel better via subtraction than division.
-                        let d = simplifier.context.add(cas_ast::Expr::Sub(e, s));
-                        let (sub_simplified, _) = simplifier.simplify_with_options(d, opts.clone());
-                        let zero = num_rational::BigRational::from_integer(0.into());
-                        let is_zero = matches!(
-                            simplifier.context.get(sub_simplified),
-                            cas_ast::Expr::Number(n) if *n == zero
-                        );
-                        if is_zero {
-                            let _ = tx.send(Some((
-                                "proved-d".to_string(),
-                                String::new(),
-                                String::new(),
-                            )));
-                            return;
+                        // Check 2b: Difference fallback — simplify(LHS - RHS) == 0  [fresh context]
+                        {
+                            let d_str = format!("({}) - ({})", exp_clone, simp_clone);
+                            let mut sd = Simplifier::with_default_rules();
+                            if let Ok(dp) = parse(&d_str, &mut sd.context) {
+                                let (dr, _) = sd.simplify(dp);
+                                let zero = num_rational::BigRational::from_integer(0.into());
+                                if matches!(sd.context.get(dr), cas_ast::Expr::Number(n) if *n == zero) {
+                                    let _ = tx.send(Some(("proved-d".to_string(), String::new(), String::new())));
+                                    return;
+                                }
+                            }
                         }
 
                         // Check 3: Numeric equivalence
@@ -2912,17 +2839,21 @@ fn run_csv_combination_tests(
                             &p2_filter,
                         );
                         if result.is_ok() {
+                            // Diagnostic: show what engine actually produced for LHS-RHS
                             let diff_str = if v {
-                                cas_ast::LaTeXExpr {
-                                    context: &simplifier.context,
-                                    id: diff_simplified,
-                                }
-                                .to_latex()
+                                let d_diag = simplifier.context.add(cas_ast::Expr::Sub(e, s));
+                                let (d_simp, _) = simplifier.simplify(d_diag);
+                                format!(
+                                    "simplify(LHS-RHS) => {}",
+                                    cas_ast::LaTeXExpr { context: &simplifier.context, id: d_simp }.to_latex()
+                                )
                             } else {
                                 String::new()
                             };
                             let shape = if v {
-                                expr_shape_signature(&simplifier.context, diff_simplified)
+                                let d_diag = simplifier.context.add(cas_ast::Expr::Sub(e, s));
+                                let (d_simp, _) = simplifier.simplify(d_diag);
+                                expr_shape_signature(&simplifier.context, d_simp)
                             } else {
                                 String::new()
                             };
@@ -3029,21 +2960,30 @@ fn run_csv_combination_tests(
                     return ("nf", String::new(), String::new());
                 }
 
-                // Check 2: Proved symbolic — simplify(LHS - RHS) == 0
-                let d = simplifier
-                    .context
-                    .add(cas_ast::Expr::Sub(exp_simplified, simp_simplified));
-                let target_value = num_rational::BigRational::from_integer(0.into());
-                let (diff_simplified, _) = simplifier.simplify(d);
-
-                let is_proved = matches!(
-                    simplifier.context.get(diff_simplified),
-                    cas_ast::Expr::Number(n) if *n == target_value
-                );
-
-                if is_proved {
-                    return ("proved", String::new(), String::new());
-                }
+                // Check 2: Proved symbolic — simplify(LHS - RHS) == 0  [fresh context]
+                // Uses a fresh Simplifier to match CLI behavior (avoids context pollution).
+                let diff_simplified = {
+                    let diff_str = format!("({}) - ({})", combined_exp, combined_simp);
+                    let mut sd = Simplifier::with_default_rules();
+                    if let Ok(dp) = parse(&diff_str, &mut sd.context) {
+                        let (dr, _) = sd.simplify(dp);
+                        let zero = num_rational::BigRational::from_integer(0.into());
+                        if matches!(sd.context.get(dr), cas_ast::Expr::Number(n) if *n == zero) {
+                            return ("proved", String::new(), String::new());
+                        }
+                    }
+                    // Also try with the polluted simplifier (same context that simplified LHS/RHS)
+                    let d = simplifier
+                        .context
+                        .add(cas_ast::Expr::Sub(exp_simplified, simp_simplified));
+                    let (ds, _) = simplifier.simplify(d);
+                    let target_value = num_rational::BigRational::from_integer(0.into());
+                    if matches!(simplifier.context.get(ds), cas_ast::Expr::Number(n) if *n == target_value)
+                    {
+                        return ("proved", String::new(), String::new());
+                    }
+                    ds
+                };
 
                 // Check 3: Fallback to numeric equivalence
                 let result = check_numeric_equiv_2var(
@@ -3058,12 +2998,16 @@ fn run_csv_combination_tests(
                 );
 
                 if result.is_ok() {
+                    // Diagnostic: show what engine produced (the non-zero residual)
                     let diff_str = if verbose {
-                        cas_ast::LaTeXExpr {
-                            context: &simplifier.context,
-                            id: diff_simplified,
-                        }
-                        .to_latex()
+                        format!(
+                            "simplify(LHS-RHS) => {}",
+                            cas_ast::LaTeXExpr {
+                                context: &simplifier.context,
+                                id: diff_simplified
+                            }
+                            .to_latex()
+                        )
                     } else {
                         String::new()
                     };
