@@ -1,8 +1,11 @@
 //! Polynomial factoring rules: common factor extraction from sums.
 
 use crate::rule::Rewrite;
+use cas_ast::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
 use num_traits::Signed;
+use smallvec::SmallVec;
+use std::cmp::Ordering;
 
 /// Parsed representation of a term in an Add/Sub expression
 /// Represents: sign * coeff * base^exp
@@ -392,6 +395,217 @@ impl crate::rule::Rule for HeuristicExtractCommonFactorAddRule {
         Some(
             Rewrite::new(new_expr)
                 .desc("Extract common polynomial factor")
+                .local(expr, new_expr),
+        )
+    }
+}
+
+// =============================================================================
+// ExtractCommonMulFactorRule — extract common multiplicative factors from n-ary sums
+// =============================================================================
+
+/// ExtractCommonMulFactorRule: Extract common multiplicative factors from sums.
+///
+/// Pattern: `f·a + f·b + f·c` → `f·(a + b + c)`
+///
+/// Unlike `HeuristicExtractCommonFactorAddRule` (which only handles 2-term sums
+/// with polynomial bases), this rule handles:
+/// - N-ary sums (any number of terms)
+/// - Any expression type as common factor (functions, powers, symbols, etc.)
+///
+/// This fixes cross-product normal form divergence in metamorphic Mul tests,
+/// where DistributeRule distributes `f(x)·(a+b+c)` into individual terms
+/// but there's no rule to factor `f(x)` back out.
+pub struct ExtractCommonMulFactorRule;
+
+impl ExtractCommonMulFactorRule {
+    /// Decompose a term into its multiplicative factors.
+    /// Returns a list of (factor, count) where count tracks how many times
+    /// the factor appears in the product.
+    fn term_factors(ctx: &Context, term: ExprId) -> SmallVec<[ExprId; 8]> {
+        crate::nary::mul_factors(ctx, term)
+    }
+
+    /// Check if `needle` appears in `haystack` using structural comparison.
+    /// Returns the index if found.
+    fn find_factor(ctx: &Context, haystack: &[ExprId], needle: ExprId) -> Option<usize> {
+        haystack
+            .iter()
+            .position(|&f| compare_expr(ctx, f, needle) == Ordering::Equal)
+    }
+
+    /// Build a left-folded Mul chain from a list of factors.
+    fn build_mul_chain(ctx: &mut Context, factors: &[ExprId]) -> ExprId {
+        assert!(!factors.is_empty());
+        let mut result = factors[0];
+        for &f in &factors[1..] {
+            result = ctx.add(Expr::Mul(result, f));
+        }
+        result
+    }
+
+    /// Determine if a factor is suitable for extraction from a sum.
+    ///
+    /// We only extract "non-polynomial" factors — expressions that can't
+    /// participate in polynomial cancellation. This avoids breaking the
+    /// solver's polynomial recognition (e.g., extracting `x` from `x·a + x·b`
+    /// would prevent `x·a + x·b - x·c` from simplifying algebraically).
+    ///
+    /// Allowed: function calls (sin, cos, cosh, ln, abs, ...),
+    ///          Pow with non-integer exponent (sqrt, cube root, ...),
+    ///          named constants (pi, e, ...).
+    /// Disallowed: variables, numbers, simple integer powers, Add/Sub/Mul/Div/Neg.
+    fn is_extractable_factor(ctx: &Context, expr: ExprId) -> bool {
+        match ctx.get(expr) {
+            // Function calls are always extractable (sin, cos, cosh, ln, abs, ...)
+            Expr::Function(_, _) => true,
+            // Named constants (pi, e) are extractable
+            Expr::Constant(_) => true,
+            // Pow with non-integer exponent (sqrt, cube root, etc.) is extractable
+            Expr::Pow(_, exp) => {
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    // Non-integer exponent → irrational power (extractable)
+                    !n.is_integer()
+                } else {
+                    // Symbolic exponent → could be irrational (extractable)
+                    true
+                }
+            }
+            // Variables, numbers, Add, Sub, Mul, Div, Neg — NOT extractable
+            _ => false,
+        }
+    }
+}
+
+impl crate::rule::Rule for ExtractCommonMulFactorRule {
+    fn name(&self) -> &str {
+        "Extract Common Multiplicative Factor"
+    }
+
+    fn priority(&self) -> i32 {
+        108 // Slightly below HeuristicExtractCommonFactorAddRule (110),
+            // but above HeuristicPolyNormalizeAddRule (100)
+    }
+
+    fn allowed_phases(&self) -> crate::phase::PhaseMask {
+        crate::phase::PhaseMask::TRANSFORM
+    }
+
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::ADD_SUB)
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        // Skip in Solve mode — solver needs specific polynomial forms
+        if parent_ctx.is_solve_context() {
+            return None;
+        }
+
+        // Flatten into signed terms using AddView
+        let view = crate::nary::AddView::from_expr(ctx, expr);
+        let terms = &view.terms;
+
+        // Need at least 2 terms
+        if terms.len() < 2 {
+            return None;
+        }
+
+        // Cap at 12 terms to avoid O(n²·m) blowup on very large sums
+        if terms.len() > 12 {
+            return None;
+        }
+
+        // Decompose each term into its multiplicative factors
+        let all_factors: SmallVec<[SmallVec<[ExprId; 8]>; 8]> = terms
+            .iter()
+            .map(|(term, _sign)| Self::term_factors(ctx, *term))
+            .collect();
+
+        // Find ALL common non-numeric factors.
+        // For each factor in the first term, check if it appears in all others.
+        let first_factors = &all_factors[0];
+        let mut common_factors: SmallVec<[ExprId; 4]> = SmallVec::new();
+
+        for &candidate in first_factors.iter() {
+            // Only extract non-polynomial factors (functions, irrational powers, constants)
+            if !Self::is_extractable_factor(ctx, candidate) {
+                continue;
+            }
+
+            // Don't add duplicates to common_factors (if first term has f·f·a)
+            if common_factors
+                .iter()
+                .any(|&cf| compare_expr(ctx, cf, candidate) == Ordering::Equal)
+            {
+                continue;
+            }
+
+            // Check if this factor appears in ALL other terms
+            let in_all = all_factors
+                .iter()
+                .skip(1)
+                .all(|factors| Self::find_factor(ctx, factors, candidate).is_some());
+
+            if in_all {
+                common_factors.push(candidate);
+            }
+        }
+
+        // Need at least one common factor
+        if common_factors.is_empty() {
+            return None;
+        }
+
+        // Build quotient terms: each term with ALL common factors removed
+        let mut quotient_terms: SmallVec<[(ExprId, crate::nary::Sign); 8]> = SmallVec::new();
+
+        for (i, (_, sign)) in terms.iter().enumerate() {
+            let mut remaining = all_factors[i].clone();
+
+            // Remove each common factor from this term's factor list
+            for &cf in &common_factors {
+                if let Some(idx) = Self::find_factor(ctx, &remaining, cf) {
+                    remaining.remove(idx);
+                } else {
+                    // Should not happen since we verified it's in ALL terms
+                    return None;
+                }
+            }
+
+            let quotient = if remaining.is_empty() {
+                ctx.num(1)
+            } else {
+                Self::build_mul_chain(ctx, &remaining)
+            };
+            quotient_terms.push((quotient, *sign));
+        }
+
+        // Build the inner sum from quotient terms
+        let inner_view = crate::nary::AddView {
+            root: expr, // placeholder
+            terms: quotient_terms,
+        };
+        let inner_sum = inner_view.rebuild(ctx);
+
+        // Build result: common_product * inner_sum
+        let common_product = Self::build_mul_chain(ctx, &common_factors);
+        let new_expr = ctx.add(Expr::Mul(common_product, inner_sum));
+
+        // Complexity check: result should be simpler (or at worst neutral)
+        let old_nodes = cas_ast::count_nodes(ctx, expr);
+        let new_nodes = cas_ast::count_nodes(ctx, new_expr);
+        if new_nodes > old_nodes {
+            return None; // Don't make things worse
+        }
+
+        Some(
+            Rewrite::new(new_expr)
+                .desc("Factor out common multiplicative factor from sum")
                 .local(expr, new_expr),
         )
     }

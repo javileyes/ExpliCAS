@@ -445,48 +445,100 @@ METATEST_LEGACY_BUCKET=unconditional cargo test ...
 ### Test de Combinaciones
 
 Los tests de combinaciones generan miles de expresiones compuestas a partir del CSV de identidades,
-combinando pares con distintas operaciones (Add, Sub, Mul).
+combinando pares con distintas operaciones (Add, Sub, Mul, Div).
 
-#### Operaciones Disponibles (`CombineOp`)
+#### Muestreo Estratificado (Stratified Sampling)
 
-| Test | Op | Pares | Triples | Modo |
-|------|-----|-------|---------|------|
-| `metatest_csv_combinations_small` | **Add** | 30 | No | CI (no-ignore) |
-| `metatest_csv_combinations_full` | **Add** | 100 | Sí (100) | `--ignored` |
-| `metatest_csv_combinations_sub` | **Sub** | 100 | No | `--ignored` |
-| `metatest_csv_combinations_mul` | **Mul** | 10 | No | `--ignored` |
+El sistema de selección de pares usa **muestreo estratificado por familias** para garantizar
+cobertura diversa con un número manejable de pares:
 
-**Nota sobre Mul:** Solo 10 pares porque la expansión de productos es mucho más costosa
-computacionalmente. Budget reducido (`max_total_rewrites=30`) para limitar el coste por combinación.
+1. **Fase 1**: Selecciona 1 representante por familia CSV (~134 familias) usando LCG RNG determinista
+2. **Fase 2**: Rellena los slots restantes (`max_pairs - num_families`) desde pares no seleccionados
+3. **Shuffle final**: Las selecciones se barajan para randomizar el orden de combinaciones
+
+Esto reemplaza el enfoque anterior de "ventana con offset" (`METATEST_START_OFFSET`) que podía
+dejar familias enteras sin cubrir.
+
+#### Tests Disponibles
+
+| Test | Op | Pares | Familias | Combos (≈) | Modo |
+|------|-----|-------|----------|------------|------|
+| `metatest_csv_combinations_small` | **Add** | 30 | ~30 | ~435 | CI (no-ignore) |
+| `metatest_csv_combinations_add` | **Add** | 150 | ~134 | ~11,175 | `--ignored` |
+| `metatest_csv_combinations_sub` | **Sub** | 150 | ~134 | ~11,175 | `--ignored` |
+| `metatest_csv_combinations_mul` | **Mul** | 150 | ~134 | ~11,175 | `--ignored` |
+| `metatest_csv_combinations_div` | **Div** | 50 | ~50 | ~1,225 | `--ignored` |
+| `metatest_csv_combinations_full` | **Add** | 100 | ~100 | ~4,950+triples | `--ignored` |
+| `metatest_benchmark_all_ops` | **All** | — | — | ~34k | `--ignored` |
+
+**Nota sobre Div:** Usa solo 50 pares porque las limitaciones del CAS con divisores polinómicos de
+alto grado causan fallos de simplificación de fracciones. Incluye un safety guard que salta identidades
+cuyo divisor evalúa cerca de cero.
 
 #### Comandos
 
 ```bash
-# CI (Add, 30 pares, ~435 combinaciones dobles)
+# CI (Add, 30 pares estratificados, ~435 combinaciones dobles)
 cargo test -p cas_engine --test metamorphic_simplification_tests \
     metatest_csv_combinations_small -- --nocapture 2>&1
 
-# Add completo (100 pares + triples)
+# Add completo (150 pares estratificados)
 cargo test -p cas_engine --test metamorphic_simplification_tests \
-    metatest_csv_combinations_full -- --nocapture --ignored 2>&1
+    metatest_csv_combinations_add -- --nocapture --ignored 2>&1
 
-# Subtraction (100 pares)
+# Subtraction (150 pares estratificados)
 cargo test -p cas_engine --test metamorphic_simplification_tests \
     metatest_csv_combinations_sub -- --nocapture --ignored 2>&1
 
-# Multiplication (10 pares)
-cargo test -p cas_engine --test metamorphic_simplification_tests \
+# Multiplication (150 pares estratificados, 2s per-combo timeout)
+cargo test --release -p cas_engine --test metamorphic_simplification_tests \
     metatest_csv_combinations_mul -- --nocapture --ignored 2>&1
+
+# Division (50 pares estratificados, divisor safety guard)
+cargo test --release -p cas_engine --test metamorphic_simplification_tests \
+    metatest_csv_combinations_div -- --nocapture --ignored 2>&1
+
+# Add legacy (100 pares + triples)
+cargo test -p cas_engine --test metamorphic_simplification_tests \
+    metatest_csv_combinations_full -- --nocapture --ignored 2>&1
 ```
+
+#### Benchmark Unificado (`metatest_benchmark_all_ops`)
+
+Test diagnóstico que ejecuta las 4 operaciones y muestra una tabla comparativa de
+regresión/mejora. **No aserta sobre fallos** — solo imprime métricas.
+
+```bash
+cargo test --release -p cas_engine --test metamorphic_simplification_tests \
+    metatest_benchmark_all_ops -- --nocapture --ignored 2>&1
+```
+
+Output de ejemplo:
+
+```
+╔═══════════════════════════════════════════════════════════════════════════════════╗
+║                     METAMORPHIC BENCHMARK RESULTS                                ║
+╠═════╤════════╤══════════╤══════════════╤════════════════╤══════════════╤══════════╣
+║ Op  │ Pairs  │ Families │ NF-convergent│ Proved-symbolic│ Numeric-only │ Failed   ║
+╠═════╪════════╪══════════╪══════════════╪════════════════╪══════════════╪══════════╣
+║ Add │   150  │     134  │   6543  60.1%│   2987   27.4%│   1356  12.5%│      0   ║
+║ Sub │   150  │     134  │   6201  57.0%│   3102   28.5%│   1583  14.5%│      0   ║
+║ Mul │   150  │     134  │   5754  67.1%│   1898   22.1%│    933  10.9%│      0   ║
+║ Div │    50  │      50  │    601  50.5%│    312   26.2%│    278  23.3%│      0   ║
+╠═════╪════════╪══════════╪══════════════╪════════════════╪══════════════╪══════════╣
+║ ALL │        │          │  19099  60.0%│   8299   26.1%│   4150  13.0%│      0   ║
+╚═════╧════════╧══════════╧══════════════╧════════════════╧══════════════╧══════════╝
+```
+
+Uso típico: comparar métricas antes/después de añadir una regla de simplificación.
 
 #### Modo Verbose
 
 Para ver el **informe detallado con clasificación por niveles**:
 
 ```bash
-# Verbose con offset (útil para explorar distintas ventanas del CSV)
-METATEST_VERBOSE=1 METATEST_START_OFFSET=200 cargo test -p cas_engine \
-    --test metamorphic_simplification_tests metatest_csv_combinations_full \
+METATEST_VERBOSE=1 cargo test --release -p cas_engine \
+    --test metamorphic_simplification_tests metatest_csv_combinations_mul \
     -- --nocapture --ignored 2>&1
 ```
 
@@ -496,7 +548,7 @@ METATEST_VERBOSE=1 METATEST_START_OFFSET=200 cargo test -p cas_engine \
 |----------|---------|-------------|
 | `METATEST_VERBOSE` | (desactivado) | Activa informe detallado con ejemplos y clasificadores |
 | `METATEST_MAX_EXAMPLES` | `10` | Número máximo de ejemplos a mostrar por categoría |
-| `METATEST_START_OFFSET` | `0` | Saltar las primeras N identidades del CSV (para explorar distintas ventanas) |
+| `METATEST_START_OFFSET` | `0` | Offset para LCG seed (varía la selección estratificada) |
 
 #### Clasificación de Combinaciones (4 niveles)
 
@@ -512,9 +564,9 @@ Cada combinación `(identity_i ⊕ identity_j)` se clasifica en:
 #### Output Ejemplo
 
 ```
-📊 Running CSV combination tests [add] with 30 pairs (offset 0, shuffled)
-✅ Double combinations [add]: 406 passed, 0 failed, 0 skipped (timeout)
-   📐 NF-convergent: 278 | 🔢 Proved-symbolic: 127 | 🌡️ Numeric-only: 1
+📊 Running CSV combination tests [mul] with 150 pairs from 134 families (offset 0, stratified)
+✅ Double combinations [mul]: 8585 passed, 0 failed, 61 skipped (timeout)
+   📐 NF-convergent: 5754 | 🔢 Proved-symbolic: 1898 | 🌡️ Numeric-only: 933
 ```
 
 #### Secciones del Informe Verbose
@@ -559,45 +611,16 @@ Marcadores: `[NEG_EXP]` = exponentes negativos, `[DIV]` = divisiones. Apuntan a 
 diferentes pero matemáticamente equivalentes. Esto es normal y **no es un error** — lo importante
 es que `Failed = 0`. Los clasificadores ayudan a **priorizar qué reglas de simplificación añadir**.
 
----
-
-## Interpretación de Resultados
-
-### Test Individual — Salida Típica
-
-```
-📊 Individual Identity Results:
-   Total tested: 389
-   ✅ Symbolic: 292 (75%)
-   🔢 Numeric-only: 97
-   ❌ Failed: 0
-   ⏭️  Skipped: 18
-```
-
-### Test de Combinaciones — Salida Típica
-
-```
-✅ Double combinations [add]: 406 passed, 0 failed, 0 skipped (timeout)
-   📐 NF-convergent: 278 | 🔢 Proved-symbolic: 127 | 🌡️ Numeric-only: 1
-```
-
 ### Baselines de Combinaciones (Feb 2026)
 
-Resultados de referencia tras la implementación de `DivScalarIntoAddRule` (GCD-based):
+Resultados de referencia con muestreo estratificado (post pre-order conjugate pair contraction):
 
-| Op | Offset | Pairs | NF-conv | Proved | Numeric | Failed |
-|----|--------|-------|---------|--------|---------|--------|
-| Add | 0 | 30 | 278 | 127 | 1 | 0 |
-| Add | 200 | 100 | — | — | 186 | 0 |
-| Add | 300 | 100 | — | — | 23 | 0 |
-| Sub | — | 100 | — | — | (pendiente) | 0 |
-| Mul | — | 10 | — | — | (pendiente) | 0 |
-
-**Familias dominantes en numeric-only (Add, offset 200):**
-- `tan (without sec/csc)` — 84 casos
-- `ln/log` — 63 casos (residuo: `(2·ln(y·√u) - ln(u) - 2·ln(y))/2`)
-- `sec/csc` — 16 casos
-- `sqrt/roots` — 8 casos
+| Op | Pairs | Families | NF-conv | Proved | Numeric | Failed |
+|----|-------|----------|---------|--------|---------|--------|
+| Add | 150 | 134 | ~6500 | ~3000 | ~1350 | 0 |
+| Sub | 150 | 134 | ~6200 | ~3100 | ~1580 | 0 |
+| Mul | 150 | 134 | 5754 | 1898 | 933 | 0 |
+| Div | 50 | 50 | ~600 | ~310 | ~280 | 0 |
 
 ### Qué Significan
 
@@ -650,7 +673,7 @@ Resultados de referencia tras la implementación de `DivScalarIntoAddRule` (GCD-
 | `METATEST_UPDATE_BASELINE` | `0`/`1` | `0` | Regenera archivo baseline |
 | `METATEST_VERBOSE` | `0`/`1` | `0` | Informe detallado: ejemplos, familias, shapes |
 | `METATEST_MAX_EXAMPLES` | número | `10` | Máximos ejemplos a mostrar por categoría |
-| `METATEST_START_OFFSET` | número | `0` | Saltar las primeras N identidades del CSV |
+| `METATEST_START_OFFSET` | número | `0` | Offset para LCG seed en muestreo estratificado |
 
 ---
 

@@ -14,7 +14,7 @@ pub use expansion::{AutoExpandPowSumRule, AutoExpandSubCancelRule, BinomialExpan
 pub use expansion_normalize::{
     ExpandSmallBinomialPowRule, HeuristicPolyNormalizeAddRule, PolynomialIdentityZeroRule,
 };
-pub use factoring::HeuristicExtractCommonFactorAddRule;
+pub use factoring::{ExtractCommonMulFactorRule, HeuristicExtractCommonFactorAddRule};
 
 // Re-export helpers used within this module
 use polynomial_helpers::{
@@ -563,6 +563,9 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // V2.15.8: HeuristicPolyNormalizeAddRule - poly-normalize Add/Sub in Heuristic mode
     // V2.15.9: HeuristicExtractCommonFactorAddRule - extract common factors first (priority 110)
     simplifier.add_rule(Box::new(HeuristicExtractCommonFactorAddRule));
+    // V2.16: ExtractCommonMulFactorRule - extract common multiplicative factors from n-ary sums
+    // Fixes cross-product NF divergence in metamorphic Mul tests (priority 108)
+    simplifier.add_rule(Box::new(ExtractCommonMulFactorRule));
     simplifier.add_rule(Box::new(HeuristicPolyNormalizeAddRule));
 }
 
