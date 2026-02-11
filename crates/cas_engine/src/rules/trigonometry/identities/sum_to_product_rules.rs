@@ -326,6 +326,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(pythagorean::TrigPythagoreanLinearFoldRule));
     // Local collect fold: k·R·sin²(t) + R·cos²(t) - R → (k-1)·R·sin²(t) for residual R
     simplifier.add_rule(Box::new(pythagorean::TrigPythagoreanLocalCollectFoldRule));
+    // High-power factor: R − R·trig²(x) → R·other²(x) when trig² is embedded in trig^n
+    simplifier.add_rule(Box::new(pythagorean::TrigPythagoreanHighPowerRule));
     // Contraction: 1 + tan²(x) → sec²(x), 1 + cot²(x) → csc²(x)
     simplifier.add_rule(Box::new(pythagorean::RecognizeSecSquaredRule));
     simplifier.add_rule(Box::new(pythagorean::RecognizeCscSquaredRule));

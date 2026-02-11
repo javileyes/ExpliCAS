@@ -1126,6 +1126,241 @@ fn extract_tan_or_cot_squared(
     None
 }
 
+// =============================================================================
+// TrigPythagoreanHighPowerRule: R − R·trig²(x) → R·other²(x)
+// =============================================================================
+// Handles cases where trig² is embedded in a higher trig power, e.g.:
+//   4·sin(x) − 4·sin³(x) → 4·cos²(x)·sin(x)
+//   sin²(x) − sin²(x)·cos²(x) → sin⁴(x)
+//
+// Strategy: flatten both Add terms into multiplicative factor lists, decompose
+// any trig^n (n≥2) into trig^(n-2)·trig², and check if the "bigger" term has
+// exactly one extra trig² factor compared to the "smaller" one.
+
+define_rule!(
+    TrigPythagoreanHighPowerRule,
+    "Pythagorean High-Power Factor",
+    |ctx, expr| {
+        if !matches!(ctx.get(expr), Expr::Add(_, _)) {
+            return None;
+        }
+        let terms = crate::nary::add_leaves(ctx, expr);
+        if terms.len() != 2 {
+            return None;
+        }
+
+        // Try both orderings: (small, big) where big = small * trig²
+        for (small_term, big_term) in [(terms[0], terms[1]), (terms[1], terms[0])] {
+            if let Some(result) = try_high_power_pythagorean(ctx, small_term, big_term) {
+                return Some(result);
+            }
+        }
+
+        None
+    }
+);
+
+/// Try to match: small_term + big_term where big_term = −small_term · trig²(x)
+/// If matched, rewrite as small_term · other²(x)
+fn try_high_power_pythagorean(
+    ctx: &mut Context,
+    small_term: ExprId,
+    big_term: ExprId,
+) -> Option<Rewrite> {
+    use num_rational::BigRational;
+
+    // Flatten both terms into (is_negated, sorted_factors) where factors are atomic
+    // For trig^n, decompose into trig^(n-2) and trig² separately
+    let (small_neg, small_factors) = flatten_with_trig_decomp(ctx, small_term);
+    let (big_neg, big_factors) = flatten_with_trig_decomp(ctx, big_term);
+
+    // We need opposite signs: small + big = R − R·trig² → R·other²
+    if small_neg == big_neg {
+        return None; // Same sign, can't cancel
+    }
+
+    // big_factors should be a superset of small_factors + one extra trig² factor
+    if big_factors.len() != small_factors.len() + 1 {
+        return None;
+    }
+
+    // Sort both factor lists for comparison
+    let mut small_sorted: Vec<ExprId> = small_factors.clone();
+    let mut big_sorted: Vec<ExprId> = big_factors.clone();
+    small_sorted.sort_by(|a, b| crate::ordering::compare_expr(ctx, *a, *b));
+    big_sorted.sort_by(|a, b| crate::ordering::compare_expr(ctx, *a, *b));
+
+    // Find the one extra factor in big that's not in small
+    let mut extra_factor = None;
+    let mut si = 0;
+    let mut bi = 0;
+    let mut mismatches = 0;
+
+    while bi < big_sorted.len() {
+        if si < small_sorted.len()
+            && crate::ordering::compare_expr(ctx, small_sorted[si], big_sorted[bi])
+                == std::cmp::Ordering::Equal
+        {
+            si += 1;
+            bi += 1;
+        } else {
+            // big has an extra factor
+            mismatches += 1;
+            if mismatches > 1 {
+                return None;
+            }
+            extra_factor = Some(big_sorted[bi]);
+            bi += 1;
+        }
+    }
+    // Any remaining in small means they didn't match
+    if si != small_sorted.len() {
+        return None;
+    }
+
+    let extra = extra_factor?;
+
+    // Check if excess factor is trig²(x)
+    if let Expr::Pow(base, exp) = ctx.get(extra) {
+        let base = *base;
+        let exp = *exp;
+        if let Expr::Number(n) = ctx.get(exp) {
+            if *n != BigRational::from_integer(2.into()) {
+                return None;
+            }
+            if let Expr::Function(fn_id, args) = ctx.get(base) {
+                let builtin = ctx.builtin_of(*fn_id);
+                if !matches!(
+                    builtin,
+                    Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
+                ) || args.len() != 1
+                {
+                    return None;
+                }
+
+                let trig_arg = args[0];
+                let other_builtin = if matches!(builtin, Some(cas_ast::BuiltinFn::Sin)) {
+                    cas_ast::BuiltinFn::Cos
+                } else {
+                    cas_ast::BuiltinFn::Sin
+                };
+
+                // Pattern confirmed! small_term + big_term = R + (−R·trig²(x))
+                // Since we checked big has the extra trig² and signs differ:
+                //   If small = +R, big = −R·trig² → sum = R(1−trig²) = +R·other²
+                //   If small = −R, big = +R·trig² → sum = −R + R·trig² = R(trig²−1) = −R·other²
+                // In both cases the result sign matches small_term's sign.
+                // Use the original small_term as the R multiplier.
+
+                let other_fn = ctx.call_builtin(other_builtin, vec![trig_arg]);
+                let two = ctx.num(2);
+                let other_sq = ctx.add(Expr::Pow(other_fn, two));
+
+                let result = crate::rules::algebra::helpers::smart_mul(ctx, small_term, other_sq);
+
+                let func_name = builtin.unwrap().name();
+                let other_name = other_builtin.name();
+                let desc = format!("R − R·{}²(x) = R·{}²(x)", func_name, other_name);
+                return Some(Rewrite::new(result).desc(desc));
+            }
+        }
+    }
+
+    None
+}
+
+/// Flatten a term into (is_negated, factor_list).
+/// For trig^n (n≥2), decompose into [trig^(n-2), trig²] to expose the trig² for matching.
+fn flatten_with_trig_decomp(ctx: &mut Context, term: ExprId) -> (bool, Vec<ExprId>) {
+    use num_rational::BigRational;
+    use num_traits::{One, Signed};
+
+    let mut is_neg = false;
+    let mut factors = Vec::new();
+    let mut stack = vec![term];
+
+    // Handle outer Neg
+    if let Expr::Neg(inner) = ctx.get(term) {
+        is_neg = true;
+        stack = vec![*inner];
+    }
+
+    // Flatten Mul tree
+    while let Some(curr) = stack.pop() {
+        match ctx.get(curr) {
+            Expr::Mul(l, r) => {
+                stack.push(*r);
+                stack.push(*l);
+            }
+            Expr::Neg(inner) => {
+                is_neg = !is_neg;
+                stack.push(*inner);
+            }
+            _ => factors.push(curr),
+        }
+    }
+
+    // Extract sign from negative numeric coefficients
+    // e.g., Mul(-4, sin³(x)) should be is_neg=true with factor 4
+    let mut final_factors = Vec::with_capacity(factors.len());
+    for f in factors {
+        if let Expr::Number(n) = ctx.get(f) {
+            if n.is_negative() {
+                is_neg = !is_neg;
+                let abs_val = -n.clone();
+                if abs_val == BigRational::one() {
+                    // Factor of -1 → just flip sign, don't add factor 1
+                    continue;
+                }
+                let abs_id = ctx.add(Expr::Number(abs_val));
+                final_factors.push(abs_id);
+                continue;
+            }
+        }
+        final_factors.push(f);
+    }
+    let factors = final_factors;
+
+    // Decompose any trig^n (n≥3) into trig^(n-2) + trig²
+    let mut decomposed = Vec::new();
+    for &f in &factors {
+        if let Expr::Pow(base, exp) = ctx.get(f) {
+            let base = *base;
+            let exp = *exp;
+            if let Expr::Number(n) = ctx.get(exp) {
+                let two = BigRational::from_integer(2.into());
+                if *n > two && n.is_integer() {
+                    if let Expr::Function(fn_id, args) = ctx.get(base) {
+                        let builtin = ctx.builtin_of(*fn_id);
+                        if matches!(
+                            builtin,
+                            Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
+                        ) && args.len() == 1
+                        {
+                            // Decompose: trig^n → trig^(n-2) · trig²
+                            let remainder = n - &two;
+                            let leftover = if remainder == BigRational::one() {
+                                base // trig^3 → trig · trig²
+                            } else {
+                                let rem_id = ctx.add(Expr::Number(remainder));
+                                ctx.add(Expr::Pow(base, rem_id))
+                            };
+                            let two_id = ctx.num(2);
+                            let trig_sq = ctx.add(Expr::Pow(base, two_id));
+                            decomposed.push(leftover);
+                            decomposed.push(trig_sq);
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+        decomposed.push(f);
+    }
+
+    (is_neg, decomposed)
+}
+
 /// Check if (c_term, trig_term) matches the pattern k - k*trig²(x) = k*other²(x)
 /// where trig is sin or cos, and other is the complementary function.
 fn check_pythagorean_pattern(

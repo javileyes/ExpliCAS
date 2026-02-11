@@ -20,8 +20,9 @@ pub use evaluation::EvaluateTrigTableRule;
 pub use identities::*;
 pub use pythagorean::{
     RecognizeCscSquaredRule, RecognizeSecSquaredRule, TrigPythagoreanChainRule,
-    TrigPythagoreanGenericCoefficientRule, TrigPythagoreanLinearFoldRule,
-    TrigPythagoreanLocalCollectFoldRule, TrigPythagoreanSimplifyRule,
+    TrigPythagoreanGenericCoefficientRule, TrigPythagoreanHighPowerRule,
+    TrigPythagoreanLinearFoldRule, TrigPythagoreanLocalCollectFoldRule,
+    TrigPythagoreanSimplifyRule,
 };
 pub use pythagorean_secondary::{
     CotToCosSinRule, CscToRecipSinRule, SecToRecipCosRule, TrigEvenPowerDifferenceRule,
