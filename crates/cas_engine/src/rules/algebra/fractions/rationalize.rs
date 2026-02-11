@@ -366,6 +366,177 @@ define_rule!(
 );
 
 // =============================================================================
+// DivExpandNumForCancelRule: Distribute Mul in Div numerator to enable factor
+// cancellation when both sides share a common symbolic factor.
+// =============================================================================
+//
+// Pattern: Div(Mul(X, Add(f*a, f*b)), Add(f*c, f*d))
+//       → Div(Add(X*f*a, X*f*b), Add(f*c, f*d))
+//
+// This allows DivAddSymmetricFactorRule to then cancel f from both sides.
+// Only fires when the expansion would actually expose common factors.
+// =============================================================================
+define_rule!(
+    DivExpandNumForCancelRule,
+    "Expand Numerator Product for Div Cancellation",
+    |ctx, expr| {
+        use std::collections::HashMap;
+
+        let (num, den) = crate::helpers::as_div(ctx, expr)?;
+
+        // Denominator must be an Add
+        if !matches!(ctx.get(den), Expr::Add(_, _)) {
+            return None;
+        }
+        // Numerator must NOT already be an Add (symmetric rule handles that)
+        if matches!(ctx.get(num), Expr::Add(_, _)) {
+            return None;
+        }
+
+        // Flatten the numerator's multiplicative factors
+        let num_mul_factors = {
+            let mut factors = Vec::new();
+            let mut stack = vec![num];
+            while let Some(curr) = stack.pop() {
+                if let Expr::Mul(l, r) = ctx.get(curr) {
+                    stack.push(*r);
+                    stack.push(*l);
+                } else {
+                    factors.push(curr);
+                }
+            }
+            factors
+        };
+        if num_mul_factors.len() < 2 {
+            return None;
+        }
+
+        // Helper: collect symbolic factors as string keyed map
+        fn sym_factors(ctx: &Context, factors: &[(ExprId, i64)]) -> HashMap<String, i64> {
+            let mut map = HashMap::new();
+            for &(base, exp) in factors {
+                if matches!(ctx.get(base), Expr::Number(_)) {
+                    continue;
+                }
+                let key = format!(
+                    "{}",
+                    cas_ast::DisplayExpr {
+                        context: ctx,
+                        id: base
+                    }
+                );
+                *map.entry(key).or_insert(0) += exp;
+            }
+            map
+        }
+
+        // Pre-compute common symbolic factors across denominator Add terms
+        let den_terms = crate::nary::add_leaves(ctx, den);
+        let first_den_factors = collect_mul_factors_int_pow(ctx, den_terms[0]);
+        let mut den_common = sym_factors(ctx, &first_den_factors);
+        for &term_id in den_terms.iter().skip(1) {
+            let term_factors = collect_mul_factors_int_pow(ctx, term_id);
+            let term_map = sym_factors(ctx, &term_factors);
+            den_common.retain(|key, exp| {
+                if let Some(&term_exp) = term_map.get(key) {
+                    *exp = (*exp).min(term_exp);
+                    *exp >= 1
+                } else {
+                    false
+                }
+            });
+            if den_common.is_empty() {
+                return None;
+            }
+        }
+
+        // Try each Add factor in the Mul tree; pick the first one whose
+        // expansion creates terms sharing common factors with the denominator.
+        for (add_idx, &candidate) in num_mul_factors.iter().enumerate() {
+            if !matches!(ctx.get(candidate), Expr::Add(_, _)) {
+                continue;
+            }
+
+            // Build "outer" from all non-candidate factors
+            let outer_factors: Vec<ExprId> = num_mul_factors
+                .iter()
+                .enumerate()
+                .filter(|&(i, _)| i != add_idx)
+                .map(|(_, &f)| f)
+                .collect();
+            if outer_factors.is_empty() {
+                continue;
+            }
+
+            let outer = {
+                let mut out = outer_factors[0];
+                for &f in outer_factors.iter().skip(1) {
+                    out = mul2_raw(ctx, out, f);
+                }
+                out
+            };
+
+            let add_terms = crate::nary::add_leaves(ctx, candidate);
+            if add_terms.len() < 2 {
+                continue;
+            }
+
+            // Build virtually expanded terms: outer * each_add_term
+            let expanded_terms: Vec<ExprId> =
+                add_terms.iter().map(|&t| mul2_raw(ctx, outer, t)).collect();
+
+            // Compute common symbolic factors across expanded terms
+            let first_factors = collect_mul_factors_int_pow(ctx, expanded_terms[0]);
+            let mut num_common = sym_factors(ctx, &first_factors);
+            let mut bail = false;
+            for &term_id in expanded_terms.iter().skip(1) {
+                let term_factors = collect_mul_factors_int_pow(ctx, term_id);
+                let term_map = sym_factors(ctx, &term_factors);
+                num_common.retain(|key, exp| {
+                    if let Some(&te) = term_map.get(key) {
+                        *exp = (*exp).min(te);
+                        *exp >= 1
+                    } else {
+                        false
+                    }
+                });
+                if num_common.is_empty() {
+                    bail = true;
+                    break;
+                }
+            }
+            if bail {
+                continue;
+            }
+
+            // Check for shared factors between expanded num and den
+            if !num_common.keys().any(|k| den_common.contains_key(k)) {
+                continue;
+            }
+
+            // Build the expanded numerator: Add(outer*term₁, outer*term₂, ...)
+            let new_num = {
+                let mut result = expanded_terms[0];
+                for &term in expanded_terms.iter().skip(1) {
+                    result = ctx.add(Expr::Add(result, term));
+                }
+                result
+            };
+
+            let result = ctx.add(Expr::Div(new_num, den));
+            if result != expr {
+                return Some(
+                    Rewrite::new(result)
+                        .desc("Expand numerator product to enable factor cancellation"),
+                );
+            }
+        }
+
+        None
+    }
+);
+
+// =============================================================================
 // DivAddSymmetricFactorRule: Extract common factor from BOTH Add num AND Add den
 // =============================================================================
 //
