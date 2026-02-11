@@ -2794,13 +2794,29 @@ fn run_csv_combination_tests(
 
                         // Check 2: Proved symbolic (quotient == 1)
                         let q = simplifier.context.add(cas_ast::Expr::Div(e, s));
-                        let (diff_simplified, _) = simplifier.simplify_with_options(q, opts);
+                        let (diff_simplified, _) =
+                            simplifier.simplify_with_options(q, opts.clone());
                         let target = num_rational::BigRational::from_integer(1.into());
                         let is_proved = matches!(
                             simplifier.context.get(diff_simplified),
                             cas_ast::Expr::Number(n) if *n == target
                         );
                         if is_proved {
+                            let _ =
+                                tx.send(Some(("proved".to_string(), String::new(), String::new())));
+                            return;
+                        }
+
+                        // Check 2b: Difference fallback — simplify(LHS - RHS) == 0
+                        // Many trig/log identities cancel better via subtraction than division.
+                        let d = simplifier.context.add(cas_ast::Expr::Sub(e, s));
+                        let (sub_simplified, _) = simplifier.simplify_with_options(d, opts.clone());
+                        let zero = num_rational::BigRational::from_integer(0.into());
+                        let is_zero = matches!(
+                            simplifier.context.get(sub_simplified),
+                            cas_ast::Expr::Number(n) if *n == zero
+                        );
+                        if is_zero {
                             let _ =
                                 tx.send(Some(("proved".to_string(), String::new(), String::new())));
                             return;
@@ -3012,9 +3028,10 @@ fn run_csv_combination_tests(
                             ));
                         }
                     }
-                    "timeout" | "skip" => {
+                    "timeout" => {
                         skipped += 1;
                     }
+                    "skip" => { /* parse error, silently continue */ }
                     _ => {
                         failed += 1;
                         if failed <= 5 {
