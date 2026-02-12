@@ -26,6 +26,7 @@ pub use pythagorean::{
 };
 pub use pythagorean_secondary::{
     CotToCosSinRule, CscToRecipSinRule, SecToRecipCosRule, TrigEvenPowerDifferenceRule,
+    TrigEvenPowerSumRule,
 };
 pub use values::{detect_special_angle, lookup_trig_value, SpecialAngle, TrigValue};
 pub use weierstrass::{ReverseWeierstrassRule, WeierstrassSubstitutionRule};

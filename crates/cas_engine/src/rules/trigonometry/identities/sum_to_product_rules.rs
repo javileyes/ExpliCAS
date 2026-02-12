@@ -346,6 +346,9 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // Fourth power difference: sin⁴(x) - cos⁴(x) → sin²(x) - cos²(x)
     simplifier.add_rule(Box::new(pythagorean_secondary::TrigEvenPowerDifferenceRule));
 
+    // Fourth power sum: k·sin⁴(x) + k·cos⁴(x) → k·(1 - 2·sin²(x)·cos²(x))
+    simplifier.add_rule(Box::new(pythagorean_secondary::TrigEvenPowerSumRule));
+
     // Cotangent half-angle difference: cot(u/2) - cot(u) = 1/sin(u)
     simplifier.add_rule(Box::new(CotHalfAngleDifferenceRule));
     // Tangent difference: tan(a-b) → (tan(a)-tan(b))/(1+tan(a)*tan(b))
