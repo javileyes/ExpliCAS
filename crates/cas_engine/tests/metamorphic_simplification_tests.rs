@@ -2526,6 +2526,8 @@ struct ComboMetrics {
     numeric_only: usize,
     failed: usize,
     skipped: usize,
+    timeouts: usize,
+    cycle_events_total: usize,
 }
 
 impl ComboMetrics {
@@ -2696,6 +2698,8 @@ fn run_csv_combination_tests(
     let mut numeric_only_examples: Vec<(String, String, String, String, String, String)> =
         Vec::new(); // (LHS, RHS, simp1, simp2, diff_residual, shape)
     let mut skipped = 0;
+    let mut timeouts = 0;
+    let mut cycle_events_total: usize = 0;
 
     // Per-combination timeout: mul/div are heavier due to product/quotient expansion
     let combo_timeout = match op {
@@ -2784,9 +2788,12 @@ fn run_csv_combination_tests(
 
                         // Use default budget — the thread-based 2s timeout prevents hangs
                         let opts = cas_engine::phase::SimplifyOptions::default();
+                        let mut combo_cycles: usize = 0;
 
-                        let (mut e, _) = simplifier.simplify_with_options(exp_parsed, opts.clone());
-                        let (mut s, _) = simplifier.simplify_with_options(simp_parsed, opts.clone());
+                        let (mut e, _, stats_e) = simplifier.simplify_with_stats(exp_parsed, opts.clone());
+                        combo_cycles += stats_e.cycle_events.len();
+                        let (mut s, _, stats_s) = simplifier.simplify_with_stats(simp_parsed, opts.clone());
+                        combo_cycles += stats_s.cycle_events.len();
 
                         // Post-process: fold_constants to match CLI eval_simplify behavior
                         {
@@ -2806,7 +2813,7 @@ fn run_csv_combination_tests(
                                 == std::cmp::Ordering::Equal;
 
                         if nf_match {
-                            let _ = tx.send(Some(("nf".to_string(), String::new(), String::new())));
+                            let _ = tx.send(Some(("nf".to_string(), String::new(), String::new(), combo_cycles)));
                             return;
                         }
 
@@ -2824,7 +2831,7 @@ fn run_csv_combination_tests(
                                 }
                                 let target = num_rational::BigRational::from_integer(1.into());
                                 if matches!(sq.context.get(qr), cas_ast::Expr::Number(n) if *n == target) {
-                                    let _ = tx.send(Some(("proved-q".to_string(), String::new(), String::new())));
+                                    let _ = tx.send(Some(("proved-q".to_string(), String::new(), String::new(), combo_cycles)));
                                     return;
                                 }
                             }
@@ -2843,7 +2850,7 @@ fn run_csv_combination_tests(
                                 }
                                 let zero = num_rational::BigRational::from_integer(0.into());
                                 if matches!(sd.context.get(dr), cas_ast::Expr::Number(n) if *n == zero) {
-                                    let _ = tx.send(Some(("proved-d".to_string(), String::new(), String::new())));
+                                    let _ = tx.send(Some(("proved-d".to_string(), String::new(), String::new(), combo_cycles)));
                                     return;
                                 }
                             }
@@ -2879,18 +2886,19 @@ fn run_csv_combination_tests(
                             } else {
                                 String::new()
                             };
-                            let _ = tx.send(Some(("numeric".to_string(), diff_str, shape)));
+                            let _ = tx.send(Some(("numeric".to_string(), diff_str, shape, combo_cycles)));
                         } else {
                             let _ =
-                                tx.send(Some(("failed".to_string(), String::new(), String::new())));
+                                tx.send(Some(("failed".to_string(), String::new(), String::new(), combo_cycles)));
                         }
                     });
 
                 match rx.recv_timeout(timeout) {
-                    Ok(Some((kind, diff_str, shape))) => match kind.as_str() {
+                    Ok(Some((kind, diff_str, shape, cycles))) => match kind.as_str() {
                         "nf" => {
                             nf_convergent += 1;
                             passed += 1;
+                            cycle_events_total += cycles;
                         }
                         "proved-q" | "proved-d" => {
                             if kind.as_str() == "proved-q" {
@@ -2899,6 +2907,7 @@ fn run_csv_combination_tests(
                                 proved_difference += 1;
                             }
                             passed += 1;
+                            cycle_events_total += cycles;
                             if verbose && nf_mismatch_examples.len() < max_examples {
                                 nf_mismatch_examples.push((
                                     combined_exp.clone(),
@@ -2911,6 +2920,7 @@ fn run_csv_combination_tests(
                         "numeric" => {
                             numeric_only += 1;
                             passed += 1;
+                            cycle_events_total += cycles;
                             if verbose {
                                 numeric_only_examples.push((
                                     combined_exp.clone(),
@@ -2924,6 +2934,7 @@ fn run_csv_combination_tests(
                         }
                         _ => {
                             failed += 1;
+                            cycle_events_total += cycles;
                             if failed <= 5 {
                                 eprintln!(
                                     "❌ Double combo [{}] failed: ({}) {} ({})",
@@ -2938,7 +2949,18 @@ fn run_csv_combination_tests(
                     Ok(None) => { /* parse error, skip */ }
                     Err(_) => {
                         // Timeout — thread is still running but we move on
-                        skipped += 1;
+                        timeouts += 1;
+                        eprintln!(
+                            "  ⏱️  T/O [{}] #{}: [{}] {} [{}]  →  ({}) {} ({})",
+                            op.name(),
+                            timeouts,
+                            pair1.family,
+                            op.symbol(),
+                            pair2.family,
+                            pair1.exp,
+                            op.symbol(),
+                            pair2.exp,
+                        );
                     }
                 }
                 continue; // skip the inline path below
@@ -2951,16 +2973,20 @@ fn run_csv_combination_tests(
                 let mut simplifier = Simplifier::with_default_rules();
                 let exp_parsed = match parse(&combined_exp, &mut simplifier.context) {
                     Ok(e) => e,
-                    Err(_) => return ("skip", String::new(), String::new()),
+                    Err(_) => return ("skip", String::new(), String::new(), 0),
                 };
                 let simp_parsed = match parse(&combined_simp, &mut simplifier.context) {
                     Ok(e) => e,
-                    Err(_) => return ("skip", String::new(), String::new()),
+                    Err(_) => return ("skip", String::new(), String::new(), 0),
                 };
 
                 let combo_start = std::time::Instant::now();
+                let mut inline_cycles: usize = 0;
                 let (exp_simplified, simp_simplified) = {
-                    let (mut e, _) = simplifier.simplify(exp_parsed);
+                    let opts = cas_engine::phase::SimplifyOptions::default();
+                    let (mut e, _, stats_e) =
+                        simplifier.simplify_with_stats(exp_parsed, opts.clone());
+                    inline_cycles += stats_e.cycle_events.len();
                     // Post-process: fold_constants to match CLI eval_simplify behavior
                     {
                         let cfg = cas_engine::semantics::EvalConfig::default();
@@ -2976,9 +3002,10 @@ fn run_csv_combination_tests(
                         }
                     }
                     if combo_start.elapsed() > combo_timeout {
-                        return ("timeout", String::new(), String::new());
+                        return ("timeout", String::new(), String::new(), inline_cycles);
                     }
-                    let (mut s, _) = simplifier.simplify(simp_parsed);
+                    let (mut s, _, stats_s) = simplifier.simplify_with_stats(simp_parsed, opts);
+                    inline_cycles += stats_s.cycle_events.len();
                     {
                         let cfg = cas_engine::semantics::EvalConfig::default();
                         let mut budget = cas_engine::budget::Budget::preset_cli();
@@ -2995,7 +3022,7 @@ fn run_csv_combination_tests(
                     (e, s)
                 };
                 if combo_start.elapsed() > combo_timeout {
-                    return ("timeout", String::new(), String::new());
+                    return ("timeout", String::new(), String::new(), inline_cycles);
                 }
 
                 // Check 1: Normal form convergence (exact structural match)
@@ -3006,7 +3033,7 @@ fn run_csv_combination_tests(
                 ) == std::cmp::Ordering::Equal;
 
                 if nf_match {
-                    return ("nf", String::new(), String::new());
+                    return ("nf", String::new(), String::new(), inline_cycles);
                 }
 
                 // Check 2: Proved symbolic — simplify(LHS - RHS) == 0  [fresh context]
@@ -3029,7 +3056,7 @@ fn run_csv_combination_tests(
                         }
                         let zero = num_rational::BigRational::from_integer(0.into());
                         if matches!(sd.context.get(dr), cas_ast::Expr::Number(n) if *n == zero) {
-                            return ("proved", String::new(), String::new());
+                            return ("proved", String::new(), String::new(), inline_cycles);
                         }
                     }
                     // Also try with the polluted simplifier (same context that simplified LHS/RHS)
@@ -3053,7 +3080,7 @@ fn run_csv_combination_tests(
                     let target_value = num_rational::BigRational::from_integer(0.into());
                     if matches!(simplifier.context.get(ds), cas_ast::Expr::Number(n) if *n == target_value)
                     {
-                        return ("proved", String::new(), String::new());
+                        return ("proved", String::new(), String::new(), inline_cycles);
                     }
                     ds
                 };
@@ -3089,21 +3116,23 @@ fn run_csv_combination_tests(
                     } else {
                         String::new()
                     };
-                    ("numeric", diff_str, shape)
+                    ("numeric", diff_str, shape, inline_cycles)
                 } else {
-                    ("failed", String::new(), String::new())
+                    ("failed", String::new(), String::new(), inline_cycles)
                 }
             }));
 
             match combo_result {
-                Ok((kind, diff_str, shape)) => match kind {
+                Ok((kind, diff_str, shape, cycles)) => match kind {
                     "nf" => {
                         nf_convergent += 1;
                         passed += 1;
+                        cycle_events_total += cycles;
                     }
                     "proved" => {
                         proved_quotient += 1;
                         passed += 1;
+                        cycle_events_total += cycles;
                         if verbose && nf_mismatch_examples.len() < max_examples {
                             nf_mismatch_examples.push((
                                 combined_exp.clone(),
@@ -3116,6 +3145,7 @@ fn run_csv_combination_tests(
                     "numeric" => {
                         numeric_only += 1;
                         passed += 1;
+                        cycle_events_total += cycles;
                         if verbose {
                             numeric_only_examples.push((
                                 combined_exp.clone(),
@@ -3128,11 +3158,13 @@ fn run_csv_combination_tests(
                         }
                     }
                     "timeout" => {
-                        skipped += 1;
+                        timeouts += 1;
+                        cycle_events_total += cycles;
                     }
                     "skip" => { /* parse error, silently continue */ }
                     _ => {
                         failed += 1;
+                        cycle_events_total += cycles;
                         if failed <= 5 {
                             eprintln!(
                                 "❌ Double combo [{}] failed: ({}) {} ({})",
@@ -3424,13 +3456,15 @@ fn run_csv_combination_tests(
         op: op.name().to_string(),
         pairs: n,
         families: num_families,
-        combos: passed + failed + skipped,
+        combos: passed + failed + skipped + timeouts,
         nf_convergent,
         proved_quotient,
         proved_difference,
         numeric_only,
         failed,
         skipped,
+        timeouts,
+        cycle_events_total,
     }
 }
 // =============================================================================
@@ -4804,7 +4838,9 @@ fn run_substitution_tests() -> ComboMetrics {
     let mut nf_convergent = 0usize;
     let mut proved_symbolic = 0usize;
     let mut numeric_only = 0usize;
-    let mut skipped = 0usize;
+    let skipped = 0usize;
+    let mut timeouts = 0usize;
+    let mut cycle_events_total: usize = 0;
     let mut parse_errors = 0usize;
 
     let mut numeric_only_examples: Vec<(String, String, String, String)> = Vec::new();
@@ -4836,21 +4872,26 @@ fn run_substitution_tests() -> ComboMetrics {
                     let exp_parsed = match parse(&lhs_clone, &mut simplifier.context) {
                         Ok(e) => e,
                         Err(_) => {
-                            let _ = tx.send(Some(("parse_error".to_string(), String::new())));
+                            let _ = tx.send(Some(("parse_error".to_string(), String::new(), 0)));
                             return;
                         }
                     };
                     let simp_parsed = match parse(&rhs_clone, &mut simplifier.context) {
                         Ok(e) => e,
                         Err(_) => {
-                            let _ = tx.send(Some(("parse_error".to_string(), String::new())));
+                            let _ = tx.send(Some(("parse_error".to_string(), String::new(), 0)));
                             return;
                         }
                     };
 
                     let opts = cas_engine::phase::SimplifyOptions::default();
-                    let (mut e, _) = simplifier.simplify_with_options(exp_parsed, opts.clone());
-                    let (mut s, _) = simplifier.simplify_with_options(simp_parsed, opts.clone());
+                    let mut sub_cycles: usize = 0;
+                    let (mut e, _, stats_e) =
+                        simplifier.simplify_with_stats(exp_parsed, opts.clone());
+                    sub_cycles += stats_e.cycle_events.len();
+                    let (mut s, _, stats_s) =
+                        simplifier.simplify_with_stats(simp_parsed, opts.clone());
+                    sub_cycles += stats_s.cycle_events.len();
 
                     // Post-process: fold_constants
                     {
@@ -4880,7 +4921,7 @@ fn run_substitution_tests() -> ComboMetrics {
                     let nf_match = cas_engine::ordering::compare_expr(&simplifier.context, e, s)
                         == std::cmp::Ordering::Equal;
                     if nf_match {
-                        let _ = tx.send(Some(("nf".to_string(), String::new())));
+                        let _ = tx.send(Some(("nf".to_string(), String::new(), sub_cycles)));
                         return;
                     }
 
@@ -4904,7 +4945,11 @@ fn run_substitution_tests() -> ComboMetrics {
                             let zero = num_rational::BigRational::from_integer(0.into());
                             if matches!(sd.context.get(dr), cas_ast::Expr::Number(n) if *n == zero)
                             {
-                                let _ = tx.send(Some(("proved".to_string(), String::new())));
+                                let _ = tx.send(Some((
+                                    "proved".to_string(),
+                                    String::new(),
+                                    sub_cycles,
+                                )));
                                 return;
                             }
                         }
@@ -4928,29 +4973,32 @@ fn run_substitution_tests() -> ComboMetrics {
                             }
                             .to_latex()
                         };
-                        let _ = tx.send(Some(("numeric".to_string(), residual)));
+                        let _ = tx.send(Some(("numeric".to_string(), residual, sub_cycles)));
                     } else {
-                        let _ = tx.send(Some(("failed".to_string(), String::new())));
+                        let _ = tx.send(Some(("failed".to_string(), String::new(), sub_cycles)));
                     }
                 });
 
             let cell_key = (identity.family.clone(), sub.label.clone());
 
             match rx.recv_timeout(combo_timeout) {
-                Ok(Some((kind, residual))) => match kind.as_str() {
+                Ok(Some((kind, residual, cycles))) => match kind.as_str() {
                     "nf" => {
                         nf_convergent += 1;
                         passed += 1;
+                        cycle_events_total += cycles;
                         cell_data.entry(cell_key).or_insert((0, 0, 0, 0)).0 += 1;
                     }
                     "proved" => {
                         proved_symbolic += 1;
                         passed += 1;
+                        cycle_events_total += cycles;
                         cell_data.entry(cell_key).or_insert((0, 0, 0, 0)).1 += 1;
                     }
                     "numeric" => {
                         numeric_only += 1;
                         passed += 1;
+                        cycle_events_total += cycles;
                         cell_data.entry(cell_key).or_insert((0, 0, 0, 0)).2 += 1;
                         if verbose && numeric_only_examples.len() < 200 {
                             numeric_only_examples.push((
@@ -4967,6 +5015,7 @@ fn run_substitution_tests() -> ComboMetrics {
                     }
                     "failed" => {
                         failed += 1;
+                        cycle_events_total += cycles;
                         cell_data.entry(cell_key).or_insert((0, 0, 0, 0)).3 += 1;
                         if verbose {
                             eprintln!(
@@ -4977,6 +5026,7 @@ fn run_substitution_tests() -> ComboMetrics {
                     }
                     _ => {
                         failed += 1;
+                        cycle_events_total += cycles;
                     }
                 },
                 Ok(None) => {
@@ -4986,7 +5036,7 @@ fn run_substitution_tests() -> ComboMetrics {
                 }
                 Err(_) => {
                     // Timeout
-                    skipped += 1;
+                    timeouts += 1;
                 }
             }
         }
@@ -5146,6 +5196,8 @@ fn run_substitution_tests() -> ComboMetrics {
         numeric_only,
         failed,
         skipped,
+        timeouts,
+        cycle_events_total,
     }
 }
 
@@ -5201,21 +5253,26 @@ fn metatest_unified_benchmark() {
 
     // Phase 3: Print unified table
     eprintln!();
-    eprintln!("╔══════════════════════════════════════════════════════════════════════════════════════════════╗");
-    eprintln!("║              UNIFIED METAMORPHIC REGRESSION BENCHMARK (seed {:<10})                    ║", seed);
-    eprintln!("╠═══════╤════════╤══════════════╤══════════════╤══════════════╤══════════╤═══════════════════╣");
-    eprintln!("║ Suite │ Combos │ NF-convergent│ Proved-sym   │ Numeric-only │ Failed   │ Timeout/Skip      ║");
-    eprintln!("╠═══════╪════════╪══════════════╪══════════════╪══════════════╪══════════╪═══════════════════╣");
+    eprintln!("╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════╗");
+    eprintln!("║              UNIFIED METAMORPHIC REGRESSION BENCHMARK (seed {:<10})                                    ║", seed);
+    eprintln!("╠═══════╤════════╤══════════════╤══════════════╤══════════════╤════════╤═══════╤════════╤════════════════════╣");
+    eprintln!("║ Suite │ Combos │ NF-convergent│ Proved-sym   │ Numeric-only │ Failed │  T/O  │ Cycles │ Skip/Parse-err     ║");
+    eprintln!("╠═══════╪════════╪══════════════╪══════════════╪══════════════╪════════╪═══════╪════════╪════════════════════╣");
 
     let mut total_combos = 0usize;
     let mut total_nf = 0usize;
     let mut total_proved = 0usize;
     let mut total_numeric = 0usize;
     let mut total_failed = 0usize;
+    let mut total_timeouts = 0usize;
+    let mut total_cycles = 0usize;
     let mut total_skipped = 0usize;
 
     for m in &all_metrics {
-        let effective = m.combos.saturating_sub(m.skipped);
+        let effective = m
+            .combos
+            .saturating_sub(m.skipped)
+            .saturating_sub(m.timeouts);
         let proved = m.proved_symbolic();
         let nf_pct = if effective > 0 {
             m.nf_convergent as f64 / effective as f64 * 100.0
@@ -5234,12 +5291,14 @@ fn metatest_unified_benchmark() {
         };
 
         eprintln!(
-            "║ {:5} │ {:>6} │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>6}   │ {:>6}            ║",
+            "║ {:5} │ {:>6} │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>6} │ {:>5} │ {:>6} │ {:>6}             ║",
             m.op, m.combos,
             m.nf_convergent, nf_pct,
             proved, prov_pct,
             m.numeric_only, num_pct,
             m.failed,
+            m.timeouts,
+            m.cycle_events_total,
             m.skipped,
         );
 
@@ -5248,10 +5307,14 @@ fn metatest_unified_benchmark() {
         total_proved += proved;
         total_numeric += m.numeric_only;
         total_failed += m.failed;
+        total_timeouts += m.timeouts;
+        total_cycles += m.cycle_events_total;
         total_skipped += m.skipped;
     }
 
-    let total_effective = total_combos.saturating_sub(total_skipped);
+    let total_effective = total_combos
+        .saturating_sub(total_skipped)
+        .saturating_sub(total_timeouts);
     let total_nf_pct = if total_effective > 0 {
         total_nf as f64 / total_effective as f64 * 100.0
     } else {
@@ -5268,17 +5331,19 @@ fn metatest_unified_benchmark() {
         0.0
     };
 
-    eprintln!("╠═══════╪════════╪══════════════╪══════════════╪══════════════╪══════════╪═══════════════════╣");
+    eprintln!("╠═══════╪════════╪══════════════╪══════════════╪══════════════╪════════╪═══════╪════════╪════════════════════╣");
     eprintln!(
-        "║ TOTAL │ {:>6} │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>6}   │ {:>6}            ║",
+        "║ TOTAL │ {:>6} │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>6} │ {:>5} │ {:>6} │ {:>6}             ║",
         total_combos,
         total_nf, total_nf_pct,
         total_proved, total_prov_pct,
         total_numeric, total_num_pct,
         total_failed,
+        total_timeouts,
+        total_cycles,
         total_skipped,
     );
-    eprintln!("╚═══════╧════════╧══════════════╧══════════════╧══════════════╧══════════╧═══════════════════╝");
+    eprintln!("╚═══════╧════════╧══════════════╧══════════════╧══════════════╧════════╧═══════╧════════╧════════════════════╝");
 
     if total_failed > 0 {
         eprintln!(
@@ -5286,5 +5351,22 @@ fn metatest_unified_benchmark() {
             total_failed
         );
     }
+
+    // Cycle events summary
+    if total_cycles > 0 {
+        eprintln!();
+        eprintln!(
+            "🔄 Cycle Events Summary: {} total across all suites",
+            total_cycles
+        );
+        eprintln!("   The cycle detector successfully prevented oscillations.");
+        eprintln!("   Run with METATEST_VERBOSE=1 for per-rule breakdown.");
+    }
+
+    if total_timeouts > 0 {
+        eprintln!();
+        eprintln!("⏱️  {} timeouts detected — consider increasing time budget or investigating slow combos.", total_timeouts);
+    }
+
     eprintln!();
 }

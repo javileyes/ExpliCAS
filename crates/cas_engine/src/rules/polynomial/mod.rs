@@ -40,6 +40,30 @@ fn is_binomial(ctx: &Context, e: ExprId) -> bool {
     matches!(ctx.get(e), Expr::Add(_, _) | Expr::Sub(_, _))
 }
 
+/// PERFORMANCE: Check if an expression is a "complex irrational constant" that
+/// should NOT be distributed across a polynomial.
+///
+/// Examples that return true:
+///   - (√6+√2)/4  (9 nodes, cos(π/12))
+///   - √(10+2√5)/4  (11 nodes, cos(π/10))
+///   - (-b+√(b²-4ac))/(2a)  (large, but has variables — handled by caller)
+///
+/// Examples that return false (allowed to distribute):
+///   - 3 (1 node)
+///   - √2 (3 nodes)
+///   - √3/2 (4 nodes)
+///
+/// The threshold of 5 nodes ensures simple surds like √2, √3/2 still distribute
+/// (needed for like-term collection), while nested radicals are blocked.
+fn is_complex_irrational_constant(ctx: &Context, e: ExprId) -> bool {
+    // Must be variable-free (a pure constant/surd)
+    if !cas_ast::collect_variables(ctx, e).is_empty() {
+        return false;
+    }
+    // Must be "complex" — simple numbers and single-sqrt expressions are fine
+    cas_ast::count_nodes(ctx, e) >= 5
+}
+
 // DistributeRule: Runs in CORE, TRANSFORM, RATIONALIZE but NOT in POST
 // This prevents Factor↔Distribute infinite loops (FactorCommonIntegerFromAdd runs in POST)
 define_rule!(
@@ -83,6 +107,15 @@ define_rule!(
 
         // a * (b + c) -> a*b + a*c
         if let Some((b, c)) = crate::helpers::as_add(ctx, r) {
+            // PERFORMANCE: Don't distribute complex irrational constants like
+            // √(10+2√5)/4 across variable-containing sums. This prevents
+            // expensive radical × polynomial cascades (fixes benchmark timeouts).
+            if is_complex_irrational_constant(ctx, l)
+                && !cas_ast::collect_variables(ctx, r).is_empty()
+            {
+                return None;
+            }
+
             // Distribute if 'l' is a Number, Function, Add/Sub, Pow, Mul, or Div.
             // We exclude Var to keep x(x+1) factored, but allow x^2(x+1) to expand.
             // Exception: always allow if the additive side is variable-free (pure constants/surds)
@@ -148,6 +181,13 @@ define_rule!(
 
         // a * (b - c) -> a*b - a*c
         if let Some((b, c)) = crate::helpers::as_sub(ctx, r) {
+            // PERFORMANCE: Same complex-irrational guard as Add branch
+            if is_complex_irrational_constant(ctx, l)
+                && !cas_ast::collect_variables(ctx, r).is_empty()
+            {
+                return None;
+            }
+
             let l_expr = ctx.get(l);
             let additive_is_constant = cas_ast::collect_variables(ctx, r).is_empty();
             let should_distribute = additive_is_constant
@@ -203,6 +243,13 @@ define_rule!(
 
         // (b + c) * a -> b*a + c*a
         if let Some((b, c)) = crate::helpers::as_add(ctx, l) {
+            // PERFORMANCE: Same complex-irrational guard (mirror of a*(b+c))
+            if is_complex_irrational_constant(ctx, r)
+                && !cas_ast::collect_variables(ctx, l).is_empty()
+            {
+                return None;
+            }
+
             // Same logic for 'r', with variable-free bypass for constant sums
             let r_expr = ctx.get(r);
             let additive_is_constant = cas_ast::collect_variables(ctx, l).is_empty();
@@ -261,6 +308,13 @@ define_rule!(
 
         // (b - c) * a -> b*a - c*a
         if let Some((b, c)) = crate::helpers::as_sub(ctx, l) {
+            // PERFORMANCE: Same complex-irrational guard (mirror of a*(b-c))
+            if is_complex_irrational_constant(ctx, r)
+                && !cas_ast::collect_variables(ctx, l).is_empty()
+            {
+                return None;
+            }
+
             let r_expr = ctx.get(r);
             let additive_is_constant = cas_ast::collect_variables(ctx, l).is_empty();
             let should_distribute = additive_is_constant

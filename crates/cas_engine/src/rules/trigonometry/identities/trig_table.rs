@@ -643,22 +643,24 @@ pub fn eval_trig_special(ctx: &mut Context, f: TrigFn, arg: ExprId) -> Option<Ex
     // Step 2: Normalize to first quadrant
     let norm = normalize_angle(angle);
 
-    // Step 3: Lookup base value in table
+    // Step 3: Try standard table lookup first
     let base_val = match f {
         TrigFn::Sin => lookup_sin(norm.base),
         TrigFn::Cos => lookup_cos(norm.base),
         TrigFn::Tan => lookup_tan(norm.base),
-    }?;
-
-    // Step 4: Apply normalization (signs, swaps)
-    let final_val = match f {
-        TrigFn::Sin => norm.apply_sin(base_val),
-        TrigFn::Cos => norm.apply_cos(base_val),
-        TrigFn::Tan => norm.apply_tan(base_val),
     };
 
-    // Step 5: Convert to ExprId
-    final_val.to_expr(ctx)
+    if let Some(bv) = base_val {
+        // Apply normalization (signs, swaps) and convert to ExprId
+        let final_val = match f {
+            TrigFn::Sin => norm.apply_sin(bv),
+            TrigFn::Cos => norm.apply_cos(bv),
+            TrigFn::Tan => norm.apply_tan(bv),
+        };
+        return final_val.to_expr(ctx);
+    }
+
+    None
 }
 
 // =============================================================================
