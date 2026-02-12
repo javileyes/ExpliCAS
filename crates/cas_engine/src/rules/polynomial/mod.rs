@@ -85,8 +85,12 @@ define_rule!(
         if let Some((b, c)) = crate::helpers::as_add(ctx, r) {
             // Distribute if 'l' is a Number, Function, Add/Sub, Pow, Mul, or Div.
             // We exclude Var to keep x(x+1) factored, but allow x^2(x+1) to expand.
+            // Exception: always allow if the additive side is variable-free (pure constants/surds)
+            // so that x*(√3-2) -> √3·x - 2·x for like-term collection.
             let l_expr = ctx.get(l);
-            let should_distribute = matches!(l_expr, Expr::Number(_))
+            let additive_is_constant = cas_ast::collect_variables(ctx, r).is_empty();
+            let should_distribute = additive_is_constant
+                || matches!(l_expr, Expr::Number(_))
                 || matches!(l_expr, Expr::Function(_, _))
                 || matches!(l_expr, Expr::Add(_, _))
                 || matches!(l_expr, Expr::Sub(_, _))
@@ -142,11 +146,68 @@ define_rule!(
             );
         }
 
+        // a * (b - c) -> a*b - a*c
+        if let Some((b, c)) = crate::helpers::as_sub(ctx, r) {
+            let l_expr = ctx.get(l);
+            let additive_is_constant = cas_ast::collect_variables(ctx, r).is_empty();
+            let should_distribute = additive_is_constant
+                || matches!(l_expr, Expr::Number(_))
+                || matches!(l_expr, Expr::Function(_, _))
+                || matches!(l_expr, Expr::Add(_, _))
+                || matches!(l_expr, Expr::Sub(_, _))
+                || matches!(l_expr, Expr::Pow(_, _))
+                || matches!(l_expr, Expr::Mul(_, _))
+                || matches!(l_expr, Expr::Div(_, _))
+                || (matches!(l_expr, Expr::Variable(_))
+                    && cas_ast::collect_variables(ctx, expr).len() > 1);
+
+            if !should_distribute {
+                return None;
+            }
+
+            // CRITICAL: Avoid undoing FactorDifferenceSquaresRule
+            if is_conjugate(ctx, l, r) {
+                return None;
+            }
+
+            // N-ary conjugate protection
+            if let Some(parent_id) = parent_ctx.immediate_parent() {
+                if let Expr::Mul(pl, pr) = ctx.get(parent_id) {
+                    if is_conjugate(ctx, r, *pl) || is_conjugate(ctx, r, *pr) {
+                        return None;
+                    }
+                }
+            }
+
+            // Don't expand binomial*binomial products
+            if is_binomial(ctx, l) && is_binomial(ctx, r) {
+                return None;
+            }
+
+            // EDUCATIONAL: Don't distribute fractional coefficient over binomial
+            if let Expr::Number(n) = ctx.get(l) {
+                if !n.is_integer() && is_binomial(ctx, r) {
+                    return None;
+                }
+            }
+
+            let ab = smart_mul(ctx, l, b);
+            let ac = smart_mul(ctx, l, c);
+            let new_expr = ctx.add(Expr::Sub(ab, ac));
+            return Some(
+                Rewrite::new(new_expr)
+                    .desc("Distribute")
+                    .local(expr, new_expr),
+            );
+        }
+
         // (b + c) * a -> b*a + c*a
         if let Some((b, c)) = crate::helpers::as_add(ctx, l) {
-            // Same logic for 'r'
+            // Same logic for 'r', with variable-free bypass for constant sums
             let r_expr = ctx.get(r);
-            let should_distribute = matches!(r_expr, Expr::Number(_))
+            let additive_is_constant = cas_ast::collect_variables(ctx, l).is_empty();
+            let should_distribute = additive_is_constant
+                || matches!(r_expr, Expr::Number(_))
                 || matches!(r_expr, Expr::Function(_, _))
                 || matches!(r_expr, Expr::Add(_, _))
                 || matches!(r_expr, Expr::Sub(_, _))
@@ -191,6 +252,61 @@ define_rule!(
             let ba = smart_mul(ctx, b, r);
             let ca = smart_mul(ctx, c, r);
             let new_expr = ctx.add(Expr::Add(ba, ca));
+            return Some(
+                Rewrite::new(new_expr)
+                    .desc("Distribute")
+                    .local(expr, new_expr),
+            );
+        }
+
+        // (b - c) * a -> b*a - c*a
+        if let Some((b, c)) = crate::helpers::as_sub(ctx, l) {
+            let r_expr = ctx.get(r);
+            let additive_is_constant = cas_ast::collect_variables(ctx, l).is_empty();
+            let should_distribute = additive_is_constant
+                || matches!(r_expr, Expr::Number(_))
+                || matches!(r_expr, Expr::Function(_, _))
+                || matches!(r_expr, Expr::Add(_, _))
+                || matches!(r_expr, Expr::Sub(_, _))
+                || matches!(r_expr, Expr::Pow(_, _))
+                || matches!(r_expr, Expr::Mul(_, _))
+                || matches!(r_expr, Expr::Div(_, _))
+                || (matches!(r_expr, Expr::Variable(_))
+                    && cas_ast::collect_variables(ctx, expr).len() > 1);
+
+            if !should_distribute {
+                return None;
+            }
+
+            // CRITICAL: Avoid undoing FactorDifferenceSquaresRule
+            if is_conjugate(ctx, l, r) {
+                return None;
+            }
+
+            // N-ary conjugate protection
+            if let Some(parent_id) = parent_ctx.immediate_parent() {
+                if let Expr::Mul(pl, pr) = ctx.get(parent_id) {
+                    if is_conjugate(ctx, l, *pl) || is_conjugate(ctx, l, *pr) {
+                        return None;
+                    }
+                }
+            }
+
+            // Don't expand binomial*binomial products
+            if is_binomial(ctx, l) && is_binomial(ctx, r) {
+                return None;
+            }
+
+            // EDUCATIONAL: Don't distribute fractional coefficient over binomial
+            if let Expr::Number(n) = ctx.get(r) {
+                if !n.is_integer() && is_binomial(ctx, l) {
+                    return None;
+                }
+            }
+
+            let ba = smart_mul(ctx, b, r);
+            let ca = smart_mul(ctx, c, r);
+            let new_expr = ctx.add(Expr::Sub(ba, ca));
             return Some(
                 Rewrite::new(new_expr)
                     .desc("Distribute")

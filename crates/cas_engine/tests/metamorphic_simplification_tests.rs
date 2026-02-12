@@ -2785,8 +2785,20 @@ fn run_csv_combination_tests(
                         // Use default budget — the thread-based 2s timeout prevents hangs
                         let opts = cas_engine::phase::SimplifyOptions::default();
 
-                        let (e, _) = simplifier.simplify_with_options(exp_parsed, opts.clone());
-                        let (s, _) = simplifier.simplify_with_options(simp_parsed, opts.clone());
+                        let (mut e, _) = simplifier.simplify_with_options(exp_parsed, opts.clone());
+                        let (mut s, _) = simplifier.simplify_with_options(simp_parsed, opts.clone());
+
+                        // Post-process: fold_constants to match CLI eval_simplify behavior
+                        {
+                            let cfg = cas_engine::semantics::EvalConfig::default();
+                            let mut budget = cas_engine::budget::Budget::preset_cli();
+                            if let Ok(r) = cas_engine::const_fold::fold_constants(&mut simplifier.context, e, &cfg, cas_engine::const_fold::ConstFoldMode::Safe, &mut budget) {
+                                e = r.expr;
+                            }
+                            if let Ok(r) = cas_engine::const_fold::fold_constants(&mut simplifier.context, s, &cfg, cas_engine::const_fold::ConstFoldMode::Safe, &mut budget) {
+                                s = r.expr;
+                            }
+                        }
 
                         // Check 1: NF convergence
                         let nf_match =
@@ -2804,7 +2816,12 @@ fn run_csv_combination_tests(
                             let q_str = format!("({}) / ({})", exp_clone, simp_clone);
                             let mut sq = Simplifier::with_default_rules();
                             if let Ok(qp) = parse(&q_str, &mut sq.context) {
-                                let (qr, _) = sq.simplify(qp);
+                                let (mut qr, _) = sq.simplify(qp);
+                                let cfg = cas_engine::semantics::EvalConfig::default();
+                                let mut budget = cas_engine::budget::Budget::preset_cli();
+                                if let Ok(r) = cas_engine::const_fold::fold_constants(&mut sq.context, qr, &cfg, cas_engine::const_fold::ConstFoldMode::Safe, &mut budget) {
+                                    qr = r.expr;
+                                }
                                 let target = num_rational::BigRational::from_integer(1.into());
                                 if matches!(sq.context.get(qr), cas_ast::Expr::Number(n) if *n == target) {
                                     let _ = tx.send(Some(("proved-q".to_string(), String::new(), String::new())));
@@ -2818,7 +2835,12 @@ fn run_csv_combination_tests(
                             let d_str = format!("({}) - ({})", exp_clone, simp_clone);
                             let mut sd = Simplifier::with_default_rules();
                             if let Ok(dp) = parse(&d_str, &mut sd.context) {
-                                let (dr, _) = sd.simplify(dp);
+                                let (mut dr, _) = sd.simplify(dp);
+                                let cfg = cas_engine::semantics::EvalConfig::default();
+                                let mut budget = cas_engine::budget::Budget::preset_cli();
+                                if let Ok(r) = cas_engine::const_fold::fold_constants(&mut sd.context, dr, &cfg, cas_engine::const_fold::ConstFoldMode::Safe, &mut budget) {
+                                    dr = r.expr;
+                                }
                                 let zero = num_rational::BigRational::from_integer(0.into());
                                 if matches!(sd.context.get(dr), cas_ast::Expr::Number(n) if *n == zero) {
                                     let _ = tx.send(Some(("proved-d".to_string(), String::new(), String::new())));
@@ -2938,11 +2960,38 @@ fn run_csv_combination_tests(
 
                 let combo_start = std::time::Instant::now();
                 let (exp_simplified, simp_simplified) = {
-                    let (e, _) = simplifier.simplify(exp_parsed);
+                    let (mut e, _) = simplifier.simplify(exp_parsed);
+                    // Post-process: fold_constants to match CLI eval_simplify behavior
+                    {
+                        let cfg = cas_engine::semantics::EvalConfig::default();
+                        let mut budget = cas_engine::budget::Budget::preset_cli();
+                        if let Ok(r) = cas_engine::const_fold::fold_constants(
+                            &mut simplifier.context,
+                            e,
+                            &cfg,
+                            cas_engine::const_fold::ConstFoldMode::Safe,
+                            &mut budget,
+                        ) {
+                            e = r.expr;
+                        }
+                    }
                     if combo_start.elapsed() > combo_timeout {
                         return ("timeout", String::new(), String::new());
                     }
-                    let (s, _) = simplifier.simplify(simp_parsed);
+                    let (mut s, _) = simplifier.simplify(simp_parsed);
+                    {
+                        let cfg = cas_engine::semantics::EvalConfig::default();
+                        let mut budget = cas_engine::budget::Budget::preset_cli();
+                        if let Ok(r) = cas_engine::const_fold::fold_constants(
+                            &mut simplifier.context,
+                            s,
+                            &cfg,
+                            cas_engine::const_fold::ConstFoldMode::Safe,
+                            &mut budget,
+                        ) {
+                            s = r.expr;
+                        }
+                    }
                     (e, s)
                 };
                 if combo_start.elapsed() > combo_timeout {
@@ -2966,7 +3015,18 @@ fn run_csv_combination_tests(
                     let diff_str = format!("({}) - ({})", combined_exp, combined_simp);
                     let mut sd = Simplifier::with_default_rules();
                     if let Ok(dp) = parse(&diff_str, &mut sd.context) {
-                        let (dr, _) = sd.simplify(dp);
+                        let (mut dr, _) = sd.simplify(dp);
+                        let cfg = cas_engine::semantics::EvalConfig::default();
+                        let mut budget = cas_engine::budget::Budget::preset_cli();
+                        if let Ok(r) = cas_engine::const_fold::fold_constants(
+                            &mut sd.context,
+                            dr,
+                            &cfg,
+                            cas_engine::const_fold::ConstFoldMode::Safe,
+                            &mut budget,
+                        ) {
+                            dr = r.expr;
+                        }
                         let zero = num_rational::BigRational::from_integer(0.into());
                         if matches!(sd.context.get(dr), cas_ast::Expr::Number(n) if *n == zero) {
                             return ("proved", String::new(), String::new());
@@ -2976,7 +3036,20 @@ fn run_csv_combination_tests(
                     let d = simplifier
                         .context
                         .add(cas_ast::Expr::Sub(exp_simplified, simp_simplified));
-                    let (ds, _) = simplifier.simplify(d);
+                    let (mut ds, _) = simplifier.simplify(d);
+                    {
+                        let cfg = cas_engine::semantics::EvalConfig::default();
+                        let mut budget = cas_engine::budget::Budget::preset_cli();
+                        if let Ok(r) = cas_engine::const_fold::fold_constants(
+                            &mut simplifier.context,
+                            ds,
+                            &cfg,
+                            cas_engine::const_fold::ConstFoldMode::Safe,
+                            &mut budget,
+                        ) {
+                            ds = r.expr;
+                        }
+                    }
                     let target_value = num_rational::BigRational::from_integer(0.into());
                     if matches!(simplifier.context.get(ds), cas_ast::Expr::Number(n) if *n == target_value)
                     {

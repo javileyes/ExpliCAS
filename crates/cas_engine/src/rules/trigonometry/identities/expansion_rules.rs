@@ -127,6 +127,14 @@ define_rule!(
     DoubleAngleRule,
     "Double Angle Identity",
     |ctx, expr, parent_ctx| {
+        // GUARD: Only expand double angles in expand mode.
+        // In default simplification, we prefer the contracted form (cos(2t), sin(2t))
+        // to avoid oscillation with DoubleAngleContractionRule/Cos2xAdditiveContractionRule.
+        // The contracted form is the canonical NF for double-angle trig expressions.
+        if !parent_ctx.is_expand_mode() {
+            return None;
+        }
+
         // GUARD: Don't expand double angle inside a Div context
         // This prevents sin(2x)/cos(2x) from being "polinomized" to a worse form.
         // Expansion should only happen when it helps simplification, not in canonical quotients.
@@ -421,16 +429,13 @@ mod tests {
     fn test_double_angle() {
         let mut ctx = Context::new();
         let rule = DoubleAngleRule;
+        // DoubleAngleRule is now gated behind expand_mode to prevent oscillation
+        // with DoubleAngleContractionRule during default simplification.
+        let expand_ctx = crate::parent_context::ParentContext::root().with_expand_mode_flag(true);
 
         // sin(2x)
         let expr = parse("sin(2 * x)", &mut ctx).unwrap();
-        let rewrite = rule
-            .apply(
-                &mut ctx,
-                expr,
-                &crate::parent_context::ParentContext::root(),
-            )
-            .unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &expand_ctx).unwrap();
         let result_str = format!(
             "{}",
             DisplayExpr {
@@ -457,13 +462,7 @@ mod tests {
 
         // cos(2x)
         let expr = parse("cos(2 * x)", &mut ctx).unwrap();
-        let rewrite = rule
-            .apply(
-                &mut ctx,
-                expr,
-                &crate::parent_context::ParentContext::root(),
-            )
-            .unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &expand_ctx).unwrap();
         assert!(format!(
             "{}",
             DisplayExpr {

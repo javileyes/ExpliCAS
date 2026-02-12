@@ -277,13 +277,12 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(DoubleAngleRule));
     simplifier.add_rule(Box::new(DoubleAngleContractionRule)); // 2sin·cos→sin(2t), cos²-sin²→cos(2t)
     simplifier.add_rule(Box::new(AngleSumFractionToTanRule)); // sin(a)cos(b)±cos(a)sin(b) / cos·cos∓sin·sin → tan(a±b)
-                                                              // DISABLED: Cos2xAdditiveContractionRule causes +435 numeric-only regression in metamorphic
-                                                              // combination tests. While it correctly contracts 1-2sin²→cos(2t) and 2cos²-1→cos(2t)
-                                                              // for standalone expressions (+131 NF-convergent), it changes the NF landscape causing
-                                                              // 566 proved-symbolic results to become numeric-only. The expand-first strategy
-                                                              // (sin/cos basis) is better for combination equivalence proofs.
+                                                              // DISABLED: Cos2xAdditiveContractionRule (1-2sin²→cos(2t), 2cos²-1→cos(2t)).
+                                                              // With DoubleAngleRule gated behind expand_mode, oscillation is broken.
+                                                              // However, enabling this rule still causes +153 numeric-only regression
+                                                              // in metamorphic Mul tests by shifting the NF landscape for cross-product
+                                                              // trig expressions. The gate alone yields +263 NF-convergent with 0 regression.
                                                               // simplifier.add_rule(Box::new(Cos2xAdditiveContractionRule));
-                                                              // Sum-to-Product Quotient: runs BEFORE TripleAngleRule to avoid polynomial explosion
     simplifier.add_rule(Box::new(SinCosSumQuotientRule));
     // Standalone Sum-to-Product: sin(A)+sin(B), cos(A)+cos(B) etc. when args are k*π
     simplifier.add_rule(Box::new(TrigSumToProductRule));
