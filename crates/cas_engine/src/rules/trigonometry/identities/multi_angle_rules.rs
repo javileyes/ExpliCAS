@@ -12,6 +12,32 @@ use num_traits::{One, Zero};
 // Import helpers from sibling modules (via re-exports in parent)
 use super::extract_trig_arg;
 
+/// Check if a trig argument is "trivial" — a bare variable, constant,
+/// or simple numeric multiple thereof (e.g. `x`, `2x`, `π`).
+///
+/// Used by both TripleAngleRule and TripleAngleContractionRule to
+/// partition the domain and avoid cycles:
+/// - TripleAngleRule only EXPANDS when arg IS trivial (useful)
+/// - ContractionRule only CONTRACTS when arg is NOT trivial (safe)
+fn is_trivial_angle(ctx: &cas_ast::Context, arg: ExprId) -> bool {
+    match ctx.get(arg) {
+        Expr::Variable(_) | Expr::Constant(_) | Expr::Number(_) => true,
+        Expr::Mul(l, r) => {
+            let l_simple = matches!(
+                ctx.get(*l),
+                Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_)
+            );
+            let r_simple = matches!(
+                ctx.get(*r),
+                Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_)
+            );
+            l_simple && r_simple
+        }
+        Expr::Neg(inner) => is_trivial_angle(ctx, *inner),
+        _ => false,
+    }
+}
+
 // Triple Angle Shortcut Rule: sin(3x) → 3sin(x) - 4sin³(x), cos(3x) → 4cos³(x) - 3cos(x)
 // This is a performance optimization to avoid recursive expansion via double-angle rules.
 // Reduces ~23 rewrites to ~3-5 for triple angle expressions.
@@ -35,6 +61,13 @@ define_rule!(
             if args.len() == 1 {
                 // Check if arg is 3*x or x*3
                 if let Some(inner_var) = extract_triple_angle_arg(ctx, args[0]) {
+                    // GUARD 3: Only expand when inner arg is trivial (Var, Const,
+                    // Mul(num,Var)). For compound args like sqrt(u²+1), expansion
+                    // creates complexity without enabling further simplification,
+                    // and would cycle with TripleAngleContractionRule.
+                    if !is_trivial_angle(ctx, inner_var) {
+                        return None;
+                    }
                     match ctx.builtin_of(*fn_id) {
                         Some(BuiltinFn::Sin) => {
                             // sin(3x) → 3sin(x) - 4sin³(x)
@@ -412,6 +445,236 @@ define_rule!(
                 }
             }
         }
+        None
+    }
+);
+
+// =============================================================================
+// Triple Angle CONTRACTION Rule
+// =============================================================================
+//
+// Contracts the expanded form back into a triple angle:
+//   3·sin(θ) − 4·sin³(θ)  →  sin(3θ)
+//   4·cos³(θ) − 3·cos(θ)  →  cos(3θ)
+//
+// This is the reverse of TripleAngleRule. It fires on the additive form (Sub/Add
+// nodes) and looks for matching pairs of linear and cubic trig terms.
+//
+// Cycle safety: the contraction produces sin(3θ) or cos(3θ). If the argument
+// θ is compound (e.g. u²+1), distribution rewrites 3θ → 3u²+3, which no
+// longer matches the Mul(3,x) pattern required by TripleAngleRule, so no
+// reverse expansion occurs → no cycle.
+
+define_rule!(
+    TripleAngleContractionRule,
+    "Triple Angle Contraction",
+    |ctx, expr| {
+        // Use add_terms_signed to properly decompose Sub(a,b) → [(a,+), (b,−)]
+        let signed_terms = crate::nary::add_terms_signed(ctx, expr);
+        if signed_terms.len() < 2 {
+            return None;
+        }
+
+        // For each term, try to decompose as:
+        //   sign * coefficient * trig(arg)^power
+        // where trig is sin or cos, power is 1 or 3.
+        struct TrigTerm {
+            index: usize,
+            coeff: num_rational::BigRational, // total signed coefficient
+            builtin: BuiltinFn,               // Sin or Cos
+            arg: ExprId,                      // θ
+            power: i64,                       // 1 or 3
+        }
+
+        fn decompose_trig_term(
+            ctx: &cas_ast::Context,
+            term: ExprId,
+            sign: crate::nary::Sign,
+        ) -> Option<(num_rational::BigRational, BuiltinFn, ExprId, i64)> {
+            // The outer sign comes from add_terms_signed
+            let outer_sign = num_rational::BigRational::from_integer(sign.to_i32().into());
+
+            // Peel Neg: Neg(inner) → extra sign flip
+            let (inner, neg_sign) = if let Expr::Neg(i) = ctx.get(term) {
+                (*i, num_rational::BigRational::from_integer((-1).into()))
+            } else {
+                (term, num_rational::BigRational::from_integer(1.into()))
+            };
+
+            // Peel coefficient: Mul(k, rest) or k * rest
+            let (coeff, core) = match ctx.get(inner) {
+                Expr::Mul(l, r) => {
+                    if let Expr::Number(n) = ctx.get(*l) {
+                        (n.clone(), *r)
+                    } else if let Expr::Number(n) = ctx.get(*r) {
+                        (n.clone(), *l)
+                    } else {
+                        (num_rational::BigRational::from_integer(1.into()), inner)
+                    }
+                }
+                _ => (num_rational::BigRational::from_integer(1.into()), inner),
+            };
+            let final_coeff = outer_sign * neg_sign * coeff;
+
+            // Now core should be either trig(arg) or trig(arg)^3
+            let (base, power) = if let Expr::Pow(b, e) = ctx.get(core) {
+                if let Expr::Number(n) = ctx.get(*e) {
+                    if n.is_integer() {
+                        (*b, n.to_integer().try_into().ok().unwrap_or(0i64))
+                    } else {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+            } else {
+                (core, 1i64)
+            };
+
+            // base must be sin(arg) or cos(arg)
+            if let Expr::Function(fn_id, args) = ctx.get(base) {
+                if args.len() == 1 {
+                    if let Some(b @ (BuiltinFn::Sin | BuiltinFn::Cos)) = ctx.builtin_of(*fn_id) {
+                        return Some((final_coeff, b, args[0], power));
+                    }
+                }
+            }
+            None
+        }
+
+        // Decompose all terms
+        let mut trig_terms: Vec<TrigTerm> = Vec::new();
+        for (i, (term, sign)) in signed_terms.iter().enumerate() {
+            if let Some((c, b, a, p)) = decompose_trig_term(ctx, *term, *sign) {
+                if p == 1 || p == 3 {
+                    trig_terms.push(TrigTerm {
+                        index: i,
+                        coeff: c,
+                        builtin: b,
+                        arg: a,
+                        power: p,
+                    });
+                }
+            }
+        }
+
+        // Look for matching pairs: same builtin, same arg, powers 1 and 3
+        for i in 0..trig_terms.len() {
+            for j in 0..trig_terms.len() {
+                if i == j {
+                    continue;
+                }
+                let t1 = &trig_terms[i];
+                let t3 = &trig_terms[j];
+
+                // Must be same function and same argument
+                if std::mem::discriminant(&t1.builtin) != std::mem::discriminant(&t3.builtin) {
+                    continue;
+                }
+                if t1.power != 1 || t3.power != 3 {
+                    continue;
+                }
+                if crate::ordering::compare_expr(ctx, t1.arg, t3.arg) != std::cmp::Ordering::Equal {
+                    continue;
+                }
+
+                // Check coefficients
+                let three = num_rational::BigRational::from_integer(3.into());
+                let four = num_rational::BigRational::from_integer(4.into());
+
+                let matched = match t1.builtin {
+                    BuiltinFn::Sin => {
+                        // Need: +3·sin(θ) − 4·sin³(θ) → sin(3θ)
+                        // or k·(3·sin(θ) − 4·sin³(θ)) → k·sin(3θ)
+                        // Check ratio: coeff1 * 4 == -coeff3 * 3
+                        let lhs = &t1.coeff * &four;
+                        let rhs = -(&t3.coeff) * &three;
+                        lhs == rhs
+                    }
+                    BuiltinFn::Cos => {
+                        // Need: 4·cos³(θ) − 3·cos(θ) → cos(3θ)
+                        // Check ratio: coeff3 * 3 == -coeff1 * 4
+                        let lhs = &t3.coeff * &three;
+                        let rhs = -(&t1.coeff) * &four;
+                        lhs == rhs
+                    }
+                    _ => false,
+                };
+
+                if !matched {
+                    continue;
+                }
+
+                // Cycle guard: skip contraction when θ is trivial (Var,
+                // Const, Mul(num,Var)) — TripleAngleRule handles those.
+                // See is_trivial_angle() doc at module top.
+                if is_trivial_angle(ctx, t1.arg) {
+                    continue;
+                }
+
+                // Compute the overall scale factor k
+                // For sin: k = coeff1 / 3
+                // For cos: k = coeff3 / 4
+                let scale = match t1.builtin {
+                    BuiltinFn::Sin => &t1.coeff / &three,
+                    BuiltinFn::Cos => &t3.coeff / &four,
+                    _ => continue,
+                };
+
+                // Build sin(3θ) or cos(3θ)
+                let three_id = ctx.num(3);
+                let triple_arg = smart_mul(ctx, three_id, t1.arg);
+                let contracted = ctx.call_builtin(t1.builtin, vec![triple_arg]);
+
+                // Apply scale factor
+                let one = num_rational::BigRational::from_integer(1.into());
+                let neg_one = -&one;
+                let scaled = if scale == one {
+                    contracted
+                } else if scale == neg_one {
+                    ctx.add(Expr::Neg(contracted))
+                } else {
+                    let scale_id = ctx.add(Expr::Number(scale));
+                    smart_mul(ctx, scale_id, contracted)
+                };
+
+                // If there are exactly 2 signed terms (the matched pair), return directly
+                if signed_terms.len() == 2 {
+                    let desc = match t1.builtin {
+                        BuiltinFn::Sin => "3sin(θ)−4sin³(θ) → sin(3θ)",
+                        BuiltinFn::Cos => "4cos³(θ)−3cos(θ) → cos(3θ)",
+                        _ => "triple angle contraction",
+                    };
+                    return Some(Rewrite::new(scaled).desc(desc));
+                }
+
+                // N-ary case: reconstruct sum with remaining terms + contracted
+                let mut new_terms: Vec<ExprId> = Vec::new();
+                for (k, (term, sign)) in signed_terms.iter().enumerate() {
+                    if k != t1.index && k != t3.index {
+                        if *sign == crate::nary::Sign::Neg {
+                            new_terms.push(ctx.add(Expr::Neg(*term)));
+                        } else {
+                            new_terms.push(*term);
+                        }
+                    }
+                }
+                new_terms.push(scaled);
+
+                let mut acc = new_terms[0];
+                for &t in new_terms.iter().skip(1) {
+                    acc = ctx.add(Expr::Add(acc, t));
+                }
+
+                let desc = match t1.builtin {
+                    BuiltinFn::Sin => "3sin(θ)−4sin³(θ) → sin(3θ)",
+                    BuiltinFn::Cos => "4cos³(θ)−3cos(θ) → cos(3θ)",
+                    _ => "triple angle contraction",
+                };
+                return Some(Rewrite::new(acc).desc(desc));
+            }
+        }
+
         None
     }
 );

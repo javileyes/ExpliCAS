@@ -32,7 +32,8 @@ pub use contraction_rules::{
 
 mod multi_angle_rules;
 pub use multi_angle_rules::{
-    CanonicalizeTrigSquareRule, QuintupleAngleRule, RecursiveTrigExpansionRule, TripleAngleRule,
+    CanonicalizeTrigSquareRule, QuintupleAngleRule, RecursiveTrigExpansionRule,
+    TripleAngleContractionRule, TripleAngleRule,
 };
 
 mod angle_expansion_rules;

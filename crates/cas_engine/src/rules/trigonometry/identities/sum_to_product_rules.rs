@@ -286,6 +286,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // Standalone Sum-to-Product: sin(A)+sin(B), cos(A)+cos(B) etc. when args are k*π
     simplifier.add_rule(Box::new(TrigSumToProductRule));
     simplifier.add_rule(Box::new(TripleAngleRule)); // Shortcut: sin(3x), cos(3x), tan(3x)
+    simplifier.add_rule(Box::new(super::TripleAngleContractionRule)); // Reverse: 3sin(θ)−4sin³(θ) → sin(3θ)
     simplifier.add_rule(Box::new(QuintupleAngleRule)); // Shortcut: sin(5x), cos(5x)
     simplifier.add_rule(Box::new(RecursiveTrigExpansionRule));
     // Trig Quotient: sin(x)/cos(x) → tan(x) - runs after sum-to-product
