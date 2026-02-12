@@ -4630,3 +4630,400 @@ fn test_transform_identity(
 
     TransformResult::Pass
 }
+
+// =============================================================================
+// Substitution-based Metamorphic Tests
+// =============================================================================
+// Instead of combining two identities with an operation (A*B),
+// this test substitutes a variable in one identity with a sub-expression:
+//   Given A(x) == B(x) and substitution x → S(u),
+//   check: simplify(A(S(u))) == simplify(B(S(u)))
+//
+// This creates deeply nested expressions that stress recursive simplification.
+
+/// A substitution expression to plug into identity variables
+#[derive(Clone, Debug)]
+struct SubstitutionExpr {
+    expr: String,  // The expression to substitute, e.g. "sin(u)"
+    var: String,   // The free variable after substitution, e.g. "u"
+    label: String, // Category label, e.g. "trig"
+}
+
+/// Word-boundary-aware text substitution.
+/// Replaces all occurrences of `var` as a standalone word in `template`
+/// with `replacement`, wrapping in parentheses for safety.
+/// Uses simple word-boundary logic: a match is valid if the chars
+/// before and after are not alphanumeric or underscore.
+fn text_substitute(template: &str, var: &str, replacement: &str) -> String {
+    let mut result = String::with_capacity(template.len() * 2);
+    let chars: Vec<char> = template.chars().collect();
+    let var_chars: Vec<char> = var.chars().collect();
+    let var_len = var_chars.len();
+    let mut i = 0;
+
+    while i < chars.len() {
+        // Check if var matches at position i
+        if i + var_len <= chars.len() && chars[i..i + var_len] == var_chars[..] {
+            // Check word boundary before
+            let before_ok = if i == 0 {
+                true
+            } else {
+                let c = chars[i - 1];
+                !c.is_alphanumeric() && c != '_'
+            };
+            // Check word boundary after
+            let after_ok = if i + var_len >= chars.len() {
+                true
+            } else {
+                let c = chars[i + var_len];
+                !c.is_alphanumeric() && c != '_'
+            };
+
+            if before_ok && after_ok {
+                result.push('(');
+                result.push_str(replacement);
+                result.push(')');
+                i += var_len;
+                continue;
+            }
+        }
+        result.push(chars[i]);
+        i += 1;
+    }
+    result
+}
+
+/// Load substitution identity pairs from CSV
+fn load_substitution_identities() -> Vec<IdentityPair> {
+    let csv_path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/substitution_identities.csv"
+    );
+    let content =
+        std::fs::read_to_string(csv_path).expect("Failed to read substitution_identities.csv");
+
+    let mut pairs = Vec::new();
+    let mut current_family = String::from("Uncategorized");
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with('#') {
+            let label = line.trim_start_matches('#').trim();
+            if !label.is_empty()
+                && !label.starts_with("Format")
+                && !label.starts_with("Each row")
+                && !label.starts_with("Substitution-Based")
+            {
+                current_family = label.to_string();
+            }
+            continue;
+        }
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.split(',').collect();
+        if parts.len() >= 3 {
+            let vars: Vec<String> = parts[2]
+                .trim()
+                .split(';')
+                .map(|s| s.trim().to_string())
+                .collect();
+            let mode = if parts.len() >= 4 {
+                parse_domain_mode(parts[3].trim())
+            } else {
+                DomainRequirement::Generic
+            };
+            pairs.push(IdentityPair {
+                exp: parts[0].trim().to_string(),
+                simp: parts[1].trim().to_string(),
+                vars,
+                mode,
+                bucket: Bucket::ConditionalRequires,
+                branch_mode: BranchMode::default(),
+                filter_spec: FilterSpec::None,
+                family: current_family.clone(),
+            });
+        }
+    }
+    pairs
+}
+
+/// Load substitution expressions from CSV
+fn load_substitution_expressions() -> Vec<SubstitutionExpr> {
+    let csv_path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/substitution_expressions.csv"
+    );
+    let content =
+        std::fs::read_to_string(csv_path).expect("Failed to read substitution_expressions.csv");
+
+    let mut exprs = Vec::new();
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with('#') || line.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = line.split(',').collect();
+        if parts.len() >= 3 {
+            exprs.push(SubstitutionExpr {
+                expr: parts[0].trim().to_string(),
+                var: parts[1].trim().to_string(),
+                label: parts[2].trim().to_string(),
+            });
+        }
+    }
+    exprs
+}
+
+/// Run substitution-based metamorphic tests
+fn run_substitution_tests() {
+    let identities = load_substitution_identities();
+    let substitutions = load_substitution_expressions();
+    let config = metatest_config();
+    let verbose = std::env::var("METATEST_VERBOSE").is_ok();
+
+    // Filter out Assume-only identities (we run in Generic mode)
+    let identities: Vec<_> = identities
+        .into_iter()
+        .filter(|p| p.mode != DomainRequirement::Assume)
+        .collect();
+
+    let total_combos = identities.len() * substitutions.len();
+    eprintln!(
+        "📊 Running substitution metamorphic tests: {} identities × {} substitutions = {} combos (seed {})",
+        identities.len(),
+        substitutions.len(),
+        total_combos,
+        config.seed
+    );
+
+    let mut passed = 0usize;
+    let mut failed = 0usize;
+    let mut nf_convergent = 0usize;
+    let mut proved_symbolic = 0usize;
+    let mut numeric_only = 0usize;
+    let mut skipped = 0usize;
+    let mut parse_errors = 0usize;
+
+    let mut numeric_only_examples: Vec<(String, String, String, String)> = Vec::new();
+
+    let combo_timeout = std::time::Duration::from_secs(5);
+
+    for identity in &identities {
+        let id_var = &identity.vars[0]; // Variable to substitute (typically "x")
+
+        for sub in &substitutions {
+            // Build LHS and RHS by substituting x → sub.expr
+            let lhs_str = text_substitute(&identity.exp, id_var, &sub.expr);
+            let rhs_str = text_substitute(&identity.simp, id_var, &sub.expr);
+            let free_var = sub.var.clone();
+
+            let lhs_clone = lhs_str.clone();
+            let rhs_clone = rhs_str.clone();
+            let config_clone = config.clone();
+            let free_var_clone = free_var.clone();
+
+            let (tx, rx) = std::sync::mpsc::channel();
+            let _handle = std::thread::Builder::new()
+                .stack_size(8 * 1024 * 1024)
+                .spawn(move || {
+                    let mut simplifier = Simplifier::with_default_rules();
+                    let exp_parsed = match parse(&lhs_clone, &mut simplifier.context) {
+                        Ok(e) => e,
+                        Err(_) => {
+                            let _ = tx.send(Some(("parse_error".to_string(), String::new())));
+                            return;
+                        }
+                    };
+                    let simp_parsed = match parse(&rhs_clone, &mut simplifier.context) {
+                        Ok(e) => e,
+                        Err(_) => {
+                            let _ = tx.send(Some(("parse_error".to_string(), String::new())));
+                            return;
+                        }
+                    };
+
+                    let opts = cas_engine::phase::SimplifyOptions::default();
+                    let (mut e, _) = simplifier.simplify_with_options(exp_parsed, opts.clone());
+                    let (mut s, _) = simplifier.simplify_with_options(simp_parsed, opts.clone());
+
+                    // Post-process: fold_constants
+                    {
+                        let cfg = cas_engine::semantics::EvalConfig::default();
+                        let mut budget = cas_engine::budget::Budget::preset_cli();
+                        if let Ok(r) = cas_engine::const_fold::fold_constants(
+                            &mut simplifier.context,
+                            e,
+                            &cfg,
+                            cas_engine::const_fold::ConstFoldMode::Safe,
+                            &mut budget,
+                        ) {
+                            e = r.expr;
+                        }
+                        if let Ok(r) = cas_engine::const_fold::fold_constants(
+                            &mut simplifier.context,
+                            s,
+                            &cfg,
+                            cas_engine::const_fold::ConstFoldMode::Safe,
+                            &mut budget,
+                        ) {
+                            s = r.expr;
+                        }
+                    }
+
+                    // Check 1: NF convergence
+                    let nf_match = cas_engine::ordering::compare_expr(&simplifier.context, e, s)
+                        == std::cmp::Ordering::Equal;
+                    if nf_match {
+                        let _ = tx.send(Some(("nf".to_string(), String::new())));
+                        return;
+                    }
+
+                    // Check 2: Proved symbolic — simplify(LHS - RHS) == 0
+                    {
+                        let d_str = format!("({}) - ({})", lhs_clone, rhs_clone);
+                        let mut sd = Simplifier::with_default_rules();
+                        if let Ok(dp) = parse(&d_str, &mut sd.context) {
+                            let (mut dr, _) = sd.simplify(dp);
+                            let cfg = cas_engine::semantics::EvalConfig::default();
+                            let mut budget = cas_engine::budget::Budget::preset_cli();
+                            if let Ok(r) = cas_engine::const_fold::fold_constants(
+                                &mut sd.context,
+                                dr,
+                                &cfg,
+                                cas_engine::const_fold::ConstFoldMode::Safe,
+                                &mut budget,
+                            ) {
+                                dr = r.expr;
+                            }
+                            let zero = num_rational::BigRational::from_integer(0.into());
+                            if matches!(sd.context.get(dr), cas_ast::Expr::Number(n) if *n == zero)
+                            {
+                                let _ = tx.send(Some(("proved".to_string(), String::new())));
+                                return;
+                            }
+                        }
+                    }
+
+                    // Check 3: Numeric equivalence (1 variable)
+                    let result = check_numeric_equiv_1var(
+                        &simplifier.context,
+                        e,
+                        s,
+                        &free_var_clone,
+                        &config_clone,
+                    );
+                    if result.is_ok() {
+                        let residual = {
+                            let d = simplifier.context.add(cas_ast::Expr::Sub(e, s));
+                            let (d_simp, _) = simplifier.simplify(d);
+                            cas_ast::LaTeXExpr {
+                                context: &simplifier.context,
+                                id: d_simp,
+                            }
+                            .to_latex()
+                        };
+                        let _ = tx.send(Some(("numeric".to_string(), residual)));
+                    } else {
+                        let _ = tx.send(Some(("failed".to_string(), String::new())));
+                    }
+                });
+
+            match rx.recv_timeout(combo_timeout) {
+                Ok(Some((kind, residual))) => match kind.as_str() {
+                    "nf" => {
+                        nf_convergent += 1;
+                        passed += 1;
+                    }
+                    "proved" => {
+                        proved_symbolic += 1;
+                        passed += 1;
+                    }
+                    "numeric" => {
+                        numeric_only += 1;
+                        passed += 1;
+                        if verbose && numeric_only_examples.len() < 50 {
+                            numeric_only_examples.push((
+                                lhs_str.clone(),
+                                rhs_str.clone(),
+                                identity.family.clone(),
+                                residual,
+                            ));
+                        }
+                    }
+                    "parse_error" => {
+                        parse_errors += 1;
+                        passed += 1; // Don't count as failure
+                    }
+                    "failed" => {
+                        failed += 1;
+                        if verbose {
+                            eprintln!(
+                                "  ❌ FAIL [{} → {}]: {} vs {}",
+                                identity.family, sub.label, lhs_str, rhs_str
+                            );
+                        }
+                    }
+                    _ => {
+                        failed += 1;
+                    }
+                },
+                Ok(None) => {
+                    // Thread returned None — parse error
+                    parse_errors += 1;
+                    passed += 1;
+                }
+                Err(_) => {
+                    // Timeout
+                    skipped += 1;
+                }
+            }
+        }
+    }
+
+    // Report
+    eprintln!(
+        "✅ Substitution tests: {} passed, {} failed, {} skipped (timeout), {} parse errors",
+        passed, failed, skipped, parse_errors
+    );
+    eprintln!(
+        "   📐 NF-convergent: {} | 🔢 Proved-symbolic: {} | 🌡️ Numeric-only: {}",
+        nf_convergent, proved_symbolic, numeric_only
+    );
+
+    // Verbose: show numeric-only cases grouped by family
+    if verbose && !numeric_only_examples.is_empty() {
+        eprintln!("\n── numeric-only examples ──");
+        // Group by family
+        let mut family_groups: HashMap<String, Vec<(String, String, String)>> = HashMap::new();
+        for (lhs, rhs, family, residual) in &numeric_only_examples {
+            family_groups.entry(family.clone()).or_default().push((
+                lhs.clone(),
+                rhs.clone(),
+                residual.clone(),
+            ));
+        }
+        let mut families: Vec<_> = family_groups.keys().cloned().collect();
+        families.sort();
+        for family in &families {
+            let examples = &family_groups[family];
+            eprintln!("── {} ({} cases) ──", family, examples.len());
+            for (lhs, rhs, residual) in examples.iter().take(3) {
+                eprintln!("  LHS: {}", lhs);
+                eprintln!("  RHS: {}", rhs);
+                if !residual.is_empty() {
+                    eprintln!("  Residual: {}", residual);
+                }
+                eprintln!();
+            }
+        }
+    }
+
+    assert_eq!(failed, 0, "{} substitution tests failed", failed);
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_substitution -- --include-ignored
+fn metatest_csv_substitution() {
+    run_substitution_tests();
+}

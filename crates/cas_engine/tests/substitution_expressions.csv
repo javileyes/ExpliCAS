@@ -1,0 +1,38 @@
+# Substitution Expressions for Metamorphic Testing
+# Format: expr,var,label
+# Each row defines a sub-expression S(u) to substitute for x in identities.
+# The variable `u` is the free variable after substitution.
+
+# Trigonometric (total functions only — tan(u) has poles)
+sin(u),u,trig
+cos(u),u,trig
+
+# Inverse Trigonometric
+arctan(u),u,inv_trig
+arcsin(u),u,inv_trig
+
+# Polynomial
+u^2 + 1,u,poly
+u^2 - 1,u,poly
+2*u + 3,u,poly
+u + 1,u,poly
+u^2,u,poly
+
+# Exponential / Logarithmic
+exp(u),u,exp_log
+ln(u),u,exp_log
+
+# Composed / Nested
+sin(u)^2,u,composed
+cos(2*u),u,composed
+sqrt(u^2 + 1),u,composed
+1/(u^2 + 1),u,composed
+
+# Rational
+u/(u + 1),u,rational
+(u - 1)/(u + 1),u,rational
+
+# Simple Transforms
+-u,u,simple
+2*u,u,simple
+u + pi,u,simple

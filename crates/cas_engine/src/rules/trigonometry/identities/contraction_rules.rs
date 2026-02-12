@@ -593,6 +593,13 @@ impl crate::rule::Rule for Cos2xAdditiveContractionRule {
         None
     }
 
+    fn allowed_phases(&self) -> crate::phase::PhaseMask {
+        // POST only: prevents oscillation with HalfAngleExpansion and other trig
+        // rules during TRANSFORM. In POST no expansion rules fire, so contraction
+        // is stable and normalises 2cos²(t)-1 / 1-2sin²(t) to cos(2t).
+        crate::phase::PhaseMask::POST
+    }
+
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
         Some(crate::target_kind::TargetKindSet::ADD.union(crate::target_kind::TargetKindSet::SUB))
     }

@@ -10,9 +10,9 @@ use std::cmp::Ordering;
 
 // Import rules from parent module (still defined in include!() files)
 use super::{
-    AngleIdentityRule, AngleSumFractionToTanRule, CotHalfAngleDifferenceRule,
-    CscCotPythagoreanRule, DoubleAngleContractionRule, DoubleAngleRule, HalfAngleTangentRule,
-    HyperbolicTanhPythRule, PythagoreanIdentityRule, QuintupleAngleRule,
+    AngleIdentityRule, AngleSumFractionToTanRule, Cos2xAdditiveContractionRule,
+    CotHalfAngleDifferenceRule, CscCotPythagoreanRule, DoubleAngleContractionRule, DoubleAngleRule,
+    HalfAngleTangentRule, HyperbolicTanhPythRule, PythagoreanIdentityRule, QuintupleAngleRule,
     RecursiveTrigExpansionRule, SecTanPythagoreanRule, Sin4xIdentityZeroRule, SinCosIntegerPiRule,
     SinCosQuarticSumRule, SinCosSumQuotientRule, SinSupplementaryAngleRule,
     TanDifferenceIdentityZeroRule, TanDifferenceRule, TanDoubleAngleContractionRule,
@@ -277,12 +277,11 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(DoubleAngleRule));
     simplifier.add_rule(Box::new(DoubleAngleContractionRule)); // 2sin·cos→sin(2t), cos²-sin²→cos(2t)
     simplifier.add_rule(Box::new(AngleSumFractionToTanRule)); // sin(a)cos(b)±cos(a)sin(b) / cos·cos∓sin·sin → tan(a±b)
-                                                              // DISABLED: Cos2xAdditiveContractionRule (1-2sin²→cos(2t), 2cos²-1→cos(2t)).
-                                                              // With DoubleAngleRule gated behind expand_mode, oscillation is broken.
-                                                              // However, enabling this rule still causes +153 numeric-only regression
-                                                              // in metamorphic Mul tests by shifting the NF landscape for cross-product
-                                                              // trig expressions. The gate alone yields +263 NF-convergent with 0 regression.
-                                                              // simplifier.add_rule(Box::new(Cos2xAdditiveContractionRule));
+                                                              // Cos2xAdditiveContractionRule: 1-2sin²→cos(2t), 2cos²-1→cos(2t).
+                                                              // Previously disabled due to +153 numeric-only regression. Re-enabled under Fix #5
+                                                              // (ExtractCommonMulFactorRule → POST phase separation) which shifts the NF landscape
+                                                              // and may benefit from tighter cos(2t) normal forms for cross-product trig expressions.
+    simplifier.add_rule(Box::new(Cos2xAdditiveContractionRule));
     simplifier.add_rule(Box::new(SinCosSumQuotientRule));
     // Standalone Sum-to-Product: sin(A)+sin(B), cos(A)+cos(B) etc. when args are k*π
     simplifier.add_rule(Box::new(TrigSumToProductRule));

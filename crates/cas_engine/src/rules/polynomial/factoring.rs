@@ -488,7 +488,11 @@ impl crate::rule::Rule for ExtractCommonMulFactorRule {
     }
 
     fn allowed_phases(&self) -> crate::phase::PhaseMask {
-        crate::phase::PhaseMask::TRANSFORM
+        // POST only: prevents Distribute↔Extract infinite loop.
+        // DistributeRule runs in CORE|TRANSFORM|RATIONALIZE (no POST),
+        // so phase separation breaks the oscillation cycle.
+        // This mirrors FactorCommonIntegerFromAdd which also runs in POST.
+        crate::phase::PhaseMask::POST
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
