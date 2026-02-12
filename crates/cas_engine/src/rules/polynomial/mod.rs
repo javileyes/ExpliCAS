@@ -43,7 +43,7 @@ fn is_binomial(ctx: &Context, e: ExprId) -> bool {
 /// Check if a product of two expressions forms a sum/difference of cubes identity:
 /// - `(X + c) * (X² - c·X + c²) = X³ + c³`
 /// - `(X - c) * (X² + c·X + c²) = X³ - c³`
-/// where `c` is a constant (Number) and X is any expression.
+///   where `c` is a constant (Number) and X is any expression.
 ///
 /// This is used as an exception in the binomial×binomial guard to allow
 /// distribution of cube identity products, enabling the engine to simplify
@@ -130,11 +130,9 @@ fn try_match_cube_identity(ctx: &Context, binomial: ExprId, trinomial: ExprId) -
                     c_val.clone()
                 };
                 // Check if |c|=1: middle term is just X
-                if c_abs.is_one() {
-                    if compare_expr(ctx, *term, x) == Ordering::Equal {
-                        found_cx = true;
-                        continue;
-                    }
+                if c_abs.is_one() && compare_expr(ctx, *term, x) == Ordering::Equal {
+                    found_cx = true;
+                    continue;
                 }
                 // General case: check Mul(|c|, X) or Mul(X, |c|)
                 if let Expr::Mul(ml, mr) = ctx.get(*term) {

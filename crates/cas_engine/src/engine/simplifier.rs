@@ -293,6 +293,10 @@ impl Simplifier {
         trigonometry::register(self); // Base trig functions
         inverse_trig::register(self); // Compositions like tan(arctan(x)) → x
 
+        // Weierstrass / inverse-trig bridge identities
+        // sin(2·atan(t)) → 2t/(1+t²), cos(2·atan(t)) → (1−t²)/(1+t²), etc.
+        trig_inverse_compositions::register(self);
+
         // Expand trig(inverse_trig) to algebraic forms AFTER compositions
         trig_inverse_expansion::register(self);
 
