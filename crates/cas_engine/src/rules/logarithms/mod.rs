@@ -547,6 +547,75 @@ pub(super) fn bases_equal(
     false
 }
 
+// =============================================================================
+// LogPerfectSquareRule: ln(A² ± 2AB + B²) → 2·ln(|A ± B|)
+// =============================================================================
+// When a log argument is a perfect-square trinomial, factor it and apply
+// the power rule in one step:
+//   ln(u⁴ + 2u² + 1)  →  ln((u² + 1)²)  →  2·ln(|u² + 1|)
+//
+// Uses the generalized `try_match_perfect_square_trinomial` which handles
+// even-power squares like u⁴ = (u²)².
+//
+// Domain: introduces |·| via even-power log rule (safe for all real inputs).
+// =============================================================================
+define_rule!(
+    LogPerfectSquareRule,
+    "Factor Perfect Square in Logarithm",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        use cas_ast::BuiltinFn;
+
+        // Match ln(arg) or log(base, arg)
+        let (fn_id, args) = match ctx.get(expr) {
+            Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+            _ => return None,
+        };
+
+        let (log_base, arg) = match ctx.builtin_of(fn_id) {
+            Some(BuiltinFn::Ln) if args.len() == 1 => {
+                let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+                (e, args[0])
+            }
+            Some(BuiltinFn::Log) if args.len() == 2 => (args[0], args[1]),
+            _ => return None,
+        };
+
+        // Only try if argument is an additive expression (Add/Sub)
+        match ctx.get(arg) {
+            Expr::Add(_, _) | Expr::Sub(_, _) => {}
+            _ => return None,
+        }
+
+        // Try to match argument as (A ± B)²
+        let (a, b, is_sub) =
+            crate::rules::polynomial::try_match_perfect_square_trinomial(ctx, arg)?;
+
+        // Build the factor: A+B or A-B
+        let factor = if is_sub {
+            ctx.add(Expr::Sub(a, b))
+        } else {
+            ctx.add(Expr::Add(a, b))
+        };
+
+        // Build |factor| (abs) for mathematical correctness
+        let abs_factor = ctx.call_builtin(BuiltinFn::Abs, vec![factor]);
+
+        // Build 2·log(base, |factor|)
+        let log_inner = make_log(ctx, log_base, abs_factor);
+        let two = ctx.num(2);
+        let result = ctx.add(Expr::Mul(two, log_inner));
+
+        let desc = if is_sub {
+            "ln((A−B)²) = 2·ln(|A−B|)"
+        } else {
+            "ln((A+B)²) = 2·ln(|A+B|)"
+        };
+
+        Some(Rewrite::new(result).desc(desc))
+    }
+);
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     // V2.14.45: LogPowerBaseRule MUST come BEFORE LogEvenPowerRule
     // Otherwise log(x^2, x^6) gets expanded to 6·log(x², |x|) before simplifying to 3
@@ -559,6 +628,11 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // V2.14.20: LogEvenPowerWithChainedAbsRule handles ln(x^even) with ChainedRewrite
     // Has higher priority (10) than EvaluateLogRule (0) so matches first
     simplifier.add_rule(Box::new(LogEvenPowerWithChainedAbsRule));
+
+    // LogPerfectSquareRule: ln(A² ± 2AB + B²) → 2·ln(|A ± B|)
+    // Factor perfect-square trinomials inside log arguments (e.g. u⁴+2u²+1 → (u²+1)²)
+    simplifier.add_rule(Box::new(LogPerfectSquareRule));
+
     simplifier.add_rule(Box::new(EvaluateLogRule));
 
     // LnEProductRule: ln(e*x) → 1 + ln(x) - safe targeted expansion

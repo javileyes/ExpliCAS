@@ -275,8 +275,11 @@ define_rule!(
 //   (b) Fully symbolic: both A² and B² are Pow(_, 2) nodes
 
 /// Try to match a 3-term additive expression as a perfect-square trinomial.
-/// Returns `Some((A, B))` such that the expression equals `(A + B)²` or `(A - B)²`.
-fn try_match_perfect_square_trinomial(
+/// Returns `Some((A, B, is_sub))` such that the expression equals `(A ± B)²`.
+///
+/// Handles even-power squares: `Pow(base, 2k)` is recognized as `(base^k)²`,
+/// e.g. `u⁴ + 2u² + 1` matches as `(u² + 1)²`.
+pub(crate) fn try_match_perfect_square_trinomial(
     ctx: &mut Context,
     arg: ExprId,
 ) -> Option<(ExprId, ExprId, bool)> {
@@ -310,11 +313,30 @@ fn try_match_perfect_square_trinomial(
                 continue;
             }
 
-            // Extract A from A² (Pow(A, 2))
+            // Extract A from A² (Pow(base, 2k) → A = base^k)
             let a_expr = if let Expr::Pow(base, exp) = ctx.get(*term_a_sq) {
-                if let Expr::Number(n) = ctx.get(*exp) {
-                    if *n == num_rational::BigRational::from_integer(2.into()) {
-                        Some(*base)
+                let (base, exp) = (*base, *exp);
+                if let Expr::Number(n) = ctx.get(exp) {
+                    let n = n.clone();
+                    if n == num_rational::BigRational::from_integer(2.into()) {
+                        // Pow(base, 2) → A = base
+                        Some(base)
+                    } else if n.is_integer() {
+                        // Check for even exponent: Pow(base, 2k) → A = base^k
+                        let int_val = n.to_integer();
+                        let two: num_bigint::BigInt = 2.into();
+                        if &int_val % &two == 0.into() && int_val > 0.into() {
+                            let half_exp = &int_val / &two;
+                            let half_exp_rat = num_rational::BigRational::from_integer(half_exp);
+                            if half_exp_rat == num_rational::BigRational::from_integer(1.into()) {
+                                Some(base)
+                            } else {
+                                let half_exp_id = ctx.add(Expr::Number(half_exp_rat));
+                                Some(ctx.add(Expr::Pow(base, half_exp_id)))
+                            }
+                        } else {
+                            None
+                        }
                     } else {
                         None
                     }
@@ -333,15 +355,34 @@ fn try_match_perfect_square_trinomial(
             let b_val: Option<num_rational::BigRational>; // Some(k) if B = Number(k)
 
             if let Expr::Pow(base, exp) = ctx.get(*term_b_sq) {
-                if let Expr::Number(n) = ctx.get(*exp) {
-                    if *n == num_rational::BigRational::from_integer(2.into()) {
-                        b = *base;
-                        // Check if B is a number
+                let (base_b, exp_b) = (*base, *exp);
+                if let Expr::Number(n) = ctx.get(exp_b) {
+                    let n = n.clone();
+                    if n == num_rational::BigRational::from_integer(2.into()) {
+                        // Pow(base, 2) → B = base
+                        b = base_b;
                         b_val = if let Expr::Number(bn) = ctx.get(b) {
                             Some(bn.clone())
                         } else {
                             None
                         };
+                    } else if n.is_integer() {
+                        // Even exponent: Pow(base, 2k) → B = base^k
+                        let int_val = n.to_integer();
+                        let two: num_bigint::BigInt = 2.into();
+                        if &int_val % &two == 0.into() && int_val > 0.into() {
+                            let half_exp = &int_val / &two;
+                            let half_exp_rat = num_rational::BigRational::from_integer(half_exp);
+                            if half_exp_rat == num_rational::BigRational::from_integer(1.into()) {
+                                b = base_b;
+                            } else {
+                                let half_exp_id = ctx.add(Expr::Number(half_exp_rat));
+                                b = ctx.add(Expr::Pow(base_b, half_exp_id));
+                            }
+                            b_val = None; // Not a simple number anymore
+                        } else {
+                            continue;
+                        }
                     } else {
                         continue;
                     }
@@ -370,16 +411,56 @@ fn try_match_perfect_square_trinomial(
             }
 
             // Check middle term = ±2·A·B
-            // neg_mid tells us if the term was subtracted
-            let mid_matches = check_middle_term_2ab(ctx, *term_mid, a, b, &b_val);
+            // neg_mid tells us if the term was subtracted via additive sign.
+            // However, after canonicalization, -2·x may be stored as Mul(-2, x)
+            // with sign=Pos, so we must also check for a negative leading coefficient.
+            use num_traits::Signed;
+            let mut effective_neg_mid = *neg_mid;
+            let effective_mid = *term_mid;
+
+            // Normalize: if middle term has a negative leading coefficient,
+            // absorb that into effective_neg_mid.
+            // This handles the case where canonicalization turns -(2·x) into (-2)·x.
+            let effective_mid = {
+                let mut mid = effective_mid;
+                // Check for Mul(Number(neg), _) or Mul(_, Number(neg))
+                if let Expr::Mul(l, r) = ctx.get(mid) {
+                    let (l, r) = (*l, *r);
+                    if let Expr::Number(n) = ctx.get(l) {
+                        if n.is_negative() {
+                            // Negate the coefficient and flip the sign
+                            let abs_n = ctx.add(Expr::Number(-n.clone()));
+                            mid = ctx.add(Expr::Mul(abs_n, r));
+                            effective_neg_mid = !effective_neg_mid;
+                        }
+                    } else if let Expr::Number(n) = ctx.get(r) {
+                        if n.is_negative() {
+                            let abs_n = ctx.add(Expr::Number(-n.clone()));
+                            mid = ctx.add(Expr::Mul(l, abs_n));
+                            effective_neg_mid = !effective_neg_mid;
+                        }
+                    }
+                } else if let Expr::Number(n) = ctx.get(mid) {
+                    if n.is_negative() {
+                        mid = ctx.add(Expr::Number(-n.clone()));
+                        effective_neg_mid = !effective_neg_mid;
+                    }
+                } else if let Expr::Neg(inner) = ctx.get(mid) {
+                    mid = *inner;
+                    effective_neg_mid = !effective_neg_mid;
+                }
+                mid
+            };
+
+            let mid_matches = check_middle_term_2ab(ctx, effective_mid, a, b, &b_val);
             if !mid_matches {
                 continue;
             }
 
             // Determine if it's (A+B)² or (A-B)²
-            // For (A+B)²: middle term is +2AB (neg_mid = false)
-            // For (A-B)²: middle term is -2AB (neg_mid = true)
-            let is_sub = *neg_mid;
+            // For (A+B)²: middle term is +2AB (effective_neg_mid = false)
+            // For (A-B)²: middle term is -2AB (effective_neg_mid = true)
+            let is_sub = effective_neg_mid;
 
             return Some((a, b, is_sub));
         }
