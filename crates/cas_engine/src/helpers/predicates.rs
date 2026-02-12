@@ -263,6 +263,34 @@ fn prove_positive_depth(
             }
         }
 
+        // Add: a + b > 0 if (a > 0 and b ≥ 0) or (a ≥ 0 and b > 0)
+        // This handles expressions like u²+1 where u² ≥ 0 and 1 > 0
+        Expr::Add(a, b) => {
+            let proof_a_pos = prove_positive_depth(ctx, *a, value_domain, depth - 1);
+            let proof_b_pos = prove_positive_depth(ctx, *b, value_domain, depth - 1);
+
+            // Both positive → positive
+            if proof_a_pos == Proof::Proven && proof_b_pos == Proof::Proven {
+                return Proof::Proven;
+            }
+
+            // One positive, other non-negative → positive
+            if proof_a_pos == Proof::Proven {
+                let b_nonneg = prove_nonnegative_depth(ctx, *b, value_domain, depth - 1);
+                if b_nonneg == Proof::Proven {
+                    return Proof::Proven;
+                }
+            }
+            if proof_b_pos == Proof::Proven {
+                let a_nonneg = prove_nonnegative_depth(ctx, *a, value_domain, depth - 1);
+                if a_nonneg == Proof::Proven {
+                    return Proof::Proven;
+                }
+            }
+
+            Proof::Unknown
+        }
+
         // Mul: a*b > 0 if (a>0 AND b>0) OR (a<0 AND b<0)
         // V2.3: Also detect if either factor is exactly 0 (then product is 0, Disproven for >0)
         Expr::Mul(a, b) => {

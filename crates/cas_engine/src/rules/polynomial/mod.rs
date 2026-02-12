@@ -40,6 +40,229 @@ fn is_binomial(ctx: &Context, e: ExprId) -> bool {
     matches!(ctx.get(e), Expr::Add(_, _) | Expr::Sub(_, _))
 }
 
+/// Check if a product of two expressions forms a sum/difference of cubes identity:
+/// - `(X + c) * (X² - c·X + c²) = X³ + c³`
+/// - `(X - c) * (X² + c·X + c²) = X³ - c³`
+/// where `c` is a constant (Number) and X is any expression.
+///
+/// This is used as an exception in the binomial×binomial guard to allow
+/// distribution of cube identity products, enabling the engine to simplify
+/// expressions like `sin(u)³ + 1 - (sin(u)+1)·(sin(u)²-sin(u)+1)` → 0.
+fn is_cube_identity_product(ctx: &Context, a: ExprId, b: ExprId) -> bool {
+    try_match_cube_identity(ctx, a, b) || try_match_cube_identity(ctx, b, a)
+}
+
+/// Try to match (binomial, trinomial) as a cube identity.
+/// Returns true if `binomial = X ± c` and `trinomial = X² ∓ c·X + c²`.
+fn try_match_cube_identity(ctx: &Context, binomial: ExprId, trinomial: ExprId) -> bool {
+    let Some((x, c_val, is_sum)) = (match ctx.get(binomial) {
+        Expr::Add(l, r) => {
+            // Try X + c (c on right)
+            if let Expr::Number(n) = ctx.get(*r) {
+                Some((*l, n.clone(), true))
+            }
+            // Try c + X (c on left)
+            else if let Expr::Number(n) = ctx.get(*l) {
+                Some((*r, n.clone(), true))
+            } else {
+                None
+            }
+        }
+        Expr::Sub(l, r) => {
+            // X - c
+            if let Expr::Number(n) = ctx.get(*r) {
+                Some((*l, n.clone(), false))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }) else {
+        return false;
+    };
+
+    // Step 2: Flatten the trinomial into additive terms
+    let mut terms = Vec::new();
+    flatten_additive_terms(ctx, trinomial, false, &mut terms);
+    if terms.len() != 3 {
+        return false;
+    }
+
+    // Step 3: Verify the 3 terms match X², ±c·X, c²
+    let c_squared = &c_val * &c_val;
+    let mut found_x_sq = false;
+    let mut found_cx = false;
+    let mut found_c_sq = false;
+
+    for (term, is_neg) in &terms {
+        // Check for X² (must be positive)
+        if !found_x_sq && !is_neg {
+            if let Expr::Pow(base, exp) = ctx.get(*term) {
+                if compare_expr(ctx, *base, x) == Ordering::Equal {
+                    if let Expr::Number(n) = ctx.get(*exp) {
+                        if *n == num_rational::BigRational::from_integer(2.into()) {
+                            found_x_sq = true;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check for c·X or X (when |c|=1)
+        // The cube identity has middle coefficient = -c:
+        //   (X+c): middle = -c·X → if c>0, negated; if c<0, positive
+        //   (X-c): middle = +c·X → if c>0, positive; if c<0, negated
+        // Account for sign of c: the "visible" sign is (-c for sum, +c for diff)
+        // combined with the sign already captured by flatten's is_neg.
+        if !found_cx {
+            use num_traits::Signed;
+            let c_is_neg = c_val.is_negative();
+            // expect_neg: the middle term's sign in the canonical identity
+            // (X+c)(X²-cX+c²): middle = -c·X → neg when c>0, pos when c<0
+            // (X-c)(X²+cX+c²): middle = +c·X → pos when c>0, neg when c<0
+            let expect_neg = is_sum ^ c_is_neg; // XOR
+
+            if *is_neg == expect_neg {
+                let c_abs = if c_is_neg {
+                    -c_val.clone()
+                } else {
+                    c_val.clone()
+                };
+                // Check if |c|=1: middle term is just X
+                if c_abs.is_one() {
+                    if compare_expr(ctx, *term, x) == Ordering::Equal {
+                        found_cx = true;
+                        continue;
+                    }
+                }
+                // General case: check Mul(|c|, X) or Mul(X, |c|)
+                if let Expr::Mul(ml, mr) = ctx.get(*term) {
+                    if let Expr::Number(n) = ctx.get(*ml) {
+                        if *n == c_abs && compare_expr(ctx, *mr, x) == Ordering::Equal {
+                            found_cx = true;
+                            continue;
+                        }
+                    }
+                    if let Expr::Number(n) = ctx.get(*mr) {
+                        if *n == c_abs && compare_expr(ctx, *ml, x) == Ordering::Equal {
+                            found_cx = true;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check for c² (must be positive)
+        if !found_c_sq && !is_neg {
+            if let Expr::Number(n) = ctx.get(*term) {
+                if *n == c_squared {
+                    found_c_sq = true;
+                    continue;
+                }
+            }
+        }
+    }
+
+    found_x_sq && found_cx && found_c_sq
+}
+
+/// Extract cube identity components from a product.
+/// Returns `(x, c_cubed, is_sum)` where:
+/// - `x`: the base expression
+/// - `c_cubed`: c³ as a BigRational
+/// - `is_sum`: true for X³+c³, false for X³-c³
+fn extract_cube_identity(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+) -> Option<(ExprId, num_rational::BigRational, bool)> {
+    extract_cube_identity_ordered(ctx, a, b).or_else(|| extract_cube_identity_ordered(ctx, b, a))
+}
+
+fn extract_cube_identity_ordered(
+    ctx: &Context,
+    binomial: ExprId,
+    trinomial: ExprId,
+) -> Option<(ExprId, num_rational::BigRational, bool)> {
+    // Extract X and c from the binomial
+    let (x, c_val, is_sum) = match ctx.get(binomial) {
+        Expr::Add(l, r) => {
+            if let Expr::Number(n) = ctx.get(*r) {
+                Some((*l, n.clone(), true))
+            } else if let Expr::Number(n) = ctx.get(*l) {
+                Some((*r, n.clone(), true))
+            } else {
+                None
+            }
+        }
+        Expr::Sub(l, r) => {
+            if let Expr::Number(n) = ctx.get(*r) {
+                Some((*l, n.clone(), false))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }?;
+
+    // Verify trinomial matches the cube identity
+    if !try_match_cube_identity(ctx, binomial, trinomial) {
+        return None;
+    }
+
+    // Compute c³
+    let c_cubed = &c_val * &c_val * &c_val;
+
+    // Determine sign: (X+c)(X²-cX+c²) = X³+c³
+    // For Add(x, c): X³ + c³ (sum if c > 0, diff if c < 0 since c³ < 0)
+    // For Sub(x, c): X³ - c³ (diff)
+    Some((x, c_cubed, is_sum))
+}
+
+// ── Sum/Difference of Cubes Contraction Rule ────────────────────────────
+//
+// Pre-order rule: (X + c)·(X² - c·X + c²) → X³ + c³
+//                 (X - c)·(X² + c·X + c²) → X³ - c³
+//
+// This fires BEFORE DistributeRule to prevent suboptimal splitting of the
+// trinomial factor. Works for any base X (polynomial, transcendental, etc.)
+define_rule!(
+    SumDiffCubesContractionRule,
+    "Sum/Difference of Cubes Contraction",
+    None,
+    PhaseMask::CORE,
+    |ctx, expr| {
+        let (l, r) = crate::helpers::as_mul(ctx, expr)?;
+
+        let (x, c_cubed, _is_sum) = extract_cube_identity(ctx, l, r)?;
+
+        // Build X³
+        let three = ctx.add(Expr::Number(num_rational::BigRational::from_integer(
+            3.into(),
+        )));
+        let x_cubed = ctx.add(Expr::Pow(x, three));
+
+        // Build c³ node
+        let c_cubed_node = ctx.add(Expr::Number(c_cubed.clone()));
+
+        // Build X³ ± c³
+        let result = if c_cubed >= num_rational::BigRational::from_integer(0.into()) {
+            ctx.add(Expr::Add(x_cubed, c_cubed_node))
+        } else {
+            // c³ < 0: X³ + c³ where c³ is negative → use Add with negative number
+            ctx.add(Expr::Add(x_cubed, c_cubed_node))
+        };
+
+        Some(
+            Rewrite::new(result)
+                .desc("Sum/Difference of cubes")
+                .local(expr, result),
+        )
+    }
+);
+
 /// PERFORMANCE: Check if distributing `factor` across `additive` would be
 /// computationally expensive and should be skipped.
 ///
@@ -227,7 +450,8 @@ define_rule!(
 
             // CRITICAL: Don't expand binomial*binomial products like (a-b)*(a-c)
             // This preserves factored form for opposite denominator detection
-            if is_binomial(ctx, l) && is_binomial(ctx, r) {
+            // EXCEPTION: Allow sum/difference of cubes identity products
+            if is_binomial(ctx, l) && is_binomial(ctx, r) && !is_cube_identity_product(ctx, l, r) {
                 return None;
             }
 
@@ -288,7 +512,8 @@ define_rule!(
             }
 
             // Don't expand binomial*binomial products
-            if is_binomial(ctx, l) && is_binomial(ctx, r) {
+            // EXCEPTION: Allow sum/difference of cubes identity products
+            if is_binomial(ctx, l) && is_binomial(ctx, r) && !is_cube_identity_product(ctx, l, r) {
                 return None;
             }
 
@@ -350,7 +575,8 @@ define_rule!(
 
             // CRITICAL: Don't expand binomial*binomial products (Policy A+)
             // This preserves factored form like (a+b)*(c+d)
-            if is_binomial(ctx, l) && is_binomial(ctx, r) {
+            // EXCEPTION: Allow sum/difference of cubes identity products
+            if is_binomial(ctx, l) && is_binomial(ctx, r) && !is_cube_identity_product(ctx, l, r) {
                 return None;
             }
 
@@ -411,7 +637,8 @@ define_rule!(
             }
 
             // Don't expand binomial*binomial products
-            if is_binomial(ctx, l) && is_binomial(ctx, r) {
+            // EXCEPTION: Allow sum/difference of cubes identity products
+            if is_binomial(ctx, l) && is_binomial(ctx, r) && !is_cube_identity_product(ctx, l, r) {
                 return None;
             }
 
@@ -784,6 +1011,8 @@ define_rule!(
 /// Use explicit expand() mode for multinomial expansion.
 /// Implements Rule directly to access ParentContext
 pub fn register(simplifier: &mut crate::Simplifier) {
+    // Register cube identity contraction BEFORE distribution to prevent suboptimal splits
+    simplifier.add_rule(Box::new(SumDiffCubesContractionRule));
     simplifier.add_rule(Box::new(DistributeRule));
     simplifier.add_rule(Box::new(AnnihilationRule));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));
