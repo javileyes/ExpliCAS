@@ -22,7 +22,7 @@ pub mod env;
 pub mod eval;
 pub mod eval_step_pipeline;
 pub mod expand;
-pub(crate) mod factor;
+pub mod factor;
 pub mod gcd_zippel_modp;
 pub mod helpers;
 pub mod implicit_domain;

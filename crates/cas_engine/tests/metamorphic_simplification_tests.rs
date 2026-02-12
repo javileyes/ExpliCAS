@@ -4781,6 +4781,7 @@ fn run_substitution_tests() {
     let substitutions = load_substitution_expressions();
     let config = metatest_config();
     let verbose = std::env::var("METATEST_VERBOSE").is_ok();
+    let show_table = std::env::var("METATEST_TABLE").is_ok();
 
     // Filter out Assume-only identities (we run in Generic mode)
     let identities: Vec<_> = identities
@@ -4797,6 +4798,7 @@ fn run_substitution_tests() {
         config.seed
     );
 
+    // Global counters
     let mut passed = 0usize;
     let mut failed = 0usize;
     let mut nf_convergent = 0usize;
@@ -4806,6 +4808,9 @@ fn run_substitution_tests() {
     let mut parse_errors = 0usize;
 
     let mut numeric_only_examples: Vec<(String, String, String, String)> = Vec::new();
+
+    // Cross-product table data: (family, sub_label) → (nf, proved, numeric, failed)
+    let mut cell_data: HashMap<(String, String), (usize, usize, usize, usize)> = HashMap::new();
 
     let combo_timeout = std::time::Duration::from_secs(5);
 
@@ -4929,19 +4934,24 @@ fn run_substitution_tests() {
                     }
                 });
 
+            let cell_key = (identity.family.clone(), sub.label.clone());
+
             match rx.recv_timeout(combo_timeout) {
                 Ok(Some((kind, residual))) => match kind.as_str() {
                     "nf" => {
                         nf_convergent += 1;
                         passed += 1;
+                        cell_data.entry(cell_key).or_insert((0, 0, 0, 0)).0 += 1;
                     }
                     "proved" => {
                         proved_symbolic += 1;
                         passed += 1;
+                        cell_data.entry(cell_key).or_insert((0, 0, 0, 0)).1 += 1;
                     }
                     "numeric" => {
                         numeric_only += 1;
                         passed += 1;
+                        cell_data.entry(cell_key).or_insert((0, 0, 0, 0)).2 += 1;
                         if verbose && numeric_only_examples.len() < 200 {
                             numeric_only_examples.push((
                                 lhs_str.clone(),
@@ -4957,6 +4967,7 @@ fn run_substitution_tests() {
                     }
                     "failed" => {
                         failed += 1;
+                        cell_data.entry(cell_key).or_insert((0, 0, 0, 0)).3 += 1;
                         if verbose {
                             eprintln!(
                                 "  ❌ FAIL [{} → {}]: {} vs {}",
@@ -4981,7 +4992,7 @@ fn run_substitution_tests() {
         }
     }
 
-    // Report
+    // Report: flat summary (always shown)
     eprintln!(
         "✅ Substitution tests: {} passed, {} failed, {} skipped (timeout), {} parse errors",
         passed, failed, skipped, parse_errors
@@ -4990,6 +5001,104 @@ fn run_substitution_tests() {
         "   📐 NF-convergent: {} | 🔢 Proved-symbolic: {} | 🌡️ Numeric-only: {}",
         nf_convergent, proved_symbolic, numeric_only
     );
+
+    // Cross-product table (METATEST_TABLE=1)
+    if show_table {
+        // Collect unique families and sub-labels in order
+        let mut families: Vec<String> = identities
+            .iter()
+            .map(|i| i.family.clone())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        families.sort();
+
+        let mut sub_labels: Vec<String> = substitutions
+            .iter()
+            .map(|s| s.label.clone())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        sub_labels.sort();
+
+        // Abbreviate long sub-labels for columns
+        let col_width = 11;
+        let family_width = 25;
+
+        eprintln!("\n╔══════════════════════════════════════════════════════════════════════════════════════╗");
+        eprintln!("║  Substitution × Identity Cross-Product (NF/Proved/Numeric)                         ║");
+        eprintln!(
+            "╠═════════════════════════╤{}╣",
+            sub_labels
+                .iter()
+                .map(|_l| format!("═{:═<width$}═", "", width = col_width))
+                .collect::<Vec<_>>()
+                .join("╤")
+        );
+
+        // Header row
+        eprint!(
+            "║ {:family_width$}│",
+            "Identity Family",
+            family_width = family_width
+        );
+        for label in &sub_labels {
+            let short = if label.len() > col_width {
+                format!("{}…", &label[..col_width - 1])
+            } else {
+                label.clone()
+            };
+            eprint!(" {:^width$}│", short, width = col_width);
+        }
+        eprintln!();
+
+        // Separator
+        eprint!(
+            "╠═{:═<family_width$}═╪",
+            "",
+            family_width = family_width - 2
+        );
+        for (i, _) in sub_labels.iter().enumerate() {
+            if i < sub_labels.len() - 1 {
+                eprint!("═{:═<width$}═╪", "", width = col_width);
+            } else {
+                eprint!("═{:═<width$}═╣", "", width = col_width);
+            }
+        }
+        eprintln!();
+
+        // Data rows
+        for family in &families {
+            eprint!("║ {:family_width$}│", family, family_width = family_width);
+            for label in &sub_labels {
+                let key = (family.clone(), label.clone());
+                let (nf, prov, num, fail) = cell_data.get(&key).copied().unwrap_or((0, 0, 0, 0));
+                let cell = if fail > 0 {
+                    format!("{}/{}/{}❌{}", nf, prov, num, fail)
+                } else {
+                    format!("{}/{}/{}", nf, prov, num)
+                };
+                eprint!(" {:^width$}│", cell, width = col_width);
+            }
+            eprintln!();
+        }
+
+        // Bottom border
+        eprint!(
+            "╚═{:═<family_width$}═╧",
+            "",
+            family_width = family_width - 2
+        );
+        for (i, _) in sub_labels.iter().enumerate() {
+            if i < sub_labels.len() - 1 {
+                eprint!("═{:═<width$}═╧", "", width = col_width);
+            } else {
+                eprint!("═{:═<width$}═╝", "", width = col_width);
+            }
+        }
+        eprintln!();
+        eprintln!("Legend: NF/Proved/Numeric (❌N = N failures)");
+    }
 
     // Verbose: show numeric-only cases grouped by family
     if verbose && !numeric_only_examples.is_empty() {

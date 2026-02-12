@@ -75,3 +75,69 @@ exp(2*x),exp(x)^2,x,g
 # Triple Angle
 sin(3*x),3*sin(x) - 4*sin(x)^3,x,g
 cos(3*x),4*cos(x)^3 - 3*cos(x),x,g
+
+# =========================================================================
+# NEW IDENTITIES (Feb 2026)
+# =========================================================================
+
+# Product-to-Sum Trig
+2*sin(x)*cos(x),sin(2*x),x,g
+cos(x)^2 - sin(x)^2,cos(2*x),x,g
+
+# Sum-to-Product Trig
+sin(x) + sin(-x),0,x,g
+cos(x) + cos(-x),2*cos(x),x,g
+sin(x)*cos(x),sin(2*x)/2,x,g
+
+# Pythagorean Extended
+1 + tan(x)^2,1/cos(x)^2,x,g
+sin(x)^4 + cos(x)^4,1 - 2*sin(x)^2*cos(x)^2,x,g
+(sin(x) + cos(x))^2,1 + sin(2*x),x,g
+
+# Reciprocal Trig
+1/sin(x),csc(x),x,g
+1/cos(x),sec(x),x,g
+sin(x)*csc(x),1,x,g
+cos(x)*sec(x),1,x,g
+
+# Log Rules
+ln(x) + ln(x),ln(x^2),x,g
+ln(x^2),2*ln(x),x,g
+ln(1/x),-ln(x),x,g
+exp(x + x),exp(2*x),x,g
+
+# Exponential Rules
+exp(x)^2,exp(2*x),x,g
+exp(x)*exp(x),exp(2*x),x,g
+exp(-x),1/exp(x),x,g
+
+# Algebraic / Polynomial
+x^3 + 1,(x+1)*(x^2 - x + 1),x,g
+(x+1)^4,x^4 + 4*x^3 + 6*x^2 + 4*x + 1,x,g
+x^4 - 1,(x^2 - 1)*(x^2 + 1),x,g
+(x+1)*(x-1),x^2 - 1,x,g
+(x+2)*(x-2),x^2 - 4,x,g
+(x+3)*(x-3),x^2 - 9,x,g
+
+# Rational Simplification
+x/(x+1) + 1/(x+1),1,x,g
+(x^2 - 4)/(x + 2),x - 2,x,g
+(x^2 + 2*x + 1)/(x + 1),x + 1,x,g
+
+# Sqrt / Radical
+sqrt(x^2 + 2*x + 1),|x + 1|,x,g
+sqrt(4*x^2),2*|x|,x,g
+
+# Shift / Phase
+sin(x + pi),-sin(x),x,g
+cos(x + pi),-cos(x),x,g
+sin(x + pi/2),cos(x),x,g
+cos(x + pi/2),-sin(x),x,g
+
+# Even/Odd Powers
+(-x)^2,x^2,x,g
+(-x)^3,-x^3,x,g
+(-x)^4,x^4,x,g
+
+# Double Negation
+-(-x),x,x,g

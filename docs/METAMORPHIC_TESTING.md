@@ -901,43 +901,167 @@ METATEST_TRANSFORMS=scale:2,shift:1,square cargo test --package cas_engine \
 - **Unconditional/ConditionalRequires**: Todos los transforms
 - **BranchSensitive**: Solo `scale(2)` (evita cruces de rama)
 
----
+## Substitution-Based Metamorphic Tests
 
-## Identidades de Regresión (Soundness Guards)
+Verifica que las identidades se mantienen cuando la variable se reemplaza por sub-expresiones arbitrarias:
+`A(S(u)) ≡ B(S(u))` para cada par de identidad `(A,B)` y cada sustitución `S`.
 
-Identidades "idempotentes" que garantizan que reglas peligrosas no se apliquen incorrectamente:
+### Arquitectura
 
-```csv
-# abs() no debe eliminarse de trig sin proof de signo
-abs(sin(x)),abs(sin(x)),x,g
-abs(cos(x)),abs(cos(x)),x,g
-abs(sin(x/2)),abs(sin(x/2)),x,g
-abs(cos(x/2)),abs(cos(x/2)),x,g
+```
+┌──────────────────────────────┐     ┌──────────────────────────────┐
+│  substitution_identities.csv │     │ substitution_expressions.csv │
+│  (~110 pares: trig, log,    │     │  (~34 sustituciones: trig,   │
+│   algebra, radical, etc.)    │     │   poly, exp, rational, etc.) │
+└──────────────┬───────────────┘     └──────────────┬───────────────┘
+               │                                    │
+               └────────────┬───────────────────────┘
+                            ▼
+               ┌────────────────────────┐
+               │  Producto cartesiano   │
+               │  ~110 × ~34 ≈ 3740    │
+               │  combinaciones         │
+               └────────────┬───────────┘
+                            ▼
+               ┌────────────────────────┐
+               │  3-tier verification:  │
+               │  NF → Symbolic → Num  │
+               └────────────────────────┘
 ```
 
-Si algún refactor futuro añade `abs(u) → u` incorrecto, CI fallará.
+### CSV: substitution_identities.csv
+
+```csv
+# Format: exp,simp,var,mode
+sin(2*x),2*sin(x)*cos(x),x,g
+ln(x^2),2*ln(x),x,g
+(x+1)^2,x^2 + 2*x + 1,x,g
+```
+
+Familias incluidas: Weierstrass, Log/Exp, Double/Triple/Half Angle, Pythagorean (extendido),
+Power Reduction, Binomial, Power Rules, Difference of Squares/Cubes, Fraction Simplification,
+Quotient, Negation, Cofunction, Reciprocal Trig, Sum/Product-to-Product/Sum, Log Rules,
+Exponential, Algebraic, Rational, Sqrt/Radical, Shift/Phase, Even/Odd Powers.
+
+### CSV: substitution_expressions.csv
+
+```csv
+# Format: expr,var,label
+sin(u),u,trig
+u^2 + 1,u,poly
+exp(u),u,exp_log
+u/(u + 1),u,rational
+```
+
+Clases de sustitución: `trig`, `inv_trig`, `poly`, `exp_log`, `composed`, `rational`, `simple`.
+
+### Comandos
+
+```bash
+# Test de sustitución completo
+cargo test --release -p cas_engine \
+    --test metamorphic_simplification_tests metatest_csv_substitution \
+    -- --ignored --nocapture
+
+# Con tabla cross-product (familia × clase de sustitución)
+METATEST_TABLE=1 cargo test --release -p cas_engine \
+    --test metamorphic_simplification_tests metatest_csv_substitution \
+    -- --ignored --nocapture
+
+# Con ejemplos verbose de numeric-only
+METATEST_VERBOSE=1 cargo test --release -p cas_engine \
+    --test metamorphic_simplification_tests metatest_csv_substitution \
+    -- --ignored --nocapture
+```
+
+### Cross-Product Table (METATEST_TABLE=1)
+
+Con la variable `METATEST_TABLE=1`, el test imprime una tabla de cobertura:
+
+```
+╔═══════════════════════╤═══════╤═══════╤══════╤═══════╤═══════╤══════╗
+║ Identity Family       │ trig  │ poly  │ e/ln │ comp  │ ratio │ simp ║
+╠═══════════════════════╪═══════╪═══════╪══════╪═══════╪═══════╪══════╣
+║ Pythagorean           │ 2/0/0 │ 5/0/0 │ 2/0/0│ 4/0/0 │ 2/0/0 │ 3/0 ║
+║ Double Angle          │ 1/1/0 │ 4/0/1 │ ...  │ ...   │ ...   │ ... ║
+╚═══════════════════════╧═══════╧═══════╧══════╧═══════╧═══════╧══════╝
+Legend: NF/Proved/Numeric  (Failed shown as ❌)
+```
+
+Filas = familias de identidades, Columnas = clases de sustitución.
+Cada celda muestra `NF-convergent / Proved-symbolic / Numeric-only`.
 
 ---
 
-## Guía de Migración Legacy → 7-col
+## Round-Trip Metamorphic Tests
 
-### Criterios para Migrar
+Verifica las propiedades de ida y vuelta de las transformaciones del engine:
 
-1. **asymmetric_invalid > 0** → Investigar bug primero
-2. **invalid_rate alto** → Añadir `filter` apropiado
-3. **Identidades de ramas** → `branch_mode=ModuloPi/Modulo2Pi`
+### Chain 1: `simplify(expand(x)) ≡ simplify(x)` (idempotencia)
 
-### Filtros Comunes
+Propiedad: expandir una expresión y luego simplificarla debe dar el mismo resultado
+que simplificarla directamente.
 
-| Situación | Filter |
-|-----------|--------|
-| `ln(x)`, `log(x)` | `gt(0.0)` |
-| `sqrt(x)` | `ge(0.0)` |
-| Polos en x=0 | `away_from(0.0;eps=0.05)` |
-| Polos en ±π/2 | `away_from(1.5707963;-1.5707963;eps=0.01)` |
-| arctan con división | `abs_lt(0.9)` |
-| Rango específico | `range(0.1;3.0)` |
-| Combinado | `abs_lt_and_away(0.95;1.0;-1.0;eps=0.1)` |
+### Chain 2: `expand(factor(x)) ≡ x` (round-trip)
+
+Propiedad: factorizar una expresión y luego expandirla debe devolver la expresión original
+(como polinomio equivalente).
+
+### Expresiones de Test
+
+53 expresiones curadas en 4 familias:
+
+| Familia | Ejemplos | Count |
+|---------|----------|-------|
+| Polynomial | `x^2 - 1`, `x^3 + 8`, `x^4 - 5*x^2 + 4` | 25 |
+| Product | `(x+1)*(x-1)`, `(a+b)^3`, `x*(x+1)*(x+2)` | 15 |
+| Trig | `sin(x)^2 + cos(x)^2`, `sin(2*x)` | 8 |
+| Mixed | `(x+1)^2 - (x-1)^2`, `(x-1)*(x^2+x+1)` | 5 |
+
+### 3-Tier Verification
+
+Misma filosofía que los tests de combinaciones:
+
+1. **NF-convergent** (📐): `compare_expr(simplify(LHS), simplify(RHS)) == Equal`
+2. **Proved-symbolic** (🔢): `simplify(LHS - RHS) == 0`
+3. **Numeric-only** (🌡️): `eval_f64_checked` en puntos de muestreo
+
+### Comandos
+
+```bash
+# Ejecutar todos los chains
+cargo test --release -p cas_engine --test round_trip_tests \
+    -- --ignored --nocapture
+
+# Con detalle por expresión
+ROUNDTRIP_VERBOSE=1 cargo test --release -p cas_engine --test round_trip_tests \
+    -- --ignored --nocapture
+
+# Solo Chain 1 (expand→simplify)
+cargo test --release -p cas_engine --test round_trip_tests \
+    roundtrip_expand_simplify -- --ignored --nocapture
+
+# Solo Chain 2 (factor→expand)
+cargo test --release -p cas_engine --test round_trip_tests \
+    roundtrip_factor_expand -- --ignored --nocapture
+```
+
+### Variables de Entorno
+
+| Variable | Default | Descripción |
+|----------|---------|-------------|
+| `ROUNDTRIP_VERBOSE` | (desactivado) | Muestra LaTeX de cada paso de transformación |
+
+### Baseline (Feb 2026)
+
+| Chain | NF-conv | Proved | Numeric | Skipped | Failed |
+|-------|---------|--------|---------|---------|--------|
+| expand→simplify | 45 | 5 | 3 | 0 | 0 |
+| factor→expand | 28 | 8 | 2 | 7 | 0 |
+
+> [!NOTE]
+> **Skipped** en Chain 2 indica expresiones donde `factor()` no encontró factorización
+> (devolvió la misma expresión). Esto es normal para expresiones irreducibles o multivariant.
 
 ---
 
@@ -946,7 +1070,11 @@ Si algún refactor futuro añade `abs(u) → u` incorrecto, CI fallará.
 ```
 crates/cas_engine/tests/
 ├── identity_pairs.csv                   # Base de identidades (~400)
-├── metamorphic_simplification_tests.rs  # Implementación
+├── substitution_identities.csv          # Identidades para sustitución (~110)
+├── substitution_expressions.csv         # Sub-expresiones de sustitución (~34)
+├── metamorphic_simplification_tests.rs  # Implementación principal
+├── round_trip_tests.rs                  # Tests de ida y vuelta
 ├── baselines/metatest_baseline.jsonl    # Baseline de regresión
 └── metatest.log                         # Historial de ejecuciones
 ```
+
