@@ -47,16 +47,17 @@ fn is_binomial(ctx: &Context, e: ExprId) -> bool {
 ///   - The additive side contains variables (pure-constant sums always OK)
 ///   - The factor matches one of these expensive patterns:
 ///
-/// | Pattern | Example | Why expensive |
-/// |---------|---------|---------------|
-/// | Variable-free complex constant | `(√6+√2)/4` (≥5 nodes) | Nested radical × polynomial |
-/// | Fractional exponents | `(1-x^(1/3)+x^(2/3))/(1+x)` | Cube-root rationalization residual |
-/// | Multi-variable high-node fraction | `(-b+√(b²-4ac))/(2a)` | Quadratic formula × polynomial |
+/// | Case | Pattern | Example | Why expensive |
+/// |------|---------|---------|---------------|
+/// | 1 | Var-free complex constant | `(√6+√2)/4` (≥5 nodes) | Nested radical × polynomial |
+/// | 2 | Fractional exponents | `(1-x^(1/3)+x^(2/3))/(1+x)` | Cube-root rationalization residual |
+/// | 3 | Multi-variable fraction | `(-b+√(b²-4ac))/(2a)` | Quadratic formula × polynomial |
+/// | 4 | Non-Number × ≥4 terms | `√2 * (x⁴+4x³+6x²+4x+1)` | Distribute↔Factor oscillation |
 ///
 /// Harmless factors are always allowed through:
-///   - Simple numbers: `3`, `-1/2`
-///   - Simple surds: `√2`, `√3/2` (< 5 nodes)
-///   - Single variables: `x`
+///   - Simple numbers: `3`, `-1/2` (always distribute, even across many terms)
+///   - Simple surds vs short sums: `√2 * (a+b)` (< 4 terms OK)
+///   - Single variables: `x` (already blocked by should_distribute)
 fn is_expensive_factor(ctx: &Context, factor: ExprId, additive: ExprId) -> bool {
     // Pure-constant additive sums always distribute (e.g. x*(√3-2) → √3·x - 2·x)
     let additive_vars = cas_ast::collect_variables(ctx, additive);
@@ -82,6 +83,18 @@ fn is_expensive_factor(ctx: &Context, factor: ExprId, additive: ExprId) -> bool 
     // Case 3: Multi-variable fraction (≥3 vars, ≥10 nodes)
     // e.g. (-b+√(b²-4ac))/(2a) — distributing creates 5+ copies of this monster
     if factor_vars.len() >= 3 && factor_nodes >= 10 {
+        return true;
+    }
+
+    // Case 4: Non-Number factor × many-term polynomial (≥4 terms)
+    // Distributing surds, functions, or expressions across large polynomials
+    // creates a Distribute↔Factor oscillation: the distributed terms get
+    // immediately re-factored by ExtractCommonMultiplicativeFactorRule.
+    // Cost grows superlinearly with term count (3 terms: <1s, 5 terms: >7s).
+    // Numbers are exempt because scalar distribution (2*poly) creates useful
+    // merged coefficients and doesn't oscillate.
+    let additive_terms = count_additive_terms(ctx, additive);
+    if additive_terms >= 4 && !matches!(ctx.get(factor), Expr::Number(_)) {
         return true;
     }
 
