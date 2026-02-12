@@ -263,7 +263,290 @@ define_rule!(
     }
 );
 
-/// PERFORMANCE: Check if distributing `factor` across `additive` would be
+// ── Sqrt Perfect-Square Trinomial Rule ───────────────────────────────────
+//
+// sqrt(A² + 2·A·B + B²) → |A + B|
+//
+// Detects perfect-square trinomials inside sqrt and simplifies directly.
+// Works for any sub-expressions A, B (polynomial, transcendental, etc.)
+//
+// Example: sqrt(sin²(u) + 2·sin(u) + 1) → |sin(u) + 1|
+//
+// We support two forms:
+//   (a) A² + 2·A·c + c²  where c is a Number (most common from CSV)
+//   (b) Fully symbolic: both A² and B² are Pow(_, 2) nodes
+
+/// Try to match a 3-term additive expression as a perfect-square trinomial.
+/// Returns `Some((A, B))` such that the expression equals `(A + B)²` or `(A - B)²`.
+fn try_match_perfect_square_trinomial(
+    ctx: &mut Context,
+    arg: ExprId,
+) -> Option<(ExprId, ExprId, bool)> {
+    let mut terms = Vec::new();
+    flatten_additive_terms(ctx, arg, false, &mut terms);
+    if terms.len() != 3 {
+        return None;
+    }
+
+    // Identify which terms are "squared" — either Pow(x, 2) or Number(n) where n = k²
+    // We try all permutations of assigning A², 2AB, B² to the 3 terms.
+
+    for i in 0..3 {
+        for j in 0..3 {
+            if i == j {
+                continue;
+            }
+            let k = 3 - i - j; // the remaining index
+
+            let (term_a_sq, neg_a_sq) = &terms[i];
+            let (term_mid, neg_mid) = &terms[k];
+            let (term_b_sq, neg_b_sq) = &terms[j];
+
+            // A² must be positive
+            if *neg_a_sq {
+                continue;
+            }
+
+            // B² must be positive
+            if *neg_b_sq {
+                continue;
+            }
+
+            // Extract A from A² (Pow(A, 2))
+            let a_expr = if let Expr::Pow(base, exp) = ctx.get(*term_a_sq) {
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    if *n == num_rational::BigRational::from_integer(2.into()) {
+                        Some(*base)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            let Some(a) = a_expr else { continue };
+
+            // Extract B from B²:
+            //   - If Pow(B, 2): B is arbitrary
+            //   - If Number(n): B = sqrt(n) if n is a perfect square
+            let b: ExprId;
+            let b_val: Option<num_rational::BigRational>; // Some(k) if B = Number(k)
+
+            if let Expr::Pow(base, exp) = ctx.get(*term_b_sq) {
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    if *n == num_rational::BigRational::from_integer(2.into()) {
+                        b = *base;
+                        // Check if B is a number
+                        b_val = if let Expr::Number(bn) = ctx.get(b) {
+                            Some(bn.clone())
+                        } else {
+                            None
+                        };
+                    } else {
+                        continue;
+                    }
+                } else {
+                    continue;
+                }
+            } else if let Expr::Number(n) = ctx.get(*term_b_sq) {
+                // B² = n, so B = sqrt(n). Only works if n is a perfect integer square.
+                use num_traits::Zero;
+                if n.is_integer() && *n > num_rational::BigRational::zero() {
+                    let int_val = n.to_integer();
+                    let root = int_val.sqrt();
+                    if &root * &root == int_val {
+                        b = ctx.add(Expr::Number(num_rational::BigRational::from_integer(
+                            root.clone(),
+                        )));
+                        b_val = Some(num_rational::BigRational::from_integer(root));
+                    } else {
+                        continue;
+                    }
+                } else {
+                    continue;
+                }
+            } else {
+                continue;
+            }
+
+            // Check middle term = ±2·A·B
+            // neg_mid tells us if the term was subtracted
+            let mid_matches = check_middle_term_2ab(ctx, *term_mid, a, b, &b_val);
+            if !mid_matches {
+                continue;
+            }
+
+            // Determine if it's (A+B)² or (A-B)²
+            // For (A+B)²: middle term is +2AB (neg_mid = false)
+            // For (A-B)²: middle term is -2AB (neg_mid = true)
+            let is_sub = *neg_mid;
+
+            return Some((a, b, is_sub));
+        }
+    }
+    None
+}
+
+/// Check if `term` equals `2·A·B` (ignoring sign, which is handled by the caller).
+fn check_middle_term_2ab(
+    ctx: &mut Context,
+    term: ExprId,
+    a: ExprId,
+    b: ExprId,
+    b_val: &Option<num_rational::BigRational>,
+) -> bool {
+    use std::cmp::Ordering;
+    let two = num_rational::BigRational::from_integer(2.into());
+
+    // The middle term should be 2·A·B in some Mul arrangement.
+    // Possible shapes:
+    //   Mul(Number(2), Mul(A, B))
+    //   Mul(Mul(Number(2), A), B)
+    //   Mul(A, Mul(Number(2), B))
+    //   Mul(Number(2·b_val), A)  when B is a number
+    //   etc.
+
+    // Strategy: flatten the Mul chain and check we have exactly {2, A, B}
+    // or if B is numeric, {2·B_val, A}
+    let mut factors = Vec::new();
+    flatten_mul_factors(ctx, term, &mut factors);
+
+    // Case 1: B is a Number(k). Middle should be 2k·A or A·2k
+    if let Some(bv) = b_val {
+        let expected_coeff = &two * bv;
+        // Look for (2k) * A or A * (2k)
+        if factors.len() == 2 {
+            for perm in [(0, 1), (1, 0)] {
+                if let Expr::Number(n) = ctx.get(factors[perm.0]) {
+                    if *n == expected_coeff
+                        && compare_expr(ctx, factors[perm.1], a) == Ordering::Equal
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        // Also check 3-factor: {2, k, A}
+        if factors.len() == 3 {
+            let mut found_two = false;
+            let mut found_bv = false;
+            let mut found_a = false;
+            for &f in &factors {
+                if !found_two {
+                    if let Expr::Number(n) = ctx.get(f) {
+                        if *n == two {
+                            found_two = true;
+                            continue;
+                        }
+                    }
+                }
+                if !found_bv {
+                    if let Expr::Number(n) = ctx.get(f) {
+                        if n == bv {
+                            found_bv = true;
+                            continue;
+                        }
+                    }
+                }
+                if !found_a && compare_expr(ctx, f, a) == Ordering::Equal {
+                    found_a = true;
+                    continue;
+                }
+            }
+            if found_two && found_bv && found_a {
+                return true;
+            }
+        }
+    }
+
+    // Case 2: General. Factors should be {2, A, B}
+    if factors.len() == 2 {
+        // Could be Mul(2, Mul(A,B)) already flattened to [2, A, B] in 3-factor case
+        // Or Mul(A, B) where one of them absorbed the 2
+        // Check if one factor is Number(2) * A and other is B, etc.
+        // This is complex — try the 3-factor check only
+    }
+
+    if factors.len() == 3 {
+        let mut found_two = false;
+        let mut found_a = false;
+        let mut found_b = false;
+        for &f in &factors {
+            if !found_two {
+                if let Expr::Number(n) = ctx.get(f) {
+                    if *n == two {
+                        found_two = true;
+                        continue;
+                    }
+                }
+            }
+            if !found_a && compare_expr(ctx, f, a) == Ordering::Equal {
+                found_a = true;
+                continue;
+            }
+            if !found_b && compare_expr(ctx, f, b) == Ordering::Equal {
+                found_b = true;
+                continue;
+            }
+        }
+        if found_two && found_a && found_b {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Flatten a multiplication chain into leaf factors.
+fn flatten_mul_factors(ctx: &Context, expr: ExprId, factors: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Mul(l, r) => {
+            flatten_mul_factors(ctx, *l, factors);
+            flatten_mul_factors(ctx, *r, factors);
+        }
+        _ => factors.push(expr),
+    }
+}
+
+define_rule!(
+    SqrtPerfectSquareRule,
+    "Sqrt Perfect Square",
+    None,
+    PhaseMask::CORE,
+    |ctx, expr| {
+        // Match Pow(arg, 1/2) — sqrt is canonicalized to x^(1/2) early
+        let (arg, exp) = match ctx.get(expr) {
+            Expr::Pow(base, exp) => (*base, *exp),
+            _ => return None,
+        };
+        // Check exponent is exactly 1/2
+        let half = num_rational::BigRational::new(1.into(), 2.into());
+        match ctx.get(exp) {
+            Expr::Number(n) if *n == half => {}
+            _ => return None,
+        }
+
+        // Try to match arg as a perfect-square trinomial
+        let (a, b, is_sub) = try_match_perfect_square_trinomial(ctx, arg)?;
+
+        // Build |A ± B|
+        let inner = if is_sub {
+            ctx.add(Expr::Sub(a, b))
+        } else {
+            ctx.add(Expr::Add(a, b))
+        };
+        let result = ctx.call_builtin(cas_ast::BuiltinFn::Abs, vec![inner]);
+
+        Some(
+            Rewrite::new(result)
+                .desc("√(A² ± 2AB + B²) = |A ± B|")
+                .local(expr, result),
+        )
+    }
+);
+
 /// computationally expensive and should be skipped.
 ///
 /// Returns true (skip distribution) when ALL of:
@@ -1013,6 +1296,8 @@ define_rule!(
 pub fn register(simplifier: &mut crate::Simplifier) {
     // Register cube identity contraction BEFORE distribution to prevent suboptimal splits
     simplifier.add_rule(Box::new(SumDiffCubesContractionRule));
+    // Sqrt perfect-square trinomial: sqrt(A²+2AB+B²) → |A+B|
+    simplifier.add_rule(Box::new(SqrtPerfectSquareRule));
     simplifier.add_rule(Box::new(DistributeRule));
     simplifier.add_rule(Box::new(AnnihilationRule));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));

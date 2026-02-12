@@ -565,6 +565,29 @@ fn prove_nonnegative_depth(
             }
         }
 
+        // Add: a + b ≥ 0 if a ≥ 0 AND b ≥ 0
+        // This handles expressions like u² + exp(x) or sin²(x) + cos²(x)
+        Expr::Add(a, b) => {
+            let proof_a = prove_nonnegative_depth(ctx, *a, value_domain, depth - 1);
+            let proof_b = prove_nonnegative_depth(ctx, *b, value_domain, depth - 1);
+
+            match (proof_a, proof_b) {
+                (Proof::Proven, Proof::Proven) => Proof::Proven,
+                _ => Proof::Unknown,
+            }
+        }
+
+        // Div: a/b ≥ 0 if a ≥ 0 AND b > 0
+        Expr::Div(a, b) => {
+            let proof_a = prove_nonnegative_depth(ctx, *a, value_domain, depth - 1);
+            let proof_b = prove_positive_depth(ctx, *b, value_domain, depth - 1);
+
+            match (proof_a, proof_b) {
+                (Proof::Proven, Proof::Proven) => Proof::Proven,
+                _ => Proof::Unknown,
+            }
+        }
+
         // Neg: -x ≥ 0 iff x ≤ 0 - check if x is ≤ 0
         Expr::Neg(inner) => {
             // If inner is provably ≤ 0 (disproven as non-negative), then -inner ≥ 0
