@@ -22,6 +22,7 @@ use std::time::Duration;
 // =============================================================================
 
 /// Simplify an expression string and return (result_id, LaTeX, Simplifier).
+#[allow(dead_code)]
 fn simp_full(input: &str) -> Option<(ExprId, String, Simplifier)> {
     let mut s = Simplifier::with_default_rules();
     let e = parse(input, &mut s.context).ok()?;
@@ -219,6 +220,7 @@ enum EquivResult {
 
 /// Check equivalence of two expression strings using the 3-tier system.
 /// Uses a thread + timeout to prevent hangs.
+#[allow(dead_code)]
 fn check_equiv_3tier(lhs: &str, rhs: &str, vars: &[&str], timeout: Duration) -> EquivResult {
     let lhs_owned = lhs.to_string();
     let rhs_owned = rhs.to_string();

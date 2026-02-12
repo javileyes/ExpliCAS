@@ -474,6 +474,7 @@ edge cases. Ejemplo: `METATEST_SEED=42 cargo test ...`
 | `metatest_csv_combinations_div` | **Div** | 50 | ~50 | ~1,225 | `--ignored` |
 | `metatest_csv_combinations_full` | **Add** | 100 | ~100 | ~4,950+triples | `--ignored` |
 | `metatest_benchmark_all_ops` | **All** | — | — | ~34k | `--ignored` |
+| `metatest_unified_benchmark` | **All+Sub** | — | — | ~12k | `--ignored` |
 
 **Nota sobre Div:** Usa solo 50 pares porque las limitaciones del CAS con divisores polinómicos de
 alto grado causan fallos de simplificación de fracciones. Incluye un safety guard que salta identidades
@@ -545,6 +546,47 @@ Para Mul/Div, D > 0 indica identidades que el motor no puede cancelar en forma d
 
 Uso típico: comparar métricas antes/después de añadir una regla de simplificación.
 La columna D indica el número de casos que mejorarían si se mejorara la simplificación de cocientes.
+
+#### Benchmark Unificado Completo (`metatest_unified_benchmark`)
+
+Test que combina **combinaciones (Add/Sub/Mul/Div) + sustituciones** en una sola ejecución
+con tabla unificada. Usa pair counts reducidos para un runtime de ~7 minutos:
+
+| Suite | Configuración |
+|-------|---------------|
+| `+add` | 30 pares estratificados |
+| `−sub` | 30 pares estratificados |
+| `×mul` | 150 pares estratificados |
+| `÷div` | 50 pares estratificados |
+| `⇄sub` | 75 identidades × 20 sustituciones |
+
+```bash
+cargo test --release -p cas_engine --test metamorphic_simplification_tests \
+    metatest_unified_benchmark -- --ignored --nocapture
+```
+
+Output (seed 12648430, Feb 2026):
+
+```
+╔══════════════════════════════════════════════════════════════════════════════════════════════╗
+║              UNIFIED METAMORPHIC REGRESSION BENCHMARK (seed 12648430  )                    ║
+╠═══════╤════════╤══════════════╤══════════════╤══════════════╤══════════╤═══════════════════╣
+║ Suite │ Combos │ NF-convergent│ Proved-sym   │ Numeric-only │ Failed   │ Timeout/Skip      ║
+╠═══════╪════════╪══════════════╪══════════════╪══════════════╪══════════╪═══════════════════╣
+║ add   │    351 │   192  54.7% │   159  45.3% │     0   0.0% │      0   │      0            ║
+║ sub   │    351 │   207  59.0% │   144  41.0% │     0   0.0% │      0   │      0            ║
+║ mul   │   9045 │  6244  69.6% │  2438  27.2% │   289   3.2% │      0   │     74            ║
+║ div   │    793 │   452  57.2% │   320  40.5% │    18   2.3% │      0   │      3            ║
+║ ⇄sub  │   1500 │   981  65.4% │   293  19.5% │   226  15.1% │      0   │      0            ║
+╠═══════╪════════╪══════════════╪══════════════╪══════════════╪══════════╪═══════════════════╣
+║ TOTAL │  12040 │  8076  67.5% │  3354  28.0% │   533   4.5% │      0   │     77            ║
+╚═══════╧════════╧══════════════╧══════════════╧══════════════╧══════════╧═══════════════════╝
+```
+
+> [!TIP]
+> `metatest_unified_benchmark` es el test recomendado para validar cambios antes de merge.
+> Ejecuta ~12k combos en ~7 min y cubre las 5 dimensiones de testing metamórfico.
+> `metatest_benchmark_all_ops` sigue disponible para ejecuciones más exhaustivas (150 pares/op, ~34k combos).
 
 #### Modo Verbose
 
@@ -656,6 +698,23 @@ Resultados de referencia con muestreo estratificado, difference fallback, y Q/D 
 > no puede simplificar `A/B → 1` pero sí `A−B → 0`. Mejorar la simplificación
 > de cocientes (trig normalization, polynomial cancellation, ln expansion)
 > reduciría estos números.
+
+### Baseline Unificado (Feb 2026, Seed 12648430)
+
+Resultados del benchmark unificado (`metatest_unified_benchmark`) con pair counts reducidos:
+
+| Suite | Combos | NF-conv | NF% | Proved | Proved% | Numeric | Num% | Failed | Timeout |
+|-------|--------|---------|-----|--------|---------|---------|------|--------|---------|
+| +add | 351 | 192 | 54.7 | 159 | 45.3 | 0 | 0.0 | 0 | 0 |
+| −sub | 351 | 207 | 59.0 | 144 | 41.0 | 0 | 0.0 | 0 | 0 |
+| ×mul | 9045 | 6244 | 69.6 | 2438 | 27.2 | 289 | 3.2 | 0 | 74 |
+| ÷div | 793 | 452 | 57.2 | 320 | 40.5 | 18 | 2.3 | 0 | 3 |
+| ⇄sub | 1500 | 981 | 65.4 | 293 | 19.5 | 226 | 15.1 | 0 | 0 |
+| **TOTAL** | **12040** | **8076** | **67.5** | **3354** | **28.0** | **533** | **4.5** | **0** | **77** |
+
+> [!NOTE]
+> Runtime: ~7 min (release mode). La suite ⇄sub tiene el mayor % de numeric-only (15.1%),
+> lo que indica oportunidades de mejora en la simplificación de expresiones con sustituciones compuestas.
 
 ### Qué Significan
 
@@ -911,7 +970,7 @@ Verifica que las identidades se mantienen cuando la variable se reemplaza por su
 ```
 ┌──────────────────────────────┐     ┌──────────────────────────────┐
 │  substitution_identities.csv │     │ substitution_expressions.csv │
-│  (~110 pares: trig, log,    │     │  (~34 sustituciones: trig,   │
+│  (~75 pares: trig, log,     │     │  (~20 sustituciones: trig,   │
 │   algebra, radical, etc.)    │     │   poly, exp, rational, etc.) │
 └──────────────┬───────────────┘     └──────────────┬───────────────┘
                │                                    │
@@ -919,7 +978,7 @@ Verifica que las identidades se mantienen cuando la variable se reemplaza por su
                             ▼
                ┌────────────────────────┐
                │  Producto cartesiano   │
-               │  ~110 × ~34 ≈ 3740    │
+               │  75 × 20 = 1500       │
                │  combinaciones         │
                └────────────┬───────────┘
                             ▼

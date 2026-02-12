@@ -4776,7 +4776,7 @@ fn load_substitution_expressions() -> Vec<SubstitutionExpr> {
 }
 
 /// Run substitution-based metamorphic tests
-fn run_substitution_tests() {
+fn run_substitution_tests() -> ComboMetrics {
     let identities = load_substitution_identities();
     let substitutions = load_substitution_expressions();
     let config = metatest_config();
@@ -5128,11 +5128,163 @@ fn run_substitution_tests() {
         }
     }
 
-    assert_eq!(failed, 0, "{} substitution tests failed", failed);
+    // Count unique identity families used
+    let num_families = identities
+        .iter()
+        .map(|i| &i.family)
+        .collect::<std::collections::HashSet<_>>()
+        .len();
+
+    ComboMetrics {
+        op: "⇄sub".to_string(),
+        pairs: identities.len(),
+        families: num_families,
+        combos: total_combos,
+        nf_convergent,
+        proved_quotient: proved_symbolic,
+        proved_difference: 0,
+        numeric_only,
+        failed,
+        skipped,
+    }
 }
 
 #[test]
 #[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_simplification_tests metatest_csv_substitution -- --include-ignored
 fn metatest_csv_substitution() {
-    run_substitution_tests();
+    let m = run_substitution_tests();
+    assert_eq!(m.failed, 0, "{} substitution tests failed", m.failed);
+}
+
+// =============================================================================
+// UNIFIED REGRESSION BENCHMARK: all operations + substitution in one scorecard
+// =============================================================================
+
+/// Unified regression benchmark combining combination tests (add, sub, mul, div)
+/// and substitution tests into a single-run scorecard.
+///
+/// Run with:
+/// ```text
+/// cargo test --release -p cas_engine --test metamorphic_simplification_tests \
+///     metatest_unified_benchmark -- --ignored --nocapture
+/// ```
+///
+/// Key metrics per suite:
+/// - NF-convergent: simplify(LHS) ≡ simplify(RHS) structurally (ideal)
+/// - Proved-symbolic: simplify(LHS - RHS) = 0 (correct but different NFs)
+/// - Numeric-only: only passes numeric check (target for improvement)
+/// - Failed: semantic mismatches (regressions—must be 0)
+/// - Timeout: combos that exceeded time limit (potential performance issues)
+#[test]
+#[ignore]
+fn metatest_unified_benchmark() {
+    let seed = metatest_config().seed;
+
+    // Phase 1: Combination tests (add, sub, mul, div)
+    let combo_configs: Vec<(CombineOp, usize)> = vec![
+        (CombineOp::Add, 30),
+        (CombineOp::Sub, 30),
+        (CombineOp::Mul, 150),
+        (CombineOp::Div, 50),
+    ];
+
+    let mut all_metrics: Vec<ComboMetrics> = Vec::new();
+
+    for (op, pairs) in &combo_configs {
+        let metrics = run_csv_combination_tests(*pairs, false, *op);
+        all_metrics.push(metrics);
+    }
+
+    // Phase 2: Substitution tests
+    let sub_metrics = run_substitution_tests();
+    all_metrics.push(sub_metrics);
+
+    // Phase 3: Print unified table
+    eprintln!();
+    eprintln!("╔══════════════════════════════════════════════════════════════════════════════════════════════╗");
+    eprintln!("║              UNIFIED METAMORPHIC REGRESSION BENCHMARK (seed {:<10})                    ║", seed);
+    eprintln!("╠═══════╤════════╤══════════════╤══════════════╤══════════════╤══════════╤═══════════════════╣");
+    eprintln!("║ Suite │ Combos │ NF-convergent│ Proved-sym   │ Numeric-only │ Failed   │ Timeout/Skip      ║");
+    eprintln!("╠═══════╪════════╪══════════════╪══════════════╪══════════════╪══════════╪═══════════════════╣");
+
+    let mut total_combos = 0usize;
+    let mut total_nf = 0usize;
+    let mut total_proved = 0usize;
+    let mut total_numeric = 0usize;
+    let mut total_failed = 0usize;
+    let mut total_skipped = 0usize;
+
+    for m in &all_metrics {
+        let effective = m.combos.saturating_sub(m.skipped);
+        let proved = m.proved_symbolic();
+        let nf_pct = if effective > 0 {
+            m.nf_convergent as f64 / effective as f64 * 100.0
+        } else {
+            0.0
+        };
+        let prov_pct = if effective > 0 {
+            proved as f64 / effective as f64 * 100.0
+        } else {
+            0.0
+        };
+        let num_pct = if effective > 0 {
+            m.numeric_only as f64 / effective as f64 * 100.0
+        } else {
+            0.0
+        };
+
+        eprintln!(
+            "║ {:5} │ {:>6} │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>6}   │ {:>6}            ║",
+            m.op, m.combos,
+            m.nf_convergent, nf_pct,
+            proved, prov_pct,
+            m.numeric_only, num_pct,
+            m.failed,
+            m.skipped,
+        );
+
+        total_combos += m.combos;
+        total_nf += m.nf_convergent;
+        total_proved += proved;
+        total_numeric += m.numeric_only;
+        total_failed += m.failed;
+        total_skipped += m.skipped;
+    }
+
+    let total_effective = total_combos.saturating_sub(total_skipped);
+    let total_nf_pct = if total_effective > 0 {
+        total_nf as f64 / total_effective as f64 * 100.0
+    } else {
+        0.0
+    };
+    let total_prov_pct = if total_effective > 0 {
+        total_proved as f64 / total_effective as f64 * 100.0
+    } else {
+        0.0
+    };
+    let total_num_pct = if total_effective > 0 {
+        total_numeric as f64 / total_effective as f64 * 100.0
+    } else {
+        0.0
+    };
+
+    eprintln!("╠═══════╪════════╪══════════════╪══════════════╪══════════════╪══════════╪═══════════════════╣");
+    eprintln!(
+        "║ TOTAL │ {:>6} │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>5} {:>5.1}% │ {:>6}   │ {:>6}            ║",
+        total_combos,
+        total_nf, total_nf_pct,
+        total_proved, total_prov_pct,
+        total_numeric, total_num_pct,
+        total_failed,
+        total_skipped,
+    );
+    eprintln!("╚═══════╧════════╧══════════════╧══════════════╧══════════════╧══════════╧═══════════════════╝");
+
+    if total_failed > 0 {
+        eprintln!(
+            "⚠️  {} semantic failures detected — investigate before merging.",
+            total_failed
+        );
+    }
+    eprintln!();
 }
