@@ -40,28 +40,88 @@ fn is_binomial(ctx: &Context, e: ExprId) -> bool {
     matches!(ctx.get(e), Expr::Add(_, _) | Expr::Sub(_, _))
 }
 
-/// PERFORMANCE: Check if an expression is a "complex irrational constant" that
-/// should NOT be distributed across a polynomial.
+/// PERFORMANCE: Check if distributing `factor` across `additive` would be
+/// computationally expensive and should be skipped.
 ///
-/// Examples that return true:
-///   - (√6+√2)/4  (9 nodes, cos(π/12))
-///   - √(10+2√5)/4  (11 nodes, cos(π/10))
-///   - (-b+√(b²-4ac))/(2a)  (large, but has variables — handled by caller)
+/// Returns true (skip distribution) when ALL of:
+///   - The additive side contains variables (pure-constant sums always OK)
+///   - The factor matches one of these expensive patterns:
 ///
-/// Examples that return false (allowed to distribute):
-///   - 3 (1 node)
-///   - √2 (3 nodes)
-///   - √3/2 (4 nodes)
+/// | Pattern | Example | Why expensive |
+/// |---------|---------|---------------|
+/// | Variable-free complex constant | `(√6+√2)/4` (≥5 nodes) | Nested radical × polynomial |
+/// | Fractional exponents | `(1-x^(1/3)+x^(2/3))/(1+x)` | Cube-root rationalization residual |
+/// | Multi-variable high-node fraction | `(-b+√(b²-4ac))/(2a)` | Quadratic formula × polynomial |
 ///
-/// The threshold of 5 nodes ensures simple surds like √2, √3/2 still distribute
-/// (needed for like-term collection), while nested radicals are blocked.
-fn is_complex_irrational_constant(ctx: &Context, e: ExprId) -> bool {
-    // Must be variable-free (a pure constant/surd)
-    if !cas_ast::collect_variables(ctx, e).is_empty() {
+/// Harmless factors are always allowed through:
+///   - Simple numbers: `3`, `-1/2`
+///   - Simple surds: `√2`, `√3/2` (< 5 nodes)
+///   - Single variables: `x`
+fn is_expensive_factor(ctx: &Context, factor: ExprId, additive: ExprId) -> bool {
+    // Pure-constant additive sums always distribute (e.g. x*(√3-2) → √3·x - 2·x)
+    let additive_vars = cas_ast::collect_variables(ctx, additive);
+    if additive_vars.is_empty() {
         return false;
     }
-    // Must be "complex" — simple numbers and single-sqrt expressions are fine
-    cas_ast::count_nodes(ctx, e) >= 5
+
+    let factor_nodes = cas_ast::count_nodes(ctx, factor);
+    let factor_vars = cas_ast::collect_variables(ctx, factor);
+
+    // Case 1: Variable-free complex constant (≥5 nodes)
+    // e.g. (√6+√2)/4, √(10+2√5)/4
+    if factor_vars.is_empty() && factor_nodes >= 5 {
+        return true;
+    }
+
+    // Case 2: Expression with fractional exponents (≥5 nodes)
+    // e.g. (1-x^(1/3)+x^(2/3))/(1+x) from cube-root rationalization
+    if factor_nodes >= 5 && has_fractional_exponents(ctx, factor) {
+        return true;
+    }
+
+    // Case 3: Multi-variable fraction (≥3 vars, ≥10 nodes)
+    // e.g. (-b+√(b²-4ac))/(2a) — distributing creates 5+ copies of this monster
+    if factor_vars.len() >= 3 && factor_nodes >= 10 {
+        return true;
+    }
+
+    false
+}
+
+/// Check if an expression tree contains any fractional exponents.
+/// e.g. x^(1/3), x^(2/3), x^(1/2) — but NOT x^2 or x^(-1).
+fn has_fractional_exponents(ctx: &Context, root: ExprId) -> bool {
+    let mut stack = vec![root];
+    while let Some(id) = stack.pop() {
+        match ctx.get(id) {
+            Expr::Pow(base, exp) => {
+                // Check if exponent is a non-integer rational
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    if !n.is_integer() {
+                        return true;
+                    }
+                }
+                // Also check if exponent is Div(a,b) form (e.g. 1/3 as AST)
+                if matches!(ctx.get(*exp), Expr::Div(_, _)) {
+                    return true;
+                }
+                stack.push(*base);
+                stack.push(*exp);
+            }
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(e) => stack.push(*e),
+            Expr::Function(_, args) => {
+                for &a in args {
+                    stack.push(a);
+                }
+            }
+            _ => {} // Leaves: Number, Variable, Constant
+        }
+    }
+    false
 }
 
 // DistributeRule: Runs in CORE, TRANSFORM, RATIONALIZE but NOT in POST
@@ -107,12 +167,9 @@ define_rule!(
 
         // a * (b + c) -> a*b + a*c
         if let Some((b, c)) = crate::helpers::as_add(ctx, r) {
-            // PERFORMANCE: Don't distribute complex irrational constants like
-            // √(10+2√5)/4 across variable-containing sums. This prevents
-            // expensive radical × polynomial cascades (fixes benchmark timeouts).
-            if is_complex_irrational_constant(ctx, l)
-                && !cas_ast::collect_variables(ctx, r).is_empty()
-            {
+            // PERFORMANCE: Don't distribute expensive factors (complex irrationals,
+            // fractional exponents, multi-variable fractions) across polynomials.
+            if is_expensive_factor(ctx, l, r) {
                 return None;
             }
 
@@ -181,10 +238,8 @@ define_rule!(
 
         // a * (b - c) -> a*b - a*c
         if let Some((b, c)) = crate::helpers::as_sub(ctx, r) {
-            // PERFORMANCE: Same complex-irrational guard as Add branch
-            if is_complex_irrational_constant(ctx, l)
-                && !cas_ast::collect_variables(ctx, r).is_empty()
-            {
+            // PERFORMANCE: Same expensive-factor guard as Add branch
+            if is_expensive_factor(ctx, l, r) {
                 return None;
             }
 
@@ -243,10 +298,8 @@ define_rule!(
 
         // (b + c) * a -> b*a + c*a
         if let Some((b, c)) = crate::helpers::as_add(ctx, l) {
-            // PERFORMANCE: Same complex-irrational guard (mirror of a*(b+c))
-            if is_complex_irrational_constant(ctx, r)
-                && !cas_ast::collect_variables(ctx, l).is_empty()
-            {
+            // PERFORMANCE: Same expensive-factor guard (mirror of a*(b+c))
+            if is_expensive_factor(ctx, r, l) {
                 return None;
             }
 
@@ -308,10 +361,8 @@ define_rule!(
 
         // (b - c) * a -> b*a - c*a
         if let Some((b, c)) = crate::helpers::as_sub(ctx, l) {
-            // PERFORMANCE: Same complex-irrational guard (mirror of a*(b-c))
-            if is_complex_irrational_constant(ctx, r)
-                && !cas_ast::collect_variables(ctx, l).is_empty()
-            {
+            // PERFORMANCE: Same expensive-factor guard (mirror of a*(b-c))
+            if is_expensive_factor(ctx, r, l) {
                 return None;
             }
 
