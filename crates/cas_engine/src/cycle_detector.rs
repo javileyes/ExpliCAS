@@ -48,7 +48,7 @@ impl CycleDetector {
             len: 0,
             step: 0,
             phase,
-            max_period: 8,
+            max_period: 16,
         }
     }
 

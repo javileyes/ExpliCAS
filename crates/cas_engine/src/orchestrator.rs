@@ -6,7 +6,7 @@ use crate::rationalize_policy::AutoRationalizeLevel;
 use crate::rules::algebra::gcd_modp::eager_eval_poly_gcd_calls;
 use crate::{Simplifier, Step};
 use cas_ast::{BuiltinFn, ExprId};
-use std::collections::VecDeque;
+use std::collections::HashSet;
 
 pub struct Orchestrator {
     // Configuration for the pipeline
@@ -55,7 +55,7 @@ impl Orchestrator {
 
         let mut current = start;
         let mut all_steps = Vec::new();
-        let mut cycle_detector = CycleDetector::new(10);
+        let mut seen_hashes: HashSet<u64> = HashSet::new();
         let mut stats = PhaseStats::new(phase);
 
         tracing::debug!(
@@ -154,8 +154,26 @@ impl Orchestrator {
                 break;
             }
 
-            // Cycle detection
-            if cycle_detector.check(&simplifier.context, current).is_some() {
+            // Cycle detection: HashSet catches cycles of any period
+            let hash = CycleDetector::semantic_hash(&simplifier.context, current);
+            if !seen_hashes.insert(hash) {
+                // Emit cycle event for the registry
+                let expr_str = format!(
+                    "{}",
+                    cas_ast::DisplayExpr {
+                        context: &simplifier.context,
+                        id: current,
+                    }
+                );
+                crate::cycle_events::register_cycle_event(crate::cycle_events::CycleEvent {
+                    phase,
+                    period: 0, // unknown period at inter-iteration level
+                    level: crate::cycle_events::CycleLevel::InterIteration,
+                    rule_name: "(inter-iteration)".to_string(),
+                    expr_fingerprint: hash,
+                    expr_display: crate::cycle_events::truncate_display(&expr_str, 120),
+                    rewrite_step: iter,
+                });
                 stats.iters_used = iter + 1;
                 tracing::warn!(
                     target: "simplify",
@@ -209,6 +227,9 @@ impl Orchestrator {
 
         // Clear thread-local PolyStore before evaluation
         clear_thread_local_store();
+
+        // Clear cycle events from any previous pipeline run
+        crate::cycle_events::clear_cycle_events();
 
         // Extract collect_steps early so pre-passes can skip Step construction
         let collect_steps = self.options.collect_steps;
@@ -416,6 +437,9 @@ impl Orchestrator {
             pipeline_stats.assumptions = collector.finish();
         }
 
+        // Collect cycle events detected during this pipeline run
+        pipeline_stats.cycle_events = crate::cycle_events::take_cycle_events();
+
         // V2.15.8: Clear sticky domain when pipeline completes
         simplifier.clear_sticky_implicit_domain();
 
@@ -461,39 +485,11 @@ impl Orchestrator {
     }
 }
 
-/// Helper struct to detect cycles in simplification
-/// Tracks recent expressions to detect if we're looping
-struct CycleDetector {
-    history: VecDeque<u64>, // Store hashes instead of ExprIds
-    max_history: usize,
-}
+/// Helper struct for computing semantic hashes for cycle detection.
+/// The actual cycle tracking is done by a `HashSet<u64>` in `run_phase`.
+struct CycleDetector;
 
 impl CycleDetector {
-    fn new(max_history: usize) -> Self {
-        Self {
-            history: VecDeque::with_capacity(max_history),
-            max_history,
-        }
-    }
-
-    /// Check if expr has appeared before (based on semantic content)
-    /// Returns Some(cycle_length) if cycle detected
-    fn check(&mut self, ctx: &cas_ast::Context, expr: ExprId) -> Option<usize> {
-        // Compute semantic hash of expression
-        let hash = Self::semantic_hash(ctx, expr);
-
-        if let Some(pos) = self.history.iter().position(|&h| h == hash) {
-            return Some(self.history.len() - pos);
-        }
-
-        self.history.push_back(hash);
-        if self.history.len() > self.max_history {
-            self.history.pop_front();
-        }
-
-        None
-    }
-
     /// Compute a hash based on the semantic structure of the expression
     /// This allows us to detect when expressions are equivalent even with different ExprIds
     /// Uses iterative traversal with depth limit to prevent stack overflow.

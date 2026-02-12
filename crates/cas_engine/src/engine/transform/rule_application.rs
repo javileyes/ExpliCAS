@@ -241,6 +241,27 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         );
                         if let Some(detector) = self.cycle_detector.as_mut() {
                             if let Some(info) = detector.observe(h) {
+                                // Emit cycle event for the registry
+                                let expr_str = format!(
+                                    "{}",
+                                    cas_ast::DisplayExpr {
+                                        context: self.context,
+                                        id: expr_id,
+                                    }
+                                );
+                                crate::cycle_events::register_cycle_event(
+                                    crate::cycle_events::CycleEvent {
+                                        phase: self.current_phase,
+                                        period: info.period,
+                                        level: crate::cycle_events::CycleLevel::IntraNode,
+                                        rule_name: rule.name().to_string(),
+                                        expr_fingerprint: h,
+                                        expr_display: crate::cycle_events::truncate_display(
+                                            &expr_str, 120,
+                                        ),
+                                        rewrite_step: info.at_step,
+                                    },
+                                );
                                 // Add to blocklist to prevent re-entry
                                 let rule_name_static = rule.name();
                                 if self.blocked_rules.insert((h, rule_name_static.to_string())) {

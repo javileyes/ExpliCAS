@@ -147,6 +147,8 @@ pub struct PipelineStats {
     pub rationalize_level: Option<crate::rationalize_policy::AutoRationalizeLevel>,
     /// Collected assumptions (deduplicated, with counts)
     pub assumptions: Vec<crate::assumptions::AssumptionRecord>,
+    /// Collected cycle events detected during simplification
+    pub cycle_events: Vec<crate::cycle_events::CycleEvent>,
 }
 
 /// Iteration budgets for each phase of the pipeline.

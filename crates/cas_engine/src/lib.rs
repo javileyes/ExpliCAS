@@ -11,6 +11,7 @@ pub mod collect;
 pub(crate) mod const_eval;
 pub mod const_fold;
 pub(crate) mod cycle_detector;
+pub mod cycle_events;
 pub mod diagnostics;
 pub mod didactic;
 pub(crate) mod display_context;
@@ -101,6 +102,7 @@ pub use eval::*;
 pub use assumptions::{
     AssumptionCollector, AssumptionEvent, AssumptionKey, AssumptionRecord, AssumptionReporting,
 };
+pub use cycle_events::{CycleEvent, CycleLevel};
 pub use domain::{can_cancel_factor, BlockedHint, CancelDecision, DomainMode, Proof};
 pub use json::{
     eval_str_to_json, substitute_str_to_json, AssumptionDto, BlockedHintDto, BoundDto,

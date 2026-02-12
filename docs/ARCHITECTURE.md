@@ -3116,6 +3116,8 @@ pub struct PipelineStats {
     pub total_rewrites: usize,
     pub rationalize_outcome: Option<RationalizeOutcome>,
     pub rationalize_level: Option<AutoRationalizeLevel>,
+    pub assumptions: Vec<AssumptionRecord>,
+    pub cycle_events: Vec<CycleEvent>,  // V2.15.50: cycle detection diary
 }
 ```
 
@@ -3187,16 +3189,18 @@ profiler.top_applied_for_phase(Transform, 3)     // Top 3 rules in Transform
 
 **Zero overhead by default:** `count_all_nodes()` and fingerprinting only run if `health_enabled == true`.
 
-#### Cycle Detection (H2) ★★★ (2025-12, Updated 2026-01)
+#### Cycle Detection (H2) ★★★ (2025-12, Updated 2026-02)
 
-Detects "ping-pong" patterns where rules A↔B undo each other:
+Detects "ping-pong" patterns where rules A↔B undo each other. The system operates at **two levels**:
+
+##### Level 1: Intra-Node Detection (ring buffer in `cycle_detector.rs`)
 
 ```rust
 pub struct CycleDetector {
     buffer: [u64; 64],    // Ring buffer of expression fingerprints
     phase: SimplifyPhase,
     len: usize,
-    max_period: usize,    // Check periods 1-8
+    max_period: usize,    // Check periods 1-16 (V2.15.50: expanded from 8)
 }
 
 pub struct CycleInfo {
@@ -3211,7 +3215,54 @@ pub struct CycleInfo {
 **Detection logic:**
 - Period 1: `current == previous` (self-loop)
 - Period 2: `current == 2_back` and `previous == 3_back`
-- Period k: Pattern repeats for k positions
+- Period k: Pattern repeats for k positions (up to max_period=16)
+
+##### Level 2: Inter-Iteration Detection (HashSet in `orchestrator.rs`)
+
+**V2.15.50:** Replaced `VecDeque<u64>` (capped at 10 entries) with `HashSet<u64>` in `run_phase()`. This detects cycles of **any period** at the inter-iteration level.
+
+```rust
+// In Orchestrator::run_phase()
+let mut seen_hashes: HashSet<u64> = HashSet::new();
+
+// Each iteration:
+let hash = CycleDetector::semantic_hash(&simplifier.context, current);
+if !seen_hashes.insert(hash) {
+    // Hash already seen → cycle detected → break
+}
+```
+
+`CycleDetector::semantic_hash` computes a depth-limited (200) structural hash with commutative normalization for `Add` and `Mul`.
+
+##### Cycle Event Registry (`cycle_events.rs`, V2.15.50) ★★★
+
+Thread-local registry (same pattern as `BlockedHint` in `domain.rs`) that records every detected cycle:
+
+```rust
+pub struct CycleEvent {
+    pub phase: SimplifyPhase,
+    pub period: usize,           // 1=self-loop, 2=A↔B, 0=unknown
+    pub level: CycleLevel,       // IntraNode vs InterIteration
+    pub rule_name: String,       // Rule that triggered the cycle
+    pub expr_fingerprint: u64,
+    pub expr_display: String,    // Human-readable (truncated to 120 chars)
+    pub rewrite_step: usize,
+}
+
+pub enum CycleLevel {
+    IntraNode,       // Detected within apply_rules (ring buffer)
+    InterIteration,  // Detected between iterations in orchestrator
+}
+```
+
+**API:** `register_cycle_event()`, `take_cycle_events()`, `clear_cycle_events()`
+
+**Lifecycle:**
+1. `clear_cycle_events()` at pipeline start
+2. `register_cycle_event()` at each detection point (both levels)
+3. `take_cycle_events()` at pipeline end → stored in `PipelineStats.cycle_events`
+
+**Deduplication:** By `(fingerprint, rule_name, level)` — same cycle detected multiple times is recorded once.
 
 ##### Always-On Cycle Defense (V2.14.30) ★★★
 
@@ -3239,8 +3290,12 @@ if self.cycle_phase != Some(self.current_phase) {
 
 let h = expr_fingerprint(ctx, expr_id, &mut self.fp_memo);
 if let Some(info) = self.cycle_detector.as_mut().unwrap().observe(h) {
+    // V2.15.50: Emit CycleEvent for the registry
+    register_cycle_event(CycleEvent {
+        phase, period: info.period, level: IntraNode,
+        rule_name: rule.name().to_string(), ...
+    });
     if self.blocked_rules.insert((h, rule_name.to_string())) {
-        // Emit BlockedHint for user feedback
         register_blocked_hint(BlockedHint { ... });
     }
     self.last_cycle = Some(info);
@@ -3253,6 +3308,7 @@ if let Some(info) = self.cycle_detector.as_mut().unwrap().observe(h) {
 - Phase exits immediately (treat as fixed-point)
 - REPL shows: `⚠ Cycle detected: period=2 at rewrite=37 (stopped early)`
 - Top contributing rules shown as "Likely contributors"
+- **V2.15.50:** Event recorded in `PipelineStats.cycle_events` for later analysis
 
 #### Display System ★★★ (2025-12)
 

@@ -5,6 +5,42 @@ All notable changes to ExpliCAS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.15.50] - 2026-02-12 - Cycle Detection Hardened + Event Registry
+
+### Added
+
+- **Cycle Event Registry (`cycle_events.rs`)**:
+  - Thread-local `CycleEvent` registry (same pattern as `BlockedHint` in `domain.rs`)
+  - Captures: phase, period, detection level, rule name, fingerprint, and truncated expression display
+  - API: `register_cycle_event()`, `take_cycle_events()`, `clear_cycle_events()`
+  - Deduplication by `(fingerprint, rule_name, level)`
+  - 5 unit tests (register/take, dedup, dedup-different-level, clear, truncate)
+
+- **`PipelineStats.cycle_events`**: Cycle events are automatically collected during simplification
+  and exposed in pipeline statistics for analysis
+
+- **Public re-exports**: `CycleEvent`, `CycleLevel` available from `cas_engine::{CycleEvent, CycleLevel}`
+
+### Changed
+
+- **CycleDetector `max_period`: 8 → 16**: Doubles the intra-node ping-pong detection window
+  (ring buffer was already 64 entries, so this is safe)
+
+- **Inter-iteration cycle detection: `VecDeque` → `HashSet`** in `Orchestrator::run_phase()`:
+  Previously used a capped VecDeque of 10 recent hashes (could miss cycles of period >10).
+  Now uses a `HashSet<u64>` that remembers *all* hashes seen in the phase, detecting cycles
+  of any period
+
+### Technical
+
+- All 563 engine tests pass
+- `make ci` passes (fmt, clippy, test, build --release)
+- Detection events are wired at two levels:
+  - **Intra-node** (`rule_application.rs`): emits with specific rule name and period
+  - **Inter-iteration** (`orchestrator.rs`): emits with `"(inter-iteration)"` label
+
+---
+
 ## [2.15.48] - 2026-01-24 - Linear Systems Solver
 
 ### Added
