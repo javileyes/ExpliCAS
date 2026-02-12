@@ -87,7 +87,41 @@ impl crate::rule::Rule for ExponentialLogRule {
                 }
             }
 
-            // Case 2: b^(c * log(b, x)) → x^c
+            // Case 2: b^(-log(b, x)) → x^(-1) = 1/x
+            // Handles Neg(ln(x)) pattern that Mul(-1, ln(x)) might not match
+            if let Expr::Neg(neg_inner) = ctx.get(exp) {
+                let neg_inner = *neg_inner;
+                if let Some((log_base, log_arg)) = get_log_parts(ctx, neg_inner) {
+                    if compare_expr(ctx, log_base, base) == Ordering::Equal {
+                        let mode = parent_ctx.domain_mode();
+                        let vd = parent_ctx.value_domain();
+                        let arg_positive = crate::helpers::prove_positive(ctx, log_arg, vd);
+
+                        if mode == crate::domain::DomainMode::Strict
+                            && arg_positive != crate::domain::Proof::Proven
+                        {
+                            return None;
+                        }
+
+                        let neg_one = ctx.num(-1);
+                        let result = ctx.add(Expr::Pow(log_arg, neg_one));
+
+                        use crate::implicit_domain::ImplicitCondition;
+                        if arg_positive == crate::domain::Proof::Proven {
+                            return Some(
+                                crate::rule::Rewrite::new(result).desc("b^(-log(b, x)) = 1/x"),
+                            );
+                        }
+                        return Some(
+                            crate::rule::Rewrite::new(result)
+                                .desc("b^(-log(b, x)) = 1/x")
+                                .requires(ImplicitCondition::Positive(log_arg)),
+                        );
+                    }
+                }
+            }
+
+            // Case 3: b^(c * log(b, x)) → x^c
             // Same logic as Case 1: x > 0 is IMPLICIT from log(b, x) existing.
             if let Some((lhs, rhs)) = as_mul(ctx, exp) {
                 let vd = parent_ctx.value_domain();

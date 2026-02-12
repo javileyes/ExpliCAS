@@ -4942,7 +4942,7 @@ fn run_substitution_tests() {
                     "numeric" => {
                         numeric_only += 1;
                         passed += 1;
-                        if verbose && numeric_only_examples.len() < 50 {
+                        if verbose && numeric_only_examples.len() < 200 {
                             numeric_only_examples.push((
                                 lhs_str.clone(),
                                 rhs_str.clone(),
@@ -5008,7 +5008,7 @@ fn run_substitution_tests() {
         for family in &families {
             let examples = &family_groups[family];
             eprintln!("── {} ({} cases) ──", family, examples.len());
-            for (lhs, rhs, residual) in examples.iter().take(3) {
+            for (lhs, rhs, residual) in examples.iter().take(10) {
                 eprintln!("  LHS: {}", lhs);
                 eprintln!("  RHS: {}", rhs);
                 if !residual.is_empty() {

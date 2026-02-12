@@ -110,6 +110,15 @@ define_rule!(
                 if let Some(inner) = as_neg(ctx, arg) {
                     // Direct negation: Neg(u)
                     Some((inner, None))
+                } else if let Expr::Number(n) = ctx.get(arg) {
+                    // Negative numeric literal: Number(-k) → treat as Neg(Number(k))
+                    let zero = num_rational::BigRational::from_integer(0.into());
+                    if *n < zero {
+                        let pos = ctx.add(Expr::Number(-n.clone()));
+                        Some((pos, None))
+                    } else {
+                        None
+                    }
                 } else if let Some((a, b)) = as_mul(ctx, arg) {
                     // Multiplication by negative number
                     if let Expr::Number(n) = ctx.get(a) {
