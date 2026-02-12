@@ -134,6 +134,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         // - Relative growth > 1.5x (50% larger)
                         // Exception: expand_mode bypasses this check (user explicitly requested expansion)
                         if !parent_ctx.is_expand_mode()
+                            && !parent_ctx.in_auto_expand_context()
                             && crate::helpers::rewrite_worsens_too_much(
                                 self.context,
                                 expr_id,

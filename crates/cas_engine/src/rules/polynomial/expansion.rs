@@ -350,11 +350,19 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
             );
         }
 
-        // For trinomials and higher, use general multinomial expansion
-        // (more complex, skip for now - only binomials are auto-expanded)
-        // Users can use explicit expand() for higher-order polynomials
-
-        None
+        // For trinomials and higher, use the general expand() infrastructure.
+        // expand() handles Pow(Add(Add(a,b),c), n) via recursive binomial
+        // expansion, which is equivalent to multinomial expansion.
+        // All budget checks above already guarantee this is within limits.
+        let expanded = crate::expand::expand(ctx, expr);
+        if expanded != expr {
+            Some(
+                Rewrite::new(expanded)
+                    .desc_lazy(|| format!("Auto-expand ({}-term sum)^{}", num_terms, n_val)),
+            )
+        } else {
+            None
+        }
     }
 
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
