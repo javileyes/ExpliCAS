@@ -14,6 +14,105 @@ use super::{has_large_coefficient, is_multiple_angle};
 use super::trig_table::{eval_inv_trig_special, eval_trig_special, InvTrigFn, TrigFn};
 
 // =============================================================================
+// Helper: detect compound negatives like Add(Mul(-2,u), Number(-3))
+// =============================================================================
+
+/// Check if all top-level additive terms of `expr` are negative, and if so,
+/// return the fully negated expression.
+/// Returns `Some((negated_expr, None))` if the sum is entirely negative.
+///
+/// Examples:
+///   -2u - 3   (i.e. Add(Mul(-2,u), Number(-3)))  →  Some(2u + 3)
+///   -u - 1    (i.e. Add(Neg(u), Number(-1)))      →  Some(u + 1)
+///   -u + 3    →  None (mixed signs)
+fn try_extract_all_negative_sum(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<(ExprId, Option<num_rational::BigRational>)> {
+    // Collect all top-level additive terms (flattening Add chains only)
+    let mut terms: Vec<ExprId> = Vec::new();
+    collect_add_chain(ctx, expr, &mut terms);
+
+    // Need at least 2 terms for a compound negative (single terms handled elsewhere)
+    if terms.len() < 2 {
+        return None;
+    }
+
+    // Check each term is negative and build the negated version
+    let zero = num_rational::BigRational::from_integer(0.into());
+    let one = num_rational::BigRational::from_integer(1.into());
+    let mut negated_terms: Vec<ExprId> = Vec::new();
+
+    for &t in &terms {
+        if let Some(inner) = as_neg(ctx, t) {
+            // Neg(x) → x
+            negated_terms.push(inner);
+        } else if let Expr::Number(n) = ctx.get(t) {
+            if *n < zero {
+                // Number(-k) → Number(k)
+                let neg_n = -n.clone();
+                negated_terms.push(ctx.add(Expr::Number(neg_n)));
+            } else {
+                return None; // Non-negative number → mixed sign
+            }
+        } else if let Some((a, b)) = as_mul(ctx, t) {
+            if let Expr::Number(n) = ctx.get(a) {
+                if *n < zero {
+                    let neg_n = -n.clone();
+                    if neg_n == one {
+                        negated_terms.push(b);
+                    } else {
+                        let pos = ctx.add(Expr::Number(neg_n));
+                        negated_terms.push(ctx.add(Expr::Mul(pos, b)));
+                    }
+                } else {
+                    return None;
+                }
+            } else if let Expr::Number(n) = ctx.get(b) {
+                if *n < zero {
+                    let neg_n = -n.clone();
+                    if neg_n == one {
+                        negated_terms.push(a);
+                    } else {
+                        let pos = ctx.add(Expr::Number(neg_n));
+                        negated_terms.push(ctx.add(Expr::Mul(a, pos)));
+                    }
+                } else {
+                    return None;
+                }
+            } else {
+                return None; // Mul without negative coefficient → not negative
+            }
+        } else {
+            return None; // Unknown structure → bail
+        }
+    }
+
+    // Build the negated sum: term1 + term2 + ...
+    let mut result = negated_terms[0];
+    for &t in &negated_terms[1..] {
+        result = ctx.add(Expr::Add(result, t));
+    }
+
+    Some((result, None))
+}
+
+/// Collect top-level additive terms from an Add chain.
+/// Only flattens Add nodes; Sub, Neg, etc. are treated as leaf terms.
+fn collect_add_chain(ctx: &cas_ast::Context, expr: ExprId, terms: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Add(a, b) => {
+            let (a, b) = (*a, *b);
+            collect_add_chain(ctx, a, terms);
+            collect_add_chain(ctx, b, terms);
+        }
+        _ => {
+            terms.push(expr);
+        }
+    }
+}
+
+// =============================================================================
 // SinCosIntegerPiRule: Pre-order evaluation of sin(n·π) and cos(n·π)
 // =============================================================================
 // sin(n·π) = 0 for any integer n
@@ -137,7 +236,10 @@ define_rule!(
                         None
                     }
                 } else {
-                    None
+                    // Compound negative: all top-level summands have negative
+                    // leading coefficients, e.g. Add(Mul(-2,u), Number(-3))
+                    // → treat as Neg(Add(Mul(2,u), Number(3)))
+                    try_extract_all_negative_sum(ctx, arg)
                 };
 
             if let Some((base, opt_coeff)) = negated_info {

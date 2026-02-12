@@ -97,22 +97,33 @@ pub(super) fn try_difference_of_squares_in_num(
     use crate::rules::algebra::helpers::smart_mul;
 
     // STEP 1: Check if num is a² - b² form
-    // Try Sub(Pow(a,2), Pow(b,2)) first
+    // Try Sub(Pow(a,2), Pow(b,2)) first, also handle Pow(a,2) - Number(k²)
     let (a, b) = if let Some((left, right)) = crate::helpers::as_sub(ctx, num) {
-        // left - right, check if both are squares
+        // left - right, check if left is a square
         let (a, exp_a) = crate::helpers::as_pow(ctx, left)?;
         let exp_a_val = crate::helpers::as_i64(ctx, exp_a)?;
         if exp_a_val != 2 {
             return None;
         }
 
-        let (b, exp_b) = crate::helpers::as_pow(ctx, right)?;
-        let exp_b_val = crate::helpers::as_i64(ctx, exp_b)?;
-        if exp_b_val != 2 {
+        // right can be Pow(b, 2) or Number(k²)
+        if let Some((b, exp_b)) = crate::helpers::as_pow(ctx, right) {
+            let exp_b_val = crate::helpers::as_i64(ctx, exp_b)?;
+            if exp_b_val != 2 {
+                return None;
+            }
+            (a, b)
+        } else if let Expr::Number(n) = ctx.get(right) {
+            // Check if n is a perfect square
+            if let Some(sqrt_n) = try_integer_sqrt(n) {
+                let b = ctx.add(Expr::Number(sqrt_n));
+                (a, b)
+            } else {
+                return None;
+            }
+        } else {
             return None;
         }
-
-        (a, b)
     } else if let Some((left, right)) = crate::helpers::as_add(ctx, num) {
         // Try Add(Pow(a,2), Neg(Pow(b,2))) which is how parser represents a² - b²
         let (a, exp_a) = crate::helpers::as_pow(ctx, left)?;
@@ -121,15 +132,24 @@ pub(super) fn try_difference_of_squares_in_num(
             return None;
         }
 
-        // right must be Neg(Pow(b,2))
+        // right must be Neg(Pow(b,2)) or Neg(Number(k²))
         let neg_inner = crate::helpers::as_neg(ctx, right)?;
-        let (b, exp_b) = crate::helpers::as_pow(ctx, neg_inner)?;
-        let exp_b_val = crate::helpers::as_i64(ctx, exp_b)?;
-        if exp_b_val != 2 {
+        if let Some((b, exp_b)) = crate::helpers::as_pow(ctx, neg_inner) {
+            let exp_b_val = crate::helpers::as_i64(ctx, exp_b)?;
+            if exp_b_val != 2 {
+                return None;
+            }
+            (a, b)
+        } else if let Expr::Number(n) = ctx.get(neg_inner) {
+            if let Some(sqrt_n) = try_integer_sqrt(n) {
+                let b = ctx.add(Expr::Number(sqrt_n));
+                (a, b)
+            } else {
+                return None;
+            }
+        } else {
             return None;
         }
-
-        (a, b)
     } else {
         return None; // Not a subtraction
     };
@@ -466,4 +486,33 @@ pub(super) fn try_power_quotient_preserve_form(
             .local(num, result)
             .requires(ImplicitCondition::NonZero(den)),
     )
+}
+
+// =============================================================================
+// Helper: check if a rational number is a perfect square integer
+// =============================================================================
+
+/// If `n` is a positive integer that is a perfect square (1, 4, 9, 16, ...),
+/// return its integer square root as a BigRational.
+fn try_integer_sqrt(n: &num_rational::BigRational) -> Option<num_rational::BigRational> {
+    use num_bigint::BigInt;
+    use num_traits::Zero;
+
+    // Must be a positive integer
+    if !n.is_integer() {
+        return None;
+    }
+    let val = n.to_integer();
+    if val <= BigInt::zero() {
+        return None;
+    }
+
+    // Compute integer square root via Newton's method
+    let root = val.sqrt();
+    // Verify it's a perfect square
+    if &root * &root == val {
+        Some(num_rational::BigRational::from_integer(root))
+    } else {
+        None
+    }
 }
