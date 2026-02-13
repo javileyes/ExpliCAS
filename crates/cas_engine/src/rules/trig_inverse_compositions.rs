@@ -5,24 +5,33 @@
 //!   cos(arctan(t)) → 1 / √(1+t²)
 //!   tan(arctan(t)) → t
 //!
-//! **n=2 (Weierstrass):**
+//! **n=2 (Weierstrass / arctan):**
 //!   sin(2·arctan(t)) → 2t / (1+t²)
 //!   cos(2·arctan(t)) → (1−t²) / (1+t²)
 //!   tan(2·arctan(t)) → 2t / (1−t²)
 //!
-//! **n=3 (Triple angle):**
+//! **n=2 (Chebyshev / arcsin):**
+//!   sin(2·arcsin(t)) → 2t·√(1−t²)
+//!   cos(2·arcsin(t)) → 1 − 2t²
+//!
+//! **n=3 (Triple angle / arctan):**
 //!   sin(3·arctan(t)) → (3t − t³) / (1+t²)^(3/2)
 //!   cos(3·arctan(t)) → (1 − 3t²) / (1+t²)^(3/2)
 //!   tan(3·arctan(t)) → (3t − t³) / (1 − 3t²)
+//!
+//! **n=3 (Chebyshev / arcsin):**
+//!   sin(3·arcsin(t)) → 3t − 4t³
+//!   cos(3·arcsin(t)) → 4(1−t²)^(3/2) − 3√(1−t²)
 //!
 //! These bridge rules connect the trig and inverse-trig sub-worlds directly,
 //! reducing compositions to algebraic expressions without needing expand_mode.
 //! They bypass the `TrigInverseExpansionRule` (gated behind `Analytic`) so they
 //! fire even in `DomainMode::Generic`.
 //!
-//! **Domain safety**: Each identity introduces an explicit division, so
-//! the rules are classified as `NeedsCondition(Definability)` and emit
-//! `AssumptionEvent::nonzero(denominator)`.
+//! **Domain safety**: Arctan identities introduce explicit divisions, so
+//! those rules are classified as `NeedsCondition(Definability)` and emit
+//! `AssumptionEvent::nonzero(denominator)`. Arcsin identities are purely
+//! algebraic (no divisions) and are safe unconditionally.
 
 use cas_ast::{BuiltinFn, Expr};
 
@@ -35,6 +44,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(BasicInverseAtanRule));
     simplifier.add_rule(Box::new(WeierstrassInverseAtanRule));
     simplifier.add_rule(Box::new(TripleAngleInverseAtanRule));
+    simplifier.add_rule(Box::new(DoubleAngleInverseAsinRule));
+    simplifier.add_rule(Box::new(TripleAngleInverseAsinRule));
 }
 
 // =============================================================================
@@ -286,5 +297,161 @@ define_rule!(
                 .desc(desc)
                 .assume(crate::assumptions::AssumptionEvent::nonzero(ctx, den)),
         )
+    }
+);
+
+// =============================================================================
+// n=2: sin/cos(2·arcsin(t))  — Chebyshev reduction
+// =============================================================================
+//
+// From sin(2θ) = 2sinθcosθ and cos(2θ) = 1−2sin²θ, with θ=arcsin(t):
+//
+//   sin(2·arcsin(t)) = 2t·√(1−t²)
+//   cos(2·arcsin(t)) = 1 − 2t²
+//
+// These are purely algebraic: no denominators, so no Definability condition.
+
+define_rule!(
+    DoubleAngleInverseAsinRule,
+    "Double Angle Inverse Asin Composition",
+    Some(TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        // Match sin|cos(arg0) with a single argument
+        let (fn_id, arg0) = match ctx.get(expr) {
+            Expr::Function(fn_id, args) if args.len() == 1 => (*fn_id, args[0]),
+            _ => return None,
+        };
+
+        let trig = match ctx.builtin_of(fn_id) {
+            Some(b @ (BuiltinFn::Sin | BuiltinFn::Cos)) => b,
+            _ => return None,
+        };
+
+        // Match arg0 = 2 * inner  (double-angle form)
+        let inner = extract_double_angle_arg(ctx, arg0)?;
+
+        // Match inner = arcsin(t) or asin(t)
+        let t = match ctx.get(inner) {
+            Expr::Function(inv_id, inv_args) if inv_args.len() == 1 => {
+                match ctx.builtin_of(*inv_id) {
+                    Some(BuiltinFn::Asin | BuiltinFn::Arcsin) => inv_args[0],
+                    _ => return None,
+                }
+            }
+            _ => return None,
+        };
+
+        let (new_expr, desc) = match trig {
+            BuiltinFn::Sin => {
+                // sin(2·arcsin(t)) = 2t·√(1−t²)
+                let two = ctx.num(2);
+                let one = ctx.num(1);
+                let t_sq = ctx.add(Expr::Pow(t, two));
+                let one_minus_t_sq = ctx.add(Expr::Sub(one, t_sq));
+                let half = ctx.add(Expr::Number(num_rational::BigRational::new(
+                    1.into(),
+                    2.into(),
+                )));
+                let sqrt_part = ctx.add(Expr::Pow(one_minus_t_sq, half));
+                let two_t = ctx.add(Expr::Mul(two, t));
+                let result = ctx.add(Expr::Mul(two_t, sqrt_part));
+                (result, "sin(2·arcsin(t)) = 2t·√(1−t²)")
+            }
+            BuiltinFn::Cos => {
+                // cos(2·arcsin(t)) = 1 − 2t²
+                let two = ctx.num(2);
+                let one = ctx.num(1);
+                let t_sq = ctx.add(Expr::Pow(t, two));
+                let two_t_sq = ctx.add(Expr::Mul(two, t_sq));
+                let result = ctx.add(Expr::Sub(one, two_t_sq));
+                (result, "cos(2·arcsin(t)) = 1 − 2t²")
+            }
+            _ => return None,
+        };
+
+        Some(Rewrite::new(new_expr).desc(desc))
+    }
+);
+
+// =============================================================================
+// n=3: sin/cos(3·arcsin(t))  — Chebyshev reduction
+// =============================================================================
+//
+// From sin(3θ) = 3sinθ − 4sin³θ and cos(3θ) = 4cos³θ − 3cosθ,
+// with θ=arcsin(t), sinθ=t, cosθ=√(1−t²):
+//
+//   sin(3·arcsin(t)) = 3t − 4t³
+//   cos(3·arcsin(t)) = 4(1−t²)^(3/2) − 3√(1−t²)
+//
+// No denominators are introduced.
+
+define_rule!(
+    TripleAngleInverseAsinRule,
+    "Triple Angle Inverse Asin Composition",
+    Some(TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        // Match sin|cos(arg0) with a single argument
+        let (fn_id, arg0) = match ctx.get(expr) {
+            Expr::Function(fn_id, args) if args.len() == 1 => (*fn_id, args[0]),
+            _ => return None,
+        };
+
+        let trig = match ctx.builtin_of(fn_id) {
+            Some(b @ (BuiltinFn::Sin | BuiltinFn::Cos)) => b,
+            _ => return None,
+        };
+
+        // Match arg0 = 3 * inner  (triple-angle form)
+        let inner = extract_triple_angle_arg(ctx, arg0)?;
+
+        // Match inner = arcsin(t) or asin(t)
+        let t = match ctx.get(inner) {
+            Expr::Function(inv_id, inv_args) if inv_args.len() == 1 => {
+                match ctx.builtin_of(*inv_id) {
+                    Some(BuiltinFn::Asin | BuiltinFn::Arcsin) => inv_args[0],
+                    _ => return None,
+                }
+            }
+            _ => return None,
+        };
+
+        let (new_expr, desc) = match trig {
+            BuiltinFn::Sin => {
+                // sin(3·arcsin(t)) = 3t − 4t³
+                let three = ctx.num(3);
+                let four = ctx.num(4);
+                let three_t = ctx.add(Expr::Mul(three, t));
+                let t_cubed = ctx.add(Expr::Pow(t, three));
+                let four_t_cubed = ctx.add(Expr::Mul(four, t_cubed));
+                let result = ctx.add(Expr::Sub(three_t, four_t_cubed));
+                (result, "sin(3·arcsin(t)) = 3t − 4t³")
+            }
+            BuiltinFn::Cos => {
+                // cos(3·arcsin(t)) = 4(1−t²)^(3/2) − 3√(1−t²)
+                let one = ctx.num(1);
+                let two = ctx.num(2);
+                let three = ctx.num(3);
+                let four = ctx.num(4);
+                let t_sq = ctx.add(Expr::Pow(t, two));
+                let one_minus_t_sq = ctx.add(Expr::Sub(one, t_sq));
+                let half = ctx.add(Expr::Number(num_rational::BigRational::new(
+                    1.into(),
+                    2.into(),
+                )));
+                let three_half = ctx.add(Expr::Number(num_rational::BigRational::new(
+                    3.into(),
+                    2.into(),
+                )));
+                let sqrt_part = ctx.add(Expr::Pow(one_minus_t_sq, half));
+                let pow_3_2 = ctx.add(Expr::Pow(one_minus_t_sq, three_half));
+                let four_pow = ctx.add(Expr::Mul(four, pow_3_2));
+                let three_sqrt = ctx.add(Expr::Mul(three, sqrt_part));
+                let result = ctx.add(Expr::Sub(four_pow, three_sqrt));
+                (result, "cos(3·arcsin(t)) = 4(1−t²)^(3/2) − 3√(1−t²)")
+            }
+            _ => return None,
+        };
+
+        Some(Rewrite::new(new_expr).desc(desc))
     }
 );
