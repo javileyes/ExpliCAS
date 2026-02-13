@@ -66,6 +66,11 @@ impl PolynomialIdentityZeroRule {
                         }
                     }
                 }
+                // e^(k·u) is an opaque polynomial leaf (treated as atom after
+                // exponential substitution in try_opaque_zero)
+                if matches!(ctx.get(*base), Expr::Constant(cas_ast::Constant::E)) {
+                    return true;
+                }
                 false
             }
             _ => false, // Division, etc. are not polynomial
@@ -120,9 +125,177 @@ impl PolynomialIdentityZeroRule {
         unique
     }
 
+    // ── Exponential atom detection ─────────────────────────────────────
+
+    /// Collect all `e^(arg)` exponent arguments from an expression.
+    /// For `e^(3u) + e^u + 1`, collects `[3u, u]`.
+    fn collect_exp_exponents(ctx: &Context, expr: ExprId, out: &mut Vec<ExprId>, depth: usize) {
+        if depth > 30 {
+            return;
+        }
+        match ctx.get(expr) {
+            Expr::Pow(base, exp) => {
+                if matches!(ctx.get(*base), Expr::Constant(cas_ast::Constant::E)) {
+                    out.push(*exp);
+                } else {
+                    // Check base and integer exponent children
+                    Self::collect_exp_exponents(ctx, *base, out, depth + 1);
+                }
+            }
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+                Self::collect_exp_exponents(ctx, *l, out, depth + 1);
+                Self::collect_exp_exponents(ctx, *r, out, depth + 1);
+            }
+            Expr::Neg(inner) => {
+                Self::collect_exp_exponents(ctx, *inner, out, depth + 1);
+            }
+            _ => {}
+        }
+    }
+
+    /// Try to split `expr` into `(k, rest)` where `expr = k * rest` and k is
+    /// a positive integer. Returns `(1, expr)` if no integer factor found.
+    fn extract_integer_factor(ctx: &Context, expr: ExprId) -> (u32, ExprId) {
+        match ctx.get(expr) {
+            Expr::Mul(l, r) => {
+                if let Expr::Number(n) = ctx.get(*l) {
+                    if n.is_integer() && n.is_positive() {
+                        use num_traits::ToPrimitive;
+                        if let Some(k) = n.to_integer().to_u32() {
+                            if k <= 6 {
+                                return (k, *r);
+                            }
+                        }
+                    }
+                }
+                if let Expr::Number(n) = ctx.get(*r) {
+                    if n.is_integer() && n.is_positive() {
+                        use num_traits::ToPrimitive;
+                        if let Some(k) = n.to_integer().to_u32() {
+                            if k <= 6 {
+                                return (k, *l);
+                            }
+                        }
+                    }
+                }
+                (1, expr)
+            }
+            _ => (1, expr),
+        }
+    }
+
+    /// Given a list of exponent arguments (from `e^arg` atoms), find a common
+    /// base such that every exponent is `k * base` for some positive integer k.
+    /// Returns the base ExprId if found.
+    fn find_exp_base(ctx: &Context, exponents: &[ExprId]) -> Option<ExprId> {
+        if exponents.is_empty() {
+            return None;
+        }
+
+        // Extract (k, rest) for each exponent
+        let factored: Vec<(u32, ExprId)> = exponents
+            .iter()
+            .map(|&e| Self::extract_integer_factor(ctx, e))
+            .collect();
+
+        // All 'rest' parts must be structurally equal
+        let base = factored[0].1;
+        for &(_, rest) in &factored[1..] {
+            if crate::ordering::compare_expr(ctx, base, rest) != std::cmp::Ordering::Equal {
+                return None;
+            }
+        }
+        Some(base)
+    }
+
+    /// Substitute all `e^(k*base)` nodes with `var^k` in the expression tree.
+    fn substitute_exp_atoms(
+        ctx: &mut Context,
+        expr: ExprId,
+        exp_base: ExprId,
+        replacement_var: ExprId,
+        depth: usize,
+    ) -> ExprId {
+        if depth > 30 {
+            return expr;
+        }
+        match ctx.get(expr).clone() {
+            Expr::Pow(base, exp)
+                if matches!(ctx.get(base), Expr::Constant(cas_ast::Constant::E)) =>
+            {
+                let (k, rest) = Self::extract_integer_factor(ctx, exp);
+                if crate::ordering::compare_expr(ctx, rest, exp_base) == std::cmp::Ordering::Equal {
+                    if k == 1 {
+                        return replacement_var;
+                    }
+                    let exp_k = ctx.num(k as i64);
+                    return ctx.add(Expr::Pow(replacement_var, exp_k));
+                }
+                // Not matching our pattern, return as-is
+                expr
+            }
+            Expr::Add(l, r) => {
+                let new_l =
+                    Self::substitute_exp_atoms(ctx, l, exp_base, replacement_var, depth + 1);
+                let new_r =
+                    Self::substitute_exp_atoms(ctx, r, exp_base, replacement_var, depth + 1);
+                if new_l == l && new_r == r {
+                    expr
+                } else {
+                    ctx.add(Expr::Add(new_l, new_r))
+                }
+            }
+            Expr::Sub(l, r) => {
+                let new_l =
+                    Self::substitute_exp_atoms(ctx, l, exp_base, replacement_var, depth + 1);
+                let new_r =
+                    Self::substitute_exp_atoms(ctx, r, exp_base, replacement_var, depth + 1);
+                if new_l == l && new_r == r {
+                    expr
+                } else {
+                    ctx.add(Expr::Sub(new_l, new_r))
+                }
+            }
+            Expr::Mul(l, r) => {
+                let new_l =
+                    Self::substitute_exp_atoms(ctx, l, exp_base, replacement_var, depth + 1);
+                let new_r =
+                    Self::substitute_exp_atoms(ctx, r, exp_base, replacement_var, depth + 1);
+                if new_l == l && new_r == r {
+                    expr
+                } else {
+                    ctx.add(Expr::Mul(new_l, new_r))
+                }
+            }
+            Expr::Neg(inner) => {
+                let new_inner =
+                    Self::substitute_exp_atoms(ctx, inner, exp_base, replacement_var, depth + 1);
+                if new_inner == inner {
+                    expr
+                } else {
+                    ctx.add(Expr::Neg(new_inner))
+                }
+            }
+            Expr::Pow(base, exp) => {
+                // Non-exponential power: recurse into base (exp is integer)
+                let new_base =
+                    Self::substitute_exp_atoms(ctx, base, exp_base, replacement_var, depth + 1);
+                if new_base == base {
+                    expr
+                } else {
+                    ctx.add(Expr::Pow(new_base, exp))
+                }
+            }
+            _ => expr,
+        }
+    }
+
     /// Try to prove the expression is zero by substituting opaque function calls
     /// with temporary variables. Returns `Some(PolynomialProofData)` with the
     /// substitution mapping and LHS/RHS normal forms if the identity is confirmed.
+    ///
+    /// Also handles exponential polynomials: expressions of the form
+    /// `e^(k·u)` are treated as `t^k` where `t = e^u`.
     ///
     /// Display expressions are built in the main `ctx` using human-readable
     /// variable names (`t₀`, `t₁`, …) so the didactic renderer can show
@@ -131,21 +304,29 @@ impl PolynomialIdentityZeroRule {
         ctx: &mut Context,
         expr: ExprId,
     ) -> Option<crate::multipoly_display::PolynomialProofData> {
+        // ── Phase 1: collect opaque atoms ──────────────────────────────
         let mut calls = Vec::new();
         Self::collect_func_calls(ctx, expr, &mut calls, 0);
-        if calls.is_empty() || calls.len() > 6 {
+        let unique_calls = Self::dedup_func_calls(ctx, &calls);
+
+        // Also check for exponential atoms: e^(k·base)
+        let mut exp_exponents = Vec::new();
+        Self::collect_exp_exponents(ctx, expr, &mut exp_exponents, 0);
+        let exp_base = if !exp_exponents.is_empty() {
+            Self::find_exp_base(ctx, &exp_exponents)
+        } else {
+            None
+        };
+
+        let total_atoms = unique_calls.len() + if exp_base.is_some() { 1 } else { 0 };
+        if total_atoms == 0 || total_atoms > 4 {
             return None;
         }
 
-        let unique = Self::dedup_func_calls(ctx, &calls);
-        if unique.is_empty() || unique.len() > 3 {
-            return None;
-        }
-
-        // Display-friendly names for substituted variables
+        // ── Phase 2: build display name generator ──────────────────────
         const SUBSCRIPTS: [char; 10] = ['₀', '₁', '₂', '₃', '₄', '₅', '₆', '₇', '₈', '₉'];
         let display_name = |i: usize| -> String {
-            if unique.len() == 1 {
+            if total_atoms == 1 {
                 "t".to_string()
             } else if i < 10 {
                 format!("t{}", SUBSCRIPTS[i])
@@ -154,12 +335,27 @@ impl PolynomialIdentityZeroRule {
             }
         };
 
-        // Substitute each unique call with a temp variable and record mapping
+        // ── Phase 3: substitute in tmp context ─────────────────────────
         let mut tmp_ctx = ctx.clone();
         let mut sub_expr = expr;
         let mut substitutions: Vec<(String, ExprId)> = Vec::new();
-        for (i, &call_id) in unique.iter().enumerate() {
-            let temp_name = format!("__opq{}", i);
+        let mut atom_idx = 0;
+
+        // 3a: Substitute exponential atoms first (e^(k·base) → t^k)
+        if let Some(base) = exp_base {
+            let temp_name = format!("__opq{}", atom_idx);
+            let temp_var = tmp_ctx.var(&temp_name);
+            sub_expr = Self::substitute_exp_atoms(&mut tmp_ctx, sub_expr, base, temp_var, 0);
+            // Build the display e^base expression for the proof data
+            let e_const = ctx.add(Expr::Constant(cas_ast::Constant::E));
+            let exp_display = ctx.add(Expr::Pow(e_const, base));
+            substitutions.push((display_name(atom_idx), exp_display));
+            atom_idx += 1;
+        }
+
+        // 3b: Substitute function calls (sin(u) → t, etc.)
+        for &call_id in &unique_calls {
+            let temp_name = format!("__opq{}", atom_idx);
             let temp_var = tmp_ctx.var(&temp_name);
             let opts = crate::substitute::SubstituteOptions {
                 power_aware: true,
@@ -172,10 +368,11 @@ impl PolynomialIdentityZeroRule {
                 temp_var,
                 opts,
             );
-            substitutions.push((display_name(i), call_id));
+            substitutions.push((display_name(atom_idx), call_id));
+            atom_idx += 1;
         }
 
-        // Convert to multipoly and check if zero
+        // ── Phase 4: convert to multipoly and check if zero ────────────
         let budget = Self::poly_budget();
         let mut vars = Vec::new();
         let poly = Self::expr_to_multipoly(&tmp_ctx, sub_expr, &mut vars, &budget)?;
@@ -183,12 +380,20 @@ impl PolynomialIdentityZeroRule {
             return None;
         }
 
-        // Build a display version of the substituted expression in the MAIN
-        // context using the human-readable variable names (t, t₀, t₁, …).
-        // This gives valid ExprIds the didactic renderer can format.
+        // ── Phase 5: build display expression in main context ──────────
         let mut display_expr = expr;
-        for (i, &call_id) in unique.iter().enumerate() {
-            let disp_var = ctx.var(&display_name(i));
+        let mut disp_idx = 0;
+
+        // 5a: Substitute exponential atoms for display
+        if let Some(base) = exp_base {
+            let disp_var = ctx.var(&display_name(disp_idx));
+            display_expr = Self::substitute_exp_atoms(ctx, display_expr, base, disp_var, 0);
+            disp_idx += 1;
+        }
+
+        // 5b: Substitute function calls for display
+        for &call_id in &unique_calls {
+            let disp_var = ctx.var(&display_name(disp_idx));
             let opts = crate::substitute::SubstituteOptions {
                 power_aware: true,
                 ..Default::default()
@@ -200,6 +405,7 @@ impl PolynomialIdentityZeroRule {
                 disp_var,
                 opts,
             );
+            disp_idx += 1;
         }
 
         let display_vars: Vec<String> = vars
