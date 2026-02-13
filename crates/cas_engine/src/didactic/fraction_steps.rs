@@ -187,6 +187,8 @@ pub(crate) fn generate_fraction_sum_substeps(info: &FractionSumInfo) -> Vec<SubS
             description: format!("Find common denominator: {}", lcm),
             before_expr: original_sum.join(" + "),
             after_expr: converted.join(" + "),
+            before_latex: None,
+            after_latex: None,
         });
     }
 
@@ -199,6 +201,8 @@ pub(crate) fn generate_fraction_sum_substeps(info: &FractionSumInfo) -> Vec<SubS
             original_sum.join(" + ")
         },
         after_expr: super::format_fraction(&info.result),
+        before_latex: None,
+        after_latex: None,
     });
 
     sub_steps
@@ -269,6 +273,8 @@ pub(crate) fn generate_gcd_factorization_substeps(ctx: &Context, step: &Step) ->
                         .unwrap_or(&local_before_str)
                         .trim()
                         .to_string(),
+                    before_latex: None,
+                    after_latex: None,
                 });
             }
         }
@@ -296,6 +302,8 @@ pub(crate) fn generate_gcd_factorization_substeps(ctx: &Context, step: &Step) ->
             description: format!("Cancel common factor: {}", gcd_str),
             before_expr: before_formatted,
             after_expr: after_str,
+            before_latex: None,
+            after_latex: None,
         });
     }
 

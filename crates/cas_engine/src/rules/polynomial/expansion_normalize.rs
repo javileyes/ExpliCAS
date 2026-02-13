@@ -121,22 +121,43 @@ impl PolynomialIdentityZeroRule {
     }
 
     /// Try to prove the expression is zero by substituting opaque function calls
-    /// with temporary variables and then checking via multipoly.
-    fn try_opaque_zero(ctx: &Context, expr: ExprId) -> bool {
+    /// with temporary variables. Returns `Some(PolynomialProofData)` with the
+    /// substitution mapping and LHS/RHS normal forms if the identity is confirmed.
+    ///
+    /// Display expressions are built in the main `ctx` using human-readable
+    /// variable names (`t₀`, `t₁`, …) so the didactic renderer can show
+    /// the actual expanded polynomial forms.
+    fn try_opaque_zero(
+        ctx: &mut Context,
+        expr: ExprId,
+    ) -> Option<crate::multipoly_display::PolynomialProofData> {
         let mut calls = Vec::new();
         Self::collect_func_calls(ctx, expr, &mut calls, 0);
         if calls.is_empty() || calls.len() > 6 {
-            return false;
+            return None;
         }
 
         let unique = Self::dedup_func_calls(ctx, &calls);
         if unique.is_empty() || unique.len() > 3 {
-            return false;
+            return None;
         }
 
-        // Substitute each unique call with a temp variable
+        // Display-friendly names for substituted variables
+        const SUBSCRIPTS: [char; 10] = ['₀', '₁', '₂', '₃', '₄', '₅', '₆', '₇', '₈', '₉'];
+        let display_name = |i: usize| -> String {
+            if unique.len() == 1 {
+                "t".to_string()
+            } else if i < 10 {
+                format!("t{}", SUBSCRIPTS[i])
+            } else {
+                format!("t{}", i)
+            }
+        };
+
+        // Substitute each unique call with a temp variable and record mapping
         let mut tmp_ctx = ctx.clone();
         let mut sub_expr = expr;
+        let mut substitutions: Vec<(String, ExprId)> = Vec::new();
         for (i, &call_id) in unique.iter().enumerate() {
             let temp_name = format!("__opq{}", i);
             let temp_var = tmp_ctx.var(&temp_name);
@@ -151,15 +172,65 @@ impl PolynomialIdentityZeroRule {
                 temp_var,
                 opts,
             );
+            substitutions.push((display_name(i), call_id));
         }
 
-        // Now try multipoly on the substituted expression
+        // Convert to multipoly and check if zero
         let budget = Self::poly_budget();
         let mut vars = Vec::new();
-        if let Some(poly) = Self::expr_to_multipoly(&tmp_ctx, sub_expr, &mut vars, &budget) {
-            return poly.is_zero();
+        let poly = Self::expr_to_multipoly(&tmp_ctx, sub_expr, &mut vars, &budget)?;
+        if !poly.is_zero() {
+            return None;
         }
-        false
+
+        // Build a display version of the substituted expression in the MAIN
+        // context using the human-readable variable names (t, t₀, t₁, …).
+        // This gives valid ExprIds the didactic renderer can format.
+        let mut display_expr = expr;
+        for (i, &call_id) in unique.iter().enumerate() {
+            let disp_var = ctx.var(&display_name(i));
+            let opts = crate::substitute::SubstituteOptions {
+                power_aware: true,
+                ..Default::default()
+            };
+            display_expr = crate::substitute::substitute_power_aware(
+                ctx,
+                display_expr,
+                call_id,
+                disp_var,
+                opts,
+            );
+        }
+
+        let display_vars: Vec<String> = vars
+            .iter()
+            .map(|v| {
+                if let Some(idx_str) = v.strip_prefix("__opq") {
+                    if let Ok(idx) = idx_str.parse::<usize>() {
+                        return display_name(idx);
+                    }
+                }
+                v.clone()
+            })
+            .collect();
+
+        // Compute the expanded form (each product expanded, but not cancelled)
+        let expanded_form_expr =
+            crate::multipoly_display::expand_additive_terms(ctx, display_expr, &display_vars);
+
+        let mut proof = crate::multipoly_display::PolynomialProofData {
+            monomials: 0,
+            degree: 0,
+            vars: display_vars,
+            normal_form_expr: Some(display_expr),
+            expanded_form_expr,
+            lhs_stats: None,
+            rhs_stats: None,
+            opaque_substitutions: Vec::new(),
+        };
+
+        proof.opaque_substitutions = substitutions;
+        Some(proof)
     }
 }
 
@@ -219,11 +290,12 @@ impl crate::rule::Rule for PolynomialIdentityZeroRule {
             None => {
                 // Expression contains function calls that multipoly can't handle.
                 // Try substituting opaque calls with temp vars and check if zero.
-                if Self::try_opaque_zero(ctx, expr) {
+                if let Some(proof_data) = Self::try_opaque_zero(ctx, expr) {
                     let zero = ctx.num(0);
                     return Some(
                         Rewrite::new(zero)
-                            .desc("Polynomial identity (opaque substitution): cancel to 0"),
+                            .desc("Polynomial identity (opaque substitution): cancel to 0")
+                            .poly_proof(proof_data),
                     );
                 }
                 return None;
@@ -324,8 +396,10 @@ impl crate::rule::Rule for PolynomialIdentityZeroRule {
                     degree: 0,
                     vars: vars.clone(),
                     normal_form_expr: Some(zero),
+                    expanded_form_expr: None,
                     lhs_stats: None,
                     rhs_stats: None,
+                    opaque_substitutions: Vec::new(),
                 }
             };
 

@@ -50,6 +50,9 @@ pub struct PolynomialProofData {
     /// The normalized form as an expression (if small enough to display)
     /// None if the polynomial is too large (> MAX_MONOMIALS_FOR_DISPLAY)
     pub normal_form_expr: Option<ExprId>,
+    /// The fully expanded form as an expression (each product expanded,
+    /// but terms not yet cancelled). Shows e.g. `t² + 3t + 2 - t² - 3t - 2`.
+    pub expanded_form_expr: Option<ExprId>,
 
     /// LHS normal form (for Sub(lhs, rhs) patterns)
     /// This is the "left side" before cancellation
@@ -57,6 +60,11 @@ pub struct PolynomialProofData {
     /// RHS normal form (for Sub(lhs, rhs) patterns)
     /// This is the "right side" before cancellation
     pub rhs_stats: Option<PolyNormalFormStats>,
+
+    /// Opaque substitution mapping for didactic display.
+    /// Each entry is (temp_var_name, original_expr_id) — e.g., ("t₀", sin(u))
+    /// Empty for non-opaque polynomial identities.
+    pub opaque_substitutions: Vec<(String, ExprId)>,
 }
 
 /// Budget limits for display conversion
@@ -81,8 +89,10 @@ impl PolynomialProofData {
             degree,
             vars,
             normal_form_expr,
+            expanded_form_expr: None,
             lhs_stats: None,
             rhs_stats: None,
+            opaque_substitutions: Vec::new(),
         }
     }
 
@@ -101,8 +111,10 @@ impl PolynomialProofData {
             degree: 0,
             vars,
             normal_form_expr: Some(ctx.num(0)),
+            expanded_form_expr: None,
             lhs_stats: Some(lhs_stats),
             rhs_stats: Some(rhs_stats),
+            opaque_substitutions: Vec::new(),
         }
     }
 
@@ -282,6 +294,154 @@ fn bigrational_to_expr(ctx: &mut Context, r: &BigRational) -> ExprId {
     } else {
         // Fraction: construct Number directly with the rational
         ctx.add(Expr::Number(r.clone()))
+    }
+}
+
+/// Expand each top-level additive term independently through the multipoly system.
+///
+/// This produces the "expanded but not cancelled" form:
+/// `(t+1)(t+2) - t² - 3t - 2` → `t² + 3t + 2 - t² - 3t - 2`
+///
+/// Each term is expanded to its polynomial normal form, then converted back
+/// to an expression. The results are combined with addition (using the sign
+/// from the original expression).
+///
+/// Returns None if: too many terms, budget exceeded, or any term is not polynomial.
+pub fn expand_additive_terms(
+    ctx: &mut Context,
+    expr: ExprId,
+    display_vars: &[String],
+) -> Option<ExprId> {
+    use crate::multipoly::{multipoly_from_expr, PolyBudget};
+
+    // Phase 1 (immutable borrow): collect terms and convert to multipolys
+    let mut signed_terms: Vec<(bool, ExprId)> = Vec::new();
+    collect_signed_terms(ctx, expr, true, &mut signed_terms);
+
+    if signed_terms.is_empty() || signed_terms.len() > 20 {
+        return None;
+    }
+
+    let budget = PolyBudget {
+        max_terms: 200,
+        max_total_degree: 32,
+        max_pow_exp: 12,
+    };
+
+    // Convert each term to multipoly (needs &Context only)
+    let mut poly_results: Vec<(bool, Option<MultiPoly>, ExprId)> = Vec::new();
+    for (positive, term) in &signed_terms {
+        match multipoly_from_expr(ctx, *term, &budget) {
+            Ok(poly) => {
+                let display_poly = remap_poly_vars(&poly, display_vars);
+                poly_results.push((*positive, Some(display_poly), *term));
+            }
+            Err(_) => {
+                poly_results.push((*positive, None, *term));
+            }
+        }
+    }
+
+    // Phase 2 (mutable borrow): build expressions from multipolys
+    let mut expanded_exprs: Vec<(bool, ExprId)> = Vec::new();
+    for (positive, poly_opt, original_term) in poly_results {
+        if let Some(poly) = poly_opt {
+            if let Some(term_expr) = multipoly_to_expr_budgeted(ctx, &poly, MAX_NODES_BUILD) {
+                expanded_exprs.push((positive, term_expr));
+            } else {
+                return None;
+            }
+        } else {
+            expanded_exprs.push((positive, original_term));
+        }
+    }
+
+    if expanded_exprs.is_empty() {
+        return None;
+    }
+
+    // Combine expanded terms: result = ±t1 ± t2 ± ...
+    let (first_positive, first_expr) = expanded_exprs[0];
+    let mut result = if first_positive {
+        first_expr
+    } else {
+        ctx.add(Expr::Neg(first_expr))
+    };
+
+    for (positive, term_expr) in expanded_exprs.into_iter().skip(1) {
+        if positive {
+            result = ctx.add(Expr::Add(result, term_expr));
+        } else {
+            result = ctx.add(Expr::Sub(result, term_expr));
+        }
+    }
+
+    Some(result)
+}
+
+/// Remap poly variable names to display-friendly names.
+///
+/// Variable names like `__opq0`, `__opq1` are converted to display names
+/// like `t`, `t₀`, `t₁` based on position in the display_vars list.
+/// Other variable names are kept as-is.
+fn remap_poly_vars(poly: &MultiPoly, display_vars: &[String]) -> MultiPoly {
+    // If all vars already match display_vars, return as-is
+    if poly.vars == display_vars {
+        return poly.clone();
+    }
+
+    // Build new var list with display names
+    let new_vars: Vec<String> = poly
+        .vars
+        .iter()
+        .map(|v| {
+            // Check if this is an opaque var (__opqN) and remap to display name
+            if let Some(idx_str) = v.strip_prefix("__opq") {
+                if let Ok(idx) = idx_str.parse::<usize>() {
+                    if idx < display_vars.len() {
+                        return display_vars[idx].clone();
+                    }
+                }
+            }
+            // Check if this var exists in display_vars
+            if display_vars.contains(v) {
+                return v.clone();
+            }
+            v.clone()
+        })
+        .collect();
+
+    MultiPoly {
+        vars: new_vars,
+        terms: poly.terms.clone(),
+    }
+}
+
+/// Collect signed additive terms from an expression.
+/// `Add(a, b)` splits into `+a, +b`
+/// `Sub(a, b)` splits into `+a, -b`
+/// `Neg(a)` flips sign
+fn collect_signed_terms(
+    ctx: &Context,
+    expr: ExprId,
+    positive: bool,
+    terms: &mut Vec<(bool, ExprId)>,
+) {
+    match ctx.get(expr) {
+        Expr::Add(l, r) => {
+            collect_signed_terms(ctx, *l, positive, terms);
+            collect_signed_terms(ctx, *r, positive, terms);
+        }
+        Expr::Sub(l, r) => {
+            collect_signed_terms(ctx, *l, positive, terms);
+            collect_signed_terms(ctx, *r, !positive, terms);
+        }
+        Expr::Neg(e) => {
+            collect_signed_terms(ctx, *e, !positive, terms);
+        }
+        _ => {
+            terms.push((positive, expr));
+        }
     }
 }
 

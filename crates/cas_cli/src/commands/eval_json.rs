@@ -828,11 +828,21 @@ fn collect_steps(
 
             // Add didactic substeps (from enrich_steps)
             for ss in &enriched.sub_steps {
+                // Use explicit LaTeX if available, otherwise wrap plain text
+                // in \text{} to prevent MathJax from rendering words as math
+                let before_latex = ss
+                    .before_latex
+                    .clone()
+                    .unwrap_or_else(|| format!("\\text{{{}}}", ss.before_expr));
+                let after_latex = ss
+                    .after_latex
+                    .clone()
+                    .unwrap_or_else(|| format!("\\text{{{}}}", ss.after_expr));
                 substeps.push(SubStepJson {
                     title: ss.description.clone(),
                     lines: vec![],
-                    before_latex: Some(ss.before_expr.clone()),
-                    after_latex: Some(ss.after_expr.clone()),
+                    before_latex: Some(before_latex),
+                    after_latex: Some(after_latex),
                 });
             }
 

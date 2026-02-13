@@ -221,6 +221,8 @@ pub(crate) fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> V
                         .to_string(),
                     before_expr: den_str.clone(),
                     after_expr: intermediate_str.clone(),
+                    before_latex: None,
+                    after_latex: None,
                 });
 
                 // Sub-step 2: Invert the fraction (use intermediate_str from step 1)
@@ -228,6 +230,8 @@ pub(crate) fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> V
                     description: "Invertir la fracción: 1/(a/b) = b/a".to_string(),
                     before_expr: format!("\\frac{{1}}{{{}}}", intermediate_str),
                     after_expr: after_str,
+                    before_latex: None,
+                    after_latex: None,
                 });
             }
         }
@@ -247,6 +251,8 @@ pub(crate) fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> V
                         .to_string(),
                     before_expr: den_str,
                     after_expr: intermediate_str,
+                    before_latex: None,
+                    after_latex: None,
                 });
 
                 // Sub-step 2: Multiply numerator by D and simplify
@@ -254,6 +260,8 @@ pub(crate) fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> V
                     description: format!("Multiplicar {} por el denominador interno", num_str),
                     before_expr: before_str,
                     after_expr: after_str,
+                    before_latex: None,
+                    after_latex: None,
                 });
             }
         }
@@ -269,6 +277,8 @@ pub(crate) fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> V
                     description: "Combinar términos del numerador (denominador común)".to_string(),
                     before_expr: num_str,
                     after_expr: "(numerador combinado) / B".to_string(),
+                    before_latex: None,
+                    after_latex: None,
                 });
 
                 // Sub-step 2: Divide by C (multiply denominators)
@@ -276,6 +286,8 @@ pub(crate) fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> V
                     description: format!("Dividir por {}: multiplicar denominadores", den_str),
                     before_expr: before_str,
                     after_expr: after_str,
+                    before_latex: None,
+                    after_latex: None,
                 });
             }
         }
@@ -302,6 +314,8 @@ pub(crate) fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> V
                                 num_str, inner_num_str, inner_den_str
                             ),
                             after_expr: format!("\\text{{Multiplicar por }} {}", inner_den_str),
+                            before_latex: None,
+                            after_latex: None,
                         });
 
                         // Sub-step 2: Show the actual rule applied
@@ -309,6 +323,8 @@ pub(crate) fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> V
                             description: "Simplificar: 1/(a/b) = b/a".to_string(),
                             before_expr: before_str.clone(),
                             after_expr: after_str,
+                            before_latex: None,
+                            after_latex: None,
                         });
                     } else {
                         // Fallback: single step with real expressions
@@ -318,6 +334,8 @@ pub(crate) fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> V
                                     .to_string(),
                             before_expr: before_str.clone(),
                             after_expr: after_str,
+                            before_latex: None,
+                            after_latex: None,
                         });
                     }
                 } else {
@@ -326,6 +344,8 @@ pub(crate) fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> V
                         description: "Simplificar fracción anidada".to_string(),
                         before_expr: before_str.clone(),
                         after_expr: after_str,
+                        before_latex: None,
+                        after_latex: None,
                     });
                 }
             } else {
@@ -334,6 +354,8 @@ pub(crate) fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> V
                     description: "Simplificar expresión".to_string(),
                     before_expr: before_str.clone(),
                     after_expr: after_str,
+                    before_latex: None,
+                    after_latex: None,
                 });
             }
         }
@@ -415,6 +437,8 @@ pub(crate) fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> V
                     } else {
                         format!("\\frac{{{}}}{{{} + {}}}", num_latex, group_str, last_term)
                     },
+                    before_latex: None,
+                    after_latex: None,
                 });
 
                 // Sub-step 2: Identify conjugate with specific terms
@@ -432,6 +456,8 @@ pub(crate) fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> V
                         format!("{} + {}", group_str, last_term)
                     },
                     after_expr: conjugate.clone(),
+                    before_latex: None,
+                    after_latex: None,
                 });
 
                 // Sub-step 3: Apply difference of squares with specific terms
@@ -445,6 +471,8 @@ pub(crate) fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> V
                             format!("{}^2 - {}^2", group_str, last_term)
                         },
                         after_expr: after_den_latex,
+                        before_latex: None,
+                        after_latex: None,
                     });
                 }
             }
@@ -460,6 +488,8 @@ pub(crate) fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> V
                 description: "Denominador con producto de radical".to_string(),
                 before_expr: format!("\\frac{{{}}}{{{}}}", num_latex, den_latex),
                 after_expr: "\\frac{a}{k \\cdot \\sqrt{n}}".to_string(),
+                before_latex: None,
+                after_latex: None,
             });
 
             // Sub-step 2: Multiply by √n/√n
@@ -473,6 +503,8 @@ pub(crate) fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> V
                         num_latex, den_latex
                     ),
                     after_expr: format!("\\frac{{{}}}{{{}}}", after_num_latex, after_den_latex),
+                    before_latex: None,
+                    after_latex: None,
                 });
             }
         }
@@ -531,6 +563,8 @@ pub(crate) fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> V
                 description: "Denominador binomial con radical".to_string(),
                 before_expr: format!("\\frac{{{}}}{{{}}}", num_latex, den_latex),
                 after_expr: format!("\\text{{Conjugado: }} {}", conjugate),
+                before_latex: None,
+                after_latex: None,
             });
 
             // Sub-step 2: Apply difference of squares
@@ -545,6 +579,8 @@ pub(crate) fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> V
                         num_latex, conjugate, den_latex, conjugate
                     ),
                     after_expr: format!("\\frac{{{}}}{{{}}}", after_num_latex, after_den_latex),
+                    before_latex: None,
+                    after_latex: None,
                 });
             }
         }
@@ -594,6 +630,114 @@ pub(crate) fn generate_polynomial_identity_substeps(
         }
     };
 
+    // If we have opaque substitutions, show them first
+    if !proof.opaque_substitutions.is_empty() {
+        // Build substitution description: "Sea t = sin(u)" or "Sea t₀ = sin(u), t₁ = cos(u)"
+        let subs_desc_plain: Vec<String> = proof
+            .opaque_substitutions
+            .iter()
+            .map(|(name, expr_id)| {
+                let func_str = format!(
+                    "{}",
+                    DisplayExpr {
+                        context: ctx,
+                        id: *expr_id
+                    }
+                );
+                format!("{} = {}", name, func_str)
+            })
+            .collect();
+
+        // Build LaTeX version: "\\text{Sea } t = \\sin(u)"
+        let subs_desc_latex: Vec<String> = proof
+            .opaque_substitutions
+            .iter()
+            .map(|(name, expr_id)| {
+                let func_latex = cas_ast::LaTeXExpr {
+                    context: ctx,
+                    id: *expr_id,
+                }
+                .to_latex();
+                format!("{} = {}", name, func_latex)
+            })
+            .collect();
+
+        let before_latex = cas_ast::LaTeXExpr {
+            context: ctx,
+            id: step.before,
+        }
+        .to_latex();
+
+        sub_steps.push(SubStep {
+            description: "Sustitución para simplificar".to_string(),
+            before_expr: format!(
+                "{}",
+                DisplayExpr {
+                    context: ctx,
+                    id: step.before
+                }
+            ),
+            after_expr: format!("Sea {}", subs_desc_plain.join(", ")),
+            before_latex: Some(before_latex),
+            after_latex: Some(format!("\\text{{Sea }} {}", subs_desc_latex.join(", \\; "))),
+        });
+
+        // Show the substituted expression and its expansion
+        if let Some(display_id) = proof.normal_form_expr {
+            let display_latex = cas_ast::LaTeXExpr {
+                context: ctx,
+                id: display_id,
+            }
+            .to_latex();
+
+            // If we have an expanded form, show it as the "after"
+            let (after_plain, after_latex) = if let Some(expanded_id) = proof.expanded_form_expr {
+                let expanded_plain = format!(
+                    "{}",
+                    DisplayExpr {
+                        context: ctx,
+                        id: expanded_id
+                    }
+                );
+                let expanded_latex = cas_ast::LaTeXExpr {
+                    context: ctx,
+                    id: expanded_id,
+                }
+                .to_latex();
+                (expanded_plain, expanded_latex)
+            } else {
+                (
+                    "Polinomio en la(s) variable(s) sustituida(s)".to_string(),
+                    "\\text{Polinomio en la(s) variable(s) sustituida(s)}".to_string(),
+                )
+            };
+
+            sub_steps.push(SubStep {
+                description: "Expresión sustituida".to_string(),
+                before_expr: format!(
+                    "{}",
+                    DisplayExpr {
+                        context: ctx,
+                        id: display_id
+                    }
+                ),
+                after_expr: after_plain,
+                before_latex: Some(display_latex),
+                after_latex: Some(after_latex),
+            });
+        }
+
+        sub_steps.push(SubStep {
+            description: "Todos los términos se cancelan".to_string(),
+            before_expr: "Expandir y agrupar".to_string(),
+            after_expr: "= 0".to_string(),
+            before_latex: Some("\\text{Expandir y agrupar}".to_string()),
+            after_latex: Some("= 0".to_string()),
+        });
+
+        return sub_steps;
+    }
+
     // Check if we have LHS/RHS split (better for identities)
     if let (Some(lhs_stats), Some(rhs_stats)) = (&proof.lhs_stats, &proof.rhs_stats) {
         // Sub-step 1: Show LHS normal form
@@ -601,6 +745,8 @@ pub(crate) fn generate_polynomial_identity_substeps(
             description: "Expandir lado izquierdo".to_string(),
             before_expr: "(a + b + c)³".to_string(), // Placeholder, will be overwritten
             after_expr: format_poly_stats(lhs_stats),
+            before_latex: None,
+            after_latex: None,
         });
 
         // Sub-step 2: Show RHS normal form
@@ -608,6 +754,8 @@ pub(crate) fn generate_polynomial_identity_substeps(
             description: "Expandir lado derecho".to_string(),
             before_expr: "a³ + b³ + c³ + ...".to_string(), // Placeholder
             after_expr: format_poly_stats(rhs_stats),
+            before_latex: None,
+            after_latex: None,
         });
 
         // Sub-step 3: Compare and show they match
@@ -618,28 +766,48 @@ pub(crate) fn generate_polynomial_identity_substeps(
                 lhs_stats.monomials, rhs_stats.monomials
             ),
             after_expr: "Coinciden ⇒ diferencia = 0".to_string(),
+            before_latex: Some(format!(
+                "\\text{{LHS: {} monomios}} \\;|\\; \\text{{RHS: {} monomios}}",
+                lhs_stats.monomials, rhs_stats.monomials
+            )),
+            after_latex: Some("\\text{Coinciden} \\Rightarrow \\text{diferencia} = 0".to_string()),
         });
     } else {
         // Fallback: single normal form display
-        let normal_form_description = if let Some(expr_id) = proof.normal_form_expr {
-            format!(
+        let (normal_form_plain, normal_form_latex) = if let Some(expr_id) = proof.normal_form_expr {
+            let plain = format!(
                 "{}",
                 DisplayExpr {
                     context: ctx,
                     id: expr_id
                 }
-            )
+            );
+            let latex = cas_ast::LaTeXExpr {
+                context: ctx,
+                id: expr_id,
+            }
+            .to_latex();
+            (plain, Some(latex))
         } else {
             let vars_str = if proof.vars.is_empty() {
                 "constante".to_string()
             } else {
                 proof.vars.join(", ")
             };
-            format!(
-                "{} monomios, grado {}, vars: {}",
-                proof.monomials, proof.degree, vars_str
+            (
+                format!(
+                    "{} monomios, grado {}, vars: {}",
+                    proof.monomials, proof.degree, vars_str
+                ),
+                None,
             )
         };
+
+        let before_latex = cas_ast::LaTeXExpr {
+            context: ctx,
+            id: step.before,
+        }
+        .to_latex();
 
         sub_steps.push(SubStep {
             description: "Convertir a forma normal polinómica".to_string(),
@@ -650,13 +818,17 @@ pub(crate) fn generate_polynomial_identity_substeps(
                     id: step.before
                 }
             ),
-            after_expr: normal_form_description,
+            after_expr: normal_form_plain,
+            before_latex: Some(before_latex),
+            after_latex: normal_form_latex,
         });
 
         sub_steps.push(SubStep {
             description: "Cancelar términos semejantes".to_string(),
             before_expr: "todos los coeficientes".to_string(),
             after_expr: "0".to_string(),
+            before_latex: Some("\\text{todos los coeficientes}".to_string()),
+            after_latex: Some("0".to_string()),
         });
     }
 
@@ -746,6 +918,8 @@ pub(crate) fn generate_sum_three_cubes_substeps(
         description: "Definimos las bases de los cubos".to_string(),
         before_expr: format!("x = {}, \\quad y = {}, \\quad z = {}", x_str, y_str, z_str),
         after_expr: "x^3 + y^3 + z^3".to_string(),
+        before_latex: None,
+        after_latex: None,
     });
 
     // Sub-step 2: Show that x + y + z = 0
@@ -753,6 +927,8 @@ pub(crate) fn generate_sum_three_cubes_substeps(
         description: "Verificamos que x + y + z = 0".to_string(),
         before_expr: format!("({}) + ({}) + ({})", x_str, y_str, z_str),
         after_expr: "0 \\quad \\checkmark".to_string(),
+        before_latex: None,
+        after_latex: None,
     });
 
     // Sub-step 3: Apply the identity
@@ -760,6 +936,8 @@ pub(crate) fn generate_sum_three_cubes_substeps(
         description: "Aplicamos la identidad: si x+y+z=0, entonces x³+y³+z³=3xyz".to_string(),
         before_expr: format!("{}^3 + {}^3 + {}^3", x_str, y_str, z_str),
         after_expr: format!("3 \\cdot ({}) \\cdot ({}) \\cdot ({})", x_str, y_str, z_str),
+        before_latex: None,
+        after_latex: None,
     });
 
     sub_steps
@@ -912,6 +1090,8 @@ pub(crate) fn generate_root_denesting_substeps(
         description: "Reconocer patrón √(a + c·√d)".to_string(),
         before_expr: to_latex(before_expr),
         after_expr: format!("a = {}, c = {}, d = {}", a_val, c_val.abs(), d_val),
+        before_latex: None,
+        after_latex: None,
     });
 
     // Sub-step 2: Calculate discriminant - LaTeX for timeline
@@ -919,6 +1099,8 @@ pub(crate) fn generate_root_denesting_substeps(
         description: "Calcular Δ = a² − c²·d".to_string(),
         before_expr: format!("{}^2 - {}^2 \\cdot {}", a_val, c_val.abs(), d_val),
         after_expr: format!("{} - {} = {}", a2, c2d, delta_int),
+        before_latex: None,
+        after_latex: None,
     });
 
     // Sub-step 3: Verify perfect square and apply formula
@@ -934,6 +1116,8 @@ pub(crate) fn generate_root_denesting_substeps(
             "\\sqrt{{\\frac{{{}+{}}}{{2}}}} {} \\sqrt{{\\frac{{{}-{}}}{{2}}}} = \\sqrt{{{}}} {} \\sqrt{{{}}}",
             a_val, z, op_sign, a_val, z, az_half, op_sign, amz_half
         ),
+        before_latex: None,
+        after_latex: None,
     });
 
     sub_steps
