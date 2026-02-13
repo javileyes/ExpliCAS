@@ -221,19 +221,17 @@ mod anti_worsen_guard {
     use super::*;
 
     #[test]
-    fn log_even_power_no_abs_in_generic() {
-        // log(2, x^4) should NOT become 4*log(2,|x|) in Generic
-        // because that introduces abs() without resolution
+    fn log_even_power_simplifies_with_abs_in_generic() {
+        // log(2, x^4) → 4*log(2,|x|) in Generic via LogPerfectSquareRule
+        // abs() is mathematically necessary since x could be negative
         let r = simplify("log(2, x^4)");
 
-        // Should remain unchanged OR simplify without introducing abs
-        // It's OK if result contains "log" but NOT abs
-        if r.contains("|x|") || r.contains("abs") {
-            panic!(
-                "Generic: log(2, x^4) should NOT introduce abs(), got: {}",
-                r
-            );
-        }
+        // Should simplify the power and introduce abs for correctness
+        assert!(
+            !r.contains("x^4") && !r.contains("x⁴"),
+            "Generic: log(2, x^4) should simplify, got: {}",
+            r
+        );
     }
 
     #[test]

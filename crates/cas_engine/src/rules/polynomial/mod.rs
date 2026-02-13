@@ -274,11 +274,86 @@ define_rule!(
 //   (a) A² + 2·A·c + c²  where c is a Number (most common from CSV)
 //   (b) Fully symbolic: both A² and B² are Pow(_, 2) nodes
 
+/// Extract the square root of a term if it is a perfect square.
+///
+/// Recognizes:
+/// - `Pow(base, 2k)` → `base^k` (even power)
+/// - `Mul(n, Pow(base, 2k))` where `n` is a perfect square integer → `√n · base^k`
+/// - `Number(n)` where `n` is a perfect square integer → `√n`
+///
+/// Returns `Some(root)` where `term = root²`, or `None`.
+pub(crate) fn extract_square_root_of_term(ctx: &mut Context, term: ExprId) -> Option<ExprId> {
+    // Case 1: Pow(base, 2k) → base^k
+    if let Expr::Pow(base, exp) = ctx.get(term) {
+        let (base, exp) = (*base, *exp);
+        if let Expr::Number(n) = ctx.get(exp) {
+            let n = n.clone();
+            if n.is_integer() {
+                let int_val = n.to_integer();
+                let two: num_bigint::BigInt = 2.into();
+                if &int_val % &two == 0.into() && int_val > 0.into() {
+                    let half_exp = &int_val / &two;
+                    let half_exp_rat = num_rational::BigRational::from_integer(half_exp);
+                    if half_exp_rat == num_rational::BigRational::from_integer(1.into()) {
+                        return Some(base);
+                    } else {
+                        let half_exp_id = ctx.add(Expr::Number(half_exp_rat));
+                        return Some(ctx.add(Expr::Pow(base, half_exp_id)));
+                    }
+                }
+            }
+        }
+        return None;
+    }
+
+    // Case 2: Mul(coeff, Pow(base, 2k)) where coeff is a perfect square integer
+    if let Expr::Mul(l, r) = ctx.get(term) {
+        let (l, r) = (*l, *r);
+        // Try both orderings: Mul(coeff, pow) and Mul(pow, coeff)
+        for (maybe_coeff, maybe_pow) in [(l, r), (r, l)] {
+            if let Expr::Number(coeff) = ctx.get(maybe_coeff) {
+                if coeff.is_integer() && *coeff > num_rational::BigRational::from_integer(0.into())
+                {
+                    let coeff_int = coeff.to_integer();
+                    let coeff_root = coeff_int.sqrt();
+                    if &coeff_root * &coeff_root == coeff_int {
+                        // coeff is a perfect square, now check if maybe_pow is Pow(base, 2k)
+                        if let Some(pow_root) = extract_square_root_of_term(ctx, maybe_pow) {
+                            // A = √coeff · pow_root
+                            let root_num = ctx.add(Expr::Number(
+                                num_rational::BigRational::from_integer(coeff_root),
+                            ));
+                            return Some(ctx.add(Expr::Mul(root_num, pow_root)));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Case 3: Number(n) where n is a perfect square integer
+    if let Expr::Number(n) = ctx.get(term) {
+        use num_traits::Zero;
+        if n.is_integer() && *n > num_rational::BigRational::zero() {
+            let int_val = n.to_integer();
+            let root = int_val.sqrt();
+            if &root * &root == int_val {
+                return Some(ctx.add(Expr::Number(num_rational::BigRational::from_integer(root))));
+            }
+        }
+    }
+
+    None
+}
+
 /// Try to match a 3-term additive expression as a perfect-square trinomial.
 /// Returns `Some((A, B, is_sub))` such that the expression equals `(A ± B)²`.
 ///
 /// Handles even-power squares: `Pow(base, 2k)` is recognized as `(base^k)²`,
 /// e.g. `u⁴ + 2u² + 1` matches as `(u² + 1)²`.
+///
+/// Also handles coefficient-bearing squares: `Mul(n, Pow(base, 2k))` where `n` is
+/// a perfect square integer, e.g. `4u² + 12u + 9` matches as `(2u + 3)²`.
 pub(crate) fn try_match_perfect_square_trinomial(
     ctx: &mut Context,
     arg: ExprId,
@@ -314,98 +389,21 @@ pub(crate) fn try_match_perfect_square_trinomial(
             }
 
             // Extract A from A² (Pow(base, 2k) → A = base^k)
-            let a_expr = if let Expr::Pow(base, exp) = ctx.get(*term_a_sq) {
-                let (base, exp) = (*base, *exp);
-                if let Expr::Number(n) = ctx.get(exp) {
-                    let n = n.clone();
-                    if n == num_rational::BigRational::from_integer(2.into()) {
-                        // Pow(base, 2) → A = base
-                        Some(base)
-                    } else if n.is_integer() {
-                        // Check for even exponent: Pow(base, 2k) → A = base^k
-                        let int_val = n.to_integer();
-                        let two: num_bigint::BigInt = 2.into();
-                        if &int_val % &two == 0.into() && int_val > 0.into() {
-                            let half_exp = &int_val / &two;
-                            let half_exp_rat = num_rational::BigRational::from_integer(half_exp);
-                            if half_exp_rat == num_rational::BigRational::from_integer(1.into()) {
-                                Some(base)
-                            } else {
-                                let half_exp_id = ctx.add(Expr::Number(half_exp_rat));
-                                Some(ctx.add(Expr::Pow(base, half_exp_id)))
-                            }
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
+            // Also handles Mul(n, Pow(base, 2k)) where n is a perfect square → A = √n · base^k
+            let a_expr = extract_square_root_of_term(ctx, *term_a_sq);
             let Some(a) = a_expr else { continue };
 
-            // Extract B from B²:
-            //   - If Pow(B, 2): B is arbitrary
-            //   - If Number(n): B = sqrt(n) if n is a perfect square
+            // Extract B from B² using the same helper
             let b: ExprId;
-            let b_val: Option<num_rational::BigRational>; // Some(k) if B = Number(k)
+            let b_val: Option<num_rational::BigRational>;
 
-            if let Expr::Pow(base, exp) = ctx.get(*term_b_sq) {
-                let (base_b, exp_b) = (*base, *exp);
-                if let Expr::Number(n) = ctx.get(exp_b) {
-                    let n = n.clone();
-                    if n == num_rational::BigRational::from_integer(2.into()) {
-                        // Pow(base, 2) → B = base
-                        b = base_b;
-                        b_val = if let Expr::Number(bn) = ctx.get(b) {
-                            Some(bn.clone())
-                        } else {
-                            None
-                        };
-                    } else if n.is_integer() {
-                        // Even exponent: Pow(base, 2k) → B = base^k
-                        let int_val = n.to_integer();
-                        let two: num_bigint::BigInt = 2.into();
-                        if &int_val % &two == 0.into() && int_val > 0.into() {
-                            let half_exp = &int_val / &two;
-                            let half_exp_rat = num_rational::BigRational::from_integer(half_exp);
-                            if half_exp_rat == num_rational::BigRational::from_integer(1.into()) {
-                                b = base_b;
-                            } else {
-                                let half_exp_id = ctx.add(Expr::Number(half_exp_rat));
-                                b = ctx.add(Expr::Pow(base_b, half_exp_id));
-                            }
-                            b_val = None; // Not a simple number anymore
-                        } else {
-                            continue;
-                        }
-                    } else {
-                        continue;
-                    }
+            if let Some(b_root) = extract_square_root_of_term(ctx, *term_b_sq) {
+                b = b_root;
+                b_val = if let Expr::Number(bn) = ctx.get(b) {
+                    Some(bn.clone())
                 } else {
-                    continue;
-                }
-            } else if let Expr::Number(n) = ctx.get(*term_b_sq) {
-                // B² = n, so B = sqrt(n). Only works if n is a perfect integer square.
-                use num_traits::Zero;
-                if n.is_integer() && *n > num_rational::BigRational::zero() {
-                    let int_val = n.to_integer();
-                    let root = int_val.sqrt();
-                    if &root * &root == int_val {
-                        b = ctx.add(Expr::Number(num_rational::BigRational::from_integer(
-                            root.clone(),
-                        )));
-                        b_val = Some(num_rational::BigRational::from_integer(root));
-                    } else {
-                        continue;
-                    }
-                } else {
-                    continue;
-                }
+                    None
+                };
             } else {
                 continue;
             }
@@ -572,6 +570,46 @@ fn check_middle_term_2ab(
         }
         if found_two && found_a && found_b {
             return true;
+        }
+    }
+
+    // Case 3: Semantic fallback — build 2·A·B and compare structurally.
+    // This handles compound A/B (e.g. A = Mul(2, u)) that factor-flattening misses.
+    // Try multiple orderings since canonicalization may arrange Mul differently.
+    {
+        let two_id = ctx.add(Expr::Number(two));
+        // Form 1: 2 * (A * B)
+        let ab = ctx.add(Expr::Mul(a, b));
+        let expected_1 = ctx.add(Expr::Mul(two_id, ab));
+        if compare_expr(ctx, term, expected_1) == Ordering::Equal {
+            return true;
+        }
+        // Form 2: (2 * A) * B
+        let two_a = ctx.add(Expr::Mul(two_id, a));
+        let expected_2 = ctx.add(Expr::Mul(two_a, b));
+        if compare_expr(ctx, term, expected_2) == Ordering::Equal {
+            return true;
+        }
+        // Form 3: A * (2 * B)
+        let two_b = ctx.add(Expr::Mul(two_id, b));
+        let expected_3 = ctx.add(Expr::Mul(a, two_b));
+        if compare_expr(ctx, term, expected_3) == Ordering::Equal {
+            return true;
+        }
+
+        // Form 4: (2*b_val) * A when B is numeric (handles coefficient absorption)
+        if let Some(bv) = b_val {
+            let expected_coeff_val = num_rational::BigRational::from_integer(2.into()) * bv;
+            let coeff_id = ctx.add(Expr::Number(expected_coeff_val));
+            let expected_4 = ctx.add(Expr::Mul(coeff_id, a));
+            if compare_expr(ctx, term, expected_4) == Ordering::Equal {
+                return true;
+            }
+            // Also try A * (2*b_val)
+            let expected_5 = ctx.add(Expr::Mul(a, coeff_id));
+            if compare_expr(ctx, term, expected_5) == Ordering::Equal {
+                return true;
+            }
         }
     }
 

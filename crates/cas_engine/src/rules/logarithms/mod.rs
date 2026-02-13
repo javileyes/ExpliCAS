@@ -548,16 +548,18 @@ pub(super) fn bases_equal(
 }
 
 // =============================================================================
-// LogPerfectSquareRule: ln(A² ± 2AB + B²) → 2·ln(|A ± B|)
+// LogPerfectSquareRule: ln(f²) → 2·ln(|f|)
 // =============================================================================
-// When a log argument is a perfect-square trinomial, factor it and apply
-// the power rule in one step:
-//   ln(u⁴ + 2u² + 1)  →  ln((u² + 1)²)  →  2·ln(|u² + 1|)
+// Detects perfect-square arguments of log functions and factorizes them.
 //
-// Uses the generalized `try_match_perfect_square_trinomial` which handles
-// even-power squares like u⁴ = (u²)².
+// Sub-detectors:
+//   1. Polynomial trinomial: ln(4u²+12u+9) → 2·ln(|2u+3|) via discriminant=0
+//   2. Trinomial via AST: ln(u⁴+2u²+1) → 2·ln(|u²+1|)
+//   3. Even power: ln(u⁴) → 2·ln(|u²|)
+//   4. Monomial: ln(4u²) → 2·ln(|2u|)
+//   5. Div of squares: ln(u²/v²) → 2·ln(|u/v|)
 //
-// Domain: introduces |·| via even-power log rule (safe for all real inputs).
+// Domain: always wraps factor in |·| (safe); downstream |x|→x handles removal.
 // =============================================================================
 define_rule!(
     LogPerfectSquareRule,
@@ -581,38 +583,175 @@ define_rule!(
             _ => return None,
         };
 
-        // Only try if argument is an additive expression (Add/Sub)
-        match ctx.get(arg) {
-            Expr::Add(_, _) | Expr::Sub(_, _) => {}
-            _ => return None,
+        // Helper: build 2·log(base, |factor|) rewrite
+        let build_result = |ctx: &mut Context,
+                            factor: ExprId,
+                            log_base: ExprId,
+                            desc: &'static str|
+         -> Option<Rewrite> {
+            let abs_factor = ctx.call_builtin(BuiltinFn::Abs, vec![factor]);
+            let log_inner = make_log(ctx, log_base, abs_factor);
+            let two = ctx.num(2);
+            let result = ctx.add(Expr::Mul(two, log_inner));
+            Some(Rewrite::new(result).desc(desc))
+        };
+
+        // ----- Sub-detector 1: Polynomial trinomial (discriminant = 0) -----
+        // Works for all coefficient-bearing trinomials like 4u²+12u+9
+        if matches!(ctx.get(arg), Expr::Add(_, _) | Expr::Sub(_, _)) {
+            // Polynomial-based approach (handles coefficients)
+            let vars = cas_ast::collect_variables(ctx, arg);
+            if vars.len() == 1 {
+                let var = vars.iter().next()?;
+                if let Ok(poly) = crate::polynomial::Polynomial::from_expr(ctx, arg, var) {
+                    if poly.degree() == 2 && poly.coeffs.len() >= 3 {
+                        let pa = poly.coeffs.get(2).cloned();
+                        let pb = poly.coeffs.get(1).cloned();
+                        let pc = poly.coeffs.first().cloned();
+
+                        if let (Some(pa), Some(pb), Some(pc)) = (pa, pb, pc) {
+                            use num_traits::{Signed, Zero};
+                            let four = num_rational::BigRational::from_integer(4.into());
+                            let discriminant =
+                                pb.clone() * pb.clone() - four * pa.clone() * pc.clone();
+
+                            if discriminant.is_zero() {
+                                if let Some(d) = crate::rules::algebra::roots::rational_sqrt(&pa) {
+                                    let two_r = num_rational::BigRational::from_integer(2.into());
+                                    let e = if d.is_zero() {
+                                        crate::rules::algebra::roots::rational_sqrt(&pc)
+                                            .unwrap_or_else(num_rational::BigRational::zero)
+                                    } else {
+                                        pb / (two_r * d.clone())
+                                    };
+
+                                    let var_expr = ctx.var(var);
+                                    let d_expr = ctx.add(Expr::Number(d.clone()));
+                                    let e_expr = ctx.add(Expr::Number(e.clone()));
+
+                                    let one = num_rational::BigRational::from_integer(1.into());
+                                    let dx = if d == one {
+                                        var_expr
+                                    } else {
+                                        crate::rules::algebra::helpers::smart_mul(
+                                            ctx, d_expr, var_expr,
+                                        )
+                                    };
+
+                                    let linear = if e.is_zero() {
+                                        dx
+                                    } else if e.is_positive() {
+                                        ctx.add(Expr::Add(dx, e_expr))
+                                    } else {
+                                        ctx.add(Expr::Add(dx, e_expr))
+                                    };
+
+                                    return build_result(
+                                        ctx,
+                                        linear,
+                                        log_base,
+                                        "ln((A+B)²) = 2·ln(|A+B|)",
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Fallback: AST-level trinomial matching for multivariate cases
+            if let Some((a, b, is_sub)) =
+                crate::rules::polynomial::try_match_perfect_square_trinomial(ctx, arg)
+            {
+                let factor = if is_sub {
+                    ctx.add(Expr::Sub(a, b))
+                } else {
+                    ctx.add(Expr::Add(a, b))
+                };
+                let desc = if is_sub {
+                    "ln((A−B)²) = 2·ln(|A−B|)"
+                } else {
+                    "ln((A+B)²) = 2·ln(|A+B|)"
+                };
+                return build_result(ctx, factor, log_base, desc);
+            }
         }
 
-        // Try to match argument as (A ± B)²
-        let (a, b, is_sub) =
-            crate::rules::polynomial::try_match_perfect_square_trinomial(ctx, arg)?;
+        // ----- Sub-detector 2: Even power Pow(base, 2k) -----
+        // ln(u⁴) → 2·ln(|u²|), ln(sin⁴(u)) → 2·ln(|sin²(u)|)
+        if let Expr::Pow(p_base, p_exp) = ctx.get(arg) {
+            let (p_base, p_exp) = (*p_base, *p_exp);
+            // Skip inverse composition: ln(e^x) handled by other rules
+            if p_base == log_base || ctx.get(p_base) == ctx.get(log_base) {
+                return None;
+            }
+            if let Expr::Number(n) = ctx.get(p_exp) {
+                let n = n.clone();
+                if n.is_integer() {
+                    let int_val = n.to_integer();
+                    let two_bi: num_bigint::BigInt = 2.into();
+                    if &int_val % &two_bi == 0.into() && int_val > 0.into() {
+                        let half = &int_val / &two_bi;
+                        let half_rat = num_rational::BigRational::from_integer(half.clone());
+                        let factor = if half == 1.into() {
+                            p_base
+                        } else {
+                            let half_id = ctx.add(Expr::Number(half_rat));
+                            ctx.add(Expr::Pow(p_base, half_id))
+                        };
+                        return build_result(ctx, factor, log_base, "ln(x^(2k)) = 2·ln(|x^k|)");
+                    }
+                }
+            }
+        }
 
-        // Build the factor: A+B or A-B
-        let factor = if is_sub {
-            ctx.add(Expr::Sub(a, b))
-        } else {
-            ctx.add(Expr::Add(a, b))
-        };
+        // ----- Sub-detector 3: Monomial Mul(n, Pow(base, 2k)) where n is perfect square -----
+        // ln(4u²) → 2·ln(|2u|)
+        if let Expr::Mul(l, r) = ctx.get(arg) {
+            let (l, r) = (*l, *r);
+            for (maybe_coeff, maybe_pow) in [(l, r), (r, l)] {
+                if let Expr::Number(coeff) = ctx.get(maybe_coeff) {
+                    if coeff.is_integer() && num_traits::Signed::is_positive(coeff) {
+                        let coeff_int = coeff.to_integer();
+                        let coeff_root = coeff_int.sqrt();
+                        if &coeff_root * &coeff_root == coeff_int {
+                            if let Some(pow_root) =
+                                crate::rules::polynomial::extract_square_root_of_term(
+                                    ctx, maybe_pow,
+                                )
+                            {
+                                let root_num = ctx.add(Expr::Number(
+                                    num_rational::BigRational::from_integer(coeff_root),
+                                ));
+                                let factor = crate::rules::algebra::helpers::smart_mul(
+                                    ctx, root_num, pow_root,
+                                );
+                                return build_result(
+                                    ctx,
+                                    factor,
+                                    log_base,
+                                    "ln((c·x)²) = 2·ln(|c·x|)",
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
-        // Build |factor| (abs) for mathematical correctness
-        let abs_factor = ctx.call_builtin(BuiltinFn::Abs, vec![factor]);
+        // ----- Sub-detector 4: Div of squares: ln(a²/b²) → 2·ln(|a/b|) -----
+        if let Expr::Div(num, den) = ctx.get(arg) {
+            let (num, den) = (*num, *den);
+            if let (Some(num_root), Some(den_root)) = (
+                crate::rules::polynomial::extract_square_root_of_term(ctx, num),
+                crate::rules::polynomial::extract_square_root_of_term(ctx, den),
+            ) {
+                let factor = ctx.add(Expr::Div(num_root, den_root));
+                return build_result(ctx, factor, log_base, "ln(a²/b²) = 2·ln(|a/b|)");
+            }
+        }
 
-        // Build 2·log(base, |factor|)
-        let log_inner = make_log(ctx, log_base, abs_factor);
-        let two = ctx.num(2);
-        let result = ctx.add(Expr::Mul(two, log_inner));
-
-        let desc = if is_sub {
-            "ln((A−B)²) = 2·ln(|A−B|)"
-        } else {
-            "ln((A+B)²) = 2·ln(|A+B|)"
-        };
-
-        Some(Rewrite::new(result).desc(desc))
+        None
     }
 );
 
