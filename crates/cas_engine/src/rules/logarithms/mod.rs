@@ -610,7 +610,7 @@ define_rule!(
                         let pc = poly.coeffs.first().cloned();
 
                         if let (Some(pa), Some(pb), Some(pc)) = (pa, pb, pc) {
-                            use num_traits::{Signed, Zero};
+                            use num_traits::Zero;
                             let four = num_rational::BigRational::from_integer(4.into());
                             let discriminant =
                                 pb.clone() * pb.clone() - four * pa.clone() * pc.clone();
@@ -640,8 +640,6 @@ define_rule!(
 
                                     let linear = if e.is_zero() {
                                         dx
-                                    } else if e.is_positive() {
-                                        ctx.add(Expr::Add(dx, e_expr))
                                     } else {
                                         ctx.add(Expr::Add(dx, e_expr))
                                     };
