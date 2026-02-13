@@ -44,7 +44,10 @@ impl PolynomialIdentityZeroRule {
         }
 
         match ctx.get(expr) {
-            Expr::Number(_) | Expr::Variable(_) => true,
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) => true,
+            // Opaque function calls are valid polynomial "leaves" (treated as
+            // atomic variables after substitution)
+            Expr::Function(_, _) => true,
             Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
                 Self::is_polynomial_candidate_inner(ctx, *l, depth + 1)
                     && Self::is_polynomial_candidate_inner(ctx, *r, depth + 1)
@@ -65,7 +68,7 @@ impl PolynomialIdentityZeroRule {
                 }
                 false
             }
-            _ => false, // Functions, Division, etc. are not polynomial
+            _ => false, // Division, etc. are not polynomial
         }
     }
 
@@ -77,6 +80,86 @@ impl PolynomialIdentityZeroRule {
         budget: &PolyBudget,
     ) -> Option<MultiPoly> {
         AutoExpandSubCancelRule::expr_to_multipoly(ctx, id, vars, budget)
+    }
+
+    /// Collect all function calls in an expression (e.g., sin(u), arctan(u))
+    fn collect_func_calls(ctx: &Context, expr: ExprId, out: &mut Vec<ExprId>, depth: usize) {
+        if depth > 4 {
+            return;
+        }
+        match ctx.get(expr) {
+            Expr::Function(_, _) => {
+                out.push(expr);
+            }
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+                Self::collect_func_calls(ctx, *l, out, depth + 1);
+                Self::collect_func_calls(ctx, *r, out, depth + 1);
+            }
+            Expr::Pow(base, exp) => {
+                Self::collect_func_calls(ctx, *base, out, depth + 1);
+                Self::collect_func_calls(ctx, *exp, out, depth + 1);
+            }
+            Expr::Neg(inner) => {
+                Self::collect_func_calls(ctx, *inner, out, depth + 1);
+            }
+            _ => {}
+        }
+    }
+
+    /// Deduplicate function calls by structural comparison
+    fn dedup_func_calls(ctx: &Context, calls: &[ExprId]) -> Vec<ExprId> {
+        let mut unique = Vec::new();
+        for &call in calls {
+            let already = unique
+                .iter()
+                .any(|&u| crate::ordering::compare_expr(ctx, call, u) == std::cmp::Ordering::Equal);
+            if !already {
+                unique.push(call);
+            }
+        }
+        unique
+    }
+
+    /// Try to prove the expression is zero by substituting opaque function calls
+    /// with temporary variables and then checking via multipoly.
+    fn try_opaque_zero(ctx: &Context, expr: ExprId) -> bool {
+        let mut calls = Vec::new();
+        Self::collect_func_calls(ctx, expr, &mut calls, 0);
+        if calls.is_empty() || calls.len() > 6 {
+            return false;
+        }
+
+        let unique = Self::dedup_func_calls(ctx, &calls);
+        if unique.is_empty() || unique.len() > 3 {
+            return false;
+        }
+
+        // Substitute each unique call with a temp variable
+        let mut tmp_ctx = ctx.clone();
+        let mut sub_expr = expr;
+        for (i, &call_id) in unique.iter().enumerate() {
+            let temp_name = format!("__opq{}", i);
+            let temp_var = tmp_ctx.var(&temp_name);
+            let opts = crate::substitute::SubstituteOptions {
+                power_aware: true,
+                ..Default::default()
+            };
+            sub_expr = crate::substitute::substitute_power_aware(
+                &mut tmp_ctx,
+                sub_expr,
+                call_id,
+                temp_var,
+                opts,
+            );
+        }
+
+        // Now try multipoly on the substituted expression
+        let budget = Self::poly_budget();
+        let mut vars = Vec::new();
+        if let Some(poly) = Self::expr_to_multipoly(&tmp_ctx, sub_expr, &mut vars, &budget) {
+            return poly.is_zero();
+        }
+        false
     }
 }
 
@@ -128,7 +211,24 @@ impl crate::rule::Rule for PolynomialIdentityZeroRule {
         // Try to convert to MultiPoly
         let budget = Self::poly_budget();
         let mut vars = Vec::new();
-        let poly = Self::expr_to_multipoly(ctx, expr, &mut vars, &budget)?;
+        let poly_opt = Self::expr_to_multipoly(ctx, expr, &mut vars, &budget);
+
+        // If direct multipoly conversion failed, try opaque substitution fallback
+        let poly = match poly_opt {
+            Some(p) => p,
+            None => {
+                // Expression contains function calls that multipoly can't handle.
+                // Try substituting opaque calls with temp vars and check if zero.
+                if Self::try_opaque_zero(ctx, expr) {
+                    let zero = ctx.num(0);
+                    return Some(
+                        Rewrite::new(zero)
+                            .desc("Polynomial identity (opaque substitution): cancel to 0"),
+                    );
+                }
+                return None;
+            }
+        };
 
         // Check variable count
         if vars.len() > 4 {
