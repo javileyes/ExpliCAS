@@ -383,8 +383,23 @@ fn parse_parens(input: &str) -> IResult<&str, ParseNode> {
 
 // Parser for function calls
 fn parse_function(input: &str) -> IResult<&str, ParseNode> {
-    let (input, name) = parse_identifier(input)?;
-    let (input, _) = preceded(multispace0, tag("("))(input)?;
+    let (after_name, name) = parse_identifier(input)?;
+
+    // Detect ambiguous notation: sin²(u) — should be sin(u)^2
+    // If identifier is followed by superscript digits and then '(', emit error.
+    if let Some((_exp_value, after_sup)) = parse_superscript_number(after_name) {
+        let after_sup_trimmed = after_sup.trim_start();
+        if after_sup_trimmed.starts_with('(') {
+            // This is sin²(u) or cos³(x), etc. — ambiguous notation!
+            return Err(nom::Err::Failure(nom::error::Error::new(
+                // Point to the superscript position in input
+                after_name,
+                nom::error::ErrorKind::Verify,
+            )));
+        }
+    }
+
+    let (input, _) = preceded(multispace0, tag("("))(after_name)?;
     let (input, args) = separated_list0(preceded(multispace0, tag(",")), parse_expr)(input)?;
     let (input, _) = preceded(multispace0, tag(")"))(input)?;
 
@@ -756,20 +771,39 @@ use crate::error::ParseError;
 fn nom_error_to_parse_error(original: &str, err: nom::Err<nom::error::Error<&str>>) -> ParseError {
     match err {
         nom::Err::Error(e) | nom::Err::Failure(e) => {
-            // e.input is the remaining slice where the error occurred
-            // Calculate offset as: original length - remaining length
             let remaining = e.input;
             let offset = original.len().saturating_sub(remaining.len());
             let end = (offset + 1).min(original.len());
 
-            // Build a descriptive message from the error kind
-            let message = match e.code {
-                nom::error::ErrorKind::Tag => "unexpected token",
-                nom::error::ErrorKind::Digit => "expected digit",
-                nom::error::ErrorKind::Alpha => "expected letter",
-                nom::error::ErrorKind::Verify => "validation failed",
-                nom::error::ErrorKind::Eof => "unexpected end of input",
-                _ => "parse error",
+            // Check for specific error patterns to give helpful messages
+            let message = if e.code == nom::error::ErrorKind::Verify {
+                // Check if this is a superscript-after-function pattern (sin²(u))
+                if let Some((_, after_sup)) = parse_superscript_number(remaining) {
+                    let after_sup_trimmed = after_sup.trim_start();
+                    if after_sup_trimmed.starts_with('(') {
+                        // Extract function name from original (before the superscript)
+                        let func_name = &original[..offset];
+                        // Find last identifier
+                        let name = func_name
+                            .rsplit(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                            .next()
+                            .unwrap_or(func_name);
+                        format!("Notación ambigua: usa {}(x)^n en vez de {}ⁿ(x)", name, name)
+                    } else {
+                        "validation failed".to_string()
+                    }
+                } else {
+                    "validation failed".to_string()
+                }
+            } else {
+                match e.code {
+                    nom::error::ErrorKind::Tag => "unexpected token",
+                    nom::error::ErrorKind::Digit => "expected digit",
+                    nom::error::ErrorKind::Alpha => "expected letter",
+                    nom::error::ErrorKind::Eof => "unexpected end of input",
+                    _ => "parse error",
+                }
+                .to_string()
             };
 
             ParseError::syntax_at(message, cas_ast::Span::new(offset, end))
