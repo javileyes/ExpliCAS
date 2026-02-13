@@ -262,7 +262,7 @@ pub fn extract_phase_shift(ctx: &mut cas_ast::Context, expr: ExprId) -> Option<(
                         .iter()
                         .enumerate()
                         .filter(|(j, _)| *j != i)
-                        .map(|(_, t)| t.clone())
+                        .map(|(_, t)| *t)
                         .collect();
                     let rest_view = AddView {
                         root: expr,

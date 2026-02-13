@@ -1249,34 +1249,49 @@ define_rule!(
                         temp_vars.push((*num_call, temp_var));
                     }
 
-                    let sub_frac = ctx.add(Expr::Div(sub_num, sub_den));
+                    // Guard: if both sides are now bare variables/leaves, this is a
+                    // trivial f(x)/f(x) case that should be handled by normal
+                    // cancellation rules (which respect Strict domain mode).
+                    let sub_num_is_leaf = matches!(
+                        ctx.get(sub_num),
+                        Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_)
+                    );
+                    let sub_den_is_leaf = matches!(
+                        ctx.get(sub_den),
+                        Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_)
+                    );
+                    if sub_num_is_leaf && sub_den_is_leaf {
+                        // Skip: let normal cancellation handle it
+                    } else {
+                        let sub_frac = ctx.add(Expr::Div(sub_num, sub_den));
 
-                    OPAQUE_SUB_DEPTH.with(|c| c.set(depth + 1));
-                    let mut simplifier = crate::Simplifier::with_default_rules();
-                    simplifier.context = ctx.clone();
-                    let (simplified, _) = simplifier.simplify(sub_frac);
-                    OPAQUE_SUB_DEPTH.with(|c| c.set(depth));
+                        OPAQUE_SUB_DEPTH.with(|c| c.set(depth + 1));
+                        let mut simplifier = crate::Simplifier::with_default_rules();
+                        simplifier.context = ctx.clone();
+                        let (simplified, _) = simplifier.simplify(sub_frac);
+                        OPAQUE_SUB_DEPTH.with(|c| c.set(depth));
 
-                    let is_still_div =
-                        matches!(simplifier.context.get(simplified), Expr::Div(_, _));
-                    if !is_still_div {
-                        let mut final_result = simplified;
-                        for (call_id, temp_var) in &temp_vars {
-                            let opts = crate::substitute::SubstituteOptions::default();
-                            final_result = crate::substitute::substitute_power_aware(
-                                &mut simplifier.context,
-                                final_result,
-                                *temp_var,
-                                *call_id,
-                                opts,
+                        let is_still_div =
+                            matches!(simplifier.context.get(simplified), Expr::Div(_, _));
+                        if !is_still_div {
+                            let mut final_result = simplified;
+                            for (call_id, temp_var) in &temp_vars {
+                                let opts = crate::substitute::SubstituteOptions::default();
+                                final_result = crate::substitute::substitute_power_aware(
+                                    &mut simplifier.context,
+                                    final_result,
+                                    *temp_var,
+                                    *call_id,
+                                    opts,
+                                );
+                            }
+                            *ctx = simplifier.context;
+                            return Some(
+                                Rewrite::new(final_result)
+                                    .desc("Polynomial division with opaque substitution"),
                             );
                         }
-                        *ctx = simplifier.context;
-                        return Some(
-                            Rewrite::new(final_result)
-                                .desc("Polynomial division with opaque substitution"),
-                        );
-                    }
+                    } // else
                 }
             }
         }
