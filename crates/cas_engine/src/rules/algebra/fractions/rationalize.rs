@@ -1164,6 +1164,123 @@ define_rule!(
             return None;
         }
 
+        // Strategy 0: Opaque function substitution for polynomial cancellation.
+        // If num/den contain shared function calls (arctan(u), sin(u), etc.),
+        // substitute them with fresh variables, simplify the resulting polynomial
+        // fraction, then substitute back. This handles cases like:
+        //   (arctan(u)^2 - 1)/(arctan(u) - 1) → arctan(u)+1
+        //   (sin(u)^2 - 4)/(sin(u) + 2) → sin(u) - 2
+        // NOTE: Must run BEFORE contains_expandable guard which would reject
+        // these cases since they have no expandable products.
+        {
+            use std::cell::Cell;
+            thread_local! {
+                static OPAQUE_SUB_DEPTH: Cell<u32> = const { Cell::new(0) };
+            }
+
+            let depth = OPAQUE_SUB_DEPTH.with(|c| c.get());
+            if depth == 0 {
+                fn collect_func_calls(
+                    ctx: &cas_ast::Context,
+                    expr: ExprId,
+                    out: &mut Vec<ExprId>,
+                    depth: usize,
+                ) {
+                    if depth > 4 {
+                        return;
+                    }
+                    match ctx.get(expr) {
+                        Expr::Function(_, _) => {
+                            out.push(expr);
+                        }
+                        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+                            collect_func_calls(ctx, *l, out, depth + 1);
+                            collect_func_calls(ctx, *r, out, depth + 1);
+                        }
+                        Expr::Pow(base, exp) => {
+                            collect_func_calls(ctx, *base, out, depth + 1);
+                            collect_func_calls(ctx, *exp, out, depth + 1);
+                        }
+                        Expr::Neg(inner) => {
+                            collect_func_calls(ctx, *inner, out, depth + 1);
+                        }
+                        _ => {}
+                    }
+                }
+
+                let mut num_calls = Vec::new();
+                let mut den_calls = Vec::new();
+                collect_func_calls(ctx, num, &mut num_calls, 0);
+                collect_func_calls(ctx, den, &mut den_calls, 0);
+
+                let mut shared: Vec<(ExprId, ExprId)> = Vec::new();
+                let mut used_den = vec![false; den_calls.len()];
+                for &nc in &num_calls {
+                    for (j, &dc) in den_calls.iter().enumerate() {
+                        if !used_den[j]
+                            && crate::ordering::compare_expr(ctx, nc, dc)
+                                == std::cmp::Ordering::Equal
+                        {
+                            shared.push((nc, dc));
+                            used_den[j] = true;
+                            break;
+                        }
+                    }
+                }
+
+                if !shared.is_empty() && shared.len() <= 3 {
+                    let mut sub_num = num;
+                    let mut sub_den = den;
+                    let mut temp_vars = Vec::new();
+
+                    for (i, (num_call, den_call)) in shared.iter().enumerate() {
+                        let temp_name = format!("__opq{}", i);
+                        let temp_var = ctx.var(&temp_name);
+                        let opts = crate::substitute::SubstituteOptions {
+                            power_aware: true,
+                            ..Default::default()
+                        };
+                        sub_num = crate::substitute::substitute_power_aware(
+                            ctx, sub_num, *num_call, temp_var, opts,
+                        );
+                        sub_den = crate::substitute::substitute_power_aware(
+                            ctx, sub_den, *den_call, temp_var, opts,
+                        );
+                        temp_vars.push((*num_call, temp_var));
+                    }
+
+                    let sub_frac = ctx.add(Expr::Div(sub_num, sub_den));
+
+                    OPAQUE_SUB_DEPTH.with(|c| c.set(depth + 1));
+                    let mut simplifier = crate::Simplifier::with_default_rules();
+                    simplifier.context = ctx.clone();
+                    let (simplified, _) = simplifier.simplify(sub_frac);
+                    OPAQUE_SUB_DEPTH.with(|c| c.set(depth));
+
+                    let is_still_div =
+                        matches!(simplifier.context.get(simplified), Expr::Div(_, _));
+                    if !is_still_div {
+                        let mut final_result = simplified;
+                        for (call_id, temp_var) in &temp_vars {
+                            let opts = crate::substitute::SubstituteOptions::default();
+                            final_result = crate::substitute::substitute_power_aware(
+                                &mut simplifier.context,
+                                final_result,
+                                *temp_var,
+                                *call_id,
+                                opts,
+                            );
+                        }
+                        *ctx = simplifier.context;
+                        return Some(
+                            Rewrite::new(final_result)
+                                .desc("Polynomial division with opaque substitution"),
+                        );
+                    }
+                }
+            }
+        }
+
         // Guard: at least one side must contain an expandable product
         // (Mul where at least one child is Add/Sub, or Pow(Add, n))
         if !contains_expandable(ctx, num) && !contains_expandable(ctx, den) {

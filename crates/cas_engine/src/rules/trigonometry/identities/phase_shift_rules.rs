@@ -243,20 +243,35 @@ pub fn extract_phase_shift(ctx: &mut cas_ast::Context, expr: ExprId) -> Option<(
         }
     }
 
-    // Form 2: Add(x, k*π/2)
-    if let Expr::Add(l, r) = ctx.get(expr) {
-        if let Some(k) = extract_pi_half_multiple(ctx, *r) {
-            return Some((*l, k));
-        }
-        if let Some(k) = extract_pi_half_multiple(ctx, *l) {
-            return Some((*r, k));
-        }
-    }
+    // Form 2/3: Scan the full n-ary sum for a π/2 multiple anywhere among the terms.
+    // Handles Add(a, b, π), Sub(a, π), Add(Add(2u,3), π), etc.
+    {
+        use crate::nary::{AddView, Sign};
 
-    // Form 3: Sub(x, k*π/2)
-    if let Expr::Sub(l, r) = ctx.get(expr) {
-        if let Some(k) = extract_pi_half_multiple(ctx, *r) {
-            return Some((*l, -k));
+        let view = AddView::from_expr(ctx, expr);
+        if view.terms.len() >= 2 {
+            // Search for a term that is a π/2 multiple
+            for (i, (term, sign)) in view.terms.iter().enumerate() {
+                if let Some(mut k) = extract_pi_half_multiple(ctx, *term) {
+                    if *sign == Sign::Neg {
+                        k = -k;
+                    }
+                    // Rebuild the remaining terms without the π multiple
+                    let remaining: smallvec::SmallVec<[(ExprId, Sign); 8]> = view
+                        .terms
+                        .iter()
+                        .enumerate()
+                        .filter(|(j, _)| *j != i)
+                        .map(|(_, t)| t.clone())
+                        .collect();
+                    let rest_view = AddView {
+                        root: expr,
+                        terms: remaining,
+                    };
+                    let base = rest_view.rebuild(ctx);
+                    return Some((base, k));
+                }
+            }
         }
     }
 
