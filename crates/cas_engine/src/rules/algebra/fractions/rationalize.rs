@@ -1206,7 +1206,20 @@ define_rule!(
         // So we expand both sides on a CLONED context, then simplify each expanded side
         // INDIVIDUALLY (not as a quotient Div — that would trigger this rule recursively).
         // After simplification, we compare the results via poly_eq.
+        //
+        // GUARD: Use a thread-local counter to prevent nested invocations. The inner
+        // Simplifier would trigger this rule again on any Div subexpressions, potentially
+        // creating O(n²) nested chains that cause timeouts.
         {
+            use std::cell::Cell;
+            thread_local! {
+                static EXPAND_CANCEL_DEPTH: Cell<u32> = const { Cell::new(0) };
+            }
+            let depth = EXPAND_CANCEL_DEPTH.with(|c| c.get());
+            if depth > 0 {
+                return None; // Already inside an inner Simplifier — skip Strategy 2
+            }
+
             let mut ctx_clone = ctx.clone();
             let expanded_num = crate::expand::expand(&mut ctx_clone, num);
             let expanded_den = crate::expand::expand(&mut ctx_clone, den);
@@ -1220,13 +1233,13 @@ define_rule!(
                 return None;
             }
 
-            // Simplify each expanded side individually.
-            // The key point: we simplify Add/Mul terms (not Div), so DivExpandToCancelRule
-            // will NOT fire recursively, avoiding stack overflow.
+            // Simplify each expanded side individually with recursion guard active.
+            EXPAND_CANCEL_DEPTH.with(|c| c.set(depth + 1));
             let mut simplifier = crate::Simplifier::with_default_rules();
             simplifier.context = ctx_clone;
             let (simplified_num, _) = simplifier.simplify(expanded_num);
             let (simplified_den, _) = simplifier.simplify(expanded_den);
+            EXPAND_CANCEL_DEPTH.with(|c| c.set(depth)); // restore
 
             // Compare via poly_eq (order-independent polynomial comparison)
             use crate::multipoly::{multipoly_from_expr, PolyBudget};
@@ -1263,7 +1276,7 @@ define_rule!(
 /// Check whether an expression tree contains an expandable product:
 /// - Mul(_, Add/Sub) or Mul(Add/Sub, _)
 /// - Pow(Add/Sub, integer ≥ 2)
-/// Searches up to 3 levels deep to keep it cheap.
+///   Searches up to 3 levels deep to keep it cheap.
 fn contains_expandable(ctx: &Context, expr: ExprId) -> bool {
     contains_expandable_depth(ctx, expr, 0)
 }
