@@ -1123,3 +1123,185 @@ define_rule!(
         Some(Rewrite::new(new_expr).desc("Combine fractions with factor-based LCD"))
     }
 );
+
+// =============================================================================
+// DivExpandToCancelRule: Cancel fractions by polynomial comparison
+// =============================================================================
+//
+// When structural factor-based cancellation fails (CancelCommonFactorsRule,
+// DivAddSymmetricFactorRule, etc.), this rule converts both numerator and
+// denominator to canonical polynomial form and checks equality.
+//
+// This catches cases like:
+//   (a² + b²)(x² + y²) / (a²x² + a²y² + b²x² + b²y²)  → 1
+//   (1 + x) / ((1 + x^(1/3))(1 - x^(1/3) + x^(2/3)))   → 1
+//
+// Strategy:
+//   1. Try poly_eq (MultiPoly) — handles pure polynomial expressions (no context mutation)
+//   2. Fall back to expand() on a CLONED context — handles fractional exponents
+//
+// Safety:
+//   - Budget-guarded: only fires when total node count is small enough
+//   - Only fires when the expression contains expandable products (Mul+Add)
+//   - poly_eq is read-only; expand fallback uses a cloned context
+// =============================================================================
+define_rule!(
+    DivExpandToCancelRule,
+    "Expand to Cancel Fraction",
+    |ctx, expr| {
+        let (num, den) = crate::helpers::as_div(ctx, expr)?;
+
+        // Guard: skip trivial cases — both sides must be non-leaf
+        let num_is_leaf = matches!(
+            ctx.get(num),
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_)
+        );
+        let den_is_leaf = matches!(
+            ctx.get(den),
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_)
+        );
+        if num_is_leaf && den_is_leaf {
+            return None;
+        }
+
+        // Guard: at least one side must contain an expandable product
+        // (Mul where at least one child is Add/Sub, or Pow(Add, n))
+        if !contains_expandable(ctx, num) && !contains_expandable(ctx, den) {
+            return None;
+        }
+
+        // Budget guard: don't attempt expensive expansions on large expressions
+        let num_nodes = crate::helpers::node_count(ctx, num);
+        let den_nodes = crate::helpers::node_count(ctx, den);
+        if num_nodes + den_nodes > 150 {
+            return None;
+        }
+
+        // Strategy 1: Try polynomial comparison (read-only, no context mutation)
+        // multipoly_from_expr internally expands Mul(Add,Add) in polynomial space
+        {
+            use crate::multipoly::{multipoly_from_expr, PolyBudget};
+            let budget = PolyBudget {
+                max_terms: 200,
+                max_total_degree: 12,
+                max_pow_exp: 6,
+            };
+
+            if let (Ok(p_num), Ok(p_den)) = (
+                multipoly_from_expr(ctx, num, &budget),
+                multipoly_from_expr(ctx, den, &budget),
+            ) {
+                if p_num == p_den {
+                    return Some(
+                        Rewrite::new(ctx.num(1)).desc("Expanded numerator equals denominator"),
+                    );
+                }
+                // Polynomials differ — no cancellation possible
+                return None;
+            }
+        }
+
+        // Strategy 2: Expressions contain non-polynomial parts (fractional exponents, trig, etc.)
+        // expand() distributes products but does NOT combine terms like x^(1/3)*x^(2/3) → x.
+        // So we expand both sides on a CLONED context, then simplify each expanded side
+        // INDIVIDUALLY (not as a quotient Div — that would trigger this rule recursively).
+        // After simplification, we compare the results via poly_eq.
+        {
+            let mut ctx_clone = ctx.clone();
+            let expanded_num = crate::expand::expand(&mut ctx_clone, num);
+            let expanded_den = crate::expand::expand(&mut ctx_clone, den);
+
+            // Check if expansion changed anything — if not, skip
+            let num_changed = crate::ordering::compare_expr(&ctx_clone, num, expanded_num)
+                != std::cmp::Ordering::Equal;
+            let den_changed = crate::ordering::compare_expr(&ctx_clone, den, expanded_den)
+                != std::cmp::Ordering::Equal;
+            if !num_changed && !den_changed {
+                return None;
+            }
+
+            // Simplify each expanded side individually.
+            // The key point: we simplify Add/Mul terms (not Div), so DivExpandToCancelRule
+            // will NOT fire recursively, avoiding stack overflow.
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            simplifier.context = ctx_clone;
+            let (simplified_num, _) = simplifier.simplify(expanded_num);
+            let (simplified_den, _) = simplifier.simplify(expanded_den);
+
+            // Compare via poly_eq (order-independent polynomial comparison)
+            use crate::multipoly::{multipoly_from_expr, PolyBudget};
+            let budget = PolyBudget {
+                max_terms: 200,
+                max_total_degree: 12,
+                max_pow_exp: 6,
+            };
+            if let (Ok(p_num), Ok(p_den)) = (
+                multipoly_from_expr(&simplifier.context, simplified_num, &budget),
+                multipoly_from_expr(&simplifier.context, simplified_den, &budget),
+            ) {
+                if p_num == p_den {
+                    return Some(
+                        Rewrite::new(ctx.num(1)).desc("Expanded numerator equals denominator"),
+                    );
+                }
+            }
+
+            // Structural comparison fallback
+            if crate::ordering::compare_expr(&simplifier.context, simplified_num, simplified_den)
+                == std::cmp::Ordering::Equal
+            {
+                return Some(
+                    Rewrite::new(ctx.num(1)).desc("Expanded numerator equals denominator"),
+                );
+            }
+        }
+
+        None
+    }
+);
+
+/// Check whether an expression tree contains an expandable product:
+/// - Mul(_, Add/Sub) or Mul(Add/Sub, _)
+/// - Pow(Add/Sub, integer ≥ 2)
+/// Searches up to 3 levels deep to keep it cheap.
+fn contains_expandable(ctx: &Context, expr: ExprId) -> bool {
+    contains_expandable_depth(ctx, expr, 0)
+}
+
+fn contains_expandable_depth(ctx: &Context, expr: ExprId, depth: usize) -> bool {
+    if depth > 3 {
+        return false;
+    }
+    match ctx.get(expr) {
+        Expr::Mul(l, r) => {
+            let l_is_sum = matches!(ctx.get(*l), Expr::Add(_, _) | Expr::Sub(_, _));
+            let r_is_sum = matches!(ctx.get(*r), Expr::Add(_, _) | Expr::Sub(_, _));
+            if l_is_sum || r_is_sum {
+                return true;
+            }
+            // Recurse into children
+            contains_expandable_depth(ctx, *l, depth + 1)
+                || contains_expandable_depth(ctx, *r, depth + 1)
+        }
+        Expr::Pow(b, e) => {
+            if matches!(ctx.get(*b), Expr::Add(_, _) | Expr::Sub(_, _)) {
+                if let Expr::Number(n) = ctx.get(*e) {
+                    if n.is_integer() && *n >= num_rational::BigRational::from_integer(2.into()) {
+                        return true;
+                    }
+                }
+            }
+            contains_expandable_depth(ctx, *b, depth + 1)
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) => {
+            contains_expandable_depth(ctx, *l, depth + 1)
+                || contains_expandable_depth(ctx, *r, depth + 1)
+        }
+        Expr::Div(l, r) => {
+            contains_expandable_depth(ctx, *l, depth + 1)
+                || contains_expandable_depth(ctx, *r, depth + 1)
+        }
+        Expr::Neg(e) => contains_expandable_depth(ctx, *e, depth + 1),
+        _ => false,
+    }
+}

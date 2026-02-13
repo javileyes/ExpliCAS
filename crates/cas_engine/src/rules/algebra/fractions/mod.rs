@@ -55,8 +55,8 @@ pub use more_rules::{
 };
 pub use rationalize::{
     DivAddCommonFactorFromDenRule, DivAddSymmetricFactorRule, DivDenFactorOutRule,
-    DivExpandNumForCancelRule, FactorBasedLCDRule, PullConstantFromFractionRule,
-    QuotientOfPowersRule,
+    DivExpandNumForCancelRule, DivExpandToCancelRule, FactorBasedLCDRule,
+    PullConstantFromFractionRule, QuotientOfPowersRule,
 };
 pub use small_rules::DivScalarIntoAddRule;
 pub use small_rules::RationalizeSingleSurdRule;
