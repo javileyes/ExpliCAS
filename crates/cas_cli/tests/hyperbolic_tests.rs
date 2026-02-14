@@ -219,13 +219,9 @@ fn test_multiple_compositions() {
 
 #[test]
 fn test_mixed_hyperbolic() {
-    // This one might not fully simplify depending on rule order,
-    // but at least check it doesn't crash
+    // sinh(x) + cosh(x) = exp(x)
     let result = simplify_str("sinh(x) + cosh(x)");
-    assert!(
-        result.contains("sinh") || result.contains("cosh"),
-        "Mixed hyperbolic should contain function calls"
-    );
+    assert_eq!(result, "e^x", "sinh(x) + cosh(x) should simplify to exp(x)");
 }
 
 #[test]

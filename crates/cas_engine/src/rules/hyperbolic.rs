@@ -242,6 +242,78 @@ define_rule!(
     }
 );
 
+// Rule 4b: sinh(x) + cosh(x) = exp(x), cosh(x) - sinh(x) = exp(-x)
+// Inverse of RecognizeHyperbolicFromExpRule — collapses hyperbolic sums/diffs to exp.
+define_rule!(
+    SinhCoshToExpRule,
+    "Hyperbolic Sum to Exponential",
+    Some(crate::target_kind::TargetKindSet::ADD.union(crate::target_kind::TargetKindSet::SUB)),
+    |ctx, expr| {
+        match ctx.get(expr) {
+            // sinh(x) + cosh(x) = exp(x)  or  cosh(x) + sinh(x) = exp(x)
+            Expr::Add(l, r) => {
+                let (l, r) = (*l, *r);
+                if let (Expr::Function(l_fn, l_args), Expr::Function(r_fn, r_args)) =
+                    (ctx.get(l), ctx.get(r))
+                {
+                    if l_args.len() == 1 && r_args.len() == 1 {
+                        let is_sinh_plus_cosh = ctx.is_builtin(*l_fn, BuiltinFn::Sinh)
+                            && ctx.is_builtin(*r_fn, BuiltinFn::Cosh);
+                        let is_cosh_plus_sinh = ctx.is_builtin(*l_fn, BuiltinFn::Cosh)
+                            && ctx.is_builtin(*r_fn, BuiltinFn::Sinh);
+
+                        if (is_sinh_plus_cosh || is_cosh_plus_sinh)
+                            && crate::ordering::compare_expr(ctx, l_args[0], r_args[0])
+                                == Ordering::Equal
+                        {
+                            let arg = l_args[0];
+                            let exp_x = ctx.call_builtin(BuiltinFn::Exp, vec![arg]);
+                            return Some(Rewrite::new(exp_x).desc("sinh(x) + cosh(x) = exp(x)"));
+                        }
+                    }
+                }
+            }
+            // cosh(x) - sinh(x) = exp(-x)  or  sinh(x) - cosh(x) = -exp(-x)
+            Expr::Sub(l, r) => {
+                let (l, r) = (*l, *r);
+                if let (Expr::Function(l_fn, l_args), Expr::Function(r_fn, r_args)) =
+                    (ctx.get(l), ctx.get(r))
+                {
+                    if l_args.len() == 1 && r_args.len() == 1 {
+                        let is_cosh_minus_sinh = ctx.is_builtin(*l_fn, BuiltinFn::Cosh)
+                            && ctx.is_builtin(*r_fn, BuiltinFn::Sinh);
+                        let is_sinh_minus_cosh = ctx.is_builtin(*l_fn, BuiltinFn::Sinh)
+                            && ctx.is_builtin(*r_fn, BuiltinFn::Cosh);
+
+                        if (is_cosh_minus_sinh || is_sinh_minus_cosh)
+                            && crate::ordering::compare_expr(ctx, l_args[0], r_args[0])
+                                == Ordering::Equal
+                        {
+                            let arg = l_args[0];
+                            let neg_arg = ctx.add(Expr::Neg(arg));
+                            let exp_neg_x = ctx.call_builtin(BuiltinFn::Exp, vec![neg_arg]);
+
+                            if is_cosh_minus_sinh {
+                                return Some(
+                                    Rewrite::new(exp_neg_x).desc("cosh(x) - sinh(x) = exp(-x)"),
+                                );
+                            } else {
+                                // sinh(x) - cosh(x) = -exp(-x)
+                                let neg_result = ctx.add(Expr::Neg(exp_neg_x));
+                                return Some(
+                                    Rewrite::new(neg_result).desc("sinh(x) - cosh(x) = -exp(-x)"),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        None
+    }
+);
+
 // Rule 5: Hyperbolic double angle identity: cosh²(x) + sinh²(x) = cosh(2x)
 // This direction collapses two squared terms into a single term, reducing complexity.
 // The inverse (expansion) is not implemented to avoid loops.
@@ -850,6 +922,7 @@ pub fn register(simplifier: &mut crate::engine::Simplifier) {
     simplifier.add_rule(Box::new(HyperbolicCompositionRule));
     simplifier.add_rule(Box::new(HyperbolicNegativeRule));
     simplifier.add_rule(Box::new(HyperbolicPythagoreanRule));
+    simplifier.add_rule(Box::new(SinhCoshToExpRule));
     simplifier.add_rule(Box::new(HyperbolicDoubleAngleRule));
     simplifier.add_rule(Box::new(HyperbolicDoubleAngleSubRule));
     // DISABLED: TanhToSinhCoshRule breaks tanh(atanh(x))→x and tanh(-x)→-tanh(x) paths
