@@ -495,7 +495,7 @@ pub static TRIG_VALUES: &[(&str, SpecialAngle, TrigValue)] = &[
     ("sec", SpecialAngle::Zero, TrigValue::One),
     ("sec", SpecialAngle::Pi, TrigValue::NegOne),
     ("sec", SpecialAngle::PiOver2, TrigValue::Undefined),
-    ("sec", SpecialAngle::PiOver6, TrigValue::SqrtDiv(3, 1)), // 2/√3 = 2√3/3
+    ("sec", SpecialAngle::PiOver6, TrigValue::SqrtDiv(12, 3)), // 2/√3 = 2√3/3 = √12/3
     ("sec", SpecialAngle::PiOver4, TrigValue::Sqrt(2)),
     ("sec", SpecialAngle::PiOver3, TrigValue::Fraction(2, 1)), // 2
     (
@@ -516,7 +516,7 @@ pub static TRIG_VALUES: &[(&str, SpecialAngle, TrigValue)] = &[
     ("csc", SpecialAngle::PiOver2, TrigValue::One),
     ("csc", SpecialAngle::PiOver6, TrigValue::Fraction(2, 1)), // 2
     ("csc", SpecialAngle::PiOver4, TrigValue::Sqrt(2)),
-    ("csc", SpecialAngle::PiOver3, TrigValue::SqrtDiv(3, 1)), // 2/√3 = 2√3/3
+    ("csc", SpecialAngle::PiOver3, TrigValue::SqrtDiv(12, 3)), // 2/√3 = 2√3/3 = √12/3
     (
         "csc",
         SpecialAngle::PiOver12,
