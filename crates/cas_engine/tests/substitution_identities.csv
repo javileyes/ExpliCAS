@@ -161,7 +161,6 @@ sin(arctan(x)),x/sqrt(1 + x^2),x,g
 cos(arctan(x)),1/sqrt(1 + x^2),x,g
 
 # Hyperbolic
-cosh(x)^2 - sinh(x)^2,1,x,g
 sinh(2*x),2*sinh(x)*cosh(x),x,g
 cosh(-x),cosh(x),x,g
 sinh(-x),-sinh(x),x,g

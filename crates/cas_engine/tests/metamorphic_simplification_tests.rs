@@ -3483,8 +3483,8 @@ fn metatest_csv_combinations_small() {
 #[test]
 #[ignore] // Run with: cargo test --ignored
 fn metatest_csv_combinations_full() {
-    // Full run: all pairs with triples
-    let m = run_csv_combination_tests(100, true, CombineOp::Add);
+    // Full run: 150 pairs (stratified) with triples. Covers all ~40 CSV families.
+    let m = run_csv_combination_tests(150, true, CombineOp::Add);
     assert_eq!(m.failed, 0, "Some CSV combination tests failed");
 }
 
