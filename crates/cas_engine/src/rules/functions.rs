@@ -824,6 +824,121 @@ fn is_sum_of_nonnegative(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool 
     }
 }
 
+// =============================================================================
+// Abs Sub Normalize Rule: |a - b| → |b - a|
+// Canonicalize the argument of abs(Sub(..)) so that |a-b| and |b-a| produce
+// the same normal form, enabling cancellation of |u-1| - |1-u| → 0.
+// Uses compare_expr ordering: if a > b in canonical order, swap to |b-a|.
+// =============================================================================
+define_rule!(
+    AbsSubNormalizeRule,
+    "Abs Sub Normalize",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 {
+                let arg = args[0];
+                // Try to detect (a - b) in either Sub(a,b) or Add(a,Neg(b))
+                // or Add(x, Number(-k)) form
+                let pair = match ctx.get(arg) {
+                    Expr::Sub(a, b) => Some((*a, *b)),
+                    Expr::Add(l, r) => {
+                        let (l, r) = (*l, *r);
+                        // Add(a, Neg(b)) = a - b
+                        if let Expr::Neg(x) = ctx.get(r) {
+                            Some((l, *x))
+                        // Add(Neg(b), a) = a - b
+                        } else if let Expr::Neg(x) = ctx.get(l) {
+                            Some((r, *x))
+                        // Add(x, Number(-k)) = x - k where k > 0
+                        } else if let Expr::Number(n) = ctx.get(r) {
+                            if n.is_negative() {
+                                let pos_k = ctx.add(Expr::Number(-n.clone()));
+                                Some((l, pos_k))
+                            } else {
+                                None
+                            }
+                        // Add(Number(-k), x) = x - k where k > 0
+                        } else if let Expr::Number(n) = ctx.get(l) {
+                            if n.is_negative() {
+                                let pos_k = ctx.add(Expr::Number(-n.clone()));
+                                Some((r, pos_k))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                };
+                if let Some((a, b)) = pair {
+                    // Only normalize when both operands are "atoms" (variables,
+                    // numbers, constants). Compound expressions like u²-1 should
+                    // NOT be rewritten to 1-u² because it breaks convergence
+                    // in contexts like ln(|u²-1|) vs ln(u²-1).
+                    let is_atom = |id: cas_ast::ExprId| -> bool {
+                        matches!(
+                            ctx.get(id),
+                            Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_)
+                        )
+                    };
+                    if !is_atom(a) || !is_atom(b) {
+                        return None;
+                    }
+                    // If a > b in canonical ordering, swap to |b - a|
+                    if crate::ordering::compare_expr(ctx, a, b) == std::cmp::Ordering::Greater {
+                        let swapped = ctx.add(Expr::Sub(b, a));
+                        let new_abs = ctx.call_builtin(BuiltinFn::Abs, vec![swapped]);
+                        return Some(Rewrite::new(new_abs).desc("|a−b| = |b−a|"));
+                    }
+                }
+            }
+        }
+        None
+    }
+);
+
+// =============================================================================
+// Abs Positive Factor Rule: |k·x| → k·|x| for positive rational k
+// Extracts positive numeric factors from absolute value.
+// Examples: |2u| → 2|u|,  |3·sin(x)| → 3·|sin(x)|
+// =============================================================================
+define_rule!(
+    AbsPositiveFactorRule,
+    "Abs Positive Factor",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 {
+                let arg = args[0];
+                if let Expr::Mul(l, r) = ctx.get(arg) {
+                    let (l, r) = (*l, *r);
+                    // Check if left factor is a positive number
+                    if let Expr::Number(n) = ctx.get(l) {
+                        if n.is_positive() {
+                            // |k·x| → k·|x|
+                            let abs_r = ctx.call_builtin(BuiltinFn::Abs, vec![r]);
+                            let result = ctx.add(Expr::Mul(l, abs_r));
+                            return Some(Rewrite::new(result).desc("|k·x| = k·|x| for k > 0"));
+                        }
+                    }
+                    // Check if right factor is a positive number
+                    if let Expr::Number(n) = ctx.get(r) {
+                        if n.is_positive() {
+                            // |x·k| → k·|x|
+                            let abs_l = ctx.call_builtin(BuiltinFn::Abs, vec![l]);
+                            let result = ctx.add(Expr::Mul(r, abs_l));
+                            return Some(Rewrite::new(result).desc("|x·k| = k·|x| for k > 0"));
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+);
+
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(SimplifySqrtSquareRule)); // Must go BEFORE EvaluateAbsRule to catch sqrt(x^2) early
                                                            // V2.14.45: SimplifySqrtOddPowerRule DISABLED - causes split/merge cycle with ProductPowerRule
@@ -843,5 +958,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(AbsSqrtRule)); // |sqrt(x)| → sqrt(x)
     simplifier.add_rule(Box::new(AbsExpRule)); // |e^x| → e^x
     simplifier.add_rule(Box::new(AbsSumOfSquaresRule)); // |x² + y²| → x² + y²
+    simplifier.add_rule(Box::new(AbsSubNormalizeRule)); // |a-b| → |b-a| (canonical)
+    simplifier.add_rule(Box::new(AbsPositiveFactorRule)); // |k·x| → k·|x| for k > 0
     simplifier.add_rule(Box::new(EvaluateMetaFunctionsRule)); // Make simplify/factor/expand transparent
 }

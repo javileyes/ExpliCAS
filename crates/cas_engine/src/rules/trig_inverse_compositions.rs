@@ -14,6 +14,10 @@
 //!   sin(2·arcsin(t)) → 2t·√(1−t²)
 //!   cos(2·arcsin(t)) → 1 − 2t²
 //!
+//! **n=2 (Chebyshev / arccos):**
+//!   sin(2·arccos(t)) → 2t·√(1−t²)
+//!   cos(2·arccos(t)) → 2t² − 1
+//!
 //! **n=3 (Triple angle / arctan):**
 //!   sin(3·arctan(t)) → (3t − t³) / (1+t²)^(3/2)
 //!   cos(3·arctan(t)) → (1 − 3t²) / (1+t²)^(3/2)
@@ -22,6 +26,10 @@
 //! **n=3 (Chebyshev / arcsin):**
 //!   sin(3·arcsin(t)) → 3t − 4t³
 //!   cos(3·arcsin(t)) → 4(1−t²)^(3/2) − 3√(1−t²)
+//!
+//! **n=3 (Chebyshev / arccos):**
+//!   sin(3·arccos(t)) → √(1−t²)·(4t² − 1)
+//!   cos(3·arccos(t)) → 4t³ − 3t
 //!
 //! These bridge rules connect the trig and inverse-trig sub-worlds directly,
 //! reducing compositions to algebraic expressions without needing expand_mode.
@@ -46,6 +54,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(TripleAngleInverseAtanRule));
     simplifier.add_rule(Box::new(DoubleAngleInverseAsinRule));
     simplifier.add_rule(Box::new(TripleAngleInverseAsinRule));
+    simplifier.add_rule(Box::new(DoubleAngleInverseAcosRule));
+    simplifier.add_rule(Box::new(TripleAngleInverseAcosRule));
 }
 
 // =============================================================================
@@ -448,6 +458,145 @@ define_rule!(
                 let three_sqrt = ctx.add(Expr::Mul(three, sqrt_part));
                 let result = ctx.add(Expr::Sub(four_pow, three_sqrt));
                 (result, "cos(3·arcsin(t)) = 4(1−t²)^(3/2) − 3√(1−t²)")
+            }
+            _ => return None,
+        };
+
+        Some(Rewrite::new(new_expr).desc(desc))
+    }
+);
+
+// =============================================================================
+// n=2: sin/cos(2·arccos(t))  — Chebyshev reduction
+// =============================================================================
+//
+// With θ=arccos(t), cosθ=t, sinθ=√(1−t²):
+//
+//   sin(2·arccos(t)) = 2·sin(arccos(t))·cos(arccos(t)) = 2t·√(1−t²)
+//   cos(2·arccos(t)) = 2cos²(arccos(t)) − 1 = 2t² − 1
+
+define_rule!(
+    DoubleAngleInverseAcosRule,
+    "Double Angle Inverse Acos Composition",
+    Some(TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        let (fn_id, arg0) = match ctx.get(expr) {
+            Expr::Function(fn_id, args) if args.len() == 1 => (*fn_id, args[0]),
+            _ => return None,
+        };
+
+        let trig = match ctx.builtin_of(fn_id) {
+            Some(b @ (BuiltinFn::Sin | BuiltinFn::Cos)) => b,
+            _ => return None,
+        };
+
+        let inner = extract_double_angle_arg(ctx, arg0)?;
+
+        let t = match ctx.get(inner) {
+            Expr::Function(inv_id, inv_args) if inv_args.len() == 1 => {
+                match ctx.builtin_of(*inv_id) {
+                    Some(BuiltinFn::Acos | BuiltinFn::Arccos) => inv_args[0],
+                    _ => return None,
+                }
+            }
+            _ => return None,
+        };
+
+        let (new_expr, desc) = match trig {
+            BuiltinFn::Sin => {
+                // sin(2·arccos(t)) = 2t·√(1−t²)
+                let two = ctx.num(2);
+                let one = ctx.num(1);
+                let t_sq = ctx.add(Expr::Pow(t, two));
+                let one_minus_t_sq = ctx.add(Expr::Sub(one, t_sq));
+                let half = ctx.add(Expr::Number(num_rational::BigRational::new(
+                    1.into(),
+                    2.into(),
+                )));
+                let sqrt_part = ctx.add(Expr::Pow(one_minus_t_sq, half));
+                let two_t = ctx.add(Expr::Mul(two, t));
+                let result = ctx.add(Expr::Mul(two_t, sqrt_part));
+                (result, "sin(2·arccos(t)) = 2t·√(1−t²)")
+            }
+            BuiltinFn::Cos => {
+                // cos(2·arccos(t)) = 2t² − 1
+                let two = ctx.num(2);
+                let one = ctx.num(1);
+                let t_sq = ctx.add(Expr::Pow(t, two));
+                let two_t_sq = ctx.add(Expr::Mul(two, t_sq));
+                let result = ctx.add(Expr::Sub(two_t_sq, one));
+                (result, "cos(2·arccos(t)) = 2t² − 1")
+            }
+            _ => return None,
+        };
+
+        Some(Rewrite::new(new_expr).desc(desc))
+    }
+);
+
+// =============================================================================
+// n=3: sin/cos(3·arccos(t))  — Chebyshev reduction
+// =============================================================================
+//
+// With θ=arccos(t), cosθ=t, sinθ=√(1−t²):
+//
+//   cos(3·arccos(t)) = 4t³ − 3t     (Chebyshev T₃)
+//   sin(3·arccos(t)) = √(1−t²)·(4t² − 1)
+
+define_rule!(
+    TripleAngleInverseAcosRule,
+    "Triple Angle Inverse Acos Composition",
+    Some(TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        let (fn_id, arg0) = match ctx.get(expr) {
+            Expr::Function(fn_id, args) if args.len() == 1 => (*fn_id, args[0]),
+            _ => return None,
+        };
+
+        let trig = match ctx.builtin_of(fn_id) {
+            Some(b @ (BuiltinFn::Sin | BuiltinFn::Cos)) => b,
+            _ => return None,
+        };
+
+        let inner = extract_triple_angle_arg(ctx, arg0)?;
+
+        let t = match ctx.get(inner) {
+            Expr::Function(inv_id, inv_args) if inv_args.len() == 1 => {
+                match ctx.builtin_of(*inv_id) {
+                    Some(BuiltinFn::Acos | BuiltinFn::Arccos) => inv_args[0],
+                    _ => return None,
+                }
+            }
+            _ => return None,
+        };
+
+        let (new_expr, desc) = match trig {
+            BuiltinFn::Cos => {
+                // cos(3·arccos(t)) = 4t³ − 3t
+                let three = ctx.num(3);
+                let four = ctx.num(4);
+                let t_cubed = ctx.add(Expr::Pow(t, three));
+                let four_t_cubed = ctx.add(Expr::Mul(four, t_cubed));
+                let three_t = ctx.add(Expr::Mul(three, t));
+                let result = ctx.add(Expr::Sub(four_t_cubed, three_t));
+                (result, "cos(3·arccos(t)) = 4t³ − 3t")
+            }
+            BuiltinFn::Sin => {
+                // sin(3·arccos(t)) = √(1−t²)·(4t² − 1)
+                let one = ctx.num(1);
+                let two = ctx.num(2);
+                let four = ctx.num(4);
+                let t_sq = ctx.add(Expr::Pow(t, two));
+                let one_minus_t_sq = ctx.add(Expr::Sub(one, t_sq));
+                let half = ctx.add(Expr::Number(num_rational::BigRational::new(
+                    1.into(),
+                    2.into(),
+                )));
+                let sqrt_part = ctx.add(Expr::Pow(one_minus_t_sq, half));
+                let four_t_sq = ctx.add(Expr::Mul(four, t_sq));
+                let bracket = ctx.add(Expr::Sub(four_t_sq, one));
+                let result = ctx.add(Expr::Mul(sqrt_part, bracket));
+                (result, "sin(3·arccos(t)) = √(1−t²)·(4t²−1)")
             }
             _ => return None,
         };
