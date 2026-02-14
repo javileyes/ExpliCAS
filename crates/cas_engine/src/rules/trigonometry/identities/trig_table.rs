@@ -793,6 +793,76 @@ pub fn parse_special_value(ctx: &Context, expr: ExprId) -> Option<ValueSpec> {
             None
         }
 
+        // Mul patterns: rationalized forms like (1/3)*√3 = √3/3 = 1/√3
+        Expr::Mul(l, r) => {
+            // Try both orderings: Number * sqrt(n) and sqrt(n) * Number
+            let (num_id, sqrt_id) = if matches!(ctx.get(*l), Expr::Number(_) | Expr::Div(_, _)) {
+                (*l, *r)
+            } else {
+                (*r, *l)
+            };
+
+            // Check if sqrt_id is √n
+            if let Some(sqrt_base) = is_sqrt(ctx, sqrt_id) {
+                // Check if num_id is 1/n (where n = sqrt_base)
+                if let Expr::Number(n) = ctx.get(num_id) {
+                    // (1/3) * √3 → OneOverSqrt3
+                    if sqrt_base == 3 && *n == num_rational::Ratio::new(1.into(), 3.into()) {
+                        return Some(ValueSpec::OneOverSqrt3);
+                    }
+                    // (-1/3) * √3 → NegOneOverSqrt3
+                    if sqrt_base == 3 && *n == num_rational::Ratio::new((-1).into(), 3.into()) {
+                        return Some(ValueSpec::NegOneOverSqrt3);
+                    }
+                    // (1/2) * √2 → Sqrt2Over2
+                    if sqrt_base == 2 && *n == num_rational::Ratio::new(1.into(), 2.into()) {
+                        return Some(ValueSpec::Sqrt2Over2);
+                    }
+                    // (-1/2) * √2 → NegSqrt2Over2
+                    if sqrt_base == 2 && *n == num_rational::Ratio::new((-1).into(), 2.into()) {
+                        return Some(ValueSpec::NegSqrt2Over2);
+                    }
+                    // (1/2) * √3 → Sqrt3Over2
+                    if sqrt_base == 3 && *n == num_rational::Ratio::new(1.into(), 2.into()) {
+                        return Some(ValueSpec::Sqrt3Over2);
+                    }
+                    // (-1/2) * √3 → NegSqrt3Over2
+                    if sqrt_base == 3 && *n == num_rational::Ratio::new((-1).into(), 2.into()) {
+                        return Some(ValueSpec::NegSqrt3Over2);
+                    }
+                }
+                // Check if num_id is Div(1, n) form — e.g., Div(1, 3) * √3
+                if let Expr::Div(div_num, div_den) = ctx.get(num_id) {
+                    if let (Expr::Number(n), Expr::Number(d)) =
+                        (ctx.get(*div_num), ctx.get(*div_den))
+                    {
+                        if n.is_one() && d.to_integer().to_i32() == Some(sqrt_base) {
+                            // 1/n * √n → OneOverSqrt(n) or Sqrt(n)/n
+                            if sqrt_base == 3 {
+                                return Some(ValueSpec::OneOverSqrt3);
+                            }
+                            if sqrt_base == 2 {
+                                return Some(ValueSpec::Sqrt2Over2);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Also check Neg(sqrt) * frac patterns
+            if let Expr::Neg(inner) = ctx.get(sqrt_id) {
+                if let Some(sqrt_base) = is_sqrt(ctx, *inner) {
+                    if let Expr::Number(n) = ctx.get(num_id) {
+                        if sqrt_base == 3 && *n == num_rational::Ratio::new(1.into(), 3.into()) {
+                            return Some(ValueSpec::NegOneOverSqrt3);
+                        }
+                    }
+                }
+            }
+
+            None
+        }
+
         _ => None,
     }
 }

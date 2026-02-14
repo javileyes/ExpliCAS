@@ -747,6 +747,103 @@ define_rule!(
     }
 );
 
+// Rule: Hyperbolic triple angle expansion
+// sinh(3x) → 3·sinh(x) + 4·sinh³(x)
+// cosh(3x) → 4·cosh³(x) - 3·cosh(x)
+// Note: sinh uses + (not -) because sinh is always positive for positive x
+define_rule!(
+    HyperbolicTripleAngleRule,
+    "Hyperbolic Triple Angle Identity",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            if args.len() == 1 {
+                if let Some(inner_var) = crate::helpers::extract_triple_angle_arg(ctx, args[0]) {
+                    // Only expand for trivial arguments (same guard as TripleAngleRule)
+                    match ctx.get(inner_var) {
+                        Expr::Variable(_) | Expr::Constant(_) | Expr::Number(_) => {}
+                        Expr::Mul(l, r) => {
+                            let l_simple = matches!(
+                                ctx.get(*l),
+                                Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_)
+                            );
+                            let r_simple = matches!(
+                                ctx.get(*r),
+                                Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_)
+                            );
+                            if !(l_simple && r_simple) {
+                                return None;
+                            }
+                        }
+                        Expr::Neg(inner) => {
+                            if !matches!(
+                                ctx.get(*inner),
+                                Expr::Variable(_) | Expr::Constant(_) | Expr::Number(_)
+                            ) {
+                                return None;
+                            }
+                        }
+                        _ => return None,
+                    }
+
+                    match ctx.builtin_of(*fn_id) {
+                        Some(BuiltinFn::Sinh) => {
+                            // sinh(3x) → 3·sinh(x) + 4·sinh³(x)
+                            let three = ctx.num(3);
+                            let four = ctx.num(4);
+                            let exp_three = ctx.num(3);
+                            let sinh_x =
+                                ctx.call_builtin(cas_ast::BuiltinFn::Sinh, vec![inner_var]);
+
+                            // 3·sinh(x)
+                            let term1 =
+                                crate::rules::algebra::helpers::smart_mul(ctx, three, sinh_x);
+
+                            // sinh³(x) = sinh(x)^3
+                            let sinh_cubed = ctx.add(Expr::Pow(sinh_x, exp_three));
+                            // 4·sinh³(x)
+                            let term2 =
+                                crate::rules::algebra::helpers::smart_mul(ctx, four, sinh_cubed);
+
+                            // 3·sinh(x) + 4·sinh³(x)
+                            let new_expr = ctx.add(Expr::Add(term1, term2));
+                            return Some(
+                                Rewrite::new(new_expr).desc("sinh(3x) → 3sinh(x) + 4sinh³(x)"),
+                            );
+                        }
+                        Some(BuiltinFn::Cosh) => {
+                            // cosh(3x) → 4·cosh³(x) - 3·cosh(x)
+                            let three = ctx.num(3);
+                            let four = ctx.num(4);
+                            let exp_three = ctx.num(3);
+                            let cosh_x =
+                                ctx.call_builtin(cas_ast::BuiltinFn::Cosh, vec![inner_var]);
+
+                            // cosh³(x) = cosh(x)^3
+                            let cosh_cubed = ctx.add(Expr::Pow(cosh_x, exp_three));
+                            // 4·cosh³(x)
+                            let term1 =
+                                crate::rules::algebra::helpers::smart_mul(ctx, four, cosh_cubed);
+
+                            // 3·cosh(x)
+                            let term2 =
+                                crate::rules::algebra::helpers::smart_mul(ctx, three, cosh_x);
+
+                            // 4·cosh³(x) - 3·cosh(x)
+                            let new_expr = ctx.add(Expr::Sub(term1, term2));
+                            return Some(
+                                Rewrite::new(new_expr).desc("cosh(3x) → 4cosh³(x) - 3cosh(x)"),
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        None
+    }
+);
+
 /// Register all hyperbolic function rules
 pub fn register(simplifier: &mut crate::engine::Simplifier) {
     simplifier.add_rule(Box::new(EvaluateHyperbolicRule));
@@ -760,6 +857,7 @@ pub fn register(simplifier: &mut crate::engine::Simplifier) {
     simplifier.add_rule(Box::new(SinhCoshToTanhRule)); // sinh(x)/cosh(x) → tanh(x) (contraction)
     simplifier.add_rule(Box::new(SinhDoubleAngleExpansionRule)); // sinh(2x) → 2sinh(x)cosh(x)
     simplifier.add_rule(Box::new(RecognizeHyperbolicFromExpRule));
+    simplifier.add_rule(Box::new(HyperbolicTripleAngleRule)); // sinh(3x), cosh(3x)
 }
 
 #[cfg(test)]
