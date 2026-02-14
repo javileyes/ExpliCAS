@@ -620,9 +620,13 @@ pub fn lookup_trig_value(func_name: &str, angle: SpecialAngle) -> Option<&'stati
 /// Special input values for inverse trig functions
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InverseTrigInput {
-    Zero, // 0
-    One,  // 1
-    Half, // 1/2
+    Zero,         // 0
+    One,          // 1
+    Half,         // 1/2
+    Sqrt2Over2,   // √2/2
+    Sqrt3Over2,   // √3/2
+    OneOverSqrt3, // 1/√3 = √3/3
+    Sqrt3,        // √3
 }
 
 impl InverseTrigInput {
@@ -631,26 +635,132 @@ impl InverseTrigInput {
             InverseTrigInput::Zero => "0",
             InverseTrigInput::One => "1",
             InverseTrigInput::Half => "1/2",
+            InverseTrigInput::Sqrt2Over2 => "√2/2",
+            InverseTrigInput::Sqrt3Over2 => "√3/2",
+            InverseTrigInput::OneOverSqrt3 => "√3/3",
+            InverseTrigInput::Sqrt3 => "√3",
         }
     }
+}
+
+/// Check if expression is n^(1/2) and return n as i64
+fn is_sqrt_expr(ctx: &Context, expr: ExprId) -> Option<i64> {
+    if let Expr::Pow(base, exp) = ctx.get(expr) {
+        // Case 1: exponent is Div(1, 2) — structural form
+        if let Expr::Div(num, den) = ctx.get(*exp) {
+            if let (Expr::Number(n), Expr::Number(d)) = (ctx.get(*num), ctx.get(*den)) {
+                use num_traits::One;
+                if n.is_one() && *d == num_rational::BigRational::from_integer(2.into()) {
+                    if let Expr::Number(b) = ctx.get(*base) {
+                        return b.to_integer().try_into().ok();
+                    }
+                }
+            }
+        }
+        // Case 2: exponent is Number(1/2) — folded rational form
+        if let Expr::Number(exp_val) = ctx.get(*exp) {
+            if *exp_val == num_rational::BigRational::new(1.into(), 2.into()) {
+                if let Expr::Number(b) = ctx.get(*base) {
+                    return b.to_integer().try_into().ok();
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Detect if an expression is a special input for inverse trig
 pub fn detect_inverse_trig_input(ctx: &Context, expr: ExprId) -> Option<InverseTrigInput> {
     use num_traits::{One, Zero};
 
-    if let Expr::Number(n) = ctx.get(expr) {
-        if n.is_zero() {
-            return Some(InverseTrigInput::Zero);
+    match ctx.get(expr) {
+        // Integer/rational constants: 0, 1, 1/2
+        Expr::Number(n) => {
+            if n.is_zero() {
+                return Some(InverseTrigInput::Zero);
+            }
+            if n.is_one() {
+                return Some(InverseTrigInput::One);
+            }
+            if *n == num_rational::BigRational::new(1.into(), 2.into()) {
+                return Some(InverseTrigInput::Half);
+            }
+            None
         }
-        if n.is_one() {
-            return Some(InverseTrigInput::One);
+
+        // Div patterns: √n/d or 1/√n
+        Expr::Div(num, den) => {
+            if let Expr::Number(d) = ctx.get(*den) {
+                let denom: i64 = d.to_integer().try_into().ok()?;
+
+                // √2/2
+                if denom == 2 {
+                    if let Some(2) = is_sqrt_expr(ctx, *num) {
+                        return Some(InverseTrigInput::Sqrt2Over2);
+                    }
+                }
+                // √3/2
+                if denom == 2 {
+                    if let Some(3) = is_sqrt_expr(ctx, *num) {
+                        return Some(InverseTrigInput::Sqrt3Over2);
+                    }
+                }
+                // √3/3 = 1/√3
+                if denom == 3 {
+                    if let Some(3) = is_sqrt_expr(ctx, *num) {
+                        return Some(InverseTrigInput::OneOverSqrt3);
+                    }
+                }
+            }
+            // 1/√3
+            if let Expr::Number(n) = ctx.get(*num) {
+                if n.is_one() {
+                    if let Some(3) = is_sqrt_expr(ctx, *den) {
+                        return Some(InverseTrigInput::OneOverSqrt3);
+                    }
+                }
+            }
+            None
         }
-        if *n == num_rational::BigRational::new(1.into(), 2.into()) {
-            return Some(InverseTrigInput::Half);
+
+        // Mul patterns: rationalized forms like (1/3)·√3, (1/2)·√2, etc.
+        Expr::Mul(l, r) => {
+            // Try both orderings
+            let (num_id, sqrt_id) = if matches!(ctx.get(*l), Expr::Number(_) | Expr::Div(_, _)) {
+                (*l, *r)
+            } else {
+                (*r, *l)
+            };
+
+            if let Some(sqrt_base) = is_sqrt_expr(ctx, sqrt_id) {
+                if let Expr::Number(n) = ctx.get(num_id) {
+                    // (1/3)·√3 = √3/3 = 1/√3
+                    if sqrt_base == 3 && *n == num_rational::BigRational::new(1.into(), 3.into()) {
+                        return Some(InverseTrigInput::OneOverSqrt3);
+                    }
+                    // (1/2)·√2 = √2/2
+                    if sqrt_base == 2 && *n == num_rational::BigRational::new(1.into(), 2.into()) {
+                        return Some(InverseTrigInput::Sqrt2Over2);
+                    }
+                    // (1/2)·√3 = √3/2
+                    if sqrt_base == 3 && *n == num_rational::BigRational::new(1.into(), 2.into()) {
+                        return Some(InverseTrigInput::Sqrt3Over2);
+                    }
+                }
+            }
+            None
         }
+
+        // Pow patterns: √3 alone
+        Expr::Pow(_, _) => {
+            if let Some(3) = is_sqrt_expr(ctx, expr) {
+                return Some(InverseTrigInput::Sqrt3);
+            }
+            None
+        }
+
+        _ => None,
     }
-    None
 }
 
 /// Lookup table for inverse trig values
@@ -666,6 +776,20 @@ pub static INVERSE_TRIG_TABLE: &[(&str, InverseTrigInput, TrigValue)] = &[
     // --- Input: 1/2 ---
     ("arcsin", InverseTrigInput::Half, TrigValue::PiDiv(6)),
     ("arccos", InverseTrigInput::Half, TrigValue::PiDiv(3)),
+    // --- Input: √2/2 ---
+    ("arcsin", InverseTrigInput::Sqrt2Over2, TrigValue::PiDiv(4)),
+    ("arccos", InverseTrigInput::Sqrt2Over2, TrigValue::PiDiv(4)),
+    // --- Input: √3/2 ---
+    ("arcsin", InverseTrigInput::Sqrt3Over2, TrigValue::PiDiv(3)),
+    ("arccos", InverseTrigInput::Sqrt3Over2, TrigValue::PiDiv(6)),
+    // --- Input: 1/√3 = √3/3 ---
+    (
+        "arctan",
+        InverseTrigInput::OneOverSqrt3,
+        TrigValue::PiDiv(6),
+    ),
+    // --- Input: √3 ---
+    ("arctan", InverseTrigInput::Sqrt3, TrigValue::PiDiv(3)),
 ];
 
 /// Look up an inverse trig value from the static table
