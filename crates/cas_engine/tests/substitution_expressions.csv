@@ -36,3 +36,19 @@ u/(u + 1),u,rational
 -u,u,simple
 2*u,u,simple
 u + pi,u,simple
+
+# Absolute Value
+|u|,u,absolute
+
+# Shifted
+u - 1,u,shifted
+1 - u,u,shifted
+
+# Higher-Degree Polynomial
+u^3,u,poly
+u^3 + 1,u,poly
+
+# Hyperbolic
+sinh(u),u,hyp
+cosh(u),u,hyp
+

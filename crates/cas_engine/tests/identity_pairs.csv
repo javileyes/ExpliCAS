@@ -922,3 +922,137 @@ exp(ln(|x|)),|x|,x,g
 (x^6 - 1)/(x - 1),x^5 + x^4 + x^3 + x^2 + x + 1,x,g
 (x^2 - y^2)/(x - y),x + y,x;y,g
 (x^3 - y^3)/(x - y),x^2 + x*y + y^2,x;y,g
+
+# =============================================================================
+# ABSOLUTE VALUE: EXTENDED IDENTITIES
+# =============================================================================
+
+# Symmetry of subtraction under absolute value
+|x - y|,|y - x|,x;y,g
+|-x*y|,|x*y|,x;y,g
+|x|*|x|,x^2,x,g
+||x||,|x|,x,g
+
+# Positive factor extraction
+|2*x|,2*|x|,x,g
+|3*x|,3*|x|,x,g
+|5*x|,5*|x|,x,g
+
+# Absolute value and powers
+|x^3|,|x|^3,x,g
+|x^5|,|x|^5,x,g
+|sin(x)|^2,sin(x)^2,x,g
+|cos(x)|^2,cos(x)^2,x,g
+
+# =============================================================================
+# INVERSE TRIG: SPECIAL VALUES
+# =============================================================================
+
+arctan(1),pi/4,x,g
+arcsin(1/2),pi/6,x,g
+arccos(1/2),pi/3,x,g
+arccos(0),pi/2,x,g
+arcsin(sqrt(2)/2),pi/4,x,g
+arccos(sqrt(2)/2),pi/4,x,g
+arctan(sqrt(3)),pi/3,x,g
+arctan(1/sqrt(3)),pi/6,x,g
+
+# =============================================================================
+# INVERSE TRIG: COMPOSITIONS (Chebyshev-like)
+# =============================================================================
+
+# Cross-function compositions
+sin(arccos(x)),sqrt(1 - x^2),x,g
+cos(arcsin(x)),sqrt(1 - x^2),x,g
+tan(arcsin(x)),x/sqrt(1 - x^2),x,g
+sin(arctan(x)),x/sqrt(1 + x^2),x,g
+cos(arctan(x)),1/sqrt(1 + x^2),x,g
+
+# Double-angle inverse trig compositions
+sin(2*arcsin(x)),2*x*sqrt(1 - x^2),x,g
+cos(2*arcsin(x)),1 - 2*x^2,x,g
+sin(2*arccos(x)),2*x*sqrt(1 - x^2),x,g
+cos(2*arccos(x)),2*x^2 - 1,x,g
+
+# =============================================================================
+# HYPERBOLIC: ADDITION FORMULAS
+# =============================================================================
+
+sinh(x + y),sinh(x)*cosh(y) + cosh(x)*sinh(y),x;y,g
+sinh(x - y),sinh(x)*cosh(y) - cosh(x)*sinh(y),x;y,g
+cosh(x + y),cosh(x)*cosh(y) + sinh(x)*sinh(y),x;y,g
+cosh(x - y),cosh(x)*cosh(y) - sinh(x)*sinh(y),x;y,g
+
+# Hyperbolic Pythagorean variant
+1 - tanh(x)^2,1/cosh(x)^2,x,g
+
+# Hyperbolic triple angle
+sinh(3*x),3*sinh(x) + 4*sinh(x)^3,x,g
+cosh(3*x),4*cosh(x)^3 - 3*cosh(x),x,g
+
+# =============================================================================
+# POWER / EXPONENT: EXTENDED RULES
+# =============================================================================
+
+# Product power rule
+(x*y)^2,x^2*y^2,x;y,g
+(x*y)^3,x^3*y^3,x;y,g
+
+# Quotient power rule
+(x/y)^2,x^2/y^2,x;y,g
+(x/y)^3,x^3/y^3,x;y,g
+
+# Fractional exponent combination
+x^(1/2)*x^(1/3),x^(5/6),x,g,,,ge(0.0)
+x^(2/3)*x^(1/3),x,x,g,,,ge(0.0)
+
+# =============================================================================
+# RATIONAL EXPRESSIONS: EXTENDED
+# =============================================================================
+
+# Factor-cancel patterns
+(x^2 - 1)/(x + 1),x - 1,x,g
+(x^2 - 9)/(x + 3),x - 3,x,g
+(x^2 + 2*x)/(x + 2),x,x,g
+x/(x + 1) + 1/(x + 1),1,x,g
+(x - 1)/(x^2 - 1),1/(x + 1),x,g
+
+# Cross-multiplication equivalences
+1/(x - 1) + 1/(x + 1),2*x/(x^2 - 1),x,g
+
+# =============================================================================
+# POLYNOMIAL: GCF AND FACTORING EXTENDED
+# =============================================================================
+
+# GCF extraction
+3*x + 6,3*(x + 2),x,g
+x^2 + 3*x,x*(x + 3),x,g
+2*x^2 + 4*x,2*x*(x + 2),x,g
+x^3 - x,x*(x - 1)*(x + 1),x,g
+x^4 - x^2,x^2*(x - 1)*(x + 1),x,g
+
+# Additional perfect square trinomials
+x^2 + 8*x + 16,(x + 4)^2,x,g
+x^2 - 10*x + 25,(x - 5)^2,x,g
+4*x^2 + 4*x + 1,(2*x + 1)^2,x,g
+9*x^2 - 6*x + 1,(3*x - 1)^2,x,g
+
+# =============================================================================
+# MIXED / CROSS-CATEGORY IDENTITIES
+# =============================================================================
+
+# Trig-power combinations
+sin(x)^2*cos(x)^2,sin(2*x)^2/4,x,g
+(1 + tan(x)^2)*cos(x)^2,1,x,g
+
+# Exp-log combinations
+ln(exp(x)^2),2*x,x,g
+exp(ln(x^2)),x^2,x,g,,,gt(0.0)
+ln(x^(1/3)),ln(x)/3,x,a
+
+# Sqrt-power combinations
+sqrt(x^4),x^2,x,g,,,ge(0.0)
+sqrt(x^6),|x|^3,x,g
+
+# Logistic-style
+exp(x)/(exp(x) + 1) + 1/(exp(x) + 1),1,x,g
