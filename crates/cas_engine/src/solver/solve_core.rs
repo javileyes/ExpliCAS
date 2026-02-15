@@ -309,6 +309,20 @@ pub(crate) fn solve_with_options(
         simplified_eq.rhs = simplifier.simplify_for_solve(cr.new_rhs);
     }
 
+    // SEMANTIC CANCEL FALLBACK: for remaining unmatched terms, try
+    // simplify(term_L - term_R) == 0 to catch semantically equivalent
+    // terms that don't converge to the same AST under structural comparison.
+    // Examples: sin(arccos(x)) vs sqrt(1-x²), abs(x^n) vs abs(x)^n.
+    // Runs AFTER structural cancel to avoid redundant simplifications.
+    if let Some(cr) = crate::rules::cancel_common_terms::cancel_additive_terms_semantic(
+        simplifier,
+        simplified_eq.lhs,
+        simplified_eq.rhs,
+    ) {
+        simplified_eq.lhs = simplifier.simplify_for_solve(cr.new_lhs);
+        simplified_eq.rhs = simplifier.simplify_for_solve(cr.new_rhs);
+    }
+
     // CRITICAL: After simplification, check for identities and contradictions
     // Do this by moving everything to one side: LHS - RHS
     let difference = simplifier

@@ -118,6 +118,130 @@ pub fn cancel_common_additive_terms(
     })
 }
 
+/// Semantic fallback for equation-level term cancellation.
+///
+/// For each unmatched pair `(l_i, r_j)` with matching polarity, builds
+/// `simplify_for_solve(l_i - r_j)` and checks if the result is `Number(0)`.
+///
+/// This catches semantically equivalent terms that don't converge to the
+/// same AST under structural comparison, e.g.:
+/// - `sin(arccos(x))` vs `sqrt(1 - x^2)`
+/// - `ln(sqrt(x)*y)` vs `ln(x)/2 + ln(y)`
+/// - `abs(sin(x/2))` vs `sqrt((1 - cos(x))/2)`
+///
+/// # Guards
+/// - ≤ `MAX_TERMS` terms per side (avoids O(n²) explosion)
+/// - ≤ `MAX_NODES` nodes per term (avoids expensive simplification)
+pub fn cancel_additive_terms_semantic(
+    simplifier: &mut crate::Simplifier,
+    lhs: ExprId,
+    rhs: ExprId,
+) -> Option<CancelResult> {
+    use cas_ast::traversal::count_nodes_matching;
+    use num_traits::Zero;
+
+    const MAX_TERMS: usize = 8;
+    const MAX_NODES: usize = 200;
+
+    let mut lhs_terms = Vec::new();
+    let mut rhs_terms = Vec::new();
+    collect_additive_terms(&simplifier.context, lhs, true, &mut lhs_terms);
+    collect_additive_terms(&simplifier.context, rhs, true, &mut rhs_terms);
+
+    // Guard: skip if too many terms
+    if lhs_terms.len() > MAX_TERMS || rhs_terms.len() > MAX_TERMS {
+        return None;
+    }
+
+    let mut lhs_used = vec![false; lhs_terms.len()];
+    let mut rhs_used = vec![false; rhs_terms.len()];
+    let mut cancelled = 0;
+
+    // First pass: structural match (fast, no simplification cost)
+    for (ri, (rt, rp)) in rhs_terms.iter().enumerate() {
+        if rhs_used[ri] {
+            continue;
+        }
+        for (li, (lt, lp)) in lhs_terms.iter().enumerate() {
+            if lhs_used[li] {
+                continue;
+            }
+            if lp == rp && compare_expr(&simplifier.context, *lt, *rt) == Ordering::Equal {
+                lhs_used[li] = true;
+                rhs_used[ri] = true;
+                cancelled += 1;
+                break;
+            }
+        }
+    }
+
+    // Second pass: semantic match (simplify(l - r) == 0)
+    for (li, (lt, lp)) in lhs_terms.iter().enumerate() {
+        if lhs_used[li] {
+            continue;
+        }
+        // Guard: skip large terms
+        let l_nodes = count_nodes_matching(&simplifier.context, *lt, |_| true);
+        if l_nodes > MAX_NODES {
+            continue;
+        }
+
+        for (ri, (rt, rp)) in rhs_terms.iter().enumerate() {
+            if rhs_used[ri] {
+                continue;
+            }
+            if lp != rp {
+                continue;
+            }
+            // Guard: skip large terms
+            let r_nodes = count_nodes_matching(&simplifier.context, *rt, |_| true);
+            if r_nodes > MAX_NODES {
+                continue;
+            }
+
+            // Build diff = l_term - r_term and simplify
+            let diff = simplifier.context.add(Expr::Sub(*lt, *rt));
+            let simplified_diff = simplifier.simplify_for_solve(diff);
+
+            // Check if result is zero
+            let is_zero = if let Expr::Number(n) = simplifier.context.get(simplified_diff) {
+                n.is_zero()
+            } else {
+                false
+            };
+            if is_zero {
+                lhs_used[li] = true;
+                rhs_used[ri] = true;
+                cancelled += 1;
+                break;
+            }
+        }
+    }
+
+    if cancelled == 0 {
+        return None;
+    }
+
+    let new_lhs_terms: Vec<_> = lhs_terms
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| !lhs_used[*i])
+        .map(|(_, t)| t)
+        .collect();
+    let new_rhs_terms: Vec<_> = rhs_terms
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| !rhs_used[*i])
+        .map(|(_, t)| t)
+        .collect();
+
+    Some(CancelResult {
+        new_lhs: rebuild_from_terms(&mut simplifier.context, &new_lhs_terms),
+        new_rhs: rebuild_from_terms(&mut simplifier.context, &new_rhs_terms),
+        cancelled_count: cancelled,
+    })
+}
+
 /// Collect additive terms from an expression, flattening Add/Sub/Neg.
 /// Each term is `(ExprId, is_positive)`.
 pub(crate) fn collect_additive_terms(

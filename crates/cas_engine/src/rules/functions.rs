@@ -664,6 +664,47 @@ define_rule!(AbsOfEvenPowerRule, "Abs Of Even Power", |ctx, expr| {
 });
 
 // =============================================================================
+// Abs Pow Odd Integer Rule: |x^n| → |x|^n for positive odd integer n
+// This canonicalizes the abs-power form so that `abs(x^5)` and `abs(x)^5`
+// converge to the same AST, enabling structural cancellation in the solver.
+// Even powers are handled by AbsOfEvenPowerRule (|x^2k| → x^2k).
+// =============================================================================
+define_rule!(
+    AbsPowOddIntegerRule,
+    "Abs Distribute Over Odd Power",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    PhaseMask::CORE | PhaseMask::TRANSFORM,
+    |ctx, expr| {
+        // Match abs(x^n) where n is a positive odd integer
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 {
+                let arg = args[0];
+                if let Expr::Pow(base, exp) = ctx.get(arg) {
+                    let (base, exp) = (*base, *exp);
+                    if let Expr::Number(n) = ctx.get(exp) {
+                        if n.is_integer() {
+                            let n_int = n.to_integer();
+                            // Positive odd integer only (even handled by AbsOfEvenPowerRule)
+                            if n_int > num_bigint::BigInt::from(0) && !n_int.is_even() {
+                                // abs(x^n) → abs(x)^n
+                                let abs_base =
+                                    ctx.call_builtin(cas_ast::BuiltinFn::Abs, vec![base]);
+                                let result = ctx.add(Expr::Pow(abs_base, exp));
+                                return Some(
+                                    Rewrite::new(result)
+                                        .desc_lazy(|| format!("|x^{}| = |x|^{}", n_int, n_int)),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+);
+
+// =============================================================================
 // Abs Product Rule: |x| * |y| → |x * y|
 // Multiplicative property of absolute value
 // =============================================================================
@@ -953,6 +994,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(AbsSquaredRule));
     simplifier.add_rule(Box::new(AbsIdempotentRule)); // ||x|| → |x|
     simplifier.add_rule(Box::new(AbsOfEvenPowerRule)); // |x^2k| → x^2k
+    simplifier.add_rule(Box::new(AbsPowOddIntegerRule)); // |x^n| → |x|^n (odd n)
     simplifier.add_rule(Box::new(AbsProductRule)); // |x|*|y| → |xy|
     simplifier.add_rule(Box::new(AbsQuotientRule)); // |x|/|y| → |x/y|
     simplifier.add_rule(Box::new(AbsSqrtRule)); // |sqrt(x)| → sqrt(x)
