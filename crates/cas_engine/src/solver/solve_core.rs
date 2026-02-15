@@ -12,7 +12,7 @@ use crate::error::CasError;
 use crate::solver::isolation::contains_var;
 use crate::solver::strategies::{
     CollectTermsStrategy, IsolationStrategy, QuadraticStrategy, RationalExponentStrategy,
-    SubstitutionStrategy, UnwrapStrategy,
+    RationalRootsStrategy, SubstitutionStrategy, UnwrapStrategy,
 };
 use crate::solver::strategy::SolverStrategy;
 
@@ -270,7 +270,32 @@ pub(crate) fn solve_with_options(
         .context
         .add(cas_ast::Expr::Sub(simplified_eq.lhs, simplified_eq.rhs));
     // SolveSafety: use prepass for identity/contradiction check
-    let diff_simplified = simplifier.simplify_for_solve(difference);
+    let mut diff_simplified = simplifier.simplify_for_solve(difference);
+
+    // PRE-SOLVE CANCELLATION: if diff still contains the variable, try
+    // expand + simplify to cancel identity noise. This handles cases like
+    // exp(x) + (x+1)(x+2) - (x² + 3x + 2) - 1 → exp(x) - 1
+    // where the simplifier couldn't cancel poly(x) across the subtraction
+    // boundary due to different AST shapes.
+    // Guard: only rebuild the equation when expansion achieves a significant
+    // (>25%) node reduction to avoid changing the solve path for equations
+    // that are already well-formed (e.g. reciprocal equations).
+    if contains_var(&simplifier.context, diff_simplified, var) {
+        let expanded_diff = crate::expand::expand(&mut simplifier.context, diff_simplified);
+        if expanded_diff != diff_simplified {
+            let re_simplified = simplifier.simplify_for_solve(expanded_diff);
+            let old_nodes =
+                cas_ast::traversal::count_all_nodes(&simplifier.context, diff_simplified);
+            let new_nodes = cas_ast::traversal::count_all_nodes(&simplifier.context, re_simplified);
+            // Require >25% reduction to avoid cosmetic rewrites that break pedagogical steps
+            if old_nodes > 4 && new_nodes * 4 < old_nodes * 3 {
+                diff_simplified = re_simplified;
+                let zero = simplifier.context.num(0);
+                simplified_eq.lhs = diff_simplified;
+                simplified_eq.rhs = zero;
+            }
+        }
+    }
 
     // Check if the difference has NO variable
     if !contains_var(&simplifier.context, diff_simplified, var) {
@@ -346,7 +371,8 @@ pub(crate) fn solve_with_options(
         Box::new(SubstitutionStrategy),
         Box::new(UnwrapStrategy),
         Box::new(QuadraticStrategy),
-        Box::new(CollectTermsStrategy), // Must run before IsolationStrategy
+        Box::new(RationalRootsStrategy), // Degree ≥ 3 with numeric coefficients
+        Box::new(CollectTermsStrategy),  // Must run before IsolationStrategy
         Box::new(IsolationStrategy),
     ];
 

@@ -119,11 +119,21 @@ impl SolverStrategy for QuadraticStrategy {
                             steps.append(&mut sub_steps);
                             match sol_set {
                                 SolutionSet::Discrete(sols) => all_solutions.extend(sols),
+                                SolutionSet::Empty => {
+                                    // No solutions from this factor — skip
+                                }
+                                SolutionSet::AllReals => {
+                                    // Factor is identically zero → entire equation AllReals
+                                    return Some(Ok((SolutionSet::AllReals, steps)));
+                                }
                                 _ => {
-                                    return Some(Err(CasError::SolverError(
-                                        "Continuous solution in factor split not supported yet"
-                                            .to_string(),
-                                    )))
+                                    // Residual/Conditional/Interval: can't extract discrete
+                                    // roots. Return Residual for the whole equation rather
+                                    // than crashing with SolverError.
+                                    let residual =
+                                        simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+                                    let (sim, _) = simplifier.simplify(residual);
+                                    return Some(Ok((SolutionSet::Residual(sim), steps)));
                                 }
                             }
                         }
