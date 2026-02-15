@@ -1,6 +1,7 @@
 pub mod algebra;
 pub mod arithmetic;
 pub mod calculus;
+pub mod cancel_common_terms;
 pub mod canonicalization;
 pub mod complex;
 pub mod constants;
@@ -15,6 +16,7 @@ pub mod logarithms;
 pub mod matrix_ops;
 pub mod number_theory;
 pub mod polynomial;
+pub mod rational_canonicalization;
 pub mod reciprocal_trig;
 pub mod trig_canonicalization;
 pub mod trig_inverse_compositions;

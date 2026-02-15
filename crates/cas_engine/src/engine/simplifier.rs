@@ -284,6 +284,8 @@ impl Simplifier {
         arithmetic::register(self);
         infinity::register(self); // Infinity arithmetic (∞ absorption, indeterminates)
         canonicalization::register(self);
+        rational_canonicalization::register(self); // Div(p,q)→Number(p/q), nested Pow fold
+        cancel_common_terms::register(self); // Sub(Add(A,B),B)→A deep cancellation
         constants::register(self); // Algebraic constants (phi)
         exponents::register(self);
         logarithms::register(self);
