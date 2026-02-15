@@ -21,7 +21,15 @@
 #![allow(unused_imports)]
 
 use cas_ast::{Context, DisplayExpr, Equation, Expr, ExprId, RelOp, SolutionSet};
+use cas_engine::domain::DomainMode;
+use cas_engine::domain_facts::{DomainOracle, FactStrength, Predicate};
+use cas_engine::domain_oracle::StandardOracle;
 use cas_engine::engine::eval_f64;
+use cas_engine::implicit_domain::{
+    derive_requires_from_equation, domain_delta_check, infer_implicit_domain, DomainDelta,
+    ImplicitCondition, ImplicitDomain,
+};
+use cas_engine::semantics::ValueDomain;
 use cas_engine::solver::check::{verify_solution_set, VerifyResult, VerifyStatus, VerifySummary};
 use cas_engine::solver::solve;
 use cas_engine::Simplifier;
@@ -1162,6 +1170,9 @@ struct S2Identity {
     tier: u8,
     /// AST cost: node_count(exp) + node_count(simp)
     cost: usize,
+    /// Whether the identity preserves domain (domain_delta_check Safe in both directions,
+    /// after filtering semantically redundant conditions like 1+x²≠0)
+    domain_safe: bool,
 }
 
 /// Count AST nodes for a parsed expression
@@ -1245,16 +1256,22 @@ fn load_identities_for_s2(max_cost: usize) -> Vec<S2Identity> {
             continue;
         }
 
-        // Filter out identities with domain-risky or solver-unsupported functions.
-        // These cause false-positive mismatches (branch-sensitive) or solver errors.
-        const RISKY_FUNS: &[&str] = &[
-            "arctan", "arcsin", "arccos", "atan", "asin", "acos", "atanh", "acosh", "asinh",
-            "cosh", "sinh", "tanh", "sech", "csch", "coth",
+        // Filter out solver-unsupported functions that always cause errors.
+        const UNSUPPORTED_FUNS: &[&str] = &[
+            "cosh", "sinh", "tanh", "sech", "csch", "coth", "acosh", "asinh", "atanh",
         ];
         let combined = format!("{} {}", exp, simp);
-        if RISKY_FUNS.iter().any(|f| combined.contains(f)) {
+        if UNSUPPORTED_FUNS.iter().any(|f| combined.contains(f)) {
             continue;
         }
+
+        // Classify domain safety using domain_delta_check + semantic redundancy.
+        // An identity is "domain-safe" if the transformation A→B and B→A don't
+        // expand the domain in a semantically meaningful way.
+        let delta_fwd = domain_delta_check(&ctx, exp_parsed, simp_parsed, ValueDomain::RealOnly);
+        let delta_rev = domain_delta_check(&ctx, simp_parsed, exp_parsed, ValueDomain::RealOnly);
+        let domain_safe = delta_is_semantically_safe(&ctx, &delta_fwd)
+            && delta_is_semantically_safe(&ctx, &delta_rev);
 
         identities.push(S2Identity {
             exp,
@@ -1263,6 +1280,7 @@ fn load_identities_for_s2(max_cost: usize) -> Vec<S2Identity> {
             family: current_family.clone(),
             tier: 0, // Will be set per-equation in run_case
             cost,
+            domain_safe,
         });
     }
 
@@ -1299,7 +1317,10 @@ enum S2Outcome {
     /// One side returned non-discrete (Residual/Conditional/Interval)
     /// but cross-substitution didn't fail — not a bug, just incomplete
     Incomplete(String),
-    /// Cross-substitution found a real mismatch (solution doesn't satisfy)
+    /// Cross-substitution failed, but identity or equation domain differs
+    /// — expected behaviour, not a solver bug
+    DomainChanged(String),
+    /// Cross-substitution found a real mismatch on a domain-safe identity
     Mismatch(String),
     /// Solver error or timeout
     Error(String),
@@ -1312,6 +1333,7 @@ struct S2Results {
     ok_symbolic: usize,
     ok_numeric: usize,
     incomplete: usize,
+    domain_changed: usize,
     mismatches: usize,
     errors: usize,
     timeouts: usize,
@@ -1324,6 +1346,7 @@ impl S2Results {
             ok_symbolic: 0,
             ok_numeric: 0,
             incomplete: 0,
+            domain_changed: 0,
             mismatches: 0,
             errors: 0,
             timeouts: 0,
@@ -1337,11 +1360,58 @@ impl S2Results {
             S2Outcome::OkSymbolic => self.ok_symbolic += 1,
             S2Outcome::OkNumeric => self.ok_numeric += 1,
             S2Outcome::Incomplete(_) => self.incomplete += 1,
+            S2Outcome::DomainChanged(_) => self.domain_changed += 1,
             S2Outcome::Mismatch(_) => self.mismatches += 1,
             S2Outcome::Error(_) => self.errors += 1,
             S2Outcome::Timeout => self.timeouts += 1,
         }
     }
+}
+
+/// Check if an ImplicitCondition is semantically redundant (always true in ℝ).
+/// Uses the StandardOracle provers to determine if e.g. 1+x²≠0 is provably true.
+fn implicit_cond_is_redundant(ctx: &Context, c: &ImplicitCondition) -> bool {
+    let oracle = StandardOracle::new(ctx, DomainMode::Strict, ValueDomain::RealOnly);
+    match c {
+        ImplicitCondition::NonZero(e) => oracle.query(&Predicate::NonZero(*e)).is_proven(),
+        ImplicitCondition::Positive(e) => oracle.query(&Predicate::Positive(*e)).is_proven(),
+        ImplicitCondition::NonNegative(e) => oracle.query(&Predicate::NonNegative(*e)).is_proven(),
+    }
+}
+
+/// Check if a DomainDelta is semantically safe (Safe, or all dropped conditions are redundant).
+fn delta_is_semantically_safe(ctx: &Context, d: &DomainDelta) -> bool {
+    match d {
+        DomainDelta::Safe => true,
+        DomainDelta::ExpandsAnalytic(conds) | DomainDelta::ExpandsDefinability(conds) => {
+            conds.iter().all(|c| implicit_cond_is_redundant(ctx, c))
+        }
+    }
+}
+
+/// Infer the required implicit domain of an equation (union of both sides + derived).
+fn infer_equation_domain(ctx: &Context, lhs: ExprId, rhs: ExprId) -> ImplicitDomain {
+    let vd = ValueDomain::RealOnly;
+    let dl = infer_implicit_domain(ctx, lhs, vd);
+    let dr = infer_implicit_domain(ctx, rhs, vd);
+    let mut d = ImplicitDomain::empty();
+    d.extend(&dl);
+    d.extend(&dr);
+    for cond in derive_requires_from_equation(ctx, lhs, rhs, &d, vd) {
+        d.conditions_mut().insert(cond);
+    }
+    d
+}
+
+/// Check if two equation domains are semantically equivalent
+/// (any differences are provably redundant).
+fn eq_domains_semantically_same(ctx: &Context, d0: &ImplicitDomain, d1: &ImplicitDomain) -> bool {
+    // Check both directions: conditions dropped and added
+    let dropped = d0.dropped_from(d1);
+    let added = d1.dropped_from(d0);
+
+    dropped.iter().all(|c| implicit_cond_is_redundant(ctx, c))
+        && added.iter().all(|c| implicit_cond_is_redundant(ctx, c))
 }
 
 /// Run a single Strategy 2 test case:
@@ -1635,17 +1705,55 @@ fn run_strategy2(verbose: bool) -> S2Results {
             let result = run_s2_case(&eq_clone, &id_clone);
             let _ = tx.send(result);
         });
-        let outcome = match rx.recv_timeout(SOLVE_TIMEOUT) {
+        let mut outcome = match rx.recv_timeout(SOLVE_TIMEOUT) {
             Ok(result) => result,
             Err(_) => S2Outcome::Timeout,
         };
+
+        // Domain-aware reclassification: if cross-sub returned Mismatch but
+        // the identity or equation domain changed, downgrade to DomainChanged.
+        if let S2Outcome::Mismatch(ref msg) = outcome {
+            if !id.domain_safe {
+                outcome = S2Outcome::DomainChanged(format!("{} [identity domain differs]", msg));
+            } else {
+                // Parse and compare equation domain (orig vs trans)
+                let mut ctx = Context::new();
+                let eq_parts: Vec<&str> = eq.equation_str.splitn(2, '=').collect();
+                let orig_lhs = eq_parts
+                    .first()
+                    .and_then(|s| parse(s.trim(), &mut ctx).ok());
+                let orig_rhs = eq_parts.get(1).and_then(|s| parse(s.trim(), &mut ctx).ok());
+                let id_a = parse(&id.exp, &mut ctx).ok();
+                let id_b = parse(&id.simp, &mut ctx).ok();
+
+                let eq_domain_same = if let (Some(olhs), Some(orhs), Some(ia), Some(ib)) =
+                    (orig_lhs, orig_rhs, id_a, id_b)
+                {
+                    let trans_lhs = ctx.add(Expr::Add(olhs, ia));
+                    let trans_rhs = ctx.add(Expr::Add(orhs, ib));
+                    let d0 = infer_equation_domain(&ctx, olhs, orhs);
+                    let d1 = infer_equation_domain(&ctx, trans_lhs, trans_rhs);
+                    eq_domains_semantically_same(&ctx, &d0, &d1)
+                } else {
+                    true // can't parse → assume same
+                };
+
+                if !eq_domain_same {
+                    outcome =
+                        S2Outcome::DomainChanged(format!("{} [equation domain contracted]", msg));
+                }
+            }
+        }
         results.record(&outcome);
 
         // Print non-ok results (or all in verbose)
         let should_print = verbose
             || matches!(
                 &outcome,
-                S2Outcome::Mismatch(_) | S2Outcome::Error(_) | S2Outcome::Timeout
+                S2Outcome::Mismatch(_)
+                    | S2Outcome::DomainChanged(_)
+                    | S2Outcome::Error(_)
+                    | S2Outcome::Timeout
             );
 
         if should_print {
@@ -1653,6 +1761,7 @@ fn run_strategy2(verbose: bool) -> S2Results {
                 S2Outcome::OkSymbolic => ("✓", "symbolic".into()),
                 S2Outcome::OkNumeric => ("≈", "numeric".into()),
                 S2Outcome::Incomplete(msg) => ("⚠", format!("incomplete: {}", msg)),
+                S2Outcome::DomainChanged(msg) => ("D", format!("domain-changed: {}", msg)),
                 S2Outcome::Mismatch(msg) => ("✗", format!("MISMATCH: {}", msg)),
                 S2Outcome::Error(msg) => ("E", format!("error: {}", msg)),
                 S2Outcome::Timeout => ("T", "TIMEOUT".into()),
@@ -1683,8 +1792,8 @@ fn run_strategy2(verbose: bool) -> S2Results {
         results.ok_symbolic, results.ok_numeric, results.incomplete
     );
     eprintln!(
-        "  │  ✗ mismatch: {}  E errors: {}  T timeout: {}",
-        results.mismatches, results.errors, results.timeouts
+        "  │  D domain-chg: {}  ✗ mismatch: {}  E errors: {}  T timeout: {}",
+        results.domain_changed, results.mismatches, results.errors, results.timeouts
     );
     eprintln!("  └─────────────────────────────────────────────────────────────────┘");
 
