@@ -1,6 +1,7 @@
 use super::{detect_substitution, substitute_expr};
 use crate::engine::Simplifier;
 use crate::error::CasError;
+use crate::solver::isolation::contains_var;
 use crate::solver::solve;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveStep, SolverOptions};
@@ -42,6 +43,15 @@ impl SolverStrategy for SubstitutionStrategy {
                 rhs: new_rhs,
                 op: eq.op.clone(),
             };
+
+            // Safety net: if the substituted equation still contains the original variable,
+            // the substitution was incomplete (mixed polynomial+exponential that slipped past
+            // the detect_substitution guard). Bail out instead of entering an invalid solve path.
+            if contains_var(&simplifier.context, new_lhs, var)
+                || contains_var(&simplifier.context, new_rhs, var)
+            {
+                return None;
+            }
 
             if simplifier.collect_steps() {
                 steps.push(SolveStep {

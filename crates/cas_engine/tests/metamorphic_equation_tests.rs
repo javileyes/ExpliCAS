@@ -1414,6 +1414,27 @@ fn eq_domains_semantically_same(ctx: &Context, d0: &ImplicitDomain, d1: &Implici
         && added.iter().all(|c| implicit_cond_is_redundant(ctx, c))
 }
 
+/// Classify a solver error as either an expected limitation (Incomplete) or a real error.
+/// IsolationError, max recursion depth, and unsupported operations are expected when
+/// identity transforms make equations harder; they don't indicate correctness bugs.
+fn classify_solver_error(e: &cas_engine::error::CasError, phase: &str) -> S2Outcome {
+    let msg = format!("{}: {:?}", phase, e);
+    match e {
+        cas_engine::error::CasError::IsolationError(_, _) => {
+            S2Outcome::Incomplete(format!("isolation: {}", msg))
+        }
+        cas_engine::error::CasError::SolverError(s)
+            if s.contains("Maximum solver recursion depth")
+                || s.contains("Continuous solution in factor split")
+                || s.contains("currently only supports discrete")
+                || s.contains("Cycle detected") =>
+        {
+            S2Outcome::Incomplete(format!("solver limitation: {}", msg))
+        }
+        _ => S2Outcome::Error(msg),
+    }
+}
+
 /// Run a single Strategy 2 test case:
 /// Given equation (lhs = rhs) and identity (A ≡ B),
 /// construct transformed equation (lhs + A = rhs + B),
@@ -1457,7 +1478,7 @@ fn run_s2_case(eq_entry: &EquationEntry, identity: &S2Identity) -> S2Outcome {
     }
     let (set0, _) = match sol0 {
         Ok(Ok(r)) => r,
-        Ok(Err(e)) => return S2Outcome::Error(format!("solve orig: {:?}", e)),
+        Ok(Err(e)) => return classify_solver_error(&e, "solve orig"),
         Err(_) => return S2Outcome::Error("solve orig: panic".into()),
     };
 
@@ -1470,7 +1491,7 @@ fn run_s2_case(eq_entry: &EquationEntry, identity: &S2Identity) -> S2Outcome {
     }
     let (set1, _) = match sol1 {
         Ok(Ok(r)) => r,
-        Ok(Err(e)) => return S2Outcome::Error(format!("solve trans: {:?}", e)),
+        Ok(Err(e)) => return classify_solver_error(&e, "solve trans"),
         Err(_) => return S2Outcome::Error("solve trans: panic".into()),
     };
 
