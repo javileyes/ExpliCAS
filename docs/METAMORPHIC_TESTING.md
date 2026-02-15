@@ -1124,6 +1124,119 @@ cargo test --release -p cas_engine --test round_trip_tests \
 
 ---
 
+## Strategy 2: Equation Identity Transforms (S2)
+
+> **Feb 2026** — Verifica que el **solver** es transparente a identidades algebraicas aplicadas a ambos lados de una ecuación.
+
+### Propiedad Metamórfica
+
+Dada una ecuación $E: LHS = RHS$ y una identidad $A \equiv B$:
+
+$$solve(LHS + A = RHS + B, x) \stackrel{?}{\equiv} solve(LHS = RHS, x)$$
+
+Si el solver es correcto, añadir ruido identitario $A$ (LHS) y $B$ (RHS) no debe cambiar el conjunto solución.
+
+### Ejecución
+
+```bash
+# S2 benchmark completo (500 samples, seed=42)
+METATEST_VERBOSE=1 cargo test --release -p cas_engine \
+  --test metamorphic_equation_tests metatest_equation_identity_transforms \
+  -- --ignored --nocapture
+```
+
+### Variables de Entorno (S2)
+
+| Variable | Default | Descripción |
+|----------|---------|-------------|
+| `METATEST_VERBOSE` | `0` | Activa informe detallado con breakdown y top-N offenders |
+
+### Clasificación de Resultados S2
+
+| Resultado | Símbolo | Significado |
+|-----------|---------|-------------|
+| `OkSymbolic` | ✓ | Ambos resuelven al mismo conjunto solución |
+| `OkNumeric` | ≈ | Coinciden numéricamente (cross-substitution) |
+| `OkPartialVerified` | ◐ | Transform tiene partes no-discretas pero subconjunto discreto coincide |
+| `Incomplete` | ⚠ | Solver falla en una variante (cycle, isolation, etc.) |
+| `DomainChange` | D | La identidad cambia el dominio de la ecuación |
+| `Mismatch` | ✗ | **Fallo grave**: soluciones divergen. Señal de bug |
+| `Error` | E | Crash inesperado |
+| `Timeout` | T | Solver excede tiempo límite |
+
+### Razones de Incomplete (`IncompleteReason`)
+
+| Razón | Significado | Acción |
+|-------|-------------|--------|
+| `Isolation` | Variable en ambos lados tras la identidad | Mejorar pre-solve cancellation |
+| `CycleDetected` | Solver entra en bucle con formas equivalentes | Refinar fingerprinting/strategy ordering |
+| `MaxDepth` | Profundidad de recursión excedida | Budget/límites |
+| `ContinuousSolution` | Factor-split con sub-solve no discreto | Hardening de factor-split |
+| `SubstitutionNonDiscrete` | Estrategia de sustitución devuelve no-discreto | Mejorar delegación |
+| `NonDiscrete` | Fallback genérico | Investigar |
+| `Other(msg)` | Catch-all con diagnóstico | Según mensaje |
+
+### Reporting (`METATEST_VERBOSE=1`)
+
+```
+  ┌─────────────────────────────────────────────────────────────────┐
+  │  Strategy 2:  500 samples  (T0: 216, T1: 284)  seed=42        │
+  │  ✓ symbolic: 386  ≈ numeric: 93  ◐ partial: 9  ⚠ incomplete: 12│
+  │  D domain-chg: 0  ✗ mismatch: 0  E errors: 0  T timeout: 0   │
+  └─────────────────────────────────────────────────────────────────┘
+```
+
+Secciones adicionales con `METATEST_VERBOSE=1`:
+- **Incomplete breakdown**: conteo por razón, ordenados por frecuencia.
+- **Top identity offenders**: qué identidades causan más fallos.
+- **Top equation family offenders**: qué familias de ecuaciones son más frágiles.
+
+### Baseline S2 (Feb 2026, Seed 42)
+
+| Métrica | Valor |
+|---------|-------|
+| ✓ symbolic | 386 (77.2%) |
+| ≈ numeric | 93 (18.6%) |
+| ◐ partial | 9 (1.8%) |
+| ⚠ incomplete | 12 (2.4%) |
+| ✗ mismatch | **0** |
+
+#### Desglose de Incomplete (12)
+
+| Razón | Cantidad | Causa raíz |
+|-------|----------|------------|
+| cycle | 5× | `sqrt(x³) ≡ x·sqrt(x)` y `x^(1/2)·x^(1/3) ≡ x^(5/6)` dejan formas mixtas radical/polinomial |
+| isolation | 4× | Identidades exponencial + radical (`tan(arcsin(x))`, `1/(1+x^(1/3))`) |
+| sol count | 3× | Identidad reduce dominio (e.g., `e^(ln(x)) ≡ x` pierde `x = -1`) |
+
+### Mejoras del Solver Motivadas por S2
+
+Las siguientes mejoras del motor se implementaron en respuesta directa al análisis S2:
+
+#### A) `RationalRootsStrategy` (Targets: 10× Incomplete cubics)
+Nuevo archivo `strategies/rational_roots.rs` — resuelve polinomios grado ≥ 3 con coeficientes numéricos racionales via Teorema de la Raíz Racional + división sintética.
+
+- **Pipeline**: extraer coeficientes → normalizar a enteros (LCM) → generar candidatos ±p/q → verificar con Horner → deflacionar → delegar residuo (grado ≤ 2)
+- **Guardrails**: `MAX_CANDIDATES = 200`, `MAX_DEGREE = 10`
+- **Ejemplo**: `x³ - x = 0` → candidatos `{0, ±1}` → raíces `{-1, 0, 1}`
+
+#### B) Factor-Split Hardening (Targets: 1× Continuous error)
+Corregido el manejo de sub-solves no-`Discrete` en `quadratic.rs`:
+
+| Sub-solve | Antes | Después |
+|-----------|-------|---------|
+| `AllReals` | ❌ `SolverError` crash | ✅ `AllReals` global |
+| `Empty` | ❌ `SolverError` crash | ✅ Skip (sin raíces) |
+| `Residual/Interval` | ❌ `SolverError` crash | ✅ `Residual` global |
+
+#### C) Pre-Solve Identity Cancellation (Targets: 6× Isolation)
+Nuevo paso expand+simplify en `solve_core.rs` para cancelar ruido identitario:
+
+- `exp(x) + (x+1)(x+2) = 1 + x² + 3x + 2` → expand cancela poly(x) → `exp(x) = 1`
+- **Guard**: solo aplica si logra **>25% reducción de nodos** (evita romper pasos pedagógicos)
+
+---
+
 ## Archivo de Referencia
 
 ```
@@ -1131,9 +1244,9 @@ crates/cas_engine/tests/
 ├── identity_pairs.csv                   # Base de identidades (~400)
 ├── substitution_identities.csv          # Identidades para sustitución (~110)
 ├── substitution_expressions.csv         # Sub-expresiones de sustitución (~34)
-├── metamorphic_simplification_tests.rs  # Implementación principal
+├── metamorphic_simplification_tests.rs  # S1: tests de simplificación
+├── metamorphic_equation_tests.rs        # S2: tests de ecuaciones
 ├── round_trip_tests.rs                  # Tests de ida y vuelta
 ├── baselines/metatest_baseline.jsonl    # Baseline de regresión
 └── metatest.log                         # Historial de ejecuciones
 ```
-

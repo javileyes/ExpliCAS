@@ -101,6 +101,59 @@ let opts = SimplifyOptions::for_solve_tactic(DomainMode::Assume);
 
 ---
 
+## Solver Strategies (Feb 2026)
+
+### RationalRootsStrategy
+
+> File: `strategies/rational_roots.rs` · Pipeline position: after `QuadraticStrategy`
+
+Resuelve ecuaciones polinómicas de **grado ≥ 3** con coeficientes numéricos racionales usando el Teorema de la Raíz Racional + división sintética.
+
+```
+Pipeline: extract_poly_coefficients → normalize_to_integers (LCM) 
+        → rational_root_candidates (±p/q) → horner_eval (verificar)
+        → synthetic_division (deflacionar) → delegar residuo (grado ≤ 2)
+```
+
+| Guardrail | Valor | Propósito |
+|-----------|-------|-----------|
+| `MAX_CANDIDATES` | 200 | Prevenir blowup combinatorio |
+| `MAX_DEGREE` | 10 | Limitar complejidad |
+| `should_verify` | `true` | Back-substitution en ecuación original |
+
+**Ejemplo**: `x³ - x = 0` → candidatos `{0, ±1}` → raíces `{-1, 0, 1}` → `Discrete`
+
+### Factor-Split Hardening
+
+> File: `strategies/quadratic.rs` · Factor-split pipeline
+
+Manejo robusto de sub-solves no-`Discrete` durante split de factores:
+
+| Sub-solve | Acción |
+|-----------|--------|
+| `Discrete(sols)` | Extender conjunto solución |
+| `Empty` | Skip (factor sin raíces) |
+| `AllReals` | Retornar `AllReals` global (factor identidad) |
+| `Residual/Conditional/Interval` | Retornar `Residual` global (degradación graceful) |
+
+### Pre-Solve Identity Cancellation
+
+> File: `solve_core.rs` · Después de `simplify_for_solve(LHS - RHS)`
+
+Paso expand+simplify para cancelar ruido identitario entre LHS y RHS con formas AST diferentes:
+
+```
+diff = simplify(LHS - RHS)
+if contains_var(diff) && expand(diff) ≠ diff:
+    re_simplified = simplify(expand(diff))
+    if node_count(re_simplified) < 0.75 * node_count(diff):  // >25% reduction
+        equation = re_simplified = 0
+```
+
+**Guard >25%**: evita reescrituras cosméticas que rompan el orden de pasos pedagógicos.
+
+---
+
 ## V2.0 Roadmap: Conditional Solutions
 
 > **Status**: Design Phase (Not Implemented)

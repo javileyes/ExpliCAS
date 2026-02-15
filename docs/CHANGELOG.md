@@ -5,6 +5,43 @@ All notable changes to ExpliCAS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.15.52] - 2026-02-15 - S2-Driven Solver Hardening
+
+### Added
+
+- **`RationalRootsStrategy`** (`strategies/rational_roots.rs`):
+  Solves polynomial equations of degree ≥ 3 with rational coefficients via
+  Rational Root Theorem + synthetic division. Guardrails: `MAX_CANDIDATES = 200`,
+  `MAX_DEGREE = 10`. Placed after `QuadraticStrategy` in pipeline.
+
+- **Pre-Solve Identity Cancellation** (`solve_core.rs`):
+  Expand+simplify pass to cancel identity noise across `LHS - RHS` boundary.
+  Guard: only applies if expansion achieves >25% node reduction.
+
+- **S2 Equation Identity Transforms Benchmark** (`metamorphic_equation_tests.rs`):
+  New metamorphic test strategy verifying solver transparency to algebraic identity
+  transforms. Structured `IncompleteReason` classification with verbose cross-tab
+  reporting.
+
+### Fixed
+
+- **Factor-Split Hardening** (`quadratic.rs`):
+  Non-`Discrete` sub-solve results (AllReals, Empty, Residual) now handled
+  gracefully instead of crashing with `SolverError`.
+
+### Results
+
+- S2 Incomplete: 23 → **12** (−48%)
+- New symbolic solutions: **+19**, numeric: **+6**
+- Zero mismatches, zero regressions
+
+### Documentation
+
+- `METAMORPHIC_TESTING.md`: Added S2 section (property, execution, outcomes, baseline)
+- `SOLVER_SIMPLIFY_POLICY.md`: Added Solver Strategies section
+
+---
+
 ## [2.15.50] - 2026-02-12 - Cycle Detection Hardened + Event Registry
 
 ### Added
