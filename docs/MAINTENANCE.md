@@ -502,6 +502,26 @@ When pattern detection isn't working:
 
 **Note**: The `parent_ctx` parameter can be safely ignored for rules that don't need context. The compiler will warn about unused parameters; use `let _ = parent_ctx;` to suppress.
 
+### ⚠️ "Sub is NOT stable" — Critical Hazard for Rule Authors
+
+`CanonicalizeNegationRule` converts `Sub(a, b) → Add(a, Neg(b))` **very early** in the
+simplification pipeline. This means:
+
+- **Any rule that pattern-matches on `Expr::Sub` nodes will never fire** in the default
+  configuration because `Sub` nodes are rewritten to `Add(…, Neg(…))` before subsequent
+  rules see them.
+
+**If your rule needs to detect subtraction, choose ONE of these options:**
+
+| Option | When to Use | Example |
+|--------|-------------|---------|
+| **(a)** Register BEFORE `canonicalization` | Exotic — rarely needed | — |
+| **(b)** Also match `Add(x, Neg(y))` | When rule is a single-expression rewrite | Pattern detection rules |
+| **(c)** Equation-level operation in solver | When operation is relational (LHS↔RHS) | `cancel_common_additive_terms` |
+
+**Reference**: See `rules/cancel_common_terms.rs` for the canonical example of option (c),
+and `engine/simplifier.rs` `register_default_rules()` for the order contract.
+
 ### Adding a New Solver Strategy
 
 1.  **Create the Strategy Struct**: Define a struct that implements the `SolverStrategy` trait.

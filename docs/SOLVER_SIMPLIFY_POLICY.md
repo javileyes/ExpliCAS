@@ -152,6 +152,26 @@ if contains_var(diff) && expand(diff) ≠ diff:
 
 **Guard >25%**: evita reescrituras cosméticas que rompan el orden de pasos pedagógicos.
 
+### Equation-Level Additive Term Cancellation
+
+> File: `rules/cancel_common_terms.rs` · Called from `solve_core.rs`
+
+Cancela términos aditivos comunes entre LHS y RHS como operación **relacional** (par de expresiones):
+
+```rust
+pub(crate) fn cancel_common_additive_terms(
+    ctx: &mut Context, lhs: ExprId, rhs: ExprId,
+) -> Option<CancelResult>   // { new_lhs, new_rhs, cancelled_count }
+```
+
+**¿Por qué NO es una regla del simplificador?** `CanonicalizeNegationRule` convierte
+`Sub(a,b) → Add(a, Neg(b))` antes de que cualquier regla pueda hacer match sobre nodos `Sub`.
+Además, la cancelación LHS↔RHS es una operación entre dos árboles, no una reescritura local.
+
+**Contrato**:
+- Precondiciones: ambos lados deben estar en forma canónica (post-simplify)
+- Garantías: estrictamente reductora, sound, determinista
+
 ---
 
 ## V2.0 Roadmap: Conditional Solutions

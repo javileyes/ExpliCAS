@@ -5,6 +5,55 @@ All notable changes to ExpliCAS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.15.54] - 2026-02-15 - Canonicalization Consolidation & Pipeline Hardening
+
+### Added
+
+- **`CanonicalizeRationalDivRule`** (`rules/rational_canonicalization.rs`):
+  Folds `Div(Number(p), Number(q))` → `Number(p/q)` for exact rational arithmetic.
+
+- **`CanonicalizeNestedPowRule`** (`rules/rational_canonicalization.rs`):
+  Folds `Pow(Pow(base, k), r)` → `Pow(base, k*r)` with **domain safety**:
+  blocks rewrite when inner exponent is even and outer denominator is even
+  (e.g., `(x²)^(1/2) ≠ x` to preserve absolute value semantics).
+
+- **Equation-Level Cancel Primitive** (`rules/cancel_common_terms.rs`):
+  Exported `cancel_common_additive_terms(ctx, lhs, rhs) → Option<CancelResult>`
+  for solver pre-solve pipeline. Returns `CancelResult { new_lhs, new_rhs, cancelled_count }`
+  for diagnostics.
+
+- **Canonicalization Hardening Tests** (`tests/canonicalization_hardening_tests.rs`):
+  9 tests covering rational canonicality (1A), domain-safe nested powers (1B),
+  and additive term cancellation (2).
+
+### Removed
+
+- **`CancelCommonAdditiveTermsRule`** ("ghost rule"): Removed from simplifier
+  registration — `CanonicalizeNegationRule` converts `Sub→Add(Neg)` before this
+  rule could fire on `Sub` nodes. Cancellation is now exclusively equation-level.
+
+### Changed
+
+- **`simplifier.rs`**: Updated canonicalization tier order contract. Added
+  "Sub is NOT stable" warning documenting that `CanonicalizeNegationRule`
+  converts `Sub(a,b)→Add(a,Neg(b))` early and future rules must account for this.
+
+- **`solve_core.rs`**: Solver cancel call updated to use `CancelResult` struct.
+
+### Results
+
+- S2: **392 symbolic, 0 incomplete, 0 mismatch** (unchanged)
+- All hardening tests pass, `make ci` green
+
+### Documentation
+
+- `RULES.md`: Added Canonicalization & Rational Arithmetic family
+- `SOLVER_SIMPLIFY_POLICY.md`: Added Equation-Level Additive Cancel section
+- `MAINTENANCE.md`: Added "Sub is NOT stable" hazard to rule authoring guide
+- `ARCHITECTURE.md`: Updated rule category table with new modules
+
+---
+
 ## [2.15.52] - 2026-02-15 - S2-Driven Solver Hardening
 
 ### Added

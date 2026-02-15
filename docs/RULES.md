@@ -8,6 +8,39 @@ Rule inventory and ownership for the CAS engine.
 
 ---
 
+## Canonicalization & Rational Arithmetic Family
+
+| Rule | File | Name String | PhaseMask | Intent | Churn Risk |
+|------|------|-------------|-----------|--------|------------|
+| `CanonicalizeAddRule` | `canonicalization.rs` | "Canonicalize Addition" | CORE | Sort Add terms, flatten | LOW |
+| `CanonicalizeMulRule` | `canonicalization.rs` | "Canonicalize Multiplication" | CORE | Sort Mul factors, flatten | LOW |
+| `CanonicalizeNegationRule` | `canonicalization.rs` | "Canonicalize Negation" | CORE | Sub(a,b) → Add(a,Neg(b)) | LOW |
+| `CanonicalizeRationalDivRule` | `rational_canonicalization.rs` | "Rational Division" | CORE | Div(p,q) → Number(p/q) | LOW |
+| `CanonicalizeNestedPowRule` | `rational_canonicalization.rs` | "Fold Nested Powers" | CORE | Pow(Pow(b,k),r) → Pow(b,k*r), domain-safe | LOW |
+
+### Equation-Level Cancel Primitive (NOT a simplifier rule)
+
+| Primitive | File | Intent |
+|-----------|------|--------|
+| `cancel_common_additive_terms` | `cancel_common_terms.rs` | Cancel shared terms across LHS/RHS equation pair |
+
+> **Architectural note**: Additive term cancellation operates on two expression trees
+> (LHS, RHS) as a *relational* operation. It cannot be a single-expression simplifier
+> rule because `CanonicalizeNegationRule` converts `Sub→Add(Neg)` before any
+> Sub-targeting rule fires. Called from `solve_core.rs` pre-solve pipeline.
+
+### Registration Order Contract
+
+```
+canonicalization → rational_canonicalization
+```
+
+> ⚠️ **"Sub is NOT stable"**: Any rule depending on Sub nodes must either:
+> (a) fire before canonicalization, (b) also match Add(x, Neg(y)), or
+> (c) be an equation-level operation in the solver pipeline.
+
+---
+
 ## Distribution & Expansion Family
 
 | Rule | File | Name String | PhaseMask | Intent | Churn Risk |

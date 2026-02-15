@@ -2518,7 +2518,8 @@ Las reglas se organizan por categorías:
 | Categoría | Archivo | Ejemplos |
 |-----------|---------|----------|
 | **Aritmética** | `arithmetic.rs` | `AddZeroRule`, `MulOneRule`, `CombineConstantsRule` |
-| **Canonicalización** | `canonicalization.rs` | `CanonicalizeAddRule`, `CanonicalizeMulRule` |
+| **Canonicalización** | `canonicalization.rs` | `CanonicalizeAddRule`, `CanonicalizeMulRule`, `CanonicalizeNegationRule` |
+| **Racionales/Potencias** | `rational_canonicalization.rs` | `CanonicalizeRationalDivRule`, `CanonicalizeNestedPowRule` |
 | **Exponentes** | `exponents.rs` | `ProductPowerRule`, `EvaluatePowerRule` |
 | **Álgebra** | `algebra.rs` | `CombineLikeTermsRule`, `DistributeRule`, `FactorRule` |
 | **Trigonometría** | `trigonometry.rs` | `PythagoreanIdentityRule`, `SecTanPythagoreanRule` ★, `CscCotPythagoreanRule` ★, `DoubleAngleRule`, `TanToSinCosRule` (con guard) ★ |
