@@ -3,7 +3,7 @@
 //! Contains the main `solve`, `solve_with_options`, and `solve_with_display_steps`
 //! entry points, plus the rational-exponent pre-check.
 
-use super::{take_solver_required, SolveDiagnostics};
+use super::SolveDiagnostics;
 use cas_ast::{Expr, ExprId, SolutionSet};
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
@@ -21,8 +21,9 @@ use super::utilities::{
     extract_denominators_with_var, is_symbolic_expr, verify_solution, wrap_with_domain_guards,
 };
 use super::{
-    clear_current_domain_env, set_current_domain_env, step_cleanup, DepthGuard, DisplaySolveSteps,
-    SolveDomainEnv, SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH,
+    clear_current_domain_env, set_current_domain_env, step_cleanup, take_current_required,
+    DepthGuard, DisplaySolveSteps, SolveDomainEnv, SolveStep, SolverOptions, MAX_SOLVE_DEPTH,
+    SOLVE_DEPTH,
 };
 
 // NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)) and
@@ -111,6 +112,9 @@ pub fn solve(
     var: &str,
     simplifier: &mut Simplifier,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+    // NOTE: Do NOT clear CURRENT_DOMAIN_ENV here. This function is called
+    // recursively by strategies (isolation, substitution, quadratic).
+    // Only solve_with_display_steps manages the env lifecycle.
     solve_with_options(eq, var, simplifier, SolverOptions::default())
 }
 
@@ -129,14 +133,18 @@ pub fn solve_with_display_steps(
     simplifier: &mut Simplifier,
     opts: SolverOptions,
 ) -> Result<(SolutionSet, DisplaySolveSteps, SolveDiagnostics), CasError> {
-    let (solution_set, raw_steps) = solve_with_options(eq, var, simplifier, opts)?;
+    let result = solve_with_options(eq, var, simplifier, opts);
 
-    // Capture required conditions in-band (RAII guard has already copied to LAST_SOLVER_REQUIRED)
-    let required = take_solver_required();
+    // Capture required conditions from CURRENT_DOMAIN_ENV before clearing
+    let required = take_current_required();
+    clear_current_domain_env();
+
     let diagnostics = SolveDiagnostics {
         required,
         assumed: vec![],
     };
+
+    let (solution_set, raw_steps) = result?;
 
     // Apply didactic cleanup using opts.detailed_steps
     let cleaned =
@@ -226,14 +234,11 @@ pub(crate) fn solve_with_options(
     // V2.2+: Set domain_env in TLS for strategies to access via get_current_domain_env()
     set_current_domain_env(domain_env);
 
-    // RAII guard to clear env on exit (handles all return paths)
-    struct EnvGuard;
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            clear_current_domain_env();
-        }
-    }
-    let _env_guard = EnvGuard;
+    // NOTE: Callers (solve_with_display_steps, solve) are responsible for
+    // calling clear_current_domain_env() after this function returns.
+    // This allows solve_with_display_steps to read conditions from
+    // CURRENT_DOMAIN_ENV before clearing, eliminating the need for
+    // LAST_SOLVER_REQUIRED TLS intermediary.
 
     // EARLY CHECK: Handle rational exponent equations BEFORE simplification
     // This prevents x^(3/2) from being simplified to |x|*sqrt(x) which causes loops

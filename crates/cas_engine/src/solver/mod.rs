@@ -316,29 +316,20 @@ fn set_current_domain_env(env: SolveDomainEnv) {
 /// Clear the current domain environment (called on solve exit).
 fn clear_current_domain_env() {
     CURRENT_DOMAIN_ENV.with(|e| {
-        // Before clearing, save to LAST_SOLVER_REQUIRED for eval.rs to retrieve
-        if let Some(ref env) = *e.borrow() {
-            LAST_SOLVER_REQUIRED.with(|last| {
-                *last.borrow_mut() = env.required.conditions().iter().cloned().collect();
-            });
-        }
         *e.borrow_mut() = None;
     });
 }
 
-thread_local! {
-    /// Thread-local storage for required conditions from the last completed solve.
-    /// Set by clear_current_domain_env before clearing the main env.
-    /// Retrieved by eval.rs via take_solver_required().
-    static LAST_SOLVER_REQUIRED: std::cell::RefCell<Vec<crate::implicit_domain::ImplicitCondition>> =
-        const { std::cell::RefCell::new(Vec::new()) };
-}
-
-/// Take the required conditions from the last completed solve.
-/// Internal: used by `solve_with_display_steps` to bridge TLS → in-band `SolveDiagnostics`.
-/// External callers should use the `SolveDiagnostics` returned by `solve_with_display_steps`.
-pub(crate) fn take_solver_required() -> Vec<crate::implicit_domain::ImplicitCondition> {
-    LAST_SOLVER_REQUIRED.with(|last| std::mem::take(&mut *last.borrow_mut()))
+/// Take required conditions from the current domain environment.
+/// Must be called BEFORE `clear_current_domain_env()` to capture conditions.
+/// Returns an empty Vec if no domain environment is set.
+pub(crate) fn take_current_required() -> Vec<crate::implicit_domain::ImplicitCondition> {
+    CURRENT_DOMAIN_ENV.with(|e| {
+        e.borrow()
+            .as_ref()
+            .map(|env| env.required.conditions().iter().cloned().collect())
+            .unwrap_or_default()
+    })
 }
 
 /// RAII guard for solver assumption collection.
