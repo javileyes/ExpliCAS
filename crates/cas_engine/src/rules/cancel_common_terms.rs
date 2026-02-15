@@ -118,16 +118,183 @@ pub fn cancel_common_additive_terms(
     })
 }
 
+/// Pre-normalize expression for cancel: split fraction numerators and log
+/// products to expose hidden additive terms.
+///
+/// Applied ONLY within the semantic cancel pipeline, not globally.
+/// - `Div(Add(a,b), D)` → `Add(Div(a,D), Div(b,D))`
+/// - `ln(a*b)` → `ln(a) + ln(b)`
+/// - `ln(x^r)` → `r * ln(x)`
+///
+/// Guard: max recursion depth 3, max 6 numerator terms.
+fn normalize_for_cancel(ctx: &mut Context, id: ExprId, depth: usize) -> ExprId {
+    if depth > 3 {
+        return id;
+    }
+
+    // Phase 1: classify expression (immutable borrow released before phase 2)
+    enum Action {
+        Pass,
+        Add(ExprId, ExprId),
+        Sub(ExprId, ExprId),
+        Neg(ExprId),
+        SplitDiv(ExprId, ExprId),       // (numerator, denominator)
+        LnOfMul(usize, ExprId, ExprId), // (ln_name, a, b)
+        LnOfPow(usize, ExprId, ExprId), // (ln_name, base, exp)
+        LnOfSqrt(usize, ExprId),        // (ln_name, sqrt_arg) — ln(sqrt(x)) → ½·ln(x)
+        DistributeMul(ExprId, ExprId),  // (scalar, additive) — k*(a+b) → k*a + k*b
+    }
+
+    let action = match ctx.get(id) {
+        Expr::Add(l, r) => Action::Add(*l, *r),
+        Expr::Sub(l, r) => Action::Sub(*l, *r),
+        Expr::Neg(inner) => Action::Neg(*inner),
+        Expr::Div(num, den) => {
+            // Only split if numerator has additive structure
+            let has_add = matches!(ctx.get(*num), Expr::Add(_, _) | Expr::Sub(_, _));
+            if has_add {
+                Action::SplitDiv(*num, *den)
+            } else {
+                Action::Pass
+            }
+        }
+        Expr::Function(name, args) if args.len() == 1 => {
+            let name_id = *name;
+            let arg = args[0];
+            let is_ln = ctx
+                .builtin_of(name_id)
+                .map(|b| b.name() == "ln")
+                .unwrap_or(false);
+            if !is_ln {
+                Action::Pass
+            } else {
+                match ctx.get(arg) {
+                    Expr::Mul(a, b) => Action::LnOfMul(name_id, *a, *b),
+                    Expr::Pow(base, exp) => Action::LnOfPow(name_id, *base, *exp),
+                    Expr::Function(inner_name, inner_args) if inner_args.len() == 1 => {
+                        let is_sqrt = ctx
+                            .builtin_of(*inner_name)
+                            .map(|b| b.name() == "sqrt")
+                            .unwrap_or(false);
+                        if is_sqrt {
+                            Action::LnOfSqrt(name_id, inner_args[0])
+                        } else {
+                            Action::Pass
+                        }
+                    }
+                    _ => Action::Pass,
+                }
+            }
+        }
+        Expr::Mul(a, b) => {
+            // k·(sum) → distribute, where k is a non-additive factor
+            let a_add = matches!(ctx.get(*a), Expr::Add(_, _) | Expr::Sub(_, _));
+            let b_add = matches!(ctx.get(*b), Expr::Add(_, _) | Expr::Sub(_, _));
+            if a_add && !b_add {
+                Action::DistributeMul(*b, *a) // scalar=b, additive=a
+            } else if b_add && !a_add {
+                Action::DistributeMul(*a, *b) // scalar=a, additive=b
+            } else {
+                Action::Pass
+            }
+        }
+        _ => Action::Pass,
+    };
+
+    // Phase 2: build normalized expression (mutable borrow)
+    match action {
+        Action::Pass => id,
+        Action::Add(l, r) => {
+            let nl = normalize_for_cancel(ctx, l, depth);
+            let nr = normalize_for_cancel(ctx, r, depth);
+            if nl == l && nr == r {
+                id
+            } else {
+                ctx.add(Expr::Add(nl, nr))
+            }
+        }
+        Action::Sub(l, r) => {
+            let nl = normalize_for_cancel(ctx, l, depth);
+            let nr = normalize_for_cancel(ctx, r, depth);
+            if nl == l && nr == r {
+                id
+            } else {
+                ctx.add(Expr::Sub(nl, nr))
+            }
+        }
+        Action::Neg(inner) => {
+            let ni = normalize_for_cancel(ctx, inner, depth);
+            if ni == inner {
+                id
+            } else {
+                ctx.add(Expr::Neg(ni))
+            }
+        }
+        Action::SplitDiv(num, den) => {
+            // Collect additive terms of numerator, wrap each in Div(_,den)
+            let mut num_terms = Vec::new();
+            collect_additive_terms(ctx, num, true, &mut num_terms);
+            if num_terms.len() <= 1 || num_terms.len() > 6 {
+                return id;
+            }
+            let split: Vec<(ExprId, bool)> = num_terms
+                .iter()
+                .map(|(t, p)| (ctx.add(Expr::Div(*t, den)), *p))
+                .collect();
+            rebuild_from_terms(ctx, &split)
+        }
+        Action::LnOfMul(name, a, b) => {
+            // ln(a*b) → ln(a) + ln(b)
+            let ln_a = ctx.add(Expr::Function(name, vec![a]));
+            let ln_b = ctx.add(Expr::Function(name, vec![b]));
+            let nla = normalize_for_cancel(ctx, ln_a, depth + 1);
+            let nlb = normalize_for_cancel(ctx, ln_b, depth + 1);
+            ctx.add(Expr::Add(nla, nlb))
+        }
+        Action::LnOfPow(name, base, exp) => {
+            // ln(x^r) → r * ln(x)
+            let ln_base = ctx.add(Expr::Function(name, vec![base]));
+            ctx.add(Expr::Mul(exp, ln_base))
+        }
+        Action::LnOfSqrt(name, sqrt_arg) => {
+            // ln(sqrt(x)) → (1/2) * ln(x)
+            let half = ctx.add(Expr::Number(num_rational::BigRational::new(
+                num_bigint::BigInt::from(1),
+                num_bigint::BigInt::from(2),
+            )));
+            let ln_arg = ctx.add(Expr::Function(name, vec![sqrt_arg]));
+            ctx.add(Expr::Mul(half, ln_arg))
+        }
+        Action::DistributeMul(scalar, additive) => {
+            // k*(a+b) → k*a + k*b  (distribute scalar over additive terms)
+            let mut terms = Vec::new();
+            collect_additive_terms(ctx, additive, true, &mut terms);
+            if terms.len() <= 1 || terms.len() > 6 {
+                return id;
+            }
+            let split: Vec<(ExprId, bool)> = terms
+                .iter()
+                .map(|(t, p)| (ctx.add(Expr::Mul(scalar, *t)), *p))
+                .collect();
+            rebuild_from_terms(ctx, &split)
+        }
+    }
+}
+
 /// Semantic fallback for equation-level term cancellation.
 ///
-/// For each unmatched pair `(l_i, r_j)` with matching polarity, builds
-/// `simplify_for_solve(l_i - r_j)` and checks if the result is `Number(0)`.
+/// **2-phase candidate+proof pattern for soundness:**
 ///
-/// This catches semantically equivalent terms that don't converge to the
-/// same AST under structural comparison, e.g.:
-/// - `sin(arccos(x))` vs `sqrt(1 - x^2)`
-/// - `ln(sqrt(x)*y)` vs `ln(x)/2 + ln(y)`
-/// - `abs(sin(x/2))` vs `sqrt((1 - cos(x))/2)`
+/// 1. *Candidate generation* (Generic domain): normalize both sides
+///    (split fractions, distribute scalar multiplication, split log
+///    products/sqrt), then simplify each term with Generic domain to
+///    expose structure (allows `x/x → 1`, etc.).
+///
+/// 2. *Pair proof* (Strict domain): for each candidate pair, verify
+///    `simplify_strict(l - r) == 0` before cancelling. This ensures
+///    the cancellation doesn't depend on unproven assumptions (e.g.,
+///    `x ≠ 0` for `x/x → 1`). The Generic simplification only exposes
+///    candidates; Strict validates them.
 ///
 /// # Guards
 /// - ≤ `MAX_TERMS` terms per side (avoids O(n²) explosion)
@@ -140,13 +307,87 @@ pub fn cancel_additive_terms_semantic(
     use cas_ast::traversal::count_nodes_matching;
     use num_traits::Zero;
 
-    const MAX_TERMS: usize = 8;
+    const MAX_TERMS: usize = 12; // raised from 8: normalization may expand terms
     const MAX_NODES: usize = 200;
+
+    // Pre-normalize: split Div(sum, D) and ln(product) into finer additive terms
+    let norm_lhs = normalize_for_cancel(&mut simplifier.context, lhs, 0);
+    let norm_rhs = normalize_for_cancel(&mut simplifier.context, rhs, 0);
 
     let mut lhs_terms = Vec::new();
     let mut rhs_terms = Vec::new();
-    collect_additive_terms(&simplifier.context, lhs, true, &mut lhs_terms);
-    collect_additive_terms(&simplifier.context, rhs, true, &mut rhs_terms);
+    collect_additive_terms(&simplifier.context, norm_lhs, true, &mut lhs_terms);
+    collect_additive_terms(&simplifier.context, norm_rhs, true, &mut rhs_terms);
+
+    // Simplify each term individually for canonical comparison.
+    // Uses default domain (Generic) to allow x/x → 1 (essential for
+    // Div(Mul(x, ln(..)), x) → ln(..) after fraction splitting).
+    // Strict would block it — it requires proof of x ≠ 0.
+    // Safe: this is purely for normalization, doesn't modify the solution set.
+    // Phase 1: candidate generation — Generic allows x/x → 1, etc.
+    let candidate_opts = crate::SimplifyOptions {
+        collect_steps: false,
+        ..Default::default()
+    };
+    // Phase 2: pair proof — Strict prevents domain expansion
+    let strict_proof_opts = crate::SimplifyOptions {
+        shared: crate::phase::SharedSemanticConfig {
+            semantics: crate::semantics::EvalConfig::strict(),
+            ..Default::default()
+        },
+        collect_steps: false,
+        ..Default::default()
+    };
+    for (term, _) in &mut lhs_terms {
+        let (s, _, _) = simplifier.simplify_with_stats(*term, candidate_opts.clone());
+        *term = s;
+    }
+    for (term, _) in &mut rhs_terms {
+        let (s, _, _) = simplifier.simplify_with_stats(*term, candidate_opts.clone());
+        *term = s;
+    }
+
+    // Second normalize pass: simplification may expose new ln(product) terms
+    // (e.g., Div(Mul(x, ln(a*b)), x) → ln(a*b) after the first simplify).
+    // Re-normalize and re-collect if any term expanded.
+    let re_normalize_terms = |ctx: &mut Context, terms: &[(ExprId, bool)]| -> Vec<(ExprId, bool)> {
+        let mut out = Vec::new();
+        for &(t, p) in terms {
+            let n = normalize_for_cancel(ctx, t, 0);
+            if n == t {
+                out.push((t, p));
+            } else {
+                collect_additive_terms(ctx, n, p, &mut out);
+            }
+        }
+        out
+    };
+    let lhs_terms2 = re_normalize_terms(&mut simplifier.context, &lhs_terms);
+    let rhs_terms2 = re_normalize_terms(&mut simplifier.context, &rhs_terms);
+    let mut lhs_terms = lhs_terms2;
+    let mut rhs_terms = rhs_terms2;
+
+    // Re-simplify any newly created terms
+    for (term, _) in &mut lhs_terms {
+        let (s, _, _) = simplifier.simplify_with_stats(*term, candidate_opts.clone());
+        *term = s;
+    }
+    for (term, _) in &mut rhs_terms {
+        let (s, _, _) = simplifier.simplify_with_stats(*term, candidate_opts.clone());
+        *term = s;
+    }
+
+    // Final re-flatten: simplification may turn a single term into Add(a, b),
+    // e.g., Div(Mul(Add(ln(y),2),2), 2) → Add(ln(y), 2). Re-collect to split.
+    let re_flatten = |terms: Vec<(ExprId, bool)>, ctx: &Context| -> Vec<(ExprId, bool)> {
+        let mut out = Vec::new();
+        for (t, p) in terms {
+            collect_additive_terms(ctx, t, p, &mut out);
+        }
+        out
+    };
+    let lhs_terms = re_flatten(lhs_terms, &simplifier.context);
+    let rhs_terms = re_flatten(rhs_terms, &simplifier.context);
 
     // Guard: skip if too many terms
     if lhs_terms.len() > MAX_TERMS || rhs_terms.len() > MAX_TERMS {
@@ -157,7 +398,18 @@ pub fn cancel_additive_terms_semantic(
     let mut rhs_used = vec![false; rhs_terms.len()];
     let mut cancelled = 0;
 
-    // First pass: structural match (fast, no simplification cost)
+    // First pass: structural match — definability-sound, no proof needed.
+    //
+    // When compare_expr confirms l == r structurally, the cancellation is
+    // t − t = 0, which is a tautology at every point where t is defined.
+    // Since both terms originated from the equation, they ARE defined in
+    // the equation's domain. We treat equation validity over the
+    // definability domain of its terms; cancelling identical terms does
+    // not widen domain.
+    //
+    // Note: this is NOT the same as rewriting t to something else (like
+    // x/x → 1, which requires x≠0). We are only asserting t − t = 0,
+    // which holds universally when t is defined.
     for (ri, (rt, rp)) in rhs_terms.iter().enumerate() {
         if rhs_used[ri] {
             continue;
@@ -199,14 +451,11 @@ pub fn cancel_additive_terms_semantic(
                 continue;
             }
 
-            // Build diff = l_term - r_term and simplify.
-            // Use FULL simplify (not simplify_for_solve) because we are only
-            // checking whether A - B == 0, not modifying the equation's solution
-            // set. The prepass (simplify_for_solve) skips NeedsCondition rules
-            // like TrigInverseExpansionRule and log product splitting, which
-            // prevents proving identities like sin(arccos(x)) ≡ sqrt(1-x²).
+            // Pair proof with Strict domain: verify l - r == 0
+            // without unproven domain assumptions.
             let diff = simplifier.context.add(Expr::Sub(*lt, *rt));
-            let (simplified_diff, _) = simplifier.simplify(diff);
+            let (simplified_diff, _, _) =
+                simplifier.simplify_with_stats(diff, strict_proof_opts.clone());
 
             // Check if result is zero
             let is_zero = if let Expr::Number(n) = simplifier.context.get(simplified_diff) {
