@@ -31,6 +31,7 @@ use std::env;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 // =============================================================================
@@ -1105,6 +1106,10 @@ fn metatest_equation_benchmark() {
         s1_failed += s3_mismatch;
     }
 
+    // Run Strategy 2
+    let s2_result = run_strategy2(verbose);
+    s1_failed += s2_result.mismatches;
+
     let total_elapsed = total_start.elapsed();
     eprintln!();
     eprintln!("Total time: {:.2}s", total_elapsed.as_secs_f64());
@@ -1112,5 +1117,598 @@ fn metatest_equation_benchmark() {
     assert_eq!(
         s1_failed, 0,
         "Equation benchmark had failures — see details above"
+    );
+}
+
+// =============================================================================
+// Strategy 2: Identity-Preserving Transforms (Sampled)
+// =============================================================================
+
+/// Simple LCG PRNG for deterministic, reproducible sampling.
+/// Period 2^64, same constants as Knuth's MMIX.
+struct Lcg {
+    state: u64,
+}
+
+impl Lcg {
+    fn new(seed: u64) -> Self {
+        Lcg { state: seed }
+    }
+
+    fn next(&mut self) -> u64 {
+        self.state = self
+            .state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        self.state
+    }
+
+    /// Pick a random index in [0, n)
+    fn pick(&mut self, n: usize) -> usize {
+        (self.next() % n as u64) as usize
+    }
+}
+
+/// A lightweight identity representation for Strategy 2
+#[derive(Debug, Clone)]
+struct S2Identity {
+    exp: String,
+    simp: String,
+    /// Primary variable in the identity
+    var: String,
+    /// Identity family (from CSV comment headers)
+    family: String,
+    /// Tier 0 = identity doesn't contain the solve variable; Tier 1 = it does
+    tier: u8,
+    /// AST cost: node_count(exp) + node_count(simp)
+    cost: usize,
+}
+
+/// Count AST nodes for a parsed expression
+fn expr_cost(ctx: &Context, expr: ExprId) -> usize {
+    match ctx.get(expr) {
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => 1,
+        Expr::Neg(a) | Expr::Hold(a) => 1 + expr_cost(ctx, *a),
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Div(a, b) | Expr::Pow(a, b) => {
+            1 + expr_cost(ctx, *a) + expr_cost(ctx, *b)
+        }
+        Expr::Function(_, args) => 1 + args.iter().map(|a| expr_cost(ctx, *a)).sum::<usize>(),
+        Expr::Matrix { data, .. } => 1 + data.iter().map(|a| expr_cost(ctx, *a)).sum::<usize>(),
+    }
+}
+
+/// Load identity pairs from CSV, filtering to mode=g and cost ≤ max_cost
+fn load_identities_for_s2(max_cost: usize) -> Vec<S2Identity> {
+    let csv_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/identity_pairs.csv");
+    let content = fs::read_to_string(&csv_path)
+        .unwrap_or_else(|e| panic!("Failed to read {}: {}", csv_path.display(), e));
+
+    let mut identities = Vec::new();
+    let mut current_family = String::from("Uncategorized");
+
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with('#') {
+            let label = line.trim_start_matches('#').trim();
+            if !label.is_empty()
+                && !label.starts_with("Format")
+                && !label.starts_with("Each row")
+                && !label.starts_with("var is")
+                && !label.starts_with("Mathematical Identity")
+            {
+                current_family = label.to_string();
+            }
+            continue;
+        }
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.split(',').collect();
+        if parts.len() < 3 {
+            continue;
+        }
+
+        // Filter: mode must be 'g' (Generic)
+        let mode = if parts.len() >= 4 {
+            parts[3].trim()
+        } else {
+            "g"
+        };
+        if mode != "g" {
+            continue;
+        }
+
+        let exp = parts[0].trim().to_string();
+        let simp = parts[1].trim().to_string();
+        let var = parts[2]
+            .trim()
+            .split(';')
+            .next()
+            .unwrap_or("x")
+            .trim()
+            .to_string();
+
+        // Compute cost by parsing into a temporary context
+        let mut ctx = Context::new();
+        let exp_parsed = match parse(&exp, &mut ctx) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let simp_parsed = match parse(&simp, &mut ctx) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let cost = expr_cost(&ctx, exp_parsed) + expr_cost(&ctx, simp_parsed);
+
+        if cost > max_cost {
+            continue;
+        }
+
+        // Filter out identities with domain-risky or solver-unsupported functions.
+        // These cause false-positive mismatches (branch-sensitive) or solver errors.
+        const RISKY_FUNS: &[&str] = &[
+            "arctan", "arcsin", "arccos", "atan", "asin", "acos", "atanh", "acosh", "asinh",
+            "cosh", "sinh", "tanh", "sech", "csch", "coth",
+        ];
+        let combined = format!("{} {}", exp, simp);
+        if RISKY_FUNS.iter().any(|f| combined.contains(f)) {
+            continue;
+        }
+
+        identities.push(S2Identity {
+            exp,
+            simp,
+            var,
+            family: current_family.clone(),
+            tier: 0, // Will be set per-equation in run_case
+            cost,
+        });
+    }
+
+    identities
+}
+
+/// Check if a string expression contains a given variable name
+fn identity_contains_var(expr_str: &str, var: &str) -> bool {
+    // Simple heuristic: check if the variable appears as a word-boundary token
+    // This avoids false positives like "x" in "exp"
+    let var_bytes = var.as_bytes();
+    let expr_bytes = expr_str.as_bytes();
+    for i in 0..expr_bytes.len() {
+        if expr_bytes[i..].starts_with(var_bytes) {
+            let before_ok = i == 0 || !expr_bytes[i - 1].is_ascii_alphanumeric();
+            let after_pos = i + var_bytes.len();
+            let after_ok =
+                after_pos >= expr_bytes.len() || !expr_bytes[after_pos].is_ascii_alphanumeric();
+            if before_ok && after_ok {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Result of a Strategy 2 test case
+#[derive(Debug)]
+enum S2Outcome {
+    /// Cross-substitution verified symbolically
+    OkSymbolic,
+    /// Cross-substitution verified numerically
+    OkNumeric,
+    /// One side returned non-discrete (Residual/Conditional/Interval)
+    /// but cross-substitution didn't fail — not a bug, just incomplete
+    Incomplete(String),
+    /// Cross-substitution found a real mismatch (solution doesn't satisfy)
+    Mismatch(String),
+    /// Solver error or timeout
+    Error(String),
+    /// Timeout
+    Timeout,
+}
+
+/// Strategy 2 aggregated results
+struct S2Results {
+    ok_symbolic: usize,
+    ok_numeric: usize,
+    incomplete: usize,
+    mismatches: usize,
+    errors: usize,
+    timeouts: usize,
+    total: usize,
+}
+
+impl S2Results {
+    fn new() -> Self {
+        S2Results {
+            ok_symbolic: 0,
+            ok_numeric: 0,
+            incomplete: 0,
+            mismatches: 0,
+            errors: 0,
+            timeouts: 0,
+            total: 0,
+        }
+    }
+
+    fn record(&mut self, outcome: &S2Outcome) {
+        self.total += 1;
+        match outcome {
+            S2Outcome::OkSymbolic => self.ok_symbolic += 1,
+            S2Outcome::OkNumeric => self.ok_numeric += 1,
+            S2Outcome::Incomplete(_) => self.incomplete += 1,
+            S2Outcome::Mismatch(_) => self.mismatches += 1,
+            S2Outcome::Error(_) => self.errors += 1,
+            S2Outcome::Timeout => self.timeouts += 1,
+        }
+    }
+}
+
+/// Run a single Strategy 2 test case:
+/// Given equation (lhs = rhs) and identity (A ≡ B),
+/// construct transformed equation (lhs + A = rhs + B),
+/// solve both, cross-verify solutions.
+fn run_s2_case(eq_entry: &EquationEntry, identity: &S2Identity) -> S2Outcome {
+    let mut simplifier = Simplifier::with_default_rules();
+    simplifier.set_collect_steps(false);
+
+    // Parse original equation
+    let orig_eq = match parse_equation_str(&mut simplifier.context, &eq_entry.equation_str) {
+        Some(eq) => eq,
+        None => return S2Outcome::Error(format!("parse eq: '{}'", eq_entry.equation_str)),
+    };
+
+    // Parse identity sides
+    let id_a = match parse(&identity.exp, &mut simplifier.context) {
+        Ok(e) => e,
+        Err(_) => return S2Outcome::Error(format!("parse identity exp: '{}'", identity.exp)),
+    };
+    let id_b = match parse(&identity.simp, &mut simplifier.context) {
+        Ok(e) => e,
+        Err(_) => return S2Outcome::Error(format!("parse identity simp: '{}'", identity.simp)),
+    };
+
+    // Construct transformed equation: (lhs + A) = (rhs + B)
+    let trans_lhs = simplifier.context.add(Expr::Add(orig_eq.lhs, id_a));
+    let trans_rhs = simplifier.context.add(Expr::Add(orig_eq.rhs, id_b));
+    let trans_eq = Equation {
+        lhs: trans_lhs,
+        rhs: trans_rhs,
+        op: RelOp::Eq,
+    };
+
+    // Solve original
+    let start = Instant::now();
+    let sol0 = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        solve(&orig_eq, &eq_entry.solve_var, &mut simplifier)
+    }));
+    if start.elapsed() > SOLVE_TIMEOUT {
+        return S2Outcome::Timeout;
+    }
+    let (set0, _) = match sol0 {
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => return S2Outcome::Error(format!("solve orig: {:?}", e)),
+        Err(_) => return S2Outcome::Error("solve orig: panic".into()),
+    };
+
+    // Solve transformed
+    let sol1 = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        solve(&trans_eq, &eq_entry.solve_var, &mut simplifier)
+    }));
+    if start.elapsed() > SOLVE_TIMEOUT * 2 {
+        return S2Outcome::Timeout;
+    }
+    let (set1, _) = match sol1 {
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => return S2Outcome::Error(format!("solve trans: {:?}", e)),
+        Err(_) => return S2Outcome::Error("solve trans: panic".into()),
+    };
+
+    // Check if either is non-discrete
+    let s0_discrete = matches!(&set0, SolutionSet::Discrete(_) | SolutionSet::Empty);
+    let s1_discrete = matches!(&set1, SolutionSet::Discrete(_) | SolutionSet::Empty);
+
+    if !s0_discrete || !s1_discrete {
+        // Cross-substitute what we can; if no mismatch, mark as Incomplete
+        let cross_ok =
+            cross_substitute_discrete_into(&mut simplifier, &set0, &trans_eq, &eq_entry.solve_var)
+                && cross_substitute_discrete_into(
+                    &mut simplifier,
+                    &set1,
+                    &orig_eq,
+                    &eq_entry.solve_var,
+                );
+
+        return if cross_ok {
+            S2Outcome::Incomplete("non-discrete form".into())
+        } else {
+            S2Outcome::Mismatch("cross-sub failed on non-discrete".into())
+        };
+    }
+
+    // Both discrete — full cross-verification
+    let mut any_numeric = false;
+
+    // S0 solutions must satisfy trans_eq
+    if let SolutionSet::Discrete(sols0) = &set0 {
+        for &sol in sols0 {
+            let verify = verify_solution_set(
+                &mut simplifier,
+                &trans_eq,
+                &eq_entry.solve_var,
+                &SolutionSet::Discrete(vec![sol]),
+            );
+            match verify.summary {
+                VerifySummary::AllVerified => {}
+                _ => {
+                    match numeric_verify_solution(
+                        &simplifier.context,
+                        &trans_eq,
+                        &eq_entry.solve_var,
+                        sol,
+                    ) {
+                        NumericVerifyResult::Verified(_) | NumericVerifyResult::Inconclusive => {
+                            any_numeric = true;
+                        }
+                        NumericVerifyResult::Failed => {
+                            let s = DisplayExpr {
+                                context: &simplifier.context,
+                                id: sol,
+                            }
+                            .to_string();
+                            return S2Outcome::Mismatch(format!(
+                                "sol {} of orig doesn't satisfy transformed",
+                                s
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // S1 solutions must satisfy orig_eq
+    if let SolutionSet::Discrete(sols1) = &set1 {
+        for &sol in sols1 {
+            let verify = verify_solution_set(
+                &mut simplifier,
+                &orig_eq,
+                &eq_entry.solve_var,
+                &SolutionSet::Discrete(vec![sol]),
+            );
+            match verify.summary {
+                VerifySummary::AllVerified => {}
+                _ => {
+                    match numeric_verify_solution(
+                        &simplifier.context,
+                        &orig_eq,
+                        &eq_entry.solve_var,
+                        sol,
+                    ) {
+                        NumericVerifyResult::Verified(_) | NumericVerifyResult::Inconclusive => {
+                            any_numeric = true;
+                        }
+                        NumericVerifyResult::Failed => {
+                            let s = DisplayExpr {
+                                context: &simplifier.context,
+                                id: sol,
+                            }
+                            .to_string();
+                            return S2Outcome::Mismatch(format!(
+                                "sol {} of transformed doesn't satisfy orig",
+                                s
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Also compare solution counts when both discrete
+    if let (SolutionSet::Discrete(sa), SolutionSet::Discrete(sb)) = (&set0, &set1) {
+        if sa.len() != sb.len() {
+            return S2Outcome::Incomplete(format!(
+                "sol count differs: orig={}, trans={}",
+                sa.len(),
+                sb.len()
+            ));
+        }
+    }
+
+    if any_numeric {
+        S2Outcome::OkNumeric
+    } else {
+        S2Outcome::OkSymbolic
+    }
+}
+
+/// Helper: cross-substitute discrete solutions of `source_set` into `target_eq`.
+/// Returns true if all discrete solutions pass, or if source is non-discrete (skip).
+fn cross_substitute_discrete_into(
+    simplifier: &mut Simplifier,
+    source_set: &SolutionSet,
+    target_eq: &Equation,
+    var: &str,
+) -> bool {
+    let sols = match source_set {
+        SolutionSet::Discrete(s) => s,
+        SolutionSet::Empty => return true,
+        _ => return true, // Skip non-discrete (can't enumerate)
+    };
+
+    for &sol in sols {
+        let verify = verify_solution_set(
+            simplifier,
+            target_eq,
+            var,
+            &SolutionSet::Discrete(vec![sol]),
+        );
+        match verify.summary {
+            VerifySummary::AllVerified => {}
+            _ => match numeric_verify_solution(&simplifier.context, target_eq, var, sol) {
+                NumericVerifyResult::Verified(_) | NumericVerifyResult::Inconclusive => {}
+                NumericVerifyResult::Failed => return false,
+            },
+        }
+    }
+    true
+}
+
+/// Run Strategy 2 with sampling
+fn run_strategy2(verbose: bool) -> S2Results {
+    // Config from environment
+    let seed: u64 = env::var("METATEST_EQ_IDENTITY_SEED")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .or_else(|| env::var("METATEST_SEED").ok().and_then(|v| v.parse().ok()))
+        .unwrap_or(42);
+
+    let samples: usize = env::var("METATEST_EQ_IDENTITY_SAMPLES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(500);
+
+    let max_cost: usize = env::var("METATEST_EQ_IDENTITY_MAX_COST")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(60);
+
+    // Load and filter
+    let identities = load_identities_for_s2(max_cost);
+
+    let equations: Vec<EquationEntry> = load_equation_corpus()
+        .into_iter()
+        .filter(|e| {
+            matches!(
+                e.expected_kind,
+                ExpectedKind::Discrete | ExpectedKind::Empty
+            )
+        })
+        .collect();
+
+    if identities.is_empty() || equations.is_empty() {
+        eprintln!();
+        eprintln!("--- Strategy 2: Identity-Preserving Transforms ---");
+        eprintln!("  Skipped (no identities or equations after filtering)");
+        return S2Results::new();
+    }
+
+    // Separate identities by tier for each equation (done dynamically during sampling)
+    let mut rng = Lcg::new(seed);
+    let mut results = S2Results::new();
+    let mut tier0_count = 0usize;
+    let mut tier1_count = 0usize;
+
+    eprintln!();
+    eprintln!("--- Strategy 2: Identity-Preserving Transforms ---");
+    eprintln!(
+        "  seed={}, samples={}, identities={} (mode=g, cost≤{}), equations={}",
+        seed,
+        samples,
+        identities.len(),
+        max_cost,
+        equations.len()
+    );
+
+    for sample_i in 0..samples {
+        let eq_idx = rng.pick(equations.len());
+        let id_idx = rng.pick(identities.len());
+
+        let eq = &equations[eq_idx];
+        let id = &identities[id_idx];
+
+        // Classify tier
+        let is_tier0 = !identity_contains_var(&id.exp, &eq.solve_var)
+            && !identity_contains_var(&id.simp, &eq.solve_var);
+        if is_tier0 {
+            tier0_count += 1;
+        } else {
+            tier1_count += 1;
+        }
+
+        // Run with real thread-based timeout to prevent solver hangs
+        let eq_clone = eq.clone();
+        let id_clone = id.clone();
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let result = run_s2_case(&eq_clone, &id_clone);
+            let _ = tx.send(result);
+        });
+        let outcome = match rx.recv_timeout(SOLVE_TIMEOUT) {
+            Ok(result) => result,
+            Err(_) => S2Outcome::Timeout,
+        };
+        results.record(&outcome);
+
+        // Print non-ok results (or all in verbose)
+        let should_print = verbose
+            || matches!(
+                &outcome,
+                S2Outcome::Mismatch(_) | S2Outcome::Error(_) | S2Outcome::Timeout
+            );
+
+        if should_print {
+            let (sym, detail) = match &outcome {
+                S2Outcome::OkSymbolic => ("✓", "symbolic".into()),
+                S2Outcome::OkNumeric => ("≈", "numeric".into()),
+                S2Outcome::Incomplete(msg) => ("⚠", format!("incomplete: {}", msg)),
+                S2Outcome::Mismatch(msg) => ("✗", format!("MISMATCH: {}", msg)),
+                S2Outcome::Error(msg) => ("E", format!("error: {}", msg)),
+                S2Outcome::Timeout => ("T", "TIMEOUT".into()),
+            };
+            eprintln!(
+                "  {} {: >4}. T{} [{}] '{}' + ({} ≡ {}) — {}",
+                sym,
+                sample_i + 1,
+                if is_tier0 { 0 } else { 1 },
+                truncate(&eq.family, 12),
+                truncate(&eq.equation_str, 20),
+                truncate(&id.exp, 15),
+                truncate(&id.simp, 15),
+                detail,
+            );
+        }
+    }
+
+    // Summary table
+    eprintln!();
+    eprintln!("  ┌─────────────────────────────────────────────────────────────────┐");
+    eprintln!(
+        "  │  Strategy 2:  {} samples  (T0: {}, T1: {})  seed={}",
+        results.total, tier0_count, tier1_count, seed
+    );
+    eprintln!(
+        "  │  ✓ symbolic: {}  ≈ numeric: {}  ⚠ incomplete: {}",
+        results.ok_symbolic, results.ok_numeric, results.incomplete
+    );
+    eprintln!(
+        "  │  ✗ mismatch: {}  E errors: {}  T timeout: {}",
+        results.mismatches, results.errors, results.timeouts
+    );
+    eprintln!("  └─────────────────────────────────────────────────────────────────┘");
+
+    if results.mismatches > 0 {
+        eprintln!("  ❌ {} mismatch(es) found!", results.mismatches);
+    } else {
+        eprintln!("  ✅ No mismatches (identity transforms are solver-transparent)");
+    }
+
+    results
+}
+
+// =============================================================================
+// Main Test: Strategy 2 - Identity-Preserving Transforms
+// =============================================================================
+
+#[test]
+#[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_equation_tests metatest_equation_identity_transforms -- --ignored --nocapture
+fn metatest_equation_identity_transforms() {
+    let verbose = is_verbose();
+    let results = run_strategy2(verbose);
+    assert_eq!(
+        results.mismatches, 0,
+        "Strategy 2 had {} mismatches — see details above",
+        results.mismatches
     );
 }
