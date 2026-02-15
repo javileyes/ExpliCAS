@@ -118,18 +118,43 @@ pub fn cancel_common_additive_terms(
     })
 }
 
+/// Safety classification for normalizer output.
+///
+/// Determines whether structurally equal terms can be cancelled
+/// without a Strict proof (definability-preserving), or must be
+/// skipped in structural cancel (needs analytic conditions).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OriginSafety {
+    /// SplitDiv, DistributeMul, Add/Sub/Neg passthrough.
+    /// These do not introduce new domain requirements.
+    DefinabilityPreserving,
+    /// LnOfMul, LnOfPow, LnOfSqrt.
+    /// These require analytic conditions (e.g., positivity for ln).
+    NeedsAnalyticConditions,
+}
+
+impl OriginSafety {
+    /// Combine two safety classifications: worst wins.
+    fn merge(self, other: Self) -> Self {
+        match (self, other) {
+            (OriginSafety::NeedsAnalyticConditions, _)
+            | (_, OriginSafety::NeedsAnalyticConditions) => OriginSafety::NeedsAnalyticConditions,
+            _ => OriginSafety::DefinabilityPreserving,
+        }
+    }
+}
+
 /// Pre-normalize expression for cancel: split fraction numerators and log
 /// products to expose hidden additive terms.
 ///
 /// Applied ONLY within the semantic cancel pipeline, not globally.
-/// - `Div(Add(a,b), D)` → `Add(Div(a,D), Div(b,D))`
-/// - `ln(a*b)` → `ln(a) + ln(b)`
-/// - `ln(x^r)` → `r * ln(x)`
+/// Returns `(normalized_expr, safety)` where safety indicates whether
+/// the normalization is definability-preserving or needs analytic conditions.
 ///
 /// Guard: max recursion depth 3, max 6 numerator terms.
-fn normalize_for_cancel(ctx: &mut Context, id: ExprId, depth: usize) -> ExprId {
+fn normalize_for_cancel(ctx: &mut Context, id: ExprId, depth: usize) -> (ExprId, OriginSafety) {
     if depth > 3 {
-        return id;
+        return (id, OriginSafety::DefinabilityPreserving);
     }
 
     // Phase 1: classify expression (immutable borrow released before phase 2)
@@ -203,31 +228,33 @@ fn normalize_for_cancel(ctx: &mut Context, id: ExprId, depth: usize) -> ExprId {
 
     // Phase 2: build normalized expression (mutable borrow)
     match action {
-        Action::Pass => id,
+        Action::Pass => (id, OriginSafety::DefinabilityPreserving),
         Action::Add(l, r) => {
-            let nl = normalize_for_cancel(ctx, l, depth);
-            let nr = normalize_for_cancel(ctx, r, depth);
+            let (nl, sl) = normalize_for_cancel(ctx, l, depth);
+            let (nr, sr) = normalize_for_cancel(ctx, r, depth);
+            let safety = sl.merge(sr);
             if nl == l && nr == r {
-                id
+                (id, safety)
             } else {
-                ctx.add(Expr::Add(nl, nr))
+                (ctx.add(Expr::Add(nl, nr)), safety)
             }
         }
         Action::Sub(l, r) => {
-            let nl = normalize_for_cancel(ctx, l, depth);
-            let nr = normalize_for_cancel(ctx, r, depth);
+            let (nl, sl) = normalize_for_cancel(ctx, l, depth);
+            let (nr, sr) = normalize_for_cancel(ctx, r, depth);
+            let safety = sl.merge(sr);
             if nl == l && nr == r {
-                id
+                (id, safety)
             } else {
-                ctx.add(Expr::Sub(nl, nr))
+                (ctx.add(Expr::Sub(nl, nr)), safety)
             }
         }
         Action::Neg(inner) => {
-            let ni = normalize_for_cancel(ctx, inner, depth);
+            let (ni, si) = normalize_for_cancel(ctx, inner, depth);
             if ni == inner {
-                id
+                (id, si)
             } else {
-                ctx.add(Expr::Neg(ni))
+                (ctx.add(Expr::Neg(ni)), si)
             }
         }
         Action::SplitDiv(num, den) => {
@@ -235,48 +262,63 @@ fn normalize_for_cancel(ctx: &mut Context, id: ExprId, depth: usize) -> ExprId {
             let mut num_terms = Vec::new();
             collect_additive_terms(ctx, num, true, &mut num_terms);
             if num_terms.len() <= 1 || num_terms.len() > 6 {
-                return id;
+                return (id, OriginSafety::DefinabilityPreserving);
             }
             let split: Vec<(ExprId, bool)> = num_terms
                 .iter()
                 .map(|(t, p)| (ctx.add(Expr::Div(*t, den)), *p))
                 .collect();
-            rebuild_from_terms(ctx, &split)
+            (
+                rebuild_from_terms(ctx, &split),
+                OriginSafety::DefinabilityPreserving,
+            )
         }
         Action::LnOfMul(name, a, b) => {
-            // ln(a*b) → ln(a) + ln(b)
+            // ln(a*b) → ln(a) + ln(b)  [NEEDS analytic conditions: a>0, b>0]
             let ln_a = ctx.add(Expr::Function(name, vec![a]));
             let ln_b = ctx.add(Expr::Function(name, vec![b]));
-            let nla = normalize_for_cancel(ctx, ln_a, depth + 1);
-            let nlb = normalize_for_cancel(ctx, ln_b, depth + 1);
-            ctx.add(Expr::Add(nla, nlb))
+            let (nla, _) = normalize_for_cancel(ctx, ln_a, depth + 1);
+            let (nlb, _) = normalize_for_cancel(ctx, ln_b, depth + 1);
+            (
+                ctx.add(Expr::Add(nla, nlb)),
+                OriginSafety::NeedsAnalyticConditions,
+            )
         }
         Action::LnOfPow(name, base, exp) => {
-            // ln(x^r) → r * ln(x)
+            // ln(x^r) → r * ln(x)  [NEEDS analytic conditions: x>0]
             let ln_base = ctx.add(Expr::Function(name, vec![base]));
-            ctx.add(Expr::Mul(exp, ln_base))
+            (
+                ctx.add(Expr::Mul(exp, ln_base)),
+                OriginSafety::NeedsAnalyticConditions,
+            )
         }
         Action::LnOfSqrt(name, sqrt_arg) => {
-            // ln(sqrt(x)) → (1/2) * ln(x)
+            // ln(sqrt(x)) → (1/2) * ln(x)  [NEEDS analytic conditions: x>0]
             let half = ctx.add(Expr::Number(num_rational::BigRational::new(
                 num_bigint::BigInt::from(1),
                 num_bigint::BigInt::from(2),
             )));
             let ln_arg = ctx.add(Expr::Function(name, vec![sqrt_arg]));
-            ctx.add(Expr::Mul(half, ln_arg))
+            (
+                ctx.add(Expr::Mul(half, ln_arg)),
+                OriginSafety::NeedsAnalyticConditions,
+            )
         }
         Action::DistributeMul(scalar, additive) => {
             // k*(a+b) → k*a + k*b  (distribute scalar over additive terms)
             let mut terms = Vec::new();
             collect_additive_terms(ctx, additive, true, &mut terms);
             if terms.len() <= 1 || terms.len() > 6 {
-                return id;
+                return (id, OriginSafety::DefinabilityPreserving);
             }
             let split: Vec<(ExprId, bool)> = terms
                 .iter()
                 .map(|(t, p)| (ctx.add(Expr::Mul(scalar, *t)), *p))
                 .collect();
-            rebuild_from_terms(ctx, &split)
+            (
+                rebuild_from_terms(ctx, &split),
+                OriginSafety::DefinabilityPreserving,
+            )
         }
     }
 }
@@ -310,14 +352,27 @@ pub fn cancel_additive_terms_semantic(
     const MAX_TERMS: usize = 12; // raised from 8: normalization may expand terms
     const MAX_NODES: usize = 200;
 
-    // Pre-normalize: split Div(sum, D) and ln(product) into finer additive terms
-    let norm_lhs = normalize_for_cancel(&mut simplifier.context, lhs, 0);
-    let norm_rhs = normalize_for_cancel(&mut simplifier.context, rhs, 0);
+    // Pre-normalize: split Div(sum, D) and ln(product) into finer additive terms.
+    // Track OriginSafety: terms from ln-normalizations are NeedsAnalyticConditions.
+    let (norm_lhs, lhs_safety) = normalize_for_cancel(&mut simplifier.context, lhs, 0);
+    let (norm_rhs, rhs_safety) = normalize_for_cancel(&mut simplifier.context, rhs, 0);
 
-    let mut lhs_terms = Vec::new();
-    let mut rhs_terms = Vec::new();
-    collect_additive_terms(&simplifier.context, norm_lhs, true, &mut lhs_terms);
-    collect_additive_terms(&simplifier.context, norm_rhs, true, &mut rhs_terms);
+    let mut lhs_terms: Vec<(ExprId, bool, OriginSafety)> = Vec::new();
+    let mut rhs_terms: Vec<(ExprId, bool, OriginSafety)> = Vec::new();
+    {
+        let mut raw_lhs = Vec::new();
+        collect_additive_terms(&simplifier.context, norm_lhs, true, &mut raw_lhs);
+        for (t, p) in raw_lhs {
+            lhs_terms.push((t, p, lhs_safety));
+        }
+    }
+    {
+        let mut raw_rhs = Vec::new();
+        collect_additive_terms(&simplifier.context, norm_rhs, true, &mut raw_rhs);
+        for (t, p) in raw_rhs {
+            rhs_terms.push((t, p, rhs_safety));
+        }
+    }
 
     // Simplify each term individually for canonical comparison.
     // Uses default domain (Generic) to allow x/x → 1 (essential for
@@ -338,11 +393,11 @@ pub fn cancel_additive_terms_semantic(
         collect_steps: false,
         ..Default::default()
     };
-    for (term, _) in &mut lhs_terms {
+    for (term, _, _) in &mut lhs_terms {
         let (s, _, _) = simplifier.simplify_with_stats(*term, candidate_opts.clone());
         *term = s;
     }
-    for (term, _) in &mut rhs_terms {
+    for (term, _, _) in &mut rhs_terms {
         let (s, _, _) = simplifier.simplify_with_stats(*term, candidate_opts.clone());
         *term = s;
     }
@@ -350,14 +405,21 @@ pub fn cancel_additive_terms_semantic(
     // Second normalize pass: simplification may expose new ln(product) terms
     // (e.g., Div(Mul(x, ln(a*b)), x) → ln(a*b) after the first simplify).
     // Re-normalize and re-collect if any term expanded.
-    let re_normalize_terms = |ctx: &mut Context, terms: &[(ExprId, bool)]| -> Vec<(ExprId, bool)> {
+    let re_normalize_terms = |ctx: &mut Context,
+                              terms: &[(ExprId, bool, OriginSafety)]|
+     -> Vec<(ExprId, bool, OriginSafety)> {
         let mut out = Vec::new();
-        for &(t, p) in terms {
-            let n = normalize_for_cancel(ctx, t, 0);
+        for &(t, p, s) in terms {
+            let (n, ns) = normalize_for_cancel(ctx, t, 0);
+            let merged = s.merge(ns);
             if n == t {
-                out.push((t, p));
+                out.push((t, p, merged));
             } else {
-                collect_additive_terms(ctx, n, p, &mut out);
+                let mut raw = Vec::new();
+                collect_additive_terms(ctx, n, p, &mut raw);
+                for (rt, rp) in raw {
+                    out.push((rt, rp, merged));
+                }
             }
         }
         out
@@ -368,21 +430,27 @@ pub fn cancel_additive_terms_semantic(
     let mut rhs_terms = rhs_terms2;
 
     // Re-simplify any newly created terms
-    for (term, _) in &mut lhs_terms {
+    for (term, _, _) in &mut lhs_terms {
         let (s, _, _) = simplifier.simplify_with_stats(*term, candidate_opts.clone());
         *term = s;
     }
-    for (term, _) in &mut rhs_terms {
+    for (term, _, _) in &mut rhs_terms {
         let (s, _, _) = simplifier.simplify_with_stats(*term, candidate_opts.clone());
         *term = s;
     }
 
     // Final re-flatten: simplification may turn a single term into Add(a, b),
     // e.g., Div(Mul(Add(ln(y),2),2), 2) → Add(ln(y), 2). Re-collect to split.
-    let re_flatten = |terms: Vec<(ExprId, bool)>, ctx: &Context| -> Vec<(ExprId, bool)> {
+    let re_flatten = |terms: Vec<(ExprId, bool, OriginSafety)>,
+                      ctx: &Context|
+     -> Vec<(ExprId, bool, OriginSafety)> {
         let mut out = Vec::new();
-        for (t, p) in terms {
-            collect_additive_terms(ctx, t, p, &mut out);
+        for (t, p, s) in terms {
+            let mut raw = Vec::new();
+            collect_additive_terms(ctx, t, p, &mut raw);
+            for (rt, rp) in raw {
+                out.push((rt, rp, s));
+            }
         }
         out
     };
@@ -410,15 +478,25 @@ pub fn cancel_additive_terms_semantic(
     // Note: this is NOT the same as rewriting t to something else (like
     // x/x → 1, which requires x≠0). We are only asserting t − t = 0,
     // which holds universally when t is defined.
-    for (ri, (rt, rp)) in rhs_terms.iter().enumerate() {
+    //
+    // SAFETY GATE: only cancel without proof if BOTH terms are
+    // DefinabilityPreserving. If either came from a log-normalizer
+    // (NeedsAnalyticConditions), skip — the structural equality was
+    // "manufactured" by normalize_for_cancel and may not hold without
+    // analytic assumptions (e.g., positivity for ln).
+    for (ri, (rt, rp, rs)) in rhs_terms.iter().enumerate() {
         if rhs_used[ri] {
             continue;
         }
-        for (li, (lt, lp)) in lhs_terms.iter().enumerate() {
+        for (li, (lt, lp, ls)) in lhs_terms.iter().enumerate() {
             if lhs_used[li] {
                 continue;
             }
-            if lp == rp && compare_expr(&simplifier.context, *lt, *rt) == Ordering::Equal {
+            if lp == rp
+                && *ls == OriginSafety::DefinabilityPreserving
+                && *rs == OriginSafety::DefinabilityPreserving
+                && compare_expr(&simplifier.context, *lt, *rt) == Ordering::Equal
+            {
                 lhs_used[li] = true;
                 rhs_used[ri] = true;
                 cancelled += 1;
@@ -427,8 +505,10 @@ pub fn cancel_additive_terms_semantic(
         }
     }
 
-    // Second pass: semantic match (simplify(l - r) == 0)
-    for (li, (lt, lp)) in lhs_terms.iter().enumerate() {
+    // Second pass: semantic match (simplify(l - r) == 0) with Strict proof.
+    // This covers both DefinabilityPreserving terms that didn't match
+    // structurally and NeedsAnalyticConditions terms.
+    for (li, (lt, lp, _ls)) in lhs_terms.iter().enumerate() {
         if lhs_used[li] {
             continue;
         }
@@ -438,7 +518,7 @@ pub fn cancel_additive_terms_semantic(
             continue;
         }
 
-        for (ri, (rt, rp)) in rhs_terms.iter().enumerate() {
+        for (ri, (rt, rp, _rs)) in rhs_terms.iter().enumerate() {
             if rhs_used[ri] {
                 continue;
             }
@@ -476,17 +556,17 @@ pub fn cancel_additive_terms_semantic(
         return None;
     }
 
-    let new_lhs_terms: Vec<_> = lhs_terms
+    let new_lhs_terms: Vec<(ExprId, bool)> = lhs_terms
         .into_iter()
         .enumerate()
         .filter(|(i, _)| !lhs_used[*i])
-        .map(|(_, t)| t)
+        .map(|(_, (t, p, _))| (t, p))
         .collect();
-    let new_rhs_terms: Vec<_> = rhs_terms
+    let new_rhs_terms: Vec<(ExprId, bool)> = rhs_terms
         .into_iter()
         .enumerate()
         .filter(|(i, _)| !rhs_used[*i])
-        .map(|(_, t)| t)
+        .map(|(_, (t, p, _))| (t, p))
         .collect();
 
     Some(CancelResult {
