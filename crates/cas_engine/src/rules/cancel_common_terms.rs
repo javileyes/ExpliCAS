@@ -199,9 +199,14 @@ pub fn cancel_additive_terms_semantic(
                 continue;
             }
 
-            // Build diff = l_term - r_term and simplify
+            // Build diff = l_term - r_term and simplify.
+            // Use FULL simplify (not simplify_for_solve) because we are only
+            // checking whether A - B == 0, not modifying the equation's solution
+            // set. The prepass (simplify_for_solve) skips NeedsCondition rules
+            // like TrigInverseExpansionRule and log product splitting, which
+            // prevents proving identities like sin(arccos(x)) ≡ sqrt(1-x²).
             let diff = simplifier.context.add(Expr::Sub(*lt, *rt));
-            let simplified_diff = simplifier.simplify_for_solve(diff);
+            let (simplified_diff, _) = simplifier.simplify(diff);
 
             // Check if result is zero
             let is_zero = if let Expr::Number(n) = simplifier.context.get(simplified_diff) {
