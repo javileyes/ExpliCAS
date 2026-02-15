@@ -3,7 +3,9 @@ use crate::error::CasError;
 use crate::solver::solution_set::{intersect_solution_sets, union_solution_sets};
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
-use cas_ast::{BuiltinFn, Equation, Expr, ExprId, RelOp, SolutionSet};
+use cas_ast::{
+    BuiltinFn, Case, ConditionPredicate, ConditionSet, Equation, Expr, ExprId, RelOp, SolutionSet,
+};
 
 use super::{contains_var, isolate, prepend_steps, simplify_rhs};
 
@@ -43,6 +45,11 @@ pub(super) fn isolate_function(
 }
 
 /// Handle `|A| = RHS` (absolute value isolation)
+///
+/// Soundness invariant: `|A| = B` requires `B ≥ 0` (absolute values are
+/// non-negative). When `B` is a symbolic expression containing the solve
+/// variable, we attach `NonNegative(rhs)` as a condition guard rather than
+/// attempting to solve a guard inequality recursively.
 fn isolate_abs(
     arg: ExprId,
     rhs: ExprId,
@@ -52,7 +59,24 @@ fn isolate_abs(
     opts: SolverOptions,
     steps: Vec<SolveStep>,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    // Branch 1: Positive case (A op B)
+    // ── Pre-check: numeric RHS ──────────────────────────────────────────
+    // |A| is always ≥ 0, so |A| = negative is impossible.
+    if matches!(op, RelOp::Eq) {
+        if let Expr::Number(n) = simplifier.context.get(rhs) {
+            use num_traits::{Signed, Zero};
+            if n.is_negative() {
+                // |A| = (negative) → no solution
+                return Ok((SolutionSet::Empty, steps));
+            }
+            if n.is_zero() {
+                // |A| = 0  →  A = 0  (only one branch needed)
+                return isolate(arg, rhs, op, var, simplifier, opts);
+            }
+            // n > 0: fall through to normal branch split
+        }
+    }
+
+    // ── Branch 1: Positive case (A op B) ────────────────────────────────
     let eq1 = Equation {
         lhs: arg,
         rhs,
@@ -81,7 +105,7 @@ fn isolate_abs(
     let results1 = isolate(arg, rhs, op.clone(), var, simplifier, opts)?;
     let (set1, steps1_out) = prepend_steps(results1, steps1)?;
 
-    // Branch 2: Negative case
+    // ── Branch 2: Negative case ─────────────────────────────────────────
     let neg_rhs = simplifier.context.add(Expr::Neg(rhs));
     let op2 = match op {
         RelOp::Eq => RelOp::Eq,
@@ -120,8 +144,8 @@ fn isolate_abs(
     let results2 = isolate(arg, neg_rhs, op2, var, simplifier, opts)?;
     let (set2, steps2_out) = prepend_steps(results2, steps2)?;
 
-    // Combine sets
-    let final_set = match op {
+    // ── Combine branches ────────────────────────────────────────────────
+    let combined_set = match op {
         RelOp::Eq | RelOp::Neq | RelOp::Gt | RelOp::Geq => {
             union_solution_sets(&simplifier.context, set1, set2)
         }
@@ -130,6 +154,17 @@ fn isolate_abs(
 
     let mut all_steps = steps1_out;
     all_steps.extend(steps2_out);
+
+    // ── Soundness guard: rhs ≥ 0 ───────────────────────────────────────
+    // When rhs contains the solve variable, the combined set may be unsound
+    // (e.g., |x| = x gives AllReals from branch 1 without domain restriction).
+    // Guard: wrap in Conditional with NonNegative(rhs).
+    let final_set = if contains_var(&simplifier.context, rhs, var) {
+        let guard = ConditionSet::single(ConditionPredicate::NonNegative(rhs));
+        SolutionSet::Conditional(vec![Case::new(guard, combined_set)])
+    } else {
+        combined_set
+    };
 
     Ok((final_set, all_steps))
 }

@@ -168,7 +168,6 @@ fn ln_pow_requires_base_positive_in_reals() {
 // with NonNegative/Positive conditions — but NOT empty AllReals.
 
 #[test]
-#[ignore = "Pre-existing: solver returns unconditional AllReals for sqrt(x^2)=x. Separate fix needed."]
 fn sqrt_square_not_unconditional_identity() {
     let (sols, req, _s) = solve_strict("sqrt(x^2) = x", "x");
 
