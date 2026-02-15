@@ -18,12 +18,61 @@ use std::cmp::Ordering;
 
 // --- Helper Functions (Keep these as they are useful helpers) ---
 
+fn is_e_base(ctx: &Context, base: ExprId) -> bool {
+    match ctx.get(base) {
+        Expr::Variable(sym_id) => ctx.sym_name(*sym_id) == "e",
+        Expr::Constant(c) => matches!(c, cas_ast::Constant::E),
+        _ => false,
+    }
+}
+
+/// Returns true if `var` appears in `expr` outside of any `Pow(e, ...)` exponential context.
+///
+/// This is used to guard exponential substitution (u = e^x) from triggering on mixed
+/// polynomial+exponential equations where `var` also appears in non-exponential subexpressions.
+fn var_outside_exponentials(ctx: &Context, expr: ExprId, var: &str) -> bool {
+    match ctx.get(expr) {
+        Expr::Variable(sym_id) => ctx.sym_name(*sym_id) == var,
+
+        // Treat e^(...) as an opaque leaf: occurrences of `var` inside its exponent are allowed.
+        Expr::Pow(b, _e) if is_e_base(ctx, *b) => false,
+
+        Expr::Pow(b, e) => {
+            var_outside_exponentials(ctx, *b, var) || var_outside_exponentials(ctx, *e, var)
+        }
+
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            var_outside_exponentials(ctx, *l, var) || var_outside_exponentials(ctx, *r, var)
+        }
+
+        Expr::Neg(e) => var_outside_exponentials(ctx, *e, var),
+
+        Expr::Function(_name, args) => args.iter().any(|&a| var_outside_exponentials(ctx, a, var)),
+
+        Expr::Matrix { data, .. } => data.iter().any(|&a| var_outside_exponentials(ctx, a, var)),
+
+        Expr::Hold(e) => var_outside_exponentials(ctx, *e, var),
+
+        // Session refs are resolved before simplification/solve; treat as opaque here.
+        Expr::SessionRef(_) => false,
+
+        Expr::Number(_) | Expr::Constant(_) => false,
+    }
+}
+
 pub(crate) fn detect_substitution(ctx: &mut Context, eq: &Equation, var: &str) -> Option<ExprId> {
-    // ... (Keep existing implementation)
     // Heuristic: Look for e^x.
-    // Collect all Pow(e, ...) terms.
-    let terms = collect_exponential_terms(ctx, eq.lhs, var);
+    // Collect all Pow(e, ...) terms from both sides.
+    let mut terms = collect_exponential_terms(ctx, eq.lhs, var);
+    terms.extend(collect_exponential_terms(ctx, eq.rhs, var));
     if terms.is_empty() {
+        return None;
+    }
+
+    // Guard: do not trigger exponential substitution (u = e^x) if `var` appears anywhere
+    // outside of exponential Pow(e, ...) contexts. These are mixed polynomial+exponential
+    // equations where substitution is not valid.
+    if var_outside_exponentials(ctx, eq.lhs, var) || var_outside_exponentials(ctx, eq.rhs, var) {
         return None;
     }
 
