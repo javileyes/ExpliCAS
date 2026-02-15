@@ -208,3 +208,47 @@ fn cancel_pipeline_must_not_drop_log_domain() {
         );
     }
 }
+
+// =============================================================================
+// (G) abs(constant) = x must not produce spurious negative solutions
+// =============================================================================
+//
+// abs(2) = x should simplify to 2 = x, giving {2}.
+// It must NOT return {2, -2} (which would happen if isolate_abs
+// splits into branches without the rhs ≥ 0 guard).
+
+#[test]
+fn abs_constant_eq_var_must_not_include_negative() {
+    let (sols, _req, s) = solve_strict("abs(2) = x", "x");
+
+    match &sols {
+        SolutionSet::Discrete(vals) => {
+            // Must contain 2
+            let has_two = vals.iter().any(|v| {
+                matches!(s.context.get(*v), cas_ast::Expr::Number(n)
+                    if *n == num_rational::BigRational::from_integer(2.into()))
+            });
+            assert!(has_two, "Expected x = 2 in solutions, got {:?}", sols);
+
+            // Must NOT contain -2
+            let has_neg_two = vals.iter().any(|v| {
+                matches!(s.context.get(*v), cas_ast::Expr::Number(n)
+                    if *n == num_rational::BigRational::from_integer((-2).into()))
+            });
+            assert!(
+                !has_neg_two,
+                "UNSOUND: abs(2) = x returned -2 as a solution. \
+                 abs(2) = 2, so x = 2 is the only valid solution."
+            );
+        }
+        // Conditional with guard is also acceptable (sound but less ideal)
+        SolutionSet::Conditional(_) => { /* sound */ }
+        other => {
+            panic!(
+                "Unexpected solution type for abs(2) = x: {:?}. \
+                 Expected Discrete({{2}}) or Conditional.",
+                other
+            );
+        }
+    }
+}
