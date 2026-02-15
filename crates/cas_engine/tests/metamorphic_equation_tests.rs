@@ -1675,6 +1675,19 @@ fn run_s2_case(eq_entry: &EquationEntry, identity: &S2Identity) -> S2Outcome {
     // Also compare solution counts when both discrete
     if let (SolutionSet::Discrete(sa), SolutionSet::Discrete(sb)) = (&set0, &set1) {
         if sa.len() != sb.len() {
+            // Check if the identity contracts the equation domain.
+            // If so, fewer solutions are expected — classify as DomainChanged.
+            let d0 = infer_equation_domain(&simplifier.context, orig_eq.lhs, orig_eq.rhs);
+            let d1 = infer_equation_domain(&simplifier.context, trans_eq.lhs, trans_eq.rhs);
+            let domain_same = eq_domains_semantically_same(&simplifier.context, &d0, &d1);
+
+            if !domain_same {
+                return S2Outcome::DomainChanged(format!(
+                    "sol count differs: orig={}, trans={} [domain contracted]",
+                    sa.len(),
+                    sb.len()
+                ));
+            }
             return S2Outcome::Incomplete(IncompleteReason::Other(format!(
                 "sol count differs: orig={}, trans={}",
                 sa.len(),
@@ -1838,6 +1851,40 @@ fn run_strategy2(verbose: bool) -> S2Results {
                 if !eq_domain_same {
                     outcome =
                         S2Outcome::DomainChanged(format!("{} [equation domain contracted]", msg));
+                }
+            }
+        }
+
+        // Domain-aware reclassification for Isolation errors:
+        // if identity contracts domain, isolation failure is expected.
+        if matches!(&outcome, S2Outcome::Incomplete(IncompleteReason::Isolation)) {
+            if !id.domain_safe {
+                outcome = S2Outcome::DomainChanged("isolation + identity domain differs".into());
+            } else {
+                let mut ctx = Context::new();
+                let eq_parts: Vec<&str> = eq.equation_str.splitn(2, '=').collect();
+                let orig_lhs = eq_parts
+                    .first()
+                    .and_then(|s| parse(s.trim(), &mut ctx).ok());
+                let orig_rhs = eq_parts.get(1).and_then(|s| parse(s.trim(), &mut ctx).ok());
+                let id_a = parse(&id.exp, &mut ctx).ok();
+                let id_b = parse(&id.simp, &mut ctx).ok();
+
+                let eq_domain_same = if let (Some(olhs), Some(orhs), Some(ia), Some(ib)) =
+                    (orig_lhs, orig_rhs, id_a, id_b)
+                {
+                    let trans_lhs = ctx.add(Expr::Add(olhs, ia));
+                    let trans_rhs = ctx.add(Expr::Add(orhs, ib));
+                    let d0 = infer_equation_domain(&ctx, olhs, orhs);
+                    let d1 = infer_equation_domain(&ctx, trans_lhs, trans_rhs);
+                    eq_domains_semantically_same(&ctx, &d0, &d1)
+                } else {
+                    true
+                };
+
+                if !eq_domain_same {
+                    outcome =
+                        S2Outcome::DomainChanged("isolation + equation domain contracted".into());
                 }
             }
         }

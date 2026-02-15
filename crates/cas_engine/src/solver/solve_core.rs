@@ -25,6 +25,237 @@ use super::{
 };
 
 // ---------------------------------------------------------------------------
+// Pre-solve exponent normalization
+// ---------------------------------------------------------------------------
+// The parser represents `x^(5/6)` as `Pow(x, Div(Number(5), Number(6)))`,
+// but `add_exp` (used by ProductPowerRule when merging x^(1/2)*x^(1/3))
+// produces `Pow(x, Number(5/6))` as a single BigRational node.
+//
+// These are *structurally different* AST representations of the same value,
+// so `Sub(Pow(x, Number(5/6)), Pow(x, Div(5,6)))` does NOT cancel during
+// simplification, causing cycle detection to fire when strategies revisit
+// the equation.
+//
+// Fix: recursively normalize `Pow(base, Div(Number(p), Number(q)))` →
+// `Pow(base, Number(p/q))` on both equation sides before computing the diff.
+
+/// Normalize Pow exponents from Div(Number,Number) to Number(rational).
+/// Returns `Some(new_expr)` if any normalization happened, `None` otherwise.
+fn normalize_pow_exponents(ctx: &mut cas_ast::Context, expr: ExprId) -> Option<ExprId> {
+    let result = normalize_pow_rec(ctx, expr);
+    if result != expr {
+        Some(result)
+    } else {
+        None
+    }
+}
+
+/// Recursive worker for Pow exponent normalization.
+fn normalize_pow_rec(ctx: &mut cas_ast::Context, id: ExprId) -> ExprId {
+    match ctx.get(id).clone() {
+        Expr::Pow(base, exp) => {
+            let base_rec = normalize_pow_rec(ctx, base);
+            let exp_rec = normalize_pow_rec(ctx, exp);
+
+            // Normalize Div(Number(p), Number(q)) → Number(p/q)
+            let exp_final = if let Expr::Div(num, den) = ctx.get(exp_rec).clone() {
+                if let (Expr::Number(p), Expr::Number(q)) = (ctx.get(num), ctx.get(den)) {
+                    let (p, q) = (p.clone(), q.clone());
+                    use num_traits::Zero;
+                    if !q.is_zero() {
+                        ctx.add(Expr::Number(&p / &q))
+                    } else {
+                        exp_rec
+                    }
+                } else {
+                    exp_rec
+                }
+            } else {
+                exp_rec
+            };
+
+            // Also fold nested Pow: Pow(Pow(base, k), r) → Pow(base, k*r)
+            // when both exponents are numeric rationals.
+            if let Expr::Pow(inner_base, inner_exp) = ctx.get(base_rec).clone() {
+                if let (Expr::Number(k), Expr::Number(r)) = (ctx.get(inner_exp), ctx.get(exp_final))
+                {
+                    let product = k * r;
+                    let product_exp = ctx.add(Expr::Number(product));
+                    return ctx.add(Expr::Pow(inner_base, product_exp));
+                }
+            }
+
+            if base_rec != base || exp_final != exp {
+                ctx.add(Expr::Pow(base_rec, exp_final))
+            } else {
+                id
+            }
+        }
+
+        // Recurse into other node types
+        Expr::Add(l, r) => {
+            let nl = normalize_pow_rec(ctx, l);
+            let nr = normalize_pow_rec(ctx, r);
+            if nl != l || nr != r {
+                ctx.add(Expr::Add(nl, nr))
+            } else {
+                id
+            }
+        }
+        Expr::Sub(l, r) => {
+            let nl = normalize_pow_rec(ctx, l);
+            let nr = normalize_pow_rec(ctx, r);
+            if nl != l || nr != r {
+                ctx.add(Expr::Sub(nl, nr))
+            } else {
+                id
+            }
+        }
+        Expr::Mul(l, r) => {
+            let nl = normalize_pow_rec(ctx, l);
+            let nr = normalize_pow_rec(ctx, r);
+            if nl != l || nr != r {
+                ctx.add(Expr::Mul(nl, nr))
+            } else {
+                id
+            }
+        }
+        Expr::Div(l, r) => {
+            let nl = normalize_pow_rec(ctx, l);
+            let nr = normalize_pow_rec(ctx, r);
+            if nl != l || nr != r {
+                ctx.add(Expr::Div(nl, nr))
+            } else {
+                id
+            }
+        }
+        Expr::Neg(inner) => {
+            let ni = normalize_pow_rec(ctx, inner);
+            if ni != inner {
+                ctx.add(Expr::Neg(ni))
+            } else {
+                id
+            }
+        }
+
+        // Atoms, functions, etc. — no change
+        _ => id,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Cancel common additive terms across equation sides
+// ---------------------------------------------------------------------------
+// After normalization, both LHS and RHS may share additive terms (e.g. x^(5/6))
+// that the simplifier can't cancel in Sub(Add(A, B), B) form.
+// This helper collects all additive terms from each side, removes matching
+// pairs using structural comparison, and rebuilds the sides.
+
+/// Collect all top-level additive terms from an expression.
+/// `a + b + c` → vec![a, b, c] (positive terms)
+/// Neg/Sub terms are also collected with a negative marker.
+fn collect_additive_terms(
+    ctx: &cas_ast::Context,
+    id: ExprId,
+    positive: bool,
+    out: &mut Vec<(ExprId, bool)>,
+) {
+    match ctx.get(id) {
+        Expr::Add(l, r) => {
+            collect_additive_terms(ctx, *l, positive, out);
+            collect_additive_terms(ctx, *r, positive, out);
+        }
+        Expr::Sub(l, r) => {
+            collect_additive_terms(ctx, *l, positive, out);
+            collect_additive_terms(ctx, *r, !positive, out);
+        }
+        Expr::Neg(inner) => {
+            collect_additive_terms(ctx, *inner, !positive, out);
+        }
+        _ => {
+            out.push((id, positive));
+        }
+    }
+}
+
+/// Rebuild an expression from additive terms.
+fn rebuild_from_terms(ctx: &mut cas_ast::Context, terms: &[(ExprId, bool)]) -> ExprId {
+    if terms.is_empty() {
+        return ctx.num(0);
+    }
+    let mut acc = if terms[0].1 {
+        terms[0].0
+    } else {
+        ctx.add(Expr::Neg(terms[0].0))
+    };
+    for &(term, positive) in &terms[1..] {
+        if positive {
+            acc = ctx.add(Expr::Add(acc, term));
+        } else {
+            acc = ctx.add(Expr::Sub(acc, term));
+        }
+    }
+    acc
+}
+
+/// Cancel common additive terms between LHS and RHS using structural comparison.
+/// Returns `Some((new_lhs, new_rhs))` if any terms were cancelled, `None` otherwise.
+fn cancel_common_additive_terms(
+    ctx: &mut cas_ast::Context,
+    lhs: ExprId,
+    rhs: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    let mut lhs_terms: Vec<(ExprId, bool)> = Vec::new();
+    let mut rhs_terms: Vec<(ExprId, bool)> = Vec::new();
+    collect_additive_terms(ctx, lhs, true, &mut lhs_terms);
+    collect_additive_terms(ctx, rhs, true, &mut rhs_terms);
+
+    // For each RHS term, try to find and remove a matching LHS term
+    let mut rhs_used = vec![false; rhs_terms.len()];
+    let mut lhs_used = vec![false; lhs_terms.len()];
+    let mut cancelled = 0usize;
+
+    for (ri, (rt, rp)) in rhs_terms.iter().enumerate() {
+        for (li, (lt, lp)) in lhs_terms.iter().enumerate() {
+            if lhs_used[li] {
+                continue;
+            }
+            // Both must have the same sign and the same structure
+            if lp == rp
+                && cas_ast::ordering::compare_expr(ctx, *lt, *rt) == std::cmp::Ordering::Equal
+            {
+                lhs_used[li] = true;
+                rhs_used[ri] = true;
+                cancelled += 1;
+                break;
+            }
+        }
+    }
+
+    if cancelled == 0 {
+        return None;
+    }
+
+    // Rebuild both sides without cancelled terms
+    let new_lhs_terms: Vec<(ExprId, bool)> = lhs_terms
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| !lhs_used[*i])
+        .map(|(_, t)| t)
+        .collect();
+    let new_rhs_terms: Vec<(ExprId, bool)> = rhs_terms
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| !rhs_used[*i])
+        .map(|(_, t)| t)
+        .collect();
+
+    let new_lhs = rebuild_from_terms(ctx, &new_lhs_terms);
+    let new_rhs = rebuild_from_terms(ctx, &new_rhs_terms);
+    Some((new_lhs, new_rhs))
+}
+
+// ---------------------------------------------------------------------------
 // Cycle detection: per-call-stack fingerprint set
 // ---------------------------------------------------------------------------
 
@@ -264,6 +495,33 @@ pub(crate) fn solve_with_options(
         }
     }
 
+    // PRE-SOLVE RADICAL CANONICALIZATION: merge mixed-radical forms
+    // on each equation side so that strategies receive a canonical
+    // representation. Applied to LHS and RHS **before** computing the diff.
+    // This prevents cycle detection triggers where the solver oscillates
+    // between equivalent radical representations (e.g. x*sqrt(x) ↔ x^(3/2)).
+    if let Some(canon_lhs) = normalize_pow_exponents(&mut simplifier.context, simplified_eq.lhs) {
+        let re = simplifier.simplify_for_solve(canon_lhs);
+        simplified_eq.lhs = re;
+    }
+    if let Some(canon_rhs) = normalize_pow_exponents(&mut simplifier.context, simplified_eq.rhs) {
+        let re = simplifier.simplify_for_solve(canon_rhs);
+        simplified_eq.rhs = re;
+    }
+
+    // CANCEL COMMON ADDITIVE TERMS: if both sides share structurally-identical
+    // additive terms (e.g. x^(5/6) on both sides from identity noise), strip
+    // them before computing the diff. This is needed because the simplifier's
+    // Sub(Add(A, B), B) path doesn't have deep like-term collection.
+    if let Some((new_lhs, new_rhs)) = cancel_common_additive_terms(
+        &mut simplifier.context,
+        simplified_eq.lhs,
+        simplified_eq.rhs,
+    ) {
+        simplified_eq.lhs = simplifier.simplify_for_solve(new_lhs);
+        simplified_eq.rhs = simplifier.simplify_for_solve(new_rhs);
+    }
+
     // CRITICAL: After simplification, check for identities and contradictions
     // Do this by moving everything to one side: LHS - RHS
     let difference = simplifier
@@ -277,23 +535,26 @@ pub(crate) fn solve_with_options(
     // exp(x) + (x+1)(x+2) - (x² + 3x + 2) - 1 → exp(x) - 1
     // where the simplifier couldn't cancel poly(x) across the subtraction
     // boundary due to different AST shapes.
+    // Also handles radical identity noise like x^(5/6) + x^2 + 1 - x^(5/6)
+    // where expand() is a no-op but a second simplification pass catches
+    // the cancellation.
     // Guard: only rebuild the equation when expansion achieves a significant
-    // (>25%) node reduction to avoid changing the solve path for equations
-    // that are already well-formed (e.g. reciprocal equations).
+    // (>25%) node reduction OR eliminates the variable entirely.
     if contains_var(&simplifier.context, diff_simplified, var) {
         let expanded_diff = crate::expand::expand(&mut simplifier.context, diff_simplified);
-        if expanded_diff != diff_simplified {
-            let re_simplified = simplifier.simplify_for_solve(expanded_diff);
-            let old_nodes =
-                cas_ast::traversal::count_all_nodes(&simplifier.context, diff_simplified);
-            let new_nodes = cas_ast::traversal::count_all_nodes(&simplifier.context, re_simplified);
-            // Require >25% reduction to avoid cosmetic rewrites that break pedagogical steps
-            if old_nodes > 4 && new_nodes * 4 < old_nodes * 3 {
-                diff_simplified = re_simplified;
-                let zero = simplifier.context.num(0);
-                simplified_eq.lhs = diff_simplified;
-                simplified_eq.rhs = zero;
-            }
+        let re_simplified = simplifier.simplify_for_solve(expanded_diff);
+        let old_nodes = cas_ast::traversal::count_all_nodes(&simplifier.context, diff_simplified);
+        let new_nodes = cas_ast::traversal::count_all_nodes(&simplifier.context, re_simplified);
+        // Use re-simplified form if:
+        // 1. Variable was eliminated (identity/contradiction), OR
+        // 2. Significant (>25%) node reduction (real simplification, not cosmetic)
+        let var_eliminated = !contains_var(&simplifier.context, re_simplified, var);
+        let significant_reduction = old_nodes > 4 && new_nodes * 4 < old_nodes * 3;
+        if var_eliminated || significant_reduction {
+            diff_simplified = re_simplified;
+            let zero = simplifier.context.num(0);
+            simplified_eq.lhs = diff_simplified;
+            simplified_eq.rhs = zero;
         }
     }
 
