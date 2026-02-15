@@ -1,0 +1,96 @@
+# Equation Corpus for Metamorphic Testing
+# Format: equation,solve_var,expected_kind,expected_count,family,domain_mode
+# equation: uses = for equality
+# expected_kind: discrete|empty|interval|residual|any
+# expected_count: number of solutions (empty for non-discrete or unknown)
+# family: category for reporting
+# domain_mode: g (generic) or a (assume)
+
+# ============================
+# Linear Equations
+# ============================
+2*x + 3 = 7,x,discrete,1,linear,g
+5*x - 10 = 0,x,discrete,1,linear,g
+3*x + 1 = x + 7,x,discrete,1,linear,g
+x/2 + 1 = 5,x,discrete,1,linear,g
+4*(x - 2) = 12,x,discrete,1,linear,g
+(x + 1)/3 = 2,x,discrete,1,linear,g
+7 - 2*x = 1,x,discrete,1,linear,g
+x + x + x = 9,x,discrete,1,linear,g
+
+# Linear parametric (multi-var)
+a*x + b = 0,x,discrete,1,linear_parametric,g
+y = 2*x + 1,x,discrete,1,linear_parametric,g
+c = a*x + b,x,discrete,1,linear_parametric,g
+
+# ============================
+# Quadratic Equations
+# ============================
+x^2 - 5*x + 6 = 0,x,discrete,2,quadratic,g
+x^2 - 4 = 0,x,discrete,2,quadratic,g
+x^2 + 2*x + 1 = 0,x,discrete,1,quadratic,g
+x^2 = 9,x,discrete,2,quadratic,g
+x^2 - 2*x = 0,x,discrete,2,quadratic,g
+x^2 + 1 = 0,x,empty,,quadratic_no_real,g
+2*x^2 - 8 = 0,x,discrete,2,quadratic,g
+x^2 - 6*x + 9 = 0,x,discrete,1,quadratic,g
+3*x^2 + 6*x = 0,x,discrete,2,quadratic,g
+x^2 = 2*x + 3,x,discrete,2,quadratic,g
+
+# Quadratic parametric
+x^2 = a,x,discrete,2,quadratic_parametric,g
+c^2 = a^2 + b^2,a,discrete,2,quadratic_parametric,g
+x^2 - 4*x + 4 = y,x,discrete,2,quadratic_parametric,g
+
+# ============================
+# Factored / Product Equations
+# ============================
+(x - 2)*(x + 3) = 0,x,discrete,2,factored,g
+x*(x - 5) = 0,x,discrete,2,factored,g
+(x + 1)*(x - 1) = 0,x,discrete,2,factored,g
+(2*x - 1)*(x + 4) = 0,x,discrete,2,factored,g
+
+# ============================
+# Cubic / Higher Degree
+# ============================
+x^3 = 8,x,discrete,1,cubic,g
+x^3 - x = 0,x,discrete,3,cubic,g
+x^3 = 27,x,discrete,1,cubic,g
+
+# ============================
+# Absolute Value
+# ============================
+|2*x + 1| = 5,x,discrete,2,abs,g
+|x| = 3,x,discrete,2,abs,g
+|x - 4| = 2,x,discrete,2,abs,g
+
+# ============================
+# Exponential / Logarithmic
+# ============================
+exp(x) = 1,x,discrete,1,exp,g
+2^x = 8,x,discrete,1,exp,g
+3^x = 9,x,discrete,1,exp,g
+ln(x) = 0,x,discrete,1,log,a
+ln(x) = 1,x,discrete,1,log,a
+
+# ============================
+# Rational Equations
+# ============================
+1/x = 2,x,discrete,1,rational,g
+1/x = 1/3,x,discrete,1,rational,g
+
+# ============================
+# Applied / Physics
+# ============================
+V = (4/3)*pi*r^3,r,discrete,1,applied,g
+A = pi*r^2,r,discrete,2,applied,g
+F = m*a,a,discrete,1,applied,g
+E = m*c^2,m,discrete,1,applied,g
+v^2 = u^2 + 2*a*s,s,discrete,1,applied,g
+P = I^2*R,I,discrete,2,applied,g
+
+# ============================
+# Square Root / Radical
+# ============================
+sqrt(x) = 3,x,discrete,1,radical,a
+sqrt(x + 1) = 4,x,discrete,1,radical,a

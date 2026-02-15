@@ -1,0 +1,58 @@
+# Equivalent Equation Pairs for Metamorphic Testing
+# Format: eq_A,eq_B,solve_var,family
+# eq_A and eq_B should have identical solution sets
+
+# ============================
+# Rearrangement (same equation, different form)
+# ============================
+2*x + 3 = 7,2*x = 4,x,rearrange
+x + 5 = 12,x = 7,x,rearrange
+3*x - 9 = 0,3*x = 9,x,rearrange
+x - 3 = 2,x = 5,x,rearrange
+
+# ============================
+# Factor vs Expanded
+# ============================
+x^2 - 5*x + 6 = 0,(x - 2)*(x - 3) = 0,x,factor_expand
+x^2 - 4 = 0,(x - 2)*(x + 2) = 0,x,factor_expand
+x^2 + 2*x + 1 = 0,(x + 1)^2 = 0,x,factor_expand
+x^2 - 9 = 0,(x - 3)*(x + 3) = 0,x,factor_expand
+
+# ============================
+# Scale both sides (non-zero constant)
+# ============================
+x + 1 = 3,2*(x + 1) = 6,x,scale
+x - 2 = 5,3*(x - 2) = 15,x,scale
+x^2 = 4,2*x^2 = 8,x,scale
+
+# ============================
+# Add constant to both sides
+# ============================
+x = 5,x + 3 = 8,x,add_both
+2*x = 10,2*x - 4 = 6,x,add_both
+x^2 = 9,x^2 + 1 = 10,x,add_both
+x^2 - 1 = 0,x^2 = 1,x,add_both
+
+# ============================
+# LHS ↔ RHS swap
+# ============================
+2*x = 6,6 = 2*x,x,swap
+x^2 - 4 = 0,0 = x^2 - 4,x,swap
+
+# ============================
+# Move terms between sides
+# ============================
+x^2 = 2*x + 3,x^2 - 2*x - 3 = 0,x,move_terms
+3*x + 1 = x + 7,2*x = 6,x,move_terms
+x^2 - 6*x = -9,x^2 - 6*x + 9 = 0,x,move_terms
+
+# ============================
+# Parametric equivalences
+# ============================
+a*x = b,x = b/a,x,parametric
+y = 2*x + 1,y - 1 = 2*x,x,parametric
+
+# ============================
+# Absolute value equivalences
+# ============================
+|x| = 3,|x| - 3 = 0,x,abs_equiv
