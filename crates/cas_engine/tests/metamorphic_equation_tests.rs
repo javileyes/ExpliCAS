@@ -1307,6 +1307,40 @@ fn identity_contains_var(expr_str: &str, var: &str) -> bool {
     false
 }
 
+/// Structured reason for `Incomplete` outcomes.
+/// Each variant maps to a specific solver limitation or expected behaviour.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum IncompleteReason {
+    /// Solver returned IsolationError (can't isolate variable)
+    Isolation,
+    /// Solver detected equivalent-form loop
+    CycleDetected,
+    /// Maximum recursion depth exceeded
+    MaxDepth,
+    /// Continuous solution in factor split (abs-value)
+    ContinuousSolution,
+    /// Substitution only supports discrete solutions
+    SubstitutionNonDiscrete,
+    /// Solver returned non-discrete result (Conditional/Residual/Interval)
+    NonDiscrete,
+    /// Other solver limitation
+    Other(String),
+}
+
+impl std::fmt::Display for IncompleteReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IncompleteReason::Isolation => write!(f, "isolation"),
+            IncompleteReason::CycleDetected => write!(f, "cycle"),
+            IncompleteReason::MaxDepth => write!(f, "max-depth"),
+            IncompleteReason::ContinuousSolution => write!(f, "continuous"),
+            IncompleteReason::SubstitutionNonDiscrete => write!(f, "sub-non-disc"),
+            IncompleteReason::NonDiscrete => write!(f, "non-discrete"),
+            IncompleteReason::Other(s) => write!(f, "{}", s),
+        }
+    }
+}
+
 /// Result of a Strategy 2 test case
 #[derive(Debug)]
 enum S2Outcome {
@@ -1314,11 +1348,11 @@ enum S2Outcome {
     OkSymbolic,
     /// Cross-substitution verified numerically
     OkNumeric,
-    /// One side returned non-discrete (Residual/Conditional/Interval)
-    /// but cross-substitution didn't fail — not a bug, just incomplete
-    Incomplete(String),
+    /// Non-discrete solution but discrete parts pass cross-substitution
+    OkPartialVerified,
+    /// Solver couldn't fully solve — not a correctness bug
+    Incomplete(IncompleteReason),
     /// Cross-substitution failed, but identity or equation domain differs
-    /// — expected behaviour, not a solver bug
     DomainChanged(String),
     /// Cross-substitution found a real mismatch on a domain-safe identity
     Mismatch(String),
@@ -1332,12 +1366,19 @@ enum S2Outcome {
 struct S2Results {
     ok_symbolic: usize,
     ok_numeric: usize,
+    ok_partial: usize,
     incomplete: usize,
     domain_changed: usize,
     mismatches: usize,
     errors: usize,
     timeouts: usize,
     total: usize,
+    /// Per-reason breakdown of Incomplete outcomes
+    incomplete_reasons: std::collections::HashMap<IncompleteReason, usize>,
+    /// Top identity offenders: identity index → incomplete count
+    identity_offenders: std::collections::HashMap<usize, usize>,
+    /// Top equation family offenders: family name → incomplete count
+    family_offenders: std::collections::HashMap<String, usize>,
 }
 
 impl S2Results {
@@ -1345,12 +1386,16 @@ impl S2Results {
         S2Results {
             ok_symbolic: 0,
             ok_numeric: 0,
+            ok_partial: 0,
             incomplete: 0,
             domain_changed: 0,
             mismatches: 0,
             errors: 0,
             timeouts: 0,
             total: 0,
+            incomplete_reasons: std::collections::HashMap::new(),
+            identity_offenders: std::collections::HashMap::new(),
+            family_offenders: std::collections::HashMap::new(),
         }
     }
 
@@ -1359,12 +1404,28 @@ impl S2Results {
         match outcome {
             S2Outcome::OkSymbolic => self.ok_symbolic += 1,
             S2Outcome::OkNumeric => self.ok_numeric += 1,
+            S2Outcome::OkPartialVerified => self.ok_partial += 1,
             S2Outcome::Incomplete(_) => self.incomplete += 1,
             S2Outcome::DomainChanged(_) => self.domain_changed += 1,
             S2Outcome::Mismatch(_) => self.mismatches += 1,
             S2Outcome::Error(_) => self.errors += 1,
             S2Outcome::Timeout => self.timeouts += 1,
         }
+    }
+
+    /// Record Incomplete context: reason, identity index, equation family
+    fn record_incomplete_context(
+        &mut self,
+        reason: &IncompleteReason,
+        id_idx: usize,
+        eq_family: &str,
+    ) {
+        *self.incomplete_reasons.entry(reason.clone()).or_insert(0) += 1;
+        *self.identity_offenders.entry(id_idx).or_insert(0) += 1;
+        *self
+            .family_offenders
+            .entry(eq_family.to_string())
+            .or_insert(0) += 1;
     }
 }
 
@@ -1415,23 +1476,30 @@ fn eq_domains_semantically_same(ctx: &Context, d0: &ImplicitDomain, d1: &Implici
 }
 
 /// Classify a solver error as either an expected limitation (Incomplete) or a real error.
-/// IsolationError, max recursion depth, and unsupported operations are expected when
-/// identity transforms make equations harder; they don't indicate correctness bugs.
-fn classify_solver_error(e: &cas_engine::error::CasError, phase: &str) -> S2Outcome {
-    let msg = format!("{}: {:?}", phase, e);
+fn classify_solver_error(e: &cas_engine::error::CasError, _phase: &str) -> S2Outcome {
     match e {
         cas_engine::error::CasError::IsolationError(_, _) => {
-            S2Outcome::Incomplete(format!("isolation: {}", msg))
+            S2Outcome::Incomplete(IncompleteReason::Isolation)
         }
         cas_engine::error::CasError::SolverError(s)
-            if s.contains("Maximum solver recursion depth")
-                || s.contains("Continuous solution in factor split")
-                || s.contains("currently only supports discrete")
-                || s.contains("Cycle detected") =>
+            if s.contains("Maximum solver recursion depth") =>
         {
-            S2Outcome::Incomplete(format!("solver limitation: {}", msg))
+            S2Outcome::Incomplete(IncompleteReason::MaxDepth)
         }
-        _ => S2Outcome::Error(msg),
+        cas_engine::error::CasError::SolverError(s)
+            if s.contains("Continuous solution in factor split") =>
+        {
+            S2Outcome::Incomplete(IncompleteReason::ContinuousSolution)
+        }
+        cas_engine::error::CasError::SolverError(s)
+            if s.contains("currently only supports discrete") =>
+        {
+            S2Outcome::Incomplete(IncompleteReason::SubstitutionNonDiscrete)
+        }
+        cas_engine::error::CasError::SolverError(s) if s.contains("Cycle detected") => {
+            S2Outcome::Incomplete(IncompleteReason::CycleDetected)
+        }
+        _ => S2Outcome::Error(format!("{:?}", e)),
     }
 }
 
@@ -1500,7 +1568,7 @@ fn run_s2_case(eq_entry: &EquationEntry, identity: &S2Identity) -> S2Outcome {
     let s1_discrete = matches!(&set1, SolutionSet::Discrete(_) | SolutionSet::Empty);
 
     if !s0_discrete || !s1_discrete {
-        // Cross-substitute what we can; if no mismatch, mark as Incomplete
+        // Cross-substitute what we can; if no mismatch, mark appropriately
         let cross_ok =
             cross_substitute_discrete_into(&mut simplifier, &set0, &trans_eq, &eq_entry.solve_var)
                 && cross_substitute_discrete_into(
@@ -1511,7 +1579,15 @@ fn run_s2_case(eq_entry: &EquationEntry, identity: &S2Identity) -> S2Outcome {
                 );
 
         return if cross_ok {
-            S2Outcome::Incomplete("non-discrete form".into())
+            // At least one side has discrete solutions that were verified.
+            // If either side has any discrete solutions, this is a partial-but-correct result.
+            let has_discrete_0 = matches!(&set0, SolutionSet::Discrete(v) if !v.is_empty());
+            let has_discrete_1 = matches!(&set1, SolutionSet::Discrete(v) if !v.is_empty());
+            if has_discrete_0 || has_discrete_1 {
+                S2Outcome::OkPartialVerified
+            } else {
+                S2Outcome::Incomplete(IncompleteReason::NonDiscrete)
+            }
         } else {
             S2Outcome::Mismatch("cross-sub failed on non-discrete".into())
         };
@@ -1599,11 +1675,11 @@ fn run_s2_case(eq_entry: &EquationEntry, identity: &S2Identity) -> S2Outcome {
     // Also compare solution counts when both discrete
     if let (SolutionSet::Discrete(sa), SolutionSet::Discrete(sb)) = (&set0, &set1) {
         if sa.len() != sb.len() {
-            return S2Outcome::Incomplete(format!(
+            return S2Outcome::Incomplete(IncompleteReason::Other(format!(
                 "sol count differs: orig={}, trans={}",
                 sa.len(),
                 sb.len()
-            ));
+            )));
         }
     }
 
@@ -1767,6 +1843,11 @@ fn run_strategy2(verbose: bool) -> S2Results {
         }
         results.record(&outcome);
 
+        // Record context for Incomplete outcomes
+        if let S2Outcome::Incomplete(ref reason) = outcome {
+            results.record_incomplete_context(reason, id_idx, &eq.family);
+        }
+
         // Print non-ok results (or all in verbose)
         let should_print = verbose
             || matches!(
@@ -1781,7 +1862,8 @@ fn run_strategy2(verbose: bool) -> S2Results {
             let (sym, detail) = match &outcome {
                 S2Outcome::OkSymbolic => ("✓", "symbolic".into()),
                 S2Outcome::OkNumeric => ("≈", "numeric".into()),
-                S2Outcome::Incomplete(msg) => ("⚠", format!("incomplete: {}", msg)),
+                S2Outcome::OkPartialVerified => ("◐", "partial-verified".into()),
+                S2Outcome::Incomplete(reason) => ("⚠", format!("incomplete: {}", reason)),
                 S2Outcome::DomainChanged(msg) => ("D", format!("domain-changed: {}", msg)),
                 S2Outcome::Mismatch(msg) => ("✗", format!("MISMATCH: {}", msg)),
                 S2Outcome::Error(msg) => ("E", format!("error: {}", msg)),
@@ -1809,14 +1891,52 @@ fn run_strategy2(verbose: bool) -> S2Results {
         results.total, tier0_count, tier1_count, seed
     );
     eprintln!(
-        "  │  ✓ symbolic: {}  ≈ numeric: {}  ⚠ incomplete: {}",
-        results.ok_symbolic, results.ok_numeric, results.incomplete
+        "  │  ✓ symbolic: {}  ≈ numeric: {}  ◐ partial: {}  ⚠ incomplete: {}",
+        results.ok_symbolic, results.ok_numeric, results.ok_partial, results.incomplete
     );
     eprintln!(
         "  │  D domain-chg: {}  ✗ mismatch: {}  E errors: {}  T timeout: {}",
         results.domain_changed, results.mismatches, results.errors, results.timeouts
     );
     eprintln!("  └─────────────────────────────────────────────────────────────────┘");
+
+    // --- Incomplete cross-tab ---
+    if results.incomplete > 0 {
+        // Per-reason breakdown
+        eprintln!();
+        eprintln!("  ⚠ Incomplete breakdown by reason:");
+        let mut reasons: Vec<_> = results.incomplete_reasons.iter().collect();
+        reasons.sort_by(|a, b| b.1.cmp(a.1));
+        for (reason, count) in &reasons {
+            eprintln!("    {:>3}× {}", count, reason);
+        }
+
+        // Top-10 identity offenders
+        eprintln!();
+        eprintln!("  ⚠ Top identity offenders:");
+        let mut id_top: Vec<_> = results.identity_offenders.iter().collect();
+        id_top.sort_by(|a, b| b.1.cmp(a.1));
+        for (id_idx, count) in id_top.iter().take(10) {
+            let identity = &identities[**id_idx];
+            eprintln!(
+                "    {:>3}× id#{:>3} [{}] {} ≡ {}",
+                count,
+                id_idx,
+                truncate(&identity.family, 12),
+                truncate(&identity.exp, 25),
+                truncate(&identity.simp, 25)
+            );
+        }
+
+        // Top-10 equation family offenders
+        eprintln!();
+        eprintln!("  ⚠ Top equation family offenders:");
+        let mut fam_top: Vec<_> = results.family_offenders.iter().collect();
+        fam_top.sort_by(|a, b| b.1.cmp(a.1));
+        for (family, count) in fam_top.iter().take(10) {
+            eprintln!("    {:>3}× {}", count, family);
+        }
+    }
 
     if results.mismatches > 0 {
         eprintln!("  ❌ {} mismatch(es) found!", results.mismatches);
