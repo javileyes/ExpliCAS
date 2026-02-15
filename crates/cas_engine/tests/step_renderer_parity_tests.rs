@@ -37,7 +37,7 @@ fn solve_test_equation() -> (SolutionSet, DisplaySolveSteps, Engine) {
         ..Default::default()
     };
 
-    let (solution_set, display_steps) =
+    let (solution_set, display_steps, _diagnostics) =
         solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts)
             .expect("Solver should succeed for 2^x = 8");
 

@@ -7,7 +7,7 @@
 
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_engine::engine::Simplifier;
-use cas_engine::solver::solve;
+use cas_engine::solver::{solve, solve_with_display_steps, SolverOptions};
 
 // ============================================================================
 // Test 1: |2x+1| = 5 should have NO Requires
@@ -35,7 +35,10 @@ fn abs_equation_no_spurious_requires() {
         op: RelOp::Eq,
     };
 
-    let (solution_set, _) = solve(&eq, "x", &mut simplifier).expect("Solver should succeed");
+    // Use solve_with_display_steps to get diagnostics in-band
+    let opts = SolverOptions::default();
+    let (solution_set, _steps, diagnostics) =
+        solve_with_display_steps(&eq, "x", &mut simplifier, opts).expect("Solver should succeed");
 
     // Should have 2 solutions: {2, -3}
     let SolutionSet::Discrete(sols) = solution_set else {
@@ -45,7 +48,7 @@ fn abs_equation_no_spurious_requires() {
 
     // Importantly: there should be NO required conditions from the solver
     // (The spurious |1+2x| > 0 should not appear)
-    let required = cas_engine::solver::take_solver_required();
+    let required = diagnostics.required;
     for cond in &required {
         let cond_str = cond.display(&simplifier.context);
         // Should NOT contain "abs" or "|" in any require

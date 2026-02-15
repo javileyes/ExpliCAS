@@ -19,7 +19,7 @@ fn solve_equation(eq_str: &str) -> Result<SolutionSet, cas_engine::error::CasErr
     };
 
     let opts = SolverOptions::default(); // RealOnly, Generic
-    let (set, _steps) = solve_with_display_steps(&eq, "x", &mut simplifier, opts)?;
+    let (set, _steps, _diagnostics) = solve_with_display_steps(&eq, "x", &mut simplifier, opts)?;
     Ok(set)
 }
 

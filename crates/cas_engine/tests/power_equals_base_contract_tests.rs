@@ -65,7 +65,7 @@ fn power_equals_base_symbolic_strict_mode() {
 
     assert!(result.is_ok(), "Should solve a^x = a, got: {:?}", result);
 
-    let (solution_set, _steps) = result.unwrap();
+    let (solution_set, _steps, _diagnostics) = result.unwrap();
 
     // V2.0: Should be Conditional with 3 cases
     match &solution_set {
@@ -124,7 +124,7 @@ fn power_equals_base_symbolic_generic_mode() {
 
     assert!(result.is_ok(), "Should solve a^x = a, got: {:?}", result);
 
-    let (solution_set, _steps) = result.unwrap();
+    let (solution_set, _steps, _diagnostics) = result.unwrap();
 
     // With default budget (1 < 2), falls back to simple {1}
     match solution_set {
@@ -171,7 +171,7 @@ fn power_equals_power_symbolic_gives_exponent() {
 
     assert!(result.is_ok(), "Should solve a^x = a^2, got: {:?}", result);
 
-    let (solution_set, _steps) = result.unwrap();
+    let (solution_set, _steps, _diagnostics) = result.unwrap();
 
     match solution_set {
         SolutionSet::Discrete(sols) => {
@@ -210,7 +210,7 @@ fn power_equals_power_symbolic_gives_exponent_3() {
 
     assert!(result.is_ok(), "Should solve b^x = b^3, got: {:?}", result);
 
-    let (solution_set, _steps) = result.unwrap();
+    let (solution_set, _steps, _diagnostics) = result.unwrap();
 
     match solution_set {
         SolutionSet::Discrete(sols) => {
@@ -251,7 +251,7 @@ fn numeric_base_2_to_x_equals_2() {
 
     assert!(result.is_ok(), "Should solve 2^x = 2, got: {:?}", result);
 
-    let (solution_set, _steps) = result.unwrap();
+    let (solution_set, _steps, _diagnostics) = result.unwrap();
 
     match solution_set {
         SolutionSet::Discrete(sols) => {
@@ -293,7 +293,7 @@ fn zero_to_x_equals_zero_gives_positive_interval() {
 
     assert!(result.is_ok(), "Should solve 0^x = 0, got: {:?}", result);
 
-    let (solution_set, _steps) = result.unwrap();
+    let (solution_set, _steps, _diagnostics) = result.unwrap();
 
     // Should be an interval (0, infinity) - via Continuous variant
     match solution_set {

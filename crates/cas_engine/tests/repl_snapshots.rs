@@ -48,7 +48,7 @@ fn solve_and_format(eq_str: &str, var: &str, budget: usize, mode: DomainMode) ->
     let result = solve_with_display_steps(&eq, var, &mut engine.simplifier, opts);
 
     match result {
-        Ok((solution_set, _steps)) => {
+        Ok((solution_set, _steps, _diagnostics)) => {
             format_solution_set(&engine.simplifier.context, &solution_set)
         }
         Err(e) => format!("ERROR: {}", e),

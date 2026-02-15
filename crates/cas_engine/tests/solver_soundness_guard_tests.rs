@@ -15,7 +15,7 @@ use cas_ast::SolutionSet;
 use cas_engine::domain::DomainMode;
 use cas_engine::implicit_domain::ImplicitCondition;
 use cas_engine::semantics::ValueDomain;
-use cas_engine::solver::{solve_with_display_steps, take_solver_required, SolverOptions};
+use cas_engine::solver::{solve_with_display_steps, SolverOptions};
 use cas_engine::Simplifier;
 use cas_parser::{parse_statement, Statement};
 
@@ -36,10 +36,9 @@ fn solve_strict(eq_src: &str, var: &str) -> (SolutionSet, Vec<ImplicitCondition>
         ..Default::default()
     };
 
-    let (sols, _steps) =
+    let (sols, _steps, diagnostics) =
         solve_with_display_steps(&eq, var, &mut simplifier, opts).expect("solve failed");
-    let req = take_solver_required();
-    (sols, req, simplifier)
+    (sols, diagnostics.required, simplifier)
 }
 
 #[allow(dead_code)]

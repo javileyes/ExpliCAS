@@ -12,7 +12,7 @@ use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_engine::domain::DomainMode;
 use cas_engine::implicit_domain::ImplicitCondition;
 use cas_engine::semantics::{AssumeScope, ValueDomain};
-use cas_engine::solver::{solve_with_display_steps, take_solver_required, SolverOptions};
+use cas_engine::solver::{solve_with_display_steps, SolverOptions};
 use cas_engine::Engine;
 
 fn make_opts(mode: DomainMode, scope: AssumeScope) -> SolverOptions {
@@ -63,7 +63,7 @@ fn strict_mode_solves_with_required_conditions() {
         result
     );
 
-    let (solution_set, _steps) = result.unwrap();
+    let (solution_set, _steps, _diagnostics) = result.unwrap();
 
     // V2.2+: With strict mode and unknown y, solver returns Conditional
     // The condition y > 0 is expressed as a guard on the solution, not in required_conditions
@@ -98,7 +98,7 @@ fn strict_mode_solves_with_required_conditions() {
     // Note: After fix b7f66bd, y > 0 is NOT in required_conditions for plain variable y.
     // This is intentional to prevent false requires like "2*x + 3 > 0".
     // Instead, the condition is expressed as a guard in the Conditional solution set.
-    let _required = take_solver_required();
+    // Note: required conditions now available in-band via result diagnostics
     // Intentionally not asserting on required conditions - they may be empty for this case
 }
 
@@ -124,7 +124,7 @@ fn generic_mode_solves_with_required_conditions() {
 
     assert!(result.is_ok(), "Generic mode should solve 2^x = y");
 
-    let (solution_set, _steps) = result.unwrap();
+    let (solution_set, _steps, _diagnostics) = result.unwrap();
 
     // Should have a solution (Discrete or Conditional)
     let has_solution = match &solution_set {
@@ -166,7 +166,7 @@ fn assume_real_solves_with_positive_requirement() {
     // Should succeed
     assert!(result.is_ok(), "Assume mode should solve 2^x = y");
 
-    let (solution_set, _steps) = result.unwrap();
+    let (solution_set, _steps, diagnostics) = result.unwrap();
 
     // Should have a solution
     let has_solution = match &solution_set {
@@ -181,7 +181,7 @@ fn assume_real_solves_with_positive_requirement() {
     );
 
     // Should have positive(y) in required conditions
-    let required = take_solver_required();
+    let required = diagnostics.required;
     let has_positive_y = required.iter().any(|cond| {
         if let ImplicitCondition::Positive(id) = cond {
             cas_ast::DisplayExpr {
@@ -233,7 +233,7 @@ fn assume_wildcard_negative_base_returns_residual_isolation() {
         result
     );
 
-    let (solution_set, _steps) = result.unwrap();
+    let (solution_set, _steps, _diagnostics) = result.unwrap();
 
     // Should be Residual variant
     assert!(
@@ -303,7 +303,7 @@ fn budget_zero_still_solves_simple_exponential() {
         result
     );
 
-    let (solution_set, _steps) = result.unwrap();
+    let (solution_set, _steps, _diagnostics) = result.unwrap();
 
     // Should have solution x = 3
     match solution_set {

@@ -48,7 +48,7 @@ fn wildcard_negative_base_returns_residual() {
     let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     match result {
-        Ok((SolutionSet::Residual(residual_expr), steps)) => {
+        Ok((SolutionSet::Residual(residual_expr), steps, _diagnostics)) => {
             // Verify it's a residual
             let expr_str = format!(
                 "{}",
@@ -72,7 +72,7 @@ fn wildcard_negative_base_returns_residual() {
                 assert!(has_warning, "Steps should contain warning about complex");
             }
         }
-        Ok((other, _)) => {
+        Ok((other, _, _)) => {
             panic!(
                 "Wildcard mode should return Residual for negative base, got: {:?}",
                 other
@@ -111,7 +111,7 @@ fn wildcard_residual_no_ln_negative() {
     let opts = make_opts(DomainMode::Assume, AssumeScope::Wildcard);
     let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
-    if let Ok((SolutionSet::Residual(residual_expr), _)) = result {
+    if let Ok((SolutionSet::Residual(residual_expr), _, _)) = result {
         let expr_str = format!(
             "{}",
             cas_ast::DisplayExpr {
@@ -160,7 +160,7 @@ fn assume_real_negative_base_does_not_return_residual() {
     let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     match result {
-        Ok((SolutionSet::Residual(_), _)) => {
+        Ok((SolutionSet::Residual(_), _, _)) => {
             panic!("AssumeScope::Real should NOT return Residual for negative base");
         }
         _ => {
@@ -194,7 +194,7 @@ fn strict_mode_negative_base_does_not_return_residual() {
     let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     match result {
-        Ok((SolutionSet::Residual(_), _)) => {
+        Ok((SolutionSet::Residual(_), _, _)) => {
             panic!("Strict mode should NOT return Residual for negative base");
         }
         _ => {

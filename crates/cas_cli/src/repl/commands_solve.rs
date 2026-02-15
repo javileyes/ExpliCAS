@@ -464,7 +464,7 @@ impl Repl {
                     &mut self.core.engine.simplifier,
                     solver_opts,
                 ) {
-                    Ok((solution_set, display_steps)) => {
+                    Ok((solution_set, display_steps, _diagnostics)) => {
                         if display_steps.0.is_empty() {
                             let result_str = display_solution_set(
                                 &self.core.engine.simplifier.context,

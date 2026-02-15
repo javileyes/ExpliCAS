@@ -3,6 +3,7 @@
 //! Contains the main `solve`, `solve_with_options`, and `solve_with_display_steps`
 //! entry points, plus the rational-exponent pre-check.
 
+use super::{take_solver_required, SolveDiagnostics};
 use cas_ast::{Expr, ExprId, SolutionSet};
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
@@ -127,14 +128,21 @@ pub fn solve_with_display_steps(
     var: &str,
     simplifier: &mut Simplifier,
     opts: SolverOptions,
-) -> Result<(SolutionSet, DisplaySolveSteps), CasError> {
+) -> Result<(SolutionSet, DisplaySolveSteps, SolveDiagnostics), CasError> {
     let (solution_set, raw_steps) = solve_with_options(eq, var, simplifier, opts)?;
+
+    // Capture required conditions in-band (RAII guard has already copied to LAST_SOLVER_REQUIRED)
+    let required = take_solver_required();
+    let diagnostics = SolveDiagnostics {
+        required,
+        assumed: vec![],
+    };
 
     // Apply didactic cleanup using opts.detailed_steps
     let cleaned =
         step_cleanup::cleanup_solve_steps(&mut simplifier.context, raw_steps, opts.detailed_steps);
 
-    Ok((solution_set, DisplaySolveSteps(cleaned)))
+    Ok((solution_set, DisplaySolveSteps(cleaned), diagnostics))
 }
 
 /// Internal: Solve an equation with explicit semantic options.

@@ -335,8 +335,9 @@ thread_local! {
 }
 
 /// Take the required conditions from the last completed solve.
-/// This is called by eval.rs to get solver-derived requirements after solve completes.
-pub fn take_solver_required() -> Vec<crate::implicit_domain::ImplicitCondition> {
+/// Internal: used by `solve_with_display_steps` to bridge TLS → in-band `SolveDiagnostics`.
+/// External callers should use the `SolveDiagnostics` returned by `solve_with_display_steps`.
+pub(crate) fn take_solver_required() -> Vec<crate::implicit_domain::ImplicitCondition> {
     LAST_SOLVER_REQUIRED.with(|last| std::mem::take(&mut *last.borrow_mut()))
 }
 

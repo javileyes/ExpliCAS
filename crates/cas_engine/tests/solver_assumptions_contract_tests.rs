@@ -14,7 +14,7 @@ use cas_ast::{Equation, Expr, RelOp};
 use cas_engine::domain::DomainMode;
 use cas_engine::implicit_domain::ImplicitCondition;
 use cas_engine::semantics::{AssumeScope, ValueDomain};
-use cas_engine::solver::{solve_with_display_steps, take_solver_required, SolverOptions};
+use cas_engine::solver::{solve_with_display_steps, SolverOptions};
 use cas_engine::Engine;
 
 fn make_opts(mode: DomainMode, scope: AssumeScope) -> SolverOptions {
@@ -57,8 +57,11 @@ fn assume_mode_derives_positive_rhs_required() {
 
     let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
-    // Get required conditions from solver (saved in TLS by clear_current_domain_env)
-    let required = take_solver_required();
+    // Get required conditions from solver (now in-band via SolveDiagnostics)
+    let required = result
+        .as_ref()
+        .map(|(_, _, d)| d.required.clone())
+        .unwrap_or_default();
 
     // Verify solve succeeded
     assert!(result.is_ok(), "Solve should succeed in Assume mode");
@@ -107,10 +110,13 @@ fn strict_mode_no_extra_requirements_for_literals() {
 
     let opts = make_opts(DomainMode::Strict, AssumeScope::Real);
 
-    let _result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
-    // Get required conditions
-    let required = take_solver_required();
+    // Get required conditions (now in-band)
+    let required = result
+        .as_ref()
+        .map(|(_, _, d)| d.required.clone())
+        .unwrap_or_default();
 
     // Strict mode with literal positive numbers: no extra Positive requirements
     // (the numbers are already proven positive, no need to require)
@@ -158,8 +164,11 @@ fn required_conditions_are_deduplicated() {
 
     let opts = make_opts(DomainMode::Assume, AssumeScope::Real);
 
-    let _ = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
-    let required = take_solver_required();
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
+    let required = result
+        .as_ref()
+        .map(|(_, _, d)| d.required.clone())
+        .unwrap_or_default();
 
     // Count unique positive(y) conditions
     let positive_y_count = required
@@ -224,12 +233,18 @@ fn nested_solves_have_isolated_requirements() {
     let opts = make_opts(DomainMode::Assume, AssumeScope::Real);
 
     // Solve outer
-    let _ = solve_with_display_steps(&eq_outer, "x", &mut engine.simplifier, opts);
-    let outer_required = take_solver_required();
+    let outer_result = solve_with_display_steps(&eq_outer, "x", &mut engine.simplifier, opts);
+    let outer_required = outer_result
+        .as_ref()
+        .map(|(_, _, d)| d.required.clone())
+        .unwrap_or_default();
 
     // Solve inner
-    let _ = solve_with_display_steps(&eq_inner, "z", &mut engine.simplifier, opts);
-    let inner_required = take_solver_required();
+    let inner_result = solve_with_display_steps(&eq_inner, "z", &mut engine.simplifier, opts);
+    let inner_required = inner_result
+        .as_ref()
+        .map(|(_, _, d)| d.required.clone())
+        .unwrap_or_default();
 
     // Outer should have positive(y)
     let outer_has_y = outer_required.iter().any(|cond| {

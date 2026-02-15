@@ -8,9 +8,7 @@
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_engine::domain::DomainMode;
 use cas_engine::semantics::ValueDomain;
-use cas_engine::solver::{
-    solve_with_display_steps, take_solver_required, SolveBudget, SolverOptions,
-};
+use cas_engine::solver::{solve_with_display_steps, SolveBudget, SolverOptions};
 use cas_engine::Simplifier;
 
 fn make_solver_opts(mode: DomainMode) -> SolverOptions {
@@ -47,7 +45,7 @@ fn sqrt_rhs_avoids_conditional_branch() {
     let result = solve_with_display_steps(&eq, "x", &mut simplifier, opts);
 
     assert!(result.is_ok(), "Solver should succeed");
-    let (solution_set, _steps) = result.unwrap();
+    let (solution_set, _steps, diagnostics) = result.unwrap();
 
     // Key assertion: NOT Conditional (because y > 0 derived from structure)
     assert!(
@@ -55,8 +53,8 @@ fn sqrt_rhs_avoids_conditional_branch() {
         "Expected direct solution (not Conditional) because sqrt(y) implies y > 0 which is derived from 2^x > 0"
     );
 
-    // Verify required conditions were collected
-    let required = take_solver_required();
+    // Verify required conditions were collected (now in-band)
+    let required = diagnostics.required;
     assert!(
         !required.is_empty(),
         "Should have required conditions from sqrt(y)"
@@ -98,11 +96,11 @@ fn plain_y_rhs_requires_or_conditional() {
 
     // The solver may succeed or fail depending on mode
     // In Generic mode without proof of y > 0, it should be Conditional or Unsupported
-    if let Ok((solution_set, _steps)) = result {
+    if let Ok((solution_set, _steps, diagnostics)) = result {
         // If it solved, check that:
         // - Either it's Conditional (because can't prove y > 0)
         // - Or the required set contains y > 0 (from ln(y) in solution)
-        let required = take_solver_required();
+        let required = diagnostics.required;
 
         let is_conditional = matches!(solution_set, SolutionSet::Conditional(_));
         let has_y_positive = required.iter().any(|c| {

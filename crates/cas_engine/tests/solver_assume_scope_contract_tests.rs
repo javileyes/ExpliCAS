@@ -48,8 +48,8 @@ fn base_one_rhs_different_is_empty() {
     let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     match result {
-        Ok((SolutionSet::Empty, _)) => {} // Expected
-        Ok((SolutionSet::Discrete(sols), _)) if sols.is_empty() => {} // Also ok
+        Ok((SolutionSet::Empty, _, _)) => {} // Expected
+        Ok((SolutionSet::Discrete(sols), _, _)) if sols.is_empty() => {} // Also ok
         other => panic!("1^x = 5 should give Empty, got: {:?}", other),
     }
 }
@@ -75,7 +75,7 @@ fn base_one_rhs_one_is_all_reals() {
     let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     match result {
-        Ok((SolutionSet::AllReals, _)) => {} // Expected
+        Ok((SolutionSet::AllReals, _, _)) => {} // Expected
         other => panic!("1^x = 1 should give AllReals, got: {:?}", other),
     }
 }
@@ -105,8 +105,8 @@ fn positive_base_negative_rhs_is_empty() {
     let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     match result {
-        Ok((SolutionSet::Empty, _)) => {} // Expected
-        Ok((SolutionSet::Discrete(sols), _)) if sols.is_empty() => {} // Also ok
+        Ok((SolutionSet::Empty, _, _)) => {} // Expected
+        Ok((SolutionSet::Discrete(sols), _, _)) if sols.is_empty() => {} // Also ok
         other => panic!("2^x = -5 should give Empty, got: {:?}", other),
     }
 }
@@ -132,8 +132,8 @@ fn positive_base_zero_rhs_is_empty() {
     let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     match result {
-        Ok((SolutionSet::Empty, _)) => {} // Expected
-        Ok((SolutionSet::Discrete(sols), _)) if sols.is_empty() => {} // Also ok
+        Ok((SolutionSet::Empty, _, _)) => {} // Expected
+        Ok((SolutionSet::Discrete(sols), _, _)) if sols.is_empty() => {} // Also ok
         other => panic!("2^x = 0 should give Empty, got: {:?}", other),
     }
 }
@@ -163,7 +163,7 @@ fn simple_exponential_still_works() {
     let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     match result {
-        Ok((SolutionSet::Discrete(sols), _)) if !sols.is_empty() => {
+        Ok((SolutionSet::Discrete(sols), _, _)) if !sols.is_empty() => {
             // Should have solution x = 3
             // We just verify we got a solution, not the exact value
         }
@@ -197,10 +197,10 @@ fn assume_mode_allows_unknown_rhs() {
 
     // In Assume mode, should produce a solution (with assumptions tracked)
     match result {
-        Ok((SolutionSet::Discrete(sols), _)) if !sols.is_empty() => {
+        Ok((SolutionSet::Discrete(sols), _, _)) if !sols.is_empty() => {
             // Got a solution - good
         }
-        Ok((SolutionSet::Discrete(_), _)) => {
+        Ok((SolutionSet::Discrete(_), _, _)) => {
             // Empty is also acceptable if implementation differs
         }
         other => {
@@ -239,7 +239,7 @@ fn no_garbage_undefined_in_result() {
     let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
 
     // Now we can borrow context again for display
-    if let Ok((SolutionSet::Discrete(sols), _)) = result {
+    if let Ok((SolutionSet::Discrete(sols), _, _)) = result {
         for sol in sols {
             let sol_str = format!(
                 "{}",

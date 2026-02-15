@@ -334,7 +334,7 @@ impl Engine {
         let solver_assumptions = assumption_guard.finish();
 
         match sol_result {
-            Ok((solution_set, display_steps)) => {
+            Ok((solution_set, display_steps, diagnostics)) => {
                 // V2.9.8: Extract Vec<SolveStep> from DisplaySolveSteps wrapper
                 // Steps are guaranteed to be post-cleanup
                 let solve_steps = display_steps.0;
@@ -346,11 +346,8 @@ impl Engine {
                 // Collect output scopes from solver (e.g., QuadraticFormula)
                 let output_scopes = crate::solver::take_scopes();
 
-                // V2.2+: Collect required conditions from solver's domain env
-                // These are the structural domain constraints proven during solve
-                // Note: Must use take_solver_required() because RAII guard clears TLS on solve exit
-                let solver_required: Vec<crate::implicit_domain::ImplicitCondition> =
-                    crate::solver::take_solver_required();
+                // V2.16+: Required conditions now come in-band via SolveDiagnostics
+                let solver_required = diagnostics.required;
 
                 Ok((
                     eval_res,
