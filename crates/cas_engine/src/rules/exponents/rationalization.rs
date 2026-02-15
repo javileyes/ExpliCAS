@@ -578,3 +578,99 @@ impl crate::rule::Rule for PowPowCancelReciprocalRule {
         crate::step::ImportanceLevel::Medium
     }
 }
+
+// =============================================================================
+// ReciprocalSqrtCanonRule: Canonicalize reciprocal sqrt forms to Pow(x, -1/2)
+// =============================================================================
+// Ensures all representations of "1/√x" converge to a single canonical AST:
+//
+//   Pattern 1: 1/√x      = Div(1, Pow(x, 1/2))     → Pow(x, -1/2)
+//   Pattern 2: √x/x      = Div(Pow(x, 1/2), x)     → Pow(x, -1/2)
+//   Pattern 3: √(x^(-1)) = Pow(Pow(x,-1), 1/2)     → already handled by PowerPowerRule
+//
+// GUARD: Only applied when the base contains symbols (variables).
+// Pure numeric bases (e.g., 1/√2) are left as-is to avoid creating Pow(2, -1/2)
+// forms that Strict-mode verification cannot fold back to √2/2.
+//
+// This is sound in RealOnly: all forms require x > 0, same definability domain.
+// No cycle risk: NegativeExponentNormalizationRule only fires on INTEGER negative
+// exponents, and -1/2 is not integer.
+// =============================================================================
+
+/// Check if an expression contains any symbolic (variable) nodes.
+/// Returns false for pure numeric/constant expressions.
+fn contains_symbol(ctx: &Context, e: ExprId) -> bool {
+    match ctx.get(e) {
+        Expr::Variable(_) => true,
+        Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => false,
+        Expr::Neg(a) | Expr::Hold(a) => contains_symbol(ctx, *a),
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Div(a, b) | Expr::Pow(a, b) => {
+            contains_symbol(ctx, *a) || contains_symbol(ctx, *b)
+        }
+        Expr::Function(_, args) => args.iter().any(|&a| contains_symbol(ctx, a)),
+        Expr::Matrix { data, .. } => data.iter().any(|&a| contains_symbol(ctx, a)),
+    }
+}
+
+pub struct ReciprocalSqrtCanonRule;
+
+impl crate::rule::Rule for ReciprocalSqrtCanonRule {
+    fn name(&self) -> &str {
+        "Canonicalize Reciprocal Sqrt"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        let (num, den) = match ctx.get(expr) {
+            Expr::Div(n, d) => (*n, *d),
+            _ => return None,
+        };
+
+        let neg_half = num_rational::BigRational::new((-1).into(), 2.into());
+
+        // Pattern 1: Div(1, Pow(x, 1/2)) → Pow(x, -1/2)
+        // i.e., 1/sqrt(x) → x^(-1/2)
+        if let Expr::Number(n) = ctx.get(num) {
+            if n.is_one() {
+                if let Some(base) = extract_sqrt_arg(ctx, den) {
+                    // Guard: skip pure numeric bases (e.g., 1/sqrt(2))
+                    if !contains_symbol(ctx, base) {
+                        return None;
+                    }
+                    let exp = ctx.add(Expr::Number(neg_half));
+                    let result = ctx.add(Expr::Pow(base, exp));
+                    return Some(crate::rule::Rewrite::new(result).desc("1/√x = x^(-1/2)"));
+                }
+            }
+        }
+
+        // Pattern 2: Div(Pow(x, 1/2), x) → Pow(x, -1/2)
+        // i.e., sqrt(x)/x → x^(-1/2)
+        if let Some(sqrt_base) = extract_sqrt_arg(ctx, num) {
+            // Check if den == sqrt_base (structurally)
+            if crate::ordering::compare_expr(ctx, sqrt_base, den) == std::cmp::Ordering::Equal {
+                // Guard: skip pure numeric bases (e.g., sqrt(2)/2)
+                if !contains_symbol(ctx, sqrt_base) {
+                    return None;
+                }
+                let exp = ctx.add(Expr::Number(neg_half));
+                let result = ctx.add(Expr::Pow(sqrt_base, exp));
+                return Some(crate::rule::Rewrite::new(result).desc("√x/x = x^(-1/2)"));
+            }
+        }
+
+        None
+    }
+
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::DIV)
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::Low
+    }
+}

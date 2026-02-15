@@ -8,7 +8,7 @@ pub use power_rules::{
 };
 pub use rationalization::{
     CubeRootDenRationalizeRule, PowPowCancelReciprocalRule, RationalizeLinearSqrtDenRule,
-    RationalizeSumOfSqrtsDenRule, RootMergeDivRule, RootMergeMulRule,
+    RationalizeSumOfSqrtsDenRule, ReciprocalSqrtCanonRule, RootMergeDivRule, RootMergeMulRule,
 };
 pub use simplification::{
     EvenPowSubSwapRule, ExpQuotientRule, IdentityPowerRule, MulNaryCombinePowersRule,
@@ -205,6 +205,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(RootMergeDivRule));
     // Cancel reciprocal exponents: (u^y)^(1/y) → u (with requires u>0, y≠0)
     simplifier.add_rule(Box::new(PowPowCancelReciprocalRule));
+    // Canonicalize reciprocal sqrt: 1/√x → x^(-1/2), √x/x → x^(-1/2)
+    simplifier.add_rule(Box::new(ReciprocalSqrtCanonRule));
 }
 
 #[cfg(test)]
