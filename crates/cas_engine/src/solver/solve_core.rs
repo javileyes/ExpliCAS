@@ -271,12 +271,26 @@ pub(crate) fn solve_with_options(
         }
     }
 
-    // NOTE: Pre-solve radical canonicalization and common-term cancellation
-    // are now handled automatically by the simplifier rules:
+    // NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)) and
+    // nested-pow folding are handled by global simplifier rules:
     //   - CanonicalizeRationalDivRule: Div(p,q) → Number(p/q)
     //   - CanonicalizeNestedPowRule: Pow(Pow(b,k),r) → Pow(b,k*r) [domain-safe]
-    //   - CancelCommonAdditiveTermsRule: Sub(Add(A,B), B) → A
     // These fire within simplify_for_solve() on both equation sides above.
+
+    // CANCEL COMMON ADDITIVE TERMS: equation-level cancellation that compares
+    // terms from LHS and RHS as a *pair*. This cannot be a single-expression
+    // simplifier rule because CanonicalizeNegationRule converts Sub→Add(Neg)
+    // before the cancel rule can match the Sub node.
+    if let Some((new_lhs, new_rhs)) =
+        crate::rules::cancel_common_terms::cancel_common_additive_terms(
+            &mut simplifier.context,
+            simplified_eq.lhs,
+            simplified_eq.rhs,
+        )
+    {
+        simplified_eq.lhs = simplifier.simplify_for_solve(new_lhs);
+        simplified_eq.rhs = simplifier.simplify_for_solve(new_rhs);
+    }
 
     // CRITICAL: After simplification, check for identities and contradictions
     // Do this by moving everything to one side: LHS - RHS

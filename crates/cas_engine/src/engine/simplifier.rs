@@ -283,9 +283,15 @@ impl Simplifier {
 
         arithmetic::register(self);
         infinity::register(self); // Infinity arithmetic (∞ absorption, indeterminates)
+                                  // ─── Canonicalization tier ───────────────────────────────────────
+                                  // ORDER CONTRACT: canonicalization → rational_canonicalization → cancel_common_terms
+                                  //   1. canonicalization: Sub→Add(Neg), sort Add/Mul, roots→Pow, signs
+                                  //   2. rational_canonicalization: Div(p,q)→Number(p/q), nested Pow fold
+                                  //      (MUST come before any rule that compares numeric exponents/coefficients)
+                                  //   3. cancel_common_terms: Sub(Add(A,B),B)→A (needs stable structural forms)
         canonicalization::register(self);
-        rational_canonicalization::register(self); // Div(p,q)→Number(p/q), nested Pow fold
-        cancel_common_terms::register(self); // Sub(Add(A,B),B)→A deep cancellation
+        rational_canonicalization::register(self);
+        cancel_common_terms::register(self);
         constants::register(self); // Algebraic constants (phi)
         exponents::register(self);
         logarithms::register(self);

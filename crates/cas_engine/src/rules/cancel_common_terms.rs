@@ -97,7 +97,7 @@ define_rule!(
 
 /// Collect additive terms from an expression, flattening Add/Sub.
 /// Each term is (ExprId, is_positive).
-fn collect_additive_terms(
+pub(crate) fn collect_additive_terms(
     ctx: &cas_ast::Context,
     id: cas_ast::ExprId,
     positive: bool,
@@ -122,7 +122,7 @@ fn collect_additive_terms(
 }
 
 /// Rebuild an expression from a list of (term, is_positive) pairs.
-fn rebuild_from_terms(
+pub(crate) fn rebuild_from_terms(
     ctx: &mut cas_ast::Context,
     terms: &[(cas_ast::ExprId, bool)],
 ) -> cas_ast::ExprId {
@@ -151,6 +151,72 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(CancelCommonAdditiveTermsRule));
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// Equation-level cancellation (used by solver pre-solve pipeline)
+// ──────────────────────────────────────────────────────────────────────
+// The CancelCommonAdditiveTermsRule above targets Sub nodes, but in the
+// simplifier CanonicalizeNegationRule converts Sub → Add(Neg) first,
+// so the rule rarely fires during normal simplification.
+//
+// The solver needs equation-level cancellation that compares terms from
+// LHS and RHS as a *pair*, which is fundamentally different from a
+// single-expression rule. This public function provides that.
+
+/// Cancel common additive terms between two expression trees.
+/// Returns `Some((new_lhs, new_rhs))` if any terms were cancelled.
+pub(crate) fn cancel_common_additive_terms(
+    ctx: &mut cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+    let mut lhs_terms = Vec::new();
+    let mut rhs_terms = Vec::new();
+    collect_additive_terms(ctx, lhs, true, &mut lhs_terms);
+    collect_additive_terms(ctx, rhs, true, &mut rhs_terms);
+
+    let mut lhs_used = vec![false; lhs_terms.len()];
+    let mut rhs_used = vec![false; rhs_terms.len()];
+    let mut cancelled = 0;
+
+    for (ri, (rt, rp)) in rhs_terms.iter().enumerate() {
+        if rhs_used[ri] {
+            continue;
+        }
+        for (li, (lt, lp)) in lhs_terms.iter().enumerate() {
+            if lhs_used[li] {
+                continue;
+            }
+            if lp == rp && compare_expr(ctx, *lt, *rt) == Ordering::Equal {
+                lhs_used[li] = true;
+                rhs_used[ri] = true;
+                cancelled += 1;
+                break;
+            }
+        }
+    }
+
+    if cancelled == 0 {
+        return None;
+    }
+
+    let new_lhs_terms: Vec<_> = lhs_terms
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| !lhs_used[*i])
+        .map(|(_, t)| t)
+        .collect();
+    let new_rhs_terms: Vec<_> = rhs_terms
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| !rhs_used[*i])
+        .map(|(_, t)| t)
+        .collect();
+
+    Some((
+        rebuild_from_terms(ctx, &new_lhs_terms),
+        rebuild_from_terms(ctx, &new_rhs_terms),
+    ))
+}
 #[cfg(test)]
 mod tests {
     use super::*;
