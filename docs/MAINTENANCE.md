@@ -522,6 +522,14 @@ simplification pipeline. This means:
 **Reference**: See `rules/cancel_common_terms.rs` for the canonical example of option (c),
 and `engine/simplifier.rs` `register_default_rules()` for the order contract.
 
+### Future Direction: Equation Preprocess Pipeline
+
+For **relational transforms** (cancellation LHS↔RHS, moving terms between sides,
+normalizing equations), prefer utilities in the solver pre-solve pipeline
+(`solver/solve_core.rs`) rather than single-expression simplifier rules.
+Validate equation-level changes with **S2 metamorphic equation tests**
+(`metatest_equation_identity_transforms`).
+
 ### Adding a New Solver Strategy
 
 1.  **Create the Strategy Struct**: Define a struct that implements the `SolverStrategy` trait.

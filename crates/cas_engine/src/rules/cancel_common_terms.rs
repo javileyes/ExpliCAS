@@ -38,7 +38,7 @@ use std::cmp::Ordering;
 
 /// Result of equation-level additive term cancellation.
 #[allow(dead_code)]
-pub(crate) struct CancelResult {
+pub struct CancelResult {
     /// New LHS with cancelled terms removed.
     pub new_lhs: ExprId,
     /// New RHS with cancelled terms removed.
@@ -63,7 +63,7 @@ pub(crate) struct CancelResult {
 /// → cancel x^(5/6) pair
 /// → new_lhs = Add(x², 1), new_rhs = 0, cancelled = 1
 /// ```
-pub(crate) fn cancel_common_additive_terms(
+pub fn cancel_common_additive_terms(
     ctx: &mut Context,
     lhs: ExprId,
     rhs: ExprId,

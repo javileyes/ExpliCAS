@@ -129,3 +129,6 @@ pub use session::{resolve_session_refs, Entry, EntryId, EntryKind, ResolveError,
 pub use session_state::SessionState;
 pub use step::{DisplayEvalSteps, Step};
 pub use visitors::{DepthVisitor, VariableCollector};
+
+// Equation-level primitives (not simplifier rules — used by solver pipeline)
+pub use rules::cancel_common_terms::{cancel_common_additive_terms, CancelResult};

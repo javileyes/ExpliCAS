@@ -107,34 +107,120 @@ fn nested_pow_safe_odd_q() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 2) CancelCommonAdditiveTerms coverage
+// 3) Architecture: "Sub is NOT stable" — CI enforcement
 // ═══════════════════════════════════════════════════════════════════════
 
+/// After canonicalization, `Sub` nodes must be eliminated.
+/// `CanonicalizeNegationRule` converts `Sub(a,b) → Add(a, Neg(b))`.
+/// If this test fails, someone moved/disabled the rule — review immediately.
 #[test]
-fn cancel_symmetric_sub_add_add() {
-    // (a + b + c) - (b + c) → a
-    let result = simplify_display("(a + b + c) - (b + c)");
-    assert_eq!(result, "a", "Should cancel b and c, got: {}", result);
-}
+fn sub_is_not_stable_after_canonicalization() {
+    let mut simplifier = Simplifier::new();
+    simplifier.register_default_rules();
 
-#[test]
-fn cancel_rhs_superset() {
-    // b - (a + b) → -a
-    let result = simplify_display("b - (a + b)");
-    assert!(
-        result == "-a" || result == "-(a)" || result.contains("-a") || result.contains("-1*a"),
-        "Should reduce to -a, got: {}",
-        result
+    // x - y must become Add(x, Neg(y)), no Sub nodes survive
+    let expr = cas_parser::parse("x - y", &mut simplifier.context).expect("parse failed");
+    let (result, _steps) = simplifier.simplify(expr);
+
+    let sub_count = cas_ast::traversal::count_nodes_matching(&simplifier.context, result, |expr| {
+        matches!(expr, Expr::Sub(_, _))
+    });
+    assert_eq!(
+        sub_count, 0,
+        "ARCHITECTURE VIOLATION: Sub nodes survived canonicalization. \
+         CanonicalizeNegationRule must convert Sub→Add(Neg) before other rules fire. \
+         Found {} Sub nodes in simplified form of 'x - y'.",
+        sub_count
     );
 }
 
 #[test]
-fn cancel_identity_noise_radical() {
-    // The critical benchmark case: (x^2 + x^(5/6) + 1) - x^(5/6) → x^2 + 1
-    let result = simplify_display("(x^2 + x^(5/6) + 1) - x^(5/6)");
+fn sub_is_not_stable_complex_expression() {
+    let mut simplifier = Simplifier::new();
+    simplifier.register_default_rules();
+
+    // More complex case: nested subtractions
+    let expr =
+        cas_parser::parse("(a - b) + (c - d) - e", &mut simplifier.context).expect("parse failed");
+    let (result, _steps) = simplifier.simplify(expr);
+
+    let sub_count = cas_ast::traversal::count_nodes_matching(&simplifier.context, result, |expr| {
+        matches!(expr, Expr::Sub(_, _))
+    });
+    assert_eq!(
+        sub_count, 0,
+        "ARCHITECTURE VIOLATION: Sub nodes survived in complex expression. \
+         Found {} Sub nodes in simplified form of '(a - b) + (c - d) - e'.",
+        sub_count
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 4) cancel_common_additive_terms property tests
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Idempotency: applying cancel twice produces no further cancellations.
+#[test]
+fn cancel_idempotent() {
+    use cas_ast::Context;
+
+    let mut ctx = Context::new();
+    let a = ctx.var("a");
+    let b = ctx.var("b");
+    let c = ctx.var("c");
+    let ab = ctx.add(Expr::Add(a, b));
+    let lhs = ctx.add(Expr::Add(ab, c));
+    let rhs = ctx.add(Expr::Add(b, c));
+
+    // First cancellation: (a+b+c) vs (b+c) → a vs 0, cancelled=2
+    let cr1 = cas_engine::cancel_common_additive_terms(&mut ctx, lhs, rhs)
+        .expect("first cancel should fire");
+    assert_eq!(cr1.cancelled_count, 2);
+
+    // Second cancellation: a vs 0 → nothing to cancel
+    let cr2 = cas_engine::cancel_common_additive_terms(&mut ctx, cr1.new_lhs, cr1.new_rhs);
     assert!(
-        !result.contains("5/6"),
-        "x^(5/6) terms should cancel, got: {}",
-        result
+        cr2.is_none(),
+        "Idempotency violation: second cancel should be None, but cancelled {} terms",
+        cr2.map(|r| r.cancelled_count).unwrap_or(0)
+    );
+}
+
+/// Symmetry: swapping LHS↔RHS produces the same cancelled_count.
+#[test]
+fn cancel_symmetric_count() {
+    use cas_ast::Context;
+
+    let mut ctx = Context::new();
+    let a = ctx.var("a");
+    let b = ctx.var("b");
+    let c = ctx.var("c");
+    let ab = ctx.add(Expr::Add(a, b));
+    let lhs = ctx.add(Expr::Add(ab, c));
+    let rhs = ctx.add(Expr::Add(b, c));
+
+    // Forward: (a+b+c) vs (b+c)
+    let cr_fwd = cas_engine::cancel_common_additive_terms(&mut ctx, lhs, rhs)
+        .expect("forward cancel should fire");
+
+    // Reverse: (b+c) vs (a+b+c)
+    // Need fresh expressions (ids are consumed differently), rebuild
+    let mut ctx2 = Context::new();
+    let a2 = ctx2.var("a");
+    let b2 = ctx2.var("b");
+    let c2 = ctx2.var("c");
+    let ab2 = ctx2.add(Expr::Add(a2, b2));
+    let lhs2 = ctx2.add(Expr::Add(ab2, c2));
+    let b2r = ctx2.var("b");
+    let c2r = ctx2.var("c");
+    let rhs2 = ctx2.add(Expr::Add(b2r, c2r));
+
+    let cr_rev = cas_engine::cancel_common_additive_terms(&mut ctx2, rhs2, lhs2)
+        .expect("reverse cancel should fire");
+
+    assert_eq!(
+        cr_fwd.cancelled_count, cr_rev.cancelled_count,
+        "Symmetry violation: forward cancelled {} but reverse cancelled {}",
+        cr_fwd.cancelled_count, cr_rev.cancelled_count
     );
 }

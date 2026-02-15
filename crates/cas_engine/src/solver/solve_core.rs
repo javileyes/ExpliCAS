@@ -282,11 +282,29 @@ pub(crate) fn solve_with_options(
     // between two expression trees — cannot be a local simplifier rule because
     // CanonicalizeNegationRule converts Sub→Add(Neg) before any Sub-targeting
     // rule fires. See rules/cancel_common_terms.rs for full rationale.
+    //
+    // PRECONDITION: both sides must already be simplified (canonical form).
+    // The simplify_for_solve() calls above guarantee this.
+    debug_assert!(
+        !matches!(
+            simplifier.context.get(simplified_eq.lhs),
+            cas_ast::Expr::Sub(_, _)
+        ),
+        "cancel_common_terms precondition: LHS top-level is Sub (not canonical)"
+    );
+    debug_assert!(
+        !matches!(
+            simplifier.context.get(simplified_eq.rhs),
+            cas_ast::Expr::Sub(_, _)
+        ),
+        "cancel_common_terms precondition: RHS top-level is Sub (not canonical)"
+    );
     if let Some(cr) = crate::rules::cancel_common_terms::cancel_common_additive_terms(
         &mut simplifier.context,
         simplified_eq.lhs,
         simplified_eq.rhs,
     ) {
+        // Re-simplify after cancellation (cheap — expression is smaller now)
         simplified_eq.lhs = simplifier.simplify_for_solve(cr.new_lhs);
         simplified_eq.rhs = simplifier.simplify_for_solve(cr.new_rhs);
     }
