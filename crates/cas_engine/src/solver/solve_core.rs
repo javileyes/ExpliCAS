@@ -278,18 +278,17 @@ pub(crate) fn solve_with_options(
     // These fire within simplify_for_solve() on both equation sides above.
 
     // CANCEL COMMON ADDITIVE TERMS: equation-level cancellation that compares
-    // terms from LHS and RHS as a *pair*. This cannot be a single-expression
-    // simplifier rule because CanonicalizeNegationRule converts Sub→Add(Neg)
-    // before the cancel rule can match the Sub node.
-    if let Some((new_lhs, new_rhs)) =
-        crate::rules::cancel_common_terms::cancel_common_additive_terms(
-            &mut simplifier.context,
-            simplified_eq.lhs,
-            simplified_eq.rhs,
-        )
-    {
-        simplified_eq.lhs = simplifier.simplify_for_solve(new_lhs);
-        simplified_eq.rhs = simplifier.simplify_for_solve(new_rhs);
+    // terms from LHS and RHS as a *pair*. This is a relational operation
+    // between two expression trees — cannot be a local simplifier rule because
+    // CanonicalizeNegationRule converts Sub→Add(Neg) before any Sub-targeting
+    // rule fires. See rules/cancel_common_terms.rs for full rationale.
+    if let Some(cr) = crate::rules::cancel_common_terms::cancel_common_additive_terms(
+        &mut simplifier.context,
+        simplified_eq.lhs,
+        simplified_eq.rhs,
+    ) {
+        simplified_eq.lhs = simplifier.simplify_for_solve(cr.new_lhs);
+        simplified_eq.rhs = simplifier.simplify_for_solve(cr.new_rhs);
     }
 
     // CRITICAL: After simplification, check for identities and contradictions

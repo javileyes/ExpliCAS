@@ -284,14 +284,23 @@ impl Simplifier {
         arithmetic::register(self);
         infinity::register(self); // Infinity arithmetic (∞ absorption, indeterminates)
                                   // ─── Canonicalization tier ───────────────────────────────────────
-                                  // ORDER CONTRACT: canonicalization → rational_canonicalization → cancel_common_terms
+                                  // ORDER CONTRACT: canonicalization → rational_canonicalization
                                   //   1. canonicalization: Sub→Add(Neg), sort Add/Mul, roots→Pow, signs
                                   //   2. rational_canonicalization: Div(p,q)→Number(p/q), nested Pow fold
                                   //      (MUST come before any rule that compares numeric exponents/coefficients)
-                                  //   3. cancel_common_terms: Sub(Add(A,B),B)→A (needs stable structural forms)
+                                  //
+                                  // ⚠ "Sub is NOT stable": CanonicalizeNegationRule converts Sub(a,b)
+                                  //    to Add(a, Neg(b)) very early. Any future rule that depends on
+                                  //    matching Sub nodes must EITHER:
+                                  //      a) be registered BEFORE canonicalization, or
+                                  //      b) also match Add(x, Neg(y)) patterns, or
+                                  //      c) be an equation-level operation in the solver pipeline
+                                  //         (see rules/cancel_common_terms.rs for this pattern).
+                                  //
+                                  // cancel_common_terms is NOT registered here — it provides equation-level
+                                  // primitives called by the solver (see solve_core.rs), not simplifier rules.
         canonicalization::register(self);
         rational_canonicalization::register(self);
-        cancel_common_terms::register(self);
         constants::register(self); // Algebraic constants (phi)
         exponents::register(self);
         logarithms::register(self);
