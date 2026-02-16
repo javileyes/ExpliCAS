@@ -72,7 +72,7 @@ pub use identity_zero_rules::{
 mod tan_half_angle_rules;
 pub use tan_half_angle_rules::{
     GeneralizedSinCosContractionRule, HyperbolicHalfAngleSquaresRule,
-    TanDoubleAngleContractionRule, TrigQuotientToNamedRule,
+    TanDoubleAngleContractionRule, TrigHalfAngleSquaresRule, TrigQuotientToNamedRule,
 };
 
 // --- Miscellaneous identity rules ---

@@ -358,6 +358,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(HyperbolicTanhPythRule));
     // Hyperbolic half-angle: cosh²(x/2), sinh²(x/2) → cosh form
     simplifier.add_rule(Box::new(HyperbolicHalfAngleSquaresRule));
+    // Trig half-angle squares: sin²(x/2) → (1-cos x)/2, cos²(x/2) → (1+cos x)/2
+    simplifier.add_rule(Box::new(super::TrigHalfAngleSquaresRule));
     // Generalized sin*cos contraction: k*sin(t)*cos(t) → (k/2)*sin(2t) for even k≥4
     simplifier.add_rule(Box::new(GeneralizedSinCosContractionRule));
 }

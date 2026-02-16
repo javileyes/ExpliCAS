@@ -295,3 +295,93 @@ fn abs_neg_factor_idempotent() {
     assert_idempotent("|(-2)*sin(x)|");
     assert_idempotent("|(-5)*u^2|");
 }
+
+// =============================================================================
+// Ticket 6: Trig Half-Angle / Double-Angle bridge
+// =============================================================================
+
+// --- 6a: Half-angle squared convergence ---
+
+/// 2·sin²(x/2) ≡ 1 - cos(x)  → should cancel to 0
+#[test]
+fn half_angle_sin_squared_convergence() {
+    let result = simplify_str("2*sin(x/2)^2 - (1 - cos(x))");
+    assert_eq!(
+        result, "0",
+        "Expected 2·sin²(x/2) - (1-cos(x)) = 0, got: {}",
+        result
+    );
+}
+
+/// 2·cos²(x/2) ≡ 1 + cos(x)  → should cancel to 0
+#[test]
+fn half_angle_cos_squared_convergence() {
+    let result = simplify_str("2*cos(x/2)^2 - (1 + cos(x))");
+    assert_eq!(
+        result, "0",
+        "Expected 2·cos²(x/2) - (1+cos(x)) = 0, got: {}",
+        result
+    );
+}
+
+// --- 6b: Double-angle cancel convergence (via semantic cancel) ---
+
+/// cos(2x) ≡ 1 - 2·sin²(x)  → should cancel to 0 in cancel context
+#[test]
+fn double_angle_cos_sin_sq_convergence() {
+    let result = semantic_cancel_str("cos(2*x)", "1 - 2*sin(x)^2");
+    assert_eq!(
+        result, "0",
+        "Expected cos(2x) - (1-2sin²(x)) = 0 via cancel, got: {}",
+        result
+    );
+}
+
+/// cos(2x) ≡ 2·cos²(x) - 1  → should cancel to 0 in cancel context
+#[test]
+fn double_angle_cos_cos_sq_convergence() {
+    let result = semantic_cancel_str("cos(2*x)", "2*cos(x)^2 - 1");
+    assert_eq!(
+        result, "0",
+        "Expected cos(2x) - (2cos²(x)-1) = 0 via cancel, got: {}",
+        result
+    );
+}
+
+// --- Guards ---
+
+/// sin(x/2)^3 should NOT expand (only squared forms fire)
+#[test]
+fn half_angle_cubed_no_fire() {
+    let result = simplify_str("sin(x/2)^3");
+    assert!(
+        result.contains("sin"),
+        "sin(x/2)^3 should remain in trig form, got: {}",
+        result
+    );
+    // Should NOT contain "cos(x)" (the half-angle identity output)
+    assert!(
+        !result.contains("cos(x)"),
+        "sin(x/2)^3 should NOT expand to cos(x) form, got: {}",
+        result
+    );
+}
+
+/// cos(2x) in normal mode should stay compact (not expand to 1-2sin²)
+#[test]
+fn cos_double_angle_normal_mode_stable() {
+    let result = simplify_str("cos(2*x)");
+    assert_eq!(
+        result, "cos(2 * x)",
+        "cos(2x) should stay compact in normal mode, got: {}",
+        result
+    );
+}
+
+/// Idempotency for half-angle squared expressions
+#[test]
+fn half_angle_squared_idempotent() {
+    assert_idempotent("sin(x/2)^2");
+    assert_idempotent("cos(x/2)^2");
+    assert_idempotent("2*sin(x/2)^2 - 1 + cos(x)");
+}

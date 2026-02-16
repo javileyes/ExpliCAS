@@ -103,6 +103,154 @@ define_rule!(
 );
 
 // =============================================================================
+// TrigHalfAngleSquaresRule: sin(x/2)² → (1 - cos(x))/2, cos(x/2)² → (1 + cos(x))/2
+// =============================================================================
+// Trig analogue of HyperbolicHalfAngleSquaresRule. Only applies to squared forms
+// (no sqrt branching). TRANSFORM-only to prevent oscillation with
+// Cos2xAdditiveContractionRule (POST-only, contracts 1-2sin²→cos(2t)).
+//
+// Also matches Mul(sin(x/2), sin(x/2)) and Mul(cos(x/2), cos(x/2)) for cases
+// where the AST uses product form instead of Pow.
+
+/// Helper: Check if `arg` represents `u/2` and return `u`.
+/// Supports: `Mul(1/2, u)`, `Mul(u, 1/2)`, `Div(u, 2)`.
+fn trig_is_half_angle(ctx: &cas_ast::Context, arg: ExprId) -> Option<ExprId> {
+    match ctx.get(arg) {
+        Expr::Mul(l, r) => {
+            let half = num_rational::BigRational::new(1.into(), 2.into());
+            if let Expr::Number(n) = ctx.get(*l) {
+                if *n == half {
+                    return Some(*r);
+                }
+            }
+            if let Expr::Number(n) = ctx.get(*r) {
+                if *n == half {
+                    return Some(*l);
+                }
+            }
+            None
+        }
+        Expr::Div(num, den) => {
+            if let Expr::Number(d) = ctx.get(*den) {
+                if *d == num_rational::BigRational::from_integer(2.into()) {
+                    return Some(*num);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Helper: If `expr` is `sin(half)` or `cos(half)` where `half` represents `x/2`,
+/// returns `(full_angle, is_sin)`.
+fn extract_trig_half_angle(ctx: &cas_ast::Context, expr: ExprId) -> Option<(ExprId, bool)> {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        if args.len() == 1 {
+            let builtin = ctx.builtin_of(*fn_id);
+            let is_sin = matches!(builtin, Some(BuiltinFn::Sin));
+            let is_cos = matches!(builtin, Some(BuiltinFn::Cos));
+            if is_sin || is_cos {
+                if let Some(full_angle) = trig_is_half_angle(ctx, args[0]) {
+                    return Some((full_angle, is_sin));
+                }
+            }
+        }
+    }
+    None
+}
+
+pub struct TrigHalfAngleSquaresRule;
+
+impl crate::rule::Rule for TrigHalfAngleSquaresRule {
+    fn name(&self) -> &str {
+        "Trig Half-Angle Squares"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        // Pattern 1: Pow(sin/cos(x/2), 2) → half-angle identity
+        if let Expr::Pow(base, exp) = ctx.get(expr) {
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if *n != num_rational::BigRational::from_integer(2.into()) {
+                    return None;
+                }
+            } else {
+                return None;
+            }
+
+            let base_id = *base;
+            if let Some((full_angle, is_sin)) = extract_trig_half_angle(ctx, base_id) {
+                return Some(self.build_result(ctx, full_angle, is_sin));
+            }
+        }
+
+        // Pattern 2: Mul(sin(x/2), sin(x/2)) or Mul(cos(x/2), cos(x/2))
+        if let Expr::Mul(l, r) = ctx.get(expr) {
+            let (l, r) = (*l, *r);
+            if let Some((angle_l, is_sin_l)) = extract_trig_half_angle(ctx, l) {
+                if let Some((angle_r, is_sin_r)) = extract_trig_half_angle(ctx, r) {
+                    // Same function and same argument
+                    if is_sin_l == is_sin_r
+                        && crate::ordering::compare_expr(ctx, angle_l, angle_r)
+                            == std::cmp::Ordering::Equal
+                    {
+                        return Some(self.build_result(ctx, angle_l, is_sin_l));
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    fn allowed_phases(&self) -> crate::phase::PhaseMask {
+        // TRANSFORM only: prevents oscillation with Cos2xAdditiveContractionRule (POST-only)
+        crate::phase::PhaseMask::TRANSFORM
+    }
+
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::POW.union(crate::target_kind::TargetKindSet::MUL))
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+}
+
+impl TrigHalfAngleSquaresRule {
+    fn build_result(
+        &self,
+        ctx: &mut cas_ast::Context,
+        full_angle: ExprId,
+        is_sin: bool,
+    ) -> Rewrite {
+        let cos_x = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![full_angle]);
+        let one = ctx.num(1);
+        let half = ctx.add(Expr::Number(num_rational::BigRational::new(
+            1.into(),
+            2.into(),
+        )));
+
+        if is_sin {
+            // sin²(x/2) → (1 - cos(x))/2
+            let diff = ctx.add(Expr::Sub(one, cos_x));
+            let result = ctx.add(Expr::Mul(half, diff));
+            Rewrite::new(result).desc("sin²(x/2) = (1 - cos(x))/2")
+        } else {
+            // cos²(x/2) → (1 + cos(x))/2
+            let sum = ctx.add(Expr::Add(one, cos_x));
+            let result = ctx.add(Expr::Mul(half, sum));
+            Rewrite::new(result).desc("cos²(x/2) = (1 + cos(x))/2")
+        }
+    }
+}
+
+// =============================================================================
 // GeneralizedSinCosContractionRule: k*sin(t)*cos(t) → (k/2)*sin(2t) for even k
 // =============================================================================
 // Extends DoubleAngleContractionRule to handle k*sin*cos where k is even (4, 6, 8, etc.)

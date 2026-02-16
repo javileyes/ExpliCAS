@@ -171,6 +171,8 @@ fn normalize_for_cancel(ctx: &mut Context, id: ExprId, depth: usize) -> (ExprId,
         LnOfPow(usize, ExprId, ExprId), // (ln_name, base, exp)
         LnOfSqrt(usize, ExprId),        // (ln_name, sqrt_arg) — ln(sqrt(x)) → ½·ln(x)
         DistributeMul(ExprId, ExprId),  // (scalar, additive) — k*(a+b) → k*a + k*b
+        ExpandCos2x(ExprId),            // inner arg `a` — cos(2a) → 1 - 2·sin²(a)
+        ExpandSin2x(ExprId),            // inner arg `a` — sin(2a) → 2·sin(a)·cos(a)
     }
 
     let action = match ctx.get(id) {
@@ -189,13 +191,9 @@ fn normalize_for_cancel(ctx: &mut Context, id: ExprId, depth: usize) -> (ExprId,
         Expr::Function(name, args) if args.len() == 1 => {
             let name_id = *name;
             let arg = args[0];
-            let is_ln = ctx
-                .builtin_of(name_id)
-                .map(|b| b.name() == "ln")
-                .unwrap_or(false);
-            if !is_ln {
-                Action::Pass
-            } else {
+            let builtin = ctx.builtin_of(name_id);
+            let is_ln = builtin.map(|b| b.name() == "ln").unwrap_or(false);
+            if is_ln {
                 match ctx.get(arg) {
                     Expr::Mul(a, b) => Action::LnOfMul(name_id, *a, *b),
                     Expr::Pow(base, exp) => Action::LnOfPow(name_id, *base, *exp),
@@ -211,6 +209,24 @@ fn normalize_for_cancel(ctx: &mut Context, id: ExprId, depth: usize) -> (ExprId,
                         }
                     }
                     _ => Action::Pass,
+                }
+            } else {
+                // Trig double-angle expansion for cancel context:
+                // cos(2a) → 1 - 2sin²(a),  sin(2a) → 2sin(a)cos(a)
+                let is_cos = matches!(builtin, Some(cas_ast::BuiltinFn::Cos));
+                let is_sin = matches!(builtin, Some(cas_ast::BuiltinFn::Sin));
+                if is_cos || is_sin {
+                    if let Some(inner) = crate::helpers::extract_double_angle_arg(ctx, arg) {
+                        if is_cos {
+                            Action::ExpandCos2x(inner)
+                        } else {
+                            Action::ExpandSin2x(inner)
+                        }
+                    } else {
+                        Action::Pass
+                    }
+                } else {
+                    Action::Pass
                 }
             }
         }
@@ -323,6 +339,26 @@ fn normalize_for_cancel(ctx: &mut Context, id: ExprId, depth: usize) -> (ExprId,
                 OriginSafety::DefinabilityPreserving,
             )
         }
+        Action::ExpandCos2x(inner) => {
+            // cos(2a) → 1 - 2·sin²(a)   [unconditionally valid]
+            let sin_a = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![inner]);
+            let two = ctx.num(2);
+            let sin_sq = ctx.add(Expr::Pow(sin_a, two));
+            let two_sin_sq = ctx.add(Expr::Mul(two, sin_sq));
+            let one = ctx.num(1);
+            let result = ctx.add(Expr::Sub(one, two_sin_sq));
+            let (nr, ns) = normalize_for_cancel(ctx, result, depth + 1);
+            (nr, ns)
+        }
+        Action::ExpandSin2x(inner) => {
+            // sin(2a) → 2·sin(a)·cos(a)  [unconditionally valid]
+            let sin_a = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![inner]);
+            let cos_a = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![inner]);
+            let prod = ctx.add(Expr::Mul(sin_a, cos_a));
+            let two = ctx.num(2);
+            let result = ctx.add(Expr::Mul(two, prod));
+            (result, OriginSafety::DefinabilityPreserving)
+        }
     }
 }
 
@@ -382,7 +418,6 @@ fn hash_expr_structural(ctx: &Context, id: ExprId, h: &mut impl Hasher) {
 /// These mirror `SmallMultinomialExpansionRule`.
 ///
 /// Returns `true` if any term was expanded.
-
 /// Lightweight 2-term product simplification for preview fingerprinting.
 ///
 /// Folds `Pow(x,a) * Pow(x,b) → Pow(x,a+b)` and `Number * Number → Number`,

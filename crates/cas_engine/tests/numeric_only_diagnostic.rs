@@ -157,6 +157,7 @@ fn fmt_term(ctx: &Context, id: ExprId) -> String {
 }
 
 /// Get a compact fingerprint of a term's structure.
+#[allow(dead_code)]
 fn term_shape(ctx: &Context, id: ExprId) -> String {
     match ctx.get(id) {
         Expr::Number(_) => "NUM".to_string(),
@@ -313,11 +314,12 @@ fn classify_root_cause(
             id: diff_simplified
         }
     );
-    if diff_display.contains("sin") || diff_display.contains("cos") || diff_display.contains("tan")
+    if (diff_display.contains("sin")
+        || diff_display.contains("cos")
+        || diff_display.contains("tan"))
+        && (family.contains("Trig") || family.contains("Angle") || family.contains("Pythagorean"))
     {
-        if family.contains("Trig") || family.contains("Angle") || family.contains("Pythagorean") {
-            return RootCause::MissingIdentity("trig".to_string());
-        }
+        return RootCause::MissingIdentity("trig".to_string());
     }
     if diff_display.contains("sinh")
         || diff_display.contains("cosh")
@@ -476,6 +478,7 @@ fn eval_f64(ctx: &Context, id: ExprId, vars: &HashMap<String, f64>) -> Option<f6
 // ─── Main Diagnostic Test ─────────────────────────────────────────────────
 
 #[derive(Clone)]
+#[allow(dead_code)]
 struct DiagCase {
     lhs_str: String,
     rhs_str: String,
