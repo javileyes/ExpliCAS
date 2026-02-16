@@ -384,6 +384,113 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
 }
 
 // =============================================================================
+// SmallMultinomialExpansionRule
+// =============================================================================
+
+/// SmallMultinomialExpansionRule: (a + b + c + ...)^n → expanded polynomial
+///
+/// Fires in **default simplification** (not just expand mode) for small, safe
+/// multinomials.  The primary gate is `pred_terms = C(n+k-1, k-1) ≤ 35`,
+/// which caps the output size regardless of `n` or `k` individually.
+///
+/// Guards:
+/// - n ∈ [2, 4]  (MAX_N)
+/// - k ∈ [3, 6]  (need ≥3 terms; ≤6 as secondary cap)
+/// - pred_terms ≤ 35  (primary output cap)
+/// - count_nodes_dedup(base) ≤ 25  (base complexity cap)
+///
+/// Uses `budget_exempt` since its own guards (pred_terms, n, k, base_nodes)
+/// are stricter than the global anti-worsen budget.
+pub struct SmallMultinomialExpansionRule;
+
+/// Maximum exponent for default-simplify multinomial expansion.
+const SMALL_MULTI_MAX_N: u32 = 4;
+/// Maximum number of base additive terms.
+const SMALL_MULTI_MAX_TERMS: usize = 6;
+/// Maximum predicted output terms (the primary gate).
+const SMALL_MULTI_MAX_OUTPUT_TERMS: usize = 35;
+/// Maximum node count (deduplicated) for the base expression.
+const SMALL_MULTI_MAX_BASE_NODES: usize = 25;
+
+impl crate::rule::Rule for SmallMultinomialExpansionRule {
+    fn name(&self) -> &str {
+        "Small Multinomial Expansion"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut Context,
+        expr: ExprId,
+        _parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<Rewrite> {
+        // Pattern: Pow(base, exp)
+        let (base, exp) = match ctx.get(expr) {
+            Expr::Pow(b, e) => (*b, *e),
+            _ => return None,
+        };
+
+        // Exponent must be a small positive integer in [2, MAX_N]
+        let n = match ctx.get(exp) {
+            Expr::Number(num) => {
+                if !num.is_integer() || num.is_negative() {
+                    return None;
+                }
+                num.to_integer().to_u32()?
+            }
+            _ => return None,
+        };
+        if !(2..=SMALL_MULTI_MAX_N).contains(&n) {
+            return None;
+        }
+
+        // Count additive terms in base — need ≥3 (binomials handled elsewhere)
+        let k = count_additive_terms(ctx, base);
+        if !(3..=SMALL_MULTI_MAX_TERMS).contains(&k) {
+            return None;
+        }
+
+        // PRIMARY GATE: predicted output terms = C(n+k-1, k-1) ≤ MAX_OUTPUT_TERMS
+        let pred_terms = crate::multinomial_expand::multinomial_term_count(
+            n,
+            k,
+            SMALL_MULTI_MAX_OUTPUT_TERMS + 1, // +1 so we can check ≤
+        )?;
+        if pred_terms > SMALL_MULTI_MAX_OUTPUT_TERMS {
+            return None;
+        }
+
+        // Base complexity cap (deduplicated node count)
+        let base_nodes = cas_ast::count_all_nodes(ctx, base);
+        if base_nodes > SMALL_MULTI_MAX_BASE_NODES {
+            return None;
+        }
+
+        // All guards passed — delegate to fast multinomial expansion
+        let budget = crate::multinomial_expand::MultinomialExpandBudget {
+            max_exp: SMALL_MULTI_MAX_N,
+            max_base_terms: SMALL_MULTI_MAX_TERMS,
+            max_vars: 8,
+            max_output_terms: SMALL_MULTI_MAX_OUTPUT_TERMS,
+        };
+
+        let expanded =
+            crate::multinomial_expand::try_expand_multinomial_direct(ctx, base, exp, &budget)?;
+
+        let k_copy = k;
+        let n_copy = n;
+        Some(
+            Rewrite::new(expanded)
+                .desc_lazy(move || format!("Expand ({}-term sum)^{}", k_copy, n_copy))
+                .budget_exempt(),
+        )
+    }
+
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::POW)
+    }
+}
+
+// =============================================================================
 // AutoExpandSubCancelRule
 // =============================================================================
 

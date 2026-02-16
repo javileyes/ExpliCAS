@@ -208,24 +208,23 @@ fn extract_linear_terms(ctx: &Context, base: ExprId) -> Option<Vec<LinearTerm>> 
     Some(terms)
 }
 
-/// Parse a single term as linear: (coefficient, optional variable)
+/// Parse a single term as a coefficient × optional atom.
+///
+/// "Atom" is any non-numeric subexpression: variables, constants (π, e),
+/// function calls (sin(x)), powers (x²), etc.  The multinomial expansion
+/// is purely algebraic and does not care what the atom represents.
 ///
 /// Accepts:
-/// - Number: (n, None)
-/// - Variable: (1, Some(var))
-/// - Neg(Variable): (-1, Some(var))
-/// - Mul(Number, Variable): (n, Some(var))
-/// - Mul(Variable, Number): (n, Some(var))
-/// - Neg(Mul(...)): (-n, Some(var))
+/// - Number:        (n, None)
+/// - Atom:          (1, Some(atom))
+/// - Neg(Atom):     (-1, Some(atom))
+/// - Mul(Num, Atom) or Mul(Atom, Num): (n, Some(atom))
+/// - Neg(Mul(Num, Atom)):              (-n, Some(atom))
 fn parse_linear_atom(ctx: &Context, term: ExprId) -> Option<LinearTerm> {
     match ctx.get(term) {
         Expr::Number(n) => Some(LinearTerm {
             coeff: n.clone(),
             var: None,
-        }),
-        Expr::Variable(_) => Some(LinearTerm {
-            coeff: BigRational::one(),
-            var: Some(term),
         }),
         Expr::Neg(inner) => {
             let mut lt = parse_linear_atom(ctx, *inner)?;
@@ -233,31 +232,39 @@ fn parse_linear_atom(ctx: &Context, term: ExprId) -> Option<LinearTerm> {
             Some(lt)
         }
         Expr::Mul(l, r) => {
-            // Check for Number * Variable or Variable * Number
+            // Check for Number * Atom or Atom * Number
             match (ctx.get(*l), ctx.get(*r)) {
-                (Expr::Number(n), Expr::Variable(_)) => Some(LinearTerm {
-                    coeff: n.clone(),
-                    var: Some(*r),
-                }),
-                (Expr::Variable(_), Expr::Number(n)) => Some(LinearTerm {
-                    coeff: n.clone(),
-                    var: Some(*l),
-                }),
-                // Also handle Neg(Number) * Variable
-                (Expr::Neg(inner), Expr::Variable(_)) => {
+                (Expr::Number(n), _) if !matches!(ctx.get(*r), Expr::Number(_)) => {
+                    Some(LinearTerm {
+                        coeff: n.clone(),
+                        var: Some(*r),
+                    })
+                }
+                (_, Expr::Number(n)) if !matches!(ctx.get(*l), Expr::Number(_)) => {
+                    Some(LinearTerm {
+                        coeff: n.clone(),
+                        var: Some(*l),
+                    })
+                }
+                // Neg(Number) * Atom
+                (Expr::Neg(inner), _) if !matches!(ctx.get(*r), Expr::Number(_)) => {
                     if let Expr::Number(n) = ctx.get(*inner) {
                         Some(LinearTerm {
                             coeff: -n.clone(),
                             var: Some(*r),
                         })
                     } else {
-                        None
+                        None // Mul with non-linear structure
                     }
                 }
-                _ => None,
+                _ => None, // Mul of two non-numeric things (e.g., x*y) — not linear
             }
         }
-        _ => None,
+        // Any other non-numeric expression: treat as opaque atom with coeff=1
+        _ => Some(LinearTerm {
+            coeff: BigRational::one(),
+            var: Some(term),
+        }),
     }
 }
 

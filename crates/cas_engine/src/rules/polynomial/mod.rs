@@ -10,7 +10,10 @@ mod expansion_normalize;
 mod factoring;
 pub(crate) mod polynomial_helpers;
 
-pub use expansion::{AutoExpandPowSumRule, AutoExpandSubCancelRule, BinomialExpansionRule};
+pub use expansion::{
+    AutoExpandPowSumRule, AutoExpandSubCancelRule, BinomialExpansionRule,
+    SmallMultinomialExpansionRule,
+};
 pub use expansion_normalize::{
     ExpandSmallBinomialPowRule, HeuristicPolyNormalizeAddRule, PolynomialIdentityZeroRule,
 };
@@ -1419,6 +1422,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(AnnihilationRule));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));
     simplifier.add_rule(Box::new(BinomialExpansionRule));
+    simplifier.add_rule(Box::new(SmallMultinomialExpansionRule));
     // V2.15.8: ExpandSmallBinomialPowRule - controlled by autoexpand_binomials flag
     // Enable via REPL: set autoexpand_binomials on
     simplifier.add_rule(Box::new(ExpandSmallBinomialPowRule));

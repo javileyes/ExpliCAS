@@ -461,40 +461,46 @@ fn asin_abbreviation_works() {
 
 #[test]
 fn budget_exempt_allowlist() {
-    // Only inv_trig_n_angle.rs should call .budget_exempt().
-    // This test greps the source to catch any unauthorized usage.
+    // Only these files should call .budget_exempt().
+    // Each must have MAX_N, output-size cap, and input-size cap guards.
+    let allowlist = [
+        "inv_trig_n_angle.rs", // tan(n·arcsin/arccos) rules
+        "expansion.rs",        // SmallMultinomialExpansionRule (pred_terms≤35, n≤4)
+    ];
+
     let rules_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/rules");
     let mut violations = Vec::new();
 
-    fn scan_dir(dir: &std::path::Path, violations: &mut Vec<String>) {
+    fn scan_dir(dir: &std::path::Path, allowlist: &[&str], violations: &mut Vec<String>) {
         for entry in std::fs::read_dir(dir).unwrap() {
             let entry = entry.unwrap();
             let path = entry.path();
             if path.is_dir() {
-                scan_dir(&path, violations);
+                scan_dir(&path, allowlist, violations);
             } else if path.extension().is_some_and(|e| e == "rs") {
                 let filename = path.file_name().unwrap().to_string_lossy().to_string();
                 let content = std::fs::read_to_string(&path).unwrap();
-                if content.contains(".budget_exempt()") && filename != "inv_trig_n_angle.rs" {
+                if content.contains(".budget_exempt()") && !allowlist.contains(&filename.as_str()) {
                     violations.push(filename);
                 }
             }
         }
     }
 
-    scan_dir(&rules_dir, &mut violations);
+    scan_dir(&rules_dir, &allowlist, &mut violations);
 
     // Also scan engine/transform for accidental misuse in rule infra
     let engine_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/engine");
-    scan_dir(&engine_dir, &mut violations);
+    scan_dir(&engine_dir, &allowlist, &mut violations);
 
     assert!(
         violations.is_empty(),
         "Unauthorized .budget_exempt() usage in: {:?}. \
-         Only inv_trig_n_angle.rs is in the allowlist. \
+         Only {:?} are in the allowlist. \
          If you need it elsewhere, add the file to this test's allowlist \
          and ensure the rule has MAX_N, output-size cap, and input-size cap guards.",
-        violations
+        violations,
+        allowlist
     );
 }
 
@@ -784,5 +790,67 @@ fn perf_tan_n10_completes() {
             input,
             &result[..result.len().min(100)]
         );
+    }
+}
+
+// =============================================================================
+// Denominator-zero tests: confirm NonZero conditions are necessary
+// =============================================================================
+
+/// tan(2·arcsin(t)) has denominator C₂ = 1-2t².
+/// At t = 1/√2, C₂ = 0, so the expression is undefined.
+/// This test verifies the expanded form doesn't hide the singularity.
+#[test]
+fn denominator_zero_tan_asin_n2() {
+    let t: f64 = 1.0 / 2.0_f64.sqrt(); // t = 1/√2
+
+    // The expanded algebraic form should evaluate to Inf or NaN at this point
+    let (expanded, val) = simplify_and_eval("tan(2*arcsin(t))", "t", t);
+
+    // Must have expanded (no arcsin remains)
+    assert!(
+        !expanded.contains("arcsin"),
+        "Expected expansion, got: {}",
+        expanded
+    );
+
+    // Must be non-finite at the singularity
+    match val {
+        Some(v) => assert!(
+            !v.is_finite(),
+            "Expected non-finite at t=1/√2 (denominator C₂=0), got: {} from: {}",
+            v,
+            expanded
+        ),
+        None => {
+            // eval_f64 returned None — also acceptable (evaluation failed)
+        }
+    }
+}
+
+/// tan(3·arccos(t)) has denominator T₃ = 4t³-3t.
+/// At t = √3/2, T₃ = 4·(√3/2)³ - 3·(√3/2) = 3√3/2 - 3√3/2 = 0.
+#[test]
+fn denominator_zero_tan_acos_n3() {
+    let t: f64 = 3.0_f64.sqrt() / 2.0; // t = √3/2, arccos(t)=π/6
+
+    let (expanded, val) = simplify_and_eval("tan(3*arccos(t))", "t", t);
+
+    assert!(
+        !expanded.contains("arccos"),
+        "Expected expansion, got: {}",
+        expanded
+    );
+
+    match val {
+        Some(v) => assert!(
+            !v.is_finite(),
+            "Expected non-finite at t=√3/2 (denominator T₃=0), got: {} from: {}",
+            v,
+            expanded
+        ),
+        None => {
+            // eval_f64 returned None — acceptable
+        }
     }
 }
