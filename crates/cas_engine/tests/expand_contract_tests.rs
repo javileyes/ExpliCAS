@@ -98,30 +98,37 @@ fn test_standard_binomial_canonical_order() {
     );
 }
 
-/// Test 3: Multivariable no se expande en Standard
+/// Test 3: Small multinomial DOES expand in Standard (SmallMultinomialExpansionRule)
+/// (x+y+z)^4 has C(6,2)=15 terms, within the pred_terms≤35 budget.
+/// Larger cases like (x+y+z)^5 should NOT expand (n>MAX_N=4).
 #[test]
 fn test_standard_multinomial() {
+    // (x+y+z)^4 — within SmallMultinomialExpansionRule guards (n=4, k=3, pred=15≤35)
     let (result_str, result, ctx) = simplify_standard("(x+y+z)^4");
 
-    // Should remain as Pow(Add, 4), not expanded to 35 terms
-    // Note: (x+y+z) might be nested Add, so we check for Pow with exp 4
-    if let cas_ast::Expr::Pow(_, exp) = ctx.get(result) {
-        if let cas_ast::Expr::Number(n) = ctx.get(*exp) {
-            assert_eq!(
-                n.to_integer().to_i64(),
-                Some(4),
-                "Expected exponent 4, got: {}",
-                result_str
-            );
-        } else {
-            panic!("Expected numeric exponent, got: {}", result_str);
-        }
-    } else {
-        panic!(
-            "Expected Pow expression for multinomial, got: {}",
-            result_str
-        );
-    }
+    // Should be expanded — no longer Pow(Add, 4)
+    assert!(
+        !is_pow_of_additive(&ctx, result, 4),
+        "Expected (x+y+z)^4 to be expanded by SmallMultinomialExpansionRule, got: {}",
+        result_str
+    );
+
+    // Should have multiple terms (15 for trinomial^4)
+    let plus_count = result_str.matches('+').count() + result_str.matches('-').count();
+    assert!(
+        plus_count >= 10,
+        "Expected many terms in expanded form, got {} operators in: {}",
+        plus_count,
+        result_str
+    );
+
+    // (x+y+z)^5 — n=5 > MAX_N=4, should NOT expand
+    let (result_str5, result5, ctx5) = simplify_standard("(x+y+z)^5");
+    assert!(
+        is_pow_of_additive(&ctx5, result5, 5),
+        "Expected (x+y+z)^5 to stay as Pow (n>MAX_N=4), got: {}",
+        result_str5
+    );
 }
 
 /// Test 4: Potencia negativa no se expande (y no causa problemas)
