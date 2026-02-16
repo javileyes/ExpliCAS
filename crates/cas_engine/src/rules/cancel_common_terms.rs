@@ -213,10 +213,14 @@ fn normalize_for_cancel(ctx: &mut Context, id: ExprId, depth: usize) -> (ExprId,
             } else {
                 // Trig double-angle expansion for cancel context:
                 // cos(2a) → 1 - 2sin²(a),  sin(2a) → 2sin(a)cos(a)
+                // Uses extract_int_multiple_additive to also handle
+                // additive forms like cos(2u²+2) → cos(2*(u²+1))
                 let is_cos = matches!(builtin, Some(cas_ast::BuiltinFn::Cos));
                 let is_sin = matches!(builtin, Some(cas_ast::BuiltinFn::Sin));
                 if is_cos || is_sin {
-                    if let Some(inner) = crate::helpers::extract_double_angle_arg(ctx, arg) {
+                    if let Some((true, inner)) =
+                        crate::helpers::extract_int_multiple_additive(ctx, arg, 2)
+                    {
                         if is_cos {
                             Action::ExpandCos2x(inner)
                         } else {

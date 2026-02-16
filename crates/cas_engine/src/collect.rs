@@ -321,6 +321,10 @@ fn extract_numerical_coeff(ctx: &mut Context, expr: ExprId) -> (BigRational, Exp
                 // No numeric factors found — return original
                 (BigRational::one(), expr)
             } else {
+                // Sort non-numeric factors canonically to ensure consistent ordering.
+                // The LIFO stack traversal may reverse the original factor order,
+                // so we must sort to guarantee idempotent output.
+                non_numeric.sort_by(|a, b| crate::ordering::compare_expr(ctx, *a, *b));
                 // Rebuild the non-numeric core
                 let mut core = non_numeric[0];
                 for &f in &non_numeric[1..] {

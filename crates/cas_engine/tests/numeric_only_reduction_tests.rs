@@ -385,3 +385,38 @@ fn half_angle_squared_idempotent() {
     assert_idempotent("cos(x/2)^2");
     assert_idempotent("2*sin(x/2)^2 - 1 + cos(x)");
 }
+
+// =============================================================================
+// Ticket 6b: Double-angle factor extraction from additive arguments
+// e.g. cos(2u²+2) → cos(2*(u²+1)) → 1 - 2sin²(u²+1) in cancel context
+// =============================================================================
+
+/// cos(2u²+2) ≡ 1 - 2·sin²(u²+1)  → should cancel to 0 via semantic cancel
+/// This exercises extract_int_multiple_additive recognizing Add(Mul(2,u²), 2) → 2*(u²+1)
+#[test]
+fn double_angle_distributed_convergence() {
+    let result = semantic_cancel_str("cos(2*u^2 + 2)", "1 - 2*sin(u^2 + 1)^2");
+    assert_eq!(
+        result, "0",
+        "Expected cos(2u²+2) - (1-2sin²(u²+1)) = 0 via cancel, got: {}",
+        result
+    );
+}
+
+/// sin(2u²+2) ≡ 2·sin(u²+1)·cos(u²+1)  → should cancel to 0 via semantic cancel
+#[test]
+fn double_angle_distributed_sin_convergence() {
+    let result = semantic_cancel_str("sin(2*u^2 + 2)", "2*sin(u^2 + 1)*cos(u^2 + 1)");
+    assert_eq!(
+        result, "0",
+        "Expected sin(2u²+2) - 2sin(u²+1)cos(u²+1) = 0 via cancel, got: {}",
+        result
+    );
+}
+
+/// Idempotency: cos(2u²+2) should be stable after double simplification
+#[test]
+fn double_angle_distributed_idempotent() {
+    assert_idempotent("cos(2*u^2 + 2)");
+    assert_idempotent("sin(2*u^2 + 2)");
+}

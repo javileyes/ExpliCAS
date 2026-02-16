@@ -84,6 +84,67 @@ pub(crate) fn get_square_root(context: &mut Context, expr: ExprId) -> Option<Exp
     }
 }
 
+/// Extract an *exact* integer factor `±target` from a single term.
+///
+/// Returns `Some((is_positive, inner))` if the term is:
+/// - `Mul(Number(±target), inner)` or `Mul(inner, Number(±target))`
+/// - `Number(±target)`  (inner = sentinel, caller replaces with 1)
+/// - `Neg(x)` → inverts sign and retries on `x`
+///
+/// This is a building-block for `extract_int_multiple_additive`.
+fn extract_exact_int_factor(
+    context: &Context,
+    term: ExprId,
+    target_big: &num_bigint::BigInt,
+    neg_target_big: &num_bigint::BigInt,
+) -> Option<(bool, ExprId)> {
+    // Neg(x) → invert sign and retry
+    if let Expr::Neg(inner) = context.get(term) {
+        return extract_exact_int_factor(context, *inner, target_big, neg_target_big)
+            .map(|(sign, id)| (!sign, id));
+    }
+
+    // Number(±target) → (sign, sentinel)
+    if let Expr::Number(n) = context.get(term) {
+        if n.is_integer() {
+            let val = n.to_integer();
+            if val == *target_big {
+                return Some((true, term)); // sentinel — caller replaces with 1
+            }
+            if val == *neg_target_big {
+                return Some((false, term)); // sentinel — caller replaces with 1
+            }
+        }
+    }
+
+    // Mul(Number(±target), inner) or Mul(inner, Number(±target))
+    if let Expr::Mul(lhs, rhs) = context.get(term) {
+        if let Expr::Number(n) = context.get(*lhs) {
+            if n.is_integer() {
+                let val = n.to_integer();
+                if val == *target_big {
+                    return Some((true, *rhs));
+                }
+                if val == *neg_target_big {
+                    return Some((false, *rhs));
+                }
+            }
+        }
+        if let Expr::Number(n) = context.get(*rhs) {
+            if n.is_integer() {
+                let val = n.to_integer();
+                if val == *target_big {
+                    return Some((true, *lhs));
+                }
+                if val == *neg_target_big {
+                    return Some((false, *lhs));
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Extract inner variable from `±target * x` pattern for any small positive integer `target`.
 ///
 /// Returns `Some((is_positive, inner))` if the expression matches:
@@ -91,6 +152,9 @@ pub(crate) fn get_square_root(context: &mut Context, expr: ExprId) -> Option<Exp
 /// - `Neg(Mul(Number(k), inner))` where `k == target`
 ///
 /// `is_positive` is `true` when the sign is `+target`, `false` when `-target`.
+///
+/// **Note**: This function does NOT handle additive forms like `Add(Mul(2,a), 2)`.
+/// Use [`extract_int_multiple_additive`] for that (requires `&mut Context`).
 pub(crate) fn extract_int_multiple(
     context: &Context,
     expr: ExprId,
@@ -143,6 +207,82 @@ pub(crate) fn extract_int_multiple(
         }
     }
     None
+}
+
+/// Like [`extract_int_multiple`] but also handles **additive** forms where
+/// all terms share a common integer factor `target`.
+///
+/// Recognized extra patterns (2-term Add/Sub only):
+/// - `Add(Mul(k, a), Mul(k, b))` → `(true, Add(a, b))`
+/// - `Add(Mul(k, a), k)` → `(true, Add(a, 1))`
+/// - `Sub(Mul(k, a), k)` → `(true, Sub(a, 1))`
+/// - `Add(x, Neg(y))` is treated as `Sub(x, y)`
+///
+/// Requires `&mut Context` because it may build new AST nodes for the inner sum.
+pub(crate) fn extract_int_multiple_additive(
+    context: &mut Context,
+    expr: ExprId,
+    target: i64,
+) -> Option<(bool, ExprId)> {
+    // First try the basic Mul/Neg patterns (no allocation needed)
+    if let Some(result) = extract_int_multiple(context, expr, target) {
+        return Some(result);
+    }
+
+    // Additive fallback: Add/Sub of two terms sharing factor `target`
+    let target_big: num_bigint::BigInt = target.into();
+    let neg_target_big: num_bigint::BigInt = (-target).into();
+
+    // Normalize Add(x, Neg(y)) → treat as Sub(x, y)
+    let (lhs, rhs, is_sub) = match context.get(expr) {
+        Expr::Add(l, r) => {
+            if let Expr::Neg(neg_inner) = context.get(*r) {
+                (*l, *neg_inner, true)
+            } else {
+                (*l, *r, false)
+            }
+        }
+        Expr::Sub(l, r) => (*l, *r, true),
+        _ => return None,
+    };
+
+    // Extract factor from each term
+    let (l_sign, l_inner) = extract_exact_int_factor(context, lhs, &target_big, &neg_target_big)?;
+    let (r_sign, r_inner) = extract_exact_int_factor(context, rhs, &target_big, &neg_target_big)?;
+
+    // Replace sentinel Number(±target) with 1 for bare-constant terms
+    let one = context.num(1);
+    let l_inner = if matches!(context.get(l_inner), Expr::Number(n) if {
+        let v = n.to_integer();
+        v == target_big || v == neg_target_big
+    }) {
+        one
+    } else {
+        l_inner
+    };
+    let r_inner = if matches!(context.get(r_inner), Expr::Number(n) if {
+        let v = n.to_integer();
+        v == target_big || v == neg_target_big
+    }) {
+        one
+    } else {
+        r_inner
+    };
+
+    // Compute effective signs:
+    //   outer_sign = l_sign (the global ±)
+    //   The rhs enters with r_sign, possibly negated by is_sub
+    let r_effective_positive = if is_sub { !r_sign } else { r_sign };
+
+    if l_sign == r_effective_positive {
+        // Same sign → Add
+        let inner_sum = context.add(Expr::Add(l_inner, r_inner));
+        Some((l_sign, inner_sum))
+    } else {
+        // Different signs → Sub
+        let inner_diff = context.add(Expr::Sub(l_inner, r_inner));
+        Some((l_sign, inner_diff))
+    }
 }
 
 /// Extract inner variable from `2*x` pattern (for double angle identities).
