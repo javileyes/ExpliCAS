@@ -305,3 +305,84 @@ fn nested_solves_have_isolated_requirements() {
         inner_required
     );
 }
+
+// =============================================================================
+// Test 5: Sequential solve reentrancy — conditions don't leak across solves
+// =============================================================================
+
+#[test]
+fn sequential_solves_no_condition_leakage() {
+    // Solve 1: ln(x) = 0  → x = 1, with required: positive(x)
+    // Solve 2: x = 1      → x = 1, with required: (empty)
+    // Verify the second solve does NOT inherit positive(x) from the first.
+
+    let mut engine = setup_engine();
+
+    // ── Solve 1: ln(x) = 0 ──
+    let x1 = engine.simplifier.context.var("x");
+    let ln_x = engine.simplifier.context.call("ln", vec![x1]);
+    let zero = engine.simplifier.context.num(0);
+
+    let eq1 = Equation {
+        lhs: ln_x,
+        rhs: zero,
+        op: RelOp::Eq,
+    };
+
+    let opts = make_opts(DomainMode::Assume, AssumeScope::Real);
+    let result1 = solve_with_display_steps(&eq1, "x", &mut engine.simplifier, opts);
+    assert!(result1.is_ok(), "ln(x)=0 should solve successfully");
+
+    let required1 = result1
+        .as_ref()
+        .map(|(_, _, d)| d.required.clone())
+        .unwrap_or_default();
+
+    // ln(x) = 0 may or may not derive positive(x) depending on implementation,
+    // but the key assertion is below: solve 2 must be clean.
+
+    // ── Solve 2: x = 1 ──
+    let x2 = engine.simplifier.context.var("x");
+    let one = engine.simplifier.context.num(1);
+
+    let eq2 = Equation {
+        lhs: x2,
+        rhs: one,
+        op: RelOp::Eq,
+    };
+
+    let result2 = solve_with_display_steps(&eq2, "x", &mut engine.simplifier, opts);
+    assert!(result2.is_ok(), "x=1 should solve successfully");
+
+    let required2 = result2
+        .as_ref()
+        .map(|(_, _, d)| d.required.clone())
+        .unwrap_or_default();
+
+    // x = 1 is trivial — it should have NO required conditions
+    let has_positive_x = required2.iter().any(|cond| {
+        if let ImplicitCondition::Positive(id) = cond {
+            cas_ast::DisplayExpr {
+                context: &engine.simplifier.context,
+                id: *id,
+            }
+            .to_string()
+                == "x"
+        } else {
+            false
+        }
+    });
+
+    assert!(
+        !has_positive_x,
+        "Second solve (x=1) should NOT inherit positive(x) from first solve (ln(x)=0). \
+         Solve 1 required: {:?}, Solve 2 required: {:?}",
+        required1, required2
+    );
+
+    assert!(
+        required2.is_empty(),
+        "Trivial equation x=1 should have empty required conditions, got: {:?}",
+        required2
+    );
+}
