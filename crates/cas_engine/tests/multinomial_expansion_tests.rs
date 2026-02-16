@@ -238,3 +238,31 @@ fn perf_max_boundary_case() {
         elapsed
     );
 }
+
+// =============================================================================
+// k=2 no-fire: binomials stay on BinomialExpansionRule
+// =============================================================================
+
+/// (a+b)^4 is a binomial (k=2). SmallMultinomialExpansionRule requires k≥3,
+/// so it must NOT route here. In standard mode, BinomialExpansionRule also
+/// requires expand_mode, so the expression stays as Pow.
+/// This protects against refactors that accidentally route k=2 to multinomial.
+#[test]
+fn binomial_not_routed_through_multinomial() {
+    let result = simplify_str("(a + b)^4");
+
+    // In standard mode (not expand_mode), binomials stay as Pow
+    assert!(
+        result.contains("^4") || result.contains("⁴"),
+        "Expected (a+b)^4 to stay as Pow in standard mode, got: {}",
+        result
+    );
+
+    // Confirm k=2 doesn't sneak through by verifying k=3 DOES expand
+    let result3 = simplify_str("(a + b + c)^4");
+    assert!(
+        !result3.contains("(a + b + c)^4"),
+        "Expected (a+b+c)^4 (k=3) to expand, but it didn't: {}",
+        result3
+    );
+}

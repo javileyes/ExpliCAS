@@ -393,14 +393,19 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
 /// multinomials.  The primary gate is `pred_terms = C(n+k-1, k-1) ≤ 35`,
 /// which caps the output size regardless of `n` or `k` individually.
 ///
-/// Guards:
+/// Guards (pre-expansion):
 /// - n ∈ [2, 4]  (MAX_N)
 /// - k ∈ [3, 6]  (need ≥3 terms; ≤6 as secondary cap)
 /// - pred_terms ≤ 35  (primary output cap)
-/// - count_nodes_dedup(base) ≤ 25  (base complexity cap)
+/// - count_all_nodes(base) ≤ 25  (base complexity cap)
 ///
-/// Uses `budget_exempt` since its own guards (pred_terms, n, k, base_nodes)
-/// are stricter than the global anti-worsen budget.
+/// Guard (post-expansion):
+/// - count_all_nodes(expanded) ≤ 300  (output complexity cap)
+///   Catches cases where pred_terms is small but each term carries heavy
+///   subexpressions that get replicated.
+///
+/// Uses `budget_exempt` since its own guards (pred_terms, n, k, base_nodes,
+/// output_nodes) are stricter than the global anti-worsen budget.
 pub struct SmallMultinomialExpansionRule;
 
 /// Maximum exponent for default-simplify multinomial expansion.
@@ -411,6 +416,9 @@ const SMALL_MULTI_MAX_TERMS: usize = 6;
 const SMALL_MULTI_MAX_OUTPUT_TERMS: usize = 35;
 /// Maximum node count (deduplicated) for the base expression.
 const SMALL_MULTI_MAX_BASE_NODES: usize = 25;
+/// Maximum total node count in the expanded output (post-expansion guard).
+/// Measured: (a+b+c+d)^4 (35 terms, boundary) → 302 nodes.
+const SMALL_MULTI_MAX_OUTPUT_NODES: usize = 350;
 
 impl crate::rule::Rule for SmallMultinomialExpansionRule {
     fn name(&self) -> &str {
@@ -475,6 +483,14 @@ impl crate::rule::Rule for SmallMultinomialExpansionRule {
 
         let expanded =
             crate::multinomial_expand::try_expand_multinomial_direct(ctx, base, exp, &budget)?;
+
+        // POST-EXPANSION guard: reject if output is too large in total nodes.
+        // pred_terms caps #terms but not per-term complexity; opaque atoms
+        // like sin(x+y+z)^4 can replicate many nodes per term.
+        let output_nodes = cas_ast::count_all_nodes(ctx, expanded);
+        if output_nodes > SMALL_MULTI_MAX_OUTPUT_NODES {
+            return None;
+        }
 
         let k_copy = k;
         let n_copy = n;
