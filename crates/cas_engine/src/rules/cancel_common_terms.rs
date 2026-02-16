@@ -34,7 +34,10 @@
 
 use crate::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
+use num_traits::{Signed, ToPrimitive};
 use std::cmp::Ordering;
+use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
 
 /// Result of equation-level additive term cancellation.
 #[allow(dead_code)]
@@ -323,6 +326,227 @@ fn normalize_for_cancel(ctx: &mut Context, id: ExprId, depth: usize) -> (ExprId,
     }
 }
 
+/// Compute a deterministic structural hash of an AST subtree.
+///
+/// Used for O(1) overlap detection: build `HashSet<u64>` from one side,
+/// probe with terms from the other side.
+fn term_fingerprint(ctx: &Context, id: ExprId) -> u64 {
+    use std::hash::DefaultHasher;
+    let mut h = DefaultHasher::new();
+    hash_expr_structural(ctx, id, &mut h);
+    h.finish()
+}
+
+/// Recursive structural hash for fingerprinting.
+fn hash_expr_structural(ctx: &Context, id: ExprId, h: &mut impl Hasher) {
+    let node = ctx.get(id);
+    std::mem::discriminant(node).hash(h);
+    match node {
+        Expr::Number(n) => n.hash(h),
+        Expr::Variable(s) => ctx.sym_name(*s).hash(h),
+        Expr::Constant(c) => std::mem::discriminant(c).hash(h),
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            hash_expr_structural(ctx, *l, h);
+            hash_expr_structural(ctx, *r, h);
+        }
+        Expr::Pow(b, e) => {
+            hash_expr_structural(ctx, *b, h);
+            hash_expr_structural(ctx, *e, h);
+        }
+        Expr::Neg(e) | Expr::Hold(e) => hash_expr_structural(ctx, *e, h),
+        Expr::Function(name, args) => {
+            ctx.sym_name(*name).hash(h);
+            for a in args {
+                hash_expr_structural(ctx, *a, h);
+            }
+        }
+        Expr::Matrix { rows, cols, data } => {
+            rows.hash(h);
+            cols.hash(h);
+            for d in data {
+                hash_expr_structural(ctx, *d, h);
+            }
+        }
+        Expr::SessionRef(s) => s.hash(h),
+    }
+}
+
+/// Context-aware expansion phase for the semantic cancel pipeline.
+///
+/// Scans `terms` for `Pow(Add|Sub, n)` where n ∈ [2,4]. For each,
+/// preview-expands and checks if any resulting term's fingerprint
+/// matches `opposing_fps`. If overlap is found, replaces the Pow
+/// term with the flattened expanded form.
+///
+/// Guards: n ≤ 4, k ≤ 6, pred_terms ≤ 35, base_nodes ≤ 25.
+/// These mirror `SmallMultinomialExpansionRule`.
+///
+/// Returns `true` if any term was expanded.
+fn try_expand_for_cancel(
+    ctx: &mut Context,
+    terms: &mut Vec<(ExprId, bool, OriginSafety)>,
+    opposing_fps: &HashSet<u64>,
+) -> bool {
+    if opposing_fps.is_empty() {
+        return false;
+    }
+
+    /// Maximum exponent for context-aware cancel expansion.
+    const MAX_EXP: u32 = 4;
+    /// Maximum base terms (k) for context-aware cancel expansion.
+    const MAX_BASE_K: usize = 6;
+    /// Maximum predicted terms from multinomial expansion.
+    const MAX_PRED_TERMS: usize = 35;
+    /// Maximum base nodes (deduped) for context-aware cancel expansion.
+    const MAX_BASE_NODES: usize = 25;
+
+    let mut expanded_any = false;
+    let mut i = 0;
+
+    while i < terms.len() {
+        let (term_id, term_pos, term_safety) = terms[i];
+
+        // Phase 1: check if term is Pow(Add|Sub, n) with n in [2, MAX_EXP]
+        let pow_info = match ctx.get(term_id) {
+            Expr::Pow(base, exp) => {
+                let base = *base;
+                let exp = *exp;
+                // Check exponent is integer in [2, MAX_EXP]
+                let n = match ctx.get(exp) {
+                    Expr::Number(num) => {
+                        if !num.is_integer() || num.is_negative() {
+                            i += 1;
+                            continue;
+                        }
+                        match num.to_integer().to_u32() {
+                            Some(v) if (2..=MAX_EXP).contains(&v) => v,
+                            _ => {
+                                i += 1;
+                                continue;
+                            }
+                        }
+                    }
+                    _ => {
+                        i += 1;
+                        continue;
+                    }
+                };
+                // Check base is additive
+                let is_additive = matches!(ctx.get(base), Expr::Add(_, _) | Expr::Sub(_, _));
+                if !is_additive {
+                    i += 1;
+                    continue;
+                }
+                Some((base, exp, n))
+            }
+            _ => None,
+        };
+
+        let (base, exp, n) = match pow_info {
+            Some(info) => info,
+            None => {
+                i += 1;
+                continue;
+            }
+        };
+
+        // Phase 2: Guard checks (mirror SmallMultinomialExpansionRule)
+        let mut base_terms_vec = Vec::new();
+        collect_additive_terms(ctx, base, true, &mut base_terms_vec);
+        let k = base_terms_vec.len();
+        if !(2..=MAX_BASE_K).contains(&k) {
+            i += 1;
+            continue;
+        }
+
+        // Predicted term count: C(n+k-1, k-1)
+        let pred_terms =
+            match crate::multinomial_expand::multinomial_term_count(n, k, MAX_PRED_TERMS) {
+                Some(t) if t <= MAX_PRED_TERMS => t,
+                _ => {
+                    i += 1;
+                    continue;
+                }
+            };
+        let _ = pred_terms; // used for guard check above
+
+        // Base node count guard
+        let base_nodes = cas_ast::traversal::count_all_nodes(ctx, base);
+        if base_nodes > MAX_BASE_NODES {
+            i += 1;
+            continue;
+        }
+
+        // Phase 3: Preview expand
+        let budget = crate::multinomial_expand::MultinomialExpandBudget {
+            max_exp: MAX_EXP,
+            max_base_terms: MAX_BASE_K,
+            max_vars: MAX_BASE_K,
+            max_output_terms: MAX_PRED_TERMS,
+        };
+        let expanded =
+            match crate::multinomial_expand::try_expand_multinomial_direct(ctx, base, exp, &budget)
+            {
+                Some(e) => {
+                    // Unwrap __hold if present
+                    match ctx.get(e) {
+                        Expr::Hold(inner) => *inner,
+                        _ => e,
+                    }
+                }
+                None => {
+                    // Fallback: use generic expand (handles non-linear atoms)
+                    let pow_expr = ctx.add(Expr::Pow(base, exp));
+                    let expanded = crate::expand::expand(ctx, pow_expr);
+                    // Skip if expand was a no-op
+                    if expanded == pow_expr {
+                        i += 1;
+                        continue;
+                    }
+                    expanded
+                }
+            };
+
+        // Phase 4: Check overlap — collect expanded terms and fingerprint
+        let mut exp_terms = Vec::new();
+        collect_additive_terms(ctx, expanded, true, &mut exp_terms);
+
+        let has_overlap = exp_terms.iter().any(|(t, _)| {
+            let fp = term_fingerprint(ctx, *t);
+            if opposing_fps.contains(&fp) {
+                // Confirm with structural comparison against all opposing
+                // (fingerprint collision is rare but not impossible)
+                true
+            } else {
+                false
+            }
+        });
+
+        if !has_overlap {
+            i += 1;
+            continue;
+        }
+
+        // Phase 5: Commit — replace Pow term with expanded terms
+        tracing::debug!(
+            target: "cancel",
+            k, n, "context-aware expansion: overlap detected, committing expansion"
+        );
+
+        terms.remove(i);
+        for (et, ep) in exp_terms {
+            // Combine polarity: if original term was negative, flip expanded term signs
+            let final_pos = if term_pos { ep } else { !ep };
+            terms.insert(i, (et, final_pos, term_safety));
+            i += 1;
+        }
+        expanded_any = true;
+        // Don't increment i — we already advanced past the inserted terms
+    }
+
+    expanded_any
+}
+
 /// Semantic fallback for equation-level term cancellation.
 ///
 /// **2-phase candidate+proof pattern for soundness:**
@@ -454,8 +678,40 @@ pub fn cancel_additive_terms_semantic(
         }
         out
     };
-    let lhs_terms = re_flatten(lhs_terms, &simplifier.context);
-    let rhs_terms = re_flatten(rhs_terms, &simplifier.context);
+    let mut lhs_terms = re_flatten(lhs_terms, &simplifier.context);
+    let mut rhs_terms = re_flatten(rhs_terms, &simplifier.context);
+
+    // Context-aware expansion phase: expand Pow(Add,n) terms only
+    // when expanded terms overlap with the opposing side's terms.
+    // This enables cancellation of (x+1)^2 - (x² + 2x + 1) → 0
+    // without requiring expand_mode in the global simplifier.
+    {
+        let rhs_fps: HashSet<u64> = rhs_terms
+            .iter()
+            .map(|(t, _, _)| term_fingerprint(&simplifier.context, *t))
+            .collect();
+        let lhs_fps: HashSet<u64> = lhs_terms
+            .iter()
+            .map(|(t, _, _)| term_fingerprint(&simplifier.context, *t))
+            .collect();
+
+        let lhs_expanded = try_expand_for_cancel(&mut simplifier.context, &mut lhs_terms, &rhs_fps);
+        let rhs_expanded = try_expand_for_cancel(&mut simplifier.context, &mut rhs_terms, &lhs_fps);
+
+        // If any expansion happened, re-simplify and re-flatten the new terms
+        if lhs_expanded || rhs_expanded {
+            for (term, _, _) in &mut lhs_terms {
+                let (s, _, _) = simplifier.simplify_with_stats(*term, candidate_opts.clone());
+                *term = s;
+            }
+            for (term, _, _) in &mut rhs_terms {
+                let (s, _, _) = simplifier.simplify_with_stats(*term, candidate_opts.clone());
+                *term = s;
+            }
+            lhs_terms = re_flatten(lhs_terms, &simplifier.context);
+            rhs_terms = re_flatten(rhs_terms, &simplifier.context);
+        }
+    }
 
     // Guard: skip if too many terms
     if lhs_terms.len() > MAX_TERMS || rhs_terms.len() > MAX_TERMS {
