@@ -49,15 +49,41 @@ canonicalization → rational_canonicalization
 | `DistributeRule` | `algebra/distribution.rs` | "Distributive Property (Simple)" | TRANSFORM | Simple a*(b+c) distribution, no guards | MEDIUM |
 | `ExpandRule` | `algebra/distribution.rs` | "Expand Polynomial" | TRANSFORM | Handles `expand(expr)` function call | LOW |
 | `ConservativeExpandRule` | `algebra/distribution.rs` | "Conservative Expand" | TRANSFORM | Implicit expansion only if ≤ node count | LOW |
-| `BinomialExpansionRule` | `polynomial/` | "Binomial Expansion" | CORE\|POST | (a+b)^n expansion via binomial theorem | MEDIUM |
+| `BinomialExpansionRule` | `polynomial/expansion.rs` | "Binomial Expansion" | CORE\|POST | (a+b)^n expansion via binomial theorem. **Requires expand_mode.** | MEDIUM |
+| `SmallMultinomialExpansionRule` | `polynomial/expansion.rs` | "Small Multinomial Expansion" | CORE\|POST | (a+b+c+...)^n for k∈[3,6], n∈[2,4]. **Default mode.** `budget_exempt`. | LOW |
+| `ExpandSmallBinomialPowRule` | `polynomial/expansion_normalize.rs` | "Expand Small Binomial Pow" | CORE\|POST | Atom-based binomial expansion. Opt-in via `autoexpand_binomials`. | MEDIUM |
 | `DifferenceOfSquaresRule` | `algebra/factoring.rs` | "Difference of Squares (Product to Difference)" | CORE\|POST | (a-b)(a+b) → a²-b² | LOW |
+
+### Registration Order Contract (Expansion)
+
+```
+BinomialExpansionRule → SmallMultinomialExpansionRule → ExpandSmallBinomialPowRule
+```
+
+> **Guard boundaries**: `BinomialExpansionRule` handles k=2 (expand_mode only).
+> `SmallMultinomialExpansionRule` handles k≥3 (default mode, strict guards).
+> `ExpandSmallBinomialPowRule` is opt-in via `autoexpand_binomials` flag.
+> No overlap between the three.
+
+### SmallMultinomialExpansionRule Guards
+
+| Guard | Value | Stage |
+|-------|-------|-------|
+| `n` (exponent) | [2, 4] | Pre-expansion |
+| `k` (base terms) | [3, 6] | Pre-expansion |
+| `pred_terms` | ≤ 35 | Pre-expansion |
+| `base_nodes` | ≤ 25 | Pre-expansion |
+| `output_nodes` | ≤ 350 | Post-expansion |
+
+> Uses `budget_exempt` because these guards are stricter than the global
+> anti-worsen budget. See [BUDGET_POLICY.md](BUDGET_POLICY.md) for policy.
 
 ### Semantic Duplicates
 
 **Two DistributeRules exist** with different behaviors:
 
 | Aspect | polynomial/ | algebra/distribution.rs |
-|--------|---------------|-----------------|
+|--------|---------------|-----------------| 
 | Name | "Distributive Property" | "Distributive Property (Simple)" |
 | Phase | CORE\|POST | TRANSFORM only |
 | Guards | Binomial detection, conjugate check, GCD check | None (simple pattern match) |

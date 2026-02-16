@@ -5,6 +5,59 @@ All notable changes to ExpliCAS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.15.58] - 2026-02-16 - Default Multinomial Expansion & Inv-Trig Hardening
+
+### Added
+
+- **`SmallMultinomialExpansionRule`** (`polynomial/expansion.rs`):
+  Auto-expands `(a + b + c + ...)^n` during **default simplification** for small,
+  safe multinomials. Six-layer guard system:
+  - Pre-expansion: `n ∈ [2,4]`, `k ∈ [3,6]`, `pred_terms ≤ 35`, `base_nodes ≤ 25`
+  - Post-expansion: `output_nodes ≤ 350`
+  - Uses `budget_exempt` (guardrails are stricter than global anti-worsen budget)
+
+- **`parse_linear_atom` Widening** (`multinomial_expand.rs`):
+  Opaque atoms now accepted: `Constant` (π, e), `Function` (sin(x)), `Pow` with
+  **integer** exponents (x²). Fractional-exponent `Pow` (radicals like `√2`) are
+  explicitly excluded to protect the rationalization pipeline.
+
+- **Denominator-Zero Singularity Tests** (`inv_trig_n_angle_tests.rs`):
+  Confirms singularities at `t = 1/√2` (arcsin n=2) and `t = √3/2` (arccos n=3)
+  where the tan(n·arcfn) denominator vanishes.
+
+- **`budget_exempt` Allowlist** (`inv_trig_n_angle_tests.rs`):
+  Array-based allowlist pattern for files that may use `.budget_exempt()`.
+  Each entry requires documented guards (MAX_N, output cap, input cap).
+  Current allowlist: `inv_trig_n_angle.rs`, `expansion.rs`.
+
+- **k=2 No-Fire Test** (`multinomial_expansion_tests.rs`):
+  `binomial_not_routed_through_multinomial` — confirms binomials (k=2) stay on
+  `BinomialExpansionRule` and are not routed through multinomial expansion.
+
+### Fixed
+
+- **Rationalization Regression**: `parse_linear_atom` treating `2^(1/2)` as an
+  opaque atom caused `ExpandSmallBinomialPowRule` to expand `(1+√2)^2` during
+  rationalization, producing nested `Pow(Pow(2,1/2),2)` that didn't fold. Fixed
+  by adding explicit `Expr::Pow` branch that rejects fractional exponents.
+
+### Results
+
+- **116 targeted tests** across 5 suites: 0 failures
+- **378 metamorphic pairs**: 0 regressions, 0 numeric-only
+- All CI checks pass (clippy clean, release build)
+
+### Documentation
+
+- `CHANGELOG.md`: This entry
+- `RULES.md`: Added SmallMultinomialExpansionRule to Distribution & Expansion family
+- `FAST_EXPAND.md`: Added default-simplify section for SmallMultinomialExpansionRule
+- `BUDGET_POLICY.md`: Added SmallMultinomialExpansionRule to budget_exempt rules
+- `ROBUSTNESS.md`: Added output-node post-expansion guard documentation
+- `MAINTENANCE.md`: Added budget_exempt allowlist pattern and parse_linear_atom docs
+
+---
+
 ## [2.15.56] - 2026-02-16 - Solver TLS Elimination & Reentrancy Hardening
 
 ### Added

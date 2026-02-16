@@ -228,3 +228,5 @@ make lint-no-stringly-ir
 | Golden corpus prevents regressions in common workflows | ✅ |
 | `poly_result` stringly-typed checks enforced to 0 | ✅ |
 | `__hold` stringly-typed checks capped at baseline | ✅ |
+| Multinomial expansion capped by 6-layer guard system (output_nodes ≤ 350) | ✅ |
+| `budget_exempt` usage enforced via CI allowlist | ✅ |

@@ -1233,3 +1233,76 @@ The solver is covered by 4 reentrancy tests:
 | `parallel_solves_have_independent_diagnostics` | `solver_parallel_reentrancy_tests.rs` | Two threads get independent diagnostics |
 | `parallel_identical_solves_produce_consistent_results` | `solver_parallel_reentrancy_tests.rs` | Concurrent identical solves are deterministic |
 
+## 12. Default Multinomial Expansion ★ (Added 2026-02-16)
+
+### Overview
+
+`SmallMultinomialExpansionRule` auto-expands small multinomials like `(a+b+c)^2` during
+default simplification. It reuses the fast multinomial algorithm from `multinomial_expand.rs`
+with much tighter guards.
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `rules/polynomial/expansion.rs` | `SmallMultinomialExpansionRule` (guards + budget_exempt) |
+| `multinomial_expand.rs` | Core algorithm + `parse_linear_atom` |
+| `rules/polynomial/mod.rs` | Registration order: Binomial → SmallMultinomial → ExpandSmallBinomialPow |
+| `tests/multinomial_expansion_tests.rs` | Symbolic, metamorphic, guard, and routing tests |
+
+### `parse_linear_atom` — Critical Design Decisions
+
+This function determines which sub-expressions are valid "atoms" for multinomial expansion.
+Two decisions are safety-critical:
+
+**1. Fractional-exponent Pow is REJECTED:**
+
+```rust
+Expr::Pow(_base, exp) => {
+    let is_integer_exp = matches!(ctx.get(*exp), Expr::Number(n) if n.is_integer());
+    if is_integer_exp { Some(atom) } else { None }
+}
+```
+
+**Why:** Treating `2^(1/2)` (= √2) as an atom causes `(1+√2)^2` to expand via
+`ExpandSmallBinomialPowRule`, producing `Pow(Pow(2,1/2),2)` which doesn't fold.
+This broke the rationalization pipeline (`test_generalized_rationalization_expands_denominator`).
+
+**2. Constants and Functions ARE accepted:**
+
+`Constant` (π, e) and `Function` (sin(x), ln(y)) are treated as opaque atoms.
+The `base_nodes ≤ 25` guard prevents blow-up from complex function arguments.
+
+### `budget_exempt` Allowlist Pattern
+
+Rules using `.budget_exempt()` bypass the global anti-worsen budget. To prevent
+uncontrolled growth, an **array-based CI allowlist** enforces documentation:
+
+```rust
+// In inv_trig_n_angle_tests.rs::budget_exempt_allowlist
+const BUDGET_EXEMPT_ALLOWLIST: &[&str] = &[
+    "inv_trig_n_angle.rs",  // MAX_N=5, closed-form
+    "expansion.rs",         // n≤4, k≤6, output_nodes≤350
+];
+```
+
+**Adding a new budget_exempt rule:**
+
+1. Add the file to the allowlist with a guard summary comment
+2. Document all guards in `BUDGET_POLICY.md`
+3. Add a test proving the guards are effective
+4. Run `make ci` to verify the allowlist test passes
+
+### Debugging Expansion Issues
+
+```bash
+# Run multinomial tests with output
+cargo test --package cas_engine --test multinomial_expansion_tests -- --nocapture
+
+# Run rationalization stability tests
+cargo test --package cas_engine --test rationalization_stability_tests -- --nocapture
+
+# Check expand/contract mode behavior
+cargo test --package cas_engine --test expand_contract_tests -- --nocapture
+```
+

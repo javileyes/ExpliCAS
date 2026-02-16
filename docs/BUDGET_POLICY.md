@@ -146,6 +146,32 @@ let budget = Budget::preset_unlimited(); // No limits
 | `AutoExpandPowSumRule` | CORE, TRANSFORM, **RATIONALIZE** | Close rationalizations that create Pow(Add, n) |
 | `AutoExpandSubCancelRule` | TRANSFORM | Zero-shortcut for cancellation patterns |
 
+## `budget_exempt` Rules
+
+Some rules bypass the global anti-worsen budget because their **own guards** are
+strictly tighter. Each must be on the CI allowlist with documented justification.
+
+| Rule | File | Guards | Justification |
+|------|------|--------|--------------|
+| `SmallMultinomialExpansionRule` | `expansion.rs` | n≤4, k≤6, terms≤35, base_nodes≤25, output_nodes≤350 | Tight pre+post guards cap all dimensions |
+| `InvTrigNAngleRule` | `inv_trig_n_angle.rs` | MAX_N=5, output/input bounded by formula | Finite, closed-form expansions |
+
+### Allowlist Enforcement
+
+The allowlist is enforced in `inv_trig_n_angle_tests.rs::budget_exempt_allowlist`:
+
+```rust
+const BUDGET_EXEMPT_ALLOWLIST: &[&str] = &[
+    "inv_trig_n_angle.rs",  // MAX_N=5, closed-form
+    "expansion.rs",         // n≤4, k≤6, output_nodes≤350
+];
+```
+
+> [!IMPORTANT]
+> Adding a new `budget_exempt` rule requires: (1) adding to the allowlist array,
+> (2) documenting the guards in the entry comment, (3) adding a corresponding
+> test to verify the guards are effective.
+
 ## CI Enforcement
 
 `scripts/lint_budget_enforcement.sh` verifies all hotspot modules contain budget instrumentation:

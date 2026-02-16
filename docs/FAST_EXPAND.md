@@ -59,10 +59,6 @@ let held = ctx.add(Expr::Function("__hold".to_string(), vec![expanded]));
 
 This allows `expand()` results to work seamlessly with other operations.
 
-## Files
-
-- [`multinomial_expand.rs`](../crates/cas_engine/src/multinomial_expand.rs) - Core algorithm
-- [`expand.rs`](../crates/cas_engine/src/expand.rs) - Integration point
 
 ## Example
 
@@ -77,3 +73,70 @@ cargo run -p cas_cli --release -- eval-json "expand((x+1)^20)"
 ```
 
 To expand larger exponents, increase `max_exp` in `MultinomialExpandBudget::default()`.
+
+---
+
+## Default-Simplify: SmallMultinomialExpansionRule (v2.15.58)
+
+Starting from v2.15.58, a **separate rule** auto-expands small multinomials during
+**default simplification** (no `expand()` call needed):
+
+```
+(a + b + c)^2   →   a² + 2·a·b + 2·a·c + b² + 2·b·c + c²
+(x + y + z)^3   →   x³ + 3·x²·y + 3·x·y² + ...  (10 terms)
+```
+
+### When Does It Fire?
+
+`SmallMultinomialExpansionRule` fires in **default mode** when ALL guards pass:
+
+| Guard | Value | Rationale |
+|-------|-------|-----------|
+| `k` (base terms) | ≥ 3 | k=2 stays on `BinomialExpansionRule` |
+| `k` (base terms) | ≤ 6 | Prevents large-base blow-up |
+| `n` (exponent) | ≤ 4 | Keeps output manageable |
+| `pred_terms` | ≤ 35 | Pre-estimated output terms |
+| `base_nodes` | ≤ 25 | Rejects complex bases (sin(x+y+z)^4) |
+| `output_nodes` (post) | ≤ 350 | Final safety net after expansion |
+
+### Opaque Atoms (`parse_linear_atom`)
+
+The multinomial algorithm treats each term as `coefficient × atom`. Atoms include:
+
+| Accepted | Example |
+|----------|---------|
+| Variables | `x`, `y`, `z` |
+| Constants | `π`, `e` |
+| Functions | `sin(x)`, `ln(y)` |
+| Integer-exponent Pow | `x²`, `a^3` |
+
+| Rejected | Example | Reason |
+|----------|--------|--------|
+| Fractional-exponent Pow | `2^(1/2)` = √2 | Interferes with rationalization |
+
+### Performance (Measured)
+
+| Input | k | n | pred_terms | output_nodes |
+|-------|---|---|------------|--------------|
+| `(a+b+c)^2` | 3 | 2 | 6 | 24 |
+| `(a+b+c)^3` | 3 | 3 | 10 | 68 |
+| `(a+b+c+d)^2` | 4 | 2 | 10 | 52 |
+| `(a+b+c+d)^4` | 4 | 4 | 35 | 302 |
+
+### Difference from `expand()` Fast-Path
+
+| Aspect | `expand()` Fast-Path | `SmallMultinomialExpansionRule` |
+|--------|---------------------|-------------------------------|
+| Trigger | `expand((...)^n)` call | Default simplification |
+| Max exponent | 100 | 4 |
+| Max base terms | 16 | 6 |
+| Output limit | 100,000 terms | 35 terms + 350 nodes |
+| Budget mode | Uses global budget | `budget_exempt` (own guards) |
+
+---
+
+## Files
+
+- [`multinomial_expand.rs`](../crates/cas_engine/src/multinomial_expand.rs) - Core algorithm + `parse_linear_atom`
+- [`expansion.rs`](../crates/cas_engine/src/rules/polynomial/expansion.rs) - `SmallMultinomialExpansionRule`
+- [`expand.rs`](../crates/cas_engine/src/expand.rs) - `expand()` integration point
