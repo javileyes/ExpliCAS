@@ -1,7 +1,7 @@
 use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::isolation::{contains_var, isolate};
-use crate::solver::solve;
+use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveDomainEnv, SolveStep, SolverOptions};
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
@@ -66,15 +66,7 @@ impl SolverStrategy for IsolationStrategy {
                 });
             }
             // V2.0: Pass opts through to propagate budget
-            match isolate(
-                eq.rhs,
-                eq.lhs,
-                new_op,
-                var,
-                simplifier,
-                *opts,
-                &ctx.domain_env,
-            ) {
+            match isolate(eq.rhs, eq.lhs, new_op, var, simplifier, *opts, ctx) {
                 Ok((set, mut iso_steps)) => {
                     steps.append(&mut iso_steps);
                     return Some(Ok((set, steps)));
@@ -85,15 +77,7 @@ impl SolverStrategy for IsolationStrategy {
 
         // LHS has var
         // V2.0: Pass opts through to propagate budget
-        match isolate(
-            eq.lhs,
-            eq.rhs,
-            eq.op.clone(),
-            var,
-            simplifier,
-            *opts,
-            &ctx.domain_env,
-        ) {
+        match isolate(eq.lhs, eq.rhs, eq.op.clone(), var, simplifier, *opts, ctx) {
             Ok((set, steps)) => Some(Ok((set, steps))),
             Err(e) => Some(Err(e)),
         }
@@ -534,7 +518,7 @@ impl SolverStrategy for UnwrapStrategy {
                         substeps: vec![],
                     });
                 }
-                match solve(&new_eq, var, simplifier) {
+                match solve_with_ctx(&new_eq, var, simplifier, ctx) {
                     Ok((set, mut sub_steps)) => {
                         steps.append(&mut sub_steps);
                         return Some(Ok((set, steps)));
@@ -556,7 +540,7 @@ impl SolverStrategy for UnwrapStrategy {
                         substeps: vec![],
                     });
                 }
-                match solve(&new_eq, var, simplifier) {
+                match solve_with_ctx(&new_eq, var, simplifier, ctx) {
                     Ok((set, mut sub_steps)) => {
                         steps.append(&mut sub_steps);
                         return Some(Ok((set, steps)));
@@ -594,7 +578,7 @@ impl SolverStrategy for CollectTermsStrategy {
         var: &str,
         simplifier: &mut Simplifier,
         _opts: &SolverOptions,
-        _ctx: &SolveCtx,
+        ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
         let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
@@ -644,7 +628,7 @@ impl SolverStrategy for CollectTermsStrategy {
             rhs: simp_rhs,
             op: eq.op.clone(),
         };
-        match solve(&new_eq, var, simplifier) {
+        match solve_with_ctx(&new_eq, var, simplifier, ctx) {
             Ok((set, mut solve_steps)) => {
                 steps.append(&mut solve_steps);
                 Some(Ok((set, steps)))
@@ -670,7 +654,7 @@ impl SolverStrategy for RationalExponentStrategy {
         var: &str,
         simplifier: &mut Simplifier,
         _opts: &SolverOptions,
-        _ctx: &SolveCtx,
+        ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         // Only handle equality for now
         if eq.op != RelOp::Eq {
@@ -727,7 +711,7 @@ impl SolverStrategy for RationalExponentStrategy {
         }
 
         // Recursively solve the new equation
-        match solve(&new_eq, var, simplifier) {
+        match solve_with_ctx(&new_eq, var, simplifier, ctx) {
             Ok((set, mut sub_steps)) => {
                 steps.append(&mut sub_steps);
 

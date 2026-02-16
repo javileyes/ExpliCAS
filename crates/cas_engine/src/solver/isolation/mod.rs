@@ -24,7 +24,7 @@ pub(crate) fn isolate(
     var: &str,
     simplifier: &mut Simplifier,
     opts: SolverOptions,
-    env: &super::SolveDomainEnv,
+    ctx: &super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // Check recursion depth
     let current_depth = SOLVE_DEPTH.with(|d| *d.borrow());
@@ -113,22 +113,22 @@ pub(crate) fn isolate(
             Ok((set, steps))
         }
         Expr::Add(l, r) => {
-            arithmetic::isolate_add(lhs, l, r, rhs, op, var, simplifier, opts, steps, env)
+            arithmetic::isolate_add(lhs, l, r, rhs, op, var, simplifier, opts, steps, ctx)
         }
         Expr::Sub(l, r) => {
-            arithmetic::isolate_sub(l, r, rhs, op, var, simplifier, opts, steps, env)
+            arithmetic::isolate_sub(l, r, rhs, op, var, simplifier, opts, steps, ctx)
         }
         Expr::Mul(l, r) => {
-            arithmetic::isolate_mul(lhs, l, r, rhs, op, var, simplifier, opts, steps, env)
+            arithmetic::isolate_mul(lhs, l, r, rhs, op, var, simplifier, opts, steps, ctx)
         }
         Expr::Div(l, r) => {
-            arithmetic::isolate_div(lhs, l, r, rhs, op, var, simplifier, opts, steps, env)
+            arithmetic::isolate_div(lhs, l, r, rhs, op, var, simplifier, opts, steps, ctx)
         }
         Expr::Pow(b, e) => {
-            power::isolate_pow(lhs, b, e, rhs, op, var, simplifier, opts, steps, env)
+            power::isolate_pow(lhs, b, e, rhs, op, var, simplifier, opts, steps, ctx)
         }
         Expr::Function(fn_id, args) => {
-            functions::isolate_function(fn_id, args, rhs, op, var, simplifier, opts, steps, env)
+            functions::isolate_function(fn_id, args, rhs, op, var, simplifier, opts, steps, ctx)
         }
         Expr::Neg(inner) => {
             // -A = RHS -> A = -RHS
@@ -150,7 +150,7 @@ pub(crate) fn isolate(
                 });
             }
 
-            let results = isolate(inner, new_rhs, new_op, var, simplifier, opts, env)?;
+            let results = isolate(inner, new_rhs, new_op, var, simplifier, opts, ctx)?;
             prepend_steps(results, steps)
         }
         _ => Err(CasError::IsolationError(

@@ -20,14 +20,14 @@ pub(super) fn isolate_pow(
     simplifier: &mut Simplifier,
     opts: SolverOptions,
     steps: Vec<SolveStep>,
-    env: &super::super::SolveDomainEnv,
+    ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     if contains_var(&simplifier.context, b, var) {
         // Variable in base: B^E = RHS
-        isolate_pow_base(lhs, b, e, rhs, op, var, simplifier, opts, steps, env)
+        isolate_pow_base(lhs, b, e, rhs, op, var, simplifier, opts, steps, ctx)
     } else {
         // Variable in exponent: B^E = RHS → E = log_B(RHS)
-        isolate_pow_exponent(lhs, b, e, rhs, op, var, simplifier, opts, steps, env)
+        isolate_pow_exponent(lhs, b, e, rhs, op, var, simplifier, opts, steps, ctx)
     }
 }
 
@@ -43,7 +43,7 @@ fn isolate_pow_base(
     simplifier: &mut Simplifier,
     opts: SolverOptions,
     mut steps: Vec<SolveStep>,
-    env: &super::super::SolveDomainEnv,
+    ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // Check if exponent is an even integer
     let is_even = if let Some(n) = crate::solver::solution_set::get_number(&simplifier.context, e) {
@@ -114,7 +114,7 @@ fn isolate_pow_base(
             });
         }
 
-        let results = isolate(abs_b, new_rhs, op, var, simplifier, opts, env)?;
+        let results = isolate(abs_b, new_rhs, op, var, simplifier, opts, ctx)?;
         prepend_steps(results, steps)
     } else {
         // B = RHS^(1/E)
@@ -147,7 +147,7 @@ fn isolate_pow_base(
             new_op = flip_inequality(new_op);
         }
 
-        let results = isolate(b, new_rhs, new_op, var, simplifier, opts, env)?;
+        let results = isolate(b, new_rhs, new_op, var, simplifier, opts, ctx)?;
         prepend_steps(results, steps)
     }
 }
@@ -164,7 +164,7 @@ fn isolate_pow_exponent(
     simplifier: &mut Simplifier,
     opts: SolverOptions,
     mut steps: Vec<SolveStep>,
-    env: &super::super::SolveDomainEnv,
+    ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // ================================================================
     // POWER EQUALS BASE SHORTCUT: base^x = base
@@ -202,7 +202,7 @@ fn isolate_pow_exponent(
                 });
             }
 
-            let results = isolate(e, zero, RelOp::Gt, var, simplifier, opts, env)?;
+            let results = isolate(e, zero, RelOp::Gt, var, simplifier, opts, ctx)?;
             return prepend_steps(results, steps);
         } else {
             // base^x = base ⟹ x = 1 (when base ≠ 0, ≠ 1)
@@ -236,7 +236,7 @@ fn isolate_pow_exponent(
                     });
                 }
 
-                let results = isolate(e, one, op, var, simplifier, opts, env)?;
+                let results = isolate(e, one, op, var, simplifier, opts, ctx)?;
                 return prepend_steps(results, steps);
             }
 
@@ -268,7 +268,7 @@ fn isolate_pow_exponent(
                         substeps: vec![],
                     });
                 }
-                let results = isolate(e, one, op, var, simplifier, opts, env)?;
+                let results = isolate(e, one, op, var, simplifier, opts, ctx)?;
                 return prepend_steps(results, steps);
             }
 
@@ -361,7 +361,7 @@ fn isolate_pow_exponent(
                 });
             }
 
-            let results = isolate(e, rhs_exp, op, var, simplifier, opts, env)?;
+            let results = isolate(e, rhs_exp, op, var, simplifier, opts, ctx)?;
             return prepend_steps(results, steps);
         }
     }
@@ -448,7 +448,13 @@ fn isolate_pow_exponent(
         (b, rhs)
     };
 
-    let decision = classify_log_solve(&simplifier.context, tactic_base, tactic_rhs, &opts, env);
+    let decision = classify_log_solve(
+        &simplifier.context,
+        tactic_base,
+        tactic_rhs,
+        &opts,
+        &ctx.domain_env,
+    );
 
     match decision {
         LogSolveDecision::Ok => {
@@ -550,7 +556,7 @@ fn isolate_pow_exponent(
                 });
             }
 
-            let guarded_result = isolate(e, new_rhs, op.clone(), var, simplifier, opts, env);
+            let guarded_result = isolate(e, new_rhs, op.clone(), var, simplifier, opts, ctx);
 
             let residual = mk_residual_solve(&mut simplifier.context, lhs, rhs, var);
 
@@ -615,6 +621,6 @@ fn isolate_pow_exponent(
             substeps: vec![],
         });
     }
-    let results = isolate(e, new_rhs, op, var, simplifier, opts, env)?;
+    let results = isolate(e, new_rhs, op, var, simplifier, opts, ctx)?;
     prepend_steps(results, steps)
 }

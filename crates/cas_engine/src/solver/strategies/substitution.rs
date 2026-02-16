@@ -2,7 +2,7 @@ use super::{detect_substitution, substitute_expr};
 use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::isolation::contains_var;
-use crate::solver::solve;
+use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, RelOp, SolutionSet};
@@ -20,7 +20,7 @@ impl SolverStrategy for SubstitutionStrategy {
         var: &str,
         simplifier: &mut Simplifier,
         _opts: &SolverOptions,
-        _ctx: &SolveCtx,
+        ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         if let Some(sub_var_expr) = detect_substitution(&mut simplifier.context, eq, var) {
             let mut steps = Vec::new();
@@ -67,7 +67,7 @@ impl SolverStrategy for SubstitutionStrategy {
             }
 
             // Solve for u
-            let (u_solutions, mut u_steps) = match solve(&new_eq, u_sym, simplifier) {
+            let (u_solutions, mut u_steps) = match solve_with_ctx(&new_eq, u_sym, simplifier, ctx) {
                 Ok(res) => res,
                 Err(e) => return Some(Err(e)),
             };
@@ -97,10 +97,11 @@ impl SolverStrategy for SubstitutionStrategy {
                                 substeps: vec![],
                             });
                         }
-                        let (x_sol, mut x_steps) = match solve(&sub_eq, var, simplifier) {
-                            Ok(res) => res,
-                            Err(e) => return Some(Err(e)),
-                        };
+                        let (x_sol, mut x_steps) =
+                            match solve_with_ctx(&sub_eq, var, simplifier, ctx) {
+                                Ok(res) => res,
+                                Err(e) => return Some(Err(e)),
+                            };
                         // eprintln!("Back-substitute result for val {:?}: {:?}", val, x_sol);
                         steps.append(&mut x_steps);
 

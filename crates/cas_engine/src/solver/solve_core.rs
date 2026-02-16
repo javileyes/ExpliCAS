@@ -42,12 +42,6 @@ thread_local! {
     /// equivalent form that would be solved again.
     static SOLVE_SEEN: std::cell::RefCell<HashSet<u64>> =
         std::cell::RefCell::new(HashSet::new());
-
-    /// Diagnostics sink: captures the domain env from the last solve_with_options call.
-    /// Used by solve_with_display_steps to read required conditions after solving.
-    /// Private to solve_core — strategies NEVER read from this.
-    static DOMAIN_ENV_SINK: std::cell::RefCell<Option<SolveDomainEnv>> =
-        const { std::cell::RefCell::new(None) };
 }
 
 /// Compute a deterministic structural hash of an AST subtree.
@@ -112,15 +106,29 @@ impl Drop for CycleGuard {
 
 /// Solve with default options (for backward compatibility with tests).
 /// Uses RealOnly domain and Generic mode.
+///
+/// This creates a fresh `SolveCtx`; conditions are NOT propagated
+/// to any parent context. For recursive calls from strategies that
+/// need to accumulate conditions, use [`solve_with_ctx`] instead.
 pub fn solve(
     eq: &cas_ast::Equation,
     var: &str,
     simplifier: &mut Simplifier,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    // NOTE: Do NOT clear CURRENT_DOMAIN_ENV here. This function is called
-    // recursively by strategies (isolation, substitution, quadratic).
-    // Only solve_with_display_steps manages the env lifecycle.
     solve_with_options(eq, var, simplifier, SolverOptions::default())
+}
+
+/// Solve with a shared `SolveCtx` so conditions accumulate across recursive calls.
+///
+/// Called by strategies that have a `&SolveCtx` and want sub-solve conditions
+/// to feed into the top-level diagnostics.
+pub(crate) fn solve_with_ctx(
+    eq: &cas_ast::Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    ctx: &super::SolveCtx,
+) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+    solve_inner(eq, var, simplifier, SolverOptions::default(), ctx)
 }
 
 /// V2.9.8: Solve with type-enforced display-ready steps.
@@ -138,20 +146,13 @@ pub fn solve_with_display_steps(
     simplifier: &mut Simplifier,
     opts: SolverOptions,
 ) -> Result<(SolutionSet, DisplaySolveSteps, SolveDiagnostics), CasError> {
-    // Clear the diagnostics sink before solving
-    DOMAIN_ENV_SINK.with(|s| s.borrow_mut().take());
+    // Create a SolveCtx with a fresh accumulator — all recursive calls
+    // through solve_with_ctx will push conditions into this shared set.
+    let ctx = super::SolveCtx::default();
+    let result = solve_inner(eq, var, simplifier, opts, &ctx);
 
-    let result = solve_with_options(eq, var, simplifier, opts);
-
-    // Capture required conditions from the sink (populated during solving)
-    let required = DOMAIN_ENV_SINK.with(|s| {
-        s.borrow()
-            .as_ref()
-            .map(|env| env.required.conditions().iter().cloned().collect())
-            .unwrap_or_default()
-    });
-    // Clear the sink now that we've read from it
-    DOMAIN_ENV_SINK.with(|s| s.borrow_mut().take());
+    // Read accumulated conditions from the shared sink (zero TLS)
+    let required: Vec<_> = ctx.required_sink.borrow().iter().cloned().collect();
 
     let diagnostics = SolveDiagnostics {
         required,
@@ -167,19 +168,32 @@ pub fn solve_with_display_steps(
     Ok((solution_set, DisplaySolveSteps(cleaned), diagnostics))
 }
 
-/// Internal: Solve an equation with explicit semantic options.
+/// Solve with options but no shared context.
 ///
-/// **For display-facing code**, use [`solve_with_display_steps`] instead.
-/// This function returns raw steps that need cleanup before display.
-///
-/// `opts` contains ValueDomain and DomainMode which control:
-/// - Whether log operations are valid (RealOnly requires positive arguments)
-/// - Whether to emit assumptions or reject operations
+/// Creates a fresh, isolated `SolveCtx`. Conditions derived here do NOT
+/// propagate to any parent context. Prefer [`solve_with_ctx`] inside
+/// strategies that already hold a `&SolveCtx`.
 pub(crate) fn solve_with_options(
     eq: &cas_ast::Equation,
     var: &str,
     simplifier: &mut Simplifier,
     opts: SolverOptions,
+) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+    let ctx = super::SolveCtx::default();
+    solve_inner(eq, var, simplifier, opts, &ctx)
+}
+
+/// Core solver implementation.
+///
+/// All public entry points delegate here. `parent_ctx` carries the shared
+/// accumulator so that conditions from recursive calls are visible to the
+/// top-level caller.
+fn solve_inner(
+    eq: &cas_ast::Equation,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: SolverOptions,
+    parent_ctx: &super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // Check and increment recursion depth
     let current_depth = SOLVE_DEPTH.with(|d| {
@@ -245,20 +259,21 @@ pub(crate) fn solve_with_options(
         }
     }
 
-    // V2.2+: Build SolveCtx with the domain_env
-    let ctx = super::SolveCtx {
-        domain_env: domain_env.clone(),
-    };
+    // Push this level's conditions into the shared accumulator
+    for cond in domain_env.required.conditions().iter().cloned() {
+        parent_ctx.required_sink.borrow_mut().insert(cond);
+    }
 
-    // Write to the diagnostics sink so solve_with_display_steps can capture conditions
-    DOMAIN_ENV_SINK.with(|s| {
-        *s.borrow_mut() = Some(domain_env);
-    });
+    // Build a level-specific SolveCtx: fresh domain_env, same shared sink
+    let ctx = super::SolveCtx {
+        domain_env,
+        required_sink: parent_ctx.required_sink.clone(),
+    };
 
     // EARLY CHECK: Handle rational exponent equations BEFORE simplification
     // This prevents x^(3/2) from being simplified to |x|*sqrt(x) which causes loops
     if eq.op == cas_ast::RelOp::Eq {
-        if let Some(result) = try_solve_rational_exponent(eq, var, simplifier) {
+        if let Some(result) = try_solve_rational_exponent(eq, var, simplifier, &ctx) {
             // Wrap result with domain guards if needed
             return wrap_with_domain_guards(result, &domain_exclusions, simplifier);
         }
@@ -515,6 +530,7 @@ fn try_solve_rational_exponent(
     eq: &cas_ast::Equation,
     var: &str,
     simplifier: &mut Simplifier,
+    ctx: &super::SolveCtx,
 ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
     use super::strategies::match_rational_power;
     use cas_ast::Expr;
@@ -560,7 +576,7 @@ fn try_solve_rational_exponent(
     }
 
     // Recursively solve (this will go through the full solve pipeline)
-    match solve(&new_eq, var, simplifier) {
+    match solve_with_ctx(&new_eq, var, simplifier, ctx) {
         Ok((set, mut sub_steps)) => {
             steps.append(&mut sub_steps);
 

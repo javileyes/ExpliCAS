@@ -15,6 +15,9 @@ pub mod utilities;
 #[cfg(test)]
 use crate::engine::Simplifier;
 use cas_ast::{Equation, SolutionSet};
+use std::cell::RefCell;
+use std::collections::HashSet;
+use std::rc::Rc;
 
 pub use self::isolation::contains_var;
 pub use self::solve_core::{solve, solve_with_display_steps};
@@ -23,10 +26,26 @@ pub use self::solve_core::{solve, solve_with_display_steps};
 ///
 /// Holds per-invocation state that was formerly stored in TLS,
 /// enabling clean reentrancy for recursive/nested solves.
-#[derive(Debug, Clone, Default)]
+///
+/// The `required_sink` is a shared accumulator (`Rc<RefCell<…>>`)
+/// so that recursive sub-solves contribute conditions to the same set.
+/// `solve_with_display_steps` creates one, and every recursive
+/// `solve_with_ctx` / `solve_with_options` pushes into it.
+#[derive(Debug, Clone)]
 pub struct SolveCtx {
-    /// Domain environment inferred from equation structure.
+    /// Domain environment inferred from equation structure (per-level).
     pub domain_env: SolveDomainEnv,
+    /// Shared accumulator for required conditions across all recursive levels.
+    pub(crate) required_sink: Rc<RefCell<HashSet<crate::implicit_domain::ImplicitCondition>>>,
+}
+
+impl Default for SolveCtx {
+    fn default() -> Self {
+        Self {
+            domain_env: SolveDomainEnv::default(),
+            required_sink: Rc::new(RefCell::new(HashSet::new())),
+        }
+    }
 }
 
 /// Options for solver operations, containing semantic context.

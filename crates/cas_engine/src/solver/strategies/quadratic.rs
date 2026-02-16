@@ -4,7 +4,7 @@ use crate::error::CasError;
 use crate::ordering::compare_expr;
 use crate::solver::isolation::contains_var;
 use crate::solver::solution_set::{compare_values, neg_inf, pos_inf};
-use crate::solver::solve;
+use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{BoundType, Context, Equation, Expr, ExprId, Interval, RelOp, SolutionSet};
@@ -25,7 +25,7 @@ impl SolverStrategy for QuadraticStrategy {
         var: &str,
         simplifier: &mut Simplifier,
         _opts: &SolverOptions,
-        _ctx: &SolveCtx,
+        ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let mut steps = Vec::new();
 
@@ -115,7 +115,7 @@ impl SolverStrategy for QuadraticStrategy {
                     };
                     // Recursive solve
                     // We need to be careful about depth.
-                    match solve(&factor_eq, var, simplifier) {
+                    match solve_with_ctx(&factor_eq, var, simplifier, ctx) {
                         Ok((sol_set, mut sub_steps)) => {
                             steps.append(&mut sub_steps);
                             match sol_set {
