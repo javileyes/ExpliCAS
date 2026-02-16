@@ -1,7 +1,15 @@
 //! Solution verification module.
 //!
 //! Verifies solver solutions by substituting back into the original equation
-//! and checking if the result simplifies to zero (using Strict mode).
+//! and checking if the result simplifies to zero.
+//!
+//! Uses a **2-phase** approach:
+//! - **Phase 1 (Strict):** Domain-honest simplification that won't erase
+//!   conditions (e.g., won't cancel `x/x → 1` without proving `x ≠ 0`).
+//! - **Phase 2 (Generic fallback):** Only fires when the Strict residual is
+//!   **variable-free** (ground check). This safely handles cases where
+//!   `has_undefined_risk` blocks cancellation of concrete constants like
+//!   `sqrt(2)/sqrt(2)`, without risking parametric domain erasure.
 //!
 //! # Example
 //!
@@ -18,6 +26,7 @@ use cas_ast::{DisplayExpr, Equation, Expr, ExprId, SolutionSet};
 use num_traits::Zero;
 
 use crate::engine::Simplifier;
+use crate::implicit_domain::contains_variable;
 
 /// Result of verifying a single solution.
 #[derive(Debug, Clone)]
@@ -69,8 +78,10 @@ pub struct VerifyResult {
 /// # Algorithm
 /// 1. Substitute `var := solution` in both `lhs` and `rhs`
 /// 2. Compute `diff = lhs_sub - rhs_sub`
-/// 3. Simplify with **Strict mode** (no assumptions)
-/// 4. If result is `0` → `Verified`, otherwise → `Unverifiable`
+/// 3. **Phase 1:** Simplify with Strict mode (domain-honest)
+/// 4. If result is `0` → `Verified`
+/// 5. **Phase 2:** If residual is variable-free, retry with Generic mode
+/// 6. If result is `0` → `Verified`, otherwise → `Unverifiable`
 pub fn verify_solution(
     simplifier: &mut Simplifier,
     equation: &Equation,
@@ -84,8 +95,8 @@ pub fn verify_solution(
     // Step 2: Compute difference lhs - rhs
     let diff = simplifier.context.add(Expr::Sub(lhs_sub, rhs_sub));
 
-    // Step 3: Simplify with Strict mode (no assumptions allowed)
-    let opts = crate::SimplifyOptions {
+    // Phase 1: Strict mode — domain-honest, won't erase conditions
+    let strict_opts = crate::SimplifyOptions {
         shared: crate::phase::SharedSemanticConfig {
             semantics: crate::semantics::EvalConfig {
                 domain_mode: crate::domain::DomainMode::Strict,
@@ -95,22 +106,45 @@ pub fn verify_solution(
         },
         ..Default::default()
     };
-    let (simplified, _, _) = simplifier.simplify_with_stats(diff, opts);
+    let (strict_result, _, _) = simplifier.simplify_with_stats(diff, strict_opts);
 
-    // Step 4: Check if result is 0
-    match simplifier.context.get(simplified) {
-        Expr::Number(n) if n.is_zero() => VerifyStatus::Verified,
-        _ => {
-            let residual_str = DisplayExpr {
-                context: &simplifier.context,
-                id: simplified,
-            }
-            .to_string();
-            VerifyStatus::Unverifiable {
-                residual: simplified,
-                reason: format!("residual: {}", residual_str),
-            }
+    // Check if Strict already gives us 0
+    if matches!(simplifier.context.get(strict_result), Expr::Number(n) if n.is_zero()) {
+        return VerifyStatus::Verified;
+    }
+
+    // Phase 2: Generic fallback — ONLY when residual is variable-free.
+    // If no variables remain, this is a ground check (concrete values only),
+    // so Generic mode can't erase parametric domain conditions — there are none.
+    // This handles cases where Strict blocks cancellation of constants like
+    // sqrt(2)/sqrt(2) because prove_nonzero doesn't fully evaluate them.
+    if !contains_variable(&simplifier.context, strict_result) {
+        let generic_opts = crate::SimplifyOptions {
+            shared: crate::phase::SharedSemanticConfig {
+                semantics: crate::semantics::EvalConfig {
+                    domain_mode: crate::domain::DomainMode::Generic,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let (generic_result, _, _) = simplifier.simplify_with_stats(diff, generic_opts);
+
+        if matches!(simplifier.context.get(generic_result), Expr::Number(n) if n.is_zero()) {
+            return VerifyStatus::Verified;
         }
+    }
+
+    // Neither phase verified — report the Strict residual
+    let residual_str = DisplayExpr {
+        context: &simplifier.context,
+        id: strict_result,
+    }
+    .to_string();
+    VerifyStatus::Unverifiable {
+        residual: strict_result,
+        reason: format!("residual: {}", residual_str),
     }
 }
 
