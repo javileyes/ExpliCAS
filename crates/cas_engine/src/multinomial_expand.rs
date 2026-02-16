@@ -260,6 +260,21 @@ fn parse_linear_atom(ctx: &Context, term: ExprId) -> Option<LinearTerm> {
                 _ => None, // Mul of two non-numeric things (e.g., x*y) — not linear
             }
         }
+        // Pow with integer exponent (e.g., x^2) is a valid atom.
+        // Pow with fractional exponent (e.g., 2^(1/2) = √2) is NOT: expanding
+        // it produces nested Pow(Pow(base,frac),n) that doesn't fold, and it
+        // interferes with the rationalization pipeline.
+        Expr::Pow(_base, exp) => {
+            let is_integer_exp = matches!(ctx.get(*exp), Expr::Number(n) if n.is_integer());
+            if is_integer_exp {
+                Some(LinearTerm {
+                    coeff: BigRational::one(),
+                    var: Some(term),
+                })
+            } else {
+                None // fractional power → not a valid atom for multinomial expansion
+            }
+        }
         // Any other non-numeric expression: treat as opaque atom with coeff=1
         _ => Some(LinearTerm {
             coeff: BigRational::one(),
