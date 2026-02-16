@@ -489,8 +489,20 @@ impl crate::rule::Rule for SmallMultinomialExpansionRule {
         // like sin(x+y+z)^4 can replicate many nodes per term.
         let output_nodes = cas_ast::count_all_nodes(ctx, expanded);
         if output_nodes > SMALL_MULTI_MAX_OUTPUT_NODES {
+            tracing::debug!(
+                target: "multinomial",
+                k, n, pred_terms, output_nodes,
+                cap = SMALL_MULTI_MAX_OUTPUT_NODES,
+                "SmallMultinomialExpansionRule REJECTED: output_nodes exceeds cap"
+            );
             return None;
         }
+
+        tracing::debug!(
+            target: "multinomial",
+            k, n, pred_terms, output_nodes,
+            "SmallMultinomialExpansionRule ACCEPTED"
+        );
 
         let k_copy = k;
         let n_copy = n;

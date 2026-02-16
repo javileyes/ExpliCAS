@@ -86,6 +86,14 @@ Starting from v2.15.58, a **separate rule** auto-expands small multinomials duri
 (x + y + z)^3   →   x³ + 3·x²·y + 3·x·y² + ...  (10 terms)
 ```
 
+> [!IMPORTANT]
+> **UX asymmetry (deliberate):** Multinomials (k≥3) auto-expand in default mode,
+> but binomials like `(a+b)^4` do **not** — `BinomialExpansionRule` requires
+> `expand_mode`. Binomials have compact closed form; multinomials don't.
+> If future UX feedback changes this, add an `n ≤ threshold` path to
+> `BinomialExpansionRule` that fires in default mode.
+
+
 ### When Does It Fire?
 
 `SmallMultinomialExpansionRule` fires in **default mode** when ALL guards pass:

@@ -243,10 +243,18 @@ fn perf_max_boundary_case() {
 // k=2 no-fire: binomials stay on BinomialExpansionRule
 // =============================================================================
 
-/// (a+b)^4 is a binomial (k=2). SmallMultinomialExpansionRule requires k≥3,
-/// so it must NOT route here. In standard mode, BinomialExpansionRule also
-/// requires expand_mode, so the expression stays as Pow.
-/// This protects against refactors that accidentally route k=2 to multinomial.
+/// **UX asymmetry (deliberate)**:
+/// In default (standard) mode, multinomials (k≥3) auto-expand via
+/// `SmallMultinomialExpansionRule`, but binomials (k=2) do NOT expand —
+/// `BinomialExpansionRule` requires `expand_mode`.
+///
+/// Rationale: binomials like `(x+1)^3` are structurally compact and users
+/// typically want to see them factored. Multinomials like `(a+b+c)^2` have
+/// no compact closed form, so expanding is the natural "simplest" display.
+///
+/// If future UX feedback requests auto-expand for small binomials too,
+/// the fix is to add an `n ≤ threshold` path to `BinomialExpansionRule`
+/// that doesn't require `expand_mode`.
 #[test]
 fn binomial_not_routed_through_multinomial() {
     let result = simplify_str("(a + b)^4");
