@@ -202,6 +202,10 @@ pub struct Rewrite {
     /// These are metadata only - don't participate in the rewrite loop.
     /// Propagated to Step.substeps during step creation.
     pub substeps: Vec<crate::step::SubStep>,
+    /// When true, the anti-worsen growth guard is bypassed for this rewrite.
+    /// Use for rules that intentionally produce larger ASTs (e.g., recurrence expansions
+    /// like sin(n·arcsin(t))).
+    pub budget_exempt: bool,
 }
 
 impl Default for Rewrite {
@@ -216,6 +220,7 @@ impl Default for Rewrite {
             poly_proof: None,
             chained: vec![],
             substeps: vec![],
+            budget_exempt: false,
         }
     }
 }
@@ -369,6 +374,15 @@ impl Rewrite {
     #[must_use]
     pub fn substep(mut self, title: impl Into<String>, lines: Vec<String>) -> Self {
         self.substeps.push(crate::step::SubStep::new(title, lines));
+        self
+    }
+
+    /// Mark this rewrite as exempt from the anti-worsen growth budget.
+    /// Use for rules that intentionally expand expressions (e.g., recurrence-based
+    /// composition rules like sin(n·arctan(t))).
+    #[must_use]
+    pub fn budget_exempt(mut self) -> Self {
+        self.budget_exempt = true;
         self
     }
 }

@@ -84,56 +84,86 @@ pub(crate) fn get_square_root(context: &mut Context, expr: ExprId) -> Option<Exp
     }
 }
 
+/// Extract inner variable from `±target * x` pattern for any small positive integer `target`.
+///
+/// Returns `Some((is_positive, inner))` if the expression matches:
+/// - `Mul(Number(k), inner)` or `Mul(inner, Number(k))` where `|k| == target`
+/// - `Neg(Mul(Number(k), inner))` where `k == target`
+///
+/// `is_positive` is `true` when the sign is `+target`, `false` when `-target`.
+pub(crate) fn extract_int_multiple(
+    context: &Context,
+    expr: ExprId,
+    target: i64,
+) -> Option<(bool, ExprId)> {
+    debug_assert!(target > 0, "target must be a positive integer");
+    let target_big: num_bigint::BigInt = target.into();
+    let neg_target_big: num_bigint::BigInt = (-target).into();
+
+    // Check Neg(Mul(target, inner))
+    if let Expr::Neg(inner_neg) = context.get(expr) {
+        if let Expr::Mul(lhs, rhs) = context.get(*inner_neg) {
+            if let Expr::Number(n) = context.get(*lhs) {
+                if n.is_integer() && n.to_integer() == target_big {
+                    return Some((false, *rhs));
+                }
+            }
+            if let Expr::Number(n) = context.get(*rhs) {
+                if n.is_integer() && n.to_integer() == target_big {
+                    return Some((false, *lhs));
+                }
+            }
+        }
+        return None;
+    }
+
+    // Check Mul(±target, inner) or Mul(inner, ±target)
+    if let Expr::Mul(lhs, rhs) = context.get(expr) {
+        if let Expr::Number(n) = context.get(*lhs) {
+            if n.is_integer() {
+                let val = n.to_integer();
+                if val == target_big {
+                    return Some((true, *rhs));
+                }
+                if val == neg_target_big {
+                    return Some((false, *rhs));
+                }
+            }
+        }
+        if let Expr::Number(n) = context.get(*rhs) {
+            if n.is_integer() {
+                let val = n.to_integer();
+                if val == target_big {
+                    return Some((true, *lhs));
+                }
+                if val == neg_target_big {
+                    return Some((false, *lhs));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Extract inner variable from `2*x` pattern (for double angle identities).
+/// Backward-compatible wrapper around [`extract_int_multiple`].
+#[inline]
 pub(crate) fn extract_double_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
-    if let Expr::Mul(lhs, rhs) = context.get(expr) {
-        if let Expr::Number(n) = context.get(*lhs) {
-            if n.is_integer() && n.to_integer() == 2.into() {
-                return Some(*rhs);
-            }
-        }
-        if let Expr::Number(n) = context.get(*rhs) {
-            if n.is_integer() && n.to_integer() == 2.into() {
-                return Some(*lhs);
-            }
-        }
-    }
-    None
+    extract_int_multiple(context, expr, 2).and_then(|(positive, inner)| positive.then_some(inner))
 }
 
-/// Extract inner variable from 3*x pattern (for triple angle identities).
-/// Matches both Mul(3, x) and Mul(x, 3).
+/// Extract inner variable from `3*x` pattern (for triple angle identities).
+/// Backward-compatible wrapper around [`extract_int_multiple`].
+#[inline]
 pub(crate) fn extract_triple_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
-    if let Expr::Mul(lhs, rhs) = context.get(expr) {
-        if let Expr::Number(n) = context.get(*lhs) {
-            if n.is_integer() && n.to_integer() == 3.into() {
-                return Some(*rhs);
-            }
-        }
-        if let Expr::Number(n) = context.get(*rhs) {
-            if n.is_integer() && n.to_integer() == 3.into() {
-                return Some(*lhs);
-            }
-        }
-    }
-    None
+    extract_int_multiple(context, expr, 3).and_then(|(positive, inner)| positive.then_some(inner))
 }
 
-/// Extract inner variable from 5*x pattern (for quintuple angle identities).
-/// Matches both Mul(5, x) and Mul(x, 5).
+/// Extract inner variable from `5*x` pattern (for quintuple angle identities).
+/// Backward-compatible wrapper around [`extract_int_multiple`].
+#[inline]
 pub(crate) fn extract_quintuple_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
-    if let Expr::Mul(lhs, rhs) = context.get(expr) {
-        if let Expr::Number(n) = context.get(*lhs) {
-            if n.is_integer() && n.to_integer() == 5.into() {
-                return Some(*rhs);
-            }
-        }
-        if let Expr::Number(n) = context.get(*rhs) {
-            if n.is_integer() && n.to_integer() == 5.into() {
-                return Some(*lhs);
-            }
-        }
-    }
-    None
+    extract_int_multiple(context, expr, 5).and_then(|(positive, inner)| positive.then_some(inner))
 }
 
 /// Flatten an Add/Sub chain into a list of terms, converting subtractions to Neg.

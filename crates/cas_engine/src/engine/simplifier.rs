@@ -310,8 +310,12 @@ impl Simplifier {
         trigonometry::register(self); // Base trig functions
         inverse_trig::register(self); // Compositions like tan(arctan(x)) → x
 
-        // Weierstrass / inverse-trig bridge identities
-        // sin(2·atan(t)) → 2t/(1+t²), cos(2·atan(t)) → (1−t²)/(1+t²), etc.
+        // Generalized n-angle inverse-trig compositions (Weierstrass / Chebyshev / recurrence)
+        // Handles sin/cos/tan(n·arctan(t)) for n=1..10 via (1+it)^n recurrence
+        // (replaces hardcoded arctan rules in trig_inverse_compositions)
+        inv_trig_n_angle::register(self);
+
+        // Legacy arcsin/arccos compositions (n=2,3) — will be migrated to inv_trig_n_angle
         trig_inverse_compositions::register(self);
 
         // Expand trig(inverse_trig) to algebraic forms AFTER compositions

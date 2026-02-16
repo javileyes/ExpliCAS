@@ -11,6 +11,7 @@ pub mod grouping;
 pub mod hyperbolic;
 pub mod infinity;
 pub mod integration;
+pub mod inv_trig_n_angle;
 pub mod inverse_trig;
 pub mod logarithms;
 pub mod matrix_ops;
