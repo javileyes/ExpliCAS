@@ -1,6 +1,6 @@
 use crate::engine::Simplifier;
 use crate::error::CasError;
-use crate::solver::{SolveStep, SolverOptions};
+use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, SolutionSet};
 
 pub trait SolverStrategy {
@@ -17,6 +17,7 @@ pub trait SolverStrategy {
         var: &str,
         simplifier: &mut Simplifier,
         opts: &SolverOptions,
+        ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>>;
 
     /// Whether the solutions returned by this strategy should be verified by substitution.

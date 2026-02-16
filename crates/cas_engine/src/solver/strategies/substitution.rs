@@ -4,7 +4,7 @@ use crate::error::CasError;
 use crate::solver::isolation::contains_var;
 use crate::solver::solve;
 use crate::solver::strategy::SolverStrategy;
-use crate::solver::{SolveStep, SolverOptions};
+use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, RelOp, SolutionSet};
 
 pub struct SubstitutionStrategy;
@@ -20,6 +20,7 @@ impl SolverStrategy for SubstitutionStrategy {
         var: &str,
         simplifier: &mut Simplifier,
         _opts: &SolverOptions,
+        _ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         if let Some(sub_var_expr) = detect_substitution(&mut simplifier.context, eq, var) {
             let mut steps = Vec::new();

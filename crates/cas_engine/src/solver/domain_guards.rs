@@ -130,7 +130,7 @@ pub(crate) fn classify_log_solve(
     base: ExprId,
     rhs: ExprId,
     opts: &SolverOptions,
-    env: Option<&super::SolveDomainEnv>,
+    env: &super::SolveDomainEnv,
 ) -> LogSolveDecision {
     // Only applies to RealOnly mode
     // In Complex mode, this PR doesn't decide multi-valued branches
@@ -141,13 +141,9 @@ pub(crate) fn classify_log_solve(
     let mode = opts.domain_mode;
     let vd = opts.value_domain;
 
-    // V2.2+: Check env.required first - if condition is already required, treat as proven
-    // Fallback to TLS env if not passed explicitly (allows strategies to benefit without signature changes)
-    let tls_env = super::get_current_domain_env();
-    let effective_env = env.or(tls_env.as_ref());
-
-    let base_in_env = effective_env.map(|e| e.has_positive(base)).unwrap_or(false);
-    let rhs_in_env = effective_env.map(|e| e.has_positive(rhs)).unwrap_or(false);
+    // Check env.required for conditions already proven by domain inference
+    let base_in_env = env.has_positive(base);
+    let rhs_in_env = env.has_positive(rhs);
 
     let base_proof = if base_in_env {
         Proof::ProvenImplicit // Already in global requires
@@ -249,7 +245,13 @@ mod tests {
         let base = ctx.num(2); // 2 > 0 proven
         let rhs = ctx.num(8); // 8 > 0 proven
 
-        let decision = classify_log_solve(&ctx, base, rhs, &opts, None);
+        let decision = classify_log_solve(
+            &ctx,
+            base,
+            rhs,
+            &opts,
+            &super::super::SolveDomainEnv::default(),
+        );
         assert!(matches!(decision, LogSolveDecision::Ok));
     }
 
@@ -259,7 +261,13 @@ mod tests {
         let base = ctx.num(2);
         let rhs = ctx.num(-5);
 
-        let decision = classify_log_solve(&ctx, base, rhs, &opts, None);
+        let decision = classify_log_solve(
+            &ctx,
+            base,
+            rhs,
+            &opts,
+            &super::super::SolveDomainEnv::default(),
+        );
         assert!(matches!(decision, LogSolveDecision::EmptySet(_)));
     }
 
@@ -269,7 +277,13 @@ mod tests {
         let base = ctx.num(-2);
         let rhs = ctx.num(5);
 
-        let decision = classify_log_solve(&ctx, base, rhs, &opts, None);
+        let decision = classify_log_solve(
+            &ctx,
+            base,
+            rhs,
+            &opts,
+            &super::super::SolveDomainEnv::default(),
+        );
         assert!(matches!(decision, LogSolveDecision::NeedsComplex(_)));
     }
 
@@ -279,7 +293,13 @@ mod tests {
         let base = ctx.num(2);
         let rhs = ctx.var("y"); // Unknown
 
-        let decision = classify_log_solve(&ctx, base, rhs, &opts, None);
+        let decision = classify_log_solve(
+            &ctx,
+            base,
+            rhs,
+            &opts,
+            &super::super::SolveDomainEnv::default(),
+        );
         match decision {
             LogSolveDecision::OkWithAssumptions(assumptions) => {
                 assert!(assumptions.contains(&SolverAssumption::PositiveRhs));
@@ -294,7 +314,13 @@ mod tests {
         let base = ctx.num(2);
         let rhs = ctx.var("y");
 
-        let decision = classify_log_solve(&ctx, base, rhs, &opts, None);
+        let decision = classify_log_solve(
+            &ctx,
+            base,
+            rhs,
+            &opts,
+            &super::super::SolveDomainEnv::default(),
+        );
         assert!(matches!(decision, LogSolveDecision::Unsupported(_, _)));
     }
 
@@ -306,7 +332,13 @@ mod tests {
         let five = ctx.num(5);
         let rhs = ctx.add(cas_ast::Expr::Neg(five)); // Neg(5) instead of Number(-5)
 
-        let decision = classify_log_solve(&ctx, base, rhs, &opts, None);
+        let decision = classify_log_solve(
+            &ctx,
+            base,
+            rhs,
+            &opts,
+            &super::super::SolveDomainEnv::default(),
+        );
         assert!(
             matches!(decision, LogSolveDecision::EmptySet(_)),
             "Expected EmptySet for Neg(5), got {:?}",

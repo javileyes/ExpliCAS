@@ -21,9 +21,8 @@ use super::utilities::{
     extract_denominators_with_var, is_symbolic_expr, verify_solution, wrap_with_domain_guards,
 };
 use super::{
-    clear_current_domain_env, set_current_domain_env, step_cleanup, take_current_required,
-    DepthGuard, DisplaySolveSteps, SolveDomainEnv, SolveStep, SolverOptions, MAX_SOLVE_DEPTH,
-    SOLVE_DEPTH,
+    step_cleanup, DepthGuard, DisplaySolveSteps, SolveDomainEnv, SolveStep, SolverOptions,
+    MAX_SOLVE_DEPTH, SOLVE_DEPTH,
 };
 
 // NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)) and
@@ -43,6 +42,12 @@ thread_local! {
     /// equivalent form that would be solved again.
     static SOLVE_SEEN: std::cell::RefCell<HashSet<u64>> =
         std::cell::RefCell::new(HashSet::new());
+
+    /// Diagnostics sink: captures the domain env from the last solve_with_options call.
+    /// Used by solve_with_display_steps to read required conditions after solving.
+    /// Private to solve_core — strategies NEVER read from this.
+    static DOMAIN_ENV_SINK: std::cell::RefCell<Option<SolveDomainEnv>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 /// Compute a deterministic structural hash of an AST subtree.
@@ -133,11 +138,20 @@ pub fn solve_with_display_steps(
     simplifier: &mut Simplifier,
     opts: SolverOptions,
 ) -> Result<(SolutionSet, DisplaySolveSteps, SolveDiagnostics), CasError> {
+    // Clear the diagnostics sink before solving
+    DOMAIN_ENV_SINK.with(|s| s.borrow_mut().take());
+
     let result = solve_with_options(eq, var, simplifier, opts);
 
-    // Capture required conditions from CURRENT_DOMAIN_ENV before clearing
-    let required = take_current_required();
-    clear_current_domain_env();
+    // Capture required conditions from the sink (populated during solving)
+    let required = DOMAIN_ENV_SINK.with(|s| {
+        s.borrow()
+            .as_ref()
+            .map(|env| env.required.conditions().iter().cloned().collect())
+            .unwrap_or_default()
+    });
+    // Clear the sink now that we've read from it
+    DOMAIN_ENV_SINK.with(|s| s.borrow_mut().take());
 
     let diagnostics = SolveDiagnostics {
         required,
@@ -231,14 +245,15 @@ pub(crate) fn solve_with_options(
         }
     }
 
-    // V2.2+: Set domain_env in TLS for strategies to access via get_current_domain_env()
-    set_current_domain_env(domain_env);
+    // V2.2+: Build SolveCtx with the domain_env
+    let ctx = super::SolveCtx {
+        domain_env: domain_env.clone(),
+    };
 
-    // NOTE: Callers (solve_with_display_steps, solve) are responsible for
-    // calling clear_current_domain_env() after this function returns.
-    // This allows solve_with_display_steps to read conditions from
-    // CURRENT_DOMAIN_ENV before clearing, eliminating the need for
-    // LAST_SOLVER_REQUIRED TLS intermediary.
+    // Write to the diagnostics sink so solve_with_display_steps can capture conditions
+    DOMAIN_ENV_SINK.with(|s| {
+        *s.borrow_mut() = Some(domain_env);
+    });
 
     // EARLY CHECK: Handle rational exponent equations BEFORE simplification
     // This prevents x^(3/2) from being simplified to |x|*sqrt(x) which causes loops
@@ -453,7 +468,7 @@ pub(crate) fn solve_with_options(
 
     // 4. Try strategies on the simplified equation
     for strategy in strategies {
-        if let Some(res) = strategy.apply(&simplified_eq, var, simplifier, &opts) {
+        if let Some(res) = strategy.apply(&simplified_eq, var, simplifier, &opts, &ctx) {
             match res {
                 Ok((result, steps)) => {
                     // Verify solutions if Discrete

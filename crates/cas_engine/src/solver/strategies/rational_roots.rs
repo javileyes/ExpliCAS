@@ -14,7 +14,7 @@ use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::isolation::contains_var;
 use crate::solver::strategy::SolverStrategy;
-use crate::solver::{SolveStep, SolverOptions};
+use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
@@ -39,6 +39,7 @@ impl SolverStrategy for RationalRootsStrategy {
         var: &str,
         simplifier: &mut Simplifier,
         _opts: &SolverOptions,
+        _ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         // Only handle equality
         if eq.op != RelOp::Eq {

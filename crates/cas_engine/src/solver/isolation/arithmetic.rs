@@ -19,6 +19,7 @@ pub(super) fn isolate_add(
     simplifier: &mut Simplifier,
     opts: SolverOptions,
     mut steps: Vec<SolveStep>,
+    env: &super::super::SolveDomainEnv,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // PEDAGOGICAL IMPROVEMENT: If BOTH addends contain the variable,
     // try linear_collect directly to avoid circular "subtract" steps.
@@ -58,7 +59,7 @@ pub(super) fn isolate_add(
                 substeps: vec![],
             });
         }
-        let results = isolate(l, sim_rhs, op, var, simplifier, opts)?;
+        let results = isolate(l, sim_rhs, op, var, simplifier, opts, env)?;
         prepend_steps(results, steps)
     } else {
         // B = RHS - A
@@ -83,7 +84,7 @@ pub(super) fn isolate_add(
                 substeps: vec![],
             });
         }
-        let results = isolate(r, sim_rhs, op, var, simplifier, opts)?;
+        let results = isolate(r, sim_rhs, op, var, simplifier, opts, env)?;
         prepend_steps(results, steps)
     }
 }
@@ -99,6 +100,7 @@ pub(super) fn isolate_sub(
     simplifier: &mut Simplifier,
     opts: SolverOptions,
     mut steps: Vec<SolveStep>,
+    env: &super::super::SolveDomainEnv,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     if contains_var(&simplifier.context, l, var) {
         // A = RHS + B
@@ -123,7 +125,7 @@ pub(super) fn isolate_sub(
                 substeps: vec![],
             });
         }
-        let results = isolate(l, sim_rhs, op, var, simplifier, opts)?;
+        let results = isolate(l, sim_rhs, op, var, simplifier, opts, env)?;
         prepend_steps(results, steps)
     } else {
         // -B = RHS - A -> B = A - RHS
@@ -150,7 +152,7 @@ pub(super) fn isolate_sub(
                 substeps: vec![],
             });
         }
-        let results = isolate(r, sim_rhs, new_op, var, simplifier, opts)?;
+        let results = isolate(r, sim_rhs, new_op, var, simplifier, opts, env)?;
         prepend_steps(results, steps)
     }
 }
@@ -167,6 +169,7 @@ pub(super) fn isolate_mul(
     simplifier: &mut Simplifier,
     opts: SolverOptions,
     mut steps: Vec<SolveStep>,
+    env: &super::super::SolveDomainEnv,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // CRITICAL: For inequalities with products, need sign analysis
     let both_have_var =
@@ -333,7 +336,7 @@ pub(super) fn isolate_mul(
                 substeps: vec![],
             });
         }
-        let results = isolate(l, new_rhs, new_op, var, simplifier, opts)?;
+        let results = isolate(l, new_rhs, new_op, var, simplifier, opts, env)?;
         prepend_steps(results, steps)
     } else {
         // B = RHS / A (r contains var, l doesn't)
@@ -372,7 +375,7 @@ pub(super) fn isolate_mul(
                 substeps: vec![],
             });
         }
-        let results = isolate(r, new_rhs, new_op, var, simplifier, opts)?;
+        let results = isolate(r, new_rhs, new_op, var, simplifier, opts, env)?;
         prepend_steps(results, steps)
     }
 }
@@ -389,6 +392,7 @@ pub(super) fn isolate_div(
     simplifier: &mut Simplifier,
     opts: SolverOptions,
     mut steps: Vec<SolveStep>,
+    env: &super::super::SolveDomainEnv,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     if contains_var(&simplifier.context, l, var) {
         if contains_var(&simplifier.context, r, var)
@@ -419,7 +423,7 @@ pub(super) fn isolate_div(
                 });
             }
 
-            let results_pos = isolate(l, sim_rhs, op_pos, var, simplifier, opts)?;
+            let results_pos = isolate(l, sim_rhs, op_pos, var, simplifier, opts, env)?;
             let (set_pos, steps_pos) = prepend_steps(results_pos, steps.clone())?;
 
             // Domain: r > 0
@@ -456,7 +460,7 @@ pub(super) fn isolate_div(
                 });
             }
 
-            let results_neg = isolate(l, sim_rhs, op_neg, var, simplifier, opts)?;
+            let results_neg = isolate(l, sim_rhs, op_neg, var, simplifier, opts, env)?;
             let (set_neg, steps_neg) = prepend_steps(results_neg, steps.clone())?;
 
             // Domain: r < 0
@@ -514,7 +518,7 @@ pub(super) fn isolate_div(
                     substeps: vec![],
                 });
             }
-            let results = isolate(l, new_rhs, new_op, var, simplifier, opts)?;
+            let results = isolate(l, new_rhs, new_op, var, simplifier, opts, env)?;
             prepend_steps(results, steps)
         }
     } else {
@@ -575,7 +579,7 @@ pub(super) fn isolate_div(
                     });
                 }
 
-                let results_pos = isolate(r, sim_rhs, op_pos, var, simplifier, opts)?;
+                let results_pos = isolate(r, sim_rhs, op_pos, var, simplifier, opts, env)?;
                 let (set_pos, steps_pos) = prepend_steps(results_pos, steps_case1)?;
 
                 // Intersect with (0, inf)
@@ -614,7 +618,7 @@ pub(super) fn isolate_div(
                     });
                 }
 
-                let results_neg = isolate(r, sim_rhs, op_neg, var, simplifier, opts)?;
+                let results_neg = isolate(r, sim_rhs, op_neg, var, simplifier, opts, env)?;
                 let (set_neg, steps_neg) = prepend_steps(results_neg, steps_case2)?;
 
                 // Intersect with (-inf, 0)
@@ -684,7 +688,7 @@ pub(super) fn isolate_div(
                 substeps: vec![],
             });
         }
-        let results = isolate(r, sim_rhs, op, var, simplifier, opts)?;
+        let results = isolate(r, sim_rhs, op, var, simplifier, opts, env)?;
         prepend_steps(results, steps)
     }
 }

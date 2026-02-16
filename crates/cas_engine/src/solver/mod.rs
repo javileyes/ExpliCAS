@@ -19,6 +19,16 @@ use cas_ast::{Equation, SolutionSet};
 pub use self::isolation::contains_var;
 pub use self::solve_core::{solve, solve_with_display_steps};
 
+/// Solver context — threaded explicitly through the solve pipeline.
+///
+/// Holds per-invocation state that was formerly stored in TLS,
+/// enabling clean reentrancy for recursive/nested solves.
+#[derive(Debug, Clone, Default)]
+pub struct SolveCtx {
+    /// Domain environment inferred from equation structure.
+    pub domain_env: SolveDomainEnv,
+}
+
 /// Options for solver operations, containing semantic context.
 ///
 /// This struct passes value domain and domain mode information to the solver,
@@ -294,42 +304,6 @@ thread_local! {
     /// Strategies emit scopes like "QuadraticFormula" which affect display transforms.
     static OUTPUT_SCOPES: std::cell::RefCell<Vec<cas_ast::display_transforms::ScopeTag>> =
         const { std::cell::RefCell::new(Vec::new()) };
-    /// Thread-local current domain environment for solver.
-    /// Set by solve_with_options, consulted by classify_log_solve via get_current_domain_env().
-    static CURRENT_DOMAIN_ENV: std::cell::RefCell<Option<SolveDomainEnv>> =
-        const { std::cell::RefCell::new(None) };
-}
-
-/// Get the current domain environment (if set by an enclosing solve).
-/// Used by classify_log_solve to check if conditions are already proven.
-pub fn get_current_domain_env() -> Option<SolveDomainEnv> {
-    CURRENT_DOMAIN_ENV.with(|e| e.borrow().clone())
-}
-
-/// Set the current domain environment (called by solve_with_options).
-fn set_current_domain_env(env: SolveDomainEnv) {
-    CURRENT_DOMAIN_ENV.with(|e| {
-        *e.borrow_mut() = Some(env);
-    });
-}
-
-/// Clear the current domain environment (called on solve exit).
-fn clear_current_domain_env() {
-    CURRENT_DOMAIN_ENV.with(|e| {
-        *e.borrow_mut() = None;
-    });
-}
-
-/// Take required conditions from the current domain environment.
-/// Must be called BEFORE `clear_current_domain_env()` to capture conditions.
-/// Returns an empty Vec if no domain environment is set.
-pub(crate) fn take_current_required() -> Vec<crate::implicit_domain::ImplicitCondition> {
-    CURRENT_DOMAIN_ENV.with(|e| {
-        e.borrow()
-            .as_ref()
-            .map(|env| env.required.conditions().iter().cloned().collect())
-            .unwrap_or_default()
-    })
 }
 
 /// RAII guard for solver assumption collection.

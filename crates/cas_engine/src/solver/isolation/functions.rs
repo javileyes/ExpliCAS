@@ -20,15 +20,16 @@ pub(super) fn isolate_function(
     simplifier: &mut Simplifier,
     opts: SolverOptions,
     steps: Vec<SolveStep>,
+    env: &super::super::SolveDomainEnv,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     if simplifier.context.is_builtin(fn_id, BuiltinFn::Abs) && args.len() == 1 {
-        isolate_abs(args[0], rhs, op, var, simplifier, opts, steps)
+        isolate_abs(args[0], rhs, op, var, simplifier, opts, steps, env)
     } else if simplifier.context.is_builtin(fn_id, BuiltinFn::Log) && args.len() == 2 {
-        isolate_log(args[0], args[1], rhs, op, var, simplifier, opts, steps)
+        isolate_log(args[0], args[1], rhs, op, var, simplifier, opts, steps, env)
     } else if args.len() == 1 {
         let arg = args[0];
         if contains_var(&simplifier.context, arg, var) {
-            isolate_unary_function(fn_id, arg, rhs, op, var, simplifier, opts, steps)
+            isolate_unary_function(fn_id, args[0], rhs, op, var, simplifier, opts, steps, env)
         } else {
             Err(CasError::VariableNotFound(var.to_string()))
         }
@@ -58,6 +59,7 @@ fn isolate_abs(
     simplifier: &mut Simplifier,
     opts: SolverOptions,
     steps: Vec<SolveStep>,
+    env: &super::super::SolveDomainEnv,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // ── Pre-check: numeric RHS ──────────────────────────────────────────
     // |A| is always ≥ 0, so |A| = negative is impossible.
@@ -70,7 +72,7 @@ fn isolate_abs(
             }
             if n.is_zero() {
                 // |A| = 0  →  A = 0  (only one branch needed)
-                return isolate(arg, rhs, op, var, simplifier, opts);
+                return isolate(arg, rhs, op, var, simplifier, opts, env);
             }
             // n > 0: fall through to normal branch split
         }
@@ -102,7 +104,7 @@ fn isolate_abs(
             substeps: vec![],
         });
     }
-    let results1 = isolate(arg, rhs, op.clone(), var, simplifier, opts)?;
+    let results1 = isolate(arg, rhs, op.clone(), var, simplifier, opts, env)?;
     let (set1, steps1_out) = prepend_steps(results1, steps1)?;
 
     // ── Branch 2: Negative case ─────────────────────────────────────────
@@ -141,7 +143,7 @@ fn isolate_abs(
             substeps: vec![],
         });
     }
-    let results2 = isolate(arg, neg_rhs, op2, var, simplifier, opts)?;
+    let results2 = isolate(arg, neg_rhs, op2, var, simplifier, opts, env)?;
     let (set2, steps2_out) = prepend_steps(results2, steps2)?;
 
     // ── Combine branches ────────────────────────────────────────────────
@@ -180,6 +182,7 @@ fn isolate_log(
     simplifier: &mut Simplifier,
     opts: SolverOptions,
     mut steps: Vec<SolveStep>,
+    env: &super::super::SolveDomainEnv,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     if contains_var(&simplifier.context, arg, var) && !contains_var(&simplifier.context, base, var)
     {
@@ -204,7 +207,7 @@ fn isolate_log(
                 substeps: vec![],
             });
         }
-        let results = isolate(arg, new_rhs, op, var, simplifier, opts)?;
+        let results = isolate(arg, new_rhs, op, var, simplifier, opts, env)?;
         prepend_steps(results, steps)
     } else if contains_var(&simplifier.context, base, var)
         && !contains_var(&simplifier.context, arg, var)
@@ -225,7 +228,7 @@ fn isolate_log(
                 substeps: vec![],
             });
         }
-        let results = isolate(base, new_rhs, op, var, simplifier, opts)?;
+        let results = isolate(base, new_rhs, op, var, simplifier, opts, env)?;
         prepend_steps(results, steps)
     } else {
         Err(CasError::IsolationError(
@@ -246,6 +249,7 @@ fn isolate_unary_function(
     simplifier: &mut Simplifier,
     opts: SolverOptions,
     mut steps: Vec<SolveStep>,
+    env: &super::super::SolveDomainEnv,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     match simplifier.context.sym_name(fn_id) {
         "ln" => {
@@ -264,7 +268,7 @@ fn isolate_unary_function(
                     substeps: vec![],
                 });
             }
-            let results = isolate(arg, new_rhs, op, var, simplifier, opts)?;
+            let results = isolate(arg, new_rhs, op, var, simplifier, opts, env)?;
             prepend_steps(results, steps)
         }
         "exp" => {
@@ -282,7 +286,7 @@ fn isolate_unary_function(
                     substeps: vec![],
                 });
             }
-            let results = isolate(arg, new_rhs, op, var, simplifier, opts)?;
+            let results = isolate(arg, new_rhs, op, var, simplifier, opts, env)?;
             prepend_steps(results, steps)
         }
         "sqrt" => {
@@ -301,7 +305,7 @@ fn isolate_unary_function(
                     substeps: vec![],
                 });
             }
-            let results = isolate(arg, new_rhs, op, var, simplifier, opts)?;
+            let results = isolate(arg, new_rhs, op, var, simplifier, opts, env)?;
             prepend_steps(results, steps)
         }
         "sin" => {
@@ -323,7 +327,7 @@ fn isolate_unary_function(
             let (simplified_rhs, sim_steps) = simplify_rhs(new_rhs, arg, op.clone(), simplifier);
             steps.extend(sim_steps);
 
-            let results = isolate(arg, simplified_rhs, op, var, simplifier, opts)?;
+            let results = isolate(arg, simplified_rhs, op, var, simplifier, opts, env)?;
             prepend_steps(results, steps)
         }
         "cos" => {
@@ -345,7 +349,7 @@ fn isolate_unary_function(
             let (simplified_rhs, sim_steps) = simplify_rhs(new_rhs, arg, op.clone(), simplifier);
             steps.extend(sim_steps);
 
-            let results = isolate(arg, simplified_rhs, op, var, simplifier, opts)?;
+            let results = isolate(arg, simplified_rhs, op, var, simplifier, opts, env)?;
             prepend_steps(results, steps)
         }
         "tan" => {
@@ -367,7 +371,7 @@ fn isolate_unary_function(
             let (simplified_rhs, sim_steps) = simplify_rhs(new_rhs, arg, op.clone(), simplifier);
             steps.extend(sim_steps);
 
-            let results = isolate(arg, simplified_rhs, op, var, simplifier, opts)?;
+            let results = isolate(arg, simplified_rhs, op, var, simplifier, opts, env)?;
             prepend_steps(results, steps)
         }
         _ => Err(CasError::UnknownFunction(

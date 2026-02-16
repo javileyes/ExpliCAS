@@ -3,7 +3,7 @@ use crate::error::CasError;
 use crate::solver::isolation::{contains_var, isolate};
 use crate::solver::solve;
 use crate::solver::strategy::SolverStrategy;
-use crate::solver::{SolveStep, SolverOptions};
+use crate::solver::{SolveCtx, SolveDomainEnv, SolveStep, SolverOptions};
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
 use num_traits::Zero;
 
@@ -20,6 +20,7 @@ impl SolverStrategy for IsolationStrategy {
         var: &str,
         simplifier: &mut Simplifier,
         opts: &SolverOptions,
+        ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         // Isolation strategy expects variable on LHS.
         // The main solve loop handles swapping, but we should check here or just assume?
@@ -65,7 +66,15 @@ impl SolverStrategy for IsolationStrategy {
                 });
             }
             // V2.0: Pass opts through to propagate budget
-            match isolate(eq.rhs, eq.lhs, new_op, var, simplifier, *opts) {
+            match isolate(
+                eq.rhs,
+                eq.lhs,
+                new_op,
+                var,
+                simplifier,
+                *opts,
+                &ctx.domain_env,
+            ) {
                 Ok((set, mut iso_steps)) => {
                     steps.append(&mut iso_steps);
                     return Some(Ok((set, steps)));
@@ -76,7 +85,15 @@ impl SolverStrategy for IsolationStrategy {
 
         // LHS has var
         // V2.0: Pass opts through to propagate budget
-        match isolate(eq.lhs, eq.rhs, eq.op.clone(), var, simplifier, *opts) {
+        match isolate(
+            eq.lhs,
+            eq.rhs,
+            eq.op.clone(),
+            var,
+            simplifier,
+            *opts,
+            &ctx.domain_env,
+        ) {
             Ok((set, steps)) => Some(Ok((set, steps))),
             Err(e) => Some(Err(e)),
         }
@@ -97,6 +114,7 @@ fn check_exponential_needs_complex(
     var: &str,
     simplifier: &mut Simplifier,
     opts: &SolverOptions,
+    env: &SolveDomainEnv,
     lhs_has: bool,
     rhs_has: bool,
 ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
@@ -111,7 +129,7 @@ fn check_exponential_needs_complex(
             if contains_var(&simplifier.context, exp, var)
                 && !contains_var(&simplifier.context, base, var)
             {
-                let decision = classify_log_solve(&simplifier.context, base, eq.rhs, opts, None);
+                let decision = classify_log_solve(&simplifier.context, base, eq.rhs, opts, env);
 
                 match &decision {
                     LogSolveDecision::EmptySet(msg) => {
@@ -168,7 +186,7 @@ fn check_exponential_needs_complex(
             if contains_var(&simplifier.context, exp, var)
                 && !contains_var(&simplifier.context, base, var)
             {
-                let decision = classify_log_solve(&simplifier.context, base, eq.lhs, opts, None);
+                let decision = classify_log_solve(&simplifier.context, base, eq.lhs, opts, env);
 
                 match &decision {
                     LogSolveDecision::EmptySet(msg) => {
@@ -238,6 +256,7 @@ impl SolverStrategy for UnwrapStrategy {
         var: &str,
         simplifier: &mut Simplifier,
         opts: &SolverOptions,
+        ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         // Try to unwrap functions on LHS or RHS to expose the variable or transform the equation.
         // This is useful when var is on both sides, e.g. sqrt(2x+3) = x.
@@ -256,9 +275,15 @@ impl SolverStrategy for UnwrapStrategy {
 
         // EARLY CHECK: Handle exponential NeedsComplex + Wildcard -> Residual
         // This must be before the closure to be able to return SolutionSet::Residual
-        if let Some(result) =
-            check_exponential_needs_complex(eq, var, simplifier, opts, lhs_has, rhs_has)
-        {
+        if let Some(result) = check_exponential_needs_complex(
+            eq,
+            var,
+            simplifier,
+            opts,
+            &ctx.domain_env,
+            lhs_has,
+            rhs_has,
+        ) {
             return Some(result);
         }
 
@@ -425,8 +450,13 @@ impl SolverStrategy for UnwrapStrategy {
                         }
 
                         // Use the domain classifier
-                        let decision =
-                            classify_log_solve(&simplifier.context, b, other, opts, None);
+                        let decision = classify_log_solve(
+                            &simplifier.context,
+                            b,
+                            other,
+                            opts,
+                            &ctx.domain_env,
+                        );
 
                         match decision {
                             LogSolveDecision::Ok => {
@@ -564,6 +594,7 @@ impl SolverStrategy for CollectTermsStrategy {
         var: &str,
         simplifier: &mut Simplifier,
         _opts: &SolverOptions,
+        _ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
         let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
@@ -639,6 +670,7 @@ impl SolverStrategy for RationalExponentStrategy {
         var: &str,
         simplifier: &mut Simplifier,
         _opts: &SolverOptions,
+        _ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         // Only handle equality for now
         if eq.op != RelOp::Eq {
