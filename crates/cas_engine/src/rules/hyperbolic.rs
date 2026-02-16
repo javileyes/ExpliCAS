@@ -2,6 +2,7 @@ use crate::define_rule;
 use crate::helpers::{is_one, is_zero};
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use num_traits::Signed;
 use std::cmp::Ordering;
 
 // ==================== Helper Functions ====================
@@ -134,6 +135,8 @@ define_rule!(
 );
 
 // Rule 3: Negative argument identities
+// Handles both explicit Neg(x) and Sub(a,b) where a < b canonically.
+// V2.16: Extended to catch Sub patterns like sinh(1-u²) → -sinh(u²-1).
 define_rule!(
     HyperbolicNegativeRule,
     "Hyperbolic Negative Argument",
@@ -142,42 +145,142 @@ define_rule!(
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             if args.len() == 1 {
                 let arg = args[0];
+                let fn_id = *fn_id;
+
+                // Case 1: Explicit Neg(inner)
                 if let Expr::Neg(inner) = ctx.get(arg) {
-                    match ctx.builtin_of(*fn_id) {
-                        // sinh(-x) = -sinh(x) (odd function)
+                    let inner = *inner;
+                    match ctx.builtin_of(fn_id) {
                         Some(BuiltinFn::Sinh) => {
                             let sinh_inner =
-                                ctx.call_builtin(cas_ast::BuiltinFn::Sinh, vec![*inner]);
+                                ctx.call_builtin(cas_ast::BuiltinFn::Sinh, vec![inner]);
                             let new_expr = ctx.add(Expr::Neg(sinh_inner));
                             return Some(Rewrite::new(new_expr).desc("sinh(-x) = -sinh(x)"));
                         }
-                        // cosh(-x) = cosh(x) (even function)
                         Some(BuiltinFn::Cosh) => {
-                            let new_expr = ctx.call_builtin(cas_ast::BuiltinFn::Cosh, vec![*inner]);
+                            let new_expr = ctx.call_builtin(cas_ast::BuiltinFn::Cosh, vec![inner]);
                             return Some(Rewrite::new(new_expr).desc("cosh(-x) = cosh(x)"));
                         }
-                        // tanh(-x) = -tanh(x) (odd function)
                         Some(BuiltinFn::Tanh) => {
                             let tanh_inner =
-                                ctx.call_builtin(cas_ast::BuiltinFn::Tanh, vec![*inner]);
+                                ctx.call_builtin(cas_ast::BuiltinFn::Tanh, vec![inner]);
                             let new_expr = ctx.add(Expr::Neg(tanh_inner));
                             return Some(Rewrite::new(new_expr).desc("tanh(-x) = -tanh(x)"));
                         }
-                        // asinh(-x) = -asinh(x) (odd function)
                         Some(BuiltinFn::Asinh) => {
                             let asinh_inner =
-                                ctx.call_builtin(cas_ast::BuiltinFn::Asinh, vec![*inner]);
+                                ctx.call_builtin(cas_ast::BuiltinFn::Asinh, vec![inner]);
                             let new_expr = ctx.add(Expr::Neg(asinh_inner));
                             return Some(Rewrite::new(new_expr).desc("asinh(-x) = -asinh(x)"));
                         }
-                        // atanh(-x) = -atanh(x) (odd function)
                         Some(BuiltinFn::Atanh) => {
                             let atanh_inner =
-                                ctx.call_builtin(cas_ast::BuiltinFn::Atanh, vec![*inner]);
+                                ctx.call_builtin(cas_ast::BuiltinFn::Atanh, vec![inner]);
                             let new_expr = ctx.add(Expr::Neg(atanh_inner));
                             return Some(Rewrite::new(new_expr).desc("atanh(-x) = -atanh(x)"));
                         }
                         _ => {}
+                    }
+                }
+
+                // Case 2: Difference argument where a < b canonically
+                // Detect (a - b) in Sub(a,b), Add(a, Neg(b)), Add(Neg(b), a),
+                // or Add(x, Number(-k)) forms.
+                // Treat as -(b-a) for parity purposes.
+                // Example: sinh(1 - u²) where 1 < u² → -sinh(u² - 1)
+                let diff_pair = match ctx.get(arg) {
+                    Expr::Sub(a, b) => Some((*a, *b)),
+                    Expr::Add(l, r) => {
+                        let (l, r) = (*l, *r);
+                        if let Expr::Neg(x) = ctx.get(r) {
+                            Some((l, *x))
+                        } else if let Expr::Neg(x) = ctx.get(l) {
+                            Some((r, *x))
+                        } else if let Expr::Number(n) = ctx.get(r) {
+                            if n.is_negative() {
+                                let pos_k = ctx.add(Expr::Number(-n.clone()));
+                                Some((l, pos_k))
+                            } else {
+                                None
+                            }
+                        } else if let Expr::Number(n) = ctx.get(l) {
+                            if n.is_negative() {
+                                let pos_k = ctx.add(Expr::Number(-n.clone()));
+                                Some((r, pos_k))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                };
+                if let Some((a, b)) = diff_pair {
+                    // Guard: only apply for small operands (≤ 20 dedup nodes each)
+                    let small_enough = |id: ExprId| -> bool {
+                        let mut seen = std::collections::HashSet::new();
+                        let mut stack = vec![id];
+                        while let Some(nid) = stack.pop() {
+                            if !seen.insert(nid) {
+                                continue;
+                            }
+                            if seen.len() > 20 {
+                                return false;
+                            }
+                            match ctx.get(nid) {
+                                Expr::Add(l, r)
+                                | Expr::Sub(l, r)
+                                | Expr::Mul(l, r)
+                                | Expr::Div(l, r)
+                                | Expr::Pow(l, r) => {
+                                    stack.push(*l);
+                                    stack.push(*r);
+                                }
+                                Expr::Neg(e) | Expr::Hold(e) => stack.push(*e),
+                                Expr::Function(_, fargs) => stack.extend(fargs),
+                                _ => {}
+                            }
+                        }
+                        true
+                    };
+
+                    if small_enough(a)
+                        && small_enough(b)
+                        && crate::ordering::compare_expr(ctx, a, b) == Ordering::Less
+                    {
+                        let canonical_arg = ctx.add(Expr::Sub(b, a));
+                        match ctx.builtin_of(fn_id) {
+                            Some(BuiltinFn::Sinh) => {
+                                let sinh = ctx.call_builtin(BuiltinFn::Sinh, vec![canonical_arg]);
+                                let neg_sinh = ctx.add(Expr::Neg(sinh));
+                                return Some(Rewrite::new(neg_sinh).desc("sinh(a−b) = −sinh(b−a)"));
+                            }
+                            Some(BuiltinFn::Cosh) => {
+                                let cosh = ctx.call_builtin(BuiltinFn::Cosh, vec![canonical_arg]);
+                                return Some(Rewrite::new(cosh).desc("cosh(a−b) = cosh(b−a)"));
+                            }
+                            Some(BuiltinFn::Tanh) => {
+                                let tanh = ctx.call_builtin(BuiltinFn::Tanh, vec![canonical_arg]);
+                                let neg_tanh = ctx.add(Expr::Neg(tanh));
+                                return Some(Rewrite::new(neg_tanh).desc("tanh(a−b) = −tanh(b−a)"));
+                            }
+                            Some(BuiltinFn::Asinh) => {
+                                let asinh = ctx.call_builtin(BuiltinFn::Asinh, vec![canonical_arg]);
+                                let neg_asinh = ctx.add(Expr::Neg(asinh));
+                                return Some(
+                                    Rewrite::new(neg_asinh).desc("asinh(a−b) = −asinh(b−a)"),
+                                );
+                            }
+                            Some(BuiltinFn::Atanh) => {
+                                let atanh = ctx.call_builtin(BuiltinFn::Atanh, vec![canonical_arg]);
+                                let neg_atanh = ctx.add(Expr::Neg(atanh));
+                                return Some(
+                                    Rewrite::new(neg_atanh).desc("atanh(a−b) = −atanh(b−a)"),
+                                );
+                            }
+                            _ => {}
+                        }
                     }
                 }
             }

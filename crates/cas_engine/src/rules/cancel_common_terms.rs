@@ -399,10 +399,15 @@ fn try_expand_for_cancel(
     const MAX_PRED_TERMS: usize = 35;
     /// Maximum base nodes (deduped) for context-aware cancel expansion.
     const MAX_BASE_NODES: usize = 25;
+    /// Maximum terms per Add factor in Mul(Add, Add) expansion.
+    const MAX_MUL_FACTOR_TERMS: usize = 4;
+    /// Maximum product terms from Mul(Add, Add) expansion.
+    const MAX_MUL_PRODUCT_TERMS: usize = 16;
 
     let mut expanded_any = false;
     let mut i = 0;
 
+    // Phase A: Pow(Add|Sub, n) expansion (existing)
     while i < terms.len() {
         let (term_id, term_pos, term_safety) = terms[i];
 
@@ -542,6 +547,90 @@ fn try_expand_for_cancel(
         }
         expanded_any = true;
         // Don't increment i — we already advanced past the inserted terms
+    }
+
+    // Phase B: Mul(Add|Sub, Add|Sub) distributive expansion
+    // Handles cases like (x+1)(x²-x+1) - (x³+1) → 0
+    // Guards: each factor ≤ MAX_MUL_FACTOR_TERMS terms, product ≤ MAX_MUL_PRODUCT_TERMS
+    let mut j = 0;
+    while j < terms.len() {
+        let (term_id, term_pos, term_safety) = terms[j];
+
+        // Check if term is Mul(Add|Sub, Add|Sub)
+        let mul_info = match ctx.get(term_id) {
+            Expr::Mul(a, b) => {
+                let a = *a;
+                let b = *b;
+                let a_add = matches!(ctx.get(a), Expr::Add(_, _) | Expr::Sub(_, _));
+                let b_add = matches!(ctx.get(b), Expr::Add(_, _) | Expr::Sub(_, _));
+                if a_add && b_add {
+                    Some((a, b))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
+        let (factor_a, factor_b) = match mul_info {
+            Some(info) => info,
+            None => {
+                j += 1;
+                continue;
+            }
+        };
+
+        // Collect additive terms from each factor
+        let mut a_terms = Vec::new();
+        let mut b_terms = Vec::new();
+        collect_additive_terms(ctx, factor_a, true, &mut a_terms);
+        collect_additive_terms(ctx, factor_b, true, &mut b_terms);
+
+        // Guard: factor size and product size
+        if a_terms.len() > MAX_MUL_FACTOR_TERMS
+            || b_terms.len() > MAX_MUL_FACTOR_TERMS
+            || a_terms.len() * b_terms.len() > MAX_MUL_PRODUCT_TERMS
+        {
+            j += 1;
+            continue;
+        }
+
+        // Preview-expand: distribute (a₁ ± a₂)(b₁ ± b₂) → Σ aᵢ·bⱼ with signs
+        let mut product_terms: Vec<(ExprId, bool)> = Vec::new();
+        for (at, ap) in &a_terms {
+            for (bt, bp) in &b_terms {
+                let prod = ctx.add(Expr::Mul(*at, *bt));
+                // Combined sign: positive iff both same sign
+                let sign = *ap == *bp;
+                product_terms.push((prod, sign));
+            }
+        }
+
+        // Check fingerprint overlap with opposing side
+        let has_overlap = product_terms.iter().any(|(t, _)| {
+            let fp = term_fingerprint(ctx, *t);
+            opposing_fps.contains(&fp)
+        });
+
+        if !has_overlap {
+            j += 1;
+            continue;
+        }
+
+        // Commit: replace Mul term with distributed product terms
+        tracing::debug!(
+            target: "cancel",
+            a_k = a_terms.len(), b_k = b_terms.len(),
+            "context-aware Mul(Add,Add) expansion: overlap detected, committing"
+        );
+
+        terms.remove(j);
+        for (pt, pp) in product_terms {
+            let final_pos = if term_pos { pp } else { !pp };
+            terms.insert(j, (pt, final_pos, term_safety));
+            j += 1;
+        }
+        expanded_any = true;
     }
 
     expanded_any

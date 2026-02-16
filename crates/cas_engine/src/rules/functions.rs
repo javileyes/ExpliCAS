@@ -870,6 +870,10 @@ fn is_sum_of_nonnegative(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool 
 // Canonicalize the argument of abs(Sub(..)) so that |a-b| and |b-a| produce
 // the same normal form, enabling cancellation of |u-1| - |1-u| → 0.
 // Uses compare_expr ordering: if a > b in canonical order, swap to |b-a|.
+//
+// V2.16: Relaxed from atoms-only to compound expressions with dedup node cap.
+// This enables convergence for cases like |sin(u)-1| vs |1-sin(u)|.
+// Guards: per-operand ≤ 20 dedup nodes, total abs expr ≤ 60 dedup nodes.
 // =============================================================================
 define_rule!(
     AbsSubNormalizeRule,
@@ -914,19 +918,47 @@ define_rule!(
                     _ => None,
                 };
                 if let Some((a, b)) = pair {
-                    // Only normalize when both operands are "atoms" (variables,
-                    // numbers, constants). Compound expressions like u²-1 should
-                    // NOT be rewritten to 1-u² because it breaks convergence
-                    // in contexts like ln(|u²-1|) vs ln(u²-1).
-                    let is_atom = |id: cas_ast::ExprId| -> bool {
-                        matches!(
-                            ctx.get(id),
-                            Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_)
-                        )
+                    // Guard: cap operand size to avoid expensive compare_expr
+                    // on huge expressions. Uses dedup node count (HashSet<ExprId>)
+                    // to avoid over-counting shared DAG nodes.
+                    let dedup_count = |id: cas_ast::ExprId| -> usize {
+                        let mut seen = std::collections::HashSet::new();
+                        let mut stack = vec![id];
+                        while let Some(nid) = stack.pop() {
+                            if !seen.insert(nid) {
+                                continue;
+                            }
+                            match ctx.get(nid) {
+                                Expr::Add(l, r)
+                                | Expr::Sub(l, r)
+                                | Expr::Mul(l, r)
+                                | Expr::Div(l, r)
+                                | Expr::Pow(l, r) => {
+                                    stack.push(*l);
+                                    stack.push(*r);
+                                }
+                                Expr::Neg(e) | Expr::Hold(e) => stack.push(*e),
+                                Expr::Function(_, fargs) => stack.extend(fargs),
+                                _ => {}
+                            }
+                        }
+                        seen.len()
                     };
-                    if !is_atom(a) || !is_atom(b) {
+
+                    let a_nodes = dedup_count(a);
+                    let b_nodes = dedup_count(b);
+
+                    // Per-operand cap: ≤ 20 dedup nodes each
+                    if a_nodes > 20 || b_nodes > 20 {
                         return None;
                     }
+
+                    // Total abs expression cap: ≤ 60 dedup nodes
+                    let total_nodes = dedup_count(expr);
+                    if total_nodes > 60 {
+                        return None;
+                    }
+
                     // If a > b in canonical ordering, swap to |b - a|
                     if crate::ordering::compare_expr(ctx, a, b) == std::cmp::Ordering::Greater {
                         let swapped = ctx.add(Expr::Sub(b, a));
