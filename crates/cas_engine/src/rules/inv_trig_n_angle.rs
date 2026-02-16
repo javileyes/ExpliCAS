@@ -256,11 +256,12 @@ define_rule!(
 );
 
 // =============================================================================
-// Arccos: Chebyshev recurrence  (sin/cos only)
+// Arccos: Chebyshev recurrence  (sin/cos/tan)
 // =============================================================================
 //
 // cos(n·arccos(t)) = Tₙ(t) — Chebyshev polynomial of the first kind
 // sin(n·arccos(t)) = √(1-t²)·Uₙ₋₁(t) — sin factor × Chebyshev second kind
+// tan(n·arccos(t)) = √(1-t²)·Uₙ₋₁(t) / Tₙ(t) — ratio (NonZero(Tₙ))
 //
 // T₀=1, T₁=t, T_{k+1} = 2t·Tₖ - T_{k-1}
 // U₀=1, U₁=2t, U_{k+1} = 2t·Uₖ - U_{k-1}
@@ -312,15 +313,18 @@ define_rule!(
     NAngleAcosRule,
     "N-Angle Inverse Acos Composition",
     Some(TargetKindSet::FUNCTION),
-    |ctx, expr| {
-        // Match sin|cos(arg0)
+    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
+        crate::assumptions::ConditionClass::Definability
+    ),
+    |ctx, expr, _parent_ctx| {
+        // Match sin|cos|tan(arg0)
         let (fn_id, arg0) = match ctx.get(expr) {
             Expr::Function(fn_id, args) if args.len() == 1 => (*fn_id, args[0]),
             _ => return None,
         };
 
         let trig = match ctx.builtin_of(fn_id) {
-            Some(b @ (BuiltinFn::Sin | BuiltinFn::Cos)) => b,
+            Some(b @ (BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan)) => b,
             _ => return None,
         };
 
@@ -356,11 +360,13 @@ define_rule!(
 
         let n_usize = n as usize;
 
-        let (result, desc) = match trig {
+        let (result, den_for_assumption, desc) = match trig {
             BuiltinFn::Cos => {
                 // cos(n·arccos(t)) = Tₙ(t)
                 let tn = chebyshev_t(ctx, t, n_usize);
-                (tn, format!("cos({n}·arccos(t)) = T_{n}(t)"))
+                // No denominator — no NonZero condition needed
+                let one = ctx.num(1);
+                (tn, one, format!("cos({n}·arccos(t)) = T_{n}(t)"))
             }
             BuiltinFn::Sin => {
                 if n_usize == 0 {
@@ -371,15 +377,34 @@ define_rule!(
                 let sqrt_part = build_sqrt(ctx, one_minus);
                 let u = chebyshev_u_nm1(ctx, t, n_usize);
                 let result = ctx.add(Expr::Mul(sqrt_part, u));
+                let one = ctx.num(1);
                 (
                     result,
+                    one,
                     format!("sin({n}·arccos(t)) = √(1-t²)·U_{{{n}-1}}(t)"),
+                )
+            }
+            BuiltinFn::Tan => {
+                if n_usize == 0 {
+                    return None;
+                }
+                // tan(n·arccos(t)) = √(1-t²)·Uₙ₋₁(t) / Tₙ(t)
+                let tn = chebyshev_t(ctx, t, n_usize);
+                let one_minus = build_one_minus_t_sq(ctx, t);
+                let sqrt_part = build_sqrt(ctx, one_minus);
+                let u = chebyshev_u_nm1(ctx, t, n_usize);
+                let numerator = ctx.add(Expr::Mul(sqrt_part, u));
+                let result = ctx.add(Expr::Div(numerator, tn));
+                (
+                    result,
+                    tn,
+                    format!("tan({n}·arccos(t)) = √(1-t²)·U_{{{n}-1}}(t)/T_{n}(t)"),
                 )
             }
             _ => return None,
         };
 
-        // Apply sign parity
+        // Apply sign parity: cos is even, sin/tan are odd
         let result = if !is_positive {
             match trig {
                 BuiltinFn::Cos => result,
@@ -394,12 +419,17 @@ define_rule!(
             return None;
         }
 
-        Some(Rewrite::new(result).desc(desc).budget_exempt())
+        Some(
+            Rewrite::new(result)
+                .desc(desc)
+                .budget_exempt()
+                .assume(crate::assumptions::AssumptionEvent::nonzero(ctx, den_for_assumption)),
+        )
     }
 );
 
 // =============================================================================
-// Arcsin: sin/cos recurrence  (sin/cos only)
+// Arcsin: sin/cos recurrence  (sin/cos/tan)
 // =============================================================================
 //
 // With θ=arcsin(t), sinθ=t, cosθ=√(1-t²):
@@ -410,6 +440,7 @@ define_rule!(
 //
 // sin(n·arcsin(t)) = Sₙ
 // cos(n·arcsin(t)) = Cₙ
+// tan(n·arcsin(t)) = Sₙ / Cₙ  (NonZero(Cₙ))
 
 /// Build sin/cos(n·arcsin(t)) via recurrence.
 /// Returns `(s_n, c_n)`.
@@ -443,15 +474,18 @@ define_rule!(
     NAngleAsinRule,
     "N-Angle Inverse Asin Composition",
     Some(TargetKindSet::FUNCTION),
-    |ctx, expr| {
-        // Match sin|cos(arg0)
+    solve_safety: crate::solve_safety::SolveSafety::NeedsCondition(
+        crate::assumptions::ConditionClass::Definability
+    ),
+    |ctx, expr, _parent_ctx| {
+        // Match sin|cos|tan(arg0)
         let (fn_id, arg0) = match ctx.get(expr) {
             Expr::Function(fn_id, args) if args.len() == 1 => (*fn_id, args[0]),
             _ => return None,
         };
 
         let trig = match ctx.builtin_of(fn_id) {
-            Some(b @ (BuiltinFn::Sin | BuiltinFn::Cos)) => b,
+            Some(b @ (BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan)) => b,
             _ => return None,
         };
 
@@ -493,13 +527,24 @@ define_rule!(
 
         let (s_n, c_n) = arcsin_recurrence(ctx, t, cos_theta, n_usize);
 
-        let (result, desc) = match trig {
-            BuiltinFn::Sin => (s_n, format!("sin({n}·arcsin(t)) via recurrence")),
-            BuiltinFn::Cos => (c_n, format!("cos({n}·arcsin(t)) via recurrence")),
+        let (result, den_for_assumption, desc) = match trig {
+            BuiltinFn::Sin => {
+                let one = ctx.num(1);
+                (s_n, one, format!("sin({n}·arcsin(t)) via recurrence"))
+            }
+            BuiltinFn::Cos => {
+                let one = ctx.num(1);
+                (c_n, one, format!("cos({n}·arcsin(t)) via recurrence"))
+            }
+            BuiltinFn::Tan => {
+                // tan(n·arcsin(t)) = Sₙ / Cₙ
+                let result = ctx.add(Expr::Div(s_n, c_n));
+                (result, c_n, format!("tan({n}·arcsin(t)) = Sₙ/Cₙ"))
+            }
             _ => return None,
         };
 
-        // Apply sign parity
+        // Apply sign parity: cos is even, sin/tan are odd
         let result = if !is_positive {
             match trig {
                 BuiltinFn::Cos => result,
@@ -514,7 +559,12 @@ define_rule!(
             return None;
         }
 
-        Some(Rewrite::new(result).desc(desc).budget_exempt())
+        Some(
+            Rewrite::new(result)
+                .desc(desc)
+                .budget_exempt()
+                .assume(crate::assumptions::AssumptionEvent::nonzero(ctx, den_for_assumption)),
+        )
     }
 );
 

@@ -472,7 +472,7 @@ fn budget_exempt_allowlist() {
             let path = entry.path();
             if path.is_dir() {
                 scan_dir(&path, violations);
-            } else if path.extension().map_or(false, |e| e == "rs") {
+            } else if path.extension().is_some_and(|e| e == "rs") {
                 let filename = path.file_name().unwrap().to_string_lossy().to_string();
                 let content = std::fs::read_to_string(&path).unwrap();
                 if content.contains(".budget_exempt()") && filename != "inv_trig_n_angle.rs" {
@@ -632,6 +632,154 @@ fn perf_n10_completes_under_budget() {
         // Also verify the rule actually fired
         assert!(
             !result.contains("arctan") && !result.contains("arccos") && !result.contains("arcsin"),
+            "'{}' did not expand, got: {}",
+            input,
+            &result[..result.len().min(100)]
+        );
+    }
+}
+
+// =============================================================================
+// Tan(n·arcsin) and Tan(n·arccos) tests
+// =============================================================================
+
+#[test]
+fn tan_asin_n2_fires() {
+    // tan(2·arcsin(t)) = Sₙ/Cₙ — should expand to algebraic form
+    let result = simplify_str("tan(2*arcsin(t))");
+    assert!(
+        !result.contains("tan") && !result.contains("arcsin"),
+        "Expected fully expanded form, got: {}",
+        result
+    );
+}
+
+#[test]
+fn tan_acos_n2_fires() {
+    // tan(2·arccos(t)) = √(1-t²)·U₁(t)/T₂(t) — should expand
+    let result = simplify_str("tan(2*arccos(t))");
+    assert!(
+        !result.contains("tan") && !result.contains("arccos"),
+        "Expected fully expanded form, got: {}",
+        result
+    );
+}
+
+#[test]
+fn tan_asin_n3_fires() {
+    let result = simplify_str("tan(3*arcsin(t))");
+    assert!(
+        !result.contains("tan") && !result.contains("arcsin"),
+        "Expected fully expanded form, got: {}",
+        result
+    );
+}
+
+#[test]
+fn tan_acos_n4_fires() {
+    let result = simplify_str("tan(4*arccos(t))");
+    assert!(
+        !result.contains("tan") && !result.contains("arccos"),
+        "Expected fully expanded form, got: {}",
+        result
+    );
+}
+
+// Numeric metamorphic: tan(n·arcsin(t)) ≈ f64 trig value
+
+#[test]
+fn numeric_tan_asin_n2() {
+    let t: f64 = 0.3;
+    let expected = (2.0_f64 * t.asin()).tan();
+    assert_numeric_eq("tan(2*arcsin(t))", expected, "t", t);
+}
+
+#[test]
+fn numeric_tan_asin_n4() {
+    let t: f64 = 0.25;
+    let expected = (4.0_f64 * t.asin()).tan();
+    assert_numeric_eq("tan(4*arcsin(t))", expected, "t", t);
+}
+
+#[test]
+fn numeric_tan_asin_n6() {
+    let t: f64 = 0.2;
+    let expected = (6.0_f64 * t.asin()).tan();
+    assert_numeric_eq("tan(6*arcsin(t))", expected, "t", t);
+}
+
+// Numeric metamorphic: tan(n·arccos(t)) ≈ f64 trig value
+
+#[test]
+fn numeric_tan_acos_n2() {
+    let t: f64 = 0.6;
+    let expected = (2.0_f64 * t.acos()).tan();
+    assert_numeric_eq("tan(2*arccos(t))", expected, "t", t);
+}
+
+#[test]
+fn numeric_tan_acos_n3() {
+    let t: f64 = 0.5;
+    let expected = (3.0_f64 * t.acos()).tan();
+    assert_numeric_eq("tan(3*arccos(t))", expected, "t", t);
+}
+
+#[test]
+fn numeric_tan_acos_n5() {
+    let t: f64 = 0.7;
+    let expected = (5.0_f64 * t.acos()).tan();
+    assert_numeric_eq("tan(5*arccos(t))", expected, "t", t);
+}
+
+// Sign parity: tan(-n·θ) = -tan(n·θ) (odd function)
+
+#[test]
+fn negative_tan_asin_n3_is_negated() {
+    let t: f64 = 0.3;
+    let (_, pos_val) = simplify_and_eval("tan(3*arcsin(t))", "t", t);
+    let (_, neg_val) = simplify_and_eval("tan(-3*arcsin(t))", "t", t);
+    assert!(
+        (pos_val.unwrap() + neg_val.unwrap()).abs() < 1e-10,
+        "tan(-3·arcsin(t)) should negate tan(3·arcsin(t)): pos={}, neg={}",
+        pos_val.unwrap(),
+        neg_val.unwrap()
+    );
+}
+
+#[test]
+fn negative_tan_acos_n4_is_negated() {
+    let t: f64 = 0.5;
+    let (_, pos_val) = simplify_and_eval("tan(4*arccos(t))", "t", t);
+    let (_, neg_val) = simplify_and_eval("tan(-4*arccos(t))", "t", t);
+    assert!(
+        (pos_val.unwrap() + neg_val.unwrap()).abs() < 1e-10,
+        "tan(-4·arccos(t)) should negate tan(4·arccos(t)): pos={}, neg={}",
+        pos_val.unwrap(),
+        neg_val.unwrap()
+    );
+}
+
+// Performance sanity: tan at n=10 must complete within budget
+
+#[test]
+fn perf_tan_n10_completes() {
+    let cases = ["tan(10*arcsin(t))", "tan(10*arccos(t))"];
+
+    for input in &cases {
+        let start = std::time::Instant::now();
+        let result = simplify_str(input);
+        let elapsed = start.elapsed();
+
+        assert!(
+            elapsed.as_secs() < 2,
+            "'{}' took {:?} (>2s budget). Result: '{}'",
+            input,
+            elapsed,
+            &result[..result.len().min(100)]
+        );
+
+        assert!(
+            !result.contains("arcsin") && !result.contains("arccos"),
             "'{}' did not expand, got: {}",
             input,
             &result[..result.len().min(100)]
