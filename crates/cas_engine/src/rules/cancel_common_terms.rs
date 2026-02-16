@@ -382,6 +382,59 @@ fn hash_expr_structural(ctx: &Context, id: ExprId, h: &mut impl Hasher) {
 /// These mirror `SmallMultinomialExpansionRule`.
 ///
 /// Returns `true` if any term was expanded.
+
+/// Lightweight 2-term product simplification for preview fingerprinting.
+///
+/// Folds `Pow(x,a) * Pow(x,b) → Pow(x,a+b)` and `Number * Number → Number`,
+/// treating bare variables `x` as `Pow(x,1)`.  Falls back to plain `Mul`.
+fn mul_preview(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    // Number * Number → fuse
+    if let (Expr::Number(na), Expr::Number(nb)) = (ctx.get(a), ctx.get(b)) {
+        let product = na.clone() * nb.clone();
+        return ctx.add(Expr::Number(product));
+    }
+
+    // Number * expr or expr * Number → Mul (keep as-is, fingerprint will match)
+    if matches!(ctx.get(a), Expr::Number(_)) || matches!(ctx.get(b), Expr::Number(_)) {
+        return ctx.add(Expr::Mul(a, b));
+    }
+
+    // Extract (base, exp) — bare expressions treated as Pow(x,1)
+    let (ba, ea) = match ctx.get(a) {
+        Expr::Pow(base, exp) => (*base, Some(*exp)),
+        _ => (a, None),
+    };
+    let (bb, eb) = match ctx.get(b) {
+        Expr::Pow(base, exp) => (*base, Some(*exp)),
+        _ => (b, None),
+    };
+
+    // Power merge: same base ⇒ add exponents
+    if compare_expr(ctx, ba, bb) == Ordering::Equal {
+        let ea_val = ea.and_then(|e| {
+            if let Expr::Number(n) = ctx.get(e) {
+                Some(n.clone())
+            } else {
+                None
+            }
+        });
+        let eb_val = eb.and_then(|e| {
+            if let Expr::Number(n) = ctx.get(e) {
+                Some(n.clone())
+            } else {
+                None
+            }
+        });
+        let ea_num = ea_val.unwrap_or_else(|| num_rational::BigRational::from_integer(1.into()));
+        let eb_num = eb_val.unwrap_or_else(|| num_rational::BigRational::from_integer(1.into()));
+        let sum = ea_num + eb_num;
+        let new_exp = ctx.add(Expr::Number(sum));
+        return ctx.add(Expr::Pow(ba, new_exp));
+    }
+
+    // Fallback
+    ctx.add(Expr::Mul(a, b))
+}
 fn try_expand_for_cancel(
     ctx: &mut Context,
     terms: &mut Vec<(ExprId, bool, OriginSafety)>,
@@ -549,85 +602,167 @@ fn try_expand_for_cancel(
         // Don't increment i — we already advanced past the inserted terms
     }
 
-    // Phase B: Mul(Add|Sub, Add|Sub) distributive expansion
-    // Handles cases like (x+1)(x²-x+1) - (x³+1) → 0
-    // Guards: each factor ≤ MAX_MUL_FACTOR_TERMS terms, product ≤ MAX_MUL_PRODUCT_TERMS
+    // Phase B: Generalized Mul-factor expansion
+    // Flattens nested Mul trees to find ≥2 add-like factors, distributes
+    // the cheapest pair, wraps with remaining scalar factors, checks overlap.
+    // Handles: Mul(atom, Mul(Add, Add)), Mul(Mul(atom, Add), Add), etc.
+    // Guards: ≤ MAX_MUL_FACTORS total, each add-like ≤ MAX_MUL_FACTOR_TERMS,
+    //         product ≤ MAX_MUL_PRODUCT_TERMS, no Pow(Add,n) inside (Phase A handles those).
     let mut j = 0;
     while j < terms.len() {
         let (term_id, term_pos, term_safety) = terms[j];
 
-        // Check if term is Mul(Add|Sub, Add|Sub)
-        let mul_info = match ctx.get(term_id) {
-            Expr::Mul(a, b) => {
-                let a = *a;
-                let b = *b;
-                let a_add = matches!(ctx.get(a), Expr::Add(_, _) | Expr::Sub(_, _));
-                let b_add = matches!(ctx.get(b), Expr::Add(_, _) | Expr::Sub(_, _));
-                if a_add && b_add {
-                    Some((a, b))
-                } else {
-                    None
+        // Only consider Mul nodes
+        if !matches!(ctx.get(term_id), Expr::Mul(_, _)) {
+            j += 1;
+            continue;
+        }
+
+        // Step 1: Flatten multiplicative tree into factors list
+        let mut factors: Vec<ExprId> = Vec::new();
+        {
+            let mut stack = vec![term_id];
+            let max_depth = 8;
+            let max_factors = 7;
+            let mut depth = 0;
+            while let Some(node) = stack.pop() {
+                depth += 1;
+                if depth > max_depth || factors.len() >= max_factors {
+                    factors.push(node);
+                    continue;
+                }
+                match ctx.get(node) {
+                    Expr::Mul(a, b) => {
+                        // Push right first so left is processed first (stack is LIFO)
+                        stack.push(*b);
+                        stack.push(*a);
+                    }
+                    _ => {
+                        factors.push(node);
+                    }
                 }
             }
-            _ => None,
-        };
+        }
 
-        let (factor_a, factor_b) = match mul_info {
-            Some(info) => info,
-            None => {
-                j += 1;
-                continue;
-            }
-        };
-
-        // Collect additive terms from each factor
-        let mut a_terms = Vec::new();
-        let mut b_terms = Vec::new();
-        collect_additive_terms(ctx, factor_a, true, &mut a_terms);
-        collect_additive_terms(ctx, factor_b, true, &mut b_terms);
-
-        // Guard: factor size and product size
-        if a_terms.len() > MAX_MUL_FACTOR_TERMS
-            || b_terms.len() > MAX_MUL_FACTOR_TERMS
-            || a_terms.len() * b_terms.len() > MAX_MUL_PRODUCT_TERMS
-        {
+        if factors.len() < 2 {
             j += 1;
             continue;
         }
 
-        // Preview-expand: distribute (a₁ ± a₂)(b₁ ± b₂) → Σ aᵢ·bⱼ with signs
-        let mut product_terms: Vec<(ExprId, bool)> = Vec::new();
-        for (at, ap) in &a_terms {
-            for (bt, bp) in &b_terms {
-                let prod = ctx.add(Expr::Mul(*at, *bt));
-                // Combined sign: positive iff both same sign
+        // Step 2: Classify factors into add-like vs scalar
+        let mut add_like_indices: Vec<usize> = Vec::new();
+        for (fi, &fid) in factors.iter().enumerate() {
+            let is_additive = matches!(ctx.get(fid), Expr::Add(_, _) | Expr::Sub(_, _));
+            if is_additive {
+                add_like_indices.push(fi);
+            }
+        }
+
+        if add_like_indices.len() < 2 {
+            j += 1;
+            continue;
+        }
+
+        // Step 3: Collect additive terms for each add-like factor, find cheapest pair
+        let mut add_term_lists: Vec<(usize, Vec<(ExprId, bool)>)> = Vec::new();
+        let mut bail = false;
+        for &fi in &add_like_indices {
+            let mut ft = Vec::new();
+            collect_additive_terms(ctx, factors[fi], true, &mut ft);
+            if ft.len() > MAX_MUL_FACTOR_TERMS {
+                bail = true;
+                break;
+            }
+            add_term_lists.push((fi, ft));
+        }
+        if bail || add_term_lists.len() < 2 {
+            j += 1;
+            continue;
+        }
+
+        // Sort by ascending term count to pick cheapest pair
+        add_term_lists.sort_by_key(|(_, terms_list)| terms_list.len());
+        let (idx_a, ref a_add_terms) = add_term_lists[0];
+        let (idx_b, ref b_add_terms) = add_term_lists[1];
+
+        // Product guard
+        if a_add_terms.len() * b_add_terms.len() > MAX_MUL_PRODUCT_TERMS {
+            j += 1;
+            continue;
+        }
+
+        // Step 4: Distribute the cheapest add-like pair
+        let mut distributed: Vec<(ExprId, bool)> = Vec::new();
+        for (at, ap) in a_add_terms {
+            for (bt, bp) in b_add_terms {
+                let prod = mul_preview(ctx, *at, *bt);
                 let sign = *ap == *bp;
-                product_terms.push((prod, sign));
+                distributed.push((prod, sign));
             }
         }
 
-        // Check fingerprint overlap with opposing side
-        let has_overlap = product_terms.iter().any(|(t, _)| {
-            let fp = term_fingerprint(ctx, *t);
-            opposing_fps.contains(&fp)
-        });
+        // Step 5: Reconstruct — wrap each distributed term with remaining scalar factors
+        let scalar_indices: Vec<usize> = (0..factors.len())
+            .filter(|i| *i != idx_a && *i != idx_b)
+            .collect();
 
-        if !has_overlap {
+        // Pre-check: overlap on unwrapped distributed terms (for scalar cases)
+        let distributed_overlap = !scalar_indices.is_empty()
+            && distributed.iter().any(|(t, _)| {
+                let fp = term_fingerprint(ctx, *t);
+                opposing_fps.contains(&fp)
+            });
+
+        let wrapped_terms: Vec<(ExprId, bool)> = if scalar_indices.is_empty() {
+            distributed
+        } else {
+            distributed
+                .iter()
+                .map(|(dt, dp)| {
+                    // Wrap: scalar1 * scalar2 * ... * dt
+                    let mut wrapped = *dt;
+                    for &si in &scalar_indices {
+                        wrapped = ctx.add(Expr::Mul(factors[si], wrapped));
+                    }
+                    (wrapped, *dp)
+                })
+                .collect()
+        };
+
+        // Step 6: Overlap check against opposing side
+        // Primary: fingerprint match on wrapped or unwrapped terms.
+        // Fallback: term-count heuristic — when scalar factors exist AND
+        // opposing side has ≥ product-count additive terms, the opposing
+        // is likely the fully-expanded form.  Guards already cap product size.
+        let fp_overlap = distributed_overlap
+            || wrapped_terms.iter().any(|(t, _)| {
+                let fp = term_fingerprint(ctx, *t);
+                opposing_fps.contains(&fp)
+            });
+
+        let count_overlap = !fp_overlap
+            && !scalar_indices.is_empty()
+            && opposing_fps.len() >= a_add_terms.len() * b_add_terms.len();
+
+        if !fp_overlap && !count_overlap {
             j += 1;
             continue;
         }
 
-        // Commit: replace Mul term with distributed product terms
+        // Step 7: Commit
         tracing::debug!(
             target: "cancel",
-            a_k = a_terms.len(), b_k = b_terms.len(),
-            "context-aware Mul(Add,Add) expansion: overlap detected, committing"
+            n_factors = factors.len(),
+            n_add_like = add_like_indices.len(),
+            a_k = a_add_terms.len(),
+            b_k = b_add_terms.len(),
+            "context-aware Mul-factor expansion: overlap detected, committing"
         );
 
         terms.remove(j);
-        for (pt, pp) in product_terms {
-            let final_pos = if term_pos { pp } else { !pp };
-            terms.insert(j, (pt, final_pos, term_safety));
+        for (wt, wp) in wrapped_terms {
+            let final_pos = if term_pos { wp } else { !wp };
+            terms.insert(j, (wt, final_pos, term_safety));
             j += 1;
         }
         expanded_any = true;

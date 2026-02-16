@@ -190,3 +190,108 @@ fn mul_add_scalar_not_expanded() {
         "Expected a result for x*(a+b) + c, got empty"
     );
 }
+
+// =============================================================================
+// Ticket 4: Generalized Mul-factor expansion (nested products)
+// These tests use cancel_additive_terms_semantic (the solver-pipeline cancel)
+// which includes Phase B mul-factor expansion with try_expand_for_cancel.
+// =============================================================================
+
+/// Helper: parse "lhs - rhs" expression and run semantic cancel.
+/// Returns the display string of the result after cancellation + simplify.
+fn semantic_cancel_str(lhs_str: &str, rhs_str: &str) -> String {
+    use cas_ast::Expr;
+    let mut s = Simplifier::with_default_rules();
+    let lhs = parse(lhs_str, &mut s.context).unwrap();
+    let rhs = parse(rhs_str, &mut s.context).unwrap();
+    // Pre-simplify each side
+    let (lhs_s, _) = s.simplify(lhs);
+    let (rhs_s, _) = s.simplify(rhs);
+    // Run semantic cancel (includes Phase B expansion)
+    if let Some(cr) = cas_engine::cancel_additive_terms_semantic(&mut s, lhs_s, rhs_s) {
+        // Build new_lhs - new_rhs and simplify
+        let diff = s.context.add(Expr::Sub(cr.new_lhs, cr.new_rhs));
+        let (result, _) = s.simplify(diff);
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &s.context,
+                id: result
+            }
+        )
+    } else {
+        // No cancel happened — build and simplify original
+        let diff = s.context.add(Expr::Sub(lhs_s, rhs_s));
+        let (result, _) = s.simplify(diff);
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &s.context,
+                id: result
+            }
+        )
+    }
+}
+
+/// u³·(u³+1)·(u³+2) - (u⁹+3u⁶+2u³) = 0  (nested product with scalar factor)
+#[test]
+fn nested_mul_poly_gcf_convergence() {
+    let result = semantic_cancel_str("u^3*(u^3 + 1)*(u^3 + 2)", "u^9 + 3*u^6 + 2*u^3");
+    assert_eq!(
+        result, "0",
+        "Expected u³·(u³+1)·(u³+2) - expanded form to cancel to 0, got: {}",
+        result
+    );
+}
+
+/// x·(x+2)·(x+3) - (x³+5x²+6x) = 0  (3-factor product, scalar + 2 add-like)
+#[test]
+fn nested_mul_trinomial_factoring() {
+    let result = semantic_cancel_str("x*(x + 2)*(x + 3)", "x^3 + 5*x^2 + 6*x");
+    assert_eq!(
+        result, "0",
+        "Expected x·(x+2)·(x+3) - expanded to cancel to 0, got: {}",
+        result
+    );
+}
+
+/// Guard: no-overlap should NOT expand. (x+1)*(y+1) + z has no opposing terms.
+#[test]
+fn nested_mul_no_overlap_no_expand() {
+    let result = simplify_str("(x + 1)*(y + 1) + z");
+    // Should remain compact — not fully distributed
+    assert!(
+        !result.contains("x * y + x + y + 1"),
+        "Should NOT distribute when no overlap: got: {}",
+        result
+    );
+}
+
+/// Idempotency for nested products.
+#[test]
+fn nested_mul_idempotent() {
+    assert_idempotent("u^3*(u^3 + 1)*(u^3 + 2)");
+    assert_idempotent("x*(x + 2)*(x + 3)");
+}
+
+// =============================================================================
+// Ticket 5: Abs negative factor pull-out
+// =============================================================================
+
+/// |(-3)·x| should simplify to 3·|x|
+#[test]
+fn abs_neg_factor_pullout() {
+    let result = simplify_str("|(-3)*x| - 3*|x|");
+    assert_eq!(
+        result, "0",
+        "Expected |(-3)·x| - 3·|x| = 0, got: {}",
+        result
+    );
+}
+
+/// Idempotency: |(-2)*sin(x)| should be stable after double simplify
+#[test]
+fn abs_neg_factor_idempotent() {
+    assert_idempotent("|(-2)*sin(x)|");
+    assert_idempotent("|(-5)*u^2|");
+}

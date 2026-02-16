@@ -973,9 +973,9 @@ define_rule!(
 );
 
 // =============================================================================
-// Abs Positive Factor Rule: |k·x| → k·|x| for positive rational k
-// Extracts positive numeric factors from absolute value.
-// Examples: |2u| → 2|u|,  |3·sin(x)| → 3·|sin(x)|
+// Abs Numeric Factor Rule: |k·x| → |k|·|x| for any nonzero numeric k
+// Extracts numeric factors from absolute value (both positive and negative).
+// Examples: |2u| → 2|u|,  |(-3)·sin(x)| → 3·|sin(x)|
 // =============================================================================
 define_rule!(
     AbsPositiveFactorRule,
@@ -987,22 +987,34 @@ define_rule!(
                 let arg = args[0];
                 if let Expr::Mul(l, r) = ctx.get(arg) {
                     let (l, r) = (*l, *r);
-                    // Check if left factor is a positive number
+                    // Check if left factor is a number
                     if let Expr::Number(n) = ctx.get(l) {
                         if n.is_positive() {
-                            // |k·x| → k·|x|
+                            // |k·x| → k·|x| for k > 0
                             let abs_r = ctx.call_builtin(BuiltinFn::Abs, vec![r]);
                             let result = ctx.add(Expr::Mul(l, abs_r));
                             return Some(Rewrite::new(result).desc("|k·x| = k·|x| for k > 0"));
+                        } else if n.is_negative() {
+                            // |(-k)·x| → |k|·|x| for k < 0
+                            let abs_k = ctx.add(Expr::Number(n.abs()));
+                            let abs_r = ctx.call_builtin(BuiltinFn::Abs, vec![r]);
+                            let result = ctx.add(Expr::Mul(abs_k, abs_r));
+                            return Some(Rewrite::new(result).desc("|(-k)·x| = |k|·|x| for k < 0"));
                         }
                     }
-                    // Check if right factor is a positive number
+                    // Check if right factor is a number
                     if let Expr::Number(n) = ctx.get(r) {
                         if n.is_positive() {
-                            // |x·k| → k·|x|
+                            // |x·k| → k·|x| for k > 0
                             let abs_l = ctx.call_builtin(BuiltinFn::Abs, vec![l]);
                             let result = ctx.add(Expr::Mul(r, abs_l));
                             return Some(Rewrite::new(result).desc("|x·k| = k·|x| for k > 0"));
+                        } else if n.is_negative() {
+                            // |x·(-k)| → |k|·|x| for k < 0
+                            let abs_k = ctx.add(Expr::Number(n.abs()));
+                            let abs_l = ctx.call_builtin(BuiltinFn::Abs, vec![l]);
+                            let result = ctx.add(Expr::Mul(abs_k, abs_l));
+                            return Some(Rewrite::new(result).desc("|x·(-k)| = |k|·|x| for k < 0"));
                         }
                     }
                 }

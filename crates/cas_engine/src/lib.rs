@@ -131,4 +131,6 @@ pub use step::{DisplayEvalSteps, Step};
 pub use visitors::{DepthVisitor, VariableCollector};
 
 // Equation-level primitives (not simplifier rules — used by solver pipeline)
-pub use rules::cancel_common_terms::{cancel_common_additive_terms, CancelResult};
+pub use rules::cancel_common_terms::{
+    cancel_additive_terms_semantic, cancel_common_additive_terms, CancelResult,
+};
