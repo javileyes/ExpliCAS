@@ -1303,8 +1303,8 @@ define_rule!(
         }
 
         // Budget guard: don't attempt expensive expansions on large expressions
-        let num_nodes = crate::helpers::node_count(ctx, num);
-        let den_nodes = crate::helpers::node_count(ctx, den);
+        let num_nodes = crate::helpers::node_count_tree(ctx, num);
+        let den_nodes = crate::helpers::node_count_tree(ctx, den);
         if num_nodes + den_nodes > 150 {
             return None;
         }

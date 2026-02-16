@@ -454,3 +454,187 @@ fn asin_abbreviation_works() {
         result
     );
 }
+
+// =============================================================================
+// Hardening: budget_exempt allowlist (prevents "just exempt it" abuse)
+// =============================================================================
+
+#[test]
+fn budget_exempt_allowlist() {
+    // Only inv_trig_n_angle.rs should call .budget_exempt().
+    // This test greps the source to catch any unauthorized usage.
+    let rules_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/rules");
+    let mut violations = Vec::new();
+
+    fn scan_dir(dir: &std::path::Path, violations: &mut Vec<String>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if path.is_dir() {
+                scan_dir(&path, violations);
+            } else if path.extension().map_or(false, |e| e == "rs") {
+                let filename = path.file_name().unwrap().to_string_lossy().to_string();
+                let content = std::fs::read_to_string(&path).unwrap();
+                if content.contains(".budget_exempt()") && filename != "inv_trig_n_angle.rs" {
+                    violations.push(filename);
+                }
+            }
+        }
+    }
+
+    scan_dir(&rules_dir, &mut violations);
+
+    // Also scan engine/transform for accidental misuse in rule infra
+    let engine_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/engine");
+    scan_dir(&engine_dir, &mut violations);
+
+    assert!(
+        violations.is_empty(),
+        "Unauthorized .budget_exempt() usage in: {:?}. \
+         Only inv_trig_n_angle.rs is in the allowlist. \
+         If you need it elsewhere, add the file to this test's allowlist \
+         and ensure the rule has MAX_N, output-size cap, and input-size cap guards.",
+        violations
+    );
+}
+
+// =============================================================================
+// Hardening: DAG-vs-tree regression (catches reversion to tree counting)
+// =============================================================================
+
+#[test]
+fn dag_vs_tree_regression_n8_atan() {
+    // The recurrence for sin(8*arctan(t)) builds a DAG with heavy sharing.
+    // Tree count (no dedup) is huge; dedup count is modest.
+    // This test catches anyone reverting the guards to tree-based counting.
+    let mut s = Simplifier::with_default_rules();
+    let expr = parse("sin(8*arctan(t))", &mut s.context).unwrap();
+    let (result, _) = s.simplify(expr);
+
+    // Verify the rule actually fired
+    let result_str = format!(
+        "{}",
+        DisplayExpr {
+            context: &s.context,
+            id: result
+        }
+    );
+    assert!(
+        !result_str.contains("arctan"),
+        "n=8 atan should have fired, got: {}",
+        result_str
+    );
+
+    // Tree count: counts shared sub-expressions multiple times → exponentially large
+    let tree_count = cas_ast::traversal::count_all_nodes(&s.context, result);
+
+    // Dedup count: count unique ExprIds via HashSet
+    let dedup_count = {
+        use cas_ast::Expr;
+        let mut visited = std::collections::HashSet::new();
+        let mut stack = vec![result];
+        while let Some(id) = stack.pop() {
+            if !visited.insert(id) {
+                continue;
+            }
+            match s.context.get(id) {
+                Expr::Add(l, r)
+                | Expr::Sub(l, r)
+                | Expr::Mul(l, r)
+                | Expr::Div(l, r)
+                | Expr::Pow(l, r) => {
+                    stack.push(*l);
+                    stack.push(*r);
+                }
+                Expr::Neg(inner) => stack.push(*inner),
+                Expr::Function(_, args) => stack.extend(args.iter()),
+                _ => {}
+            }
+        }
+        visited.len()
+    };
+
+    // Tree count should be > 300 (the old MAX_OUTPUT_NODES that was broken)
+    assert!(
+        tree_count > 300,
+        "Expected tree_count > 300 for n=8 DAG, got {}. \
+         If this fails, the recurrence structure changed (fewer shared nodes).",
+        tree_count
+    );
+
+    // Dedup count should stay under 100 — the actual unique AST is modest
+    assert!(
+        dedup_count < 100,
+        "Expected dedup_count < 100 for n=8, got {}. \
+         This indicates the recurrence is creating too many unique nodes.",
+        dedup_count
+    );
+}
+
+// =============================================================================
+// Hardening: budget_exempt scoping guards (MAX_N + input cap + output cap)
+// =============================================================================
+
+#[test]
+fn budget_exempt_scoping_guards() {
+    // Verify the 3 guardrails that make budget_exempt safe:
+
+    // 1. MAX_N: n=11 must NOT fire (hard cap)
+    let result = simplify_str("sin(11*arctan(t))");
+    assert!(
+        result.contains("arctan"),
+        "n=11 must not fire (MAX_N guard)"
+    );
+
+    // 2. MAX_N boundary: n=10 must fire (just under the cap)
+    let result = simplify_str("sin(10*arctan(t))");
+    assert!(!result.contains("arctan"), "n=10 should fire");
+
+    // 3. Input-size cap: a massive inner argument should NOT fire
+    //    (extract_int_multiple will succeed, but count_nodes_dedup(inner) > 20 blocks it)
+    let huge_inner = "arctan(a+b+c+d+e+f+g+h+i+j+k+l+m+n+o+p+q+r+s+t+u)";
+    let result = simplify_str(&format!("sin(2*{})", huge_inner));
+    // With 21 variables added together, the inner node count exceeds MAX_INNER_NODES=20
+    assert!(
+        result.contains("arctan"),
+        "Huge inner arg should NOT fire (input cap guard), got: {}",
+        result
+    );
+}
+
+// =============================================================================
+// Hardening: Performance sanity (n=10 completes under time budget)
+// =============================================================================
+
+#[test]
+fn perf_n10_completes_under_budget() {
+    // Ensure that the heaviest cases (n=10) don't create accidental O(n²) blowups.
+    // Budget: each must complete in under 2 seconds (generous for CI).
+    let cases = [
+        "sin(10*arctan(t))",
+        "cos(10*arccos(t))",
+        "sin(10*arcsin(t))",
+    ];
+
+    for input in &cases {
+        let start = std::time::Instant::now();
+        let result = simplify_str(input);
+        let elapsed = start.elapsed();
+
+        assert!(
+            elapsed.as_secs() < 2,
+            "'{}' took {:?} (>2s budget). Possible simplification blowup. Result: '{}'",
+            input,
+            elapsed,
+            &result[..result.len().min(100)]
+        );
+
+        // Also verify the rule actually fired
+        assert!(
+            !result.contains("arctan") && !result.contains("arccos") && !result.contains("arcsin"),
+            "'{}' did not expand, got: {}",
+            input,
+            &result[..result.len().min(100)]
+        );
+    }
+}

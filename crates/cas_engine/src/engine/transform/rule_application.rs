@@ -185,9 +185,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                 .open("/tmp/rule_trace.log")
                             {
                                 let node_count_before =
-                                    crate::helpers::node_count(self.context, expr_id);
+                                    crate::helpers::node_count_tree(self.context, expr_id);
                                 let node_count_after =
-                                    crate::helpers::node_count(self.context, rewrite.new_expr);
+                                    crate::helpers::node_count_tree(self.context, rewrite.new_expr);
                                 let _ = writeln!(
                                     f,
                                     "APPLIED depth={} rule={} nodes={}->{}",

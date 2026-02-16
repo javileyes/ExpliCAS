@@ -4,11 +4,17 @@
 
 use cas_ast::{Context, ExprId};
 
-/// Count the number of nodes in an expression tree.
-/// Used by the anti-worsen guard to reject rewrites that grow expressions too much.
+/// Count the number of nodes by **tree expansion** (no deduplication).
+///
+/// Shared DAG sub-expressions are counted once per reference.
+/// This is the correct metric for the anti-worsen guard because it reflects
+/// the work the simplifier does traversing the expression tree.
+///
+/// For guards on DAG-structured outputs (e.g., recurrence-built ASTs with heavy
+/// sharing), use `count_nodes_dedup` in `inv_trig_n_angle.rs` instead.
 ///
 /// Delegates to canonical `cas_ast::traversal::count_all_nodes`.
-pub(crate) fn node_count(ctx: &Context, expr: ExprId) -> usize {
+pub(crate) fn node_count_tree(ctx: &Context, expr: ExprId) -> usize {
     cas_ast::traversal::count_all_nodes(ctx, expr)
 }
 
@@ -26,8 +32,8 @@ pub(crate) fn rewrite_worsens_too_much(
     max_growth_abs: usize,
     max_growth_ratio: f64,
 ) -> bool {
-    let size_before = node_count(ctx, before);
-    let size_after = node_count(ctx, after);
+    let size_before = node_count_tree(ctx, before);
+    let size_after = node_count_tree(ctx, after);
 
     // If expression got smaller or stayed same, always allow
     if size_after <= size_before {

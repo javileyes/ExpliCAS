@@ -16,7 +16,7 @@
 //!
 //! A hard budget guard ensures we never exceed `input_nodes + max_extra_nodes`.
 
-use crate::helpers::node_count;
+use crate::helpers::node_count_tree;
 use crate::Step;
 use cas_ast::{Context, Expr, ExprId};
 use num_traits::One;
@@ -80,7 +80,7 @@ pub fn score_expr(ctx: &Context, expr: ExprId) -> Score {
         sqrt_in_den: count_sqrt_in_den(ctx, expr),
         nested_div: count_nested_div(ctx, expr),
         add_in_den: has_add_in_den(ctx, expr),
-        nodes: node_count(ctx, expr),
+        nodes: node_count_tree(ctx, expr),
     }
 }
 
