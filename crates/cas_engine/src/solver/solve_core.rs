@@ -33,8 +33,11 @@ use super::{
 // These are now applied automatically by simplify_for_solve().
 
 // ---------------------------------------------------------------------------
-// Cycle detection: per-call-stack fingerprint set
+// Cycle detection: per-call-stack fingerprint set (diagnostic TLS)
 // ---------------------------------------------------------------------------
+// SOLVE_SEEN is a legacy TLS cell for cycle detection only.
+// It must NOT carry solver-semantic information.
+// See solver/mod.rs for the full TLS policy.
 
 thread_local! {
     /// Set of equation fingerprints seen in the current top-level solve call.

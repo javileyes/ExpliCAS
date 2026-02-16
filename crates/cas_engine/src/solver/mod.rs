@@ -310,9 +310,24 @@ impl SolveStep {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Recursion depth limit
+// ---------------------------------------------------------------------------
+
 /// Maximum recursion depth for solver to prevent stack overflow
 pub(crate) const MAX_SOLVE_DEPTH: usize = 50;
 
+// ---------------------------------------------------------------------------
+// Legacy thread-local state: diagnostic/UI ONLY
+// ---------------------------------------------------------------------------
+// These TLS cells are retained for recursion safety and display concerns.
+// They must NOT carry solver-semantic information (e.g. domain conditions).
+// Domain conditions are fully SolveCtx-threaded and returned in SolveDiagnostics.
+//
+// Allowlisted cells:
+//   SOLVE_DEPTH        – recursion depth guard (prevents stack overflow)
+//   SOLVE_ASSUMPTIONS  – per-solve assumption collector (display / pedagogical)
+//   OUTPUT_SCOPES      – display scope tags emitted by strategies
 thread_local! {
     pub(crate) static SOLVE_DEPTH: std::cell::RefCell<usize> = const { std::cell::RefCell::new(0) };
     /// Thread-local collector for solver assumptions.
