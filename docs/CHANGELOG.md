@@ -5,6 +5,53 @@ All notable changes to ExpliCAS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.15.56] - 2026-02-16 - Solver TLS Elimination & Reentrancy Hardening
+
+### Added
+
+- **`SolveCtx` Explicit Context Threading**:
+  Domain conditions are now accumulated via `Rc<RefCell<HashSet<ImplicitCondition>>>` in
+  `SolveCtx`, passed explicitly through the entire solve pipeline. Eliminates dependency on
+  thread-local storage for solver-semantic state.
+
+- **`SolveDiagnostics.required`**: Domain conditions returned in-band with solve results,
+  making each solve call self-contained and composable.
+
+- **CI Lint `lint_no_solver_tls.sh`**: Prevents new `thread_local!` declarations in
+  `solver/`. Allowlists 4 legacy diagnostic cells (`SOLVE_DEPTH`, `SOLVE_SEEN`,
+  `SOLVE_ASSUMPTIONS`, `OUTPUT_SCOPES`). Auto-discovered by `scripts/ci.sh`.
+
+- **Sequential Reentrancy Test** (`solver_assumptions_contract_tests.rs`):
+  `sequential_solves_no_condition_leakage` — verifies `ln(x)=0` followed by `x=1`
+  produces no condition leakage between solves.
+
+- **Parallel Reentrancy Tests** (`solver_parallel_reentrancy_tests.rs`):
+  - `parallel_solves_have_independent_diagnostics` — two threads solve different equations
+    concurrently, asserts independent diagnostics.
+  - `parallel_identical_solves_produce_consistent_results` — four threads solve `2^x=y`
+    concurrently, asserts deterministic `positive(y)` conditions.
+
+### Removed
+
+- **`DOMAIN_ENV_SINK` TLS**: Thread-local sink for domain conditions fully removed.
+  All references deleted — conditions now flow through `SolveCtx`.
+
+### Changed
+
+- **Legacy TLS Documentation**: Added block comment above remaining TLS declarations in
+  `solver/mod.rs` and `solve_core.rs` documenting they are diagnostic/UI only and must
+  not carry solver-semantic information. References TLS policy for future contributors.
+
+### Documentation
+
+- `CHANGELOG.md`: This entry
+- `MAINTENANCE.md`: Added `lint_no_solver_tls.sh` to custom lint scripts list;
+  new section 11 documenting Solver TLS Policy
+- `ARCHITECTURE.md`: New section on Solver Context Architecture (`SolveCtx` design,
+  TLS policy, reentrancy guarantees)
+
+---
+
 ## [2.15.54] - 2026-02-15 - Canonicalization Consolidation & Pipeline Hardening
 
 ### Added

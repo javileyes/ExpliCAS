@@ -921,6 +921,7 @@ Lint scripts are **auto-discovered** by pattern `scripts/lint_*.sh`:
 # Current scripts
 scripts/lint_nary_shape_independence.sh   # Enforce AddView usage
 scripts/lint_no_raw_mul.sh                # Prevent raw Mul construction
+scripts/lint_no_solver_tls.sh             # Prevent new thread_local! in solver/
 
 # Add new lint: just create script and make executable
 chmod +x scripts/lint_my_check.sh         # Auto-runs in next CI
@@ -1163,3 +1164,72 @@ See `tests/budget_contract_tests.rs`:
 3. Add to `lint_budget_enforcement.sh` hotspots if critical
 4. Add contract test validating PassStats fields
 5. Run `make ci && make lint-budget`
+
+## 11. Solver TLS Policy ★ (Added 2026-02-16)
+
+### Overview
+
+The solver previously used `thread_local!` storage (`DOMAIN_ENV_SINK`) to accumulate domain
+conditions (e.g., `positive(x)`, `non_negative(x)`) during recursive solve calls. This was
+eliminated in favor of **explicit context threading** via `SolveCtx`, making the solver
+composable, reentrancy-safe, and testable.
+
+### Policy
+
+> **Thread-local cells in `solver/` must NOT carry solver-semantic information.**
+> Domain conditions are fully `SolveCtx`-threaded and returned in `SolveDiagnostics`.
+
+| State Type | Storage | Example |
+|-----------|---------|---------|
+| Domain conditions | `SolveCtx.required_sink` → `SolveDiagnostics.required` | `positive(x)`, `non_negative(x)` |
+| Recursion guard | TLS `SOLVE_DEPTH` (legacy, diagnostic) | recursion limit check |
+| Cycle detection | TLS `SOLVE_SEEN` (legacy, diagnostic) | equation fingerprint check |
+| Assumption collection | TLS `SOLVE_ASSUMPTIONS` (legacy, display) | pedagogical output |
+| Display scopes | TLS `OUTPUT_SCOPES` (legacy, display) | strategy scope tags |
+
+### Allowlisted TLS (4 cells)
+
+These are retained for diagnostic/UI purposes only:
+
+| Cell | Location | Purpose |
+|------|----------|---------|
+| `SOLVE_DEPTH` | `solver/mod.rs` | Recursion depth guard (prevents stack overflow) |
+| `SOLVE_SEEN` | `solver/solve_core.rs` | Cycle fingerprinting (prevents infinite loops) |
+| `SOLVE_ASSUMPTIONS` | `solver/mod.rs` | Per-solve assumption collector (display) |
+| `OUTPUT_SCOPES` | `solver/mod.rs` | Display scope tags emitted by strategies |
+
+### CI Enforcement
+
+The lint script `scripts/lint_no_solver_tls.sh` runs automatically during `make ci`:
+
+```bash
+# Runs grep for thread_local! in solver/, checks against allowlist
+./scripts/lint_no_solver_tls.sh
+
+# Expected output:
+# ✔ No new thread_local! in solver (4 legacy allowlisted)
+```
+
+Any new `thread_local!` in `solver/` will fail CI unless added to the allowlist
+(which requires explicit justification).
+
+### Adding New Solver State
+
+If you need to pass new state through the solve pipeline:
+
+1. **Add a field to `SolveCtx`** (preferred for per-call state)
+2. **Add a field to `SolveDiagnostics`** (for state returned to the caller)
+3. **Thread `ctx` through any new functions** (follow existing pattern)
+4. **Do NOT create a new `thread_local!`** — the lint will reject it
+
+### Reentrancy Tests
+
+The solver is covered by 4 reentrancy tests:
+
+| Test | File | What it tests |
+|------|------|---------------|
+| `nested_solves_have_isolated_requirements` | `solver_assumptions_contract_tests.rs` | Recursive inner solve doesn't leak conditions |
+| `sequential_solves_no_condition_leakage` | `solver_assumptions_contract_tests.rs` | Sequential solves produce independent results |
+| `parallel_solves_have_independent_diagnostics` | `solver_parallel_reentrancy_tests.rs` | Two threads get independent diagnostics |
+| `parallel_identical_solves_produce_consistent_results` | `solver_parallel_reentrancy_tests.rs` | Concurrent identical solves are deterministic |
+

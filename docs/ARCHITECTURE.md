@@ -3792,6 +3792,78 @@ make lint  # Includes duplicate detection
 
 ---
 
+## Solver Context Architecture ★★ (Added 2026-02-16)
+
+### Overview
+
+The solver passes state explicitly through a `SolveCtx` struct rather than relying on
+thread-local storage. This makes every solve call self-contained, composable, and safe
+for concurrent use across threads.
+
+### Data Flow
+
+```
+solve_with_display_steps(eq, var, simplifier, opts)
+    │
+    ├── Creates fresh SolveCtx {
+    │       required_sink: Rc<RefCell<HashSet<ImplicitCondition>>>,
+    │       options: SolverOptions,
+    │   }
+    │
+    ├── Calls solve_with_ctx(eq, var, simplifier, &ctx)
+    │       │
+    │       ├── Strategies receive &ctx
+    │       ├── Isolation functions receive &ctx
+    │       └── Inner recursive solves share same ctx
+    │
+    └── Returns (SolutionSet, Vec<SolveStep>, SolveDiagnostics)
+                                                 │
+                                                 └── required: HashSet<ImplicitCondition>
+                                                     (drained from ctx.required_sink)
+```
+
+### Key Types
+
+| Type | Location | Purpose |
+|------|----------|---------|
+| `SolveCtx` | `solver/mod.rs` | Per-solve context with condition sink and options |
+| `SolveDiagnostics` | `solver/mod.rs` | Return value containing accumulated conditions |
+| `ImplicitCondition` | `implicit_domain.rs` | Domain conditions (`Positive`, `NonNegative`, etc.) |
+
+### Thread Safety
+
+Each call to `solve_with_display_steps` creates its own `SolveCtx` with a fresh
+`Rc<RefCell<HashSet>>`. Since `Rc` is not `Send`, it cannot accidentally cross
+thread boundaries. Each thread uses its own `Engine` and `Simplifier`.
+
+### Legacy TLS Policy
+
+Four `thread_local!` cells remain in the solver for diagnostic/UI purposes:
+
+| Cell | Purpose | Affects semantics? |
+|------|---------|--------------------|
+| `SOLVE_DEPTH` | Recursion limit guard | No (safety only) |
+| `SOLVE_SEEN` | Cycle detection fingerprints | No (termination only) |
+| `SOLVE_ASSUMPTIONS` | Assumption collection for display | No (diagnostic only) |
+| `OUTPUT_SCOPES` | Display scope tags from strategies | No (UI only) |
+
+> **Policy**: No new `thread_local!` may carry solver-semantic state.
+> Enforced by `scripts/lint_no_solver_tls.sh` (CI).
+> See [MAINTENANCE.md](MAINTENANCE.md) section 11 for details.
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `solver/mod.rs` | `SolveCtx`, `SolveDiagnostics`, TLS declarations, strategy dispatch |
+| `solver/solve_core.rs` | Core solving loop, `SOLVE_SEEN` cycle detection |
+| `solver/isolation/` | Equation isolation functions (all receive `&SolveCtx`) |
+| `scripts/lint_no_solver_tls.sh` | CI lint preventing new TLS in solver |
+| `tests/solver_parallel_reentrancy_tests.rs` | Multi-thread reentrancy tests |
+| `tests/solver_assumptions_contract_tests.rs` | Sequential reentrancy + condition isolation |
+
+---
+
 ## Conclusión
 
 ### Fortalezas del Diseño
