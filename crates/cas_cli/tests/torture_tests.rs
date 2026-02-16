@@ -627,12 +627,13 @@ fn test_torture_8_sophie_germain() {
 fn test_torture_9_angle_compound() {
     // sin(x + y) - (sin(x)*cos(y) + cos(x)*sin(y))
     // Expected: 0
+    // Note: angle-sum expansion is expand-mode only (Ticket 6c),
+    // so we use expand() to verify the identity.
     let input = "sin(x + y) - (sin(x)*cos(y) + cos(x)*sin(y))";
     let mut simplifier = create_full_simplifier();
-    // Rules are now in create_full_simplifier
 
     let expr = parse(input, &mut simplifier.context).unwrap();
-    let (simplified, _) = simplifier.simplify(expr);
+    let (simplified, _) = simplifier.expand(expr);
     let result_str = format!(
         "{}",
         DisplayExpr {

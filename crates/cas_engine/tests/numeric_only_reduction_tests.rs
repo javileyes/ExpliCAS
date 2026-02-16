@@ -420,3 +420,66 @@ fn double_angle_distributed_idempotent() {
     assert_idempotent("cos(2*u^2 + 2)");
     assert_idempotent("sin(2*u^2 + 2)");
 }
+
+// =============================================================================
+// Ticket 6c: AngleIdentityRule gated to expand_mode only
+// sin/cos(a+b) should NOT expand in normal simplification — expansion
+// creates non-canonical forms (e.g. cos(u²)·cos(1) - sin(u²)·sin(1))
+// that block convergence.
+// =============================================================================
+
+/// cos(u²+1) must stay compact in normal mode (no angle-sum expansion).
+/// Structural check: result must NOT contain cos(1) or sin(1).
+#[test]
+fn angle_sum_no_expand_cos_default() {
+    let result = simplify_str("cos(u^2 + 1)");
+    assert!(
+        !result.contains("cos(1)") && !result.contains("sin(1)"),
+        "cos(u²+1) should NOT expand in normal mode; got: {}",
+        result
+    );
+    // Should still be a cos(...) expression
+    assert!(
+        result.contains("cos"),
+        "cos(u²+1) should remain as cos form; got: {}",
+        result
+    );
+}
+
+/// sin(x+y) DOES expand in normal mode when both summands have variables.
+/// The surgical gate allows this because both `x` and `y` contain symbols,
+/// enabling NF convergence with product forms like sin(x)cos(y)+cos(x)sin(y).
+#[test]
+fn angle_sum_expand_sin_both_vars() {
+    let result = simplify_str("sin(x + y)");
+    assert!(
+        result.contains("cos(y)") || result.contains("cos(x)"),
+        "sin(x+y) SHOULD expand when both summands have vars; got: {}",
+        result
+    );
+}
+
+/// sin(u²+1) must stay compact in normal mode (constant summand → blocked).
+/// Structural check: result must NOT contain sin(1) or cos(1).
+#[test]
+fn angle_sum_no_expand_sin_const_summand() {
+    let result = simplify_str("sin(u^2 + 1)");
+    assert!(
+        !result.contains("cos(1)") && !result.contains("sin(1)"),
+        "sin(u²+1) should NOT expand in normal mode (const summand); got: {}",
+        result
+    );
+    assert!(
+        result.contains("sin"),
+        "sin(u²+1) should remain as sin form; got: {}",
+        result
+    );
+}
+
+/// Idempotency for trig with sum arguments (anti-loop guard).
+#[test]
+fn angle_sum_no_expand_idempotent() {
+    assert_idempotent("cos(u^2 + 1)");
+    assert_idempotent("sin(x + y)");
+    assert_idempotent("cos(a + b + c)");
+}

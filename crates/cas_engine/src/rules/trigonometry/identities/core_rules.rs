@@ -821,8 +821,10 @@ define_rule!(
 );
 
 // MANUAL IMPLEMENTATION: AngleIdentityRule with parent context guard
-// Don't expand sin(a+b)/cos(a+b) when they are being raised to power ≥ 2
-// This preserves the Pythagorean identity pattern sin²+cos²=1
+// Policy: angle-sum expansion is EXPAND-MODE ONLY.
+// sin(a+b)/cos(a+b) expansion produces larger, non-canonical forms
+// (e.g. cos(u²)·cos(1) - sin(u²)·sin(1)) that block convergence.
+// Within expand_mode, keep additional guards to prevent blowups/loops.
 pub struct AngleIdentityRule;
 
 impl crate::rule::Rule for AngleIdentityRule {
@@ -842,26 +844,58 @@ impl crate::rule::Rule for AngleIdentityRule {
     ) -> Option<Rewrite> {
         use cas_ast::Expr;
 
-        // GUARD: Don't expand sin/cos if the argument has a large coefficient.
-        // sin(n*x) with |n| > 2 should NOT be expanded because it leads to
-        // exponential explosion: sin(16x) → sin(13x+3x) → ... huge tree.
-        // This guard blocks the expansion at the source.
+        // SURGICAL GATE: in normal simplify mode, only expand sin(a±b) / cos(a±b)
+        // when BOTH summands contain at least one variable.
+        // This allows canonical expansions like:
+        //   sin(x+y) → sin(x)cos(y) + cos(x)sin(y)  ✅ (NF convergence)
+        // But blocks non-canonical expansions that create cos/sin(constant) leaves:
+        //   sin(u²+1) → cos(1)·sin(u²) + sin(1)·cos(u²)  ❌
+        //   sin(x+π/4) → ...  ❌  (handled by EvaluateTrigTableRule instead)
+        // In expand_mode, all expansions are allowed (with existing size guards).
         if !parent_ctx.is_expand_mode() {
-            if let Expr::Function(fn_id, args) = ctx.get(expr) {
-                if matches!(
-                    ctx.builtin_of(*fn_id),
-                    Some(
-                        cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos | cas_ast::BuiltinFn::Tan
-                    )
-                ) && args.len() == 1
-                    && has_large_coefficient(ctx, args[0])
-                {
-                    return None;
+            let should_block = match ctx.get(expr) {
+                Expr::Function(_, args) if args.len() == 1 => {
+                    match ctx.get(args[0]) {
+                        Expr::Add(l, r) | Expr::Sub(l, r) => {
+                            // Block if either summand has no variables
+                            !crate::implicit_domain::contains_variable(ctx, *l)
+                                || !crate::implicit_domain::contains_variable(ctx, *r)
+                        }
+                        Expr::Div(num, _) => match ctx.get(*num) {
+                            // sin((a+b)/c) pattern
+                            Expr::Add(l, r) | Expr::Sub(l, r) => {
+                                !crate::implicit_domain::contains_variable(ctx, *l)
+                                    || !crate::implicit_domain::contains_variable(ctx, *r)
+                            }
+                            _ => true, // Not Add/Sub in numerator → block
+                        },
+                        _ => true, // Not Add/Sub/Div argument → block
+                    }
                 }
+                _ => true,
+            };
+            if should_block {
+                return None;
             }
         }
 
-        // GUARD: Don't expand sin(a+b)/cos(a+b) if this function is part of sin²+cos²=1 pattern
+        // --- Expand-mode anti-catastrophe guards (defense-in-depth) ---
+
+        // GUARD 1: Don't expand sin/cos if the argument has a large coefficient.
+        // sin(n*x) with |n| > 2 should NOT be expanded because it leads to
+        // exponential explosion: sin(16x) → sin(13x+3x) → ... huge tree.
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            if matches!(
+                ctx.builtin_of(*fn_id),
+                Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos | cas_ast::BuiltinFn::Tan)
+            ) && args.len() == 1
+                && has_large_coefficient(ctx, args[0])
+            {
+                return None;
+            }
+        }
+
+        // GUARD 2: Don't expand sin(a+b)/cos(a+b) if part of sin²+cos²=1 pattern
         // The pattern marks are set by pre-scan before simplification
         if let Some(marks) = parent_ctx.pattern_marks() {
             if marks.is_trig_square_protected(expr) {
@@ -869,18 +903,17 @@ impl crate::rule::Rule for AngleIdentityRule {
             }
         }
 
-        // GUARD: Centralized anti-worsen for large trig coefficients.
+        // GUARD 3: Centralized anti-worsen for large trig coefficients.
         // If we're inside sin(n*x) with |n| > 2, block all trig expansions.
         // This prevents exponential explosion from recursive angle decomposition.
-        if parent_ctx.is_trig_large_coeff_protected() && !parent_ctx.is_expand_mode() {
+        if parent_ctx.is_trig_large_coeff_protected() {
             return None;
         }
 
-        // GUARD: Anti-worsen for multiple angles.
+        // GUARD 4: Anti-worsen for multiple angles.
         // Don't expand sin(a+b) or cos(a+b) if:
         // - Either a or b is already a multiple angle (n*x where |n| > 1)
         // - This would cause exponential expansion: sin(12x + 4x) → huge tree
-        // Note: We allow sin(x + y) with distinct variables, only block multiples of same var
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             if matches!(
                 ctx.builtin_of(*fn_id),
@@ -889,7 +922,6 @@ impl crate::rule::Rule for AngleIdentityRule {
             {
                 let inner = args[0];
                 if let Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) = ctx.get(inner) {
-                    // Check if either side is a multiple angle that would cause explosion
                     if is_multiple_angle(ctx, *lhs) || is_multiple_angle(ctx, *rhs) {
                         return None; // Block expansion - would cause exponential growth
                     }

@@ -2856,6 +2856,26 @@ fn run_csv_combination_tests(
                             }
                         }
 
+                        // Check 2c: Expand fallback — expand(LHS - RHS) == 0  [fresh context]
+                        // Bridges trig identities gated behind expand_mode (Ticket 6c).
+                        {
+                            let d_str = format!("({}) - ({})", exp_clone, simp_clone);
+                            let mut sd = Simplifier::with_default_rules();
+                            if let Ok(dp) = parse(&d_str, &mut sd.context) {
+                                let (mut dr, _) = sd.expand(dp);
+                                let cfg = cas_engine::semantics::EvalConfig::default();
+                                let mut budget = cas_engine::budget::Budget::preset_cli();
+                                if let Ok(r) = cas_engine::const_fold::fold_constants(&mut sd.context, dr, &cfg, cas_engine::const_fold::ConstFoldMode::Safe, &mut budget) {
+                                    dr = r.expr;
+                                }
+                                let zero = num_rational::BigRational::from_integer(0.into());
+                                if matches!(sd.context.get(dr), cas_ast::Expr::Number(n) if *n == zero) {
+                                    let _ = tx.send(Some(("proved-d".to_string(), String::new(), String::new(), combo_cycles)));
+                                    return;
+                                }
+                            }
+                        }
+
                         // Check 3: Numeric equivalence
                         let result = check_numeric_equiv_2var(
                             &simplifier.context,
@@ -4931,6 +4951,37 @@ fn run_substitution_tests() -> ComboMetrics {
                         let mut sd = Simplifier::with_default_rules();
                         if let Ok(dp) = parse(&d_str, &mut sd.context) {
                             let (mut dr, _) = sd.simplify(dp);
+                            let cfg = cas_engine::semantics::EvalConfig::default();
+                            let mut budget = cas_engine::budget::Budget::preset_cli();
+                            if let Ok(r) = cas_engine::const_fold::fold_constants(
+                                &mut sd.context,
+                                dr,
+                                &cfg,
+                                cas_engine::const_fold::ConstFoldMode::Safe,
+                                &mut budget,
+                            ) {
+                                dr = r.expr;
+                            }
+                            let zero = num_rational::BigRational::from_integer(0.into());
+                            if matches!(sd.context.get(dr), cas_ast::Expr::Number(n) if *n == zero)
+                            {
+                                let _ = tx.send(Some((
+                                    "proved".to_string(),
+                                    String::new(),
+                                    sub_cycles,
+                                )));
+                                return;
+                            }
+                        }
+                    }
+
+                    // Check 2c: Expand fallback — expand(LHS - RHS) == 0  [fresh context]
+                    // Bridges trig identities gated behind expand_mode (Ticket 6c).
+                    {
+                        let d_str = format!("({}) - ({})", lhs_clone, rhs_clone);
+                        let mut sd = Simplifier::with_default_rules();
+                        if let Ok(dp) = parse(&d_str, &mut sd.context) {
+                            let (mut dr, _) = sd.expand(dp);
                             let cfg = cas_engine::semantics::EvalConfig::default();
                             let mut budget = cas_engine::budget::Budget::preset_cli();
                             if let Ok(r) = cas_engine::const_fold::fold_constants(

@@ -278,6 +278,68 @@ impl Simplifier {
                 EquivalenceResult::True
             }
         } else {
+            // =================================================================
+            // Fallback 2: Try expand(A - B) = 0
+            // When normal simplify can't bridge trig identities gated behind
+            // expand_mode (e.g., sin(a+b) → sin(a)cos(b) + cos(a)sin(b)),
+            // the expand pipeline enables those rules and may prove equivalence.
+            // =================================================================
+            let (expanded_diff, expand_steps) = self.expand(diff);
+            let is_expand_zero = match self.context.get(expanded_diff) {
+                Expr::Number(n) => n.is_zero(),
+                _ => false,
+            };
+
+            if is_expand_zero {
+                let mut has_conditional_rules = false;
+                let mut requires: Vec<String> = Vec::new();
+
+                for step in &expand_steps {
+                    if step.soundness != SoundnessLabel::Equivalence {
+                        has_conditional_rules = true;
+                    }
+                    for req in step.required_conditions() {
+                        let condition_str = req.display(&self.context);
+                        if !requires.contains(&condition_str) {
+                            requires.push(condition_str);
+                        }
+                    }
+                }
+
+                for hint in &self.last_blocked_hints {
+                    let expr_display = format!(
+                        "{}",
+                        cas_ast::DisplayExpr {
+                            context: &self.context,
+                            id: hint.expr_id
+                        }
+                    );
+                    let hint_str = match &hint.key {
+                        crate::assumptions::AssumptionKey::NonZero { .. } => {
+                            format!("{} ≠ 0", expr_display)
+                        }
+                        crate::assumptions::AssumptionKey::Positive { .. } => {
+                            format!("{} > 0", expr_display)
+                        }
+                        crate::assumptions::AssumptionKey::NonNegative { .. } => {
+                            format!("{} ≥ 0", expr_display)
+                        }
+                        _ => format!("{} ({})", expr_display, hint.rule),
+                    };
+                    if !requires.contains(&hint_str) {
+                        requires.push(hint_str);
+                    }
+                }
+
+                self.normalize_requires(&mut requires);
+
+                return if has_conditional_rules || !requires.is_empty() {
+                    EquivalenceResult::ConditionalTrue { requires }
+                } else {
+                    EquivalenceResult::True
+                };
+            }
+
             // Not zero symbolically - try numeric verification
             if self.allow_numerical_verification {
                 let vars = cas_ast::collect_variables(&self.context, result_expr);

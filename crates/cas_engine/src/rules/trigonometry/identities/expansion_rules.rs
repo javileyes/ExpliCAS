@@ -344,16 +344,12 @@ mod tests {
     fn test_trig_identities() {
         let mut ctx = Context::new();
         let rule = AngleIdentityRule;
+        // AngleIdentityRule is now gated behind expand_mode (Ticket 6c)
+        let expand_ctx = crate::parent_context::ParentContext::root().with_expand_mode_flag(true);
 
         // sin(x + y)
         let expr = parse("sin(x + y)", &mut ctx).unwrap();
-        let rewrite = rule
-            .apply(
-                &mut ctx,
-                expr,
-                &crate::parent_context::ParentContext::root(),
-            )
-            .unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &expand_ctx).unwrap();
         assert!(format!(
             "{}",
             DisplayExpr {
@@ -365,13 +361,7 @@ mod tests {
 
         // cos(x + y) -> cos(x)cos(y) - sin(x)sin(y)
         let expr = parse("cos(x + y)", &mut ctx).unwrap();
-        let rewrite = rule
-            .apply(
-                &mut ctx,
-                expr,
-                &crate::parent_context::ParentContext::root(),
-            )
-            .unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &expand_ctx).unwrap();
         let res = format!(
             "{}",
             DisplayExpr {
@@ -384,13 +374,7 @@ mod tests {
 
         // sin(x - y)
         let expr = parse("sin(x - y)", &mut ctx).unwrap();
-        let rewrite = rule
-            .apply(
-                &mut ctx,
-                expr,
-                &crate::parent_context::ParentContext::root(),
-            )
-            .unwrap();
+        let rewrite = rule.apply(&mut ctx, expr, &expand_ctx).unwrap();
         assert!(format!(
             "{}",
             DisplayExpr {

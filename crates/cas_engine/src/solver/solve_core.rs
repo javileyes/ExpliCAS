@@ -405,6 +405,27 @@ fn solve_inner(
         }
     }
 
+    // PRE-SOLVE TRIG CANCELLATION (Ticket 6c fallback):
+    // If diff still contains the variable after algebraic expand, try
+    // simplifier.expand() which enables expand_mode (AngleIdentityRule etc.)
+    // to bridge trig identity noise like sin(x)*cos(y)+cos(x)*sin(y) → sin(x+y).
+    // The algebraic expand above only distributes multiplication; it cannot
+    // collapse trig product-to-sum forms.
+    // Same guard: only accept if variable eliminated or >25% node reduction.
+    if contains_var(&simplifier.context, diff_simplified, var) {
+        let (trig_expanded, _) = simplifier.expand(diff_simplified);
+        let old_nodes = cas_ast::traversal::count_all_nodes(&simplifier.context, diff_simplified);
+        let new_nodes = cas_ast::traversal::count_all_nodes(&simplifier.context, trig_expanded);
+        let var_eliminated = !contains_var(&simplifier.context, trig_expanded, var);
+        let significant_reduction = old_nodes > 4 && new_nodes * 4 < old_nodes * 3;
+        if var_eliminated || significant_reduction {
+            diff_simplified = trig_expanded;
+            let zero = simplifier.context.num(0);
+            simplified_eq.lhs = diff_simplified;
+            simplified_eq.rhs = zero;
+        }
+    }
+
     // Check if the difference has NO variable
     if !contains_var(&simplifier.context, diff_simplified, var) {
         // Variable disappeared - this is either an identity, contradiction, or parameter-dependent
