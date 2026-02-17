@@ -153,10 +153,6 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 EvalRequest {
                     raw_input: args.expr.clone(),
                     parsed: eq_expr,
-                    kind: cas_session::EntryKind::Eq {
-                        lhs: eq.lhs,
-                        rhs: eq.rhs,
-                    },
                     action: EvalAction::Solve { var },
                     auto_store: args.session.is_some(),
                 }
@@ -169,10 +165,6 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 EvalRequest {
                     raw_input: args.expr.clone(),
                     parsed: eq_expr,
-                    kind: cas_session::EntryKind::Eq {
-                        lhs: expr,
-                        rhs: zero,
-                    },
                     action: EvalAction::Solve { var },
                     auto_store: args.session.is_some(),
                 }
@@ -186,7 +178,6 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
         EvalRequest {
             raw_input: args.expr.clone(),
             parsed,
-            kind: cas_session::EntryKind::Expr(parsed),
             action: EvalAction::Limit { var, approach },
             auto_store: args.session.is_some(),
         }
@@ -210,10 +201,6 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 EvalRequest {
                     raw_input: args.expr.clone(),
                     parsed: eq_expr,
-                    kind: cas_session::EntryKind::Eq {
-                        lhs: eq.lhs,
-                        rhs: eq.rhs,
-                    },
                     action: EvalAction::Solve { var },
                     auto_store: args.session.is_some(),
                 }
@@ -223,7 +210,6 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 EvalRequest {
                     raw_input: args.expr.clone(),
                     parsed,
-                    kind: cas_session::EntryKind::Expr(parsed),
                     action: EvalAction::Simplify,
                     auto_store: args.session.is_some(),
                 }
@@ -233,7 +219,9 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
     let parse_us = parse_start.elapsed().as_micros() as u64;
 
     // Capture parsed info before eval() consumes the request
-    let input_kind = req.kind.clone();
+    let input_kind = cas_ast::eq::unwrap_eq(&engine.simplifier.context, req.parsed)
+        .map(|(lhs, rhs)| cas_session::EntryKind::Eq { lhs, rhs })
+        .unwrap_or(cas_session::EntryKind::Expr(req.parsed));
 
     // Evaluate
     let simplify_start = Instant::now();

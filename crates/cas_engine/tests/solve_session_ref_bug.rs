@@ -50,7 +50,6 @@ fn test_solve_session_ref() {
     let req = EvalRequest {
         raw_input: "#2".to_string(),
         parsed: id_var,
-        kind: EntryKind::Expr(id_var),
         action: EvalAction::Solve {
             var: "x".to_string(),
         },

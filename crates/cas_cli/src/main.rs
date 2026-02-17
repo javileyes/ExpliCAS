@@ -526,7 +526,6 @@ fn run_eval_text(args: &EvalArgs) {
     let req = EvalRequest {
         raw_input: args.expr.clone(),
         parsed,
-        kind: cas_session::EntryKind::Expr(parsed),
         action: EvalAction::Simplify,
         auto_store: args.session.is_some(), // Store if using persistent session
     };

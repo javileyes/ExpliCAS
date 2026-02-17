@@ -479,7 +479,6 @@ fn simplify_with_domain_value(
     value: cas_engine::semantics::ValueDomain,
 ) -> (String, Vec<String>) {
     use cas_engine::{Engine, EvalAction, EvalRequest, EvalResult};
-    use cas_session::EntryKind;
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -491,7 +490,6 @@ fn simplify_with_domain_value(
     let req = EvalRequest {
         raw_input: input.to_string(),
         parsed,
-        kind: EntryKind::Expr(parsed),
         action: EvalAction::Simplify,
         auto_store: false,
     };
@@ -775,7 +773,6 @@ fn value_domain_complex_i_fourth() {
 #[test]
 fn exp_ln_x_generic_emits_positive_require() {
     use cas_engine::{Engine, EvalAction, EvalRequest, EvalResult};
-    use cas_session::EntryKind;
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -788,7 +785,6 @@ fn exp_ln_x_generic_emits_positive_require() {
     let req = EvalRequest {
         raw_input: "exp(ln(x))".to_string(),
         parsed,
-        kind: EntryKind::Expr(parsed),
         action: EvalAction::Simplify,
         auto_store: false,
     };
@@ -827,7 +823,6 @@ fn exp_ln_x_generic_emits_positive_require() {
 #[test]
 fn blocked_hint_exp_ln_5_no_hint() {
     use cas_engine::{Engine, EvalAction, EvalRequest, EvalResult};
-    use cas_session::EntryKind;
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -840,7 +835,6 @@ fn blocked_hint_exp_ln_5_no_hint() {
     let req = EvalRequest {
         raw_input: "exp(ln(5))".to_string(),
         parsed,
-        kind: EntryKind::Expr(parsed),
         action: EvalAction::Simplify,
         auto_store: false,
     };
@@ -876,7 +870,6 @@ fn blocked_hint_exp_ln_5_no_hint() {
 #[test]
 fn step_tracks_assumed_nonzero_in_generic() {
     use cas_engine::{Engine, EvalAction, EvalRequest, EvalResult};
-    use cas_session::EntryKind;
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -889,7 +882,6 @@ fn step_tracks_assumed_nonzero_in_generic() {
     let req = EvalRequest {
         raw_input: "(x*y)/x".to_string(),
         parsed,
-        kind: EntryKind::Expr(parsed),
         action: EvalAction::Simplify,
         auto_store: false,
     };
@@ -930,7 +922,6 @@ fn step_tracks_assumed_nonzero_in_generic() {
 #[test]
 fn step_tracks_assumed_positive_in_assume() {
     use cas_engine::{Engine, EvalAction, EvalRequest, EvalResult};
-    use cas_session::EntryKind;
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -943,7 +934,6 @@ fn step_tracks_assumed_positive_in_assume() {
     let req = EvalRequest {
         raw_input: "exp(ln(x))".to_string(),
         parsed,
-        kind: EntryKind::Expr(parsed),
         action: EvalAction::Simplify,
         auto_store: false,
     };
@@ -990,7 +980,6 @@ fn step_tracks_assumed_positive_in_assume() {
 #[test]
 fn sqrt_conjugate_collapse_blocked_in_generic() {
     use cas_engine::{Engine, EvalAction, EvalRequest};
-    use cas_session::EntryKind;
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -1005,7 +994,6 @@ fn sqrt_conjugate_collapse_blocked_in_generic() {
     let req = EvalRequest {
         raw_input: input.to_string(),
         parsed,
-        kind: EntryKind::Expr(parsed),
         action: EvalAction::Simplify,
         auto_store: false,
     };
@@ -1050,7 +1038,6 @@ fn sqrt_conjugate_collapse_blocked_in_generic() {
 #[test]
 fn sqrt_conjugate_collapse_allowed_in_assume() {
     use cas_engine::{Engine, EvalAction, EvalRequest};
-    use cas_session::EntryKind;
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -1064,7 +1051,6 @@ fn sqrt_conjugate_collapse_allowed_in_assume() {
     let req = EvalRequest {
         raw_input: input.to_string(),
         parsed,
-        kind: EntryKind::Expr(parsed),
         action: EvalAction::Simplify,
         auto_store: false,
     };
@@ -1110,7 +1096,6 @@ fn sqrt_conjugate_collapse_allowed_in_assume() {
 /// Helper: simplify with Generic mode and extract required_conditions
 fn simplify_generic_with_required(input: &str) -> (String, Vec<String>) {
     use cas_engine::{Engine, EvalAction, EvalRequest, EvalResult};
-    use cas_session::EntryKind;
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -1121,7 +1106,6 @@ fn simplify_generic_with_required(input: &str) -> (String, Vec<String>) {
     let req = EvalRequest {
         raw_input: input.to_string(),
         parsed,
-        kind: EntryKind::Expr(parsed),
         action: EvalAction::Simplify,
         auto_store: false,
     };

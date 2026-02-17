@@ -87,7 +87,6 @@ fn run_inner(args: &EnvelopeJsonArgs) -> Result<OutputEnvelope> {
     let req = EvalRequest {
         raw_input: args.expr.clone(),
         parsed,
-        kind: cas_session::EntryKind::Expr(parsed),
         action: EvalAction::Simplify,
         auto_store: false,
     };

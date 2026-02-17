@@ -7,14 +7,13 @@
 
 use cas_engine::eval::{Engine, EvalAction, EvalRequest};
 use cas_engine::step::ImportanceLevel;
-use cas_session::{EntryKind, SessionState};
+use cas_session::SessionState;
 
 /// Helper: create request from expression string
 fn make_request(engine: &mut Engine, input: &str) -> EvalRequest {
     let expr_id = cas_parser::parse(input, &mut engine.simplifier.context).expect("parse failed");
     EvalRequest {
         parsed: expr_id,
-        kind: EntryKind::Expr(expr_id),
         raw_input: input.to_string(),
         action: EvalAction::Simplify,
         auto_store: true,

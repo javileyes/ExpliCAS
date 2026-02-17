@@ -8,7 +8,7 @@
 use cas_ast::DisplayExpr;
 use cas_engine::{DomainMode, Engine, EvalAction, EvalRequest, EvalResult, InverseTrigPolicy};
 use cas_parser::parse;
-use cas_session::{EntryKind, SessionState};
+use cas_session::SessionState;
 
 /// Helper: simplify with given InverseTrigPolicy using Engine API
 fn simplify_with_inv_trig(input: &str, policy: InverseTrigPolicy) -> (String, Vec<String>) {
@@ -22,7 +22,6 @@ fn simplify_with_inv_trig(input: &str, policy: InverseTrigPolicy) -> (String, Ve
     let req = EvalRequest {
         raw_input: input.to_string(),
         parsed,
-        kind: EntryKind::Expr(parsed),
         action: EvalAction::Simplify,
         auto_store: false,
     };
@@ -139,7 +138,6 @@ fn strict_independent_of_domain_assume() {
     let req = EvalRequest {
         raw_input: "arctan(tan(x))".to_string(),
         parsed,
-        kind: EntryKind::Expr(parsed),
         action: EvalAction::Simplify,
         auto_store: false,
     };
@@ -177,7 +175,6 @@ fn principal_independent_of_domain_strict() {
     let req = EvalRequest {
         raw_input: "arctan(tan(x))".to_string(),
         parsed,
-        kind: EntryKind::Expr(parsed),
         action: EvalAction::Simplify,
         auto_store: false,
     };
@@ -297,7 +294,6 @@ fn simplify_with_domain(input: &str, domain: DomainMode) -> (String, Vec<String>
     let req = EvalRequest {
         raw_input: input.to_string(),
         parsed,
-        kind: EntryKind::Expr(parsed),
         action: EvalAction::Simplify,
         auto_store: false,
     };

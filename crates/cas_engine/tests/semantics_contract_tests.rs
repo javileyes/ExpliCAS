@@ -58,7 +58,6 @@ fn x_div_x_simplifies_with_default_config() {
     let req = EvalRequest {
         raw_input: "x/x".to_string(),
         parsed,
-        kind: cas_session::EntryKind::Expr(parsed),
         action: EvalAction::Simplify,
         auto_store: false,
     };

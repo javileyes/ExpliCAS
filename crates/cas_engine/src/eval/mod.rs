@@ -197,7 +197,6 @@ pub enum EvalAction {
 pub struct EvalRequest {
     pub raw_input: String,
     pub parsed: ExprId,
-    pub kind: EntryKind,
     pub action: EvalAction,
     pub auto_store: bool,
 }
@@ -325,4 +324,12 @@ pub(crate) fn build_cache_hit_step(
     step.importance = crate::step::ImportanceLevel::Medium;
     step.category = crate::step::StepCategory::Substitute;
     Some(step)
+}
+
+pub(crate) fn infer_entry_kind(ctx: &cas_ast::Context, parsed: ExprId) -> EntryKind {
+    if let Some((lhs, rhs)) = cas_ast::eq::unwrap_eq(ctx, parsed) {
+        EntryKind::Eq { lhs, rhs }
+    } else {
+        EntryKind::Expr(parsed)
+    }
 }

@@ -205,7 +205,6 @@ fn test_no_false_positive_sum_of_squares() {
 /// Uses Engine.eval to ensure value_domain propagates correctly
 fn simplify_complex(input: &str) -> String {
     use cas_engine::{Engine, EvalAction, EvalRequest, EvalResult};
-    use cas_session::EntryKind;
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -218,7 +217,6 @@ fn simplify_complex(input: &str) -> String {
     let req = EvalRequest {
         raw_input: input.to_string(),
         parsed,
-        kind: EntryKind::Expr(parsed),
         action: EvalAction::Simplify,
         auto_store: false,
     };

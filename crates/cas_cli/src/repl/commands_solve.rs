@@ -518,7 +518,6 @@ impl Repl {
     fn handle_solve_core(&mut self, line: &str, verbosity: Verbosity) -> ReplReply {
         use cas_formatter::DisplayExpr;
         use cas_parser::Statement;
-        use cas_session::EntryKind;
         use cas_solver::{EvalAction, EvalRequest, EvalResult};
 
         let mut lines: Vec<String> = Vec::new();
@@ -595,23 +594,14 @@ impl Repl {
                     Statement::Expression(_) => None,
                 };
 
-                let (kind, parsed_expr) = match stmt {
-                    Statement::Equation(eq) => {
-                        let eq_expr = self
-                            .core
-                            .engine
-                            .simplifier
-                            .context
-                            .call("Equal", vec![eq.lhs, eq.rhs]);
-                        (
-                            EntryKind::Eq {
-                                lhs: eq.lhs,
-                                rhs: eq.rhs,
-                            },
-                            eq_expr,
-                        )
-                    }
-                    Statement::Expression(e) => (EntryKind::Expr(e), e),
+                let parsed_expr = match stmt {
+                    Statement::Equation(eq) => self
+                        .core
+                        .engine
+                        .simplifier
+                        .context
+                        .call("Equal", vec![eq.lhs, eq.rhs]),
+                    Statement::Expression(e) => e,
                 };
 
                 // Determine the variable to solve for
@@ -644,7 +634,6 @@ impl Repl {
                 let req = EvalRequest {
                     raw_input: eq_str.to_string(),
                     parsed: parsed_expr,
-                    kind,
                     action: EvalAction::Solve { var: var.clone() },
                     auto_store: true,
                 };

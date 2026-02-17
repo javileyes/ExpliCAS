@@ -33,7 +33,7 @@ use cas_ast::DisplayExpr;
 use cas_engine::semantics::ValueDomain;
 use cas_engine::{DomainMode, Engine, EvalAction, EvalRequest, EvalResult};
 use cas_parser::parse;
-use cas_session::{EntryKind, SessionState};
+use cas_session::SessionState;
 
 // ============================================================================
 // Test Infrastructure
@@ -63,7 +63,6 @@ fn simplify_with_config(
     let req = EvalRequest {
         raw_input: input.to_string(),
         parsed,
-        kind: EntryKind::Expr(parsed),
         action: EvalAction::Simplify,
         auto_store: false,
     };

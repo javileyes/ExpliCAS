@@ -12,7 +12,6 @@ impl Repl {
         use cas_ast::root_style::ParseStyleSignals;
 
         use cas_parser::Statement;
-        use cas_session::EntryKind;
         use cas_solver::{EvalAction, EvalRequest, EvalResult};
 
         let mut reply: ReplReply = vec![];
@@ -24,29 +23,19 @@ impl Repl {
         match parser_result {
             Ok(stmt) => {
                 // Map to EvalRequest
-                let (kind, parsed_expr) = match stmt {
-                    Statement::Equation(eq) => {
-                        let eq_expr = self
-                            .core
-                            .engine
-                            .simplifier
-                            .context
-                            .call("Equal", vec![eq.lhs, eq.rhs]);
-                        (
-                            EntryKind::Eq {
-                                lhs: eq.lhs,
-                                rhs: eq.rhs,
-                            },
-                            eq_expr,
-                        )
-                    }
-                    Statement::Expression(e) => (EntryKind::Expr(e), e),
+                let parsed_expr = match stmt {
+                    Statement::Equation(eq) => self
+                        .core
+                        .engine
+                        .simplifier
+                        .context
+                        .call("Equal", vec![eq.lhs, eq.rhs]),
+                    Statement::Expression(e) => e,
                 };
 
                 let req = EvalRequest {
                     raw_input: line.to_string(),
                     parsed: parsed_expr,
-                    kind,
                     // Eval usually just Simplifies.
                     action: EvalAction::Simplify,
                     auto_store: true,

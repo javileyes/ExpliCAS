@@ -158,7 +158,6 @@ impl Repl {
                             let req = cas_solver::EvalRequest {
                                 raw_input: raw_text.clone(),
                                 parsed: *expr_id,
-                                kind: cas_session::EntryKind::Expr(*expr_id),
                                 action: cas_solver::EvalAction::Simplify,
                                 auto_store: false,
                             };

@@ -4,7 +4,7 @@ use cas_engine::eval_step_pipeline::to_display_steps;
 use cas_engine::step::ImportanceLevel;
 use cas_engine::timeline::{TimelineHtml, VerbosityLevel};
 use cas_engine::Simplifier;
-use cas_session::{EntryKind, SessionState};
+use cas_session::SessionState;
 
 #[test]
 fn test_timeline_renders_all_medium_importance_steps() {
@@ -82,7 +82,6 @@ fn test_timeline_renders_cache_hit_step() {
     let expr1 = cas_parser::parse("sin(x)^2 + cos(x)^2", &mut engine.simplifier.context).unwrap();
     let req1 = EvalRequest {
         parsed: expr1,
-        kind: EntryKind::Expr(expr1),
         raw_input: "sin(x)^2 + cos(x)^2".to_string(),
         action: EvalAction::Simplify,
         auto_store: true,
@@ -93,7 +92,6 @@ fn test_timeline_renders_cache_hit_step() {
     let expr2 = cas_parser::parse("#1 + 5", &mut engine.simplifier.context).unwrap();
     let req2 = EvalRequest {
         parsed: expr2,
-        kind: EntryKind::Expr(expr2),
         raw_input: "#1 + 5".to_string(),
         action: EvalAction::Simplify,
         auto_store: true,

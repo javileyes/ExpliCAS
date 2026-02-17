@@ -283,7 +283,6 @@ impl Repl {
         } else {
             // Use engine.eval like handle_eval does - this ensures the same pipeline
             // (Core → Transform → Rationalize → PostCleanup) is used
-            use cas_session::EntryKind;
             use cas_solver::{EvalAction, EvalRequest, EvalResult};
 
             // Force collect_steps for timeline
@@ -295,7 +294,6 @@ impl Repl {
                     let req = EvalRequest {
                         raw_input: expr_str.to_string(),
                         parsed: expr,
-                        kind: EntryKind::Expr(expr),
                         action: EvalAction::Simplify,
                         auto_store: false, // Don't store in session history for timeline
                     };
