@@ -48,15 +48,53 @@ pub struct Engine {
 
 /// Session abstraction for `Engine::eval`, allowing callers to provide any
 /// state container that exposes the required eval components.
-pub trait EvalSession {
-    fn with_eval_parts<R>(
+pub trait EvalStore {
+    fn push(&mut self, kind: EntryKind, raw_input: String) -> crate::session::EntryId;
+    fn touch_cached(&mut self, entry_id: crate::session::EntryId);
+    fn update_diagnostics(
         &mut self,
-        f: impl FnOnce(
-            &mut crate::session::SessionStore,
-            &crate::options::EvalOptions,
-            &mut crate::profile_cache::ProfileCache,
-        ) -> R,
-    ) -> R;
+        id: crate::session::EntryId,
+        diagnostics: crate::diagnostics::Diagnostics,
+    );
+    fn update_simplified(
+        &mut self,
+        id: crate::session::EntryId,
+        cache: crate::session::SimplifiedCache,
+    );
+}
+
+impl EvalStore for crate::session::SessionStore {
+    fn push(&mut self, kind: EntryKind, raw_input: String) -> crate::session::EntryId {
+        self.push(kind, raw_input)
+    }
+
+    fn touch_cached(&mut self, entry_id: crate::session::EntryId) {
+        self.touch_cached(entry_id);
+    }
+
+    fn update_diagnostics(
+        &mut self,
+        id: crate::session::EntryId,
+        diagnostics: crate::diagnostics::Diagnostics,
+    ) {
+        self.update_diagnostics(id, diagnostics);
+    }
+
+    fn update_simplified(
+        &mut self,
+        id: crate::session::EntryId,
+        cache: crate::session::SimplifiedCache,
+    ) {
+        self.update_simplified(id, cache);
+    }
+}
+
+pub trait EvalSession {
+    type Store: EvalStore;
+
+    fn store_mut(&mut self) -> &mut Self::Store;
+    fn options(&self) -> &crate::options::EvalOptions;
+    fn profile_cache_mut(&mut self) -> &mut crate::profile_cache::ProfileCache;
 
     fn resolve_all(&self, ctx: &mut cas_ast::Context, expr: ExprId)
         -> Result<ExprId, ResolveError>;
@@ -85,15 +123,18 @@ struct EvalSessionComponents<'a> {
 }
 
 impl EvalSession for EvalSessionComponents<'_> {
-    fn with_eval_parts<R>(
-        &mut self,
-        f: impl FnOnce(
-            &mut crate::session::SessionStore,
-            &crate::options::EvalOptions,
-            &mut crate::profile_cache::ProfileCache,
-        ) -> R,
-    ) -> R {
-        f(self.store, self.options, self.profile_cache)
+    type Store = crate::session::SessionStore;
+
+    fn store_mut(&mut self) -> &mut Self::Store {
+        self.store
+    }
+
+    fn options(&self) -> &crate::options::EvalOptions {
+        self.options
+    }
+
+    fn profile_cache_mut(&mut self) -> &mut crate::profile_cache::ProfileCache {
+        self.profile_cache
     }
 
     fn resolve_all(

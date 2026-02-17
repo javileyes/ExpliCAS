@@ -59,17 +59,18 @@ impl SessionState {
 }
 
 impl EvalSession for SessionState {
-    fn with_eval_parts<R>(
-        &mut self,
-        f: impl FnOnce(&mut SessionStore, &EvalOptions, &mut ProfileCache) -> R,
-    ) -> R {
-        let Self {
-            store,
-            options,
-            profile_cache,
-            ..
-        } = self;
-        f(store, options, profile_cache)
+    type Store = SessionStore;
+
+    fn store_mut(&mut self) -> &mut Self::Store {
+        &mut self.store
+    }
+
+    fn options(&self) -> &EvalOptions {
+        &self.options
+    }
+
+    fn profile_cache_mut(&mut self) -> &mut ProfileCache {
+        &mut self.profile_cache
     }
 
     fn resolve_all(

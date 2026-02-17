@@ -56,16 +56,14 @@ impl Engine {
             resolved_equiv_other,
         };
 
-        session.with_eval_parts(|store, options, profile_cache| {
-            self.eval_with_parts(store, options, profile_cache, req, resolved_input)
-        })
+        let options = session.options().clone();
+        self.eval_with_parts(session, &options, req, resolved_input)
     }
 
     fn eval_with_parts(
         &mut self,
-        store: &mut crate::session::SessionStore,
+        session: &mut impl EvalSession,
         options: &crate::options::EvalOptions,
-        profile_cache: &mut crate::profile_cache::ProfileCache,
         req: EvalRequest,
         resolved_input: ResolvedEvalInput,
     ) -> Result<EvalOutput, anyhow::Error> {
@@ -78,7 +76,7 @@ impl Engine {
 
         // 2. Auto-store raw + parsed (unresolved)
         let stored_id = if req.auto_store {
-            Some(store.push(req.kind, req.raw_input.clone()))
+            Some(session.store_mut().push(req.kind, req.raw_input.clone()))
         } else {
             None
         };
@@ -89,7 +87,7 @@ impl Engine {
 
         // V2.15.36: Touch cached entries to maintain true LRU ordering
         for hit in &cache_hits {
-            store.touch_cached(hit.entry_id);
+            session.store_mut().touch_cached(hit.entry_id);
         }
 
         // 3. Dispatch Action -> produce EvalResult
@@ -102,7 +100,10 @@ impl Engine {
             output_scopes,
             solver_required,
         ) = match req.action {
-            EvalAction::Simplify => self.eval_simplify(options, profile_cache, resolved)?,
+            EvalAction::Simplify => {
+                let profile_cache = session.profile_cache_mut();
+                self.eval_simplify(options, profile_cache, resolved)?
+            }
             EvalAction::Expand => {
                 // Treating Expand as Simplify for now, as Simplifier has no explicit expand mode yet exposed cleanly
                 let (res, steps) = self.simplifier.simplify(resolved);
@@ -144,7 +145,7 @@ impl Engine {
             output_scopes,
             solver_required,
             inherited_diagnostics,
-            store,
+            session.store_mut(),
             options,
         )
     }

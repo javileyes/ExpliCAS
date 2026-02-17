@@ -23,7 +23,7 @@ impl Engine {
         output_scopes: Vec<cas_ast::display_transforms::ScopeTag>,
         solver_required: Vec<crate::implicit_domain::ImplicitCondition>,
         inherited_diagnostics: crate::diagnostics::Diagnostics,
-        store: &mut crate::session::SessionStore,
+        store: &mut impl EvalStore,
         options: &crate::options::EvalOptions,
     ) -> Result<EvalOutput, anyhow::Error> {
         // Collect blocked hints from simplifier
