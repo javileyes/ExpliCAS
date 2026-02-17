@@ -6,5 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 
+[features]
+default = ["parallel"]
+parallel = ["cas_engine/parallel"]
+
 [dependencies]
 cas_engine = { path = "../cas_engine", default-features = false }
