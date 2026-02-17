@@ -21,9 +21,9 @@ pub(crate) type ActionResult = (
     Vec<crate::implicit_domain::ImplicitCondition>,
 );
 
-use crate::session::{EntryKind, ResolveError};
 use crate::Simplifier;
 use cas_ast::{BuiltinFn, Equation, Expr, ExprId, RelOp};
+use cas_session_core::types::{EntryId, EntryKind, ResolveError};
 
 /// The central Engine struct that wraps the core Simplifier and potentially other components.
 ///
@@ -49,42 +49,26 @@ pub struct Engine {
 /// Session abstraction for `Engine::eval`, allowing callers to provide any
 /// state container that exposes the required eval components.
 pub trait EvalStore {
-    fn push(&mut self, kind: EntryKind, raw_input: String) -> crate::session::EntryId;
-    fn touch_cached(&mut self, entry_id: crate::session::EntryId);
-    fn update_diagnostics(
-        &mut self,
-        id: crate::session::EntryId,
-        diagnostics: crate::diagnostics::Diagnostics,
-    );
-    fn update_simplified(
-        &mut self,
-        id: crate::session::EntryId,
-        cache: crate::session::SimplifiedCache,
-    );
+    fn push(&mut self, kind: EntryKind, raw_input: String) -> EntryId;
+    fn touch_cached(&mut self, entry_id: EntryId);
+    fn update_diagnostics(&mut self, id: EntryId, diagnostics: crate::diagnostics::Diagnostics);
+    fn update_simplified(&mut self, id: EntryId, cache: crate::session::SimplifiedCache);
 }
 
 impl EvalStore for crate::session::SessionStore {
-    fn push(&mut self, kind: EntryKind, raw_input: String) -> crate::session::EntryId {
+    fn push(&mut self, kind: EntryKind, raw_input: String) -> EntryId {
         self.push(kind, raw_input)
     }
 
-    fn touch_cached(&mut self, entry_id: crate::session::EntryId) {
+    fn touch_cached(&mut self, entry_id: EntryId) {
         self.touch_cached(entry_id);
     }
 
-    fn update_diagnostics(
-        &mut self,
-        id: crate::session::EntryId,
-        diagnostics: crate::diagnostics::Diagnostics,
-    ) {
+    fn update_diagnostics(&mut self, id: EntryId, diagnostics: crate::diagnostics::Diagnostics) {
         self.update_diagnostics(id, diagnostics);
     }
 
-    fn update_simplified(
-        &mut self,
-        id: crate::session::EntryId,
-        cache: crate::session::SimplifiedCache,
-    ) {
+    fn update_simplified(&mut self, id: EntryId, cache: crate::session::SimplifiedCache) {
         self.update_simplified(id, cache);
     }
 }

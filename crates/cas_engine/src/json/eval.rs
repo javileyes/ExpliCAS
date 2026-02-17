@@ -95,7 +95,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
     let req = crate::eval::EvalRequest {
         raw_input: expr.to_string(),
         parsed,
-        kind: crate::session::EntryKind::Expr(parsed),
+        kind: cas_session_core::types::EntryKind::Expr(parsed),
         action: crate::eval::EvalAction::Simplify,
         auto_store: false,
     };
