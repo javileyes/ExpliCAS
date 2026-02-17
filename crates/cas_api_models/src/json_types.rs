@@ -121,6 +121,13 @@ pub struct WarningJson {
     pub assumption: String,
 }
 
+/// Warning payload used by engine-style response envelopes.
+#[derive(Serialize, Debug, Clone)]
+pub struct EngineJsonWarning {
+    pub kind: String,
+    pub message: String,
+}
+
 /// Stable budget information for JSON responses.
 #[derive(Serialize, Debug, Default, Clone)]
 pub struct BudgetJsonInfo {

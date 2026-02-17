@@ -69,7 +69,10 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
                 kind: "ParseError",
                 code: "E_PARSE",
                 message: e.to_string(),
-                span: e.span().map(SpanJson::from),
+                span: e.span().map(|s| SpanJson {
+                    start: s.start,
+                    end: s.end,
+                }),
                 details: serde_json::Value::Null,
             };
             let resp = EngineJsonResponse {

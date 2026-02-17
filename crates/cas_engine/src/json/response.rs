@@ -1,11 +1,9 @@
-use cas_ast::Span;
 use serde::Serialize;
 
 use crate::budget::BudgetExceeded;
 use crate::error::CasError;
 
-/// Current JSON schema version.
-pub const SCHEMA_VERSION: u8 = 1;
+pub use cas_api_models::SCHEMA_VERSION;
 
 // =============================================================================
 // Main Response Type
@@ -217,21 +215,7 @@ impl EngineJsonError {
 // Supporting Types
 // =============================================================================
 
-/// Source span for JSON serialization.
-#[derive(Serialize, Debug, Clone, Copy)]
-pub struct SpanJson {
-    pub start: usize,
-    pub end: usize,
-}
-
-impl From<Span> for SpanJson {
-    fn from(s: Span) -> Self {
-        SpanJson {
-            start: s.start,
-            end: s.end,
-        }
-    }
-}
+pub type SpanJson = cas_api_models::SpanJson;
 
 /// Budget information in JSON response.
 #[derive(Serialize, Debug, Default)]
@@ -286,20 +270,19 @@ impl BudgetJsonInfo {
 pub type BudgetExceededJson = cas_api_models::BudgetExceededJson;
 pub type EngineJsonStep = cas_api_models::EngineJsonStep;
 pub type EngineJsonSubstep = cas_api_models::EngineJsonSubstep;
+pub type EngineJsonWarning = cas_api_models::EngineJsonWarning;
 
-/// A warning in JSON response.
-#[derive(Serialize, Debug)]
-pub struct EngineJsonWarning {
-    /// Warning kind
-    pub kind: String,
+/// Constructors for engine warning DTOs.
+pub trait EngineJsonWarningExt {
+    /// Create a budget exceeded warning.
+    fn budget_exceeded(b: &BudgetExceeded) -> Self;
 
-    /// Warning message
-    pub message: String,
+    /// Create a domain assumption warning.
+    fn domain_assumption(rule: &str, assumption: &str) -> Self;
 }
 
-impl EngineJsonWarning {
-    /// Create a budget exceeded warning.
-    pub fn budget_exceeded(b: &BudgetExceeded) -> Self {
+impl EngineJsonWarningExt for EngineJsonWarning {
+    fn budget_exceeded(b: &BudgetExceeded) -> Self {
         Self {
             kind: "BudgetExceeded".into(),
             message: format!(
@@ -309,8 +292,7 @@ impl EngineJsonWarning {
         }
     }
 
-    /// Create a domain assumption warning.
-    pub fn domain_assumption(rule: &str, assumption: &str) -> Self {
+    fn domain_assumption(rule: &str, assumption: &str) -> Self {
         Self {
             kind: "DomainAssumption".into(),
             message: format!("{}: {}", rule, assumption),

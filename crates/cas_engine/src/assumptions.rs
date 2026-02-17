@@ -530,18 +530,8 @@ impl AssumptionEvent {
 
 /// An assumption record for JSON output.
 ///
-/// This is the deduplicated, counted result of collecting AssumptionEvents.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AssumptionRecord {
-    /// Type of assumption (nonzero, positive, defined, etc.)
-    pub kind: String,
-    /// Canonical display of the expression
-    pub expr: String,
-    /// Human-readable message
-    pub message: String,
-    /// How many times this assumption was used
-    pub count: u32,
-}
+/// Canonical transport DTO now lives in `cas_api_models`.
+pub type AssumptionRecord = cas_api_models::AssumptionRecord;
 
 // =============================================================================
 // AssumptionCollector - Dedup Aggregator
