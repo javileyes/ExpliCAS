@@ -122,7 +122,7 @@ impl SessionState {
     }
 
     /// Create a state from an existing session store (for snapshot restoration).
-    pub fn from_store(store: SessionStore) -> Self {
+    fn from_store(store: SessionStore) -> Self {
         Self {
             store: SessionEvalStore::from_store(store),
             env: Environment::new(),
