@@ -1,16 +1,22 @@
 pub mod builtin; // Builtin function identifiers for O(1) comparison
-pub mod display; // NEW: Display formatting
+#[path = "../../cas_formatter/src/display/mod.rs"]
+pub mod display; // Temporary compatibility path during formatter extraction
 pub mod display_context;
-pub mod display_transforms; // Scoped display transforms (sqrt in quadratic, etc.)
+#[path = "../../cas_formatter/src/display_transforms.rs"]
+pub mod display_transforms; // Temporary compatibility path during formatter extraction
 pub mod domain;
 pub mod eq; // __eq__ equation wrapper utilities (canonical implementation)
 pub mod error; // Error types for AST operations
 pub mod expr_path; // Path-based occurrence identification (V2.9.16)
 pub mod expression;
 pub mod hold; // __hold barrier utilities (canonical implementation)
+#[path = "../../cas_formatter/src/latex.rs"]
 pub mod latex;
+#[path = "../../cas_formatter/src/latex_core.rs"]
 pub mod latex_core;
+#[path = "../../cas_formatter/src/latex_highlight.rs"]
 pub mod latex_highlight;
+#[path = "../../cas_formatter/src/latex_no_roots.rs"]
 pub mod latex_no_roots;
 pub mod ordering; // Canonical ordering utilities
 pub mod root_style; // Style Sniffing for root notation

@@ -254,6 +254,10 @@ name = "cas_formatter"
 version = "0.1.0"
 dependencies = [
  "cas_ast",
+ "num-bigint",
+ "num-rational",
+ "num-traits",
+ "regex",
 ]
 
 [[package]]

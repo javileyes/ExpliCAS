@@ -748,7 +748,7 @@ fn collect_steps(
 
             // Use PathHighlightConfig for path-based highlighting (matches timeline)
             let mut before_config = cas_formatter::PathHighlightConfig::new();
-            before_config.add(expr_path.clone(), cas_ast::HighlightColor::Red);
+            before_config.add(expr_path.clone(), cas_formatter::HighlightColor::Red);
             let before_latex = cas_formatter::PathHighlightedLatexRenderer {
                 context: ctx,
                 id: before_expr,
@@ -759,7 +759,7 @@ fn collect_steps(
             .to_latex();
 
             let mut after_config = cas_formatter::PathHighlightConfig::new();
-            after_config.add(expr_path, cas_ast::HighlightColor::Green);
+            after_config.add(expr_path, cas_formatter::HighlightColor::Green);
             let after_latex = cas_formatter::PathHighlightedLatexRenderer {
                 context: ctx,
                 id: after_expr,
@@ -770,8 +770,8 @@ fn collect_steps(
             .to_latex();
 
             // Generate rule_latex: colored "antecedent → consequent"
-            let mut rule_before_config = cas_ast::HighlightConfig::new();
-            rule_before_config.add(focus_before, cas_ast::HighlightColor::Red);
+            let mut rule_before_config = cas_formatter::HighlightConfig::new();
+            rule_before_config.add(focus_before, cas_formatter::HighlightColor::Red);
             let local_before_colored = cas_formatter::LaTeXExprHighlighted {
                 context: ctx,
                 id: focus_before,
@@ -779,8 +779,8 @@ fn collect_steps(
             }
             .to_latex();
 
-            let mut rule_after_config = cas_ast::HighlightConfig::new();
-            rule_after_config.add(focus_after, cas_ast::HighlightColor::Green);
+            let mut rule_after_config = cas_formatter::HighlightConfig::new();
+            rule_after_config.add(focus_after, cas_formatter::HighlightColor::Green);
             let local_after_colored = cas_formatter::LaTeXExprHighlighted {
                 context: ctx,
                 id: focus_after,

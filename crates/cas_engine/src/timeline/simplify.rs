@@ -5,9 +5,10 @@ use super::path::{
     extract_add_terms, find_path_to_expr, navigate_to_subexpr, pathstep_to_u8,
 };
 use crate::step::{pathsteps_to_expr_path, PathStep, Step};
-use cas_ast::{
-    Context, Expr, ExprId, ExprPath, HighlightColor, HighlightConfig, LaTeXExprHighlighted,
-    PathHighlightConfig, PathHighlightedLatexRenderer,
+use cas_ast::{Context, Expr, ExprId, ExprPath};
+use cas_formatter::{
+    HighlightColor, HighlightConfig, LaTeXExprHighlighted, PathHighlightConfig,
+    PathHighlightedLatexRenderer,
 };
 
 /// Timeline HTML generator - exports simplification steps to interactive HTML
