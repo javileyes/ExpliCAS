@@ -2,8 +2,8 @@
 
 use cas_ast::ExprId;
 use cas_session_core::resolve::{
-    parse_legacy_session_ref, resolve_all_with_lookup_and_env, resolve_session_refs_with_lookup,
-    resolve_session_refs_with_lookup_on_visit,
+    resolve_all_with_lookup_and_env, resolve_session_refs_with_lookup,
+    resolve_session_refs_with_lookup_on_visit, rewrite_session_refs,
 };
 pub use cas_session_core::types::ResolveError;
 use std::collections::HashMap;
@@ -160,185 +160,29 @@ fn resolve_with_mode_recursive(
     seen_hits: &mut std::collections::HashSet<EntryId>,
     cache_hits: &mut Vec<CacheHitTrace>,
 ) -> Result<ExprId, ResolveError> {
-    use cas_ast::Expr;
-
     // Check memo first
     if let Some(&cached) = memo.get(&expr) {
         return Ok(cached);
     }
 
-    let node = ctx.get(expr).clone();
-
-    let result = match node {
-        Expr::SessionRef(id) => resolve_entry_with_mode(
-            ctx, expr, id, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
-            seen_hits, cache_hits,
-        )?,
-
-        // Handle Variable that might be a #N reference (legacy parsing)
-        Expr::Variable(sym_id) => {
-            if let Some(id) = parse_legacy_session_ref(ctx.sym_name(sym_id)) {
-                resolve_entry_with_mode(
-                    ctx, expr, id, store, mode, cache_key, memo, visiting, requires, used_cache,
-                    ref_chain, seen_hits, cache_hits,
-                )?
-            } else {
-                expr
-            }
-        }
-
-        // Binary operators - recurse into children
-        Expr::Add(l, r) => {
-            let new_l = resolve_with_mode_recursive(
-                ctx, l, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
-                seen_hits, cache_hits,
-            )?;
-            let new_r = resolve_with_mode_recursive(
-                ctx, r, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
-                seen_hits, cache_hits,
-            )?;
-            if new_l == l && new_r == r {
-                expr
-            } else {
-                ctx.add(Expr::Add(new_l, new_r))
-            }
-        }
-        Expr::Sub(l, r) => {
-            let new_l = resolve_with_mode_recursive(
-                ctx, l, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
-                seen_hits, cache_hits,
-            )?;
-            let new_r = resolve_with_mode_recursive(
-                ctx, r, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
-                seen_hits, cache_hits,
-            )?;
-            if new_l == l && new_r == r {
-                expr
-            } else {
-                ctx.add(Expr::Sub(new_l, new_r))
-            }
-        }
-        Expr::Mul(l, r) => {
-            let new_l = resolve_with_mode_recursive(
-                ctx, l, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
-                seen_hits, cache_hits,
-            )?;
-            let new_r = resolve_with_mode_recursive(
-                ctx, r, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
-                seen_hits, cache_hits,
-            )?;
-            if new_l == l && new_r == r {
-                expr
-            } else {
-                ctx.add(Expr::Mul(new_l, new_r))
-            }
-        }
-        Expr::Div(l, r) => {
-            let new_l = resolve_with_mode_recursive(
-                ctx, l, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
-                seen_hits, cache_hits,
-            )?;
-            let new_r = resolve_with_mode_recursive(
-                ctx, r, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
-                seen_hits, cache_hits,
-            )?;
-            if new_l == l && new_r == r {
-                expr
-            } else {
-                ctx.add(Expr::Div(new_l, new_r))
-            }
-        }
-        Expr::Pow(b, e) => {
-            let new_b = resolve_with_mode_recursive(
-                ctx, b, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
-                seen_hits, cache_hits,
-            )?;
-            let new_e = resolve_with_mode_recursive(
-                ctx, e, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
-                seen_hits, cache_hits,
-            )?;
-            if new_b == b && new_e == e {
-                expr
-            } else {
-                ctx.add(Expr::Pow(new_b, new_e))
-            }
-        }
-
-        // Unary
-        Expr::Neg(e) => {
-            let new_e = resolve_with_mode_recursive(
-                ctx, e, store, mode, cache_key, memo, visiting, requires, used_cache, ref_chain,
-                seen_hits, cache_hits,
-            )?;
-            if new_e == e {
-                expr
-            } else {
-                ctx.add(Expr::Neg(new_e))
-            }
-        }
-
-        // Function
-        Expr::Function(name, args) => {
-            let mut changed = false;
-            let mut new_args = Vec::with_capacity(args.len());
-            for arg in &args {
-                let new_arg = resolve_with_mode_recursive(
-                    ctx, *arg, store, mode, cache_key, memo, visiting, requires, used_cache,
-                    ref_chain, seen_hits, cache_hits,
-                )?;
-                if new_arg != *arg {
-                    changed = true;
-                }
-                new_args.push(new_arg);
-            }
-            if changed {
-                ctx.add(Expr::Function(name, new_args))
-            } else {
-                expr
-            }
-        }
-
-        // Matrix
-        Expr::Matrix { rows, cols, data } => {
-            let mut changed = false;
-            let mut new_data = Vec::with_capacity(data.len());
-            for elem in &data {
-                let new_elem = resolve_with_mode_recursive(
-                    ctx, *elem, store, mode, cache_key, memo, visiting, requires, used_cache,
-                    ref_chain, seen_hits, cache_hits,
-                )?;
-                if new_elem != *elem {
-                    changed = true;
-                }
-                new_data.push(new_elem);
-            }
-            if changed {
-                ctx.add(Expr::Matrix {
-                    rows,
-                    cols,
-                    data: new_data,
-                })
-            } else {
-                expr
-            }
-        }
-
-        // Leaf nodes
-        Expr::Number(_) | Expr::Constant(_) => expr,
-
-        // Hold: recurse into inner
-        Expr::Hold(inner) => {
-            let new_inner = resolve_with_mode_recursive(
-                ctx, inner, store, mode, cache_key, memo, visiting, requires, used_cache,
-                ref_chain, seen_hits, cache_hits,
-            )?;
-            if new_inner == inner {
-                expr
-            } else {
-                ctx.add(Expr::Hold(new_inner))
-            }
-        }
-    };
+    // Generic tree walk (including legacy `Variable("#N")`) lives in session_core.
+    let result = rewrite_session_refs(ctx, expr, &mut |ctx, ref_expr_id, id| {
+        resolve_entry_with_mode(
+            ctx,
+            ref_expr_id,
+            id,
+            store,
+            mode,
+            cache_key,
+            memo,
+            visiting,
+            requires,
+            used_cache,
+            ref_chain,
+            seen_hits,
+            cache_hits,
+        )
+    })?;
 
     memo.insert(expr, result);
     Ok(result)
