@@ -56,8 +56,8 @@ fn simplify_with_config(
     let mut state = SessionState::new();
 
     // Configure semantic axes
-    state.options.shared.semantics.value_domain = value_domain;
-    state.options.shared.semantics.domain_mode = domain_mode;
+    state.options_mut().shared.semantics.value_domain = value_domain;
+    state.options_mut().shared.semantics.domain_mode = domain_mode;
 
     let parsed = parse(input, &mut engine.simplifier.context).expect("parse failed");
     let req = EvalRequest {

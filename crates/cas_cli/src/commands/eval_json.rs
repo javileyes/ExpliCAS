@@ -133,7 +133,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
     let (mut engine, mut state) = load_or_new_session(&args.session, &cache_key);
 
     // Configure options from args
-    configure_options(&mut state.options, args);
+    configure_options(state.options_mut(), args);
 
     // Check for solve(equation, variable) or limit(expr, var, approach) syntax
     let parse_start = Instant::now();

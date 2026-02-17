@@ -16,7 +16,7 @@ fn simplify_with_inv_trig(input: &str, policy: InverseTrigPolicy) -> (String, Ve
     let mut state = SessionState::new();
 
     // Configure inv_trig policy
-    state.options.shared.semantics.inv_trig = policy;
+    state.options_mut().shared.semantics.inv_trig = policy;
 
     let parsed = parse(input, &mut engine.simplifier.context).expect("parse failed");
     let req = EvalRequest {
@@ -131,8 +131,8 @@ fn strict_independent_of_domain_assume() {
     let mut state = SessionState::new();
 
     // Set inv_trig = Strict but domain = Assume (most permissive)
-    state.options.shared.semantics.inv_trig = InverseTrigPolicy::Strict;
-    state.options.shared.semantics.domain_mode = DomainMode::Assume;
+    state.options_mut().shared.semantics.inv_trig = InverseTrigPolicy::Strict;
+    state.options_mut().shared.semantics.domain_mode = DomainMode::Assume;
 
     let parsed = parse("arctan(tan(x))", &mut engine.simplifier.context).expect("parse failed");
     let req = EvalRequest {
@@ -168,8 +168,8 @@ fn principal_independent_of_domain_strict() {
     let mut state = SessionState::new();
 
     // Set inv_trig = PrincipalValue but domain = Strict (most restrictive)
-    state.options.shared.semantics.inv_trig = InverseTrigPolicy::PrincipalValue;
-    state.options.shared.semantics.domain_mode = DomainMode::Strict;
+    state.options_mut().shared.semantics.inv_trig = InverseTrigPolicy::PrincipalValue;
+    state.options_mut().shared.semantics.domain_mode = DomainMode::Strict;
 
     let parsed = parse("arctan(tan(x))", &mut engine.simplifier.context).expect("parse failed");
     let req = EvalRequest {
@@ -288,7 +288,7 @@ fn simplify_with_domain(input: &str, domain: DomainMode) -> (String, Vec<String>
     let mut state = SessionState::new();
 
     // Configure domain_mode
-    state.options.shared.semantics.domain_mode = domain;
+    state.options_mut().shared.semantics.domain_mode = domain;
 
     let parsed = parse(input, &mut engine.simplifier.context).expect("parse failed");
     let req = EvalRequest {

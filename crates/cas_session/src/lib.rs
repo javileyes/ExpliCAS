@@ -165,6 +165,6 @@ pub fn resolve_all_with_diagnostics_from_state(
         expr,
         state.store(),
         state.env(),
-        state.options.shared.semantics.domain_mode,
+        state.options().shared.semantics.domain_mode,
     )
 }

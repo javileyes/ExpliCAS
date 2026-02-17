@@ -210,7 +210,7 @@ fn simplify_complex(input: &str) -> String {
     let mut state = SessionState::new();
 
     // Set ComplexEnabled for these tests
-    state.options.shared.semantics.value_domain =
+    state.options_mut().shared.semantics.value_domain =
         cas_engine::semantics::ValueDomain::ComplexEnabled;
 
     let parsed = parse(input, &mut engine.simplifier.context).expect("parse failed");

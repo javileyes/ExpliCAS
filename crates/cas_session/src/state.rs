@@ -92,7 +92,7 @@ impl EvalStore for SessionEvalStore {
 pub struct SessionState {
     store: SessionEvalStore,
     env: Environment,
-    pub options: EvalOptions,
+    options: EvalOptions,
     profile_cache: ProfileCache,
 }
 
