@@ -349,6 +349,52 @@ impl EngineJsonResponse {
 }
 
 // =============================================================================
+// Engine JSON input options
+// =============================================================================
+
+/// Options for JSON evaluation input.
+#[derive(Deserialize, Debug, Default, Clone)]
+pub struct JsonRunOptions {
+    /// Budget configuration
+    #[serde(default)]
+    pub budget: BudgetOpts,
+    /// Include simplification steps in output
+    #[serde(default)]
+    pub steps: bool,
+    /// Pretty-print JSON output
+    #[serde(default)]
+    pub pretty: bool,
+}
+
+/// Budget options in JSON input.
+#[derive(Deserialize, Debug, Clone)]
+pub struct BudgetOpts {
+    /// Preset name: "small", "cli", "unlimited"
+    #[serde(default = "default_preset")]
+    pub preset: String,
+    /// Mode: "strict" or "best-effort"
+    #[serde(default = "default_mode")]
+    pub mode: String,
+}
+
+impl Default for BudgetOpts {
+    fn default() -> Self {
+        Self {
+            preset: default_preset(),
+            mode: default_mode(),
+        }
+    }
+}
+
+fn default_preset() -> String {
+    "cli".to_string()
+}
+
+fn default_mode() -> String {
+    "best-effort".to_string()
+}
+
+// =============================================================================
 // script-json types
 // =============================================================================
 

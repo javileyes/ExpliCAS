@@ -1,5 +1,5 @@
 use cas_ast::Span;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::budget::BudgetExceeded;
 use crate::error::CasError;
@@ -283,52 +283,9 @@ impl BudgetJsonInfo {
     }
 }
 
-/// Budget exceeded details.
-#[derive(Serialize, Debug)]
-pub struct BudgetExceededJson {
-    pub op: String,
-    pub metric: String,
-    pub used: u64,
-    pub limit: u64,
-}
-
-/// A simplification step in JSON response.
-#[derive(Serialize, Debug)]
-pub struct EngineJsonStep {
-    /// Phase name (Core, Transform, etc.)
-    pub phase: String,
-
-    /// Rule that was applied
-    pub rule: String,
-
-    /// Expression before (must NOT contain __hold)
-    pub before: String,
-
-    /// Expression after (must NOT contain __hold)
-    pub after: String,
-
-    /// Sub-steps that occurred in subexpressions before this step
-    /// (e.g., EvenPowSubSwapRule rewriting (y-x)^2 → (x-y)^2 before cancellation)
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub substeps: Vec<EngineJsonSubstep>,
-}
-
-/// A sub-step representing a rewrite in a subexpression.
-#[derive(Serialize, Debug, Clone)]
-pub struct EngineJsonSubstep {
-    /// Rule that was applied
-    pub rule: String,
-
-    /// Local expression before (the subexpression, not full expression)
-    pub before: String,
-
-    /// Local expression after
-    pub after: String,
-
-    /// Optional note explaining the transformation
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub note: Option<String>,
-}
+pub type BudgetExceededJson = cas_api_models::BudgetExceededJson;
+pub type EngineJsonStep = cas_api_models::EngineJsonStep;
+pub type EngineJsonSubstep = cas_api_models::EngineJsonSubstep;
 
 /// A warning in JSON response.
 #[derive(Serialize, Debug)]
@@ -361,51 +318,4 @@ impl EngineJsonWarning {
     }
 }
 
-// =============================================================================
-// Run Options (input from CLI/FFI)
-// =============================================================================
-
-/// Options for JSON evaluation (parsed from optsJson).
-#[derive(Deserialize, Debug, Default)]
-pub struct JsonRunOptions {
-    /// Budget configuration
-    #[serde(default)]
-    pub budget: BudgetOpts,
-
-    /// Include simplification steps in output
-    #[serde(default)]
-    pub steps: bool,
-
-    /// Pretty-print JSON output
-    #[serde(default)]
-    pub pretty: bool,
-}
-
-/// Budget options in JSON input.
-#[derive(Deserialize, Debug)]
-pub struct BudgetOpts {
-    /// Preset name: "small", "cli", "unlimited"
-    #[serde(default = "default_preset")]
-    pub preset: String,
-
-    /// Mode: "strict" or "best-effort"
-    #[serde(default = "default_mode")]
-    pub mode: String,
-}
-
-impl Default for BudgetOpts {
-    fn default() -> Self {
-        Self {
-            preset: default_preset(),
-            mode: default_mode(),
-        }
-    }
-}
-
-fn default_preset() -> String {
-    "cli".into()
-}
-
-fn default_mode() -> String {
-    "best-effort".into()
-}
+pub use cas_api_models::{BudgetOpts, JsonRunOptions};

@@ -224,6 +224,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "bitflags 2.10.0",
+ "cas_api_models",
  "cas_ast",
  "cas_math",
  "cas_parser",
