@@ -157,11 +157,9 @@ checksum = "b35204fbdc0b3f4446b89fc1ac2cf84a8a68971995d0bf2e925ec7cd960f9cb3"
 name = "cas_android_ffi"
 version = "0.1.0"
 dependencies = [
- "cas_ast",
+ "cas_api_models",
  "cas_engine",
- "cas_parser",
  "jni",
- "serde",
  "serde_json",
 ]
 

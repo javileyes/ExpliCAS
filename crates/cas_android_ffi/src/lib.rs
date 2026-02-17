@@ -23,9 +23,8 @@ use jni::sys::jstring;
 use jni::JNIEnv;
 
 // Use the canonical JSON API from cas_engine
-use cas_engine::{
-    eval_str_to_json, BudgetJsonInfo, EngineJsonError, EngineJsonResponse, SCHEMA_VERSION,
-};
+use cas_api_models::{BudgetJsonInfo, EngineJsonError, EngineJsonResponse};
+use cas_engine::{eval_str_to_json, SCHEMA_VERSION};
 
 // ============================================================================
 // JNI Entry Points

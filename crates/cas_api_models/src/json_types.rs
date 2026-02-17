@@ -16,6 +16,7 @@ pub use cas_engine::json::{
 
 // Budget: use engine's BudgetJsonInfo (identical fields: preset, mode, exceeded)
 pub use cas_engine::json::BudgetJsonInfo;
+pub use cas_engine::json::{EngineJsonError, EngineJsonResponse};
 /// Backward-compatible alias — `BudgetJson` maps to the engine's `BudgetJsonInfo`.
 pub type BudgetJson = cas_engine::json::BudgetJsonInfo;
 
