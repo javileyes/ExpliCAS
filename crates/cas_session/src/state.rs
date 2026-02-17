@@ -78,7 +78,7 @@ impl EvalSession for SessionState {
         ctx: &mut cas_ast::Context,
         expr: ExprId,
     ) -> Result<ExprId, ResolveError> {
-        cas_engine::session::resolve_all(ctx, expr, &self.store, &self.env)
+        crate::resolve_all(ctx, expr, &self.store, &self.env)
     }
 
     fn resolve_all_with_diagnostics(

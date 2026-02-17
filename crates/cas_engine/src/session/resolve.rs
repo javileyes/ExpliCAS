@@ -2,7 +2,7 @@
 
 use cas_ast::ExprId;
 use cas_session_core::resolve::{
-    parse_legacy_session_ref, resolve_session_refs_with_lookup,
+    parse_legacy_session_ref, resolve_all_with_lookup_and_env, resolve_session_refs_with_lookup,
     resolve_session_refs_with_lookup_on_visit,
 };
 pub use cas_session_core::types::ResolveError;
@@ -19,8 +19,8 @@ pub fn resolve_all(
     store: &SessionStore,
     env: &crate::env::Environment,
 ) -> Result<ExprId, ResolveError> {
-    let expr_with_refs = resolve_session_refs(ctx, expr, store)?;
-    Ok(crate::env::substitute(ctx, env, expr_with_refs))
+    let mut lookup = |id: EntryId| store.get(id).map(|entry| entry.kind.clone());
+    resolve_all_with_lookup_and_env(ctx, expr, &mut lookup, env)
 }
 
 /// Resolve all references and return inherited diagnostics + cache hits.

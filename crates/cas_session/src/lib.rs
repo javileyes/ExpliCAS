@@ -20,7 +20,8 @@ pub fn resolve_all(
     store: &SessionStore,
     env: &Environment,
 ) -> Result<cas_ast::ExprId, ResolveError> {
-    cas_engine::session::resolve_all(ctx, expr, store, env)
+    let mut lookup = |id: EntryId| store.get(id).map(|entry| entry.kind.clone());
+    cas_session_core::resolve::resolve_all_with_lookup_and_env(ctx, expr, &mut lookup, env)
 }
 
 /// Resolve session references (`#N`) and environment bindings from `SessionState`.

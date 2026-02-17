@@ -122,6 +122,20 @@ where
     resolve_session_refs_with_lookup_on_visit(ctx, expr, lookup, &mut on_visit)
 }
 
+/// Resolve all session references and then apply environment substitution.
+pub fn resolve_all_with_lookup_and_env<F>(
+    ctx: &mut Context,
+    expr: ExprId,
+    lookup: &mut F,
+    env: &crate::env::Environment,
+) -> Result<ExprId, ResolveError>
+where
+    F: FnMut(EntryId) -> Option<EntryKind>,
+{
+    let expr_with_refs = resolve_session_refs_with_lookup(ctx, expr, lookup)?;
+    Ok(crate::env::substitute(ctx, env, expr_with_refs))
+}
+
 /// Resolve all session references with an additional visit hook.
 ///
 /// `on_visit` is called once per entry traversal (before descending into its
@@ -324,6 +338,29 @@ mod tests {
 
         let err = resolve_session_refs_with_lookup(&mut ctx, input, &mut lookup).unwrap_err();
         assert_eq!(err, ResolveError::NotFound(99));
+    }
+
+    #[test]
+    fn resolve_all_with_lookup_and_env_applies_bindings() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let five = ctx.num(5);
+
+        let x_plus_one = ctx.add(Expr::Add(x, one));
+        let ref1 = ctx.add(Expr::SessionRef(1));
+        let input = ctx.add(Expr::Mul(ref1, x));
+
+        let mut lookup = |id: EntryId| match id {
+            1 => Some(EntryKind::Expr(x_plus_one)),
+            _ => None,
+        };
+        let mut env = crate::env::Environment::new();
+        env.set("x".to_string(), five);
+
+        let out = resolve_all_with_lookup_and_env(&mut ctx, input, &mut lookup, &env).unwrap();
+        let vars = cas_ast::traversal::collect_variables(&ctx, out);
+        assert!(vars.is_empty());
     }
 
     #[test]
