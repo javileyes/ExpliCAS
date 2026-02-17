@@ -2,10 +2,9 @@ use cas_ast::ExprId;
 use cas_engine::eval::EvalSession;
 use cas_engine::options::EvalOptions;
 use cas_engine::profile_cache::ProfileCache;
-use cas_engine::session::{CacheHitTrace, ResolveError, SessionStore};
 use cas_engine::{diagnostics::Diagnostics, poly_store::PolyStore};
 
-use crate::Environment;
+use crate::{CacheHitTrace, Environment, ResolveError, SessionStore};
 
 /// Bundled session state for portability (CLI/Web/FFI).
 ///
@@ -86,7 +85,7 @@ impl EvalSession for SessionState {
         ctx: &mut cas_ast::Context,
         expr: ExprId,
     ) -> Result<(ExprId, Diagnostics, Vec<CacheHitTrace>), ResolveError> {
-        cas_engine::session::resolve_all_with_diagnostics(
+        crate::resolve_all_with_diagnostics(
             ctx,
             expr,
             &self.store,

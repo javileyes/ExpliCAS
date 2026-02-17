@@ -9,7 +9,8 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use cas_engine::session::{SessionStore, SimplifyCacheKey};
+use crate::{Entry, EntryKind, SessionStore, SimplifiedCache, SimplifyCacheKey};
+use cas_session_core::types::CacheConfig;
 
 /// Complete session state for persistence.
 /// Contains header for compatibility checking, plus Context and SessionStore.
@@ -256,10 +257,8 @@ impl SessionStoreSnapshot {
                 id: e.id,
                 raw_text: e.raw_text.clone(),
                 kind: match &e.kind {
-                    cas_engine::session::EntryKind::Expr(id) => {
-                        EntryKindSnapshot::Expr(id.index() as u32)
-                    }
-                    cas_engine::session::EntryKind::Eq { lhs, rhs } => EntryKindSnapshot::Eq {
+                    EntryKind::Expr(id) => EntryKindSnapshot::Expr(id.index() as u32),
+                    EntryKind::Eq { lhs, rhs } => EntryKindSnapshot::Eq {
                         lhs: lhs.index() as u32,
                         rhs: rhs.index() as u32,
                     },
@@ -289,7 +288,6 @@ impl SessionStoreSnapshot {
 
     pub fn into_store(self) -> SessionStore {
         use cas_ast::ExprId;
-        use cas_engine::session::{CacheConfig, Entry, EntryKind, SimplifiedCache};
 
         let config = CacheConfig {
             max_cached_entries: self.cache_config.max_cached_entries,
@@ -450,10 +448,7 @@ mod tests {
 
         // Create a session store with an entry
         let mut store = SessionStore::new();
-        store.push(
-            cas_engine::session::EntryKind::Expr(expr),
-            "x + 1".to_string(),
-        );
+        store.push(crate::EntryKind::Expr(expr), "x + 1".to_string());
 
         let key = SimplifyCacheKey {
             domain: DomainMode::Generic,
