@@ -1,101 +1,9 @@
-use serde::{Deserialize, Serialize};
-
 use super::response::*;
-
-/// Options for substitute JSON operation.
-#[derive(Deserialize, Debug)]
-pub struct SubstituteJsonOptions {
-    /// Substitution mode: "exact" or "power" (default: "power")
-    #[serde(default = "default_substitute_mode")]
-    pub mode: String,
-
-    /// Include substitution steps in output
-    #[serde(default)]
-    pub steps: bool,
-
-    /// Pretty-print JSON output
-    #[serde(default)]
-    pub pretty: bool,
-}
-
-impl Default for SubstituteJsonOptions {
-    fn default() -> Self {
-        Self {
-            mode: "power".into(),
-            steps: false,
-            pretty: false,
-        }
-    }
-}
-
-fn default_substitute_mode() -> String {
-    "power".into()
-}
-
-/// Substitute JSON response with request echo and options.
-#[derive(Serialize, Debug)]
-pub struct SubstituteJsonResponse {
-    /// Schema version for API stability
-    pub schema_version: u8,
-
-    /// True if operation succeeded
-    pub ok: bool,
-
-    /// Result expression (success only)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub result: Option<String>,
-
-    /// Error details (failure only)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<EngineJsonError>,
-
-    /// Request echo for reproducibility
-    pub request: SubstituteRequestEcho,
-
-    /// Options used
-    pub options: SubstituteOptionsJson,
-
-    /// Substitution steps (if requested)
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub steps: Vec<EngineJsonSubstep>,
-}
-
-impl SubstituteJsonResponse {
-    /// Serialize to JSON string.
-    pub fn to_json(&self) -> String {
-        serde_json::to_string(self).unwrap_or_else(|e| {
-            format!(r#"{{"schema_version":1,"ok":false,"error":{{"kind":"InternalError","code":"E_INTERNAL","message":"JSON serialization failed: {}"}}}}"#, e)
-        })
-    }
-
-    /// Serialize to pretty JSON string.
-    pub fn to_json_pretty(&self) -> String {
-        serde_json::to_string_pretty(self).unwrap_or_else(|e| {
-            format!(r#"{{"schema_version":1,"ok":false,"error":{{"kind":"InternalError","code":"E_INTERNAL","message":"JSON serialization failed: {}"}}}}"#, e)
-        })
-    }
-}
-
-/// Request echo for substitute.
-#[derive(Serialize, Debug)]
-pub struct SubstituteRequestEcho {
-    pub expr: String,
-    pub target: String,
-    #[serde(rename = "with")]
-    pub with_expr: String,
-}
-
-/// Options echo for substitute.
-#[derive(Serialize, Debug)]
-pub struct SubstituteOptionsJson {
-    pub substitute: SubstituteOptionsInner,
-}
-
-#[derive(Serialize, Debug)]
-pub struct SubstituteOptionsInner {
-    pub mode: String,
-    pub steps: bool,
-}
+use cas_api_models::{EngineJsonError as ApiEngineJsonError, SpanJson as ApiSpanJson};
+pub use cas_api_models::{
+    SubstituteJsonOptions, SubstituteJsonResponse, SubstituteOptionsInner, SubstituteOptionsJson,
+    SubstituteRequestEcho,
+};
 
 /// Substitute an expression and return JSON response.
 ///
@@ -147,11 +55,14 @@ pub fn substitute_str_to_json(
                 schema_version: SCHEMA_VERSION,
                 ok: false,
                 result: None,
-                error: Some(EngineJsonError {
+                error: Some(ApiEngineJsonError {
                     kind: "ParseError",
                     code: "E_PARSE",
                     message: format!("Failed to parse expression: {}", e),
-                    span: e.span().map(SpanJson::from),
+                    span: e.span().map(|s| ApiSpanJson {
+                        start: s.start,
+                        end: s.end,
+                    }),
                     details: serde_json::Value::Null,
                 }),
                 request,
@@ -173,11 +84,14 @@ pub fn substitute_str_to_json(
                 schema_version: SCHEMA_VERSION,
                 ok: false,
                 result: None,
-                error: Some(EngineJsonError {
+                error: Some(ApiEngineJsonError {
                     kind: "ParseError",
                     code: "E_PARSE",
                     message: format!("Failed to parse target: {}", e),
-                    span: e.span().map(SpanJson::from),
+                    span: e.span().map(|s| ApiSpanJson {
+                        start: s.start,
+                        end: s.end,
+                    }),
                     details: serde_json::Value::Null,
                 }),
                 request,
@@ -199,11 +113,14 @@ pub fn substitute_str_to_json(
                 schema_version: SCHEMA_VERSION,
                 ok: false,
                 result: None,
-                error: Some(EngineJsonError {
+                error: Some(ApiEngineJsonError {
                     kind: "ParseError",
                     code: "E_PARSE",
                     message: format!("Failed to parse replacement: {}", e),
-                    span: e.span().map(SpanJson::from),
+                    span: e.span().map(|s| ApiSpanJson {
+                        start: s.start,
+                        end: s.end,
+                    }),
                     details: serde_json::Value::Null,
                 }),
                 request,

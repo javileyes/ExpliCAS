@@ -395,6 +395,101 @@ fn default_mode() -> String {
 }
 
 // =============================================================================
+// substitute-json types
+// =============================================================================
+
+/// Options for substitute JSON operation.
+#[derive(Deserialize, Debug, Clone)]
+pub struct SubstituteJsonOptions {
+    /// Substitution mode: "exact" or "power" (default: "power")
+    #[serde(default = "default_substitute_mode")]
+    pub mode: String,
+    /// Include substitution steps in output
+    #[serde(default)]
+    pub steps: bool,
+    /// Pretty-print JSON output
+    #[serde(default)]
+    pub pretty: bool,
+}
+
+impl Default for SubstituteJsonOptions {
+    fn default() -> Self {
+        Self {
+            mode: "power".to_string(),
+            steps: false,
+            pretty: false,
+        }
+    }
+}
+
+fn default_substitute_mode() -> String {
+    "power".to_string()
+}
+
+/// Request echo for substitute operations.
+#[derive(Serialize, Debug, Clone)]
+pub struct SubstituteRequestEcho {
+    pub expr: String,
+    pub target: String,
+    #[serde(rename = "with")]
+    pub with_expr: String,
+}
+
+/// Options echo for substitute operations.
+#[derive(Serialize, Debug, Clone)]
+pub struct SubstituteOptionsJson {
+    pub substitute: SubstituteOptionsInner,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct SubstituteOptionsInner {
+    pub mode: String,
+    pub steps: bool,
+}
+
+/// Substitute JSON response with request echo and options.
+#[derive(Serialize, Debug, Clone)]
+pub struct SubstituteJsonResponse {
+    /// Schema version for API stability
+    pub schema_version: u8,
+    /// True if operation succeeded
+    pub ok: bool,
+    /// Result expression (success only)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<String>,
+    /// Error details (failure only)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<EngineJsonError>,
+    /// Request echo for reproducibility
+    pub request: SubstituteRequestEcho,
+    /// Options used
+    pub options: SubstituteOptionsJson,
+    /// Substitution steps (if requested)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<EngineJsonSubstep>,
+}
+
+impl SubstituteJsonResponse {
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(self).unwrap_or_else(|e| {
+            format!(
+                r#"{{"schema_version":1,"ok":false,"error":{{"kind":"InternalError","code":"E_INTERNAL","message":"JSON serialization failed: {}"}}}}"#,
+                e
+            )
+        })
+    }
+
+    pub fn to_json_pretty(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_else(|e| {
+            format!(
+                r#"{{"schema_version":1,"ok":false,"error":{{"kind":"InternalError","code":"E_INTERNAL","message":"JSON serialization failed: {}"}}}}"#,
+                e
+            )
+        })
+    }
+}
+
+// =============================================================================
 // script-json types
 // =============================================================================
 
