@@ -136,20 +136,44 @@ impl SessionState {
         &mut self.store
     }
 
-    pub fn env(&self) -> &Environment {
+    pub fn get_binding(&self, name: &str) -> Option<ExprId> {
+        self.env.get(name)
+    }
+
+    pub fn set_binding<S: Into<String>>(&mut self, name: S, expr: ExprId) {
+        self.env.set(name.into(), expr);
+    }
+
+    pub fn unset_binding(&mut self, name: &str) -> bool {
+        self.env.unset(name)
+    }
+
+    pub fn bindings(&self) -> Vec<(String, ExprId)> {
+        self.env
+            .list()
+            .into_iter()
+            .map(|(name, expr)| (name.to_string(), expr))
+            .collect()
+    }
+
+    pub fn binding_count(&self) -> usize {
+        self.env.len()
+    }
+
+    pub fn clear_bindings(&mut self) {
+        self.env.clear_all();
+    }
+
+    pub fn profile_cache_len(&self) -> usize {
+        self.profile_cache.len()
+    }
+
+    pub fn clear_profile_cache(&mut self) {
+        self.profile_cache.clear();
+    }
+
+    pub(crate) fn env(&self) -> &Environment {
         &self.env
-    }
-
-    pub fn env_mut(&mut self) -> &mut Environment {
-        &mut self.env
-    }
-
-    pub fn profile_cache(&self) -> &ProfileCache {
-        &self.profile_cache
-    }
-
-    pub fn profile_cache_mut(&mut self) -> &mut ProfileCache {
-        &mut self.profile_cache
     }
 
     /// Clear all session data (history + env bindings).
