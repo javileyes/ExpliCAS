@@ -2,8 +2,7 @@ use crate::env::Environment;
 use crate::options::EvalOptions;
 use crate::poly_store::PolyStore;
 use crate::profile_cache::ProfileCache;
-use crate::session::{CacheHitTrace, ResolveError, SessionStore};
-use cas_ast::{Context, ExprId};
+use crate::session::SessionStore;
 
 /// bundled session state for portability (GUI/Web/CLI)
 /// NOTE: Cannot derive Clone due to ProfileCache
@@ -51,35 +50,6 @@ impl SessionState {
     /// Get a reference to the session store (for snapshot serialization).
     pub fn store(&self) -> &SessionStore {
         &self.store
-    }
-
-    /// Resolve all references in an expression:
-    /// 1. Resolve session references (#id) -> ExprId
-    /// 2. Substitute environment variables (x=5) -> ExprId
-    pub fn resolve_all(&self, ctx: &mut Context, expr: ExprId) -> Result<ExprId, ResolveError> {
-        crate::session_resolution::resolve_all(ctx, expr, &self.store, &self.env)
-    }
-
-    /// Resolve all references AND return inherited diagnostics + cache hits.
-    ///
-    /// When the expression contains session references (#id), the diagnostics
-    /// from those entries are accumulated for SessionPropagated origin tracking.
-    ///
-    /// V2.15.36: Uses cache-aware resolution - if an entry has a cached
-    /// simplified result with matching key, uses that instead of raw expression.
-    /// Also returns cache hit traces for synthetic timeline step generation.
-    pub fn resolve_all_with_diagnostics(
-        &self,
-        ctx: &mut Context,
-        expr: ExprId,
-    ) -> Result<(ExprId, crate::diagnostics::Diagnostics, Vec<CacheHitTrace>), ResolveError> {
-        crate::session_resolution::resolve_all_with_diagnostics(
-            ctx,
-            expr,
-            &self.store,
-            &self.env,
-            self.options.shared.semantics.domain_mode,
-        )
     }
 
     /// Clear all session state (history and environment)
