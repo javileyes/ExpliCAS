@@ -33,7 +33,7 @@ pub use cas_engine::telescoping;
 pub use cas_engine::visualizer;
 pub use cas_engine::{engine, error, expand, helpers, options, pattern_marks, phase, semantics};
 pub use cas_engine::{
-    substitute_str_to_json, AssumeScope, AssumptionReporting, BlockedHint, Budget, CasError,
-    DomainMode, Engine, EquivalenceResult, EvalAction, EvalOutput, EvalRequest, EvalResult,
-    PipelineStats, Simplifier, SimplifyOptions,
+    eval_str_to_json, substitute_str_to_json, AssumeScope, AssumptionReporting, BlockedHint,
+    Budget, CasError, DomainMode, Engine, EquivalenceResult, EvalAction, EvalOutput, EvalRequest,
+    EvalResult, PipelineStats, Simplifier, SimplifyOptions, SCHEMA_VERSION,
 };

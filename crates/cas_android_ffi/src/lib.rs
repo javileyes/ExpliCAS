@@ -1,6 +1,6 @@
 //! Android JNI bridge for ExpliCAS engine.
 //!
-//! Uses `cas_engine` JSON entry points with DTOs from `cas_api_models`.
+//! Uses `cas_solver` JSON entry points with DTOs from `cas_api_models`.
 //! Schema version: 1
 //!
 //! # Safety
@@ -24,7 +24,7 @@ use jni::JNIEnv;
 
 // JSON DTOs for stable FFI fallback responses
 use cas_api_models::{BudgetJsonInfo, EngineJsonError, EngineJsonResponse};
-use cas_engine::{eval_str_to_json, SCHEMA_VERSION};
+use cas_solver::{eval_str_to_json, SCHEMA_VERSION};
 
 // ============================================================================
 // JNI Entry Points
@@ -54,7 +54,7 @@ pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_abiVersion(
 /// # Returns
 /// JSON string with schema_version: 1
 ///
-/// Uses `cas_engine::eval_str_to_json` as the canonical entry point.
+/// Uses `cas_solver::eval_str_to_json` as the canonical entry point.
 #[no_mangle]
 pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_evalJson<'local>(
     mut env: JNIEnv<'local>,
@@ -111,7 +111,7 @@ fn internal_error_json(message: &str) -> String {
     resp.to_json()
 }
 
-/// Core evaluation function - uses canonical cas_engine::eval_str_to_json
+/// Core evaluation function - uses canonical cas_solver::eval_str_to_json
 ///
 /// This is the testable inner function that doesn't require JNI.
 pub fn eval_json_core(env: &mut JNIEnv, expr: JString, opts_json: JString) -> String {
@@ -145,7 +145,7 @@ pub fn eval_json_core(env: &mut JNIEnv, expr: JString, opts_json: JString) -> St
 /// # Returns
 /// JSON string with schema_version: 1
 ///
-/// Uses `cas_engine::substitute_str_to_json` which is the canonical entry point.
+/// Uses `cas_solver::substitute_str_to_json` which is the canonical entry point.
 #[no_mangle]
 pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_substituteJson<'local>(
     mut env: JNIEnv<'local>,
@@ -174,7 +174,7 @@ pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_substituteJson<'
     }
 }
 
-/// Core substitute function - uses canonical cas_engine::substitute_str_to_json
+/// Core substitute function - uses canonical cas_solver::substitute_str_to_json
 pub fn substitute_json_core(
     env: &mut JNIEnv,
     expr: JString,
@@ -208,7 +208,7 @@ pub fn substitute_json_core(
         Some(opts_str.as_str())
     };
 
-    cas_engine::substitute_str_to_json(&expr_str, &target_str, &with_str, opts)
+    cas_solver::substitute_str_to_json(&expr_str, &target_str, &with_str, opts)
 }
 
 // ============================================================================
@@ -217,7 +217,7 @@ pub fn substitute_json_core(
 
 #[cfg(test)]
 mod tests {
-    use cas_engine::eval_str_to_json;
+    use cas_solver::eval_str_to_json;
     use serde_json::Value;
 
     fn parse_json(s: &str) -> Value {
