@@ -66,8 +66,8 @@ impl Repl {
     }
 
     fn print_semantics_core(&self) -> ReplReply {
-        use cas_engine::semantics::{BranchPolicy, InverseTrigPolicy, ValueDomain};
-        use cas_engine::DomainMode;
+        use cas_solver::{BranchPolicy, InverseTrigPolicy, ValueDomain};
+        use cas_solver::DomainMode;
 
         let mut lines = Vec::new();
 
@@ -114,16 +114,16 @@ impl Repl {
         lines.push(format!("  const_fold: {}", const_fold));
 
         let assumptions = match self.core.state.options.shared.assumption_reporting {
-            cas_engine::AssumptionReporting::Off => "off",
-            cas_engine::AssumptionReporting::Summary => "summary",
-            cas_engine::AssumptionReporting::Trace => "trace",
+            cas_solver::AssumptionReporting::Off => "off",
+            cas_solver::AssumptionReporting::Summary => "summary",
+            cas_solver::AssumptionReporting::Trace => "trace",
         };
         lines.push(format!("  assumptions: {}", assumptions));
 
         // Show assume_scope with inactive note if domain_mode != Assume
         let assume_scope = match self.core.simplify_options.shared.semantics.assume_scope {
-            cas_engine::AssumeScope::Real => "real",
-            cas_engine::AssumeScope::Wildcard => "wildcard",
+            cas_solver::AssumeScope::Real => "real",
+            cas_solver::AssumeScope::Wildcard => "wildcard",
         };
         if self.core.simplify_options.shared.semantics.domain_mode != DomainMode::Assume {
             lines.push(format!(
@@ -144,8 +144,8 @@ impl Repl {
 
         // Show requires display level
         let requires = match self.core.state.options.requires_display {
-            cas_engine::implicit_domain::RequiresDisplayLevel::Essential => "essential",
-            cas_engine::implicit_domain::RequiresDisplayLevel::All => "all",
+            cas_solver::RequiresDisplayLevel::Essential => "essential",
+            cas_solver::RequiresDisplayLevel::All => "all",
         };
         lines.push(format!("  requires: {}", requires));
 
@@ -159,8 +159,8 @@ impl Repl {
     }
 
     fn print_axis_status_core(&self, axis: &str) -> ReplReply {
-        use cas_engine::semantics::{BranchPolicy, InverseTrigPolicy, ValueDomain};
-        use cas_engine::DomainMode;
+        use cas_solver::{BranchPolicy, InverseTrigPolicy, ValueDomain};
+        use cas_solver::DomainMode;
 
         let mut lines = Vec::new();
 
@@ -228,9 +228,9 @@ impl Repl {
             }
             "assumptions" => {
                 let current = match self.core.state.options.shared.assumption_reporting {
-                    cas_engine::AssumptionReporting::Off => "off",
-                    cas_engine::AssumptionReporting::Summary => "summary",
-                    cas_engine::AssumptionReporting::Trace => "trace",
+                    cas_solver::AssumptionReporting::Off => "off",
+                    cas_solver::AssumptionReporting::Summary => "summary",
+                    cas_solver::AssumptionReporting::Trace => "trace",
                 };
                 lines.push(format!("assumptions: {}", current));
                 lines.push("  Values: off | summary | trace".to_string());
@@ -240,8 +240,8 @@ impl Repl {
             }
             "assume_scope" => {
                 let current = match self.core.simplify_options.shared.semantics.assume_scope {
-                    cas_engine::AssumeScope::Real => "real",
-                    cas_engine::AssumeScope::Wildcard => "wildcard",
+                    cas_solver::AssumeScope::Real => "real",
+                    cas_solver::AssumeScope::Wildcard => "wildcard",
                 };
                 let inactive =
                     self.core.simplify_options.shared.semantics.domain_mode != DomainMode::Assume;
@@ -262,8 +262,8 @@ impl Repl {
             }
             "requires" => {
                 let current = match self.core.state.options.requires_display {
-                    cas_engine::implicit_domain::RequiresDisplayLevel::Essential => "essential",
-                    cas_engine::implicit_domain::RequiresDisplayLevel::All => "all",
+                    cas_solver::RequiresDisplayLevel::Essential => "essential",
+                    cas_solver::RequiresDisplayLevel::All => "all",
                 };
                 lines.push(format!("requires: {}", current));
                 lines.push("  Values: essential | all".to_string());
@@ -343,8 +343,8 @@ Presets:
 
     fn handle_preset_core(&mut self, args: &[&str]) -> ReplReply {
         use cas_engine::const_fold::ConstFoldMode;
-        use cas_engine::semantics::{BranchPolicy, InverseTrigPolicy, ValueDomain};
-        use cas_engine::DomainMode;
+        use cas_solver::{BranchPolicy, InverseTrigPolicy, ValueDomain};
+        use cas_solver::DomainMode;
 
         // Preset definitions: (name, description, domain, value, branch, inv_trig, const_fold)
         struct Preset {

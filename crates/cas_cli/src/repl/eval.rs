@@ -133,7 +133,7 @@ impl Repl {
                         // Collect assumptions from steps for assumption reporting (before steps are consumed)
                         // Deduplicate by (condition_kind, expr_fingerprint) and group by rule
                         let show_assumptions = self.core.state.options.shared.assumption_reporting
-                            != cas_engine::AssumptionReporting::Off;
+                            != cas_solver::AssumptionReporting::Off;
                         let assumed_conditions: Vec<(String, String)> = if show_assumptions {
                             let mut seen: std::collections::HashSet<u64> =
                                 std::collections::HashSet::new();
@@ -142,32 +142,32 @@ impl Repl {
                                 for event in step.assumption_events() {
                                     // Dedupe by fingerprint
                                     let fp = match &event.key {
-                                        cas_engine::assumptions::AssumptionKey::NonZero { expr_fingerprint } => *expr_fingerprint,
-                                        cas_engine::assumptions::AssumptionKey::Positive { expr_fingerprint } => *expr_fingerprint + 1_000_000,
-                                        cas_engine::assumptions::AssumptionKey::NonNegative { expr_fingerprint } => *expr_fingerprint + 2_000_000,
-                                        cas_engine::assumptions::AssumptionKey::Defined { expr_fingerprint } => *expr_fingerprint + 3_000_000,
-                                        cas_engine::assumptions::AssumptionKey::InvTrigPrincipalRange { arg_fingerprint, .. } => *arg_fingerprint + 4_000_000,
-                                        cas_engine::assumptions::AssumptionKey::ComplexPrincipalBranch { arg_fingerprint, .. } => *arg_fingerprint + 5_000_000,
+                                        cas_solver::AssumptionKey::NonZero { expr_fingerprint } => *expr_fingerprint,
+                                        cas_solver::AssumptionKey::Positive { expr_fingerprint } => *expr_fingerprint + 1_000_000,
+                                        cas_solver::AssumptionKey::NonNegative { expr_fingerprint } => *expr_fingerprint + 2_000_000,
+                                        cas_solver::AssumptionKey::Defined { expr_fingerprint } => *expr_fingerprint + 3_000_000,
+                                        cas_solver::AssumptionKey::InvTrigPrincipalRange { arg_fingerprint, .. } => *arg_fingerprint + 4_000_000,
+                                        cas_solver::AssumptionKey::ComplexPrincipalBranch { arg_fingerprint, .. } => *arg_fingerprint + 5_000_000,
                                     };
                                     if seen.insert(fp) {
                                         // Format: "x ≠ 0" instead of "≠ 0 (NonZero)"
                                         let condition = match &event.key {
-                                            cas_engine::assumptions::AssumptionKey::NonZero { .. } => {
+                                            cas_solver::AssumptionKey::NonZero { .. } => {
                                                 format!("{} ≠ 0", event.expr_display)
                                             }
-                                            cas_engine::assumptions::AssumptionKey::Positive { .. } => {
+                                            cas_solver::AssumptionKey::Positive { .. } => {
                                                 format!("{} > 0", event.expr_display)
                                             }
-                                            cas_engine::assumptions::AssumptionKey::NonNegative { .. } => {
+                                            cas_solver::AssumptionKey::NonNegative { .. } => {
                                                 format!("{} ≥ 0", event.expr_display)
                                             }
-                                            cas_engine::assumptions::AssumptionKey::Defined { .. } => {
+                                            cas_solver::AssumptionKey::Defined { .. } => {
                                                 format!("{} is defined", event.expr_display)
                                             }
-                                            cas_engine::assumptions::AssumptionKey::InvTrigPrincipalRange { func, .. } => {
+                                            cas_solver::AssumptionKey::InvTrigPrincipalRange { func, .. } => {
                                                 format!("{} in {} principal range", event.expr_display, func)
                                             }
-                                            cas_engine::assumptions::AssumptionKey::ComplexPrincipalBranch { func, .. } => {
+                                            cas_solver::AssumptionKey::ComplexPrincipalBranch { func, .. } => {
                                                 format!("{}({}) principal branch", func, event.expr_display)
                                             }
                                         };

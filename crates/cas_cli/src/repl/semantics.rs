@@ -66,8 +66,8 @@ impl Repl {
 
     /// Returns Some(error_message) on failure, None on success
     pub(crate) fn set_semantic_axis(&mut self, axis: &str, value: &str) -> Option<String> {
-        use cas_engine::semantics::{BranchPolicy, InverseTrigPolicy, ValueDomain};
-        use cas_engine::DomainMode;
+        use cas_solver::{BranchPolicy, InverseTrigPolicy, ValueDomain};
+        use cas_solver::DomainMode;
 
         match axis {
             "domain" => match value {
@@ -160,21 +160,21 @@ impl Repl {
             "assumptions" => match value {
                 "off" => {
                     self.core.state.options.shared.assumption_reporting =
-                        cas_engine::AssumptionReporting::Off;
+                        cas_solver::AssumptionReporting::Off;
                     self.core.simplify_options.shared.assumption_reporting =
-                        cas_engine::AssumptionReporting::Off;
+                        cas_solver::AssumptionReporting::Off;
                 }
                 "summary" => {
                     self.core.state.options.shared.assumption_reporting =
-                        cas_engine::AssumptionReporting::Summary;
+                        cas_solver::AssumptionReporting::Summary;
                     self.core.simplify_options.shared.assumption_reporting =
-                        cas_engine::AssumptionReporting::Summary;
+                        cas_solver::AssumptionReporting::Summary;
                 }
                 "trace" => {
                     self.core.state.options.shared.assumption_reporting =
-                        cas_engine::AssumptionReporting::Trace;
+                        cas_solver::AssumptionReporting::Trace;
                     self.core.simplify_options.shared.assumption_reporting =
-                        cas_engine::AssumptionReporting::Trace;
+                        cas_solver::AssumptionReporting::Trace;
                 }
                 _ => {
                     return Some(format!(
@@ -186,15 +186,15 @@ impl Repl {
             "assume_scope" => match value {
                 "real" => {
                     self.core.simplify_options.shared.semantics.assume_scope =
-                        cas_engine::AssumeScope::Real;
+                        cas_solver::AssumeScope::Real;
                     self.core.state.options.shared.semantics.assume_scope =
-                        cas_engine::AssumeScope::Real;
+                        cas_solver::AssumeScope::Real;
                 }
                 "wildcard" => {
                     self.core.simplify_options.shared.semantics.assume_scope =
-                        cas_engine::AssumeScope::Wildcard;
+                        cas_solver::AssumeScope::Wildcard;
                     self.core.state.options.shared.semantics.assume_scope =
-                        cas_engine::AssumeScope::Wildcard;
+                        cas_solver::AssumeScope::Wildcard;
                 }
                 _ => {
                     return Some(format!(
@@ -234,11 +234,11 @@ impl Repl {
             "requires" => match value {
                 "essential" => {
                     self.core.state.options.requires_display =
-                        cas_engine::implicit_domain::RequiresDisplayLevel::Essential;
+                        cas_solver::RequiresDisplayLevel::Essential;
                 }
                 "all" => {
                     self.core.state.options.requires_display =
-                        cas_engine::implicit_domain::RequiresDisplayLevel::All;
+                        cas_solver::RequiresDisplayLevel::All;
                 }
                 _ => {
                     return Some(format!(
