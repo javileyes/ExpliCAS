@@ -1,5 +1,5 @@
 use cas_ast::ExprId;
-use cas_engine::eval::EvalSession;
+use cas_engine::eval::{EvalSession, EvalStore};
 use cas_engine::options::EvalOptions;
 use cas_engine::profile_cache::ProfileCache;
 use cas_engine::{diagnostics::Diagnostics, poly_store::PolyStore};
@@ -24,13 +24,73 @@ fn map_cache_hit_trace(hit: SessionCacheHitTrace) -> cas_engine::eval::CacheHitT
     }
 }
 
+/// Local adapter that bridges `cas_session::SessionStore` to `cas_engine::eval::EvalStore`.
+#[derive(Debug, Default)]
+pub struct SessionEvalStore(pub SessionStore);
+
+impl SessionEvalStore {
+    fn new() -> Self {
+        Self(SessionStore::new())
+    }
+
+    fn from_store(store: SessionStore) -> Self {
+        Self(store)
+    }
+}
+
+impl std::ops::Deref for SessionEvalStore {
+    type Target = SessionStore;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for SessionEvalStore {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl EvalStore for SessionEvalStore {
+    fn push_raw_input(&mut self, ctx: &cas_ast::Context, parsed: ExprId, raw_input: String) -> u64 {
+        let kind = if let Some((lhs, rhs)) = cas_ast::eq::unwrap_eq(ctx, parsed) {
+            crate::EntryKind::Eq { lhs, rhs }
+        } else {
+            crate::EntryKind::Expr(parsed)
+        };
+        self.0.push(kind, raw_input)
+    }
+
+    fn touch_cached(&mut self, entry_id: u64) {
+        self.0.touch_cached(entry_id);
+    }
+
+    fn update_diagnostics(&mut self, id: u64, diagnostics: Diagnostics) {
+        self.0.update_diagnostics(id, diagnostics);
+    }
+
+    fn update_simplified(&mut self, id: u64, cache: cas_engine::eval::SimplifiedCache) {
+        let mapped_cache = crate::SimplifiedCache {
+            key: crate::SimplifyCacheKey {
+                domain: cache.key.domain,
+                ruleset_rev: cache.key.ruleset_rev,
+            },
+            expr: cache.expr,
+            requires: cache.requires,
+            steps: cache.steps,
+        };
+        self.0.update_simplified(id, mapped_cache);
+    }
+}
+
 /// Bundled session state for portability (CLI/Web/FFI).
 ///
 /// This crate-local type is the migration target for Phase 3.
 /// `cas_engine` remains stateless and consumes it via the `EvalSession` trait.
 #[derive(Default, Debug)]
 pub struct SessionState {
-    pub store: SessionStore,
+    pub store: SessionEvalStore,
     pub env: Environment,
     pub options: EvalOptions,
     pub profile_cache: ProfileCache,
@@ -44,7 +104,7 @@ impl SessionState {
 
     pub fn new() -> Self {
         Self {
-            store: SessionStore::new(),
+            store: SessionEvalStore::new(),
             env: Environment::new(),
             options: EvalOptions::default(),
             profile_cache: ProfileCache::new(),
@@ -55,7 +115,7 @@ impl SessionState {
     /// Create a state from an existing session store (for snapshot restoration).
     pub fn from_store(store: SessionStore) -> Self {
         Self {
-            store,
+            store: SessionEvalStore::from_store(store),
             env: Environment::new(),
             options: EvalOptions::default(),
             profile_cache: ProfileCache::new(),
@@ -76,7 +136,7 @@ impl SessionState {
 }
 
 impl EvalSession for SessionState {
-    type Store = SessionStore;
+    type Store = SessionEvalStore;
 
     fn store_mut(&mut self) -> &mut Self::Store {
         &mut self.store

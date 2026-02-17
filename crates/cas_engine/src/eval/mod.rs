@@ -24,16 +24,6 @@ pub(crate) type ActionResult = (
 use crate::Simplifier;
 use cas_ast::{BuiltinFn, Equation, Expr, ExprId, RelOp};
 
-pub(crate) type CoreSimplifyCacheKey =
-    cas_session_core::cache::SimplifyCacheKey<crate::domain::DomainMode>;
-pub(crate) type CoreSimplifiedCache = cas_session_core::cache::SimplifiedCache<
-    crate::domain::DomainMode,
-    crate::diagnostics::RequiredItem,
-    crate::step::Step,
->;
-pub(crate) type CoreCacheHitTrace =
-    cas_session_core::cache::CacheHitTrace<crate::diagnostics::RequiredItem>;
-
 /// Engine-local cache key used by eval/session abstraction.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SimplifyCacheKey {
@@ -50,15 +40,6 @@ impl SimplifyCacheKey {
     }
 }
 
-impl From<SimplifyCacheKey> for CoreSimplifyCacheKey {
-    fn from(value: SimplifyCacheKey) -> Self {
-        Self {
-            domain: value.domain,
-            ruleset_rev: value.ruleset_rev,
-        }
-    }
-}
-
 /// Engine-local cached simplification payload.
 #[derive(Debug, Clone)]
 pub struct SimplifiedCache {
@@ -68,17 +49,6 @@ pub struct SimplifiedCache {
     pub steps: Option<std::sync::Arc<Vec<crate::step::Step>>>,
 }
 
-impl SimplifiedCache {
-    pub(crate) fn into_core(self) -> CoreSimplifiedCache {
-        CoreSimplifiedCache {
-            key: self.key.into(),
-            expr: self.expr,
-            requires: self.requires,
-            steps: self.steps,
-        }
-    }
-}
-
 /// Engine-local cache hit trace used by eval/session abstraction.
 #[derive(Debug, Clone)]
 pub struct CacheHitTrace {
@@ -86,17 +56,6 @@ pub struct CacheHitTrace {
     pub before_ref_expr: ExprId,
     pub after_expr: ExprId,
     pub requires: Vec<crate::diagnostics::RequiredItem>,
-}
-
-impl From<CoreCacheHitTrace> for CacheHitTrace {
-    fn from(value: CoreCacheHitTrace) -> Self {
-        Self {
-            entry_id: value.entry_id,
-            before_ref_expr: value.before_ref_expr,
-            after_expr: value.after_expr,
-            requires: value.requires,
-        }
-    }
 }
 
 /// Engine-level session/reference resolution error.
@@ -149,31 +108,6 @@ pub trait EvalStore {
     fn touch_cached(&mut self, entry_id: u64);
     fn update_diagnostics(&mut self, id: u64, diagnostics: crate::diagnostics::Diagnostics);
     fn update_simplified(&mut self, id: u64, cache: SimplifiedCache);
-}
-
-impl EvalStore
-    for cas_session_core::store::SessionStore<crate::diagnostics::Diagnostics, CoreSimplifiedCache>
-{
-    fn push_raw_input(&mut self, ctx: &cas_ast::Context, parsed: ExprId, raw_input: String) -> u64 {
-        let kind = if let Some((lhs, rhs)) = cas_ast::eq::unwrap_eq(ctx, parsed) {
-            cas_session_core::types::EntryKind::Eq { lhs, rhs }
-        } else {
-            cas_session_core::types::EntryKind::Expr(parsed)
-        };
-        self.push(kind, raw_input)
-    }
-
-    fn touch_cached(&mut self, entry_id: u64) {
-        self.touch_cached(entry_id);
-    }
-
-    fn update_diagnostics(&mut self, id: u64, diagnostics: crate::diagnostics::Diagnostics) {
-        self.update_diagnostics(id, diagnostics);
-    }
-
-    fn update_simplified(&mut self, id: u64, cache: SimplifiedCache) {
-        self.update_simplified(id, cache.into_core());
-    }
 }
 
 pub trait EvalSession {

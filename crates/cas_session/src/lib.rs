@@ -22,7 +22,7 @@ pub type SessionStore =
 pub use cas_session_core::types::{CacheConfig, EntryId, EntryKind, RefMode, ResolveError};
 pub use env::{is_reserved, substitute, substitute_with_shadow, Environment};
 pub use snapshot::{SessionSnapshot, SnapshotError};
-pub use state::SessionState;
+pub use state::{SessionEvalStore, SessionState};
 
 /// Resolve all `Expr::SessionRef` in an expression tree.
 pub fn resolve_session_refs(
