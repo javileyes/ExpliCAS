@@ -281,9 +281,14 @@ dependencies = [
 name = "cas_session"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "cas_ast",
  "cas_engine",
  "cas_session_core",
+ "num-bigint",
+ "num-rational",
+ "serde",
+ "tempfile",
 ]
 
 [[package]]

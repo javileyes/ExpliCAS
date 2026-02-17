@@ -55,9 +55,12 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
     let strict = opts.budget.mode == "strict";
     let budget_info = BudgetJsonInfo::new(&opts.budget.preset, strict);
 
-    // Create engine and session state
+    // Create engine and explicit eval components (stateless-friendly API)
     let mut engine = crate::eval::Engine::new();
-    let mut state = crate::session_state::SessionState::new();
+    let mut store = crate::session::SessionStore::new();
+    let env = crate::env::Environment::new();
+    let options = crate::options::EvalOptions::default();
+    let mut profile_cache = crate::profile_cache::ProfileCache::new();
 
     // Parse expression
     let parsed = match cas_parser::parse(expr, &mut engine.simplifier.context) {
@@ -98,28 +101,29 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
     };
 
     // Evaluate
-    let output = match engine.eval(&mut state, req) {
-        Ok(o) => o,
-        Err(e) => {
-            // anyhow::Error - create generic error
-            let error = EngineJsonError::simple("InternalError", "E_INTERNAL", e.to_string());
-            let resp = EngineJsonResponse {
-                schema_version: SCHEMA_VERSION,
-                ok: false,
-                result: None,
-                error: Some(error),
-                steps: vec![],
-                warnings: vec![],
-                assumptions: vec![],
-                budget: budget_info,
-            };
-            return if opts.pretty {
-                resp.to_json_pretty()
-            } else {
-                resp.to_json()
-            };
-        }
-    };
+    let output =
+        match engine.eval_with_components(&mut store, &env, &options, &mut profile_cache, req) {
+            Ok(o) => o,
+            Err(e) => {
+                // anyhow::Error - create generic error
+                let error = EngineJsonError::simple("InternalError", "E_INTERNAL", e.to_string());
+                let resp = EngineJsonResponse {
+                    schema_version: SCHEMA_VERSION,
+                    ok: false,
+                    result: None,
+                    error: Some(error),
+                    steps: vec![],
+                    warnings: vec![],
+                    assumptions: vec![],
+                    budget: budget_info,
+                };
+                return if opts.pretty {
+                    resp.to_json_pretty()
+                } else {
+                    resp.to_json()
+                };
+            }
+        };
 
     // Format result
     let result_str = match &output.result {

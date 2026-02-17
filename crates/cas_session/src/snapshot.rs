@@ -9,7 +9,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::session::{SessionStore, SimplifyCacheKey};
+use cas_engine::session::{SessionStore, SimplifyCacheKey};
 
 /// Complete session state for persistence.
 /// Contains header for compatibility checking, plus Context and SessionStore.
@@ -256,10 +256,10 @@ impl SessionStoreSnapshot {
                 id: e.id,
                 raw_text: e.raw_text.clone(),
                 kind: match &e.kind {
-                    crate::session::EntryKind::Expr(id) => {
+                    cas_engine::session::EntryKind::Expr(id) => {
                         EntryKindSnapshot::Expr(id.index() as u32)
                     }
-                    crate::session::EntryKind::Eq { lhs, rhs } => EntryKindSnapshot::Eq {
+                    cas_engine::session::EntryKind::Eq { lhs, rhs } => EntryKindSnapshot::Eq {
                         lhs: lhs.index() as u32,
                         rhs: rhs.index() as u32,
                     },
@@ -288,8 +288,8 @@ impl SessionStoreSnapshot {
     }
 
     pub fn into_store(self) -> SessionStore {
-        use crate::session::{CacheConfig, Entry, EntryKind, SimplifiedCache};
         use cas_ast::ExprId;
+        use cas_engine::session::{CacheConfig, Entry, EntryKind, SimplifiedCache};
 
         let config = CacheConfig {
             max_cached_entries: self.cache_config.max_cached_entries,
@@ -437,7 +437,7 @@ mod tests {
 
     #[test]
     fn test_session_snapshot_save_load() {
-        use crate::domain::DomainMode;
+        use cas_engine::domain::DomainMode;
 
         let dir = tempdir().unwrap();
         let path = dir.path().join("test.session");
@@ -450,7 +450,10 @@ mod tests {
 
         // Create a session store with an entry
         let mut store = SessionStore::new();
-        store.push(crate::session::EntryKind::Expr(expr), "x + 1".to_string());
+        store.push(
+            cas_engine::session::EntryKind::Expr(expr),
+            "x + 1".to_string(),
+        );
 
         let key = SimplifyCacheKey {
             domain: DomainMode::Generic,

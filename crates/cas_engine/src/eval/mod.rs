@@ -54,11 +54,26 @@ pub trait EvalSession {
         &mut self,
         f: impl FnOnce(
             &mut crate::session::SessionStore,
-            &crate::env::Environment,
             &crate::options::EvalOptions,
             &mut crate::profile_cache::ProfileCache,
         ) -> R,
     ) -> R;
+
+    fn resolve_all(&self, ctx: &mut cas_ast::Context, expr: ExprId)
+        -> Result<ExprId, ResolveError>;
+
+    fn resolve_all_with_diagnostics(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+    ) -> Result<
+        (
+            ExprId,
+            crate::diagnostics::Diagnostics,
+            Vec<crate::session::CacheHitTrace>,
+        ),
+        ResolveError,
+    >;
 }
 
 impl EvalSession for SessionState {
@@ -66,19 +81,97 @@ impl EvalSession for SessionState {
         &mut self,
         f: impl FnOnce(
             &mut crate::session::SessionStore,
-            &crate::env::Environment,
             &crate::options::EvalOptions,
             &mut crate::profile_cache::ProfileCache,
         ) -> R,
     ) -> R {
         let SessionState {
             store,
-            env,
             options,
             profile_cache,
             ..
         } = self;
-        f(store, env, options, profile_cache)
+        f(store, options, profile_cache)
+    }
+
+    fn resolve_all(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+    ) -> Result<ExprId, ResolveError> {
+        crate::session::resolve_all(ctx, expr, &self.store, &self.env)
+    }
+
+    fn resolve_all_with_diagnostics(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+    ) -> Result<
+        (
+            ExprId,
+            crate::diagnostics::Diagnostics,
+            Vec<crate::session::CacheHitTrace>,
+        ),
+        ResolveError,
+    > {
+        crate::session::resolve_all_with_diagnostics(
+            ctx,
+            expr,
+            &self.store,
+            &self.env,
+            self.options.shared.semantics.domain_mode,
+        )
+    }
+}
+
+/// Borrowed eval components adapter used to run the engine without a
+/// monolithic state container.
+struct EvalSessionComponents<'a> {
+    store: &'a mut crate::session::SessionStore,
+    env: &'a crate::env::Environment,
+    options: &'a crate::options::EvalOptions,
+    profile_cache: &'a mut crate::profile_cache::ProfileCache,
+}
+
+impl EvalSession for EvalSessionComponents<'_> {
+    fn with_eval_parts<R>(
+        &mut self,
+        f: impl FnOnce(
+            &mut crate::session::SessionStore,
+            &crate::options::EvalOptions,
+            &mut crate::profile_cache::ProfileCache,
+        ) -> R,
+    ) -> R {
+        f(self.store, self.options, self.profile_cache)
+    }
+
+    fn resolve_all(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+    ) -> Result<ExprId, ResolveError> {
+        crate::session::resolve_all(ctx, expr, self.store, self.env)
+    }
+
+    fn resolve_all_with_diagnostics(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+    ) -> Result<
+        (
+            ExprId,
+            crate::diagnostics::Diagnostics,
+            Vec<crate::session::CacheHitTrace>,
+        ),
+        ResolveError,
+    > {
+        crate::session::resolve_all_with_diagnostics(
+            ctx,
+            expr,
+            self.store,
+            self.env,
+            self.options.shared.semantics.domain_mode,
+        )
     }
 }
 
@@ -145,6 +238,25 @@ impl Engine {
         }
 
         effective
+    }
+
+    /// Evaluate using explicit session components instead of a monolithic
+    /// session struct. This is the stateless-friendly API for orchestrators.
+    pub fn eval_with_components(
+        &mut self,
+        store: &mut crate::session::SessionStore,
+        env: &crate::env::Environment,
+        options: &crate::options::EvalOptions,
+        profile_cache: &mut crate::profile_cache::ProfileCache,
+        req: EvalRequest,
+    ) -> Result<EvalOutput, anyhow::Error> {
+        let mut session = EvalSessionComponents {
+            store,
+            env,
+            options,
+            profile_cache,
+        };
+        self.eval(&mut session, req)
     }
 }
 

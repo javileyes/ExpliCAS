@@ -58,8 +58,6 @@ pub mod rules;
 pub(crate) mod semantic_equality;
 pub mod semantics;
 pub mod session;
-pub(crate) mod session_resolution;
-pub mod session_snapshot;
 pub mod session_state;
 pub mod solve_safety;
 pub mod solver;

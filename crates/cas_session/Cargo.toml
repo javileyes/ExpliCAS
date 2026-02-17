@@ -10,3 +10,10 @@ authors.workspace = true
 cas_ast = { path = "../cas_ast" }
 cas_session_core = { path = "../cas_session_core" }
 cas_engine = { path = "../cas_engine", default-features = false }
+serde = { version = "1.0", features = ["derive"] }
+bincode = "1"
+num-bigint = "0.4"
+num-rational = "0.4"
+
+[dev-dependencies]
+tempfile = "3"

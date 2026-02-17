@@ -6,6 +6,13 @@
 
 use super::*;
 
+struct ResolvedEvalInput {
+    resolved: ExprId,
+    inherited_diagnostics: crate::diagnostics::Diagnostics,
+    cache_hits: Vec<crate::session::CacheHitTrace>,
+    resolved_equiv_other: Option<ExprId>,
+}
+
 impl Engine {
     /// The main entry point for evaluating requests.
     /// Handles session storage, resolution, and action dispatch.
@@ -14,44 +21,67 @@ impl Engine {
         session: &mut impl EvalSession,
         req: EvalRequest,
     ) -> Result<EvalOutput, anyhow::Error> {
-        session.with_eval_parts(|store, env, options, profile_cache| {
-            self.eval_with_parts(store, env, options, profile_cache, req)
-        })
-    }
-
-    fn eval_with_parts(
-        &mut self,
-        store: &mut crate::session::SessionStore,
-        env: &crate::env::Environment,
-        options: &crate::options::EvalOptions,
-        profile_cache: &mut crate::profile_cache::ProfileCache,
-        req: EvalRequest,
-    ) -> Result<EvalOutput, anyhow::Error> {
-        // 1. Auto-store raw + parsed (unresolved)
-        let stored_id = if req.auto_store {
-            Some(store.push(req.kind, req.raw_input.clone()))
-        } else {
-            None
-        };
-
-        // 2. Resolve (state.resolve_all_with_diagnostics)
-        // We resolve the parsed expression against the session state (Session refs #id and Environment vars)
-        // Also captures inherited diagnostics from any referenced entries for SessionPropagated tracking
-        // V2.15.36: Also returns cache hit traces for synthetic timeline step generation
+        // 1) Resolve parsed input (session refs + env vars) before mutably
+        // borrowing session internals for store/cache updates.
         let (resolved, inherited_diagnostics, cache_hits) =
-            match crate::session_resolution::resolve_all_with_diagnostics(
-                &mut self.simplifier.context,
-                req.parsed,
-                store,
-                env,
-                options.shared.semantics.domain_mode,
-            ) {
+            match session.resolve_all_with_diagnostics(&mut self.simplifier.context, req.parsed) {
                 Ok(r) => r,
                 Err(ResolveError::CircularReference(msg)) => {
                     return Err(anyhow::anyhow!("Circular reference detected: {}", msg))
                 }
                 Err(e) => return Err(anyhow::anyhow!("Resolution error: {}", e)),
             };
+
+        // Equivalence checks need to resolve the "other" expression too.
+        let resolved_equiv_other = match &req.action {
+            EvalAction::Equiv { other } => Some(
+                match session.resolve_all(&mut self.simplifier.context, *other) {
+                    Ok(r) => r,
+                    Err(ResolveError::CircularReference(msg)) => {
+                        return Err(anyhow::anyhow!(
+                            "Circular reference detected in other: {}",
+                            msg
+                        ))
+                    }
+                    Err(e) => return Err(anyhow::anyhow!("Resolution error in other: {}", e)),
+                },
+            ),
+            _ => None,
+        };
+
+        let resolved_input = ResolvedEvalInput {
+            resolved,
+            inherited_diagnostics,
+            cache_hits,
+            resolved_equiv_other,
+        };
+
+        session.with_eval_parts(|store, options, profile_cache| {
+            self.eval_with_parts(store, options, profile_cache, req, resolved_input)
+        })
+    }
+
+    fn eval_with_parts(
+        &mut self,
+        store: &mut crate::session::SessionStore,
+        options: &crate::options::EvalOptions,
+        profile_cache: &mut crate::profile_cache::ProfileCache,
+        req: EvalRequest,
+        resolved_input: ResolvedEvalInput,
+    ) -> Result<EvalOutput, anyhow::Error> {
+        let ResolvedEvalInput {
+            resolved,
+            inherited_diagnostics,
+            cache_hits,
+            resolved_equiv_other,
+        } = resolved_input;
+
+        // 2. Auto-store raw + parsed (unresolved)
+        let stored_id = if req.auto_store {
+            Some(store.push(req.kind, req.raw_input.clone()))
+        } else {
+            None
+        };
 
         // V2.15.36: Build synthetic cache hit step (if any)
         let cache_hit_step =
@@ -88,7 +118,11 @@ impl Engine {
                 )
             }
             EvalAction::Solve { var } => self.eval_solve(options, resolved, &var)?,
-            EvalAction::Equiv { other } => self.eval_equiv(store, env, resolved, other)?,
+            EvalAction::Equiv { .. } => {
+                let resolved_other = resolved_equiv_other
+                    .ok_or_else(|| anyhow::anyhow!("Missing resolved equivalence operand"))?;
+                self.eval_equiv(resolved, resolved_other)?
+            }
             EvalAction::Limit { var, approach } => self.eval_limit(resolved, &var, approach)?,
         };
 
@@ -387,27 +421,9 @@ impl Engine {
     /// Handle `EvalAction::Equiv`: resolve other expression and check equivalence.
     fn eval_equiv(
         &mut self,
-        store: &crate::session::SessionStore,
-        env: &crate::env::Environment,
         resolved: ExprId,
-        other: ExprId,
+        resolved_other: ExprId,
     ) -> Result<ActionResult, anyhow::Error> {
-        let resolved_other = match crate::session_resolution::resolve_all(
-            &mut self.simplifier.context,
-            other,
-            store,
-            env,
-        ) {
-            Ok(r) => r,
-            Err(ResolveError::CircularReference(msg)) => {
-                return Err(anyhow::anyhow!(
-                    "Circular reference detected in other: {}",
-                    msg
-                ))
-            }
-            Err(e) => return Err(anyhow::anyhow!("Resolution error in other: {}", e)),
-        };
-
         let are_eq = self.simplifier.are_equivalent(resolved, resolved_other);
         Ok((
             EvalResult::Bool(are_eq),
