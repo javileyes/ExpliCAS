@@ -504,9 +504,9 @@ fn run_eval_text(args: &EvalArgs) {
 
     // Build cache key for snapshot compatibility check
     let domain_mode = match args.domain {
-        DomainArg::Strict => cas_engine::DomainMode::Strict,
-        DomainArg::Generic => cas_engine::DomainMode::Generic,
-        DomainArg::Assume => cas_engine::DomainMode::Assume,
+        DomainArg::Strict => cas_solver::DomainMode::Strict,
+        DomainArg::Generic => cas_solver::DomainMode::Generic,
+        DomainArg::Assume => cas_solver::DomainMode::Assume,
     };
     let cache_key = SimplifyCacheKey::from_context(domain_mode);
 

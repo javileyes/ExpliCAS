@@ -207,7 +207,7 @@ impl Repl {
 
         // Print assumptions summary if reporting is enabled and there are assumptions
         if self.core.state.options.shared.assumption_reporting
-            != cas_engine::AssumptionReporting::Off
+            != cas_solver::AssumptionReporting::Off
             && !stats.assumptions.is_empty()
         {
             // Build summary line
