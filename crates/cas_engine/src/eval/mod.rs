@@ -47,6 +47,41 @@ pub struct Engine {
     pub simplifier: Simplifier,
 }
 
+/// Session abstraction for `Engine::eval`, allowing callers to provide any
+/// state container that exposes the required eval components.
+pub trait EvalSession {
+    fn with_eval_parts<R>(
+        &mut self,
+        f: impl FnOnce(
+            &mut crate::session::SessionStore,
+            &crate::env::Environment,
+            &crate::options::EvalOptions,
+            &mut crate::profile_cache::ProfileCache,
+        ) -> R,
+    ) -> R;
+}
+
+impl EvalSession for SessionState {
+    fn with_eval_parts<R>(
+        &mut self,
+        f: impl FnOnce(
+            &mut crate::session::SessionStore,
+            &crate::env::Environment,
+            &crate::options::EvalOptions,
+            &mut crate::profile_cache::ProfileCache,
+        ) -> R,
+    ) -> R {
+        let SessionState {
+            store,
+            env,
+            options,
+            profile_cache,
+            ..
+        } = self;
+        f(store, env, options, profile_cache)
+    }
+}
+
 impl Engine {
     /// Create a new Engine with default rules.
     ///

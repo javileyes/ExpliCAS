@@ -11,17 +11,12 @@ impl Engine {
     /// Handles session storage, resolution, and action dispatch.
     pub fn eval(
         &mut self,
-        state: &mut SessionState,
+        session: &mut impl EvalSession,
         req: EvalRequest,
     ) -> Result<EvalOutput, anyhow::Error> {
-        let SessionState {
-            store,
-            env,
-            options,
-            profile_cache,
-            ..
-        } = state;
-        self.eval_with_parts(store, env, options, profile_cache, req)
+        session.with_eval_parts(|store, env, options, profile_cache| {
+            self.eval_with_parts(store, env, options, profile_cache, req)
+        })
     }
 
     fn eval_with_parts(
