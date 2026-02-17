@@ -8,9 +8,8 @@ use std::time::Instant;
 use anyhow::Result;
 use clap::Args;
 
-use cas_engine::session::SimplifyCacheKey;
-use cas_engine::session_snapshot::SessionSnapshot;
 use cas_engine::{EvalAction, EvalRequest, EvalResult};
+use cas_session::{SessionSnapshot, SimplifyCacheKey};
 
 // For step filtering (match timeline behavior)
 use cas_engine::step::{pathsteps_to_expr_path, ImportanceLevel};

@@ -15,6 +15,7 @@ cas_didactic = { path = "../cas_didactic", default-features = false }
 cas_parser = { path = "../cas_parser" }
 cas_engine = { path = "../cas_engine", default-features = false }
 cas_formatter = { path = "../cas_formatter" }
+cas_session = { path = "../cas_session" }
 cas_solver = { path = "../cas_solver", default-features = false }
 rustyline = "12.0"
 num-traits = "0.2"
