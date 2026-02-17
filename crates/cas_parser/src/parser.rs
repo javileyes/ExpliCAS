@@ -895,7 +895,7 @@ pub fn parse_statement(input: &str, ctx: &mut Context) -> Result<Statement, Pars
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cas_ast::DisplayExpr;
+    use cas_formatter::DisplayExpr;
 
     #[test]
     fn test_parse_number() {

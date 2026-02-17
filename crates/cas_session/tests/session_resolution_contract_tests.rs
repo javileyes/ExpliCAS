@@ -90,7 +90,8 @@ fn test_equation_entry() {
 
 #[test]
 fn test_resolve_simple_ref() {
-    use cas_ast::{Context, DisplayExpr, Expr};
+    use cas_ast::{Context, Expr};
+    use cas_formatter::DisplayExpr;
 
     let mut ctx = Context::new();
     let mut store = SessionStore::new();
@@ -202,7 +203,8 @@ fn test_resolve_no_refs() {
 
 #[test]
 fn test_resolve_chained_refs() {
-    use cas_ast::{Context, DisplayExpr, Expr};
+    use cas_ast::{Context, Expr};
+    use cas_formatter::DisplayExpr;
 
     let mut ctx = Context::new();
     let mut store = SessionStore::new();

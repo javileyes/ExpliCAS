@@ -422,7 +422,7 @@ pub fn parse_latex(ctx: &mut Context, latex: &str) -> Result<ExprId, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cas_ast::LaTeXExpr;
+    use cas_formatter::LaTeXExpr;
 
     /// Helper: test parsing works and return LaTeX output
     fn test_parse(latex: &str) -> String {

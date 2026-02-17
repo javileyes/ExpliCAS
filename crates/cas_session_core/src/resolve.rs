@@ -516,7 +516,7 @@ mod tests {
         .unwrap();
         let out_s = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &ctx,
                 id: out
             }
@@ -539,7 +539,7 @@ mod tests {
         .unwrap();
         let out_s = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &ctx,
                 id: out
             }
@@ -565,7 +565,7 @@ mod tests {
         let out = resolve_session_refs_with_lookup(&mut ctx, input, &mut lookup).unwrap();
         let out_s = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &ctx,
                 id: out
             }

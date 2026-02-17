@@ -357,7 +357,7 @@ mod tests {
         let result = substitute(&mut ctx, &env, expr);
         let result_str = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &ctx,
                 id: result
             }
@@ -388,7 +388,7 @@ mod tests {
         let result = substitute(&mut ctx, &env, expr);
         let result_str = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &ctx,
                 id: result
             }
@@ -444,7 +444,7 @@ mod tests {
         let result = substitute_with_shadow(&mut ctx, &env, expr, &["x"]);
         let result_str = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &ctx,
                 id: result
             }
