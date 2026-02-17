@@ -9,7 +9,7 @@ use super::*;
 struct ResolvedEvalInput {
     resolved: ExprId,
     inherited_diagnostics: crate::diagnostics::Diagnostics,
-    cache_hits: Vec<crate::session::CacheHitTrace>,
+    cache_hits: Vec<CacheHitTrace>,
     resolved_equiv_other: Option<ExprId>,
 }
 

@@ -1,7 +1,7 @@
 //! Tests for session store and reference resolution.
 
-use super::*;
 use cas_ast::ExprId;
+use cas_session::*;
 
 #[test]
 fn test_push_and_get() {
@@ -268,7 +268,7 @@ fn test_resolve_with_mode_cache_hit() {
 
     // Inject simplified cache: simplified = 5
     let simplified_five = ctx.num(5);
-    let cache_key = SimplifyCacheKey::from_context(crate::domain::DomainMode::Generic);
+    let cache_key = SimplifyCacheKey::from_context(cas_engine::domain::DomainMode::Generic);
     let cache = SimplifiedCache {
         key: cache_key.clone(),
         expr: simplified_five,
@@ -336,7 +336,7 @@ fn test_resolve_with_mode_cache_miss_key_mismatch() {
 
     // Inject cache with different domain mode
     let simplified = ctx.num(5);
-    let cache_key_strict = SimplifyCacheKey::from_context(crate::domain::DomainMode::Strict);
+    let cache_key_strict = SimplifyCacheKey::from_context(cas_engine::domain::DomainMode::Strict);
     let cache = SimplifiedCache {
         key: cache_key_strict,
         expr: simplified,
@@ -347,7 +347,7 @@ fn test_resolve_with_mode_cache_miss_key_mismatch() {
 
     // Resolve with Generic mode (different from Strict cache)
     let ref1 = ctx.add(Expr::SessionRef(1));
-    let cache_key_generic = SimplifyCacheKey::from_context(crate::domain::DomainMode::Generic);
+    let cache_key_generic = SimplifyCacheKey::from_context(cas_engine::domain::DomainMode::Generic);
 
     let result = resolve_session_refs_with_mode(
         &mut ctx,
@@ -381,7 +381,7 @@ fn test_resolve_with_mode_raw_mode() {
 
     // Inject cache
     let simplified = ctx.num(5);
-    let cache_key = SimplifyCacheKey::from_context(crate::domain::DomainMode::Generic);
+    let cache_key = SimplifyCacheKey::from_context(cas_engine::domain::DomainMode::Generic);
     let cache = SimplifiedCache {
         key: cache_key.clone(),
         expr: simplified,
@@ -428,7 +428,7 @@ fn test_resolve_with_mode_tracks_ref_chain() {
 
     // Resolve #2
     let ref2 = ctx.add(Expr::SessionRef(2));
-    let cache_key = SimplifyCacheKey::from_context(crate::domain::DomainMode::Generic);
+    let cache_key = SimplifyCacheKey::from_context(cas_engine::domain::DomainMode::Generic);
 
     let result = resolve_session_refs_with_mode(
         &mut ctx,

@@ -57,7 +57,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
 
     // Create engine and explicit eval components (stateless-friendly API)
     let mut engine = crate::eval::Engine::new();
-    let mut store = crate::session::SessionStore::new();
+    let mut store = crate::eval::SessionStore::new();
     let env = cas_session_core::env::Environment::new();
     let options = crate::options::EvalOptions::default();
     let mut profile_cache = crate::profile_cache::ProfileCache::new();
