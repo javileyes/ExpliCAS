@@ -17,7 +17,7 @@ pub fn resolve_all(
     ctx: &mut cas_ast::Context,
     expr: ExprId,
     store: &SessionStore,
-    env: &crate::env::Environment,
+    env: &cas_session_core::env::Environment,
 ) -> Result<ExprId, ResolveError> {
     let mut lookup = |id: EntryId| store.get(id).map(|entry| entry.kind.clone());
     resolve_all_with_lookup_and_env(ctx, expr, &mut lookup, env)
@@ -31,7 +31,7 @@ pub fn resolve_all_with_diagnostics(
     ctx: &mut cas_ast::Context,
     expr: ExprId,
     store: &SessionStore,
-    env: &crate::env::Environment,
+    env: &cas_session_core::env::Environment,
     domain_mode: crate::domain::DomainMode,
 ) -> Result<(ExprId, crate::diagnostics::Diagnostics, Vec<CacheHitTrace>), ResolveError> {
     let cache_key = SimplifyCacheKey::from_context(domain_mode);
@@ -47,7 +47,7 @@ pub fn resolve_all_with_diagnostics(
         );
     }
 
-    let fully_resolved = crate::env::substitute(ctx, env, resolved.expr);
+    let fully_resolved = cas_session_core::env::substitute(ctx, env, resolved.expr);
     Ok((fully_resolved, inherited, resolved.cache_hits))
 }
 

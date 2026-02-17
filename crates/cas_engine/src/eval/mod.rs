@@ -117,7 +117,7 @@ pub trait EvalSession {
 /// monolithic state container.
 struct EvalSessionComponents<'a> {
     store: &'a mut crate::session::SessionStore,
-    env: &'a crate::env::Environment,
+    env: &'a cas_session_core::env::Environment,
     options: &'a crate::options::EvalOptions,
     profile_cache: &'a mut crate::profile_cache::ProfileCache,
 }
@@ -237,7 +237,7 @@ impl Engine {
     pub fn eval_with_components(
         &mut self,
         store: &mut crate::session::SessionStore,
-        env: &crate::env::Environment,
+        env: &cas_session_core::env::Environment,
         options: &crate::options::EvalOptions,
         profile_cache: &mut crate::profile_cache::ProfileCache,
         req: EvalRequest,
