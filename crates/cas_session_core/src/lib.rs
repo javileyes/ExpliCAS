@@ -2,4 +2,5 @@
 
 pub mod env;
 pub mod resolve;
+pub mod store;
 pub mod types;

@@ -22,7 +22,6 @@ pub(crate) type ActionResult = (
 );
 
 use crate::session::{EntryKind, ResolveError};
-use crate::session_state::SessionState;
 use crate::Simplifier;
 use cas_ast::{BuiltinFn, Equation, Expr, ExprId, RelOp};
 
@@ -74,54 +73,6 @@ pub trait EvalSession {
         ),
         ResolveError,
     >;
-}
-
-impl EvalSession for SessionState {
-    fn with_eval_parts<R>(
-        &mut self,
-        f: impl FnOnce(
-            &mut crate::session::SessionStore,
-            &crate::options::EvalOptions,
-            &mut crate::profile_cache::ProfileCache,
-        ) -> R,
-    ) -> R {
-        let SessionState {
-            store,
-            options,
-            profile_cache,
-            ..
-        } = self;
-        f(store, options, profile_cache)
-    }
-
-    fn resolve_all(
-        &self,
-        ctx: &mut cas_ast::Context,
-        expr: ExprId,
-    ) -> Result<ExprId, ResolveError> {
-        crate::session::resolve_all(ctx, expr, &self.store, &self.env)
-    }
-
-    fn resolve_all_with_diagnostics(
-        &self,
-        ctx: &mut cas_ast::Context,
-        expr: ExprId,
-    ) -> Result<
-        (
-            ExprId,
-            crate::diagnostics::Diagnostics,
-            Vec<crate::session::CacheHitTrace>,
-        ),
-        ResolveError,
-    > {
-        crate::session::resolve_all_with_diagnostics(
-            ctx,
-            expr,
-            &self.store,
-            &self.env,
-            self.options.shared.semantics.domain_mode,
-        )
-    }
 }
 
 /// Borrowed eval components adapter used to run the engine without a

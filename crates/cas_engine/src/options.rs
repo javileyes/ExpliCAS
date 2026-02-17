@@ -110,7 +110,8 @@ pub enum StepsMode {
 
 /// Evaluation options for expression processing.
 ///
-/// Stored in `SessionState` for persistence, but can be overridden per request.
+/// Typically stored by application session state (`cas_session::SessionState`)
+/// for persistence, but can be overridden per request.
 #[derive(Clone, Debug)]
 pub struct EvalOptions {
     /// How to handle inverse function compositions

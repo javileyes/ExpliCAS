@@ -17,6 +17,7 @@
 use cas_ast::Context;
 use cas_engine::Simplifier;
 use cas_parser::parse;
+use cas_session::SessionState;
 
 /// Helper: simplify with default options (Generic mode)
 fn simplify_generic(input: &str) -> String {
@@ -477,7 +478,7 @@ fn simplify_with_domain_value(
     domain: cas_engine::DomainMode,
     value: cas_engine::semantics::ValueDomain,
 ) -> (String, Vec<String>) {
-    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, EvalResult, SessionState};
+    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, EvalResult};
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -772,7 +773,7 @@ fn value_domain_complex_i_fourth() {
 /// Similar to how sqrt(x)^2 → x with requires x ≥ 0.
 #[test]
 fn exp_ln_x_generic_emits_positive_require() {
-    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, EvalResult, SessionState};
+    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, EvalResult};
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -823,7 +824,7 @@ fn exp_ln_x_generic_emits_positive_require() {
 /// CONTRACT: exp(ln(5)) in Generic mode does NOT emit hint (5 is provably positive)
 #[test]
 fn blocked_hint_exp_ln_5_no_hint() {
-    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, EvalResult, SessionState};
+    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, EvalResult};
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -871,7 +872,7 @@ fn blocked_hint_exp_ln_5_no_hint() {
 /// This tests the "proven vs assumed" feature for timeline transparency.
 #[test]
 fn step_tracks_assumed_nonzero_in_generic() {
-    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, EvalResult, SessionState};
+    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, EvalResult};
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -924,7 +925,7 @@ fn step_tracks_assumed_nonzero_in_generic() {
 /// This tests the "implicit domain requirement" pattern where ln(x) already implies x > 0.
 #[test]
 fn step_tracks_assumed_positive_in_assume() {
-    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, EvalResult, SessionState};
+    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, EvalResult};
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -983,7 +984,7 @@ fn step_tracks_assumed_positive_in_assume() {
 /// The rule requires NonNegative condition (Analytic), which is blocked in Generic.
 #[test]
 fn sqrt_conjugate_collapse_blocked_in_generic() {
-    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, SessionState};
+    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest};
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -1042,7 +1043,7 @@ fn sqrt_conjugate_collapse_blocked_in_generic() {
 /// CONTRACT: In Assume mode, sqrt conjugate product CAN collapse with assumption recorded
 #[test]
 fn sqrt_conjugate_collapse_allowed_in_assume() {
-    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, SessionState};
+    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest};
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -1101,7 +1102,7 @@ fn sqrt_conjugate_collapse_allowed_in_assume() {
 
 /// Helper: simplify with Generic mode and extract required_conditions
 fn simplify_generic_with_required(input: &str) -> (String, Vec<String>) {
-    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, EvalResult, SessionState};
+    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, EvalResult};
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();

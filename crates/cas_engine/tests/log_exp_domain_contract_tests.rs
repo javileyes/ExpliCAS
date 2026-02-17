@@ -31,10 +31,9 @@
 
 use cas_ast::DisplayExpr;
 use cas_engine::semantics::ValueDomain;
-use cas_engine::{
-    DomainMode, Engine, EntryKind, EvalAction, EvalRequest, EvalResult, SessionState,
-};
+use cas_engine::{DomainMode, Engine, EntryKind, EvalAction, EvalRequest, EvalResult};
 use cas_parser::parse;
+use cas_session::SessionState;
 
 // ============================================================================
 // Test Infrastructure

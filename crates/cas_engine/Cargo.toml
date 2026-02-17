@@ -30,6 +30,7 @@ default = ["parallel"]
 parallel = ["rayon", "cas_math/parallel"]
 
 [dev-dependencies]
+cas_session = { path = "../cas_session" }
 cas_parser = { path = "../cas_parser" }
 proptest = "1.9.0"
 criterion = "0.7.0"

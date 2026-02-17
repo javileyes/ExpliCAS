@@ -3,9 +3,9 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 use cas_engine::eval::{Engine, EvalAction, EvalRequest, EvalResult};
-use cas_engine::session_state::SessionState;
 use cas_engine::EntryKind;
 use cas_parser::Statement;
+use cas_session::SessionState;
 
 #[test]
 fn test_solve_session_ref() {

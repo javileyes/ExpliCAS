@@ -58,7 +58,6 @@ pub mod rules;
 pub(crate) mod semantic_equality;
 pub mod semantics;
 pub mod session;
-pub mod session_state;
 pub mod solve_safety;
 pub mod solver;
 pub mod step;
@@ -125,7 +124,6 @@ pub use semantics::{
     AssumeScope, BranchPolicy, EvalConfig, InverseTrigPolicy, NormalFormGoal, ValueDomain,
 };
 pub use session::{resolve_session_refs, Entry, EntryId, EntryKind, ResolveError, SessionStore};
-pub use session_state::SessionState;
 pub use step::{DisplayEvalSteps, Step};
 pub use visitors::{DepthVisitor, VariableCollector};
 

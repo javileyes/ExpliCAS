@@ -8,8 +8,8 @@
 use cas_ast::Expr;
 use cas_engine::eval::{EvalAction, EvalRequest};
 use cas_engine::session::EntryKind;
-use cas_engine::session_state::SessionState;
 use cas_engine::Engine;
+use cas_session::SessionState;
 
 /// Helper to create eval request for expression
 fn make_simplify_request(engine: &mut Engine, expr_str: &str) -> EvalRequest {
