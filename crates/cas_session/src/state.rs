@@ -90,7 +90,7 @@ impl EvalStore for SessionEvalStore {
 /// `cas_engine` remains stateless and consumes it via the `EvalSession` trait.
 #[derive(Default, Debug)]
 pub struct SessionState {
-    pub store: SessionEvalStore,
+    store: SessionEvalStore,
     pub env: Environment,
     pub options: EvalOptions,
     pub profile_cache: ProfileCache,
@@ -122,6 +122,10 @@ impl SessionState {
 
     pub fn store(&self) -> &SessionStore {
         &self.store
+    }
+
+    pub fn store_mut(&mut self) -> &mut SessionStore {
+        &mut self.store
     }
 
     /// Clear all session data (history + env bindings).

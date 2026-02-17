@@ -19,7 +19,7 @@ fn test_solve_session_ref() {
     let expr1_str = "1 + x";
     let parsed1 = cas_parser::parse(expr1_str, &mut engine.simplifier.context).unwrap();
     state
-        .store
+        .store_mut()
         .push(EntryKind::Expr(parsed1), expr1_str.to_string());
 
     // #2: "1 + x = 5"
@@ -41,7 +41,7 @@ fn test_solve_session_ref() {
         }
         _ => panic!("Expected equation"),
     };
-    state.store.push(kind, eq_str.to_string()); // Becomes #2
+    state.store_mut().push(kind, eq_str.to_string()); // Becomes #2
 
     // Now solve #2 for x
     // CLI parses "#2" as Variable("#2")
