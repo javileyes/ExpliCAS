@@ -53,7 +53,7 @@ impl Repl {
         }
 
         // Check reserved names
-        if cas_engine::env::is_reserved(name) {
+        if cas_session::env::is_reserved(name) {
             return reply_output(format!(
                 "Error: '{}' is a reserved name and cannot be assigned",
                 name

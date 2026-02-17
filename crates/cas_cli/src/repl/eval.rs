@@ -110,7 +110,7 @@ impl Repl {
                                     filtered.iter().map(|item| item.cond.clone()).collect();
                                 let ctx_mut = &mut self.core.engine.simplifier.context;
                                 let normalized_conditions =
-                                    cas_engine::implicit_domain::normalize_and_dedupe_conditions(
+                                    cas_solver::normalize_and_dedupe_conditions(
                                         ctx_mut,
                                         &conditions,
                                     );
@@ -273,7 +273,7 @@ impl Repl {
                             let ctx = &self.core.engine.simplifier.context;
 
                             // Helper to format condition with expression
-                            let format_condition = |hint: &cas_engine::BlockedHint| -> String {
+                            let format_condition = |hint: &cas_solver::BlockedHint| -> String {
                                 let expr_str = cas_formatter::DisplayExpr {
                                     context: ctx,
                                     id: hint.expr_id,
@@ -299,13 +299,13 @@ impl Repl {
 
                             // Contextual suggestion based on current mode
                             let suggestion = match self.core.state.options.shared.semantics.domain_mode {
-                                cas_engine::DomainMode::Strict => {
+                                cas_solver::DomainMode::Strict => {
                                     "use `domain generic` or `domain assume` to allow"
                                 }
-                                cas_engine::DomainMode::Generic => {
+                                cas_solver::DomainMode::Generic => {
                                     "use `semantics set domain assume` to allow analytic assumptions"
                                 }
-                                cas_engine::DomainMode::Assume => {
+                                cas_solver::DomainMode::Assume => {
                                     // Should not happen, but fallback
                                     "assumptions already enabled"
                                 }
