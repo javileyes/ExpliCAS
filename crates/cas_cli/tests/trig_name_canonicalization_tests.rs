@@ -13,7 +13,7 @@ fn simplify_str(input: &str) -> String {
             let (result, _) = simplifier.simplify(expr);
             format!(
                 "{}",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &simplifier.context,
                     id: result,
                 }

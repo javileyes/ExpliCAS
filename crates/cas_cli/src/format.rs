@@ -3,7 +3,8 @@
 //! Provides truncated expression formatting and AST statistics
 //! to avoid flooding output with huge expressions.
 
-use cas_ast::{Case, Context, DisplayExpr, Expr, ExprId, SolutionSet};
+use cas_ast::{Case, Context, Expr, ExprId, SolutionSet};
+use cas_formatter::DisplayExpr;
 
 use crate::json_types::ExprStatsJson;
 

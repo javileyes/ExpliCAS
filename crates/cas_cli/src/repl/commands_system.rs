@@ -918,7 +918,7 @@ impl Repl {
         let expr = bigrational_to_expr(ctx, r);
         format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: ctx,
                 id: expr
             }

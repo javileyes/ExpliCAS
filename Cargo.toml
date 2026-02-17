@@ -5,6 +5,12 @@ members = [
     "crates/cas_parser",
     "crates/cas_cli",
     "crates/cas_android_ffi",
+    "crates/cas_math",
+    "crates/cas_formatter",
+    "crates/cas_solver",
+    "crates/cas_didactic",
+    "crates/cas_session",
+    "crates/cas_api_models",
 ]
 resolver = "2"
 
@@ -13,4 +19,3 @@ edition = "2021"
 rust-version = "1.88"
 license = "MIT"
 authors = ["Javier Gimenez Moya"]
-

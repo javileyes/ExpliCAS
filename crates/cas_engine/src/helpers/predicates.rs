@@ -51,7 +51,11 @@ pub fn prove_nonzero(ctx: &Context, expr: ExprId) -> crate::domain::Proof {
 }
 
 /// Internal prove_nonzero with explicit depth limit.
-fn prove_nonzero_depth(ctx: &Context, expr: ExprId, depth: usize) -> crate::domain::Proof {
+pub(crate) fn prove_nonzero_depth(
+    ctx: &Context,
+    expr: ExprId,
+    depth: usize,
+) -> crate::domain::Proof {
     use crate::domain::Proof;
     use num_traits::Zero;
 
@@ -98,13 +102,49 @@ fn prove_nonzero_depth(ctx: &Context, expr: ExprId, depth: usize) -> crate::doma
             }
         }
 
-        // Pow with positive integer exponent: a^n ≠ 0 iff a ≠ 0
+        // Pow: a^n ≠ 0 analysis
+        //  - positive integer exponent: a^n ≠ 0 iff a ≠ 0
+        //  - any rational exponent with positive base: positive^r ≠ 0
+        //  - negative exponent with non-zero base: a^(-n) ≠ 0 iff a ≠ 0
         Expr::Pow(base, exp) => {
             if let Expr::Number(n) = ctx.get(*exp) {
-                // Only for positive exponents
-                if n.is_integer() && n > &num_rational::BigRational::zero() {
+                let zero = num_rational::BigRational::zero();
+                if n.is_integer() && *n > zero {
+                    // Positive integer: a^n ≠ 0 iff a ≠ 0
                     return prove_nonzero_depth(ctx, *base, depth - 1);
                 }
+                if *n != zero {
+                    // Any non-zero exponent: if base is provably positive, result ≠ 0
+                    // (positive^r > 0 for any real r, hence ≠ 0)
+                    let base_pos = super::predicates::prove_positive(
+                        ctx,
+                        *base,
+                        crate::semantics::ValueDomain::RealOnly,
+                    );
+                    if base_pos == Proof::Proven {
+                        return Proof::Proven;
+                    }
+                    // Negative exponent with non-zero base: a^(-n) = 1/a^n ≠ 0
+                    if n.is_integer() {
+                        let base_nz = prove_nonzero_depth(ctx, *base, depth - 1);
+                        if base_nz == Proof::Proven {
+                            return Proof::Proven;
+                        }
+                    }
+                }
+            }
+            // Exponent is a Div or other structure — check if base is positive
+            // This handles Pow(2, Div(1, 2)) = sqrt(2)
+            let base_pos = super::predicates::prove_positive(
+                ctx,
+                *base,
+                crate::semantics::ValueDomain::RealOnly,
+            );
+            let exp_nz = prove_nonzero_depth(ctx, *exp, depth - 1);
+            if base_pos == Proof::Proven && exp_nz != Proof::Disproven {
+                // positive^(non-zero expr) > 0, hence ≠ 0
+                // positive^0 = 1 ≠ 0 too, so any exponent works
+                return Proof::Proven;
             }
             Proof::Unknown
         }
@@ -188,7 +228,28 @@ fn prove_nonzero_depth(ctx: &Context, expr: ExprId, depth: usize) -> crate::doma
             }
         }
 
-        // Variables, other functions: UNKNOWN (conservative)
+        // Add/Sub: if the subtree is ground (no variables), try simplifier fallback
+        Expr::Add(_, _) | Expr::Sub(_, _) => {
+            if !crate::implicit_domain::contains_variable(ctx, expr) {
+                if let Some(proof) = super::ground_eval::try_ground_nonzero(ctx, expr) {
+                    return proof;
+                }
+            }
+            Proof::Unknown
+        }
+
+        // Functions not matched above: ground fallback for variable-free cases
+        // e.g. cos(π/3), tan(π/4), etc.
+        Expr::Function(_, _) => {
+            if !crate::implicit_domain::contains_variable(ctx, expr) {
+                if let Some(proof) = super::ground_eval::try_ground_nonzero(ctx, expr) {
+                    return proof;
+                }
+            }
+            Proof::Unknown
+        }
+
+        // Variables, other nodes: UNKNOWN (conservative)
         _ => Proof::Unknown,
     }
 }

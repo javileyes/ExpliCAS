@@ -1,6 +1,7 @@
-use cas_ast::{BoundType, DisplayExpr, Equation, RelOp, SolutionSet};
+use cas_ast::{BoundType, Equation, RelOp, SolutionSet};
 use cas_engine::solver::solve;
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
 fn create_full_simplifier() -> Simplifier {

@@ -93,7 +93,7 @@ impl Repl {
                 self.core.state.env.set(name.to_string(), result);
 
                 // Display confirmation (with mode indicator for lazy)
-                let display = cas_ast::DisplayExpr {
+                let display = cas_formatter::DisplayExpr {
                     context: &self.core.engine.simplifier.context,
                     id: result,
                 };
@@ -125,7 +125,7 @@ impl Repl {
         } else {
             let mut lines = vec!["Variables:".to_string()];
             for (name, expr_id) in bindings {
-                let display = cas_ast::DisplayExpr {
+                let display = cas_formatter::DisplayExpr {
                     context: &self.core.engine.simplifier.context,
                     id: expr_id,
                 };

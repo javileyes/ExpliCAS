@@ -2,8 +2,9 @@
 //! Tests for InverseTrigSumRule negation pattern
 //! Verifies that asin + acos AND -asin - acos both work
 
-use cas_ast::{DisplayExpr, Expr};
+use cas_ast::Expr;
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 
 fn simplify_str(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();
@@ -15,7 +16,7 @@ fn simplify_str(input: &str) -> String {
             let (result, _) = simplifier.simplify(expr);
             format!(
                 "{}",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &simplifier.context,
                     id: result,
                 }

@@ -156,7 +156,7 @@ impl Repl {
         // Parse the expression
         match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
             Ok(expr) => {
-                use cas_ast::DisplayExpr;
+                use cas_formatter::DisplayExpr;
 
                 // Apply Weierstrass substitution recursively
                 let result = self.apply_weierstrass_recursive(expr);
@@ -519,9 +519,9 @@ impl Repl {
     }
 
     fn handle_solve_core(&mut self, line: &str, verbosity: Verbosity) -> ReplReply {
-        use cas_ast::DisplayExpr;
         use cas_engine::eval::{EvalAction, EvalRequest, EvalResult};
         use cas_engine::EntryKind;
+        use cas_formatter::DisplayExpr;
         use cas_parser::Statement;
 
         let mut lines: Vec<String> = Vec::new();
@@ -697,11 +697,11 @@ impl Repl {
                             // No manual cleanup needed - type-safe pipeline guarantees processing
 
                             // Prepare scoped renderer with style preferences
-                            let registry = cas_ast::display_transforms::DisplayTransformRegistry::with_defaults();
+                            let registry = cas_formatter::display_transforms::DisplayTransformRegistry::with_defaults();
                             let style = StylePreferences::default();
                             let has_scopes = !output.output_scopes.is_empty();
                             let renderer = if has_scopes {
-                                Some(cas_ast::display_transforms::ScopedRenderer::new(
+                                Some(cas_formatter::display_transforms::ScopedRenderer::new(
                                     &self.core.engine.simplifier.context,
                                     &output.output_scopes,
                                     &registry,
@@ -783,14 +783,15 @@ impl Repl {
                                 // Legacy: discrete solutions as Vec<ExprId>
                                 let ctx = &self.core.engine.simplifier.context;
                                 let sol_strs: Vec<String> = {
-                                    let registry = cas_ast::display_transforms::DisplayTransformRegistry::with_defaults();
+                                    let registry = cas_formatter::display_transforms::DisplayTransformRegistry::with_defaults();
                                     let style = StylePreferences::default();
-                                    let renderer = cas_ast::display_transforms::ScopedRenderer::new(
-                                        ctx,
-                                        &output.output_scopes,
-                                        &registry,
-                                        &style,
-                                    );
+                                    let renderer =
+                                        cas_formatter::display_transforms::ScopedRenderer::new(
+                                            ctx,
+                                            &output.output_scopes,
+                                            &registry,
+                                            &style,
+                                        );
                                     sols.iter().map(|id| renderer.render(*id)).collect()
                                 };
                                 if sol_strs.is_empty() {
@@ -953,7 +954,7 @@ impl Repl {
                                 lines.push("ℹ️ Blocked simplifications:".to_string());
                                 // Helper to format condition with expression
                                 let format_condition = |hint: &cas_engine::BlockedHint| -> String {
-                                    let expr_str = cas_ast::DisplayExpr {
+                                    let expr_str = cas_formatter::DisplayExpr {
                                         context: ctx,
                                         id: hint.expr_id,
                                     }
@@ -996,7 +997,7 @@ impl Repl {
                             // Legacy: show blocked hints even without debug_mode if hints_enabled
                             let ctx = &self.core.engine.simplifier.context;
                             let format_condition = |hint: &cas_engine::BlockedHint| -> String {
-                                let expr_str = cas_ast::DisplayExpr {
+                                let expr_str = cas_formatter::DisplayExpr {
                                     context: ctx,
                                     id: hint.expr_id,
                                 }

@@ -9,9 +9,11 @@ default = ["parallel"]
 parallel = ["cas_engine/parallel"]
 
 [dependencies]
+cas_api_models = { path = "../cas_api_models" }
 cas_ast = { path = "../cas_ast" }
 cas_parser = { path = "../cas_parser" }
 cas_engine = { path = "../cas_engine", default-features = false }
+cas_formatter = { path = "../cas_formatter" }
 rustyline = "12.0"
 num-traits = "0.2"
 num-rational = "0.4"

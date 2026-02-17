@@ -32,11 +32,11 @@ fn test_product_inequality_both_negative() {
         SolutionSet::Continuous(interval) => {
             println!(
                 "Got interval: min={}, max={}",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &simplifier.context,
                     id: interval.min
                 },
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &simplifier.context,
                     id: interval.max
                 }

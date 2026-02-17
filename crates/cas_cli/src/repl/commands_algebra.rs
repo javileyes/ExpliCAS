@@ -71,7 +71,7 @@ impl Repl {
                 cas_engine::EntryKind::Expr(expr_id) => {
                     format!(
                         "{}",
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: &self.core.engine.simplifier.context,
                             id: *expr_id
                         }
@@ -80,11 +80,11 @@ impl Repl {
                 cas_engine::EntryKind::Eq { lhs, rhs } => {
                     format!(
                         "{} = {}",
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: &self.core.engine.simplifier.context,
                             id: *lhs
                         },
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: &self.core.engine.simplifier.context,
                             id: *rhs
                         }
@@ -518,7 +518,7 @@ impl Repl {
     }
 
     fn handle_expand_log_core(&mut self, line: &str) -> ReplReply {
-        use cas_ast::DisplayExpr;
+        use cas_formatter::DisplayExpr;
 
         let rest = line.strip_prefix("expand_log").unwrap_or(line).trim();
         if rest.is_empty() {

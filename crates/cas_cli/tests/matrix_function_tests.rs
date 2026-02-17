@@ -1,5 +1,6 @@
-use cas_ast::{Context, DisplayExpr};
+use cas_ast::Context;
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
 #[test]

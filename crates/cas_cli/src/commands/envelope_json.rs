@@ -8,8 +8,8 @@ use std::time::Instant;
 use anyhow::Result;
 use clap::Args;
 
-use cas_ast::DisplayExpr;
 use cas_engine::{Engine, EvalAction, EvalRequest, EvalResult, SessionState};
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
 use crate::json_types::{

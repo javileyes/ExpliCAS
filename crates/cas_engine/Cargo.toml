@@ -6,7 +6,9 @@ rust-version.workspace = true
 
 [dependencies]
 cas_ast = { path = "../cas_ast" }
+cas_math = { path = "../cas_math", default-features = false }
 cas_parser = { path = "../cas_parser" }
+cas_session = { path = "../cas_session" }
 num-rational = "0.4"
 num-bigint = "0.4"
 num-traits = "0.2"
@@ -25,7 +27,7 @@ rayon = { version = "1.10", optional = true }
 
 [features]
 default = ["parallel"]
-parallel = ["rayon"]
+parallel = ["rayon", "cas_math/parallel"]
 
 [dev-dependencies]
 cas_parser = { path = "../cas_parser" }

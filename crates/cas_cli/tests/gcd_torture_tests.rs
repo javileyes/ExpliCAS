@@ -26,7 +26,8 @@ use cas_engine::rules::trigonometry::{
 };
 use cas_engine::Simplifier;
 
-use cas_ast::{DisplayExpr, Expr};
+use cas_ast::Expr;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
 fn create_full_simplifier() -> Simplifier {

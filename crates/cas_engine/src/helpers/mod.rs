@@ -14,6 +14,7 @@
 mod complexity;
 mod destructure;
 mod extraction;
+pub(crate) mod ground_eval;
 mod nf_scoring;
 mod numeric;
 mod numeric_eval;

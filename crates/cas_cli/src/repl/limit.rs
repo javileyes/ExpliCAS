@@ -72,7 +72,7 @@ impl Repl {
             &mut budget,
         ) {
             Ok(result) => {
-                let result_disp = cas_ast::DisplayExpr {
+                let result_disp = cas_formatter::DisplayExpr {
                     context: &self.core.engine.simplifier.context,
                     id: result.expr,
                 };

@@ -18,7 +18,7 @@
 //! # Excluded (even if they seem "safe")
 //! - `a/a → 1` (requires `a ≠ 0` assumption)
 //! - `a^0 → 1` (0^0 is undefined)
-//! - Rationalization
+//! - Fraction normalization
 //! - Aggressive expansion
 
 use crate::helpers::{is_one, is_zero};
@@ -30,7 +30,7 @@ use cas_ast::{Context, Expr, ExprId};
 ///
 /// This is an allowlist-only pipeline that:
 /// - Does NOT introduce domain assumptions
-/// - Does NOT rationalize
+/// - Does NOT normalize fractions aggressively
 /// - Does NOT expand aggressively
 /// - Uses depth limit (500) to prevent stack overflow
 ///

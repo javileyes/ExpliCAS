@@ -1,7 +1,7 @@
 // Tests for sum() function (finite summations)
 
-use cas_ast::DisplayExpr;
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 
 fn parse_and_simplify(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();

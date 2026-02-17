@@ -2,7 +2,6 @@
 #![allow(clippy::field_reassign_with_default)]
 #![allow(dead_code)]
 #![allow(unused_variables)]
-use cas_ast::DisplayExpr;
 use cas_engine::rules::algebra::{
     AddFractionsRule, CancelCommonFactorsRule, SimplifyFractionRule, SimplifyMulDivRule,
 };
@@ -17,6 +16,7 @@ use cas_engine::rules::exponents::{
 use cas_engine::rules::polynomial::{BinomialExpansionRule, CombineLikeTermsRule, DistributeRule};
 use cas_engine::rules::trigonometry::{AngleIdentityRule, TanToSinCosRule};
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
 fn create_simplifier() -> Simplifier {

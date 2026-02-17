@@ -273,3 +273,92 @@ fn test_matrix_mul_preserves_order() {
         panic!("Expected Mul expression");
     }
 }
+
+// =========================================================================
+// prove_nonzero contract tests (ground fallback)
+// =========================================================================
+
+#[test]
+fn prove_nonzero_constants() {
+    let mut ctx = Context::new();
+    let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+    let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
+    let zero = ctx.num(0);
+    let x = ctx.var("x");
+
+    assert_eq!(prove_nonzero(&ctx, pi), crate::domain::Proof::Proven);
+    assert_eq!(prove_nonzero(&ctx, e), crate::domain::Proof::Proven);
+    assert_eq!(prove_nonzero(&ctx, zero), crate::domain::Proof::Disproven);
+    assert_eq!(prove_nonzero(&ctx, x), crate::domain::Proof::Unknown);
+}
+
+#[test]
+fn prove_nonzero_sqrt2() {
+    // sqrt(2) = 2^(1/2) — should be provably non-zero
+    let mut ctx = Context::new();
+    let two = ctx.num(2);
+    let half = ctx.rational(1, 2);
+    let sqrt2 = ctx.add(Expr::Pow(two, half));
+
+    assert_eq!(prove_nonzero(&ctx, sqrt2), crate::domain::Proof::Proven);
+}
+
+#[test]
+fn prove_nonzero_pow_neg_half() {
+    // 2^(-1/2) — positive base, any exponent → non-zero
+    let mut ctx = Context::new();
+    let two = ctx.num(2);
+    let neg_half = ctx.rational(-1, 2);
+    let expr = ctx.add(Expr::Pow(two, neg_half));
+
+    assert_eq!(prove_nonzero(&ctx, expr), crate::domain::Proof::Proven);
+}
+
+#[test]
+fn prove_nonzero_sqrt_function() {
+    // sqrt(2) via Function node — ground fallback should handle
+    let mut ctx = Context::new();
+    let two = ctx.num(2);
+    let sqrt2 = ctx.call("sqrt", vec![two]);
+
+    assert_eq!(prove_nonzero(&ctx, sqrt2), crate::domain::Proof::Proven);
+}
+
+#[test]
+fn prove_nonzero_cos_pi_over_3() {
+    // cos(π/3) = 1/2 ≠ 0 — ground function fallback
+    let mut ctx = Context::new();
+    let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+    let three = ctx.num(3);
+    let pi_over_3 = ctx.add(Expr::Div(pi, three));
+    let cos_expr = ctx.call("cos", vec![pi_over_3]);
+
+    assert_eq!(prove_nonzero(&ctx, cos_expr), crate::domain::Proof::Proven);
+}
+
+#[test]
+fn prove_nonzero_cos_pi_over_2_is_zero() {
+    // cos(π/2) = 0 — ground fallback should prove Disproven
+    let mut ctx = Context::new();
+    let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+    let two = ctx.num(2);
+    let pi_over_2 = ctx.add(Expr::Div(pi, two));
+    let cos_expr = ctx.call("cos", vec![pi_over_2]);
+
+    assert_eq!(
+        prove_nonzero(&ctx, cos_expr),
+        crate::domain::Proof::Disproven
+    );
+}
+
+#[test]
+fn prove_nonzero_variable_stays_unknown() {
+    // x/x — should NOT be Proven (x could be 0)
+    let mut ctx = Context::new();
+    let x = ctx.var("x");
+    let x_over_x = ctx.add(Expr::Div(x, x));
+
+    // We're testing prove_nonzero on x/x as a whole expression
+    // This should be Unknown because the denominator x is Unknown
+    assert_eq!(prove_nonzero(&ctx, x_over_x), crate::domain::Proof::Unknown);
+}

@@ -1,0 +1,18 @@
+[package]
+name = "cas_math"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[features]
+default = ["parallel"]
+parallel = ["rayon"]
+
+[dependencies]
+cas_ast = { path = "../cas_ast" }
+rustc-hash = "1.1"
+rayon = { version = "1.10", optional = true }
+num-rational = "0.4"
+num-traits = "0.2"

@@ -27,7 +27,7 @@ fn test_linear_simple() {
     match solution {
         SolutionSet::Discrete(values) => {
             assert_eq!(values.len(), 1);
-            let val = cas_ast::DisplayExpr {
+            let val = cas_formatter::DisplayExpr {
                 context: &s.context,
                 id: values[0],
             };
@@ -1154,7 +1154,7 @@ fn test_fractional_exponents_complex() {
             // Verify x = 4
             let result_str = format!(
                 "{}",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &s.context,
                     id: values[0]
                 }

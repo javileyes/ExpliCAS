@@ -1,8 +1,8 @@
-use cas_ast::DisplayExpr;
 use cas_engine::rules::arithmetic::{CombineConstantsRule, MulOneRule};
 use cas_engine::rules::exponents::ProductPowerRule;
 use cas_engine::rules::number_theory::NumberTheoryRule;
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
 fn create_nt_simplifier() -> Simplifier {

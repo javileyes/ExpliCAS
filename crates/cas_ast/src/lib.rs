@@ -12,7 +12,6 @@ pub mod latex;
 pub mod latex_core;
 pub mod latex_highlight;
 pub mod latex_no_roots;
-pub mod latex_parser;
 pub mod ordering; // Canonical ordering utilities
 pub mod root_style; // Style Sniffing for root notation
 pub mod span; // Canonical source span for error reporting
@@ -37,7 +36,6 @@ pub use latex_highlight::{
     PathHighlightConfig,
 };
 pub use latex_no_roots::LatexNoRoots;
-pub use latex_parser::parse_latex;
 pub use root_style::{detect_root_style, ParseStyleSignals, RootStyle, StylePreferences};
 // Span re-export (canonical source location)
 pub use span::Span;

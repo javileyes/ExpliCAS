@@ -356,9 +356,9 @@ fn main() -> rustyline::Result<()> {
 
     // Configure pretty output
     if cli.no_pretty {
-        cas_ast::display::disable_pretty_output();
+        cas_formatter::display::disable_pretty_output();
     } else {
-        cas_ast::display::enable_pretty_output();
+        cas_formatter::display::enable_pretty_output();
     }
 
     // Initialize tracing subscriber with WARN as default level
@@ -497,9 +497,9 @@ fn read_expr_or_stdin(expr: &str) -> String {
 
 /// Run eval with text output
 fn run_eval_text(args: &EvalArgs) {
-    use cas_ast::DisplayExpr;
     use cas_engine::session::SimplifyCacheKey;
     use cas_engine::{EvalAction, EvalRequest, EvalResult};
+    use cas_formatter::DisplayExpr;
     use cas_parser::parse;
 
     // Build cache key for snapshot compatibility check
@@ -685,9 +685,9 @@ fn assume_scope_arg_to_string(as_: AssumeScopeArg) -> String {
 }
 
 fn run_limit(args: LimitArgs) {
-    use cas_ast::DisplayExpr;
     use cas_engine::limits::{limit, Approach, LimitOptions, PreSimplifyMode};
     use cas_engine::Budget;
+    use cas_formatter::DisplayExpr;
     use cas_parser::parse;
 
     let mut ctx = cas_ast::Context::new();
@@ -813,8 +813,8 @@ fn run_substitute(args: SubstituteArgs) {
     }
 
     // Text output path (unchanged)
-    use cas_ast::DisplayExpr;
     use cas_engine::substitute::{substitute_power_aware, SubstituteOptions};
+    use cas_formatter::DisplayExpr;
     use cas_parser::parse;
 
     let mut ctx = cas_ast::Context::new();

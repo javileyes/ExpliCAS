@@ -80,8 +80,11 @@ pub struct VerifyResult {
 /// 2. Compute `diff = lhs_sub - rhs_sub`
 /// 3. **Phase 1:** Simplify with Strict mode (domain-honest)
 /// 4. If result is `0` → `Verified`
-/// 5. **Phase 2:** If residual is variable-free, retry with Generic mode
-/// 6. If result is `0` → `Verified`, otherwise → `Unverifiable`
+/// 5. **Phase 1.5:** Fold numeric islands (constant subtrees → numbers),
+///    then re-simplify with Strict. This handles expressions like `sqrt(2)/sqrt(2)`
+///    without switching to Generic mode.
+/// 6. **Phase 2:** If residual is still variable-free, retry with Generic mode
+/// 7. If result is `0` → `Verified`, otherwise → `Unverifiable`
 pub fn verify_solution(
     simplifier: &mut Simplifier,
     equation: &Equation,
@@ -106,11 +109,28 @@ pub fn verify_solution(
         },
         ..Default::default()
     };
-    let (strict_result, _, _) = simplifier.simplify_with_stats(diff, strict_opts);
+    let (strict_result, _, _) = simplifier.simplify_with_stats(diff, strict_opts.clone());
 
     // Check if Strict already gives us 0
     if matches!(simplifier.context.get(strict_result), Expr::Number(n) if n.is_zero()) {
         return VerifyStatus::Verified;
+    }
+
+    // Phase 1.5: Numeric island folding — fold constant subtrees to numbers,
+    // then re-simplify with Strict.  This lets expressions like `sqrt(2)/sqrt(2)`
+    // reduce without leaving Strict mode.
+    if contains_variable(&simplifier.context, strict_result) {
+        super::verify_stats::record_attempted();
+        let folded =
+            super::numeric_islands::fold_numeric_islands(&mut simplifier.context, strict_result);
+        if folded != strict_result {
+            super::verify_stats::record_changed();
+            let (folded_result, _, _) = simplifier.simplify_with_stats(folded, strict_opts);
+            if matches!(simplifier.context.get(folded_result), Expr::Number(n) if n.is_zero()) {
+                super::verify_stats::record_verified();
+                return VerifyStatus::Verified;
+            }
+        }
     }
 
     // Phase 2: Generic fallback — ONLY when residual is variable-free.

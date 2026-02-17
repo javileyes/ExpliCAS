@@ -7,8 +7,9 @@
 //!
 //! See POLICY.md for full documentation.
 
-use cas_ast::{Context, DisplayExpr, ExprId};
+use cas_ast::{Context, ExprId};
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
 fn create_simplifier() -> Simplifier {

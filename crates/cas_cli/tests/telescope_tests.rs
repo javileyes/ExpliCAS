@@ -1,7 +1,7 @@
 // Tests for Dirichlet kernel identity and telescoping strategy
 
-use cas_ast::DisplayExpr;
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 use num_traits::Zero;
 
 fn parse_and_simplify(input: &str) -> (String, bool) {

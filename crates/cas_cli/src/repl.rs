@@ -227,8 +227,8 @@ fn render_with_rule_scope(
     style_prefs: &StylePreferences,
 ) -> String {
     // Map rule names to scopes
-    let scopes: Vec<cas_ast::display_transforms::ScopeTag> = match rule_name {
-        "Quadratic Formula" => vec![cas_ast::display_transforms::ScopeTag::Rule(
+    let scopes: Vec<cas_formatter::display_transforms::ScopeTag> = match rule_name {
+        "Quadratic Formula" => vec![cas_formatter::display_transforms::ScopeTag::Rule(
             "QuadraticFormula",
         )],
         // Add more rule mappings as needed
@@ -237,9 +237,13 @@ fn render_with_rule_scope(
 
     // ScopedRenderer now carries style prefs — when no transforms match,
     // it falls through to DisplayExprStyled automatically
-    let registry = cas_ast::display_transforms::DisplayTransformRegistry::with_defaults();
-    let renderer =
-        cas_ast::display_transforms::ScopedRenderer::new(ctx, &scopes, &registry, style_prefs);
+    let registry = cas_formatter::display_transforms::DisplayTransformRegistry::with_defaults();
+    let renderer = cas_formatter::display_transforms::ScopedRenderer::new(
+        ctx,
+        &scopes,
+        &registry,
+        style_prefs,
+    );
     renderer.render(id)
 }
 

@@ -57,7 +57,7 @@ impl ReplCore {
         expr: cas_ast::ExprId,
         style_prefs: &cas_ast::StylePreferences,
     ) -> String {
-        use cas_ast::DisplayExprStyled;
+        use cas_formatter::DisplayExprStyled;
         format!(
             "{}",
             DisplayExprStyled::new(&self.engine.simplifier.context, expr, style_prefs)

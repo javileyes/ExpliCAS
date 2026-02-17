@@ -10,8 +10,8 @@
 //! - In Assume: with AssumptionEvent
 //! - In Generic: silently
 
-use cas_ast::display::DisplayExpr;
 use cas_engine::Simplifier;
+use cas_formatter::display::DisplayExpr;
 
 /// Helper: simplify with Strict domain mode
 fn simplify_strict(input: &str) -> String {

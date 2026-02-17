@@ -51,14 +51,14 @@ fn test_linear_equation_with_fractions() {
 
     println!(
         "LHS: {}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: lhs
         }
     );
     println!(
         "RHS: {}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: rhs
         }
@@ -81,12 +81,12 @@ fn test_linear_equation_with_fractions() {
         println!("Step {}: {}", i + 1, step.description);
         println!(
             "  After: {} {} {}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: step.equation_after.lhs
             },
             step.equation_after.op,
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: step.equation_after.rhs
             }
@@ -101,7 +101,7 @@ fn test_linear_equation_with_fractions() {
                 for sol in &sols {
                     println!(
                         "  x = {}",
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: &simplifier.context,
                             id: *sol
                         }

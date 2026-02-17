@@ -26,8 +26,9 @@ use cas_engine::rules::trigonometry::{
 };
 use cas_engine::Simplifier;
 
-use cas_ast::{BoundType, DisplayExpr, Equation, Expr, ExprId, RelOp, SolutionSet};
+use cas_ast::{BoundType, Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_engine::solver::solve;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 use num_traits::Zero;
 

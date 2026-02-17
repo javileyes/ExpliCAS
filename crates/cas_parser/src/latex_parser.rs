@@ -10,7 +10,7 @@
 //! // expr_id now represents Div(1, 2) or Number(1/2)
 //! ```
 
-use crate::{Constant, Context, Expr, ExprId};
+use cas_ast::{Constant, Context, Expr, ExprId};
 use nom::{
     branch::alt,
     bytes::complete::take_while1,
@@ -422,7 +422,7 @@ pub fn parse_latex(ctx: &mut Context, latex: &str) -> Result<ExprId, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::LaTeXExpr;
+    use cas_ast::LaTeXExpr;
 
     /// Helper: test parsing works and return LaTeX output
     fn test_parse(latex: &str) -> String {

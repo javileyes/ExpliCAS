@@ -1,6 +1,7 @@
-use cas_ast::{DisplayExpr, Expr, ExprId};
+use cas_ast::{Expr, ExprId};
 use cas_engine::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule};
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 // use cas_engine::solver::solve; // Unused
 use num_traits::Zero;

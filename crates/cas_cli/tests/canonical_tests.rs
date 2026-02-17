@@ -7,8 +7,9 @@
 //! - Structural invariants: no nested Add/Mul, no Neg(Neg(x)), etc.
 //! - Metamorphic: e+0 == e, e*1 == e, -(-e) == e
 
-use cas_ast::{Context, DisplayExpr, Expr, ExprId};
+use cas_ast::{Context, Expr, ExprId};
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
 fn create_simplifier() -> Simplifier {

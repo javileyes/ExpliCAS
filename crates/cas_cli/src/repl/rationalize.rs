@@ -35,7 +35,7 @@ impl Repl {
                 // Convert to string BEFORE mutable borrows to avoid borrow conflict
                 let parsed_str = format!(
                     "{}",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: &self.core.engine.simplifier.context,
                         id: expr,
                     }
@@ -55,7 +55,7 @@ impl Repl {
 
                         // Use DisplayExprStyled with detected style for consistent output
                         let style = cas_ast::StylePreferences::with_root_style(user_style);
-                        let result_disp = cas_ast::DisplayExprStyled::new(
+                        let result_disp = cas_formatter::DisplayExprStyled::new(
                             &self.core.engine.simplifier.context,
                             simplified,
                             &style,

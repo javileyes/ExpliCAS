@@ -1033,6 +1033,9 @@ fn metatest_equation_pair_equivalence() {
 #[test]
 #[ignore] // Run with: cargo test --release -p cas_engine --test metamorphic_equation_tests metatest_equation_benchmark -- --ignored --nocapture
 fn metatest_equation_benchmark() {
+    // Reset Phase 1.5 instrumentation counters (env‐gated by VERIFY_STATS=1).
+    cas_engine::solver::verify_stats::reset_stats();
+
     eprintln!();
     eprintln!("╔══════════════════════════════════════════════════════════════╗");
     eprintln!("║       METAMORPHIC EQUATION BENCHMARK                       ║");
@@ -1121,6 +1124,9 @@ fn metatest_equation_benchmark() {
     let total_elapsed = total_start.elapsed();
     eprintln!();
     eprintln!("Total time: {:.2}s", total_elapsed.as_secs_f64());
+
+    // Print Phase 1.5 instrumentation summary (only when VERIFY_STATS=1).
+    cas_engine::solver::verify_stats::dump_stats();
 
     assert_eq!(
         s1_failed, 0,

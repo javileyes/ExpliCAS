@@ -3,8 +3,8 @@
 //! NOTE: These tests now use SimplifyOptions with inv_trig policy.
 //! PrincipalBranchInverseTrigRule is self-gated by inv_trig_policy().
 
-use cas_ast::DisplayExpr;
 use cas_engine::{InverseTrigPolicy, Simplifier, SimplifyOptions};
+use cas_formatter::DisplayExpr;
 
 fn simplify_strict(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();

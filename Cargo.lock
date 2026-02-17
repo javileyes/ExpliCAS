@@ -166,10 +166,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cas_api_models"
+version = "0.1.0"
+dependencies = [
+ "cas_engine",
+ "serde",
+]
+
+[[package]]
 name = "cas_ast"
 version = "0.1.0"
 dependencies = [
- "nom",
  "num-bigint",
  "num-rational",
  "num-traits",
@@ -183,8 +190,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "cas_api_models",
  "cas_ast",
  "cas_engine",
+ "cas_formatter",
  "cas_parser",
  "clap",
  "dirs",
@@ -202,6 +211,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cas_didactic"
+version = "0.1.0"
+dependencies = [
+ "cas_engine",
+]
+
+[[package]]
 name = "cas_engine"
 version = "0.1.0"
 dependencies = [
@@ -209,7 +225,9 @@ dependencies = [
  "bincode",
  "bitflags 2.10.0",
  "cas_ast",
+ "cas_math",
  "cas_parser",
+ "cas_session",
  "criterion",
  "insta",
  "lazy_static",
@@ -230,6 +248,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "cas_formatter"
+version = "0.1.0"
+dependencies = [
+ "cas_ast",
+]
+
+[[package]]
+name = "cas_math"
+version = "0.1.0"
+dependencies = [
+ "cas_ast",
+ "num-rational",
+ "num-traits",
+ "rayon",
+ "rustc-hash",
+]
+
+[[package]]
 name = "cas_parser"
 version = "0.1.0"
 dependencies = [
@@ -239,6 +275,21 @@ dependencies = [
  "num-rational",
  "num-traits",
  "thiserror",
+]
+
+[[package]]
+name = "cas_session"
+version = "0.1.0"
+dependencies = [
+ "cas_ast",
+ "cas_parser",
+]
+
+[[package]]
+name = "cas_solver"
+version = "0.1.0"
+dependencies = [
+ "cas_engine",
 ]
 
 [[package]]

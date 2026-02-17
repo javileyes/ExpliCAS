@@ -62,7 +62,7 @@ impl Repl {
                             reply.push(ReplMsg::output(format!(
                                 "#{}: {}",
                                 id,
-                                cas_ast::DisplayExpr {
+                                cas_formatter::DisplayExpr {
                                     context: &self.core.engine.simplifier.context,
                                     id: output.parsed
                                 }
@@ -213,7 +213,7 @@ impl Repl {
                                             "Result: {} = {}",
                                             clean_display_string(&format!(
                                                 "{}",
-                                                cas_ast::DisplayExprStyled::new(
+                                                cas_formatter::DisplayExprStyled::new(
                                                     context,
                                                     args[0],
                                                     &style_prefs
@@ -221,7 +221,7 @@ impl Repl {
                                             )),
                                             clean_display_string(&format!(
                                                 "{}",
-                                                cas_ast::DisplayExprStyled::new(
+                                                cas_formatter::DisplayExprStyled::new(
                                                     context,
                                                     args[1],
                                                     &style_prefs
@@ -274,7 +274,7 @@ impl Repl {
 
                             // Helper to format condition with expression
                             let format_condition = |hint: &cas_engine::BlockedHint| -> String {
-                                let expr_str = cas_ast::DisplayExpr {
+                                let expr_str = cas_formatter::DisplayExpr {
                                     context: ctx,
                                     id: hint.expr_id,
                                 }

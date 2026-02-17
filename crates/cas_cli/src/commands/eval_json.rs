@@ -245,19 +245,19 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
     // For equations, render as "lhs = rhs" instead of "Equal(lhs, rhs)"
     let input_latex = Some(match &input_kind {
         cas_engine::EntryKind::Eq { lhs, rhs } => {
-            let lhs_latex = cas_ast::LaTeXExpr {
+            let lhs_latex = cas_formatter::LaTeXExpr {
                 context: &engine.simplifier.context,
                 id: *lhs,
             }
             .to_latex();
-            let rhs_latex = cas_ast::LaTeXExpr {
+            let rhs_latex = cas_formatter::LaTeXExpr {
                 context: &engine.simplifier.context,
                 id: *rhs,
             }
             .to_latex();
             format!("{} = {}", lhs_latex, rhs_latex)
         }
-        cas_engine::EntryKind::Expr(id) => cas_ast::LaTeXExpr {
+        cas_engine::EntryKind::Expr(id) => cas_formatter::LaTeXExpr {
             context: &engine.simplifier.context,
             id: *id,
         }
@@ -384,7 +384,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
     // Generate LaTeX for result
     let result_latex = if !truncated {
         Some(
-            cas_ast::LaTeXExpr {
+            cas_formatter::LaTeXExpr {
                 context: &engine.simplifier.context,
                 id: result_expr,
             }
@@ -521,8 +521,8 @@ fn collect_required_conditions(
     output: &cas_engine::EvalOutput,
     ctx: &cas_ast::Context,
 ) -> Vec<RequiredConditionJson> {
-    use cas_ast::DisplayExpr;
     use cas_engine::implicit_domain::ImplicitCondition;
+    use cas_formatter::DisplayExpr;
 
     output
         .required_conditions
@@ -749,14 +749,14 @@ fn collect_steps(
             // Plain text format
             let before_str = format!(
                 "{}",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: ctx,
                     id: before_expr
                 }
             );
             let after_str = format!(
                 "{}",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: ctx,
                     id: after_expr
                 }
@@ -767,9 +767,9 @@ fn collect_steps(
             let expr_path = pathsteps_to_expr_path(step.path());
 
             // Use PathHighlightConfig for path-based highlighting (matches timeline)
-            let mut before_config = cas_ast::PathHighlightConfig::new();
+            let mut before_config = cas_formatter::PathHighlightConfig::new();
             before_config.add(expr_path.clone(), cas_ast::HighlightColor::Red);
-            let before_latex = cas_ast::PathHighlightedLatexRenderer {
+            let before_latex = cas_formatter::PathHighlightedLatexRenderer {
                 context: ctx,
                 id: before_expr,
                 path_highlights: &before_config,
@@ -778,9 +778,9 @@ fn collect_steps(
             }
             .to_latex();
 
-            let mut after_config = cas_ast::PathHighlightConfig::new();
+            let mut after_config = cas_formatter::PathHighlightConfig::new();
             after_config.add(expr_path, cas_ast::HighlightColor::Green);
-            let after_latex = cas_ast::PathHighlightedLatexRenderer {
+            let after_latex = cas_formatter::PathHighlightedLatexRenderer {
                 context: ctx,
                 id: after_expr,
                 path_highlights: &after_config,
@@ -792,7 +792,7 @@ fn collect_steps(
             // Generate rule_latex: colored "antecedent → consequent"
             let mut rule_before_config = cas_ast::HighlightConfig::new();
             rule_before_config.add(focus_before, cas_ast::HighlightColor::Red);
-            let local_before_colored = cas_ast::LaTeXExprHighlighted {
+            let local_before_colored = cas_formatter::LaTeXExprHighlighted {
                 context: ctx,
                 id: focus_before,
                 highlights: &rule_before_config,
@@ -801,7 +801,7 @@ fn collect_steps(
 
             let mut rule_after_config = cas_ast::HighlightConfig::new();
             rule_after_config.add(focus_after, cas_ast::HighlightColor::Green);
-            let local_after_colored = cas_ast::LaTeXExprHighlighted {
+            let local_after_colored = cas_formatter::LaTeXExprHighlighted {
                 context: ctx,
                 id: focus_after,
                 highlights: &rule_after_config,
@@ -889,14 +889,14 @@ fn collect_solve_steps(
             // Format equation parts
             let lhs_str = format!(
                 "{}",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: ctx,
                     id: step.equation_after.lhs
                 }
             );
             let rhs_str = format!(
                 "{}",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: ctx,
                     id: step.equation_after.rhs
                 }
@@ -905,12 +905,12 @@ fn collect_solve_steps(
             let equation_str = format!("{} {} {}", lhs_str, relop_str, rhs_str);
 
             // LaTeX for equation parts
-            let lhs_latex = cas_ast::LaTeXExpr {
+            let lhs_latex = cas_formatter::LaTeXExpr {
                 context: ctx,
                 id: step.equation_after.lhs,
             }
             .to_latex();
-            let rhs_latex = cas_ast::LaTeXExpr {
+            let rhs_latex = cas_formatter::LaTeXExpr {
                 context: ctx,
                 id: step.equation_after.rhs,
             }
@@ -925,14 +925,14 @@ fn collect_solve_steps(
                 .map(|(j, ss)| {
                     let ss_lhs_str = format!(
                         "{}",
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: ctx,
                             id: ss.equation_after.lhs
                         }
                     );
                     let ss_rhs_str = format!(
                         "{}",
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: ctx,
                             id: ss.equation_after.rhs
                         }
@@ -940,12 +940,12 @@ fn collect_solve_steps(
                     let ss_relop_str = format!("{}", ss.equation_after.op);
                     let ss_equation_str = format!("{} {} {}", ss_lhs_str, ss_relop_str, ss_rhs_str);
 
-                    let ss_lhs_latex = cas_ast::LaTeXExpr {
+                    let ss_lhs_latex = cas_formatter::LaTeXExpr {
                         context: ctx,
                         id: ss.equation_after.lhs,
                     }
                     .to_latex();
-                    let ss_rhs_latex = cas_ast::LaTeXExpr {
+                    let ss_rhs_latex = cas_formatter::LaTeXExpr {
                         context: ctx,
                         id: ss.equation_after.rhs,
                     }
@@ -1212,7 +1212,7 @@ fn format_solution_set(ctx: &cas_ast::Context, solution_set: &cas_ast::SolutionS
                     .map(|e| {
                         format!(
                             "{}",
-                            cas_ast::DisplayExpr {
+                            cas_formatter::DisplayExpr {
                                 context: ctx,
                                 id: *e
                             }
@@ -1254,11 +1254,11 @@ fn format_solution_set(ctx: &cas_ast::Context, solution_set: &cas_ast::SolutionS
         SolutionSet::Continuous(interval) => {
             format!(
                 "[{}, {}]",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: ctx,
                     id: interval.min
                 },
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: ctx,
                     id: interval.max
                 }
@@ -1270,11 +1270,11 @@ fn format_solution_set(ctx: &cas_ast::Context, solution_set: &cas_ast::SolutionS
                 .map(|int| {
                     format!(
                         "[{}, {}]",
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: ctx,
                             id: int.min
                         },
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: ctx,
                             id: int.max
                         }
@@ -1286,7 +1286,7 @@ fn format_solution_set(ctx: &cas_ast::Context, solution_set: &cas_ast::SolutionS
         SolutionSet::Residual(expr) => {
             format!(
                 "Solve: {} = 0",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: ctx,
                     id: *expr
                 }
@@ -1309,7 +1309,7 @@ fn solution_set_to_latex(ctx: &cas_ast::Context, solution_set: &cas_ast::Solutio
                 let sols: Vec<String> = exprs
                     .iter()
                     .map(|e| {
-                        cas_ast::LaTeXExpr {
+                        cas_formatter::LaTeXExpr {
                             context: ctx,
                             id: *e,
                         }
@@ -1349,12 +1349,12 @@ fn solution_set_to_latex(ctx: &cas_ast::Context, solution_set: &cas_ast::Solutio
             )
         }
         SolutionSet::Continuous(interval) => {
-            let min_latex = cas_ast::LaTeXExpr {
+            let min_latex = cas_formatter::LaTeXExpr {
                 context: ctx,
                 id: interval.min,
             }
             .to_latex();
-            let max_latex = cas_ast::LaTeXExpr {
+            let max_latex = cas_formatter::LaTeXExpr {
                 context: ctx,
                 id: interval.max,
             }
@@ -1365,12 +1365,12 @@ fn solution_set_to_latex(ctx: &cas_ast::Context, solution_set: &cas_ast::Solutio
             let parts: Vec<String> = intervals
                 .iter()
                 .map(|int| {
-                    let min = cas_ast::LaTeXExpr {
+                    let min = cas_formatter::LaTeXExpr {
                         context: ctx,
                         id: int.min,
                     }
                     .to_latex();
-                    let max = cas_ast::LaTeXExpr {
+                    let max = cas_formatter::LaTeXExpr {
                         context: ctx,
                         id: int.max,
                     }
@@ -1381,7 +1381,7 @@ fn solution_set_to_latex(ctx: &cas_ast::Context, solution_set: &cas_ast::Solutio
             parts.join(r" \cup ")
         }
         SolutionSet::Residual(expr) => {
-            let expr_latex = cas_ast::LaTeXExpr {
+            let expr_latex = cas_formatter::LaTeXExpr {
                 context: ctx,
                 id: *expr,
             }

@@ -38,7 +38,7 @@ impl Repl {
         style_signals: cas_ast::root_style::ParseStyleSignals,
     ) -> ReplReply {
         use cas_ast::root_style::StylePreferences;
-        use cas_ast::DisplayExprStyled;
+        use cas_formatter::DisplayExprStyled;
 
         if self.verbosity == Verbosity::None {
             return vec![];

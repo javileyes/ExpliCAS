@@ -1,4 +1,4 @@
-use cas_ast::{DisplayExpr, Equation, Expr, ExprId, RelOp, SolutionSet};
+use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_engine::rules::algebra::SimplifyFractionRule;
 use cas_engine::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule};
 use cas_engine::rules::canonicalization::{
@@ -13,6 +13,7 @@ use cas_engine::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule, Dist
 use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
 use cas_engine::solver::solve;
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 use num_traits::Zero;
 

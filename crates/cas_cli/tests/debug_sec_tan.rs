@@ -1,5 +1,5 @@
-use cas_ast::DisplayExpr;
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
 /// Debug test to trace what's happening with sec²-tan²-1
