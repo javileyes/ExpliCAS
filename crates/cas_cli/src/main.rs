@@ -583,8 +583,6 @@ fn load_or_new_session(
     path: &Option<std::path::PathBuf>,
     key: &cas_session::SimplifyCacheKey,
 ) -> (cas_solver::Engine, cas_session::SessionState) {
-    use cas_session::SessionSnapshot;
-
     let Some(path) = path else {
         return (cas_solver::Engine::new(), cas_session::SessionState::new());
     };
@@ -593,16 +591,14 @@ fn load_or_new_session(
         return (cas_solver::Engine::new(), cas_session::SessionState::new());
     }
 
-    match SessionSnapshot::load(path) {
-        Ok(snap) => {
-            if snap.is_compatible(key) {
-                let (ctx, state) = cas_session::SessionState::from_snapshot(snap);
-                let engine = cas_solver::Engine::with_context(ctx);
-                (engine, state)
-            } else {
-                eprintln!("Session snapshot incompatible, starting fresh");
-                (cas_solver::Engine::new(), cas_session::SessionState::new())
-            }
+    match cas_session::SessionState::load_compatible_snapshot(path, key) {
+        Ok(Some((ctx, state))) => {
+            let engine = cas_solver::Engine::with_context(ctx);
+            (engine, state)
+        }
+        Ok(None) => {
+            eprintln!("Session snapshot incompatible, starting fresh");
+            (cas_solver::Engine::new(), cas_session::SessionState::new())
         }
         Err(e) => {
             eprintln!("Warning: Failed to load session ({}), starting fresh", e);

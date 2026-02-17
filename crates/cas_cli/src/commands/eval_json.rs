@@ -8,7 +8,7 @@ use std::time::Instant;
 use anyhow::Result;
 use clap::Args;
 
-use cas_session::{SessionSnapshot, SimplifyCacheKey};
+use cas_session::SimplifyCacheKey;
 use cas_solver::{EvalAction, EvalRequest, EvalResult};
 
 // For step filtering (match timeline behavior)
@@ -660,16 +660,12 @@ fn load_or_new_session(
         return (cas_solver::Engine::new(), cas_session::SessionState::new());
     }
 
-    match SessionSnapshot::load(path) {
-        Ok(snap) => {
-            if snap.is_compatible(key) {
-                let (ctx, state) = cas_session::SessionState::from_snapshot(snap);
-                let engine = cas_solver::Engine::with_context(ctx);
-                (engine, state)
-            } else {
-                (cas_solver::Engine::new(), cas_session::SessionState::new())
-            }
+    match cas_session::SessionState::load_compatible_snapshot(path, key) {
+        Ok(Some((ctx, state))) => {
+            let engine = cas_solver::Engine::with_context(ctx);
+            (engine, state)
         }
+        Ok(None) => (cas_solver::Engine::new(), cas_session::SessionState::new()),
         Err(_) => (cas_solver::Engine::new(), cas_session::SessionState::new()),
     }
 }
