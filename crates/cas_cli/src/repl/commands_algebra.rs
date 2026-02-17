@@ -136,11 +136,11 @@ impl Repl {
                             ));
 
                             // Show resolved (after #id and env substitution)
-                            let resolved = match self
-                                .core
-                                .state
-                                .resolve_all(&mut self.core.engine.simplifier.context, *expr_id)
-                            {
+                            let resolved = match cas_session::resolve_all_from_state(
+                                &mut self.core.engine.simplifier.context,
+                                *expr_id,
+                                &self.core.state,
+                            ) {
                                 Ok(r) => r,
                                 Err(_) => *expr_id,
                             };

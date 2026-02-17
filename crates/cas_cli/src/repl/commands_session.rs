@@ -68,11 +68,11 @@ impl Repl {
                 self.core.state.env.unset(name);
 
                 // Substitute using current environment and session refs
-                let rhs_substituted = match self
-                    .core
-                    .state
-                    .resolve_all(&mut self.core.engine.simplifier.context, rhs_expr)
-                {
+                let rhs_substituted = match cas_session::resolve_all_from_state(
+                    &mut self.core.engine.simplifier.context,
+                    rhs_expr,
+                    &self.core.state,
+                ) {
                     Ok(r) => r,
                     Err(_) => rhs_expr,
                 };

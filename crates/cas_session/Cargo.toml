@@ -7,5 +7,6 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+cas_ast = { path = "../cas_ast" }
 cas_session_core = { path = "../cas_session_core" }
 cas_engine = { path = "../cas_engine", default-features = false }
