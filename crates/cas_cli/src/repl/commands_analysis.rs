@@ -268,7 +268,7 @@ impl Repl {
                     );
 
                     // V2.9.9: Apply same pipeline as engine.eval for consistency
-                    let display_steps = cas_engine::eval_step_pipeline::to_display_steps(steps);
+                    let display_steps = cas_didactic::to_display_steps(steps);
                     (display_steps, expr, simplified)
                 }
                 Err(e) => {
