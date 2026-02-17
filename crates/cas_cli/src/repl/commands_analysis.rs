@@ -137,7 +137,7 @@ impl Repl {
                 ));
             }
             let target_var = self.core.engine.simplifier.context.var(target_str);
-            cas_engine::solver::strategies::substitute_expr(
+            cas_solver::strategies::substitute_expr(
                 &mut self.core.engine.simplifier.context,
                 expr,
                 target_var,
@@ -340,11 +340,11 @@ impl Repl {
 
         // Convert CLI verbosity to timeline verbosity
         // Use Normal level - shows important steps without low-level canonicalization
-        let timeline_verbosity = cas_engine::timeline::VerbosityLevel::Normal;
+        let timeline_verbosity = cas_didactic::VerbosityLevel::Normal;
 
         // Generate HTML timeline with ALL steps and the known simplified result
         // V2.14.40: Pass input string for style preference sniffing (exponential vs radical)
-        let mut timeline = cas_engine::timeline::TimelineHtml::new_with_result_and_style(
+        let mut timeline = cas_didactic::TimelineHtml::new_with_result_and_style(
             &mut self.core.engine.simplifier.context,
             &steps,
             expr_id,

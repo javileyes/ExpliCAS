@@ -449,7 +449,7 @@ impl Repl {
 
                 // Call solver with step collection enabled and semantic options
                 self.core.engine.simplifier.set_collect_steps(true);
-                let solver_opts = cas_engine::solver::SolverOptions {
+                let solver_opts = cas_solver::SolverOptions {
                     value_domain: self.core.state.options.shared.semantics.value_domain,
                     domain_mode: self.core.state.options.shared.semantics.domain_mode,
                     assume_scope: self.core.state.options.shared.semantics.assume_scope,
@@ -458,7 +458,7 @@ impl Repl {
                 };
 
                 // V2.9.8: Use type-safe API that includes automatic cleanup
-                match cas_engine::solver::solve_with_display_steps(
+                match cas_solver::solve_with_display_steps(
                     &eq,
                     &var,
                     &mut self.core.engine.simplifier,
@@ -478,7 +478,7 @@ impl Repl {
 
                         // Generate HTML timeline for solve steps
                         // Use .0 to access the inner Vec<SolveStep>
-                        let mut timeline = cas_engine::timeline::SolveTimelineHtml::new(
+                        let mut timeline = cas_didactic::SolveTimelineHtml::new(
                             &mut self.core.engine.simplifier.context,
                             &display_steps.0,
                             &eq,
@@ -855,9 +855,7 @@ impl Repl {
                         if check_enabled {
                             if let EvalResult::SolutionSet(ref solution_set) = output.result {
                                 if let Some(ref eq) = original_equation {
-                                    use cas_engine::solver::check::{
-                                        verify_solution_set, VerifySummary,
-                                    };
+                                    use cas_solver::check::{verify_solution_set, VerifySummary};
 
                                     let verify_result = verify_solution_set(
                                         &mut self.core.engine.simplifier,
@@ -880,13 +878,13 @@ impl Repl {
                                                 }
                                                 .to_string();
                                                 match status {
-                                                    cas_engine::solver::check::VerifyStatus::Verified => {
+                                                    cas_solver::check::VerifyStatus::Verified => {
                                                         lines.push(format!("  ✓ {} = {} verified", var, sol_str));
                                                     }
-                                                    cas_engine::solver::check::VerifyStatus::Unverifiable { reason, .. } => {
+                                                    cas_solver::check::VerifyStatus::Unverifiable { reason, .. } => {
                                                         lines.push(format!("  ⚠ {} = {}: {}", var, sol_str, reason));
                                                     }
-                                                    cas_engine::solver::check::VerifyStatus::NotCheckable { reason } => {
+                                                    cas_solver::check::VerifyStatus::NotCheckable { reason } => {
                                                         lines.push(format!("  ℹ {} = {}: {}", var, sol_str, reason));
                                                     }
                                                 }

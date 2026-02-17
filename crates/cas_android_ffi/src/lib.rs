@@ -1,6 +1,6 @@
 //! Android JNI bridge for ExpliCAS engine.
 //!
-//! Uses the canonical `cas_engine::json` module for all JSON responses.
+//! Uses `cas_engine` JSON entry points with DTOs from `cas_api_models`.
 //! Schema version: 1
 //!
 //! # Safety
@@ -22,7 +22,7 @@ use jni::objects::{JClass, JString};
 use jni::sys::jstring;
 use jni::JNIEnv;
 
-// Use the canonical JSON API from cas_engine
+// JSON DTOs for stable FFI fallback responses
 use cas_api_models::{BudgetJsonInfo, EngineJsonError, EngineJsonResponse};
 use cas_engine::{eval_str_to_json, SCHEMA_VERSION};
 
@@ -54,7 +54,7 @@ pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_abiVersion(
 /// # Returns
 /// JSON string with schema_version: 1
 ///
-/// Uses `cas_engine::eval_str_to_json` which is the canonical entry point.
+/// Uses `cas_engine::eval_str_to_json` as the canonical entry point.
 #[no_mangle]
 pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_evalJson<'local>(
     mut env: JNIEnv<'local>,

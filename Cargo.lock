@@ -167,8 +167,8 @@ dependencies = [
 name = "cas_api_models"
 version = "0.1.0"
 dependencies = [
- "cas_engine",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -190,9 +190,11 @@ dependencies = [
  "assert_cmd",
  "cas_api_models",
  "cas_ast",
+ "cas_didactic",
  "cas_engine",
  "cas_formatter",
  "cas_parser",
+ "cas_solver",
  "clap",
  "dirs",
  "num-bigint",

@@ -15,7 +15,7 @@ use cas_engine::{EvalAction, EvalRequest, EvalResult};
 // For step filtering (match timeline behavior)
 use cas_engine::step::{pathsteps_to_expr_path, ImportanceLevel};
 // For didactic substeps (like timeline)
-use cas_engine::didactic;
+use cas_didactic as didactic;
 
 use crate::format::{expr_hash, expr_stats, format_expr_limited};
 use crate::json_types::{

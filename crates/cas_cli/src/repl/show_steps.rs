@@ -55,10 +55,8 @@ impl Repl {
 
         if steps.is_empty() {
             // Even with no engine steps, show didactic sub-steps if there are fraction sums
-            let standalone_substeps = cas_engine::didactic::get_standalone_substeps(
-                &self.core.engine.simplifier.context,
-                expr,
-            );
+            let standalone_substeps =
+                cas_didactic::get_standalone_substeps(&self.core.engine.simplifier.context, expr);
 
             if !standalone_substeps.is_empty() && self.verbosity != Verbosity::Succinct {
                 buf.line("Computation:");
@@ -82,7 +80,7 @@ impl Repl {
             }
 
             // Enrich steps ONCE before iterating
-            let enriched_steps = cas_engine::didactic::enrich_steps(
+            let enriched_steps = cas_didactic::enrich_steps(
                 &self.core.engine.simplifier.context,
                 expr,
                 steps.to_vec(),
