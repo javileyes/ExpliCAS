@@ -1,9 +1,12 @@
 //! Session reference resolution.
 
 use cas_ast::ExprId;
-use cas_session_core::resolve::{parse_legacy_session_ref, rewrite_session_refs};
+use cas_session_core::resolve::{
+    parse_legacy_session_ref, resolve_session_refs_with_lookup,
+    resolve_session_refs_with_lookup_on_visit,
+};
 pub use cas_session_core::types::ResolveError;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use super::store::*;
 
@@ -60,10 +63,8 @@ pub fn resolve_session_refs(
     expr: ExprId,
     store: &SessionStore,
 ) -> Result<ExprId, ResolveError> {
-    let mut cache: HashMap<EntryId, ExprId> = HashMap::new();
-    let mut visiting: HashSet<EntryId> = HashSet::new();
-    let mut _inherited = crate::diagnostics::Diagnostics::new();
-    resolve_recursive(ctx, expr, store, &mut cache, &mut visiting, &mut _inherited)
+    let mut lookup = |id: EntryId| store.get(id).map(|entry| entry.kind.clone());
+    resolve_session_refs_with_lookup(ctx, expr, &mut lookup)
 }
 
 /// Resolve session refs AND accumulate inherited diagnostics.
@@ -75,10 +76,15 @@ pub fn resolve_session_refs_with_diagnostics(
     expr: ExprId,
     store: &SessionStore,
 ) -> Result<(ExprId, crate::diagnostics::Diagnostics), ResolveError> {
-    let mut cache: HashMap<EntryId, ExprId> = HashMap::new();
-    let mut visiting: HashSet<EntryId> = HashSet::new();
     let mut inherited = crate::diagnostics::Diagnostics::new();
-    let resolved = resolve_recursive(ctx, expr, store, &mut cache, &mut visiting, &mut inherited)?;
+    let mut lookup = |id: EntryId| store.get(id).map(|entry| entry.kind.clone());
+    let mut on_visit = |id: EntryId| {
+        if let Some(entry) = store.get(id) {
+            inherited.inherit_requires_from(&entry.diagnostics);
+        }
+    };
+    let resolved =
+        resolve_session_refs_with_lookup_on_visit(ctx, expr, &mut lookup, &mut on_visit)?;
     Ok((resolved, inherited))
 }
 
@@ -437,69 +443,4 @@ fn resolve_entry_with_mode(
 
     visiting.pop();
     Ok(resolved)
-}
-
-fn resolve_recursive(
-    ctx: &mut cas_ast::Context,
-    expr: ExprId,
-    store: &SessionStore,
-    cache: &mut HashMap<EntryId, ExprId>,
-    visiting: &mut HashSet<EntryId>,
-    inherited: &mut crate::diagnostics::Diagnostics,
-) -> Result<ExprId, ResolveError> {
-    rewrite_session_refs(ctx, expr, &mut |ctx, _ref_expr_id, id| {
-        resolve_session_id(ctx, id, store, cache, visiting, inherited)
-    })
-}
-
-fn resolve_session_id(
-    ctx: &mut cas_ast::Context,
-    id: EntryId,
-    store: &SessionStore,
-    cache: &mut HashMap<EntryId, ExprId>,
-    visiting: &mut HashSet<EntryId>,
-    inherited: &mut crate::diagnostics::Diagnostics,
-) -> Result<ExprId, ResolveError> {
-    use cas_ast::Expr;
-
-    // Check cache first
-    if let Some(&resolved) = cache.get(&id) {
-        return Ok(resolved);
-    }
-
-    // Cycle detection
-    if visiting.contains(&id) {
-        return Err(ResolveError::CircularReference(id));
-    }
-
-    // Get entry from store
-    let entry = store.get(id).ok_or(ResolveError::NotFound(id))?;
-
-    // SessionPropagated: inherit requires from this entry
-    inherited.inherit_requires_from(&entry.diagnostics);
-
-    // Mark as visiting for cycle detection
-    visiting.insert(id);
-
-    // Get the expression to substitute
-    let substitution = match &entry.kind {
-        EntryKind::Expr(stored_expr) => {
-            // Recursively resolve the stored expression (it may contain #refs too)
-            resolve_recursive(ctx, *stored_expr, store, cache, visiting, inherited)?
-        }
-        EntryKind::Eq { lhs, rhs } => {
-            // For equations used as expressions, use residue form: (lhs - rhs)
-            let resolved_lhs = resolve_recursive(ctx, *lhs, store, cache, visiting, inherited)?;
-            let resolved_rhs = resolve_recursive(ctx, *rhs, store, cache, visiting, inherited)?;
-            ctx.add(Expr::Sub(resolved_lhs, resolved_rhs))
-        }
-    };
-
-    // Done visiting
-    visiting.remove(&id);
-
-    // Cache the result
-    cache.insert(id, substitution);
-
-    Ok(substitution)
 }

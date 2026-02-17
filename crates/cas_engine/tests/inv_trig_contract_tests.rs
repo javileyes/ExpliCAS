@@ -6,11 +6,9 @@
 //! 3. Policy is independent of DomainMode
 
 use cas_ast::DisplayExpr;
-use cas_engine::{
-    DomainMode, Engine, EntryKind, EvalAction, EvalRequest, EvalResult, InverseTrigPolicy,
-};
+use cas_engine::{DomainMode, Engine, EvalAction, EvalRequest, EvalResult, InverseTrigPolicy};
 use cas_parser::parse;
-use cas_session::SessionState;
+use cas_session::{EntryKind, SessionState};
 
 /// Helper: simplify with given InverseTrigPolicy using Engine API
 fn simplify_with_inv_trig(input: &str, policy: InverseTrigPolicy) -> (String, Vec<String>) {

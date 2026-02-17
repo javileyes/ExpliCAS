@@ -1,6 +1,8 @@
+use std::collections::{HashMap, HashSet};
+
 use cas_ast::{Context, Expr, ExprId};
 
-use crate::types::EntryId;
+use crate::types::{EntryId, EntryKind, ResolveError};
 
 /// Parse legacy session reference names like `#123`.
 pub fn parse_legacy_session_ref(name: &str) -> Option<EntryId> {
@@ -103,6 +105,105 @@ where
     }
 }
 
+/// Resolve all session references in an expression using a store lookup callback.
+///
+/// The callback must return the `EntryKind` for each entry id.
+/// Returns `ResolveError::NotFound` when an entry does not exist and
+/// `ResolveError::CircularReference` when a cycle is detected.
+pub fn resolve_session_refs_with_lookup<F>(
+    ctx: &mut Context,
+    expr: ExprId,
+    lookup: &mut F,
+) -> Result<ExprId, ResolveError>
+where
+    F: FnMut(EntryId) -> Option<EntryKind>,
+{
+    let mut on_visit = |_id: EntryId| {};
+    resolve_session_refs_with_lookup_on_visit(ctx, expr, lookup, &mut on_visit)
+}
+
+/// Resolve all session references with an additional visit hook.
+///
+/// `on_visit` is called once per entry traversal (before descending into its
+/// stored expression/equation), and can be used to accumulate metadata.
+pub fn resolve_session_refs_with_lookup_on_visit<F, V>(
+    ctx: &mut Context,
+    expr: ExprId,
+    lookup: &mut F,
+    on_visit: &mut V,
+) -> Result<ExprId, ResolveError>
+where
+    F: FnMut(EntryId) -> Option<EntryKind>,
+    V: FnMut(EntryId),
+{
+    let mut cache: HashMap<EntryId, ExprId> = HashMap::new();
+    let mut visiting: HashSet<EntryId> = HashSet::new();
+    resolve_with_lookup_recursive(ctx, expr, lookup, on_visit, &mut cache, &mut visiting)
+}
+
+fn resolve_with_lookup_recursive<F, V>(
+    ctx: &mut Context,
+    expr: ExprId,
+    lookup: &mut F,
+    on_visit: &mut V,
+    cache: &mut HashMap<EntryId, ExprId>,
+    visiting: &mut HashSet<EntryId>,
+) -> Result<ExprId, ResolveError>
+where
+    F: FnMut(EntryId) -> Option<EntryKind>,
+    V: FnMut(EntryId),
+{
+    rewrite_session_refs(ctx, expr, &mut |ctx, _ref_expr_id, id| {
+        resolve_session_id_with_lookup(ctx, id, lookup, on_visit, cache, visiting)
+    })
+}
+
+fn resolve_session_id_with_lookup<F, V>(
+    ctx: &mut Context,
+    id: EntryId,
+    lookup: &mut F,
+    on_visit: &mut V,
+    cache: &mut HashMap<EntryId, ExprId>,
+    visiting: &mut HashSet<EntryId>,
+) -> Result<ExprId, ResolveError>
+where
+    F: FnMut(EntryId) -> Option<EntryKind>,
+    V: FnMut(EntryId),
+{
+    // Memoized hit
+    if let Some(&resolved) = cache.get(&id) {
+        return Ok(resolved);
+    }
+
+    // Cycle detection
+    if visiting.contains(&id) {
+        return Err(ResolveError::CircularReference(id));
+    }
+
+    // Fetch entry
+    let kind = lookup(id).ok_or(ResolveError::NotFound(id))?;
+    on_visit(id);
+
+    // Resolve entry recursively
+    visiting.insert(id);
+    let substitution = match kind {
+        EntryKind::Expr(stored_expr) => {
+            resolve_with_lookup_recursive(ctx, stored_expr, lookup, on_visit, cache, visiting)?
+        }
+        EntryKind::Eq { lhs, rhs } => {
+            let resolved_lhs =
+                resolve_with_lookup_recursive(ctx, lhs, lookup, on_visit, cache, visiting)?;
+            let resolved_rhs =
+                resolve_with_lookup_recursive(ctx, rhs, lookup, on_visit, cache, visiting)?;
+            ctx.add(Expr::Sub(resolved_lhs, resolved_rhs))
+        }
+    };
+    visiting.remove(&id);
+
+    cache.insert(id, substitution);
+    Ok(substitution)
+}
+
 fn rewrite_binary<E, F, Ctor>(
     ctx: &mut Context,
     expr: ExprId,
@@ -127,6 +228,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::EntryKind;
 
     #[test]
     fn parse_legacy_session_ref_valid() {
@@ -187,5 +289,57 @@ mod tests {
         );
         assert!(out_s.contains('2'));
         assert!(!out_s.contains("#2"));
+    }
+
+    #[test]
+    fn resolve_with_lookup_basic_expr() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_plus_1 = ctx.add(Expr::Add(x, one));
+
+        let ref1 = ctx.add(Expr::SessionRef(1));
+        let input = ctx.add(Expr::Add(ref1, one));
+        let mut lookup = |id: EntryId| match id {
+            1 => Some(EntryKind::Expr(x_plus_1)),
+            _ => None,
+        };
+
+        let out = resolve_session_refs_with_lookup(&mut ctx, input, &mut lookup).unwrap();
+        let out_s = format!(
+            "{}",
+            cas_ast::DisplayExpr {
+                context: &ctx,
+                id: out
+            }
+        );
+        assert!(out_s.contains('x'));
+    }
+
+    #[test]
+    fn resolve_with_lookup_not_found() {
+        let mut ctx = Context::new();
+        let input = ctx.add(Expr::SessionRef(99));
+        let mut lookup = |_id: EntryId| None;
+
+        let err = resolve_session_refs_with_lookup(&mut ctx, input, &mut lookup).unwrap_err();
+        assert_eq!(err, ResolveError::NotFound(99));
+    }
+
+    #[test]
+    fn resolve_with_lookup_cycle() {
+        let mut ctx = Context::new();
+        let ref1 = ctx.add(Expr::SessionRef(1));
+        let ref2 = ctx.add(Expr::SessionRef(2));
+        let input = ref1;
+
+        let mut lookup = |id: EntryId| match id {
+            1 => Some(EntryKind::Expr(ref2)),
+            2 => Some(EntryKind::Expr(ref1)),
+            _ => None,
+        };
+
+        let err = resolve_session_refs_with_lookup(&mut ctx, input, &mut lookup).unwrap_err();
+        assert_eq!(err, ResolveError::CircularReference(1));
     }
 }

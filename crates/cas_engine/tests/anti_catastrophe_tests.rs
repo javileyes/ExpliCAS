@@ -204,7 +204,8 @@ fn test_no_false_positive_sum_of_squares() {
 /// Helper: simplify with ComplexEnabled value_domain (for tests involving i)
 /// Uses Engine.eval to ensure value_domain propagates correctly
 fn simplify_complex(input: &str) -> String {
-    use cas_engine::{Engine, EntryKind, EvalAction, EvalRequest, EvalResult};
+    use cas_engine::{Engine, EvalAction, EvalRequest, EvalResult};
+    use cas_session::EntryKind;
 
     let mut engine = Engine::new();
     let mut state = SessionState::new();

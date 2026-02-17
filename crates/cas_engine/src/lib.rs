@@ -123,7 +123,6 @@ pub use rule::{Rule, SoundnessLabel};
 pub use semantics::{
     AssumeScope, BranchPolicy, EvalConfig, InverseTrigPolicy, NormalFormGoal, ValueDomain,
 };
-pub use session::{resolve_session_refs, Entry, EntryId, EntryKind, ResolveError, SessionStore};
 pub use step::{DisplayEvalSteps, Step};
 pub use visitors::{DepthVisitor, VariableCollector};
 
