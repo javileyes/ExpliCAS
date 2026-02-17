@@ -1,5 +1,5 @@
 use cas_ast::{Equation, RelOp, SolutionSet};
-use cas_engine::engine::Simplifier;
+use cas_solver::engine::Simplifier;
 use cas_solver::solve;
 
 #[test]

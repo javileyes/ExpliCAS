@@ -1,7 +1,7 @@
 //! Tests for Pythagorean Identity with Negation Pattern
 //! Verifies that sin²+cos²=1 AND -sin²-cos²=-1 both work
 
-use cas_engine::Simplifier;
+use cas_solver::Simplifier;
 
 fn simplify_str(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();

@@ -2,8 +2,8 @@
 //!
 //! Ensures simplify(simplify(x)) == simplify(x) for rationalized expressions.
 
-use cas_engine::Simplifier;
 use cas_parser::parse;
+use cas_solver::Simplifier;
 
 fn simplify_expr(input: &str) -> String {
     let mut s = Simplifier::new();

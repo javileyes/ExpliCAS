@@ -1,6 +1,6 @@
-use cas_engine::Simplifier;
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
+use cas_solver::Simplifier;
 
 #[test]
 fn debug_test_47() {

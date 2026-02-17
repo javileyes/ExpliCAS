@@ -3,9 +3,9 @@
 //! These tests verify that the CAS engine produces deterministic output.
 //! Non-determinism is a critical bug that breaks CI, benchmarks, and user trust.
 
-use cas_engine::Simplifier;
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
+use cas_solver::Simplifier;
 
 /// Test that rationalization produces identical output across 200 runs.
 /// This catches HashMap iteration order issues, non-stable sorting, etc.

@@ -3,8 +3,8 @@
 //! NOTE: These tests now use SimplifyOptions with inv_trig policy.
 //! PrincipalBranchInverseTrigRule is self-gated by inv_trig_policy().
 
-use cas_engine::{InverseTrigPolicy, Simplifier, SimplifyOptions};
 use cas_formatter::DisplayExpr;
+use cas_solver::{InverseTrigPolicy, Simplifier, SimplifyOptions};
 
 fn simplify_strict(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();
@@ -26,8 +26,8 @@ fn simplify_principal_branch(input: &str) -> (String, Vec<String>) {
     let expr = cas_parser::parse(input, &mut simplifier.context).expect("parse failed");
     // Set inv_trig = PrincipalValue to enable principal branch rules
     let opts = SimplifyOptions {
-        shared: cas_engine::phase::SharedSemanticConfig {
-            semantics: cas_engine::semantics::EvalConfig {
+        shared: cas_solver::phase::SharedSemanticConfig {
+            semantics: cas_solver::semantics::EvalConfig {
                 inv_trig: InverseTrigPolicy::PrincipalValue,
                 ..Default::default()
             },

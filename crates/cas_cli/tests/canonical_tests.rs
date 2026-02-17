@@ -8,9 +8,9 @@
 //! - Metamorphic: e+0 == e, e*1 == e, -(-e) == e
 
 use cas_ast::{Context, Expr, ExprId};
-use cas_engine::Simplifier;
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
+use cas_solver::Simplifier;
 
 fn create_simplifier() -> Simplifier {
     let mut s = Simplifier::new();
@@ -265,7 +265,7 @@ fn test_structural_invariants() {
 
 #[test]
 fn test_n0_neg_number_normalized() {
-    use cas_engine::canonical_forms::normalize_core;
+    use cas_solver::canonical_forms::normalize_core;
     use num_traits::Signed;
 
     let mut ctx = cas_ast::Context::new();

@@ -2,22 +2,22 @@
 #![allow(clippy::field_reassign_with_default)]
 #![allow(dead_code)]
 #![allow(unused_variables)]
-use cas_engine::rules::algebra::{
+use cas_formatter::DisplayExpr;
+use cas_parser::parse;
+use cas_solver::rules::algebra::{
     AddFractionsRule, CancelCommonFactorsRule, SimplifyFractionRule, SimplifyMulDivRule,
 };
-use cas_engine::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule};
-use cas_engine::rules::canonicalization::{
+use cas_solver::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule};
+use cas_solver::rules::canonicalization::{
     CanonicalizeAddRule, CanonicalizeMulRule, CanonicalizeNegationRule,
 };
-use cas_engine::rules::exponents::{
+use cas_solver::rules::exponents::{
     EvaluatePowerRule, IdentityPowerRule, PowerPowerRule, PowerProductRule, PowerQuotientRule,
     ProductPowerRule,
 };
-use cas_engine::rules::polynomial::{BinomialExpansionRule, CombineLikeTermsRule, DistributeRule};
-use cas_engine::rules::trigonometry::{AngleIdentityRule, TanToSinCosRule};
-use cas_engine::Simplifier;
-use cas_formatter::DisplayExpr;
-use cas_parser::parse;
+use cas_solver::rules::polynomial::{BinomialExpansionRule, CombineLikeTermsRule, DistributeRule};
+use cas_solver::rules::trigonometry::{AngleIdentityRule, TanToSinCosRule};
+use cas_solver::Simplifier;
 
 fn create_simplifier() -> Simplifier {
     let mut simplifier = Simplifier::new();

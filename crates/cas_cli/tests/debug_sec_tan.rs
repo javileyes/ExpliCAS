@@ -1,6 +1,6 @@
-use cas_engine::Simplifier;
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
+use cas_solver::Simplifier;
 
 /// Debug test to trace what's happening with sec²-tan²-1
 /// Run with: RUST_LOG=cas_engine=debug cargo test -p cas_cli --test debug_sec_tan -- --nocapture
@@ -80,7 +80,7 @@ fn debug_sec_tan_limited() {
     for iteration in 0..max_iterations {
         println!("\n--- Iteration {} ---", iteration + 1);
         // Apply rules with pattern marks
-        let pattern_marks = cas_engine::pattern_marks::PatternMarks::new();
+        let pattern_marks = cas_solver::pattern_marks::PatternMarks::new();
         let (new_expr, steps, _pass_stats) = simplifier.apply_rules_loop(current, &pattern_marks);
 
         if steps.is_empty() {

@@ -8,9 +8,9 @@
 //! See POLICY.md for full documentation.
 
 use cas_ast::{Context, ExprId};
-use cas_engine::Simplifier;
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
+use cas_solver::Simplifier;
 
 fn create_simplifier() -> Simplifier {
     let mut s = Simplifier::new();
@@ -330,7 +330,7 @@ fn test_expand_distributes_fractional_binomial() {
     // expand 1/2 * (√2 - 1) should distribute
     let mut ctx = Context::new();
     let expr = parse("1/2 * (sqrt(2) - 1)", &mut ctx).unwrap();
-    let expanded = cas_engine::expand::expand(&mut ctx, expr);
+    let expanded = cas_solver::expand::expand(&mut ctx, expr);
     let output = format_expr(&ctx, expanded);
 
     // Should be distributed: √2/2 - 1/2 or similar
@@ -359,7 +359,7 @@ fn test_contract_fractional_binomial_style_only() {
     // expand: distributed form
     let mut ctx = Context::new();
     let expr2 = parse("1/2 * (sqrt(2) - 1)", &mut ctx).unwrap();
-    let expanded = cas_engine::expand::expand(&mut ctx, expr2);
+    let expanded = cas_solver::expand::expand(&mut ctx, expr2);
     let exp_out = format_expr(&ctx, expanded);
 
     // simplify should preserve binomial structure
@@ -441,7 +441,7 @@ fn test_contract_expand_preserves_conjugate_products() {
     // The DifferenceOfSquaresRule only runs in simplify(), not in raw expand()
     let mut ctx = Context::new();
     let expr = parse("(x-1)*(x+1)", &mut ctx).unwrap();
-    let expanded = cas_engine::expand::expand(&mut ctx, expr);
+    let expanded = cas_solver::expand::expand(&mut ctx, expr);
     let output = format_expr(&ctx, expanded);
 
     // expand() preserves conjugate products (guard in is_conjugate)
@@ -481,7 +481,7 @@ fn test_regression_expand_fully_expands_binomial_power() {
     // (x+1)^2 should expand to x² + 2x + 1 in expand
     let mut ctx = Context::new();
     let expr = parse("(x+1)^2", &mut ctx).unwrap();
-    let expanded = cas_engine::expand::expand(&mut ctx, expr);
+    let expanded = cas_solver::expand::expand(&mut ctx, expr);
     let output = format_expr(&ctx, expanded);
 
     // Should be fully expanded
@@ -512,7 +512,7 @@ fn test_regression_expand_combines_like_terms() {
     // x + x should also become 2x in expand
     let mut ctx = Context::new();
     let expr = parse("x + x", &mut ctx).unwrap();
-    let expanded = cas_engine::expand::expand(&mut ctx, expr);
+    let expanded = cas_solver::expand::expand(&mut ctx, expr);
 
     // Expand + simplify to clean up
     let mut s = Simplifier::with_default_rules();

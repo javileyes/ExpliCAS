@@ -3,8 +3,8 @@
 //! Verifies that asin + acos AND -asin - acos both work
 
 use cas_ast::Expr;
-use cas_engine::Simplifier;
 use cas_formatter::DisplayExpr;
+use cas_solver::Simplifier;
 
 fn simplify_str(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();

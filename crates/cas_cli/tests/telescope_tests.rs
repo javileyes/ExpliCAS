@@ -1,7 +1,7 @@
 // Tests for Dirichlet kernel identity and telescoping strategy
 
-use cas_engine::Simplifier;
 use cas_formatter::DisplayExpr;
+use cas_solver::Simplifier;
 use num_traits::Zero;
 
 fn parse_and_simplify(input: &str) -> (String, bool) {
@@ -60,6 +60,6 @@ fn test_telescope_command_basic() {
     let expr =
         cas_parser::parse("1 + 2*cos(x) + 2*cos(2*x) - sin(5*x/2)/sin(x/2)", &mut ctx).unwrap();
 
-    let result = cas_engine::telescoping::telescope(&mut ctx, expr);
+    let result = cas_solver::telescoping::telescope(&mut ctx, expr);
     assert!(result.success, "Telescoping proof should succeed");
 }

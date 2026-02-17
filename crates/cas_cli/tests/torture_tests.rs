@@ -1,30 +1,30 @@
-use cas_engine::rules::algebra::{
+use cas_solver::rules::algebra::{
     AddFractionsRule, DifferenceOfSquaresRule, ExpandRule, FactorBasedLCDRule,
     FactorDifferenceSquaresRule, FactorRule, PullConstantFromFractionRule, SimplifyFractionRule,
     SimplifyMulDivRule,
 };
-use cas_engine::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule};
-use cas_engine::rules::calculus::{DiffRule, IntegrateRule};
-use cas_engine::rules::canonicalization::{
+use cas_solver::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule};
+use cas_solver::rules::calculus::{DiffRule, IntegrateRule};
+use cas_solver::rules::canonicalization::{
     CanonicalizeAddRule, CanonicalizeDivRule, CanonicalizeMulRule, CanonicalizeNegationRule,
     CanonicalizeRootRule,
 };
-use cas_engine::rules::exponents::{
+use cas_solver::rules::exponents::{
     EvaluatePowerRule, IdentityPowerRule, PowerPowerRule, PowerProductRule, PowerQuotientRule,
     ProductPowerRule,
 };
-use cas_engine::rules::functions::EvaluateAbsRule;
-use cas_engine::rules::grouping::CollectRule;
-use cas_engine::rules::logarithms::{
+use cas_solver::rules::functions::EvaluateAbsRule;
+use cas_solver::rules::grouping::CollectRule;
+use cas_solver::rules::logarithms::{
     EvaluateLogRule, ExponentialLogRule, LogAbsSimplifyRule, LogContractionRule, LogExpInverseRule,
     SplitLogExponentsRule,
 };
-use cas_engine::rules::number_theory::NumberTheoryRule;
-use cas_engine::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule, DistributeRule};
-use cas_engine::rules::trigonometry::{
+use cas_solver::rules::number_theory::NumberTheoryRule;
+use cas_solver::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule, DistributeRule};
+use cas_solver::rules::trigonometry::{
     EvaluateTrigRule, PythagoreanIdentityRule, RecursiveTrigExpansionRule, TanToSinCosRule,
 };
-use cas_engine::Simplifier;
+use cas_solver::Simplifier;
 
 use cas_ast::{BoundType, Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_formatter::DisplayExpr;
@@ -42,25 +42,25 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(CanonicalizeDivRule));
     simplifier.add_rule(Box::new(CanonicalizeRootRule));
     simplifier.add_rule(Box::new(EvaluateAbsRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::functions::AbsSquaredRule));
     simplifier.add_rule(Box::new(
-        cas_engine::rules::functions::AbsPositiveSimplifyRule,
+        cas_solver::rules::functions::AbsPositiveSimplifyRule,
     )); // V2.14.20: |x| → x when x > 0 (POST phase)
     simplifier.add_rule(Box::new(EvaluateTrigRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::AngleIdentityRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::trigonometry::AngleIdentityRule));
     simplifier.add_rule(Box::new(TanToSinCosRule));
     simplifier.add_rule(Box::new(
-        cas_engine::rules::trigonometry::AngleConsistencyRule,
+        cas_solver::rules::trigonometry::AngleConsistencyRule,
     ));
     simplifier.add_rule(Box::new(
-        cas_engine::rules::trigonometry::TrigPythagoreanSimplifyRule,
+        cas_solver::rules::trigonometry::TrigPythagoreanSimplifyRule,
     ));
-    simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::DoubleAngleRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::trigonometry::DoubleAngleRule));
     simplifier.add_rule(Box::new(
-        cas_engine::rules::trigonometry::TrigPhaseShiftRule,
+        cas_solver::rules::trigonometry::TrigPhaseShiftRule,
     ));
     simplifier.add_rule(Box::new(
-        cas_engine::rules::trigonometry::TrigEvenPowerDifferenceRule,
+        cas_solver::rules::trigonometry::TrigEvenPowerDifferenceRule,
     ));
     simplifier.add_rule(Box::new(RecursiveTrigExpansionRule));
     // NOTE: CanonicalizeTrigSquareRule DISABLED - conflicts with TrigPythagoreanSimplifyRule
@@ -79,27 +79,27 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(PowerQuotientRule));
     simplifier.add_rule(Box::new(IdentityPowerRule));
     simplifier.add_rule(Box::new(
-        cas_engine::rules::exponents::NegativeBasePowerRule,
+        cas_solver::rules::exponents::NegativeBasePowerRule,
     ));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
     simplifier.add_rule(Box::new(DistributeRule));
     simplifier.add_rule(Box::new(ExpandRule));
     simplifier.add_rule(Box::new(
-        cas_engine::rules::polynomial::BinomialExpansionRule,
+        cas_solver::rules::polynomial::BinomialExpansionRule,
     ));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));
     simplifier.add_rule(Box::new(AnnihilationRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::NestedFractionRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::algebra::NestedFractionRule));
     simplifier.add_rule(Box::new(SimplifyFractionRule));
     simplifier.add_rule(Box::new(AddFractionsRule));
     simplifier.add_rule(Box::new(SimplifyMulDivRule));
     simplifier.add_rule(Box::new(
-        cas_engine::rules::algebra::RationalizeDenominatorRule,
+        cas_solver::rules::algebra::RationalizeDenominatorRule,
     ));
     simplifier.add_rule(Box::new(
-        cas_engine::rules::algebra::CancelCommonFactorsRule,
+        cas_solver::rules::algebra::CancelCommonFactorsRule,
     ));
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifySquareRootRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::algebra::SimplifySquareRootRule));
     simplifier.add_rule(Box::new(PullConstantFromFractionRule));
     simplifier.add_rule(Box::new(FactorBasedLCDRule));
     simplifier.add_rule(Box::new(FactorRule));
@@ -109,12 +109,12 @@ fn create_full_simplifier() -> Simplifier {
 
     simplifier.add_rule(Box::new(AddZeroRule));
     simplifier.add_rule(Box::new(MulOneRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::MulZeroRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::arithmetic::MulZeroRule));
 
     simplifier.add_rule(Box::new(IntegrateRule));
     simplifier.add_rule(Box::new(DiffRule));
     simplifier.add_rule(Box::new(NumberTheoryRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::DivZeroRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::arithmetic::DivZeroRule));
     simplifier
 }
 
@@ -268,10 +268,10 @@ fn test_log_cancellation() {
     let expected = parse("x * y", &mut simplifier.context).unwrap();
 
     // Use Assume mode since Generic now blocks Analytic conditions (Positive)
-    let opts = cas_engine::SimplifyOptions {
-        shared: cas_engine::phase::SharedSemanticConfig {
-            semantics: cas_engine::semantics::EvalConfig {
-                domain_mode: cas_engine::DomainMode::Assume,
+    let opts = cas_solver::SimplifyOptions {
+        shared: cas_solver::phase::SharedSemanticConfig {
+            semantics: cas_solver::semantics::EvalConfig {
+                domain_mode: cas_solver::DomainMode::Assume,
                 ..Default::default()
             },
             ..Default::default()
@@ -561,10 +561,10 @@ fn test_torture_6_conjugate() {
     let expr = parse(input, &mut simplifier.context).unwrap();
 
     // Use Assume mode to allow sqrt(x)^2 -> x
-    let opts = cas_engine::SimplifyOptions {
-        shared: cas_engine::phase::SharedSemanticConfig {
-            semantics: cas_engine::semantics::EvalConfig {
-                domain_mode: cas_engine::DomainMode::Assume,
+    let opts = cas_solver::SimplifyOptions {
+        shared: cas_solver::phase::SharedSemanticConfig {
+            semantics: cas_solver::semantics::EvalConfig {
+                domain_mode: cas_solver::DomainMode::Assume,
                 ..Default::default()
             },
             ..Default::default()
@@ -928,10 +928,10 @@ fn test_log_sqrt_simplification() {
     // for a symbolic variable 'x'. The assumption is tracked via assumption_events.
     let input = "ln(sqrt(x^2 + 2*x + 1)) - ln(x + 1)";
     let expr = parse(input, &mut simplifier.context).unwrap();
-    let opts = cas_engine::SimplifyOptions {
-        shared: cas_engine::phase::SharedSemanticConfig {
-            semantics: cas_engine::semantics::EvalConfig {
-                domain_mode: cas_engine::DomainMode::Assume,
+    let opts = cas_solver::SimplifyOptions {
+        shared: cas_solver::phase::SharedSemanticConfig {
+            semantics: cas_solver::semantics::EvalConfig {
+                domain_mode: cas_solver::DomainMode::Assume,
                 ..Default::default()
             },
             ..Default::default()

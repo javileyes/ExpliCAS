@@ -1,8 +1,8 @@
 use cas_ast::{BoundType, Equation, RelOp, SolutionSet};
-use cas_engine::Simplifier;
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 use cas_solver::solve;
+use cas_solver::Simplifier;
 
 fn create_full_simplifier() -> Simplifier {
     // Use with_default_rules to get the orchestrator and all standard rules

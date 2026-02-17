@@ -31,8 +31,9 @@ pub use cas_engine::substitute::{
 };
 pub use cas_engine::telescoping;
 pub use cas_engine::visualizer;
+pub use cas_engine::{engine, error, expand, helpers, options, pattern_marks, phase, semantics};
 pub use cas_engine::{
-    substitute_str_to_json, AssumeScope, AssumptionReporting, BlockedHint, Budget, DomainMode,
-    Engine, EquivalenceResult, EvalAction, EvalOutput, EvalRequest, EvalResult, PipelineStats,
-    Simplifier, SimplifyOptions,
+    substitute_str_to_json, AssumeScope, AssumptionReporting, BlockedHint, Budget, CasError,
+    DomainMode, Engine, EquivalenceResult, EvalAction, EvalOutput, EvalRequest, EvalResult,
+    PipelineStats, Simplifier, SimplifyOptions,
 };

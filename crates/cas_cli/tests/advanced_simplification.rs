@@ -1,19 +1,19 @@
 #[cfg(test)]
 mod engine_tests {
-    use cas_engine::Simplifier;
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
+    use cas_solver::Simplifier;
 
     fn create_standard_simplifier() -> Simplifier {
         let mut simplifier = Simplifier::new();
-        cas_engine::rules::canonicalization::register(&mut simplifier);
-        cas_engine::rules::arithmetic::register(&mut simplifier);
-        cas_engine::rules::algebra::register(&mut simplifier);
-        cas_engine::rules::trigonometry::register(&mut simplifier);
-        cas_engine::rules::logarithms::register(&mut simplifier);
-        cas_engine::rules::exponents::register(&mut simplifier);
-        cas_engine::rules::functions::register(&mut simplifier);
-        cas_engine::rules::polynomial::register(&mut simplifier);
+        cas_solver::rules::canonicalization::register(&mut simplifier);
+        cas_solver::rules::arithmetic::register(&mut simplifier);
+        cas_solver::rules::algebra::register(&mut simplifier);
+        cas_solver::rules::trigonometry::register(&mut simplifier);
+        cas_solver::rules::logarithms::register(&mut simplifier);
+        cas_solver::rules::exponents::register(&mut simplifier);
+        cas_solver::rules::functions::register(&mut simplifier);
+        cas_solver::rules::polynomial::register(&mut simplifier);
 
         // Ensure DistributeRule is present (it might be in polynomial::register, but let's be sure)
         // Actually, polynomial::register usually adds DistributeRule.

@@ -1,9 +1,9 @@
-use cas_engine::rules::arithmetic::{CombineConstantsRule, MulOneRule};
-use cas_engine::rules::exponents::ProductPowerRule;
-use cas_engine::rules::number_theory::NumberTheoryRule;
-use cas_engine::Simplifier;
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
+use cas_solver::rules::arithmetic::{CombineConstantsRule, MulOneRule};
+use cas_solver::rules::exponents::ProductPowerRule;
+use cas_solver::rules::number_theory::NumberTheoryRule;
+use cas_solver::Simplifier;
 
 fn create_nt_simplifier() -> Simplifier {
     let mut simplifier = Simplifier::new();

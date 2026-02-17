@@ -1,7 +1,7 @@
 //! Tests for trig function name canonicalization
 //! Verifies that short/long forms unify to canonical forms
 
-use cas_engine::Simplifier;
+use cas_solver::Simplifier;
 
 fn simplify_str(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();

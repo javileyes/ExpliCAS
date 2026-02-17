@@ -7,9 +7,9 @@
 /// 1. Rationalization + other simplifiable parts work together correctly
 /// 2. Distribution still works when no rationalization occurs
 use cas_ast::{Context, Expr};
-use cas_engine::Simplifier;
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
+use cas_solver::Simplifier;
 
 /// Assert that `expr` simplifies to a value algebraically equivalent to `expected`.
 fn assert_simplify_equiv(expr: &str, expected: &str, msg: &str) {

@@ -4,9 +4,9 @@
 //! de simplificación. Estos tests representan casos "Boss Final" que requieren
 //! un manejo muy fino de la simplificación algebraica.
 
-use cas_engine::Simplifier;
 use cas_formatter::LaTeXExpr;
 use cas_parser::parse;
+use cas_solver::Simplifier;
 
 /// Helper para simplificar una expresión y obtener su representación como string
 fn simplify_expr(input: &str) -> String {

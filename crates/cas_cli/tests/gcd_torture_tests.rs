@@ -1,30 +1,30 @@
 // GCD Gauntlet - Round 8 Torture Tests
 // Tests for polynomial GCD correctness and efficiency
 
-use cas_engine::rules::algebra::{
+use cas_solver::rules::algebra::{
     AddFractionsRule, ExpandRule, FactorDifferenceSquaresRule, FactorRule,
     PullConstantFromFractionRule, SimplifyFractionRule, SimplifyMulDivRule,
 };
-use cas_engine::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule};
-use cas_engine::rules::calculus::{DiffRule, IntegrateRule};
-use cas_engine::rules::canonicalization::{
+use cas_solver::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule};
+use cas_solver::rules::calculus::{DiffRule, IntegrateRule};
+use cas_solver::rules::canonicalization::{
     CanonicalizeAddRule, CanonicalizeDivRule, CanonicalizeMulRule, CanonicalizeNegationRule,
     CanonicalizeRootRule,
 };
-use cas_engine::rules::exponents::{
+use cas_solver::rules::exponents::{
     EvaluatePowerRule, IdentityPowerRule, PowerPowerRule, PowerProductRule, PowerQuotientRule,
     ProductPowerRule,
 };
-use cas_engine::rules::functions::EvaluateAbsRule;
-use cas_engine::rules::grouping::CollectRule;
-use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule, SplitLogExponentsRule};
-use cas_engine::rules::number_theory::NumberTheoryRule;
-use cas_engine::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule, DistributeRule};
-use cas_engine::rules::trigonometry::{
+use cas_solver::rules::functions::EvaluateAbsRule;
+use cas_solver::rules::grouping::CollectRule;
+use cas_solver::rules::logarithms::{EvaluateLogRule, ExponentialLogRule, SplitLogExponentsRule};
+use cas_solver::rules::number_theory::NumberTheoryRule;
+use cas_solver::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule, DistributeRule};
+use cas_solver::rules::trigonometry::{
     CanonicalizeTrigSquareRule, EvaluateTrigRule, PythagoreanIdentityRule,
     RecursiveTrigExpansionRule, TanToSinCosRule,
 };
-use cas_engine::Simplifier;
+use cas_solver::Simplifier;
 
 use cas_ast::Expr;
 use cas_formatter::DisplayExpr;
@@ -40,14 +40,14 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(CanonicalizeDivRule));
     simplifier.add_rule(Box::new(CanonicalizeRootRule));
     simplifier.add_rule(Box::new(EvaluateAbsRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::functions::AbsSquaredRule));
     simplifier.add_rule(Box::new(EvaluateTrigRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::AngleIdentityRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::trigonometry::AngleIdentityRule));
     simplifier.add_rule(Box::new(TanToSinCosRule));
     simplifier.add_rule(Box::new(
-        cas_engine::rules::trigonometry::AngleConsistencyRule,
+        cas_solver::rules::trigonometry::AngleConsistencyRule,
     ));
-    simplifier.add_rule(Box::new(cas_engine::rules::trigonometry::DoubleAngleRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::trigonometry::DoubleAngleRule));
     simplifier.add_rule(Box::new(RecursiveTrigExpansionRule));
     simplifier.add_rule(Box::new(CanonicalizeTrigSquareRule));
     simplifier.add_rule(Box::new(PythagoreanIdentityRule));
@@ -60,38 +60,38 @@ fn create_full_simplifier() -> Simplifier {
     simplifier.add_rule(Box::new(PowerQuotientRule));
     simplifier.add_rule(Box::new(IdentityPowerRule));
     simplifier.add_rule(Box::new(
-        cas_engine::rules::exponents::NegativeBasePowerRule,
+        cas_solver::rules::exponents::NegativeBasePowerRule,
     ));
     simplifier.add_rule(Box::new(EvaluatePowerRule));
     simplifier.add_rule(Box::new(DistributeRule));
     simplifier.add_rule(Box::new(ExpandRule));
     simplifier.add_rule(Box::new(
-        cas_engine::rules::polynomial::BinomialExpansionRule,
+        cas_solver::rules::polynomial::BinomialExpansionRule,
     ));
     simplifier.add_rule(Box::new(CombineLikeTermsRule));
     simplifier.add_rule(Box::new(AnnihilationRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::NestedFractionRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::algebra::NestedFractionRule));
     simplifier.add_rule(Box::new(SimplifyFractionRule));
     simplifier.add_rule(Box::new(AddFractionsRule));
     simplifier.add_rule(Box::new(SimplifyMulDivRule));
     simplifier.add_rule(Box::new(
-        cas_engine::rules::algebra::RationalizeDenominatorRule,
+        cas_solver::rules::algebra::RationalizeDenominatorRule,
     ));
     simplifier.add_rule(Box::new(
-        cas_engine::rules::algebra::CancelCommonFactorsRule,
+        cas_solver::rules::algebra::CancelCommonFactorsRule,
     ));
-    simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifySquareRootRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::algebra::SimplifySquareRootRule));
     simplifier.add_rule(Box::new(PullConstantFromFractionRule));
     simplifier.add_rule(Box::new(FactorRule));
     simplifier.add_rule(Box::new(CollectRule));
     simplifier.add_rule(Box::new(FactorDifferenceSquaresRule));
     simplifier.add_rule(Box::new(AddZeroRule));
     simplifier.add_rule(Box::new(MulOneRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::MulZeroRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::arithmetic::MulZeroRule));
     simplifier.add_rule(Box::new(IntegrateRule));
     simplifier.add_rule(Box::new(DiffRule));
     simplifier.add_rule(Box::new(NumberTheoryRule));
-    simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::DivZeroRule));
+    simplifier.add_rule(Box::new(cas_solver::rules::arithmetic::DivZeroRule));
     simplifier
 }
 

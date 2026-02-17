@@ -2,9 +2,9 @@
 //! Tests are ordered by increasing complexity to facilitate sequential debugging
 
 use cas_ast::{Equation, RelOp, SolutionSet};
-use cas_engine::engine::Simplifier;
-use cas_engine::CasError;
+use cas_solver::engine::Simplifier;
 use cas_solver::solve;
+use cas_solver::CasError;
 
 // ============================================================================
 // LEVEL 1: Basic Linear Equations

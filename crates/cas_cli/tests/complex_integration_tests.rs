@@ -1,20 +1,20 @@
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
-use cas_engine::rules::algebra::SimplifyFractionRule;
-use cas_engine::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule};
-use cas_engine::rules::canonicalization::{
-    CanonicalizeAddRule, CanonicalizeMulRule, CanonicalizeNegationRule, CanonicalizeRootRule,
-};
-use cas_engine::rules::exponents::{
-    EvaluatePowerRule, IdentityPowerRule, PowerPowerRule, ProductPowerRule,
-};
-use cas_engine::rules::functions::EvaluateAbsRule;
-use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule, SplitLogExponentsRule};
-use cas_engine::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule, DistributeRule};
-use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
-use cas_engine::Simplifier;
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
+use cas_solver::rules::algebra::SimplifyFractionRule;
+use cas_solver::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule};
+use cas_solver::rules::canonicalization::{
+    CanonicalizeAddRule, CanonicalizeMulRule, CanonicalizeNegationRule, CanonicalizeRootRule,
+};
+use cas_solver::rules::exponents::{
+    EvaluatePowerRule, IdentityPowerRule, PowerPowerRule, ProductPowerRule,
+};
+use cas_solver::rules::functions::EvaluateAbsRule;
+use cas_solver::rules::logarithms::{EvaluateLogRule, ExponentialLogRule, SplitLogExponentsRule};
+use cas_solver::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule, DistributeRule};
+use cas_solver::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
 use cas_solver::solve;
+use cas_solver::Simplifier;
 use num_traits::Zero;
 
 fn create_full_simplifier() -> Simplifier {
