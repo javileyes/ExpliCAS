@@ -1,8 +1,8 @@
 use cas_ast::ExprId;
+use cas_engine::diagnostics::Diagnostics;
 use cas_engine::eval::{EvalSession, EvalStore};
 use cas_engine::options::EvalOptions;
 use cas_engine::profile_cache::ProfileCache;
-use cas_engine::{diagnostics::Diagnostics, poly_store::PolyStore};
 
 use crate::{CacheHitTrace as SessionCacheHitTrace, Environment, ResolveError, SessionStore};
 
@@ -94,7 +94,6 @@ pub struct SessionState {
     pub env: Environment,
     pub options: EvalOptions,
     pub profile_cache: ProfileCache,
-    pub poly_store: PolyStore,
 }
 
 impl SessionState {
@@ -108,7 +107,6 @@ impl SessionState {
             env: Environment::new(),
             options: EvalOptions::default(),
             profile_cache: ProfileCache::new(),
-            poly_store: PolyStore::new(),
         }
     }
 
@@ -119,7 +117,6 @@ impl SessionState {
             env: Environment::new(),
             options: EvalOptions::default(),
             profile_cache: ProfileCache::new(),
-            poly_store: PolyStore::new(),
         }
     }
 
