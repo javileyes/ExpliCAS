@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use cas_ast::{Context, Expr, ExprId};
 
+use crate::cache::{CacheHitTrace, ResolvedExpr};
 use crate::types::{EntryId, EntryKind, ResolveError};
 
 /// Parse legacy session reference names like `#123`.
@@ -153,6 +154,248 @@ where
     let mut cache: HashMap<EntryId, ExprId> = HashMap::new();
     let mut visiting: HashSet<EntryId> = HashSet::new();
     resolve_with_lookup_recursive(ctx, expr, lookup, on_visit, &mut cache, &mut visiting)
+}
+
+/// Cache payload view used by mode-based resolution.
+#[derive(Debug, Clone)]
+pub struct ModeCacheEntry<CacheKey, RequiredItem> {
+    pub key: CacheKey,
+    pub expr: ExprId,
+    pub requires: Vec<RequiredItem>,
+}
+
+/// Entry view used by mode-based resolution.
+#[derive(Debug, Clone)]
+pub struct ModeEntry<CacheKey, RequiredItem> {
+    pub kind: EntryKind,
+    pub requires: Vec<RequiredItem>,
+    pub cache: Option<ModeCacheEntry<CacheKey, RequiredItem>>,
+}
+
+/// Resolve session refs with mode selection (prefer cache vs raw entry).
+///
+/// The caller provides a lookup callback that returns cloned entry data and
+/// two callbacks to deduplicate requirements and mark propagated origin.
+pub fn resolve_session_refs_with_mode_lookup<CacheKey, RequiredItem, Lookup, SameReq, MarkReq>(
+    ctx: &mut Context,
+    expr: ExprId,
+    mode: crate::types::RefMode,
+    cache_key: &CacheKey,
+    lookup: &mut Lookup,
+    same_requirement: &mut SameReq,
+    mark_session_propagated: &mut MarkReq,
+) -> Result<ResolvedExpr<RequiredItem>, ResolveError>
+where
+    CacheKey: PartialEq,
+    RequiredItem: Clone,
+    Lookup: FnMut(EntryId) -> Option<ModeEntry<CacheKey, RequiredItem>>,
+    SameReq: FnMut(&RequiredItem, &RequiredItem) -> bool,
+    MarkReq: FnMut(&mut RequiredItem),
+{
+    let mut memo: HashMap<ExprId, ExprId> = HashMap::new();
+    let mut visiting: Vec<EntryId> = Vec::new();
+    let mut requires: Vec<RequiredItem> = Vec::new();
+    let mut used_cache = false;
+    let mut ref_chain: smallvec::SmallVec<[EntryId; 4]> = smallvec::SmallVec::new();
+    let mut seen_hits: HashSet<EntryId> = HashSet::new();
+    let mut cache_hits: Vec<CacheHitTrace<RequiredItem>> = Vec::new();
+
+    let resolved = resolve_with_mode_recursive(
+        ctx,
+        expr,
+        mode,
+        cache_key,
+        lookup,
+        same_requirement,
+        mark_session_propagated,
+        &mut memo,
+        &mut visiting,
+        &mut requires,
+        &mut used_cache,
+        &mut ref_chain,
+        &mut seen_hits,
+        &mut cache_hits,
+    )?;
+
+    Ok(ResolvedExpr {
+        expr: resolved,
+        requires,
+        used_cache,
+        ref_chain,
+        cache_hits,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn resolve_with_mode_recursive<CacheKey, RequiredItem, Lookup, SameReq, MarkReq>(
+    ctx: &mut Context,
+    expr: ExprId,
+    mode: crate::types::RefMode,
+    cache_key: &CacheKey,
+    lookup: &mut Lookup,
+    same_requirement: &mut SameReq,
+    mark_session_propagated: &mut MarkReq,
+    memo: &mut HashMap<ExprId, ExprId>,
+    visiting: &mut Vec<EntryId>,
+    requires: &mut Vec<RequiredItem>,
+    used_cache: &mut bool,
+    ref_chain: &mut smallvec::SmallVec<[EntryId; 4]>,
+    seen_hits: &mut HashSet<EntryId>,
+    cache_hits: &mut Vec<CacheHitTrace<RequiredItem>>,
+) -> Result<ExprId, ResolveError>
+where
+    CacheKey: PartialEq,
+    RequiredItem: Clone,
+    Lookup: FnMut(EntryId) -> Option<ModeEntry<CacheKey, RequiredItem>>,
+    SameReq: FnMut(&RequiredItem, &RequiredItem) -> bool,
+    MarkReq: FnMut(&mut RequiredItem),
+{
+    if let Some(&cached) = memo.get(&expr) {
+        return Ok(cached);
+    }
+
+    let result = rewrite_session_refs(ctx, expr, &mut |ctx, ref_expr_id, id| {
+        resolve_mode_entry(
+            ctx,
+            ref_expr_id,
+            id,
+            mode,
+            cache_key,
+            lookup,
+            same_requirement,
+            mark_session_propagated,
+            memo,
+            visiting,
+            requires,
+            used_cache,
+            ref_chain,
+            seen_hits,
+            cache_hits,
+        )
+    })?;
+
+    memo.insert(expr, result);
+    Ok(result)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn resolve_mode_entry<CacheKey, RequiredItem, Lookup, SameReq, MarkReq>(
+    ctx: &mut Context,
+    ref_expr_id: ExprId,
+    id: EntryId,
+    mode: crate::types::RefMode,
+    cache_key: &CacheKey,
+    lookup: &mut Lookup,
+    same_requirement: &mut SameReq,
+    mark_session_propagated: &mut MarkReq,
+    memo: &mut HashMap<ExprId, ExprId>,
+    visiting: &mut Vec<EntryId>,
+    requires: &mut Vec<RequiredItem>,
+    used_cache: &mut bool,
+    ref_chain: &mut smallvec::SmallVec<[EntryId; 4]>,
+    seen_hits: &mut HashSet<EntryId>,
+    cache_hits: &mut Vec<CacheHitTrace<RequiredItem>>,
+) -> Result<ExprId, ResolveError>
+where
+    CacheKey: PartialEq,
+    RequiredItem: Clone,
+    Lookup: FnMut(EntryId) -> Option<ModeEntry<CacheKey, RequiredItem>>,
+    SameReq: FnMut(&RequiredItem, &RequiredItem) -> bool,
+    MarkReq: FnMut(&mut RequiredItem),
+{
+    if visiting.contains(&id) {
+        return Err(ResolveError::CircularReference(id));
+    }
+
+    let entry = lookup(id).ok_or(ResolveError::NotFound(id))?;
+    ref_chain.push(id);
+
+    if mode == crate::types::RefMode::PreferSimplified {
+        if let Some(cache) = &entry.cache {
+            if cache.key == *cache_key {
+                *used_cache = true;
+                requires.extend(cache.requires.iter().cloned());
+
+                if seen_hits.insert(id) {
+                    cache_hits.push(CacheHitTrace {
+                        entry_id: id,
+                        before_ref_expr: ref_expr_id,
+                        after_expr: cache.expr,
+                        requires: cache.requires.clone(),
+                    });
+                }
+
+                return Ok(cache.expr);
+            }
+        }
+    }
+
+    visiting.push(id);
+
+    for item in &entry.requires {
+        if !requires.iter().any(|r| same_requirement(r, item)) {
+            let mut new_item = item.clone();
+            mark_session_propagated(&mut new_item);
+            requires.push(new_item);
+        }
+    }
+
+    let resolved = match entry.kind {
+        EntryKind::Expr(stored_expr) => resolve_with_mode_recursive(
+            ctx,
+            stored_expr,
+            mode,
+            cache_key,
+            lookup,
+            same_requirement,
+            mark_session_propagated,
+            memo,
+            visiting,
+            requires,
+            used_cache,
+            ref_chain,
+            seen_hits,
+            cache_hits,
+        )?,
+        EntryKind::Eq { lhs, rhs } => {
+            let resolved_lhs = resolve_with_mode_recursive(
+                ctx,
+                lhs,
+                mode,
+                cache_key,
+                lookup,
+                same_requirement,
+                mark_session_propagated,
+                memo,
+                visiting,
+                requires,
+                used_cache,
+                ref_chain,
+                seen_hits,
+                cache_hits,
+            )?;
+            let resolved_rhs = resolve_with_mode_recursive(
+                ctx,
+                rhs,
+                mode,
+                cache_key,
+                lookup,
+                same_requirement,
+                mark_session_propagated,
+                memo,
+                visiting,
+                requires,
+                used_cache,
+                ref_chain,
+                seen_hits,
+                cache_hits,
+            )?;
+            ctx.add(Expr::Sub(resolved_lhs, resolved_rhs))
+        }
+    };
+
+    visiting.pop();
+    Ok(resolved)
 }
 
 fn resolve_with_lookup_recursive<F, V>(

@@ -289,7 +289,6 @@ dependencies = [
  "num-bigint",
  "num-rational",
  "serde",
- "smallvec",
  "tempfile",
 ]
 
