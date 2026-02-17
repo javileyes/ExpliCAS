@@ -64,8 +64,8 @@ impl Repl {
         match cas_parser::parse(expr_str, &mut self.core.engine.simplifier.context) {
             Ok(rhs_expr) => {
                 // Temporarily remove this binding to prevent self-reference in substitute
-                let old_binding = self.core.state.env.get(name);
-                self.core.state.env.unset(name);
+                let old_binding = self.core.state.env().get(name);
+                self.core.state.env_mut().unset(name);
 
                 // Substitute using current environment and session refs
                 let rhs_substituted = match cas_session::resolve_all_from_state(
@@ -90,7 +90,7 @@ impl Repl {
                 };
 
                 // Store the binding
-                self.core.state.env.set(name.to_string(), result);
+                self.core.state.env_mut().set(name.to_string(), result);
 
                 // Display confirmation (with mode indicator for lazy)
                 let display = cas_formatter::DisplayExpr {
@@ -119,7 +119,7 @@ impl Repl {
 
     /// Core logic for "vars" command
     fn handle_vars_command_core(&self) -> ReplReply {
-        let bindings = self.core.state.env.list();
+        let bindings = self.core.state.env().list();
         if bindings.is_empty() {
             reply_output("No variables defined.")
         } else {
@@ -146,8 +146,8 @@ impl Repl {
         let mut reply = ReplReply::new();
         if line == "clear" {
             // Clear all
-            let count = self.core.state.env.len();
-            self.core.state.env.clear_all();
+            let count = self.core.state.env().len();
+            self.core.state.env_mut().clear_all();
             if count == 0 {
                 reply.push(ReplMsg::output("No variables to clear."));
             } else {
@@ -158,7 +158,7 @@ impl Repl {
             let names: Vec<&str> = line[6..].split_whitespace().collect();
             let mut cleared = 0;
             for name in names {
-                if self.core.state.env.unset(name) {
+                if self.core.state.env_mut().unset(name) {
                     cleared += 1;
                 } else {
                     reply.push(ReplMsg::output(format!(
@@ -259,7 +259,7 @@ impl Repl {
         self.print_reply(reset_reply);
 
         // Also clear profile cache
-        self.core.state.profile_cache.clear();
+        self.core.state.profile_cache_mut().clear();
 
         self.print_reply(reply_output(
             "Profile cache cleared (will rebuild on next eval).",
@@ -279,7 +279,7 @@ impl Repl {
         match args.get(1).copied() {
             None | Some("status") => {
                 // Show cache status
-                let count = self.core.state.profile_cache.len();
+                let count = self.core.state.profile_cache().len();
                 let mut lines = vec![format!("Profile Cache: {} profiles cached", count)];
                 if count == 0 {
                     lines.push("  (empty - profiles will be built on first eval)".to_string());
@@ -289,7 +289,7 @@ impl Repl {
                 reply_output(lines.join("\n"))
             }
             Some("clear") => {
-                self.core.state.profile_cache.clear();
+                self.core.state.profile_cache_mut().clear();
                 reply_output("Profile cache cleared.")
             }
             Some(cmd) => {

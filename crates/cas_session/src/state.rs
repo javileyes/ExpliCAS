@@ -91,9 +91,9 @@ impl EvalStore for SessionEvalStore {
 #[derive(Default, Debug)]
 pub struct SessionState {
     store: SessionEvalStore,
-    pub env: Environment,
+    env: Environment,
     pub options: EvalOptions,
-    pub profile_cache: ProfileCache,
+    profile_cache: ProfileCache,
 }
 
 impl SessionState {
@@ -126,6 +126,22 @@ impl SessionState {
 
     pub fn store_mut(&mut self) -> &mut SessionStore {
         &mut self.store
+    }
+
+    pub fn env(&self) -> &Environment {
+        &self.env
+    }
+
+    pub fn env_mut(&mut self) -> &mut Environment {
+        &mut self.env
+    }
+
+    pub fn profile_cache(&self) -> &ProfileCache {
+        &self.profile_cache
+    }
+
+    pub fn profile_cache_mut(&mut self) -> &mut ProfileCache {
+        &mut self.profile_cache
     }
 
     /// Clear all session data (history + env bindings).
