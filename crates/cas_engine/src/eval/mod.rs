@@ -23,7 +23,6 @@ pub(crate) type ActionResult = (
 
 use crate::Simplifier;
 use cas_ast::{BuiltinFn, Equation, Expr, ExprId, RelOp};
-use cas_session_core::resolve::resolve_all_with_lookup_and_env;
 use cas_session_core::types::{EntryId, EntryKind, ResolveError};
 
 pub(crate) type SimplifyCacheKey =
@@ -35,9 +34,6 @@ pub(crate) type SimplifiedCache = cas_session_core::cache::SimplifiedCache<
 >;
 pub(crate) type CacheHitTrace =
     cas_session_core::cache::CacheHitTrace<crate::diagnostics::RequiredItem>;
-type ResolvedExpr = cas_session_core::cache::ResolvedExpr<crate::diagnostics::RequiredItem>;
-pub(crate) type SessionStore =
-    cas_session_core::store::SessionStore<crate::diagnostics::Diagnostics, SimplifiedCache>;
 
 /// The central Engine struct that wraps the core Simplifier and potentially other components.
 ///
@@ -69,7 +65,9 @@ pub trait EvalStore {
     fn update_simplified(&mut self, id: EntryId, cache: SimplifiedCache);
 }
 
-impl EvalStore for SessionStore {
+impl EvalStore
+    for cas_session_core::store::SessionStore<crate::diagnostics::Diagnostics, SimplifiedCache>
+{
     fn push(&mut self, kind: EntryKind, raw_input: String) -> EntryId {
         self.push(kind, raw_input)
     }
@@ -102,53 +100,6 @@ pub trait EvalSession {
         ctx: &mut cas_ast::Context,
         expr: ExprId,
     ) -> Result<(ExprId, crate::diagnostics::Diagnostics, Vec<CacheHitTrace>), ResolveError>;
-}
-
-/// Borrowed eval components adapter used to run the engine without a
-/// monolithic state container.
-struct EvalSessionComponents<'a> {
-    store: &'a mut SessionStore,
-    env: &'a cas_session_core::env::Environment,
-    options: &'a crate::options::EvalOptions,
-    profile_cache: &'a mut crate::profile_cache::ProfileCache,
-}
-
-impl EvalSession for EvalSessionComponents<'_> {
-    type Store = SessionStore;
-
-    fn store_mut(&mut self) -> &mut Self::Store {
-        self.store
-    }
-
-    fn options(&self) -> &crate::options::EvalOptions {
-        self.options
-    }
-
-    fn profile_cache_mut(&mut self) -> &mut crate::profile_cache::ProfileCache {
-        self.profile_cache
-    }
-
-    fn resolve_all(
-        &self,
-        ctx: &mut cas_ast::Context,
-        expr: ExprId,
-    ) -> Result<ExprId, ResolveError> {
-        resolve_all(ctx, expr, self.store, self.env)
-    }
-
-    fn resolve_all_with_diagnostics(
-        &self,
-        ctx: &mut cas_ast::Context,
-        expr: ExprId,
-    ) -> Result<(ExprId, crate::diagnostics::Diagnostics, Vec<CacheHitTrace>), ResolveError> {
-        resolve_all_with_diagnostics(
-            ctx,
-            expr,
-            self.store,
-            self.env,
-            self.options.shared.semantics.domain_mode,
-        )
-    }
 }
 
 impl Engine {
@@ -214,25 +165,6 @@ impl Engine {
         }
 
         effective
-    }
-
-    /// Evaluate using explicit session components instead of a monolithic
-    /// session struct. This is the stateless-friendly API for orchestrators.
-    pub fn eval_with_components(
-        &mut self,
-        store: &mut SessionStore,
-        env: &cas_session_core::env::Environment,
-        options: &crate::options::EvalOptions,
-        profile_cache: &mut crate::profile_cache::ProfileCache,
-        req: EvalRequest,
-    ) -> Result<EvalOutput, anyhow::Error> {
-        let mut session = EvalSessionComponents {
-            store,
-            env,
-            options,
-            profile_cache,
-        };
-        self.eval(&mut session, req)
     }
 }
 
@@ -393,82 +325,4 @@ pub(crate) fn build_cache_hit_step(
     step.importance = crate::step::ImportanceLevel::Medium;
     step.category = crate::step::StepCategory::Substitute;
     Some(step)
-}
-
-fn resolve_all(
-    ctx: &mut cas_ast::Context,
-    expr: ExprId,
-    store: &SessionStore,
-    env: &cas_session_core::env::Environment,
-) -> Result<ExprId, ResolveError> {
-    let mut lookup = |id: EntryId| store.get(id).map(|entry| entry.kind.clone());
-    resolve_all_with_lookup_and_env(ctx, expr, &mut lookup, env)
-}
-
-fn resolve_all_with_diagnostics(
-    ctx: &mut cas_ast::Context,
-    expr: ExprId,
-    store: &SessionStore,
-    env: &cas_session_core::env::Environment,
-    domain_mode: crate::domain::DomainMode,
-) -> Result<(ExprId, crate::diagnostics::Diagnostics, Vec<CacheHitTrace>), ResolveError> {
-    let cache_key = SimplifyCacheKey::from_context(domain_mode);
-    let resolved = resolve_session_refs_with_mode(
-        ctx,
-        expr,
-        store,
-        cas_session_core::types::RefMode::PreferSimplified,
-        &cache_key,
-    )?;
-
-    let mut inherited = crate::diagnostics::Diagnostics::new();
-    for item in resolved.requires {
-        inherited.push_required(
-            item.cond,
-            crate::diagnostics::RequireOrigin::SessionPropagated,
-        );
-    }
-
-    let fully_resolved = cas_session_core::env::substitute(ctx, env, resolved.expr);
-    Ok((fully_resolved, inherited, resolved.cache_hits))
-}
-
-fn resolve_session_refs_with_mode(
-    ctx: &mut cas_ast::Context,
-    expr: ExprId,
-    store: &SessionStore,
-    mode: cas_session_core::types::RefMode,
-    cache_key: &SimplifyCacheKey,
-) -> Result<ResolvedExpr, ResolveError> {
-    let mut lookup = |id: EntryId| {
-        let entry = store.get(id)?;
-        Some(cas_session_core::resolve::ModeEntry {
-            kind: entry.kind.clone(),
-            requires: entry.diagnostics.requires.clone(),
-            cache: entry.simplified.as_ref().map(|cache| {
-                cas_session_core::resolve::ModeCacheEntry {
-                    key: cache.key.clone(),
-                    expr: cache.expr,
-                    requires: cache.requires.clone(),
-                }
-            }),
-        })
-    };
-    let mut same_requirement =
-        |lhs: &crate::diagnostics::RequiredItem, rhs: &crate::diagnostics::RequiredItem| {
-            lhs.cond == rhs.cond
-        };
-    let mut mark_session_propagated = |item: &mut crate::diagnostics::RequiredItem| {
-        item.merge_origin(crate::diagnostics::RequireOrigin::SessionPropagated);
-    };
-
-    cas_session_core::resolve::resolve_session_refs_with_mode_lookup(
-        ctx,
-        expr,
-        mode,
-        cache_key,
-        &mut lookup,
-        &mut same_requirement,
-        &mut mark_session_propagated,
-    )
 }
