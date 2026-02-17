@@ -23,7 +23,7 @@ pub(crate) type ActionResult = (
 
 use crate::Simplifier;
 use cas_ast::{BuiltinFn, Equation, Expr, ExprId, RelOp};
-use cas_session_core::types::{EntryId, EntryKind, ResolveError};
+use cas_session_core::types::{EntryId, ResolveError};
 
 pub(crate) type SimplifyCacheKey =
     cas_session_core::cache::SimplifyCacheKey<crate::domain::DomainMode>;
@@ -59,7 +59,12 @@ pub struct Engine {
 /// Session abstraction for `Engine::eval`, allowing callers to provide any
 /// state container that exposes the required eval components.
 pub trait EvalStore {
-    fn push(&mut self, kind: EntryKind, raw_input: String) -> EntryId;
+    fn push_raw_input(
+        &mut self,
+        ctx: &cas_ast::Context,
+        parsed: ExprId,
+        raw_input: String,
+    ) -> EntryId;
     fn touch_cached(&mut self, entry_id: EntryId);
     fn update_diagnostics(&mut self, id: EntryId, diagnostics: crate::diagnostics::Diagnostics);
     fn update_simplified(&mut self, id: EntryId, cache: SimplifiedCache);
@@ -68,7 +73,17 @@ pub trait EvalStore {
 impl EvalStore
     for cas_session_core::store::SessionStore<crate::diagnostics::Diagnostics, SimplifiedCache>
 {
-    fn push(&mut self, kind: EntryKind, raw_input: String) -> EntryId {
+    fn push_raw_input(
+        &mut self,
+        ctx: &cas_ast::Context,
+        parsed: ExprId,
+        raw_input: String,
+    ) -> EntryId {
+        let kind = if let Some((lhs, rhs)) = cas_ast::eq::unwrap_eq(ctx, parsed) {
+            cas_session_core::types::EntryKind::Eq { lhs, rhs }
+        } else {
+            cas_session_core::types::EntryKind::Expr(parsed)
+        };
         self.push(kind, raw_input)
     }
 
@@ -324,12 +339,4 @@ pub(crate) fn build_cache_hit_step(
     step.importance = crate::step::ImportanceLevel::Medium;
     step.category = crate::step::StepCategory::Substitute;
     Some(step)
-}
-
-pub(crate) fn infer_entry_kind(ctx: &cas_ast::Context, parsed: ExprId) -> EntryKind {
-    if let Some((lhs, rhs)) = cas_ast::eq::unwrap_eq(ctx, parsed) {
-        EntryKind::Eq { lhs, rhs }
-    } else {
-        EntryKind::Expr(parsed)
-    }
 }

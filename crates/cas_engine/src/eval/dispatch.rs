@@ -76,8 +76,11 @@ impl Engine {
 
         // 2. Auto-store raw + parsed (unresolved)
         let stored_id = if req.auto_store {
-            let kind = infer_entry_kind(&self.simplifier.context, req.parsed);
-            Some(session.store_mut().push(kind, req.raw_input.clone()))
+            Some(session.store_mut().push_raw_input(
+                &self.simplifier.context,
+                req.parsed,
+                req.raw_input.clone(),
+            ))
         } else {
             None
         };

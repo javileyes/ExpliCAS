@@ -210,7 +210,17 @@ impl JsonStore {
 }
 
 impl EvalStore for JsonStore {
-    fn push(&mut self, kind: EntryKind, raw_input: String) -> EntryId {
+    fn push_raw_input(
+        &mut self,
+        ctx: &cas_ast::Context,
+        parsed: ExprId,
+        raw_input: String,
+    ) -> EntryId {
+        let kind = if let Some((lhs, rhs)) = cas_ast::eq::unwrap_eq(ctx, parsed) {
+            EntryKind::Eq { lhs, rhs }
+        } else {
+            EntryKind::Expr(parsed)
+        };
         self.0.push(kind, raw_input)
     }
 
