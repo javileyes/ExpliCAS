@@ -153,7 +153,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 EvalRequest {
                     raw_input: args.expr.clone(),
                     parsed: eq_expr,
-                    kind: cas_engine::EntryKind::Eq {
+                    kind: cas_session::EntryKind::Eq {
                         lhs: eq.lhs,
                         rhs: eq.rhs,
                     },
@@ -169,7 +169,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 EvalRequest {
                     raw_input: args.expr.clone(),
                     parsed: eq_expr,
-                    kind: cas_engine::EntryKind::Eq {
+                    kind: cas_session::EntryKind::Eq {
                         lhs: expr,
                         rhs: zero,
                     },
@@ -186,7 +186,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
         EvalRequest {
             raw_input: args.expr.clone(),
             parsed,
-            kind: cas_engine::EntryKind::Expr(parsed),
+            kind: cas_session::EntryKind::Expr(parsed),
             action: EvalAction::Limit { var, approach },
             auto_store: args.session.is_some(),
         }
@@ -210,7 +210,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 EvalRequest {
                     raw_input: args.expr.clone(),
                     parsed: eq_expr,
-                    kind: cas_engine::EntryKind::Eq {
+                    kind: cas_session::EntryKind::Eq {
                         lhs: eq.lhs,
                         rhs: eq.rhs,
                     },
@@ -223,7 +223,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 EvalRequest {
                     raw_input: args.expr.clone(),
                     parsed,
-                    kind: cas_engine::EntryKind::Expr(parsed),
+                    kind: cas_session::EntryKind::Expr(parsed),
                     action: EvalAction::Simplify,
                     auto_store: args.session.is_some(),
                 }
@@ -243,7 +243,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
     // Generate LaTeX for input expression
     // For equations, render as "lhs = rhs" instead of "Equal(lhs, rhs)"
     let input_latex = Some(match &input_kind {
-        cas_engine::EntryKind::Eq { lhs, rhs } => {
+        cas_session::EntryKind::Eq { lhs, rhs } => {
             let lhs_latex = cas_formatter::LaTeXExpr {
                 context: &engine.simplifier.context,
                 id: *lhs,
@@ -256,7 +256,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
             .to_latex();
             format!("{} = {}", lhs_latex, rhs_latex)
         }
-        cas_engine::EntryKind::Expr(id) => cas_formatter::LaTeXExpr {
+        cas_session::EntryKind::Expr(id) => cas_formatter::LaTeXExpr {
             context: &engine.simplifier.context,
             id: *id,
         }
@@ -664,13 +664,13 @@ fn build_wire_reply(
 fn load_or_new_session(
     path: &Option<PathBuf>,
     key: &SimplifyCacheKey,
-) -> (cas_engine::Engine, cas_engine::SessionState) {
+) -> (cas_engine::Engine, cas_session::SessionState) {
     let Some(path) = path else {
-        return (cas_engine::Engine::new(), cas_engine::SessionState::new());
+        return (cas_engine::Engine::new(), cas_session::SessionState::new());
     };
 
     if !path.exists() {
-        return (cas_engine::Engine::new(), cas_engine::SessionState::new());
+        return (cas_engine::Engine::new(), cas_session::SessionState::new());
     }
 
     match SessionSnapshot::load(path) {
@@ -678,19 +678,19 @@ fn load_or_new_session(
             if snap.is_compatible(key) {
                 let (ctx, store) = snap.into_parts();
                 let engine = cas_engine::Engine::with_context(ctx);
-                let state = cas_engine::SessionState::from_store(store);
+                let state = cas_session::SessionState::from_store(store);
                 (engine, state)
             } else {
-                (cas_engine::Engine::new(), cas_engine::SessionState::new())
+                (cas_engine::Engine::new(), cas_session::SessionState::new())
             }
         }
-        Err(_) => (cas_engine::Engine::new(), cas_engine::SessionState::new()),
+        Err(_) => (cas_engine::Engine::new(), cas_session::SessionState::new()),
     }
 }
 
 fn save_session(
     engine: &cas_engine::Engine,
-    state: &cas_engine::SessionState,
+    state: &cas_session::SessionState,
     path: &std::path::Path,
     key: &SimplifyCacheKey,
 ) {

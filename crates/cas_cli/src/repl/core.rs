@@ -3,7 +3,8 @@
 //! ReplCore contains the pure computational logic of the REPL,
 //! returning structured messages instead of printing directly.
 
-use cas_engine::{Engine, PipelineStats, SessionState, SimplifyOptions};
+use cas_engine::{Engine, PipelineStats, SimplifyOptions};
+use cas_session::SessionState;
 
 /// Core REPL logic - pure computation without I/O.
 ///

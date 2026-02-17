@@ -8,9 +8,10 @@ use std::time::Instant;
 use anyhow::Result;
 use clap::Args;
 
-use cas_engine::{Engine, EvalAction, EvalRequest, EvalResult, SessionState};
+use cas_engine::{Engine, EvalAction, EvalRequest, EvalResult};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
+use cas_session::SessionState;
 
 use crate::json_types::{
     AssumptionDto, ConditionDto, EngineInfo, ExprDto, OutputEnvelope, RequestInfo, RequestOptions,
@@ -86,7 +87,7 @@ fn run_inner(args: &EnvelopeJsonArgs) -> Result<OutputEnvelope> {
     let req = EvalRequest {
         raw_input: args.expr.clone(),
         parsed,
-        kind: cas_engine::EntryKind::Expr(parsed),
+        kind: cas_session::EntryKind::Expr(parsed),
         action: EvalAction::Simplify,
         auto_store: false,
     };

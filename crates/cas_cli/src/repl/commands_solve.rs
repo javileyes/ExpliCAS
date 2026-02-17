@@ -520,9 +520,9 @@ impl Repl {
 
     fn handle_solve_core(&mut self, line: &str, verbosity: Verbosity) -> ReplReply {
         use cas_engine::eval::{EvalAction, EvalRequest, EvalResult};
-        use cas_engine::EntryKind;
         use cas_formatter::DisplayExpr;
         use cas_parser::Statement;
+        use cas_session::EntryKind;
 
         let mut lines: Vec<String> = Vec::new();
 

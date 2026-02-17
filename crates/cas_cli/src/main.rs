@@ -526,7 +526,7 @@ fn run_eval_text(args: &EvalArgs) {
     let req = EvalRequest {
         raw_input: args.expr.clone(),
         parsed,
-        kind: cas_engine::EntryKind::Expr(parsed),
+        kind: cas_session::EntryKind::Expr(parsed),
         action: EvalAction::Simplify,
         auto_store: args.session.is_some(), // Store if using persistent session
     };
@@ -584,15 +584,15 @@ fn run_eval_text(args: &EvalArgs) {
 fn load_or_new_session(
     path: &Option<std::path::PathBuf>,
     key: &cas_session::SimplifyCacheKey,
-) -> (cas_engine::Engine, cas_engine::SessionState) {
+) -> (cas_engine::Engine, cas_session::SessionState) {
     use cas_session::SessionSnapshot;
 
     let Some(path) = path else {
-        return (cas_engine::Engine::new(), cas_engine::SessionState::new());
+        return (cas_engine::Engine::new(), cas_session::SessionState::new());
     };
 
     if !path.exists() {
-        return (cas_engine::Engine::new(), cas_engine::SessionState::new());
+        return (cas_engine::Engine::new(), cas_session::SessionState::new());
     }
 
     match SessionSnapshot::load(path) {
@@ -600,16 +600,16 @@ fn load_or_new_session(
             if snap.is_compatible(key) {
                 let (ctx, store) = snap.into_parts();
                 let engine = cas_engine::Engine::with_context(ctx);
-                let state = cas_engine::SessionState::from_store(store);
+                let state = cas_session::SessionState::from_store(store);
                 (engine, state)
             } else {
                 eprintln!("Session snapshot incompatible, starting fresh");
-                (cas_engine::Engine::new(), cas_engine::SessionState::new())
+                (cas_engine::Engine::new(), cas_session::SessionState::new())
             }
         }
         Err(e) => {
             eprintln!("Warning: Failed to load session ({}), starting fresh", e);
-            (cas_engine::Engine::new(), cas_engine::SessionState::new())
+            (cas_engine::Engine::new(), cas_session::SessionState::new())
         }
     }
 }
@@ -617,7 +617,7 @@ fn load_or_new_session(
 /// Save session to snapshot file
 fn save_session(
     engine: &cas_engine::Engine,
-    state: &cas_engine::SessionState,
+    state: &cas_session::SessionState,
     path: &std::path::Path,
     key: &cas_session::SimplifyCacheKey,
 ) -> Result<(), cas_session::SnapshotError> {

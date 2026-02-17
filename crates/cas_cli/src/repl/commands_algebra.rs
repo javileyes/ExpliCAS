@@ -63,12 +63,12 @@ impl Repl {
         let mut lines = vec![format!("Session history ({} entries):", entries.len())];
         for entry in entries {
             let type_indicator = match &entry.kind {
-                cas_engine::EntryKind::Expr(_) => "Expr",
-                cas_engine::EntryKind::Eq { .. } => "Eq  ",
+                cas_session::EntryKind::Expr(_) => "Expr",
+                cas_session::EntryKind::Eq { .. } => "Eq  ",
             };
             // Show simplified form if possible
             let display = match &entry.kind {
-                cas_engine::EntryKind::Expr(expr_id) => {
+                cas_session::EntryKind::Expr(expr_id) => {
                     format!(
                         "{}",
                         cas_formatter::DisplayExpr {
@@ -77,7 +77,7 @@ impl Repl {
                         }
                     )
                 }
-                cas_engine::EntryKind::Eq { lhs, rhs } => {
+                cas_session::EntryKind::Eq { lhs, rhs } => {
                     format!(
                         "{} = {}",
                         cas_formatter::DisplayExpr {
@@ -125,7 +125,7 @@ impl Repl {
                     ];
 
                     match &kind {
-                        cas_engine::EntryKind::Expr(expr_id) => {
+                        cas_session::EntryKind::Expr(expr_id) => {
                             // Show parsed expression
                             lines.push(format!(
                                 "  Parsed:     {}",
@@ -158,7 +158,7 @@ impl Repl {
                             let req = cas_engine::EvalRequest {
                                 raw_input: raw_text.clone(),
                                 parsed: *expr_id,
-                                kind: cas_engine::EntryKind::Expr(*expr_id),
+                                kind: cas_session::EntryKind::Expr(*expr_id),
                                 action: cas_engine::EvalAction::Simplify,
                                 auto_store: false,
                             };
@@ -221,7 +221,7 @@ impl Repl {
                                 }
                             }
                         }
-                        cas_engine::EntryKind::Eq { lhs, rhs } => {
+                        cas_session::EntryKind::Eq { lhs, rhs } => {
                             // Show LHS and RHS
                             lines.push(format!(
                                 "  LHS:        {}",

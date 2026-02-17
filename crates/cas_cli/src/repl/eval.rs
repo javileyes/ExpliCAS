@@ -12,8 +12,8 @@ impl Repl {
         use cas_ast::root_style::ParseStyleSignals;
 
         use cas_engine::eval::{EvalAction, EvalRequest, EvalResult};
-        use cas_engine::EntryKind;
         use cas_parser::Statement;
+        use cas_session::EntryKind;
 
         let mut reply: ReplReply = vec![];
 

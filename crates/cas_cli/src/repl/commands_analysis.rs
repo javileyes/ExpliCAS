@@ -284,7 +284,7 @@ impl Repl {
             // Use engine.eval like handle_eval does - this ensures the same pipeline
             // (Core → Transform → Rationalize → PostCleanup) is used
             use cas_engine::eval::{EvalAction, EvalRequest, EvalResult};
-            use cas_engine::EntryKind;
+            use cas_session::EntryKind;
 
             // Force collect_steps for timeline
             let was_collecting = self.core.engine.simplifier.collect_steps();
