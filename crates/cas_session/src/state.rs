@@ -5,7 +5,7 @@ use cas_engine::options::EvalOptions;
 use cas_engine::profile_cache::ProfileCache;
 
 use crate::{
-    CacheHitTrace as SessionCacheHitTrace, Environment, ResolveError, SessionSnapshot,
+    snapshot::SessionSnapshot, CacheHitTrace as SessionCacheHitTrace, Environment, ResolveError,
     SessionStore, SimplifyCacheKey, SnapshotError,
 };
 
@@ -132,7 +132,7 @@ impl SessionState {
     }
 
     /// Restore context + state from a persisted snapshot.
-    pub fn from_snapshot(snapshot: SessionSnapshot) -> (cas_ast::Context, Self) {
+    fn from_snapshot(snapshot: SessionSnapshot) -> (cas_ast::Context, Self) {
         let (context, store) = snapshot.into_parts();
         (context, Self::from_store(store))
     }
@@ -198,11 +198,7 @@ impl SessionState {
     }
 
     /// Build a serializable snapshot from the current state.
-    pub fn snapshot(
-        &self,
-        context: &cas_ast::Context,
-        cache_key: SimplifyCacheKey,
-    ) -> SessionSnapshot {
+    fn snapshot(&self, context: &cas_ast::Context, cache_key: SimplifyCacheKey) -> SessionSnapshot {
         SessionSnapshot::new(context, &self.store, cache_key)
     }
 

@@ -21,7 +21,7 @@ pub type SessionStore =
     cas_session_core::store::SessionStore<cas_engine::diagnostics::Diagnostics, SimplifiedCache>;
 pub use cas_session_core::types::{CacheConfig, EntryId, EntryKind, RefMode, ResolveError};
 pub use env::{is_reserved, substitute, substitute_with_shadow, Environment};
-pub use snapshot::{SessionSnapshot, SnapshotError};
+pub use snapshot::SnapshotError;
 pub use state::{SessionEvalStore, SessionState};
 
 /// Resolve all `Expr::SessionRef` in an expression tree.
