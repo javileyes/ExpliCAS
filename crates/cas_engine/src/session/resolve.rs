@@ -1,6 +1,7 @@
 //! Session reference resolution.
 
 use cas_ast::ExprId;
+use cas_session_core::resolve::{parse_legacy_session_ref, rewrite_session_refs};
 pub use cas_session_core::types::ResolveError;
 use std::collections::{HashMap, HashSet};
 
@@ -129,16 +130,11 @@ fn resolve_with_mode_recursive(
 
         // Handle Variable that might be a #N reference (legacy parsing)
         Expr::Variable(sym_id) => {
-            let name = ctx.sym_name(sym_id);
-            if name.starts_with('#') && name.len() > 1 && name[1..].chars().all(char::is_numeric) {
-                if let Ok(id) = name[1..].parse::<u64>() {
-                    resolve_entry_with_mode(
-                        ctx, expr, id, store, mode, cache_key, memo, visiting, requires,
-                        used_cache, ref_chain, seen_hits, cache_hits,
-                    )?
-                } else {
-                    expr
-                }
+            if let Some(id) = parse_legacy_session_ref(ctx.sym_name(sym_id)) {
+                resolve_entry_with_mode(
+                    ctx, expr, id, store, mode, cache_key, memo, visiting, requires, used_cache,
+                    ref_chain, seen_hits, cache_hits,
+                )?
             } else {
                 expr
             }
@@ -410,132 +406,9 @@ fn resolve_recursive(
     visiting: &mut HashSet<EntryId>,
     inherited: &mut crate::diagnostics::Diagnostics,
 ) -> Result<ExprId, ResolveError> {
-    use cas_ast::Expr;
-
-    let node = ctx.get(expr).clone();
-
-    match node {
-        Expr::SessionRef(id) => resolve_session_id(ctx, id, store, cache, visiting, inherited),
-        Expr::Variable(sym_id) => {
-            let name = ctx.sym_name(sym_id);
-            if name.starts_with('#') && name.len() > 1 && name[1..].chars().all(char::is_numeric) {
-                if let Ok(id) = name[1..].parse::<u64>() {
-                    return resolve_session_id(ctx, id, store, cache, visiting, inherited);
-                }
-            }
-            Ok(expr)
-        }
-
-        // Binary operators - recurse into children
-        Expr::Add(l, r) => {
-            let new_l = resolve_recursive(ctx, l, store, cache, visiting, inherited)?;
-            let new_r = resolve_recursive(ctx, r, store, cache, visiting, inherited)?;
-            if new_l == l && new_r == r {
-                Ok(expr)
-            } else {
-                Ok(ctx.add(Expr::Add(new_l, new_r)))
-            }
-        }
-        Expr::Sub(l, r) => {
-            let new_l = resolve_recursive(ctx, l, store, cache, visiting, inherited)?;
-            let new_r = resolve_recursive(ctx, r, store, cache, visiting, inherited)?;
-            if new_l == l && new_r == r {
-                Ok(expr)
-            } else {
-                Ok(ctx.add(Expr::Sub(new_l, new_r)))
-            }
-        }
-        Expr::Mul(l, r) => {
-            let new_l = resolve_recursive(ctx, l, store, cache, visiting, inherited)?;
-            let new_r = resolve_recursive(ctx, r, store, cache, visiting, inherited)?;
-            if new_l == l && new_r == r {
-                Ok(expr)
-            } else {
-                Ok(ctx.add(Expr::Mul(new_l, new_r)))
-            }
-        }
-        Expr::Div(l, r) => {
-            let new_l = resolve_recursive(ctx, l, store, cache, visiting, inherited)?;
-            let new_r = resolve_recursive(ctx, r, store, cache, visiting, inherited)?;
-            if new_l == l && new_r == r {
-                Ok(expr)
-            } else {
-                Ok(ctx.add(Expr::Div(new_l, new_r)))
-            }
-        }
-        Expr::Pow(b, e) => {
-            let new_b = resolve_recursive(ctx, b, store, cache, visiting, inherited)?;
-            let new_e = resolve_recursive(ctx, e, store, cache, visiting, inherited)?;
-            if new_b == b && new_e == e {
-                Ok(expr)
-            } else {
-                Ok(ctx.add(Expr::Pow(new_b, new_e)))
-            }
-        }
-
-        // Unary
-        Expr::Neg(e) => {
-            let new_e = resolve_recursive(ctx, e, store, cache, visiting, inherited)?;
-            if new_e == e {
-                Ok(expr)
-            } else {
-                Ok(ctx.add(Expr::Neg(new_e)))
-            }
-        }
-
-        // Function - recurse into args
-        Expr::Function(name, args) => {
-            let mut changed = false;
-            let mut new_args = Vec::with_capacity(args.len());
-            for arg in &args {
-                let new_arg = resolve_recursive(ctx, *arg, store, cache, visiting, inherited)?;
-                if new_arg != *arg {
-                    changed = true;
-                }
-                new_args.push(new_arg);
-            }
-            if changed {
-                Ok(ctx.add(Expr::Function(name, new_args)))
-            } else {
-                Ok(expr)
-            }
-        }
-
-        // Matrix - recurse into elements
-        Expr::Matrix { rows, cols, data } => {
-            let mut changed = false;
-            let mut new_data = Vec::with_capacity(data.len());
-            for elem in &data {
-                let new_elem = resolve_recursive(ctx, *elem, store, cache, visiting, inherited)?;
-                if new_elem != *elem {
-                    changed = true;
-                }
-                new_data.push(new_elem);
-            }
-            if changed {
-                Ok(ctx.add(Expr::Matrix {
-                    rows,
-                    cols,
-                    data: new_data,
-                }))
-            } else {
-                Ok(expr)
-            }
-        }
-
-        // Leaf nodes - no change needed
-        Expr::Number(_) | Expr::Constant(_) => Ok(expr),
-
-        // Hold: recurse into inner
-        Expr::Hold(inner) => {
-            let new_inner = resolve_recursive(ctx, inner, store, cache, visiting, inherited)?;
-            if new_inner == inner {
-                Ok(expr)
-            } else {
-                Ok(ctx.add(Expr::Hold(new_inner)))
-            }
-        }
-    }
+    rewrite_session_refs(ctx, expr, &mut |ctx, _ref_expr_id, id| {
+        resolve_session_id(ctx, id, store, cache, visiting, inherited)
+    })
 }
 
 fn resolve_session_id(
