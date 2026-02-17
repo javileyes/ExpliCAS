@@ -663,9 +663,8 @@ fn load_or_new_session(
     match SessionSnapshot::load(path) {
         Ok(snap) => {
             if snap.is_compatible(key) {
-                let (ctx, store) = snap.into_parts();
+                let (ctx, state) = cas_session::SessionState::from_snapshot(snap);
                 let engine = cas_solver::Engine::with_context(ctx);
-                let state = cas_session::SessionState::from_store(store);
                 (engine, state)
             } else {
                 (cas_solver::Engine::new(), cas_session::SessionState::new())
@@ -681,8 +680,7 @@ fn save_session(
     path: &std::path::Path,
     key: &SimplifyCacheKey,
 ) {
-    let snap = SessionSnapshot::new(&engine.simplifier.context, state.store(), key.clone());
-    let _ = snap.save_atomic(path); // Ignore save errors in JSON mode
+    let _ = state.save_snapshot(&engine.simplifier.context, path, key.clone()); // Ignore save errors in JSON mode
 }
 
 /// Convert engine steps to JSON format

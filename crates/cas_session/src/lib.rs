@@ -144,7 +144,7 @@ pub fn resolve_all_from_state(
     expr: cas_ast::ExprId,
     state: &SessionState,
 ) -> Result<cas_ast::ExprId, ResolveError> {
-    resolve_all(ctx, expr, state.store(), state.env())
+    state.resolve_state_refs(ctx, expr)
 }
 
 /// Resolve references and return inherited diagnostics + cache hit traces.
@@ -160,11 +160,5 @@ pub fn resolve_all_with_diagnostics_from_state(
     ),
     ResolveError,
 > {
-    resolve_all_with_diagnostics(
-        ctx,
-        expr,
-        state.store(),
-        state.env(),
-        state.options().shared.semantics.domain_mode,
-    )
+    state.resolve_state_refs_with_diagnostics(ctx, expr)
 }

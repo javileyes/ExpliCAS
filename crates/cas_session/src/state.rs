@@ -4,7 +4,10 @@ use cas_engine::eval::{EvalSession, EvalStore};
 use cas_engine::options::EvalOptions;
 use cas_engine::profile_cache::ProfileCache;
 
-use crate::{CacheHitTrace as SessionCacheHitTrace, Environment, ResolveError, SessionStore};
+use crate::{
+    CacheHitTrace as SessionCacheHitTrace, Environment, ResolveError, SessionSnapshot,
+    SessionStore, SimplifyCacheKey, SnapshotError,
+};
 
 fn map_resolve_error(err: ResolveError) -> cas_engine::eval::EvalResolveError {
     match err {
@@ -128,16 +131,22 @@ impl SessionState {
         }
     }
 
-    pub fn store(&self) -> &SessionStore {
-        &self.store
-    }
-
-    pub fn store_mut(&mut self) -> &mut SessionStore {
-        &mut self.store
+    /// Restore context + state from a persisted snapshot.
+    pub fn from_snapshot(snapshot: SessionSnapshot) -> (cas_ast::Context, Self) {
+        let (context, store) = snapshot.into_parts();
+        (context, Self::from_store(store))
     }
 
     pub fn history_entries(&self) -> &[crate::Entry] {
         self.store.list()
+    }
+
+    pub fn history_push<S: Into<String>>(
+        &mut self,
+        kind: crate::EntryKind,
+        raw_text: S,
+    ) -> crate::EntryId {
+        self.store.push(kind, raw_text.into())
     }
 
     pub fn history_get(&self, id: crate::EntryId) -> Option<&crate::Entry> {
@@ -150,6 +159,49 @@ impl SessionState {
 
     pub fn history_remove(&mut self, ids: &[crate::EntryId]) {
         self.store.remove(ids);
+    }
+
+    /// Resolve session refs (`#N`) and environment bindings with current state.
+    pub fn resolve_state_refs(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+    ) -> Result<ExprId, ResolveError> {
+        crate::resolve_all(ctx, expr, &self.store, &self.env)
+    }
+
+    /// Resolve refs with inherited diagnostics and cache hit traces.
+    pub fn resolve_state_refs_with_diagnostics(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+    ) -> Result<(ExprId, Diagnostics, Vec<SessionCacheHitTrace>), ResolveError> {
+        crate::resolve_all_with_diagnostics(
+            ctx,
+            expr,
+            &self.store,
+            &self.env,
+            self.options.shared.semantics.domain_mode,
+        )
+    }
+
+    /// Build a serializable snapshot from the current state.
+    pub fn snapshot(
+        &self,
+        context: &cas_ast::Context,
+        cache_key: SimplifyCacheKey,
+    ) -> SessionSnapshot {
+        SessionSnapshot::new(context, &self.store, cache_key)
+    }
+
+    /// Persist the current state atomically to disk.
+    pub fn save_snapshot(
+        &self,
+        context: &cas_ast::Context,
+        path: &std::path::Path,
+        cache_key: SimplifyCacheKey,
+    ) -> Result<(), SnapshotError> {
+        self.snapshot(context, cache_key).save_atomic(path)
     }
 
     pub fn get_binding(&self, name: &str) -> Option<ExprId> {
@@ -188,10 +240,6 @@ impl SessionState {
         self.profile_cache.clear();
     }
 
-    pub(crate) fn env(&self) -> &Environment {
-        &self.env
-    }
-
     /// Clear all session data (history + env bindings).
     /// Note: options are intentionally preserved.
     pub fn clear(&mut self) {
@@ -220,7 +268,8 @@ impl EvalSession for SessionState {
         ctx: &mut cas_ast::Context,
         expr: ExprId,
     ) -> Result<ExprId, cas_engine::eval::EvalResolveError> {
-        crate::resolve_all(ctx, expr, &self.store, &self.env).map_err(map_resolve_error)
+        self.resolve_state_refs(ctx, expr)
+            .map_err(map_resolve_error)
     }
 
     fn resolve_all_with_diagnostics(
@@ -231,20 +280,14 @@ impl EvalSession for SessionState {
         (ExprId, Diagnostics, Vec<cas_engine::eval::CacheHitTrace>),
         cas_engine::eval::EvalResolveError,
     > {
-        crate::resolve_all_with_diagnostics(
-            ctx,
-            expr,
-            &self.store,
-            &self.env,
-            self.options.shared.semantics.domain_mode,
-        )
-        .map(|(resolved, diagnostics, cache_hits)| {
-            (
-                resolved,
-                diagnostics,
-                cache_hits.into_iter().map(map_cache_hit_trace).collect(),
-            )
-        })
-        .map_err(map_resolve_error)
+        self.resolve_state_refs_with_diagnostics(ctx, expr)
+            .map(|(resolved, diagnostics, cache_hits)| {
+                (
+                    resolved,
+                    diagnostics,
+                    cache_hits.into_iter().map(map_cache_hit_trace).collect(),
+                )
+            })
+            .map_err(map_resolve_error)
     }
 }

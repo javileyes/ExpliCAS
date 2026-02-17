@@ -596,9 +596,8 @@ fn load_or_new_session(
     match SessionSnapshot::load(path) {
         Ok(snap) => {
             if snap.is_compatible(key) {
-                let (ctx, store) = snap.into_parts();
+                let (ctx, state) = cas_session::SessionState::from_snapshot(snap);
                 let engine = cas_solver::Engine::with_context(ctx);
-                let state = cas_session::SessionState::from_store(store);
                 (engine, state)
             } else {
                 eprintln!("Session snapshot incompatible, starting fresh");
@@ -619,10 +618,7 @@ fn save_session(
     path: &std::path::Path,
     key: &cas_session::SimplifyCacheKey,
 ) -> Result<(), cas_session::SnapshotError> {
-    use cas_session::SessionSnapshot;
-
-    let snap = SessionSnapshot::new(&engine.simplifier.context, state.store(), key.clone());
-    snap.save_atomic(path)
+    state.save_snapshot(&engine.simplifier.context, path, key.clone())
 }
 
 /// Convert BudgetPreset enum to string for JSON args
