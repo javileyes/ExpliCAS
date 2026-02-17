@@ -2,7 +2,7 @@ use crate::env::Environment;
 use crate::options::EvalOptions;
 use crate::poly_store::PolyStore;
 use crate::profile_cache::ProfileCache;
-use crate::session::{resolve_session_refs, ResolveError, SessionStore};
+use crate::session::{CacheHitTrace, ResolveError, SessionStore};
 use cas_ast::{Context, ExprId};
 
 /// bundled session state for portability (GUI/Web/CLI)
@@ -57,13 +57,7 @@ impl SessionState {
     /// 1. Resolve session references (#id) -> ExprId
     /// 2. Substitute environment variables (x=5) -> ExprId
     pub fn resolve_all(&self, ctx: &mut Context, expr: ExprId) -> Result<ExprId, ResolveError> {
-        // 1. Resolve session refs (#1, #2...)
-        let expr_with_refs = resolve_session_refs(ctx, expr, &self.store)?;
-
-        // 2. Substitute variables from environment
-        let fully_resolved = crate::env::substitute(ctx, &self.env, expr_with_refs);
-
-        Ok(fully_resolved)
+        crate::session_resolution::resolve_all(ctx, expr, &self.store, &self.env)
     }
 
     /// Resolve all references AND return inherited diagnostics + cache hits.
@@ -78,42 +72,14 @@ impl SessionState {
         &self,
         ctx: &mut Context,
         expr: ExprId,
-    ) -> Result<
-        (
-            ExprId,
-            crate::diagnostics::Diagnostics,
-            Vec<crate::session::CacheHitTrace>,
-        ),
-        ResolveError,
-    > {
-        use crate::session::{resolve_session_refs_with_mode, RefMode, SimplifyCacheKey};
-
-        // Create cache key from current options
-        let cache_key = SimplifyCacheKey::from_context(self.options.shared.semantics.domain_mode);
-
-        // 1. Resolve session refs with cache checking
-        let resolved = resolve_session_refs_with_mode(
+    ) -> Result<(ExprId, crate::diagnostics::Diagnostics, Vec<CacheHitTrace>), ResolveError> {
+        crate::session_resolution::resolve_all_with_diagnostics(
             ctx,
             expr,
             &self.store,
-            RefMode::PreferSimplified,
-            &cache_key,
-        )?;
-
-        // 2. Convert requires to Diagnostics
-        let mut inherited = crate::diagnostics::Diagnostics::new();
-        for item in resolved.requires {
-            // Add with SessionPropagated origin
-            inherited.push_required(
-                item.cond,
-                crate::diagnostics::RequireOrigin::SessionPropagated,
-            );
-        }
-
-        // 3. Substitute variables from environment
-        let fully_resolved = crate::env::substitute(ctx, &self.env, resolved.expr);
-
-        Ok((fully_resolved, inherited, resolved.cache_hits))
+            &self.env,
+            self.options.shared.semantics.domain_mode,
+        )
     }
 
     /// Clear all session state (history and environment)

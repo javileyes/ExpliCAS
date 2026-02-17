@@ -23,7 +23,8 @@ impl Engine {
         output_scopes: Vec<cas_ast::display_transforms::ScopeTag>,
         solver_required: Vec<crate::implicit_domain::ImplicitCondition>,
         inherited_diagnostics: crate::diagnostics::Diagnostics,
-        state: &mut SessionState,
+        store: &mut crate::session::SessionStore,
+        options: &crate::options::EvalOptions,
     ) -> Result<EvalOutput, anyhow::Error> {
         // Collect blocked hints from simplifier
         let blocked_hints = self.simplifier.take_blocked_hints();
@@ -138,7 +139,7 @@ impl Engine {
 
         // Update stored entry with final diagnostics (for SessionPropagated tracking)
         if let Some(id) = stored_id {
-            state.store.update_diagnostics(id, diagnostics.clone());
+            store.update_diagnostics(id, diagnostics.clone());
 
             // V2.15.36: Populate simplified cache for session reference caching
             // This enables `#N` to use the cached simplified result instead of re-simplifying
@@ -154,14 +155,14 @@ impl Engine {
                     use crate::session::{SimplifiedCache, SimplifyCacheKey};
 
                     let cache_key =
-                        SimplifyCacheKey::from_context(state.options.shared.semantics.domain_mode);
+                        SimplifyCacheKey::from_context(options.shared.semantics.domain_mode);
                     let cache = SimplifiedCache {
                         key: cache_key,
                         expr: *simplified_expr,
                         requires: diagnostics.requires.clone(),
                         steps: Some(std::sync::Arc::new(steps.clone())),
                     };
-                    state.store.update_simplified(id, cache);
+                    store.update_simplified(id, cache);
                 }
             }
         }

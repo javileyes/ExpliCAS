@@ -14,9 +14,27 @@ impl Engine {
         state: &mut SessionState,
         req: EvalRequest,
     ) -> Result<EvalOutput, anyhow::Error> {
+        let SessionState {
+            store,
+            env,
+            options,
+            profile_cache,
+            ..
+        } = state;
+        self.eval_with_parts(store, env, options, profile_cache, req)
+    }
+
+    fn eval_with_parts(
+        &mut self,
+        store: &mut crate::session::SessionStore,
+        env: &crate::env::Environment,
+        options: &crate::options::EvalOptions,
+        profile_cache: &mut crate::profile_cache::ProfileCache,
+        req: EvalRequest,
+    ) -> Result<EvalOutput, anyhow::Error> {
         // 1. Auto-store raw + parsed (unresolved)
         let stored_id = if req.auto_store {
-            Some(state.store.push(req.kind, req.raw_input.clone()))
+            Some(store.push(req.kind, req.raw_input.clone()))
         } else {
             None
         };
@@ -26,7 +44,13 @@ impl Engine {
         // Also captures inherited diagnostics from any referenced entries for SessionPropagated tracking
         // V2.15.36: Also returns cache hit traces for synthetic timeline step generation
         let (resolved, inherited_diagnostics, cache_hits) =
-            match state.resolve_all_with_diagnostics(&mut self.simplifier.context, req.parsed) {
+            match crate::session_resolution::resolve_all_with_diagnostics(
+                &mut self.simplifier.context,
+                req.parsed,
+                store,
+                env,
+                options.shared.semantics.domain_mode,
+            ) {
                 Ok(r) => r,
                 Err(ResolveError::CircularReference(msg)) => {
                     return Err(anyhow::anyhow!("Circular reference detected: {}", msg))
@@ -40,7 +64,7 @@ impl Engine {
 
         // V2.15.36: Touch cached entries to maintain true LRU ordering
         for hit in &cache_hits {
-            state.store.touch_cached(hit.entry_id);
+            store.touch_cached(hit.entry_id);
         }
 
         // 3. Dispatch Action -> produce EvalResult
@@ -53,7 +77,7 @@ impl Engine {
             output_scopes,
             solver_required,
         ) = match req.action {
-            EvalAction::Simplify => self.eval_simplify(state, resolved)?,
+            EvalAction::Simplify => self.eval_simplify(options, profile_cache, resolved)?,
             EvalAction::Expand => {
                 // Treating Expand as Simplify for now, as Simplifier has no explicit expand mode yet exposed cleanly
                 let (res, steps) = self.simplifier.simplify(resolved);
@@ -68,8 +92,8 @@ impl Engine {
                     vec![], // solver_required: empty for expand
                 )
             }
-            EvalAction::Solve { var } => self.eval_solve(state, resolved, &var)?,
-            EvalAction::Equiv { other } => self.eval_equiv(state, resolved, other)?,
+            EvalAction::Solve { var } => self.eval_solve(options, resolved, &var)?,
+            EvalAction::Equiv { other } => self.eval_equiv(store, env, resolved, other)?,
             EvalAction::Limit { var, approach } => self.eval_limit(resolved, &var, approach)?,
         };
 
@@ -91,21 +115,23 @@ impl Engine {
             output_scopes,
             solver_required,
             inherited_diagnostics,
-            state,
+            store,
+            options,
         )
     }
 
     /// Handle `EvalAction::Simplify`: tool dispatch, simplification, const fold, domain classification.
     fn eval_simplify(
         &mut self,
-        state: &mut SessionState,
+        options: &crate::options::EvalOptions,
+        profile_cache: &mut crate::profile_cache::ProfileCache,
         resolved: ExprId,
     ) -> Result<ActionResult, anyhow::Error> {
         // Determine effective context mode for this request
-        let effective_opts = self.effective_options(&state.options, resolved);
+        let effective_opts = self.effective_options(options, resolved);
 
         // Get cached profile (or build once and cache)
-        let profile = state.profile_cache.get_or_build(&effective_opts);
+        let profile = profile_cache.get_or_build(&effective_opts);
 
         // Create simplifier from cached profile
         let mut ctx_simplifier = Simplifier::from_profile(profile);
@@ -249,7 +275,7 @@ impl Engine {
     /// Handle `EvalAction::Solve`: equation construction, solver invocation.
     fn eval_solve(
         &mut self,
-        state: &mut SessionState,
+        options: &crate::options::EvalOptions,
         resolved: ExprId,
         var: &str,
     ) -> Result<ActionResult, anyhow::Error> {
@@ -309,16 +335,16 @@ impl Engine {
 
         // Call solver with semantic options and assumption collection
         let solver_opts = crate::solver::SolverOptions {
-            value_domain: state.options.shared.semantics.value_domain,
-            domain_mode: state.options.shared.semantics.domain_mode,
-            assume_scope: state.options.shared.semantics.assume_scope,
-            budget: state.options.budget,
+            value_domain: options.shared.semantics.value_domain,
+            domain_mode: options.shared.semantics.domain_mode,
+            assume_scope: options.shared.semantics.assume_scope,
+            budget: options.budget,
             ..Default::default()
         };
 
         // RAII guard for assumption collection (handles nested solves safely)
-        let collect_assumptions = state.options.shared.assumption_reporting
-            != crate::assumptions::AssumptionReporting::Off;
+        let collect_assumptions =
+            options.shared.assumption_reporting != crate::assumptions::AssumptionReporting::Off;
         let assumption_guard = crate::solver::SolveAssumptionsGuard::new(collect_assumptions);
 
         // V2.9.8: Use type-safe API that guarantees cleanup is applied
@@ -366,11 +392,17 @@ impl Engine {
     /// Handle `EvalAction::Equiv`: resolve other expression and check equivalence.
     fn eval_equiv(
         &mut self,
-        state: &mut SessionState,
+        store: &crate::session::SessionStore,
+        env: &crate::env::Environment,
         resolved: ExprId,
         other: ExprId,
     ) -> Result<ActionResult, anyhow::Error> {
-        let resolved_other = match state.resolve_all(&mut self.simplifier.context, other) {
+        let resolved_other = match crate::session_resolution::resolve_all(
+            &mut self.simplifier.context,
+            other,
+            store,
+            env,
+        ) {
             Ok(r) => r,
             Err(ResolveError::CircularReference(msg)) => {
                 return Err(anyhow::anyhow!(
