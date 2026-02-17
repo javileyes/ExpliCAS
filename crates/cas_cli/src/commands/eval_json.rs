@@ -123,9 +123,9 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
 
     // Build cache key for snapshot compatibility
     let domain_mode = match args.domain.as_str() {
-        "strict" => cas_engine::DomainMode::Strict,
-        "assume" => cas_engine::DomainMode::Assume,
-        _ => cas_engine::DomainMode::Generic,
+        "strict" => cas_solver::DomainMode::Strict,
+        "assume" => cas_solver::DomainMode::Assume,
+        _ => cas_solver::DomainMode::Generic,
     };
     let cache_key = SimplifyCacheKey::from_context(domain_mode);
 
@@ -476,31 +476,31 @@ fn configure_options(opts: &mut cas_engine::options::EvalOptions, args: &EvalJso
 
     // Domain mode
     opts.shared.semantics.domain_mode = match args.domain.as_str() {
-        "strict" => cas_engine::DomainMode::Strict,
-        "assume" => cas_engine::DomainMode::Assume,
-        _ => cas_engine::DomainMode::Generic,
+        "strict" => cas_solver::DomainMode::Strict,
+        "assume" => cas_solver::DomainMode::Assume,
+        _ => cas_solver::DomainMode::Generic,
     };
 
     // Inverse trig policy
     opts.shared.semantics.inv_trig = match args.inv_trig.as_str() {
-        "principal" => cas_engine::InverseTrigPolicy::PrincipalValue,
-        _ => cas_engine::InverseTrigPolicy::Strict,
+        "principal" => cas_solver::InverseTrigPolicy::PrincipalValue,
+        _ => cas_solver::InverseTrigPolicy::Strict,
     };
 
     // Value domain
     opts.shared.semantics.value_domain = match args.value_domain.as_str() {
-        "complex" => cas_engine::ValueDomain::ComplexEnabled,
-        _ => cas_engine::ValueDomain::RealOnly,
+        "complex" => cas_solver::ValueDomain::ComplexEnabled,
+        _ => cas_solver::ValueDomain::RealOnly,
     };
 
     // Branch policy (only Principal for now)
     let _ = args.complex_branch.as_str(); // Parse but only one option
-    opts.shared.semantics.branch = cas_engine::BranchPolicy::Principal;
+    opts.shared.semantics.branch = cas_solver::BranchPolicy::Principal;
 
     // Assume scope
     opts.shared.semantics.assume_scope = match args.assume_scope.as_str() {
-        "wildcard" => cas_engine::AssumeScope::Wildcard,
-        _ => cas_engine::AssumeScope::Real,
+        "wildcard" => cas_solver::AssumeScope::Wildcard,
+        _ => cas_solver::AssumeScope::Real,
     };
 }
 
@@ -520,7 +520,7 @@ fn collect_required_conditions(
     output: &cas_engine::EvalOutput,
     ctx: &cas_ast::Context,
 ) -> Vec<RequiredConditionJson> {
-    use cas_engine::implicit_domain::ImplicitCondition;
+    use cas_solver::ImplicitCondition;
     use cas_formatter::DisplayExpr;
 
     output

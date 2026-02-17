@@ -69,14 +69,14 @@ fn run_inner(args: &EnvelopeJsonArgs) -> Result<OutputEnvelope> {
 
     // Configure options from args
     state.options.shared.semantics.domain_mode = match args.domain.as_str() {
-        "strict" => cas_engine::DomainMode::Strict,
-        "assume" => cas_engine::DomainMode::Assume,
-        _ => cas_engine::DomainMode::Generic,
+        "strict" => cas_solver::DomainMode::Strict,
+        "assume" => cas_solver::DomainMode::Assume,
+        _ => cas_solver::DomainMode::Generic,
     };
 
     state.options.shared.semantics.value_domain = match args.value_domain.as_str() {
-        "complex" => cas_engine::ValueDomain::ComplexEnabled,
-        _ => cas_engine::ValueDomain::RealOnly,
+        "complex" => cas_solver::ValueDomain::ComplexEnabled,
+        _ => cas_solver::ValueDomain::RealOnly,
     };
 
     // Parse expression
@@ -156,7 +156,7 @@ fn build_request_info(args: &EnvelopeJsonArgs) -> RequestInfo {
 }
 
 fn build_transparency(output: &cas_engine::EvalOutput, ctx: &cas_ast::Context) -> TransparencyDto {
-    use cas_engine::implicit_domain::ImplicitCondition;
+    use cas_solver::ImplicitCondition;
 
     let required_conditions: Vec<ConditionDto> = output
         .required_conditions
