@@ -66,8 +66,8 @@ impl Repl {
     }
 
     fn print_semantics_core(&self) -> ReplReply {
-        use cas_solver::{BranchPolicy, InverseTrigPolicy, ValueDomain};
         use cas_solver::DomainMode;
+        use cas_solver::{BranchPolicy, InverseTrigPolicy, ValueDomain};
 
         let mut lines = Vec::new();
 
@@ -159,8 +159,8 @@ impl Repl {
     }
 
     fn print_axis_status_core(&self, axis: &str) -> ReplReply {
-        use cas_solver::{BranchPolicy, InverseTrigPolicy, ValueDomain};
         use cas_solver::DomainMode;
+        use cas_solver::{BranchPolicy, InverseTrigPolicy, ValueDomain};
 
         let mut lines = Vec::new();
 
@@ -343,8 +343,8 @@ Presets:
 
     fn handle_preset_core(&mut self, args: &[&str]) -> ReplReply {
         use cas_engine::const_fold::ConstFoldMode;
-        use cas_solver::{BranchPolicy, InverseTrigPolicy, ValueDomain};
         use cas_solver::DomainMode;
+        use cas_solver::{BranchPolicy, InverseTrigPolicy, ValueDomain};
 
         // Preset definitions: (name, description, domain, value, branch, inv_trig, const_fold)
         struct Preset {

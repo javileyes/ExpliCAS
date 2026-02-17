@@ -147,7 +147,7 @@ impl Repl {
     pub(crate) fn do_simplify(
         &mut self,
         expr: cas_ast::ExprId,
-    ) -> (cas_ast::ExprId, Vec<cas_engine::Step>) {
+    ) -> (cas_ast::ExprId, Vec<cas_didactic::Step>) {
         // Use state.options.to_simplify_options() to get correct expand_policy, context_mode, etc.
         // (self.core.simplify_options is legacy and doesn't sync expand_policy)
         let mut opts = self.core.state.options.to_simplify_options();

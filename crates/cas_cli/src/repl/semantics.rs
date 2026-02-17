@@ -66,8 +66,8 @@ impl Repl {
 
     /// Returns Some(error_message) on failure, None on success
     pub(crate) fn set_semantic_axis(&mut self, axis: &str, value: &str) -> Option<String> {
-        use cas_solver::{BranchPolicy, InverseTrigPolicy, ValueDomain};
         use cas_solver::DomainMode;
+        use cas_solver::{BranchPolicy, InverseTrigPolicy, ValueDomain};
 
         match axis {
             "domain" => match value {

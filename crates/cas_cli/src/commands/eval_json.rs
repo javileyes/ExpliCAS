@@ -12,7 +12,7 @@ use cas_engine::{EvalAction, EvalRequest, EvalResult};
 use cas_session::{SessionSnapshot, SimplifyCacheKey};
 
 // For step filtering (match timeline behavior)
-use cas_engine::step::{pathsteps_to_expr_path, ImportanceLevel};
+use cas_didactic::{pathsteps_to_expr_path, ImportanceLevel};
 // For didactic substeps (like timeline)
 use cas_didactic as didactic;
 
@@ -520,8 +520,8 @@ fn collect_required_conditions(
     output: &cas_engine::EvalOutput,
     ctx: &cas_ast::Context,
 ) -> Vec<RequiredConditionJson> {
-    use cas_solver::ImplicitCondition;
     use cas_formatter::DisplayExpr;
+    use cas_solver::ImplicitCondition;
 
     output
         .required_conditions

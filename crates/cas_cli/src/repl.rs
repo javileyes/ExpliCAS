@@ -9,6 +9,7 @@ use cas_engine::Simplifier;
 use cas_ast::{
     Context, DisplayExpr, DisplayExprStyled, Expr, ExprId, ParseStyleSignals, StylePreferences,
 };
+use cas_didactic::PathStep;
 use cas_engine::rules::algebra::{ExpandRule, FactorRule, SimplifyFractionRule};
 use cas_engine::rules::calculus::{DiffRule, IntegrateRule};
 use cas_engine::rules::grouping::CollectRule;
@@ -17,7 +18,6 @@ use cas_engine::rules::number_theory::NumberTheoryRule;
 use cas_engine::rules::trigonometry::{
     AngleIdentityRule, DoubleAngleRule, EvaluateTrigRule, PythagoreanIdentityRule, TanToSinCosRule,
 };
-use cas_engine::step::PathStep;
 use rustyline::error::ReadlineError;
 
 use crate::completer::CasHelper;
@@ -342,8 +342,8 @@ fn reconstruct_global_expr(
     }
 }
 
-fn should_show_step(step: &cas_engine::step::Step, verbosity: Verbosity) -> bool {
-    use cas_engine::step::ImportanceLevel;
+fn should_show_step(step: &cas_didactic::Step, verbosity: Verbosity) -> bool {
+    use cas_didactic::ImportanceLevel;
 
     match verbosity {
         Verbosity::None => false,

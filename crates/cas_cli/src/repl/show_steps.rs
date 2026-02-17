@@ -34,7 +34,7 @@ impl Repl {
     pub(crate) fn show_simplification_steps_core(
         &mut self,
         expr: cas_ast::ExprId,
-        steps: &[cas_engine::Step],
+        steps: &[cas_didactic::Step],
         style_signals: cas_ast::root_style::ParseStyleSignals,
     ) -> ReplReply {
         use cas_ast::root_style::StylePreferences;
@@ -334,7 +334,7 @@ impl Repl {
     pub(crate) fn show_simplification_steps(
         &mut self,
         expr: cas_ast::ExprId,
-        steps: &[cas_engine::Step],
+        steps: &[cas_didactic::Step],
         style_signals: cas_ast::root_style::ParseStyleSignals,
     ) {
         let reply = self.show_simplification_steps_core(expr, steps, style_signals);
