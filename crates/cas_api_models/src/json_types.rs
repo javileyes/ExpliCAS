@@ -329,13 +329,48 @@ pub struct EngineJsonResponse {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub steps: Vec<EngineJsonStep>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub warnings: Vec<WarningJson>,
+    pub warnings: Vec<EngineJsonWarning>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub assumptions: Vec<AssumptionRecord>,
     pub budget: BudgetJsonInfo,
 }
 
 impl EngineJsonResponse {
+    pub fn ok(result: String, budget: BudgetJsonInfo) -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            ok: true,
+            result: Some(result),
+            error: None,
+            steps: vec![],
+            warnings: vec![],
+            assumptions: vec![],
+            budget,
+        }
+    }
+
+    pub fn ok_with_steps(
+        result: String,
+        steps: Vec<EngineJsonStep>,
+        budget: BudgetJsonInfo,
+    ) -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            ok: true,
+            result: Some(result),
+            error: None,
+            steps,
+            warnings: vec![],
+            assumptions: vec![],
+            budget,
+        }
+    }
+
+    pub fn with_warning(mut self, warning: EngineJsonWarning) -> Self {
+        self.warnings.push(warning);
+        self
+    }
+
     pub fn to_json(&self) -> String {
         serde_json::to_string(self).unwrap_or_else(|e| {
             format!(

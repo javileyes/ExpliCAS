@@ -4,8 +4,9 @@
 //! Breaking these tests = breaking external API.
 
 use cas_engine::{
-    BudgetExceeded, BudgetJsonInfo, CasError, EngineJsonError, EngineJsonResponse, Metric,
-    Operation, SCHEMA_VERSION,
+    BudgetExceeded, BudgetJsonInfo, BudgetJsonInfoExt, CasError, EngineJsonError,
+    EngineJsonErrorExt, EngineJsonResponse, EngineJsonResponseExt, Metric, Operation,
+    SCHEMA_VERSION,
 };
 use serde_json::Value;
 
