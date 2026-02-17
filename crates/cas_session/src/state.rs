@@ -4,7 +4,25 @@ use cas_engine::options::EvalOptions;
 use cas_engine::profile_cache::ProfileCache;
 use cas_engine::{diagnostics::Diagnostics, poly_store::PolyStore};
 
-use crate::{CacheHitTrace, Environment, ResolveError, SessionStore};
+use crate::{CacheHitTrace as SessionCacheHitTrace, Environment, ResolveError, SessionStore};
+
+fn map_resolve_error(err: ResolveError) -> cas_engine::eval::EvalResolveError {
+    match err {
+        ResolveError::NotFound(id) => cas_engine::eval::EvalResolveError::NotFound(id),
+        ResolveError::CircularReference(id) => {
+            cas_engine::eval::EvalResolveError::CircularReference(id)
+        }
+    }
+}
+
+fn map_cache_hit_trace(hit: SessionCacheHitTrace) -> cas_engine::eval::CacheHitTrace {
+    cas_engine::eval::CacheHitTrace {
+        entry_id: hit.entry_id,
+        before_ref_expr: hit.before_ref_expr,
+        after_expr: hit.after_expr,
+        requires: hit.requires,
+    }
+}
 
 /// Bundled session state for portability (CLI/Web/FFI).
 ///
@@ -76,15 +94,18 @@ impl EvalSession for SessionState {
         &self,
         ctx: &mut cas_ast::Context,
         expr: ExprId,
-    ) -> Result<ExprId, ResolveError> {
-        crate::resolve_all(ctx, expr, &self.store, &self.env)
+    ) -> Result<ExprId, cas_engine::eval::EvalResolveError> {
+        crate::resolve_all(ctx, expr, &self.store, &self.env).map_err(map_resolve_error)
     }
 
     fn resolve_all_with_diagnostics(
         &self,
         ctx: &mut cas_ast::Context,
         expr: ExprId,
-    ) -> Result<(ExprId, Diagnostics, Vec<CacheHitTrace>), ResolveError> {
+    ) -> Result<
+        (ExprId, Diagnostics, Vec<cas_engine::eval::CacheHitTrace>),
+        cas_engine::eval::EvalResolveError,
+    > {
         crate::resolve_all_with_diagnostics(
             ctx,
             expr,
@@ -92,5 +113,13 @@ impl EvalSession for SessionState {
             &self.env,
             self.options.shared.semantics.domain_mode,
         )
+        .map(|(resolved, diagnostics, cache_hits)| {
+            (
+                resolved,
+                diagnostics,
+                cache_hits.into_iter().map(map_cache_hit_trace).collect(),
+            )
+        })
+        .map_err(map_resolve_error)
     }
 }

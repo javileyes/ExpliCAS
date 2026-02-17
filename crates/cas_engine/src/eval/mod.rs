@@ -23,17 +23,103 @@ pub(crate) type ActionResult = (
 
 use crate::Simplifier;
 use cas_ast::{BuiltinFn, Equation, Expr, ExprId, RelOp};
-use cas_session_core::types::ResolveError;
 
-pub(crate) type SimplifyCacheKey =
+pub(crate) type CoreSimplifyCacheKey =
     cas_session_core::cache::SimplifyCacheKey<crate::domain::DomainMode>;
-pub(crate) type SimplifiedCache = cas_session_core::cache::SimplifiedCache<
+pub(crate) type CoreSimplifiedCache = cas_session_core::cache::SimplifiedCache<
     crate::domain::DomainMode,
     crate::diagnostics::RequiredItem,
     crate::step::Step,
 >;
-pub(crate) type CacheHitTrace =
+pub(crate) type CoreCacheHitTrace =
     cas_session_core::cache::CacheHitTrace<crate::diagnostics::RequiredItem>;
+
+/// Engine-local cache key used by eval/session abstraction.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SimplifyCacheKey {
+    pub domain: crate::domain::DomainMode,
+    pub ruleset_rev: u64,
+}
+
+impl SimplifyCacheKey {
+    pub fn from_context(domain: crate::domain::DomainMode) -> Self {
+        Self {
+            domain,
+            ruleset_rev: 1,
+        }
+    }
+}
+
+impl From<SimplifyCacheKey> for CoreSimplifyCacheKey {
+    fn from(value: SimplifyCacheKey) -> Self {
+        Self {
+            domain: value.domain,
+            ruleset_rev: value.ruleset_rev,
+        }
+    }
+}
+
+/// Engine-local cached simplification payload.
+#[derive(Debug, Clone)]
+pub struct SimplifiedCache {
+    pub key: SimplifyCacheKey,
+    pub expr: ExprId,
+    pub requires: Vec<crate::diagnostics::RequiredItem>,
+    pub steps: Option<std::sync::Arc<Vec<crate::step::Step>>>,
+}
+
+impl SimplifiedCache {
+    pub(crate) fn into_core(self) -> CoreSimplifiedCache {
+        CoreSimplifiedCache {
+            key: self.key.into(),
+            expr: self.expr,
+            requires: self.requires,
+            steps: self.steps,
+        }
+    }
+}
+
+/// Engine-local cache hit trace used by eval/session abstraction.
+#[derive(Debug, Clone)]
+pub struct CacheHitTrace {
+    pub entry_id: u64,
+    pub before_ref_expr: ExprId,
+    pub after_expr: ExprId,
+    pub requires: Vec<crate::diagnostics::RequiredItem>,
+}
+
+impl From<CoreCacheHitTrace> for CacheHitTrace {
+    fn from(value: CoreCacheHitTrace) -> Self {
+        Self {
+            entry_id: value.entry_id,
+            before_ref_expr: value.before_ref_expr,
+            after_expr: value.after_expr,
+            requires: value.requires,
+        }
+    }
+}
+
+/// Engine-level session/reference resolution error.
+///
+/// This keeps `EvalSession` decoupled from any concrete session implementation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EvalResolveError {
+    NotFound(u64),
+    CircularReference(u64),
+}
+
+impl std::fmt::Display for EvalResolveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotFound(id) => write!(f, "Session reference #{} not found", id),
+            Self::CircularReference(id) => {
+                write!(f, "Circular session reference detected at #{}", id)
+            }
+        }
+    }
+}
+
+impl std::error::Error for EvalResolveError {}
 
 /// The central Engine struct that wraps the core Simplifier and potentially other components.
 ///
@@ -66,7 +152,7 @@ pub trait EvalStore {
 }
 
 impl EvalStore
-    for cas_session_core::store::SessionStore<crate::diagnostics::Diagnostics, SimplifiedCache>
+    for cas_session_core::store::SessionStore<crate::diagnostics::Diagnostics, CoreSimplifiedCache>
 {
     fn push_raw_input(&mut self, ctx: &cas_ast::Context, parsed: ExprId, raw_input: String) -> u64 {
         let kind = if let Some((lhs, rhs)) = cas_ast::eq::unwrap_eq(ctx, parsed) {
@@ -86,7 +172,7 @@ impl EvalStore
     }
 
     fn update_simplified(&mut self, id: u64, cache: SimplifiedCache) {
-        self.update_simplified(id, cache);
+        self.update_simplified(id, cache.into_core());
     }
 }
 
@@ -97,14 +183,17 @@ pub trait EvalSession {
     fn options(&self) -> &crate::options::EvalOptions;
     fn profile_cache_mut(&mut self) -> &mut crate::profile_cache::ProfileCache;
 
-    fn resolve_all(&self, ctx: &mut cas_ast::Context, expr: ExprId)
-        -> Result<ExprId, ResolveError>;
+    fn resolve_all(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+    ) -> Result<ExprId, EvalResolveError>;
 
     fn resolve_all_with_diagnostics(
         &self,
         ctx: &mut cas_ast::Context,
         expr: ExprId,
-    ) -> Result<(ExprId, crate::diagnostics::Diagnostics, Vec<CacheHitTrace>), ResolveError>;
+    ) -> Result<(ExprId, crate::diagnostics::Diagnostics, Vec<CacheHitTrace>), EvalResolveError>;
 }
 
 impl Engine {

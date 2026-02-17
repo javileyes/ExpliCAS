@@ -1,7 +1,16 @@
 use super::response::*;
 use crate::eval::{CacheHitTrace, EvalSession, EvalStore};
 use cas_ast::ExprId;
-use cas_session_core::types::{EntryId, EntryKind, RefMode, ResolveError};
+use cas_session_core::types::{EntryId, EntryKind, RefMode, ResolveError as SessionResolveError};
+
+fn map_resolve_error(err: SessionResolveError) -> crate::eval::EvalResolveError {
+    match err {
+        SessionResolveError::NotFound(id) => crate::eval::EvalResolveError::NotFound(id),
+        SessionResolveError::CircularReference(id) => {
+            crate::eval::EvalResolveError::CircularReference(id)
+        }
+    }
+}
 
 /// Evaluate an expression and return JSON response.
 ///
@@ -198,7 +207,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
 
 type JsonStoreInner = cas_session_core::store::SessionStore<
     crate::diagnostics::Diagnostics,
-    crate::eval::SimplifiedCache,
+    crate::eval::CoreSimplifiedCache,
 >;
 
 struct JsonStore(JsonStoreInner);
@@ -228,7 +237,7 @@ impl EvalStore for JsonStore {
     }
 
     fn update_simplified(&mut self, id: u64, cache: crate::eval::SimplifiedCache) {
-        self.0.update_simplified(id, cache);
+        self.0.update_simplified(id, cache.into_core());
     }
 }
 
@@ -269,7 +278,7 @@ impl EvalSession for JsonEvalSession {
         &self,
         ctx: &mut cas_ast::Context,
         expr: ExprId,
-    ) -> Result<ExprId, ResolveError> {
+    ) -> Result<ExprId, crate::eval::EvalResolveError> {
         let mut lookup = |id: EntryId| self.store.0.get(id).map(|entry| entry.kind.clone());
         cas_session_core::resolve::resolve_all_with_lookup_and_env(
             ctx,
@@ -277,15 +286,20 @@ impl EvalSession for JsonEvalSession {
             &mut lookup,
             &self.env,
         )
+        .map_err(map_resolve_error)
     }
 
     fn resolve_all_with_diagnostics(
         &self,
         ctx: &mut cas_ast::Context,
         expr: ExprId,
-    ) -> Result<(ExprId, crate::diagnostics::Diagnostics, Vec<CacheHitTrace>), ResolveError> {
-        let cache_key =
-            crate::eval::SimplifyCacheKey::from_context(self.options.shared.semantics.domain_mode);
+    ) -> Result<
+        (ExprId, crate::diagnostics::Diagnostics, Vec<CacheHitTrace>),
+        crate::eval::EvalResolveError,
+    > {
+        let cache_key: crate::eval::CoreSimplifyCacheKey =
+            crate::eval::SimplifyCacheKey::from_context(self.options.shared.semantics.domain_mode)
+                .into();
 
         let mut lookup = |id: EntryId| {
             let entry = self.store.0.get(id)?;
@@ -317,7 +331,8 @@ impl EvalSession for JsonEvalSession {
             &mut lookup,
             &mut same_requirement,
             &mut mark_session_propagated,
-        )?;
+        )
+        .map_err(map_resolve_error)?;
 
         let mut inherited = crate::diagnostics::Diagnostics::new();
         for item in resolved.requires {
@@ -328,6 +343,11 @@ impl EvalSession for JsonEvalSession {
         }
 
         let fully_resolved = cas_session_core::env::substitute(ctx, &self.env, resolved.expr);
-        Ok((fully_resolved, inherited, resolved.cache_hits))
+        let cache_hits = resolved
+            .cache_hits
+            .into_iter()
+            .map(CacheHitTrace::from)
+            .collect();
+        Ok((fully_resolved, inherited, cache_hits))
     }
 }

@@ -26,8 +26,8 @@ impl Engine {
         let (resolved, inherited_diagnostics, cache_hits) =
             match session.resolve_all_with_diagnostics(&mut self.simplifier.context, req.parsed) {
                 Ok(r) => r,
-                Err(ResolveError::CircularReference(msg)) => {
-                    return Err(anyhow::anyhow!("Circular reference detected: {}", msg))
+                Err(EvalResolveError::CircularReference(id)) => {
+                    return Err(anyhow::anyhow!("Circular reference detected: #{}", id))
                 }
                 Err(e) => return Err(anyhow::anyhow!("Resolution error: {}", e)),
             };
@@ -37,10 +37,10 @@ impl Engine {
             EvalAction::Equiv { other } => Some(
                 match session.resolve_all(&mut self.simplifier.context, *other) {
                     Ok(r) => r,
-                    Err(ResolveError::CircularReference(msg)) => {
+                    Err(EvalResolveError::CircularReference(id)) => {
                         return Err(anyhow::anyhow!(
-                            "Circular reference detected in other: {}",
-                            msg
+                            "Circular reference detected in other: #{}",
+                            id
                         ))
                     }
                     Err(e) => return Err(anyhow::anyhow!("Resolution error in other: {}", e)),
