@@ -1,7 +1,7 @@
 use cas_ast::{Equation, RelOp, SolutionSet};
 use cas_engine::engine::Simplifier;
-use cas_engine::solver::solve;
 use cas_parser::parse;
+use cas_solver::solve;
 
 #[test]
 fn test_rational_inequality_1_over_x() {

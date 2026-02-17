@@ -44,10 +44,7 @@ impl Repl {
 
     pub(crate) fn expand_log_recursive(&mut self, expr: cas_ast::ExprId) -> cas_ast::ExprId {
         use cas_ast::Expr;
-        use cas_engine::parent_context::ParentContext;
-        use cas_engine::rule::Rule;
-        use cas_engine::rules::logarithms::LogExpansionRule;
-        use cas_engine::DomainMode;
+        use cas_solver::{DomainMode, LogExpansionRule, ParentContext, Rule};
 
         // Create a parent context with Assume mode to allow expansion of symbolic variables
         let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Assume);
@@ -830,10 +827,7 @@ impl Repl {
                                 .collect();
                             let ctx_mut = &mut self.core.engine.simplifier.context;
                             let normalized_conditions =
-                                cas_engine::implicit_domain::normalize_and_dedupe_conditions(
-                                    ctx_mut,
-                                    &conditions,
-                                );
+                                cas_solver::normalize_and_dedupe_conditions(ctx_mut, &conditions);
                             for cond in &normalized_conditions {
                                 if self.core.debug_mode {
                                     lines.push(format!(
@@ -914,7 +908,7 @@ impl Repl {
 
                         // V2.1 Issue #3: Explain mode - structured summary for solve
                         // Collect blocked hints for debug output
-                        let hints = cas_engine::domain::take_blocked_hints();
+                        let hints = cas_solver::take_blocked_hints();
                         let has_assumptions = !output.solver_assumptions.is_empty();
                         let has_blocked = !hints.is_empty();
 
@@ -951,7 +945,7 @@ impl Repl {
                             if has_blocked {
                                 lines.push("ℹ️ Blocked simplifications:".to_string());
                                 // Helper to format condition with expression
-                                let format_condition = |hint: &cas_engine::BlockedHint| -> String {
+                                let format_condition = |hint: &cas_solver::BlockedHint| -> String {
                                     let expr_str = cas_formatter::DisplayExpr {
                                         context: ctx,
                                         id: hint.expr_id,
@@ -979,13 +973,13 @@ impl Repl {
                                 // Contextual suggestion
                                 let suggestion =
                                     match self.core.state.options.shared.semantics.domain_mode {
-                                        cas_engine::DomainMode::Strict => {
+                                        cas_solver::DomainMode::Strict => {
                                             "tip: use `domain generic` or `domain assume` to allow"
                                         }
-                                        cas_engine::DomainMode::Generic => {
+                                        cas_solver::DomainMode::Generic => {
                                             "tip: use `semantics set domain assume` to allow"
                                         }
-                                        cas_engine::DomainMode::Assume => {
+                                        cas_solver::DomainMode::Assume => {
                                             "tip: assumptions already enabled"
                                         }
                                     };
@@ -994,7 +988,7 @@ impl Repl {
                         } else if has_blocked && self.core.state.options.hints_enabled {
                             // Legacy: show blocked hints even without debug_mode if hints_enabled
                             let ctx = &self.core.engine.simplifier.context;
-                            let format_condition = |hint: &cas_engine::BlockedHint| -> String {
+                            let format_condition = |hint: &cas_solver::BlockedHint| -> String {
                                 let expr_str = cas_formatter::DisplayExpr {
                                     context: ctx,
                                     id: hint.expr_id,
@@ -1010,13 +1004,13 @@ impl Repl {
 
                             let suggestion =
                                 match self.core.state.options.shared.semantics.domain_mode {
-                                    cas_engine::DomainMode::Strict => {
+                                    cas_solver::DomainMode::Strict => {
                                         "use `domain generic` or `domain assume` to allow"
                                     }
-                                    cas_engine::DomainMode::Generic => {
+                                    cas_solver::DomainMode::Generic => {
                                         "use `semantics set domain assume` to allow"
                                     }
-                                    cas_engine::DomainMode::Assume => "assumptions already enabled",
+                                    cas_solver::DomainMode::Assume => "assumptions already enabled",
                                 };
 
                             lines.push(String::new());

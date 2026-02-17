@@ -3,8 +3,8 @@
 
 use cas_ast::{Equation, RelOp, SolutionSet};
 use cas_engine::engine::Simplifier;
-use cas_engine::solver::solve;
 use cas_engine::CasError;
+use cas_solver::solve;
 
 // ============================================================================
 // LEVEL 1: Basic Linear Equations

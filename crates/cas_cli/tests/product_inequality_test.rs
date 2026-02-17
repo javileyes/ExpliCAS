@@ -1,6 +1,6 @@
 use cas_ast::{Equation, RelOp, SolutionSet};
 use cas_engine::engine::Simplifier;
-use cas_engine::solver::solve;
+use cas_solver::solve;
 
 #[test]
 fn test_product_inequality_both_negative() {

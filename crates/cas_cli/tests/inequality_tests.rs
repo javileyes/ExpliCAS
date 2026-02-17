@@ -11,10 +11,10 @@ use cas_engine::rules::functions::EvaluateAbsRule;
 use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
 use cas_engine::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule, DistributeRule};
 use cas_engine::rules::trigonometry::{EvaluateTrigRule, PythagoreanIdentityRule};
-use cas_engine::solver::solve;
 use cas_engine::Simplifier;
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
+use cas_solver::solve;
 
 fn create_simplifier() -> Simplifier {
     let mut simplifier = Simplifier::new();
