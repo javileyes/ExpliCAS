@@ -7,7 +7,7 @@ impl Repl {
     }
 
     fn handle_rationalize_core(&mut self, line: &str) -> ReplReply {
-        use cas_engine::rationalize::{
+        use cas_solver::rationalize::{
             rationalize_denominator, RationalizeConfig, RationalizeResult,
         };
 
@@ -24,7 +24,7 @@ impl Repl {
                 // CANONICALIZE: Rebuild tree to trigger Add auto-flatten at all levels
                 // Parser creates tree incrementally, so nested Adds may not be flattened
                 // normalize_core forces reconstruction ensuring canonical form
-                let expr = cas_engine::canonical_forms::normalize_core(
+                let expr = cas_solver::canonical_forms::normalize_core(
                     &mut self.core.engine.simplifier.context,
                     parsed_expr,
                 );

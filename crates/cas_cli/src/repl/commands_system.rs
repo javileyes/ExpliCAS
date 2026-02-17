@@ -6,7 +6,7 @@
 use super::output::{reply_output, ReplReply};
 use super::Repl;
 use cas_ast::{Context, Expr, ExprId, RelOp};
-use cas_engine::multipoly::{multipoly_from_expr, PolyBudget, PolyError};
+use cas_solver::multipoly::{multipoly_from_expr, PolyBudget, PolyError};
 use num_rational::BigRational;
 use num_traits::Zero;
 

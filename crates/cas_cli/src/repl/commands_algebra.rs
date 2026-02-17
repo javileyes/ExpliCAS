@@ -475,7 +475,7 @@ impl Repl {
         match cas_parser::parse(rest, &mut self.core.engine.simplifier.context) {
             Ok(expr) => {
                 // Apply telescoping strategy
-                let result = cas_engine::telescoping::telescope(
+                let result = cas_solver::telescoping::telescope(
                     &mut self.core.engine.simplifier.context,
                     expr,
                 );
@@ -492,7 +492,7 @@ impl Repl {
     }
 
     /// Handle the 'expand' command for aggressive polynomial expansion
-    /// Uses cas_engine::expand::expand() which distributes without educational guards
+    /// Uses the engine `expand()` path which distributes without educational guards
     pub(crate) fn handle_expand(&mut self, line: &str) {
         let rest = line.strip_prefix("expand").unwrap_or(line).trim();
         if rest.is_empty() {

@@ -1,21 +1,21 @@
-use cas_engine::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule};
-use cas_engine::rules::exponents::{
+use cas_solver::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule};
+use cas_solver::rules::exponents::{
     EvaluatePowerRule, IdentityPowerRule, PowerPowerRule, PowerProductRule, PowerQuotientRule,
     ProductPowerRule,
 };
-use cas_engine::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule};
+use cas_solver::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule};
 use cas_solver::Simplifier;
 
 use cas_ast::{
     Context, DisplayExpr, DisplayExprStyled, Expr, ExprId, ParseStyleSignals, StylePreferences,
 };
 use cas_didactic::PathStep;
-use cas_engine::rules::algebra::{ExpandRule, FactorRule, SimplifyFractionRule};
-use cas_engine::rules::calculus::{DiffRule, IntegrateRule};
-use cas_engine::rules::grouping::CollectRule;
-use cas_engine::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
-use cas_engine::rules::number_theory::NumberTheoryRule;
-use cas_engine::rules::trigonometry::{
+use cas_solver::rules::algebra::{ExpandRule, FactorRule, SimplifyFractionRule};
+use cas_solver::rules::calculus::{DiffRule, IntegrateRule};
+use cas_solver::rules::grouping::CollectRule;
+use cas_solver::rules::logarithms::{EvaluateLogRule, ExponentialLogRule};
+use cas_solver::rules::number_theory::NumberTheoryRule;
+use cas_solver::rules::trigonometry::{
     AngleIdentityRule, DoubleAngleRule, EvaluateTrigRule, PythagoreanIdentityRule, TanToSinCosRule,
 };
 use rustyline::error::ReadlineError;

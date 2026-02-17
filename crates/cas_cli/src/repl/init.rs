@@ -6,7 +6,7 @@ impl Repl {
         let mut simplifier = Simplifier::with_default_rules();
 
         // Always enabled core rules
-        simplifier.add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
+        simplifier.add_rule(Box::new(cas_solver::rules::functions::AbsSquaredRule));
         simplifier.add_rule(Box::new(EvaluateTrigRule));
         simplifier.add_rule(Box::new(PythagoreanIdentityRule));
         if config.trig_angle_sum {
@@ -18,64 +18,64 @@ impl Repl {
         }
         if config.canonicalize_trig_square {
             simplifier.add_rule(Box::new(
-                cas_engine::rules::trigonometry::CanonicalizeTrigSquareRule,
+                cas_solver::rules::trigonometry::CanonicalizeTrigSquareRule,
             ));
         }
         simplifier.add_rule(Box::new(EvaluateLogRule));
         simplifier.add_rule(Box::new(ExponentialLogRule));
         simplifier.add_rule(Box::new(SimplifyFractionRule));
         simplifier.add_rule(Box::new(ExpandRule));
-        simplifier.add_rule(Box::new(cas_engine::rules::algebra::ConservativeExpandRule));
+        simplifier.add_rule(Box::new(cas_solver::rules::algebra::ConservativeExpandRule));
         simplifier.add_rule(Box::new(FactorRule));
         simplifier.add_rule(Box::new(CollectRule));
         simplifier.add_rule(Box::new(EvaluatePowerRule));
         simplifier.add_rule(Box::new(EvaluatePowerRule));
         if config.log_split_exponents {
             simplifier.add_rule(Box::new(
-                cas_engine::rules::logarithms::SplitLogExponentsRule,
+                cas_solver::rules::logarithms::SplitLogExponentsRule,
             ));
         }
 
         // Advanced Algebra Rules (Critical for Solver)
-        simplifier.add_rule(Box::new(cas_engine::rules::algebra::NestedFractionRule));
-        simplifier.add_rule(Box::new(cas_engine::rules::algebra::AddFractionsRule));
-        simplifier.add_rule(Box::new(cas_engine::rules::algebra::SimplifyMulDivRule));
+        simplifier.add_rule(Box::new(cas_solver::rules::algebra::NestedFractionRule));
+        simplifier.add_rule(Box::new(cas_solver::rules::algebra::AddFractionsRule));
+        simplifier.add_rule(Box::new(cas_solver::rules::algebra::SimplifyMulDivRule));
         if config.rationalize_denominator {
             simplifier.add_rule(Box::new(
-                cas_engine::rules::algebra::RationalizeDenominatorRule,
+                cas_solver::rules::algebra::RationalizeDenominatorRule,
             ));
         }
         simplifier.add_rule(Box::new(
-            cas_engine::rules::algebra::CancelCommonFactorsRule,
+            cas_solver::rules::algebra::CancelCommonFactorsRule,
         ));
 
         // Configurable rules
         if config.distribute {
-            simplifier.add_rule(Box::new(cas_engine::rules::polynomial::DistributeRule));
+            simplifier.add_rule(Box::new(cas_solver::rules::polynomial::DistributeRule));
         }
 
         if config.expand_binomials {
             simplifier.add_rule(Box::new(
-                cas_engine::rules::polynomial::BinomialExpansionRule,
+                cas_solver::rules::polynomial::BinomialExpansionRule,
             ));
         }
 
         if config.factor_difference_squares {
             simplifier.add_rule(Box::new(
-                cas_engine::rules::algebra::FactorDifferenceSquaresRule,
+                cas_solver::rules::algebra::FactorDifferenceSquaresRule,
             ));
         }
 
         if config.root_denesting {
-            simplifier.add_rule(Box::new(cas_engine::rules::algebra::RootDenestingRule));
+            simplifier.add_rule(Box::new(cas_solver::rules::algebra::RootDenestingRule));
         }
 
         if config.auto_factor {
-            simplifier.add_rule(Box::new(cas_engine::rules::algebra::AutomaticFactorRule));
+            simplifier.add_rule(Box::new(cas_solver::rules::algebra::AutomaticFactorRule));
         }
 
         simplifier.add_rule(Box::new(
-            cas_engine::rules::trigonometry::AngleConsistencyRule,
+            cas_solver::rules::trigonometry::AngleConsistencyRule,
         ));
         simplifier.add_rule(Box::new(CombineLikeTermsRule));
         simplifier.add_rule(Box::new(CombineLikeTermsRule));
@@ -86,12 +86,12 @@ impl Repl {
         simplifier.add_rule(Box::new(PowerQuotientRule));
         simplifier.add_rule(Box::new(IdentityPowerRule));
         simplifier.add_rule(Box::new(
-            cas_engine::rules::exponents::NegativeBasePowerRule,
+            cas_solver::rules::exponents::NegativeBasePowerRule,
         ));
         simplifier.add_rule(Box::new(AddZeroRule));
         simplifier.add_rule(Box::new(MulOneRule));
         simplifier.add_rule(Box::new(MulZeroRule));
-        simplifier.add_rule(Box::new(cas_engine::rules::arithmetic::DivZeroRule));
+        simplifier.add_rule(Box::new(cas_solver::rules::arithmetic::DivZeroRule));
         simplifier.add_rule(Box::new(CombineConstantsRule));
         simplifier.add_rule(Box::new(IntegrateRule));
         simplifier.add_rule(Box::new(DiffRule));

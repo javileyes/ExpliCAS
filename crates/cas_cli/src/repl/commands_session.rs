@@ -192,7 +192,7 @@ impl Repl {
         self.core
             .engine
             .simplifier
-            .add_rule(Box::new(cas_engine::rules::functions::AbsSquaredRule));
+            .add_rule(Box::new(cas_solver::rules::functions::AbsSquaredRule));
         self.core
             .engine
             .simplifier
@@ -219,7 +219,7 @@ impl Repl {
         }
         if self.config.canonicalize_trig_square {
             self.core.engine.simplifier.add_rule(Box::new(
-                cas_engine::rules::trigonometry::CanonicalizeTrigSquareRule,
+                cas_solver::rules::trigonometry::CanonicalizeTrigSquareRule,
             ));
         }
         self.core
@@ -238,7 +238,7 @@ impl Repl {
         self.core
             .engine
             .simplifier
-            .add_rule(Box::new(cas_engine::rules::algebra::ConservativeExpandRule));
+            .add_rule(Box::new(cas_solver::rules::algebra::ConservativeExpandRule));
 
         // Sync config
         self.sync_config_to_simplifier();
