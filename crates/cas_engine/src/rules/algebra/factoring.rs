@@ -503,14 +503,14 @@ mod tests {
 
         println!(
             "L = {}",
-            cas_ast::display::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &ctx,
                 id: l
             }
         );
         println!(
             "R = {}",
-            cas_ast::display::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &ctx,
                 id: r
             }
@@ -525,14 +525,14 @@ mod tests {
         if let Some((u, v)) = result {
             println!(
                 "U = {}",
-                cas_ast::display::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &ctx,
                     id: u
                 }
             );
             println!(
                 "V = {}",
-                cas_ast::display::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &ctx,
                     id: v
                 }
@@ -565,7 +565,7 @@ mod tests {
 
         println!(
             "Product = {}",
-            cas_ast::display::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &ctx,
                 id: expr
             }
@@ -586,11 +586,11 @@ mod tests {
         if let Some(rewrite) = result {
             println!(
                 "Rewrite: {} -> {}",
-                cas_ast::display::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &ctx,
                     id: expr
                 },
-                cas_ast::display::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &ctx,
                     id: rewrite.new_expr
                 },
@@ -612,7 +612,7 @@ mod tests {
 
         println!(
             "Product (reordered) = {}",
-            cas_ast::display::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &ctx,
                 id: expr
             }
@@ -634,11 +634,11 @@ mod tests {
         if let Some(rewrite) = result {
             println!(
                 "Rewrite: {} -> {}",
-                cas_ast::display::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &ctx,
                     id: expr
                 },
-                cas_ast::display::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &ctx,
                     id: rewrite.new_expr
                 },
@@ -664,7 +664,7 @@ mod tests {
 
         println!(
             "Input: {}",
-            cas_ast::display::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: expr
             }
@@ -675,7 +675,7 @@ mod tests {
 
         println!(
             "Output: {}",
-            cas_ast::display::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: result
             }

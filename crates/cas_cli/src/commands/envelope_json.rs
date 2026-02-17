@@ -8,15 +8,14 @@ use std::time::Instant;
 use anyhow::Result;
 use clap::Args;
 
+use cas_api_models::{
+    AssumptionDto, ConditionDto, EngineInfo, ExprDto, OutputEnvelope, RequestInfo, RequestOptions,
+    ResultDto, TransparencyDto,
+};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 use cas_session::SessionState;
 use cas_solver::{Engine, EvalAction, EvalOutput, EvalRequest, EvalResult};
-
-use crate::json_types::{
-    AssumptionDto, ConditionDto, EngineInfo, ExprDto, OutputEnvelope, RequestInfo, RequestOptions,
-    ResultDto, TransparencyDto,
-};
 
 /// Arguments for envelope-json subcommand
 #[derive(Args, Debug)]

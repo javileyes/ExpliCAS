@@ -230,7 +230,7 @@ impl<'a> SemanticEqualityChecker<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cas_ast::DisplayExpr;
+    use cas_formatter::DisplayExpr;
 
     #[test]
     fn test_div_vs_rational() {

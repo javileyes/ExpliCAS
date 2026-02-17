@@ -94,7 +94,7 @@ pub fn factor_polynomial(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
             res = mul2_raw(ctx, res, *t);
         }
 
-        // println!("factor_polynomial: {} -> {}", cas_ast::DisplayExpr { context: ctx, id: expr }, cas_ast::DisplayExpr { context: ctx, id: res });
+        // println!("factor_polynomial: {} -> {}", cas_formatter::DisplayExpr { context: ctx, id: expr }, cas_formatter::DisplayExpr { context: ctx, id: res });
 
         return Some(res);
     }
@@ -451,7 +451,7 @@ fn negate_term(ctx: &mut Context, expr: ExprId) -> ExprId {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cas_ast::DisplayExpr;
+    use cas_formatter::DisplayExpr;
     use cas_parser::parse;
 
     fn s(ctx: &Context, id: ExprId) -> String {

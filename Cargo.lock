@@ -226,6 +226,7 @@ dependencies = [
  "bitflags 2.10.0",
  "cas_api_models",
  "cas_ast",
+ "cas_formatter",
  "cas_math",
  "cas_parser",
  "cas_session",

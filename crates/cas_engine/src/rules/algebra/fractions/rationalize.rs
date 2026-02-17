@@ -61,7 +61,7 @@ define_rule!(
                 if matches!(ctx.get(base), Expr::Number(_)) {
                     continue;
                 }
-                let key = format!("{}", cas_ast::DisplayExpr { context: ctx, id: base });
+                let key = format!("{}", cas_formatter::DisplayExpr { context: ctx, id: base });
                 let entry = map.entry(key).or_insert((base, 0));
                 entry.1 += exp;
             }
@@ -144,7 +144,7 @@ define_rule!(
                     continue;
                 }
 
-                let key = format!("{}", cas_ast::DisplayExpr { context: ctx, id: base });
+                let key = format!("{}", cas_formatter::DisplayExpr { context: ctx, id: base });
                 let common_exp = common_map.get(&key).map(|(_, e)| *e).unwrap_or(0);
                 let new_exp = exp - common_exp;
                 if new_exp > 0 {
@@ -238,7 +238,7 @@ define_rule!(
                 }
                 let key = format!(
                     "{}",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: ctx,
                         id: base
                     }
@@ -316,7 +316,7 @@ define_rule!(
                 }
                 let key = format!(
                     "{}",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: ctx,
                         id: base
                     }
@@ -420,7 +420,7 @@ define_rule!(
                 }
                 let key = format!(
                     "{}",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: ctx,
                         id: base
                     }
@@ -571,7 +571,7 @@ define_rule!(
                 if matches!(ctx.get(base), Expr::Number(_)) {
                     continue;
                 }
-                let key = format!("{}", cas_ast::DisplayExpr { context: ctx, id: base });
+                let key = format!("{}", cas_formatter::DisplayExpr { context: ctx, id: base });
                 let entry = map.entry(key).or_insert((base, 0));
                 entry.1 += exp;
             }
@@ -632,7 +632,7 @@ define_rule!(
                         continue;
                     }
 
-                    let key = format!("{}", cas_ast::DisplayExpr { context: ctx, id: base });
+                    let key = format!("{}", cas_formatter::DisplayExpr { context: ctx, id: base });
                     let common_exp = common_map.get(&key).map(|(_, e)| *e).unwrap_or(0);
                     let new_exp = exp - common_exp;
                     if new_exp > 0 {

@@ -213,7 +213,7 @@ pub(crate) fn generate_fraction_sum_substeps(info: &FractionSumInfo) -> Vec<SubS
 ///   1. Factor numerator: x² - 4 → (x-2)(x+2)
 ///   2. Cancel common factor: (x-2)(x+2) / (x+2) → x-2
 pub(crate) fn generate_gcd_factorization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
-    use cas_ast::DisplayExpr;
+    use cas_formatter::DisplayExpr;
 
     let mut sub_steps = Vec::new();
 

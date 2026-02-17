@@ -45,16 +45,16 @@ define_rule!(SumRule, "Finite Summation", |ctx, expr| {
                 return Some(Rewrite::new(result).desc_lazy(|| {
                     format!(
                         "Telescoping sum: Σ({}, {}) from {} to {}",
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: ctx,
                             id: summand
                         },
                         var_name,
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: ctx,
                             id: start_expr
                         },
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: ctx,
                             id: end_expr
                         }
@@ -90,7 +90,7 @@ define_rule!(SumRule, "Finite Summation", |ctx, expr| {
                     return Some(Rewrite::new(simplified).desc_lazy(|| {
                         format!(
                             "sum({}, {}, {}, {})",
-                            cas_ast::DisplayExpr {
+                            cas_formatter::DisplayExpr {
                                 context: ctx,
                                 id: summand
                             },
@@ -361,16 +361,16 @@ define_rule!(ProductRule, "Finite Product", |ctx, expr| {
                 return Some(Rewrite::new(result).desc_lazy(|| {
                     format!(
                         "Telescoping product: Π({}, {}) from {} to {}",
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: ctx,
                             id: factor
                         },
                         var_name,
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: ctx,
                             id: start_expr
                         },
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: ctx,
                             id: end_expr
                         }
@@ -390,16 +390,16 @@ define_rule!(ProductRule, "Finite Product", |ctx, expr| {
                 return Some(Rewrite::new(result).desc_lazy(|| {
                     format!(
                         "Factorized telescoping product: Π({}, {}) from {} to {}",
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: ctx,
                             id: factor
                         },
                         var_name,
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: ctx,
                             id: start_expr
                         },
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: ctx,
                             id: end_expr
                         }
@@ -435,7 +435,7 @@ define_rule!(ProductRule, "Finite Product", |ctx, expr| {
                     return Some(Rewrite::new(simplified).desc_lazy(|| {
                         format!(
                             "product({}, {}, {}, {})",
-                            cas_ast::DisplayExpr {
+                            cas_formatter::DisplayExpr {
                                 context: ctx,
                                 id: factor
                             },

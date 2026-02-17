@@ -4,7 +4,8 @@ use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use cas_ast::{count_nodes, Context, DisplayExpr, Expr, ExprId};
+use cas_ast::{count_nodes, Context, Expr, ExprId};
+use cas_formatter::DisplayExpr;
 
 // ========== Light Rationalization for Single Numeric Surd Denominators ==========
 // Transforms: num / (k * √n) → (num * √n) / (k * n)

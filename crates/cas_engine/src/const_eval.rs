@@ -154,7 +154,7 @@ mod tests {
     }
 
     fn display(ctx: &Context, id: ExprId) -> String {
-        use cas_ast::DisplayExpr;
+        use cas_formatter::DisplayExpr;
         format!("{}", DisplayExpr { context: ctx, id })
     }
 

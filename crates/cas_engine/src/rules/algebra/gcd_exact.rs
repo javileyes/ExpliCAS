@@ -10,7 +10,8 @@ use crate::multipoly::{
 };
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use cas_ast::{Context, DisplayExpr, Expr, ExprId};
+use cas_ast::{Context, Expr, ExprId};
+use cas_formatter::DisplayExpr;
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
 

@@ -1,7 +1,8 @@
 use super::escape::html_escape;
 use super::latex_clean::clean_latex_identities;
 use crate::solver::SolveStep;
-use cas_ast::{Context, DisplayExpr, Equation, LaTeXExpr, SolutionSet};
+use cas_ast::{Context, Equation, SolutionSet};
+use cas_formatter::{DisplayExpr, LaTeXExpr};
 
 /// Timeline HTML generator for equation solving steps
 pub struct SolveTimelineHtml<'a> {

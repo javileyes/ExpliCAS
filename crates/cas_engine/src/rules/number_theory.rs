@@ -110,11 +110,11 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                         Rewrite::new(ctx.add(Expr::Number(BigRational::from_integer(gcd)))).desc(
                             format!(
                                 "gcd({}, {})",
-                                cas_ast::DisplayExpr {
+                                cas_formatter::DisplayExpr {
                                     context: ctx,
                                     id: args[0]
                                 },
-                                cas_ast::DisplayExpr {
+                                cas_formatter::DisplayExpr {
                                     context: ctx,
                                     id: args[1]
                                 }
@@ -177,11 +177,11 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                     return Some(Rewrite::new(res).desc_lazy(|| {
                         format!(
                             "lcm({}, {})",
-                            cas_ast::DisplayExpr {
+                            cas_formatter::DisplayExpr {
                                 context: ctx,
                                 id: args[0]
                             },
-                            cas_ast::DisplayExpr {
+                            cas_formatter::DisplayExpr {
                                 context: ctx,
                                 id: args[1]
                             }
@@ -196,11 +196,11 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                     return Some(Rewrite::new(res).desc_lazy(|| {
                         format!(
                             "mod({}, {})",
-                            cas_ast::DisplayExpr {
+                            cas_formatter::DisplayExpr {
                                 context: ctx,
                                 id: args[0]
                             },
-                            cas_ast::DisplayExpr {
+                            cas_formatter::DisplayExpr {
                                 context: ctx,
                                 id: args[1]
                             }
@@ -215,7 +215,7 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                     return Some(Rewrite::new(res).desc_lazy(|| {
                         format!(
                             "factors({})",
-                            cas_ast::DisplayExpr {
+                            cas_formatter::DisplayExpr {
                                 context: ctx,
                                 id: args[0]
                             }
@@ -230,7 +230,7 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                     return Some(Rewrite::new(res).desc_lazy(|| {
                         format!(
                             "fact({})",
-                            cas_ast::DisplayExpr {
+                            cas_formatter::DisplayExpr {
                                 context: ctx,
                                 id: args[0]
                             }
@@ -245,11 +245,11 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                     return Some(Rewrite::new(res).desc_lazy(|| {
                         format!(
                             "choose({}, {})",
-                            cas_ast::DisplayExpr {
+                            cas_formatter::DisplayExpr {
                                 context: ctx,
                                 id: args[0]
                             },
-                            cas_ast::DisplayExpr {
+                            cas_formatter::DisplayExpr {
                                 context: ctx,
                                 id: args[1]
                             }
@@ -264,11 +264,11 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                     return Some(Rewrite::new(res).desc_lazy(|| {
                         format!(
                             "perm({}, {})",
-                            cas_ast::DisplayExpr {
+                            cas_formatter::DisplayExpr {
                                 context: ctx,
                                 id: args[0]
                             },
-                            cas_ast::DisplayExpr {
+                            cas_formatter::DisplayExpr {
                                 context: ctx,
                                 id: args[1]
                             }
@@ -626,7 +626,7 @@ fn verbose_poly_gcd(
     p2: &crate::polynomial::Polynomial,
 ) -> (crate::polynomial::Polynomial, Vec<String>) {
     use crate::polynomial::Polynomial;
-    use cas_ast::DisplayExpr;
+    use cas_formatter::DisplayExpr;
 
     let mut a = p1.clone();
     let mut b = p2.clone();

@@ -63,7 +63,7 @@ impl SolverStrategy for QuadraticStrategy {
                 steps.push(SolveStep {
                     description: format!(
                         "Factorized equation: {} = 0",
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: &simplifier.context,
                             id: sim_poly_expr
                         }
@@ -94,7 +94,7 @@ impl SolverStrategy for QuadraticStrategy {
                         steps.push(SolveStep {
                             description: format!(
                                 "Solve factor: {} = 0",
-                                cas_ast::DisplayExpr {
+                                cas_formatter::DisplayExpr {
                                     context: &simplifier.context,
                                     id: factor
                                 }
@@ -498,7 +498,7 @@ impl SolverStrategy for QuadraticStrategy {
                 };
 
                 // Emit scope for display transforms (sqrt display in quadratic context)
-                crate::solver::emit_scope(cas_ast::display_transforms::ScopeTag::Rule(
+                crate::solver::emit_scope(cas_formatter::display_transforms::ScopeTag::Rule(
                     "QuadraticFormula",
                 ));
 
@@ -561,7 +561,7 @@ impl SolverStrategy for QuadraticStrategy {
             }
 
             // Emit scope for display transforms (sqrt display in quadratic context)
-            crate::solver::emit_scope(cas_ast::display_transforms::ScopeTag::Rule(
+            crate::solver::emit_scope(cas_formatter::display_transforms::ScopeTag::Rule(
                 "QuadraticFormula",
             ));
 

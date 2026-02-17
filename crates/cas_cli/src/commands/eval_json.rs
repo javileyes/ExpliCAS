@@ -17,7 +17,7 @@ use cas_didactic::{pathsteps_to_expr_path, ImportanceLevel};
 use cas_didactic as didactic;
 
 use crate::format::{expr_hash, expr_stats, format_expr_limited};
-use crate::json_types::{
+use cas_api_models::{
     BudgetJsonInfo, DomainJson, ErrorJsonOutput, EvalJsonOutput, OptionsJson,
     RequiredConditionJson, SemanticsJson, SolveStepJson, SolveSubStepJson, StepJson, SubStepJson,
     TimingsJson, WarningJson,

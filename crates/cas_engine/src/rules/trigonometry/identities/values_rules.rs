@@ -118,7 +118,7 @@ impl crate::rule::Rule for TanTripleProductRule {
                 let cos_pi3_minus = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![pi3_minus_u]);
 
                 // Format u for display in substeps
-                let u_str = cas_ast::DisplayExpr {
+                let u_str = cas_formatter::DisplayExpr {
                     context: ctx,
                     id: u,
                 }

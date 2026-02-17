@@ -17,7 +17,7 @@ pub(crate) type ActionResult = (
     Vec<crate::Step>,
     Vec<crate::solver::SolveStep>,
     Vec<crate::assumptions::AssumptionRecord>,
-    Vec<cas_ast::display_transforms::ScopeTag>,
+    Vec<cas_formatter::display_transforms::ScopeTag>,
     Vec<crate::implicit_domain::ImplicitCondition>,
 );
 
@@ -93,7 +93,7 @@ impl std::error::Error for EvalResolveError {}
 /// let (result, _steps) = engine.simplifier.simplify(expr);
 ///
 /// // Result is simplified
-/// use cas_ast::display::DisplayExpr;
+/// use cas_formatter::DisplayExpr;
 /// let output = format!("{}", DisplayExpr { context: &engine.simplifier.context, id: result });
 /// assert!(output.contains("x")); // Contains x
 /// ```
@@ -258,7 +258,7 @@ pub struct EvalOutput {
     /// Assumptions made during solver operations (for Assume mode).
     pub solver_assumptions: Vec<crate::assumptions::AssumptionRecord>,
     /// Scopes for context-aware display (e.g., QuadraticFormula -> sqrt display).
-    pub output_scopes: Vec<cas_ast::display_transforms::ScopeTag>,
+    pub output_scopes: Vec<cas_formatter::display_transforms::ScopeTag>,
     /// Required conditions for validity - implicit domain constraints from input.
     /// NOT assumptions! These were already required by the input expression.
     /// Sorted and deduplicated for stable display.

@@ -57,7 +57,7 @@ impl SolverAssumption {
             SolverAssumption::PositiveRhs => {
                 format!(
                     "positive({})",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: ctx,
                         id: rhs
                     }
@@ -66,7 +66,7 @@ impl SolverAssumption {
             SolverAssumption::PositiveBase => {
                 format!(
                     "positive({})",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: ctx,
                         id: base
                     }

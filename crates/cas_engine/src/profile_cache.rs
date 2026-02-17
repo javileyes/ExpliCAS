@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn test_from_profile_end_to_end() {
         use crate::Simplifier;
-        use cas_ast::DisplayExpr;
+        use cas_formatter::DisplayExpr;
 
         let mut cache = ProfileCache::new();
         let opts = EvalOptions::default();

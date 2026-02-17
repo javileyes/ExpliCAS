@@ -3,10 +3,9 @@
 //! Provides truncated expression formatting and AST statistics
 //! to avoid flooding output with huge expressions.
 
+use cas_api_models::ExprStatsJson;
 use cas_ast::{Case, Context, Expr, ExprId, SolutionSet};
 use cas_formatter::DisplayExpr;
-
-use crate::json_types::ExprStatsJson;
 
 /// Check if a conditional case is an "otherwise" that only contains Residual.
 ///

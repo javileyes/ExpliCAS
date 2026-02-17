@@ -338,7 +338,7 @@ thread_local! {
         const { std::cell::RefCell::new(None) };
     /// Thread-local collector for output scopes (display context).
     /// Strategies emit scopes like "QuadraticFormula" which affect display transforms.
-    static OUTPUT_SCOPES: std::cell::RefCell<Vec<cas_ast::display_transforms::ScopeTag>> =
+    static OUTPUT_SCOPES: std::cell::RefCell<Vec<cas_formatter::display_transforms::ScopeTag>> =
         const { std::cell::RefCell::new(Vec::new()) };
 }
 
@@ -416,7 +416,7 @@ pub(crate) fn note_assumption(event: crate::assumptions::AssumptionEvent) {
 
 /// Emit a scope tag during solver operation for display transforms.
 /// Called by strategies like QuadraticFormula to mark the result context.
-pub fn emit_scope(scope: cas_ast::display_transforms::ScopeTag) {
+pub fn emit_scope(scope: cas_formatter::display_transforms::ScopeTag) {
     OUTPUT_SCOPES.with(|s| {
         let mut scopes = s.borrow_mut();
         // Avoid duplicates
@@ -428,7 +428,7 @@ pub fn emit_scope(scope: cas_ast::display_transforms::ScopeTag) {
 
 /// Take all emitted scopes, clearing the TLS collector.
 /// Called after solve to get scopes for EvalOutput.
-pub fn take_scopes() -> Vec<cas_ast::display_transforms::ScopeTag> {
+pub fn take_scopes() -> Vec<cas_formatter::display_transforms::ScopeTag> {
     OUTPUT_SCOPES.with(|s| std::mem::take(&mut *s.borrow_mut()))
 }
 

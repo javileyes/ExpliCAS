@@ -247,7 +247,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                 // Emit cycle event for the registry
                                 let expr_str = format!(
                                     "{}",
-                                    cas_ast::DisplayExpr {
+                                    cas_formatter::DisplayExpr {
                                         context: self.context,
                                         id: expr_id,
                                     }

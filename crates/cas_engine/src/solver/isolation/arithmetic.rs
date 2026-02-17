@@ -50,7 +50,7 @@ pub(super) fn isolate_add(
             steps.push(SolveStep {
                 description: format!(
                     "Subtract {} from both sides",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: &simplifier.context,
                         id: r
                     }
@@ -75,7 +75,7 @@ pub(super) fn isolate_add(
             steps.push(SolveStep {
                 description: format!(
                     "Subtract {} from both sides",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: &simplifier.context,
                         id: l
                     }
@@ -116,7 +116,7 @@ pub(super) fn isolate_sub(
             steps.push(SolveStep {
                 description: format!(
                     "Add {} to both sides",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: &simplifier.context,
                         id: r
                     }
@@ -143,7 +143,7 @@ pub(super) fn isolate_sub(
             steps.push(SolveStep {
                 description: format!(
                     "Move {} and multiply by -1 (flips inequality)",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: &simplifier.context,
                         id: l
                     }
@@ -327,7 +327,7 @@ pub(super) fn isolate_mul(
             steps.push(SolveStep {
                 description: format!(
                     "Divide both sides by {}",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: &simplifier.context,
                         id: r
                     }
@@ -366,7 +366,7 @@ pub(super) fn isolate_mul(
             steps.push(SolveStep {
                 description: format!(
                     "Divide both sides by {}",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: &simplifier.context,
                         id: l
                     }
@@ -409,7 +409,7 @@ pub(super) fn isolate_div(
                 steps.push(SolveStep {
                     description: format!(
                         "Case 1: Assume {} > 0. Multiply by positive denominator.",
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: &simplifier.context,
                             id: r
                         }
@@ -446,7 +446,7 @@ pub(super) fn isolate_div(
                 steps.push(SolveStep {
                     description: format!(
                         "Case 2: Assume {} < 0. Multiply by negative denominator (flips inequality).",
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: &simplifier.context,
                             id: r
                         }
@@ -509,7 +509,7 @@ pub(super) fn isolate_div(
                 steps.push(SolveStep {
                     description: format!(
                         "Multiply both sides by {}",
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: &simplifier.context,
                             id: r
                         }
@@ -567,8 +567,8 @@ pub(super) fn isolate_div(
                     steps_case1.push(SolveStep {
                         description: format!(
                             "Case 1: Assume {} > 0. Multiply by {} (positive). Inequality direction preserved (flipped from isolation logic).",
-                            cas_ast::DisplayExpr { context: &simplifier.context, id: r },
-                            cas_ast::DisplayExpr { context: &simplifier.context, id: r }
+                            cas_formatter::DisplayExpr { context: &simplifier.context, id: r },
+                            cas_formatter::DisplayExpr { context: &simplifier.context, id: r }
                         ),
                         equation_after: Equation {
                             lhs: r,
@@ -600,11 +600,11 @@ pub(super) fn isolate_div(
                     steps_case2.push(SolveStep {
                         description: format!(
                             "Case 2: Assume {} < 0. Multiply by {} (negative). Inequality flips.",
-                            cas_ast::DisplayExpr {
+                            cas_formatter::DisplayExpr {
                                 context: &simplifier.context,
                                 id: r
                             },
-                            cas_ast::DisplayExpr {
+                            cas_formatter::DisplayExpr {
                                 context: &simplifier.context,
                                 id: r
                             }
@@ -661,7 +661,7 @@ pub(super) fn isolate_div(
             steps.push(SolveStep {
                 description: format!(
                     "Multiply both sides by {}",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: &simplifier.context,
                         id: r
                     }
@@ -679,7 +679,7 @@ pub(super) fn isolate_div(
             steps.push(SolveStep {
                 description: format!(
                     "Divide both sides by {}",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: &simplifier.context,
                         id: rhs
                     }

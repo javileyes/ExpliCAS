@@ -11,7 +11,8 @@ use crate::rules::algebra::helpers::{
     collect_denominators, count_nodes_of_type, distribute, gcd_rational,
 };
 use crate::target_kind::TargetKind;
-use cas_ast::{DisplayExpr, Expr, ExprId};
+use cas_ast::{Expr, ExprId};
+use cas_formatter::DisplayExpr;
 use num_traits::{One, Zero};
 
 // Import helpers from sibling core_rules module

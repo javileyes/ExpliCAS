@@ -544,7 +544,7 @@ fn gcd_rational(a: BigRational, b: BigRational) -> BigRational {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cas_ast::DisplayExpr;
+    use cas_formatter::DisplayExpr;
     use cas_parser::parse;
 
     #[test]

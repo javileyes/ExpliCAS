@@ -272,7 +272,7 @@ pub fn expr_fingerprint(ctx: &Context, expr: ExprId) -> u64 {
 
     let display = format!(
         "{}",
-        cas_ast::display::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: ctx,
             id: expr
         }
@@ -311,7 +311,7 @@ impl AssumptionEvent {
         let fp = expr_fingerprint(ctx, expr);
         let display = format!(
             "{}",
-            cas_ast::display::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: ctx,
                 id: expr
             }
@@ -334,7 +334,7 @@ impl AssumptionEvent {
         let fp = expr_fingerprint(ctx, expr);
         let display = format!(
             "{}",
-            cas_ast::display::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: ctx,
                 id: expr
             }
@@ -357,7 +357,7 @@ impl AssumptionEvent {
         let fp = expr_fingerprint(ctx, expr);
         let display = format!(
             "{}",
-            cas_ast::display::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: ctx,
                 id: expr
             }
@@ -378,7 +378,7 @@ impl AssumptionEvent {
         let fp = expr_fingerprint(ctx, expr);
         let display = format!(
             "{}",
-            cas_ast::display::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: ctx,
                 id: expr
             }
@@ -399,7 +399,7 @@ impl AssumptionEvent {
         let fp = expr_fingerprint(ctx, expr);
         let display = format!(
             "{}",
-            cas_ast::display::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: ctx,
                 id: expr
             }
@@ -420,7 +420,7 @@ impl AssumptionEvent {
         let fp = expr_fingerprint(ctx, arg);
         let display = format!(
             "{}",
-            cas_ast::display::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: ctx,
                 id: arg
             }
@@ -442,7 +442,7 @@ impl AssumptionEvent {
         let fp = expr_fingerprint(ctx, arg);
         let display = format!(
             "{}",
-            cas_ast::display::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: ctx,
                 id: arg
             }

@@ -10,7 +10,8 @@ use crate::poly_modp_conv::{
     DEFAULT_PRIME as INTERNAL_DEFAULT_PRIME,
 };
 use crate::rule::Rewrite;
-use cas_ast::{Context, DisplayExpr, Expr, ExprId};
+use cas_ast::{Context, Expr, ExprId};
+use cas_formatter::DisplayExpr;
 
 /// Re-export DEFAULT_PRIME for use by other modules
 pub const DEFAULT_PRIME: u64 = INTERNAL_DEFAULT_PRIME;

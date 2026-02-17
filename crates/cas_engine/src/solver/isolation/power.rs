@@ -64,12 +64,12 @@ fn isolate_pow_base(
                 steps.push(SolveStep {
                     description: format!(
                         "Even power cannot be negative ({} {} {})",
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: &simplifier.context,
                             id: b
                         },
                         op,
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: &simplifier.context,
                             id: rhs
                         }
@@ -103,7 +103,7 @@ fn isolate_pow_base(
             steps.push(SolveStep {
                 description: format!(
                     "Take {}-th root of both sides (even root implies absolute value)",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: &simplifier.context,
                         id: e
                     }
@@ -130,7 +130,7 @@ fn isolate_pow_base(
             steps.push(SolveStep {
                 description: format!(
                     "Take {}-th root of both sides",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: &simplifier.context,
                         id: e
                     }
@@ -215,12 +215,12 @@ fn isolate_pow_exponent(
                     steps.push(SolveStep {
                         description: format!(
                             "Power Equals Base Shortcut: {}^{} = {} ⟹ {} = 1 (B^1 = B always holds)",
-                            cas_ast::DisplayExpr {
+                            cas_formatter::DisplayExpr {
                                 context: &simplifier.context,
                                 id: b
                             },
                             var,
-                            cas_ast::DisplayExpr {
+                            cas_formatter::DisplayExpr {
                                 context: &simplifier.context,
                                 id: rhs
                             },
@@ -248,12 +248,12 @@ fn isolate_pow_exponent(
                     steps.push(SolveStep {
                         description: format!(
                             "Power Equals Base: {}^{} = {} ⟹ {} = 1 (assuming base ≠ 0, 1)",
-                            cas_ast::DisplayExpr {
+                            cas_formatter::DisplayExpr {
                                 context: &simplifier.context,
                                 id: b
                             },
                             var,
-                            cas_ast::DisplayExpr {
+                            cas_formatter::DisplayExpr {
                                 context: &simplifier.context,
                                 id: rhs
                             },
@@ -305,7 +305,7 @@ fn isolate_pow_exponent(
                 steps.push(SolveStep {
                     description: format!(
                         "Power Equals Base with symbolic base '{}': case split → a=1: AllReals, a=0: x>0, otherwise: x=1",
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: &simplifier.context,
                             id: b
                         }
@@ -344,12 +344,12 @@ fn isolate_pow_exponent(
                 steps.push(SolveStep {
                     description: format!(
                         "Pattern: {}^{} = {}^{} → {} = {} (equal bases imply equal exponents when base ≠ 0, 1)",
-                        cas_ast::DisplayExpr { context: &simplifier.context, id: b },
+                        cas_formatter::DisplayExpr { context: &simplifier.context, id: b },
                         var,
-                        cas_ast::DisplayExpr { context: &simplifier.context, id: rhs_base },
-                        cas_ast::DisplayExpr { context: &simplifier.context, id: rhs_exp },
+                        cas_formatter::DisplayExpr { context: &simplifier.context, id: rhs_base },
+                        cas_formatter::DisplayExpr { context: &simplifier.context, id: rhs_exp },
                         var,
-                        cas_ast::DisplayExpr { context: &simplifier.context, id: rhs_exp }
+                        cas_formatter::DisplayExpr { context: &simplifier.context, id: rhs_exp }
                     ),
                     equation_after: Equation {
                         lhs: e,
@@ -392,7 +392,7 @@ fn isolate_pow_exponent(
             } else {
                 format!(
                     "1^x = 1 for all x, but RHS = {} ≠ 1 → no solution",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: &simplifier.context,
                         id: rhs
                     }
@@ -544,7 +544,7 @@ fn isolate_pow_exponent(
                 guarded_steps.push(SolveStep {
                     description: format!(
                         "Take log base {} of both sides (under guard: {})",
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: &simplifier.context,
                             id: b
                         },
@@ -611,7 +611,7 @@ fn isolate_pow_exponent(
         steps.push(SolveStep {
             description: format!(
                 "Take log base {} of both sides",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &simplifier.context,
                     id: b
                 }

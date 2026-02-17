@@ -7,7 +7,6 @@ mod completer;
 mod config;
 mod format;
 mod health_suite;
-pub mod json_types;
 pub mod repl;
 
 use clap::{Parser, Subcommand, ValueEnum};

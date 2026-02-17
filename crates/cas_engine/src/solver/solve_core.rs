@@ -452,7 +452,7 @@ fn solve_inner(
                         description: format!(
                             "Variable '{}' canceled during simplification. Solution depends on constraint: {} = 0",
                             var,
-                            cas_ast::DisplayExpr { context: &simplifier.context, id: diff_simplified }
+                            cas_formatter::DisplayExpr { context: &simplifier.context, id: diff_simplified }
                         ),
                         equation_after: cas_ast::Equation {
                             lhs: diff_simplified,

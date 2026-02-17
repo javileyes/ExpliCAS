@@ -160,7 +160,7 @@ impl Orchestrator {
                 // Emit cycle event for the registry
                 let expr_str = format!(
                     "{}",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: &simplifier.context,
                         id: current,
                     }

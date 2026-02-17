@@ -504,7 +504,7 @@ mod tests {
     use super::*;
     use crate::rule::Rule;
     use cas_ast::Context;
-    use cas_ast::DisplayExpr;
+    use cas_formatter::DisplayExpr;
     use cas_parser::parse;
 
     #[test]

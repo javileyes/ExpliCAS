@@ -90,12 +90,12 @@ fn isolate_abs(
         steps1.push(SolveStep {
             description: format!(
                 "Split absolute value (Case 1): {} {} {}",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &simplifier.context,
                     id: arg
                 },
                 op,
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &simplifier.context,
                     id: rhs
                 }
@@ -129,12 +129,12 @@ fn isolate_abs(
         steps2.push(SolveStep {
             description: format!(
                 "Split absolute value (Case 2): {} {} {}",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &simplifier.context,
                     id: arg
                 },
                 op2,
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &simplifier.context,
                     id: neg_rhs
                 }
@@ -198,7 +198,7 @@ fn isolate_log(
             steps.push(SolveStep {
                 description: format!(
                     "Exponentiate both sides with base {}",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: &simplifier.context,
                         id: base
                     }

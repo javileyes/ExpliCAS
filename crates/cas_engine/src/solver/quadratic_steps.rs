@@ -65,7 +65,7 @@ pub(crate) fn build_quadratic_substeps(
     c: ExprId,
     is_real_only: bool,
 ) -> Vec<SolveSubStep> {
-    use cas_ast::DisplayExpr;
+    use cas_formatter::DisplayExpr;
 
     let ctx = &mut simplifier.context;
     let mut steps = Vec::new();

@@ -439,7 +439,7 @@ mod cubic_conjugate_tests {
 
         let result_str = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: result
             }
@@ -459,7 +459,7 @@ mod cubic_conjugate_tests {
 
         let result_str = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: result
             }
@@ -509,7 +509,7 @@ mod cubic_conjugate_tests {
 
         let result_str = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: result
             }
@@ -529,7 +529,7 @@ mod cubic_conjugate_tests {
 
         let result_str = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: result
             }
@@ -549,7 +549,7 @@ mod cubic_conjugate_tests {
 
         let result_str = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: result
             }

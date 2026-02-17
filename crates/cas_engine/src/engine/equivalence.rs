@@ -174,7 +174,7 @@ impl Simplifier {
             for hint in &self.last_blocked_hints {
                 let expr_display = format!(
                     "{}",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: &self.context,
                         id: hint.expr_id
                     }
@@ -248,7 +248,7 @@ impl Simplifier {
                 // Build condition string from AssumptionKey
                 let expr_display = format!(
                     "{}",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: &self.context,
                         id: hint.expr_id
                     }
@@ -309,7 +309,7 @@ impl Simplifier {
                 for hint in &self.last_blocked_hints {
                     let expr_display = format!(
                         "{}",
-                        cas_ast::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: &self.context,
                             id: hint.expr_id
                         }

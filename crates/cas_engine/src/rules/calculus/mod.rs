@@ -29,7 +29,7 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
                         return Some(Rewrite::new(result).desc_lazy(|| {
                             format!(
                                 "integrate({}, {})",
-                                cas_ast::DisplayExpr {
+                                cas_formatter::DisplayExpr {
                                     context: ctx,
                                     id: integrand
                                 },
@@ -46,7 +46,7 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
                     return Some(Rewrite::new(result).desc_lazy(|| {
                         format!(
                             "integrate({}, x)",
-                            cas_ast::DisplayExpr {
+                            cas_formatter::DisplayExpr {
                                 context: ctx,
                                 id: integrand
                             }
@@ -71,7 +71,7 @@ define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
                     return Some(Rewrite::new(result).desc_lazy(|| {
                         format!(
                             "diff({}, {})",
-                            cas_ast::DisplayExpr {
+                            cas_formatter::DisplayExpr {
                                 context: ctx,
                                 id: target
                             },

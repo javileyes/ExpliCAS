@@ -1040,7 +1040,7 @@ pub fn register(simplifier: &mut crate::engine::Simplifier) {
 mod tests {
     use super::*;
     use crate::rule::Rule;
-    use cas_ast::DisplayExpr;
+    use cas_formatter::DisplayExpr;
 
     #[test]
     fn test_recognize_cosh_from_exp() {

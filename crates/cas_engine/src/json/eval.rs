@@ -131,7 +131,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
             let clean = crate::engine::strip_all_holds(&mut engine.simplifier.context, *e);
             format!(
                 "{}",
-                cas_ast::display::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &engine.simplifier.context,
                     id: clean
                 }
@@ -141,7 +141,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
             let clean = crate::engine::strip_all_holds(&mut engine.simplifier.context, v[0]);
             format!(
                 "{}",
-                cas_ast::display::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &engine.simplifier.context,
                     id: clean
                 }
@@ -161,7 +161,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
                     let clean = crate::engine::strip_all_holds(&mut engine.simplifier.context, id);
                     format!(
                         "{}",
-                        cas_ast::display::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: &engine.simplifier.context,
                             id: clean
                         }
@@ -171,7 +171,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
                     let clean = crate::engine::strip_all_holds(&mut engine.simplifier.context, id);
                     format!(
                         "{}",
-                        cas_ast::display::DisplayExpr {
+                        cas_formatter::DisplayExpr {
                             context: &engine.simplifier.context,
                             id: clean
                         }

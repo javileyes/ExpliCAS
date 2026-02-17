@@ -34,14 +34,14 @@ pub fn filter_non_productive_steps(
         {
             let before_str = format!(
                 "{}",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: ctx,
                     id: step.before
                 }
             );
             let after_str = format!(
                 "{}",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: ctx,
                     id: step.after
                 }

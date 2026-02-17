@@ -11,7 +11,8 @@ use crate::nary::{AddView, Sign};
 // 2. Apply product-to-sum: 2*cos(kx)*sin(x/2) = sin((k+½)x) - sin((k-½)x)
 // 3. Observe telescoping cancellation
 
-use cas_ast::{Context, DisplayExpr, Expr, ExprId};
+use cas_ast::{Context, Expr, ExprId};
+use cas_formatter::DisplayExpr;
 use num_traits::{One, Zero};
 
 /// Result of telescoping analysis

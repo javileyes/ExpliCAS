@@ -148,7 +148,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 self.depth_overflow_warned = true;
 
                 // Log the expression to file for later investigation
-                let display = cas_ast::DisplayExpr {
+                let display = cas_formatter::DisplayExpr {
                     context: self.context,
                     id: self.root_expr,
                 };

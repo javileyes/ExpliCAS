@@ -277,7 +277,7 @@ impl CancelDecision {
         self.assumed_keys
             .iter()
             .map(|key| {
-                let expr_display = cas_ast::DisplayExpr {
+                let expr_display = cas_formatter::DisplayExpr {
                     context: ctx,
                     id: expr_id,
                 }

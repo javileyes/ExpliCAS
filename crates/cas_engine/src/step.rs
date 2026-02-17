@@ -304,7 +304,7 @@ impl Step {
             };
             format!(
                 "{}",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: ctx,
                     id: display_id
                 }

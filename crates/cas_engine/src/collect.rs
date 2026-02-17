@@ -522,7 +522,7 @@ fn try_sum_numeric_fractions(ctx: &Context, exp: ExprId) -> Option<BigRational> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cas_ast::DisplayExpr;
+    use cas_formatter::DisplayExpr;
     use cas_parser::parse;
 
     fn s(ctx: &Context, id: ExprId) -> String {

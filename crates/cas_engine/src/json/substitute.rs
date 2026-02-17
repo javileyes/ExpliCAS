@@ -149,7 +149,7 @@ pub fn substitute_str_to_json(
     let clean_result = crate::engine::strip_all_holds(&mut ctx, sub_result.expr);
     let result_str = format!(
         "{}",
-        cas_ast::display::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &ctx,
             id: clean_result
         }

@@ -90,7 +90,7 @@ pub enum ImplicitCondition {
 impl ImplicitCondition {
     /// Human-readable display for REPL/UI.
     pub fn display(&self, ctx: &Context) -> String {
-        use cas_ast::display::DisplayExpr;
+        use cas_formatter::DisplayExpr;
         match self {
             ImplicitCondition::NonNegative(e) => {
                 format!(

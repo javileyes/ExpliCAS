@@ -20,7 +20,7 @@ impl Engine {
         steps: Vec<crate::Step>,
         solve_steps: Vec<crate::solver::SolveStep>,
         solver_assumptions: Vec<crate::assumptions::AssumptionRecord>,
-        output_scopes: Vec<cas_ast::display_transforms::ScopeTag>,
+        output_scopes: Vec<cas_formatter::display_transforms::ScopeTag>,
         solver_required: Vec<crate::implicit_domain::ImplicitCondition>,
         inherited_diagnostics: crate::diagnostics::Diagnostics,
         store: &mut impl EvalStore,

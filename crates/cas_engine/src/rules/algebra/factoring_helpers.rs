@@ -400,7 +400,7 @@ pub(super) fn is_structurally_zero(ctx: &mut cas_ast::Context, expr: cas_ast::Ex
                 // Use display string as key for structural comparison
                 let key = format!(
                     "{}",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: ctx,
                         id: expr
                     }

@@ -606,7 +606,7 @@ impl SolverStrategy for CollectTermsStrategy {
             steps.push(SolveStep {
                 description: format!(
                     "Subtract {} from both sides",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: &simplifier.context,
                         id: eq.rhs
                     }

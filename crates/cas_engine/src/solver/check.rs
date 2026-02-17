@@ -22,7 +22,8 @@
 //! }
 //! ```
 
-use cas_ast::{DisplayExpr, Equation, Expr, ExprId, SolutionSet};
+use cas_ast::{Equation, Expr, ExprId, SolutionSet};
+use cas_formatter::DisplayExpr;
 use num_traits::Zero;
 
 use crate::engine::Simplifier;

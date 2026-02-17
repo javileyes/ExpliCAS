@@ -106,12 +106,12 @@ pub(crate) fn try_linear_collect(
             description: format!(
                 "Collect terms in {} and factor: {} · {} = {}",
                 var,
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &simplifier.context,
                     id: coeff
                 },
                 var,
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &simplifier.context,
                     id: neg_const
                 }
@@ -127,7 +127,7 @@ pub(crate) fn try_linear_collect(
         steps.push(SolveStep {
             description: format!(
                 "Divide both sides by {}",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &simplifier.context,
                     id: coeff
                 }
@@ -567,7 +567,7 @@ pub(crate) fn try_linear_collect_v2(
         steps.push(SolveStep {
             description: format!(
                 "Divide by {}",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &simplifier.context,
                     id: coef
                 }

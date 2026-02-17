@@ -415,7 +415,7 @@ mod denest_sqrt_tests {
         // Just check that we get the denested form with surds
         let result_str = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: result
             }
@@ -441,7 +441,7 @@ mod denest_sqrt_tests {
 
         let result_str = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: result
             }
@@ -542,7 +542,7 @@ mod denest_cube_quadratic_tests {
 
         let result_str = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: result
             }
@@ -572,7 +572,7 @@ mod denest_cube_quadratic_tests {
 
         let result_str = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: result
             }
@@ -600,7 +600,7 @@ mod denest_cube_quadratic_tests {
 
         let result_str = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: result
             }

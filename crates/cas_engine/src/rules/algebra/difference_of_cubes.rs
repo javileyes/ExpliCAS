@@ -304,7 +304,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
 mod tests {
     use super::*;
     use crate::rule::Rule;
-    use cas_ast::DisplayExpr;
+    use cas_formatter::DisplayExpr;
 
     #[test]
     fn test_cancel_cube_root_difference_basic() {

@@ -113,8 +113,8 @@ pub use crate::solver::DisplaySolveSteps;
 
 /// Display wrapper for expressions with context.
 /// Used for human-readable output of expressions.
-pub use cas_ast::DisplayExpr;
+pub use cas_formatter::DisplayExpr;
 
 /// LaTeX wrapper for expressions with context.
 /// Used for mathematical typesetting output.
-pub use cas_ast::LaTeXExpr;
+pub use cas_formatter::LaTeXExpr;

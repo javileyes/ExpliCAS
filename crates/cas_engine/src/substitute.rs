@@ -210,7 +210,7 @@ pub fn substitute_with_steps(
     replacement: ExprId,
     opts: SubstituteOptions,
 ) -> SubstituteResult {
-    use cas_ast::DisplayExpr;
+    use cas_formatter::DisplayExpr;
 
     // Pre-compute target power pattern if power_aware
     let target_power = if opts.power_aware {

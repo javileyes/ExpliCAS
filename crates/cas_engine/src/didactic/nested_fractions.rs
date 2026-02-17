@@ -125,7 +125,7 @@ pub(crate) fn classify_nested_fraction(
 /// For example: 1 + 1/x → "\frac{x + 1}{x}" in LaTeX
 pub(crate) fn extract_combined_fraction_str(ctx: &Context, add_expr: ExprId) -> String {
     use cas_ast::display_context::DisplayContext;
-    use cas_ast::LaTeXExprWithHints;
+    use cas_formatter::LaTeXExprWithHints;
 
     // Helper to convert expression to LaTeX
     let hints = DisplayContext::default();
@@ -172,7 +172,7 @@ pub(crate) fn extract_combined_fraction_str(ctx: &Context, add_expr: ExprId) -> 
 ///   2. Invert the fraction: 1/((x+1)/x) → x/(x+1)
 pub(crate) fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     use cas_ast::display_context::DisplayContext;
-    use cas_ast::LaTeXExprWithHints;
+    use cas_formatter::LaTeXExprWithHints;
 
     let mut sub_steps = Vec::new();
 
@@ -368,7 +368,7 @@ pub(crate) fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> V
 /// Uses LaTeXExprWithHints for proper sqrt notation rendering
 pub(crate) fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     use cas_ast::display_context::DisplayContext;
-    use cas_ast::LaTeXExprWithHints;
+    use cas_formatter::LaTeXExprWithHints;
 
     let mut sub_steps = Vec::new();
 
@@ -605,7 +605,7 @@ pub(crate) fn generate_polynomial_identity_substeps(
     ctx: &Context,
     step: &crate::step::Step,
 ) -> Vec<SubStep> {
-    use cas_ast::DisplayExpr;
+    use cas_formatter::DisplayExpr;
 
     let mut sub_steps = Vec::new();
 
@@ -653,7 +653,7 @@ pub(crate) fn generate_polynomial_identity_substeps(
             .opaque_substitutions
             .iter()
             .map(|(name, expr_id)| {
-                let func_latex = cas_ast::LaTeXExpr {
+                let func_latex = cas_formatter::LaTeXExpr {
                     context: ctx,
                     id: *expr_id,
                 }
@@ -662,7 +662,7 @@ pub(crate) fn generate_polynomial_identity_substeps(
             })
             .collect();
 
-        let before_latex = cas_ast::LaTeXExpr {
+        let before_latex = cas_formatter::LaTeXExpr {
             context: ctx,
             id: step.before,
         }
@@ -684,7 +684,7 @@ pub(crate) fn generate_polynomial_identity_substeps(
 
         // Show the substituted expression and its expansion
         if let Some(display_id) = proof.normal_form_expr {
-            let display_latex = cas_ast::LaTeXExpr {
+            let display_latex = cas_formatter::LaTeXExpr {
                 context: ctx,
                 id: display_id,
             }
@@ -699,7 +699,7 @@ pub(crate) fn generate_polynomial_identity_substeps(
                         id: expanded_id
                     }
                 );
-                let expanded_latex = cas_ast::LaTeXExpr {
+                let expanded_latex = cas_formatter::LaTeXExpr {
                     context: ctx,
                     id: expanded_id,
                 }
@@ -782,7 +782,7 @@ pub(crate) fn generate_polynomial_identity_substeps(
                     id: expr_id
                 }
             );
-            let latex = cas_ast::LaTeXExpr {
+            let latex = cas_formatter::LaTeXExpr {
                 context: ctx,
                 id: expr_id,
             }
@@ -803,7 +803,7 @@ pub(crate) fn generate_polynomial_identity_substeps(
             )
         };
 
-        let before_latex = cas_ast::LaTeXExpr {
+        let before_latex = cas_formatter::LaTeXExpr {
             context: ctx,
             id: step.before,
         }
@@ -846,7 +846,7 @@ pub(crate) fn generate_sum_three_cubes_substeps(
     ctx: &Context,
     step: &crate::step::Step,
 ) -> Vec<SubStep> {
-    use cas_ast::DisplayExpr;
+    use cas_formatter::DisplayExpr;
 
     let mut sub_steps = Vec::new();
 
@@ -953,7 +953,7 @@ pub(crate) fn generate_root_denesting_substeps(
     step: &crate::step::Step,
 ) -> Vec<SubStep> {
     use cas_ast::display_context::DisplayContext;
-    use cas_ast::LaTeXExprWithHints;
+    use cas_formatter::LaTeXExprWithHints;
     use num_traits::Signed;
 
     let mut sub_steps = Vec::new();

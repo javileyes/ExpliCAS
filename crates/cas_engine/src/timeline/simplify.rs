@@ -1016,7 +1016,7 @@ impl<'a> TimelineHtml<'a> {
 
             let mut rule_before_config = HighlightConfig::new();
             rule_before_config.add(focus_before, HighlightColor::Red);
-            let local_before_colored = cas_ast::LaTeXExprHighlightedWithHints {
+            let local_before_colored = cas_formatter::LaTeXExprHighlightedWithHints {
                 context: self.context,
                 id: focus_before,
                 highlights: &rule_before_config,
@@ -1027,7 +1027,7 @@ impl<'a> TimelineHtml<'a> {
 
             let mut rule_after_config = HighlightConfig::new();
             rule_after_config.add(focus_after, HighlightColor::Green);
-            let local_after_colored = cas_ast::LaTeXExprHighlightedWithHints {
+            let local_after_colored = cas_formatter::LaTeXExprHighlightedWithHints {
                 context: self.context,
                 id: focus_after,
                 highlights: &rule_after_config,
