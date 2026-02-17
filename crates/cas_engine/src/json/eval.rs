@@ -210,12 +210,7 @@ impl JsonStore {
 }
 
 impl EvalStore for JsonStore {
-    fn push_raw_input(
-        &mut self,
-        ctx: &cas_ast::Context,
-        parsed: ExprId,
-        raw_input: String,
-    ) -> EntryId {
+    fn push_raw_input(&mut self, ctx: &cas_ast::Context, parsed: ExprId, raw_input: String) -> u64 {
         let kind = if let Some((lhs, rhs)) = cas_ast::eq::unwrap_eq(ctx, parsed) {
             EntryKind::Eq { lhs, rhs }
         } else {
@@ -224,15 +219,15 @@ impl EvalStore for JsonStore {
         self.0.push(kind, raw_input)
     }
 
-    fn touch_cached(&mut self, entry_id: EntryId) {
+    fn touch_cached(&mut self, entry_id: u64) {
         self.0.touch_cached(entry_id);
     }
 
-    fn update_diagnostics(&mut self, id: EntryId, diagnostics: crate::diagnostics::Diagnostics) {
+    fn update_diagnostics(&mut self, id: u64, diagnostics: crate::diagnostics::Diagnostics) {
         self.0.update_diagnostics(id, diagnostics);
     }
 
-    fn update_simplified(&mut self, id: EntryId, cache: crate::eval::SimplifiedCache) {
+    fn update_simplified(&mut self, id: u64, cache: crate::eval::SimplifiedCache) {
         self.0.update_simplified(id, cache);
     }
 }
