@@ -33,7 +33,7 @@ impl Repl {
             match (e1_res, e2_res) {
                 (Ok(e1), Ok(e2)) => {
                     // V2.14.45: Use new tri-state equivalence check
-                    use cas_engine::EquivalenceResult;
+                    use cas_solver::EquivalenceResult;
 
                     let result = self.core.engine.simplifier.are_equivalent_extended(e1, e2);
 
@@ -151,12 +151,12 @@ impl Repl {
                     target_str, replacement_str, expr_str
                 ));
             }
-            cas_engine::substitute::substitute_power_aware(
+            cas_solver::substitute_power_aware(
                 &mut self.core.engine.simplifier.context,
                 expr,
                 target_expr,
                 replacement_expr,
-                cas_engine::substitute::SubstituteOptions::default(),
+                cas_solver::SubstituteOptions::default(),
             )
         };
 
@@ -283,8 +283,8 @@ impl Repl {
         } else {
             // Use engine.eval like handle_eval does - this ensures the same pipeline
             // (Core → Transform → Rationalize → PostCleanup) is used
-            use cas_engine::eval::{EvalAction, EvalRequest, EvalResult};
             use cas_session::EntryKind;
+            use cas_solver::{EvalAction, EvalRequest, EvalResult};
 
             // Force collect_steps for timeline
             let was_collecting = self.core.engine.simplifier.collect_steps();

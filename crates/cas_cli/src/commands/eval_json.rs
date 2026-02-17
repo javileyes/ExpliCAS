@@ -8,8 +8,8 @@ use std::time::Instant;
 use anyhow::Result;
 use clap::Args;
 
-use cas_engine::{EvalAction, EvalRequest, EvalResult};
 use cas_session::{SessionSnapshot, SimplifyCacheKey};
+use cas_solver::{EvalAction, EvalRequest, EvalResult};
 
 // For step filtering (match timeline behavior)
 use cas_didactic::{pathsteps_to_expr_path, ImportanceLevel};
@@ -436,9 +436,8 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
     })
 }
 
-fn configure_options(opts: &mut cas_engine::options::EvalOptions, args: &EvalJsonArgs) {
-    use cas_engine::options::{BranchMode, ComplexMode, ContextMode, StepsMode};
-    use cas_engine::phase::ExpandPolicy;
+fn configure_options(opts: &mut cas_solver::EvalOptions, args: &EvalJsonArgs) {
+    use cas_solver::{BranchMode, ComplexMode, ContextMode, ExpandPolicy, StepsMode};
 
     // Context mode
     opts.shared.context_mode = match args.context.as_str() {
@@ -504,7 +503,7 @@ fn configure_options(opts: &mut cas_engine::options::EvalOptions, args: &EvalJso
     };
 }
 
-fn collect_warnings(output: &cas_engine::EvalOutput) -> Vec<WarningJson> {
+fn collect_warnings(output: &cas_solver::EvalOutput) -> Vec<WarningJson> {
     output
         .domain_warnings
         .iter()
@@ -517,7 +516,7 @@ fn collect_warnings(output: &cas_engine::EvalOutput) -> Vec<WarningJson> {
 
 /// Collect required_conditions as structured JSON objects
 fn collect_required_conditions(
-    output: &cas_engine::EvalOutput,
+    output: &cas_solver::EvalOutput,
     ctx: &cas_ast::Context,
 ) -> Vec<RequiredConditionJson> {
     use cas_formatter::DisplayExpr;
@@ -550,7 +549,7 @@ fn collect_required_conditions(
 
 /// Collect required_conditions as human-readable strings for simple frontends
 fn collect_required_display(
-    output: &cas_engine::EvalOutput,
+    output: &cas_solver::EvalOutput,
     ctx: &cas_ast::Context,
 ) -> Vec<String> {
     output
@@ -664,32 +663,32 @@ fn build_wire_reply(
 fn load_or_new_session(
     path: &Option<PathBuf>,
     key: &SimplifyCacheKey,
-) -> (cas_engine::Engine, cas_session::SessionState) {
+) -> (cas_solver::Engine, cas_session::SessionState) {
     let Some(path) = path else {
-        return (cas_engine::Engine::new(), cas_session::SessionState::new());
+        return (cas_solver::Engine::new(), cas_session::SessionState::new());
     };
 
     if !path.exists() {
-        return (cas_engine::Engine::new(), cas_session::SessionState::new());
+        return (cas_solver::Engine::new(), cas_session::SessionState::new());
     }
 
     match SessionSnapshot::load(path) {
         Ok(snap) => {
             if snap.is_compatible(key) {
                 let (ctx, store) = snap.into_parts();
-                let engine = cas_engine::Engine::with_context(ctx);
+                let engine = cas_solver::Engine::with_context(ctx);
                 let state = cas_session::SessionState::from_store(store);
                 (engine, state)
             } else {
-                (cas_engine::Engine::new(), cas_session::SessionState::new())
+                (cas_solver::Engine::new(), cas_session::SessionState::new())
             }
         }
-        Err(_) => (cas_engine::Engine::new(), cas_session::SessionState::new()),
+        Err(_) => (cas_solver::Engine::new(), cas_session::SessionState::new()),
     }
 }
 
 fn save_session(
-    engine: &cas_engine::Engine,
+    engine: &cas_solver::Engine,
     state: &cas_session::SessionState,
     path: &std::path::Path,
     key: &SimplifyCacheKey,
@@ -700,7 +699,7 @@ fn save_session(
 
 /// Convert engine steps to JSON format
 fn collect_steps(
-    output: &cas_engine::EvalOutput,
+    output: &cas_solver::EvalOutput,
     ctx: &cas_ast::Context,
     steps_mode: &str,
 ) -> Vec<StepJson> {
@@ -861,7 +860,7 @@ fn collect_steps(
 
 /// Convert solver steps to JSON format (for equation solving)
 fn collect_solve_steps(
-    output: &cas_engine::EvalOutput,
+    output: &cas_solver::EvalOutput,
     ctx: &cas_ast::Context,
     steps_mode: &str,
 ) -> Vec<SolveStepJson> {
@@ -1115,8 +1114,8 @@ fn parse_solve_command(input: &str) -> Option<(String, String)> {
 /// - limit(1/x, x, inf)
 /// - limit(x^2, x, -inf)
 /// - limit((x^2 + 3*x)/(2*x^2 - x), x, inf)
-fn parse_limit_command(input: &str) -> Option<(String, String, cas_engine::limits::Approach)> {
-    use cas_engine::limits::Approach;
+fn parse_limit_command(input: &str) -> Option<(String, String, cas_solver::Approach)> {
+    use cas_solver::Approach;
 
     let trimmed = input.trim();
 

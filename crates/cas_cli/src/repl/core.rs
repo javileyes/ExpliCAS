@@ -3,8 +3,8 @@
 //! ReplCore contains the pure computational logic of the REPL,
 //! returning structured messages instead of printing directly.
 
-use cas_engine::{Engine, PipelineStats, SimplifyOptions};
 use cas_session::SessionState;
+use cas_solver::{Engine, PipelineStats, Simplifier, SimplifyOptions};
 
 /// Core REPL logic - pure computation without I/O.
 ///
@@ -33,7 +33,7 @@ impl ReplCore {
     ///
     /// Note: The simplifier should be configured by the caller (Repl::new)
     /// since rule configuration depends on CasConfig which is UI-level.
-    pub fn with_simplifier(simplifier: cas_engine::Simplifier) -> Self {
+    pub fn with_simplifier(simplifier: Simplifier) -> Self {
         Self {
             engine: Engine { simplifier },
             simplify_options: SimplifyOptions::default(),
@@ -47,7 +47,7 @@ impl ReplCore {
 
     /// Create with default rules (for testing or simple use)
     pub fn new() -> Self {
-        let simplifier = cas_engine::Simplifier::with_default_rules();
+        let simplifier = Simplifier::with_default_rules();
         Self::with_simplifier(simplifier)
     }
 

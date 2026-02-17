@@ -4,7 +4,7 @@ use cas_engine::rules::exponents::{
     ProductPowerRule,
 };
 use cas_engine::rules::polynomial::{AnnihilationRule, CombineLikeTermsRule};
-use cas_engine::Simplifier;
+use cas_solver::Simplifier;
 
 use cas_ast::{
     Context, DisplayExpr, DisplayExprStyled, Expr, ExprId, ParseStyleSignals, StylePreferences,
@@ -208,7 +208,7 @@ fn clean_sign_patterns(s: String) -> String {
 /// This is the preferred way to display expressions that might be poly_result.
 fn display_expr_or_poly(ctx: &Context, id: ExprId) -> String {
     // Try to render as poly_result first (fast path for opaque polynomials)
-    if let Some(poly_str) = cas_engine::poly_store::try_render_poly_result(ctx, id) {
+    if let Some(poly_str) = cas_solver::try_render_poly_result(ctx, id) {
         return poly_str;
     }
 

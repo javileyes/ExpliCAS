@@ -516,10 +516,10 @@ impl Repl {
     }
 
     fn handle_solve_core(&mut self, line: &str, verbosity: Verbosity) -> ReplReply {
-        use cas_engine::eval::{EvalAction, EvalRequest, EvalResult};
         use cas_formatter::DisplayExpr;
         use cas_parser::Statement;
         use cas_session::EntryKind;
+        use cas_solver::{EvalAction, EvalRequest, EvalResult};
 
         let mut lines: Vec<String> = Vec::new();
 

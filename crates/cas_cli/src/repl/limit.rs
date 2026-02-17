@@ -7,8 +7,7 @@ impl Repl {
     }
 
     fn handle_limit_core(&mut self, line: &str) -> ReplReply {
-        use cas_engine::limits::{limit, Approach, LimitOptions};
-        use cas_engine::Budget;
+        use cas_solver::{limit, Approach, Budget, LimitOptions, PreSimplifyMode};
 
         let rest = line.strip_prefix("limit").unwrap_or(line).trim();
         if rest.is_empty() {
@@ -51,9 +50,9 @@ impl Repl {
 
         // Parse presimplify mode
         let presimplify = if mode_str.eq_ignore_ascii_case("safe") {
-            cas_engine::limits::PreSimplifyMode::Safe
+            PreSimplifyMode::Safe
         } else {
-            cas_engine::limits::PreSimplifyMode::Off
+            PreSimplifyMode::Off
         };
 
         // Compute limit

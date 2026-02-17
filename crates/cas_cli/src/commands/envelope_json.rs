@@ -8,10 +8,10 @@ use std::time::Instant;
 use anyhow::Result;
 use clap::Args;
 
-use cas_engine::{Engine, EvalAction, EvalRequest, EvalResult};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 use cas_session::SessionState;
+use cas_solver::{Engine, EvalAction, EvalOutput, EvalRequest, EvalResult};
 
 use crate::json_types::{
     AssumptionDto, ConditionDto, EngineInfo, ExprDto, OutputEnvelope, RequestInfo, RequestOptions,
@@ -155,7 +155,7 @@ fn build_request_info(args: &EnvelopeJsonArgs) -> RequestInfo {
     }
 }
 
-fn build_transparency(output: &cas_engine::EvalOutput, ctx: &cas_ast::Context) -> TransparencyDto {
+fn build_transparency(output: &EvalOutput, ctx: &cas_ast::Context) -> TransparencyDto {
     use cas_solver::ImplicitCondition;
 
     let required_conditions: Vec<ConditionDto> = output

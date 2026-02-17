@@ -108,8 +108,8 @@ impl Repl {
         lines.push(format!("  inv_trig: {}", inv_trig));
 
         let const_fold = match self.core.state.options.const_fold {
-            cas_engine::const_fold::ConstFoldMode::Off => "off",
-            cas_engine::const_fold::ConstFoldMode::Safe => "safe",
+            cas_solver::ConstFoldMode::Off => "off",
+            cas_solver::ConstFoldMode::Safe => "safe",
         };
         lines.push(format!("  const_fold: {}", const_fold));
 
@@ -218,8 +218,8 @@ impl Repl {
             }
             "const_fold" => {
                 let current = match self.core.state.options.const_fold {
-                    cas_engine::const_fold::ConstFoldMode::Off => "off",
-                    cas_engine::const_fold::ConstFoldMode::Safe => "safe",
+                    cas_solver::ConstFoldMode::Off => "off",
+                    cas_solver::ConstFoldMode::Safe => "safe",
                 };
                 lines.push(format!("const_fold: {}", current));
                 lines.push("  Values: off | safe".to_string());
@@ -342,7 +342,7 @@ Presets:
     }
 
     fn handle_preset_core(&mut self, args: &[&str]) -> ReplReply {
-        use cas_engine::const_fold::ConstFoldMode;
+        use cas_solver::ConstFoldMode;
         use cas_solver::DomainMode;
         use cas_solver::{BranchPolicy, InverseTrigPolicy, ValueDomain};
 

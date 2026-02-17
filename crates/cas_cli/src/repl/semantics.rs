@@ -141,7 +141,7 @@ impl Repl {
                 }
             },
             "const_fold" => {
-                use cas_engine::const_fold::ConstFoldMode;
+                use cas_solver::ConstFoldMode;
                 match value {
                     "off" => {
                         self.core.state.options.const_fold = ConstFoldMode::Off;
@@ -265,7 +265,7 @@ impl Repl {
     }
 
     fn handle_context_command_core(&mut self, line: &str) -> ReplReply {
-        use cas_engine::options::ContextMode;
+        use cas_solver::ContextMode;
 
         let args: Vec<&str> = line.split_whitespace().collect();
 
@@ -286,28 +286,28 @@ impl Repl {
             Some(&"auto") => {
                 self.core.state.options.shared.context_mode = ContextMode::Auto;
                 self.core.engine.simplifier =
-                    cas_engine::Simplifier::with_profile(&self.core.state.options);
+                    cas_solver::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
                 reply_output("Context: auto (infers from expression)")
             }
             Some(&"standard") => {
                 self.core.state.options.shared.context_mode = ContextMode::Standard;
                 self.core.engine.simplifier =
-                    cas_engine::Simplifier::with_profile(&self.core.state.options);
+                    cas_solver::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
                 reply_output("Context: standard (safe simplification only)")
             }
             Some(&"solve") => {
                 self.core.state.options.shared.context_mode = ContextMode::Solve;
                 self.core.engine.simplifier =
-                    cas_engine::Simplifier::with_profile(&self.core.state.options);
+                    cas_solver::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
                 reply_output("Context: solve (preserves solver-friendly forms)")
             }
             Some(&"integrate") => {
                 self.core.state.options.shared.context_mode = ContextMode::IntegratePrep;
                 self.core.engine.simplifier =
-                    cas_engine::Simplifier::with_profile(&self.core.state.options);
+                    cas_solver::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
                 reply_output(
                     "Context: integrate-prep\n  ⚠️ Enables transforms for integration (telescoping, product→sum)"
@@ -329,7 +329,7 @@ impl Repl {
     }
 
     fn handle_steps_command_core(&mut self, line: &str) -> ReplReply {
-        use cas_engine::options::StepsMode;
+        use cas_solver::StepsMode;
 
         let args: Vec<&str> = line.split_whitespace().collect();
 
@@ -425,7 +425,7 @@ impl Repl {
     }
 
     fn handle_autoexpand_command_core(&mut self, line: &str) -> ReplReply {
-        use cas_engine::phase::ExpandPolicy;
+        use cas_solver::ExpandPolicy;
 
         let args: Vec<&str> = line.split_whitespace().collect();
 
@@ -451,7 +451,7 @@ impl Repl {
             Some(&"on") => {
                 self.core.state.options.shared.expand_policy = ExpandPolicy::Auto;
                 self.core.engine.simplifier =
-                    cas_engine::Simplifier::with_profile(&self.core.state.options);
+                    cas_solver::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
                 let budget = &self.core.state.options.shared.expand_budget;
                 reply_output(format!(
@@ -467,7 +467,7 @@ impl Repl {
             Some(&"off") => {
                 self.core.state.options.shared.expand_policy = ExpandPolicy::Off;
                 self.core.engine.simplifier =
-                    cas_engine::Simplifier::with_profile(&self.core.state.options);
+                    cas_solver::Simplifier::with_profile(&self.core.state.options);
                 self.sync_config_to_simplifier();
                 reply_output("Auto-expand: off\n  Polynomial expansions require explicit expand().")
             }

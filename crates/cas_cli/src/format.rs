@@ -27,7 +27,7 @@ pub fn is_pure_residual_otherwise(case: &Case) -> bool {
 /// Automatically renders poly_result expressions as formatted polynomials.
 pub fn format_expr_limited(ctx: &Context, expr: ExprId, max_chars: usize) -> (String, bool, usize) {
     // Try to render as poly_result first (fast path for large polynomials)
-    if let Some(poly_str) = cas_engine::poly_store::try_render_poly_result(ctx, expr) {
+    if let Some(poly_str) = cas_solver::try_render_poly_result(ctx, expr) {
         let len = poly_str.chars().count();
         if len <= max_chars {
             return (poly_str, false, len);
@@ -61,11 +61,10 @@ pub fn expr_stats(ctx: &Context, expr: ExprId) -> ExprStatsJson {
     let (node_count, depth) = count_nodes_and_depth(ctx, expr, 0);
 
     // Try to get term count - first check if it's a poly_result
-    let term_count =
-        cas_engine::poly_store::try_get_poly_result_term_count(ctx, expr).or_else(|| {
-            // For large Add chains, count additive terms (top-level + structure)
-            count_add_terms(ctx, expr)
-        });
+    let term_count = cas_solver::try_get_poly_result_term_count(ctx, expr).or_else(|| {
+        // For large Add chains, count additive terms (top-level + structure)
+        count_add_terms(ctx, expr)
+    });
 
     ExprStatsJson {
         node_count,

@@ -230,7 +230,7 @@ impl Repl {
 
     /// Format pipeline statistics for diagnostics (returns String, no I/O)
     #[allow(dead_code)]
-    pub(crate) fn format_pipeline_stats(&self, stats: &cas_engine::PipelineStats) -> String {
+    pub(crate) fn format_pipeline_stats(&self, stats: &cas_solver::PipelineStats) -> String {
         let mut lines: Vec<String> = Vec::new();
 
         lines.push(String::new());
@@ -249,7 +249,7 @@ impl Repl {
                 .engine
                 .simplifier
                 .profiler
-                .top_applied_for_phase(cas_engine::SimplifyPhase::Core, 2);
+                .top_applied_for_phase(cas_solver::SimplifyPhase::Core, 2);
             if !top.is_empty() {
                 let hints: Vec<_> = top.iter().map(|(r, c)| format!("{}={}", r, c)).collect();
                 lines.push(format!(
@@ -272,7 +272,7 @@ impl Repl {
                 .engine
                 .simplifier
                 .profiler
-                .top_applied_for_phase(cas_engine::SimplifyPhase::Transform, 2);
+                .top_applied_for_phase(cas_solver::SimplifyPhase::Transform, 2);
             if !top.is_empty() {
                 let hints: Vec<_> = top.iter().map(|(r, c)| format!("{}={}", r, c)).collect();
                 lines.push(format!(
@@ -285,15 +285,15 @@ impl Repl {
             "  Rationalize: {:?}",
             stats
                 .rationalize_level
-                .unwrap_or(cas_engine::AutoRationalizeLevel::Off)
+                .unwrap_or(cas_solver::AutoRationalizeLevel::Off)
         ));
 
         if let Some(ref outcome) = stats.rationalize_outcome {
             match outcome {
-                cas_engine::RationalizeOutcome::Applied => {
+                cas_solver::RationalizeOutcome::Applied => {
                     lines.push("              → Applied ✓".to_string());
                 }
-                cas_engine::RationalizeOutcome::NotApplied(reason) => {
+                cas_solver::RationalizeOutcome::NotApplied(reason) => {
                     lines.push(format!("              → NotApplied: {:?}", reason));
                 }
             }
@@ -308,7 +308,7 @@ impl Repl {
                 .engine
                 .simplifier
                 .profiler
-                .top_applied_for_phase(cas_engine::SimplifyPhase::Rationalize, 2);
+                .top_applied_for_phase(cas_solver::SimplifyPhase::Rationalize, 2);
             if !top.is_empty() {
                 let hints: Vec<_> = top.iter().map(|(r, c)| format!("{}={}", r, c)).collect();
                 lines.push(format!(
@@ -332,7 +332,7 @@ impl Repl {
                 .engine
                 .simplifier
                 .profiler
-                .top_applied_for_phase(cas_engine::SimplifyPhase::PostCleanup, 2);
+                .top_applied_for_phase(cas_solver::SimplifyPhase::PostCleanup, 2);
             if !top.is_empty() {
                 let hints: Vec<_> = top.iter().map(|(r, c)| format!("{}={}", r, c)).collect();
                 lines.push(format!(
@@ -416,7 +416,7 @@ impl Repl {
     /// Build the REPL prompt with mode indicators.
     /// Only shows indicators for non-default modes to keep prompt clean.
     pub(crate) fn build_prompt(&self) -> String {
-        use cas_engine::options::{BranchMode, ComplexMode, ContextMode, StepsMode};
+        use cas_solver::{BranchMode, ComplexMode, ContextMode, ExpandPolicy, StepsMode};
 
         let mut indicators = Vec::new();
 
@@ -449,7 +449,6 @@ impl Repl {
         }
 
         // Show expand_policy if Auto (not default Off)
-        use cas_engine::phase::ExpandPolicy;
         if self.core.state.options.shared.expand_policy == ExpandPolicy::Auto {
             indicators.push("[autoexp:on]");
         }

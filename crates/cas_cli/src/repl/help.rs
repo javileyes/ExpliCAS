@@ -38,7 +38,7 @@ impl Repl {
                     self.core.simplify_options.rationalize.auto_level
                 ),
                 "heuristic_poly" => {
-                    use cas_engine::options::HeuristicPoly;
+                    use cas_solver::HeuristicPoly;
                     format!(
                         "heuristic_poly: {}",
                         if self.core.simplify_options.shared.heuristic_poly == HeuristicPoly::On {
@@ -49,7 +49,7 @@ impl Repl {
                     )
                 }
                 "autoexpand" | "autoexpand_binomials" => {
-                    use cas_engine::options::AutoExpandBinomials;
+                    use cas_solver::AutoExpandBinomials;
                     format!(
                         "autoexpand: {}",
                         if self.core.simplify_options.shared.autoexpand_binomials
@@ -67,7 +67,7 @@ impl Repl {
                 ),
                 "debug" => format!("debug: {}", if self.core.debug_mode { "on" } else { "off" }),
                 "steps" => {
-                    use cas_engine::options::StepsMode;
+                    use cas_solver::StepsMode;
                     let mode_str = match self.core.state.options.steps_mode {
                         StepsMode::On => "on",
                         StepsMode::Off => "off",
@@ -105,31 +105,31 @@ impl Repl {
             "autoexpand" | "autoexpand_binomials" => match parts[2] {
                 "on" | "true" | "1" => {
                     self.core.state.options.shared.autoexpand_binomials =
-                        cas_engine::AutoExpandBinomials::On;
+                        cas_solver::AutoExpandBinomials::On;
                     self.core.simplify_options.shared.autoexpand_binomials =
-                        cas_engine::AutoExpandBinomials::On;
+                        cas_solver::AutoExpandBinomials::On;
                     "Autoexpand binomials: ON (always expand)\n  (x+1)^5 will now expand to x⁵+5x⁴+10x³+10x²+5x+1".to_string()
                 }
                 "off" | "false" | "0" => {
                     self.core.state.options.shared.autoexpand_binomials =
-                        cas_engine::AutoExpandBinomials::Off;
+                        cas_solver::AutoExpandBinomials::Off;
                     self.core.simplify_options.shared.autoexpand_binomials =
-                        cas_engine::AutoExpandBinomials::Off;
+                        cas_solver::AutoExpandBinomials::Off;
                     "Autoexpand binomials: OFF (default, keep factored form)".to_string()
                 }
                 _ => "Usage: set autoexpand <off|on>".to_string(),
             },
             "heuristic_poly" => match parts[2] {
                 "on" | "true" | "1" => {
-                    self.core.state.options.shared.heuristic_poly = cas_engine::HeuristicPoly::On;
+                    self.core.state.options.shared.heuristic_poly = cas_solver::HeuristicPoly::On;
                     self.core.simplify_options.shared.heuristic_poly =
-                        cas_engine::HeuristicPoly::On;
+                        cas_solver::HeuristicPoly::On;
                     "Heuristic polynomial simplification: ON\n  - Extract common factors in Add/Sub\n  - Poly normalize if no factor found\n  Example: (x+1)^4 + 4·(x+1)^3 → (x+1)³·(x+5)".to_string()
                 }
                 "off" | "false" | "0" => {
-                    self.core.state.options.shared.heuristic_poly = cas_engine::HeuristicPoly::Off;
+                    self.core.state.options.shared.heuristic_poly = cas_solver::HeuristicPoly::Off;
                     self.core.simplify_options.shared.heuristic_poly =
-                        cas_engine::HeuristicPoly::Off;
+                        cas_solver::HeuristicPoly::Off;
                     "Heuristic polynomial simplification: OFF (default)".to_string()
                 }
                 _ => "Usage: set heuristic_poly <off|on>".to_string(),
@@ -137,27 +137,27 @@ impl Repl {
             "rationalize" => match parts[2] {
                 "on" | "true" | "auto" => {
                     self.core.simplify_options.rationalize.auto_level =
-                        cas_engine::rationalize_policy::AutoRationalizeLevel::Level15;
+                        cas_solver::AutoRationalizeLevel::Level15;
                     "Rationalization ENABLED (Level 1.5)".to_string()
                 }
                 "off" | "false" => {
                     self.core.simplify_options.rationalize.auto_level =
-                        cas_engine::rationalize_policy::AutoRationalizeLevel::Off;
+                        cas_solver::AutoRationalizeLevel::Off;
                     "Rationalization DISABLED".to_string()
                 }
                 "0" | "level0" => {
                     self.core.simplify_options.rationalize.auto_level =
-                        cas_engine::rationalize_policy::AutoRationalizeLevel::Level0;
+                        cas_solver::AutoRationalizeLevel::Level0;
                     "Rationalization set to Level 0 (single sqrt)".to_string()
                 }
                 "1" | "level1" => {
                     self.core.simplify_options.rationalize.auto_level =
-                        cas_engine::rationalize_policy::AutoRationalizeLevel::Level1;
+                        cas_solver::AutoRationalizeLevel::Level1;
                     "Rationalization set to Level 1 (binomial conjugate)".to_string()
                 }
                 "1.5" | "level15" => {
                     self.core.simplify_options.rationalize.auto_level =
-                        cas_engine::rationalize_policy::AutoRationalizeLevel::Level15;
+                        cas_solver::AutoRationalizeLevel::Level15;
                     "Rationalization set to Level 1.5 (same-surd products)".to_string()
                 }
                 _ => "Usage: set rationalize <on|off|0|1|1.5>".to_string(),
@@ -171,7 +171,7 @@ impl Repl {
                 }
             }
             "steps" => {
-                use cas_engine::options::StepsMode;
+                use cas_solver::StepsMode;
                 match parts[2] {
                     "on" => {
                         self.core.state.options.steps_mode = StepsMode::On;
@@ -243,7 +243,7 @@ impl Repl {
 
     /// Generate set help text as String
     fn set_help_text(&self) -> String {
-        use cas_engine::options::{AutoExpandBinomials, HeuristicPoly, StepsMode};
+        use cas_solver::{AutoExpandBinomials, HeuristicPoly, StepsMode};
 
         let mut s = String::new();
         s.push_str("Pipeline settings:\n");

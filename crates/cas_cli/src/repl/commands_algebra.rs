@@ -155,17 +155,17 @@ impl Repl {
                             }
 
                             // Perform full eval to get requires/assumed metadata
-                            let req = cas_engine::EvalRequest {
+                            let req = cas_solver::EvalRequest {
                                 raw_input: raw_text.clone(),
                                 parsed: *expr_id,
                                 kind: cas_session::EntryKind::Expr(*expr_id),
-                                action: cas_engine::EvalAction::Simplify,
+                                action: cas_solver::EvalAction::Simplify,
                                 auto_store: false,
                             };
 
                             if let Ok(output) = self.core.engine.eval(&mut self.core.state, req) {
                                 // Show simplified result
-                                if let cas_engine::EvalResult::Expr(simplified) = &output.result {
+                                if let cas_solver::EvalResult::Expr(simplified) = &output.result {
                                     if *simplified != *expr_id {
                                         lines.push(format!(
                                             "  Simplified: {}",

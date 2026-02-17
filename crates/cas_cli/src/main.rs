@@ -497,10 +497,10 @@ fn read_expr_or_stdin(expr: &str) -> String {
 
 /// Run eval with text output
 fn run_eval_text(args: &EvalArgs) {
-    use cas_engine::{EvalAction, EvalRequest, EvalResult};
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
     use cas_session::SimplifyCacheKey;
+    use cas_solver::{EvalAction, EvalRequest, EvalResult};
 
     // Build cache key for snapshot compatibility check
     let domain_mode = match args.domain {
@@ -537,10 +537,9 @@ fn run_eval_text(args: &EvalArgs) {
             let result_str = match &output.result {
                 EvalResult::Expr(e) => {
                     // Try to render as poly_result first (fast path for large polynomials)
-                    if let Some(poly_str) = cas_engine::poly_store::try_render_poly_result(
-                        &engine.simplifier.context,
-                        *e,
-                    ) {
+                    if let Some(poly_str) =
+                        cas_solver::try_render_poly_result(&engine.simplifier.context, *e)
+                    {
                         poly_str
                     } else {
                         format!(
@@ -584,39 +583,39 @@ fn run_eval_text(args: &EvalArgs) {
 fn load_or_new_session(
     path: &Option<std::path::PathBuf>,
     key: &cas_session::SimplifyCacheKey,
-) -> (cas_engine::Engine, cas_session::SessionState) {
+) -> (cas_solver::Engine, cas_session::SessionState) {
     use cas_session::SessionSnapshot;
 
     let Some(path) = path else {
-        return (cas_engine::Engine::new(), cas_session::SessionState::new());
+        return (cas_solver::Engine::new(), cas_session::SessionState::new());
     };
 
     if !path.exists() {
-        return (cas_engine::Engine::new(), cas_session::SessionState::new());
+        return (cas_solver::Engine::new(), cas_session::SessionState::new());
     }
 
     match SessionSnapshot::load(path) {
         Ok(snap) => {
             if snap.is_compatible(key) {
                 let (ctx, store) = snap.into_parts();
-                let engine = cas_engine::Engine::with_context(ctx);
+                let engine = cas_solver::Engine::with_context(ctx);
                 let state = cas_session::SessionState::from_store(store);
                 (engine, state)
             } else {
                 eprintln!("Session snapshot incompatible, starting fresh");
-                (cas_engine::Engine::new(), cas_session::SessionState::new())
+                (cas_solver::Engine::new(), cas_session::SessionState::new())
             }
         }
         Err(e) => {
             eprintln!("Warning: Failed to load session ({}), starting fresh", e);
-            (cas_engine::Engine::new(), cas_session::SessionState::new())
+            (cas_solver::Engine::new(), cas_session::SessionState::new())
         }
     }
 }
 
 /// Save session to snapshot file
 fn save_session(
-    engine: &cas_engine::Engine,
+    engine: &cas_solver::Engine,
     state: &cas_session::SessionState,
     path: &std::path::Path,
     key: &cas_session::SimplifyCacheKey,
@@ -685,10 +684,9 @@ fn assume_scope_arg_to_string(as_: AssumeScopeArg) -> String {
 }
 
 fn run_limit(args: LimitArgs) {
-    use cas_engine::limits::{limit, Approach, LimitOptions, PreSimplifyMode};
-    use cas_engine::Budget;
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
+    use cas_solver::{limit, Approach, Budget, LimitOptions, PreSimplifyMode};
 
     let mut ctx = cas_ast::Context::new();
 
@@ -802,7 +800,7 @@ fn run_substitute(args: SubstituteArgs) {
             }
         };
 
-        let out = cas_engine::substitute_str_to_json(
+        let out = cas_solver::substitute_str_to_json(
             &args.expr,
             &args.target,
             &args.replacement,
@@ -813,9 +811,9 @@ fn run_substitute(args: SubstituteArgs) {
     }
 
     // Text output path (unchanged)
-    use cas_engine::substitute::{substitute_power_aware, SubstituteOptions};
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
+    use cas_solver::{substitute_power_aware, substitute_with_steps, SubstituteOptions};
 
     let mut ctx = cas_ast::Context::new();
 
@@ -857,13 +855,7 @@ fn run_substitute(args: SubstituteArgs) {
 
     // Run substitution with steps if requested
     let (result, steps) = if args.steps {
-        let res = cas_engine::substitute::substitute_with_steps(
-            &mut ctx,
-            expr,
-            target,
-            replacement,
-            opts,
-        );
+        let res = substitute_with_steps(&mut ctx, expr, target, replacement, opts);
         (res.expr, res.steps)
     } else {
         (
