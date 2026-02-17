@@ -136,6 +136,22 @@ impl SessionState {
         &mut self.store
     }
 
+    pub fn history_entries(&self) -> &[crate::Entry] {
+        self.store.list()
+    }
+
+    pub fn history_get(&self, id: crate::EntryId) -> Option<&crate::Entry> {
+        self.store.get(id)
+    }
+
+    pub fn history_len(&self) -> usize {
+        self.store.len()
+    }
+
+    pub fn history_remove(&mut self, ids: &[crate::EntryId]) {
+        self.store.remove(ids);
+    }
+
     pub fn get_binding(&self, name: &str) -> Option<ExprId> {
         self.env.get(name)
     }

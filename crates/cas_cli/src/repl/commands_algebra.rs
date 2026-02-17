@@ -55,7 +55,7 @@ impl Repl {
     }
 
     fn handle_history_command_core(&self) -> ReplReply {
-        let entries = self.core.state.store().list();
+        let entries = self.core.state.history_entries();
         if entries.is_empty() {
             return reply_output("No entries in session history.");
         }
@@ -113,8 +113,7 @@ impl Repl {
                 let entry_data = self
                     .core
                     .state
-                    .store()
-                    .get(id)
+                    .history_get(id)
                     .map(|e| (e.type_str().to_string(), e.raw_text.clone(), e.kind.clone()));
 
                 if let Some((type_str, raw_text, kind)) = entry_data {
@@ -275,9 +274,9 @@ impl Repl {
             return reply_output("Error: No valid IDs specified. Use 'del #1 #2' or 'del 1 2'.");
         }
 
-        let before_len = self.core.state.store().len();
-        self.core.state.store_mut().remove(&ids);
-        let removed = before_len - self.core.state.store().len();
+        let before_len = self.core.state.history_len();
+        self.core.state.history_remove(&ids);
+        let removed = before_len - self.core.state.history_len();
 
         if removed > 0 {
             let id_str: Vec<String> = ids.iter().map(|id| format!("#{}", id)).collect();
