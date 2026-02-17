@@ -1,5 +1,5 @@
 [package]
-name = "cas_session"
+name = "cas_session_core"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -7,5 +7,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-cas_session_core = { path = "../cas_session_core" }
-cas_engine = { path = "../cas_engine", default-features = false }
+cas_ast = { path = "../cas_ast" }
+
+[dev-dependencies]
+cas_parser = { path = "../cas_parser" }

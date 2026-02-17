@@ -1,18 +1,7 @@
 //! Session store types and `SessionStore` implementation.
 
 use cas_ast::ExprId;
-
-/// Unique identifier for a session entry
-pub type EntryId = u64;
-
-/// Type of entry stored in the session
-#[derive(Debug, Clone)]
-pub enum EntryKind {
-    /// A single expression
-    Expr(ExprId),
-    /// An equation (lhs = rhs)
-    Eq { lhs: ExprId, rhs: ExprId },
-}
+pub use cas_session_core::types::{CacheConfig, EntryId, EntryKind, RefMode};
 
 // =============================================================================
 // Session Reference Caching (V2.15.36)
@@ -46,30 +35,6 @@ impl SimplifyCacheKey {
     }
 }
 
-/// Configuration for simplified cache memory limits.
-///
-/// Controls how many cached simplified results are retained to
-/// prevent unbounded memory growth in long sessions.
-#[derive(Debug, Clone)]
-pub struct CacheConfig {
-    /// Max entries with cached simplified result (0 = unlimited)
-    pub max_cached_entries: usize,
-    /// Max total steps across all cached entries (0 = unlimited)
-    pub max_cached_steps: usize,
-    /// Drop steps for entries with > N steps (light cache mode)
-    pub light_cache_threshold: Option<usize>,
-}
-
-impl Default for CacheConfig {
-    fn default() -> Self {
-        Self {
-            max_cached_entries: 100,          // Reasonable default
-            max_cached_steps: 5000,           // ~50 steps avg per entry
-            light_cache_threshold: Some(200), // Drop steps if > 200
-        }
-    }
-}
-
 /// Cached simplification result for a session entry.
 ///
 /// Stored after evaluation to enable fast resolution of `#N` references
@@ -84,16 +49,6 @@ pub struct SimplifiedCache {
     pub requires: Vec<crate::diagnostics::RequiredItem>,
     /// Derivation steps (None = light cache, steps omitted for large entries)
     pub steps: Option<std::sync::Arc<Vec<crate::step::Step>>>,
-}
-
-/// How to resolve session references
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum RefMode {
-    /// Use cached simplified result if available and valid (default, fast)
-    #[default]
-    PreferSimplified,
-    /// Use original parsed expression (for debugging, "raw" command)
-    Raw,
 }
 
 /// Record of a single cache hit during resolution.

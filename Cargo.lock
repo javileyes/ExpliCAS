@@ -227,6 +227,7 @@ dependencies = [
  "cas_ast",
  "cas_math",
  "cas_parser",
+ "cas_session_core",
  "criterion",
  "insta",
  "lazy_static",
@@ -281,6 +282,15 @@ name = "cas_session"
 version = "0.1.0"
 dependencies = [
  "cas_engine",
+ "cas_session_core",
+]
+
+[[package]]
+name = "cas_session_core"
+version = "0.1.0"
+dependencies = [
+ "cas_ast",
+ "cas_parser",
 ]
 
 [[package]]

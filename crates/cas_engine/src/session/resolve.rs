@@ -1,31 +1,10 @@
 //! Session reference resolution.
 
 use cas_ast::ExprId;
+pub use cas_session_core::types::ResolveError;
 use std::collections::{HashMap, HashSet};
 
 use super::store::*;
-
-/// Error during session reference resolution
-#[derive(Debug, Clone, PartialEq)]
-pub enum ResolveError {
-    /// Reference to non-existent entry
-    NotFound(EntryId),
-    /// Circular reference detected (e.g., #3 contains #3, or #3 -> #4 -> #3)
-    CircularReference(EntryId),
-}
-
-impl std::fmt::Display for ResolveError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ResolveError::NotFound(id) => write!(f, "Session reference #{} not found", id),
-            ResolveError::CircularReference(id) => {
-                write!(f, "Circular reference detected involving #{}", id)
-            }
-        }
-    }
-}
-
-impl std::error::Error for ResolveError {}
 
 /// Resolve all `Expr::SessionRef` in an expression tree.
 ///
