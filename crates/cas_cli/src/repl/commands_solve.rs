@@ -447,10 +447,10 @@ impl Repl {
                 // Call solver with step collection enabled and semantic options
                 self.core.engine.simplifier.set_collect_steps(true);
                 let solver_opts = cas_solver::SolverOptions {
-                    value_domain: self.core.state.options.shared.semantics.value_domain,
-                    domain_mode: self.core.state.options.shared.semantics.domain_mode,
-                    assume_scope: self.core.state.options.shared.semantics.assume_scope,
-                    budget: self.core.state.options.budget,
+                    value_domain: self.core.state.options().shared.semantics.value_domain,
+                    domain_mode: self.core.state.options().shared.semantics.domain_mode,
+                    assume_scope: self.core.state.options().shared.semantics.assume_scope,
+                    budget: self.core.state.options().budget,
                     ..Default::default()
                 };
 
@@ -531,7 +531,7 @@ impl Repl {
             (true, after_flag)
         } else {
             // Use session toggle if no explicit flag
-            (self.core.state.options.check_solutions, rest)
+            (self.core.state.options().check_solutions, rest)
         };
 
         // Split by comma or space to get equation and var
@@ -797,7 +797,7 @@ impl Repl {
                             EvalResult::Set(v) => *v.first().unwrap_or(&output.resolved),
                             _ => output.resolved,
                         };
-                        let display_level = self.core.state.options.requires_display;
+                        let display_level = self.core.state.options().requires_display;
                         let requires_to_show = {
                             let ctx = &self.core.engine.simplifier.context;
                             output.diagnostics.filter_requires_for_display(
@@ -961,7 +961,7 @@ impl Repl {
 
                                 // Contextual suggestion
                                 let suggestion =
-                                    match self.core.state.options.shared.semantics.domain_mode {
+                                    match self.core.state.options().shared.semantics.domain_mode {
                                         cas_solver::DomainMode::Strict => {
                                             "tip: use `domain generic` or `domain assume` to allow"
                                         }
@@ -974,7 +974,7 @@ impl Repl {
                                     };
                                 lines.push(format!("  {}", suggestion));
                             }
-                        } else if has_blocked && self.core.state.options.hints_enabled {
+                        } else if has_blocked && self.core.state.options().hints_enabled {
                             // Legacy: show blocked hints even without debug_mode if hints_enabled
                             let ctx = &self.core.engine.simplifier.context;
                             let format_condition = |hint: &cas_solver::BlockedHint| -> String {
@@ -992,7 +992,7 @@ impl Repl {
                             };
 
                             let suggestion =
-                                match self.core.state.options.shared.semantics.domain_mode {
+                                match self.core.state.options().shared.semantics.domain_mode {
                                     cas_solver::DomainMode::Strict => {
                                         "use `domain generic` or `domain assume` to allow"
                                     }

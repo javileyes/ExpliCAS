@@ -101,6 +101,14 @@ impl SessionState {
         &self.options
     }
 
+    pub fn options(&self) -> &EvalOptions {
+        &self.options
+    }
+
+    pub fn options_mut(&mut self) -> &mut EvalOptions {
+        &mut self.options
+    }
+
     pub fn new() -> Self {
         Self {
             store: SessionEvalStore::new(),

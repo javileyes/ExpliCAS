@@ -12,7 +12,7 @@ impl Repl {
         match args.get(1) {
             None => {
                 // Just "budget" - show current setting
-                let budget = self.core.state.options.budget;
+                let budget = self.core.state.options().budget;
                 reply_output(format!(
                     "Solve budget: max_branches={}\n\
                       Controls how many case splits the solver can create.\n\
@@ -25,7 +25,7 @@ impl Repl {
             }
             Some(n_str) => {
                 if let Ok(n) = n_str.parse::<usize>() {
-                    self.core.state.options.budget.max_branches = n;
+                    self.core.state.options_mut().budget.max_branches = n;
                     let mode_msg = if n == 0 {
                         "  ⚠️ No case splits allowed (fallback to simple solutions)"
                     } else if n == 1 {

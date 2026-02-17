@@ -68,7 +68,7 @@ impl Repl {
                 "debug" => format!("debug: {}", if self.core.debug_mode { "on" } else { "off" }),
                 "steps" => {
                     use cas_solver::StepsMode;
-                    let mode_str = match self.core.state.options.steps_mode {
+                    let mode_str = match self.core.state.options().steps_mode {
                         StepsMode::On => "on",
                         StepsMode::Off => "off",
                         StepsMode::Compact => "compact",
@@ -104,14 +104,14 @@ impl Repl {
             },
             "autoexpand" | "autoexpand_binomials" => match parts[2] {
                 "on" | "true" | "1" => {
-                    self.core.state.options.shared.autoexpand_binomials =
+                    self.core.state.options_mut().shared.autoexpand_binomials =
                         cas_solver::AutoExpandBinomials::On;
                     self.core.simplify_options.shared.autoexpand_binomials =
                         cas_solver::AutoExpandBinomials::On;
                     "Autoexpand binomials: ON (always expand)\n  (x+1)^5 will now expand to x⁵+5x⁴+10x³+10x²+5x+1".to_string()
                 }
                 "off" | "false" | "0" => {
-                    self.core.state.options.shared.autoexpand_binomials =
+                    self.core.state.options_mut().shared.autoexpand_binomials =
                         cas_solver::AutoExpandBinomials::Off;
                     self.core.simplify_options.shared.autoexpand_binomials =
                         cas_solver::AutoExpandBinomials::Off;
@@ -121,13 +121,15 @@ impl Repl {
             },
             "heuristic_poly" => match parts[2] {
                 "on" | "true" | "1" => {
-                    self.core.state.options.shared.heuristic_poly = cas_solver::HeuristicPoly::On;
+                    self.core.state.options_mut().shared.heuristic_poly =
+                        cas_solver::HeuristicPoly::On;
                     self.core.simplify_options.shared.heuristic_poly =
                         cas_solver::HeuristicPoly::On;
                     "Heuristic polynomial simplification: ON\n  - Extract common factors in Add/Sub\n  - Poly normalize if no factor found\n  Example: (x+1)^4 + 4·(x+1)^3 → (x+1)³·(x+5)".to_string()
                 }
                 "off" | "false" | "0" => {
-                    self.core.state.options.shared.heuristic_poly = cas_solver::HeuristicPoly::Off;
+                    self.core.state.options_mut().shared.heuristic_poly =
+                        cas_solver::HeuristicPoly::Off;
                     self.core.simplify_options.shared.heuristic_poly =
                         cas_solver::HeuristicPoly::Off;
                     "Heuristic polynomial simplification: OFF (default)".to_string()
@@ -174,19 +176,19 @@ impl Repl {
                 use cas_solver::StepsMode;
                 match parts[2] {
                     "on" => {
-                        self.core.state.options.steps_mode = StepsMode::On;
+                        self.core.state.options_mut().steps_mode = StepsMode::On;
                         self.core.engine.simplifier.set_steps_mode(StepsMode::On);
                         ui_delta.verbosity = Some(Verbosity::Normal);
                         "Steps: on (full collection, normal display)".to_string()
                     }
                     "off" => {
-                        self.core.state.options.steps_mode = StepsMode::Off;
+                        self.core.state.options_mut().steps_mode = StepsMode::Off;
                         self.core.engine.simplifier.set_steps_mode(StepsMode::Off);
                         ui_delta.verbosity = Some(Verbosity::None);
                         "Steps: off".to_string()
                     }
                     "compact" => {
-                        self.core.state.options.steps_mode = StepsMode::Compact;
+                        self.core.state.options_mut().steps_mode = StepsMode::Compact;
                         self.core
                             .engine
                             .simplifier
@@ -194,19 +196,19 @@ impl Repl {
                         "Steps: compact (no before/after snapshots)".to_string()
                     }
                     "verbose" => {
-                        self.core.state.options.steps_mode = StepsMode::On;
+                        self.core.state.options_mut().steps_mode = StepsMode::On;
                         self.core.engine.simplifier.set_steps_mode(StepsMode::On);
                         ui_delta.verbosity = Some(Verbosity::Verbose);
                         "Steps: verbose (all rules, full detail)".to_string()
                     }
                     "succinct" => {
-                        self.core.state.options.steps_mode = StepsMode::On;
+                        self.core.state.options_mut().steps_mode = StepsMode::On;
                         self.core.engine.simplifier.set_steps_mode(StepsMode::On);
                         ui_delta.verbosity = Some(Verbosity::Succinct);
                         "Steps: succinct (compact 1-line per step)".to_string()
                     }
                     "normal" => {
-                        self.core.state.options.steps_mode = StepsMode::On;
+                        self.core.state.options_mut().steps_mode = StepsMode::On;
                         self.core.engine.simplifier.set_steps_mode(StepsMode::On);
                         ui_delta.verbosity = Some(Verbosity::Normal);
                         "Steps: normal (default display)".to_string()
@@ -289,7 +291,7 @@ impl Repl {
                 "off"
             }
         ));
-        let mode_str = match self.core.state.options.steps_mode {
+        let mode_str = match self.core.state.options().steps_mode {
             StepsMode::On => "on",
             StepsMode::Off => "off",
             StepsMode::Compact => "compact",

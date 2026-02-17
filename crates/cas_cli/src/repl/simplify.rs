@@ -87,7 +87,7 @@ impl Repl {
                 ));
 
                 // Use session options (expand_policy, context_mode, etc.) for simplification
-                let mut opts = self.core.state.options.to_simplify_options();
+                let mut opts = self.core.state.options().to_simplify_options();
                 opts.collect_steps = verbosity != Verbosity::None;
 
                 let (simplified, steps, _stats) =

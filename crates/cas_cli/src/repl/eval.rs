@@ -77,7 +77,7 @@ impl Repl {
                             };
 
                             let ctx = &self.core.engine.simplifier.context;
-                            let display_level = self.core.state.options.requires_display;
+                            let display_level = self.core.state.options().requires_display;
                             let debug_mode = self.core.debug_mode;
 
                             // Filter requires based on display level and witness survival
@@ -121,8 +121,9 @@ impl Repl {
 
                         // Collect assumptions from steps for assumption reporting (before steps are consumed)
                         // Deduplicate by (condition_kind, expr_fingerprint) and group by rule
-                        let show_assumptions = self.core.state.options.shared.assumption_reporting
-                            != cas_solver::AssumptionReporting::Off;
+                        let show_assumptions =
+                            self.core.state.options().shared.assumption_reporting
+                                != cas_solver::AssumptionReporting::Off;
                         let assumed_conditions: Vec<(String, String)> = if show_assumptions {
                             let mut seen: std::collections::HashSet<u64> =
                                 std::collections::HashSet::new();
@@ -284,7 +285,7 @@ impl Repl {
                             .iter()
                             .filter(|h| !(result_is_undefined && h.key.kind() == "defined"))
                             .collect();
-                        if !hints.is_empty() && self.core.state.options.hints_enabled {
+                        if !hints.is_empty() && self.core.state.options().hints_enabled {
                             let ctx = &self.core.engine.simplifier.context;
 
                             // Helper to format condition with expression
@@ -313,7 +314,7 @@ impl Repl {
                             }
 
                             // Contextual suggestion based on current mode
-                            let suggestion = match self.core.state.options.shared.semantics.domain_mode {
+                            let suggestion = match self.core.state.options().shared.semantics.domain_mode {
                                 cas_solver::DomainMode::Strict => {
                                     "use `domain generic` or `domain assume` to allow"
                                 }

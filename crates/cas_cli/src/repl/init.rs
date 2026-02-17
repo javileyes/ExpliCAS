@@ -150,7 +150,7 @@ impl Repl {
     ) -> (cas_ast::ExprId, Vec<cas_didactic::Step>) {
         // Use state.options.to_simplify_options() to get correct expand_policy, context_mode, etc.
         // (self.core.simplify_options is legacy and doesn't sync expand_policy)
-        let mut opts = self.core.state.options.to_simplify_options();
+        let mut opts = self.core.state.options().to_simplify_options();
         opts.collect_steps = self.core.engine.simplifier.collect_steps();
         // V2.15.8: Copy autoexpand_binomials from simplify_options (set by 'set autoexpand_binomials on')
         opts.shared.autoexpand_binomials = self.core.simplify_options.shared.autoexpand_binomials;
@@ -206,7 +206,7 @@ impl Repl {
         self.core.last_stats = Some(stats.clone());
 
         // Print assumptions summary if reporting is enabled and there are assumptions
-        if self.core.state.options.shared.assumption_reporting
+        if self.core.state.options().shared.assumption_reporting
             != cas_solver::AssumptionReporting::Off
             && !stats.assumptions.is_empty()
         {
@@ -421,14 +421,14 @@ impl Repl {
         let mut indicators = Vec::new();
 
         // Show steps mode if not On (default)
-        match self.core.state.options.steps_mode {
+        match self.core.state.options().steps_mode {
             StepsMode::Off => indicators.push("[steps:off]"),
             StepsMode::Compact => indicators.push("[steps:compact]"),
             StepsMode::On => {} // Default, no indicator
         }
 
         // Show context mode if not Auto (default)
-        match self.core.state.options.shared.context_mode {
+        match self.core.state.options().shared.context_mode {
             ContextMode::IntegratePrep => indicators.push("[ctx:integrate]"),
             ContextMode::Solve => indicators.push("[ctx:solve]"),
             ContextMode::Standard => indicators.push("[ctx:standard]"),
@@ -436,20 +436,20 @@ impl Repl {
         }
 
         // Show branch mode if not Strict (default)
-        match self.core.state.options.branch_mode {
+        match self.core.state.options().branch_mode {
             BranchMode::PrincipalBranch => indicators.push("[branch:principal]"),
             BranchMode::Strict => {} // Default, no indicator
         }
 
         // Show complex mode if not Auto (default)
-        match self.core.state.options.complex_mode {
+        match self.core.state.options().complex_mode {
             ComplexMode::On => indicators.push("[cx:on]"),
             ComplexMode::Off => indicators.push("[cx:off]"),
             ComplexMode::Auto => {} // Default, no indicator
         }
 
         // Show expand_policy if Auto (not default Off)
-        if self.core.state.options.shared.expand_policy == ExpandPolicy::Auto {
+        if self.core.state.options().shared.expand_policy == ExpandPolicy::Auto {
             indicators.push("[autoexp:on]");
         }
 

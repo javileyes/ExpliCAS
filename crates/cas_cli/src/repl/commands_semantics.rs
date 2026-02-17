@@ -107,13 +107,13 @@ impl Repl {
 
         lines.push(format!("  inv_trig: {}", inv_trig));
 
-        let const_fold = match self.core.state.options.const_fold {
+        let const_fold = match self.core.state.options().const_fold {
             cas_solver::ConstFoldMode::Off => "off",
             cas_solver::ConstFoldMode::Safe => "safe",
         };
         lines.push(format!("  const_fold: {}", const_fold));
 
-        let assumptions = match self.core.state.options.shared.assumption_reporting {
+        let assumptions = match self.core.state.options().shared.assumption_reporting {
             cas_solver::AssumptionReporting::Off => "off",
             cas_solver::AssumptionReporting::Summary => "summary",
             cas_solver::AssumptionReporting::Trace => "trace",
@@ -135,7 +135,7 @@ impl Repl {
         }
 
         // Show hints_enabled
-        let hints = if self.core.state.options.hints_enabled {
+        let hints = if self.core.state.options().hints_enabled {
             "on"
         } else {
             "off"
@@ -143,7 +143,7 @@ impl Repl {
         lines.push(format!("  hints: {}", hints));
 
         // Show requires display level
-        let requires = match self.core.state.options.requires_display {
+        let requires = match self.core.state.options().requires_display {
             cas_solver::RequiresDisplayLevel::Essential => "essential",
             cas_solver::RequiresDisplayLevel::All => "all",
         };
@@ -217,7 +217,7 @@ impl Repl {
                 lines.push("  principal: arctan(tan(x)) → x with warning".to_string());
             }
             "const_fold" => {
-                let current = match self.core.state.options.const_fold {
+                let current = match self.core.state.options().const_fold {
                     cas_solver::ConstFoldMode::Off => "off",
                     cas_solver::ConstFoldMode::Safe => "safe",
                 };
@@ -227,7 +227,7 @@ impl Repl {
                 lines.push("  safe: Fold literals (2^3 → 8, sqrt(-1) → i if complex)".to_string());
             }
             "assumptions" => {
-                let current = match self.core.state.options.shared.assumption_reporting {
+                let current = match self.core.state.options().shared.assumption_reporting {
                     cas_solver::AssumptionReporting::Off => "off",
                     cas_solver::AssumptionReporting::Summary => "summary",
                     cas_solver::AssumptionReporting::Trace => "trace",
@@ -261,7 +261,7 @@ impl Repl {
                 }
             }
             "requires" => {
-                let current = match self.core.state.options.requires_display {
+                let current = match self.core.state.options().requires_display {
                     cas_solver::RequiresDisplayLevel::Essential => "essential",
                     cas_solver::RequiresDisplayLevel::All => "all",
                 };
@@ -459,19 +459,19 @@ Presets:
                     let old_value = self.core.simplify_options.shared.semantics.value_domain;
                     let old_branch = self.core.simplify_options.shared.semantics.branch;
                     let old_inv_trig = self.core.simplify_options.shared.semantics.inv_trig;
-                    let old_const_fold = self.core.state.options.const_fold;
+                    let old_const_fold = self.core.state.options().const_fold;
 
                     // Apply preset
                     self.core.simplify_options.shared.semantics.domain_mode = p.domain;
                     self.core.simplify_options.shared.semantics.value_domain = p.value;
                     self.core.simplify_options.shared.semantics.branch = p.branch;
                     self.core.simplify_options.shared.semantics.inv_trig = p.inv_trig;
-                    self.core.state.options.const_fold = p.const_fold;
+                    self.core.state.options_mut().const_fold = p.const_fold;
                     // Sync to state.options (used by evaluation pipeline)
-                    self.core.state.options.shared.semantics.domain_mode = p.domain;
-                    self.core.state.options.shared.semantics.value_domain = p.value;
-                    self.core.state.options.shared.semantics.branch = p.branch;
-                    self.core.state.options.shared.semantics.inv_trig = p.inv_trig;
+                    self.core.state.options_mut().shared.semantics.domain_mode = p.domain;
+                    self.core.state.options_mut().shared.semantics.value_domain = p.value;
+                    self.core.state.options_mut().shared.semantics.branch = p.branch;
+                    self.core.state.options_mut().shared.semantics.inv_trig = p.inv_trig;
 
                     self.sync_config_to_simplifier();
 
