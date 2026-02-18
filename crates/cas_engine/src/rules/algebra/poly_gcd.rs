@@ -12,13 +12,13 @@
 //! This allows Mathematica/Symbolica-style polynomial GCD without expanding.
 
 use crate::engine::Simplifier;
-use crate::gcd_zippel_modp::ZippelPreset;
 use crate::options::EvalOptions;
 use crate::phase::PhaseMask;
 use crate::rule::{Rewrite, Rule};
 use crate::rules::algebra::gcd_exact::{gcd_exact, GcdExactBudget, GcdExactLayer};
 use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
+use cas_math::gcd_zippel_modp::ZippelPreset;
 use num_traits::{One, ToPrimitive};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};

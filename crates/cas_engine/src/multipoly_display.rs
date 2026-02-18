@@ -7,7 +7,7 @@ use cas_ast::{Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
 
-use crate::multipoly::MultiPoly;
+use cas_math::multipoly::MultiPoly;
 
 /// Stats for a single polynomial normal form
 #[derive(Debug, Clone)]
@@ -312,7 +312,7 @@ pub fn expand_additive_terms(
     expr: ExprId,
     display_vars: &[String],
 ) -> Option<ExprId> {
-    use crate::multipoly::{multipoly_from_expr, PolyBudget};
+    use cas_math::multipoly::{multipoly_from_expr, PolyBudget};
 
     // Phase 1 (immutable borrow): collect terms and convert to multipolys
     let mut signed_terms: Vec<(bool, ExprId)> = Vec::new();
@@ -448,7 +448,7 @@ fn collect_signed_terms(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::multipoly::MultiPoly;
+    use cas_math::multipoly::MultiPoly;
     use num_rational::BigRational;
 
     #[test]

@@ -6,7 +6,7 @@
 use cas_ast::Context;
 use cas_engine::budget::{Budget, Metric, Operation, PassStats};
 use cas_engine::expand::expand_with_stats;
-use cas_engine::multinomial_expand::MultinomialExpandBudget;
+use cas_math::multinomial_expand::MultinomialExpandBudget;
 use cas_parser::parse;
 
 /// Test that expand pre-estimation catches explosive cases before materializing.
@@ -35,7 +35,7 @@ fn test_expand_fails_fast_without_allocation() {
     // The expand should return the original expression unexpanded
     // because precheck fails
     if let cas_ast::Expr::Pow(base, exp) = ctx.get(expr).clone() {
-        let result = cas_engine::multinomial_expand::try_expand_multinomial_direct(
+        let result = cas_math::multinomial_expand::try_expand_multinomial_direct(
             &mut ctx, base, exp, &budget,
         );
 

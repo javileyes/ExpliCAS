@@ -3,11 +3,11 @@
 //! Exposes Zippel mod-p GCD to REPL for fast polynomial verification.
 
 use crate::define_rule;
-use crate::gcd_zippel_modp::{gcd_zippel_modp, ZippelBudget, ZippelPreset};
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
+use cas_math::gcd_zippel_modp::{gcd_zippel_modp, ZippelBudget, ZippelPreset};
 use cas_math::poly_modp_conv::{
     expr_to_poly_modp_with_store as expr_to_poly_modp, PolyConvError, PolyModpBudget, VarTable,
     DEFAULT_PRIME as INTERNAL_DEFAULT_PRIME,
@@ -664,7 +664,7 @@ fn modp_to_signed(c: u64, p: u64) -> i128 {
 /// Coefficients in (p/2, p-1] are interpreted as negative.
 pub fn multipoly_modp_to_expr(
     ctx: &mut Context,
-    poly: &crate::multipoly_modp::MultiPolyModP,
+    poly: &cas_math::multipoly_modp::MultiPolyModP,
     vars: &VarTable,
 ) -> ExprId {
     use num_rational::BigRational;

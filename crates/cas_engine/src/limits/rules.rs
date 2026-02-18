@@ -122,7 +122,7 @@ pub fn try_rational_poly_rule(
     var: ExprId,
     approach: Approach,
 ) -> Option<ExprId> {
-    use crate::multipoly::{multipoly_from_expr, PolyBudget};
+    use cas_math::multipoly::{multipoly_from_expr, PolyBudget};
 
     // Match Div(num, den)
     let Expr::Div(num, den) = ctx.get(expr).clone() else {

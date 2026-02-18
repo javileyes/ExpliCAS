@@ -4,14 +4,14 @@
 //! expressions to `MultiPoly` and using the Layer 1/2/2.5 pipeline.
 
 use crate::define_rule;
-use crate::multipoly::{
-    gcd_multivar_layer2, gcd_multivar_layer25, multipoly_from_expr, multipoly_to_expr, GcdBudget,
-    Layer25Budget, MultiPoly, PolyBudget,
-};
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
+use cas_math::multipoly::{
+    gcd_multivar_layer2, gcd_multivar_layer25, multipoly_from_expr, multipoly_to_expr, GcdBudget,
+    Layer25Budget, MultiPoly, PolyBudget,
+};
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
 

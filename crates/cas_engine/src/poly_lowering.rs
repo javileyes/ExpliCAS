@@ -32,14 +32,14 @@
 //! When one operand is `poly_result` and the other is a simple polynomial expression,
 //! the simple expression is automatically converted to `poly_result` for combination.
 
-use crate::poly_store::{
-    thread_local_add, thread_local_insert, thread_local_meta, thread_local_mul, thread_local_neg,
-    thread_local_pow, thread_local_sub, PolyId, PolyMeta,
-};
 use crate::Step;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::poly_modp_conv::{
     expr_to_poly_modp_with_store as expr_to_poly_modp, PolyModpBudget, VarTable,
+};
+use cas_math::poly_store::{
+    thread_local_add, thread_local_insert, thread_local_meta, thread_local_mul, thread_local_neg,
+    thread_local_pow, thread_local_sub, PolyId, PolyMeta,
 };
 
 /// Maximum node count for promotion (guards against huge expressions)

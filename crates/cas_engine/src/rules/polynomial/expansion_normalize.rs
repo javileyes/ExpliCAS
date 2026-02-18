@@ -3,14 +3,13 @@
 //! These rules are extracted from `expansion.rs` to keep the module focused on
 //! core binomial/multinomial expansion logic.
 
-use crate::multipoly::{MultiPoly, PolyBudget};
+use super::expansion::AutoExpandSubCancelRule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::multinomial_expand::{try_expand_multinomial_direct, MultinomialExpandBudget};
+use cas_math::multipoly::{MultiPoly, PolyBudget};
 use num_traits::Signed;
-
-use super::expansion::AutoExpandSubCancelRule;
-use crate::multinomial_expand::{try_expand_multinomial_direct, MultinomialExpandBudget};
 
 // =============================================================================
 // PolynomialIdentityZeroRule
@@ -557,8 +556,8 @@ impl crate::rule::Rule for PolynomialIdentityZeroRule {
             // Build proof data with LHS/RHS if we have both positive and negative terms
             let proof_data = if !positive_terms.is_empty() && !negative_terms.is_empty() {
                 // Build polys for positive sum (LHS) and negative sum (RHS)
-                let mut lhs_poly = crate::multipoly::MultiPoly::zero(vars.clone());
-                let mut rhs_poly = crate::multipoly::MultiPoly::zero(vars.clone());
+                let mut lhs_poly = cas_math::multipoly::MultiPoly::zero(vars.clone());
+                let mut rhs_poly = cas_math::multipoly::MultiPoly::zero(vars.clone());
 
                 // Sum positive terms - use the same vars we already collected
                 for &term in &positive_terms {
@@ -753,7 +752,7 @@ impl crate::rule::Rule for HeuristicPolyNormalizeAddRule {
         }
 
         // Convert back to expression using multipoly_to_expr (produces flattened Add)
-        let new_expr = crate::multipoly::multipoly_to_expr(&poly, ctx);
+        let new_expr = cas_math::multipoly::multipoly_to_expr(&poly, ctx);
 
         // Don't rewrite to same expression
         if new_expr == expr {

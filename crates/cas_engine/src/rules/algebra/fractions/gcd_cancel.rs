@@ -17,7 +17,7 @@ use num_traits::{One, Zero};
 
 // Import helpers from sibling core_rules module
 use super::core_rules::{poly_relation, try_multivar_gcd, SignRelation};
-use crate::multipoly::GcdLayer;
+use cas_math::multipoly::GcdLayer;
 
 // ========== Micro-API for safe Mul construction ==========
 // Use this instead of ctx.add(Expr::Mul(...)) in this file.

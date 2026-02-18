@@ -162,11 +162,11 @@ fn expand_to_poly_ref_or_hold(
     expr: ExprId,
     _est_terms: usize,
 ) -> Option<ExprId> {
-    use crate::poly_store::{thread_local_insert, PolyMeta};
     use crate::rules::algebra::gcd_modp::{multipoly_modp_to_expr, DEFAULT_PRIME};
     use cas_math::poly_modp_conv::{
         expr_to_poly_modp_with_store as expr_to_poly_modp, PolyModpBudget, VarTable,
     };
+    use cas_math::poly_store::{thread_local_insert, PolyMeta};
 
     // Budget for polynomial expansion
     let budget = PolyModpBudget {
@@ -283,7 +283,7 @@ fn estimate_expanded_term_count(ctx: &Context, expr: ExprId) -> Option<u64> {
             }
 
             // Multinomial term count: C(n+k-1, k-1)
-            crate::multinomial_expand::multinomial_term_count(n, k, u64::MAX as usize)
+            cas_math::multinomial_expand::multinomial_term_count(n, k, u64::MAX as usize)
                 .map(|c| c as u64)
         }
         Expr::Mul(l, r) => {
@@ -360,9 +360,9 @@ pub fn expand(ctx: &mut Context, expr: ExprId) -> ExprId {
         Expr::Pow(b, e) => {
             // FAST PATH: Try direct multinomial expansion on ORIGINAL base
             // before expanding children (which can change structure)
-            let budget = crate::multinomial_expand::MultinomialExpandBudget::default();
+            let budget = cas_math::multinomial_expand::MultinomialExpandBudget::default();
             if let Some(result) =
-                crate::multinomial_expand::try_expand_multinomial_direct(ctx, b, e, &budget)
+                cas_math::multinomial_expand::try_expand_multinomial_direct(ctx, b, e, &budget)
             {
                 return result;
             }

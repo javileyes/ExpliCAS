@@ -4,12 +4,12 @@
 //! along with helper functions for polynomial comparison and factor collection.
 
 use crate::build::mul2_raw;
-use crate::multipoly::{
+use crate::rules::algebra::helpers::gcd_rational;
+use cas_ast::{Context, Expr, ExprId};
+use cas_math::multipoly::{
     gcd_multivar_layer2, gcd_multivar_layer25, multipoly_from_expr, multipoly_to_expr, GcdBudget,
     GcdLayer, Layer25Budget, MultiPoly, PolyBudget,
 };
-use crate::rules::algebra::helpers::gcd_rational;
-use cas_ast::{Context, Expr, ExprId};
 use num_traits::{One, Zero};
 
 // =============================================================================

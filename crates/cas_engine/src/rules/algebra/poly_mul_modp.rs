@@ -6,12 +6,12 @@
 
 use crate::define_rule;
 use crate::phase::PhaseMask;
-use crate::poly_store::{PolyMeta, POLY_MAX_STORE_TERMS};
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr};
 use cas_math::poly_modp_conv::{
     expr_to_poly_modp_with_store as expr_to_poly_modp, PolyModpBudget, VarTable,
 };
+use cas_math::poly_store::{PolyMeta, POLY_MAX_STORE_TERMS};
 
 /// Default prime for mod-p operations
 pub const DEFAULT_PRIME: u64 = 4503599627370449;

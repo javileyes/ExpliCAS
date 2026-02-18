@@ -18,7 +18,6 @@ pub use cas_engine::options::{
 };
 pub use cas_engine::parent_context::ParentContext;
 pub use cas_engine::phase::{ExpandPolicy, SimplifyPhase};
-pub use cas_engine::poly_store::{try_get_poly_result_term_count, try_render_poly_result};
 pub use cas_engine::rationalize;
 pub use cas_engine::rationalize_policy::{AutoRationalizeLevel, RationalizeOutcome};
 pub use cas_engine::rule::Rule;
@@ -39,6 +38,7 @@ pub use cas_engine::{
     SimplifyOptions,
 };
 pub use cas_math::multipoly;
+pub use cas_math::poly_store::{try_get_poly_result_term_count, try_render_poly_result};
 pub use json::{
     eval_str_to_json, eval_str_to_output_envelope, substitute_str_to_json, EnvelopeEvalOptions,
 };

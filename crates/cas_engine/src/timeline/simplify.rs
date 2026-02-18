@@ -1258,7 +1258,7 @@ impl<'a> TimelineHtml<'a> {
 
         // Check if result is a poly_result - render as text (not LaTeX) for large polynomials
         if let Some(poly_text) =
-            crate::poly_store::try_render_poly_result(self.context, final_result_expr)
+            cas_math::poly_store::try_render_poly_result(self.context, final_result_expr)
         {
             // Get term count for info badge
             let term_count = poly_text.matches('+').count() + 1;

@@ -20,7 +20,7 @@ use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 /// The normalized ExprId is only used for DISPLAY - it does not affect the
 /// underlying AST or comparisons.
 pub fn normalize_condition_expr(ctx: &mut Context, expr: ExprId) -> ExprId {
-    use crate::multipoly::{multipoly_from_expr, multipoly_to_expr, PolyBudget};
+    use cas_math::multipoly::{multipoly_from_expr, multipoly_to_expr, PolyBudget};
 
     // Small budget - we're just normalizing for display, not doing heavy algebra
     let budget = PolyBudget {
@@ -117,7 +117,7 @@ pub(crate) fn conditions_equivalent(
     c1: &ImplicitCondition,
     c2: &ImplicitCondition,
 ) -> bool {
-    use crate::multipoly::{multipoly_from_expr, PolyBudget};
+    use cas_math::multipoly::{multipoly_from_expr, PolyBudget};
 
     // Must be same condition type
     let (e1, e2) = match (c1, c2) {
@@ -162,7 +162,7 @@ pub(crate) fn conditions_equivalent(
 
 /// Check if two expressions are equivalent using polynomial comparison.
 pub(crate) fn exprs_equivalent(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
-    use crate::multipoly::{multipoly_from_expr, PolyBudget};
+    use cas_math::multipoly::{multipoly_from_expr, PolyBudget};
 
     if e1 == e2 {
         return true;

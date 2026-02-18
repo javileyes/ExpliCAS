@@ -3,9 +3,9 @@
 //! Provides `poly_stats(poly_result(id))` to show polynomial metadata
 //! without materializing the full AST.
 
-use crate::poly_store::thread_local_meta;
 use crate::rule::{Rewrite, SimpleRule};
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::poly_store::thread_local_meta;
 
 /// Rule: poly_stats(poly_result(id)) → metadata display
 pub struct PolyStatsRule;
@@ -72,9 +72,9 @@ impl SimpleRule for PolyToExprRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        use crate::poly_store::thread_local_get_for_materialize;
         use crate::rules::algebra::gcd_modp::multipoly_modp_to_expr;
         use cas_math::poly_modp_conv::VarTable;
+        use cas_math::poly_store::thread_local_get_for_materialize;
 
         // Match: poly_to_expr(poly_result(id)) or poly_to_expr(poly_result(id), max_terms)
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
@@ -145,7 +145,7 @@ impl SimpleRule for PolyPrintRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        use crate::poly_store::thread_local_get_for_materialize;
+        use cas_math::poly_store::thread_local_get_for_materialize;
 
         // Match: poly_print(poly_result(id)) or poly_print(poly_result(id), max_terms)
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
@@ -197,7 +197,7 @@ impl SimpleRule for PolyPrintRule {
 /// Format MultiPolyModP directly to string with optional truncation
 /// Terms are sorted by graded lex order (total degree first, then lex)
 fn format_poly_with_limit(
-    poly: &crate::multipoly_modp::MultiPolyModP,
+    poly: &cas_math::multipoly_modp::MultiPolyModP,
     var_names: &[String],
     max_terms: usize,
 ) -> String {
@@ -282,7 +282,7 @@ impl SimpleRule for PolyLatexRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        use crate::poly_store::thread_local_get_for_materialize;
+        use cas_math::poly_store::thread_local_get_for_materialize;
 
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             let (fn_id, args) = (*fn_id, args.clone());
@@ -320,7 +320,7 @@ impl SimpleRule for PolyLatexRule {
 
 /// Format polynomial as LaTeX
 fn format_poly_latex(
-    poly: &crate::multipoly_modp::MultiPolyModP,
+    poly: &cas_math::multipoly_modp::MultiPolyModP,
     var_names: &[String],
     max_terms: usize,
 ) -> String {

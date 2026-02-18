@@ -2,10 +2,10 @@
 //! and heuristic polynomial normalization.
 
 use crate::build::mul2_raw;
-use crate::multipoly::{MultiPoly, PolyBudget};
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::multipoly::{MultiPoly, PolyBudget};
 use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive};
 
@@ -458,7 +458,7 @@ impl crate::rule::Rule for SmallMultinomialExpansionRule {
         }
 
         // PRIMARY GATE: predicted output terms = C(n+k-1, k-1) ≤ MAX_OUTPUT_TERMS
-        let pred_terms = crate::multinomial_expand::multinomial_term_count(
+        let pred_terms = cas_math::multinomial_expand::multinomial_term_count(
             n,
             k,
             SMALL_MULTI_MAX_OUTPUT_TERMS + 1, // +1 so we can check ≤
@@ -474,7 +474,7 @@ impl crate::rule::Rule for SmallMultinomialExpansionRule {
         }
 
         // All guards passed — delegate to fast multinomial expansion
-        let budget = crate::multinomial_expand::MultinomialExpandBudget {
+        let budget = cas_math::multinomial_expand::MultinomialExpandBudget {
             max_exp: SMALL_MULTI_MAX_N,
             max_base_terms: SMALL_MULTI_MAX_TERMS,
             max_vars: 8,
@@ -482,7 +482,7 @@ impl crate::rule::Rule for SmallMultinomialExpansionRule {
         };
 
         let expanded =
-            crate::multinomial_expand::try_expand_multinomial_direct(ctx, base, exp, &budget)?;
+            cas_math::multinomial_expand::try_expand_multinomial_direct(ctx, base, exp, &budget)?;
 
         // POST-EXPANSION guard: reject if output is too large in total nodes.
         // pred_terms caps #terms but not per-term complexity; opaque atoms

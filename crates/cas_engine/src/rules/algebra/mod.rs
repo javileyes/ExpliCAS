@@ -199,7 +199,7 @@ pub fn try_difference_of_squares_preorder(
     // STEP 3: Check if denominator matches A-B, A+B using POLYNOMIAL comparison
     // This handles cases like den = (x+2y) - (3x-y) being compared to A-B
     // where A and B come from different AST nodes but are polynomially equal
-    use crate::multipoly::{multipoly_from_expr, multipoly_to_expr, PolyBudget};
+    use cas_math::multipoly::{multipoly_from_expr, multipoly_to_expr, PolyBudget};
 
     let budget = PolyBudget {
         max_terms: 50,

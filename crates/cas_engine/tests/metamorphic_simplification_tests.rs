@@ -456,7 +456,7 @@ fn check_symbolic_equiv_bucket_aware(
 /// Returns Some(True) if they canonicalize to the same polynomial,
 /// None if either expression is not a polynomial (contains trig, log, etc.)
 fn check_polynomial_equivalence(ctx: &Context, a: ExprId, b: ExprId) -> Option<EquivalenceResult> {
-    use cas_engine::multipoly::{multipoly_from_expr, PolyBudget};
+    use cas_math::multipoly::{multipoly_from_expr, PolyBudget};
 
     // Use a generous budget for polynomial equivalence checking
     // (higher than normal since this is for testing, not runtime)

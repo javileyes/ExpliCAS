@@ -2,7 +2,7 @@
 //!
 //! These tests verify that preset budget values don't change silently.
 
-use cas_engine::gcd_zippel_modp::{ZippelBudget, ZippelPreset};
+use cas_math::gcd_zippel_modp::{ZippelBudget, ZippelPreset};
 
 #[test]
 fn test_preset_mmgcd_contract() {

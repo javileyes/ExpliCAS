@@ -558,7 +558,7 @@ fn try_expand_for_cancel(
 
         // Predicted term count: C(n+k-1, k-1)
         let pred_terms =
-            match crate::multinomial_expand::multinomial_term_count(n, k, MAX_PRED_TERMS) {
+            match cas_math::multinomial_expand::multinomial_term_count(n, k, MAX_PRED_TERMS) {
                 Some(t) if t <= MAX_PRED_TERMS => t,
                 _ => {
                     i += 1;
@@ -575,34 +575,34 @@ fn try_expand_for_cancel(
         }
 
         // Phase 3: Preview expand
-        let budget = crate::multinomial_expand::MultinomialExpandBudget {
+        let budget = cas_math::multinomial_expand::MultinomialExpandBudget {
             max_exp: MAX_EXP,
             max_base_terms: MAX_BASE_K,
             max_vars: MAX_BASE_K,
             max_output_terms: MAX_PRED_TERMS,
         };
-        let expanded =
-            match crate::multinomial_expand::try_expand_multinomial_direct(ctx, base, exp, &budget)
-            {
-                Some(e) => {
-                    // Unwrap __hold if present
-                    match ctx.get(e) {
-                        Expr::Hold(inner) => *inner,
-                        _ => e,
-                    }
+        let expanded = match cas_math::multinomial_expand::try_expand_multinomial_direct(
+            ctx, base, exp, &budget,
+        ) {
+            Some(e) => {
+                // Unwrap __hold if present
+                match ctx.get(e) {
+                    Expr::Hold(inner) => *inner,
+                    _ => e,
                 }
-                None => {
-                    // Fallback: use generic expand (handles non-linear atoms)
-                    let pow_expr = ctx.add(Expr::Pow(base, exp));
-                    let expanded = crate::expand::expand(ctx, pow_expr);
-                    // Skip if expand was a no-op
-                    if expanded == pow_expr {
-                        i += 1;
-                        continue;
-                    }
-                    expanded
+            }
+            None => {
+                // Fallback: use generic expand (handles non-linear atoms)
+                let pow_expr = ctx.add(Expr::Pow(base, exp));
+                let expanded = crate::expand::expand(ctx, pow_expr);
+                // Skip if expand was a no-op
+                if expanded == pow_expr {
+                    i += 1;
+                    continue;
                 }
-            };
+                expanded
+            }
+        };
 
         // Phase 4: Check overlap — collect expanded terms and fingerprint
         let mut exp_terms = Vec::new();

@@ -1,11 +1,11 @@
 use crate::best_so_far::{BestSoFar, BestSoFarBudget};
 use crate::expand::eager_eval_expand_calls;
 use crate::phase::{SimplifyOptions, SimplifyPhase};
-use crate::poly_store::clear_thread_local_store;
 use crate::rationalize_policy::AutoRationalizeLevel;
 use crate::rules::algebra::gcd_modp::eager_eval_poly_gcd_calls;
 use crate::{Simplifier, Step};
 use cas_ast::{BuiltinFn, ExprId};
+use cas_math::poly_store::clear_thread_local_store;
 use std::collections::HashSet;
 
 pub struct Orchestrator {

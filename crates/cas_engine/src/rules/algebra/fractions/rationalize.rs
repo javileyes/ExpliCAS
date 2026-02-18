@@ -1312,7 +1312,7 @@ define_rule!(
         // Strategy 1: Try polynomial comparison (read-only, no context mutation)
         // multipoly_from_expr internally expands Mul(Add,Add) in polynomial space
         {
-            use crate::multipoly::{multipoly_from_expr, PolyBudget};
+            use cas_math::multipoly::{multipoly_from_expr, PolyBudget};
             let budget = PolyBudget {
                 max_terms: 200,
                 max_total_degree: 12,
@@ -1374,7 +1374,7 @@ define_rule!(
             EXPAND_CANCEL_DEPTH.with(|c| c.set(depth)); // restore
 
             // Compare via poly_eq (order-independent polynomial comparison)
-            use crate::multipoly::{multipoly_from_expr, PolyBudget};
+            use cas_math::multipoly::{multipoly_from_expr, PolyBudget};
             let budget = PolyBudget {
                 max_terms: 200,
                 max_total_degree: 12,
