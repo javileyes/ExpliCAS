@@ -34,12 +34,9 @@
 
 use crate::Step;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
-use cas_math::poly_modp_conv::{
-    expr_to_poly_modp_with_store as expr_to_poly_modp, PolyModpBudget, VarTable,
-};
 use cas_math::poly_store::{
-    thread_local_add, thread_local_insert, thread_local_meta, thread_local_mul, thread_local_neg,
-    thread_local_pow, thread_local_sub, PolyId, PolyMeta,
+    thread_local_add, thread_local_mul, thread_local_neg, thread_local_pow,
+    thread_local_promote_expr_with_base, thread_local_sub, PolyId,
 };
 
 /// Maximum node count for promotion (guards against huge expressions)
@@ -51,101 +48,6 @@ const PROMOTE_MAX_TERMS: usize = 10_000;
 // =============================================================================
 // Auto-promotion: convert simple poly-like expressions to poly_result
 // =============================================================================
-
-/// Try to promote a simple polynomial expression to a poly_result.
-///
-/// Only attempts promotion if:
-/// 1. `base_id` is a valid poly_result (provides modulus and var_table context)
-/// 2. `expr` is small enough (node count <= PROMOTE_MAX_NODES)
-/// 3. `expr` can be converted to MultiPolyModP
-/// 4. Resulting poly has <= PROMOTE_MAX_TERMS terms
-///
-/// Returns the new PolyId on success, None on failure.
-fn try_promote_expr_to_poly(ctx: &Context, expr: ExprId, base_id: PolyId) -> Option<PolyId> {
-    // Guard: check node count
-    let (node_count, _) = cas_ast::traversal::count_nodes_and_max_depth(ctx, expr);
-    if node_count > PROMOTE_MAX_NODES {
-        tracing::debug!(
-            poly_lowering = "skip_promote",
-            reason = "node_count too large",
-            node_count = node_count,
-            max = PROMOTE_MAX_NODES,
-            "Skipping promotion: expression too large"
-        );
-        return None;
-    }
-
-    // Get base metadata (for modulus)
-    let base_meta = thread_local_meta(base_id)?;
-
-    // Budget for conversion
-    let budget = PolyModpBudget {
-        max_terms: PROMOTE_MAX_TERMS,
-        ..Default::default()
-    };
-
-    // Convert expression to polynomial
-    let mut vars = VarTable::new();
-    let poly = match expr_to_poly_modp(ctx, expr, base_meta.modulus, &budget, &mut vars) {
-        Ok(p) => p,
-        Err(e) => {
-            tracing::debug!(
-                poly_lowering = "skip_promote",
-                reason = "conversion_failed",
-                error = ?e,
-                "Skipping promotion: cannot convert expression"
-            );
-            return None;
-        }
-    };
-
-    // Check term count
-    if poly.terms.len() > PROMOTE_MAX_TERMS {
-        tracing::debug!(
-            poly_lowering = "skip_promote",
-            reason = "too_many_terms",
-            terms = poly.terms.len(),
-            max = PROMOTE_MAX_TERMS,
-            "Skipping promotion: resulting poly too large"
-        );
-        return None;
-    }
-
-    // Unify variable tables
-    let base_var_table = VarTable::from_names(&base_meta.var_names);
-    let (unified, _remap_base, remap_new) = base_var_table.unify(&vars)?;
-
-    // Remap the new polynomial to unified variable order
-    let remapped_poly = poly.remap(&remap_new, unified.len());
-
-    // Compute max total degree from terms
-    let max_deg = remapped_poly
-        .terms
-        .iter()
-        .map(|(mono, _)| mono.total_degree())
-        .max()
-        .unwrap_or(0);
-
-    // Create metadata and insert
-    let new_meta = PolyMeta {
-        modulus: base_meta.modulus,
-        n_terms: remapped_poly.terms.len(),
-        n_vars: unified.len(),
-        max_total_degree: max_deg,
-        var_names: unified.names().to_vec(),
-    };
-
-    let new_id = thread_local_insert(new_meta, remapped_poly);
-
-    tracing::debug!(
-        poly_lowering = "promoted",
-        new_id = new_id,
-        terms = poly.terms.len(),
-        "Successfully promoted expression to poly_result"
-    );
-
-    Some(new_id)
-}
 
 /// Result of poly lowering pass
 pub struct PolyLowerResult {
@@ -213,7 +115,13 @@ fn lower_recursive(
                 }
                 // Left is poly_result, try to promote right
                 (Some(id_l), None) => {
-                    if let Some(id_r_promoted) = try_promote_expr_to_poly(ctx, nr, id_l) {
+                    if let Some(id_r_promoted) = thread_local_promote_expr_with_base(
+                        ctx,
+                        nr,
+                        id_l,
+                        PROMOTE_MAX_NODES,
+                        PROMOTE_MAX_TERMS,
+                    ) {
                         if let Some(new_id) = thread_local_add(id_l, id_r_promoted) {
                             *combined_any = true;
                             let result = make_poly_result(ctx, new_id);
@@ -234,7 +142,13 @@ fn lower_recursive(
                 }
                 // Right is poly_result, try to promote left
                 (None, Some(id_r)) => {
-                    if let Some(id_l_promoted) = try_promote_expr_to_poly(ctx, nl, id_r) {
+                    if let Some(id_l_promoted) = thread_local_promote_expr_with_base(
+                        ctx,
+                        nl,
+                        id_r,
+                        PROMOTE_MAX_NODES,
+                        PROMOTE_MAX_TERMS,
+                    ) {
                         if let Some(new_id) = thread_local_add(id_l_promoted, id_r) {
                             *combined_any = true;
                             let result = make_poly_result(ctx, new_id);
@@ -293,7 +207,13 @@ fn lower_recursive(
                 }
                 // Left is poly_result, try to promote right
                 (Some(id_l), None) => {
-                    if let Some(id_r_promoted) = try_promote_expr_to_poly(ctx, nr, id_l) {
+                    if let Some(id_r_promoted) = thread_local_promote_expr_with_base(
+                        ctx,
+                        nr,
+                        id_l,
+                        PROMOTE_MAX_NODES,
+                        PROMOTE_MAX_TERMS,
+                    ) {
                         if let Some(new_id) = thread_local_sub(id_l, id_r_promoted) {
                             *combined_any = true;
                             let result = make_poly_result(ctx, new_id);
@@ -314,7 +234,13 @@ fn lower_recursive(
                 }
                 // Right is poly_result, try to promote left
                 (None, Some(id_r)) => {
-                    if let Some(id_l_promoted) = try_promote_expr_to_poly(ctx, nl, id_r) {
+                    if let Some(id_l_promoted) = thread_local_promote_expr_with_base(
+                        ctx,
+                        nl,
+                        id_r,
+                        PROMOTE_MAX_NODES,
+                        PROMOTE_MAX_TERMS,
+                    ) {
                         if let Some(new_id) = thread_local_sub(id_l_promoted, id_r) {
                             *combined_any = true;
                             let result = make_poly_result(ctx, new_id);
@@ -374,7 +300,13 @@ fn lower_recursive(
                 }
                 // Left is poly_result, try to promote right
                 (Some(id_l), None) => {
-                    if let Some(id_r_promoted) = try_promote_expr_to_poly(ctx, nr, id_l) {
+                    if let Some(id_r_promoted) = thread_local_promote_expr_with_base(
+                        ctx,
+                        nr,
+                        id_l,
+                        PROMOTE_MAX_NODES,
+                        PROMOTE_MAX_TERMS,
+                    ) {
                         if let Some(new_id) = thread_local_mul(id_l, id_r_promoted) {
                             *combined_any = true;
                             let result = make_poly_result(ctx, new_id);
@@ -395,7 +327,13 @@ fn lower_recursive(
                 }
                 // Right is poly_result, try to promote left
                 (None, Some(id_r)) => {
-                    if let Some(id_l_promoted) = try_promote_expr_to_poly(ctx, nl, id_r) {
+                    if let Some(id_l_promoted) = thread_local_promote_expr_with_base(
+                        ctx,
+                        nl,
+                        id_r,
+                        PROMOTE_MAX_NODES,
+                        PROMOTE_MAX_TERMS,
+                    ) {
                         if let Some(new_id) = thread_local_mul(id_l_promoted, id_r) {
                             *combined_any = true;
                             let result = make_poly_result(ctx, new_id);

@@ -331,6 +331,64 @@ pub fn thread_local_get_for_materialize(id: PolyId) -> Option<(PolyMeta, MultiPo
     THREAD_POLY_STORE.with(|store| store.borrow().get(id).map(|(m, p)| (m.clone(), p.clone())))
 }
 
+/// Try to promote a polynomial-like expression to a stored `poly_result` using
+/// a base poly's modulus and variable context.
+///
+/// Returns the new `PolyId` on success, `None` when promotion is not possible.
+pub fn thread_local_promote_expr_with_base(
+    ctx: &Context,
+    expr: ExprId,
+    base_id: PolyId,
+    max_nodes: usize,
+    max_terms: usize,
+) -> Option<PolyId> {
+    use crate::poly_modp_conv::{expr_to_poly_modp_with_store, PolyModpBudget, VarTable};
+
+    // Guard: skip very large expressions.
+    let (node_count, _) = cas_ast::traversal::count_nodes_and_max_depth(ctx, expr);
+    if node_count > max_nodes {
+        return None;
+    }
+
+    // Base metadata defines modulus and canonical variable context.
+    let base_meta = thread_local_meta(base_id)?;
+
+    let budget = PolyModpBudget {
+        max_terms,
+        ..Default::default()
+    };
+
+    let mut vars = VarTable::new();
+    let poly =
+        expr_to_poly_modp_with_store(ctx, expr, base_meta.modulus, &budget, &mut vars).ok()?;
+
+    if poly.terms.len() > max_terms {
+        return None;
+    }
+
+    // Unify variable order with the base polynomial.
+    let base_var_table = VarTable::from_names(&base_meta.var_names);
+    let (unified, _remap_base, remap_new) = base_var_table.unify(&vars)?;
+    let remapped_poly = poly.remap(&remap_new, unified.len());
+
+    let max_deg = remapped_poly
+        .terms
+        .iter()
+        .map(|(mono, _)| mono.total_degree())
+        .max()
+        .unwrap_or(0);
+
+    let new_meta = PolyMeta {
+        modulus: base_meta.modulus,
+        n_terms: remapped_poly.terms.len(),
+        n_vars: unified.len(),
+        max_total_degree: max_deg,
+        var_names: unified.names().to_vec(),
+    };
+
+    Some(thread_local_insert(new_meta, remapped_poly))
+}
+
 /// Render a polynomial directly to string without AST construction.
 /// Used for auto-display of poly_result expressions.
 /// Returns None if id is invalid.
