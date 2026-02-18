@@ -2,6 +2,7 @@
 //!
 //! Converts symbolic expressions to mod-p polynomials for algebraic operations.
 
+use crate::gcd_zippel_modp::{gcd_zippel_modp, ZippelBudget, ZippelPreset};
 use crate::modp::{add_mod, inv_mod, mul_mod, neg_mod};
 use crate::mono::MAX_VARS;
 use crate::multipoly_modp::{build_linear_pow_direct, MultiPolyModP};
@@ -308,6 +309,50 @@ pub fn expr_to_poly_modp_with_store(
     vars: &mut VarTable,
 ) -> Result<MultiPolyModP, PolyConvError> {
     expr_to_poly_modp_with_resolver(ctx, expr, p, budget, vars, &ThreadLocalPolyStoreResolver)
+}
+
+/// Compute polynomial GCD in mod-p space and return it as an Expr.
+pub fn compute_gcd_modp_expr_with_options(
+    ctx: &mut Context,
+    a: ExprId,
+    b: ExprId,
+    p: u64,
+    main_var: Option<usize>,
+    preset: Option<ZippelPreset>,
+) -> Result<ExprId, PolyConvError> {
+    let budget = PolyModpBudget::default();
+    let mut vars = VarTable::new();
+
+    let poly_a = expr_to_poly_modp_with_store(ctx, a, p, &budget, &mut vars)?;
+    let poly_b = expr_to_poly_modp_with_store(ctx, b, p, &budget, &mut vars)?;
+
+    let used_preset = preset.unwrap_or(ZippelPreset::MmGcd);
+    let zippel_budget = ZippelBudget::for_preset(used_preset).with_main_var(main_var);
+    let mut gcd = match gcd_zippel_modp(&poly_a, &poly_b, &zippel_budget) {
+        Some(g) => g,
+        None => return Ok(ctx.num(1)),
+    };
+
+    gcd.make_monic();
+    Ok(multipoly_modp_to_expr(ctx, &gcd, &vars))
+}
+
+/// Check whether two expressions represent equal polynomials in mod-p space.
+pub fn check_poly_equal_modp_expr(
+    ctx: &Context,
+    a: ExprId,
+    b: ExprId,
+    p: u64,
+) -> Result<bool, PolyConvError> {
+    let budget = PolyModpBudget::default();
+    let mut vars = VarTable::new();
+
+    let mut poly_a = expr_to_poly_modp_with_store(ctx, a, p, &budget, &mut vars)?;
+    let mut poly_b = expr_to_poly_modp_with_store(ctx, b, p, &budget, &mut vars)?;
+
+    poly_a.make_monic();
+    poly_b.make_monic();
+    Ok(poly_a == poly_b)
 }
 
 fn expr_to_poly_modp_inner<R: PolyResultResolver>(

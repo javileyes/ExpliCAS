@@ -7,10 +7,10 @@ use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
-use cas_math::gcd_zippel_modp::{gcd_zippel_modp, ZippelBudget, ZippelPreset};
+use cas_math::gcd_zippel_modp::ZippelPreset;
 use cas_math::poly_modp_conv::{
-    expr_to_poly_modp_with_store as expr_to_poly_modp, multipoly_modp_to_expr, PolyConvError,
-    PolyModpBudget, VarTable, DEFAULT_PRIME as INTERNAL_DEFAULT_PRIME,
+    check_poly_equal_modp_expr, compute_gcd_modp_expr_with_options, PolyConvError,
+    DEFAULT_PRIME as INTERNAL_DEFAULT_PRIME,
 };
 
 const DEFAULT_PRIME: u64 = INTERNAL_DEFAULT_PRIME;
@@ -563,59 +563,7 @@ pub fn compute_gcd_modp_with_options(
     main_var: Option<usize>,
     preset: Option<ZippelPreset>,
 ) -> Result<ExprId, PolyConvError> {
-    use std::time::Instant;
-
-    let budget = PolyModpBudget::default();
-    let mut vars = VarTable::new();
-
-    // Convert both expressions to MultiPolyModP
-    let t0 = Instant::now();
-    let poly_a = expr_to_poly_modp(ctx, a, p, &budget, &mut vars)?;
-    let t1 = Instant::now();
-    eprintln!(
-        "[poly_gcd_modp] Convert a: {:?}, {} terms",
-        t1 - t0,
-        poly_a.num_terms()
-    );
-
-    let poly_b = expr_to_poly_modp(ctx, b, p, &budget, &mut vars)?;
-    let t2 = Instant::now();
-    eprintln!(
-        "[poly_gcd_modp] Convert b: {:?}, {} terms",
-        t2 - t1,
-        poly_b.num_terms()
-    );
-
-    // Compute GCD using Zippel
-    // Select budget based on preset (default to MmGcd for performance)
-    let used_preset = preset.unwrap_or(ZippelPreset::MmGcd);
-    let zippel_budget = ZippelBudget::for_preset(used_preset).with_main_var(main_var);
-    let gcd_opt = gcd_zippel_modp(&poly_a, &poly_b, &zippel_budget);
-    let t3 = Instant::now();
-    eprintln!("[poly_gcd_modp] Zippel GCD: {:?}", t3 - t2);
-
-    // Handle failure
-    let mut gcd = match gcd_opt {
-        Some(g) => g,
-        None => {
-            // Fallback: return 1 if Zippel fails
-            return Ok(ctx.num(1));
-        }
-    };
-
-    // Normalize to monic
-    gcd.make_monic();
-
-    // Convert back to Expr
-    let result = multipoly_modp_to_expr(ctx, &gcd, &vars);
-    let t4 = Instant::now();
-    eprintln!(
-        "[poly_gcd_modp] Convert result: {:?}, total: {:?}",
-        t4 - t3,
-        t4 - t0
-    );
-
-    Ok(result)
+    compute_gcd_modp_expr_with_options(ctx, a, b, p, main_var, preset)
 }
 
 /// Check if two polynomials are equal mod p
@@ -625,19 +573,7 @@ fn check_poly_equal_modp(
     b: ExprId,
     p: u64,
 ) -> Result<bool, PolyConvError> {
-    let budget = PolyModpBudget::default();
-    let mut vars = VarTable::new();
-
-    // Convert both expressions
-    let mut poly_a = expr_to_poly_modp(ctx, a, p, &budget, &mut vars)?;
-    let mut poly_b = expr_to_poly_modp(ctx, b, p, &budget, &mut vars)?;
-
-    // Normalize both to monic for comparison
-    poly_a.make_monic();
-    poly_b.make_monic();
-
-    // Compare term-by-term
-    Ok(poly_a == poly_b)
+    check_poly_equal_modp_expr(ctx, a, b, p)
 }
 
 #[cfg(test)]
