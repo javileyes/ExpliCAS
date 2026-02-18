@@ -13,10 +13,7 @@ use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr};
-use cas_math::poly_modp_conv::{
-    expr_to_poly_modp_with_store as expr_to_poly_modp, strip_hold, PolyModpBudget, VarTable,
-    DEFAULT_PRIME,
-};
+use cas_math::poly_modp_conv::{check_poly_equal_modp_expr, strip_hold, DEFAULT_PRIME};
 
 /// Check if expression is wrapped in __hold
 fn is_hold(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
@@ -44,26 +41,14 @@ define_rule!(
             return None;
         }
 
-        // Use default budget and prime for mod-p operations
-        let budget = PolyModpBudget::default();
         let p = DEFAULT_PRIME;
-        let mut vars = VarTable::new();
 
         // Strip __hold wrappers before conversion
         let a_inner = strip_hold(ctx, a);
         let b_inner = strip_hold(ctx, b);
 
-        // Convert both to MultiPolyModP
-        let mut pa = expr_to_poly_modp(ctx, a_inner, p, &budget, &mut vars).ok()?;
-        let mut pb = expr_to_poly_modp(ctx, b_inner, p, &budget, &mut vars).ok()?;
-
-        // Normalize both to monic for comparison
-        // (poly_gcd returns monic, but expand(g) may not be)
-        pa.make_monic();
-        pb.make_monic();
-
-        // Check if polynomials are equal (after normalization)
-        if pa == pb {
+        // Compare both sides in mod-p polynomial space (monic-normalized comparison).
+        if check_poly_equal_modp_expr(ctx, a_inner, b_inner, p).ok()? {
             // P - P = 0 (up to scalar multiple)
             let zero = ctx.num(0);
             return Some(
