@@ -18,6 +18,19 @@ pub use env::{is_reserved, substitute, substitute_with_shadow, Environment};
 pub use snapshot::SnapshotError;
 pub use state::SessionState;
 
+fn map_cache_hit_traces(
+    hits: Vec<cas_session_core::cache::CacheHitTrace<cas_engine::diagnostics::RequiredItem>>,
+) -> Vec<CacheHitTrace> {
+    hits.into_iter()
+        .map(|h| CacheHitTrace {
+            entry_id: h.entry_id,
+            before_ref_expr: h.before_ref_expr,
+            after_expr: h.after_expr,
+            requires: h.requires,
+        })
+        .collect()
+}
+
 /// Resolve all `Expr::SessionRef` in an expression tree.
 pub fn resolve_session_refs(
     ctx: &mut cas_ast::Context,
@@ -129,7 +142,11 @@ pub fn resolve_all_with_diagnostics(
     }
 
     let fully_resolved = substitute(ctx, env, resolved.expr);
-    Ok((fully_resolved, inherited, resolved.cache_hits))
+    Ok((
+        fully_resolved,
+        inherited,
+        map_cache_hit_traces(resolved.cache_hits),
+    ))
 }
 
 /// Resolve session references (`#N`) and environment bindings from `SessionState`.

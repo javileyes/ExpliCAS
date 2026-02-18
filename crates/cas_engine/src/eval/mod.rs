@@ -23,19 +23,72 @@ pub(crate) type ActionResult = (
 
 use crate::Simplifier;
 use cas_ast::{BuiltinFn, Equation, Expr, ExprId, RelOp};
+use std::sync::Arc;
 
-/// Cache key shared with `cas_session_core`.
-pub type SimplifyCacheKey = cas_session_core::cache::SimplifyCacheKey<crate::domain::DomainMode>;
+/// Cache key for eval-session invalidation.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct SimplifyCacheKey {
+    /// Domain mode at time of simplification.
+    pub domain: crate::domain::DomainMode,
+    /// Build/version hash for ruleset (currently static).
+    pub ruleset_rev: u64,
+}
 
-/// Cached simplification payload shared with `cas_session_core`.
-pub type SimplifiedCache = cas_session_core::cache::SimplifiedCache<
-    crate::domain::DomainMode,
-    crate::diagnostics::RequiredItem,
-    crate::step::Step,
->;
+impl SimplifyCacheKey {
+    /// Create a cache key from current eval context settings.
+    pub fn from_context(domain: crate::domain::DomainMode) -> Self {
+        Self {
+            domain,
+            ruleset_rev: 1,
+        }
+    }
 
-/// Cache hit trace shared with `cas_session_core`.
-pub type CacheHitTrace = cas_session_core::cache::CacheHitTrace<crate::diagnostics::RequiredItem>;
+    /// Check if this key is compatible with another (for cache hit).
+    pub fn is_compatible(&self, other: &Self) -> bool {
+        self == other
+    }
+}
+
+/// Cached simplification payload stored in session entries.
+#[derive(Debug, Clone)]
+pub struct SimplifiedCache {
+    /// Key for invalidation (must match current eval context).
+    pub key: SimplifyCacheKey,
+    /// Simplified expression id.
+    pub expr: ExprId,
+    /// Domain requirements from this entry (for propagation).
+    pub requires: Vec<crate::diagnostics::RequiredItem>,
+    /// Derivation steps (None = light cache, steps omitted for large entries).
+    pub steps: Option<Arc<Vec<crate::step::Step>>>,
+}
+
+impl cas_session_core::store::SessionCacheValue for SimplifiedCache {
+    fn steps_len(&self) -> usize {
+        self.steps.as_ref().map(|s| s.len()).unwrap_or(0)
+    }
+
+    fn apply_light_cache(mut self, light_cache_threshold: Option<usize>) -> Self {
+        if let Some(threshold) = light_cache_threshold {
+            if self.steps_len() > threshold {
+                self.steps = None;
+            }
+        }
+        self
+    }
+}
+
+/// Record of a cache hit during session-reference resolution.
+#[derive(Debug, Clone)]
+pub struct CacheHitTrace {
+    /// The session entry ID resolved from cache.
+    pub entry_id: u64,
+    /// The `#N` node in the AST before resolution.
+    pub before_ref_expr: ExprId,
+    /// The cached simplified expression that replaced the reference.
+    pub after_expr: ExprId,
+    /// Domain requirements from the cached entry.
+    pub requires: Vec<crate::diagnostics::RequiredItem>,
+}
 
 /// Engine-level reference resolution error.
 #[derive(Debug, Clone, PartialEq, Eq)]
