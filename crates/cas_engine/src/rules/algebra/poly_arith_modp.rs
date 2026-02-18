@@ -12,10 +12,10 @@
 use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use crate::rules::algebra::gcd_modp::DEFAULT_PRIME;
 use cas_ast::{BuiltinFn, Expr};
 use cas_math::poly_modp_conv::{
     expr_to_poly_modp_with_store as expr_to_poly_modp, strip_hold, PolyModpBudget, VarTable,
+    DEFAULT_PRIME,
 };
 
 /// Check if expression is wrapped in __hold

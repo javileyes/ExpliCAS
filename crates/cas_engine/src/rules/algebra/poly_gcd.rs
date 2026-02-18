@@ -591,7 +591,8 @@ pub fn compute_poly_gcd_unified(
             let eval_a = pre_evaluate_for_gcd(ctx, a);
             let eval_b = pre_evaluate_for_gcd(ctx, b);
             // Call modp through gcd_modp module
-            use crate::rules::algebra::gcd_modp::{compute_gcd_modp_with_options, DEFAULT_PRIME};
+            use crate::rules::algebra::gcd_modp::compute_gcd_modp_with_options;
+            use cas_math::poly_modp_conv::DEFAULT_PRIME;
             let preset = modp_preset.unwrap_or(ZippelPreset::Aggressive);
             match compute_gcd_modp_with_options(
                 ctx,
@@ -681,7 +682,8 @@ pub fn compute_poly_gcd_unified(
             }
 
             // Fallback to modp (already have eval_a, eval_b)
-            use crate::rules::algebra::gcd_modp::{compute_gcd_modp_with_options, DEFAULT_PRIME};
+            use crate::rules::algebra::gcd_modp::compute_gcd_modp_with_options;
+            use cas_math::poly_modp_conv::DEFAULT_PRIME;
             let preset = modp_preset.unwrap_or(ZippelPreset::Aggressive);
             match compute_gcd_modp_with_options(
                 ctx,

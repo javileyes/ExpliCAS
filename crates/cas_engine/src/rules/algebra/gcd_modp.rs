@@ -13,8 +13,7 @@ use cas_math::poly_modp_conv::{
     PolyModpBudget, VarTable, DEFAULT_PRIME as INTERNAL_DEFAULT_PRIME,
 };
 
-/// Re-export DEFAULT_PRIME for use by other modules
-pub const DEFAULT_PRIME: u64 = INTERNAL_DEFAULT_PRIME;
+const DEFAULT_PRIME: u64 = INTERNAL_DEFAULT_PRIME;
 
 // =============================================================================
 // Eager Eval Infrastructure: Strip expand + Common Factor Extraction
