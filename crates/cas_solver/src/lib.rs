@@ -9,7 +9,6 @@ pub use cas_engine::domain::take_blocked_hints;
 pub use cas_engine::implicit_domain::{
     normalize_and_dedupe_conditions, ImplicitCondition, RequiresDisplayLevel,
 };
-pub use cas_engine::json::{eval_str_to_json, substitute_str_to_json};
 pub use cas_engine::limits::{limit, Approach, LimitOptions, PreSimplifyMode};
 pub use cas_engine::multipoly;
 pub use cas_engine::options::{
@@ -38,3 +37,18 @@ pub use cas_engine::{
     EquivalenceResult, EvalAction, EvalOutput, EvalRequest, EvalResult, PipelineStats, Simplifier,
     SimplifyOptions,
 };
+
+/// Canonical JSON evaluation entry point for CLI/FFI clients.
+pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
+    cas_engine::json::eval_str_to_json(expr, opts_json)
+}
+
+/// Canonical JSON substitution entry point for CLI/FFI clients.
+pub fn substitute_str_to_json(
+    expr_str: &str,
+    target_str: &str,
+    with_str: &str,
+    opts_json: Option<&str>,
+) -> String {
+    cas_engine::json::substitute_str_to_json(expr_str, target_str, with_str, opts_json)
+}
