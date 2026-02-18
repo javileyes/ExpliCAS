@@ -42,7 +42,7 @@ use smallvec::SmallVec;
 #[inline]
 pub fn is_poly_ref(ctx: &Context, id: ExprId) -> bool {
     // Check poly_result using canonical helper
-    if crate::poly_result::is_poly_result(ctx, id) {
+    if cas_math::poly_result::is_poly_result(ctx, id) {
         return true;
     }
     // Check legacy poly_ref (no helper yet, string check is acceptable here)

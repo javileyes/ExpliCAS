@@ -32,15 +32,15 @@
 //! When one operand is `poly_result` and the other is a simple polynomial expression,
 //! the simple expression is automatically converted to `poly_result` for combination.
 
-use crate::poly_modp_conv::{
-    expr_to_poly_modp_with_store as expr_to_poly_modp, PolyModpBudget, VarTable,
-};
 use crate::poly_store::{
     thread_local_add, thread_local_insert, thread_local_meta, thread_local_mul, thread_local_neg,
     thread_local_pow, thread_local_sub, PolyId, PolyMeta,
 };
 use crate::Step;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::poly_modp_conv::{
+    expr_to_poly_modp_with_store as expr_to_poly_modp, PolyModpBudget, VarTable,
+};
 
 /// Maximum node count for promotion (guards against huge expressions)
 const PROMOTE_MAX_NODES: usize = 200;
@@ -540,7 +540,7 @@ fn extract_poly_result_id(ctx: &Context, expr: ExprId) -> Option<PolyId> {
 
 /// Create poly_result(id) expression
 fn make_poly_result(ctx: &mut Context, id: PolyId) -> ExprId {
-    crate::poly_result::wrap_poly_result(ctx, id)
+    cas_math::poly_result::wrap_poly_result(ctx, id)
 }
 
 /// Extract integer from expression

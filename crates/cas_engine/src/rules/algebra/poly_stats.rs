@@ -26,7 +26,7 @@ impl SimpleRule for PolyStatsRule {
             let arg = args[0];
 
             // Extract poly_result(id) using canonical helper
-            let id = crate::poly_result::parse_poly_result_id(ctx, arg)?;
+            let id = cas_math::poly_result::parse_poly_result_id(ctx, arg)?;
 
             // Get metadata from thread-local store
             if let Some(meta) = thread_local_meta(id) {
@@ -72,9 +72,9 @@ impl SimpleRule for PolyToExprRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        use crate::poly_modp_conv::VarTable;
         use crate::poly_store::thread_local_get_for_materialize;
         use crate::rules::algebra::gcd_modp::multipoly_modp_to_expr;
+        use cas_math::poly_modp_conv::VarTable;
 
         // Match: poly_to_expr(poly_result(id)) or poly_to_expr(poly_result(id), max_terms)
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
@@ -96,7 +96,7 @@ impl SimpleRule for PolyToExprRule {
             };
 
             // Extract poly_result(id) using canonical helper
-            let id = crate::poly_result::parse_poly_result_id(ctx, arg)?;
+            let id = cas_math::poly_result::parse_poly_result_id(ctx, arg)?;
 
             // Get poly from thread-local store
             if let Some((meta, poly)) = thread_local_get_for_materialize(id) {
@@ -167,7 +167,7 @@ impl SimpleRule for PolyPrintRule {
             };
 
             // Extract poly_result(id) using canonical helper
-            let id = crate::poly_result::parse_poly_result_id(ctx, arg)?;
+            let id = cas_math::poly_result::parse_poly_result_id(ctx, arg)?;
 
             // Get poly from thread-local store
             if let Some((meta, poly)) = thread_local_get_for_materialize(id) {
@@ -201,7 +201,7 @@ fn format_poly_with_limit(
     var_names: &[String],
     max_terms: usize,
 ) -> String {
-    use crate::mono::Mono;
+    use cas_math::mono::Mono;
     use std::fmt::Write;
 
     if poly.terms.is_empty() {
@@ -303,7 +303,7 @@ impl SimpleRule for PolyLatexRule {
             };
 
             // Extract poly_result(id) using canonical helper
-            let id = crate::poly_result::parse_poly_result_id(ctx, arg)?;
+            let id = cas_math::poly_result::parse_poly_result_id(ctx, arg)?;
 
             // Get poly from thread-local store
             if let Some((meta, poly)) = thread_local_get_for_materialize(id) {
@@ -324,7 +324,7 @@ fn format_poly_latex(
     var_names: &[String],
     max_terms: usize,
 ) -> String {
-    use crate::mono::Mono;
+    use cas_math::mono::Mono;
     use std::fmt::Write;
 
     if poly.terms.is_empty() {

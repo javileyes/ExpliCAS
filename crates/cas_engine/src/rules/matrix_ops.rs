@@ -1,6 +1,6 @@
-use crate::matrix::Matrix;
 use crate::rule::{Rewrite, SimpleRule};
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::matrix::Matrix;
 
 /// Rule to add two matrices
 pub struct MatrixAddRule;

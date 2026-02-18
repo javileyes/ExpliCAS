@@ -5,13 +5,13 @@
 use crate::define_rule;
 use crate::gcd_zippel_modp::{gcd_zippel_modp, ZippelBudget, ZippelPreset};
 use crate::phase::PhaseMask;
-use crate::poly_modp_conv::{
-    expr_to_poly_modp_with_store as expr_to_poly_modp, PolyConvError, PolyModpBudget, VarTable,
-    DEFAULT_PRIME as INTERNAL_DEFAULT_PRIME,
-};
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
+use cas_math::poly_modp_conv::{
+    expr_to_poly_modp_with_store as expr_to_poly_modp, PolyConvError, PolyModpBudget, VarTable,
+    DEFAULT_PRIME as INTERNAL_DEFAULT_PRIME,
+};
 
 /// Re-export DEFAULT_PRIME for use by other modules
 pub const DEFAULT_PRIME: u64 = INTERNAL_DEFAULT_PRIME;

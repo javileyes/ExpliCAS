@@ -151,7 +151,10 @@ impl Engine {
                 // expression (e.g. `expand(...)`) which re-enters the full eval
                 // pipeline and is correctly handled by the orchestrator's
                 // eager-eval + poly_lower pre-passes.
-                if !crate::poly_result::is_poly_result(&self.simplifier.context, *simplified_expr) {
+                if !cas_math::poly_result::is_poly_result(
+                    &self.simplifier.context,
+                    *simplified_expr,
+                ) {
                     let cache_key =
                         SimplifyCacheKey::from_context(options.shared.semantics.domain_mode);
                     let cache = SimplifiedCache {
