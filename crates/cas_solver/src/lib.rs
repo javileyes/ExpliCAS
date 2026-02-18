@@ -39,4 +39,6 @@ pub use cas_engine::{
     EquivalenceResult, EvalAction, EvalOutput, EvalRequest, EvalResult, PipelineStats, Simplifier,
     SimplifyOptions,
 };
-pub use json::{eval_str_to_json, substitute_str_to_json};
+pub use json::{
+    eval_str_to_json, eval_str_to_output_envelope, substitute_str_to_json, EnvelopeEvalOptions,
+};

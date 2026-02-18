@@ -13,8 +13,11 @@
 //! - `message` is human-readable and may change between versions
 //! - `details` is extensible (new keys may be added)
 
+mod envelope;
 mod eval;
+mod session;
 mod substitute;
 
+pub use envelope::{eval_str_to_output_envelope, EnvelopeEvalOptions};
 pub use eval::eval_str_to_json;
 pub use substitute::substitute_str_to_json;
