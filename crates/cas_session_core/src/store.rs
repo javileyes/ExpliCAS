@@ -4,13 +4,12 @@
 
 use crate::types::{CacheConfig, EntryId, EntryKind};
 
-/// Cache payload behavior needed by session LRU/light-cache bookkeeping.
-pub trait SessionCacheValue: Clone {
-    /// Number of cached steps currently stored in this payload.
-    fn steps_len(&self) -> usize;
+fn default_cache_steps_len<C>(_cache: &C) -> usize {
+    0
+}
 
-    /// Apply light-cache policy for oversized step payloads.
-    fn apply_light_cache(self, light_cache_threshold: Option<usize>) -> Self;
+fn default_apply_light_cache<C>(cache: C, _light_cache_threshold: Option<usize>) -> C {
+    cache
 }
 
 /// A stored entry in the session.
@@ -59,6 +58,10 @@ pub struct SessionStore<Diagnostics, CacheValue> {
     cache_config: CacheConfig,
     /// Running total of cached steps for budget enforcement.
     cached_steps_count: usize,
+    /// Policy hook: count derivation steps carried by a cache payload.
+    cache_steps_len: fn(&CacheValue) -> usize,
+    /// Policy hook: optionally strip heavy payload details when caching.
+    cache_apply_light: fn(CacheValue, Option<usize>) -> CacheValue,
 }
 
 impl<D: Default, C> Default for SessionStore<D, C> {
@@ -70,23 +73,32 @@ impl<D: Default, C> Default for SessionStore<D, C> {
 impl<D: Default, C> SessionStore<D, C> {
     /// Create a new empty session store.
     pub fn new() -> Self {
-        Self {
-            next_id: 1,
-            entries: Vec::new(),
-            cache_order: std::collections::VecDeque::new(),
-            cache_config: CacheConfig::default(),
-            cached_steps_count: 0,
-        }
+        Self::with_cache_config(CacheConfig::default())
     }
 
     /// Create a session store with custom cache configuration.
     pub fn with_cache_config(config: CacheConfig) -> Self {
+        Self::with_cache_config_and_policy(
+            config,
+            default_cache_steps_len::<C>,
+            default_apply_light_cache::<C>,
+        )
+    }
+
+    /// Create a session store with custom cache configuration and policy hooks.
+    pub fn with_cache_config_and_policy(
+        config: CacheConfig,
+        cache_steps_len: fn(&C) -> usize,
+        cache_apply_light: fn(C, Option<usize>) -> C,
+    ) -> Self {
         Self {
             next_id: 1,
             entries: Vec::new(),
             cache_order: std::collections::VecDeque::new(),
             cache_config: config,
             cached_steps_count: 0,
+            cache_steps_len,
+            cache_apply_light,
         }
     }
 
@@ -182,15 +194,13 @@ impl<D: Default, C> SessionStore<D, C> {
     }
 
     /// Restore an entry from snapshot (bypasses normal ID allocation).
-    pub fn restore_entry(&mut self, entry: Entry<D, C>)
-    where
-        C: SessionCacheValue,
-    {
+    pub fn restore_entry(&mut self, entry: Entry<D, C>) {
+        let cache_steps_len = self.cache_steps_len;
         if entry.id >= self.next_id {
             self.next_id = entry.id + 1;
         }
         if let Some(ref cache) = entry.simplified {
-            self.cached_steps_count += cache.steps_len();
+            self.cached_steps_count += cache_steps_len(cache);
         }
         self.entries.push(entry);
     }
@@ -201,7 +211,7 @@ impl<D: Default, C> SessionStore<D, C> {
     }
 }
 
-impl<D: Default, C: SessionCacheValue> SessionStore<D, C> {
+impl<D: Default, C> SessionStore<D, C> {
     /// Update the simplified cache for an entry.
     ///
     /// Implements LRU eviction with configurable limits:
@@ -211,16 +221,14 @@ impl<D: Default, C: SessionCacheValue> SessionStore<D, C> {
     where
         V: Into<C>,
     {
+        let cache_steps_len = self.cache_steps_len;
+        let cache_apply_light = self.cache_apply_light;
         let mut simplified = simplified.into();
-        simplified = simplified.apply_light_cache(self.cache_config.light_cache_threshold);
+        simplified = cache_apply_light(simplified, self.cache_config.light_cache_threshold);
 
         if let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) {
-            let old_steps = entry
-                .simplified
-                .as_ref()
-                .map(SessionCacheValue::steps_len)
-                .unwrap_or(0);
-            let new_steps = simplified.steps_len();
+            let old_steps = entry.simplified.as_ref().map(cache_steps_len).unwrap_or(0);
+            let new_steps = cache_steps_len(&simplified);
 
             entry.simplified = Some(simplified);
 
@@ -257,8 +265,9 @@ impl<D: Default, C: SessionCacheValue> SessionStore<D, C> {
             if let Some(oldest_id) = self.cache_order.pop_front() {
                 if let Some(entry) = self.entries.iter_mut().find(|e| e.id == oldest_id) {
                     if let Some(cache) = entry.simplified.take() {
-                        self.cached_steps_count =
-                            self.cached_steps_count.saturating_sub(cache.steps_len());
+                        self.cached_steps_count = self
+                            .cached_steps_count
+                            .saturating_sub((self.cache_steps_len)(&cache));
                     }
                 }
             } else {

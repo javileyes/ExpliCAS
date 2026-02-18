@@ -24,7 +24,9 @@ pub struct SessionEvalStore(pub SessionStore);
 
 impl SessionEvalStore {
     fn new() -> Self {
-        Self(SessionStore::new())
+        Self(crate::session_store_with_cache_config(
+            cas_session_core::types::CacheConfig::default(),
+        ))
     }
 
     fn from_store(store: SessionStore) -> Self {

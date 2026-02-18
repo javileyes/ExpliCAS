@@ -295,7 +295,7 @@ impl SessionStoreSnapshot {
             light_cache_threshold: self.cache_config.light_cache_threshold,
         };
 
-        let mut store = SessionStore::with_cache_config(config);
+        let mut store = crate::session_store_with_cache_config(config);
 
         for entry in self.entries {
             let kind = match entry.kind {

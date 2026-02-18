@@ -4,7 +4,6 @@
 //! module defines the concrete cache shape used by `cas_engine`.
 
 use cas_ast::ExprId;
-use cas_session_core::store::SessionCacheValue;
 use std::sync::Arc;
 
 /// Key for cache invalidation.
@@ -46,19 +45,4 @@ pub struct SimplifiedCache {
     pub requires: Vec<crate::diagnostics::RequiredItem>,
     /// Derivation steps (None = light cache, steps omitted for large entries).
     pub steps: Option<Arc<Vec<crate::step::Step>>>,
-}
-
-impl SessionCacheValue for SimplifiedCache {
-    fn steps_len(&self) -> usize {
-        self.steps.as_ref().map(|s| s.len()).unwrap_or(0)
-    }
-
-    fn apply_light_cache(mut self, light_cache_threshold: Option<usize>) -> Self {
-        if let Some(threshold) = light_cache_threshold {
-            if self.steps_len() > threshold {
-                self.steps = None;
-            }
-        }
-        self
-    }
 }
