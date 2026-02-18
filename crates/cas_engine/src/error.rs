@@ -69,12 +69,6 @@ impl From<budget::BudgetExceeded> for CasError {
     }
 }
 
-impl From<cas_parser::ParseError> for CasError {
-    fn from(e: cas_parser::ParseError) -> Self {
-        CasError::ParseError(e.to_string())
-    }
-}
-
 impl CasError {
     /// Create a BudgetExceeded error from operation and metric with default usage info.
     /// Convenience for migration from old code.
@@ -368,10 +362,8 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_error_conversion() {
-        let parse_err = cas_parser::ParseError::syntax("unexpected token");
-        let cas_err: CasError = parse_err.into();
-
+    fn test_parse_error_kind_and_code() {
+        let cas_err = CasError::ParseError("unexpected token".to_string());
         assert_eq!(cas_err.kind(), "ParseError");
         assert_eq!(cas_err.code(), "E_PARSE");
     }

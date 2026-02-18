@@ -8,9 +8,9 @@ authors.workspace = true
 
 [dependencies]
 cas_ast = { path = "../cas_ast" }
-cas_formatter = { path = "../cas_formatter" }
 serde = { version = "1.0", features = ["derive"] }
 smallvec = "1"
 
 [dev-dependencies]
+cas_formatter = { path = "../cas_formatter" }
 cas_parser = { path = "../cas_parser" }

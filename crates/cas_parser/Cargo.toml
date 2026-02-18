@@ -6,10 +6,12 @@ rust-version.workspace = true
 
 [dependencies]
 cas_ast = { path = "../cas_ast" }
-cas_formatter = { path = "../cas_formatter" }
 nom = "7.1"
 num-rational = "0.4"
 num-bigint = "0.4"
 num-traits = "0.2"
 thiserror = "1.0"
  # Using nom for parsing as planned
+
+[dev-dependencies]
+cas_formatter = { path = "../cas_formatter" }
