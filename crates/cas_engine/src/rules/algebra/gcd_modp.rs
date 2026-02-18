@@ -6,7 +6,7 @@ use crate::define_rule;
 use crate::gcd_zippel_modp::{gcd_zippel_modp, ZippelBudget, ZippelPreset};
 use crate::phase::PhaseMask;
 use crate::poly_modp_conv::{
-    expr_to_poly_modp, PolyConvError, PolyModpBudget, VarTable,
+    expr_to_poly_modp_with_store as expr_to_poly_modp, PolyConvError, PolyModpBudget, VarTable,
     DEFAULT_PRIME as INTERNAL_DEFAULT_PRIME,
 };
 use crate::rule::Rewrite;

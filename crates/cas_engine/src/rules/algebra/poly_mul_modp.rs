@@ -6,7 +6,9 @@
 
 use crate::define_rule;
 use crate::phase::PhaseMask;
-use crate::poly_modp_conv::{expr_to_poly_modp, PolyModpBudget, VarTable};
+use crate::poly_modp_conv::{
+    expr_to_poly_modp_with_store as expr_to_poly_modp, PolyModpBudget, VarTable,
+};
 use crate::poly_store::{PolyMeta, POLY_MAX_STORE_TERMS};
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr};
