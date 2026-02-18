@@ -145,17 +145,6 @@ fn try_promote_expr_to_poly(ctx: &Context, expr: ExprId, base_id: PolyId) -> Opt
     Some(new_id)
 }
 
-/// Create VarTable from existing var names
-impl VarTable {
-    pub fn from_names(names: &[String]) -> Self {
-        let mut table = Self::new();
-        for name in names {
-            table.get_or_insert(name);
-        }
-        table
-    }
-}
-
 /// Result of poly lowering pass
 pub struct PolyLowerResult {
     /// Transformed expression

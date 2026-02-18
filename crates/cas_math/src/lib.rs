@@ -5,5 +5,6 @@ pub mod mono;
 pub mod multipoly_modp;
 pub mod numeric;
 pub mod numeric_eval;
+pub mod poly_modp_conv;
 pub mod polynomial;
 pub mod unipoly_modp;
