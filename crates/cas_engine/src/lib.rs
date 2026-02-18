@@ -1,5 +1,5 @@
 // All clippy lints addressed: code fixes or local #[allow] attributes applied.
-// See too_many_arguments allows in: inverse_trig.rs, gcd_zippel_modp.rs (×2), step.rs
+// See too_many_arguments allows in: inverse_trig.rs, step.rs
 // See arc_with_non_send_sync allows in: profile_cache.rs
 
 pub mod assumptions;
@@ -23,14 +23,14 @@ pub mod eval;
 pub mod eval_step_pipeline;
 pub mod expand;
 pub mod factor;
-pub mod gcd_zippel_modp;
+pub use cas_math::gcd_zippel_modp;
 pub mod helpers;
 pub mod implicit_domain;
 pub mod limits;
 pub(crate) use cas_math::matrix;
 pub use cas_math::modp;
 pub(crate) use cas_math::mono;
-pub mod multinomial_expand;
+pub use cas_math::multinomial_expand;
 pub mod multipoly;
 pub(crate) mod multipoly_display;
 pub use cas_math::multipoly_modp;
