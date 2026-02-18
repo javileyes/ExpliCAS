@@ -322,6 +322,7 @@ dependencies = [
  "cas_engine",
  "cas_formatter",
  "cas_parser",
+ "cas_session",
  "serde_json",
 ]
 

@@ -1,6 +1,5 @@
-use super::{
-    mappers::{map_domain_warnings_to_engine_warnings, map_solver_assumptions_to_api_records},
-    session::JsonEvalSession,
+use super::mappers::{
+    map_domain_warnings_to_engine_warnings, map_solver_assumptions_to_api_records,
 };
 use cas_api_models::{
     BudgetJsonInfo, EngineJsonError, EngineJsonResponse, EngineJsonStep, JsonRunOptions, SpanJson,
@@ -51,7 +50,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
 
     // Create engine and explicit eval components (stateless-friendly API)
     let mut engine = cas_engine::eval::Engine::new();
-    let mut session = JsonEvalSession::new(cas_engine::options::EvalOptions::default());
+    let mut session = cas_session::SessionState::new();
 
     // Parse expression
     let parsed = match cas_parser::parse(expr, &mut engine.simplifier.context) {

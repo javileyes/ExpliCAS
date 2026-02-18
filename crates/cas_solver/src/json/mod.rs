@@ -16,7 +16,6 @@
 mod envelope;
 mod eval;
 mod mappers;
-mod session;
 mod substitute;
 
 pub use envelope::{eval_str_to_output_envelope, EnvelopeEvalOptions};

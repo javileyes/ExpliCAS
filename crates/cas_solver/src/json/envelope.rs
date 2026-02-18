@@ -1,7 +1,4 @@
-use super::{
-    mappers::{map_assumptions_used, map_blocked_hints, map_required_conditions},
-    session::JsonEvalSession,
-};
+use super::mappers::{map_assumptions_used, map_blocked_hints, map_required_conditions};
 use cas_api_models::{ExprDto, OutputEnvelope, RequestInfo, RequestOptions, TransparencyDto};
 use cas_formatter::DisplayExpr;
 
@@ -22,7 +19,7 @@ impl Default for EnvelopeEvalOptions {
 
 pub fn eval_str_to_output_envelope(expr: &str, opts: &EnvelopeEvalOptions) -> OutputEnvelope {
     let mut engine = cas_engine::eval::Engine::new();
-    let mut session = JsonEvalSession::new(cas_engine::options::EvalOptions::default());
+    let mut session = cas_session::SessionState::new();
 
     session.options_mut().shared.semantics.domain_mode = parse_domain_mode(&opts.domain);
     session.options_mut().shared.semantics.value_domain = parse_value_domain(&opts.value_domain);
