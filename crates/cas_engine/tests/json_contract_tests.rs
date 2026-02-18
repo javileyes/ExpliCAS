@@ -3,10 +3,10 @@
 //! These tests verify the stable JSON schema for CLI and FFI consumers.
 //! Breaking these tests = breaking external API.
 
+use cas_api_models::{BudgetJsonInfo, EngineJsonError, EngineJsonResponse, SCHEMA_VERSION};
 use cas_engine::{
-    BudgetExceeded, BudgetJsonInfo, BudgetJsonInfoExt, CasError, EngineJsonError,
-    EngineJsonErrorExt, EngineJsonResponse, EngineJsonResponseExt, Metric, Operation,
-    SCHEMA_VERSION,
+    BudgetExceeded, BudgetJsonInfoExt, CasError, EngineJsonErrorExt, EngineJsonResponseExt, Metric,
+    Operation,
 };
 use serde_json::Value;
 

@@ -18,13 +18,6 @@ mod response;
 mod substitute;
 
 // Re-export everything for backward compatibility
-pub use cas_api_models::{
-    AssumptionDto, BlockedHintDto, BoundDto, CaseDto, ConditionDto, DomainJson, EngineInfo,
-    ErrorJsonOutput, EvalJsonOutput, ExprDto, ExprStatsJson, OptionsJson, OutputEnvelope,
-    RequestInfo, RequestOptions, RequiredConditionJson, ResultDto, SemanticsJson, SolutionSetDto,
-    SolveStepJson, SolveSubStepJson, StepDto, StepJson, SubStepJson, ThenDto, TimingsJson,
-    TransparencyDto, WarningJson, WhenDto,
-};
 pub use eval::*;
 pub use response::*;
 pub use substitute::*;
