@@ -1,6 +1,7 @@
 //! Tests for path-based highlighting (V2.9.16)
 
-use cas_ast::{Context, Expr, HighlightColor, PathHighlightConfig, PathHighlightedLatexRenderer};
+use cas_ast::{Context, Expr};
+use cas_formatter::{HighlightColor, PathHighlightConfig, PathHighlightedLatexRenderer};
 
 #[test]
 fn test_path_highlight_single_occurrence() {

@@ -88,50 +88,6 @@ impl ConditionPredicate {
             | Self::EqOne(e) => *e,
         }
     }
-
-    /// V2.0 Phase 2C: Get a pretty-printed condition with expression context
-    /// Renders like "a = 1", "y > 0", etc.
-    pub fn display_with_context(&self, ctx: &crate::Context) -> String {
-        let expr_str = crate::DisplayExpr {
-            context: ctx,
-            id: self.expr_id(),
-        }
-        .to_string();
-
-        match self {
-            Self::NonZero(_) => format!("{} ≠ 0", expr_str),
-            Self::Positive(_) => format!("{} > 0", expr_str),
-            Self::NonNegative(_) => format!("{} ≥ 0", expr_str),
-            Self::Defined(_) => format!("defined({})", expr_str),
-            Self::InvTrigPrincipalRange { func, .. } => {
-                format!("{} in principal range of {}", expr_str, func)
-            }
-            Self::EqZero(_) => format!("{} = 0", expr_str),
-            Self::EqOne(_) => format!("{} = 1", expr_str),
-        }
-    }
-
-    /// V2.0 Phase 2C: LaTeX display for timeline rendering
-    /// Uses LaTeX math symbols for proper rendering
-    pub fn latex_display_with_context(&self, ctx: &crate::Context) -> String {
-        let expr_latex = crate::LaTeXExpr {
-            context: ctx,
-            id: self.expr_id(),
-        }
-        .to_latex();
-
-        match self {
-            Self::NonZero(_) => format!("{} \\neq 0", expr_latex),
-            Self::Positive(_) => format!("{} > 0", expr_latex),
-            Self::NonNegative(_) => format!("{} \\geq 0", expr_latex),
-            Self::Defined(_) => format!("\\text{{defined}}({})", expr_latex),
-            Self::InvTrigPrincipalRange { func, .. } => {
-                format!("{} \\in \\text{{principal range of }}{}", expr_latex, func)
-            }
-            Self::EqZero(_) => format!("{} = 0", expr_latex),
-            Self::EqOne(_) => format!("{} = 1", expr_latex),
-        }
-    }
 }
 
 /// A set of conditions (conjunction).
@@ -183,33 +139,6 @@ impl ConditionSet {
             self.predicates.push(pred);
             self.predicates
                 .sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b)));
-        }
-    }
-
-    /// V2.0 Phase 2C: Display the condition set with context
-    /// Returns "otherwise" for empty set, or comma-separated conditions
-    pub fn display_with_context(&self, ctx: &crate::Context) -> String {
-        if self.predicates.is_empty() {
-            "otherwise".to_string()
-        } else {
-            self.predicates
-                .iter()
-                .map(|p| p.display_with_context(ctx))
-                .collect::<Vec<_>>()
-                .join(", ")
-        }
-    }
-
-    /// V2.0 Phase 2C: LaTeX display for timeline rendering
-    pub fn latex_display_with_context(&self, ctx: &crate::Context) -> String {
-        if self.predicates.is_empty() {
-            "\\text{otherwise}".to_string()
-        } else {
-            self.predicates
-                .iter()
-                .map(|p| p.latex_display_with_context(ctx))
-                .collect::<Vec<_>>()
-                .join(" \\land ")
         }
     }
 

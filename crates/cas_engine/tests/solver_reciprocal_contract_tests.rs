@@ -142,7 +142,7 @@ fn reciprocal_solve_clean_guard() {
     };
 
     let first_case = &cases[0];
-    let guard_str = first_case.when.display_with_context(&simplifier.context);
+    let guard_str = cas_formatter::condition_set_to_display(&first_case.when, &simplifier.context);
 
     // Should show simplified: "R1 + R2" not "1·R1 + 1·R2"
     assert!(

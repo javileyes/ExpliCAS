@@ -1,4 +1,5 @@
-use cas_ast::{latex::LaTeXExpr, Context, Expr};
+use cas_ast::{Context, Expr};
+use cas_formatter::LaTeXExpr;
 
 #[test]
 fn test_negative_addition() {

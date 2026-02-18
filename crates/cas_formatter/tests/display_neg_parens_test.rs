@@ -5,8 +5,8 @@
 //!
 //! Bug fix: Ensures -(a + b) is rendered as "-(a + b)" not "-a + b"
 
-use cas_ast::display::DisplayExpr;
 use cas_ast::{Context, Expr};
+use cas_formatter::DisplayExpr;
 
 // ============================================================================
 // CLI Display Tests (DisplayExpr)

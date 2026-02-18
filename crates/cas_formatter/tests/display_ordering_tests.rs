@@ -7,8 +7,8 @@
 //! These protect against reintroducing visual inconsistencies between "Rule:" and "After:"
 //! in didactic traces.
 
-use cas_ast::display::DisplayExpr;
 use cas_ast::{Context, Expr};
+use cas_formatter::DisplayExpr;
 
 // ============================================================================
 // Test 2: Same order for different construction order

@@ -138,7 +138,7 @@ fn format_solution_set(ctx: &cas_ast::Context, set: &SolutionSet) -> String {
         SolutionSet::Conditional(cases) => {
             let mut lines = vec!["Conditional:".to_string()];
             for case in cases {
-                let cond_str = case.when.display_with_context(ctx);
+                let cond_str = cas_formatter::condition_set_to_display(&case.when, ctx);
                 let sol_str = format_solution_set(ctx, &case.then.solutions);
                 if case.when.is_otherwise() {
                     lines.push(format!("  otherwise: {}", sol_str));

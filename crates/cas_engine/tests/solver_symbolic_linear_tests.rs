@@ -96,7 +96,7 @@ fn symbolic_linear_correct_guard() {
     };
 
     let first_case = &cases[0];
-    let guard_str = first_case.when.display_with_context(&simplifier.context);
+    let guard_str = cas_formatter::condition_set_to_display(&first_case.when, &simplifier.context);
 
     // Guard should NOT contain x (the variable we're solving for)
     assert!(
