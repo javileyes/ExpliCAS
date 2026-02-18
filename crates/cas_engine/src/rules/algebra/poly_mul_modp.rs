@@ -9,10 +9,9 @@ use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr};
 use cas_math::expr_extract::extract_u64_integer;
+use cas_math::poly_modp_calls::{build_poly_mul_stats_expr, compute_poly_mul_modp_stats};
 use cas_math::poly_modp_conv::DEFAULT_PRIME;
-use cas_math::poly_store::{
-    compute_poly_mul_modp_meta, PolyMeta, PolyMulMetaError, POLY_MAX_STORE_TERMS,
-};
+use cas_math::poly_store::{PolyMeta, PolyMulMetaError, POLY_MAX_STORE_TERMS};
 
 // =============================================================================
 // poly_mul_modp(a, b [, p]) -> poly_ref(id)
@@ -46,7 +45,7 @@ define_rule!(
         };
 
         let meta: PolyMeta =
-            match compute_poly_mul_modp_meta(ctx, a_expr, b_expr, p, POLY_MAX_STORE_TERMS) {
+            match compute_poly_mul_modp_stats(ctx, a_expr, b_expr, p, POLY_MAX_STORE_TERMS) {
                 Ok(meta) => meta,
                 Err(PolyMulMetaError::ConversionFailed) => return None,
                 Err(PolyMulMetaError::EstimatedTooLarge {
@@ -71,12 +70,7 @@ define_rule!(
         // For now, return stats as a function call that can be displayed.
         // NOTE: This uses poly_mul_stats (NOT poly_result) to distinguish from
         // the id-based poly_result(id) format used elsewhere.
-        let terms = ctx.num(meta.n_terms as i64);
-        let degree = ctx.num(meta.max_total_degree as i64);
-        let nvars = ctx.num(meta.n_vars as i64);
-        let modulus = ctx.num(meta.modulus as i64);
-
-        let result = ctx.call("poly_mul_stats", vec![terms, degree, nvars, modulus]);
+        let result = build_poly_mul_stats_expr(ctx, &meta);
 
         Some(Rewrite::new(result).desc_lazy(|| {
             format!(

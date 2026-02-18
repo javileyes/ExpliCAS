@@ -9,10 +9,8 @@ use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_math::expr_extract::extract_u64_integer;
 use cas_math::poly_gcd_mode::parse_modp_options;
-use cas_math::poly_modp_conv::{
-    check_poly_equal_modp_expr, compute_gcd_modp_expr_with_factor_extraction,
-    DEFAULT_PRIME as INTERNAL_DEFAULT_PRIME,
-};
+use cas_math::poly_modp_calls::{compute_gcd_modp_held_expr, compute_poly_eq_modp_indicator};
+use cas_math::poly_modp_conv::DEFAULT_PRIME as INTERNAL_DEFAULT_PRIME;
 
 const DEFAULT_PRIME: u64 = INTERNAL_DEFAULT_PRIME;
 
@@ -32,9 +30,7 @@ fn compute_gcd_modp_with_factor_extraction(
     a: ExprId,
     b: ExprId,
 ) -> Option<ExprId> {
-    let gcd =
-        compute_gcd_modp_expr_with_factor_extraction(ctx, a, b, DEFAULT_PRIME, None, None).ok()?;
-    Some(cas_ast::hold::wrap_hold(ctx, gcd))
+    compute_gcd_modp_held_expr(ctx, a, b, DEFAULT_PRIME, None, None).ok()
 }
 
 /// Eager evaluation pass for poly_gcd_modp calls.
@@ -186,7 +182,7 @@ define_rule!(
                 // Fallback: try with explicit args (for extra options)
                 // Parse remaining args: preset and/or main_var.
                 let (preset, main_var) = parse_modp_options(ctx, &args[2..]);
-                match compute_gcd_modp_expr_with_factor_extraction(
+                match compute_gcd_modp_held_expr(
                     ctx,
                     args[0],
                     args[1],
@@ -194,10 +190,7 @@ define_rule!(
                     main_var,
                     preset,
                 ) {
-                    Ok(gcd_expr) => {
-                        // Wrap in __hold to prevent further simplification
-                        let held = cas_ast::hold::wrap_hold(ctx, gcd_expr);
-
+                    Ok(held) => {
                         return Some(Rewrite::simple(
                             held,
                             format!(
@@ -253,10 +246,8 @@ define_rule!(
                     DEFAULT_PRIME
                 };
 
-                match check_poly_equal_modp_expr(ctx, a, b, p) {
-                    Ok(equal) => {
-                        let result = if equal { ctx.num(1) } else { ctx.num(0) };
-
+                match compute_poly_eq_modp_indicator(ctx, a, b, p) {
+                    Ok((result, equal)) => {
                         return Some(Rewrite::simple(
                             result,
                             format!(
@@ -288,6 +279,7 @@ define_rule!(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_math::poly_modp_conv::check_poly_equal_modp_expr;
     use cas_parser::parse;
 
     #[test]
