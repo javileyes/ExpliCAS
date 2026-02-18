@@ -12,7 +12,6 @@ pub use cas_engine::implicit_domain::{
     normalize_and_dedupe_conditions, ImplicitCondition, RequiresDisplayLevel,
 };
 pub use cas_engine::limits::{limit, Approach, LimitOptions, PreSimplifyMode};
-pub use cas_engine::multipoly;
 pub use cas_engine::options::{
     AutoExpandBinomials, BranchMode, ComplexMode, ContextMode, EvalOptions, HeuristicPoly,
     StepsMode,
@@ -39,6 +38,7 @@ pub use cas_engine::{
     EquivalenceResult, EvalAction, EvalOutput, EvalRequest, EvalResult, PipelineStats, Simplifier,
     SimplifyOptions,
 };
+pub use cas_math::multipoly;
 pub use json::{
     eval_str_to_json, eval_str_to_output_envelope, substitute_str_to_json, EnvelopeEvalOptions,
 };

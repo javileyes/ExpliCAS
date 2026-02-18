@@ -15,6 +15,7 @@ cas_api_models = { path = "../cas_api_models" }
 cas_ast = { path = "../cas_ast" }
 cas_engine = { path = "../cas_engine", default-features = false }
 cas_formatter = { path = "../cas_formatter" }
+cas_math = { path = "../cas_math" }
 cas_parser = { path = "../cas_parser" }
 cas_session = { path = "../cas_session" }
 serde_json = "1.0"
