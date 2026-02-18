@@ -17,7 +17,7 @@ mod eval;
 mod response;
 mod substitute;
 
-// Re-export everything for backward compatibility
+// Re-export JSON entrypoints + compatibility traits.
 pub use eval::*;
 pub use response::*;
 pub use substitute::*;
@@ -26,6 +26,7 @@ pub use substitute::*;
 mod tests {
     use super::*;
     use crate::budget::{Metric, Operation};
+    use cas_api_models::{BudgetJsonInfo, EngineJsonError, EngineJsonResponse, EngineJsonWarning};
 
     #[test]
     fn test_response_ok_serialization() {
