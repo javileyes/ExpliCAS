@@ -3,7 +3,7 @@
 ExpliCAS provides a **persistent session state** that allows you to store expressions, define variables, and reference previous results. This system mimics notebook-style workflows (like Mathematica or Jupyter) and is designed for educational use.
 
 > [!TIP]
-> Both `SessionStore` and `Environment` are part of the **engine core** (`cas_engine`), not tied to the CLI. This means GUI and web interfaces can use the same session functionality.
+> `SessionStore` and `Environment` live in the dedicated **session crate** (`cas_session`), not in the CLI. This keeps `cas_engine` stateless while preserving portability for GUI/Web/FFI consumers.
 
 ---
 
@@ -419,22 +419,22 @@ True (conditional)
 
 The session system is designed for **portability** — the CLI is just one consumer. The `SessionState` struct bundles the store and environment for easy management.
 
-### Engine Modules
+### Session/Engine Modules
 
 | Module | Location | Purpose |
 |--------|----------|---------|
-| `SessionState` | `cas_engine/src/session_state.rs` | Bundles `SessionStore` + `Environment` |
-| `Engine` | `cas_engine/src/eval.rs` | High-level evaluation pipeline |
-| `SessionStore` | `cas_engine/src/session.rs` | Stores expressions with `#id` |
-| `Environment` | `cas_engine/src/env.rs` | Stores variable bindings |
-| `resolve_all()` | `cas_engine/src/session_state.rs` | Resolves both `#id` and variables |
-| `substitute()` | `cas_engine/src/env.rs` | Substitutes environment variables |
+| `SessionState` | `crates/cas_session/src/state.rs` | Bundles `SessionStore` + `Environment` |
+| `Engine` | `crates/cas_engine/src/eval/mod.rs` | High-level evaluation pipeline |
+| `SessionStore` | `crates/cas_session_core/src/store.rs` | Stores expressions with `#id` |
+| `Environment` | `crates/cas_session_core/src/env.rs` | Stores variable bindings |
+| `resolve_state_refs()` | `crates/cas_session/src/state.rs` | Resolves both `#id` and variables |
+| `substitute()` | `crates/cas_session_core/src/env.rs` | Substitutes environment variables |
 
 ### Public API
 
 ```rust
-use cas_engine::eval::{Engine, EvalRequest, EvalAction};
-use cas_engine::session_state::SessionState;
+use cas_engine::{Engine, EvalAction, EvalRequest};
+use cas_session::SessionState;
 
 // Initialize
 let mut engine = Engine::new();
