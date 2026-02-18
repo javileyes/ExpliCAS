@@ -2,6 +2,7 @@ pub mod gcd_zippel_modp;
 pub mod matrix;
 pub mod modp;
 pub mod mono;
+pub mod multinomial_expand;
 pub mod multipoly;
 pub mod multipoly_modp;
 pub mod numeric;
