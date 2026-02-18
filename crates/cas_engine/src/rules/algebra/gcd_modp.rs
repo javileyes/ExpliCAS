@@ -9,8 +9,8 @@ use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_math::gcd_zippel_modp::{gcd_zippel_modp, ZippelBudget, ZippelPreset};
 use cas_math::poly_modp_conv::{
-    expr_to_poly_modp_with_store as expr_to_poly_modp, PolyConvError, PolyModpBudget, VarTable,
-    DEFAULT_PRIME as INTERNAL_DEFAULT_PRIME,
+    expr_to_poly_modp_with_store as expr_to_poly_modp, multipoly_modp_to_expr, PolyConvError,
+    PolyModpBudget, VarTable, DEFAULT_PRIME as INTERNAL_DEFAULT_PRIME,
 };
 
 /// Re-export DEFAULT_PRIME for use by other modules
@@ -639,123 +639,6 @@ fn check_poly_equal_modp(
 
     // Compare term-by-term
     Ok(poly_a == poly_b)
-}
-
-/// Convert a mod-p coefficient to signed representation.
-///
-/// Uses symmetric representation: coefficients in [0, p/2] stay positive,
-/// coefficients in (p/2, p-1] become negative (c - p).
-///
-/// This is correct only if the original coefficient was in the range (-p/2, p/2).
-/// For typical polynomial operations with moderate coefficients, this holds.
-#[inline]
-fn modp_to_signed(c: u64, p: u64) -> i128 {
-    let half = p / 2;
-    if c <= half {
-        c as i128
-    } else {
-        (c as i128) - (p as i128) // Maps p-1 -> -1, p-2 -> -2, etc.
-    }
-}
-
-/// Convert MultiPolyModP back to Expr (balanced tree)
-///
-/// Uses symmetric representation to reconstruct signed coefficients.
-/// Coefficients in (p/2, p-1] are interpreted as negative.
-pub fn multipoly_modp_to_expr(
-    ctx: &mut Context,
-    poly: &cas_math::multipoly_modp::MultiPolyModP,
-    vars: &VarTable,
-) -> ExprId {
-    use num_rational::BigRational;
-
-    if poly.is_zero() {
-        return ctx.num(0);
-    }
-
-    let p = poly.p;
-
-    // Build term expressions
-    let mut term_exprs: Vec<ExprId> = Vec::with_capacity(poly.terms.len());
-
-    for (mono, coeff) in &poly.terms {
-        if *coeff == 0 {
-            continue;
-        }
-
-        // Convert coefficient to signed representation
-        let signed_coeff = modp_to_signed(*coeff, p);
-        let is_negative = signed_coeff < 0;
-        let abs_coeff = signed_coeff.unsigned_abs(); // i128 -> u128
-
-        // Build monomial: coeff * x1^e1 * x2^e2 * ...
-        let mut factors: Vec<ExprId> = Vec::new();
-
-        // Add absolute coefficient if not 1 (or if monomial is constant)
-        if abs_coeff != 1 || mono.is_constant() {
-            factors.push(ctx.add(Expr::Number(BigRational::from_integer(
-                (abs_coeff as i64).into(),
-            ))));
-        }
-
-        // Add variable powers
-        for (i, &exp) in mono.0.iter().enumerate() {
-            if exp > 0 && i < vars.len() {
-                let var_expr = ctx.var(&vars.names[i]);
-                if exp == 1 {
-                    factors.push(var_expr);
-                } else {
-                    let exp_expr =
-                        ctx.add(Expr::Number(BigRational::from_integer((exp as i64).into())));
-                    factors.push(ctx.add(Expr::Pow(var_expr, exp_expr)));
-                }
-            }
-        }
-
-        // Combine factors into product
-        let term = if factors.is_empty() {
-            ctx.num(1)
-        } else if factors.len() == 1 {
-            factors[0]
-        } else {
-            factors
-                .into_iter()
-                .reduce(|acc, f| ctx.add(Expr::Mul(acc, f)))
-                // INVARIANT: factors.len() >= 2 here (checked above)
-                .unwrap_or_else(|| ctx.num(1))
-        };
-
-        // Apply negation if coefficient was negative
-        let final_term = if is_negative {
-            ctx.add(Expr::Neg(term))
-        } else {
-            term
-        };
-
-        term_exprs.push(final_term);
-    }
-
-    // Build balanced sum tree
-    if term_exprs.is_empty() {
-        ctx.num(0)
-    } else {
-        build_balanced_sum(ctx, &term_exprs)
-    }
-}
-
-/// Build balanced Add tree to avoid deep recursion
-fn build_balanced_sum(ctx: &mut Context, terms: &[ExprId]) -> ExprId {
-    match terms.len() {
-        0 => ctx.num(0),
-        1 => terms[0],
-        2 => ctx.add(Expr::Add(terms[0], terms[1])),
-        _ => {
-            let mid = terms.len() / 2;
-            let left = build_balanced_sum(ctx, &terms[..mid]);
-            let right = build_balanced_sum(ctx, &terms[mid..]);
-            ctx.add(Expr::Add(left, right))
-        }
-    }
 }
 
 #[cfg(test)]

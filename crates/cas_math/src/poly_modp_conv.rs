@@ -702,6 +702,103 @@ fn bigint_to_modp(n: &num_bigint::BigInt, p: u64) -> u64 {
 /// Default prime for mod-p operations (same as benchmark)
 pub const DEFAULT_PRIME: u64 = 4503599627370449;
 
+/// Convert a mod-p coefficient to symmetric signed representation.
+///
+/// Coefficients in [0, p/2] stay positive, and (p/2, p-1] become negative.
+#[inline]
+fn modp_to_signed(c: u64, p: u64) -> i128 {
+    let half = p / 2;
+    if c <= half {
+        c as i128
+    } else {
+        (c as i128) - (p as i128)
+    }
+}
+
+/// Convert MultiPolyModP back to an Expr (balanced Add tree).
+pub fn multipoly_modp_to_expr(ctx: &mut Context, poly: &MultiPolyModP, vars: &VarTable) -> ExprId {
+    use num_bigint::BigInt;
+    use num_rational::BigRational;
+
+    if poly.is_zero() {
+        return ctx.num(0);
+    }
+
+    let p = poly.p;
+    let mut term_exprs: Vec<ExprId> = Vec::with_capacity(poly.terms.len());
+
+    for (mono, coeff) in &poly.terms {
+        if *coeff == 0 {
+            continue;
+        }
+
+        let signed_coeff = modp_to_signed(*coeff, p);
+        let is_negative = signed_coeff < 0;
+        let abs_coeff = signed_coeff.unsigned_abs();
+
+        let mut factors: Vec<ExprId> = Vec::new();
+
+        // Emit explicit coefficient unless it is implicit 1 for non-constant monomials.
+        if abs_coeff != 1 || mono.is_constant() {
+            factors.push(ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(
+                abs_coeff,
+            )))));
+        }
+
+        for (i, &exp) in mono.0.iter().enumerate() {
+            if exp > 0 && i < vars.len() {
+                let var_expr = ctx.var(&vars.names[i]);
+                if exp == 1 {
+                    factors.push(var_expr);
+                } else {
+                    let exp_expr =
+                        ctx.add(Expr::Number(BigRational::from_integer((exp as i64).into())));
+                    factors.push(ctx.add(Expr::Pow(var_expr, exp_expr)));
+                }
+            }
+        }
+
+        let term = if factors.is_empty() {
+            ctx.num(1)
+        } else if factors.len() == 1 {
+            factors[0]
+        } else {
+            factors
+                .into_iter()
+                .reduce(|acc, f| ctx.add(Expr::Mul(acc, f)))
+                .unwrap_or_else(|| ctx.num(1))
+        };
+
+        let final_term = if is_negative {
+            ctx.add(Expr::Neg(term))
+        } else {
+            term
+        };
+
+        term_exprs.push(final_term);
+    }
+
+    if term_exprs.is_empty() {
+        ctx.num(0)
+    } else {
+        build_balanced_sum(ctx, &term_exprs)
+    }
+}
+
+fn build_balanced_sum(ctx: &mut Context, terms: &[ExprId]) -> ExprId {
+    match terms.len() {
+        0 => ctx.num(0),
+        1 => terms[0],
+        2 => ctx.add(Expr::Add(terms[0], terms[1])),
+        _ => {
+            let mid = terms.len() / 2;
+            let left = build_balanced_sum(ctx, &terms[..mid]);
+            let right = build_balanced_sum(ctx, &terms[mid..]);
+            ctx.add(Expr::Add(left, right))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -72,8 +72,7 @@ impl SimpleRule for PolyToExprRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        use crate::rules::algebra::gcd_modp::multipoly_modp_to_expr;
-        use cas_math::poly_modp_conv::VarTable;
+        use cas_math::poly_modp_conv::{multipoly_modp_to_expr, VarTable};
         use cas_math::poly_store::thread_local_get_for_materialize;
 
         // Match: poly_to_expr(poly_result(id)) or poly_to_expr(poly_result(id), max_terms)

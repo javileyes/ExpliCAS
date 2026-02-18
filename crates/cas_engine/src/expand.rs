@@ -162,9 +162,9 @@ fn expand_to_poly_ref_or_hold(
     expr: ExprId,
     _est_terms: usize,
 ) -> Option<ExprId> {
-    use crate::rules::algebra::gcd_modp::{multipoly_modp_to_expr, DEFAULT_PRIME};
     use cas_math::poly_modp_conv::{
-        expr_to_poly_modp_with_store as expr_to_poly_modp, PolyModpBudget, VarTable,
+        expr_to_poly_modp_with_store as expr_to_poly_modp, multipoly_modp_to_expr, PolyModpBudget,
+        VarTable, DEFAULT_PRIME,
     };
     use cas_math::poly_store::{thread_local_insert, PolyMeta};
 
@@ -207,9 +207,9 @@ fn expand_to_poly_ref_or_hold(
 /// Now uses expand_to_poly_ref_or_hold internally.
 pub fn expand_modp_safe(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     // Always materialize AST for this function (used by distribution.rs)
-    use crate::rules::algebra::gcd_modp::{multipoly_modp_to_expr, DEFAULT_PRIME};
     use cas_math::poly_modp_conv::{
-        expr_to_poly_modp_with_store as expr_to_poly_modp, PolyModpBudget, VarTable,
+        expr_to_poly_modp_with_store as expr_to_poly_modp, multipoly_modp_to_expr, PolyModpBudget,
+        VarTable, DEFAULT_PRIME,
     };
 
     let budget = PolyModpBudget {
