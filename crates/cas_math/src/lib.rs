@@ -9,6 +9,7 @@ pub mod multipoly;
 pub mod multipoly_modp;
 pub mod numeric;
 pub mod numeric_eval;
+pub mod poly_gcd_structural;
 pub mod poly_modp_conv;
 pub mod poly_result;
 pub mod poly_store;
