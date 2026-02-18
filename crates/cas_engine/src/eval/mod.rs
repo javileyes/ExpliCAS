@@ -5,6 +5,7 @@
 //! (simplify, solve, expand, equiv, limit), assembles diagnostics, and
 //! returns the final `EvalOutput`.
 
+mod cache;
 mod diagnostics;
 mod dispatch;
 
@@ -24,15 +25,7 @@ pub(crate) type ActionResult = (
 use crate::Simplifier;
 use cas_ast::{BuiltinFn, Equation, Expr, ExprId, RelOp};
 
-/// Cache key for eval-session invalidation.
-pub type SimplifyCacheKey = cas_session_core::cache::SimplifyCacheKey<crate::domain::DomainMode>;
-
-/// Cached simplification payload stored in session entries.
-pub type SimplifiedCache = cas_session_core::cache::SimplifiedCache<
-    crate::domain::DomainMode,
-    crate::diagnostics::RequiredItem,
-    crate::step::Step,
->;
+pub use cache::{SimplifiedCache, SimplifyCacheKey};
 
 /// Session entry ID used for cache-hit tracing during reference resolution.
 pub type CacheHitEntryId = u64;
