@@ -16,6 +16,5 @@
 mod eval;
 mod substitute;
 
-pub use cas_api_models::SCHEMA_VERSION;
 pub use eval::eval_str_to_json;
 pub use substitute::substitute_str_to_json;

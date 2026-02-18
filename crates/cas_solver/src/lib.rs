@@ -2,7 +2,6 @@
 //!
 //! During migration this crate re-exports the solver API from `cas_engine`.
 
-pub use cas_api_models::SCHEMA_VERSION;
 pub use cas_engine::assumptions::AssumptionKey;
 pub use cas_engine::canonical_forms;
 pub use cas_engine::const_fold::ConstFoldMode;
