@@ -15,6 +15,7 @@
 
 mod envelope;
 mod eval;
+mod mappers;
 mod session;
 mod substitute;
 

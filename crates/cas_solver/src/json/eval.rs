@@ -1,7 +1,9 @@
-use super::session::JsonEvalSession;
+use super::{
+    mappers::{map_domain_warnings_to_engine_warnings, map_solver_assumptions_to_api_records},
+    session::JsonEvalSession,
+};
 use cas_api_models::{
-    AssumptionRecord as ApiAssumptionRecord, BudgetJsonInfo, EngineJsonError, EngineJsonResponse,
-    EngineJsonStep, EngineJsonWarning, JsonRunOptions, SpanJson,
+    BudgetJsonInfo, EngineJsonError, EngineJsonResponse, EngineJsonStep, JsonRunOptions, SpanJson,
 };
 
 /// Evaluate an expression and return JSON response.
@@ -162,24 +164,8 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
     };
 
     let mut resp = EngineJsonResponse::ok_with_steps(result_str, steps, budget_info);
-    resp.warnings = output
-        .domain_warnings
-        .iter()
-        .map(|w| EngineJsonWarning {
-            kind: "domain_assumption".to_string(),
-            message: format!("{} (rule: {})", w.message, w.rule_name),
-        })
-        .collect();
-    resp.assumptions = output
-        .solver_assumptions
-        .iter()
-        .map(|a| ApiAssumptionRecord {
-            kind: a.kind.clone(),
-            expr: a.expr.clone(),
-            message: a.message.clone(),
-            count: a.count,
-        })
-        .collect();
+    resp.warnings = map_domain_warnings_to_engine_warnings(&output.domain_warnings);
+    resp.assumptions = map_solver_assumptions_to_api_records(&output.solver_assumptions);
 
     if opts.pretty {
         resp.to_json_pretty()

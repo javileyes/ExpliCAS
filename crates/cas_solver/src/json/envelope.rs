@@ -1,8 +1,8 @@
-use super::session::JsonEvalSession;
-use cas_api_models::{
-    AssumptionDto, BlockedHintDto, ConditionDto, ExprDto, OutputEnvelope, RequestInfo,
-    RequestOptions, TransparencyDto,
+use super::{
+    mappers::{map_assumptions_used, map_blocked_hints, map_required_conditions},
+    session::JsonEvalSession,
 };
+use cas_api_models::{ExprDto, OutputEnvelope, RequestInfo, RequestOptions, TransparencyDto};
 use cas_formatter::DisplayExpr;
 
 #[derive(Clone, Debug)]
@@ -89,53 +89,10 @@ fn build_transparency(
     output: &cas_engine::eval::EvalOutput,
     ctx: &cas_ast::Context,
 ) -> TransparencyDto {
-    use cas_engine::implicit_domain::ImplicitCondition;
-
-    let required_conditions = output
-        .required_conditions
-        .iter()
-        .map(|cond| {
-            let (kind, expr_id) = match cond {
-                ImplicitCondition::NonNegative(e) => ("NonNegative", *e),
-                ImplicitCondition::Positive(e) => ("Positive", *e),
-                ImplicitCondition::NonZero(e) => ("NonZero", *e),
-            };
-            let expr_display = display_expr(ctx, expr_id);
-            ConditionDto {
-                kind: kind.to_string(),
-                display: cond.display(ctx),
-                expr_display: expr_display.clone(),
-                expr_canonical: expr_display,
-            }
-        })
-        .collect();
-
-    let mut assumptions_used: Vec<AssumptionDto> = output
-        .solver_assumptions
-        .iter()
-        .map(|a| AssumptionDto {
-            kind: a.kind.clone(),
-            display: a.message.clone(),
-            expr_canonical: a.expr.clone(),
-            rule: "solver".to_string(),
-        })
-        .collect();
-    assumptions_used.extend(output.domain_warnings.iter().map(|w| AssumptionDto {
-        kind: "domain_warning".to_string(),
-        display: w.message.clone(),
-        expr_canonical: String::new(),
-        rule: w.rule_name.clone(),
-    }));
-
-    let blocked_hints = output
-        .blocked_hints
-        .iter()
-        .map(|h| BlockedHintDto {
-            rule: h.rule.clone(),
-            requires: vec![h.key.condition_display().to_string()],
-            tip: h.suggestion.to_string(),
-        })
-        .collect();
+    let required_conditions = map_required_conditions(&output.required_conditions, ctx);
+    let assumptions_used =
+        map_assumptions_used(&output.solver_assumptions, &output.domain_warnings);
+    let blocked_hints = map_blocked_hints(&output.blocked_hints);
 
     TransparencyDto {
         required_conditions,
