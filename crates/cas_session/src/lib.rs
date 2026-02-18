@@ -98,7 +98,7 @@ pub fn resolve_session_refs_with_mode(
 }
 
 /// Resolve session references (`#N`) and environment bindings from raw parts.
-pub fn resolve_all(
+fn resolve_all(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
     store: &SessionStore,
@@ -109,7 +109,7 @@ pub fn resolve_all(
 }
 
 /// Resolve references and return inherited diagnostics + cache hit traces.
-pub fn resolve_all_with_diagnostics(
+fn resolve_all_with_diagnostics(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
     store: &SessionStore,
