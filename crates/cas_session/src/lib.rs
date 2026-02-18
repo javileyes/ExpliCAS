@@ -6,7 +6,7 @@ mod state;
 
 pub type SimplifyCacheKey = cas_engine::eval::SimplifyCacheKey;
 pub type SimplifiedCache = cas_engine::eval::SimplifiedCache;
-pub type CacheHitTrace = cas_engine::eval::CacheHitTrace;
+pub type CacheHitEntryId = cas_engine::eval::CacheHitEntryId;
 pub type ResolvedExpr =
     cas_session_core::cache::ResolvedExpr<cas_engine::diagnostics::RequiredItem>;
 #[derive(Debug, Clone)]
@@ -51,12 +51,8 @@ pub use state::SessionState;
 
 fn map_cache_hit_traces(
     hits: Vec<cas_session_core::cache::CacheHitTrace<cas_engine::diagnostics::RequiredItem>>,
-) -> Vec<CacheHitTrace> {
-    hits.into_iter()
-        .map(|h| CacheHitTrace {
-            entry_id: h.entry_id,
-        })
-        .collect()
+) -> Vec<CacheHitEntryId> {
+    hits.into_iter().map(|h| h.entry_id).collect()
 }
 
 /// Resolve all `Expr::SessionRef` in an expression tree.
@@ -154,7 +150,7 @@ pub fn resolve_all_with_diagnostics(
     (
         cas_ast::ExprId,
         cas_engine::diagnostics::Diagnostics,
-        Vec<CacheHitTrace>,
+        Vec<CacheHitEntryId>,
     ),
     ResolveError,
 > {
@@ -196,7 +192,7 @@ pub fn resolve_all_with_diagnostics_from_state(
     (
         cas_ast::ExprId,
         cas_engine::diagnostics::Diagnostics,
-        Vec<CacheHitTrace>,
+        Vec<CacheHitEntryId>,
     ),
     ResolveError,
 > {

@@ -9,7 +9,7 @@ use super::*;
 struct ResolvedEvalInput {
     resolved: ExprId,
     inherited_diagnostics: crate::diagnostics::Diagnostics,
-    cache_hits: Vec<CacheHitTrace>,
+    cache_hits: Vec<CacheHitEntryId>,
     resolved_equiv_other: Option<ExprId>,
 }
 
@@ -76,11 +76,18 @@ impl Engine {
 
         // 2. Auto-store raw + parsed (unresolved)
         let stored_id = if req.auto_store {
-            Some(session.store_mut().push_raw_input(
-                &self.simplifier.context,
-                req.parsed,
-                req.raw_input.clone(),
-            ))
+            let kind = if let Some((lhs, rhs)) =
+                cas_ast::eq::unwrap_eq(&self.simplifier.context, req.parsed)
+            {
+                StoredInputKind::Eq { lhs, rhs }
+            } else {
+                StoredInputKind::Expr(req.parsed)
+            };
+            Some(
+                session
+                    .store_mut()
+                    .push_raw_input(kind, req.raw_input.clone()),
+            )
         } else {
             None
         };
@@ -91,7 +98,7 @@ impl Engine {
 
         // V2.15.36: Touch cached entries to maintain true LRU ordering
         for hit in &cache_hits {
-            session.store_mut().touch_cached(hit.entry_id);
+            session.store_mut().touch_cached(*hit);
         }
 
         // 3. Dispatch Action -> produce EvalResult

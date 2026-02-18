@@ -3,7 +3,8 @@
 use cas_ast::ExprId;
 use cas_engine::diagnostics::{Diagnostics, RequireOrigin, RequiredItem};
 use cas_engine::eval::{
-    CacheHitTrace, EvalResolveError, EvalSession, EvalStore, SimplifiedCache, SimplifyCacheKey,
+    CacheHitEntryId, EvalResolveError, EvalSession, EvalStore, SimplifiedCache, SimplifyCacheKey,
+    StoredInputKind,
 };
 use cas_engine::options::EvalOptions;
 use cas_engine::profile_cache::ProfileCache;
@@ -54,13 +55,12 @@ pub struct SessionEvalStore(
 );
 
 impl EvalStore for SessionEvalStore {
-    fn push_raw_input(&mut self, ctx: &cas_ast::Context, parsed: ExprId, raw_input: String) -> u64 {
-        let kind = if let Some((lhs, rhs)) = cas_ast::eq::unwrap_eq(ctx, parsed) {
-            EntryKind::Eq { lhs, rhs }
-        } else {
-            EntryKind::Expr(parsed)
+    fn push_raw_input(&mut self, kind: StoredInputKind, raw_input: String) -> u64 {
+        let mapped = match kind {
+            StoredInputKind::Expr(expr) => EntryKind::Expr(expr),
+            StoredInputKind::Eq { lhs, rhs } => EntryKind::Eq { lhs, rhs },
         };
-        self.0.push(kind, raw_input)
+        self.0.push(mapped, raw_input)
     }
 
     fn touch_cached(&mut self, entry_id: u64) {
@@ -132,7 +132,7 @@ impl EvalSession for SessionState {
         &self,
         ctx: &mut cas_ast::Context,
         expr: ExprId,
-    ) -> Result<(ExprId, Diagnostics, Vec<CacheHitTrace>), EvalResolveError> {
+    ) -> Result<(ExprId, Diagnostics, Vec<CacheHitEntryId>), EvalResolveError> {
         let cache_key = SimplifyCacheKey::from_context(self.options.shared.semantics.domain_mode);
         let mut lookup = |id: u64| {
             let entry = self.store.0.get(id)?;
@@ -173,9 +173,7 @@ impl EvalSession for SessionState {
         let cache_hits = resolved
             .cache_hits
             .into_iter()
-            .map(|h| CacheHitTrace {
-                entry_id: h.entry_id,
-            })
+            .map(|h| h.entry_id)
             .collect();
 
         Ok((fully_resolved, inherited, cache_hits))

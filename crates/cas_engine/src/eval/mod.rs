@@ -79,11 +79,14 @@ impl SimplifiedCache {
     }
 }
 
-/// Record of a cache hit during session-reference resolution.
-#[derive(Debug, Clone)]
-pub struct CacheHitTrace {
-    /// The session entry ID resolved from cache.
-    pub entry_id: u64,
+/// Session entry ID used for cache-hit tracing during reference resolution.
+pub type CacheHitEntryId = u64;
+
+/// Raw input kind recorded by external session stores.
+#[derive(Debug, Clone, Copy)]
+pub enum StoredInputKind {
+    Expr(ExprId),
+    Eq { lhs: ExprId, rhs: ExprId },
 }
 
 /// Engine-level reference resolution error.
@@ -132,7 +135,7 @@ pub struct Engine {
 /// Session abstraction for `Engine::eval`, allowing callers to provide any
 /// state container that exposes the required eval components.
 pub trait EvalStore {
-    fn push_raw_input(&mut self, ctx: &cas_ast::Context, parsed: ExprId, raw_input: String) -> u64;
+    fn push_raw_input(&mut self, kind: StoredInputKind, raw_input: String) -> u64;
     fn touch_cached(&mut self, entry_id: u64);
     fn update_diagnostics(&mut self, id: u64, diagnostics: crate::diagnostics::Diagnostics);
     fn update_simplified(&mut self, id: u64, cache: SimplifiedCache);
@@ -155,7 +158,14 @@ pub trait EvalSession {
         &self,
         ctx: &mut cas_ast::Context,
         expr: ExprId,
-    ) -> Result<(ExprId, crate::diagnostics::Diagnostics, Vec<CacheHitTrace>), EvalResolveError>;
+    ) -> Result<
+        (
+            ExprId,
+            crate::diagnostics::Diagnostics,
+            Vec<CacheHitEntryId>,
+        ),
+        EvalResolveError,
+    >;
 }
 
 impl Engine {
@@ -344,14 +354,14 @@ pub(crate) fn build_cache_hit_step(
     ctx: &cas_ast::Context,
     original_expr: cas_ast::ExprId,
     resolved_expr: cas_ast::ExprId,
-    cache_hits: &[CacheHitTrace],
+    cache_hits: &[CacheHitEntryId],
 ) -> Option<crate::Step> {
     if cache_hits.is_empty() {
         return None;
     }
 
     // Collect and sort entry IDs for deterministic output
-    let mut ids: Vec<u64> = cache_hits.iter().map(|h| h.entry_id).collect();
+    let mut ids: Vec<u64> = cache_hits.to_vec();
     ids.sort();
 
     // Format the description with truncation for readability

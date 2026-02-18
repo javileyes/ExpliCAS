@@ -1,5 +1,5 @@
 use cas_ast::{Expr, ExprId};
-use cas_engine::eval::{CacheHitTrace, EvalSession, EvalStore};
+use cas_engine::eval::{CacheHitEntryId, EvalSession, EvalStore, StoredInputKind};
 
 #[derive(Default)]
 pub(crate) struct JsonStore {
@@ -13,12 +13,7 @@ impl JsonStore {
 }
 
 impl EvalStore for JsonStore {
-    fn push_raw_input(
-        &mut self,
-        _ctx: &cas_ast::Context,
-        _parsed: ExprId,
-        _raw_input: String,
-    ) -> u64 {
+    fn push_raw_input(&mut self, _kind: StoredInputKind, _raw_input: String) -> u64 {
         self.next_id = self.next_id.saturating_add(1);
         self.next_id
     }
@@ -107,7 +102,7 @@ impl EvalSession for JsonEvalSession {
         (
             ExprId,
             cas_engine::diagnostics::Diagnostics,
-            Vec<CacheHitTrace>,
+            Vec<CacheHitEntryId>,
         ),
         cas_engine::eval::EvalResolveError,
     > {

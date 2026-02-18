@@ -1,12 +1,12 @@
 use cas_ast::ExprId;
 use cas_engine::diagnostics::Diagnostics;
-use cas_engine::eval::{EvalSession, EvalStore};
+use cas_engine::eval::{CacheHitEntryId, EvalSession, EvalStore, StoredInputKind};
 use cas_engine::options::EvalOptions;
 use cas_engine::profile_cache::ProfileCache;
 
 use crate::{
-    snapshot::SessionSnapshot, CacheHitTrace as SessionCacheHitTrace, Environment, ResolveError,
-    SessionStore, SimplifyCacheKey, SnapshotError,
+    snapshot::SessionSnapshot, Environment, ResolveError, SessionStore, SimplifyCacheKey,
+    SnapshotError,
 };
 
 fn map_eval_resolve_error(err: ResolveError) -> cas_engine::eval::EvalResolveError {
@@ -47,13 +47,12 @@ impl std::ops::DerefMut for SessionEvalStore {
 }
 
 impl EvalStore for SessionEvalStore {
-    fn push_raw_input(&mut self, ctx: &cas_ast::Context, parsed: ExprId, raw_input: String) -> u64 {
-        let kind = if let Some((lhs, rhs)) = cas_ast::eq::unwrap_eq(ctx, parsed) {
-            crate::EntryKind::Eq { lhs, rhs }
-        } else {
-            crate::EntryKind::Expr(parsed)
+    fn push_raw_input(&mut self, kind: StoredInputKind, raw_input: String) -> u64 {
+        let mapped = match kind {
+            StoredInputKind::Expr(expr) => crate::EntryKind::Expr(expr),
+            StoredInputKind::Eq { lhs, rhs } => crate::EntryKind::Eq { lhs, rhs },
         };
-        self.0.push(kind, raw_input)
+        self.0.push(mapped, raw_input)
     }
 
     fn touch_cached(&mut self, entry_id: u64) {
@@ -169,7 +168,7 @@ impl SessionState {
         &self,
         ctx: &mut cas_ast::Context,
         expr: ExprId,
-    ) -> Result<(ExprId, Diagnostics, Vec<SessionCacheHitTrace>), ResolveError> {
+    ) -> Result<(ExprId, Diagnostics, Vec<CacheHitEntryId>), ResolveError> {
         crate::resolve_all_with_diagnostics(
             ctx,
             expr,
@@ -266,10 +265,8 @@ impl EvalSession for SessionState {
         &self,
         ctx: &mut cas_ast::Context,
         expr: ExprId,
-    ) -> Result<
-        (ExprId, Diagnostics, Vec<cas_engine::eval::CacheHitTrace>),
-        cas_engine::eval::EvalResolveError,
-    > {
+    ) -> Result<(ExprId, Diagnostics, Vec<CacheHitEntryId>), cas_engine::eval::EvalResolveError>
+    {
         self.resolve_state_refs_with_diagnostics(ctx, expr)
             .map_err(map_eval_resolve_error)
     }
