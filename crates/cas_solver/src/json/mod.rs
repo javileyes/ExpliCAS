@@ -1,6 +1,6 @@
-//! Canonical JSON API types for engine responses.
+//! Canonical JSON API entry points for solver responses.
 //!
-//! This module provides stable, serializable types for CLI and FFI consumers.
+//! This module provides stable, serializable JSON entry points for CLI and FFI consumers.
 //! All callsites should use these types to ensure consistent JSON schema.
 //!
 //! # Schema Version

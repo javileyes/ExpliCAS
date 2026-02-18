@@ -81,25 +81,23 @@ pub mod api;
 
 pub(crate) mod build;
 pub mod error;
-pub mod json; // Canonical JSON API types (PR-B)
 pub mod nary;
 pub(crate) mod visitors;
 #[macro_use]
 pub mod macros;
 
+pub use assumptions::{
+    AssumptionCollector, AssumptionEvent, AssumptionKey, AssumptionRecord, AssumptionReporting,
+};
 pub use budget::{Budget, BudgetExceeded, BudgetScope, Metric, Operation, PassStats};
+pub use cycle_events::{CycleEvent, CycleLevel};
+pub use domain::{can_cancel_factor, BlockedHint, CancelDecision, DomainMode, Proof};
 pub use engine::{
     eval_f64_checked, strip_all_holds, EquivalenceResult, EvalCheckedError, EvalCheckedOptions,
     Simplifier,
 };
 pub use error::{CasError, CasResult};
 pub use eval::*;
-// JSON API exports (canonical for CLI/FFI)
-pub use assumptions::{
-    AssumptionCollector, AssumptionEvent, AssumptionKey, AssumptionRecord, AssumptionReporting,
-};
-pub use cycle_events::{CycleEvent, CycleLevel};
-pub use domain::{can_cancel_factor, BlockedHint, CancelDecision, DomainMode, Proof};
 pub use options::AutoExpandBinomials; // V2.15.8: education mode expansion
 pub use options::HeuristicPoly; // V2.15.9: smart polynomial simplification
 pub use phase::{

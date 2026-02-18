@@ -117,16 +117,21 @@ pub fn substitute_str_to_json(
 
     // Build substitute options
     let sub_opts = match opts.mode.as_str() {
-        "exact" => crate::substitute::SubstituteOptions::exact(),
-        _ => crate::substitute::SubstituteOptions::power_aware_no_remainder(),
+        "exact" => cas_engine::substitute::SubstituteOptions::exact(),
+        _ => cas_engine::substitute::SubstituteOptions::power_aware_no_remainder(),
     };
 
     // Perform substitution
-    let sub_result =
-        crate::substitute::substitute_with_steps(&mut ctx, expr, target, replacement, sub_opts);
+    let sub_result = cas_engine::substitute::substitute_with_steps(
+        &mut ctx,
+        expr,
+        target,
+        replacement,
+        sub_opts,
+    );
 
     // Strip __hold from result
-    let clean_result = crate::engine::strip_all_holds(&mut ctx, sub_result.expr);
+    let clean_result = cas_engine::engine::strip_all_holds(&mut ctx, sub_result.expr);
     let result_str = format!(
         "{}",
         cas_formatter::DisplayExpr {

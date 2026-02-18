@@ -2,6 +2,8 @@
 //!
 //! During migration this crate re-exports the solver API from `cas_engine`.
 
+pub mod json;
+
 pub use cas_engine::assumptions::AssumptionKey;
 pub use cas_engine::canonical_forms;
 pub use cas_engine::const_fold::ConstFoldMode;
@@ -37,18 +39,4 @@ pub use cas_engine::{
     EquivalenceResult, EvalAction, EvalOutput, EvalRequest, EvalResult, PipelineStats, Simplifier,
     SimplifyOptions,
 };
-
-/// Canonical JSON evaluation entry point for CLI/FFI clients.
-pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
-    cas_engine::json::eval_str_to_json(expr, opts_json)
-}
-
-/// Canonical JSON substitution entry point for CLI/FFI clients.
-pub fn substitute_str_to_json(
-    expr_str: &str,
-    target_str: &str,
-    with_str: &str,
-    opts_json: Option<&str>,
-) -> String {
-    cas_engine::json::substitute_str_to_json(expr_str, target_str, with_str, opts_json)
-}
+pub use json::{eval_str_to_json, substitute_str_to_json};

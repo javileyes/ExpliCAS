@@ -315,7 +315,11 @@ name = "cas_solver"
 version = "0.1.0"
 dependencies = [
  "cas_api_models",
+ "cas_ast",
  "cas_engine",
+ "cas_formatter",
+ "cas_parser",
+ "serde_json",
 ]
 
 [[package]]

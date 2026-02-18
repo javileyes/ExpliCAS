@@ -1,8 +1,8 @@
-use crate::eval::{CacheHitTrace, EvalSession, EvalStore};
 use cas_api_models::{
     BudgetJsonInfo, EngineJsonError, EngineJsonResponse, EngineJsonStep, JsonRunOptions, SpanJson,
 };
 use cas_ast::{Expr, ExprId};
+use cas_engine::eval::{CacheHitTrace, EvalSession, EvalStore};
 
 /// Evaluate an expression and return JSON response.
 ///
@@ -19,7 +19,7 @@ use cas_ast::{Expr, ExprId};
 ///
 /// # Example
 /// ```
-/// use cas_engine::json::eval_str_to_json;
+/// use cas_solver::eval_str_to_json;
 ///
 /// let json = eval_str_to_json("x + x", r#"{"budget":{"preset":"cli"}}"#);
 /// assert!(json.contains("\"ok\":true"));
@@ -48,8 +48,8 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
     let budget_info = BudgetJsonInfo::new(&opts.budget.preset, strict);
 
     // Create engine and explicit eval components (stateless-friendly API)
-    let mut engine = crate::eval::Engine::new();
-    let mut session = JsonEvalSession::new(crate::options::EvalOptions::default());
+    let mut engine = cas_engine::eval::Engine::new();
+    let mut session = JsonEvalSession::new(cas_engine::options::EvalOptions::default());
 
     // Parse expression
     let parsed = match cas_parser::parse(expr, &mut engine.simplifier.context) {
@@ -72,10 +72,10 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
     };
 
     // Build eval request
-    let req = crate::eval::EvalRequest {
+    let req = cas_engine::eval::EvalRequest {
         raw_input: expr.to_string(),
         parsed,
-        action: crate::eval::EvalAction::Simplify,
+        action: cas_engine::eval::EvalAction::Simplify,
         auto_store: false,
     };
 
@@ -96,8 +96,8 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
 
     // Format result
     let result_str = match &output.result {
-        crate::eval::EvalResult::Expr(e) => {
-            let clean = crate::engine::strip_all_holds(&mut engine.simplifier.context, *e);
+        cas_engine::eval::EvalResult::Expr(e) => {
+            let clean = cas_engine::engine::strip_all_holds(&mut engine.simplifier.context, *e);
             format!(
                 "{}",
                 cas_formatter::DisplayExpr {
@@ -106,8 +106,8 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
                 }
             )
         }
-        crate::eval::EvalResult::Set(v) if !v.is_empty() => {
-            let clean = crate::engine::strip_all_holds(&mut engine.simplifier.context, v[0]);
+        cas_engine::eval::EvalResult::Set(v) if !v.is_empty() => {
+            let clean = cas_engine::engine::strip_all_holds(&mut engine.simplifier.context, v[0]);
             format!(
                 "{}",
                 cas_formatter::DisplayExpr {
@@ -116,7 +116,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
                 }
             )
         }
-        crate::eval::EvalResult::Bool(b) => b.to_string(),
+        cas_engine::eval::EvalResult::Bool(b) => b.to_string(),
         _ => "(no result)".to_string(),
     };
 
@@ -127,7 +127,8 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
             .iter()
             .map(|s| {
                 let before_str = s.global_before.map(|id| {
-                    let clean = crate::engine::strip_all_holds(&mut engine.simplifier.context, id);
+                    let clean =
+                        cas_engine::engine::strip_all_holds(&mut engine.simplifier.context, id);
                     format!(
                         "{}",
                         cas_formatter::DisplayExpr {
@@ -137,7 +138,8 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
                     )
                 });
                 let after_str = s.global_after.map(|id| {
-                    let clean = crate::engine::strip_all_holds(&mut engine.simplifier.context, id);
+                    let clean =
+                        cas_engine::engine::strip_all_holds(&mut engine.simplifier.context, id);
                     format!(
                         "{}",
                         cas_formatter::DisplayExpr {
@@ -191,9 +193,10 @@ impl EvalStore for JsonStore {
 
     fn touch_cached(&mut self, _entry_id: u64) {}
 
-    fn update_diagnostics(&mut self, _id: u64, _diagnostics: crate::diagnostics::Diagnostics) {}
+    fn update_diagnostics(&mut self, _id: u64, _diagnostics: cas_engine::diagnostics::Diagnostics) {
+    }
 
-    fn update_simplified(&mut self, _id: u64, _cache: crate::eval::SimplifiedCache) {}
+    fn update_simplified(&mut self, _id: u64, _cache: cas_engine::eval::SimplifiedCache) {}
 }
 
 fn first_session_ref(ctx: &cas_ast::Context, root: ExprId) -> Option<u64> {
@@ -220,16 +223,16 @@ fn first_session_ref(ctx: &cas_ast::Context, root: ExprId) -> Option<u64> {
 
 struct JsonEvalSession {
     store: JsonStore,
-    options: crate::options::EvalOptions,
-    profile_cache: crate::profile_cache::ProfileCache,
+    options: cas_engine::options::EvalOptions,
+    profile_cache: cas_engine::profile_cache::ProfileCache,
 }
 
 impl JsonEvalSession {
-    fn new(options: crate::options::EvalOptions) -> Self {
+    fn new(options: cas_engine::options::EvalOptions) -> Self {
         Self {
             store: JsonStore::new(),
             options,
-            profile_cache: crate::profile_cache::ProfileCache::new(),
+            profile_cache: cas_engine::profile_cache::ProfileCache::new(),
         }
     }
 }
@@ -241,11 +244,11 @@ impl EvalSession for JsonEvalSession {
         &mut self.store
     }
 
-    fn options(&self) -> &crate::options::EvalOptions {
+    fn options(&self) -> &cas_engine::options::EvalOptions {
         &self.options
     }
 
-    fn profile_cache_mut(&mut self) -> &mut crate::profile_cache::ProfileCache {
+    fn profile_cache_mut(&mut self) -> &mut cas_engine::profile_cache::ProfileCache {
         &mut self.profile_cache
     }
 
@@ -253,9 +256,9 @@ impl EvalSession for JsonEvalSession {
         &self,
         ctx: &mut cas_ast::Context,
         expr: ExprId,
-    ) -> Result<ExprId, crate::eval::EvalResolveError> {
+    ) -> Result<ExprId, cas_engine::eval::EvalResolveError> {
         if let Some(id) = first_session_ref(ctx, expr) {
-            return Err(crate::eval::EvalResolveError::NotFound(id));
+            return Err(cas_engine::eval::EvalResolveError::NotFound(id));
         }
         Ok(expr)
     }
@@ -265,12 +268,16 @@ impl EvalSession for JsonEvalSession {
         ctx: &mut cas_ast::Context,
         expr: ExprId,
     ) -> Result<
-        (ExprId, crate::diagnostics::Diagnostics, Vec<CacheHitTrace>),
-        crate::eval::EvalResolveError,
+        (
+            ExprId,
+            cas_engine::diagnostics::Diagnostics,
+            Vec<CacheHitTrace>,
+        ),
+        cas_engine::eval::EvalResolveError,
     > {
         if let Some(id) = first_session_ref(ctx, expr) {
-            return Err(crate::eval::EvalResolveError::NotFound(id));
+            return Err(cas_engine::eval::EvalResolveError::NotFound(id));
         }
-        Ok((expr, crate::diagnostics::Diagnostics::new(), vec![]))
+        Ok((expr, cas_engine::diagnostics::Diagnostics::new(), vec![]))
     }
 }
