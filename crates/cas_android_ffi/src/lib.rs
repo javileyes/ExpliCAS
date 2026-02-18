@@ -24,7 +24,7 @@ use jni::JNIEnv;
 
 // JSON DTOs for stable FFI fallback responses
 use cas_api_models::{BudgetJsonInfo, EngineJsonError, EngineJsonResponse};
-use cas_solver::{eval_str_to_json, SCHEMA_VERSION};
+use cas_solver::eval_str_to_json;
 
 // ============================================================================
 // JNI Entry Points
@@ -98,16 +98,7 @@ fn create_fallback_error(env: &mut JNIEnv) -> jstring {
 fn internal_error_json(message: &str) -> String {
     let error = EngineJsonError::simple("InternalError", "E_INTERNAL", message);
     let budget = BudgetJsonInfo::new("unknown", true);
-    let resp = EngineJsonResponse {
-        schema_version: SCHEMA_VERSION,
-        ok: false,
-        result: None,
-        error: Some(error),
-        steps: vec![],
-        warnings: vec![],
-        assumptions: vec![],
-        budget,
-    };
+    let resp = EngineJsonResponse::err(error, budget);
     resp.to_json()
 }
 

@@ -1,7 +1,6 @@
 use crate::eval::{CacheHitTrace, EvalSession, EvalStore};
 use cas_api_models::{
     BudgetJsonInfo, EngineJsonError, EngineJsonResponse, EngineJsonStep, JsonRunOptions, SpanJson,
-    SCHEMA_VERSION,
 };
 use cas_ast::{Expr, ExprId};
 
@@ -39,16 +38,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
                 span: None,
                 details: serde_json::json!({ "error": e.to_string() }),
             };
-            let resp = EngineJsonResponse {
-                schema_version: SCHEMA_VERSION,
-                ok: false,
-                result: None,
-                error: Some(error),
-                steps: vec![],
-                warnings: vec![],
-                assumptions: vec![],
-                budget,
-            };
+            let resp = EngineJsonResponse::err(error, budget);
             return if opts_json.contains("\"pretty\":true") {
                 resp.to_json_pretty()
             } else {
@@ -78,16 +68,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
                 }),
                 details: serde_json::Value::Null,
             };
-            let resp = EngineJsonResponse {
-                schema_version: SCHEMA_VERSION,
-                ok: false,
-                result: None,
-                error: Some(error),
-                steps: vec![],
-                warnings: vec![],
-                assumptions: vec![],
-                budget: budget_info,
-            };
+            let resp = EngineJsonResponse::err(error, budget_info);
             return if opts.pretty {
                 resp.to_json_pretty()
             } else {
@@ -110,16 +91,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
         Err(e) => {
             // anyhow::Error - create generic error
             let error = EngineJsonError::simple("InternalError", "E_INTERNAL", e.to_string());
-            let resp = EngineJsonResponse {
-                schema_version: SCHEMA_VERSION,
-                ok: false,
-                result: None,
-                error: Some(error),
-                steps: vec![],
-                warnings: vec![],
-                assumptions: vec![],
-                budget: budget_info,
-            };
+            let resp = EngineJsonResponse::err(error, budget_info);
             return if opts.pretty {
                 resp.to_json_pretty()
             } else {

@@ -366,6 +366,19 @@ impl EngineJsonResponse {
         }
     }
 
+    pub fn err(error: EngineJsonError, budget: BudgetJsonInfo) -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            ok: false,
+            result: None,
+            error: Some(error),
+            steps: vec![],
+            warnings: vec![],
+            assumptions: vec![],
+            budget,
+        }
+    }
+
     pub fn with_warning(mut self, warning: EngineJsonWarning) -> Self {
         self.warnings.push(warning);
         self

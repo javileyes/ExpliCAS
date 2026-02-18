@@ -41,16 +41,7 @@ fn engine_json_error_from_cas_error(e: &CasError) -> EngineJsonError {
 }
 
 fn engine_json_response_err(error: &CasError, budget: BudgetJsonInfo) -> EngineJsonResponse {
-    EngineJsonResponse {
-        schema_version: SCHEMA_VERSION,
-        ok: false,
-        result: None,
-        error: Some(engine_json_error_from_cas_error(error)),
-        steps: vec![],
-        warnings: vec![],
-        assumptions: vec![],
-        budget,
-    }
+    EngineJsonResponse::err(engine_json_error_from_cas_error(error), budget)
 }
 
 fn budget_with_exceeded(mut budget: BudgetJsonInfo, b: &BudgetExceeded) -> BudgetJsonInfo {
