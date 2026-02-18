@@ -173,28 +173,3 @@ pub fn resolve_all_with_diagnostics(
         map_cache_hit_traces(resolved.cache_hits),
     ))
 }
-
-/// Resolve session references (`#N`) and environment bindings from `SessionState`.
-pub fn resolve_all_from_state(
-    ctx: &mut cas_ast::Context,
-    expr: cas_ast::ExprId,
-    state: &SessionState,
-) -> Result<cas_ast::ExprId, ResolveError> {
-    state.resolve_state_refs(ctx, expr)
-}
-
-/// Resolve references and return inherited diagnostics + cache hit traces.
-pub fn resolve_all_with_diagnostics_from_state(
-    ctx: &mut cas_ast::Context,
-    expr: cas_ast::ExprId,
-    state: &SessionState,
-) -> Result<
-    (
-        cas_ast::ExprId,
-        cas_engine::diagnostics::Diagnostics,
-        Vec<CacheHitEntryId>,
-    ),
-    ResolveError,
-> {
-    state.resolve_state_refs_with_diagnostics(ctx, expr)
-}
