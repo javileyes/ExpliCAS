@@ -8,10 +8,10 @@ use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr};
-use cas_math::poly_modp_conv::{
-    expr_to_poly_modp_with_store as expr_to_poly_modp, PolyModpBudget, VarTable, DEFAULT_PRIME,
+use cas_math::poly_modp_conv::DEFAULT_PRIME;
+use cas_math::poly_store::{
+    compute_poly_mul_modp_meta, PolyMeta, PolyMulMetaError, POLY_MAX_STORE_TERMS,
 };
-use cas_math::poly_store::{PolyMeta, POLY_MAX_STORE_TERMS};
 
 // =============================================================================
 // poly_mul_modp(a, b [, p]) -> poly_ref(id)
@@ -47,43 +47,24 @@ define_rule!(
             DEFAULT_PRIME
         };
 
-        // Convert both to MultiPolyModP
-        let budget = PolyModpBudget::default();
-        let mut vars = VarTable::new();
-
-        let pa = match expr_to_poly_modp(ctx, a_expr, p, &budget, &mut vars) {
-            Ok(poly) => poly,
-            Err(_) => return None,
-        };
-
-        let pb = match expr_to_poly_modp(ctx, b_expr, p, &budget, &mut vars) {
-            Ok(poly) => poly,
-            Err(_) => return None,
-        };
-
-        // Guard: estimate product size and abort if too large
-        let est_terms = (pa.num_terms() as u128) * (pb.num_terms() as u128);
-        if est_terms > POLY_MAX_STORE_TERMS as u128 {
-            tracing::warn!(
-                estimated_terms = %est_terms,
-                limit = POLY_MAX_STORE_TERMS,
-                "poly_mul_modp aborted: estimated {} terms exceeds limit {}",
-                est_terms, POLY_MAX_STORE_TERMS
-            );
-            return None;
-        }
-
-        // Multiply in mod-p space (fast)
-        let product = pa.mul(&pb);
-
-        // Build metadata
-        let meta = PolyMeta {
-            modulus: p,
-            n_terms: product.num_terms(),
-            n_vars: vars.len(),
-            max_total_degree: product.total_degree(),
-            var_names: vars.names().iter().map(|s| s.to_string()).collect(),
-        };
+        let meta: PolyMeta =
+            match compute_poly_mul_modp_meta(ctx, a_expr, b_expr, p, POLY_MAX_STORE_TERMS) {
+                Ok(meta) => meta,
+                Err(PolyMulMetaError::ConversionFailed) => return None,
+                Err(PolyMulMetaError::EstimatedTooLarge {
+                    estimated_terms,
+                    limit,
+                }) => {
+                    tracing::warn!(
+                        estimated_terms = %estimated_terms,
+                        limit = limit,
+                        "poly_mul_modp aborted: estimated {} terms exceeds limit {}",
+                        estimated_terms,
+                        limit
+                    );
+                    return None;
+                }
+            };
 
         // NOTE: We cannot insert into poly_store here because rules don't have
         // mutable access to SessionState. This will be handled by the eager evaluator

@@ -264,6 +264,54 @@ impl PolyStore {
 /// Above this, poly_mul_modp() aborts to prevent memory explosion.
 pub const POLY_MAX_STORE_TERMS: usize = 10_000_000;
 
+/// Error computing mod-p multiplication metadata.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PolyMulMetaError {
+    /// At least one expression could not be converted to polynomial form.
+    ConversionFailed,
+    /// Estimated product size exceeds configured limit.
+    EstimatedTooLarge { estimated_terms: u128, limit: usize },
+}
+
+/// Compute metadata for `poly_mul_modp(a, b)` without storing materialized AST.
+///
+/// This performs conversion to mod-p polynomials, applies a term explosion guard,
+/// multiplies in polynomial space, and returns resulting metadata.
+pub fn compute_poly_mul_modp_meta(
+    ctx: &Context,
+    a_expr: ExprId,
+    b_expr: ExprId,
+    p: u64,
+    max_store_terms: usize,
+) -> Result<PolyMeta, PolyMulMetaError> {
+    use crate::poly_modp_conv::{expr_to_poly_modp_with_store, PolyModpBudget, VarTable};
+
+    let budget = PolyModpBudget::default();
+    let mut vars = VarTable::new();
+
+    let pa = expr_to_poly_modp_with_store(ctx, a_expr, p, &budget, &mut vars)
+        .map_err(|_| PolyMulMetaError::ConversionFailed)?;
+    let pb = expr_to_poly_modp_with_store(ctx, b_expr, p, &budget, &mut vars)
+        .map_err(|_| PolyMulMetaError::ConversionFailed)?;
+
+    let est_terms = (pa.num_terms() as u128) * (pb.num_terms() as u128);
+    if est_terms > max_store_terms as u128 {
+        return Err(PolyMulMetaError::EstimatedTooLarge {
+            estimated_terms: est_terms,
+            limit: max_store_terms,
+        });
+    }
+
+    let product = pa.mul(&pb);
+    Ok(PolyMeta {
+        modulus: p,
+        n_terms: product.num_terms(),
+        n_vars: vars.len(),
+        max_total_degree: product.total_degree(),
+        var_names: vars.names().to_vec(),
+    })
+}
+
 // =============================================================================
 // Thread-local PolyStore for evaluation contexts
 // =============================================================================
@@ -550,6 +598,8 @@ pub fn try_get_poly_result_term_count(ctx: &Context, expr: ExprId) -> Option<usi
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_ast::Context;
+    use cas_parser::parse;
 
     #[test]
     fn test_poly_store_basic() {
@@ -592,5 +642,44 @@ mod tests {
 
         let m = thread_local_meta(id).unwrap();
         assert_eq!(m.modulus, 101);
+    }
+
+    #[test]
+    fn test_compute_poly_mul_modp_meta_ok() {
+        let mut ctx = Context::new();
+        let a = parse("x+1", &mut ctx).unwrap();
+        let b = parse("x-1", &mut ctx).unwrap();
+
+        let meta = compute_poly_mul_modp_meta(&ctx, a, b, 101, POLY_MAX_STORE_TERMS).unwrap();
+        assert_eq!(meta.modulus, 101);
+        assert_eq!(meta.n_vars, 1);
+        assert_eq!(meta.max_total_degree, 2);
+        assert_eq!(meta.var_names, vec!["x".to_string()]);
+    }
+
+    #[test]
+    fn test_compute_poly_mul_modp_meta_conversion_failed() {
+        let mut ctx = Context::new();
+        let a = parse("sin(x)", &mut ctx).unwrap();
+        let b = parse("x+1", &mut ctx).unwrap();
+
+        let result = compute_poly_mul_modp_meta(&ctx, a, b, 101, POLY_MAX_STORE_TERMS);
+        assert!(matches!(result, Err(PolyMulMetaError::ConversionFailed)));
+    }
+
+    #[test]
+    fn test_compute_poly_mul_modp_meta_estimated_too_large() {
+        let mut ctx = Context::new();
+        let a = parse("x+1", &mut ctx).unwrap();
+        let b = parse("x+1", &mut ctx).unwrap();
+
+        let result = compute_poly_mul_modp_meta(&ctx, a, b, 101, 1);
+        assert!(matches!(
+            result,
+            Err(PolyMulMetaError::EstimatedTooLarge {
+                estimated_terms: 4,
+                limit: 1,
+            })
+        ));
     }
 }
