@@ -36,7 +36,7 @@ use crate::Step;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::poly_store::{
     thread_local_add, thread_local_mul, thread_local_neg, thread_local_pow,
-    thread_local_promote_expr_with_base, thread_local_sub, PolyId,
+    thread_local_promote_expr_with_base, thread_local_sub,
 };
 
 /// Maximum node count for promotion (guards against huge expressions)
@@ -90,15 +90,15 @@ fn lower_recursive(
             let nl = lower_recursive(ctx, l, steps, combined_any, collect_steps);
             let nr = lower_recursive(ctx, r, steps, combined_any, collect_steps);
 
-            let id_l = extract_poly_result_id(ctx, nl);
-            let id_r = extract_poly_result_id(ctx, nr);
+            let id_l = cas_math::poly_result::parse_poly_result_id(ctx, nl);
+            let id_r = cas_math::poly_result::parse_poly_result_id(ctx, nr);
 
             match (id_l, id_r) {
                 // Both are poly_result
                 (Some(id_l), Some(id_r)) => {
                     if let Some(new_id) = thread_local_add(id_l, id_r) {
                         *combined_any = true;
-                        let result = make_poly_result(ctx, new_id);
+                        let result = cas_math::poly_result::wrap_poly_result(ctx, new_id);
 
                         if collect_steps {
                             steps.push(Step::new(
@@ -124,7 +124,7 @@ fn lower_recursive(
                     ) {
                         if let Some(new_id) = thread_local_add(id_l, id_r_promoted) {
                             *combined_any = true;
-                            let result = make_poly_result(ctx, new_id);
+                            let result = cas_math::poly_result::wrap_poly_result(ctx, new_id);
 
                             if collect_steps {
                                 steps.push(Step::new(
@@ -151,7 +151,7 @@ fn lower_recursive(
                     ) {
                         if let Some(new_id) = thread_local_add(id_l_promoted, id_r) {
                             *combined_any = true;
-                            let result = make_poly_result(ctx, new_id);
+                            let result = cas_math::poly_result::wrap_poly_result(ctx, new_id);
 
                             steps.push(Step::new(
                                 "Poly lowering: promoted and combined expressions",
@@ -182,15 +182,15 @@ fn lower_recursive(
             let nl = lower_recursive(ctx, l, steps, combined_any, collect_steps);
             let nr = lower_recursive(ctx, r, steps, combined_any, collect_steps);
 
-            let id_l = extract_poly_result_id(ctx, nl);
-            let id_r = extract_poly_result_id(ctx, nr);
+            let id_l = cas_math::poly_result::parse_poly_result_id(ctx, nl);
+            let id_r = cas_math::poly_result::parse_poly_result_id(ctx, nr);
 
             match (id_l, id_r) {
                 // Both are poly_result
                 (Some(id_l), Some(id_r)) => {
                     if let Some(new_id) = thread_local_sub(id_l, id_r) {
                         *combined_any = true;
-                        let result = make_poly_result(ctx, new_id);
+                        let result = cas_math::poly_result::wrap_poly_result(ctx, new_id);
 
                         if collect_steps {
                             steps.push(Step::new(
@@ -216,7 +216,7 @@ fn lower_recursive(
                     ) {
                         if let Some(new_id) = thread_local_sub(id_l, id_r_promoted) {
                             *combined_any = true;
-                            let result = make_poly_result(ctx, new_id);
+                            let result = cas_math::poly_result::wrap_poly_result(ctx, new_id);
 
                             if collect_steps {
                                 steps.push(Step::new(
@@ -243,7 +243,7 @@ fn lower_recursive(
                     ) {
                         if let Some(new_id) = thread_local_sub(id_l_promoted, id_r) {
                             *combined_any = true;
-                            let result = make_poly_result(ctx, new_id);
+                            let result = cas_math::poly_result::wrap_poly_result(ctx, new_id);
 
                             if collect_steps {
                                 steps.push(Step::new(
@@ -275,15 +275,15 @@ fn lower_recursive(
             let nl = lower_recursive(ctx, l, steps, combined_any, collect_steps);
             let nr = lower_recursive(ctx, r, steps, combined_any, collect_steps);
 
-            let id_l = extract_poly_result_id(ctx, nl);
-            let id_r = extract_poly_result_id(ctx, nr);
+            let id_l = cas_math::poly_result::parse_poly_result_id(ctx, nl);
+            let id_r = cas_math::poly_result::parse_poly_result_id(ctx, nr);
 
             match (id_l, id_r) {
                 // Both are poly_result
                 (Some(id_l), Some(id_r)) => {
                     if let Some(new_id) = thread_local_mul(id_l, id_r) {
                         *combined_any = true;
-                        let result = make_poly_result(ctx, new_id);
+                        let result = cas_math::poly_result::wrap_poly_result(ctx, new_id);
 
                         if collect_steps {
                             steps.push(Step::new(
@@ -309,7 +309,7 @@ fn lower_recursive(
                     ) {
                         if let Some(new_id) = thread_local_mul(id_l, id_r_promoted) {
                             *combined_any = true;
-                            let result = make_poly_result(ctx, new_id);
+                            let result = cas_math::poly_result::wrap_poly_result(ctx, new_id);
 
                             if collect_steps {
                                 steps.push(Step::new(
@@ -336,7 +336,7 @@ fn lower_recursive(
                     ) {
                         if let Some(new_id) = thread_local_mul(id_l_promoted, id_r) {
                             *combined_any = true;
-                            let result = make_poly_result(ctx, new_id);
+                            let result = cas_math::poly_result::wrap_poly_result(ctx, new_id);
 
                             if collect_steps {
                                 steps.push(Step::new(
@@ -367,10 +367,10 @@ fn lower_recursive(
         Expr::Neg(inner) => {
             let ni = lower_recursive(ctx, inner, steps, combined_any, collect_steps);
 
-            if let Some(id) = extract_poly_result_id(ctx, ni) {
+            if let Some(id) = cas_math::poly_result::parse_poly_result_id(ctx, ni) {
                 if let Some(new_id) = thread_local_neg(id) {
                     *combined_any = true;
-                    return make_poly_result(ctx, new_id);
+                    return cas_math::poly_result::wrap_poly_result(ctx, new_id);
                 }
             }
 
@@ -386,12 +386,12 @@ fn lower_recursive(
             let nb = lower_recursive(ctx, base, steps, combined_any, collect_steps);
             let ne = lower_recursive(ctx, exp, steps, combined_any, collect_steps);
 
-            if let Some(id) = extract_poly_result_id(ctx, nb) {
+            if let Some(id) = cas_math::poly_result::parse_poly_result_id(ctx, nb) {
                 if let Some(n) = extract_int(ctx, ne) {
                     if n >= 0 {
                         if let Some(new_id) = thread_local_pow(id, n as u32) {
                             *combined_any = true;
-                            return make_poly_result(ctx, new_id);
+                            return cas_math::poly_result::wrap_poly_result(ctx, new_id);
                         }
                     }
                 }
@@ -463,23 +463,6 @@ fn lower_recursive(
 // =============================================================================
 // Helper functions
 // =============================================================================
-
-/// Extract PolyId from poly_result(id) expression
-fn extract_poly_result_id(ctx: &Context, expr: ExprId) -> Option<PolyId> {
-    if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        if ctx.is_builtin(*fn_id, BuiltinFn::PolyResult) && args.len() == 1 {
-            if let Expr::Number(n) = ctx.get(args[0]) {
-                return n.to_integer().try_into().ok();
-            }
-        }
-    }
-    None
-}
-
-/// Create poly_result(id) expression
-fn make_poly_result(ctx: &mut Context, id: PolyId) -> ExprId {
-    cas_math::poly_result::wrap_poly_result(ctx, id)
-}
 
 /// Extract integer from expression
 fn extract_int(ctx: &Context, expr: ExprId) -> Option<i64> {
