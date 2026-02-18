@@ -8,10 +8,12 @@ use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_math::gcd_zippel_modp::ZippelPreset;
+use cas_math::poly_gcd_structural::poly_gcd_structural;
 use cas_math::poly_modp_conv::{
     check_poly_equal_modp_expr, compute_gcd_modp_expr_with_options,
     DEFAULT_PRIME as INTERNAL_DEFAULT_PRIME,
 };
+use num_traits::One;
 
 const DEFAULT_PRIME: u64 = INTERNAL_DEFAULT_PRIME;
 
@@ -38,165 +40,6 @@ fn strip_expand_wrapper(ctx: &Context, mut expr: ExprId) -> ExprId {
     }
 }
 
-/// Collect multiplicative factors with integer exponents from an expression.
-/// - Mul(...) is flattened
-/// - Pow(base, k) with integer k becomes (base, k)
-/// - Neg(x) is unwrapped (handled by returning negative sign separately)
-///
-/// Returns (is_negative, factors)
-fn collect_mul_factors(ctx: &Context, expr: ExprId) -> (bool, Vec<(ExprId, i64)>) {
-    let mut factors = Vec::new();
-
-    // Check for top-level Neg
-    let (is_neg, actual_expr) = match ctx.get(expr) {
-        Expr::Neg(inner) => (true, *inner),
-        _ => (false, expr),
-    };
-
-    collect_mul_factors_recursive(ctx, actual_expr, 1, &mut factors);
-    (is_neg, factors)
-}
-
-fn collect_mul_factors_recursive(
-    ctx: &Context,
-    expr: ExprId,
-    mult: i64,
-    factors: &mut Vec<(ExprId, i64)>,
-) {
-    match ctx.get(expr) {
-        Expr::Mul(left, right) => {
-            collect_mul_factors_recursive(ctx, *left, mult, factors);
-            collect_mul_factors_recursive(ctx, *right, mult, factors);
-        }
-        Expr::Pow(base, exp) => {
-            if let Some(k) = get_integer_exponent(ctx, *exp) {
-                factors.push((*base, mult * k));
-            } else {
-                factors.push((expr, mult));
-            }
-        }
-        _ => {
-            factors.push((expr, mult));
-        }
-    }
-}
-
-fn get_integer_exponent(ctx: &Context, exp: ExprId) -> Option<i64> {
-    match ctx.get(exp) {
-        Expr::Number(n) => {
-            if n.is_integer() {
-                n.to_integer().try_into().ok()
-            } else {
-                None
-            }
-        }
-        Expr::Neg(inner) => get_integer_exponent(ctx, *inner).map(|k| -k),
-        _ => None,
-    }
-}
-
-/// Extract common multiplicative factors between two expressions.
-/// Returns (common_factors, reduced_a, reduced_b) where:
-/// - common_factors: Vec of (base, min_exp) pairs
-/// - reduced_a, reduced_b: original expressions with common factors removed
-///
-/// Invariant: a = common * reduced_a, b = common * reduced_b
-#[allow(clippy::type_complexity)]
-fn extract_common_mul_factors(
-    ctx: &mut Context,
-    a: ExprId,
-    b: ExprId,
-) -> Option<(Vec<(ExprId, i64)>, ExprId, ExprId)> {
-    let (_neg_a, fa) = collect_mul_factors(ctx, a);
-    let (_neg_b, fb) = collect_mul_factors(ctx, b);
-
-    // Build factor maps for intersection
-    use std::collections::HashMap;
-
-    // Use DisplayExpr as key (not ideal but works for structural comparison)
-    let mut map_a: HashMap<String, (ExprId, i64)> = HashMap::new();
-    for (base, exp) in &fa {
-        let key = format!(
-            "{}",
-            DisplayExpr {
-                context: ctx,
-                id: *base
-            }
-        );
-        map_a
-            .entry(key)
-            .and_modify(|e| e.1 += exp)
-            .or_insert((*base, *exp));
-    }
-
-    let mut map_b: HashMap<String, (ExprId, i64)> = HashMap::new();
-    for (base, exp) in &fb {
-        let key = format!(
-            "{}",
-            DisplayExpr {
-                context: ctx,
-                id: *base
-            }
-        );
-        map_b
-            .entry(key)
-            .and_modify(|e| e.1 += exp)
-            .or_insert((*base, *exp));
-    }
-
-    // Find intersection: common factors with min exponent
-    let mut common: Vec<(ExprId, i64)> = Vec::new();
-    for (key, (base_a, exp_a)) in &map_a {
-        if let Some((_, exp_b)) = map_b.get(key) {
-            // Both have this factor - take minimum positive exponent
-            let min_exp = (*exp_a).min(*exp_b);
-            if min_exp > 0 {
-                common.push((*base_a, min_exp));
-            }
-        }
-    }
-
-    // If no common factors found, return None to skip optimization
-    if common.is_empty() {
-        return None;
-    }
-
-    // Build reduced expressions by dividing out common factors
-    let common_expr = build_product_from_factors(ctx, &common);
-
-    // For reduced expressions, we divide by common
-    // reduced_a = a / common, reduced_b = b / common
-    let reduced_a = ctx.add(Expr::Div(a, common_expr));
-    let reduced_b = ctx.add(Expr::Div(b, common_expr));
-
-    Some((common, reduced_a, reduced_b))
-}
-
-/// Build product expression from factors Vec<(base, exp)>
-fn build_product_from_factors(ctx: &mut Context, factors: &[(ExprId, i64)]) -> ExprId {
-    if factors.is_empty() {
-        return ctx.num(1);
-    }
-
-    let mut result: Option<ExprId> = None;
-
-    for &(base, exp) in factors {
-        let term = if exp == 1 {
-            base
-        } else {
-            let exp_expr = ctx.num(exp);
-            ctx.add(Expr::Pow(base, exp_expr))
-        };
-
-        result = Some(match result {
-            None => term,
-            Some(acc) => ctx.add(Expr::Mul(acc, term)),
-        });
-    }
-
-    result.unwrap_or_else(|| ctx.num(1))
-}
-
 /// Eager evaluation of poly_gcd_modp with factor extraction optimization.
 ///
 /// This function:
@@ -213,15 +56,19 @@ fn compute_gcd_modp_with_factor_extraction(
     let a0 = strip_expand_wrapper(ctx, a);
     let b0 = strip_expand_wrapper(ctx, b);
 
-    // Step 2: Try to extract common factors
-    if let Some((common, ra, rb)) = extract_common_mul_factors(ctx, a0, b0) {
-        // We have common factors! Compute gcd on reduced expressions
+    // Step 2: Try to extract common factors structurally
+    let common_expr = poly_gcd_structural(ctx, a0, b0);
+    let has_common_factor = !matches!(ctx.get(common_expr), Expr::Number(n) if n.is_one());
+
+    if has_common_factor {
+        let ra = ctx.add(Expr::Div(a0, common_expr));
+        let rb = ctx.add(Expr::Div(b0, common_expr));
+
         // IMPORTANT: Do NOT expand - compute_gcd_modp uses MultiPoly which handles Pow directly
-        // Just strip wrappers from reduced expressions too
         let ra_stripped = strip_expand_wrapper(ctx, ra);
         let rb_stripped = strip_expand_wrapper(ctx, rb);
 
-        // Compute gcd on reduced polynomials (MultiPoly handles Pow natively)
+        // Compute gcd on reduced polynomials (MultiPoly handles Pow natively).
         match compute_gcd_modp_expr_with_options(
             ctx,
             ra_stripped,
@@ -231,16 +78,9 @@ fn compute_gcd_modp_with_factor_extraction(
             None,
         ) {
             Ok(gcd_rest) => {
-                // Reconstruct: common * gcd_rest
-                let common_expr = build_product_from_factors(ctx, &common);
-
                 // If gcd_rest is 1, just return common
-                if let Expr::Number(n) = ctx.get(gcd_rest) {
-                    use num_traits::One;
-                    if n.is_one() {
-                        // Wrap in __hold
-                        return Some(cas_ast::hold::wrap_hold(ctx, common_expr));
-                    }
+                if matches!(ctx.get(gcd_rest), Expr::Number(n) if n.is_one()) {
+                    return Some(cas_ast::hold::wrap_hold(ctx, common_expr));
                 }
 
                 // Otherwise return common * gcd_rest
