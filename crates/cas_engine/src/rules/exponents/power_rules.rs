@@ -577,7 +577,7 @@ define_rule!(
 
 define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
     if let Some((base, exp)) = as_pow(ctx, expr) {
-        if let Some(result) = crate::const_eval::try_eval_pow_literal(ctx, base, exp) {
+        if let Some(result) = cas_math::const_eval::try_eval_pow_literal(ctx, base, exp) {
             return Some(Rewrite::new(result).desc("Evaluate literal power"));
         }
 

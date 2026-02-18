@@ -206,7 +206,7 @@ pub fn fold_pow(
 ) -> Option<ExprId> {
     // First: delegate integer exponent case to canonical const_eval helper
     // This covers: b^n for ℚ base and ℤ exponent, including edge cases (0^0, 0^-n)
-    if let Some(result) = crate::const_eval::try_eval_pow_literal(ctx, base, exp) {
+    if let Some(result) = cas_math::const_eval::try_eval_pow_literal(ctx, base, exp) {
         return Some(result);
     }
 

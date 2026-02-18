@@ -1,3 +1,4 @@
+pub mod const_eval;
 pub mod gcd_zippel_modp;
 pub mod matrix;
 pub mod modp;

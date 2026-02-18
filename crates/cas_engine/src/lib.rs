@@ -8,7 +8,6 @@ pub(crate) mod best_so_far;
 pub mod budget;
 pub mod canonical_forms;
 pub mod collect;
-pub(crate) mod const_eval;
 pub mod const_fold;
 pub(crate) mod cycle_detector;
 pub mod cycle_events;
