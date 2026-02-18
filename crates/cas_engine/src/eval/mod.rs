@@ -38,7 +38,26 @@ pub type SimplifiedCache = cas_session_core::cache::SimplifiedCache<
 pub type CacheHitTrace = cas_session_core::cache::CacheHitTrace<crate::diagnostics::RequiredItem>;
 
 /// Engine-level reference resolution error.
-pub type EvalResolveError = cas_session_core::types::ResolveError;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EvalResolveError {
+    /// Reference to non-existent entry.
+    NotFound(u64),
+    /// Circular reference detected (e.g., #3 -> #4 -> #3).
+    CircularReference(u64),
+}
+
+impl std::fmt::Display for EvalResolveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotFound(id) => write!(f, "Session reference #{} not found", id),
+            Self::CircularReference(id) => {
+                write!(f, "Circular reference detected involving #{}", id)
+            }
+        }
+    }
+}
+
+impl std::error::Error for EvalResolveError {}
 
 /// The central Engine struct that wraps the core Simplifier and potentially other components.
 ///

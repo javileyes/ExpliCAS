@@ -9,6 +9,15 @@ use crate::{
     SessionStore, SimplifyCacheKey, SnapshotError,
 };
 
+fn map_eval_resolve_error(err: ResolveError) -> cas_engine::eval::EvalResolveError {
+    match err {
+        ResolveError::NotFound(id) => cas_engine::eval::EvalResolveError::NotFound(id),
+        ResolveError::CircularReference(id) => {
+            cas_engine::eval::EvalResolveError::CircularReference(id)
+        }
+    }
+}
+
 /// Local adapter that bridges `cas_session::SessionStore` to `cas_engine::eval::EvalStore`.
 #[derive(Debug, Default)]
 pub struct SessionEvalStore(pub SessionStore);
@@ -250,6 +259,7 @@ impl EvalSession for SessionState {
         expr: ExprId,
     ) -> Result<ExprId, cas_engine::eval::EvalResolveError> {
         self.resolve_state_refs(ctx, expr)
+            .map_err(map_eval_resolve_error)
     }
 
     fn resolve_all_with_diagnostics(
@@ -261,5 +271,6 @@ impl EvalSession for SessionState {
         cas_engine::eval::EvalResolveError,
     > {
         self.resolve_state_refs_with_diagnostics(ctx, expr)
+            .map_err(map_eval_resolve_error)
     }
 }
