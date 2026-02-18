@@ -21,12 +21,12 @@ mod predicates;
 mod trig_roots_flatten;
 
 // Re-export all items for internal use
+pub(crate) use cas_math::numeric::*;
+pub(crate) use cas_math::numeric_eval::*;
 pub(crate) use complexity::*;
 pub(crate) use destructure::*;
 pub(crate) use extraction::*;
 pub(crate) use nf_scoring::*;
-pub(crate) use cas_math::numeric::*;
-pub(crate) use cas_math::numeric_eval::*;
 // eval_f64_with_substitution is used by integration tests (metamorphic divisor safety guard)
 pub use cas_math::numeric_eval::eval_f64_with_substitution;
 pub(crate) use pi::*;

@@ -44,7 +44,7 @@ pub(crate) mod pattern_scanner;
 pub mod phase;
 pub(crate) mod poly_lowering;
 pub(crate) mod poly_modp_conv;
-pub(crate) mod poly_result;
+pub(crate) use cas_math::poly_result;
 pub use cas_math::poly_store;
 pub mod profile_cache;
 pub mod profiler;
