@@ -75,6 +75,36 @@ impl MultiPoly {
         })
     }
 
+    /// Align this polynomial into a target variable order/space.
+    ///
+    /// Variables present in `self.vars` are remapped by name into `target_vars`.
+    /// Variables absent from `target_vars` are projected out (their exponents are dropped).
+    pub fn align_vars(&self, target_vars: &[String]) -> Self {
+        if self.vars == target_vars {
+            return self.clone();
+        }
+
+        let mapping: Vec<Option<usize>> = self
+            .vars
+            .iter()
+            .map(|v| target_vars.iter().position(|tv| tv == v))
+            .collect();
+
+        let mut map = BTreeMap::new();
+        for (coeff, mono) in &self.terms {
+            let mut new_mono = vec![0u32; target_vars.len()];
+            for (old_idx, &exp) in mono.iter().enumerate() {
+                if let Some(Some(new_idx)) = mapping.get(old_idx) {
+                    new_mono[*new_idx] = exp;
+                }
+            }
+            let entry = map.entry(new_mono).or_insert_with(BigRational::zero);
+            *entry = entry.clone() + coeff.clone();
+        }
+
+        Self::from_map(target_vars.to_vec(), map)
+    }
+
     /// Multiply two polynomials with budget
     pub fn mul(&self, other: &Self, budget: &PolyBudget) -> Result<Self, PolyError> {
         if self.vars != other.vars {

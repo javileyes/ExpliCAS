@@ -369,4 +369,43 @@ mod tests {
         // Result: x^2 - 1
         assert_eq!(r.num_terms(), 2);
     }
+
+    #[test]
+    fn test_align_vars_superset() {
+        let p = parse_to_multipoly("x + 1");
+        let target = vec!["x".to_string(), "y".to_string()];
+
+        let aligned = p.align_vars(&target);
+        assert_eq!(aligned.vars, target);
+        assert_eq!(aligned.num_terms(), 2);
+
+        let map = aligned.to_map();
+        assert_eq!(
+            map.get(&vec![1, 0]),
+            Some(&BigRational::from_integer(1.into()))
+        );
+        assert_eq!(
+            map.get(&vec![0, 0]),
+            Some(&BigRational::from_integer(1.into()))
+        );
+    }
+
+    #[test]
+    fn test_align_vars_reorder() {
+        let p = parse_to_multipoly("x + 2*y");
+        let target = vec!["y".to_string(), "x".to_string()];
+
+        let aligned = p.align_vars(&target);
+        assert_eq!(aligned.vars, target);
+
+        let map = aligned.to_map();
+        assert_eq!(
+            map.get(&vec![0, 1]),
+            Some(&BigRational::from_integer(1.into()))
+        );
+        assert_eq!(
+            map.get(&vec![1, 0]),
+            Some(&BigRational::from_integer(2.into()))
+        );
+    }
 }

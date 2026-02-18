@@ -912,7 +912,7 @@ fn lagrange_interpolate_multipoly(
         basis_numer = basis_numer.mul_scalar(&inv_denom);
 
         // Embed yi into all_vars
-        let yi_embedded = embed_multipoly(yi, &all_vars);
+        let yi_embedded = yi.align_vars(&all_vars);
 
         // Multiply basis * yi_embedded and add to result
         let term = basis_numer.mul(&yi_embedded, &PolyBudget::default()).ok()?;
@@ -940,41 +940,6 @@ fn var_minus_const(vars: &[String], var: &str, c: &BigRational) -> MultiPoly {
     MultiPoly::from_map(vars.to_vec(), map)
 }
 
-/// Embed MultiPoly into larger variable space
-fn embed_multipoly(p: &MultiPoly, target_vars: &[String]) -> MultiPoly {
-    if p.vars.is_empty() {
-        // Constant: embed into target_vars as constant term
-        if let Some(c) = p.constant_value() {
-            let mut map = BTreeMap::new();
-            if !c.is_zero() {
-                map.insert(vec![0u32; target_vars.len()], c);
-            }
-            return MultiPoly::from_map(target_vars.to_vec(), map);
-        }
-    }
-
-    // Map old var indices to new indices
-    let mapping: Vec<Option<usize>> = p
-        .vars
-        .iter()
-        .map(|v| target_vars.iter().position(|tv| tv == v))
-        .collect();
-
-    let mut map = BTreeMap::new();
-    for (coeff, mono) in &p.terms {
-        let mut new_mono = vec![0u32; target_vars.len()];
-        for (old_idx, &exp) in mono.iter().enumerate() {
-            if let Some(Some(new_idx)) = mapping.get(old_idx) {
-                new_mono[*new_idx] = exp;
-            }
-        }
-        let entry = map.entry(new_mono).or_insert_with(BigRational::zero);
-        *entry = entry.clone() + coeff.clone();
-    }
-
-    MultiPoly::from_map(target_vars.to_vec(), map)
-}
-
 /// Build GCD MultiPoly from coefficients
 fn build_gcd_multivar(
     all_vars: &[String],
@@ -986,7 +951,7 @@ fn build_gcd_multivar(
 
     for (k, coeff_poly) in coeffs.iter().enumerate() {
         // Embed coeff_poly (in param vars) into all_vars
-        let coeff_embedded = embed_multipoly(coeff_poly, all_vars);
+        let coeff_embedded = coeff_poly.align_vars(all_vars);
 
         for (c, mono) in &coeff_embedded.terms {
             if c.is_zero() {

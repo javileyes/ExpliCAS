@@ -10,7 +10,7 @@ use cas_math::multipoly::{
     gcd_multivar_layer2, gcd_multivar_layer25, multipoly_from_expr, multipoly_to_expr, GcdBudget,
     GcdLayer, Layer25Budget, MultiPoly, PolyBudget,
 };
-use num_traits::{One, Zero};
+use num_traits::One;
 
 // =============================================================================
 // Context-aware helpers for AddFractionsRule gating
@@ -190,50 +190,6 @@ pub(super) fn build_mul_from_factors_a1(ctx: &mut Context, factors: &[(ExprId, i
 // Multivariate GCD (Layers 1 + 2 + 2.5)
 // =============================================================================
 
-/// Align MultiPoly to a target variable set by embedding it into the larger space.
-/// For example, a polynomial in [h] can be embedded into [h, x] by adding zero exponents for x.
-fn align_multipoly_vars(p: &MultiPoly, target_vars: &[String]) -> MultiPoly {
-    use std::collections::BTreeMap;
-
-    if p.vars == target_vars {
-        return p.clone();
-    }
-
-    // Map old var indices to new indices
-    let mapping: Vec<Option<usize>> = p
-        .vars
-        .iter()
-        .map(|v| target_vars.iter().position(|tv| tv == v))
-        .collect();
-
-    let mut new_terms: Vec<(num_rational::BigRational, Vec<u32>)> = Vec::new();
-    let mut term_map: BTreeMap<Vec<u32>, num_rational::BigRational> = BTreeMap::new();
-
-    for (coeff, mono) in &p.terms {
-        let mut new_mono = vec![0u32; target_vars.len()];
-        for (old_idx, &exp) in mono.iter().enumerate() {
-            if let Some(Some(new_idx)) = mapping.get(old_idx) {
-                new_mono[*new_idx] = exp;
-            }
-        }
-        let entry = term_map
-            .entry(new_mono)
-            .or_insert_with(num_rational::BigRational::zero);
-        *entry = entry.clone() + coeff.clone();
-    }
-
-    for (mono, coeff) in term_map {
-        if !coeff.is_zero() {
-            new_terms.push((coeff, mono));
-        }
-    }
-
-    MultiPoly {
-        vars: target_vars.to_vec(),
-        terms: new_terms,
-    }
-}
-
 /// Try to compute GCD of two expressions using multivariate polynomial representation.
 /// Returns None if expressions can't be converted to polynomials or if GCD is trivial (1).
 /// Returns Some((quotient_num, quotient_den, gcd_expr, layer)) if non-trivial GCD found.
@@ -267,8 +223,8 @@ pub(super) fn try_multivar_gcd(
         all_vars.sort();
 
         // Embed both polynomials into the shared variable space
-        let p_num_aligned = align_multipoly_vars(&p_num, &all_vars);
-        let p_den_aligned = align_multipoly_vars(&p_den, &all_vars);
+        let p_num_aligned = p_num.align_vars(&all_vars);
+        let p_den_aligned = p_den.align_vars(&all_vars);
         (p_num_aligned, p_den_aligned)
     } else {
         (p_num, p_den)
