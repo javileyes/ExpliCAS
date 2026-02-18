@@ -53,16 +53,13 @@ pub fn substitute_str_to_json(
         Ok(id) => id,
         Err(e) => {
             let resp = SubstituteJsonResponse::err(
-                ApiEngineJsonError {
-                    kind: "ParseError",
-                    code: "E_PARSE",
-                    message: format!("Failed to parse expression: {}", e),
-                    span: e.span().map(|s| ApiSpanJson {
+                ApiEngineJsonError::parse(
+                    format!("Failed to parse expression: {}", e),
+                    e.span().map(|s| ApiSpanJson {
                         start: s.start,
                         end: s.end,
                     }),
-                    details: serde_json::Value::Null,
-                },
+                ),
                 request.clone(),
                 options.clone(),
             );
@@ -78,16 +75,13 @@ pub fn substitute_str_to_json(
         Ok(id) => id,
         Err(e) => {
             let resp = SubstituteJsonResponse::err(
-                ApiEngineJsonError {
-                    kind: "ParseError",
-                    code: "E_PARSE",
-                    message: format!("Failed to parse target: {}", e),
-                    span: e.span().map(|s| ApiSpanJson {
+                ApiEngineJsonError::parse(
+                    format!("Failed to parse target: {}", e),
+                    e.span().map(|s| ApiSpanJson {
                         start: s.start,
                         end: s.end,
                     }),
-                    details: serde_json::Value::Null,
-                },
+                ),
                 request.clone(),
                 options.clone(),
             );
@@ -103,16 +97,13 @@ pub fn substitute_str_to_json(
         Ok(id) => id,
         Err(e) => {
             let resp = SubstituteJsonResponse::err(
-                ApiEngineJsonError {
-                    kind: "ParseError",
-                    code: "E_PARSE",
-                    message: format!("Failed to parse replacement: {}", e),
-                    span: e.span().map(|s| ApiSpanJson {
+                ApiEngineJsonError::parse(
+                    format!("Failed to parse replacement: {}", e),
+                    e.span().map(|s| ApiSpanJson {
                         start: s.start,
                         end: s.end,
                     }),
-                    details: serde_json::Value::Null,
-                },
+                ),
                 request.clone(),
                 options.clone(),
             );

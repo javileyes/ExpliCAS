@@ -315,6 +315,26 @@ impl EngineJsonError {
             details: serde_json::Value::Null,
         }
     }
+
+    pub fn parse(message: impl Into<String>, span: Option<SpanJson>) -> Self {
+        Self {
+            kind: "ParseError",
+            code: "E_PARSE",
+            message: message.into(),
+            span,
+            details: serde_json::Value::Null,
+        }
+    }
+
+    pub fn invalid_input(message: impl Into<String>, details: serde_json::Value) -> Self {
+        Self {
+            kind: "InvalidInput",
+            code: "E_INVALID_INPUT",
+            message: message.into(),
+            span: None,
+            details,
+        }
+    }
 }
 
 /// Unified JSON response for engine-like operations.

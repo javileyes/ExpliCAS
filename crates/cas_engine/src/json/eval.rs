@@ -31,13 +31,10 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
         Err(e) => {
             // Invalid optsJson -> return error response
             let budget = BudgetJsonInfo::new("unknown", true);
-            let error = EngineJsonError {
-                kind: "InvalidInput",
-                code: "E_INVALID_INPUT",
-                message: format!("Invalid options JSON: {}", e),
-                span: None,
-                details: serde_json::json!({ "error": e.to_string() }),
-            };
+            let error = EngineJsonError::invalid_input(
+                format!("Invalid options JSON: {}", e),
+                serde_json::json!({ "error": e.to_string() }),
+            );
             let resp = EngineJsonResponse::err(error, budget);
             return if opts_json.contains("\"pretty\":true") {
                 resp.to_json_pretty()
@@ -58,16 +55,13 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
     let parsed = match cas_parser::parse(expr, &mut engine.simplifier.context) {
         Ok(id) => id,
         Err(e) => {
-            let error = EngineJsonError {
-                kind: "ParseError",
-                code: "E_PARSE",
-                message: e.to_string(),
-                span: e.span().map(|s| SpanJson {
+            let error = EngineJsonError::parse(
+                e.to_string(),
+                e.span().map(|s| SpanJson {
                     start: s.start,
                     end: s.end,
                 }),
-                details: serde_json::Value::Null,
-            };
+            );
             let resp = EngineJsonResponse::err(error, budget_info);
             return if opts.pretty {
                 resp.to_json_pretty()
