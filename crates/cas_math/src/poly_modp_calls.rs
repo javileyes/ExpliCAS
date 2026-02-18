@@ -64,3 +64,54 @@ pub fn build_poly_mul_stats_expr(ctx: &mut Context, meta: &PolyMeta) -> ExprId {
     let modulus = ctx.num(meta.modulus as i64);
     ctx.call("poly_mul_stats", vec![terms, degree, nvars, modulus])
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_ast::Expr;
+    use cas_parser::parse;
+
+    #[test]
+    fn eq_indicator_returns_true_and_one_for_equivalent_polys() {
+        let mut ctx = Context::new();
+        let a = parse("x + 1", &mut ctx).expect("parse a");
+        let b = parse("1 + x", &mut ctx).expect("parse b");
+
+        let (indicator, equal) = compute_poly_eq_modp_indicator(&mut ctx, a, b, 101).expect("eq");
+        assert!(equal);
+        assert_eq!(
+            ctx.get(indicator),
+            &Expr::Number(num_rational::BigRational::from_integer(1.into()))
+        );
+    }
+
+    #[test]
+    fn gcd_result_is_wrapped_in_hold() {
+        let mut ctx = Context::new();
+        let a = parse("x^2 + 1", &mut ctx).expect("parse a");
+        let b = parse("x + 1", &mut ctx).expect("parse b");
+
+        let held = compute_gcd_modp_held_expr(&mut ctx, a, b, 101, None, None).expect("gcd");
+        assert!(cas_ast::hold::is_hold(&ctx, held));
+    }
+
+    #[test]
+    fn poly_mul_stats_expr_shape() {
+        let mut ctx = Context::new();
+        let meta = PolyMeta {
+            modulus: 101,
+            n_terms: 12,
+            n_vars: 3,
+            max_total_degree: 7,
+            var_names: vec!["x".to_string(), "y".to_string(), "z".to_string()],
+        };
+        let stats = build_poly_mul_stats_expr(&mut ctx, &meta);
+
+        if let Expr::Function(fn_id, args) = ctx.get(stats) {
+            assert_eq!(ctx.sym_name(*fn_id), "poly_mul_stats");
+            assert_eq!(args.len(), 4);
+        } else {
+            panic!("expected poly_mul_stats function");
+        }
+    }
+}
