@@ -9,8 +9,8 @@ use anyhow::Result;
 use clap::Args;
 
 use cas_api_models::{
-    AssumptionDto, ConditionDto, EngineInfo, ExprDto, OutputEnvelope, RequestInfo, RequestOptions,
-    ResultDto, TransparencyDto,
+    AssumptionDto, ConditionDto, ExprDto, OutputEnvelope, RequestInfo, RequestOptions,
+    TransparencyDto,
 };
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
@@ -39,21 +39,8 @@ pub fn run(args: EnvelopeJsonArgs) {
             print_pretty_json(&output);
         }
         Err(e) => {
-            let error_envelope = OutputEnvelope {
-                schema_version: 1,
-                engine: EngineInfo::default(),
-                request: RequestInfo {
-                    kind: "eval".to_string(),
-                    input: args.expr.clone(),
-                    solve_var: None,
-                    options: RequestOptions::default(),
-                },
-                result: ResultDto::Error {
-                    message: e.to_string(),
-                },
-                transparency: TransparencyDto::default(),
-                steps: vec![],
-            };
+            let error_envelope =
+                OutputEnvelope::eval_error(build_request_info(&args), e.to_string());
             print_pretty_json(&error_envelope);
         }
     }
@@ -98,19 +85,11 @@ fn run_inner(args: &EnvelopeJsonArgs) -> Result<OutputEnvelope> {
         EvalResult::Expr(e) => *e,
         EvalResult::Set(v) if !v.is_empty() => v[0],
         EvalResult::Bool(b) => {
-            return Ok(OutputEnvelope {
-                schema_version: 1,
-                engine: EngineInfo::default(),
-                request: build_request_info(args),
-                result: ResultDto::Eval {
-                    value: ExprDto {
-                        display: b.to_string(),
-                        canonical: b.to_string(),
-                    },
-                },
-                transparency: build_transparency(&output, &engine.simplifier.context),
-                steps: vec![],
-            });
+            return Ok(OutputEnvelope::eval_success(
+                build_request_info(args),
+                ExprDto::from_display(b.to_string()),
+                build_transparency(&output, &engine.simplifier.context),
+            ));
         }
         _ => {
             return Err(anyhow::anyhow!("No result expression"));
@@ -124,33 +103,23 @@ fn run_inner(args: &EnvelopeJsonArgs) -> Result<OutputEnvelope> {
     }
     .to_string();
 
-    Ok(OutputEnvelope {
-        schema_version: 1,
-        engine: EngineInfo::default(),
-        request: build_request_info(args),
-        result: ResultDto::Eval {
-            value: ExprDto {
-                display: display.clone(),
-                canonical: display,
-            },
-        },
-        transparency: build_transparency(&output, &engine.simplifier.context),
-        steps: vec![], // TODO: populate if steps enabled
-    })
+    Ok(OutputEnvelope::eval_success(
+        build_request_info(args),
+        ExprDto::from_display(display),
+        build_transparency(&output, &engine.simplifier.context),
+    ))
 }
 
 fn build_request_info(args: &EnvelopeJsonArgs) -> RequestInfo {
-    RequestInfo {
-        kind: "eval".to_string(),
-        input: args.expr.clone(),
-        solve_var: None,
-        options: RequestOptions {
+    RequestInfo::eval(
+        args.expr.clone(),
+        RequestOptions {
             domain_mode: args.domain.clone(),
             value_domain: args.value_domain.clone(),
             hints: true,
             explain: false,
         },
-    }
+    )
 }
 
 fn build_transparency(output: &EvalOutput, ctx: &cas_ast::Context) -> TransparencyDto {

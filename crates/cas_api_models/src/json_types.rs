@@ -645,6 +645,16 @@ pub struct ExprDto {
     pub canonical: String,
 }
 
+impl ExprDto {
+    pub fn from_display(display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            display: display.clone(),
+            canonical: display,
+        }
+    }
+}
+
 /// Result (polymorphic by kind).
 #[derive(Serialize, Debug)]
 #[serde(tag = "kind")]
@@ -760,4 +770,45 @@ pub struct StepDto {
     pub assumptions_used: Vec<AssumptionDto>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub required_conditions: Vec<ConditionDto>,
+}
+
+impl RequestInfo {
+    pub fn eval(input: impl Into<String>, options: RequestOptions) -> Self {
+        Self {
+            kind: "eval".to_string(),
+            input: input.into(),
+            solve_var: None,
+            options,
+        }
+    }
+}
+
+impl OutputEnvelope {
+    pub fn eval_success(
+        request: RequestInfo,
+        value: ExprDto,
+        transparency: TransparencyDto,
+    ) -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            engine: EngineInfo::default(),
+            request,
+            result: ResultDto::Eval { value },
+            transparency,
+            steps: vec![],
+        }
+    }
+
+    pub fn eval_error(request: RequestInfo, message: impl Into<String>) -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            engine: EngineInfo::default(),
+            request,
+            result: ResultDto::Error {
+                message: message.into(),
+            },
+            transparency: TransparencyDto::default(),
+            steps: vec![],
+        }
+    }
 }
