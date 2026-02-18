@@ -3,15 +3,64 @@
 //! These tests verify the stable JSON schema for CLI and FFI consumers.
 //! Breaking these tests = breaking external API.
 
-use cas_api_models::{BudgetJsonInfo, EngineJsonError, EngineJsonResponse, SCHEMA_VERSION};
-use cas_engine::{
-    BudgetExceeded, BudgetJsonInfoExt, CasError, EngineJsonErrorExt, EngineJsonResponseExt, Metric,
-    Operation,
+use cas_api_models::{
+    BudgetExceededJson, BudgetJsonInfo, EngineJsonError, EngineJsonResponse, SCHEMA_VERSION,
 };
+use cas_engine::{BudgetExceeded, CasError, Metric, Operation};
 use serde_json::Value;
 
 fn parse_json(s: &str) -> Value {
     serde_json::from_str(s).expect("valid JSON")
+}
+
+fn engine_json_error_from_cas_error(e: &CasError) -> EngineJsonError {
+    let details = match e {
+        CasError::BudgetExceeded(b) => serde_json::json!({
+            "op": format!("{:?}", b.op),
+            "metric": format!("{:?}", b.metric),
+            "used": b.used,
+            "limit": b.limit,
+        }),
+        CasError::InvalidMatrix { reason } => serde_json::json!({
+            "reason": reason
+        }),
+        CasError::ConversionFailed { from, to } => serde_json::json!({
+            "from": from,
+            "to": to
+        }),
+        _ => serde_json::Value::Null,
+    };
+
+    EngineJsonError {
+        kind: e.kind(),
+        code: e.code(),
+        message: e.to_string(),
+        span: None,
+        details,
+    }
+}
+
+fn engine_json_response_err(error: &CasError, budget: BudgetJsonInfo) -> EngineJsonResponse {
+    EngineJsonResponse {
+        schema_version: SCHEMA_VERSION,
+        ok: false,
+        result: None,
+        error: Some(engine_json_error_from_cas_error(error)),
+        steps: vec![],
+        warnings: vec![],
+        assumptions: vec![],
+        budget,
+    }
+}
+
+fn budget_with_exceeded(mut budget: BudgetJsonInfo, b: &BudgetExceeded) -> BudgetJsonInfo {
+    budget.exceeded = Some(BudgetExceededJson {
+        op: format!("{:?}", b.op),
+        metric: format!("{:?}", b.metric),
+        used: b.used,
+        limit: b.limit,
+    });
+    budget
 }
 
 // =============================================================================
@@ -47,7 +96,7 @@ fn test_json_success_contract() {
 fn test_json_error_contract() {
     let budget = BudgetJsonInfo::cli(true);
     let err = CasError::DivisionByZero;
-    let resp = EngineJsonResponse::err(&err, budget);
+    let resp = engine_json_response_err(&err, budget);
     let json = parse_json(&resp.to_json());
 
     // Required fields
@@ -70,7 +119,7 @@ fn test_json_error_contract() {
 #[test]
 fn test_json_parse_error_contract() {
     let err = CasError::ParseError("unexpected token".into());
-    let json_err = EngineJsonError::from_cas_error(&err);
+    let json_err = engine_json_error_from_cas_error(&err);
 
     assert_eq!(
         json_err.kind, "ParseError",
@@ -82,7 +131,7 @@ fn test_json_parse_error_contract() {
 #[test]
 fn test_json_domain_error_contract() {
     let err = CasError::DivisionByZero;
-    let json_err = EngineJsonError::from_cas_error(&err);
+    let json_err = engine_json_error_from_cas_error(&err);
 
     assert_eq!(
         json_err.kind, "DomainError",
@@ -102,7 +151,7 @@ fn test_json_budget_exceeded_contract() {
         used: 150,
         limit: 100,
     });
-    let json_err = EngineJsonError::from_cas_error(&budget_err);
+    let json_err = engine_json_error_from_cas_error(&budget_err);
 
     // Kind/code stability
     assert_eq!(json_err.kind, "BudgetExceeded");
@@ -124,7 +173,7 @@ fn test_json_not_implemented_contract() {
     let err = CasError::NotImplemented {
         feature: "matrix inverse".into(),
     };
-    let json_err = EngineJsonError::from_cas_error(&err);
+    let json_err = engine_json_error_from_cas_error(&err);
 
     assert_eq!(json_err.kind, "NotImplemented");
     assert_eq!(json_err.code, "E_NOT_IMPL");
@@ -133,7 +182,7 @@ fn test_json_not_implemented_contract() {
 #[test]
 fn test_json_internal_error_contract() {
     let err = CasError::InternalError("assertion failed".into());
-    let json_err = EngineJsonError::from_cas_error(&err);
+    let json_err = engine_json_error_from_cas_error(&err);
 
     assert_eq!(json_err.kind, "InternalError");
     assert_eq!(json_err.code, "E_INTERNAL");
@@ -166,7 +215,7 @@ fn test_json_kind_in_known_set() {
     ];
 
     for e in errors {
-        let json_err = EngineJsonError::from_cas_error(&e);
+        let json_err = engine_json_error_from_cas_error(&e);
         assert!(
             valid_kinds.contains(&json_err.kind),
             "Unknown kind: {} for error {:?}",
@@ -186,7 +235,7 @@ fn test_json_code_prefix() {
     ];
 
     for e in errors {
-        let json_err = EngineJsonError::from_cas_error(&e);
+        let json_err = engine_json_error_from_cas_error(&e);
         assert!(
             json_err.code.starts_with("E_"),
             "Code {} must start with E_",
@@ -203,7 +252,7 @@ fn test_json_code_prefix() {
 fn test_json_no_hold_in_error_message() {
     // Simulate an error that might accidentally contain __hold
     let err = CasError::SolverError("Cannot solve __hold(x)".into());
-    let json_err = EngineJsonError::from_cas_error(&err);
+    let json_err = engine_json_error_from_cas_error(&err);
 
     // Note: This test documents that we SHOULD strip __hold from messages
     // In a real scenario, the engine should strip __hold before creating errors
@@ -256,7 +305,7 @@ fn test_json_budget_exceeded_in_best_effort() {
         used: 200,
         limit: 100,
     };
-    let budget = BudgetJsonInfo::cli(false).with_exceeded(&exceeded);
+    let budget = budget_with_exceeded(BudgetJsonInfo::cli(false), &exceeded);
     let resp = EngineJsonResponse::ok("partial result".into(), budget);
     let json = parse_json(&resp.to_json());
 
