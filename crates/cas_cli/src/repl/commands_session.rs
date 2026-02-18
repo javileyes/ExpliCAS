@@ -68,11 +68,11 @@ impl Repl {
                 self.core.state.unset_binding(name);
 
                 // Substitute using current environment and session refs
-                let rhs_substituted = match cas_session::resolve_all_from_state(
-                    &mut self.core.engine.simplifier.context,
-                    rhs_expr,
-                    &self.core.state,
-                ) {
+                let rhs_substituted = match self
+                    .core
+                    .state
+                    .resolve_state_refs(&mut self.core.engine.simplifier.context, rhs_expr)
+                {
                     Ok(r) => r,
                     Err(_) => rhs_expr,
                 };

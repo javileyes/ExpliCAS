@@ -53,11 +53,11 @@ impl Repl {
                 // This code path is for timeline/specific commands, not regular expression evaluation
 
                 // Resolve session variables (A, B, etc.) before simplifying
-                let resolved_expr = match cas_session::resolve_all_from_state(
-                    &mut temp_simplifier.context,
-                    expr,
-                    &self.core.state,
-                ) {
+                let resolved_expr = match self
+                    .core
+                    .state
+                    .resolve_state_refs(&mut temp_simplifier.context, expr)
+                {
                     Ok(resolved) => resolved,
                     Err(e) => {
                         // Return error
