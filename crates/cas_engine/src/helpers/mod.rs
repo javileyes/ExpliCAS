@@ -16,8 +16,6 @@ mod destructure;
 mod extraction;
 pub(crate) mod ground_eval;
 mod nf_scoring;
-mod numeric;
-mod numeric_eval;
 mod pi;
 mod predicates;
 mod trig_roots_flatten;
@@ -27,10 +25,10 @@ pub(crate) use complexity::*;
 pub(crate) use destructure::*;
 pub(crate) use extraction::*;
 pub(crate) use nf_scoring::*;
-pub(crate) use numeric::*;
-pub(crate) use numeric_eval::*;
+pub(crate) use cas_math::numeric::*;
+pub(crate) use cas_math::numeric_eval::*;
 // eval_f64_with_substitution is used by integration tests (metamorphic divisor safety guard)
-pub use numeric_eval::eval_f64_with_substitution;
+pub use cas_math::numeric_eval::eval_f64_with_substitution;
 pub(crate) use pi::*;
 // predicates has `is_zero` and `prove_nonzero` used by integration tests — keep pub
 pub use predicates::*;
