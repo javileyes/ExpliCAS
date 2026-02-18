@@ -23,61 +23,16 @@ pub(crate) type ActionResult = (
 
 use crate::Simplifier;
 use cas_ast::{BuiltinFn, Equation, Expr, ExprId, RelOp};
-use std::sync::Arc;
 
 /// Cache key for eval-session invalidation.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct SimplifyCacheKey {
-    /// Domain mode at time of simplification.
-    pub domain: crate::domain::DomainMode,
-    /// Build/version hash for ruleset (currently static).
-    pub ruleset_rev: u64,
-}
-
-impl SimplifyCacheKey {
-    /// Create a cache key from current eval context settings.
-    pub fn from_context(domain: crate::domain::DomainMode) -> Self {
-        Self {
-            domain,
-            ruleset_rev: 1,
-        }
-    }
-
-    /// Check if this key is compatible with another (for cache hit).
-    pub fn is_compatible(&self, other: &Self) -> bool {
-        self == other
-    }
-}
+pub type SimplifyCacheKey = cas_session_core::cache::SimplifyCacheKey<crate::domain::DomainMode>;
 
 /// Cached simplification payload stored in session entries.
-#[derive(Debug, Clone)]
-pub struct SimplifiedCache {
-    /// Key for invalidation (must match current eval context).
-    pub key: SimplifyCacheKey,
-    /// Simplified expression id.
-    pub expr: ExprId,
-    /// Domain requirements from this entry (for propagation).
-    pub requires: Vec<crate::diagnostics::RequiredItem>,
-    /// Derivation steps (None = light cache, steps omitted for large entries).
-    pub steps: Option<Arc<Vec<crate::step::Step>>>,
-}
-
-impl SimplifiedCache {
-    /// Number of cached derivation steps stored in this payload.
-    pub fn steps_len(&self) -> usize {
-        self.steps.as_ref().map(|s| s.len()).unwrap_or(0)
-    }
-
-    /// Apply light-cache policy by dropping oversized step payloads.
-    pub fn apply_light_cache(mut self, light_cache_threshold: Option<usize>) -> Self {
-        if let Some(threshold) = light_cache_threshold {
-            if self.steps_len() > threshold {
-                self.steps = None;
-            }
-        }
-        self
-    }
-}
+pub type SimplifiedCache = cas_session_core::cache::SimplifiedCache<
+    crate::domain::DomainMode,
+    crate::diagnostics::RequiredItem,
+    crate::step::Step,
+>;
 
 /// Session entry ID used for cache-hit tracing during reference resolution.
 pub type CacheHitEntryId = u64;

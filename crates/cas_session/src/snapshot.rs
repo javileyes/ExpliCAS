@@ -264,8 +264,8 @@ impl SessionStoreSnapshot {
                     },
                 },
                 simplified: e.simplified.as_ref().map(|s| SimplifiedCacheSnapshot {
-                    key: s.as_engine().key.clone(),
-                    expr: s.as_engine().expr.index() as u32,
+                    key: s.key.clone(),
+                    expr: s.expr.index() as u32,
                     // Light cache: don't persist steps
                 }),
             })
@@ -313,7 +313,6 @@ impl SessionStoreSnapshot {
                     requires: Vec::new(), // Recalculated on use if needed
                     steps: None,          // Light cache: no steps persisted
                 }
-                .into()
             });
 
             store.restore_entry(Entry {

@@ -20,39 +20,8 @@ fn map_eval_resolve_error(err: cas_session_core::types::ResolveError) -> EvalRes
     }
 }
 
-#[derive(Debug, Clone)]
-struct SessionSimplifiedCache {
-    inner: SimplifiedCache,
-}
-
-impl SessionSimplifiedCache {
-    fn as_engine(&self) -> &SimplifiedCache {
-        &self.inner
-    }
-}
-
-impl From<SimplifiedCache> for SessionSimplifiedCache {
-    fn from(inner: SimplifiedCache) -> Self {
-        Self { inner }
-    }
-}
-
-impl cas_session_core::store::SessionCacheValue for SessionSimplifiedCache {
-    fn steps_len(&self) -> usize {
-        self.inner.steps_len()
-    }
-
-    fn apply_light_cache(self, light_cache_threshold: Option<usize>) -> Self {
-        Self {
-            inner: self.inner.apply_light_cache(light_cache_threshold),
-        }
-    }
-}
-
 #[derive(Debug, Default)]
-pub struct SessionEvalStore(
-    cas_session_core::store::SessionStore<Diagnostics, SessionSimplifiedCache>,
-);
+pub struct SessionEvalStore(cas_session_core::store::SessionStore<Diagnostics, SimplifiedCache>);
 
 impl EvalStore for SessionEvalStore {
     fn push_raw_input(&mut self, kind: StoredInputKind, raw_input: String) -> u64 {
@@ -125,7 +94,6 @@ impl EvalSession for SessionState {
                 kind: entry.kind.clone(),
                 requires: entry.diagnostics.requires.clone(),
                 cache: entry.simplified.as_ref().map(|cache| {
-                    let cache = cache.as_engine();
                     cas_session_core::resolve::ModeCacheEntry {
                         key: cache.key.clone(),
                         expr: cache.expr,

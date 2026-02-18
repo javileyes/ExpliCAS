@@ -9,41 +9,11 @@ pub type SimplifiedCache = cas_engine::eval::SimplifiedCache;
 pub type CacheHitEntryId = cas_engine::eval::CacheHitEntryId;
 pub type ResolvedExpr =
     cas_session_core::cache::ResolvedExpr<cas_engine::diagnostics::RequiredItem>;
-#[derive(Debug, Clone)]
-pub struct SessionSimplifiedCache {
-    inner: SimplifiedCache,
-}
-
-impl SessionSimplifiedCache {
-    fn as_engine(&self) -> &SimplifiedCache {
-        &self.inner
-    }
-}
-
-impl From<SimplifiedCache> for SessionSimplifiedCache {
-    fn from(inner: SimplifiedCache) -> Self {
-        Self { inner }
-    }
-}
-
-impl cas_session_core::store::SessionCacheValue for SessionSimplifiedCache {
-    fn steps_len(&self) -> usize {
-        self.inner.steps_len()
-    }
-
-    fn apply_light_cache(self, light_cache_threshold: Option<usize>) -> Self {
-        Self {
-            inner: self.inner.apply_light_cache(light_cache_threshold),
-        }
-    }
-}
 
 pub type Entry =
-    cas_session_core::store::Entry<cas_engine::diagnostics::Diagnostics, SessionSimplifiedCache>;
-pub type SessionStore = cas_session_core::store::SessionStore<
-    cas_engine::diagnostics::Diagnostics,
-    SessionSimplifiedCache,
->;
+    cas_session_core::store::Entry<cas_engine::diagnostics::Diagnostics, SimplifiedCache>;
+pub type SessionStore =
+    cas_session_core::store::SessionStore<cas_engine::diagnostics::Diagnostics, SimplifiedCache>;
 pub use cas_session_core::types::{CacheConfig, EntryId, EntryKind, RefMode, ResolveError};
 pub use env::{is_reserved, substitute, substitute_with_shadow, Environment};
 pub use snapshot::SnapshotError;
@@ -101,7 +71,6 @@ pub fn resolve_session_refs_with_mode(
             kind: entry.kind.clone(),
             requires: entry.diagnostics.requires.clone(),
             cache: entry.simplified.as_ref().map(|cache| {
-                let cache = cache.as_engine();
                 cas_session_core::resolve::ModeCacheEntry {
                     key: cache.key.clone(),
                     expr: cache.expr,
