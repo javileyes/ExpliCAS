@@ -88,7 +88,7 @@ pub extern "system" fn Java_es_javiergimenez_explicas_CasNative_evalJson<'local>
 
 /// Creates a hardcoded fallback error when everything else fails
 fn create_fallback_error(env: &mut JNIEnv) -> jstring {
-    let fallback = r#"{"schema_version":1,"ok":false,"error":{"kind":"InternalError","code":"E_INTERNAL","message":"JNI string allocation failed"},"budget":{"preset":"unknown","mode":"strict"}}"#;
+    let fallback = internal_error_json("JNI string allocation failed");
     env.new_string(fallback)
         .map(|s| s.into_raw())
         .unwrap_or(std::ptr::null_mut())
