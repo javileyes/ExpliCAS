@@ -35,8 +35,8 @@ impl Engine {
         // Equivalence checks need to resolve the "other" expression too.
         let resolved_equiv_other = match &req.action {
             EvalAction::Equiv { other } => Some(
-                match session.resolve_all(&mut self.simplifier.context, *other) {
-                    Ok(r) => r,
+                match session.resolve_all_with_diagnostics(&mut self.simplifier.context, *other) {
+                    Ok((r, _, _)) => r,
                     Err(EvalResolveError::CircularReference(id)) => {
                         return Err(anyhow::anyhow!(
                             "Circular reference detected in other: #{}",

@@ -160,15 +160,6 @@ pub trait EvalSession {
         ),
         EvalResolveError,
     >;
-
-    fn resolve_all(
-        &self,
-        ctx: &mut cas_ast::Context,
-        expr: ExprId,
-    ) -> Result<ExprId, EvalResolveError> {
-        self.resolve_all_with_diagnostics(ctx, expr)
-            .map(|(resolved, _, _)| resolved)
-    }
 }
 
 impl Engine {
