@@ -14,6 +14,7 @@ cas_ast = { path = "../cas_ast" }
 cas_didactic = { path = "../cas_didactic", default-features = false }
 cas_parser = { path = "../cas_parser" }
 cas_formatter = { path = "../cas_formatter" }
+cas_math = { path = "../cas_math" }
 cas_session = { path = "../cas_session" }
 cas_solver = { path = "../cas_solver", default-features = false }
 rustyline = "12.0"
