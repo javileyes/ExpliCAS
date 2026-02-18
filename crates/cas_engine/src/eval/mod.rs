@@ -84,12 +84,6 @@ impl SimplifiedCache {
 pub struct CacheHitTrace {
     /// The session entry ID resolved from cache.
     pub entry_id: u64,
-    /// The `#N` node in the AST before resolution.
-    pub before_ref_expr: ExprId,
-    /// The cached simplified expression that replaced the reference.
-    pub after_expr: ExprId,
-    /// Domain requirements from the cached entry.
-    pub requires: Vec<crate::diagnostics::RequiredItem>,
 }
 
 /// Engine-level reference resolution error.

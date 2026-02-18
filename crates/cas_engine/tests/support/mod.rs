@@ -175,9 +175,6 @@ impl EvalSession for SessionState {
             .into_iter()
             .map(|h| CacheHitTrace {
                 entry_id: h.entry_id,
-                before_ref_expr: h.before_ref_expr,
-                after_expr: h.after_expr,
-                requires: h.requires,
             })
             .collect();
 
