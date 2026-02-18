@@ -397,7 +397,7 @@ pub(super) fn extract_as_fraction(ctx: &mut Context, expr: ExprId) -> (ExprId, E
         // Helper to check if expression is Div(1, den) or Div(-1, den)
         let check_unit_div = |factor: ExprId| -> Option<(ExprId, bool)> {
             let (num, den) = crate::helpers::as_div(ctx, factor)?;
-            let n = crate::helpers::as_number(ctx, num)?;
+            let n = cas_math::numeric::as_number(ctx, num)?;
             if n.is_integer() {
                 let n_val = n.numer();
                 if *n_val == BigInt::from(1) {
@@ -410,7 +410,7 @@ pub(super) fn extract_as_fraction(ctx: &mut Context, expr: ExprId) -> (ExprId, E
         };
 
         // Case 2: Check for Number(±1/n)
-        if let Some(n) = crate::helpers::as_number(ctx, l) {
+        if let Some(n) = cas_math::numeric::as_number(ctx, l) {
             if let Some((denom, is_neg)) = check_unit_fraction(n) {
                 let denom_expr = ctx.add(Expr::Number(BigRational::from_integer(denom)));
                 if is_neg {
@@ -420,7 +420,7 @@ pub(super) fn extract_as_fraction(ctx: &mut Context, expr: ExprId) -> (ExprId, E
                 return (r, denom_expr, true);
             }
         }
-        if let Some(n) = crate::helpers::as_number(ctx, r) {
+        if let Some(n) = cas_math::numeric::as_number(ctx, r) {
             if let Some((denom, is_neg)) = check_unit_fraction(n) {
                 let denom_expr = ctx.add(Expr::Number(BigRational::from_integer(denom)));
                 if is_neg {

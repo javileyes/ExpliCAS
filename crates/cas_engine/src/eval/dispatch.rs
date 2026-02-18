@@ -289,7 +289,7 @@ impl Engine {
 
         // Add warning if i is used in RealOnly mode
         if effective_opts.shared.semantics.value_domain == crate::semantics::ValueDomain::RealOnly
-            && crate::helpers::contains_i(&self.simplifier.context, resolved)
+            && cas_math::numeric_eval::contains_i(&self.simplifier.context, resolved)
         {
             let i_warning = DomainWarning {
                 message: "To use complex arithmetic (i² = -1), run: semantics set value complex"

@@ -119,7 +119,7 @@ fn coeff_is_three(ctx: &mut cas_ast::Context, coeff: ExprId) -> bool {
     }
 
     // Use as_rational_const for expressions like 6/2
-    if let Some(val) = crate::helpers::as_rational_const(ctx, coeff) {
+    if let Some(val) = cas_math::numeric_eval::as_rational_const(ctx, coeff) {
         return val == num_rational::BigRational::from_integer(3.into());
     }
 
@@ -515,7 +515,7 @@ pub fn build_avg(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> ExprId {
 /// Try to simplify a division when numerator has a coefficient divisible by denominator
 /// e.g., 4x/2 → 2x, -2x/2 → -x
 fn simplify_numeric_div(ctx: &mut cas_ast::Context, expr: ExprId) -> ExprId {
-    use crate::helpers::as_i64;
+    use cas_math::numeric::as_i64;
 
     let (num, den) = if let Expr::Div(n, d) = ctx.get(expr) {
         (*n, *d)

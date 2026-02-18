@@ -150,7 +150,7 @@ impl Engine {
 
         // Resolve ContextMode::Auto
         if opts.shared.context_mode == ContextMode::Auto {
-            if crate::helpers::contains_integral(&self.simplifier.context, expr) {
+            if cas_math::numeric_eval::contains_integral(&self.simplifier.context, expr) {
                 effective.shared.context_mode = ContextMode::IntegratePrep;
             } else {
                 effective.shared.context_mode = ContextMode::Standard;
@@ -159,7 +159,7 @@ impl Engine {
 
         // Resolve ComplexMode::Auto
         if opts.complex_mode == ComplexMode::Auto {
-            if crate::helpers::contains_i(&self.simplifier.context, expr) {
+            if cas_math::numeric_eval::contains_i(&self.simplifier.context, expr) {
                 effective.complex_mode = ComplexMode::On;
             } else {
                 effective.complex_mode = ComplexMode::Off;

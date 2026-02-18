@@ -51,8 +51,8 @@ define_rule!(
         }
 
         // Get exponents as integers
-        let m = crate::helpers::as_i64(ctx, exp_num)?;
-        let n = crate::helpers::as_i64(ctx, exp_den)?;
+        let m = cas_math::numeric::as_i64(ctx, exp_num)?;
+        let n = cas_math::numeric::as_i64(ctx, exp_den)?;
 
         // Skip if both are zero (undefined)
         if m == 0 && n == 0 {
@@ -181,7 +181,7 @@ define_rule!(
         let relation = poly_relation(ctx, base, den)?;
 
         // Get exponent as integer
-        let exp_val = crate::helpers::as_i64(ctx, exp)?;
+        let exp_val = cas_math::numeric::as_i64(ctx, exp)?;
         if exp_val < 1 {
             return None; // Only handle exp >= 1
         }

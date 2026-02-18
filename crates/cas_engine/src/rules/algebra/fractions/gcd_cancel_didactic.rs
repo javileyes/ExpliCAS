@@ -33,7 +33,7 @@ pub(super) fn try_expand_binomial_square_in_den_for_cancel(
     let (base, exp) = crate::helpers::as_pow(ctx, den)?;
 
     // Exponent must be exactly 2 (integer)
-    let exp_val = crate::helpers::as_i64(ctx, exp)?;
+    let exp_val = cas_math::numeric::as_i64(ctx, exp)?;
     if exp_val != 2 {
         return None;
     }
@@ -101,14 +101,14 @@ pub(super) fn try_difference_of_squares_in_num(
     let (a, b) = if let Some((left, right)) = crate::helpers::as_sub(ctx, num) {
         // left - right, check if left is a square
         let (a, exp_a) = crate::helpers::as_pow(ctx, left)?;
-        let exp_a_val = crate::helpers::as_i64(ctx, exp_a)?;
+        let exp_a_val = cas_math::numeric::as_i64(ctx, exp_a)?;
         if exp_a_val != 2 {
             return None;
         }
 
         // right can be Pow(b, 2) or Number(k²)
         if let Some((b, exp_b)) = crate::helpers::as_pow(ctx, right) {
-            let exp_b_val = crate::helpers::as_i64(ctx, exp_b)?;
+            let exp_b_val = cas_math::numeric::as_i64(ctx, exp_b)?;
             if exp_b_val != 2 {
                 return None;
             }
@@ -127,7 +127,7 @@ pub(super) fn try_difference_of_squares_in_num(
     } else if let Some((left, right)) = crate::helpers::as_add(ctx, num) {
         // Try Add(Pow(a,2), Neg(Pow(b,2))) which is how parser represents a² - b²
         let (a, exp_a) = crate::helpers::as_pow(ctx, left)?;
-        let exp_a_val = crate::helpers::as_i64(ctx, exp_a)?;
+        let exp_a_val = cas_math::numeric::as_i64(ctx, exp_a)?;
         if exp_a_val != 2 {
             return None;
         }
@@ -135,7 +135,7 @@ pub(super) fn try_difference_of_squares_in_num(
         // right must be Neg(Pow(b,2)) or Neg(Number(k²))
         let neg_inner = crate::helpers::as_neg(ctx, right)?;
         if let Some((b, exp_b)) = crate::helpers::as_pow(ctx, neg_inner) {
-            let exp_b_val = crate::helpers::as_i64(ctx, exp_b)?;
+            let exp_b_val = cas_math::numeric::as_i64(ctx, exp_b)?;
             if exp_b_val != 2 {
                 return None;
             }
@@ -291,12 +291,12 @@ pub(super) fn try_sum_diff_of_cubes_in_num(
     let (a, b, is_difference) = if let Some((left, right)) = crate::helpers::as_sub(ctx, num) {
         // a³ - b³
         let (a, exp_a) = crate::helpers::as_pow(ctx, left)?;
-        if crate::helpers::as_i64(ctx, exp_a)? != 3 {
+        if cas_math::numeric::as_i64(ctx, exp_a)? != 3 {
             return None;
         }
 
         let (b, exp_b) = crate::helpers::as_pow(ctx, right)?;
-        if crate::helpers::as_i64(ctx, exp_b)? != 3 {
+        if cas_math::numeric::as_i64(ctx, exp_b)? != 3 {
             return None;
         }
 
@@ -304,21 +304,21 @@ pub(super) fn try_sum_diff_of_cubes_in_num(
     } else if let Some((left, right)) = crate::helpers::as_add(ctx, num) {
         // Try a³ + (-b³) for difference, or a³ + b³ for sum
         let (a, exp_a) = crate::helpers::as_pow(ctx, left)?;
-        if crate::helpers::as_i64(ctx, exp_a)? != 3 {
+        if cas_math::numeric::as_i64(ctx, exp_a)? != 3 {
             return None;
         }
 
         if let Some(neg_inner) = crate::helpers::as_neg(ctx, right) {
             // a³ + (-b³) = a³ - b³
             let (b, exp_b) = crate::helpers::as_pow(ctx, neg_inner)?;
-            if crate::helpers::as_i64(ctx, exp_b)? != 3 {
+            if cas_math::numeric::as_i64(ctx, exp_b)? != 3 {
                 return None;
             }
             (a, b, true)
         } else {
             // a³ + b³
             let (b, exp_b) = crate::helpers::as_pow(ctx, right)?;
-            if crate::helpers::as_i64(ctx, exp_b)? != 3 {
+            if cas_math::numeric::as_i64(ctx, exp_b)? != 3 {
                 return None;
             }
             (a, b, false)
@@ -450,11 +450,11 @@ pub(super) fn try_power_quotient_preserve_form(
 
     // Both exponents must be numeric integers for safe simplification
     let num_exp_val: i64 = match num_exp {
-        Some(e) => crate::helpers::as_i64(ctx, e)?,
+        Some(e) => cas_math::numeric::as_i64(ctx, e)?,
         None => 1,
     };
     let den_exp_val: i64 = match den_exp {
-        Some(e) => crate::helpers::as_i64(ctx, e)?,
+        Some(e) => cas_math::numeric::as_i64(ctx, e)?,
         None => 1,
     };
 

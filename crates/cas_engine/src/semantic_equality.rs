@@ -12,9 +12,9 @@ impl<'a> SemanticEqualityChecker<'a> {
     }
 
     /// Try to evaluate an expression to a rational number if it's a simple numeric expression.
-    /// Delegates to `helpers::as_rational_const_depth` - single source of truth.
+    /// Delegates to `cas_math::numeric_eval::as_rational_const`.
     fn try_evaluate_numeric(&self, expr_id: ExprId) -> Option<num_rational::BigRational> {
-        crate::helpers::as_rational_const(self.context, expr_id)
+        cas_math::numeric_eval::as_rational_const(self.context, expr_id)
     }
 
     /// Check if expr_a is the negation of expr_b

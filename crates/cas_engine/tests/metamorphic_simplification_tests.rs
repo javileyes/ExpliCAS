@@ -2719,7 +2719,7 @@ fn run_csv_combination_tests(
                     let var = &p.vars[0];
                     sample_points.iter().all(|&x| {
                         let var_names = vec![var.clone()];
-                        let val = cas_engine::helpers::eval_f64_with_substitution(
+                        let val = cas_math::numeric_eval::eval_f64_with_substitution(
                             &s.context,
                             e,
                             &var_names,

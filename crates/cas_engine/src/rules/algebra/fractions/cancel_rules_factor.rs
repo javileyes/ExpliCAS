@@ -45,7 +45,7 @@ fn extract_root_base(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)
     // Check for Pow(base, exp) - use zero-clone helper
     if let Some((base, exp)) = crate::helpers::as_pow(ctx, expr) {
         // Check if exp is a Number like 1/k
-        if let Some(n) = crate::helpers::as_number(ctx, exp) {
+        if let Some(n) = cas_math::numeric::as_number(ctx, exp) {
             if !n.is_integer() && n.numer().is_one() {
                 // n^(1/k) - return (n, k)
                 let k_expr = ctx.add(Expr::Number(num_rational::BigRational::from_integer(
@@ -56,7 +56,7 @@ fn extract_root_base(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)
         }
         // Check if exp is Div(1, k)
         if let Some((num_exp, den_exp)) = crate::helpers::as_div(ctx, exp) {
-            if let Some(n) = crate::helpers::as_number(ctx, num_exp) {
+            if let Some(n) = cas_math::numeric::as_number(ctx, num_exp) {
                 if n.is_one() {
                     return Some((base, den_exp));
                 }

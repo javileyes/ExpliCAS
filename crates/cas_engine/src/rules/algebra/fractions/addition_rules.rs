@@ -458,7 +458,7 @@ define_rule!(
                         // like u·u + u·1 vs u² + u that structural comparison misses.
                         let diff = ctx.add(Expr::Sub(d1, d2));
                         let diff_exp = crate::expand::expand(ctx, diff);
-                        crate::helpers::numeric_poly_zero_check(ctx, diff_exp)
+                        cas_math::numeric_eval::numeric_poly_zero_check(ctx, diff_exp)
                     }
                 } else {
                     false
@@ -545,7 +545,7 @@ define_rule!(
             // leave Neg(Sum)·factor undistributed. The second pass finishes distribution.
             let num_pass1 = crate::expand::expand(ctx, new_num);
             let num_pass2 = crate::expand::expand(ctx, num_pass1);
-            if crate::helpers::numeric_poly_zero_check(ctx, num_pass2) {
+            if cas_math::numeric_eval::numeric_poly_zero_check(ctx, num_pass2) {
                 let zero = ctx.num(0);
                 // Return 0/den when denominator has variables (preserves domain
                 // restrictions for strict definedness). Return plain 0 otherwise.
@@ -842,7 +842,7 @@ define_rule!(
                         // Fallback: numeric probe
                         let diff = ctx.add(Expr::Sub(d1, d2));
                         let diff_exp = crate::expand::expand(ctx, diff);
-                        crate::helpers::numeric_poly_zero_check(ctx, diff_exp)
+                        cas_math::numeric_eval::numeric_poly_zero_check(ctx, diff_exp)
                     }
                 } else {
                     false
@@ -890,7 +890,7 @@ define_rule!(
         {
             let num_pass1 = crate::expand::expand(ctx, new_num);
             let num_pass2 = crate::expand::expand(ctx, num_pass1);
-            if crate::helpers::numeric_poly_zero_check(ctx, num_pass2) {
+            if cas_math::numeric_eval::numeric_poly_zero_check(ctx, num_pass2) {
                 let zero = ctx.num(0);
                 // Return 0/den when denominator has variables (preserves domain
                 // restrictions for strict definedness). Return plain 0 otherwise.

@@ -1,5 +1,6 @@
 use super::*;
 use cas_ast::{Context, Expr};
+use cas_math::numeric_eval::{as_rational_const, as_rational_const_depth};
 use cas_parser::parse;
 
 #[test]
