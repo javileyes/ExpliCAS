@@ -1,6 +1,7 @@
 use super::session::JsonEvalSession;
 use cas_api_models::{
-    BudgetJsonInfo, EngineJsonError, EngineJsonResponse, EngineJsonStep, JsonRunOptions, SpanJson,
+    AssumptionRecord as ApiAssumptionRecord, BudgetJsonInfo, EngineJsonError, EngineJsonResponse,
+    EngineJsonStep, EngineJsonWarning, JsonRunOptions, SpanJson,
 };
 
 /// Evaluate an expression and return JSON response.
@@ -160,7 +161,26 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
         vec![]
     };
 
-    let resp = EngineJsonResponse::ok_with_steps(result_str, steps, budget_info);
+    let mut resp = EngineJsonResponse::ok_with_steps(result_str, steps, budget_info);
+    resp.warnings = output
+        .domain_warnings
+        .iter()
+        .map(|w| EngineJsonWarning {
+            kind: "domain_assumption".to_string(),
+            message: format!("{} (rule: {})", w.message, w.rule_name),
+        })
+        .collect();
+    resp.assumptions = output
+        .solver_assumptions
+        .iter()
+        .map(|a| ApiAssumptionRecord {
+            kind: a.kind.clone(),
+            expr: a.expr.clone(),
+            message: a.message.clone(),
+            count: a.count,
+        })
+        .collect();
+
     if opts.pretty {
         resp.to_json_pretty()
     } else {

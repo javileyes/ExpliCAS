@@ -110,16 +110,22 @@ fn build_transparency(
         })
         .collect();
 
-    let assumptions_used = output
-        .domain_warnings
+    let mut assumptions_used: Vec<AssumptionDto> = output
+        .solver_assumptions
         .iter()
-        .map(|w| AssumptionDto {
-            kind: "NonZero".to_string(),
-            display: w.message.clone(),
-            expr_canonical: String::new(),
-            rule: w.rule_name.clone(),
+        .map(|a| AssumptionDto {
+            kind: a.kind.clone(),
+            display: a.message.clone(),
+            expr_canonical: a.expr.clone(),
+            rule: "solver".to_string(),
         })
         .collect();
+    assumptions_used.extend(output.domain_warnings.iter().map(|w| AssumptionDto {
+        kind: "domain_warning".to_string(),
+        display: w.message.clone(),
+        expr_canonical: String::new(),
+        rule: w.rule_name.clone(),
+    }));
 
     TransparencyDto {
         required_conditions,

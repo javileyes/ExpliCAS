@@ -133,6 +133,18 @@ impl AssumptionKind {
     }
 }
 
+/// Aggregated assumption record produced by the engine.
+///
+/// This is domain data (not a transport DTO). Outer layers may map it into
+/// API models when serializing responses.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AssumptionRecord {
+    pub kind: String,
+    pub expr: String,
+    pub message: String,
+    pub count: u32,
+}
+
 // =============================================================================
 // ConditionClass - Side Condition Taxonomy for DomainMode Gating
 // =============================================================================
@@ -522,19 +534,6 @@ impl AssumptionEvent {
             expr_id: None, // Legacy strings don't have ExprId
         }
     }
-}
-
-// =============================================================================
-// AssumptionRecord - JSON Output
-// =============================================================================
-
-/// An assumption summary record for output payloads.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AssumptionRecord {
-    pub kind: String,
-    pub expr: String,
-    pub message: String,
-    pub count: u32,
 }
 
 // =============================================================================
