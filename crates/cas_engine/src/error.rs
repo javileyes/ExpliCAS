@@ -69,6 +69,22 @@ impl From<budget::BudgetExceeded> for CasError {
     }
 }
 
+impl From<cas_math::multipoly::PolyError> for CasError {
+    fn from(e: cas_math::multipoly::PolyError) -> Self {
+        match e {
+            cas_math::multipoly::PolyError::BudgetExceeded => {
+                CasError::BudgetExceeded(budget::BudgetExceeded {
+                    op: budget::Operation::PolyOps,
+                    metric: budget::Metric::TermsMaterialized,
+                    used: 0,
+                    limit: 0,
+                })
+            }
+            _ => CasError::PolynomialError(e.to_string()),
+        }
+    }
+}
+
 impl CasError {
     /// Create a BudgetExceeded error from operation and metric with default usage info.
     /// Convenience for migration from old code.
@@ -227,7 +243,7 @@ mod tests {
 
     #[test]
     fn test_poly_error_to_cas_error() {
-        use crate::multipoly::PolyError;
+        use cas_math::multipoly::PolyError;
 
         let poly_err = PolyError::BudgetExceeded;
         let cas_err: CasError = poly_err.into();

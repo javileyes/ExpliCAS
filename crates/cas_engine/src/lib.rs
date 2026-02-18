@@ -29,7 +29,7 @@ pub mod implicit_domain;
 pub mod limits;
 pub use cas_math::modp;
 pub use cas_math::multinomial_expand;
-pub mod multipoly;
+pub use cas_math::multipoly;
 pub(crate) mod multipoly_display;
 pub use cas_math::multipoly_modp;
 pub mod options;
