@@ -34,9 +34,9 @@
 
 use crate::Step;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
-use cas_math::poly_store::{
-    thread_local_add, thread_local_mul, thread_local_neg, thread_local_pow,
-    thread_local_promote_expr_with_base, thread_local_sub,
+use cas_math::poly_lowering_ops::{
+    try_combine_binary_poly_with_promotion, try_negate_poly_ref, try_pow_poly_ref, PolyBinaryOp,
+    PolyCombineKind,
 };
 
 /// Maximum node count for promotion (guards against huge expressions)
@@ -90,83 +90,11 @@ fn lower_recursive(
             let nl = lower_recursive(ctx, l, steps, combined_any, collect_steps);
             let nr = lower_recursive(ctx, r, steps, combined_any, collect_steps);
 
-            let id_l = cas_math::poly_result::parse_poly_result_id(ctx, nl);
-            let id_r = cas_math::poly_result::parse_poly_result_id(ctx, nr);
-
-            match (id_l, id_r) {
-                // Both are poly_result
-                (Some(id_l), Some(id_r)) => {
-                    if let Some(new_id) = thread_local_add(id_l, id_r) {
-                        *combined_any = true;
-                        let result = cas_math::poly_result::wrap_poly_result(ctx, new_id);
-
-                        if collect_steps {
-                            steps.push(Step::new(
-                                "Poly lowering: combined poly_result + poly_result",
-                                "Polynomial Combination",
-                                expr,
-                                result,
-                                Vec::new(),
-                                Some(ctx),
-                            ));
-                        }
-                        return result;
-                    }
-                }
-                // Left is poly_result, try to promote right
-                (Some(id_l), None) => {
-                    if let Some(id_r_promoted) = thread_local_promote_expr_with_base(
-                        ctx,
-                        nr,
-                        id_l,
-                        PROMOTE_MAX_NODES,
-                        PROMOTE_MAX_TERMS,
-                    ) {
-                        if let Some(new_id) = thread_local_add(id_l, id_r_promoted) {
-                            *combined_any = true;
-                            let result = cas_math::poly_result::wrap_poly_result(ctx, new_id);
-
-                            if collect_steps {
-                                steps.push(Step::new(
-                                    "Poly lowering: promoted and combined expressions",
-                                    "Polynomial Combination",
-                                    expr,
-                                    result,
-                                    Vec::new(),
-                                    Some(ctx),
-                                ));
-                            }
-                            return result;
-                        }
-                    }
-                }
-                // Right is poly_result, try to promote left
-                (None, Some(id_r)) => {
-                    if let Some(id_l_promoted) = thread_local_promote_expr_with_base(
-                        ctx,
-                        nl,
-                        id_r,
-                        PROMOTE_MAX_NODES,
-                        PROMOTE_MAX_TERMS,
-                    ) {
-                        if let Some(new_id) = thread_local_add(id_l_promoted, id_r) {
-                            *combined_any = true;
-                            let result = cas_math::poly_result::wrap_poly_result(ctx, new_id);
-
-                            steps.push(Step::new(
-                                "Poly lowering: promoted and combined expressions",
-                                "Polynomial Combination",
-                                expr,
-                                result,
-                                Vec::new(),
-                                Some(ctx),
-                            ));
-                            return result;
-                        }
-                    }
-                }
-                // Neither is poly_result - no action
-                (None, None) => {}
+            if let Some(result) =
+                try_lower_binary_poly(ctx, expr, nl, nr, PolyBinaryOp::Add, steps, collect_steps)
+            {
+                *combined_any = true;
+                return result;
             }
 
             // No combination possible
@@ -182,85 +110,11 @@ fn lower_recursive(
             let nl = lower_recursive(ctx, l, steps, combined_any, collect_steps);
             let nr = lower_recursive(ctx, r, steps, combined_any, collect_steps);
 
-            let id_l = cas_math::poly_result::parse_poly_result_id(ctx, nl);
-            let id_r = cas_math::poly_result::parse_poly_result_id(ctx, nr);
-
-            match (id_l, id_r) {
-                // Both are poly_result
-                (Some(id_l), Some(id_r)) => {
-                    if let Some(new_id) = thread_local_sub(id_l, id_r) {
-                        *combined_any = true;
-                        let result = cas_math::poly_result::wrap_poly_result(ctx, new_id);
-
-                        if collect_steps {
-                            steps.push(Step::new(
-                                "Poly lowering: combined poly_result - poly_result",
-                                "Polynomial Combination",
-                                expr,
-                                result,
-                                Vec::new(),
-                                Some(ctx),
-                            ));
-                        }
-                        return result;
-                    }
-                }
-                // Left is poly_result, try to promote right
-                (Some(id_l), None) => {
-                    if let Some(id_r_promoted) = thread_local_promote_expr_with_base(
-                        ctx,
-                        nr,
-                        id_l,
-                        PROMOTE_MAX_NODES,
-                        PROMOTE_MAX_TERMS,
-                    ) {
-                        if let Some(new_id) = thread_local_sub(id_l, id_r_promoted) {
-                            *combined_any = true;
-                            let result = cas_math::poly_result::wrap_poly_result(ctx, new_id);
-
-                            if collect_steps {
-                                steps.push(Step::new(
-                                    "Poly lowering: promoted and combined expressions",
-                                    "Polynomial Combination",
-                                    expr,
-                                    result,
-                                    Vec::new(),
-                                    Some(ctx),
-                                ));
-                            }
-                            return result;
-                        }
-                    }
-                }
-                // Right is poly_result, try to promote left
-                (None, Some(id_r)) => {
-                    if let Some(id_l_promoted) = thread_local_promote_expr_with_base(
-                        ctx,
-                        nl,
-                        id_r,
-                        PROMOTE_MAX_NODES,
-                        PROMOTE_MAX_TERMS,
-                    ) {
-                        if let Some(new_id) = thread_local_sub(id_l_promoted, id_r) {
-                            *combined_any = true;
-                            let result = cas_math::poly_result::wrap_poly_result(ctx, new_id);
-
-                            if collect_steps {
-                                steps.push(Step::new(
-                                    "Poly lowering: promoted and combined expressions",
-                                    "Polynomial Combination",
-                                    expr,
-                                    result,
-                                    Vec::new(),
-                                    Some(ctx),
-                                ));
-                            }
-                            return result;
-                        }
-                    }
-                }
-                // Neither is poly_result - no action
-                (None, None) => {}
+            if let Some(result) =
+                try_lower_binary_poly(ctx, expr, nl, nr, PolyBinaryOp::Sub, steps, collect_steps)
+            {
+                *combined_any = true;
+                return result;
             }
 
             if nl != l || nr != r {
@@ -275,85 +129,11 @@ fn lower_recursive(
             let nl = lower_recursive(ctx, l, steps, combined_any, collect_steps);
             let nr = lower_recursive(ctx, r, steps, combined_any, collect_steps);
 
-            let id_l = cas_math::poly_result::parse_poly_result_id(ctx, nl);
-            let id_r = cas_math::poly_result::parse_poly_result_id(ctx, nr);
-
-            match (id_l, id_r) {
-                // Both are poly_result
-                (Some(id_l), Some(id_r)) => {
-                    if let Some(new_id) = thread_local_mul(id_l, id_r) {
-                        *combined_any = true;
-                        let result = cas_math::poly_result::wrap_poly_result(ctx, new_id);
-
-                        if collect_steps {
-                            steps.push(Step::new(
-                                "Poly lowering: combined poly_result * poly_result",
-                                "Polynomial Combination",
-                                expr,
-                                result,
-                                Vec::new(),
-                                Some(ctx),
-                            ));
-                        }
-                        return result;
-                    }
-                }
-                // Left is poly_result, try to promote right
-                (Some(id_l), None) => {
-                    if let Some(id_r_promoted) = thread_local_promote_expr_with_base(
-                        ctx,
-                        nr,
-                        id_l,
-                        PROMOTE_MAX_NODES,
-                        PROMOTE_MAX_TERMS,
-                    ) {
-                        if let Some(new_id) = thread_local_mul(id_l, id_r_promoted) {
-                            *combined_any = true;
-                            let result = cas_math::poly_result::wrap_poly_result(ctx, new_id);
-
-                            if collect_steps {
-                                steps.push(Step::new(
-                                    "Poly lowering: promoted and combined expressions",
-                                    "Polynomial Combination",
-                                    expr,
-                                    result,
-                                    Vec::new(),
-                                    Some(ctx),
-                                ));
-                            }
-                            return result;
-                        }
-                    }
-                }
-                // Right is poly_result, try to promote left
-                (None, Some(id_r)) => {
-                    if let Some(id_l_promoted) = thread_local_promote_expr_with_base(
-                        ctx,
-                        nl,
-                        id_r,
-                        PROMOTE_MAX_NODES,
-                        PROMOTE_MAX_TERMS,
-                    ) {
-                        if let Some(new_id) = thread_local_mul(id_l_promoted, id_r) {
-                            *combined_any = true;
-                            let result = cas_math::poly_result::wrap_poly_result(ctx, new_id);
-
-                            if collect_steps {
-                                steps.push(Step::new(
-                                    "Poly lowering: promoted and combined expressions",
-                                    "Polynomial Combination",
-                                    expr,
-                                    result,
-                                    Vec::new(),
-                                    Some(ctx),
-                                ));
-                            }
-                            return result;
-                        }
-                    }
-                }
-                // Neither is poly_result - no action
-                (None, None) => {}
+            if let Some(result) =
+                try_lower_binary_poly(ctx, expr, nl, nr, PolyBinaryOp::Mul, steps, collect_steps)
+            {
+                *combined_any = true;
+                return result;
             }
 
             if nl != l || nr != r {
@@ -367,11 +147,9 @@ fn lower_recursive(
         Expr::Neg(inner) => {
             let ni = lower_recursive(ctx, inner, steps, combined_any, collect_steps);
 
-            if let Some(id) = cas_math::poly_result::parse_poly_result_id(ctx, ni) {
-                if let Some(new_id) = thread_local_neg(id) {
-                    *combined_any = true;
-                    return cas_math::poly_result::wrap_poly_result(ctx, new_id);
-                }
+            if let Some(result) = try_negate_poly_ref(ctx, ni) {
+                *combined_any = true;
+                return result;
             }
 
             if ni != inner {
@@ -386,13 +164,11 @@ fn lower_recursive(
             let nb = lower_recursive(ctx, base, steps, combined_any, collect_steps);
             let ne = lower_recursive(ctx, exp, steps, combined_any, collect_steps);
 
-            if let Some(id) = cas_math::poly_result::parse_poly_result_id(ctx, nb) {
-                if let Some(n) = extract_int(ctx, ne) {
-                    if n >= 0 {
-                        if let Some(new_id) = thread_local_pow(id, n as u32) {
-                            *combined_any = true;
-                            return cas_math::poly_result::wrap_poly_result(ctx, new_id);
-                        }
+            if let Some(n) = extract_int(ctx, ne) {
+                if let Ok(exp_u32) = u32::try_from(n) {
+                    if let Some(result) = try_pow_poly_ref(ctx, nb, exp_u32) {
+                        *combined_any = true;
+                        return result;
                     }
                 }
             }
@@ -463,6 +239,44 @@ fn lower_recursive(
 // =============================================================================
 // Helper functions
 // =============================================================================
+
+fn try_lower_binary_poly(
+    ctx: &mut Context,
+    expr: ExprId,
+    left: ExprId,
+    right: ExprId,
+    op: PolyBinaryOp,
+    steps: &mut Vec<Step>,
+    collect_steps: bool,
+) -> Option<ExprId> {
+    let combined = try_combine_binary_poly_with_promotion(
+        ctx,
+        left,
+        right,
+        op,
+        PROMOTE_MAX_NODES,
+        PROMOTE_MAX_TERMS,
+    )?;
+    if collect_steps {
+        let message = match combined.kind {
+            PolyCombineKind::Direct => match op {
+                PolyBinaryOp::Add => "Poly lowering: combined poly_result + poly_result",
+                PolyBinaryOp::Sub => "Poly lowering: combined poly_result - poly_result",
+                PolyBinaryOp::Mul => "Poly lowering: combined poly_result * poly_result",
+            },
+            PolyCombineKind::Promoted => "Poly lowering: promoted and combined expressions",
+        };
+        steps.push(Step::new(
+            message,
+            "Polynomial Combination",
+            expr,
+            combined.expr,
+            Vec::new(),
+            Some(ctx),
+        ));
+    }
+    Some(combined.expr)
+}
 
 /// Extract integer from expression
 fn extract_int(ctx: &Context, expr: ExprId) -> Option<i64> {

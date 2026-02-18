@@ -13,6 +13,7 @@ pub mod numeric;
 pub mod numeric_eval;
 pub mod poly_gcd_mode;
 pub mod poly_gcd_structural;
+pub mod poly_lowering_ops;
 pub mod poly_modp_calls;
 pub mod poly_modp_conv;
 pub mod poly_result;
