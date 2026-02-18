@@ -9,7 +9,7 @@ use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_math::gcd_zippel_modp::ZippelPreset;
 use cas_math::poly_modp_conv::{
-    check_poly_equal_modp_expr, compute_gcd_modp_expr_with_options, PolyConvError,
+    check_poly_equal_modp_expr, compute_gcd_modp_expr_with_options,
     DEFAULT_PRIME as INTERNAL_DEFAULT_PRIME,
 };
 
@@ -222,7 +222,7 @@ pub fn compute_gcd_modp_with_factor_extraction(
         let rb_stripped = strip_expand_wrapper(ctx, rb);
 
         // Compute gcd on reduced polynomials (MultiPoly handles Pow natively)
-        match compute_gcd_modp_with_options(
+        match compute_gcd_modp_expr_with_options(
             ctx,
             ra_stripped,
             rb_stripped,
@@ -255,7 +255,7 @@ pub fn compute_gcd_modp_with_factor_extraction(
 
     // Step 3: No common factors or extraction failed - try direct GCD (no expand!)
     // The MultiPoly converter handles Pow(base, n) natively via pow() method
-    match compute_gcd_modp_with_options(ctx, a0, b0, DEFAULT_PRIME, None, None) {
+    match compute_gcd_modp_expr_with_options(ctx, a0, b0, DEFAULT_PRIME, None, None) {
         Ok(gcd_expr) => Some(cas_ast::hold::wrap_hold(ctx, gcd_expr)),
         Err(_) => None,
     }
@@ -431,7 +431,14 @@ define_rule!(
 
                 // Parse preset from string if provided
                 let preset = preset_str.as_deref().and_then(ZippelPreset::parse);
-                match compute_gcd_modp_with_options(ctx, a, b, DEFAULT_PRIME, main_var, preset) {
+                match compute_gcd_modp_expr_with_options(
+                    ctx,
+                    a,
+                    b,
+                    DEFAULT_PRIME,
+                    main_var,
+                    preset,
+                ) {
                     Ok(gcd_expr) => {
                         // Wrap in __hold to prevent further simplification
                         let held = cas_ast::hold::wrap_hold(ctx, gcd_expr);
@@ -491,7 +498,7 @@ define_rule!(
                     DEFAULT_PRIME
                 };
 
-                match check_poly_equal_modp(ctx, a, b, p) {
+                match check_poly_equal_modp_expr(ctx, a, b, p) {
                     Ok(equal) => {
                         let result = if equal { ctx.num(1) } else { ctx.num(0) };
 
@@ -554,28 +561,6 @@ fn extract_string(ctx: &Context, expr: ExprId) -> Option<String> {
     None
 }
 
-/// Compute GCD mod p and return as Expr (public for unified API)
-pub fn compute_gcd_modp_with_options(
-    ctx: &mut Context,
-    a: ExprId,
-    b: ExprId,
-    p: u64,
-    main_var: Option<usize>,
-    preset: Option<ZippelPreset>,
-) -> Result<ExprId, PolyConvError> {
-    compute_gcd_modp_expr_with_options(ctx, a, b, p, main_var, preset)
-}
-
-/// Check if two polynomials are equal mod p
-fn check_poly_equal_modp(
-    ctx: &Context,
-    a: ExprId,
-    b: ExprId,
-    p: u64,
-) -> Result<bool, PolyConvError> {
-    check_poly_equal_modp_expr(ctx, a, b, p)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -587,7 +572,7 @@ mod tests {
         let a = parse("x + 1", &mut ctx).unwrap();
         let b = parse("1 + x", &mut ctx).unwrap();
 
-        let result = check_poly_equal_modp(&ctx, a, b, DEFAULT_PRIME).unwrap();
+        let result = check_poly_equal_modp_expr(&ctx, a, b, DEFAULT_PRIME).unwrap();
         assert!(result);
     }
 
@@ -597,7 +582,7 @@ mod tests {
         let a = parse("x + 1", &mut ctx).unwrap();
         let b = parse("x + 2", &mut ctx).unwrap();
 
-        let result = check_poly_equal_modp(&ctx, a, b, DEFAULT_PRIME).unwrap();
+        let result = check_poly_equal_modp_expr(&ctx, a, b, DEFAULT_PRIME).unwrap();
         assert!(!result);
     }
 }
