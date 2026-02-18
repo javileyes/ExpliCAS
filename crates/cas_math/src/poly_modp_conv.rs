@@ -6,8 +6,9 @@ use crate::gcd_zippel_modp::{gcd_zippel_modp, ZippelBudget, ZippelPreset};
 use crate::modp::{add_mod, inv_mod, mul_mod, neg_mod};
 use crate::mono::MAX_VARS;
 use crate::multipoly_modp::{build_linear_pow_direct, MultiPolyModP};
+use crate::poly_gcd_structural::poly_gcd_structural;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
-use num_traits::ToPrimitive;
+use num_traits::{One, ToPrimitive};
 use rustc_hash::FxHashMap;
 
 /// Budget for Expr → MultiPolyModP conversion
@@ -335,6 +336,57 @@ pub fn compute_gcd_modp_expr_with_options(
 
     gcd.make_monic();
     Ok(multipoly_modp_to_expr(ctx, &gcd, &vars))
+}
+
+/// Strip `expand(...)` and `__hold(...)` wrappers iteratively.
+pub fn strip_expand_hold_wrappers(ctx: &Context, mut expr: ExprId) -> ExprId {
+    loop {
+        if let Expr::Function(fn_id, args) = ctx.get(expr) {
+            let builtin = ctx.builtin_of(*fn_id);
+            if matches!(builtin, Some(BuiltinFn::Expand | BuiltinFn::Hold)) && args.len() == 1 {
+                expr = args[0];
+                continue;
+            }
+        }
+        return expr;
+    }
+}
+
+/// Compute mod-p GCD with a structural common-factor pre-pass.
+///
+/// This path avoids symbolic expansion and first reduces `a,b` by their visible
+/// structural GCD to shrink the modular conversion workload.
+pub fn compute_gcd_modp_expr_with_factor_extraction(
+    ctx: &mut Context,
+    a: ExprId,
+    b: ExprId,
+    p: u64,
+    main_var: Option<usize>,
+    preset: Option<ZippelPreset>,
+) -> Result<ExprId, PolyConvError> {
+    let a0 = strip_expand_hold_wrappers(ctx, a);
+    let b0 = strip_expand_hold_wrappers(ctx, b);
+
+    let common_expr = poly_gcd_structural(ctx, a0, b0);
+    let has_common_factor = !matches!(ctx.get(common_expr), Expr::Number(n) if n.is_one());
+
+    if has_common_factor {
+        let ra = ctx.add(Expr::Div(a0, common_expr));
+        let rb = ctx.add(Expr::Div(b0, common_expr));
+        let ra_stripped = strip_expand_hold_wrappers(ctx, ra);
+        let rb_stripped = strip_expand_hold_wrappers(ctx, rb);
+
+        let gcd_rest =
+            compute_gcd_modp_expr_with_options(ctx, ra_stripped, rb_stripped, p, main_var, preset)?;
+
+        if matches!(ctx.get(gcd_rest), Expr::Number(n) if n.is_one()) {
+            return Ok(common_expr);
+        }
+
+        return Ok(ctx.add(Expr::Mul(common_expr, gcd_rest)));
+    }
+
+    compute_gcd_modp_expr_with_options(ctx, a0, b0, p, main_var, preset)
 }
 
 /// Check whether two expressions represent equal polynomials in mod-p space.

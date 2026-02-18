@@ -8,37 +8,16 @@ use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_math::gcd_zippel_modp::ZippelPreset;
-use cas_math::poly_gcd_structural::poly_gcd_structural;
 use cas_math::poly_modp_conv::{
-    check_poly_equal_modp_expr, compute_gcd_modp_expr_with_options,
+    check_poly_equal_modp_expr, compute_gcd_modp_expr_with_factor_extraction,
     DEFAULT_PRIME as INTERNAL_DEFAULT_PRIME,
 };
-use num_traits::One;
 
 const DEFAULT_PRIME: u64 = INTERNAL_DEFAULT_PRIME;
 
 // =============================================================================
 // Eager Eval Infrastructure: Strip expand + Common Factor Extraction
 // =============================================================================
-
-/// Strip expand() wrappers iteratively (no recursion depth risk).
-/// Also strips __hold wrappers.
-fn strip_expand_wrapper(ctx: &Context, mut expr: ExprId) -> ExprId {
-    loop {
-        if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            let builtin = ctx.builtin_of(*fn_id);
-            if matches!(
-                builtin,
-                Some(cas_ast::BuiltinFn::Expand | cas_ast::BuiltinFn::Hold)
-            ) && args.len() == 1
-            {
-                expr = args[0];
-                continue;
-            }
-        }
-        return expr;
-    }
-}
 
 /// Eager evaluation of poly_gcd_modp with factor extraction optimization.
 ///
@@ -52,53 +31,9 @@ fn compute_gcd_modp_with_factor_extraction(
     a: ExprId,
     b: ExprId,
 ) -> Option<ExprId> {
-    // Step 1: Strip expand() and __hold wrappers (NO symbolic expansion!)
-    let a0 = strip_expand_wrapper(ctx, a);
-    let b0 = strip_expand_wrapper(ctx, b);
-
-    // Step 2: Try to extract common factors structurally
-    let common_expr = poly_gcd_structural(ctx, a0, b0);
-    let has_common_factor = !matches!(ctx.get(common_expr), Expr::Number(n) if n.is_one());
-
-    if has_common_factor {
-        let ra = ctx.add(Expr::Div(a0, common_expr));
-        let rb = ctx.add(Expr::Div(b0, common_expr));
-
-        // IMPORTANT: Do NOT expand - compute_gcd_modp uses MultiPoly which handles Pow directly
-        let ra_stripped = strip_expand_wrapper(ctx, ra);
-        let rb_stripped = strip_expand_wrapper(ctx, rb);
-
-        // Compute gcd on reduced polynomials (MultiPoly handles Pow natively).
-        match compute_gcd_modp_expr_with_options(
-            ctx,
-            ra_stripped,
-            rb_stripped,
-            DEFAULT_PRIME,
-            None,
-            None,
-        ) {
-            Ok(gcd_rest) => {
-                // If gcd_rest is 1, just return common
-                if matches!(ctx.get(gcd_rest), Expr::Number(n) if n.is_one()) {
-                    return Some(cas_ast::hold::wrap_hold(ctx, common_expr));
-                }
-
-                // Otherwise return common * gcd_rest
-                let result = ctx.add(Expr::Mul(common_expr, gcd_rest));
-                return Some(cas_ast::hold::wrap_hold(ctx, result));
-            }
-            Err(_) => {
-                // Fall through to direct computation
-            }
-        }
-    }
-
-    // Step 3: No common factors or extraction failed - try direct GCD (no expand!)
-    // The MultiPoly converter handles Pow(base, n) natively via pow() method
-    match compute_gcd_modp_expr_with_options(ctx, a0, b0, DEFAULT_PRIME, None, None) {
-        Ok(gcd_expr) => Some(cas_ast::hold::wrap_hold(ctx, gcd_expr)),
-        Err(_) => None,
-    }
+    let gcd =
+        compute_gcd_modp_expr_with_factor_extraction(ctx, a, b, DEFAULT_PRIME, None, None).ok()?;
+    Some(cas_ast::hold::wrap_hold(ctx, gcd))
 }
 
 /// Eager evaluation pass for poly_gcd_modp calls.
@@ -248,9 +183,6 @@ define_rule!(
                 }
 
                 // Fallback: try with explicit args (for extra options)
-                let a = strip_expand_wrapper(ctx, args[0]);
-                let b = strip_expand_wrapper(ctx, args[1]);
-
                 // Parse remaining args: main_var (usize) and/or preset (string)
                 let mut main_var: Option<usize> = None;
                 let mut preset_str: Option<String> = None;
@@ -271,10 +203,10 @@ define_rule!(
 
                 // Parse preset from string if provided
                 let preset = preset_str.as_deref().and_then(ZippelPreset::parse);
-                match compute_gcd_modp_expr_with_options(
+                match compute_gcd_modp_expr_with_factor_extraction(
                     ctx,
-                    a,
-                    b,
+                    args[0],
+                    args[1],
                     DEFAULT_PRIME,
                     main_var,
                     preset,
@@ -289,11 +221,11 @@ define_rule!(
                                 "poly_gcd_modp({}, {})",
                                 DisplayExpr {
                                     context: ctx,
-                                    id: a
+                                    id: args[0]
                                 },
                                 DisplayExpr {
                                     context: ctx,
-                                    id: b
+                                    id: args[1]
                                 }
                             ),
                         ));
