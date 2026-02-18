@@ -20,7 +20,7 @@ use crate::format::{expr_hash, expr_stats, format_expr_limited};
 use cas_api_models::{
     BudgetJsonInfo, DomainJson, ErrorJsonOutput, EvalJsonOutput, OptionsJson,
     RequiredConditionJson, SemanticsJson, SolveStepJson, SolveSubStepJson, StepJson, SubStepJson,
-    TimingsJson, WarningJson,
+    TimingsJson, WarningJson, SCHEMA_VERSION,
 };
 
 /// Arguments for eval-json subcommand
@@ -266,7 +266,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
             let result_latex = solution_set_to_latex(&engine.simplifier.context, solution_set);
 
             return Ok(EvalJsonOutput {
-                schema_version: 1,
+                schema_version: SCHEMA_VERSION,
                 ok: true,
                 input: args.expr.clone(),
                 input_latex: input_latex.clone(),
@@ -309,7 +309,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
         EvalResult::Bool(b) => {
             // For bool results, format specially
             return Ok(EvalJsonOutput {
-                schema_version: 1,
+                schema_version: SCHEMA_VERSION,
                 ok: true,
                 input: args.expr.clone(),
                 input_latex: input_latex.clone(),
@@ -394,7 +394,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
     );
 
     Ok(EvalJsonOutput {
-        schema_version: 1,
+        schema_version: SCHEMA_VERSION,
         ok: true,
         input: args.expr.clone(),
         input_latex,
@@ -560,15 +560,7 @@ fn build_options_json(args: &EvalJsonArgs) -> OptionsJson {
 }
 
 fn build_budget_json(args: &EvalJsonArgs) -> BudgetJsonInfo {
-    BudgetJsonInfo {
-        preset: args.budget_preset.clone(),
-        mode: if args.strict {
-            "strict".to_string()
-        } else {
-            "best-effort".to_string()
-        },
-        exceeded: None,
-    }
+    BudgetJsonInfo::new(&args.budget_preset, args.strict)
 }
 
 fn build_domain_json(args: &EvalJsonArgs) -> DomainJson {
