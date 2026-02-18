@@ -1,198 +1,11 @@
-//! Wire model for serializable output.
+//! Wire model adapter for REPL output.
 //!
-//! Provides a unified, stable output format for REPL/CLI/Web/FFI.
-//! All consumers can use this same schema for consistent messaging.
-//!
-//! # Stability Contract
-//!
-//! - `schema_version` allows evolution without breaking clients
-//! - Field additions are backwards-compatible (use skip_serializing_if)
+//! Canonical wire DTOs live in `cas_api_models::wire`. This module keeps only
+//! REPL-specific conversions.
 
-use cas_ast::Span;
-use serde::{Deserialize, Serialize};
+pub use cas_api_models::wire::{WireKind, WireMsg, WireReply, WireSpan, SCHEMA_VERSION};
 
-/// Current schema version for the wire format.
-pub const SCHEMA_VERSION: u32 = 1;
-
-/// Top-level wire response container.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct WireReply {
-    /// Schema version for forwards/backwards compatibility
-    pub schema_version: u32,
-    /// Messages in order of emission
-    pub messages: Vec<WireMsg>,
-}
-
-impl WireReply {
-    /// Create a new WireReply with current schema version
-    pub fn new(messages: Vec<WireMsg>) -> Self {
-        Self {
-            schema_version: SCHEMA_VERSION,
-            messages,
-        }
-    }
-}
-
-/// Message kind for wire format.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum WireKind {
-    /// Main output/result
-    Output,
-    /// Informational message
-    Info,
-    /// Warning (non-fatal)
-    Warn,
-    /// Error (fatal)
-    Error,
-    /// Step-by-step trace
-    Steps,
-    /// Debug output
-    Debug,
-}
-
-/// Individual message in wire format.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct WireMsg {
-    /// Message kind
-    pub kind: WireKind,
-    /// Text content
-    pub text: String,
-    /// Source span if available (for error localization)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub span: Option<WireSpan>,
-    /// Structured metadata for FFI/frontend (codes, rule names, etc.)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<serde_json::Value>,
-}
-
-/// Source span for wire format (matches cas_ast::Span but serializable).
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct WireSpan {
-    /// Start byte offset (inclusive)
-    pub start: usize,
-    /// End byte offset (exclusive)
-    pub end: usize,
-}
-
-impl From<Span> for WireSpan {
-    fn from(s: Span) -> Self {
-        Self {
-            start: s.start,
-            end: s.end,
-        }
-    }
-}
-
-impl From<WireSpan> for Span {
-    fn from(s: WireSpan) -> Self {
-        Span::new(s.start, s.end)
-    }
-}
-
-impl WireMsg {
-    /// Create a new WireMsg
-    pub fn new(kind: WireKind, text: impl Into<String>) -> Self {
-        Self {
-            kind,
-            text: text.into(),
-            span: None,
-            data: None,
-        }
-    }
-
-    /// Create a new WireMsg with span
-    pub fn with_span(kind: WireKind, text: impl Into<String>, span: Span) -> Self {
-        Self {
-            kind,
-            text: text.into(),
-            span: Some(span.into()),
-            data: None,
-        }
-    }
-
-    /// Create a new WireMsg with structured data
-    pub fn with_data(kind: WireKind, text: impl Into<String>, data: serde_json::Value) -> Self {
-        Self {
-            kind,
-            text: text.into(),
-            span: None,
-            data: Some(data),
-        }
-    }
-
-    /// Create a new WireMsg with span and data
-    pub fn with_span_and_data(
-        kind: WireKind,
-        text: impl Into<String>,
-        span: Span,
-        data: serde_json::Value,
-    ) -> Self {
-        Self {
-            kind,
-            text: text.into(),
-            span: Some(span.into()),
-            data: Some(data),
-        }
-    }
-
-    // =========================================================================
-    // Specialized constructors with stable error codes
-    // =========================================================================
-
-    /// Create a parse error with E_PARSE code and span
-    pub fn parse_error(message: impl Into<String>, span: Option<Span>) -> Self {
-        use serde_json::json;
-        let text = message.into();
-        let data = json!({"code": "E_PARSE", "phase": "parse"});
-        match span {
-            Some(s) => Self {
-                kind: WireKind::Error,
-                text,
-                span: Some(s.into()),
-                data: Some(data),
-            },
-            None => Self {
-                kind: WireKind::Error,
-                text,
-                span: None,
-                data: Some(data),
-            },
-        }
-    }
-
-    /// Create a warning with code and rule name
-    pub fn warning_with_code(code: &str, message: impl Into<String>, rule: Option<&str>) -> Self {
-        use serde_json::json;
-        let mut data = json!({"code": code});
-        if let Some(r) = rule {
-            data["rule"] = json!(r);
-        }
-        Self {
-            kind: WireKind::Warn,
-            text: message.into(),
-            span: None,
-            data: Some(data),
-        }
-    }
-
-    /// Create an info message with code
-    pub fn info_with_code(code: &str, message: impl Into<String>) -> Self {
-        use serde_json::json;
-        Self {
-            kind: WireKind::Info,
-            text: message.into(),
-            span: None,
-            data: Some(json!({"code": code})),
-        }
-    }
-}
-
-// =============================================================================
-// Conversion from ReplMsg to WireMsg
-// =============================================================================
-
-use super::output::ReplMsg;
+use super::output::{ReplMsg, ReplReply};
 
 impl From<&ReplMsg> for WireMsg {
     fn from(msg: &ReplMsg) -> Self {
@@ -203,7 +16,7 @@ impl From<&ReplMsg> for WireMsg {
             ReplMsg::Error(s) => WireMsg::new(WireKind::Error, s),
             ReplMsg::Steps(s) => WireMsg::new(WireKind::Steps, s),
             ReplMsg::Debug(s) => WireMsg::new(WireKind::Debug, s),
-            // WriteFile is an action, not a displayable message — convert to Info
+            // WriteFile is an action, not a displayable message — convert to Info.
             ReplMsg::WriteFile { path, .. } => {
                 WireMsg::new(WireKind::Info, format!("Wrote: {}", path.display()))
             }
@@ -217,32 +30,16 @@ impl From<ReplMsg> for WireMsg {
     }
 }
 
-// =============================================================================
-// Conversion from ReplReply to WireReply
-// =============================================================================
-
-use super::output::ReplReply;
-
-impl From<&ReplReply> for WireReply {
-    fn from(reply: &ReplReply) -> Self {
-        let messages: Vec<WireMsg> = reply.iter().map(WireMsg::from).collect();
-        WireReply::new(messages)
-    }
+/// Convert a REPL reply into the wire envelope.
+pub fn wire_reply_from_repl(reply: &ReplReply) -> WireReply {
+    let messages: Vec<WireMsg> = reply.iter().map(WireMsg::from).collect();
+    WireReply::new(messages)
 }
-
-impl From<ReplReply> for WireReply {
-    fn from(reply: ReplReply) -> Self {
-        WireReply::from(&reply)
-    }
-}
-
-// =============================================================================
-// Tests
-// =============================================================================
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_ast::Span;
     use std::path::PathBuf;
 
     #[test]
@@ -301,7 +98,7 @@ mod tests {
             ReplMsg::Output("result".to_string()),
             ReplMsg::Warn("warning".to_string()),
         ];
-        let wire: WireReply = (&reply).into();
+        let wire = wire_reply_from_repl(&reply);
         assert_eq!(wire.schema_version, SCHEMA_VERSION);
         assert_eq!(wire.messages.len(), 2);
         assert_eq!(wire.messages[0].kind, WireKind::Output);

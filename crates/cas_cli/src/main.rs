@@ -8,6 +8,7 @@ mod config;
 mod format;
 mod health_suite;
 pub mod repl;
+mod session_io;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use repl::Repl;
@@ -510,7 +511,11 @@ fn run_eval_text(args: &EvalArgs) {
     let cache_key = SimplifyCacheKey::from_context(domain_mode);
 
     // Load or create session and context
-    let (mut engine, mut state) = load_or_new_session(&args.session, &cache_key);
+    let (mut engine, mut state, load_warning) =
+        session_io::load_or_new_session(args.session.as_deref(), &cache_key);
+    if let Some(warning) = load_warning {
+        eprintln!("{}", warning);
+    }
 
     // Parse expression
     let parsed = match parse(&args.expr, &mut engine.simplifier.context) {
@@ -564,8 +569,8 @@ fn run_eval_text(args: &EvalArgs) {
             println!("{}", result_str);
 
             // Save session snapshot if --session is specified
-            if let Some(ref path) = args.session {
-                if let Err(e) = save_session(&engine, &state, path, &cache_key) {
+            if let Some(path) = args.session.as_deref() {
+                if let Err(e) = session_io::save_session(&engine, &state, path, &cache_key) {
                     eprintln!("Warning: Failed to save session: {}", e);
                 }
             }
@@ -575,45 +580,6 @@ fn run_eval_text(args: &EvalArgs) {
             std::process::exit(1);
         }
     }
-}
-
-/// Load session from snapshot file or create new session
-fn load_or_new_session(
-    path: &Option<std::path::PathBuf>,
-    key: &cas_session::SimplifyCacheKey,
-) -> (cas_solver::Engine, cas_session::SessionState) {
-    let Some(path) = path else {
-        return (cas_solver::Engine::new(), cas_session::SessionState::new());
-    };
-
-    if !path.exists() {
-        return (cas_solver::Engine::new(), cas_session::SessionState::new());
-    }
-
-    match cas_session::SessionState::load_compatible_snapshot(path, key) {
-        Ok(Some((ctx, state))) => {
-            let engine = cas_solver::Engine::with_context(ctx);
-            (engine, state)
-        }
-        Ok(None) => {
-            eprintln!("Session snapshot incompatible, starting fresh");
-            (cas_solver::Engine::new(), cas_session::SessionState::new())
-        }
-        Err(e) => {
-            eprintln!("Warning: Failed to load session ({}), starting fresh", e);
-            (cas_solver::Engine::new(), cas_session::SessionState::new())
-        }
-    }
-}
-
-/// Save session to snapshot file
-fn save_session(
-    engine: &cas_solver::Engine,
-    state: &cas_session::SessionState,
-    path: &std::path::Path,
-    key: &cas_session::SimplifyCacheKey,
-) -> Result<(), cas_session::SnapshotError> {
-    state.save_snapshot(&engine.simplifier.context, path, key.clone())
 }
 
 /// Convert BudgetPreset enum to string for JSON args

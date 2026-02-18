@@ -7,5 +7,6 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+cas_ast = { path = "../cas_ast" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

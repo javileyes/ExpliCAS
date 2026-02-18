@@ -17,10 +17,11 @@ use cas_didactic::{pathsteps_to_expr_path, ImportanceLevel};
 use cas_didactic as didactic;
 
 use crate::format::{expr_hash, expr_stats, format_expr_limited};
+use crate::session_io;
 use cas_api_models::{
-    BudgetJsonInfo, DomainJson, ErrorJsonOutput, EvalJsonOutput, OptionsJson,
-    RequiredConditionJson, SemanticsJson, SolveStepJson, SolveSubStepJson, StepJson, SubStepJson,
-    TimingsJson, WarningJson, SCHEMA_VERSION,
+    wire::build_eval_wire_reply, BudgetJsonInfo, DomainJson, ErrorJsonOutput, EvalJsonOutput,
+    OptionsJson, RequiredConditionJson, SemanticsJson, SolveStepJson, SolveSubStepJson, StepJson,
+    SubStepJson, TimingsJson, WarningJson, SCHEMA_VERSION,
 };
 
 /// Arguments for eval-json subcommand
@@ -130,7 +131,8 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
     let cache_key = SimplifyCacheKey::from_context(domain_mode);
 
     // Load or create engine and session state
-    let (mut engine, mut state) = load_or_new_session(&args.session, &cache_key);
+    let (mut engine, mut state, _) =
+        session_io::load_or_new_session(args.session.as_deref(), &cache_key);
 
     // Configure options from args
     configure_options(state.options_mut(), args);
@@ -252,8 +254,8 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
     });
 
     // Save session snapshot if using persistent session
-    if let Some(ref path) = args.session {
-        save_session(&engine, &state, path, &cache_key);
+    if let Some(path) = args.session.as_deref() {
+        let _ = session_io::save_session(&engine, &state, path, &cache_key);
     }
 
     // Extract result expression
@@ -295,7 +297,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 },
                 options: build_options_json(args),
                 semantics: build_semantics_json(args),
-                wire: serde_json::to_value(build_wire_reply(
+                wire: serde_json::to_value(build_eval_wire_reply(
                     &collect_warnings(&output),
                     &collect_required_display(&output, &engine.simplifier.context),
                     &result_str,
@@ -338,7 +340,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
                 },
                 options: build_options_json(args),
                 semantics: build_semantics_json(args),
-                wire: serde_json::to_value(build_wire_reply(
+                wire: serde_json::to_value(build_eval_wire_reply(
                     &collect_warnings(&output),
                     &collect_required_display(&output, &engine.simplifier.context),
                     &b.to_string(),
@@ -384,7 +386,7 @@ fn run_inner(args: &EvalJsonArgs) -> Result<EvalJsonOutput> {
     // Build wire before moving values
     let warnings = collect_warnings(&output);
     let required_display = collect_required_display(&output, &engine.simplifier.context);
-    let wire = build_wire_reply(
+    let wire = build_eval_wire_reply(
         &warnings,
         &required_display,
         &result_str,
@@ -577,98 +579,6 @@ fn build_semantics_json(args: &EvalJsonArgs) -> SemanticsJson {
         inv_trig: args.inv_trig.clone(),
         assume_scope: args.assume_scope.clone(),
     }
-}
-
-/// Build WireReply from evaluation output data.
-///
-/// Constructs a unified wire format with all messages in order:
-/// 1. Warnings (if any)
-/// 2. Required conditions (info)
-/// 3. Result (output)
-/// 4. Steps summary (if enabled)
-fn build_wire_reply(
-    warnings: &[WarningJson],
-    required_display: &[String],
-    result: &str,
-    result_latex: Option<&str>,
-    steps_count: usize,
-    steps_mode: &str,
-) -> crate::repl::wire::WireReply {
-    use crate::repl::wire::{WireKind, WireMsg, WireReply, SCHEMA_VERSION};
-
-    let mut messages = Vec::new();
-
-    // 1. Warnings
-    for w in warnings {
-        messages.push(WireMsg::new(
-            WireKind::Warn,
-            format!("⚠ {} ({})", w.assumption, w.rule),
-        ));
-    }
-
-    // 2. Required conditions
-    if !required_display.is_empty() {
-        messages.push(WireMsg::new(WireKind::Info, "ℹ️ Requires:".to_string()));
-        for cond in required_display {
-            messages.push(WireMsg::new(WireKind::Info, format!("  • {}", cond)));
-        }
-    }
-
-    // 3. Result (main output)
-    let result_text = if let Some(latex) = result_latex {
-        format!("Result: {} [LaTeX: {}]", result, latex)
-    } else {
-        format!("Result: {}", result)
-    };
-    messages.push(WireMsg::new(WireKind::Output, result_text));
-
-    // 4. Steps summary (if enabled and present)
-    if steps_mode == "on" && steps_count > 0 {
-        messages.push(WireMsg::new(
-            WireKind::Steps,
-            format!("{} simplification step(s)", steps_count),
-        ));
-    }
-
-    WireReply {
-        schema_version: SCHEMA_VERSION,
-        messages,
-    }
-}
-
-// =============================================================================
-// Session Persistence Helpers
-// =============================================================================
-
-fn load_or_new_session(
-    path: &Option<PathBuf>,
-    key: &SimplifyCacheKey,
-) -> (cas_solver::Engine, cas_session::SessionState) {
-    let Some(path) = path else {
-        return (cas_solver::Engine::new(), cas_session::SessionState::new());
-    };
-
-    if !path.exists() {
-        return (cas_solver::Engine::new(), cas_session::SessionState::new());
-    }
-
-    match cas_session::SessionState::load_compatible_snapshot(path, key) {
-        Ok(Some((ctx, state))) => {
-            let engine = cas_solver::Engine::with_context(ctx);
-            (engine, state)
-        }
-        Ok(None) => (cas_solver::Engine::new(), cas_session::SessionState::new()),
-        Err(_) => (cas_solver::Engine::new(), cas_session::SessionState::new()),
-    }
-}
-
-fn save_session(
-    engine: &cas_solver::Engine,
-    state: &cas_session::SessionState,
-    path: &std::path::Path,
-    key: &SimplifyCacheKey,
-) {
-    let _ = state.save_snapshot(&engine.simplifier.context, path, key.clone()); // Ignore save errors in JSON mode
 }
 
 /// Convert engine steps to JSON format
