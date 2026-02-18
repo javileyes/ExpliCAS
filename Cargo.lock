@@ -307,7 +307,6 @@ name = "cas_session_core"
 version = "0.1.0"
 dependencies = [
  "cas_ast",
- "cas_formatter",
  "cas_parser",
  "serde",
  "smallvec",

@@ -487,6 +487,19 @@ mod tests {
     use super::*;
     use crate::types::EntryKind;
 
+    fn contains_integer(ctx: &Context, root: ExprId, value: i64) -> bool {
+        cas_ast::traversal::count_nodes_matching(ctx, root, |node| match node {
+            Expr::Number(n) => n.is_integer() && n.to_integer() == value.into(),
+            _ => false,
+        }) > 0
+    }
+
+    fn has_session_ref(ctx: &Context, root: ExprId) -> bool {
+        cas_ast::traversal::count_nodes_matching(ctx, root, |node| {
+            matches!(node, Expr::SessionRef(_))
+        }) > 0
+    }
+
     #[test]
     fn parse_legacy_session_ref_valid() {
         assert_eq!(parse_legacy_session_ref("#1"), Some(1));
@@ -514,14 +527,9 @@ mod tests {
             Ok(ctx.num(id as i64))
         })
         .unwrap();
-        let out_s = format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: &ctx,
-                id: out
-            }
-        );
-        assert!(out_s.contains('1'));
+        assert!(contains_integer(&ctx, out, 1));
+        assert!(cas_ast::traversal::collect_variables(&ctx, out).is_empty());
+        assert!(!has_session_ref(&ctx, out));
     }
 
     #[test]
@@ -537,15 +545,8 @@ mod tests {
             Ok(ctx.num(id as i64))
         })
         .unwrap();
-        let out_s = format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: &ctx,
-                id: out
-            }
-        );
-        assert!(out_s.contains('2'));
-        assert!(!out_s.contains("#2"));
+        assert!(!cas_ast::traversal::collect_variables(&ctx, out).contains("#2"));
+        assert!(!has_session_ref(&ctx, out));
     }
 
     #[test]
@@ -563,14 +564,8 @@ mod tests {
         };
 
         let out = resolve_session_refs_with_lookup(&mut ctx, input, &mut lookup).unwrap();
-        let out_s = format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: &ctx,
-                id: out
-            }
-        );
-        assert!(out_s.contains('x'));
+        assert!(cas_ast::traversal::collect_variables(&ctx, out).contains("x"));
+        assert!(!has_session_ref(&ctx, out));
     }
 
     #[test]
