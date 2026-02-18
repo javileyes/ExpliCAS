@@ -8,7 +8,7 @@
 //! 5. No __hold leak in result or steps
 //! 6. Error path produces correct error structure
 
-use cas_engine::substitute_str_to_json;
+use cas_engine::json::substitute_str_to_json;
 
 // ============================================================================
 // Schema & Structure Tests

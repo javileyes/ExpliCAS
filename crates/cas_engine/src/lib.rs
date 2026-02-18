@@ -100,7 +100,6 @@ pub use assumptions::{
 };
 pub use cycle_events::{CycleEvent, CycleLevel};
 pub use domain::{can_cancel_factor, BlockedHint, CancelDecision, DomainMode, Proof};
-pub use json::{eval_str_to_json, substitute_str_to_json, SCHEMA_VERSION};
 pub use options::AutoExpandBinomials; // V2.15.8: education mode expansion
 pub use options::HeuristicPoly; // V2.15.9: smart polynomial simplification
 pub use phase::{

@@ -11,4 +11,5 @@ default = ["parallel"]
 parallel = ["cas_engine/parallel"]
 
 [dependencies]
+cas_api_models = { path = "../cas_api_models" }
 cas_engine = { path = "../cas_engine", default-features = false }

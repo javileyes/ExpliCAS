@@ -2,6 +2,7 @@
 //!
 //! During migration this crate re-exports the solver API from `cas_engine`.
 
+pub use cas_api_models::SCHEMA_VERSION;
 pub use cas_engine::assumptions::AssumptionKey;
 pub use cas_engine::canonical_forms;
 pub use cas_engine::const_fold::ConstFoldMode;
@@ -9,6 +10,7 @@ pub use cas_engine::domain::take_blocked_hints;
 pub use cas_engine::implicit_domain::{
     normalize_and_dedupe_conditions, ImplicitCondition, RequiresDisplayLevel,
 };
+pub use cas_engine::json::{eval_str_to_json, substitute_str_to_json};
 pub use cas_engine::limits::{limit, Approach, LimitOptions, PreSimplifyMode};
 pub use cas_engine::multipoly;
 pub use cas_engine::options::{
@@ -33,7 +35,7 @@ pub use cas_engine::telescoping;
 pub use cas_engine::visualizer;
 pub use cas_engine::{engine, error, expand, helpers, options, pattern_marks, phase, semantics};
 pub use cas_engine::{
-    eval_str_to_json, substitute_str_to_json, AssumeScope, AssumptionReporting, BlockedHint,
-    Budget, CasError, DomainMode, Engine, EquivalenceResult, EvalAction, EvalOutput, EvalRequest,
-    EvalResult, PipelineStats, Simplifier, SimplifyOptions, SCHEMA_VERSION,
+    AssumeScope, AssumptionReporting, BlockedHint, Budget, CasError, DomainMode, Engine,
+    EquivalenceResult, EvalAction, EvalOutput, EvalRequest, EvalResult, PipelineStats, Simplifier,
+    SimplifyOptions,
 };

@@ -314,6 +314,7 @@ dependencies = [
 name = "cas_solver"
 version = "0.1.0"
 dependencies = [
+ "cas_api_models",
  "cas_engine",
 ]
 
