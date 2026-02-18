@@ -228,7 +228,7 @@ dependencies = [
  "cas_formatter",
  "cas_math",
  "cas_parser",
- "cas_session",
+ "cas_session_core",
  "criterion",
  "insta",
  "lazy_static",

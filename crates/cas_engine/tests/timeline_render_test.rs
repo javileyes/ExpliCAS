@@ -4,7 +4,8 @@ use cas_engine::eval_step_pipeline::to_display_steps;
 use cas_engine::step::ImportanceLevel;
 use cas_engine::timeline::{TimelineHtml, VerbosityLevel};
 use cas_engine::Simplifier;
-use cas_session::SessionState;
+mod support;
+use support::SessionState;
 
 #[test]
 fn test_timeline_renders_all_medium_importance_steps() {

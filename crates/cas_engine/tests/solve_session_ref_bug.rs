@@ -4,7 +4,8 @@
 #![allow(unused_variables)]
 use cas_engine::eval::{Engine, EvalAction, EvalRequest, EvalResult};
 use cas_parser::Statement;
-use cas_session::{EntryKind, SessionState};
+mod support;
+use support::{EntryKind, SessionState};
 
 #[test]
 fn test_solve_session_ref() {

@@ -17,7 +17,8 @@
 use cas_ast::Context;
 use cas_engine::Simplifier;
 use cas_parser::parse;
-use cas_session::SessionState;
+mod support;
+use support::SessionState;
 
 /// Helper: simplify with default options (Generic mode)
 fn simplify_generic(input: &str) -> String {

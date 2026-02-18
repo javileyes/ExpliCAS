@@ -15,7 +15,8 @@ use cas_engine::semantics::ValueDomain;
 use cas_engine::{DomainMode, Engine, EvalAction, EvalRequest, EvalResult};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
-use cas_session::SessionState;
+mod support;
+use support::SessionState;
 
 // ============================================================================
 // Test Infrastructure
