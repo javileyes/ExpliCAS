@@ -29,8 +29,10 @@ impl Repl {
                     parsed_expr,
                 );
                 // STYLE SNIFFING: Detect user's preferred notation BEFORE processing
-                let user_style =
-                    cas_ast::detect_root_style(&self.core.engine.simplifier.context, expr);
+                let user_style = cas_formatter::root_style::detect_root_style(
+                    &self.core.engine.simplifier.context,
+                    expr,
+                );
 
                 // Convert to string BEFORE mutable borrows to avoid borrow conflict
                 let parsed_str = format!(
@@ -54,7 +56,7 @@ impl Repl {
                         let (simplified, _) = self.core.engine.simplifier.simplify(rationalized);
 
                         // Use DisplayExprStyled with detected style for consistent output
-                        let style = cas_ast::StylePreferences::with_root_style(user_style);
+                        let style = cas_formatter::root_style::StylePreferences::with_root_style(user_style);
                         let result_disp = cas_formatter::DisplayExprStyled::new(
                             &self.core.engine.simplifier.context,
                             simplified,

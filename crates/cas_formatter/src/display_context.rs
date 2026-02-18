@@ -8,7 +8,8 @@
 //!
 //! This module owns the **types** ([`DisplayHint`], [`DisplayContext`]) because
 //! they are pure data structures with no engine dependency. Any crate that needs
-//! to *read* display hints can depend on `cas_ast` alone.
+//! to *read* display hints can depend on `cas_formatter` (or consume the
+//! compatibility re-export from `cas_ast` during migration).
 //!
 //! The **builder** (`build_display_context`) lives in `cas_engine::display_context`
 //! because constructing hints requires access to `Step` types defined in

@@ -124,7 +124,7 @@ pub(crate) fn classify_nested_fraction(
 /// Extract the combined fraction string from an Add expression containing a fraction.
 /// For example: 1 + 1/x → "\frac{x + 1}{x}" in LaTeX
 pub(crate) fn extract_combined_fraction_str(ctx: &Context, add_expr: ExprId) -> String {
-    use cas_ast::display_context::DisplayContext;
+    use cas_formatter::DisplayContext;
     use cas_formatter::LaTeXExprWithHints;
 
     // Helper to convert expression to LaTeX
@@ -171,7 +171,7 @@ pub(crate) fn extract_combined_fraction_str(ctx: &Context, add_expr: ExprId) -> 
 ///   1. Combine terms in denominator: 1 + 1/x → (x+1)/x
 ///   2. Invert the fraction: 1/((x+1)/x) → x/(x+1)
 pub(crate) fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
-    use cas_ast::display_context::DisplayContext;
+    use cas_formatter::DisplayContext;
     use cas_formatter::LaTeXExprWithHints;
 
     let mut sub_steps = Vec::new();
@@ -367,7 +367,7 @@ pub(crate) fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> V
 /// Generate sub-steps explaining rationalization process
 /// Uses LaTeXExprWithHints for proper sqrt notation rendering
 pub(crate) fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
-    use cas_ast::display_context::DisplayContext;
+    use cas_formatter::DisplayContext;
     use cas_formatter::LaTeXExprWithHints;
 
     let mut sub_steps = Vec::new();
@@ -952,7 +952,7 @@ pub(crate) fn generate_root_denesting_substeps(
     ctx: &Context,
     step: &crate::step::Step,
 ) -> Vec<SubStep> {
-    use cas_ast::display_context::DisplayContext;
+    use cas_formatter::DisplayContext;
     use cas_formatter::LaTeXExprWithHints;
     use num_traits::Signed;
 

@@ -56,7 +56,7 @@ impl ReplCore {
     pub fn format_output(
         &self,
         expr: cas_ast::ExprId,
-        style_prefs: &cas_ast::StylePreferences,
+        style_prefs: &cas_formatter::root_style::StylePreferences,
     ) -> String {
         use cas_formatter::DisplayExprStyled;
         format!(

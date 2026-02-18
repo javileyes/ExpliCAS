@@ -9,19 +9,15 @@
 //!
 //! Display context is split across two crates by design:
 //!
-//! - **`cas_ast::display_context`** — owns the **types** ([`DisplayHint`],
-//!   [`DisplayContext`]) because they are pure data structures with no engine
-//!   dependency. Any crate that needs to *read* display hints can depend on
-//!   `cas_ast` alone.
+//! - **`cas_formatter::display_context`** — owns the **types**
+//!   ([`DisplayHint`], [`DisplayContext`]) because they are pure data
+//!   structures with no engine dependency.
 //!
 //! - **`cas_engine::display_context`** — owns the **builder**
 //!   (`build_display_context`) because constructing hints requires access to
 //!   [`Step`](crate) types defined in `cas_engine`. This function scans
 //!   simplification steps for sqrt/root patterns and propagates `AsRoot` hints
 //!   to the corresponding `Pow` expressions.
-//!
-//! This split keeps `cas_ast` dependency-free while allowing `cas_engine` to
-//! perform the analysis that requires step-level context.
 
 mod expr;
 mod hints;

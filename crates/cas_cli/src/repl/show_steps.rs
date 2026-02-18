@@ -35,9 +35,9 @@ impl Repl {
         &mut self,
         expr: cas_ast::ExprId,
         steps: &[cas_didactic::Step],
-        style_signals: cas_ast::root_style::ParseStyleSignals,
+        style_signals: cas_formatter::root_style::ParseStyleSignals,
     ) -> ReplReply {
-        use cas_ast::root_style::StylePreferences;
+        use cas_formatter::root_style::StylePreferences;
         use cas_formatter::DisplayExprStyled;
 
         if self.verbosity == Verbosity::None {
@@ -335,7 +335,7 @@ impl Repl {
         &mut self,
         expr: cas_ast::ExprId,
         steps: &[cas_didactic::Step],
-        style_signals: cas_ast::root_style::ParseStyleSignals,
+        style_signals: cas_formatter::root_style::ParseStyleSignals,
     ) {
         let reply = self.show_simplification_steps_core(expr, steps, style_signals);
         self.print_reply(reply);

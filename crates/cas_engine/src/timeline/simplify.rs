@@ -23,7 +23,7 @@ pub struct TimelineHtml<'a> {
     /// Shown at the end of the timeline, after final result.
     global_requires: Vec<crate::implicit_domain::ImplicitCondition>,
     /// V2.14.40: Style preferences derived from input string for consistent root rendering
-    style_prefs: cas_ast::StylePreferences,
+    style_prefs: cas_formatter::root_style::StylePreferences,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -89,8 +89,9 @@ impl<'a> TimelineHtml<'a> {
         use crate::semantics::ValueDomain;
 
         // V2.14.40: Compute style preferences from input string
-        let signals = input_string.map(cas_ast::ParseStyleSignals::from_input_string);
-        let style_prefs = cas_ast::StylePreferences::from_expression_with_signals(
+        let signals =
+            input_string.map(cas_formatter::root_style::ParseStyleSignals::from_input_string);
+        let style_prefs = cas_formatter::root_style::StylePreferences::from_expression_with_signals(
             context,
             original_expr,
             signals.as_ref(),

@@ -4,8 +4,8 @@
 //! - Rationalization and distribution can coexist in same expression
 //! - Rationalized results are not re-expanded
 
-use cas_ast::root_style::{ParseStyleSignals, StylePreferences};
 use cas_engine::Simplifier;
+use cas_formatter::root_style::{ParseStyleSignals, StylePreferences};
 use cas_formatter::DisplayExprStyled;
 
 fn simplify_to_string(input: &str) -> String {

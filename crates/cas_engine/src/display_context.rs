@@ -11,7 +11,8 @@
 //! ```
 
 use crate::step::Step;
-use cas_ast::{BuiltinFn, Context, DisplayContext, DisplayHint, Expr};
+use cas_ast::{BuiltinFn, Context, Expr};
+use cas_formatter::{DisplayContext, DisplayHint};
 
 /// Build DisplayContext by analyzing the original expression and simplification steps
 ///

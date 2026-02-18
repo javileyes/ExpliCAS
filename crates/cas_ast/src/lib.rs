@@ -1,7 +1,8 @@
 pub mod builtin; // Builtin function identifiers for O(1) comparison
 #[path = "../../cas_formatter/src/display/mod.rs"]
 pub mod display; // Temporary compatibility path during formatter extraction
-pub mod display_context;
+#[path = "../../cas_formatter/src/display_context.rs"]
+pub mod display_context; // Temporary compatibility path during formatter extraction
 #[path = "../../cas_formatter/src/display_transforms.rs"]
 pub mod display_transforms; // Temporary compatibility path during formatter extraction
 pub mod domain;
@@ -19,7 +20,8 @@ pub mod latex_highlight;
 #[path = "../../cas_formatter/src/latex_no_roots.rs"]
 pub mod latex_no_roots;
 pub mod ordering; // Canonical ordering utilities
-pub mod root_style; // Style Sniffing for root notation
+#[path = "../../cas_formatter/src/root_style.rs"]
+pub mod root_style; // Temporary compatibility path during formatter extraction
 pub mod span; // Canonical source span for error reporting
 pub mod symbol; // Symbol interning for variable names
 pub mod traversal; // Canonical traversal utilities (count_nodes, etc.)
@@ -29,7 +31,6 @@ pub mod visitor;
 pub use builtin::{BuiltinFn, BuiltinIds, ALL_BUILTINS};
 
 pub use display::{DisplayExpr, DisplayExprStyled, DisplayExprWithHints, RawDisplayExpr};
-pub use display_context::{DisplayContext, DisplayHint};
 pub use domain::{
     BoundType, Case, ConditionPredicate, ConditionSet, Interval, SolutionSet, SolveResult,
 };

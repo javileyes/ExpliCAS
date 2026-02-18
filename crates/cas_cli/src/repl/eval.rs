@@ -9,7 +9,7 @@ impl Repl {
 
     /// Core: handle eval command, returns ReplReply (no I/O)
     pub(crate) fn handle_eval_core(&mut self, line: &str) -> ReplReply {
-        use cas_ast::root_style::ParseStyleSignals;
+        use cas_formatter::root_style::ParseStyleSignals;
 
         use cas_parser::Statement;
         use cas_solver::{EvalAction, EvalRequest, EvalResult};
@@ -211,7 +211,7 @@ impl Repl {
                         }
 
                         // Show Final Result with style sniffing (root notation preservation)
-                        let style_prefs = cas_ast::StylePreferences::from_expression_with_signals(
+                        let style_prefs = cas_formatter::root_style::StylePreferences::from_expression_with_signals(
                             &self.core.engine.simplifier.context,
                             output.parsed,
                             Some(&style_signals),
