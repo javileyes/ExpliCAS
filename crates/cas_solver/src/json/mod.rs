@@ -18,6 +18,7 @@ mod eval;
 mod mappers;
 mod substitute;
 
-pub use envelope::{eval_str_to_output_envelope, EnvelopeEvalOptions};
+pub use cas_api_models::EnvelopeEvalOptions;
+pub use envelope::eval_str_to_output_envelope;
 pub use eval::eval_str_to_json;
 pub use substitute::substitute_str_to_json;

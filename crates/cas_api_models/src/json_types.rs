@@ -745,6 +745,22 @@ pub struct RequestOptions {
     pub explain: bool,
 }
 
+/// Options accepted by envelope eval entrypoints.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct EnvelopeEvalOptions {
+    pub domain: String,
+    pub value_domain: String,
+}
+
+impl Default for EnvelopeEvalOptions {
+    fn default() -> Self {
+        Self {
+            domain: "generic".to_string(),
+            value_domain: "real".to_string(),
+        }
+    }
+}
+
 /// Expression with dual rendering.
 #[derive(Serialize, Debug, Clone)]
 pub struct ExprDto {

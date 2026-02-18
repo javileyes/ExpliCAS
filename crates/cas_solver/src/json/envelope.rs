@@ -1,21 +1,8 @@
 use super::mappers::{map_assumptions_used, map_blocked_hints, map_required_conditions};
-use cas_api_models::{ExprDto, OutputEnvelope, RequestInfo, RequestOptions, TransparencyDto};
+use cas_api_models::{
+    EnvelopeEvalOptions, ExprDto, OutputEnvelope, RequestInfo, RequestOptions, TransparencyDto,
+};
 use cas_formatter::DisplayExpr;
-
-#[derive(Clone, Debug)]
-pub struct EnvelopeEvalOptions {
-    pub domain: String,
-    pub value_domain: String,
-}
-
-impl Default for EnvelopeEvalOptions {
-    fn default() -> Self {
-        Self {
-            domain: "generic".to_string(),
-            value_domain: "real".to_string(),
-        }
-    }
-}
 
 pub fn eval_str_to_output_envelope(expr: &str, opts: &EnvelopeEvalOptions) -> OutputEnvelope {
     let mut engine = cas_engine::eval::Engine::new();
