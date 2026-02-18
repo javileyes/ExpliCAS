@@ -204,6 +204,64 @@ impl PolyResultResolver for NoPolyResultResolver {
     }
 }
 
+/// Resolver backed by the thread-local `PolyStore`.
+pub struct ThreadLocalPolyStoreResolver;
+
+impl PolyResultResolver for ThreadLocalPolyStoreResolver {
+    fn resolve_poly_result(
+        &self,
+        ctx: &Context,
+        p: u64,
+        vars: &mut VarTable,
+        id_expr: ExprId,
+    ) -> Result<MultiPolyModP, PolyConvError> {
+        use crate::poly_store::{thread_local_get_for_materialize, PolyId};
+
+        let id_u32: u32 = match ctx.get(id_expr) {
+            Expr::Number(n) => n.to_integer().to_u32().ok_or_else(|| {
+                PolyConvError::UnsupportedExpr("poly_result id not valid integer".into())
+            })?,
+            _ => {
+                return Err(PolyConvError::UnsupportedExpr(
+                    "poly_result arg must be integer".into(),
+                ))
+            }
+        };
+
+        let poly_id: PolyId = id_u32;
+        let (meta, poly) = thread_local_get_for_materialize(poly_id).ok_or_else(|| {
+            PolyConvError::UnsupportedExpr(format!("invalid poly_result({})", poly_id))
+        })?;
+
+        if poly.p != p {
+            return Err(PolyConvError::BadPrime(format!(
+                "poly_result modulus {} differs from requested {}",
+                poly.p, p
+            )));
+        }
+
+        for name in &meta.var_names {
+            vars.get_or_insert(name)
+                .ok_or(PolyConvError::TooManyVariables)?;
+        }
+
+        let remap: Vec<usize> = meta
+            .var_names
+            .iter()
+            .map(|name| {
+                vars.get_index(name).ok_or_else(|| {
+                    PolyConvError::UnsupportedExpr(format!(
+                        "VarTable missing variable '{}' after insert",
+                        name
+                    ))
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(poly.remap(&remap, vars.len()))
+    }
+}
+
 /// Strip __hold() wrappers from expression (multi-level)
 /// Uses canonical implementation from cas_ast::hold
 pub fn strip_hold(ctx: &Context, mut expr: ExprId) -> ExprId {
@@ -239,6 +297,17 @@ pub fn expr_to_poly_modp_with_resolver<R: PolyResultResolver>(
 ) -> Result<MultiPolyModP, PolyConvError> {
     let expr = strip_hold(ctx, expr);
     expr_to_poly_modp_inner(ctx, expr, p, budget, vars, resolver)
+}
+
+/// Convert Expr to MultiPolyModP, resolving `poly_result(id)` via thread-local store.
+pub fn expr_to_poly_modp_with_store(
+    ctx: &Context,
+    expr: ExprId,
+    p: u64,
+    budget: &PolyModpBudget,
+    vars: &mut VarTable,
+) -> Result<MultiPolyModP, PolyConvError> {
+    expr_to_poly_modp_with_resolver(ctx, expr, p, budget, vars, &ThreadLocalPolyStoreResolver)
 }
 
 fn expr_to_poly_modp_inner<R: PolyResultResolver>(
