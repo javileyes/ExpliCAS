@@ -302,7 +302,7 @@ impl PolynomialIdentityZeroRule {
     fn try_opaque_zero(
         ctx: &mut Context,
         expr: ExprId,
-    ) -> Option<crate::multipoly_display::PolynomialProofData> {
+    ) -> Option<cas_math::multipoly_display::PolynomialProofData> {
         // ── Phase 1: collect opaque atoms ──────────────────────────────
         let mut calls = Vec::new();
         Self::collect_func_calls(ctx, expr, &mut calls, 0);
@@ -421,9 +421,9 @@ impl PolynomialIdentityZeroRule {
 
         // Compute the expanded form (each product expanded, but not cancelled)
         let expanded_form_expr =
-            crate::multipoly_display::expand_additive_terms(ctx, display_expr, &display_vars);
+            cas_math::multipoly_display::expand_additive_terms(ctx, display_expr, &display_vars);
 
-        let mut proof = crate::multipoly_display::PolynomialProofData {
+        let mut proof = cas_math::multipoly_display::PolynomialProofData {
             monomials: 0,
             degree: 0,
             vars: display_vars,
@@ -588,7 +588,7 @@ impl crate::rule::Rule for PolynomialIdentityZeroRule {
                     }
                 }
 
-                crate::multipoly_display::PolynomialProofData::from_identity(
+                cas_math::multipoly_display::PolynomialProofData::from_identity(
                     ctx,
                     &lhs_poly,
                     &rhs_poly,
@@ -596,7 +596,7 @@ impl crate::rule::Rule for PolynomialIdentityZeroRule {
                 )
             } else {
                 // No clear LHS/RHS split
-                crate::multipoly_display::PolynomialProofData {
+                cas_math::multipoly_display::PolynomialProofData {
                     monomials: 0,
                     degree: 0,
                     vars: vars.clone(),

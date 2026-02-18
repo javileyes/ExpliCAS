@@ -178,7 +178,7 @@ pub struct StepMeta {
     pub required_conditions: Vec<crate::implicit_domain::ImplicitCondition>,
     /// Optional: Polynomial proof data for identity cancellation (PolyZero airbag)
     /// Propagated from Rewrite.poly_proof during step creation for didactic display
-    pub poly_proof: Option<crate::multipoly_display::PolynomialProofData>,
+    pub poly_proof: Option<cas_math::multipoly_display::PolynomialProofData>,
     /// V2.12.13: True if this Step was created from a ChainedRewrite.
     /// Used to gate didactic substep generation to avoid duplicating explanations
     /// that are already expressed as separate engine Steps.
@@ -257,7 +257,7 @@ impl Step {
 
     /// Polynomial proof data for identity cancellation.
     #[inline]
-    pub fn poly_proof(&self) -> Option<&crate::multipoly_display::PolynomialProofData> {
+    pub fn poly_proof(&self) -> Option<&cas_math::multipoly_display::PolynomialProofData> {
         self.meta.as_ref().and_then(|m| m.poly_proof.as_ref())
     }
 

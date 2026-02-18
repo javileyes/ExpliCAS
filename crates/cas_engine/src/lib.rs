@@ -25,7 +25,6 @@ pub mod factor;
 pub mod helpers;
 pub mod implicit_domain;
 pub mod limits;
-pub(crate) mod multipoly_display;
 pub mod options;
 pub mod orchestrator;
 pub mod ordering;

@@ -616,7 +616,7 @@ pub(crate) fn generate_polynomial_identity_substeps(
     };
 
     // Helper to format polynomial stats
-    let format_poly_stats = |stats: &crate::multipoly_display::PolyNormalFormStats| -> String {
+    let format_poly_stats = |stats: &cas_math::multipoly_display::PolyNormalFormStats| -> String {
         if let Some(expr_id) = stats.expr {
             format!(
                 "{}",

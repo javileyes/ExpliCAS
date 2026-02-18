@@ -96,7 +96,7 @@ pub struct ChainedRewrite {
     /// Assumptions made by this step
     pub assumption_events: smallvec::SmallVec<[crate::assumptions::AssumptionEvent; 1]>,
     /// Optional polynomial proof data
-    pub poly_proof: Option<crate::multipoly_display::PolynomialProofData>,
+    pub poly_proof: Option<cas_math::multipoly_display::PolynomialProofData>,
     /// Optional importance override (defaults to rule's importance)
     pub importance: Option<ImportanceLevel>,
 }
@@ -193,7 +193,7 @@ pub struct Rewrite {
     pub required_conditions: Vec<crate::implicit_domain::ImplicitCondition>,
     /// Optional: Polynomial proof data for identity cancellation (PolyZero airbag)
     /// Used for didactic display of the normalization process
-    pub poly_proof: Option<crate::multipoly_display::PolynomialProofData>,
+    pub poly_proof: Option<cas_math::multipoly_display::PolynomialProofData>,
     /// Chained sequential rewrites following this one.
     /// Engine processes these in order, constructing Steps with correct before/after.
     /// See `ChainedRewrite` documentation for the sequential coherence guarantee.
@@ -271,7 +271,7 @@ impl Rewrite {
     pub fn with_poly_proof(
         new_expr: ExprId,
         description: impl Into<Cow<'static, str>>,
-        poly_proof: crate::multipoly_display::PolynomialProofData,
+        poly_proof: cas_math::multipoly_display::PolynomialProofData,
     ) -> Self {
         Self::new(new_expr).desc(description).poly_proof(poly_proof)
     }
@@ -346,7 +346,7 @@ impl Rewrite {
 
     /// Set polynomial proof data (for PolyZero airbag didactic display).
     #[must_use]
-    pub fn poly_proof(mut self, proof: crate::multipoly_display::PolynomialProofData) -> Self {
+    pub fn poly_proof(mut self, proof: cas_math::multipoly_display::PolynomialProofData) -> Self {
         self.poly_proof = Some(proof);
         self
     }
