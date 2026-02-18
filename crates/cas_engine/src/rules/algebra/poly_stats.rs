@@ -5,7 +5,9 @@
 
 use crate::rule::{Rewrite, SimpleRule};
 use cas_ast::{Context, Expr, ExprId};
-use cas_math::poly_store::thread_local_meta;
+use cas_math::poly_store::{
+    materialize_poly_result_expr, render_poly_result, render_poly_result_latex, thread_local_meta,
+};
 
 /// Rule: poly_stats(poly_result(id)) → metadata display
 pub struct PolyStatsRule;
@@ -72,9 +74,6 @@ impl SimpleRule for PolyToExprRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        use cas_math::poly_modp_conv::{multipoly_modp_to_expr, VarTable};
-        use cas_math::poly_store::thread_local_get_for_materialize;
-
         // Match: poly_to_expr(poly_result(id)) or poly_to_expr(poly_result(id), max_terms)
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             let (fn_id, args) = (*fn_id, args.clone());
@@ -97,8 +96,7 @@ impl SimpleRule for PolyToExprRule {
             // Extract poly_result(id) using canonical helper
             let id = cas_math::poly_result::parse_poly_result_id(ctx, arg)?;
 
-            // Get poly from thread-local store
-            if let Some((meta, poly)) = thread_local_get_for_materialize(id) {
+            if let Some(meta) = thread_local_meta(id) {
                 // Check limit
                 if meta.n_terms > max_terms {
                     // Return error message
@@ -111,13 +109,7 @@ impl SimpleRule for PolyToExprRule {
                     }));
                 }
 
-                // Materialize
-                let mut vars = VarTable::new();
-                for name in &meta.var_names {
-                    vars.get_or_insert(name);
-                }
-
-                let materialized = multipoly_modp_to_expr(ctx, &poly, &vars);
+                let materialized = materialize_poly_result_expr(ctx, id)?;
 
                 return Some(
                     Rewrite::new(materialized)
@@ -144,8 +136,6 @@ impl SimpleRule for PolyPrintRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        use cas_math::poly_store::thread_local_get_for_materialize;
-
         // Match: poly_print(poly_result(id)) or poly_print(poly_result(id), max_terms)
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             let (fn_id, args) = (*fn_id, args.clone());
@@ -168,10 +158,8 @@ impl SimpleRule for PolyPrintRule {
             // Extract poly_result(id) using canonical helper
             let id = cas_math::poly_result::parse_poly_result_id(ctx, arg)?;
 
-            // Get poly from thread-local store
-            if let Some((meta, poly)) = thread_local_get_for_materialize(id) {
-                // Format polynomial with truncation
-                let formatted = format_poly_with_limit(&poly, &meta.var_names, max_terms);
+            if let Some(meta) = thread_local_meta(id) {
+                let formatted = render_poly_result(id, max_terms)?;
 
                 // Return as a variable (string representation)
                 let result = ctx.var(&formatted);
@@ -193,85 +181,6 @@ impl SimpleRule for PolyPrintRule {
     }
 }
 
-/// Format MultiPolyModP directly to string with optional truncation
-/// Terms are sorted by graded lex order (total degree first, then lex)
-fn format_poly_with_limit(
-    poly: &cas_math::multipoly_modp::MultiPolyModP,
-    var_names: &[String],
-    max_terms: usize,
-) -> String {
-    use cas_math::mono::Mono;
-    use std::fmt::Write;
-
-    if poly.terms.is_empty() {
-        return "0".to_string();
-    }
-
-    // Sort terms by graded lex order for consistent output
-    let mut sorted_terms: Vec<&(Mono, u64)> = poly.terms.iter().collect();
-    sorted_terms.sort_by(|a, b| {
-        // First by total degree (descending)
-        let deg_cmp = b.0.total_degree().cmp(&a.0.total_degree());
-        if deg_cmp != std::cmp::Ordering::Equal {
-            return deg_cmp;
-        }
-        // Then by lex order (descending)
-        b.0.cmp(&a.0)
-    });
-
-    let total_terms = sorted_terms.len();
-    let show_terms = sorted_terms.len().min(max_terms);
-    let truncated = total_terms > max_terms;
-
-    let mut result = String::with_capacity(show_terms * 25);
-
-    for (i, (mono, coeff)) in sorted_terms.iter().take(show_terms).enumerate() {
-        let is_constant = mono.total_degree() == 0;
-
-        // Handle sign and spacing
-        if i == 0 {
-            // First term: no leading sign for positive
-            if is_constant {
-                let _ = write!(result, "{}", coeff);
-            } else if *coeff == 1 {
-                // coefficient 1 is implicit
-            } else {
-                let _ = write!(result, "{}", coeff);
-            }
-        } else {
-            // Subsequent terms: always show +
-            if is_constant || *coeff != 1 {
-                let _ = write!(result, " + {}", coeff);
-            } else {
-                result.push_str(" + ");
-            }
-        }
-
-        // Format monomial (variables with exponents)
-        let mut first_var = i == 0 && *coeff == 1 && !is_constant;
-        for (var_idx, &exp) in mono.0.iter().enumerate() {
-            if exp > 0 && var_idx < var_names.len() {
-                if !first_var {
-                    result.push('·');
-                }
-                first_var = false;
-                result.push_str(&var_names[var_idx]);
-                if exp > 1 {
-                    let _ = write!(result, "^{}", exp);
-                }
-            }
-        }
-    }
-
-    // Add truncation message
-    if truncated {
-        let remaining = total_terms - max_terms;
-        let _ = write!(result, " + ... (+{} more terms)", remaining);
-    }
-
-    result
-}
-
 /// Rule: poly_latex(poly_result(id) [, max_terms]) → LaTeX formatted string
 pub struct PolyLatexRule;
 
@@ -281,8 +190,6 @@ impl SimpleRule for PolyLatexRule {
     }
 
     fn apply_simple(&self, ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
-        use cas_math::poly_store::thread_local_get_for_materialize;
-
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             let (fn_id, args) = (*fn_id, args.clone());
             let name = ctx.sym_name(fn_id);
@@ -304,9 +211,8 @@ impl SimpleRule for PolyLatexRule {
             // Extract poly_result(id) using canonical helper
             let id = cas_math::poly_result::parse_poly_result_id(ctx, arg)?;
 
-            // Get poly from thread-local store
-            if let Some((meta, poly)) = thread_local_get_for_materialize(id) {
-                let formatted = format_poly_latex(&poly, &meta.var_names, max_terms);
+            if let Some(meta) = thread_local_meta(id) {
+                let formatted = render_poly_result_latex(id, max_terms)?;
                 let result = ctx.var(&formatted);
                 return Some(Rewrite::new(result).desc_lazy(|| {
                     format!("LaTeX polynomial: {} terms", meta.n_terms.min(max_terms))
@@ -315,68 +221,6 @@ impl SimpleRule for PolyLatexRule {
         }
         None
     }
-}
-
-/// Format polynomial as LaTeX
-fn format_poly_latex(
-    poly: &cas_math::multipoly_modp::MultiPolyModP,
-    var_names: &[String],
-    max_terms: usize,
-) -> String {
-    use cas_math::mono::Mono;
-    use std::fmt::Write;
-
-    if poly.terms.is_empty() {
-        return "0".to_string();
-    }
-
-    let mut sorted_terms: Vec<&(Mono, u64)> = poly.terms.iter().collect();
-    sorted_terms.sort_by(|a, b| {
-        let deg_cmp = b.0.total_degree().cmp(&a.0.total_degree());
-        if deg_cmp != std::cmp::Ordering::Equal {
-            return deg_cmp;
-        }
-        b.0.cmp(&a.0)
-    });
-
-    let total_terms = sorted_terms.len();
-    let show_terms = sorted_terms.len().min(max_terms);
-    let truncated = total_terms > max_terms;
-
-    let mut result = String::with_capacity(show_terms * 30);
-
-    for (i, (mono, coeff)) in sorted_terms.iter().take(show_terms).enumerate() {
-        let is_constant = mono.total_degree() == 0;
-
-        if i == 0 {
-            if is_constant || *coeff != 1 {
-                let _ = write!(result, "{}", coeff);
-            }
-        } else if is_constant || *coeff != 1 {
-            let _ = write!(result, " + {}", coeff);
-        } else {
-            result.push_str(" + ");
-        }
-
-        // LaTeX formatting for variables
-        for (var_idx, &exp) in mono.0.iter().enumerate() {
-            if exp > 0 && var_idx < var_names.len() {
-                let var = &var_names[var_idx];
-                if exp == 1 {
-                    let _ = write!(result, " {}", var);
-                } else {
-                    let _ = write!(result, " {}^{{{}}}", var, exp);
-                }
-            }
-        }
-    }
-
-    if truncated {
-        let remaining = total_terms - max_terms;
-        let _ = write!(result, " + \\cdots \\text{{(+{} terms)}}", remaining);
-    }
-
-    result
 }
 
 pub fn register(simplifier: &mut crate::Simplifier) {

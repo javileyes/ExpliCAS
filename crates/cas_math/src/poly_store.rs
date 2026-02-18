@@ -379,6 +379,19 @@ pub fn thread_local_get_for_materialize(id: PolyId) -> Option<(PolyMeta, MultiPo
     THREAD_POLY_STORE.with(|store| store.borrow().get(id).map(|(m, p)| (m.clone(), p.clone())))
 }
 
+/// Materialize a stored polynomial into AST expression form.
+/// Returns None if the id does not exist.
+pub fn materialize_poly_result_expr(ctx: &mut Context, id: PolyId) -> Option<ExprId> {
+    use crate::poly_modp_conv::{multipoly_modp_to_expr, VarTable};
+
+    let (meta, poly) = thread_local_get_for_materialize(id)?;
+    let mut vars = VarTable::new();
+    for name in &meta.var_names {
+        vars.get_or_insert(name);
+    }
+    Some(multipoly_modp_to_expr(ctx, &poly, &vars))
+}
+
 /// Try to promote a polynomial-like expression to a stored `poly_result` using
 /// a base poly's modulus and variable context.
 ///
@@ -598,7 +611,7 @@ pub fn try_get_poly_result_term_count(ctx: &Context, expr: ExprId) -> Option<usi
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cas_ast::Context;
+    use cas_ast::{Context, Expr};
     use cas_parser::parse;
 
     #[test]
@@ -681,5 +694,30 @@ mod tests {
                 limit: 1,
             })
         ));
+    }
+
+    #[test]
+    fn test_materialize_poly_result_expr_constant() {
+        clear_thread_local_store();
+        let mut ctx = Context::new();
+
+        let poly = MultiPolyModP::constant(42, 101, 1);
+        let meta = PolyMeta {
+            modulus: 101,
+            n_terms: 1,
+            n_vars: 1,
+            max_total_degree: 0,
+            var_names: vec!["x".to_string()],
+        };
+        let id = thread_local_insert(meta, poly);
+
+        let expr = materialize_poly_result_expr(&mut ctx, id).expect("materialized expr");
+        match ctx.get(expr) {
+            Expr::Number(n) => {
+                let value: i64 = n.to_integer().try_into().unwrap();
+                assert_eq!(value, 42_i64);
+            }
+            other => panic!("expected number expression, got {:?}", other),
+        }
     }
 }
