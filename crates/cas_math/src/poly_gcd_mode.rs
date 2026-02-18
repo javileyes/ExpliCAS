@@ -1,8 +1,8 @@
 //! Shared mode/option parsing for polynomial GCD entry points.
 
+use crate::expr_extract::{extract_symbol_name, extract_usize_integer};
 use crate::gcd_zippel_modp::ZippelPreset;
 use cas_ast::{Context, Expr, ExprId};
-use num_traits::ToPrimitive;
 
 /// Mode for poly_gcd computation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,19 +48,14 @@ pub fn parse_modp_options(ctx: &Context, args: &[ExprId]) -> (Option<ZippelPrese
     let mut main_var: Option<usize> = None;
 
     for &arg in args {
-        if let Expr::Number(n) = ctx.get(arg) {
-            if n.is_integer() {
-                if let Some(v) = n.to_integer().to_usize() {
-                    if v <= 64 {
-                        main_var = Some(v);
-                        continue;
-                    }
-                }
+        if let Some(v) = extract_usize_integer(ctx, arg) {
+            if v <= 64 {
+                main_var = Some(v);
+                continue;
             }
         }
 
-        if let Expr::Variable(sym_id) = ctx.get(arg) {
-            let s = ctx.sym_name(*sym_id);
+        if let Some(s) = extract_symbol_name(ctx, arg) {
             if let Some(p) = ZippelPreset::parse(s) {
                 preset = Some(p);
             }

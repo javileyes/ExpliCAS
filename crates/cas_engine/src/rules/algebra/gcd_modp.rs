@@ -7,7 +7,8 @@ use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
-use cas_math::gcd_zippel_modp::ZippelPreset;
+use cas_math::expr_extract::extract_u64_integer;
+use cas_math::poly_gcd_mode::parse_modp_options;
 use cas_math::poly_modp_conv::{
     check_poly_equal_modp_expr, compute_gcd_modp_expr_with_factor_extraction,
     DEFAULT_PRIME as INTERNAL_DEFAULT_PRIME,
@@ -183,26 +184,8 @@ define_rule!(
                 }
 
                 // Fallback: try with explicit args (for extra options)
-                // Parse remaining args: main_var (usize) and/or preset (string)
-                let mut main_var: Option<usize> = None;
-                let mut preset_str: Option<String> = None;
-
-                for &arg in args.iter().skip(2) {
-                    // Try to extract as usize (small number = main_var)
-                    if let Some(v) = extract_usize(ctx, arg) {
-                        if v <= 64 {
-                            main_var = Some(v);
-                            continue;
-                        }
-                    }
-                    // Try to extract as string (preset name)
-                    if let Some(s) = extract_string(ctx, arg) {
-                        preset_str = Some(s);
-                    }
-                }
-
-                // Parse preset from string if provided
-                let preset = preset_str.as_deref().and_then(ZippelPreset::parse);
+                // Parse remaining args: preset and/or main_var.
+                let (preset, main_var) = parse_modp_options(ctx, &args[2..]);
                 match compute_gcd_modp_expr_with_factor_extraction(
                     ctx,
                     args[0],
@@ -265,7 +248,7 @@ define_rule!(
                 let a = args[0];
                 let b = args[1];
                 let p = if args.len() == 3 {
-                    extract_prime(ctx, args[2]).unwrap_or(DEFAULT_PRIME)
+                    extract_u64_integer(ctx, args[2]).unwrap_or(DEFAULT_PRIME)
                 } else {
                     DEFAULT_PRIME
                 };
@@ -301,37 +284,6 @@ define_rule!(
         None
     }
 );
-
-/// Extract prime from expression (must be integer)
-fn extract_prime(ctx: &Context, expr: ExprId) -> Option<u64> {
-    if let Expr::Number(n) = ctx.get(expr) {
-        if n.is_integer() {
-            use num_traits::ToPrimitive;
-            return n.to_integer().to_u64();
-        }
-    }
-    None
-}
-
-/// Extract usize from expression (must be non-negative integer)
-fn extract_usize(ctx: &Context, expr: ExprId) -> Option<usize> {
-    if let Expr::Number(n) = ctx.get(expr) {
-        if n.is_integer() {
-            use num_traits::ToPrimitive;
-            return n.to_integer().to_usize();
-        }
-    }
-    None
-}
-
-/// Extract string from expression (Variable as string literal)
-fn extract_string(ctx: &Context, expr: ExprId) -> Option<String> {
-    // Check for Variable (used as string literal, e.g., "mm_gcd")
-    if let Expr::Variable(sym_id) = ctx.get(expr) {
-        return Some(ctx.sym_name(*sym_id).to_string());
-    }
-    None
-}
 
 #[cfg(test)]
 mod tests {

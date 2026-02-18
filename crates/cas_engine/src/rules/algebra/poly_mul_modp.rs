@@ -8,6 +8,7 @@ use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr};
+use cas_math::expr_extract::extract_u64_integer;
 use cas_math::poly_modp_conv::DEFAULT_PRIME;
 use cas_math::poly_store::{
     compute_poly_mul_modp_meta, PolyMeta, PolyMulMetaError, POLY_MAX_STORE_TERMS,
@@ -39,10 +40,7 @@ define_rule!(
         let a_expr = args[0];
         let b_expr = args[1];
         let p = if args.len() == 3 {
-            match ctx.get(args[2]) {
-                Expr::Number(n) => n.to_integer().try_into().ok()?,
-                _ => return None,
-            }
+            extract_u64_integer(ctx, args[2])?
         } else {
             DEFAULT_PRIME
         };
