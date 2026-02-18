@@ -10,6 +10,7 @@
 //! run code with access to the store.
 
 use crate::multipoly_modp::MultiPolyModP;
+use crate::poly_modp_conv::DEFAULT_PRIME;
 use cas_ast::{Context, ExprId};
 use std::cell::RefCell;
 
@@ -392,6 +393,57 @@ pub fn materialize_poly_result_expr(ctx: &mut Context, id: PolyId) -> Option<Exp
     Some(multipoly_modp_to_expr(ctx, &poly, &vars))
 }
 
+/// Expand an expression in mod-p space and return either `__hold(materialized_ast)` or
+/// `poly_result(id)` based on `materialize_limit`.
+pub fn expand_expr_modp_to_poly_ref_or_hold(
+    ctx: &mut Context,
+    expr: ExprId,
+    materialize_limit: usize,
+) -> Option<ExprId> {
+    use crate::poly_modp_conv::{
+        expr_to_poly_modp_with_store, multipoly_modp_to_expr, PolyModpBudget, VarTable,
+    };
+
+    // Matches previous engine-side budget for fast mod-p expansion.
+    let budget = PolyModpBudget {
+        max_vars: 16,
+        max_terms: 500_000,
+        max_total_degree: 100,
+        max_pow_exp: 100,
+    };
+
+    let mut vars = VarTable::new();
+    let poly = expr_to_poly_modp_with_store(ctx, expr, DEFAULT_PRIME, &budget, &mut vars).ok()?;
+    let n_terms = poly.num_terms();
+
+    if n_terms <= materialize_limit {
+        let expanded = multipoly_modp_to_expr(ctx, &poly, &vars);
+        return Some(cas_ast::hold::wrap_hold(ctx, expanded));
+    }
+
+    let meta = PolyMeta {
+        modulus: DEFAULT_PRIME,
+        n_terms,
+        n_vars: vars.names().len(),
+        max_total_degree: poly.total_degree(),
+        var_names: vars.names().to_vec(),
+    };
+
+    let id = thread_local_insert(meta, poly);
+    Some(crate::poly_result::wrap_poly_result(ctx, id))
+}
+
+/// Expand an expression in mod-p space and always materialize into `__hold(AST)`.
+pub fn expand_expr_modp_materialized_hold(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    // `usize::MAX` guarantees materialization branch if conversion succeeds.
+    expand_expr_modp_to_poly_ref_or_hold(ctx, expr, usize::MAX).and_then(|expanded| {
+        if crate::poly_result::parse_poly_result_id(ctx, expanded).is_some() {
+            return None;
+        }
+        Some(expanded)
+    })
+}
+
 /// Try to promote a polynomial-like expression to a stored `poly_result` using
 /// a base poly's modulus and variable context.
 ///
@@ -719,5 +771,38 @@ mod tests {
             }
             other => panic!("expected number expression, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_expand_expr_modp_to_poly_ref_or_hold_materializes_small() {
+        clear_thread_local_store();
+        let mut ctx = Context::new();
+        let expr = parse("(x+1)*(x+1)", &mut ctx).unwrap();
+
+        let expanded = expand_expr_modp_to_poly_ref_or_hold(&mut ctx, expr, 1000).unwrap();
+        assert!(crate::poly_result::parse_poly_result_id(&ctx, expanded).is_none());
+        assert_ne!(cas_ast::hold::unwrap_hold(&ctx, expanded), expanded);
+    }
+
+    #[test]
+    fn test_expand_expr_modp_to_poly_ref_or_hold_returns_poly_result() {
+        clear_thread_local_store();
+        let mut ctx = Context::new();
+        let expr = parse("(x+1)*(x+1)", &mut ctx).unwrap();
+
+        let expanded = expand_expr_modp_to_poly_ref_or_hold(&mut ctx, expr, 1).unwrap();
+        let id = crate::poly_result::parse_poly_result_id(&ctx, expanded);
+        assert!(id.is_some());
+    }
+
+    #[test]
+    fn test_expand_expr_modp_materialized_hold() {
+        clear_thread_local_store();
+        let mut ctx = Context::new();
+        let expr = parse("(x+1)*(x+1)", &mut ctx).unwrap();
+
+        let expanded = expand_expr_modp_materialized_hold(&mut ctx, expr).unwrap();
+        assert!(crate::poly_result::parse_poly_result_id(&ctx, expanded).is_none());
+        assert_ne!(cas_ast::hold::unwrap_hold(&ctx, expanded), expanded);
     }
 }

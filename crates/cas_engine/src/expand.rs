@@ -1,13 +1,11 @@
 use crate::build::mul2_raw;
 use crate::Step;
 use cas_ast::{Context, Expr, ExprId};
-use num_integer::Integer;
-use num_traits::{Signed, ToPrimitive};
-
 /// Threshold for using fast mod-p expansion in eager eval.
 /// Above this many estimated terms, use poly_ref instead of AST.
 pub const EAGER_EXPAND_MODP_THRESHOLD: u64 = 500;
-use cas_ast::hold::wrap_hold;
+use num_integer::Integer;
+use num_traits::{Signed, ToPrimitive};
 /// Threshold for returning poly_ref instead of materializing AST.
 /// Below this, we materialize the full AST for display.
 pub const EXPAND_MATERIALIZE_LIMIT: usize = 1_000;
@@ -47,7 +45,7 @@ fn eager_eval_expand_recursive(
             if let Some(est) = estimate_expand_terms(ctx, arg) {
                 // Use fast mod-p path for large expansions
                 if est > EAGER_EXPAND_MODP_THRESHOLD {
-                    if let Some(result) = expand_to_poly_ref_or_hold(ctx, arg, est as usize) {
+                    if let Some(result) = expand_to_poly_ref_or_hold(ctx, arg) {
                         if collect_steps {
                             steps.push(Step::new(
                                 &format!("Eager expand (mod-p, {} terms)", est),
@@ -157,74 +155,15 @@ fn eager_eval_expand_recursive(
 /// - Inspected via poly_stats()
 /// - Materialized via poly_to_expr() with limits
 /// - Combined with other poly_results via poly_lower_pass
-fn expand_to_poly_ref_or_hold(
-    ctx: &mut Context,
-    expr: ExprId,
-    _est_terms: usize,
-) -> Option<ExprId> {
-    use cas_math::poly_modp_conv::{
-        expr_to_poly_modp_with_store as expr_to_poly_modp, multipoly_modp_to_expr, PolyModpBudget,
-        VarTable, DEFAULT_PRIME,
-    };
-    use cas_math::poly_store::{thread_local_insert, PolyMeta};
-
-    // Budget for polynomial expansion
-    let budget = PolyModpBudget {
-        max_vars: 16,
-        max_terms: 500_000,
-        max_total_degree: 100,
-        max_pow_exp: 100,
-    };
-
-    let p = DEFAULT_PRIME;
-    let mut vars = VarTable::new();
-
-    // Convert to MultiPolyModP
-    let poly = expr_to_poly_modp(ctx, expr, p, &budget, &mut vars).ok()?;
-
-    let n_terms = poly.num_terms();
-
-    if n_terms <= EXPAND_MATERIALIZE_LIMIT {
-        // Small enough to materialize - return __hold(AST)
-        let expanded = multipoly_modp_to_expr(ctx, &poly, &vars);
-        Some(wrap_hold(ctx, expanded))
-    } else {
-        // Too large - store in PolyStore and return poly_result(id)
-        let meta = PolyMeta {
-            modulus: p,
-            n_terms,
-            n_vars: vars.names().len(),
-            max_total_degree: 0, // TODO: compute from poly
-            var_names: vars.names().to_vec(),
-        };
-
-        let id = thread_local_insert(meta, poly);
-        Some(cas_math::poly_result::wrap_poly_result(ctx, id))
-    }
+fn expand_to_poly_ref_or_hold(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    cas_math::poly_store::expand_expr_modp_to_poly_ref_or_hold(ctx, expr, EXPAND_MATERIALIZE_LIMIT)
 }
 
 /// Legacy function for backward compatibility.
 /// Now uses expand_to_poly_ref_or_hold internally.
 pub fn expand_modp_safe(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
-    // Always materialize AST for this function (used by distribution.rs)
-    use cas_math::poly_modp_conv::{
-        expr_to_poly_modp_with_store as expr_to_poly_modp, multipoly_modp_to_expr, PolyModpBudget,
-        VarTable, DEFAULT_PRIME,
-    };
-
-    let budget = PolyModpBudget {
-        max_vars: 16,
-        max_terms: 500_000,
-        max_total_degree: 100,
-        max_pow_exp: 100,
-    };
-
-    let p = DEFAULT_PRIME;
-    let mut vars = VarTable::new();
-
-    let poly = expr_to_poly_modp(ctx, expr, p, &budget, &mut vars).ok()?;
-    let expanded = multipoly_modp_to_expr(ctx, &poly, &vars);
-    Some(wrap_hold(ctx, expanded))
+    // Always materialize AST for this function (used by distribution.rs).
+    cas_math::poly_store::expand_expr_modp_materialized_hold(ctx, expr)
 }
 
 /// Expand with budget tracking, returning PassStats for unified budget charging.
