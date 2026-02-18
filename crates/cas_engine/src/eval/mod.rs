@@ -24,61 +24,21 @@ pub(crate) type ActionResult = (
 use crate::Simplifier;
 use cas_ast::{BuiltinFn, Equation, Expr, ExprId, RelOp};
 
-/// Engine-local cache key used by eval/session abstraction.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct SimplifyCacheKey {
-    pub domain: crate::domain::DomainMode,
-    pub ruleset_rev: u64,
-}
+/// Cache key shared with `cas_session_core`.
+pub type SimplifyCacheKey = cas_session_core::cache::SimplifyCacheKey<crate::domain::DomainMode>;
 
-impl SimplifyCacheKey {
-    pub fn from_context(domain: crate::domain::DomainMode) -> Self {
-        Self {
-            domain,
-            ruleset_rev: 1,
-        }
-    }
-}
+/// Cached simplification payload shared with `cas_session_core`.
+pub type SimplifiedCache = cas_session_core::cache::SimplifiedCache<
+    crate::domain::DomainMode,
+    crate::diagnostics::RequiredItem,
+    crate::step::Step,
+>;
 
-/// Engine-local cached simplification payload.
-#[derive(Debug, Clone)]
-pub struct SimplifiedCache {
-    pub key: SimplifyCacheKey,
-    pub expr: ExprId,
-    pub requires: Vec<crate::diagnostics::RequiredItem>,
-    pub steps: Option<std::sync::Arc<Vec<crate::step::Step>>>,
-}
+/// Cache hit trace shared with `cas_session_core`.
+pub type CacheHitTrace = cas_session_core::cache::CacheHitTrace<crate::diagnostics::RequiredItem>;
 
-/// Engine-local cache hit trace used by eval/session abstraction.
-#[derive(Debug, Clone)]
-pub struct CacheHitTrace {
-    pub entry_id: u64,
-    pub before_ref_expr: ExprId,
-    pub after_expr: ExprId,
-    pub requires: Vec<crate::diagnostics::RequiredItem>,
-}
-
-/// Engine-level session/reference resolution error.
-///
-/// This keeps `EvalSession` decoupled from any concrete session implementation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EvalResolveError {
-    NotFound(u64),
-    CircularReference(u64),
-}
-
-impl std::fmt::Display for EvalResolveError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NotFound(id) => write!(f, "Session reference #{} not found", id),
-            Self::CircularReference(id) => {
-                write!(f, "Circular session reference detected at #{}", id)
-            }
-        }
-    }
-}
-
-impl std::error::Error for EvalResolveError {}
+/// Engine-level reference resolution error.
+pub type EvalResolveError = cas_session_core::types::ResolveError;
 
 /// The central Engine struct that wraps the core Simplifier and potentially other components.
 ///

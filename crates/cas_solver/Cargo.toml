@@ -16,5 +16,4 @@ cas_ast = { path = "../cas_ast" }
 cas_engine = { path = "../cas_engine", default-features = false }
 cas_formatter = { path = "../cas_formatter" }
 cas_parser = { path = "../cas_parser" }
-cas_session = { path = "../cas_session" }
 serde_json = "1.0"

@@ -9,24 +9,6 @@ use crate::{
     SessionStore, SimplifyCacheKey, SnapshotError,
 };
 
-fn map_resolve_error(err: ResolveError) -> cas_engine::eval::EvalResolveError {
-    match err {
-        ResolveError::NotFound(id) => cas_engine::eval::EvalResolveError::NotFound(id),
-        ResolveError::CircularReference(id) => {
-            cas_engine::eval::EvalResolveError::CircularReference(id)
-        }
-    }
-}
-
-fn map_cache_hit_trace(hit: SessionCacheHitTrace) -> cas_engine::eval::CacheHitTrace {
-    cas_engine::eval::CacheHitTrace {
-        entry_id: hit.entry_id,
-        before_ref_expr: hit.before_ref_expr,
-        after_expr: hit.after_expr,
-        requires: hit.requires,
-    }
-}
-
 /// Local adapter that bridges `cas_session::SessionStore` to `cas_engine::eval::EvalStore`.
 #[derive(Debug, Default)]
 pub struct SessionEvalStore(pub SessionStore);
@@ -74,16 +56,7 @@ impl EvalStore for SessionEvalStore {
     }
 
     fn update_simplified(&mut self, id: u64, cache: cas_engine::eval::SimplifiedCache) {
-        let mapped_cache = crate::SimplifiedCache {
-            key: crate::SimplifyCacheKey {
-                domain: cache.key.domain,
-                ruleset_rev: cache.key.ruleset_rev,
-            },
-            expr: cache.expr,
-            requires: cache.requires,
-            steps: cache.steps,
-        };
-        self.0.update_simplified(id, mapped_cache);
+        self.0.update_simplified(id, cache);
     }
 }
 
@@ -277,7 +250,6 @@ impl EvalSession for SessionState {
         expr: ExprId,
     ) -> Result<ExprId, cas_engine::eval::EvalResolveError> {
         self.resolve_state_refs(ctx, expr)
-            .map_err(map_resolve_error)
     }
 
     fn resolve_all_with_diagnostics(
@@ -289,13 +261,5 @@ impl EvalSession for SessionState {
         cas_engine::eval::EvalResolveError,
     > {
         self.resolve_state_refs_with_diagnostics(ctx, expr)
-            .map(|(resolved, diagnostics, cache_hits)| {
-                (
-                    resolved,
-                    diagnostics,
-                    cache_hits.into_iter().map(map_cache_hit_trace).collect(),
-                )
-            })
-            .map_err(map_resolve_error)
     }
 }

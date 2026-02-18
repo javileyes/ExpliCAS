@@ -4,15 +4,9 @@ pub mod env;
 mod snapshot;
 mod state;
 
-pub type SimplifyCacheKey =
-    cas_session_core::cache::SimplifyCacheKey<cas_engine::domain::DomainMode>;
-pub type SimplifiedCache = cas_session_core::cache::SimplifiedCache<
-    cas_engine::domain::DomainMode,
-    cas_engine::diagnostics::RequiredItem,
-    cas_engine::step::Step,
->;
-pub type CacheHitTrace =
-    cas_session_core::cache::CacheHitTrace<cas_engine::diagnostics::RequiredItem>;
+pub type SimplifyCacheKey = cas_engine::eval::SimplifyCacheKey;
+pub type SimplifiedCache = cas_engine::eval::SimplifiedCache;
+pub type CacheHitTrace = cas_engine::eval::CacheHitTrace;
 pub type ResolvedExpr =
     cas_session_core::cache::ResolvedExpr<cas_engine::diagnostics::RequiredItem>;
 pub type Entry =

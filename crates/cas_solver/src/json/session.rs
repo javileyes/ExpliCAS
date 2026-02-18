@@ -67,6 +67,10 @@ impl JsonEvalSession {
             profile_cache: cas_engine::profile_cache::ProfileCache::new(),
         }
     }
+
+    pub(crate) fn options_mut(&mut self) -> &mut cas_engine::options::EvalOptions {
+        &mut self.options
+    }
 }
 
 impl EvalSession for JsonEvalSession {

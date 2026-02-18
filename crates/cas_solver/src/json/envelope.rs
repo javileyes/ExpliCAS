@@ -1,9 +1,9 @@
+use super::session::JsonEvalSession;
 use cas_api_models::{
     AssumptionDto, ConditionDto, ExprDto, OutputEnvelope, RequestInfo, RequestOptions,
     TransparencyDto,
 };
 use cas_formatter::DisplayExpr;
-use cas_session::SessionState;
 
 #[derive(Clone, Debug)]
 pub struct EnvelopeEvalOptions {
@@ -22,10 +22,10 @@ impl Default for EnvelopeEvalOptions {
 
 pub fn eval_str_to_output_envelope(expr: &str, opts: &EnvelopeEvalOptions) -> OutputEnvelope {
     let mut engine = cas_engine::eval::Engine::new();
-    let mut state = SessionState::new();
+    let mut session = JsonEvalSession::new(cas_engine::options::EvalOptions::default());
 
-    state.options_mut().shared.semantics.domain_mode = parse_domain_mode(&opts.domain);
-    state.options_mut().shared.semantics.value_domain = parse_value_domain(&opts.value_domain);
+    session.options_mut().shared.semantics.domain_mode = parse_domain_mode(&opts.domain);
+    session.options_mut().shared.semantics.value_domain = parse_value_domain(&opts.value_domain);
 
     let parsed = match cas_parser::parse(expr, &mut engine.simplifier.context) {
         Ok(id) => id,
@@ -44,7 +44,7 @@ pub fn eval_str_to_output_envelope(expr: &str, opts: &EnvelopeEvalOptions) -> Ou
         auto_store: false,
     };
 
-    let output = match engine.eval(&mut state, req) {
+    let output = match engine.eval(&mut session, req) {
         Ok(o) => o,
         Err(e) => return OutputEnvelope::eval_error(build_request_info(expr, opts), e.to_string()),
     };
