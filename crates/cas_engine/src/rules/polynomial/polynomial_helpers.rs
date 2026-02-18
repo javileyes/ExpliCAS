@@ -4,8 +4,8 @@
 //! additive-term flattening, and didactic focus selection utilities.
 
 use crate::ordering::compare_expr;
-use crate::polynomial::Polynomial;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::polynomial::Polynomial;
 use num_rational::BigRational;
 use num_traits::{One, Signed};
 use std::cmp::Ordering;

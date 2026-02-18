@@ -603,7 +603,7 @@ define_rule!(
             let vars = cas_ast::collect_variables(ctx, arg);
             if vars.len() == 1 {
                 let var = vars.iter().next()?;
-                if let Ok(poly) = crate::polynomial::Polynomial::from_expr(ctx, arg, var) {
+                if let Ok(poly) = cas_math::polynomial::Polynomial::from_expr(ctx, arg, var) {
                     if poly.degree() == 2 && poly.coeffs.len() >= 3 {
                         let pa = poly.coeffs.get(2).cloned();
                         let pb = poly.coeffs.get(1).cloned();

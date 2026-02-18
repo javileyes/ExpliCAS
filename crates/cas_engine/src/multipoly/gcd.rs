@@ -4,7 +4,7 @@ use num_rational::BigRational;
 use num_traits::{One, Zero};
 use std::collections::BTreeMap;
 
-use crate::polynomial::Polynomial;
+use cas_math::polynomial::Polynomial;
 
 use super::arithmetic::gcd_bigrational;
 use super::{Monomial, MultiPoly, PolyBudget, VarIdx};

@@ -6,10 +6,10 @@
 
 use crate::build::mul2_raw;
 use crate::define_rule;
-use crate::polynomial::Polynomial;
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::are_denominators_opposite;
 use cas_ast::{count_nodes, BuiltinFn, Context, Expr, ExprId};
+use cas_math::polynomial::Polynomial;
 use num_traits::{One, Signed, Zero};
 use std::cmp::Ordering;
 

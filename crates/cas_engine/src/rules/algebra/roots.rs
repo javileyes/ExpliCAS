@@ -234,7 +234,7 @@ define_rule!(
                 _ => return None,
             }
 
-            use crate::polynomial::Polynomial;
+            use cas_math::polynomial::Polynomial;
 
             let vars = cas_ast::collect_variables(ctx, arg);
             if vars.len() == 1 {

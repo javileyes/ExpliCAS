@@ -316,7 +316,7 @@ pub fn compute_gcd(ctx: &mut Context, a: ExprId, b: ExprId, explain: bool) -> Gc
     }
 
     // Try polynomial GCD
-    use crate::polynomial::Polynomial;
+    use cas_math::polynomial::Polynomial;
 
     let vars = cas_ast::collect_variables(ctx, a);
     let vars_b = cas_ast::collect_variables(ctx, b);
@@ -622,11 +622,11 @@ fn verbose_integer_gcd(a_int: i64, b_int: i64) -> (i64, Vec<String>) {
 /// Compute GCD of two polynomials with educational step-by-step explanation
 fn verbose_poly_gcd(
     ctx: &mut Context,
-    p1: &crate::polynomial::Polynomial,
-    p2: &crate::polynomial::Polynomial,
-) -> (crate::polynomial::Polynomial, Vec<String>) {
-    use crate::polynomial::Polynomial;
+    p1: &cas_math::polynomial::Polynomial,
+    p2: &cas_math::polynomial::Polynomial,
+) -> (cas_math::polynomial::Polynomial, Vec<String>) {
     use cas_formatter::DisplayExpr;
+    use cas_math::polynomial::Polynomial;
 
     let mut a = p1.clone();
     let mut b = p2.clone();

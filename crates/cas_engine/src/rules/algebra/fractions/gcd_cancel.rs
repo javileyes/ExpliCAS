@@ -5,7 +5,6 @@
 
 use crate::build::mul2_raw;
 use crate::define_rule;
-use crate::polynomial::Polynomial;
 use crate::rule::{ChainedRewrite, Rewrite};
 use crate::rules::algebra::helpers::{
     collect_denominators, count_nodes_of_type, distribute, gcd_rational,
@@ -13,6 +12,7 @@ use crate::rules::algebra::helpers::{
 use crate::target_kind::TargetKind;
 use cas_ast::{Expr, ExprId};
 use cas_formatter::DisplayExpr;
+use cas_math::polynomial::Polynomial;
 use num_traits::{One, Zero};
 
 // Import helpers from sibling core_rules module

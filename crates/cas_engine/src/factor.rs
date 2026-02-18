@@ -3,7 +3,7 @@ use cas_ast::{Context, Expr, ExprId};
 use num_traits::{One, Signed, ToPrimitive};
 // use num_rational::BigRational;
 use crate::helpers::{get_square_root, get_trig_arg, is_trig_pow};
-use crate::polynomial::Polynomial;
+use cas_math::polynomial::Polynomial;
 use std::cmp::Ordering;
 
 /// Factors an expression.

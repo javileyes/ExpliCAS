@@ -309,7 +309,7 @@ fn extend_to_vars(poly: &MultiPoly, new_vars: &[String]) -> MultiPoly {
 
 /// Try univariate Euclidean GCD using Polynomial struct
 fn try_univariate_gcd(ctx: &mut Context, a: ExprId, b: ExprId, var: &str) -> Option<ExprId> {
-    use crate::polynomial::Polynomial;
+    use cas_math::polynomial::Polynomial;
 
     let p_a = Polynomial::from_expr(ctx, a, var).ok()?;
     let p_b = Polynomial::from_expr(ctx, b, var).ok()?;

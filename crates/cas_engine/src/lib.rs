@@ -46,7 +46,6 @@ pub(crate) mod poly_lowering;
 pub(crate) mod poly_modp_conv;
 pub(crate) mod poly_result;
 pub mod poly_store;
-pub(crate) mod polynomial;
 pub mod profile_cache;
 pub mod profiler;
 pub mod rationalize;
