@@ -16,3 +16,9 @@ rustc-hash = "1.1"
 rayon = { version = "1.10", optional = true }
 num-rational = "0.4"
 num-traits = "0.2"
+num-bigint = "0.4"
+num-integer = "0.1"
+
+[dev-dependencies]
+cas_formatter = { path = "../cas_formatter" }
+cas_parser = { path = "../cas_parser" }

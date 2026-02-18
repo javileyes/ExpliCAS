@@ -265,6 +265,10 @@ name = "cas_math"
 version = "0.1.0"
 dependencies = [
  "cas_ast",
+ "cas_formatter",
+ "cas_parser",
+ "num-bigint",
+ "num-integer",
  "num-rational",
  "num-traits",
  "rayon",
