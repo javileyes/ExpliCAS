@@ -97,7 +97,7 @@ pub(super) fn display_solution_set(ctx: &cas_ast::Context, set: &cas_ast::Soluti
                     if case.when.is_otherwise() {
                         Some(format!("  otherwise: {}", sol_str))
                     } else {
-                        let cond_str = case.when.display_with_context(ctx);
+                        let cond_str = cas_formatter::condition_set_to_display(&case.when, ctx);
                         Some(format!("  if {}: {}", cond_str, sol_str))
                     }
                 })

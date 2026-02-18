@@ -1111,7 +1111,7 @@ fn format_solution_set(ctx: &cas_ast::Context, solution_set: &cas_ast::SolutionS
                 if crate::format::is_pure_residual_otherwise(case) {
                     continue;
                 }
-                let cond_str = case.when.display_with_context(ctx);
+                let cond_str = cas_formatter::condition_set_to_display(&case.when, ctx);
                 // Format inner solutions recursively
                 let inner_str = format_solution_set(ctx, &case.then.solutions);
                 if case.when.is_empty() {
@@ -1126,7 +1126,7 @@ fn format_solution_set(ctx: &cas_ast::Context, solution_set: &cas_ast::SolutionS
                 for case in cases {
                     if !case.when.is_empty() {
                         let inner_str = format_solution_set(ctx, &case.then.solutions);
-                        let cond_str = case.when.display_with_context(ctx);
+                        let cond_str = cas_formatter::condition_set_to_display(&case.when, ctx);
                         return format!("{} if {}", inner_str, cond_str);
                     }
                 }
@@ -1208,7 +1208,7 @@ fn solution_set_to_latex(ctx: &cas_ast::Context, solution_set: &cas_ast::Solutio
                 if crate::format::is_pure_residual_otherwise(case) {
                     continue;
                 }
-                let cond_latex = case.when.latex_display_with_context(ctx);
+                let cond_latex = cas_formatter::condition_set_to_latex(&case.when, ctx);
                 // Format inner solutions recursively
                 let inner_latex = solution_set_to_latex(ctx, &case.then.solutions);
                 if case.when.is_empty() {

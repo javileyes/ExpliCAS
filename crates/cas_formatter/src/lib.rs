@@ -6,6 +6,7 @@
 pub use cas_ast::{eq, expr_path, hold, ordering, views};
 pub use cas_ast::{Constant, Context, Expr, ExprId};
 
+pub mod conditions;
 pub mod display;
 pub mod display_context;
 pub mod display_transforms;
@@ -15,6 +16,10 @@ pub mod latex_highlight;
 pub mod latex_no_roots;
 pub mod root_style;
 
+pub use conditions::{
+    condition_predicate_to_display, condition_predicate_to_latex, condition_set_to_display,
+    condition_set_to_latex,
+};
 pub use display::{DisplayExpr, DisplayExprStyled, DisplayExprWithHints, RawDisplayExpr};
 pub use display_context::{DisplayContext, DisplayHint};
 pub use display_transforms::{

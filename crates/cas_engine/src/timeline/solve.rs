@@ -574,7 +574,8 @@ impl<'a> SolveTimelineHtml<'a> {
                         if case.when.is_otherwise() {
                             Some(format!("{} & \\text{{otherwise}}", sol_latex))
                         } else {
-                            let cond_latex = case.when.latex_display_with_context(self.context);
+                            let cond_latex =
+                                cas_formatter::condition_set_to_latex(&case.when, self.context);
                             Some(format!("{} & \\text{{if }} {}", sol_latex, cond_latex))
                         }
                     })
