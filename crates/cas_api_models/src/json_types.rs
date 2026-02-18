@@ -7,6 +7,49 @@ use serde::{Deserialize, Serialize};
 /// Stable schema version for JSON outputs.
 pub const SCHEMA_VERSION: u8 = 1;
 
+fn serialization_fallback(pretty: bool, message: &str) -> String {
+    let fallback = serde_json::json!({
+        "schema_version": SCHEMA_VERSION,
+        "ok": false,
+        "error": {
+            "kind": "InternalError",
+            "code": "E_INTERNAL",
+            "message": message,
+        }
+    });
+
+    if pretty {
+        serde_json::to_string_pretty(&fallback)
+    } else {
+        serde_json::to_string(&fallback)
+    }
+    .unwrap_or_else(|_| {
+        if pretty {
+            format!(
+                "{{\n  \"schema_version\": {},\n  \"ok\": false,\n  \"error\": {{\"kind\": \"InternalError\", \"code\": \"E_INTERNAL\", \"message\": \"JSON serialization failed\"}}\n}}",
+                SCHEMA_VERSION
+            )
+        } else {
+            format!(
+                r#"{{"schema_version":{},"ok":false,"error":{{"kind":"InternalError","code":"E_INTERNAL","message":"JSON serialization failed"}}}}"#,
+                SCHEMA_VERSION
+            )
+        }
+    })
+}
+
+fn serialize_json<T: Serialize>(value: &T, pretty: bool) -> String {
+    let encoded = if pretty {
+        serde_json::to_string_pretty(value)
+    } else {
+        serde_json::to_string(value)
+    };
+
+    encoded.unwrap_or_else(|e| {
+        serialization_fallback(pretty, &format!("JSON serialization failed: {e}"))
+    })
+}
+
 // =============================================================================
 // Shared Eval JSON types
 // =============================================================================
@@ -216,6 +259,14 @@ impl ErrorJsonOutput {
             input,
         }
     }
+
+    pub fn to_json(&self) -> String {
+        serialize_json(self, false)
+    }
+
+    pub fn to_json_pretty(&self) -> String {
+        serialize_json(self, true)
+    }
 }
 
 /// Result of evaluating a single expression via eval-json.
@@ -250,6 +301,16 @@ pub struct EvalJsonOutput {
     pub semantics: SemanticsJson,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wire: Option<serde_json::Value>,
+}
+
+impl EvalJsonOutput {
+    pub fn to_json(&self) -> String {
+        serialize_json(self, false)
+    }
+
+    pub fn to_json_pretty(&self) -> String {
+        serialize_json(self, true)
+    }
 }
 
 // =============================================================================
@@ -405,21 +466,11 @@ impl EngineJsonResponse {
     }
 
     pub fn to_json(&self) -> String {
-        serde_json::to_string(self).unwrap_or_else(|e| {
-            format!(
-                r#"{{"schema_version":1,"ok":false,"error":{{"kind":"InternalError","code":"E_INTERNAL","message":"JSON serialization failed: {}"}}}}"#,
-                e
-            )
-        })
+        serialize_json(self, false)
     }
 
     pub fn to_json_pretty(&self) -> String {
-        serde_json::to_string_pretty(self).unwrap_or_else(|e| {
-            format!(
-                r#"{{"schema_version":1,"ok":false,"error":{{"kind":"InternalError","code":"E_INTERNAL","message":"JSON serialization failed: {}"}}}}"#,
-                e
-            )
-        })
+        serialize_json(self, true)
     }
 }
 
@@ -579,21 +630,11 @@ impl SubstituteJsonResponse {
     }
 
     pub fn to_json(&self) -> String {
-        serde_json::to_string(self).unwrap_or_else(|e| {
-            format!(
-                r#"{{"schema_version":1,"ok":false,"error":{{"kind":"InternalError","code":"E_INTERNAL","message":"JSON serialization failed: {}"}}}}"#,
-                e
-            )
-        })
+        serialize_json(self, false)
     }
 
     pub fn to_json_pretty(&self) -> String {
-        serde_json::to_string_pretty(self).unwrap_or_else(|e| {
-            format!(
-                r#"{{"schema_version":1,"ok":false,"error":{{"kind":"InternalError","code":"E_INTERNAL","message":"JSON serialization failed: {}"}}}}"#,
-                e
-            )
-        })
+        serialize_json(self, true)
     }
 }
 
@@ -876,5 +917,13 @@ impl OutputEnvelope {
             transparency: TransparencyDto::default(),
             steps: vec![],
         }
+    }
+
+    pub fn to_json(&self) -> String {
+        serialize_json(self, false)
+    }
+
+    pub fn to_json_pretty(&self) -> String {
+        serialize_json(self, true)
     }
 }

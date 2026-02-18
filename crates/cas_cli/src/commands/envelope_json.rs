@@ -36,12 +36,12 @@ pub struct EnvelopeJsonArgs {
 pub fn run(args: EnvelopeJsonArgs) {
     match run_inner(&args) {
         Ok(output) => {
-            print_pretty_json(&output);
+            println!("{}", output.to_json_pretty());
         }
         Err(e) => {
             let error_envelope =
                 OutputEnvelope::eval_error(build_request_info(&args), e.to_string());
-            print_pretty_json(&error_envelope);
+            println!("{}", error_envelope.to_json_pretty());
         }
     }
 }
@@ -163,20 +163,5 @@ fn build_transparency(output: &EvalOutput, ctx: &cas_ast::Context) -> Transparen
         required_conditions,
         assumptions_used,
         blocked_hints: vec![],
-    }
-}
-
-fn print_pretty_json<T: serde::Serialize>(value: &T) {
-    match serde_json::to_string_pretty(value) {
-        Ok(s) => println!("{}", s),
-        Err(e) => {
-            eprintln!("JSON serialization error: {}", e);
-            match serde_json::to_string(value) {
-                Ok(s) => println!("{}", s),
-                Err(_) => println!(
-                    "{{\"schema_version\":1,\"ok\":false,\"error\":\"JSON_SERIALIZATION_FAILED\"}}"
-                ),
-            }
-        }
     }
 }
