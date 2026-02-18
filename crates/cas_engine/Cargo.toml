@@ -29,7 +29,7 @@ default = ["parallel"]
 parallel = ["rayon", "cas_math/parallel"]
 
 [dev-dependencies]
-cas_session_core = { path = "../cas_session_core" }
+cas_session = { path = "../cas_session", default-features = false }
 cas_parser = { path = "../cas_parser" }
 serde_json = "1.0"
 proptest = "1.9.0"
