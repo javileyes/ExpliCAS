@@ -207,7 +207,11 @@ impl<D: Default, C: SessionCacheValue> SessionStore<D, C> {
     /// Implements LRU eviction with configurable limits:
     /// - Applies light-cache mode for large entries.
     /// - Evicts oldest cached entries when over budget.
-    pub fn update_simplified(&mut self, id: EntryId, mut simplified: C) {
+    pub fn update_simplified<V>(&mut self, id: EntryId, simplified: V)
+    where
+        V: Into<C>,
+    {
+        let mut simplified = simplified.into();
         simplified = simplified.apply_light_cache(self.cache_config.light_cache_threshold);
 
         if let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) {
