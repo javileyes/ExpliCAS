@@ -12,13 +12,8 @@
 use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use cas_ast::{BuiltinFn, Expr};
+use cas_ast::Expr;
 use cas_math::poly_modp_conv::{check_poly_equal_modp_expr, strip_hold, DEFAULT_PRIME};
-
-/// Check if expression is wrapped in __hold
-fn is_hold(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
-    matches!(ctx.get(expr), Expr::Function(fn_id, args) if ctx.is_builtin(*fn_id, BuiltinFn::Hold) && args.len() == 1)
-}
 
 // PolySubModpRule: handle __hold(P) - __hold(Q) in polynomial domain
 define_rule!(
@@ -34,8 +29,8 @@ define_rule!(
 
         // Only activate if at least one operand is __hold
         // This avoids contaminating standard arithmetic
-        let a_is_hold = is_hold(ctx, a);
-        let b_is_hold = is_hold(ctx, b);
+        let a_is_hold = cas_ast::hold::is_hold(ctx, a);
+        let b_is_hold = cas_ast::hold::is_hold(ctx, b);
 
         if !(a_is_hold || b_is_hold) {
             return None;
