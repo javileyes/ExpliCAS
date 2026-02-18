@@ -204,7 +204,7 @@ fn build_product_from_factors(ctx: &mut Context, factors: &[(ExprId, i64)]) -> E
 /// 2. Extracts common multiplicative factors (gcd(a*g, b*g) = g * gcd(a,b))
 /// 3. Computes GCD on reduced polynomials (much smaller)
 /// 4. Returns common * gcd_result
-pub fn compute_gcd_modp_with_factor_extraction(
+fn compute_gcd_modp_with_factor_extraction(
     ctx: &mut Context,
     a: ExprId,
     b: ExprId,
@@ -268,7 +268,7 @@ pub fn compute_gcd_modp_with_factor_extraction(
 ///
 /// CRITICAL: When we find poly_gcd_modp, we do NOT descend into its children.
 /// This prevents the expensive symbolic expansion of huge arguments.
-pub fn eager_eval_poly_gcd_calls(
+pub(crate) fn eager_eval_poly_gcd_calls(
     ctx: &mut Context,
     expr: ExprId,
     collect_steps: bool,

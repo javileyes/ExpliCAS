@@ -30,7 +30,6 @@ pub mod gcd_exact;
 pub use gcd_exact::*;
 
 pub mod gcd_modp;
-pub use gcd_modp::*;
 
 pub mod poly_arith_modp;
 pub use poly_arith_modp::*;
@@ -104,9 +103,9 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     // Polynomial GCD exact: poly_gcd_exact(a, b) → algebraic GCD over ℚ
     simplifier.add_rule(Box::new(PolyGcdExactRule));
     // Polynomial GCD mod p: poly_gcd_modp(a, b) → fast Zippel GCD
-    simplifier.add_rule(Box::new(PolyGcdModpRule));
+    simplifier.add_rule(Box::new(gcd_modp::PolyGcdModpRule));
     // Polynomial equality mod p: poly_eq_modp(a, b) → 1 or 0
-    simplifier.add_rule(Box::new(PolyEqModpRule));
+    simplifier.add_rule(Box::new(gcd_modp::PolyEqModpRule));
     // Polynomial arithmetic on __hold: __hold(P) - __hold(Q) = 0 if equal mod p
     simplifier.add_rule(Box::new(PolySubModpRule));
     // Sum of three cubes identity: x³ + y³ + z³ = 3xyz when x + y + z = 0
