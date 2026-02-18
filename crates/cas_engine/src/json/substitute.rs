@@ -1,6 +1,5 @@
 use cas_api_models::{
     EngineJsonError as ApiEngineJsonError, EngineJsonSubstep, SpanJson as ApiSpanJson,
-    SCHEMA_VERSION,
 };
 pub use cas_api_models::{
     SubstituteJsonOptions, SubstituteJsonResponse, SubstituteOptionsInner, SubstituteOptionsJson,
@@ -53,11 +52,8 @@ pub fn substitute_str_to_json(
     let expr = match cas_parser::parse(expr_str, &mut ctx) {
         Ok(id) => id,
         Err(e) => {
-            let resp = SubstituteJsonResponse {
-                schema_version: SCHEMA_VERSION,
-                ok: false,
-                result: None,
-                error: Some(ApiEngineJsonError {
+            let resp = SubstituteJsonResponse::err(
+                ApiEngineJsonError {
                     kind: "ParseError",
                     code: "E_PARSE",
                     message: format!("Failed to parse expression: {}", e),
@@ -66,11 +62,10 @@ pub fn substitute_str_to_json(
                         end: s.end,
                     }),
                     details: serde_json::Value::Null,
-                }),
-                request,
-                options,
-                steps: vec![],
-            };
+                },
+                request.clone(),
+                options.clone(),
+            );
             return if opts.pretty {
                 resp.to_json_pretty()
             } else {
@@ -82,11 +77,8 @@ pub fn substitute_str_to_json(
     let target = match cas_parser::parse(target_str, &mut ctx) {
         Ok(id) => id,
         Err(e) => {
-            let resp = SubstituteJsonResponse {
-                schema_version: SCHEMA_VERSION,
-                ok: false,
-                result: None,
-                error: Some(ApiEngineJsonError {
+            let resp = SubstituteJsonResponse::err(
+                ApiEngineJsonError {
                     kind: "ParseError",
                     code: "E_PARSE",
                     message: format!("Failed to parse target: {}", e),
@@ -95,11 +87,10 @@ pub fn substitute_str_to_json(
                         end: s.end,
                     }),
                     details: serde_json::Value::Null,
-                }),
-                request,
-                options,
-                steps: vec![],
-            };
+                },
+                request.clone(),
+                options.clone(),
+            );
             return if opts.pretty {
                 resp.to_json_pretty()
             } else {
@@ -111,11 +102,8 @@ pub fn substitute_str_to_json(
     let replacement = match cas_parser::parse(with_str, &mut ctx) {
         Ok(id) => id,
         Err(e) => {
-            let resp = SubstituteJsonResponse {
-                schema_version: SCHEMA_VERSION,
-                ok: false,
-                result: None,
-                error: Some(ApiEngineJsonError {
+            let resp = SubstituteJsonResponse::err(
+                ApiEngineJsonError {
                     kind: "ParseError",
                     code: "E_PARSE",
                     message: format!("Failed to parse replacement: {}", e),
@@ -124,11 +112,10 @@ pub fn substitute_str_to_json(
                         end: s.end,
                     }),
                     details: serde_json::Value::Null,
-                }),
-                request,
-                options,
-                steps: vec![],
-            };
+                },
+                request.clone(),
+                options.clone(),
+            );
             return if opts.pretty {
                 resp.to_json_pretty()
             } else {
@@ -173,15 +160,7 @@ pub fn substitute_str_to_json(
         vec![]
     };
 
-    let resp = SubstituteJsonResponse {
-        schema_version: SCHEMA_VERSION,
-        ok: true,
-        result: Some(result_str),
-        error: None,
-        request,
-        options,
-        steps: json_steps,
-    };
+    let resp = SubstituteJsonResponse::ok(result_str, request, options, json_steps);
 
     if opts.pretty {
         resp.to_json_pretty()

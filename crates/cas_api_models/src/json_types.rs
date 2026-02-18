@@ -525,6 +525,39 @@ pub struct SubstituteJsonResponse {
 }
 
 impl SubstituteJsonResponse {
+    pub fn ok(
+        result: String,
+        request: SubstituteRequestEcho,
+        options: SubstituteOptionsJson,
+        steps: Vec<EngineJsonSubstep>,
+    ) -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            ok: true,
+            result: Some(result),
+            error: None,
+            request,
+            options,
+            steps,
+        }
+    }
+
+    pub fn err(
+        error: EngineJsonError,
+        request: SubstituteRequestEcho,
+        options: SubstituteOptionsJson,
+    ) -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            ok: false,
+            result: None,
+            error: Some(error),
+            request,
+            options,
+            steps: vec![],
+        }
+    }
+
     pub fn to_json(&self) -> String {
         serde_json::to_string(self).unwrap_or_else(|e| {
             format!(
