@@ -113,21 +113,6 @@ impl EvalSession for SessionState {
         &mut self.profile_cache
     }
 
-    fn resolve_all(
-        &self,
-        ctx: &mut cas_ast::Context,
-        expr: ExprId,
-    ) -> Result<ExprId, EvalResolveError> {
-        let mut lookup = |id: u64| self.store.0.get(id).map(|entry| entry.kind.clone());
-        cas_session_core::resolve::resolve_all_with_lookup_and_env(
-            ctx,
-            expr,
-            &mut lookup,
-            &self.env,
-        )
-        .map_err(map_eval_resolve_error)
-    }
-
     fn resolve_all_with_diagnostics(
         &self,
         ctx: &mut cas_ast::Context,

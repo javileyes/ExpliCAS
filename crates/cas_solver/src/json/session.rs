@@ -83,17 +83,6 @@ impl EvalSession for JsonEvalSession {
         &mut self.profile_cache
     }
 
-    fn resolve_all(
-        &self,
-        ctx: &mut cas_ast::Context,
-        expr: ExprId,
-    ) -> Result<ExprId, cas_engine::eval::EvalResolveError> {
-        if let Some(id) = first_session_ref(ctx, expr) {
-            return Err(cas_engine::eval::EvalResolveError::NotFound(id));
-        }
-        Ok(expr)
-    }
-
     fn resolve_all_with_diagnostics(
         &self,
         ctx: &mut cas_ast::Context,

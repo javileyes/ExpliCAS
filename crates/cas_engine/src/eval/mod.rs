@@ -148,12 +148,6 @@ pub trait EvalSession {
     fn options(&self) -> &crate::options::EvalOptions;
     fn profile_cache_mut(&mut self) -> &mut crate::profile_cache::ProfileCache;
 
-    fn resolve_all(
-        &self,
-        ctx: &mut cas_ast::Context,
-        expr: ExprId,
-    ) -> Result<ExprId, EvalResolveError>;
-
     fn resolve_all_with_diagnostics(
         &self,
         ctx: &mut cas_ast::Context,
@@ -166,6 +160,15 @@ pub trait EvalSession {
         ),
         EvalResolveError,
     >;
+
+    fn resolve_all(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: ExprId,
+    ) -> Result<ExprId, EvalResolveError> {
+        self.resolve_all_with_diagnostics(ctx, expr)
+            .map(|(resolved, _, _)| resolved)
+    }
 }
 
 impl Engine {

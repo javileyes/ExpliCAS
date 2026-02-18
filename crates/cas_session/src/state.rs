@@ -252,15 +252,6 @@ impl EvalSession for SessionState {
         &mut self.profile_cache
     }
 
-    fn resolve_all(
-        &self,
-        ctx: &mut cas_ast::Context,
-        expr: ExprId,
-    ) -> Result<ExprId, cas_engine::eval::EvalResolveError> {
-        self.resolve_state_refs(ctx, expr)
-            .map_err(map_eval_resolve_error)
-    }
-
     fn resolve_all_with_diagnostics(
         &self,
         ctx: &mut cas_ast::Context,
