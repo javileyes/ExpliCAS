@@ -1,7 +1,7 @@
 use super::session::JsonEvalSession;
 use cas_api_models::{
-    AssumptionDto, ConditionDto, ExprDto, OutputEnvelope, RequestInfo, RequestOptions,
-    TransparencyDto,
+    AssumptionDto, BlockedHintDto, ConditionDto, ExprDto, OutputEnvelope, RequestInfo,
+    RequestOptions, TransparencyDto,
 };
 use cas_formatter::DisplayExpr;
 
@@ -127,10 +127,20 @@ fn build_transparency(
         rule: w.rule_name.clone(),
     }));
 
+    let blocked_hints = output
+        .blocked_hints
+        .iter()
+        .map(|h| BlockedHintDto {
+            rule: h.rule.clone(),
+            requires: vec![h.key.condition_display().to_string()],
+            tip: h.suggestion.to_string(),
+        })
+        .collect();
+
     TransparencyDto {
         required_conditions,
         assumptions_used,
-        blocked_hints: vec![],
+        blocked_hints,
     }
 }
 
