@@ -5,10 +5,10 @@
 //! 2. Transform never runs after Rationalize
 //! 3. expand() uses no-rationalize path
 
-use cas_ast::display::DisplayExprStyled;
 use cas_ast::root_style::{ParseStyleSignals, StylePreferences};
 use cas_engine::orchestrator::Orchestrator;
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExprStyled;
 
 fn simplify_with_pipeline(input: &str) -> String {
     let mut simplifier = Simplifier::new();

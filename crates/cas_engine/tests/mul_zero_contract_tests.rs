@@ -41,7 +41,7 @@ fn simplify_strict(input: &str) -> (String, Vec<String>) {
     (
         format!(
             "{}",
-            cas_ast::display::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: result
             }
@@ -77,7 +77,7 @@ fn simplify_assume(input: &str) -> (String, Vec<String>) {
     (
         format!(
             "{}",
-            cas_ast::display::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: result
             }
@@ -113,7 +113,7 @@ fn simplify_generic(input: &str) -> (String, Vec<String>) {
     (
         format!(
             "{}",
-            cas_ast::display::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: result
             }

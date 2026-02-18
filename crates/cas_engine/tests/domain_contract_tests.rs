@@ -26,7 +26,7 @@ fn simplify_generic(input: &str) -> String {
     let (result, _) = simplifier.simplify(expr);
     format!(
         "{}",
-        cas_ast::display::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -53,7 +53,7 @@ fn simplify_strict(input: &str) -> String {
     let (result, _) = simplifier.simplify_with_options(expr, opts);
     format!(
         "{}",
-        cas_ast::display::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }

@@ -3,9 +3,9 @@
 //! These tests ensure that the 1/k * X → X/k display transformation
 //! handles edge cases correctly.
 
-use cas_ast::display::DisplayExprStyled;
 use cas_ast::root_style::{ParseStyleSignals, StylePreferences};
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExprStyled;
 
 fn simplify_and_format(input: &str) -> String {
     let mut simplifier = Simplifier::new();

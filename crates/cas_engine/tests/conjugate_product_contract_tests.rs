@@ -33,11 +33,11 @@ fn test_conjugate_compare_terms() {
             } else {
                 "-"
             };
-            let l_disp = cas_ast::display::DisplayExpr {
+            let l_disp = cas_formatter::DisplayExpr {
                 context: &ctx,
                 id: *l_term,
             };
-            let r_disp = cas_ast::display::DisplayExpr {
+            let r_disp = cas_formatter::DisplayExpr {
                 context: &ctx,
                 id: *r_term,
             };

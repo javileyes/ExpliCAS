@@ -38,7 +38,7 @@ fn simplify_assume_with_steps(input: &str) -> (String, Vec<Step>) {
     let (result, steps) = simplifier.simplify_with_options(expr, opts);
     let result_str = format!(
         "{}",
-        cas_ast::display::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
