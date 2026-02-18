@@ -18,7 +18,7 @@ fn eval(input: &str) -> String {
 
     let (result, _steps) = simplifier.simplify(expr);
 
-    cas_ast::DisplayExpr {
+    cas_formatter::DisplayExpr {
         context: &simplifier.context,
         id: result,
     }

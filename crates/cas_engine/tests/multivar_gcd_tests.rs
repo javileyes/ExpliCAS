@@ -28,7 +28,7 @@ fn simplify(input: &str) -> String {
 
     format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }

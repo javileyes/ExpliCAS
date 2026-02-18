@@ -451,7 +451,8 @@ impl Drop for DepthGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cas_ast::{BoundType, Context, DisplayExpr, RelOp};
+    use cas_ast::{BoundType, Context, RelOp};
+    use cas_formatter::DisplayExpr;
     use cas_parser::parse;
 
     // Helper to make equation from strings

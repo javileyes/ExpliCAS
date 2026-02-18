@@ -243,7 +243,7 @@ fn no_garbage_undefined_in_result() {
         for sol in sols {
             let sol_str = format!(
                 "{}",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &engine.simplifier.context,
                     id: sol
                 }

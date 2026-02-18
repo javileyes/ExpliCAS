@@ -9,9 +9,10 @@
 //! - Proved-symbolic: simplify(a - b) == 0
 //! - Numeric-only: f64 evaluation at sample points
 
-use cas_ast::{Context, ExprId, LaTeXExpr};
+use cas_ast::{Context, ExprId};
 use cas_engine::engine::Simplifier;
 use cas_engine::{eval_f64_checked, EvalCheckedError, EvalCheckedOptions};
+use cas_formatter::LaTeXExpr;
 use cas_parser::parse;
 use std::collections::HashMap;
 use std::sync::mpsc;

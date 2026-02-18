@@ -144,7 +144,7 @@ fn test_specific_problematic_case() {
                 println!("  Steps: {}, Time: {:?}", steps.len(), elapsed);
                 println!(
                     "  Result: {}",
-                    cas_ast::DisplayExpr {
+                    cas_formatter::DisplayExpr {
                         context: &simplifier.context,
                         id: result
                     }

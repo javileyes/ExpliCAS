@@ -7,9 +7,9 @@
 //! - Anti-blowup guards (oversized base blocked)
 //! - Performance sanity
 
-use cas_ast::DisplayExpr;
 use cas_engine::helpers::eval_f64_with_substitution;
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
 /// Simplify an expression and return its display string.

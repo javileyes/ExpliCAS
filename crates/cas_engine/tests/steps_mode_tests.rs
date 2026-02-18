@@ -33,7 +33,7 @@ fn simplify_with_mode(input: &str, mode: StepsMode) -> (String, Vec<cas_engine::
 
     let result_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -204,7 +204,7 @@ fn simplify_morrie_with_mode(mode: StepsMode) -> (String, Vec<cas_engine::Step>,
 
     let result_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }

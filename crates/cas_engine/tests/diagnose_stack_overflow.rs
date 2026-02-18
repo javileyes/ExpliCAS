@@ -27,7 +27,7 @@ fn diagnose_rule_firing_counts() {
     // Print result
     eprintln!(
         "Result: {}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result,
         }
@@ -74,7 +74,7 @@ fn diagnose_pythagorean_plus_sin_pow() {
 
     eprintln!(
         "Result: {}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result,
         }

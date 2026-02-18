@@ -279,7 +279,8 @@ fn is_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
 mod tests {
     use crate::rule::Rule;
     use crate::rules::calculus::IntegrateRule;
-    use cas_ast::{Context, DisplayExpr};
+    use cas_ast::Context;
+    use cas_formatter::DisplayExpr;
     use cas_parser::parse;
 
     #[test]

@@ -90,7 +90,7 @@ fn michaelis_menten_correct_solution() {
 
     let sol_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: sols[0],
         }
@@ -237,7 +237,7 @@ fn combine_like_terms_correct_result() {
 
     let sol_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: sols[0],
         }
@@ -320,7 +320,7 @@ fn fractional_linear_correct_form() {
 
     let sol_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: sols[0],
         }

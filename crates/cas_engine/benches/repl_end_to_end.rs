@@ -5,7 +5,8 @@ use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 
-use cas_ast::{Context, DisplayExpr};
+use cas_ast::Context;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
 use cas_engine::options::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};

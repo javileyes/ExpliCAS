@@ -103,7 +103,7 @@ fn const_fold_safe_enables_sqrt_negative_to_i() {
     )
     .unwrap();
 
-    let display = cas_ast::DisplayExpr {
+    let display = cas_formatter::DisplayExpr {
         context: &ctx,
         id: result.expr,
     };
@@ -142,7 +142,7 @@ fn const_fold_off_preserves_sqrt_negative() {
     )
     .unwrap();
 
-    let display = cas_ast::DisplayExpr {
+    let display = cas_formatter::DisplayExpr {
         context: &ctx,
         id: result.expr,
     };

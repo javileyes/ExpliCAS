@@ -33,14 +33,14 @@ fn distribute_step_must_not_be_visually_noop() {
     for s in &distribute_steps {
         let before_str = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: s.before
             }
         );
         let after_str = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: s.after
             }

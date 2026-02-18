@@ -15,8 +15,9 @@
 //   STRESS  - Detects problems
 //   EXTREME - Deep debugging
 
-use cas_ast::{Context, DisplayExpr, Expr};
+use cas_ast::{Context, Expr};
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 use proptest::strategy::{Strategy, ValueTree};
 use proptest::test_runner::{Config, TestRunner};
 use std::collections::HashMap;

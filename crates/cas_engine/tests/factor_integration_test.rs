@@ -1,7 +1,7 @@
-use cas_ast::DisplayExpr;
 use cas_engine::rules::algebra::FactorRule;
 use cas_engine::rules::polynomial::CombineLikeTermsRule;
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
 #[test]

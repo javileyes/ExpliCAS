@@ -1,6 +1,7 @@
 #[test]
 fn test_hold_transparency_from_engine() {
-    use cas_ast::{Context, DisplayExpr};
+    use cas_ast::Context;
+    use cas_formatter::DisplayExpr;
     let mut ctx = Context::new();
     let x = ctx.var("x");
     let held = ctx.call_builtin(cas_ast::BuiltinFn::Hold, vec![x]);

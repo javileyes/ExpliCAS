@@ -24,7 +24,7 @@ fn simplify_with(input: &str, opts: &EvalOptions) -> String {
 
     format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -216,7 +216,7 @@ fn test_parser_recognizes_standalone_i() {
     let expr = parse("i", &mut ctx).expect("Should parse i");
     let display = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &ctx,
             id: expr
         }
@@ -230,7 +230,7 @@ fn test_parser_i_in_expression() {
     let expr = parse("2*i + 3", &mut ctx).expect("Should parse 2*i + 3");
     let display = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &ctx,
             id: expr
         }
@@ -274,7 +274,7 @@ fn simplify_with_steps(input: &str, opts: &EvalOptions) -> (String, usize) {
 
     let result_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }

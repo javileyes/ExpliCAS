@@ -21,7 +21,7 @@ fn eval_with_steps(input: &str) -> (String, Vec<StepInfo>) {
 
     let (result, steps) = simplifier.simplify(expr);
 
-    let result_str = cas_ast::DisplayExpr {
+    let result_str = cas_formatter::DisplayExpr {
         context: &simplifier.context,
         id: result,
     }

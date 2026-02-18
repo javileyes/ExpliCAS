@@ -114,7 +114,7 @@ fn reciprocal_solve_correct_result() {
     // Verify solution structure: R1*R2 / (R1+R2)
     let sol_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: sols[0],
         }

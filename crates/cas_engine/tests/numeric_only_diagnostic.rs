@@ -11,9 +11,10 @@
 //!     -- --ignored --nocapture 2>&1 | tee /tmp/numeric_only_diag.txt
 //! ```
 
-use cas_ast::{Context, DisplayExpr, Expr, ExprId};
+use cas_ast::{Context, Expr, ExprId};
 use cas_engine::ordering::compare_expr;
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 use std::cmp::Ordering;
 use std::collections::HashMap;

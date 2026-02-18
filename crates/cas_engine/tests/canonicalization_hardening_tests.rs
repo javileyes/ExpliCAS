@@ -4,8 +4,9 @@
 /// These tests create a safety perimeter around the consolidation rules
 /// so that future refactors can't silently introduce incorrect rewrites
 /// like `(x^2)^(1/2) → x` (must stay as sqrt(x^2) or |x|).
-use cas_ast::{DisplayExpr, Expr};
+use cas_ast::Expr;
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 
 fn simplify_display(input: &str) -> String {
     let mut simplifier = Simplifier::new();

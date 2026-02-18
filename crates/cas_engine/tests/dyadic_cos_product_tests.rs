@@ -23,7 +23,7 @@ fn simplify(input: &str) -> String {
 
     format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -129,7 +129,7 @@ fn test_dyadic_cos_product_assume_symbolic_allowed() {
 
     let result_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -240,7 +240,7 @@ fn simplify_with_steps(input: &str) -> (String, Vec<String>) {
 
     let result_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }

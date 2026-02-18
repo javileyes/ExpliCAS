@@ -71,7 +71,7 @@ fn strict_mode_solves_with_required_conditions() {
         SolutionSet::Discrete(solutions) => {
             assert!(!solutions.is_empty(), "Should have at least one solution");
             // Solution should be x = ln(y)/ln(2) or log(2, y)
-            let sol_str = cas_ast::DisplayExpr {
+            let sol_str = cas_formatter::DisplayExpr {
                 context: &engine.simplifier.context,
                 id: solutions[0],
             }
@@ -184,7 +184,7 @@ fn assume_real_solves_with_positive_requirement() {
     let required = diagnostics.required;
     let has_positive_y = required.iter().any(|cond| {
         if let ImplicitCondition::Positive(id) = cond {
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &engine.simplifier.context,
                 id: *id,
             }
@@ -244,7 +244,7 @@ fn assume_wildcard_negative_base_returns_residual_isolation() {
 
     // Verify NO garbage: the residual should not contain ln(-2) or undefined
     if let cas_ast::SolutionSet::Residual(residual_expr) = solution_set {
-        let residual_str = cas_ast::DisplayExpr {
+        let residual_str = cas_formatter::DisplayExpr {
             context: &engine.simplifier.context,
             id: residual_expr,
         }

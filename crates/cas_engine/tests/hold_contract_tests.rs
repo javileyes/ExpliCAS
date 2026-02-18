@@ -26,7 +26,7 @@ fn test_expand_no_hold_leak() {
     // Format as string (same path as REPL display)
     let result_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -66,7 +66,7 @@ fn test_autoexpand_no_hold_leak() {
 
     let result_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -91,7 +91,7 @@ fn test_factor_no_hold_leak() {
 
     let result_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }

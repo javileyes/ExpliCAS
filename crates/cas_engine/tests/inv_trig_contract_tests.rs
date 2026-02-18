@@ -5,8 +5,8 @@
 //! 2. Principal mode: arctan(tan(x)) → x with domain_assumption
 //! 3. Policy is independent of DomainMode
 
-use cas_ast::DisplayExpr;
 use cas_engine::{DomainMode, Engine, EvalAction, EvalRequest, EvalResult, InverseTrigPolicy};
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 use cas_session::SessionState;
 

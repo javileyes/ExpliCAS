@@ -4,8 +4,9 @@
 // The issue was that Div(1,2) → Number(1/2) was being rejected because they're
 // semantically equal. The fix uses nf_score to accept canonicalizing rewrites.
 
-use cas_ast::{Context, DisplayExpr, Expr};
+use cas_ast::{Context, Expr};
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
 /// Verify that 4^(1/2) simplifies to 2, even when exponent is Div form

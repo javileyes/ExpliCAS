@@ -374,7 +374,8 @@ define_rule!(CombineConstantsRule, "Combine Constants", importance: crate::step:
 mod tests {
     use super::*;
     use crate::rule::Rule;
-    use cas_ast::{Context, DisplayExpr};
+    use cas_ast::Context;
+    use cas_formatter::DisplayExpr;
 
     #[test]
     fn test_add_zero() {

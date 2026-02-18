@@ -40,7 +40,7 @@ fn simplify_for_expand(input: &str) -> String {
 
     format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: simplified,
         }

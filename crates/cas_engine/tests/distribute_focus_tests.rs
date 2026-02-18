@@ -3,9 +3,10 @@
 //! These tests verify that the focus shows the product/quotient being distributed,
 //! and the resulting sum.
 
-use cas_ast::{Context, DisplayExpr};
+use cas_ast::Context;
 use cas_engine::eval_step_pipeline::to_display_steps;
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 
 /// Helper to get display string for an ExprId
 fn display(ctx: &Context, id: cas_ast::ExprId) -> String {

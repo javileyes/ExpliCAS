@@ -84,7 +84,7 @@ fn power_equals_base_symbolic_strict_mode() {
             // Case 3: otherwise → {1}
             match &cases[2].then.solutions {
                 SolutionSet::Discrete(sols) if sols.len() == 1 => {
-                    let sol_str = cas_ast::DisplayExpr {
+                    let sol_str = cas_formatter::DisplayExpr {
                         context: &engine.simplifier.context,
                         id: sols[0],
                     }
@@ -130,7 +130,7 @@ fn power_equals_base_symbolic_generic_mode() {
     match solution_set {
         SolutionSet::Discrete(sols) => {
             assert_eq!(sols.len(), 1, "Expected exactly 1 solution");
-            let sol_str = cas_ast::DisplayExpr {
+            let sol_str = cas_formatter::DisplayExpr {
                 context: &engine.simplifier.context,
                 id: sols[0],
             }
@@ -176,7 +176,7 @@ fn power_equals_power_symbolic_gives_exponent() {
     match solution_set {
         SolutionSet::Discrete(sols) => {
             assert_eq!(sols.len(), 1, "Expected exactly 1 solution");
-            let sol_str = cas_ast::DisplayExpr {
+            let sol_str = cas_formatter::DisplayExpr {
                 context: &engine.simplifier.context,
                 id: sols[0],
             }
@@ -215,7 +215,7 @@ fn power_equals_power_symbolic_gives_exponent_3() {
     match solution_set {
         SolutionSet::Discrete(sols) => {
             assert_eq!(sols.len(), 1, "Expected exactly 1 solution");
-            let sol_str = cas_ast::DisplayExpr {
+            let sol_str = cas_formatter::DisplayExpr {
                 context: &engine.simplifier.context,
                 id: sols[0],
             }
@@ -256,7 +256,7 @@ fn numeric_base_2_to_x_equals_2() {
     match solution_set {
         SolutionSet::Discrete(sols) => {
             assert_eq!(sols.len(), 1, "Expected exactly 1 solution");
-            let sol_str = cas_ast::DisplayExpr {
+            let sol_str = cas_formatter::DisplayExpr {
                 context: &engine.simplifier.context,
                 id: sols[0],
             }
@@ -307,7 +307,7 @@ fn zero_to_x_equals_zero_gives_positive_interval() {
             );
 
             // Check lower is 0
-            let lower_str = cas_ast::DisplayExpr {
+            let lower_str = cas_formatter::DisplayExpr {
                 context: &engine.simplifier.context,
                 id: interval.min,
             }

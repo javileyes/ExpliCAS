@@ -20,7 +20,7 @@ fn run_simplify(input: &str, opts: &EvalOptions) -> (String, Vec<Step>) {
 
     let result_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -353,7 +353,7 @@ fn test_priority_same_first_registered_wins() {
 
     let result_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }

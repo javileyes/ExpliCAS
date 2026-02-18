@@ -54,7 +54,7 @@ fn quadratic_discriminant_simplified() {
     for sol in &sols {
         let sol_str = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: *sol,
             }
@@ -97,7 +97,7 @@ fn quadratic_has_vertex_constant() {
     let any_has_two = sols.iter().any(|sol| {
         let sol_str = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: *sol,
             }

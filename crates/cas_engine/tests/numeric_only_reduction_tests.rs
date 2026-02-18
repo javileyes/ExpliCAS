@@ -9,8 +9,8 @@
 //! 2. Convergence: equivalent forms simplify to the same normal form
 //! 3. Idempotency: simplify(simplify(expr)) == simplify(expr) (anti-loop)
 
-use cas_ast::DisplayExpr;
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
 /// Helper: simplify an expression string and return the result as a string.

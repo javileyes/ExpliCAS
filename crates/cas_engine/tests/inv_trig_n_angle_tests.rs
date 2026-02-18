@@ -7,9 +7,9 @@
 //! - Sign parity (negative multiples)
 //! - Chebyshev sanity checks
 
-use cas_ast::DisplayExpr;
 use cas_engine::helpers::eval_f64_with_substitution;
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
 /// Simplify an expression string and return the result as string.

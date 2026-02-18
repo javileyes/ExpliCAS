@@ -15,11 +15,12 @@
 //! cargo insta review
 //! ```
 
-use cas_ast::{DisplayExpr, SolutionSet};
+use cas_ast::SolutionSet;
 use cas_engine::domain::DomainMode;
 use cas_engine::semantics::{AssumeScope, ValueDomain};
 use cas_engine::solver::{solve_with_display_steps, SolveBudget, SolverOptions};
 use cas_engine::Engine;
+use cas_formatter::DisplayExpr;
 
 /// Helper to solve an equation and format the result as a snapshot-friendly string
 fn solve_and_format(eq_str: &str, var: &str, budget: usize, mode: DomainMode) -> String {

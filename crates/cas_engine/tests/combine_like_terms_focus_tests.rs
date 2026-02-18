@@ -7,9 +7,10 @@
 //! instead of showing "5 + cos²(x) + sin²(x) - 5 → cos²(x) + sin²(x)",
 //! the step should show focus: "5 - 5 → 0"
 
-use cas_ast::{Context, DisplayExpr};
+use cas_ast::Context;
 use cas_engine::eval_step_pipeline::to_display_steps;
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 
 /// Helper to get display string for an ExprId
 fn display(ctx: &Context, id: cas_ast::ExprId) -> String {

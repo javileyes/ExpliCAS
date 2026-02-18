@@ -2,7 +2,6 @@
 #![allow(clippy::field_reassign_with_default)]
 #![allow(dead_code)]
 #![allow(unused_variables)]
-use cas_ast::DisplayExpr;
 use cas_engine::rules::arithmetic::{AddZeroRule, CombineConstantsRule, MulOneRule, MulZeroRule};
 use cas_engine::rules::canonicalization::{
     CanonicalizeAddRule, CanonicalizeMulRule, CanonicalizeNegationRule,
@@ -10,6 +9,7 @@ use cas_engine::rules::canonicalization::{
 use cas_engine::rules::polynomial::CombineLikeTermsRule;
 use cas_engine::rules::polynomial::DistributeRule;
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
 #[test]

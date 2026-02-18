@@ -25,7 +25,7 @@ fn simplify_with_opts(input: &str, opts: &SimplifyOptions) -> String {
     let (result, _steps) = simplifier.simplify_with_options(parsed, opts.clone());
     format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }

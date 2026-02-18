@@ -67,7 +67,7 @@ fn symbolic_linear_correct_form() {
 
     let sol_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: sols[0],
         }

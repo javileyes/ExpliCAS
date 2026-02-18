@@ -1,4 +1,3 @@
-use cas_ast::DisplayExpr;
 use cas_engine::rules::algebra::{
     AddFractionsRule, ExpandRule, FactorDifferenceSquaresRule, FactorRule,
     PullConstantFromFractionRule, SimplifyFractionRule, SimplifyMulDivRule,
@@ -23,6 +22,7 @@ use cas_engine::rules::trigonometry::{
     RecursiveTrigExpansionRule, TanToSinCosRule,
 };
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 use std::collections::HashMap;
 

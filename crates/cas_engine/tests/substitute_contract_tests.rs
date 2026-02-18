@@ -319,7 +319,7 @@ fn d1_substitute_no_hold_leak() {
     // Result should not contain __hold - check via format
     let result_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &ctx,
             id: result
         }

@@ -1,5 +1,5 @@
-use cas_ast::LaTeXExpr;
 use cas_engine::Simplifier;
+use cas_formatter::LaTeXExpr;
 use cas_parser::parse;
 
 fn simplify_str(input: &str) -> String {

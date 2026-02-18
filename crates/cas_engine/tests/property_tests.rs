@@ -7,7 +7,7 @@ mod strategies;
 
 /// Log expression to file before processing - helps capture what causes stack overflow
 fn log_expr_before_simplify(ctx: &Context, expr: ExprId, test_name: &str) {
-    let display = cas_ast::DisplayExpr {
+    let display = cas_formatter::DisplayExpr {
         context: ctx,
         id: expr,
     };
@@ -45,10 +45,10 @@ proptest! {
     #[test]
     fn test_round_trip_parse(re in strategies::arb_recursive_expr()) {
         let (ctx, expr) = strategies::to_context(re);
-        let _s = cas_ast::LaTeXExpr { context: &ctx, id: expr }.to_latex(); // Use to_latex to ensure it doesn't panic for now, or Display
+        let _s = cas_formatter::LaTeXExpr { context: &ctx, id: expr }.to_latex(); // Use to_latex to ensure it doesn't panic for now, or Display
         // Actually we should use Display implementation if available.
         // But DisplayExpr is needed.
-        let display_expr = cas_ast::DisplayExpr { context: &ctx, id: expr };
+        let display_expr = cas_formatter::DisplayExpr { context: &ctx, id: expr };
         let s = display_expr.to_string();
 
         // Parse it back
@@ -77,8 +77,8 @@ proptest! {
         // However, s1 and s2 might be different IDs even if content is same.
         // We need deep equality check.
         // Or compare string representation.
-        let d1 = cas_ast::DisplayExpr { context: &simplifier.context, id: s1 };
-        let d2 = cas_ast::DisplayExpr { context: &simplifier.context, id: s2 };
+        let d1 = cas_formatter::DisplayExpr { context: &simplifier.context, id: s1 };
+        let d2 = cas_formatter::DisplayExpr { context: &simplifier.context, id: s2 };
         prop_assert_eq!(d1.to_string(), d2.to_string());
     }
 
@@ -95,8 +95,8 @@ proptest! {
         let (s1, _) = simplifier.simplify(input);
         let (s2, _) = simplifier.simplify(expr);
 
-        let d1 = cas_ast::DisplayExpr { context: &simplifier.context, id: s1 };
-        let d2 = cas_ast::DisplayExpr { context: &simplifier.context, id: s2 };
+        let d1 = cas_formatter::DisplayExpr { context: &simplifier.context, id: s1 };
+        let d2 = cas_formatter::DisplayExpr { context: &simplifier.context, id: s2 };
         prop_assert_eq!(d1.to_string(), d2.to_string());
     }
 
@@ -109,8 +109,8 @@ proptest! {
         let (s1, _) = simplifier.simplify(expr);
         let (s2, _) = simplifier.simplify(s1);
 
-        let d1 = cas_ast::DisplayExpr { context: &simplifier.context, id: s1 };
-        let d2 = cas_ast::DisplayExpr { context: &simplifier.context, id: s2 };
+        let d1 = cas_formatter::DisplayExpr { context: &simplifier.context, id: s1 };
+        let d2 = cas_formatter::DisplayExpr { context: &simplifier.context, id: s2 };
         prop_assert_eq!(d1.to_string(), d2.to_string());
     }
 
@@ -142,7 +142,7 @@ proptest! {
             }
         }
 
-        let d = cas_ast::DisplayExpr { context: &simplifier.context, id: simplified };
+        let d = cas_formatter::DisplayExpr { context: &simplifier.context, id: simplified };
         prop_assert!(check_no_constant_ops(&simplifier.context, simplified), "Constant folding failed: {}", d);
     }
 
@@ -157,7 +157,7 @@ proptest! {
         let mul_zero = simplifier.context.add(Expr::Mul(expr, zero));
         let (s_mul_zero, _) = simplifier.simplify(mul_zero);
 
-        let d_s = cas_ast::DisplayExpr { context: &simplifier.context, id: s_mul_zero };
+        let d_s = cas_formatter::DisplayExpr { context: &simplifier.context, id: s_mul_zero };
         let result_str = d_s.to_string();
         // Accept 0 or undefined (for indeterminate forms like ∞*0)
         prop_assert!(result_str == "0" || result_str == "undefined",
@@ -167,7 +167,7 @@ proptest! {
         let pow_zero = simplifier.context.add(Expr::Pow(expr, zero));
         let (s_pow_zero, _) = simplifier.simplify(pow_zero);
 
-        let d_p = cas_ast::DisplayExpr { context: &simplifier.context, id: s_pow_zero };
+        let d_p = cas_formatter::DisplayExpr { context: &simplifier.context, id: s_pow_zero };
         let pow_result = d_p.to_string();
         // Accept 1 or undefined (for 0^0 which is indeterminate)
         prop_assert!(pow_result == "1" || pow_result == "undefined",
@@ -179,8 +179,8 @@ proptest! {
         let (s_pow_one, _) = simplifier.simplify(pow_one);
         let (s_expr, _) = simplifier.simplify(expr);
 
-        let d_p1 = cas_ast::DisplayExpr { context: &simplifier.context, id: s_pow_one };
-        let d_e = cas_ast::DisplayExpr { context: &simplifier.context, id: s_expr };
+        let d_p1 = cas_formatter::DisplayExpr { context: &simplifier.context, id: s_pow_one };
+        let d_e = cas_formatter::DisplayExpr { context: &simplifier.context, id: s_expr };
         prop_assert_eq!(d_p1.to_string(), d_e.to_string());
     }
 
@@ -198,8 +198,8 @@ proptest! {
         let (s1, _) = simp1.simplify(expr1);
         let (s2, _) = simp2.simplify(expr2);
 
-        let d1 = cas_ast::DisplayExpr { context: &simp1.context, id: s1 };
-        let d2 = cas_ast::DisplayExpr { context: &simp2.context, id: s2 };
+        let d1 = cas_formatter::DisplayExpr { context: &simp1.context, id: s1 };
+        let d2 = cas_formatter::DisplayExpr { context: &simp2.context, id: s2 };
         prop_assert_eq!(d1.to_string(), d2.to_string(), "Simplify not deterministic");
     }
 }
@@ -220,8 +220,8 @@ proptest! {
         let n1 = cas_engine::canonical_forms::normalize_core(&mut ctx, expr);
         let n2 = cas_engine::canonical_forms::normalize_core(&mut ctx, n1);
 
-        let d1 = cas_ast::DisplayExpr { context: &ctx, id: n1 };
-        let d2 = cas_ast::DisplayExpr { context: &ctx, id: n2 };
+        let d1 = cas_formatter::DisplayExpr { context: &ctx, id: n1 };
+        let d2 = cas_formatter::DisplayExpr { context: &ctx, id: n2 };
         prop_assert_eq!(d1.to_string(), d2.to_string(), "normalize_core not idempotent");
     }
 
@@ -247,7 +247,7 @@ proptest! {
             }
         }
 
-        let d = cas_ast::DisplayExpr { context: &ctx, id: normalized };
+        let d = cas_formatter::DisplayExpr { context: &ctx, id: normalized };
         prop_assert!(check_no_neg_number(&ctx, normalized), "Found Neg(Number) after normalize_core: {}", d);
     }
 
@@ -273,7 +273,7 @@ proptest! {
             }
         }
 
-        let d = cas_ast::DisplayExpr { context: &ctx, id: normalized };
+        let d = cas_formatter::DisplayExpr { context: &ctx, id: normalized };
         prop_assert!(check_no_double_neg(&ctx, normalized), "Found Neg(Neg(x)) after normalize_core: {}", d);
     }
 
@@ -305,7 +305,7 @@ proptest! {
             }
         }
 
-        let d = cas_ast::DisplayExpr { context: &simplifier.context, id: simplified };
+        let d = cas_formatter::DisplayExpr { context: &simplifier.context, id: simplified };
         prop_assert!(check_no_pow_one(&simplifier.context, simplified), "Found Pow(x, 1) after simplify: {}", d);
     }
 
@@ -339,7 +339,7 @@ proptest! {
             }
         }
 
-        let d = cas_ast::DisplayExpr { context: &simplifier.context, id: simplified };
+        let d = cas_formatter::DisplayExpr { context: &simplifier.context, id: simplified };
         prop_assert!(check_reduced_rationals(&simplifier.context, simplified), "Found non-reduced rational after simplify: {}", d);
     }
 
@@ -354,8 +354,8 @@ proptest! {
         let n1 = cas_engine::canonical_forms::normalize_core(&mut ctx1, expr1);
         let n2 = cas_engine::canonical_forms::normalize_core(&mut ctx2, expr2);
 
-        let d1 = cas_ast::DisplayExpr { context: &ctx1, id: n1 };
-        let d2 = cas_ast::DisplayExpr { context: &ctx2, id: n2 };
+        let d1 = cas_formatter::DisplayExpr { context: &ctx1, id: n1 };
+        let d2 = cas_formatter::DisplayExpr { context: &ctx2, id: n2 };
         prop_assert_eq!(d1.to_string(), d2.to_string(), "normalize_core not deterministic");
     }
 
@@ -369,8 +369,8 @@ proptest! {
         let n2 = cas_engine::canonical_forms::normalize_core(&mut ctx, n1);
 
         // Idempotence check implies consistent sorting
-        let d1 = cas_ast::DisplayExpr { context: &ctx, id: n1 };
-        let d2 = cas_ast::DisplayExpr { context: &ctx, id: n2 };
+        let d1 = cas_formatter::DisplayExpr { context: &ctx, id: n1 };
+        let d2 = cas_formatter::DisplayExpr { context: &ctx, id: n2 };
         prop_assert_eq!(d1.to_string(), d2.to_string(), "normalize_core not idempotent");
     }
 
@@ -412,7 +412,7 @@ proptest! {
             }
         }
 
-        let d = cas_ast::DisplayExpr { context: &ctx, id: normalized };
+        let d = cas_formatter::DisplayExpr { context: &ctx, id: normalized };
         prop_assert!(check_no_nested_pow(&ctx, normalized), "Found Pow(Pow(x,a),b) with integer exponents after normalize_core: {}", d);
     }
 
@@ -425,8 +425,8 @@ proptest! {
         let n1 = cas_engine::canonical_forms::normalize_core(&mut ctx1, expr1);
         let n2 = cas_engine::canonical_forms::normalize_core(&mut ctx2, expr2);
 
-        let d1 = cas_ast::DisplayExpr { context: &ctx1, id: n1 };
-        let d2 = cas_ast::DisplayExpr { context: &ctx2, id: n2 };
+        let d1 = cas_formatter::DisplayExpr { context: &ctx1, id: n1 };
+        let d2 = cas_formatter::DisplayExpr { context: &ctx2, id: n2 };
         prop_assert_eq!(d1.to_string(), d2.to_string(), "normalize_core is not deterministic");
     }
 }
@@ -457,8 +457,8 @@ proptest! {
         let (s1, _) = simplifier.simplify(n1);
         let (s2, _) = simplifier.simplify(n2);
 
-        let d1 = cas_ast::DisplayExpr { context: &simplifier.context, id: s1 };
-        let d2 = cas_ast::DisplayExpr { context: &simplifier.context, id: s2 };
+        let d1 = cas_formatter::DisplayExpr { context: &simplifier.context, id: s1 };
+        let d2 = cas_formatter::DisplayExpr { context: &simplifier.context, id: s2 };
         prop_assert_eq!(d1.to_string(), d2.to_string(), "e+0 != e");
     }
 
@@ -482,8 +482,8 @@ proptest! {
         let (s1, _) = simplifier.simplify(n1);
         let (s2, _) = simplifier.simplify(n2);
 
-        let d1 = cas_ast::DisplayExpr { context: &simplifier.context, id: s1 };
-        let d2 = cas_ast::DisplayExpr { context: &simplifier.context, id: s2 };
+        let d1 = cas_formatter::DisplayExpr { context: &simplifier.context, id: s1 };
+        let d2 = cas_formatter::DisplayExpr { context: &simplifier.context, id: s2 };
         prop_assert_eq!(d1.to_string(), d2.to_string(), "e*1 != e");
     }
 
@@ -499,7 +499,7 @@ proptest! {
 
         let (result, _) = simplifier.simplify(expr_times_zero);
 
-        let d = cas_ast::DisplayExpr { context: &simplifier.context, id: result };
+        let d = cas_formatter::DisplayExpr { context: &simplifier.context, id: result };
         let result_str = d.to_string();
 
         // e*0 = 0, but if e contains infinity (e.g., ln(0) = -∞), then ∞*0 = undefined

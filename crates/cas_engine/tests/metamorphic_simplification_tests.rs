@@ -2894,7 +2894,7 @@ fn run_csv_combination_tests(
                                 let (d_simp, _) = simplifier.simplify(d_diag);
                                 format!(
                                     "simplify(LHS-RHS) => {}",
-                                    cas_ast::LaTeXExpr { context: &simplifier.context, id: d_simp }.to_latex()
+                                    cas_formatter::LaTeXExpr { context: &simplifier.context, id: d_simp }.to_latex()
                                 )
                             } else {
                                 String::new()
@@ -3122,7 +3122,7 @@ fn run_csv_combination_tests(
                     let diff_str = if verbose {
                         format!(
                             "simplify(LHS-RHS) => {}",
-                            cas_ast::LaTeXExpr {
+                            cas_formatter::LaTeXExpr {
                                 context: &simplifier.context,
                                 id: diff_simplified
                             }
@@ -5018,7 +5018,7 @@ fn run_substitution_tests() -> ComboMetrics {
                         let residual = {
                             let d = simplifier.context.add(cas_ast::Expr::Sub(e, s));
                             let (d_simp, _) = simplifier.simplify(d);
-                            cas_ast::LaTeXExpr {
+                            cas_formatter::LaTeXExpr {
                                 context: &simplifier.context,
                                 id: d_simp,
                             }

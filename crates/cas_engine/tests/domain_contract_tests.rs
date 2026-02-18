@@ -497,7 +497,7 @@ fn simplify_with_domain_value(
     let output = engine.eval(&mut state, req).expect("eval failed");
 
     let result_str = match &output.result {
-        EvalResult::Expr(e) => cas_ast::DisplayExpr {
+        EvalResult::Expr(e) => cas_formatter::DisplayExpr {
             context: &engine.simplifier.context,
             id: *e,
         }
@@ -793,7 +793,7 @@ fn exp_ln_x_generic_emits_positive_require() {
 
     // Result SHOULD be simplified to x (with implicit requires)
     let result_str = match &output.result {
-        EvalResult::Expr(e) => cas_ast::DisplayExpr {
+        EvalResult::Expr(e) => cas_formatter::DisplayExpr {
             context: &engine.simplifier.context,
             id: *e,
         }
@@ -843,7 +843,7 @@ fn blocked_hint_exp_ln_5_no_hint() {
 
     // Result should be 5 (simplification allowed)
     let result_str = match &output.result {
-        EvalResult::Expr(e) => cas_ast::DisplayExpr {
+        EvalResult::Expr(e) => cas_formatter::DisplayExpr {
             context: &engine.simplifier.context,
             id: *e,
         }
@@ -890,7 +890,7 @@ fn step_tracks_assumed_nonzero_in_generic() {
 
     // Should simplify to y
     let result_str = match &output.result {
-        EvalResult::Expr(e) => cas_ast::DisplayExpr {
+        EvalResult::Expr(e) => cas_formatter::DisplayExpr {
             context: &engine.simplifier.context,
             id: *e,
         }
@@ -942,7 +942,7 @@ fn step_tracks_assumed_positive_in_assume() {
 
     // Should simplify to x
     let result_str = match &output.result {
-        EvalResult::Expr(e) => cas_ast::DisplayExpr {
+        EvalResult::Expr(e) => cas_formatter::DisplayExpr {
             context: &engine.simplifier.context,
             id: *e,
         }
@@ -1001,7 +1001,7 @@ fn sqrt_conjugate_collapse_blocked_in_generic() {
     let output = engine.eval(&mut state, req).expect("eval failed");
 
     let result_str = match &output.result {
-        cas_engine::EvalResult::Expr(e) => cas_ast::DisplayExpr {
+        cas_engine::EvalResult::Expr(e) => cas_formatter::DisplayExpr {
             context: &engine.simplifier.context,
             id: *e,
         }
@@ -1058,7 +1058,7 @@ fn sqrt_conjugate_collapse_allowed_in_assume() {
     let output = engine.eval(&mut state, req).expect("eval failed");
 
     let result_str = match &output.result {
-        cas_engine::EvalResult::Expr(e) => cas_ast::DisplayExpr {
+        cas_engine::EvalResult::Expr(e) => cas_formatter::DisplayExpr {
             context: &engine.simplifier.context,
             id: *e,
         }
@@ -1113,7 +1113,7 @@ fn simplify_generic_with_required(input: &str) -> (String, Vec<String>) {
     let output = engine.eval(&mut state, req).expect("eval failed");
 
     let result_str = match &output.result {
-        EvalResult::Expr(e) => cas_ast::DisplayExpr {
+        EvalResult::Expr(e) => cas_formatter::DisplayExpr {
             context: &engine.simplifier.context,
             id: *e,
         }

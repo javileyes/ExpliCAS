@@ -35,7 +35,7 @@ fn simplify_standard(input: &str) -> (String, cas_ast::ExprId, cas_ast::Context)
     let (result, _) = simplifier.simplify(expr);
     let result_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -55,7 +55,7 @@ fn simplify_expand(input: &str) -> (String, cas_ast::ExprId, cas_ast::Context) {
 
     let result_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -177,7 +177,7 @@ fn test_solve_context_no_expansion() {
     let (result, _) = simplifier.simplify(expr);
     let result_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -276,7 +276,7 @@ fn test_expand_no_contamination() {
     let (expanded_result, _) = simplifier.simplify(expanded_raw);
     let expanded_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: expanded_result
         }
@@ -294,7 +294,7 @@ fn test_expand_no_contamination() {
     let (standard_result, _) = simplifier.simplify(expr2);
     let standard_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: standard_result
         }

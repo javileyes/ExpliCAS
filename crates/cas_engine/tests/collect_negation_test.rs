@@ -1,5 +1,6 @@
-use cas_ast::{Context, DisplayExpr, Expr};
+use cas_ast::{Context, Expr};
 use cas_engine::collect::collect;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
 fn s(ctx: &Context, id: cas_ast::ExprId) -> String {

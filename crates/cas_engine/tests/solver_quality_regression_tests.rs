@@ -98,7 +98,7 @@ fn pythagorean_theorem_simplified_discriminant() {
     for sol in &sols {
         let sol_str = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: *sol,
             }
@@ -156,7 +156,7 @@ fn perfect_square_quadratic_simplified() {
     for sol in &sols {
         let sol_str = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &simplifier.context,
                 id: *sol,
             }
@@ -222,7 +222,7 @@ fn sphere_volume_no_cycle() {
     // Check solution contains cube root (1/3 exponent)
     let sol_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: sols[0],
         }

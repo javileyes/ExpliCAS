@@ -29,9 +29,9 @@
 //! | ComplexEnabled | Generic    | YES         | x > 0     | x > 0 is IMPLICIT from ln(x) |
 //! | ComplexEnabled | Assume     | YES         | x > 0     | Same as Generic |
 
-use cas_ast::DisplayExpr;
 use cas_engine::semantics::ValueDomain;
 use cas_engine::{DomainMode, Engine, EvalAction, EvalRequest, EvalResult};
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 use cas_session::SessionState;
 

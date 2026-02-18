@@ -4,8 +4,8 @@
 //! only when the expansion would produce overlap with opposing terms,
 //! enabling cancellation without requiring `expand_mode` in simplify.
 
-use cas_ast::DisplayExpr;
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
 /// Helper: simplify an expression string and return the result as a string.

@@ -1,5 +1,5 @@
-use cas_ast::DisplayExpr;
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 
 #[test]
 fn test_prevent_numeric_combine() {

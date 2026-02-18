@@ -69,7 +69,7 @@ fn assume_mode_derives_positive_rhs_required() {
     // Verify required condition was derived
     let has_positive_y = required.iter().any(|cond| {
         if let ImplicitCondition::Positive(expr_id) = cond {
-            let expr_str = cas_ast::DisplayExpr {
+            let expr_str = cas_formatter::DisplayExpr {
                 context: &engine.simplifier.context,
                 id: *expr_id,
             }
@@ -122,7 +122,7 @@ fn strict_mode_no_extra_requirements_for_literals() {
     // (the numbers are already proven positive, no need to require)
     let has_positive_5 = required.iter().any(|cond| {
         if let ImplicitCondition::Positive(expr_id) = cond {
-            let expr_str = cas_ast::DisplayExpr {
+            let expr_str = cas_formatter::DisplayExpr {
                 context: &engine.simplifier.context,
                 id: *expr_id,
             }
@@ -175,7 +175,7 @@ fn required_conditions_are_deduplicated() {
         .iter()
         .filter(|cond| {
             if let ImplicitCondition::Positive(expr_id) = cond {
-                let expr_str = cas_ast::DisplayExpr {
+                let expr_str = cas_formatter::DisplayExpr {
                     context: &engine.simplifier.context,
                     id: *expr_id,
                 }
@@ -249,7 +249,7 @@ fn nested_solves_have_isolated_requirements() {
     // Outer should have positive(y)
     let outer_has_y = outer_required.iter().any(|cond| {
         if let ImplicitCondition::Positive(id) = cond {
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &engine.simplifier.context,
                 id: *id,
             }
@@ -263,7 +263,7 @@ fn nested_solves_have_isolated_requirements() {
     // Inner should have positive(w)
     let inner_has_w = inner_required.iter().any(|cond| {
         if let ImplicitCondition::Positive(id) = cond {
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &engine.simplifier.context,
                 id: *id,
             }
@@ -288,7 +288,7 @@ fn nested_solves_have_isolated_requirements() {
     // Inner should NOT have positive(y) (from outer solve)
     let inner_has_y = inner_required.iter().any(|cond| {
         if let ImplicitCondition::Positive(id) = cond {
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &engine.simplifier.context,
                 id: *id,
             }
@@ -362,7 +362,7 @@ fn sequential_solves_no_condition_leakage() {
     // x = 1 is trivial — it should have NO required conditions
     let has_positive_x = required2.iter().any(|cond| {
         if let ImplicitCondition::Positive(id) = cond {
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &engine.simplifier.context,
                 id: *id,
             }

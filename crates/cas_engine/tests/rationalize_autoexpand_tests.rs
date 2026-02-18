@@ -4,10 +4,10 @@
 //! - With autoexpand ON: 1/(1+√2+√3) fully simplifies (no unexpanded (1+√2)² in result)
 //! - With autoexpand OFF: May leave structured form (acceptable)
 
-use cas_ast::DisplayExpr;
 use cas_engine::options::EvalOptions;
 use cas_engine::phase::ExpandPolicy;
 use cas_engine::Engine;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
 /// Test that auto-expand works within rationalization phase.

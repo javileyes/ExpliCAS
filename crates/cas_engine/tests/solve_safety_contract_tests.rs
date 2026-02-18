@@ -5,8 +5,9 @@
 //! 2. Solver correctly handles cases where prepass protection is critical
 //! 3. No regressions in existing solver behavior
 
-use cas_ast::{DisplayExpr, Equation, RelOp};
+use cas_ast::{Equation, RelOp};
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
 /// Helper to parse an expression

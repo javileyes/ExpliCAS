@@ -31,7 +31,7 @@ fn simplify_with_heuristic_poly(input: &str, mode: HeuristicPoly) -> String {
     let (result, _steps) = simplifier.simplify_with_options(parsed, opts);
     format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -64,7 +64,7 @@ fn simplify_with_mode(input: &str, mode: AutoExpandBinomials) -> String {
     let (result, _steps) = simplifier.simplify_with_options(parsed, opts);
     format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }

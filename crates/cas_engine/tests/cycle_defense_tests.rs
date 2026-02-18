@@ -24,7 +24,7 @@ fn test_cycle_defense_fractional_powers_terminates() {
 
     let result_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -61,7 +61,7 @@ fn test_cycle_defense_terminates_not_hangs() {
     // Verify we got a result
     let result_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -84,7 +84,7 @@ fn test_cycle_detection_phase_reset() {
     // Verify termination - result may or may not be fully simplified depending on rule set
     let result_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }

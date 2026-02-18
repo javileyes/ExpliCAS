@@ -250,7 +250,7 @@ fn session_propagated_no_assumed_blocked_contamination() {
 
     // Verify we got an assumed event (or at least the simplification happened)
     let result1 = match &output1.result {
-        cas_engine::EvalResult::Expr(e) => cas_ast::DisplayExpr {
+        cas_engine::EvalResult::Expr(e) => cas_formatter::DisplayExpr {
             context: &engine.simplifier.context,
             id: *e,
         }
@@ -278,7 +278,7 @@ fn session_propagated_no_assumed_blocked_contamination() {
 
     // For now, we verify that the result is correct
     let result2 = match &output2.result {
-        cas_engine::EvalResult::Expr(e) => cas_ast::DisplayExpr {
+        cas_engine::EvalResult::Expr(e) => cas_formatter::DisplayExpr {
             context: &engine.simplifier.context,
             id: *e,
         }

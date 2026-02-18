@@ -52,7 +52,7 @@ fn wildcard_negative_base_returns_residual() {
             // Verify it's a residual
             let expr_str = format!(
                 "{}",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &engine.simplifier.context,
                     id: residual_expr
                 }
@@ -114,7 +114,7 @@ fn wildcard_residual_no_ln_negative() {
     if let Ok((SolutionSet::Residual(residual_expr), _, _)) = result {
         let expr_str = format!(
             "{}",
-            cas_ast::DisplayExpr {
+            cas_formatter::DisplayExpr {
                 context: &engine.simplifier.context,
                 id: residual_expr
             }

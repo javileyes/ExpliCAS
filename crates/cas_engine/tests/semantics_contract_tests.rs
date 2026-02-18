@@ -45,8 +45,8 @@ fn simplify_options_includes_new_axes() {
 
 #[test]
 fn x_div_x_simplifies_with_default_config() {
-    use cas_ast::DisplayExpr;
     use cas_engine::{Engine, EvalAction, EvalRequest, EvalResult};
+    use cas_formatter::DisplayExpr;
     use cas_parser::parse;
     use cas_session::SessionState;
 

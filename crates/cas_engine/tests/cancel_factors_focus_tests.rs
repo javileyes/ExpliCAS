@@ -3,9 +3,10 @@
 //! These tests verify that the focus shows the fraction being simplified,
 //! including the factor cancelled.
 
-use cas_ast::{Context, DisplayExpr, Expr};
+use cas_ast::{Context, Expr};
 use cas_engine::eval_step_pipeline::to_display_steps;
 use cas_engine::Simplifier;
+use cas_formatter::DisplayExpr;
 
 /// Helper to get display string for an ExprId
 fn display(ctx: &Context, id: cas_ast::ExprId) -> String {

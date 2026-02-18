@@ -28,7 +28,7 @@ fn simplify(input: &str) -> String {
 
     format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -224,7 +224,7 @@ fn simplify_complex(input: &str) -> String {
     let output = engine.eval(&mut state, req).expect("eval failed");
 
     match &output.result {
-        EvalResult::Expr(e) => cas_ast::DisplayExpr {
+        EvalResult::Expr(e) => cas_formatter::DisplayExpr {
             context: &engine.simplifier.context,
             id: *e,
         }

@@ -28,7 +28,7 @@ fn hold_preserves_additive_identity() {
     // Since hold is visible, we expect "hold(x + 0)"
     let display = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -57,7 +57,7 @@ fn hold_blocks_constant_folding() {
 
     let display = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -92,7 +92,7 @@ fn hold_blocks_function_evaluation() {
 
     let display = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -117,7 +117,7 @@ fn hold_blocks_power_identity() {
 
     let display = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -152,7 +152,7 @@ fn hold_mixed_context_outer_simplifies() {
 
     let display = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -179,7 +179,7 @@ fn hold_mixed_context_multiplication() {
 
     let display = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -206,7 +206,7 @@ fn internal_hold_is_transparent() {
 
     let display = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &ctx,
             id: held
         }
@@ -235,7 +235,7 @@ fn user_hold_is_visible() {
 
     let display = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &ctx,
             id: hold_fn
         }
@@ -261,7 +261,7 @@ fn internal_hold_display_product_identity() {
 
     let display = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &ctx,
             id: held
         }
@@ -290,7 +290,7 @@ fn no_internal_hold_leak_in_result() {
 
     let display = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }

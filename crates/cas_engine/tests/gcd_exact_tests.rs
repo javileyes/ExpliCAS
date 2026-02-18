@@ -23,7 +23,7 @@ fn run_gcd_exact(a: &str, b: &str) -> (String, cas_ast::ExprId, cas_ast::Context
     let (result, _) = simplifier.simplify(expr);
     let result_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }
@@ -141,7 +141,7 @@ fn test_gcd_exact_no_expand_side_effect() {
     let (result1, _) = simplifier.simplify(expr1);
     let result1_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result1
         }
@@ -283,7 +283,7 @@ fn test_gcd_exact_expression_integration() {
     let (result, _) = simplifier.simplify(expr);
     let result_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: result
         }

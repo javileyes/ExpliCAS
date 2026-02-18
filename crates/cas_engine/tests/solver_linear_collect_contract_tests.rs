@@ -35,11 +35,11 @@ fn solve_interest_equation() -> (SolutionSet, Vec<cas_engine::solver::SolveStep>
     // Debug: print equation structure
     eprintln!(
         "Equation: {} = {}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: ctx,
             id: eq.lhs
         },
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: ctx,
             id: eq.rhs
         }
@@ -89,7 +89,7 @@ fn linear_collect_no_circular_solution() {
             // Display the residual to understand what happened
             let residual_str = format!(
                 "{}",
-                cas_ast::DisplayExpr {
+                cas_formatter::DisplayExpr {
                     context: &simplifier.context,
                     id: *residual_expr,
                 }
@@ -134,7 +134,7 @@ fn linear_collect_correct_solution() {
     let sol = sols[0];
     let sol_str = format!(
         "{}",
-        cas_ast::DisplayExpr {
+        cas_formatter::DisplayExpr {
             context: &simplifier.context,
             id: sol,
         }
