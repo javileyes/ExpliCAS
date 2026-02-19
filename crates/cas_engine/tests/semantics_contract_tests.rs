@@ -123,7 +123,7 @@ fn eval_config_constructors_consistent() {
 
 #[test]
 fn parent_context_has_new_accessors() {
-    use cas_engine::parent_context::ParentContext;
+    use cas_engine::ParentContext;
 
     let ctx = ParentContext::root();
 
@@ -136,7 +136,7 @@ fn parent_context_has_new_accessors() {
 #[test]
 fn parent_context_extend_preserves_semantics() {
     use cas_ast::Context;
-    use cas_engine::parent_context::ParentContext;
+    use cas_engine::ParentContext;
 
     let mut ast_ctx = Context::new();
     let parent_id = ast_ctx.num(42);

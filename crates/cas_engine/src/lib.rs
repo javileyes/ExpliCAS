@@ -20,15 +20,15 @@ pub mod eval_step_pipeline;
 pub mod expand;
 pub mod helpers;
 pub mod implicit_domain;
-pub mod limits;
+pub(crate) mod limits;
 pub mod options;
 pub mod orchestrator;
-pub mod parent_context;
+pub(crate) mod parent_context;
 pub mod phase;
 pub(crate) mod profile_cache;
 pub mod profiler;
 pub mod rationalize;
-pub mod rationalize_policy;
+pub(crate) mod rationalize_policy;
 pub(crate) mod recursion_guard;
 pub mod rule;
 pub mod rules;
@@ -90,10 +90,12 @@ pub use eval::*;
 pub use implicit_domain::{
     normalize_and_dedupe_conditions, ImplicitCondition, RequiresDisplayLevel,
 };
+pub use limits::{limit, Approach, LimitOptions, LimitResult, PreSimplifyMode};
 pub use options::{
     AutoExpandBinomials, BranchMode, ComplexMode, ContextMode, EvalOptions, HeuristicPoly,
     StepsMode,
 };
+pub use parent_context::ParentContext;
 pub use phase::{
     ExpandBudget, ExpandPolicy, PhaseBudgets, PhaseStats, PipelineStats, SimplifyOptions,
     SimplifyPhase,
