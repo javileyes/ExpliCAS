@@ -7,6 +7,7 @@ use crate::rule::Rewrite;
 use cas_ast::{count_nodes, Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_math::fraction_factors::collect_mul_factors_flat as collect_mul_factors;
+use cas_math::root_forms::extract_numeric_sqrt_radicand;
 use num_traits::Signed;
 use std::cmp::Ordering;
 
@@ -26,7 +27,6 @@ define_rule!(
         use crate::rationalize_policy::RationalizeReason;
         use cas_ast::views::{as_rational_const, count_distinct_numeric_surds, is_surd_free};
         use num_rational::BigRational;
-        use num_traits::ToPrimitive;
 
         // Only match Div expressions - use zero-clone helper
         let (num, den) = match crate::helpers::as_div(ctx, expr) {
@@ -69,36 +69,6 @@ define_rule!(
         }
 
         fn parse_binomial_surd(ctx: &Context, den: ExprId) -> Option<BinomialSurd> {
-            // Helper to check if expression is a numeric √n
-            fn is_numeric_sqrt(ctx: &Context, id: ExprId) -> Option<i64> {
-                match ctx.get(id) {
-                    Expr::Pow(base, exp) => {
-                        let exp_val = as_rational_const(ctx, *exp, 8)?;
-                        let half = BigRational::new(1.into(), 2.into());
-                        if exp_val != half {
-                            return None;
-                        }
-                        if let Expr::Number(n) = ctx.get(*base) {
-                            if n.is_integer() {
-                                return n.numer().to_i64().filter(|&x| x > 0);
-                            }
-                        }
-                        None
-                    }
-                    Expr::Function(fn_id, args)
-                        if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Sqrt) && args.len() == 1 =>
-                    {
-                        if let Expr::Number(n) = ctx.get(args[0]) {
-                            if n.is_integer() {
-                                return n.numer().to_i64().filter(|&x| x > 0);
-                            }
-                        }
-                        None
-                    }
-                    _ => None,
-                }
-            }
-
             // Helper to parse B*√n or √n (B=1), handling negation
             // Returns (signed_coefficient, radicand)
             fn parse_surd_term(ctx: &Context, id: ExprId) -> Option<(BigRational, i64)> {
@@ -109,18 +79,18 @@ define_rule!(
                 }
 
                 // Try √n directly (B=1)
-                if let Some(n) = is_numeric_sqrt(ctx, id) {
+                if let Some(n) = extract_numeric_sqrt_radicand(ctx, id) {
                     return Some((BigRational::from_integer(1.into()), n));
                 }
 
                 // Try B * √n (including negative B)
                 if let Expr::Mul(l, r) = ctx.get(id) {
-                    if let Some(n) = is_numeric_sqrt(ctx, *r) {
+                    if let Some(n) = extract_numeric_sqrt_radicand(ctx, *r) {
                         if let Some(b) = as_rational_const(ctx, *l, 8) {
                             return Some((b, n)); // b is already signed
                         }
                     }
-                    if let Some(n) = is_numeric_sqrt(ctx, *l) {
+                    if let Some(n) = extract_numeric_sqrt_radicand(ctx, *l) {
                         if let Some(b) = as_rational_const(ctx, *r, 8) {
                             return Some((b, n)); // b is already signed
                         }

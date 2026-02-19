@@ -2,7 +2,7 @@
 
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_rational::BigRational;
-use num_traits::{One, Signed, Zero};
+use num_traits::{One, Signed, ToPrimitive, Zero};
 
 /// Extract `(radicand, index)` when `expr` is a root-like form.
 ///
@@ -43,6 +43,39 @@ pub fn extract_root_base_and_index(ctx: &mut Context, expr: ExprId) -> Option<(E
         }
     }
 
+    None
+}
+
+/// Extract positive integer `n` when `expr` is a numeric square root.
+///
+/// Recognizes:
+/// - `sqrt(n)`
+/// - `n^(1/2)` (including equivalent rational constants)
+pub fn extract_numeric_sqrt_radicand(ctx: &Context, expr: ExprId) -> Option<i64> {
+    use cas_ast::views::as_rational_const;
+
+    let base = match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
+        {
+            args[0]
+        }
+        Expr::Pow(base, exp) => {
+            let exp_val = as_rational_const(ctx, *exp, 8)?;
+            let half = BigRational::new(1.into(), 2.into());
+            if exp_val != half {
+                return None;
+            }
+            *base
+        }
+        _ => return None,
+    };
+
+    if let Expr::Number(n) = ctx.get(base) {
+        if n.is_integer() {
+            return n.numer().to_i64().filter(|&x| x > 0);
+        }
+    }
     None
 }
 
@@ -364,6 +397,18 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("x^(2/3)", &mut ctx).expect("parse");
         assert!(extract_root_base_and_index(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn extract_numeric_sqrt_radicand_recognizes_forms() {
+        let mut ctx = Context::new();
+        let sqrt_fn = parse("sqrt(7)", &mut ctx).expect("parse sqrt");
+        let sqrt_pow = parse("7^(1/2)", &mut ctx).expect("parse pow");
+        let symbolic = parse("sqrt(x)", &mut ctx).expect("parse symbolic");
+
+        assert_eq!(extract_numeric_sqrt_radicand(&ctx, sqrt_fn), Some(7));
+        assert_eq!(extract_numeric_sqrt_radicand(&ctx, sqrt_pow), Some(7));
+        assert_eq!(extract_numeric_sqrt_radicand(&ctx, symbolic), None);
     }
 
     #[test]
