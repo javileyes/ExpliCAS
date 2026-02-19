@@ -20,6 +20,5 @@ pub mod polynomial;
 pub mod rational_canonicalization;
 pub mod reciprocal_trig;
 pub mod trig_canonicalization;
-pub mod trig_inverse_compositions;
 pub mod trig_inverse_expansion;
 pub mod trigonometry;
