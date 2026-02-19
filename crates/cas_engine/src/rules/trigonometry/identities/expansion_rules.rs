@@ -1,13 +1,62 @@
 //! Expansion and contraction rules for trigonometric expressions.
 
 use crate::define_rule;
+use crate::helpers::as_fn1;
 use crate::helpers::extract_double_angle_arg;
 use crate::rule::Rewrite;
-use cas_ast::{BuiltinFn, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_rewrite::smart_mul;
 
 // Import helpers from sibling modules (via re-exports in parent)
 use super::{build_avg, build_half_diff, is_multiple_angle, normalize_for_even_fn};
+
+#[derive(Debug, Clone, Copy)]
+struct TrigSumMatch {
+    arg1: ExprId,
+    arg2: ExprId,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TrigDiffMatch {
+    a: ExprId,
+    b: ExprId,
+}
+
+/// Match Add(trig(A), trig(B)) -> arguments in canonical Add order.
+fn match_trig_sum(ctx: &Context, expr: ExprId, fn_name: &str) -> Option<TrigSumMatch> {
+    if let Expr::Add(l, r) = ctx.get(expr) {
+        let arg1 = as_fn1(ctx, *l, fn_name)?;
+        let arg2 = as_fn1(ctx, *r, fn_name)?;
+        return Some(TrigSumMatch { arg1, arg2 });
+    }
+    None
+}
+
+/// Match ordered subtraction forms:
+/// - Sub(trig(A), trig(B))
+/// - Add(trig(A), Neg(trig(B)))
+fn match_trig_diff(ctx: &Context, expr: ExprId, fn_name: &str) -> Option<TrigDiffMatch> {
+    if let Expr::Sub(l, r) = ctx.get(expr) {
+        let a = as_fn1(ctx, *l, fn_name)?;
+        let b = as_fn1(ctx, *r, fn_name)?;
+        return Some(TrigDiffMatch { a, b });
+    }
+
+    if let Expr::Add(l, r) = ctx.get(expr) {
+        if let Expr::Neg(inner) = ctx.get(*r) {
+            let a = as_fn1(ctx, *l, fn_name)?;
+            let b = as_fn1(ctx, *inner, fn_name)?;
+            return Some(TrigDiffMatch { a, b });
+        }
+        if let Expr::Neg(inner) = ctx.get(*l) {
+            let a = as_fn1(ctx, *r, fn_name)?;
+            let b = as_fn1(ctx, *inner, fn_name)?;
+            return Some(TrigDiffMatch { a, b });
+        }
+    }
+
+    None
+}
 
 // =============================================================================
 // STANDALONE SUM-TO-PRODUCT RULE
@@ -30,7 +79,6 @@ define_rule!(
     "Sum-to-Product Identity",
     |ctx, expr| {
         use crate::helpers::extract_rational_pi_multiple;
-        use crate::rules::trigonometry::trig_matchers::{match_trig_diff, match_trig_sum};
 
         // Try all four patterns
         enum Pattern {

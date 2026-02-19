@@ -6,7 +6,6 @@
 //! ## Organization
 //!
 //! - **Core utilities** (generic): `destructure`, `complexity`, `pi`, `predicates`
-//! - **Trig helpers** (re-exported from `rules::trigonometry`): `trig_matchers`
 //! - **Flatten/roots**: `cas_math::trig_roots_flatten`
 //! - **Scoring**: `nf_scoring`
 
