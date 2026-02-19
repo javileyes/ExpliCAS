@@ -1,19 +1,7 @@
 use crate::helpers::is_one;
 use crate::target_kind::TargetKind;
 use cas_ast::{Context, Expr, ExprId};
-use num_rational::BigRational;
-use num_traits::{One, Signed};
-
-pub(crate) fn gcd_rational(a: BigRational, b: BigRational) -> BigRational {
-    if a.is_integer() && b.is_integer() {
-        use num_integer::Integer;
-        let num_a = a.to_integer();
-        let num_b = b.to_integer();
-        let g = num_a.gcd(&num_b);
-        return BigRational::from_integer(g);
-    }
-    BigRational::one()
-}
+use num_traits::Signed;
 
 /// Count nodes of a specific variant type.
 ///
@@ -146,5 +134,3 @@ pub(crate) fn collect_denominators(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
     }
     denoms
 }
-
-// Helper function: Check if two expressions are structurally opposite (e.g., a-b vs b-a)

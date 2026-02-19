@@ -6,12 +6,11 @@
 use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::rule::{ChainedRewrite, Rewrite};
-use crate::rules::algebra::helpers::{
-    collect_denominators, count_nodes_of_type, distribute, gcd_rational,
-};
+use crate::rules::algebra::helpers::{collect_denominators, count_nodes_of_type, distribute};
 use crate::target_kind::TargetKind;
 use cas_ast::{Expr, ExprId};
 use cas_formatter::DisplayExpr;
+use cas_math::numeric::gcd_rational;
 use cas_math::polynomial::Polynomial;
 use num_traits::{One, Zero};
 

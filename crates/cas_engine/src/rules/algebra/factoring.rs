@@ -280,7 +280,7 @@ define_rule!(
     None,
     PhaseMask::POST,
     |ctx, expr| {
-        use crate::rules::algebra::helpers::gcd_rational;
+        use cas_math::numeric::gcd_rational;
         use num_rational::BigRational;
         use num_traits::{One, Signed};
 
