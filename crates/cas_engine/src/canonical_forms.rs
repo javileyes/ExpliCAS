@@ -1,5 +1,4 @@
 use crate::build::mul2_raw;
-use crate::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
 use tracing::debug;
 
@@ -111,100 +110,7 @@ fn is_small_positive_integer(ctx: &Context, exp: ExprId) -> bool {
 /// Order-invariant: handles (x+1)(x-1), (x-1)(x+1), (-1+x)(1+x), etc.
 fn is_conjugate(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     debug!("Checking conjugate: {:?} vs {:?}", ctx.get(a), ctx.get(b));
-    // Extract terms and base signs from both binomials
-    let (a_terms, a_base_signs) = match ctx.get(a) {
-        Expr::Add(x, y) => (vec![*x, *y], vec![true, true]),
-        Expr::Sub(x, y) => (vec![*x, *y], vec![true, false]),
-        _ => return false,
-    };
-
-    let (b_terms, b_base_signs) = match ctx.get(b) {
-        Expr::Add(x, y) => (vec![*x, *y], vec![true, true]),
-        Expr::Sub(x, y) => (vec![*x, *y], vec![true, false]),
-        _ => return false,
-    };
-
-    // Normalize each term (extract negative signs from numbers/Neg)
-    let mut a_norm = Vec::new();
-    let mut a_signs = Vec::new();
-    for (&term, &base_sign) in a_terms.iter().zip(a_base_signs.iter()) {
-        let (norm_term, is_pos) = normalize_term(ctx, term);
-        a_norm.push(norm_term);
-        a_signs.push(base_sign == is_pos);
-    }
-
-    let mut b_norm = Vec::new();
-    let mut b_signs = Vec::new();
-    for (&term, &base_sign) in b_terms.iter().zip(b_base_signs.iter()) {
-        let (norm_term, is_pos) = normalize_term(ctx, term);
-        b_norm.push(norm_term);
-        b_signs.push(base_sign == is_pos);
-    }
-
-    // Check if terms match in same order
-    let same_order = a_norm.len() == b_norm.len()
-        && a_norm
-            .iter()
-            .zip(b_norm.iter())
-            .all(|(&x, &y)| terms_equal_normalized(ctx, x, y));
-
-    // Check if terms match in swapped order
-    let swapped_order = a_norm.len() == 2
-        && b_norm.len() == 2
-        && terms_equal_normalized(ctx, a_norm[0], b_norm[1])
-        && terms_equal_normalized(ctx, a_norm[1], b_norm[0]);
-
-    if !same_order && !swapped_order {
-        return false;
-    }
-
-    // Check signs: exactly one should differ
-    let b_signs_to_check = if same_order {
-        b_signs
-    } else {
-        vec![b_signs[1], b_signs[0]] // Swap to match order
-    };
-
-    let diff_count = a_signs
-        .iter()
-        .zip(b_signs_to_check.iter())
-        .filter(|(a, b)| a != b)
-        .count();
-
-    diff_count == 1
-}
-
-/// Compare two terms that have been normalized (signs extracted)
-/// For numbers, compare by absolute value
-fn terms_equal_normalized(ctx: &Context, a: ExprId, b: ExprId) -> bool {
-    use num_traits::Signed;
-    use std::cmp::Ordering;
-
-    // Special case: if both are numbers, compare absolute values
-    if let (Expr::Number(na), Expr::Number(nb)) = (ctx.get(a), ctx.get(b)) {
-        return na.abs() == nb.abs();
-    }
-
-    // Otherwise use normal comparison
-    compare_expr(ctx, a, b) == Ordering::Equal
-}
-
-/// Normalize a term: extract sign, return (term_without_sign, is_positive)
-fn normalize_term(ctx: &Context, expr: ExprId) -> (ExprId, bool) {
-    match ctx.get(expr) {
-        Expr::Neg(inner) => (*inner, false),
-        Expr::Number(n) => {
-            use num_traits::Signed;
-            if n.is_negative() {
-                // For negative numbers, we need to compare by absolute value
-                // Since we can't mutate ctx, we compare numbers directly
-                (expr, false)
-            } else {
-                (expr, true)
-            }
-        }
-        _ => (expr, true),
-    }
+    cas_math::expr_relations::is_conjugate_binomial(ctx, a, b)
 }
 
 // ============================================================================

@@ -6,7 +6,7 @@
 use cas_ast::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
 use num_rational::BigRational;
-use num_traits::One;
+use num_traits::{One, Signed};
 use std::cmp::Ordering;
 
 /// Check if two expressions are structural negations of each other.
@@ -123,6 +123,89 @@ pub fn is_conjugate_add_sub(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     }
 }
 
+/// Check whether two binomials are conjugates with sign normalization.
+///
+/// Recognizes cases like:
+/// - `(x + 1)` vs `(x - 1)`
+/// - `(x - 1)` vs `(1 + x)`
+/// - `(-1 + x)` vs `(1 + x)` (numeric sign normalization)
+pub fn is_conjugate_binomial(ctx: &Context, a: ExprId, b: ExprId) -> bool {
+    let (a_terms, a_base_signs) = match ctx.get(a) {
+        Expr::Add(x, y) => (vec![*x, *y], vec![true, true]),
+        Expr::Sub(x, y) => (vec![*x, *y], vec![true, false]),
+        _ => return false,
+    };
+
+    let (b_terms, b_base_signs) = match ctx.get(b) {
+        Expr::Add(x, y) => (vec![*x, *y], vec![true, true]),
+        Expr::Sub(x, y) => (vec![*x, *y], vec![true, false]),
+        _ => return false,
+    };
+
+    let mut a_norm = Vec::new();
+    let mut a_signs = Vec::new();
+    for (&term, &base_sign) in a_terms.iter().zip(a_base_signs.iter()) {
+        let (norm_term, is_pos) = normalize_term_sign(ctx, term);
+        a_norm.push(norm_term);
+        a_signs.push(base_sign == is_pos);
+    }
+
+    let mut b_norm = Vec::new();
+    let mut b_signs = Vec::new();
+    for (&term, &base_sign) in b_terms.iter().zip(b_base_signs.iter()) {
+        let (norm_term, is_pos) = normalize_term_sign(ctx, term);
+        b_norm.push(norm_term);
+        b_signs.push(base_sign == is_pos);
+    }
+
+    let same_order = a_norm.len() == b_norm.len()
+        && a_norm
+            .iter()
+            .zip(b_norm.iter())
+            .all(|(&x, &y)| terms_equal_normalized(ctx, x, y));
+
+    let swapped_order = a_norm.len() == 2
+        && b_norm.len() == 2
+        && terms_equal_normalized(ctx, a_norm[0], b_norm[1])
+        && terms_equal_normalized(ctx, a_norm[1], b_norm[0]);
+
+    if !same_order && !swapped_order {
+        return false;
+    }
+
+    let b_signs_to_check = if same_order {
+        b_signs
+    } else {
+        vec![b_signs[1], b_signs[0]]
+    };
+
+    let diff_count = a_signs
+        .iter()
+        .zip(b_signs_to_check.iter())
+        .filter(|(a_sign, b_sign)| a_sign != b_sign)
+        .count();
+
+    diff_count == 1
+}
+
+fn terms_equal_normalized(ctx: &Context, a: ExprId, b: ExprId) -> bool {
+    use num_traits::Signed;
+
+    if let (Expr::Number(na), Expr::Number(nb)) = (ctx.get(a), ctx.get(b)) {
+        return na.abs() == nb.abs();
+    }
+
+    compare_expr(ctx, a, b) == Ordering::Equal
+}
+
+fn normalize_term_sign(ctx: &Context, expr: ExprId) -> (ExprId, bool) {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => (*inner, false),
+        Expr::Number(n) => (expr, !n.is_negative()),
+        _ => (expr, true),
+    }
+}
+
 /// Count additive terms by flattening `Add/Sub` recursively.
 ///
 /// `Neg` preserves term count of its inner expression.
@@ -173,6 +256,16 @@ mod tests {
         assert!(is_conjugate_add_sub(&ctx, add, sub));
         assert!(is_conjugate_add_sub(&ctx, add, add_neg));
         assert!(!is_conjugate_add_sub(&ctx, add, same));
+    }
+
+    #[test]
+    fn conjugate_binomial_detection_handles_sign_normalization() {
+        let mut ctx = Context::new();
+        let left = parse("x-1", &mut ctx).expect("x-1");
+        let right = parse("x+1", &mut ctx).expect("x+1");
+        let same = parse("x+1", &mut ctx).expect("x+1");
+        assert!(is_conjugate_binomial(&ctx, left, right));
+        assert!(!is_conjugate_binomial(&ctx, right, same));
     }
 
     #[test]
