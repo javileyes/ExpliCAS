@@ -3,7 +3,10 @@ use crate::helpers::{as_add, as_div, as_mul, as_pow};
 use crate::ordering::compare_expr;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
-use cas_math::expr_extract::{extract_log_base_argument, extract_log_base_argument_view};
+use cas_math::expr_extract::{
+    extract_log_base_argument, extract_log_base_argument_relaxed_view,
+    extract_log_base_argument_view,
+};
 use cas_math::expr_predicates::is_e_constant_expr;
 use cas_math::expr_rewrite::smart_mul;
 use num_traits::{One, Zero};
@@ -721,22 +724,8 @@ impl crate::rule::Rule for AutoExpandLogRule {
             return None;
         }
 
-        // Match log(arg) or ln(arg)
-        let arg = match ctx.get(expr) {
-            Expr::Function(fn_id, args)
-                if (ctx.is_builtin(*fn_id, BuiltinFn::Log)
-                    || ctx.is_builtin(*fn_id, BuiltinFn::Ln))
-                    && args.len() == 1 =>
-            {
-                args[0]
-            }
-            Expr::Function(fn_id, args)
-                if ctx.is_builtin(*fn_id, BuiltinFn::Log) && args.len() == 2 =>
-            {
-                args[1] // log(base, arg)
-            }
-            _ => return None,
-        };
+        // Match log(arg), log(base, arg), or ln(arg)
+        let (_, arg) = extract_log_base_argument_relaxed_view(ctx, expr)?;
 
         // Check if expandable and get term estimates
         let (base_terms, gen_terms, pow_exp) = estimate_log_terms(ctx, arg)?;
@@ -886,21 +875,20 @@ fn expand_log_for_rule(
     arg: ExprId,
     events: &[crate::assumptions::AssumptionEvent],
 ) -> Option<Rewrite> {
-    // Get base (ln = natural log, log with 1 arg = base 10)
-    let base = match ctx.get(_original) {
-        Expr::Function(name, _) if ctx.is_builtin(*name, BuiltinFn::Ln) => {
-            ctx.add(Expr::Constant(cas_ast::Constant::E))
-        }
-        Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, BuiltinFn::Log) && args.len() == 2 =>
-        {
-            args[0]
-        }
-        Expr::Function(_, _) => {
-            // log with 1 arg = base 10, use sentinel
-            ExprId::from_raw(u32::MAX - 1)
-        }
-        _ => return None,
+    // Get base (ln = natural log, log with 1 arg = base 10 sentinel).
+    let (base_opt, _) = extract_log_base_argument_relaxed_view(ctx, _original)?;
+    let base = match base_opt {
+        Some(base) => base,
+        None => match ctx.get(_original) {
+            Expr::Function(fn_id, _) if ctx.is_builtin(*fn_id, BuiltinFn::Ln) => {
+                ctx.add(Expr::Constant(cas_ast::Constant::E))
+            }
+            Expr::Function(fn_id, _) if ctx.is_builtin(*fn_id, BuiltinFn::Log) => {
+                // log with 1 arg = base 10, use sentinel
+                ExprId::from_raw(u32::MAX - 1)
+            }
+            _ => return None,
+        },
     };
 
     match ctx.get(arg) {
