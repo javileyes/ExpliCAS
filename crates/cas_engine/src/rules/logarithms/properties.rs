@@ -156,7 +156,7 @@ impl crate::rule::Rule for LogExpansionRule {
 ///
 /// Returns the expanded expression and any assumption events generated.
 /// Used by the `expand_log()` meta-function.
-pub fn expand_logs_with_assumptions(
+pub(crate) fn expand_logs_with_assumptions(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> (cas_ast::ExprId, Vec<crate::assumptions::AssumptionEvent>) {

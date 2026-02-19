@@ -200,9 +200,6 @@ impl EvalOptions {
     }
 }
 
-// Backwards compatibility alias
-pub type Assumptions = EvalOptions;
-
 impl Default for EvalOptions {
     fn default() -> Self {
         Self {

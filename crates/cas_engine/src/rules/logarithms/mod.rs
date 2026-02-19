@@ -11,9 +11,10 @@ pub use inverse::{
     AutoExpandLogRule, ExponentialLogRule, LogExpInverseRule, LogInversePowerRule,
     LogPowerBaseRule, SplitLogExponentsRule,
 };
+pub(crate) use properties::expand_logs_with_assumptions;
 pub use properties::{
-    expand_logs_with_assumptions, LogAbsPowerRule, LogAbsSimplifyRule, LogChainProductRule,
-    LogEvenPowerWithChainedAbsRule, LogExpansionRule,
+    LogAbsPowerRule, LogAbsSimplifyRule, LogChainProductRule, LogEvenPowerWithChainedAbsRule,
+    LogExpansionRule,
 };
 
 use crate::define_rule;
