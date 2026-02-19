@@ -10,43 +10,43 @@ use num_traits::{One, Zero};
 /// A group of terms that cancelled to zero (e.g., 5 + (-5) → 0)
 #[allow(dead_code)] // Fields populated for future didactic focus display
 #[derive(Debug, Clone)]
-pub struct CancelledGroup {
+pub(crate) struct CancelledGroup {
     /// The canonical key (term part) that identified this group
-    pub key: ExprId,
+    pub(crate) key: ExprId,
     /// Original terms from the input expression that cancelled
-    pub original_terms: smallvec::SmallVec<[ExprId; 4]>,
+    pub(crate) original_terms: smallvec::SmallVec<[ExprId; 4]>,
     /// Whether this is a pure constant cancellation (prioritized for focus)
-    pub is_constant: bool,
+    pub(crate) is_constant: bool,
 }
 
 /// A group of terms that were combined (e.g., x + x → 2x)
 #[allow(dead_code)] // Fields populated for future didactic focus display
 #[derive(Debug, Clone)]
-pub struct CombinedGroup {
+pub(crate) struct CombinedGroup {
     /// The canonical key (term part) that identifies this group
-    pub key: ExprId,
+    pub(crate) key: ExprId,
     /// Original terms from the input expression
-    pub original_terms: smallvec::SmallVec<[ExprId; 4]>,
+    pub(crate) original_terms: smallvec::SmallVec<[ExprId; 4]>,
     /// The combined result term
-    pub combined_term: ExprId,
+    pub(crate) combined_term: ExprId,
 }
 
 /// Result of a semantics-aware collection operation.
 /// Contains the new expression and tracking of what was cancelled/combined.
 #[derive(Debug, Clone)]
-pub struct CollectResult {
-    pub new_expr: ExprId,
+pub(crate) struct CollectResult {
+    pub(crate) new_expr: ExprId,
     #[allow(dead_code)] // Set for future Assume-mode reporting
-    pub assumption: Option<String>,
+    pub(crate) assumption: Option<String>,
     /// Groups of terms that cancelled to zero
-    pub cancelled: Vec<CancelledGroup>,
+    pub(crate) cancelled: Vec<CancelledGroup>,
     /// Groups of terms that were combined
-    pub combined: Vec<CombinedGroup>,
+    pub(crate) combined: Vec<CombinedGroup>,
 }
 
 /// Check if an expression contains any Div with a denominator that is not proven non-zero.
 /// This indicates "undefined risk" - the expression could be undefined at some points.
-pub fn has_undefined_risk(ctx: &Context, expr: ExprId) -> bool {
+pub(crate) fn has_undefined_risk(ctx: &Context, expr: ExprId) -> bool {
     use crate::domain::Proof;
     use crate::helpers::prove_nonzero;
 
@@ -91,7 +91,7 @@ pub fn has_undefined_risk(ctx: &Context, expr: ExprId) -> bool {
 /// In Generic mode, cancels unconditionally.
 ///
 /// Returns None if the result would be identical to input or if blocked by Strict mode.
-pub fn collect_with_semantics(
+pub(crate) fn collect_with_semantics(
     ctx: &mut Context,
     expr: ExprId,
     parent_ctx: &ParentContext,
