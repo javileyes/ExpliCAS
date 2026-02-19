@@ -264,6 +264,292 @@ fn normalize_term_sign(ctx: &Context, expr: ExprId) -> (ExprId, bool) {
     }
 }
 
+#[derive(Clone, Copy)]
+enum AddSign {
+    Pos,
+    Neg,
+}
+
+impl AddSign {
+    fn to_i32(self) -> i32 {
+        match self {
+            AddSign::Pos => 1,
+            AddSign::Neg => -1,
+        }
+    }
+
+    fn negate(self) -> Self {
+        match self {
+            AddSign::Pos => AddSign::Neg,
+            AddSign::Neg => AddSign::Pos,
+        }
+    }
+}
+
+fn is_poly_ref_or_result(ctx: &Context, id: ExprId) -> bool {
+    if crate::poly_result::is_poly_result(ctx, id) {
+        return true;
+    }
+    if let Expr::Function(fn_id, args) = ctx.get(id) {
+        let name = ctx.sym_name(*fn_id);
+        if args.len() == 1 && name == "poly_ref" {
+            return true;
+        }
+    }
+    false
+}
+
+fn add_terms_signed(ctx: &Context, root: ExprId) -> Vec<(ExprId, AddSign)> {
+    let mut out = Vec::new();
+    let mut stack = vec![(root, AddSign::Pos)];
+
+    while let Some((id, sign)) = stack.pop() {
+        if is_poly_ref_or_result(ctx, id) {
+            out.push((id, sign));
+            continue;
+        }
+
+        let id = cas_ast::hold::unwrap_hold(ctx, id);
+        match ctx.get(id) {
+            Expr::Add(l, r) => {
+                stack.push((*r, sign));
+                stack.push((*l, sign));
+            }
+            Expr::Sub(l, r) => {
+                stack.push((*r, sign.negate()));
+                stack.push((*l, sign));
+            }
+            Expr::Neg(inner) => {
+                stack.push((*inner, sign.negate()));
+            }
+            _ => out.push((id, sign)),
+        }
+    }
+
+    out
+}
+
+fn mul_leaves(ctx: &Context, root: ExprId) -> Vec<ExprId> {
+    let mut out = Vec::new();
+    let mut stack = vec![root];
+
+    while let Some(id) = stack.pop() {
+        match ctx.get(id) {
+            Expr::Mul(l, r) => {
+                stack.push(*r);
+                stack.push(*l);
+            }
+            _ => out.push(id),
+        }
+    }
+
+    out
+}
+
+fn build_balanced_add(ctx: &mut Context, terms: &[ExprId]) -> ExprId {
+    match terms.len() {
+        0 => ctx.num(0),
+        1 => terms[0],
+        2 => ctx.add(Expr::Add(terms[0], terms[1])),
+        n => {
+            let mid = n / 2;
+            let left = build_balanced_add(ctx, &terms[..mid]);
+            let right = build_balanced_add(ctx, &terms[mid..]);
+            ctx.add(Expr::Add(left, right))
+        }
+    }
+}
+
+/// Detect conjugate pair in n-ary additive forms: `(U+V)` and `(U-V)`.
+///
+/// Returns `(U, V)` where `U` can be a sum of multiple terms and `V` is the
+/// single sign-flipped term.
+pub fn conjugate_nary_add_sub_pair(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    fn normalize_term(ctx: &mut Context, term: ExprId) -> (ExprId, i32) {
+        enum TermKind {
+            Neg(ExprId),
+            Num(BigRational),
+            Mul,
+            Other,
+        }
+        let kind = match ctx.get(term) {
+            Expr::Neg(inner) => TermKind::Neg(*inner),
+            Expr::Number(n) => TermKind::Num(n.clone()),
+            Expr::Mul(_, _) => TermKind::Mul,
+            _ => TermKind::Other,
+        };
+        match kind {
+            TermKind::Neg(inner) => {
+                let (core, sign) = normalize_term(ctx, inner);
+                (core, -sign)
+            }
+            TermKind::Num(n) => {
+                if n.is_negative() {
+                    let pos_n = -n;
+                    let pos_term = ctx.add(Expr::Number(pos_n));
+                    (pos_term, -1)
+                } else {
+                    (term, 1)
+                }
+            }
+            TermKind::Mul => {
+                let factors = mul_leaves(ctx, term);
+                let mut overall_sign: i32 = 1;
+                let mut unsigned_factors: Vec<ExprId> = Vec::new();
+
+                for factor in factors {
+                    let factor_info = match ctx.get(factor) {
+                        Expr::Neg(inner) => Some(("neg", *inner)),
+                        Expr::Number(n) if n.is_negative() => {
+                            let neg_n = -n.clone();
+                            let pos_term = ctx.add(Expr::Number(neg_n));
+                            overall_sign *= -1;
+                            unsigned_factors.push(pos_term);
+                            continue;
+                        }
+                        _ => None,
+                    };
+                    if let Some(("neg", inner)) = factor_info {
+                        overall_sign *= -1;
+                        if let Expr::Number(n) = ctx.get(inner) {
+                            if n.is_negative() {
+                                let pos_n = -n.clone();
+                                unsigned_factors.push(ctx.add(Expr::Number(pos_n)));
+                            } else {
+                                unsigned_factors.push(inner);
+                            }
+                        } else {
+                            unsigned_factors.push(inner);
+                        }
+                    } else {
+                        unsigned_factors.push(factor);
+                    }
+                }
+
+                unsigned_factors.sort_by(|a, b| compare_expr(ctx, *a, *b));
+
+                let canonical_core = if unsigned_factors.is_empty() {
+                    ctx.num(1)
+                } else if unsigned_factors.len() == 1 {
+                    unsigned_factors[0]
+                } else {
+                    let mut result = match unsigned_factors.last() {
+                        Some(r) => *r,
+                        None => ctx.num(1),
+                    };
+                    for factor in unsigned_factors.iter().rev().skip(1) {
+                        result = ctx.add(Expr::Mul(*factor, result));
+                    }
+                    result
+                };
+
+                (canonical_core, overall_sign)
+            }
+            TermKind::Other => (term, 1),
+        }
+    }
+
+    let left_terms = add_terms_signed(ctx, left);
+    let right_terms = add_terms_signed(ctx, right);
+
+    if left_terms.len() != right_terms.len() || left_terms.is_empty() {
+        return None;
+    }
+    const MAX_TERMS: usize = 16;
+    if left_terms.len() > MAX_TERMS {
+        return None;
+    }
+
+    let left_normalized: Vec<(ExprId, i32)> = left_terms
+        .iter()
+        .map(|&(term, sign)| {
+            let (core, term_sign) = normalize_term(ctx, term);
+            (core, sign.to_i32() * term_sign)
+        })
+        .collect();
+    let right_normalized: Vec<(ExprId, i32)> = right_terms
+        .iter()
+        .map(|&(term, sign)| {
+            let (core, term_sign) = normalize_term(ctx, term);
+            (core, sign.to_i32() * term_sign)
+        })
+        .collect();
+
+    let mut groups: Vec<(ExprId, i32, i32)> = Vec::new();
+    for &(core, sign) in &left_normalized {
+        let mut found = false;
+        for (rep, l_count, _) in &mut groups {
+            if compare_expr(ctx, *rep, core) == Ordering::Equal {
+                *l_count += sign;
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            groups.push((core, sign, 0));
+        }
+    }
+    for &(core, sign) in &right_normalized {
+        let mut found = false;
+        for (rep, _, r_count) in &mut groups {
+            if compare_expr(ctx, *rep, core) == Ordering::Equal {
+                *r_count += sign;
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            groups.push((core, 0, sign));
+        }
+    }
+
+    let mut v_term: Option<ExprId> = None;
+    let mut common_terms: Vec<(ExprId, i32)> = Vec::new();
+
+    for (core, l_count, r_count) in &groups {
+        let diff = l_count - r_count;
+        if diff == 0 {
+            if *l_count != 0 {
+                common_terms.push((*core, *l_count));
+            }
+        } else if diff == 2 || diff == -2 {
+            if v_term.is_some() {
+                return None;
+            }
+            v_term = Some(*core);
+        } else {
+            return None;
+        }
+    }
+
+    let v = v_term?;
+    if common_terms.is_empty() {
+        return None;
+    }
+
+    let u_terms: Vec<ExprId> = common_terms
+        .iter()
+        .map(|(term, count)| {
+            if *count > 0 {
+                *term
+            } else {
+                ctx.add(Expr::Neg(*term))
+            }
+        })
+        .collect();
+    let u = if u_terms.len() == 1 {
+        u_terms[0]
+    } else {
+        build_balanced_add(ctx, &u_terms)
+    };
+
+    Some((u, v))
+}
+
 /// Count additive terms by flattening `Add/Sub` recursively.
 ///
 /// `Neg` preserves term count of its inner expression.
@@ -345,5 +631,13 @@ mod tests {
         let neg = parse("-(a+b)", &mut ctx).expect("neg");
         assert_eq!(count_additive_terms(&ctx, nested), 3);
         assert_eq!(count_additive_terms(&ctx, neg), 2);
+    }
+
+    #[test]
+    fn conjugate_nary_pair_detects_sophie_germain_shape() {
+        let mut ctx = Context::new();
+        let left = parse("a^2 + 2*b^2 + 2*a*b", &mut ctx).expect("left");
+        let right = parse("a^2 + 2*b^2 - 2*a*b", &mut ctx).expect("right");
+        assert!(conjugate_nary_add_sub_pair(&mut ctx, left, right).is_some());
     }
 }
