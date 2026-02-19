@@ -27,7 +27,6 @@ pub mod options;
 pub mod orchestrator;
 pub mod ordering;
 pub mod parent_context;
-pub(crate) mod pattern_detection;
 pub mod pattern_marks;
 pub(crate) mod pattern_scanner;
 pub mod phase;

@@ -615,7 +615,7 @@ define_rule!(
     SecTanPythagoreanRule,
     "Secant-Tangent Pythagorean Identity",
     |ctx, expr| {
-        use crate::pattern_detection::{is_sec_squared, is_tan_squared};
+        use cas_math::trig_pattern_detection::{is_sec_squared, is_tan_squared};
 
         let (left, right) = as_add(ctx, expr)?;
         // Try both orderings: Add(sec², Neg(tan²)) or Add(Neg(tan²), sec²)
@@ -644,7 +644,7 @@ define_rule!(
     CscCotPythagoreanRule,
     "Cosecant-Cotangent Pythagorean Identity",
     |ctx, expr| {
-        use crate::pattern_detection::{is_cot_squared, is_csc_squared};
+        use cas_math::trig_pattern_detection::{is_cot_squared, is_csc_squared};
 
         let (left, right) = as_add(ctx, expr)?;
         for (pos, neg) in [(left, right), (right, left)] {
