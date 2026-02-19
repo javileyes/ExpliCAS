@@ -18,7 +18,7 @@ pub use cas_engine::telescoping;
 pub use cas_engine::visualizer;
 pub use cas_engine::ConstFoldMode;
 pub use cas_engine::ParentContext;
-pub use cas_engine::{engine, error, expand, helpers, pattern_marks, phase, semantics};
+pub use cas_engine::{error, expand, helpers, pattern_marks, phase, semantics};
 pub use cas_engine::{limit, Approach, LimitOptions, PreSimplifyMode};
 pub use cas_engine::{
     take_blocked_hints, AssumeScope, AssumptionKey, AssumptionReporting, AutoExpandBinomials,
@@ -33,3 +33,11 @@ pub use json::{
     eval_str_to_json, eval_str_to_output_envelope, substitute_str_to_json, EnvelopeEvalOptions,
 };
 pub use substitute::{substitute_power_aware, substitute_with_steps, SubstituteOptions};
+
+/// Backward-compatible facade for former `cas_engine::engine::*` imports.
+pub mod engine {
+    pub use cas_engine::{
+        eval_f64, eval_f64_checked, Engine, EquivalenceResult, EvalCheckedError,
+        EvalCheckedOptions, LoopConfig, Simplifier,
+    };
+}

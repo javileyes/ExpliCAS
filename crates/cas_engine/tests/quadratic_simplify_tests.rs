@@ -4,8 +4,8 @@
 //! for cleaner output like `2 ± sqrt(y)` instead of `(4 ± sqrt(16+4(y-4)))/2`.
 
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
-use cas_engine::engine::Simplifier;
 use cas_engine::solver::solve;
+use cas_engine::Simplifier;
 
 // ============================================================================
 // Test: x² - 4x + 4 = y should simplify to 2 ± sqrt(y)

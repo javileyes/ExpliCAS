@@ -1,6 +1,6 @@
-/// Diagnostic test: understand why x^3 - x = 0 + T1 identities → non-discrete
-use cas_engine::engine::Simplifier;
 use cas_engine::solver::solve;
+/// Diagnostic test: understand why x^3 - x = 0 + T1 identities → non-discrete
+use cas_engine::Simplifier;
 use cas_parser::parse;
 
 fn solve_and_print(label: &str, eq_str: &str, var: &str) {

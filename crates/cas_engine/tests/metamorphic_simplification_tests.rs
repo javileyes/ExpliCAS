@@ -25,7 +25,7 @@
 mod test_utils;
 
 use cas_ast::{Context, ExprId};
-use cas_engine::engine::eval_f64;
+use cas_engine::eval_f64;
 use cas_engine::EquivalenceResult;
 use cas_engine::Simplifier;
 use cas_engine::{eval_f64_checked, EvalCheckedError, EvalCheckedOptions};

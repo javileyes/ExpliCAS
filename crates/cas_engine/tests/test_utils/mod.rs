@@ -20,7 +20,7 @@
 #![allow(dead_code)] // These are helpers for other tests to use
 
 use cas_ast::{Context, Expr, ExprId};
-use cas_engine::engine::eval_f64;
+use cas_engine::eval_f64;
 use cas_engine::helpers::is_zero;
 use cas_engine::Simplifier;
 use cas_formatter::DisplayExpr;

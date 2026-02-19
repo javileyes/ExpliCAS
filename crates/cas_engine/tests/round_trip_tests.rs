@@ -10,7 +10,7 @@
 //! - Numeric-only: f64 evaluation at sample points
 
 use cas_ast::{Context, ExprId};
-use cas_engine::engine::Simplifier;
+use cas_engine::Simplifier;
 use cas_engine::{eval_f64_checked, EvalCheckedError, EvalCheckedOptions};
 use cas_formatter::LaTeXExpr;
 use cas_parser::parse;

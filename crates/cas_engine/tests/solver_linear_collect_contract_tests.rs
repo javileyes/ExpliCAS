@@ -6,8 +6,8 @@
 //! Example: A = P + P*r*t → P = A / (1 + r*t)
 
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
-use cas_engine::engine::Simplifier;
 use cas_engine::solver::{contains_var, solve};
+use cas_engine::Simplifier;
 
 /// Helper to create A = P + P*r*t equation and run solver
 fn solve_interest_equation() -> (SolutionSet, Vec<cas_engine::solver::SolveStep>, Simplifier) {

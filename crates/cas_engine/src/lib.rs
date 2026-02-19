@@ -14,7 +14,7 @@ pub(crate) mod didactic;
 pub(crate) mod domain;
 pub mod domain_facts;
 pub mod domain_oracle;
-pub mod engine;
+pub(crate) mod engine;
 pub(crate) mod eval;
 pub(crate) mod eval_step_pipeline;
 pub mod expand;
@@ -83,8 +83,8 @@ pub use domain::{
     DomainMode, Proof,
 };
 pub use engine::{
-    eval_f64_checked, strip_all_holds, EquivalenceResult, EvalCheckedError, EvalCheckedOptions,
-    Simplifier,
+    eval_f64, eval_f64_checked, strip_all_holds, substitute_expr_by_id, EquivalenceResult,
+    EvalCheckedError, EvalCheckedOptions, LoopConfig, Simplifier,
 };
 pub use error::{CasError, CasResult};
 pub use eval::*;

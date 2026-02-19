@@ -23,7 +23,7 @@
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_engine::domain_facts::{DomainOracle, FactStrength, Predicate};
 use cas_engine::domain_oracle::StandardOracle;
-use cas_engine::engine::eval_f64;
+use cas_engine::eval_f64;
 use cas_engine::implicit_domain::{
     derive_requires_from_equation, domain_delta_check, infer_implicit_domain, DomainDelta,
     ImplicitCondition, ImplicitDomain,

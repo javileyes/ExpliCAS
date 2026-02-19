@@ -1,6 +1,6 @@
-/// Diagnostic test: cycle and isolation failures
-use cas_engine::engine::Simplifier;
 use cas_engine::solver::solve;
+/// Diagnostic test: cycle and isolation failures
+use cas_engine::Simplifier;
 use cas_parser::parse;
 
 fn solve_and_print(label: &str, eq_str: &str, var: &str) {
