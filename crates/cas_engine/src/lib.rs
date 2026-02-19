@@ -5,7 +5,6 @@
 pub mod assumptions;
 pub(crate) mod best_so_far;
 pub mod budget;
-pub mod canonical_forms;
 pub mod collect;
 pub mod const_fold;
 pub(crate) mod cycle_detector;
@@ -19,7 +18,6 @@ pub mod engine;
 pub mod eval;
 pub mod eval_step_pipeline;
 pub mod expand;
-pub mod factor;
 pub mod helpers;
 pub mod implicit_domain;
 pub mod limits;
@@ -61,12 +59,15 @@ mod numeric_property_tests;
 /// compatibility following semantic versioning.
 pub mod api;
 
-pub(crate) mod build;
 pub mod error;
-pub mod nary;
 pub(crate) mod visitors;
 #[macro_use]
 pub mod macros;
+
+pub(crate) use cas_math::build;
+pub use cas_math::canonical_forms;
+pub use cas_math::expr_nary as nary;
+pub use cas_math::factor;
 
 pub use assumptions::{
     AssumptionCollector, AssumptionEvent, AssumptionKey, AssumptionRecord, AssumptionReporting,
