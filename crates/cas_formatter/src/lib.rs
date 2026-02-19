@@ -11,7 +11,9 @@ pub mod display;
 pub mod display_context;
 pub mod display_hint_builder;
 pub mod display_transforms;
+pub mod escape;
 pub mod latex;
+pub mod latex_clean;
 pub mod latex_core;
 pub mod latex_highlight;
 pub mod latex_no_roots;
@@ -30,7 +32,9 @@ pub use display_hint_builder::{
 pub use display_transforms::{
     DisplayTransform, DisplayTransformRegistry, ScopeTag, ScopedRenderer,
 };
+pub use escape::{html_escape, latex_escape};
 pub use latex::{LaTeXExpr, LaTeXExprWithHints};
+pub use latex_clean::clean_latex_identities;
 pub use latex_core::PathHighlightedLatexRenderer;
 pub use latex_highlight::{
     HighlightColor, HighlightConfig, LaTeXExprHighlighted, LaTeXExprHighlightedWithHints,
