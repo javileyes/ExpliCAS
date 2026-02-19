@@ -7,7 +7,7 @@ use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_extract::{
     extract_abs_argument_view, extract_sqrt_argument_view, extract_unary_log_argument_view,
 };
-use cas_math::expr_predicates::is_zero_expr as is_zero;
+use cas_math::expr_predicates::{contains_variable, is_zero_expr as is_zero};
 use num_traits::{One, Signed};
 
 /// Attempt to prove whether an expression is non-zero.
@@ -215,7 +215,7 @@ pub(crate) fn prove_nonzero_depth(
 
         // Add/Sub: if the subtree is ground (no variables), try simplifier fallback
         Expr::Add(_, _) | Expr::Sub(_, _) => {
-            if !crate::implicit_domain::contains_variable(ctx, expr) {
+            if !contains_variable(ctx, expr) {
                 if let Some(proof) = super::ground_eval::try_ground_nonzero(ctx, expr) {
                     return proof;
                 }
@@ -226,7 +226,7 @@ pub(crate) fn prove_nonzero_depth(
         // Functions not matched above: ground fallback for variable-free cases
         // e.g. cos(π/3), tan(π/4), etc.
         Expr::Function(_, _) => {
-            if !crate::implicit_domain::contains_variable(ctx, expr) {
+            if !contains_variable(ctx, expr) {
                 if let Some(proof) = super::ground_eval::try_ground_nonzero(ctx, expr) {
                     return proof;
                 }
