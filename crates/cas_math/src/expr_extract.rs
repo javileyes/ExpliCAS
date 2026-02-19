@@ -105,6 +105,21 @@ pub fn extract_unary_log_argument_view(ctx: &Context, expr: ExprId) -> Option<Ex
     None
 }
 
+/// Extract the argument from unary square-root form.
+///
+/// Recognizes:
+/// - `sqrt(arg)` -> `arg`
+pub fn extract_sqrt_argument_view(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let (fn_id, args) = match ctx.get(expr) {
+        Expr::Function(fn_id, args) => (*fn_id, args),
+        _ => return None,
+    };
+    if ctx.is_builtin(fn_id, BuiltinFn::Sqrt) && args.len() == 1 {
+        return Some(args[0]);
+    }
+    None
+}
+
 fn strip_unary_neg(ctx: &Context, mut expr: ExprId) -> ExprId {
     loop {
         match ctx.get(expr) {
@@ -329,5 +344,24 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("log(2, x)", &mut ctx).expect("parse log(2, x)");
         assert!(extract_unary_log_argument_view(&ctx, expr).is_none());
+    }
+
+    #[test]
+    fn extracts_sqrt_argument_from_unary_sqrt() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(z)", &mut ctx).expect("parse sqrt(z)");
+        let arg = extract_sqrt_argument_view(&ctx, expr).expect("must extract sqrt arg");
+        let z = parse("z", &mut ctx).expect("parse z");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, arg, z),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn sqrt_argument_rejects_non_sqrt_function() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(z)", &mut ctx).expect("parse sin(z)");
+        assert!(extract_sqrt_argument_view(&ctx, expr).is_none());
     }
 }

@@ -4,7 +4,7 @@ use super::witness::{witness_survives_in_context, WitnessKind};
 use super::{ImplicitCondition, ImplicitDomain};
 use crate::semantics::ValueDomain;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
-use cas_math::expr_extract::extract_unary_log_argument_view;
+use cas_math::expr_extract::{extract_sqrt_argument_view, extract_unary_log_argument_view};
 use num_integer::Integer;
 use num_rational::BigRational;
 
@@ -336,16 +336,13 @@ pub fn derive_requires_from_equation(
     // Examples: sqrt(y), ln(y), y^(1/2), etc.
     // We DON'T want to derive positivity for plain polynomials like "2*x + 3".
     let has_positivity_structure = |ctx: &Context, e: ExprId| -> bool {
+        if extract_sqrt_argument_view(ctx, e).is_some() {
+            return true;
+        }
         if extract_unary_log_argument_view(ctx, e).is_some() {
             return true;
         }
         match ctx.get(e) {
-            // sqrt(x) requires x >= 0 and sqrt(x) > 0 implies x > 0
-            Expr::Function(fn_id, args)
-                if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
-            {
-                true
-            }
             // x^(p/q) where q is even requires x >= 0
             Expr::Pow(_base, exp) => {
                 if let Expr::Number(n) = ctx.get(*exp) {
@@ -422,11 +419,12 @@ fn add_positive_and_propagate(
             derived.push(ImplicitCondition::NonZero(args[0]));
         }
         // sqrt(t) > 0 implies t > 0
-        Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
-        {
+        Expr::Function(_, _) if extract_sqrt_argument_view(ctx, expr).is_some() => {
+            let Some(arg) = extract_sqrt_argument_view(ctx, expr) else {
+                return;
+            };
             derived.push(ImplicitCondition::Positive(expr));
-            derived.push(ImplicitCondition::Positive(args[0]));
+            derived.push(ImplicitCondition::Positive(arg));
         }
         // t^(1/2) > 0 implies t > 0
         Expr::Pow(base, exp) => {
@@ -518,11 +516,7 @@ fn is_always_nonnegative_depth(ctx: &Context, expr: ExprId, depth: usize) -> boo
         }
 
         // sqrt(x) is non-negative by definition (for real)
-        Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
-        {
-            true
-        }
+        Expr::Function(_, _) if extract_sqrt_argument_view(ctx, expr).is_some() => true,
 
         // x * x where both sides are the same = x², always non-negative
         Expr::Mul(l, r) => {
@@ -553,13 +547,14 @@ fn infer_recursive(ctx: &Context, root: ExprId, domain: &mut ImplicitDomain) {
         match ctx.get(expr) {
             // sqrt(t) → NonNegative(t)
             // BUT skip numeric literals - they're trivially provable
-            Expr::Function(fn_id, args)
-                if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
-            {
-                if !matches!(ctx.get(args[0]), Expr::Number(_)) {
-                    domain.add_nonnegative(args[0]);
+            Expr::Function(_, _) if extract_sqrt_argument_view(ctx, expr).is_some() => {
+                let Some(arg) = extract_sqrt_argument_view(ctx, expr) else {
+                    continue;
+                };
+                if !matches!(ctx.get(arg), Expr::Number(_)) {
+                    domain.add_nonnegative(arg);
                 }
-                stack.push(args[0]);
+                stack.push(arg);
             }
 
             // ln(t) or log(t) → Positive(t)
