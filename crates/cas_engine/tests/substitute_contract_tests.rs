@@ -7,7 +7,7 @@
 //! 4. Structural matching only (no commutative matching)
 
 use cas_ast::{Context, Expr};
-use cas_engine::substitute::{substitute_power_aware, SubstituteOptions};
+use cas_engine::{substitute_power_aware, SubstituteOptions};
 use cas_parser::parse;
 
 /// Helper to parse expression

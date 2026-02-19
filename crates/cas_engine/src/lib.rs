@@ -38,7 +38,7 @@ pub mod solver;
 pub(crate) mod step;
 pub(crate) mod step_optimization;
 pub(crate) mod strategies;
-pub mod substitute;
+pub(crate) mod substitute;
 pub(crate) mod telescoping;
 pub(crate) mod timeline;
 
@@ -119,6 +119,10 @@ pub use semantics::{
 pub use solve_safety::{RequirementDescriptor, SimplifyPurpose, SolveSafety};
 pub use step::{
     pathsteps_to_expr_path, DisplayEvalSteps, ImportanceLevel, PathStep, Step, StepCategory,
+};
+pub use substitute::{
+    substitute_power_aware, substitute_with_trace, SubstituteOptions, SubstituteTraceResult,
+    SubstituteTraceStep,
 };
 pub use telescoping::{
     telescope, try_dirichlet_kernel_identity_pub, DirichletKernelResult, TelescopingResult,
