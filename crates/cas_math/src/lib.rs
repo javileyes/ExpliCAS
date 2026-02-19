@@ -39,6 +39,7 @@ pub mod poly_compare;
 pub mod poly_convert;
 pub mod poly_gcd_mode;
 pub mod poly_gcd_structural;
+pub mod poly_lowering;
 pub mod poly_lowering_ops;
 pub mod poly_modp_calls;
 pub mod poly_modp_conv;
