@@ -14,7 +14,7 @@ fn simplify(input: &str) -> String {
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On,
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
             ..Default::default()
         },
@@ -211,8 +211,7 @@ fn simplify_complex(input: &str) -> String {
     let mut state = SessionState::new();
 
     // Set ComplexEnabled for these tests
-    state.options_mut().shared.semantics.value_domain =
-        cas_engine::semantics::ValueDomain::ComplexEnabled;
+    state.options_mut().shared.semantics.value_domain = cas_engine::ValueDomain::ComplexEnabled;
 
     let parsed = parse(input, &mut engine.simplifier.context).expect("parse failed");
     let req = EvalRequest {
@@ -301,7 +300,7 @@ fn simplify_with_steps(input: &str) -> Vec<String> {
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On,
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
             ..Default::default()
         },

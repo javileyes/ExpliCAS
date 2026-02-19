@@ -20,7 +20,7 @@ fn bench_profile_build(c: &mut Criterion) {
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On,
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
             ..Default::default()
         },
@@ -69,7 +69,7 @@ fn bench_simplify_cached_vs_uncached(c: &mut Criterion) {
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On,
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
             ..Default::default()
         },

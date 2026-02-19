@@ -3,11 +3,9 @@
 //! These tests verify that preset configurations are correctly defined.
 //! Note: Full behavior tests require REPL integration; these verify axes at config level.
 
-use cas_engine::semantics::{
-    AssumeScope, BranchPolicy, EvalConfig, InverseTrigPolicy, ValueDomain,
-};
 use cas_engine::ConstFoldMode;
 use cas_engine::DomainMode;
+use cas_engine::{AssumeScope, BranchPolicy, EvalConfig, InverseTrigPolicy, ValueDomain};
 
 // ============================================================================
 // Preset Configuration Tests

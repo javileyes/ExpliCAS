@@ -258,7 +258,7 @@ fn legacy_string_parsing_whitelist() {
 /// Test: SimplifyOptions includes assumption_reporting
 #[test]
 fn simplify_options_has_assumption_reporting() {
-    use cas_engine::phase::SimplifyOptions;
+    use cas_engine::SimplifyOptions;
 
     let opts = SimplifyOptions::default();
     // Default should be Off
@@ -281,7 +281,7 @@ fn options_propagation() {
     use cas_engine::EvalOptions;
 
     let eval_opts = EvalOptions {
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             assumption_reporting: AssumptionReporting::Summary,
             ..Default::default()
         },

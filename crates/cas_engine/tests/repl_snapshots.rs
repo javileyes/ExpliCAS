@@ -16,10 +16,10 @@
 //! ```
 
 use cas_ast::SolutionSet;
-use cas_engine::semantics::{AssumeScope, ValueDomain};
 use cas_engine::solver::{solve_with_display_steps, SolveBudget, SolverOptions};
 use cas_engine::DomainMode;
 use cas_engine::Engine;
+use cas_engine::{AssumeScope, ValueDomain};
 use cas_formatter::DisplayExpr;
 
 /// Helper to solve an equation and format the result as a snapshot-friendly string

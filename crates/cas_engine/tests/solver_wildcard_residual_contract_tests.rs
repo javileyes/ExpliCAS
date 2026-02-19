@@ -4,10 +4,10 @@
 //! with negative bases return a structured residual instead of an error.
 
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
-use cas_engine::semantics::{AssumeScope, ValueDomain};
 use cas_engine::solver::{solve_with_display_steps, SolverOptions};
 use cas_engine::DomainMode;
 use cas_engine::Engine;
+use cas_engine::{AssumeScope, ValueDomain};
 
 fn make_opts(mode: DomainMode, scope: AssumeScope) -> SolverOptions {
     SolverOptions {

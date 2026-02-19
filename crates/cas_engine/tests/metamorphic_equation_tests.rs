@@ -22,9 +22,9 @@
 
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_engine::eval_f64;
-use cas_engine::semantics::ValueDomain;
 use cas_engine::solver::check::{verify_solution_set, VerifyResult, VerifyStatus, VerifySummary};
 use cas_engine::solver::solve;
+use cas_engine::ValueDomain;
 use cas_engine::{
     derive_requires_from_equation, domain_delta_check, infer_implicit_domain, DomainDelta,
     ImplicitCondition, ImplicitDomain,

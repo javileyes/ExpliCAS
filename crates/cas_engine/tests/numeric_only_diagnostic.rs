@@ -561,7 +561,7 @@ fn numeric_only_root_cause_analysis() {
                     let mut e_final = e;
                     let mut s_final = s;
                     {
-                        let cfg = cas_engine::semantics::EvalConfig::default();
+                        let cfg = cas_engine::EvalConfig::default();
                         let mut budget = cas_engine::Budget::preset_cli();
                         if let Ok(r) = cas_engine::fold_constants(
                             &mut simp.context,
@@ -594,7 +594,7 @@ fn numeric_only_root_cause_analysis() {
                     let d = simp.context.add(Expr::Sub(e_final, s_final));
                     let (mut diff, _) = simp.simplify(d);
                     {
-                        let cfg = cas_engine::semantics::EvalConfig::default();
+                        let cfg = cas_engine::EvalConfig::default();
                         let mut budget = cas_engine::Budget::preset_cli();
                         if let Ok(r) = cas_engine::fold_constants(
                             &mut simp.context,

@@ -41,8 +41,8 @@ fn simplify_strict(input: &str) -> String {
 
     // Use Strict domain mode
     let opts = cas_engine::SimplifyOptions {
-        shared: cas_engine::phase::SharedSemanticConfig {
-            semantics: cas_engine::semantics::EvalConfig {
+        shared: cas_engine::SharedSemanticConfig {
+            semantics: cas_engine::EvalConfig {
                 domain_mode: cas_engine::DomainMode::Strict,
                 ..Default::default()
             },
@@ -362,8 +362,8 @@ fn test_prove_nonzero_products() {
 #[test]
 fn test_prove_positive_numbers() {
     use cas_engine::prove_positive;
-    use cas_engine::semantics::ValueDomain;
     use cas_engine::Proof;
+    use cas_engine::ValueDomain;
 
     let mut ctx = Context::new();
     let vd = ValueDomain::RealOnly; // Use RealOnly for these basic tests
@@ -380,8 +380,8 @@ fn test_prove_positive_numbers() {
 #[test]
 fn test_prove_positive_constants() {
     use cas_engine::prove_positive;
-    use cas_engine::semantics::ValueDomain;
     use cas_engine::Proof;
+    use cas_engine::ValueDomain;
 
     let mut ctx = Context::new();
     let vd = ValueDomain::RealOnly;
@@ -398,8 +398,8 @@ fn test_prove_positive_constants() {
 #[test]
 fn test_prove_positive_products() {
     use cas_engine::prove_positive;
-    use cas_engine::semantics::ValueDomain;
     use cas_engine::Proof;
+    use cas_engine::ValueDomain;
 
     let mut ctx = Context::new();
     let vd = ValueDomain::RealOnly;
@@ -421,8 +421,8 @@ fn test_prove_positive_products() {
 #[test]
 fn test_prove_positive_exp() {
     use cas_engine::prove_positive;
-    use cas_engine::semantics::ValueDomain;
     use cas_engine::Proof;
+    use cas_engine::ValueDomain;
 
     let mut ctx = Context::new();
 
@@ -477,7 +477,7 @@ fn test_prove_positive_exp() {
 fn simplify_with_domain_value(
     input: &str,
     domain: cas_engine::DomainMode,
-    value: cas_engine::semantics::ValueDomain,
+    value: cas_engine::ValueDomain,
 ) -> (String, Vec<String>) {
     use cas_engine::{Engine, EvalAction, EvalRequest, EvalResult};
 
@@ -518,7 +518,7 @@ fn simplify_with_domain_value(
 /// CONTRACT: ln(x*y) does NOT expand in Strict mode (variables not provably positive)
 #[test]
 fn log_product_strict_no_expand_variables() {
-    use cas_engine::semantics::ValueDomain;
+    use cas_engine::ValueDomain;
     let (result, warnings) = simplify_with_domain_value(
         "ln(x*y)",
         cas_engine::DomainMode::Strict,
@@ -548,7 +548,7 @@ fn log_product_strict_no_expand_variables() {
 /// This test verifies that automatic simplification does NOT expand logs.
 #[test]
 fn log_product_assume_no_auto_expand() {
-    use cas_engine::semantics::ValueDomain;
+    use cas_engine::ValueDomain;
     let (result, _warnings) = simplify_with_domain_value(
         "ln(x*y)",
         cas_engine::DomainMode::Assume,
@@ -567,7 +567,7 @@ fn log_product_assume_no_auto_expand() {
 /// CONTRACT: ln(z*w) does NOT expand in Complex domain (branch cut safety)
 #[test]
 fn log_product_complex_never_expands() {
-    use cas_engine::semantics::ValueDomain;
+    use cas_engine::ValueDomain;
     let (result, _) = simplify_with_domain_value(
         "ln(z*w)",
         cas_engine::DomainMode::Assume,
@@ -586,7 +586,7 @@ fn log_product_complex_never_expands() {
 /// LogExpansionRule is now opt-in via the `expand_log` command.
 #[test]
 fn log_product_provable_positive_no_auto_expand() {
-    use cas_engine::semantics::ValueDomain;
+    use cas_engine::ValueDomain;
     let (result, _warnings) = simplify_with_domain_value(
         "ln(2*pi)",
         cas_engine::DomainMode::Strict,
@@ -654,7 +654,7 @@ fn same_denom_mixed_cancellation() {
 /// (i is treated as an ordinary symbol, not the imaginary unit)
 #[test]
 fn value_domain_real_no_gaussian_division() {
-    use cas_engine::semantics::ValueDomain;
+    use cas_engine::ValueDomain;
     let (result, _) = simplify_with_domain_value(
         "10/(3+4*i)",
         cas_engine::DomainMode::Generic,
@@ -673,7 +673,7 @@ fn value_domain_real_no_gaussian_division() {
 /// CONTRACT: In ComplexEnabled mode, 10/(3+4i) IS Gaussian rationalized
 #[test]
 fn value_domain_complex_gaussian_division() {
-    use cas_engine::semantics::ValueDomain;
+    use cas_engine::ValueDomain;
     let (result, _) = simplify_with_domain_value(
         "10/(3+4*i)",
         cas_engine::DomainMode::Generic,
@@ -693,7 +693,7 @@ fn value_domain_complex_gaussian_division() {
 /// CONTRACT: In RealOnly mode, i*i does NOT simplify to -1
 #[test]
 fn value_domain_real_no_i_squared() {
-    use cas_engine::semantics::ValueDomain;
+    use cas_engine::ValueDomain;
     let (result, _) = simplify_with_domain_value(
         "i*i",
         cas_engine::DomainMode::Generic,
@@ -711,7 +711,7 @@ fn value_domain_real_no_i_squared() {
 /// CONTRACT: In ComplexEnabled mode, i*i simplifies to -1
 #[test]
 fn value_domain_complex_i_squared() {
-    use cas_engine::semantics::ValueDomain;
+    use cas_engine::ValueDomain;
     let (result, _) = simplify_with_domain_value(
         "i*i",
         cas_engine::DomainMode::Generic,
@@ -729,7 +729,7 @@ fn value_domain_complex_i_squared() {
 /// CONTRACT: In RealOnly mode, i^2 does NOT simplify to -1
 #[test]
 fn value_domain_real_no_i_power() {
-    use cas_engine::semantics::ValueDomain;
+    use cas_engine::ValueDomain;
     let (result, _) = simplify_with_domain_value(
         "i^2",
         cas_engine::DomainMode::Generic,
@@ -747,7 +747,7 @@ fn value_domain_real_no_i_power() {
 /// CONTRACT: In ComplexEnabled mode, i^4 simplifies to 1
 #[test]
 fn value_domain_complex_i_fourth() {
-    use cas_engine::semantics::ValueDomain;
+    use cas_engine::ValueDomain;
     let (result, _) = simplify_with_domain_value(
         "i^4",
         cas_engine::DomainMode::Generic,

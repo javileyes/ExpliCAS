@@ -111,8 +111,8 @@ fn test_dyadic_cos_product_assume_symbolic_allowed() {
 
     let opts = EvalOptions {
         steps_mode: StepsMode::On,
-        shared: cas_engine::phase::SharedSemanticConfig {
-            semantics: cas_engine::semantics::EvalConfig {
+        shared: cas_engine::SharedSemanticConfig {
+            semantics: cas_engine::EvalConfig {
                 domain_mode: DomainMode::Assume,
                 ..Default::default()
             },

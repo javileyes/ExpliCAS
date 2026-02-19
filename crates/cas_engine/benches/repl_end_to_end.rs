@@ -85,7 +85,7 @@ fn bench_repl_end_to_end(c: &mut Criterion) {
 
     let opts = EvalOptions {
         branch_mode: BranchMode::Strict,
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
             ..Default::default()
         },
@@ -170,7 +170,7 @@ fn bench_steps_mode_comparison(c: &mut Criterion) {
 
     let opts = EvalOptions {
         branch_mode: BranchMode::Strict,
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
             ..Default::default()
         },

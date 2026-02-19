@@ -55,7 +55,7 @@ fn standard_opts() -> EvalOptions {
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On,
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
             ..Default::default()
         },
@@ -68,7 +68,7 @@ fn solve_opts() -> EvalOptions {
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On,
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             context_mode: ContextMode::Solve,
             ..Default::default()
         },
@@ -81,7 +81,7 @@ fn integrate_opts() -> EvalOptions {
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On,
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             context_mode: ContextMode::IntegratePrep,
             ..Default::default()
         },

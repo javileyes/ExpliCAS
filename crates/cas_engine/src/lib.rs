@@ -24,7 +24,7 @@ pub(crate) mod limits;
 pub(crate) mod options;
 pub(crate) mod orchestrator;
 pub(crate) mod parent_context;
-pub mod phase;
+pub(crate) mod phase;
 pub(crate) mod profile_cache;
 pub(crate) mod profiler;
 pub(crate) mod rationalize;
@@ -32,7 +32,7 @@ pub(crate) mod rationalize_policy;
 pub(crate) mod recursion_guard;
 pub(crate) mod rule;
 pub mod rules;
-pub mod semantics;
+pub(crate) mod semantics;
 pub(crate) mod solve_safety;
 pub mod solver;
 pub(crate) mod step;
@@ -116,8 +116,8 @@ pub use options::{
 pub use orchestrator::Orchestrator;
 pub use parent_context::ParentContext;
 pub use phase::{
-    ExpandBudget, ExpandPolicy, PhaseBudgets, PhaseStats, PipelineStats, SimplifyOptions,
-    SimplifyPhase,
+    ExpandBudget, ExpandPolicy, PhaseBudgets, PhaseMask, PhaseStats, PipelineStats,
+    SharedSemanticConfig, SimplifyOptions, SimplifyPhase,
 };
 pub use profile_cache::ProfileCache;
 pub use profiler::{RuleProfiler, RuleStats};

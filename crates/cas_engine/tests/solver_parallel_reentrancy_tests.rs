@@ -6,11 +6,11 @@
 use std::thread;
 
 use cas_ast::{Equation, Expr, RelOp};
-use cas_engine::semantics::{AssumeScope, ValueDomain};
 use cas_engine::solver::{solve_with_display_steps, SolveBudget, SolverOptions};
 use cas_engine::DomainMode;
 use cas_engine::Engine;
 use cas_engine::ImplicitCondition;
+use cas_engine::{AssumeScope, ValueDomain};
 
 fn make_opts() -> SolverOptions {
     SolverOptions {

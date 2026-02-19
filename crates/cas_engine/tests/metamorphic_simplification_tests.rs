@@ -2787,7 +2787,7 @@ fn run_csv_combination_tests(
                         };
 
                         // Use default budget — the thread-based 2s timeout prevents hangs
-                        let opts = cas_engine::phase::SimplifyOptions::default();
+                        let opts = cas_engine::SimplifyOptions::default();
                         let mut combo_cycles: usize = 0;
 
                         let (mut e, _, stats_e) = simplifier.simplify_with_stats(exp_parsed, opts.clone());
@@ -2797,7 +2797,7 @@ fn run_csv_combination_tests(
 
                         // Post-process: fold_constants to match CLI eval_simplify behavior
                         {
-                            let cfg = cas_engine::semantics::EvalConfig::default();
+                            let cfg = cas_engine::EvalConfig::default();
                             let mut budget = cas_engine::Budget::preset_cli();
                             if let Ok(r) = cas_engine::fold_constants(&mut simplifier.context, e, &cfg, cas_engine::ConstFoldMode::Safe, &mut budget) {
                                 e = r.expr;
@@ -2824,7 +2824,7 @@ fn run_csv_combination_tests(
                             let mut sq = Simplifier::with_default_rules();
                             if let Ok(qp) = parse(&q_str, &mut sq.context) {
                                 let (mut qr, _) = sq.simplify(qp);
-                                let cfg = cas_engine::semantics::EvalConfig::default();
+                                let cfg = cas_engine::EvalConfig::default();
                                 let mut budget = cas_engine::Budget::preset_cli();
                                 if let Ok(r) = cas_engine::fold_constants(&mut sq.context, qr, &cfg, cas_engine::ConstFoldMode::Safe, &mut budget) {
                                     qr = r.expr;
@@ -2843,7 +2843,7 @@ fn run_csv_combination_tests(
                             let mut sd = Simplifier::with_default_rules();
                             if let Ok(dp) = parse(&d_str, &mut sd.context) {
                                 let (mut dr, _) = sd.simplify(dp);
-                                let cfg = cas_engine::semantics::EvalConfig::default();
+                                let cfg = cas_engine::EvalConfig::default();
                                 let mut budget = cas_engine::Budget::preset_cli();
                                 if let Ok(r) = cas_engine::fold_constants(&mut sd.context, dr, &cfg, cas_engine::ConstFoldMode::Safe, &mut budget) {
                                     dr = r.expr;
@@ -2863,7 +2863,7 @@ fn run_csv_combination_tests(
                             let mut sd = Simplifier::with_default_rules();
                             if let Ok(dp) = parse(&d_str, &mut sd.context) {
                                 let (mut dr, _) = sd.expand(dp);
-                                let cfg = cas_engine::semantics::EvalConfig::default();
+                                let cfg = cas_engine::EvalConfig::default();
                                 let mut budget = cas_engine::Budget::preset_cli();
                                 if let Ok(r) = cas_engine::fold_constants(&mut sd.context, dr, &cfg, cas_engine::ConstFoldMode::Safe, &mut budget) {
                                     dr = r.expr;
@@ -3003,13 +3003,13 @@ fn run_csv_combination_tests(
                 let combo_start = std::time::Instant::now();
                 let mut inline_cycles: usize = 0;
                 let (exp_simplified, simp_simplified) = {
-                    let opts = cas_engine::phase::SimplifyOptions::default();
+                    let opts = cas_engine::SimplifyOptions::default();
                     let (mut e, _, stats_e) =
                         simplifier.simplify_with_stats(exp_parsed, opts.clone());
                     inline_cycles += stats_e.cycle_events.len();
                     // Post-process: fold_constants to match CLI eval_simplify behavior
                     {
-                        let cfg = cas_engine::semantics::EvalConfig::default();
+                        let cfg = cas_engine::EvalConfig::default();
                         let mut budget = cas_engine::Budget::preset_cli();
                         if let Ok(r) = cas_engine::fold_constants(
                             &mut simplifier.context,
@@ -3027,7 +3027,7 @@ fn run_csv_combination_tests(
                     let (mut s, _, stats_s) = simplifier.simplify_with_stats(simp_parsed, opts);
                     inline_cycles += stats_s.cycle_events.len();
                     {
-                        let cfg = cas_engine::semantics::EvalConfig::default();
+                        let cfg = cas_engine::EvalConfig::default();
                         let mut budget = cas_engine::Budget::preset_cli();
                         if let Ok(r) = cas_engine::fold_constants(
                             &mut simplifier.context,
@@ -3063,7 +3063,7 @@ fn run_csv_combination_tests(
                     let mut sd = Simplifier::with_default_rules();
                     if let Ok(dp) = parse(&diff_str, &mut sd.context) {
                         let (mut dr, _) = sd.simplify(dp);
-                        let cfg = cas_engine::semantics::EvalConfig::default();
+                        let cfg = cas_engine::EvalConfig::default();
                         let mut budget = cas_engine::Budget::preset_cli();
                         if let Ok(r) = cas_engine::fold_constants(
                             &mut sd.context,
@@ -3085,7 +3085,7 @@ fn run_csv_combination_tests(
                         .add(cas_ast::Expr::Sub(exp_simplified, simp_simplified));
                     let (mut ds, _) = simplifier.simplify(d);
                     {
-                        let cfg = cas_engine::semantics::EvalConfig::default();
+                        let cfg = cas_engine::EvalConfig::default();
                         let mut budget = cas_engine::Budget::preset_cli();
                         if let Ok(r) = cas_engine::fold_constants(
                             &mut simplifier.context,
@@ -3771,9 +3771,9 @@ fn metatest_individual_identities_impl() {
         );
 
         // Simplify for display and numeric fallback
-        let opts = cas_engine::phase::SimplifyOptions {
-            shared: cas_engine::phase::SharedSemanticConfig {
-                semantics: cas_engine::semantics::EvalConfig {
+        let opts = cas_engine::SimplifyOptions {
+            shared: cas_engine::SharedSemanticConfig {
+                semantics: cas_engine::EvalConfig {
                     domain_mode,
                     ..Default::default()
                 },
@@ -4904,7 +4904,7 @@ fn run_substitution_tests() -> ComboMetrics {
                         }
                     };
 
-                    let opts = cas_engine::phase::SimplifyOptions::default();
+                    let opts = cas_engine::SimplifyOptions::default();
                     let mut sub_cycles: usize = 0;
                     let (mut e, _, stats_e) =
                         simplifier.simplify_with_stats(exp_parsed, opts.clone());
@@ -4915,7 +4915,7 @@ fn run_substitution_tests() -> ComboMetrics {
 
                     // Post-process: fold_constants
                     {
-                        let cfg = cas_engine::semantics::EvalConfig::default();
+                        let cfg = cas_engine::EvalConfig::default();
                         let mut budget = cas_engine::Budget::preset_cli();
                         if let Ok(r) = cas_engine::fold_constants(
                             &mut simplifier.context,
@@ -4951,7 +4951,7 @@ fn run_substitution_tests() -> ComboMetrics {
                         let mut sd = Simplifier::with_default_rules();
                         if let Ok(dp) = parse(&d_str, &mut sd.context) {
                             let (mut dr, _) = sd.simplify(dp);
-                            let cfg = cas_engine::semantics::EvalConfig::default();
+                            let cfg = cas_engine::EvalConfig::default();
                             let mut budget = cas_engine::Budget::preset_cli();
                             if let Ok(r) = cas_engine::fold_constants(
                                 &mut sd.context,
@@ -4982,7 +4982,7 @@ fn run_substitution_tests() -> ComboMetrics {
                         let mut sd = Simplifier::with_default_rules();
                         if let Ok(dp) = parse(&d_str, &mut sd.context) {
                             let (mut dr, _) = sd.expand(dp);
-                            let cfg = cas_engine::semantics::EvalConfig::default();
+                            let cfg = cas_engine::EvalConfig::default();
                             let mut budget = cas_engine::Budget::preset_cli();
                             if let Ok(r) = cas_engine::fold_constants(
                                 &mut sd.context,

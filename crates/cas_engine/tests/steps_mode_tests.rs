@@ -16,7 +16,7 @@ fn simplify_with_mode(input: &str, mode: StepsMode) -> (String, Vec<cas_engine::
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Auto,
         steps_mode: mode,
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
             ..Default::default()
         },
@@ -186,7 +186,7 @@ fn simplify_morrie_with_mode(mode: StepsMode) -> (String, Vec<cas_engine::Step>,
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Auto,
         steps_mode: mode,
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             context_mode: ContextMode::IntegratePrep,
             ..Default::default()
         },
@@ -252,7 +252,7 @@ fn warnings_survive_steps_off() {
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::Off,
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             context_mode: ContextMode::IntegratePrep,
             ..Default::default()
         },

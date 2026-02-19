@@ -28,7 +28,7 @@ fn simp_full(input: &str) -> Option<(ExprId, String, Simplifier)> {
     let mut s = Simplifier::with_default_rules();
     let e = parse(input, &mut s.context).ok()?;
     let (r, _) = s.simplify(e);
-    let cfg = cas_engine::semantics::EvalConfig::default();
+    let cfg = cas_engine::EvalConfig::default();
     let mut budget = cas_engine::Budget::preset_cli();
     let r2 = if let Ok(res) = cas_engine::fold_constants(
         &mut s.context,
@@ -52,7 +52,7 @@ fn simp_full(input: &str) -> Option<(ExprId, String, Simplifier)> {
 /// Simplify an ExprId within an existing Simplifier context.
 fn simp_expr(s: &mut Simplifier, expr: ExprId) -> ExprId {
     let (r, _) = s.simplify(expr);
-    let cfg = cas_engine::semantics::EvalConfig::default();
+    let cfg = cas_engine::EvalConfig::default();
     let mut budget = cas_engine::Budget::preset_cli();
     if let Ok(res) = cas_engine::fold_constants(
         &mut s.context,

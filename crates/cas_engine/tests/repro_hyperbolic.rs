@@ -1,12 +1,12 @@
-use cas_engine::phase::ExpandPolicy;
 use cas_engine::EvalOptions;
+use cas_engine::ExpandPolicy;
 use cas_engine::Simplifier;
 use cas_parser::parse;
 
 /// Options with auto-expand enabled for identity tests
 fn opts_autoexpand() -> EvalOptions {
     EvalOptions {
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             expand_policy: ExpandPolicy::Auto,
             ..Default::default()
         },

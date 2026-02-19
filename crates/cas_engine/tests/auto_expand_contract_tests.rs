@@ -11,9 +11,9 @@
 //! - Expand (expand_mode): aggressively expands everything
 
 use cas_ast::{Context, Expr};
-use cas_engine::phase::{ExpandPolicy, SimplifyOptions};
 use cas_engine::ContextMode;
 use cas_engine::Simplifier;
+use cas_engine::{ExpandPolicy, SimplifyOptions};
 use cas_parser::parse;
 
 /// Helper to simplify an expression with given options

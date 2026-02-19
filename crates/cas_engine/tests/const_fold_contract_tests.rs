@@ -7,9 +7,9 @@
 //! 4. i*i -> -1 only in ComplexEnabled
 
 use cas_ast::{Context, Expr};
-use cas_engine::semantics::{EvalConfig, ValueDomain};
 use cas_engine::Budget;
 use cas_engine::{fold_constants, ConstFoldMode, ConstFoldResult};
+use cas_engine::{EvalConfig, ValueDomain};
 use num_rational::BigRational;
 use num_traits::Zero;
 

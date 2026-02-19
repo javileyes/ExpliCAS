@@ -19,8 +19,8 @@ fn simplify_strict(input: &str) -> (String, Vec<String>) {
     let expr = parse(input, &mut simplifier.context).expect("parse failed");
 
     let opts = cas_engine::SimplifyOptions {
-        shared: cas_engine::phase::SharedSemanticConfig {
-            semantics: cas_engine::semantics::EvalConfig {
+        shared: cas_engine::SharedSemanticConfig {
+            semantics: cas_engine::EvalConfig {
                 domain_mode: cas_engine::DomainMode::Strict,
                 ..Default::default()
             },
@@ -56,8 +56,8 @@ fn simplify_assume(input: &str) -> (String, Vec<String>) {
     let expr = parse(input, &mut simplifier.context).expect("parse failed");
 
     let opts = cas_engine::SimplifyOptions {
-        shared: cas_engine::phase::SharedSemanticConfig {
-            semantics: cas_engine::semantics::EvalConfig {
+        shared: cas_engine::SharedSemanticConfig {
+            semantics: cas_engine::EvalConfig {
                 domain_mode: cas_engine::DomainMode::Assume,
                 ..Default::default()
             },
@@ -92,8 +92,8 @@ fn simplify_generic(input: &str) -> (String, Vec<String>) {
     let expr = parse(input, &mut simplifier.context).expect("parse failed");
 
     let opts = cas_engine::SimplifyOptions {
-        shared: cas_engine::phase::SharedSemanticConfig {
-            semantics: cas_engine::semantics::EvalConfig {
+        shared: cas_engine::SharedSemanticConfig {
+            semantics: cas_engine::EvalConfig {
                 domain_mode: cas_engine::DomainMode::Generic,
                 ..Default::default()
             },

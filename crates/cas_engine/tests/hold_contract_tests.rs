@@ -3,8 +3,8 @@
 //! This test ensures that __hold wrappers are always stripped before
 //! returning results to users via JSON (CLI and FFI).
 
-use cas_engine::phase::ExpandPolicy;
 use cas_engine::EvalOptions;
+use cas_engine::ExpandPolicy;
 use cas_engine::Simplifier;
 use cas_parser::parse;
 
@@ -50,7 +50,7 @@ fn test_expand_no_hold_leak() {
 #[test]
 fn test_autoexpand_no_hold_leak() {
     let opts = EvalOptions {
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             expand_policy: ExpandPolicy::Auto,
             ..Default::default()
         },

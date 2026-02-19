@@ -4,9 +4,9 @@
 //! - With autoexpand ON: 1/(1+√2+√3) fully simplifies (no unexpanded (1+√2)² in result)
 //! - With autoexpand OFF: May leave structured form (acceptable)
 
-use cas_engine::phase::ExpandPolicy;
 use cas_engine::Engine;
 use cas_engine::EvalOptions;
+use cas_engine::ExpandPolicy;
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
@@ -19,7 +19,7 @@ fn test_rationalize_with_autoexpand_expands_subexpressions() {
 
     // Setup: enable auto-expand
     let opts = EvalOptions {
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             expand_policy: ExpandPolicy::Auto,
             ..Default::default()
         },
@@ -103,7 +103,7 @@ fn test_rationalize_respects_autoexpand_budget() {
 
     // Setup: auto-expand with restrictive budget
     let mut opts = EvalOptions {
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             expand_policy: ExpandPolicy::Auto,
             ..Default::default()
         },

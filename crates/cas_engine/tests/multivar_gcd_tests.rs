@@ -13,7 +13,7 @@ fn simplify(input: &str) -> String {
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On,
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
             ..Default::default()
         },

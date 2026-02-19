@@ -4,10 +4,10 @@
 //! from the same `DisplaySolveSteps` source, preventing "final layer bifurcation".
 
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
-use cas_engine::semantics::{AssumeScope, ValueDomain};
 use cas_engine::solver::{solve_with_display_steps, DisplaySolveSteps, SolverOptions};
 use cas_engine::DomainMode;
 use cas_engine::Engine;
+use cas_engine::{AssumeScope, ValueDomain};
 
 // =============================================================================
 // Helper: Generate canonical test equation and solve

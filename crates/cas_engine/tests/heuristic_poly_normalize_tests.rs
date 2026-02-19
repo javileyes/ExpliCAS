@@ -7,10 +7,10 @@
 //! This prevents "silent widening" of Heuristic mode in future changes.
 
 use cas_ast::Context;
-use cas_engine::phase::SimplifyOptions;
 use cas_engine::AutoExpandBinomials;
 use cas_engine::HeuristicPoly;
 use cas_engine::Simplifier;
+use cas_engine::SimplifyOptions;
 use cas_parser::parse;
 
 /// Helper to simplify with specific heuristic_poly mode
@@ -21,7 +21,7 @@ fn simplify_with_heuristic_poly(input: &str, mode: HeuristicPoly) -> String {
     simplifier.context = ctx;
 
     let opts = SimplifyOptions {
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             heuristic_poly: mode,
             ..Default::default()
         },
@@ -53,7 +53,7 @@ fn simplify_with_mode(input: &str, mode: AutoExpandBinomials) -> String {
     };
 
     let opts = SimplifyOptions {
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             autoexpand_binomials: mode,
             heuristic_poly: heuristic_mode,
             ..Default::default()

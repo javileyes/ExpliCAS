@@ -11,7 +11,7 @@
 //! - LogPowerBaseRule: log(a^m, a^n) → n/m
 //! - Anti-worsen guard: blocks abs() introduction in Generic mode
 
-use cas_engine::semantics::ValueDomain;
+use cas_engine::ValueDomain;
 use cas_engine::{DomainMode, Engine, EvalAction, EvalRequest, EvalResult};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;

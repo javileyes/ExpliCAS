@@ -6,7 +6,7 @@
 //! - Mode isolation: ComplexMode::Off should not simplify i
 
 use cas_ast::Context;
-use cas_engine::phase::ExpandPolicy;
+use cas_engine::ExpandPolicy;
 use cas_engine::Simplifier;
 use cas_engine::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
 use cas_parser::parse;
@@ -36,10 +36,10 @@ fn complex_on_opts() -> EvalOptions {
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::On,
         steps_mode: StepsMode::On,
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
-            semantics: cas_engine::semantics::EvalConfig {
-                value_domain: cas_engine::semantics::ValueDomain::ComplexEnabled,
+            semantics: cas_engine::EvalConfig {
+                value_domain: cas_engine::ValueDomain::ComplexEnabled,
                 ..Default::default()
             },
             ..Default::default()
@@ -52,7 +52,7 @@ fn complex_on_opts() -> EvalOptions {
 fn complex_on_autoexpand_opts() -> EvalOptions {
     let base = complex_on_opts();
     EvalOptions {
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             expand_policy: ExpandPolicy::Auto,
             ..base.shared
         },
@@ -65,10 +65,10 @@ fn complex_off_opts() -> EvalOptions {
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Off,
         steps_mode: StepsMode::On,
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
-            semantics: cas_engine::semantics::EvalConfig {
-                value_domain: cas_engine::semantics::ValueDomain::ComplexEnabled,
+            semantics: cas_engine::EvalConfig {
+                value_domain: cas_engine::ValueDomain::ComplexEnabled,
                 ..Default::default()
             },
             ..Default::default()
@@ -82,10 +82,10 @@ fn complex_auto_opts() -> EvalOptions {
         branch_mode: BranchMode::Strict,
         complex_mode: ComplexMode::Auto,
         steps_mode: StepsMode::On,
-        shared: cas_engine::phase::SharedSemanticConfig {
+        shared: cas_engine::SharedSemanticConfig {
             context_mode: ContextMode::Standard,
-            semantics: cas_engine::semantics::EvalConfig {
-                value_domain: cas_engine::semantics::ValueDomain::ComplexEnabled,
+            semantics: cas_engine::EvalConfig {
+                value_domain: cas_engine::ValueDomain::ComplexEnabled,
                 ..Default::default()
             },
             ..Default::default()
