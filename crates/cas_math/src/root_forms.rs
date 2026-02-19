@@ -2,7 +2,7 @@
 
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_rational::BigRational;
-use num_traits::One;
+use num_traits::{One, Signed, Zero};
 
 /// Extract `(radicand, index)` when `expr` is a root-like form.
 ///
@@ -131,6 +131,126 @@ pub fn conjugate_numeric_surd_pair(
     Some((m1, t1))
 }
 
+/// Extract base from `Pow(base, 1/3)`.
+pub fn extract_cube_root_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    if let Expr::Pow(base, exp) = ctx.get(expr) {
+        match ctx.get(*exp) {
+            Expr::Number(n) => {
+                if *n.numer() == 1.into() && *n.denom() == 3.into() {
+                    return Some(*base);
+                }
+            }
+            Expr::Div(num, den) => {
+                if let (Expr::Number(n_num), Expr::Number(n_den)) = (ctx.get(*num), ctx.get(*den)) {
+                    if n_num.is_one() && n_den.is_integer() && *n_den.numer() == 3.into() {
+                        return Some(*base);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Exact real cube-root for rational inputs, if the input is a perfect cube.
+pub fn rational_cbrt_exact(r: &BigRational) -> Option<BigRational> {
+    let neg = r.is_negative();
+    let abs_r = if neg { -r.clone() } else { r.clone() };
+
+    if abs_r.is_zero() {
+        return Some(BigRational::from_integer(0.into()));
+    }
+
+    let numer = abs_r.numer().clone();
+    let denom = abs_r.denom().clone();
+
+    let numer_cbrt = numer.cbrt();
+    if &numer_cbrt * &numer_cbrt * &numer_cbrt != numer {
+        return None;
+    }
+
+    let denom_cbrt = denom.cbrt();
+    if &denom_cbrt * &denom_cbrt * &denom_cbrt != denom {
+        return None;
+    }
+
+    let result = BigRational::new(numer_cbrt, denom_cbrt);
+    if neg {
+        Some(-result)
+    } else {
+        Some(result)
+    }
+}
+
+/// Compute `t²` when `t` is numeric, `sqrt(d)`, `d^(1/2)`, or `k*sqrt(d)`.
+pub fn surd_square_rational(ctx: &Context, t: ExprId) -> Option<BigRational> {
+    match ctx.get(t) {
+        Expr::Number(n) => Some(n * n),
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
+        {
+            if let Expr::Number(d) = ctx.get(args[0]) {
+                Some(d.clone())
+            } else {
+                None
+            }
+        }
+        Expr::Pow(base, exp) => {
+            if let Expr::Number(e) = ctx.get(*exp) {
+                if *e.numer() == 1.into() && *e.denom() == 2.into() {
+                    if let Expr::Number(d) = ctx.get(*base) {
+                        return Some(d.clone());
+                    }
+                }
+            }
+            None
+        }
+        Expr::Mul(l, r) => {
+            let try_extract = |coef: ExprId, surd: ExprId| -> Option<BigRational> {
+                let k = if let Expr::Number(n) = ctx.get(coef) {
+                    n.clone()
+                } else {
+                    return None;
+                };
+
+                let d = match ctx.get(surd) {
+                    Expr::Function(fn_id, args)
+                        if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
+                    {
+                        if let Expr::Number(n) = ctx.get(args[0]) {
+                            n.clone()
+                        } else {
+                            return None;
+                        }
+                    }
+                    Expr::Pow(base, exp) => {
+                        if let Expr::Number(e) = ctx.get(*exp) {
+                            if *e.numer() == 1.into() && *e.denom() == 2.into() {
+                                if let Expr::Number(n) = ctx.get(*base) {
+                                    n.clone()
+                                } else {
+                                    return None;
+                                }
+                            } else {
+                                return None;
+                            }
+                        } else {
+                            return None;
+                        }
+                    }
+                    _ => return None,
+                };
+
+                Some(&k * &k * &d)
+            };
+
+            try_extract(*l, *r).or_else(|| try_extract(*r, *l))
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -192,5 +312,27 @@ mod tests {
         let left = parse("3+sqrt(7)", &mut ctx).expect("left");
         let right = parse("3-sqrt(7)", &mut ctx).expect("right");
         assert!(conjugate_numeric_surd_pair(&ctx, left, right).is_some());
+    }
+
+    #[test]
+    fn extract_cube_root_base_detects_pow_one_third() {
+        let mut ctx = Context::new();
+        let expr = parse("(2+sqrt(5))^(1/3)", &mut ctx).expect("expr");
+        assert!(extract_cube_root_base(&ctx, expr).is_some());
+    }
+
+    #[test]
+    fn rational_cbrt_exact_handles_perfect_cube() {
+        let r = BigRational::new(8.into(), 27.into());
+        let root = rational_cbrt_exact(&r).expect("root");
+        assert_eq!(root, BigRational::new(2.into(), 3.into()));
+    }
+
+    #[test]
+    fn surd_square_rational_handles_scaled_sqrt() {
+        let mut ctx = Context::new();
+        let expr = parse("3*sqrt(2)", &mut ctx).expect("expr");
+        let t2 = surd_square_rational(&ctx, expr).expect("t2");
+        assert_eq!(t2, BigRational::from_integer(18.into()));
     }
 }

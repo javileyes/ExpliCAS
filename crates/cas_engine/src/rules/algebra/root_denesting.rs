@@ -4,61 +4,12 @@
 
 use crate::define_rule;
 use crate::rule::Rewrite;
-use cas_ast::{BuiltinFn, Expr};
-use num_traits::Zero;
+use cas_ast::Expr;
 
 // =============================================================================
 // CUBIC CONJUGATE TRAP RULE
 // Simplifies ∛(m+t) + ∛(m-t) when the result is a rational number.
 // =============================================================================
-
-/// Extract exponent from Pow(base, exp) and check if it equals 1/3.
-fn is_cube_root_pow(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> Option<cas_ast::ExprId> {
-    if let Expr::Pow(base, exp) = ctx.get(expr) {
-        if let Expr::Number(n) = ctx.get(*exp) {
-            // Check if exponent is 1/3
-            if *n.numer() == 1.into() && *n.denom() == 3.into() {
-                return Some(*base);
-            }
-        }
-    }
-    None
-}
-
-/// Compute cube root of a rational number (real cube root, handles negatives).
-/// Returns Some(result) if input is a perfect cube.
-fn rational_cbrt(r: &num_rational::BigRational) -> Option<num_rational::BigRational> {
-    use num_traits::Signed;
-
-    let neg = r.is_negative();
-    let abs_r = if neg { -r.clone() } else { r.clone() };
-
-    if abs_r.is_zero() {
-        return Some(num_rational::BigRational::from_integer(0.into()));
-    }
-
-    let numer = abs_r.numer().clone();
-    let denom = abs_r.denom().clone();
-
-    // Check if numerator is a perfect cube
-    let numer_cbrt = numer.cbrt();
-    if &numer_cbrt * &numer_cbrt * &numer_cbrt != numer {
-        return None;
-    }
-
-    // Check if denominator is a perfect cube
-    let denom_cbrt = denom.cbrt();
-    if &denom_cbrt * &denom_cbrt * &denom_cbrt != denom {
-        return None;
-    }
-
-    let result = num_rational::BigRational::new(numer_cbrt, denom_cbrt);
-    if neg {
-        Some(-result)
-    } else {
-        Some(result)
-    }
-}
 
 /// Find a rational root of depressed cubic: x³ + px + q = 0
 /// Uses Rational Root Theorem correctly for rational coefficients.
@@ -169,8 +120,8 @@ define_rule!(
         };
 
         // Extract cube root bases
-        let base_a = is_cube_root_pow(ctx, left)?;
-        let base_b = is_cube_root_pow(ctx, right)?;
+        let base_a = cas_math::root_forms::extract_cube_root_base(ctx, left)?;
+        let base_b = cas_math::root_forms::extract_cube_root_base(ctx, right)?;
 
         // Check if A and B are conjugates (m + t) and (m - t)
         let (m, t) = cas_math::root_forms::conjugate_numeric_surd_pair(ctx, base_a, base_b)?;
@@ -191,12 +142,12 @@ define_rule!(
         // Compute AB = m² - t² (directly)
         // t must also allow us to compute t² as rational
         // For t = sqrt(d) or k*sqrt(d), t² is rational
-        let t_squared_val = compute_t_squared(ctx, t)?;
+        let t_squared_val = cas_math::root_forms::surd_square_rational(ctx, t)?;
 
         let ab_val = &m_val * &m_val - &t_squared_val; // AB = m² - t²
 
         // P = ∛(AB) must be rational (perfect cube)
-        let p_val = rational_cbrt(&ab_val)?;
+        let p_val = cas_math::root_forms::rational_cbrt_exact(&ab_val)?;
 
         // Form depressed cubic: x³ + px + q = 0
         // where p_coef = -3P and q_coef = -S
@@ -223,93 +174,6 @@ define_rule!(
         )
     }
 );
-
-/// Compute t² where t may be:
-/// - A number: t² = t * t
-/// - sqrt(d) or d^(1/2): t² = d  
-/// - k * sqrt(d): t² = k² * d
-fn compute_t_squared(
-    ctx: &cas_ast::Context,
-    t: cas_ast::ExprId,
-) -> Option<num_rational::BigRational> {
-    match ctx.get(t) {
-        // Direct number
-        Expr::Number(n) => Some(n * n),
-
-        // sqrt(d) function
-        Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
-        {
-            if let Expr::Number(d) = ctx.get(args[0]) {
-                Some(d.clone())
-            } else {
-                None
-            }
-        }
-
-        // d^(1/2) power form
-        Expr::Pow(base, exp) => {
-            if let Expr::Number(e) = ctx.get(*exp) {
-                // Check if exponent is 1/2
-                if *e.numer() == 1.into() && *e.denom() == 2.into() {
-                    if let Expr::Number(d) = ctx.get(*base) {
-                        return Some(d.clone());
-                    }
-                }
-            }
-            None
-        }
-
-        // k * sqrt(d) product form
-        Expr::Mul(l, r) => {
-            // Try both orderings
-            let try_extract = |coef: cas_ast::ExprId,
-                               surd: cas_ast::ExprId|
-             -> Option<num_rational::BigRational> {
-                let k = if let Expr::Number(n) = ctx.get(coef) {
-                    n.clone()
-                } else {
-                    return None;
-                };
-
-                let d = match ctx.get(surd) {
-                    Expr::Function(fn_id, args)
-                        if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
-                    {
-                        if let Expr::Number(n) = ctx.get(args[0]) {
-                            n.clone()
-                        } else {
-                            return None;
-                        }
-                    }
-                    Expr::Pow(base, exp) => {
-                        if let Expr::Number(e) = ctx.get(*exp) {
-                            if *e.numer() == 1.into() && *e.denom() == 2.into() {
-                                if let Expr::Number(n) = ctx.get(*base) {
-                                    n.clone()
-                                } else {
-                                    return None;
-                                }
-                            } else {
-                                return None;
-                            }
-                        } else {
-                            return None;
-                        }
-                    }
-                    _ => return None,
-                };
-
-                // t = k * sqrt(d), so t² = k² * d
-                Some(&k * &k * &d)
-            };
-
-            try_extract(*l, *r).or_else(|| try_extract(*r, *l))
-        }
-
-        _ => None,
-    }
-}
 
 #[cfg(test)]
 mod cubic_conjugate_tests {
