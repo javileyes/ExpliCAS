@@ -23,10 +23,7 @@ pub mod implicit_domain;
 pub mod limits;
 pub mod options;
 pub mod orchestrator;
-pub mod ordering;
 pub mod parent_context;
-pub mod pattern_marks;
-pub(crate) mod pattern_scanner;
 pub mod phase;
 pub(crate) mod poly_lowering;
 pub mod profile_cache;
@@ -43,10 +40,8 @@ pub mod step;
 pub(crate) mod step_optimization;
 pub(crate) mod strategies;
 pub mod substitute;
-pub mod target_kind;
 pub mod telescoping;
 pub mod timeline;
-pub mod visualizer;
 
 // Property-based numeric tests for rewrite correctness
 #[cfg(test)]
@@ -60,7 +55,6 @@ mod numeric_property_tests;
 pub mod api;
 
 pub mod error;
-pub(crate) mod visitors;
 #[macro_use]
 pub mod macros;
 
@@ -68,6 +62,13 @@ pub(crate) use cas_math::build;
 pub use cas_math::canonical_forms;
 pub use cas_math::expr_nary as nary;
 pub use cas_math::factor;
+pub use cas_math::pattern_marks;
+
+pub use cas_ast::ordering;
+pub use cas_ast::target_kind;
+pub(crate) use cas_ast::visitors;
+pub use cas_formatter::visualizer;
+pub(crate) use cas_math::pattern_scanner;
 
 pub use assumptions::{
     AssumptionCollector, AssumptionEvent, AssumptionKey, AssumptionRecord, AssumptionReporting,
