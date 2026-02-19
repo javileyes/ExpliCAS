@@ -1,16 +1,30 @@
-// ========== Normal Form Scoring ==========
+//! Normal-form scoring helpers used to compare rewrite quality.
 
 use cas_ast::{Context, Expr, ExprId};
 
 /// Count total nodes in an expression tree.
-///
-/// Delegates to canonical `cas_ast::traversal::count_all_nodes`.
-pub(crate) fn count_all_nodes(ctx: &Context, expr: ExprId) -> usize {
+#[inline]
+pub fn count_all_nodes(ctx: &Context, expr: ExprId) -> usize {
     cas_ast::traversal::count_all_nodes(ctx, expr)
 }
 
-/// First two components of nf_score: (divs_subs, total_nodes)
-/// Uses single traversal for efficiency (counts both in one pass).
+/// Compare NF score lazily; returns true when `after` is strictly better.
+pub fn nf_score_after_is_better(ctx: &Context, before: ExprId, after: ExprId) -> bool {
+    let before_base = nf_score_base(ctx, before);
+    let after_base = nf_score_base(ctx, after);
+
+    if after_base < before_base {
+        return true;
+    }
+    if after_base > before_base {
+        return false;
+    }
+
+    let before_inv = mul_unsorted_adjacent(ctx, before);
+    let after_inv = mul_unsorted_adjacent(ctx, after);
+    after_inv < before_inv
+}
+
 fn nf_score_base(ctx: &Context, id: ExprId) -> (usize, usize) {
     let mut divs_subs = 0;
     let mut total = 0;
@@ -24,7 +38,6 @@ fn nf_score_base(ctx: &Context, id: ExprId) -> (usize, usize) {
             _ => {}
         }
 
-        // Push children
         match ctx.get(node_id) {
             Expr::Add(l, r)
             | Expr::Sub(l, r)
@@ -37,7 +50,6 @@ fn nf_score_base(ctx: &Context, id: ExprId) -> (usize, usize) {
             Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
             Expr::Function(_, args) => stack.extend(args),
             Expr::Matrix { data, .. } => stack.extend(data),
-            // Leaves
             Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
         }
     }
@@ -45,38 +57,12 @@ fn nf_score_base(ctx: &Context, id: ExprId) -> (usize, usize) {
     (divs_subs, total)
 }
 
-/// Compare nf_score lazily: only computes mul_unsorted_adjacent if first two components tie.
-/// Returns true if `after` is strictly better (lower) than `before`.
-pub(crate) fn nf_score_after_is_better(ctx: &Context, before: ExprId, after: ExprId) -> bool {
-    let before_base = nf_score_base(ctx, before);
-    let after_base = nf_score_base(ctx, after);
-
-    // Compare first two components
-    if after_base < before_base {
-        return true; // Clear improvement
-    }
-    if after_base > before_base {
-        return false; // Worse
-    }
-
-    // Tie on (divs_subs, total) - need to compare mul_inversions
-    let before_inv = mul_unsorted_adjacent(ctx, before);
-    let after_inv = mul_unsorted_adjacent(ctx, after);
-    after_inv < before_inv
-}
-
-/// Count out-of-order adjacent pairs in Mul chains (right-associative).
-///
-/// For a chain `a * (b * (c * d))` with factors `[a, b, c, d]`:
-/// - Counts how many pairs (f[i], f[i+1]) have compare_expr(f[i], f[i+1]) == Greater
-///
-/// This metric allows canonicalizing rewrites that only reorder Mul factors.
-pub(crate) fn mul_unsorted_adjacent(ctx: &Context, root: ExprId) -> usize {
-    use crate::ordering::compare_expr;
+/// Count out-of-order adjacent pairs in right-associated `Mul` chains.
+pub fn mul_unsorted_adjacent(ctx: &Context, root: ExprId) -> usize {
+    use cas_ast::ordering::compare_expr;
     use std::cmp::Ordering;
     use std::collections::HashSet;
 
-    // Collect all Mul nodes and identify which are right-children of other Muls
     let mut mul_nodes: HashSet<ExprId> = HashSet::new();
     let mut mul_right_children: HashSet<ExprId> = HashSet::new();
 
@@ -98,18 +84,14 @@ pub(crate) fn mul_unsorted_adjacent(ctx: &Context, root: ExprId) -> usize {
             Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
             Expr::Function(_, args) => stack.extend(args),
             Expr::Matrix { data, .. } => stack.extend(data),
-            // Leaves
             Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
         }
     }
 
-    // Heads are Mul nodes that are NOT the right child of another Mul
     let heads: Vec<_> = mul_nodes.difference(&mul_right_children).copied().collect();
-
     let mut inversions = 0;
 
     for head in heads {
-        // Linearize factors by following right-assoc pattern: a*(b*(c*d)) -> [a,b,c,d]
         let mut factors = Vec::new();
         let mut current = head;
 
@@ -128,7 +110,6 @@ pub(crate) fn mul_unsorted_adjacent(ctx: &Context, root: ExprId) -> usize {
             }
         }
 
-        // Count adjacent inversions
         for pair in factors.windows(2) {
             if compare_expr(ctx, pair[0], pair[1]) == Ordering::Greater {
                 inversions += 1;
@@ -137,4 +118,38 @@ pub(crate) fn mul_unsorted_adjacent(ctx: &Context, root: ExprId) -> usize {
     }
 
     inversions
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_ast::Expr;
+    use cas_parser::parse;
+
+    #[test]
+    fn mul_unsorted_detects_inversions() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let z = ctx.var("z");
+
+        // Build a right-associated sorted chain: a * (b * z)
+        let bz = ctx.add_raw(Expr::Mul(b, z));
+        let sorted = ctx.add_raw(Expr::Mul(a, bz));
+
+        // Build a right-associated unsorted chain: a * (z * b)
+        let zb = ctx.add_raw(Expr::Mul(z, b));
+        let unsorted = ctx.add_raw(Expr::Mul(a, zb));
+
+        assert!(mul_unsorted_adjacent(&ctx, unsorted) > mul_unsorted_adjacent(&ctx, sorted));
+    }
+
+    #[test]
+    fn nf_score_prefers_fewer_divs_subs() {
+        let mut ctx = Context::new();
+        let before = parse("a/b", &mut ctx).expect("parse");
+        let after = parse("a*b", &mut ctx).expect("parse");
+
+        assert!(nf_score_after_is_better(&ctx, before, after));
+    }
 }

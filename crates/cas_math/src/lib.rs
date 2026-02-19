@@ -5,6 +5,7 @@ pub mod expr_complexity;
 pub mod expr_destructure;
 pub mod expr_domain;
 pub mod expr_extract;
+pub mod expr_nf_scoring;
 pub mod expr_normalization;
 pub mod expr_predicates;
 pub mod expr_relations;
