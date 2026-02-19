@@ -8,7 +8,10 @@ use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::are_denominators_opposite;
-use cas_ast::{count_nodes, BuiltinFn, Context, Expr, ExprId};
+use cas_ast::{count_nodes, Context, Expr, ExprId};
+use cas_math::expr_predicates::{
+    contains_function, contains_root_term, is_constant_expr, is_trivial_denom_one,
+};
 use cas_math::polynomial::Polynomial;
 use num_traits::{One, Signed, Zero};
 use std::cmp::Ordering;
@@ -94,19 +97,7 @@ define_rule!(
         };
 
         // Check if numerator p is purely constant (no variables)
-        fn is_constant(ctx: &Context, id: ExprId) -> bool {
-            match ctx.get(id) {
-                Expr::Number(_) | Expr::Constant(_) => true,
-                Expr::Neg(inner) => is_constant(ctx, *inner),
-                Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Add(l, r) | Expr::Sub(l, r) => {
-                    is_constant(ctx, *l) && is_constant(ctx, *r)
-                }
-                Expr::Pow(base, exp) => is_constant(ctx, *base) && is_constant(ctx, *exp),
-                _ => false, // Variables, functions, etc. are NOT constant
-            }
-        }
-
-        if term_is_unit && is_constant(ctx, p) {
+        if term_is_unit && is_constant_expr(ctx, p) {
             return None;
         }
 
@@ -294,36 +285,9 @@ define_rule!(
         // Case to block: arctan(1/3) - pi/2  (function expr + constant fraction)
         // Cases to allow: 1 + 1/2, 1/2 + 1/3, x/2 + x/3, etc.
 
-        // Check if expression contains any function call (not purely algebraic)
-        fn contains_function(ctx: &Context, id: ExprId) -> bool {
-            match ctx.get(id) {
-                Expr::Function(_, _) => true,
-                Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
-                    contains_function(ctx, *l) || contains_function(ctx, *r)
-                }
-                Expr::Neg(e) | Expr::Hold(e) | Expr::Pow(e, _) => contains_function(ctx, *e),
-                _ => false,
-            }
-        }
-
-        // Check if expression is a constant (no variables, no functions)
-        // Covers: Number, pi, e, Neg(const), Mul(const,const), Div(const,const), Pow(const,int)
-        fn is_constant(ctx: &Context, id: ExprId) -> bool {
-            match ctx.get(id) {
-                Expr::Number(_) | Expr::Constant(_) => true,
-                Expr::Neg(inner) => is_constant(ctx, *inner),
-                Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Add(l, r) | Expr::Sub(l, r) => {
-                    is_constant(ctx, *l) && is_constant(ctx, *r)
-                }
-                Expr::Pow(base, exp) => is_constant(ctx, *base) && is_constant(ctx, *exp),
-                // Variables, functions, etc. are NOT constant
-                _ => false,
-            }
-        }
-
         // Check if fraction n/d is purely constant (both n and d are constants)
         fn is_constant_fraction(ctx: &Context, n: ExprId, d: ExprId) -> bool {
-            is_constant(ctx, n) && is_constant(ctx, d)
+            is_constant_expr(ctx, n) && is_constant_expr(ctx, d)
         }
 
         // Block case: function expr + constant fraction (like arctan(1/3) + pi/2)
@@ -340,38 +304,11 @@ define_rule!(
         // Guard: Skip if one side contains roots (√a = a^(1/2)) with trivial denominator (=1)
         // and the other side has a non-trivial fraction. This preserves structure for cancellation.
         // Example: (√2 + √3) + 1/(u*(u+2)) should NOT become ((√2+√3)*u*(u+2) + 1) / (u*(u+2))
-        fn contains_root(ctx: &Context, id: ExprId) -> bool {
-            match ctx.get(id) {
-                Expr::Function(fn_id, _) if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) => true,
-                Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
-                    contains_root(ctx, *l) || contains_root(ctx, *r)
-                }
-                Expr::Neg(e) => contains_root(ctx, *e),
-                Expr::Pow(_, exp) => {
-                    // Fractional exponent = root
-                    match ctx.get(*exp) {
-                        Expr::Number(n) => {
-                            !n.is_integer()
-                                && n.abs() < num_rational::BigRational::from_integer(1.into())
-                        }
-                        Expr::Div(_, _) => true,
-                        _ => false,
-                    }
-                }
-                Expr::Hold(e) => contains_root(ctx, *e),
-                _ => false,
-            }
-        }
-
-        fn is_trivial_denom(ctx: &Context, d: ExprId) -> bool {
-            matches!(ctx.get(d), Expr::Number(n) if n.is_one())
-        }
-
         // Block: (√a + ...) + p/q where √a has den=1 and q is non-trivial
-        let l_has_root_trivial = !is_frac1 && contains_root(ctx, l);
-        let r_has_root_trivial = !is_frac2 && contains_root(ctx, r);
-        let l_has_real_frac = is_frac1 && !is_trivial_denom(ctx, d1);
-        let r_has_real_frac = is_frac2 && !is_trivial_denom(ctx, d2);
+        let l_has_root_trivial = !is_frac1 && contains_root_term(ctx, l);
+        let r_has_root_trivial = !is_frac2 && contains_root_term(ctx, r);
+        let l_has_real_frac = is_frac1 && !is_trivial_denom_one(ctx, d1);
+        let r_has_real_frac = is_frac2 && !is_trivial_denom_one(ctx, d2);
 
         if (l_has_root_trivial && r_has_real_frac) || (r_has_root_trivial && l_has_real_frac) {
             return None;
@@ -524,8 +461,8 @@ define_rule!(
 
             if inside_trig {
                 // Both constant? Always combine (e.g., pi/9 + pi/6)
-                let l_is_const = is_constant(ctx, l);
-                let r_is_const = is_constant(ctx, r);
+                let l_is_const = is_constant_expr(ctx, l);
+                let r_is_const = is_constant_expr(ctx, r);
 
                 if !(l_is_const && r_is_const) {
                     // Mixed: check if we have symbolic + pi-constant pattern
@@ -691,33 +628,10 @@ define_rule!(
         }
 
         // Guard: Skip if contains functions mixed with constant fractions
-        fn contains_function(ctx: &Context, id: ExprId) -> bool {
-            match ctx.get(id) {
-                Expr::Function(_, _) => true,
-                Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
-                    contains_function(ctx, *l) || contains_function(ctx, *r)
-                }
-                Expr::Neg(e) | Expr::Hold(e) | Expr::Pow(e, _) => contains_function(ctx, *e),
-                _ => false,
-            }
-        }
-
-        fn is_constant(ctx: &Context, id: ExprId) -> bool {
-            match ctx.get(id) {
-                Expr::Number(_) | Expr::Constant(_) => true,
-                Expr::Neg(inner) => is_constant(ctx, *inner),
-                Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Add(l, r) | Expr::Sub(l, r) => {
-                    is_constant(ctx, *l) && is_constant(ctx, *r)
-                }
-                Expr::Pow(base, exp) => is_constant(ctx, *base) && is_constant(ctx, *exp),
-                _ => false,
-            }
-        }
-
         let l_has_func = contains_function(ctx, l);
         let r_has_func = contains_function(ctx, r);
-        let l_is_const_frac = is_constant(ctx, n1) && is_constant(ctx, d1);
-        let r_is_const_frac = is_constant(ctx, n2) && is_constant(ctx, d2);
+        let l_is_const_frac = is_constant_expr(ctx, n1) && is_constant_expr(ctx, d1);
+        let r_is_const_frac = is_constant_expr(ctx, n2) && is_constant_expr(ctx, d2);
 
         if (l_has_func && r_is_const_frac) || (r_has_func && l_is_const_frac) {
             return None;
@@ -732,34 +646,10 @@ define_rule!(
         }
 
         // Guard: Skip if one side contains roots with trivial denominator
-        fn contains_root(ctx: &Context, id: ExprId) -> bool {
-            match ctx.get(id) {
-                Expr::Function(fn_id, _) if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) => true,
-                Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
-                    contains_root(ctx, *l) || contains_root(ctx, *r)
-                }
-                Expr::Neg(e) => contains_root(ctx, *e),
-                Expr::Pow(_, exp) => match ctx.get(*exp) {
-                    Expr::Number(n) => {
-                        !n.is_integer()
-                            && n.abs() < num_rational::BigRational::from_integer(1.into())
-                    }
-                    Expr::Div(_, _) => true,
-                    _ => false,
-                },
-                Expr::Hold(e) => contains_root(ctx, *e),
-                _ => false,
-            }
-        }
-
-        fn is_trivial_denom(ctx: &Context, d: ExprId) -> bool {
-            matches!(ctx.get(d), Expr::Number(n) if n.is_one())
-        }
-
-        let l_has_root_trivial = !is_frac1 && contains_root(ctx, l);
-        let r_has_root_trivial = !is_frac2 && contains_root(ctx, r);
-        let l_has_real_frac = is_frac1 && !is_trivial_denom(ctx, d1);
-        let r_has_real_frac = is_frac2 && !is_trivial_denom(ctx, d2);
+        let l_has_root_trivial = !is_frac1 && contains_root_term(ctx, l);
+        let r_has_root_trivial = !is_frac2 && contains_root_term(ctx, r);
+        let l_has_real_frac = is_frac1 && !is_trivial_denom_one(ctx, d1);
+        let r_has_real_frac = is_frac2 && !is_trivial_denom_one(ctx, d2);
 
         if (l_has_root_trivial && r_has_real_frac) || (r_has_root_trivial && l_has_real_frac) {
             return None;
