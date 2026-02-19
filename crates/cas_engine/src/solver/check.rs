@@ -24,10 +24,10 @@
 
 use cas_ast::{Equation, Expr, ExprId, SolutionSet};
 use cas_formatter::DisplayExpr;
+use cas_math::expr_predicates::contains_variable;
 use num_traits::Zero;
 
 use crate::engine::Simplifier;
-use crate::implicit_domain::contains_variable;
 
 /// Result of verifying a single solution.
 #[derive(Debug, Clone)]

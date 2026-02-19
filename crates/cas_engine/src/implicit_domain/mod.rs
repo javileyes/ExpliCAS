@@ -131,7 +131,7 @@ impl ImplicitCondition {
         };
 
         // Case 1: No variables = fully numeric constant (always trivial)
-        if !contains_variable(ctx, expr) {
+        if !cas_math::expr_predicates::contains_variable(ctx, expr) {
             return true;
         }
 
@@ -165,11 +165,6 @@ impl ImplicitCondition {
             }
         }
     }
-}
-
-/// Check if expression contains any variables.
-pub(crate) fn contains_variable(ctx: &Context, root: ExprId) -> bool {
-    cas_math::expr_predicates::contains_variable(ctx, root)
 }
 
 // =============================================================================

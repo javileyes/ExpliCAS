@@ -319,8 +319,8 @@ define_rule!(
         let coef_l = coef_l?;
         let coef_r = coef_r?;
 
-        if crate::implicit_domain::contains_variable(ctx, l)
-            || crate::implicit_domain::contains_variable(ctx, r)
+        if cas_math::expr_predicates::contains_variable(ctx, l)
+            || cas_math::expr_predicates::contains_variable(ctx, r)
         {
             return None;
         }

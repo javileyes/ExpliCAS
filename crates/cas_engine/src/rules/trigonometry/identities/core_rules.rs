@@ -858,14 +858,14 @@ impl crate::rule::Rule for AngleIdentityRule {
                     match ctx.get(args[0]) {
                         Expr::Add(l, r) | Expr::Sub(l, r) => {
                             // Block if either summand has no variables
-                            !crate::implicit_domain::contains_variable(ctx, *l)
-                                || !crate::implicit_domain::contains_variable(ctx, *r)
+                            !cas_math::expr_predicates::contains_variable(ctx, *l)
+                                || !cas_math::expr_predicates::contains_variable(ctx, *r)
                         }
                         Expr::Div(num, _) => match ctx.get(*num) {
                             // sin((a+b)/c) pattern
                             Expr::Add(l, r) | Expr::Sub(l, r) => {
-                                !crate::implicit_domain::contains_variable(ctx, *l)
-                                    || !crate::implicit_domain::contains_variable(ctx, *r)
+                                !cas_math::expr_predicates::contains_variable(ctx, *l)
+                                    || !cas_math::expr_predicates::contains_variable(ctx, *r)
                             }
                             _ => true, // Not Add/Sub in numerator → block
                         },

@@ -23,9 +23,9 @@
 use std::collections::{HashMap, HashSet};
 
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_predicates::contains_variable;
 
 use crate::helpers::ground_eval::GroundEvalGuard;
-use crate::implicit_domain::contains_variable;
 
 /// Maximum dedup node count for an island to be eligible for folding.
 const MAX_ISLAND_NODES: usize = 80;

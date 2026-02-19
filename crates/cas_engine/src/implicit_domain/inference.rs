@@ -291,7 +291,7 @@ pub fn infer_implicit_domain(ctx: &Context, root: ExprId, vd: ValueDomain) -> Im
     }
 
     // Skip if expression has no variables - fully numeric expressions don't need implicit domain
-    if !super::contains_variable(ctx, root) {
+    if !cas_math::expr_predicates::contains_variable(ctx, root) {
         return ImplicitDomain::empty();
     }
 
