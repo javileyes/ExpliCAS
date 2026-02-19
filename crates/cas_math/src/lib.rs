@@ -6,6 +6,7 @@ pub mod expr_predicates;
 pub mod expr_relations;
 pub mod expr_rewrite;
 pub mod expr_terms;
+pub mod expr_witness;
 pub mod fraction_factors;
 pub mod fraction_forms;
 pub mod fraction_multivar_gcd;

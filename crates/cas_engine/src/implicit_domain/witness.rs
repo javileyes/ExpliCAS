@@ -5,9 +5,8 @@ use super::normalization::{
     is_power_of_base,
 };
 use super::ImplicitCondition;
-use cas_ast::{Context, Expr, ExprId};
-use cas_math::expr_extract::{extract_sqrt_argument_view, extract_unary_log_argument_view};
-use cas_math::expr_predicates::is_even_root_exponent;
+use cas_ast::{Context, ExprId};
+use cas_math::expr_witness::{self, WitnessKind as MathWitnessKind};
 
 // =============================================================================
 // Witness Survival
@@ -24,6 +23,16 @@ pub enum WitnessKind {
     Division,
 }
 
+impl From<WitnessKind> for MathWitnessKind {
+    fn from(value: WitnessKind) -> Self {
+        match value {
+            WitnessKind::Sqrt => MathWitnessKind::Sqrt,
+            WitnessKind::Log => MathWitnessKind::Log,
+            WitnessKind::Division => MathWitnessKind::Division,
+        }
+    }
+}
+
 /// Check if a witness for a condition survives in the output expression.
 ///
 /// This is the critical safety check: a condition from implicit domain
@@ -38,87 +47,7 @@ pub enum WitnessKind {
 /// # Returns
 /// `true` if a witness survives in output, `false` otherwise.
 pub fn witness_survives(ctx: &Context, target: ExprId, output: ExprId, kind: WitnessKind) -> bool {
-    search_witness(ctx, target, output, kind)
-}
-
-/// Iterative witness search to prevent stack overflow on deep expressions.
-pub(crate) fn search_witness(
-    ctx: &Context,
-    target: ExprId,
-    root: ExprId,
-    kind: WitnessKind,
-) -> bool {
-    let mut stack = vec![root];
-
-    while let Some(expr) = stack.pop() {
-        match ctx.get(expr) {
-            // Check if this node is a witness: sqrt(target)
-            Expr::Function(_, _) if extract_sqrt_argument_view(ctx, expr).is_some() => {
-                let Some(arg) = extract_sqrt_argument_view(ctx, expr) else {
-                    continue;
-                };
-                if kind == WitnessKind::Sqrt && exprs_equal(ctx, arg, target) {
-                    return true;
-                }
-                stack.push(arg);
-            }
-
-            // Check if this node is a witness: ln(target) or log(target)
-            Expr::Function(_, _) if extract_unary_log_argument_view(ctx, expr).is_some() => {
-                let Some(arg) = extract_unary_log_argument_view(ctx, expr) else {
-                    continue;
-                };
-                if kind == WitnessKind::Log && exprs_equal(ctx, arg, target) {
-                    return true;
-                }
-                stack.push(arg);
-            }
-
-            // Check for t^(1/2) form as witness for sqrt
-            Expr::Pow(base, exp) => {
-                if kind == WitnessKind::Sqrt {
-                    if let Expr::Number(n) = ctx.get(*exp) {
-                        if is_even_root_exponent(n) && exprs_equal(ctx, *base, target) {
-                            return true;
-                        }
-                    }
-                }
-                stack.push(*base);
-                stack.push(*exp);
-            }
-
-            // Check for Div(_, target) as witness for division
-            Expr::Div(num, den) => {
-                if kind == WitnessKind::Division && exprs_equal(ctx, *den, target) {
-                    return true;
-                }
-                stack.push(*num);
-                stack.push(*den);
-            }
-
-            // Push children for traversal
-            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
-                stack.push(*l);
-                stack.push(*r);
-            }
-            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
-            Expr::Function(_, args) => stack.extend(args.iter().copied()),
-            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
-
-            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
-        }
-    }
-
-    false
-}
-
-/// Check if two expressions are equal (by ExprId or structural comparison).
-pub(crate) fn exprs_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
-    if a == b {
-        return true;
-    }
-    // Use ordering comparison for structural equality
-    crate::ordering::compare_expr(ctx, a, b) == std::cmp::Ordering::Equal
+    expr_witness::witness_survives(ctx, target, output, kind.into())
 }
 
 /// Check if a witness survives in the context of the full expression tree,
@@ -146,91 +75,14 @@ pub fn witness_survives_in_context(
     replacement: Option<ExprId>,
     kind: WitnessKind,
 ) -> bool {
-    search_witness_in_context(ctx, target, root, replaced_node, replacement, kind)
-}
-
-/// Iterative witness search with node replacement to prevent stack overflow.
-fn search_witness_in_context(
-    ctx: &Context,
-    target: ExprId,
-    root: ExprId,
-    replaced_node: ExprId,
-    replacement: Option<ExprId>,
-    kind: WitnessKind,
-) -> bool {
-    let mut stack = vec![root];
-
-    while let Some(expr) = stack.pop() {
-        // If we've reached the replaced node, search in replacement instead
-        if expr == replaced_node {
-            if let Some(repl) = replacement {
-                if search_witness(ctx, target, repl, kind) {
-                    return true;
-                }
-            }
-            // Skip children of replaced node
-            continue;
-        }
-
-        match ctx.get(expr) {
-            // Check if this node is a witness: sqrt(target)
-            Expr::Function(_, _) if extract_sqrt_argument_view(ctx, expr).is_some() => {
-                let Some(arg) = extract_sqrt_argument_view(ctx, expr) else {
-                    continue;
-                };
-                if kind == WitnessKind::Sqrt && exprs_equal(ctx, arg, target) {
-                    return true;
-                }
-                stack.push(arg);
-            }
-
-            // Check if this node is a witness: ln(target) or log(target)
-            Expr::Function(_, _) if extract_unary_log_argument_view(ctx, expr).is_some() => {
-                let Some(arg) = extract_unary_log_argument_view(ctx, expr) else {
-                    continue;
-                };
-                if kind == WitnessKind::Log && exprs_equal(ctx, arg, target) {
-                    return true;
-                }
-                stack.push(arg);
-            }
-
-            // Check for t^(1/2) form as witness for sqrt
-            Expr::Pow(base, exp) => {
-                if kind == WitnessKind::Sqrt {
-                    if let Expr::Number(n) = ctx.get(*exp) {
-                        if is_even_root_exponent(n) && exprs_equal(ctx, *base, target) {
-                            return true;
-                        }
-                    }
-                }
-                stack.push(*base);
-                stack.push(*exp);
-            }
-
-            // Check for Div(_, target) as witness for division
-            Expr::Div(num, den) => {
-                if kind == WitnessKind::Division && exprs_equal(ctx, *den, target) {
-                    return true;
-                }
-                stack.push(*num);
-                stack.push(*den);
-            }
-
-            // Push children for traversal
-            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
-                stack.push(*l);
-                stack.push(*r);
-            }
-            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
-            Expr::Function(_, args) => stack.extend(args.iter().copied()),
-            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
-
-            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
-        }
-    }
-
-    false
+    expr_witness::witness_survives_in_context(
+        ctx,
+        target,
+        root,
+        replaced_node,
+        replacement,
+        kind.into(),
+    )
 }
 
 // =============================================================================
@@ -443,7 +295,7 @@ mod tests {
     use super::super::*;
     use super::*;
     use crate::semantics::ValueDomain;
-    use cas_ast::Context;
+    use cas_ast::{Context, Expr};
 
     #[test]
     fn test_infer_sqrt_implies_nonnegative() {
