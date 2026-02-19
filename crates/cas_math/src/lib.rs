@@ -11,6 +11,7 @@ pub mod expr_predicates;
 pub mod expr_relations;
 pub mod expr_rewrite;
 pub mod expr_terms;
+pub mod expr_trig_roots_flatten;
 pub mod expr_witness;
 pub mod fraction_factors;
 pub mod fraction_forms;

@@ -10,7 +10,7 @@ use num_traits::{One, Signed, ToPrimitive};
 /// // Matches sin(x)^2
 /// is_trig_pow(ctx, expr, "sin", 2)
 /// ```
-pub(crate) fn is_trig_pow(context: &Context, expr: ExprId, name: &str, power: i64) -> bool {
+pub fn is_trig_pow(context: &Context, expr: ExprId, name: &str, power: i64) -> bool {
     if let Expr::Pow(base, exp) = context.get(expr) {
         if let Expr::Number(n) = context.get(*exp) {
             if n.is_integer() && n.to_integer() == power.into() {
@@ -29,7 +29,7 @@ pub(crate) fn is_trig_pow(context: &Context, expr: ExprId, name: &str, power: i6
 /// Extract the argument from a trigonometric power expression.
 ///
 /// For an expression like `sin(x)^2`, returns `Some(x)`.
-pub(crate) fn get_trig_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
+pub fn get_trig_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
     if let Expr::Pow(base, _) = context.get(expr) {
         if let Expr::Function(_, args) = context.get(*base) {
             if args.len() == 1 {
@@ -40,7 +40,7 @@ pub(crate) fn get_trig_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
     None
 }
 
-pub(crate) fn get_square_root(context: &mut Context, expr: ExprId) -> Option<ExprId> {
+pub fn get_square_root(context: &mut Context, expr: ExprId) -> Option<ExprId> {
     // We need to clone the expression to avoid borrowing issues if we need to inspect it deeply
     // But context.get returns reference.
     // We can't hold reference to context while mutating it.
@@ -155,7 +155,7 @@ fn extract_exact_int_factor(
 ///
 /// **Note**: This function does NOT handle additive forms like `Add(Mul(2,a), 2)`.
 /// Use [`extract_int_multiple_additive`] for that (requires `&mut Context`).
-pub(crate) fn extract_int_multiple(
+pub fn extract_int_multiple(
     context: &Context,
     expr: ExprId,
     target: i64,
@@ -219,7 +219,7 @@ pub(crate) fn extract_int_multiple(
 /// - `Add(x, Neg(y))` is treated as `Sub(x, y)`
 ///
 /// Requires `&mut Context` because it may build new AST nodes for the inner sum.
-pub(crate) fn extract_int_multiple_additive(
+pub fn extract_int_multiple_additive(
     context: &mut Context,
     expr: ExprId,
     target: i64,
@@ -288,21 +288,21 @@ pub(crate) fn extract_int_multiple_additive(
 /// Extract inner variable from `2*x` pattern (for double angle identities).
 /// Backward-compatible wrapper around [`extract_int_multiple`].
 #[inline]
-pub(crate) fn extract_double_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
+pub fn extract_double_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
     extract_int_multiple(context, expr, 2).and_then(|(positive, inner)| positive.then_some(inner))
 }
 
 /// Extract inner variable from `3*x` pattern (for triple angle identities).
 /// Backward-compatible wrapper around [`extract_int_multiple`].
 #[inline]
-pub(crate) fn extract_triple_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
+pub fn extract_triple_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
     extract_int_multiple(context, expr, 3).and_then(|(positive, inner)| positive.then_some(inner))
 }
 
 /// Extract inner variable from `5*x` pattern (for quintuple angle identities).
 /// Backward-compatible wrapper around [`extract_int_multiple`].
 #[inline]
-pub(crate) fn extract_quintuple_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
+pub fn extract_quintuple_angle_arg(context: &Context, expr: ExprId) -> Option<ExprId> {
     extract_int_multiple(context, expr, 5).and_then(|(positive, inner)| positive.then_some(inner))
 }
 
@@ -313,7 +313,7 @@ pub(crate) fn extract_quintuple_angle_arg(context: &Context, expr: ExprId) -> Op
 /// - `Add(a, b)` → [a, b]
 /// - `Sub(a, b)` → [a, Neg(b)]
 /// - `Neg(Neg(x))` → [x]
-pub(crate) fn flatten_add_sub_chain(ctx: &mut Context, expr: ExprId) -> Vec<ExprId> {
+pub fn flatten_add_sub_chain(ctx: &mut Context, expr: ExprId) -> Vec<ExprId> {
     let mut terms = Vec::new();
     flatten_add_sub_recursive(ctx, expr, &mut terms, false);
     terms
@@ -351,7 +351,7 @@ fn flatten_add_sub_recursive(
 
 /// Flatten a Mul chain into a list of factors, handling Neg as -1 multiplication.
 /// Returns Vec<ExprId> where Neg(e) is converted to [num(-1), ...factors of e...]
-pub(crate) fn flatten_mul_chain(ctx: &mut Context, expr: ExprId) -> Vec<ExprId> {
+pub fn flatten_mul_chain(ctx: &mut Context, expr: ExprId) -> Vec<ExprId> {
     let mut factors = Vec::new();
     flatten_mul_recursive(ctx, expr, &mut factors);
     factors
