@@ -24,14 +24,3 @@ pub(super) fn is_hold_all_function(name: &str) -> bool {
 pub(super) fn unwrap_hold_top(ctx: &Context, expr: ExprId) -> ExprId {
     cas_ast::hold::unwrap_internal_hold(ctx, expr)
 }
-
-/// Re-export strip_all_holds from cas_ast for use by rules.
-///
-/// This is the CANONICAL implementation - see cas_ast::hold for the contract.
-/// Do NOT duplicate this function elsewhere.
-pub fn strip_all_holds(ctx: &mut Context, expr: ExprId) -> ExprId {
-    cas_ast::hold::strip_all_holds(ctx, expr)
-}
-
-// Canonical substitute: re-exported from cas_ast::traversal
-pub use cas_ast::substitute_expr_by_id;

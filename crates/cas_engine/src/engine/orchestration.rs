@@ -3,11 +3,11 @@
 //! These are the `impl Simplifier` methods that build a `LocalSimplificationTransformer`
 //! and delegate to it. Includes `simplify`, `expand`, `apply_rules_loop`, etc.
 
-use super::hold::{strip_all_holds, unwrap_hold_top};
+use super::hold::unwrap_hold_top;
 use super::simplifier::Simplifier;
 use super::transform::LocalSimplificationTransformer;
 use crate::step::Step;
-use cas_ast::ExprId;
+use cas_ast::{hold::strip_all_holds, ExprId};
 use std::collections::HashMap;
 
 /// Configuration for a simplification loop pass.
