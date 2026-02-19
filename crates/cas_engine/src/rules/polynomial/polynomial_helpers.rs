@@ -6,8 +6,7 @@
 use crate::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::polynomial::Polynomial;
-use num_rational::BigRational;
-use num_traits::{One, Signed};
+use num_traits::Signed;
 use std::cmp::Ordering;
 
 // =============================================================================
@@ -15,100 +14,11 @@ use std::cmp::Ordering;
 // =============================================================================
 
 pub(crate) fn is_conjugate(ctx: &Context, a: ExprId, b: ExprId) -> bool {
-    // Check for (A+B) and (A-B) or (A-B) and (A+B)
-    let a_expr = ctx.get(a);
-    let b_expr = ctx.get(b);
-
-    match (a_expr, b_expr) {
-        (Expr::Add(a1, a2), Expr::Sub(b1, b2)) | (Expr::Sub(b1, b2), Expr::Add(a1, a2)) => {
-            // (A+B) vs (A-B)
-            // Check if A=A and B=B
-            // Or A=B and B=A (commutative)
-            let a1 = *a1;
-            let a2 = *a2;
-            let b1 = *b1;
-            let b2 = *b2;
-
-            // Direct match: A+B vs A-B
-            if compare_expr(ctx, a1, b1) == Ordering::Equal
-                && compare_expr(ctx, a2, b2) == Ordering::Equal
-            {
-                return true;
-            }
-            // Commutative A: B+A vs A-B (A matches A, B matches B)
-            if compare_expr(ctx, a2, b1) == Ordering::Equal
-                && compare_expr(ctx, a1, b2) == Ordering::Equal
-            {
-                return true;
-            }
-
-            // What about -B+A? Canonicalization usually handles this to Sub(A,B) or Add(A, Neg(B)).
-            // If we have Add(A, Neg(B)), it's not Sub.
-            false
-        }
-        (Expr::Add(a1, a2), Expr::Add(b1, b2)) => {
-            // (A+B) vs (A+(-B)) or ((-B)+A)
-            // Check if one term is negation of another
-            let a1 = *a1;
-            let a2 = *a2;
-            let b1 = *b1;
-            let b2 = *b2;
-
-            // Case 1: b2 is neg(a2) -> (A+B)(A-B)
-            if is_negation(ctx, a2, b2) && compare_expr(ctx, a1, b1) == Ordering::Equal {
-                return true;
-            }
-            // Case 2: b1 is neg(a2) -> (A+B)(-B+A)
-            if is_negation(ctx, a2, b1) && compare_expr(ctx, a1, b2) == Ordering::Equal {
-                return true;
-            }
-            // Case 3: b2 is neg(a1) -> (A+B)(B-A) -> No, that's -(A-B)(A+B)? No.
-            // (A+B)(B-A) = B^2 - A^2. This IS a conjugate pair.
-            if is_negation(ctx, a1, b2) && compare_expr(ctx, a2, b1) == Ordering::Equal {
-                return true;
-            }
-            // Case 4: b1 is neg(a1) -> (A+B)(-A+B)
-            if is_negation(ctx, a1, b1) && compare_expr(ctx, a2, b2) == Ordering::Equal {
-                return true;
-            }
-            false
-        }
-        _ => false,
-    }
+    cas_math::expr_relations::is_conjugate_add_sub(ctx, a, b)
 }
 
 pub(crate) fn is_negation(ctx: &Context, a: ExprId, b: ExprId) -> bool {
-    // Check if b is Neg(a) or Mul(-1, a)
-    if check_negation_structure(ctx, b, a) {
-        return true;
-    }
-    // Check if a is Neg(b) or Mul(-1, b)
-    if check_negation_structure(ctx, a, b) {
-        return true;
-    }
-    false
-}
-
-fn check_negation_structure(ctx: &Context, potential_neg: ExprId, original: ExprId) -> bool {
-    match ctx.get(potential_neg) {
-        Expr::Neg(n) => compare_expr(ctx, original, *n) == Ordering::Equal,
-        Expr::Mul(l, r) => {
-            // Check for -1 * original
-            if let Expr::Number(n) = ctx.get(*l) {
-                if *n == -BigRational::one() && compare_expr(ctx, *r, original) == Ordering::Equal {
-                    return true;
-                }
-            }
-            // Check for original * -1
-            if let Expr::Number(n) = ctx.get(*r) {
-                if *n == -BigRational::one() && compare_expr(ctx, *l, original) == Ordering::Equal {
-                    return true;
-                }
-            }
-            false
-        }
-        _ => false,
-    }
+    cas_math::expr_relations::is_negation(ctx, a, b)
 }
 
 /// Unwrap __hold(X) to X, otherwise return the expression unchanged
@@ -307,18 +217,6 @@ pub(super) fn flatten_additive_terms(
 // Didactic focus helpers
 // =============================================================================
 
-/// Build an additive expression from a list of terms (for focus display)
-pub(super) fn build_additive_expr(ctx: &mut Context, terms: &[ExprId]) -> ExprId {
-    if terms.is_empty() {
-        return ctx.num(0);
-    }
-    let mut result = terms[0];
-    for &term in &terms[1..] {
-        result = ctx.add(Expr::Add(result, term));
-    }
-    result
-}
-
 /// Select focus for didactic display from a CollectResult
 /// Shows ALL combined and cancelled groups together for complete picture
 pub(super) fn select_best_focus(
@@ -351,14 +249,14 @@ pub(super) fn select_best_focus(
     }
 
     // Build the before expression from all original terms
-    let focus_before = build_additive_expr(ctx, &all_before_terms);
+    let focus_before = cas_math::expr_terms::build_sum(ctx, &all_before_terms);
 
     // Build the after expression
     let focus_after = if all_after_terms.is_empty() {
         // Only cancellations, result is 0
         ctx.num(0)
     } else {
-        build_additive_expr(ctx, &all_after_terms)
+        cas_math::expr_terms::build_sum(ctx, &all_after_terms)
     };
 
     // Choose appropriate description
@@ -376,10 +274,5 @@ pub(super) fn select_best_focus(
 /// Count the number of terms in a sum/difference expression
 /// Returns the count of additive terms (flattening nested Add/Sub)
 pub(super) fn count_additive_terms(ctx: &Context, expr: ExprId) -> usize {
-    match ctx.get(expr) {
-        Expr::Add(l, r) => count_additive_terms(ctx, *l) + count_additive_terms(ctx, *r),
-        Expr::Sub(l, r) => count_additive_terms(ctx, *l) + count_additive_terms(ctx, *r),
-        Expr::Neg(inner) => count_additive_terms(ctx, *inner),
-        _ => 1, // A single term (Variable, Number, Mul, Pow, etc.)
-    }
+    cas_math::expr_relations::count_additive_terms(ctx, expr)
 }
