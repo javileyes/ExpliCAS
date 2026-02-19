@@ -212,6 +212,28 @@ pub struct Step {
     pub meta: Option<Box<StepMeta>>,
 }
 
+impl cas_formatter::DisplayStepLike for Step {
+    fn rule_name(&self) -> &str {
+        &self.rule_name
+    }
+
+    fn before(&self) -> cas_ast::ExprId {
+        self.before
+    }
+
+    fn after(&self) -> cas_ast::ExprId {
+        self.after
+    }
+
+    fn global_before(&self) -> Option<cas_ast::ExprId> {
+        self.global_before
+    }
+
+    fn global_after(&self) -> Option<cas_ast::ExprId> {
+        self.global_after
+    }
+}
+
 // ── Convenience accessors ──────────────────────────────────────────────
 // These delegate to StepMeta so that callers don't need to manually
 // unwrap the Option<Box<…>> at every access site.

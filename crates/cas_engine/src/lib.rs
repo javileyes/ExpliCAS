@@ -13,7 +13,6 @@ pub(crate) mod cycle_detector;
 pub mod cycle_events;
 pub mod diagnostics;
 pub mod didactic;
-pub(crate) mod display_context;
 pub mod domain;
 pub mod domain_facts;
 pub mod domain_oracle;

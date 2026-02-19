@@ -746,7 +746,7 @@ impl<'a> TimelineHtml<'a> {
         let mut html = String::from("        <div class=\"timeline\">\n");
 
         // Build display hints for consistent sqrt notation (including final result)
-        let display_hints = crate::display_context::build_display_context_with_result(
+        let display_hints = cas_formatter::build_display_context_with_result(
             self.context,
             self.original_expr,
             self.steps,
