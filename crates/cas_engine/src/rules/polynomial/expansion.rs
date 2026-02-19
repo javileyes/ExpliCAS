@@ -5,9 +5,8 @@ use crate::build::mul2_raw;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
-use cas_math::multipoly::{MultiPoly, PolyBudget};
-use num_rational::BigRational;
-use num_traits::{One, Signed, ToPrimitive};
+use cas_math::multipoly::PolyBudget;
+use num_traits::{Signed, ToPrimitive};
 
 use super::count_additive_terms;
 
@@ -526,143 +525,6 @@ impl crate::rule::Rule for SmallMultinomialExpansionRule {
 /// Priority 95 (higher than AutoExpandPowSumRule at 50)
 pub struct AutoExpandSubCancelRule;
 
-impl AutoExpandSubCancelRule {
-    /// Convert expression to MultiPoly (returns None if not polynomial-representable)
-    pub(crate) fn expr_to_multipoly(
-        ctx: &Context,
-        id: ExprId,
-        vars: &mut Vec<String>,
-        budget: &PolyBudget,
-    ) -> Option<MultiPoly> {
-        Self::expr_to_multipoly_inner(ctx, id, vars, budget, 0)
-    }
-
-    fn expr_to_multipoly_inner(
-        ctx: &Context,
-        id: ExprId,
-        vars: &mut Vec<String>,
-        budget: &PolyBudget,
-        depth: usize,
-    ) -> Option<MultiPoly> {
-        // Depth limit to prevent stack overflow
-        if depth > 50 {
-            return None;
-        }
-
-        match ctx.get(id) {
-            Expr::Number(n) => {
-                // Constant polynomial
-                Some(MultiPoly::from_const(n.clone()))
-            }
-            Expr::Variable(sym_id) => {
-                // Variable: ensure it's in our vars list
-                let name = ctx.sym_name(*sym_id).to_string();
-                if !vars.contains(&name) {
-                    if vars.len() >= 4 {
-                        return None; // Too many variables
-                    }
-                    vars.push(name.clone());
-                }
-                // Create polynomial for this variable
-                let idx = vars.iter().position(|v| v == &name)?;
-                let mut mono = vec![0u32; vars.len()];
-                mono[idx] = 1;
-                let terms = vec![(BigRational::one(), mono)];
-                Some(MultiPoly {
-                    vars: vars.clone(),
-                    terms,
-                })
-            }
-            Expr::Add(l, r) => {
-                let p = Self::expr_to_multipoly_inner(ctx, *l, vars, budget, depth + 1)?;
-                let q = Self::expr_to_multipoly_inner(ctx, *r, vars, budget, depth + 1)?;
-                // Align variables
-                let (p, q) = Self::align_vars(p, q, vars);
-                p.add(&q).ok()
-            }
-            Expr::Sub(l, r) => {
-                let p = Self::expr_to_multipoly_inner(ctx, *l, vars, budget, depth + 1)?;
-                let q = Self::expr_to_multipoly_inner(ctx, *r, vars, budget, depth + 1)?;
-                let (p, q) = Self::align_vars(p, q, vars);
-                p.sub(&q).ok()
-            }
-            Expr::Mul(l, r) => {
-                let p = Self::expr_to_multipoly_inner(ctx, *l, vars, budget, depth + 1)?;
-                let q = Self::expr_to_multipoly_inner(ctx, *r, vars, budget, depth + 1)?;
-                let (p, q) = Self::align_vars(p, q, vars);
-                p.mul(&q, budget).ok()
-            }
-            Expr::Neg(inner) => {
-                let p = Self::expr_to_multipoly_inner(ctx, *inner, vars, budget, depth + 1)?;
-                Some(p.neg())
-            }
-            Expr::Pow(base, exp) => {
-                // Only handle integer exponents >= 0
-                if let Expr::Number(n) = ctx.get(*exp) {
-                    if n.is_integer() && !n.is_negative() {
-                        let exp_val = n.to_integer().to_u32()?;
-                        if exp_val > budget.max_total_degree {
-                            return None;
-                        }
-                        // Recursively convert base - this may grow vars
-                        let base_poly =
-                            Self::expr_to_multipoly_inner(ctx, *base, vars, budget, depth + 1)?;
-
-                        // Handle exp == 0 case
-                        if exp_val == 0 {
-                            return Some(MultiPoly::one(vars.clone()));
-                        }
-
-                        // Compute base^exp via repeated multiplication
-                        // Start with base aligned to current vars
-                        let base_aligned = Self::align_to_vars(&base_poly, vars);
-                        let mut result = base_aligned.clone();
-                        for _ in 1..exp_val {
-                            result = result.mul(&base_aligned, budget).ok()?;
-                            if result.num_terms() > budget.max_terms {
-                                return None;
-                            }
-                        }
-                        return Some(result);
-                    }
-                }
-                None
-            }
-            _ => None, // Not polynomial
-        }
-    }
-
-    /// Align two polynomials to have the same variable set
-    fn align_vars(p: MultiPoly, q: MultiPoly, target_vars: &[String]) -> (MultiPoly, MultiPoly) {
-        (
-            Self::align_to_vars(&p, target_vars),
-            Self::align_to_vars(&q, target_vars),
-        )
-    }
-
-    /// Align a polynomial to the target variable set
-    fn align_to_vars(p: &MultiPoly, target_vars: &[String]) -> MultiPoly {
-        if p.vars == target_vars {
-            return p.clone();
-        }
-        // Reindex monomials to target_vars
-        let mut new_terms = Vec::new();
-        for (coeff, mono) in &p.terms {
-            let mut new_mono = vec![0u32; target_vars.len()];
-            for (i, var) in p.vars.iter().enumerate() {
-                if let Some(target_idx) = target_vars.iter().position(|v| v == var) {
-                    new_mono[target_idx] = mono[i];
-                }
-            }
-            new_terms.push((coeff.clone(), new_mono));
-        }
-        MultiPoly {
-            vars: target_vars.to_vec(),
-            terms: new_terms,
-        }
-    }
-}
-
 impl crate::rule::Rule for AutoExpandSubCancelRule {
     fn name(&self) -> &str {
         "AutoExpandSubCancelRule"
@@ -705,8 +567,10 @@ impl crate::rule::Rule for AutoExpandSubCancelRule {
         // For Sub(a,b) this computes a-b
         // For Add(a, Neg(b), Neg(c), ...) this computes a + (-b) + (-c) + ...
         // If the result is 0, we have cancellation
-        let mut vars = Vec::new();
-        let poly = Self::expr_to_multipoly(ctx, expr, &mut vars, &budget)?;
+        let poly = cas_math::multipoly::multipoly_from_expr(ctx, expr, &budget).ok()?;
+        if poly.vars.len() > 4 {
+            return None;
+        }
 
         // If the result is zero, we have proved cancellation!
         if poly.is_zero() {

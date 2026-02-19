@@ -3,7 +3,6 @@
 //! These rules are extracted from `expansion.rs` to keep the module focused on
 //! core binomial/multinomial expansion logic.
 
-use super::expansion::AutoExpandSubCancelRule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
@@ -83,7 +82,12 @@ impl PolynomialIdentityZeroRule {
         vars: &mut Vec<String>,
         budget: &PolyBudget,
     ) -> Option<MultiPoly> {
-        AutoExpandSubCancelRule::expr_to_multipoly(ctx, id, vars, budget)
+        let poly = cas_math::multipoly::multipoly_from_expr(ctx, id, budget).ok()?;
+        if poly.vars.len() > 4 {
+            return None;
+        }
+        *vars = poly.vars.clone();
+        Some(poly)
     }
 
     /// Collect all function calls in an expression (e.g., sin(u), arctan(u))
@@ -738,11 +742,10 @@ impl crate::rule::Rule for HeuristicPolyNormalizeAddRule {
             max_pow_exp: 6,
         };
 
-        let mut vars = Vec::new();
-        let poly = AutoExpandSubCancelRule::expr_to_multipoly(ctx, expr, &mut vars, &budget)?;
+        let poly = cas_math::multipoly::multipoly_from_expr(ctx, expr, &budget).ok()?;
 
         // Check if result is reasonable
-        if poly.terms.len() > 30 || vars.len() > 3 {
+        if poly.terms.len() > 30 || poly.vars.len() > 3 {
             return None;
         }
 
