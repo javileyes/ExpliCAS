@@ -5,25 +5,11 @@ use crate::build::mul2_raw;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::combinatorics::binomial_coeff;
 use cas_math::multipoly::PolyBudget;
 use num_traits::{Signed, ToPrimitive};
 
 use super::count_additive_terms;
-
-/// Binomial coefficient C(n, k)
-pub(crate) fn binomial_coeff(n: u32, k: u32) -> u32 {
-    if k == 0 || k == n {
-        return 1;
-    }
-    if k > n {
-        return 0;
-    }
-    let mut res = 1;
-    for i in 0..k {
-        res = res * (n - i) / (i + 1);
-    }
-    res
-}
 
 // =============================================================================
 // BinomialExpansionRule

@@ -1,6 +1,7 @@
 use crate::build::mul2_raw;
 use crate::Step;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::combinatorics::binomial_coeff;
 /// Threshold for using fast mod-p expansion in eager eval.
 /// Above this many estimated terms, use poly_ref instead of AST.
 pub const EAGER_EXPAND_MODP_THRESHOLD: u64 = 500;
@@ -481,20 +482,6 @@ pub fn expand_pow(ctx: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
     }
 
     ctx.add(Expr::Pow(base, exp))
-}
-
-fn binomial_coeff(n: u32, k: u32) -> u32 {
-    if k == 0 || k == n {
-        return 1;
-    }
-    if k > n {
-        return 0;
-    }
-    let mut res = 1;
-    for i in 0..k {
-        res = res * (n - i) / (i + 1);
-    }
-    res
 }
 
 #[cfg(test)]
