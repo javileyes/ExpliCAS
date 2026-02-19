@@ -44,6 +44,7 @@ pub mod poly_result;
 pub mod poly_store;
 pub mod polynomial;
 pub mod root_forms;
+pub mod semantic_equality;
 pub mod trig_pattern_detection;
 pub mod trig_roots_flatten;
 pub mod unipoly_modp;
