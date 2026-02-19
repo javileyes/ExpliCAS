@@ -2,7 +2,9 @@
 
 use super::ImplicitCondition;
 use cas_ast::{Context, Expr, ExprId};
-use cas_math::expr_extract::extract_abs_argument_view;
+use cas_math::expr_domain::{
+    exprs_equivalent, is_abs_of, is_power_of_base, is_product_dominated_by_positives,
+};
 
 // =============================================================================
 // Condition Normalization (Canonical Form + Sign Normalization + Dedupe)
@@ -161,59 +163,6 @@ pub(crate) fn conditions_equivalent(
     false
 }
 
-/// Check if two expressions are equivalent using polynomial comparison.
-pub(crate) fn exprs_equivalent(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
-    use cas_math::multipoly::{multipoly_from_expr, PolyBudget};
-
-    if e1 == e2 {
-        return true;
-    }
-
-    // Quick check: same variable name
-    if let (Expr::Variable(name1), Expr::Variable(name2)) = (ctx.get(e1), ctx.get(e2)) {
-        if name1 == name2 {
-            return true;
-        }
-    }
-
-    let budget = PolyBudget {
-        max_terms: 50,
-        max_total_degree: 20,
-        max_pow_exp: 10,
-    };
-
-    if let (Ok(p1), Ok(p2)) = (
-        multipoly_from_expr(ctx, e1, &budget),
-        multipoly_from_expr(ctx, e2, &budget),
-    ) {
-        return p1 == p2;
-    }
-
-    false
-}
-
-/// Check if `source` is `target^(odd positive integer)`.
-/// E.g., is_odd_power_of(ctx, b^3, b) = true
-pub(crate) fn is_odd_power_of(ctx: &Context, source: ExprId, target: ExprId) -> bool {
-    if let Expr::Pow(base, exp) = ctx.get(source) {
-        // Check if exp is an odd positive integer
-        if let Expr::Number(n) = ctx.get(*exp) {
-            if n.is_integer() {
-                let exp_int = n.to_integer();
-                let two: num_bigint::BigInt = 2.into();
-                let zero: num_bigint::BigInt = 0.into();
-                let one: num_bigint::BigInt = 1.into();
-                // Odd: exp % 2 == 1, positive: exp > 0
-                if &exp_int % &two == one && exp_int > zero {
-                    // Check if base equals target
-                    return exprs_equivalent(ctx, *base, target);
-                }
-            }
-        }
-    }
-    false
-}
-
 /// Normalize and deduplicate a list of conditions for display.
 ///
 /// This function:
@@ -337,130 +286,6 @@ fn apply_dominance_rules(ctx: &Context, conditions: &mut Vec<ImplicitCondition>)
     for i in to_remove.into_iter().rev() {
         conditions.remove(i);
     }
-}
-
-/// Check if expr is base^n for some positive integer n
-pub(crate) fn is_power_of_base(ctx: &Context, expr: ExprId, base: ExprId) -> bool {
-    if let Expr::Pow(pow_base, exp) = ctx.get(expr) {
-        if let Expr::Number(n) = ctx.get(*exp) {
-            // V2.15.9: In RealOnly, base > 0 → base^p > 0 for ANY real p (not just integers)
-            // This includes x^(1/2), x^(3/4), etc.
-            // The only exception is p = 0 (base^0 = 1, not related to base positivity)
-            let zero = num_rational::BigRational::from_integer(0.into());
-            if *n != zero {
-                return exprs_equivalent(ctx, *pow_base, base);
-            }
-        }
-    }
-    false
-}
-
-/// Check if source is k*target where k > 0.
-/// Used to deduce x ≥ 0 from k*x ≥ 0 when k is positive.
-/// e.g., is_positive_multiple_of(ctx, 4*x, x) = true
-pub(crate) fn is_positive_multiple_of(ctx: &Context, source: ExprId, target: ExprId) -> bool {
-    use num_traits::Zero;
-
-    // First check direct equivalence
-    if exprs_equivalent(ctx, source, target) {
-        return true;
-    }
-
-    // Check if source is Mul(k, target) or Mul(target, k) where k > 0
-    if let Expr::Mul(l, r) = ctx.get(source) {
-        // Check k * target
-        if let Expr::Number(n) = ctx.get(*l) {
-            let zero = num_rational::BigRational::zero();
-            if *n > zero && exprs_equivalent(ctx, *r, target) {
-                return true;
-            }
-        }
-        // Check target * k
-        if let Expr::Number(n) = ctx.get(*r) {
-            let zero = num_rational::BigRational::zero();
-            if *n > zero && exprs_equivalent(ctx, *l, target) {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-/// Check if a product expression is dominated by known positive expressions.
-/// E.g., a^2 * b^3 > 0 is dominated if we have both a > 0 and b > 0
-/// Only applies to actual products (≥2 factors) to avoid removing single conditions.
-fn is_product_dominated_by_positives(
-    ctx: &Context,
-    prod_expr: ExprId,
-    known_positives: &[ExprId],
-) -> bool {
-    // Collect all base variables from the product
-    let bases = extract_product_bases(ctx, prod_expr);
-
-    // Only dominate actual products with ≥2 factors
-    // Single bases are handled by is_power_of_base or direct equivalence
-    if bases.len() < 2 {
-        return false;
-    }
-
-    // Check if all bases are known positive
-    for base in &bases {
-        let base_is_covered = known_positives
-            .iter()
-            .any(|pos| exprs_equivalent(ctx, *base, *pos));
-        if !base_is_covered {
-            return false;
-        }
-    }
-
-    true
-}
-
-/// Extract base expressions from a product like a^2 * b^3
-/// Returns [a, b] for a^2 * b^3
-fn extract_product_bases(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
-    let mut bases = Vec::new();
-    collect_product_bases(ctx, expr, &mut bases);
-    bases
-}
-
-fn collect_product_bases(ctx: &Context, expr: ExprId, bases: &mut Vec<ExprId>) {
-    match ctx.get(expr) {
-        Expr::Mul(l, r) => {
-            collect_product_bases(ctx, *l, bases);
-            collect_product_bases(ctx, *r, bases);
-        }
-        Expr::Pow(base, exp) => {
-            // Check if exponent is positive - if so, add the base
-            if let Expr::Number(n) = ctx.get(*exp) {
-                if n.is_integer() {
-                    let exp_int = n.to_integer();
-                    let zero: num_bigint::BigInt = 0.into();
-                    if exp_int > zero {
-                        bases.push(*base);
-                        return;
-                    }
-                }
-            }
-            // Fallback: treat the whole thing as a base
-            bases.push(expr);
-        }
-        Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_) => {
-            bases.push(expr);
-        }
-        _ => {
-            // Complex expression - treat as single base
-            bases.push(expr);
-        }
-    }
-}
-
-/// Check if expr is Abs(inner_expr), i.e., |inner_expr|
-fn is_abs_of(ctx: &Context, expr: ExprId, inner: ExprId) -> bool {
-    if let Some(arg) = extract_abs_argument_view(ctx, expr) {
-        return exprs_equivalent(ctx, arg, inner);
-    }
-    false
 }
 
 /// Render conditions for display, applying normalization and deduplication.

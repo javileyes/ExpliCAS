@@ -1,11 +1,11 @@
 //! Witness survival checks and assumption classification.
 
-use super::normalization::{
-    conditions_equivalent, exprs_equivalent, is_odd_power_of, is_positive_multiple_of,
-    is_power_of_base,
-};
+use super::normalization::conditions_equivalent;
 use super::ImplicitCondition;
 use cas_ast::{Context, ExprId};
+use cas_math::expr_domain::{
+    exprs_equivalent, is_odd_power_of, is_positive_multiple_of, is_power_of_base,
+};
 use cas_math::expr_witness::{self, WitnessKind as MathWitnessKind};
 
 // =============================================================================
