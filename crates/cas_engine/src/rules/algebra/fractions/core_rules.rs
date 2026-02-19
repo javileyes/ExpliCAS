@@ -4,13 +4,7 @@
 //! along with helper functions for polynomial comparison and factor collection.
 
 use crate::build::mul2_raw;
-use crate::rules::algebra::helpers::gcd_rational;
 use cas_ast::{Context, Expr, ExprId};
-use cas_math::multipoly::{
-    gcd_multivar_layer2, gcd_multivar_layer25, multipoly_from_expr, multipoly_to_expr, GcdBudget,
-    GcdLayer, Layer25Budget, MultiPoly, PolyBudget,
-};
-use num_traits::One;
 
 // =============================================================================
 // Context-aware helpers for AddFractionsRule gating
@@ -66,126 +60,7 @@ pub(super) use cas_math::fraction_factors::collect_mul_factors_int_pow;
 // Multivariate GCD (Layers 1 + 2 + 2.5)
 // =============================================================================
 
-/// Try to compute GCD of two expressions using multivariate polynomial representation.
-/// Returns None if expressions can't be converted to polynomials or if GCD is trivial (1).
-/// Returns Some((quotient_num, quotient_den, gcd_expr, layer)) if non-trivial GCD found.
-pub(super) fn try_multivar_gcd(
-    ctx: &mut Context,
-    num: ExprId,
-    den: ExprId,
-) -> Option<(ExprId, ExprId, ExprId, GcdLayer)> {
-    let budget = PolyBudget::default();
-
-    // Try to convert both to MultiPoly
-    let p_num = multipoly_from_expr(ctx, num, &budget).ok()?;
-    let p_den = multipoly_from_expr(ctx, den, &budget).ok()?;
-
-    // Skip if not multivariate (let univariate path handle it)
-    if p_num.vars.len() <= 1 {
-        return None;
-    }
-
-    // Align variables if needed: embed both into union of variables
-    let (p_num, p_den) = if p_num.vars != p_den.vars {
-        // Compute union of variables (sorted for consistency)
-        let mut all_vars: Vec<String> = p_num
-            .vars
-            .iter()
-            .chain(p_den.vars.iter())
-            .cloned()
-            .collect::<std::collections::BTreeSet<_>>()
-            .into_iter()
-            .collect();
-        all_vars.sort();
-
-        // Embed both polynomials into the shared variable space
-        let p_num_aligned = p_num.align_vars(&all_vars);
-        let p_den_aligned = p_den.align_vars(&all_vars);
-        (p_num_aligned, p_den_aligned)
-    } else {
-        (p_num, p_den)
-    };
-
-    // Layer 1: Monomial GCD
-    let mono_gcd = p_num.monomial_gcd_with(&p_den).ok()?;
-    let has_mono_gcd = mono_gcd.iter().any(|&e| e > 0);
-
-    // Layer 1: Content GCD
-    let content_num = p_num.content();
-    let content_den = p_den.content();
-    let content_gcd = gcd_rational(content_num.clone(), content_den.clone());
-    let has_content_gcd = !content_gcd.is_one();
-
-    // If no GCD found at Layer 1, try Layer 2 and Layer 2.5
-    if !has_mono_gcd && !has_content_gcd {
-        if p_num.vars.len() >= 2 {
-            // Try Layer 2 first (bivar with seeds)
-            let gcd_budget = GcdBudget::default();
-            if let Some(gcd_poly) = gcd_multivar_layer2(&p_num, &p_den, &gcd_budget) {
-                if !gcd_poly.is_one() && !gcd_poly.is_constant() {
-                    let q_num = p_num.div_exact(&gcd_poly)?;
-                    let q_den = p_den.div_exact(&gcd_poly)?;
-                    let new_num = multipoly_to_expr(&q_num, ctx);
-                    let new_den = multipoly_to_expr(&q_den, ctx);
-                    let gcd_expr = multipoly_to_expr(&gcd_poly, ctx);
-                    return Some((new_num, new_den, gcd_expr, GcdLayer::Layer2HeuristicSeeds));
-                }
-            }
-
-            // Try Layer 2.5 (tensor grid for multi-param factors)
-            let layer25_budget = Layer25Budget::default();
-            if let Some(gcd_poly) = gcd_multivar_layer25(&p_num, &p_den, &layer25_budget) {
-                if !gcd_poly.is_one() && !gcd_poly.is_constant() {
-                    let q_num = p_num.div_exact(&gcd_poly)?;
-                    let q_den = p_den.div_exact(&gcd_poly)?;
-                    let new_num = multipoly_to_expr(&q_num, ctx);
-                    let new_den = multipoly_to_expr(&q_den, ctx);
-                    let gcd_expr = multipoly_to_expr(&gcd_poly, ctx);
-                    return Some((new_num, new_den, gcd_expr, GcdLayer::Layer25TensorGrid));
-                }
-            }
-        }
-        return None;
-    }
-
-    // Divide by monomial GCD
-    let (p_num, p_den) = if has_mono_gcd {
-        (
-            p_num.div_monomial_exact(&mono_gcd)?,
-            p_den.div_monomial_exact(&mono_gcd)?,
-        )
-    } else {
-        (p_num, p_den)
-    };
-
-    // Divide by content GCD
-    let (p_num, p_den) = if has_content_gcd {
-        (
-            p_num.div_scalar_exact(&content_gcd)?,
-            p_den.div_scalar_exact(&content_gcd)?,
-        )
-    } else {
-        (p_num, p_den)
-    };
-
-    // Build GCD expression (monomial * content)
-    let mut gcd_poly = MultiPoly::one(p_num.vars.clone());
-
-    if has_mono_gcd {
-        gcd_poly = gcd_poly.mul_monomial(&mono_gcd).ok()?;
-    }
-
-    if has_content_gcd {
-        gcd_poly = gcd_poly.mul_scalar(&content_gcd);
-    }
-
-    // Convert back to expressions
-    let new_num = multipoly_to_expr(&p_num, ctx);
-    let new_den = multipoly_to_expr(&p_den, ctx);
-    let gcd_expr = multipoly_to_expr(&gcd_poly, ctx);
-
-    Some((new_num, new_den, gcd_expr, GcdLayer::Layer1MonomialContent))
-}
+pub(super) use cas_math::fraction_multivar_gcd::try_multivar_gcd;
 
 // ========== Helper to extract fraction parts from both Div and Mul(1/n,x) ==========
 // This is needed because canonicalization may convert Div(x,n) to Mul(1/n,x)
