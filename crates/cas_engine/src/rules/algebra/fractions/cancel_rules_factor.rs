@@ -8,45 +8,12 @@ use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::Expr;
 use cas_math::fraction_factors::collect_mul_factors_flat as collect_mul_factors;
+use cas_math::root_forms::extract_root_base_and_index as extract_root_base;
 use num_traits::{One, Zero};
 
 use super::addition_rules::contains_irrational;
-
-/// Extract root from expression: sqrt(n) or n^(1/k)
-/// Returns (radicand, index) where expr = radicand^(1/index)
-fn extract_root_base(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
-    // Check for sqrt(n) function - use zero-clone helper
-    if let Some(arg) = crate::helpers::as_fn1(ctx, expr, "sqrt") {
-        // sqrt(n) = n^(1/2), return (n, 2)
-        let two = ctx.num(2);
-        return Some((arg, two));
-    }
-
-    // Check for Pow(base, exp) - use zero-clone helper
-    if let Some((base, exp)) = crate::helpers::as_pow(ctx, expr) {
-        // Check if exp is a Number like 1/k
-        if let Some(n) = cas_math::numeric::as_number(ctx, exp) {
-            if !n.is_integer() && n.numer().is_one() {
-                // n^(1/k) - return (n, k)
-                let k_expr = ctx.add(Expr::Number(num_rational::BigRational::from_integer(
-                    n.denom().clone(),
-                )));
-                return Some((base, k_expr));
-            }
-        }
-        // Check if exp is Div(1, k)
-        if let Some((num_exp, den_exp)) = crate::helpers::as_div(ctx, exp) {
-            if let Some(n) = cas_math::numeric::as_number(ctx, num_exp) {
-                if n.is_one() {
-                    return Some((base, den_exp));
-                }
-            }
-        }
-    }
-    None
-}
 
 define_rule!(
     RationalizeProductDenominatorRule,
@@ -182,29 +149,14 @@ define_rule!(
         // Capture domain mode once at start
         let domain_mode = parent_ctx.domain_mode();
 
-        // Helper to collect factors
-        fn collect_factors(ctx: &Context, e: ExprId) -> Vec<ExprId> {
-            let mut factors = Vec::new();
-            let mut stack = vec![e];
-            while let Some(curr) = stack.pop() {
-                if let Expr::Mul(l, r) = ctx.get(curr) {
-                    stack.push(*r);
-                    stack.push(*l);
-                } else {
-                    factors.push(curr);
-                }
-            }
-            factors
-        }
-
         let (mut num_factors, mut den_factors) = match ctx.get(expr) {
-            Expr::Div(n, d) => (collect_factors(ctx, *n), collect_factors(ctx, *d)),
+            Expr::Div(n, d) => (collect_mul_factors(ctx, *n), collect_mul_factors(ctx, *d)),
             Expr::Pow(b, e) => {
                 let (b, e) = (*b, *e);
                 if let Expr::Number(n) = ctx.get(e) {
                     if n.is_integer() && *n == num_rational::BigRational::from_integer((-1).into())
                     {
-                        (vec![ctx.num(1)], collect_factors(ctx, b))
+                        (vec![ctx.num(1)], collect_mul_factors(ctx, b))
                     } else {
                         return None;
                     }
@@ -213,7 +165,7 @@ define_rule!(
                 }
             }
             Expr::Mul(_, _) => {
-                let factors = collect_factors(ctx, expr);
+                let factors = collect_mul_factors(ctx, expr);
                 let mut nf = Vec::new();
                 let mut df = Vec::new();
                 for f in factors {
@@ -222,7 +174,7 @@ define_rule!(
                             if n.is_integer()
                                 && *n == num_rational::BigRational::from_integer((-1).into())
                             {
-                                df.extend(collect_factors(ctx, *b));
+                                df.extend(collect_mul_factors(ctx, *b));
                                 continue;
                             }
                         }
