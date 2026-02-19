@@ -485,7 +485,7 @@ fn test_power_tower_diagnostic() {
                 let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
                     let mut simplifier = Simplifier::with_default_rules();
                     simplifier.context = ctx;
-                    simplifier.profiler = cas_engine::profiler::RuleProfiler::new(true);
+                    simplifier.profiler = cas_engine::RuleProfiler::new(true);
                     let start = Instant::now();
                     let (result, steps) = simplifier.simplify(expr);
                     let elapsed = start.elapsed();

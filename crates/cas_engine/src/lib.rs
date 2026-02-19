@@ -26,7 +26,7 @@ pub(crate) mod orchestrator;
 pub(crate) mod parent_context;
 pub mod phase;
 pub(crate) mod profile_cache;
-pub mod profiler;
+pub(crate) mod profiler;
 pub mod rationalize;
 pub(crate) mod rationalize_policy;
 pub(crate) mod recursion_guard;
@@ -104,6 +104,7 @@ pub use phase::{
     SimplifyPhase,
 };
 pub use profile_cache::ProfileCache;
+pub use profiler::{RuleProfiler, RuleStats};
 pub use rationalize_policy::{AutoRationalizeLevel, RationalizeOutcome, RationalizeReason};
 pub use rule::{ChainedRewrite, Rewrite, Rule, SimpleRule, SoundnessLabel};
 pub use semantics::{

@@ -187,7 +187,7 @@ fn try_simplify(
     let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
         let mut simplifier = Simplifier::with_default_rules();
         simplifier.context = ctx;
-        simplifier.profiler = cas_engine::profiler::RuleProfiler::new(true);
+        simplifier.profiler = cas_engine::RuleProfiler::new(true);
 
         let (result, steps) = simplifier.simplify(expr);
 
@@ -282,7 +282,7 @@ fn test_stress_single() {
 
     let mut simplifier = Simplifier::with_default_rules();
     simplifier.context = ctx;
-    simplifier.profiler = cas_engine::profiler::RuleProfiler::new(true);
+    simplifier.profiler = cas_engine::RuleProfiler::new(true);
 
     let (result, steps) = simplifier.simplify(expr);
 
