@@ -1,6 +1,8 @@
 use crate::helpers::{as_div, as_mul};
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_extract::extract_log_base_argument;
+use cas_math::expr_predicates::is_e_constant_expr;
 use cas_math::expr_rewrite::smart_mul;
 
 // Re-use helpers from parent module
@@ -35,20 +37,9 @@ impl crate::rule::Rule for LogExpansionRule {
             return None;
         }
 
-        let (fn_id, args) = match ctx.get(expr) {
-            Expr::Function(fn_id, args) => (*fn_id, args.clone()),
-            _ => return None,
-        };
         {
             // Handle ln(x) as log(e, x), or log(b, x)
-            let (base, arg) = match ctx.builtin_of(fn_id) {
-                Some(BuiltinFn::Ln) if args.len() == 1 => {
-                    let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
-                    (e, args[0])
-                }
-                Some(BuiltinFn::Log) if args.len() == 2 => (args[0], args[1]),
-                _ => return None,
-            };
+            let (base, arg) = extract_log_base_argument(ctx, expr)?;
 
             let mode = parent_ctx.domain_mode();
             let vd = parent_ctx.value_domain();
@@ -203,14 +194,11 @@ pub fn expand_logs_with_assumptions(
             // Sentinel: base-10 log uses ExprId::from_raw(u32::MAX - 1) as base indicator
             let sentinel_log10 = cas_ast::ExprId::from_raw(u32::MAX - 1);
             let builtin = ctx.builtin_of(name);
-            let (base, arg) = if builtin == Some(BuiltinFn::Ln) && args.len() == 1 {
-                let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
-                (e, args[0])
-            } else if builtin == Some(BuiltinFn::Log) && args.len() == 2 {
-                (args[0], args[1])
-            } else if builtin == Some(BuiltinFn::Log) && args.len() == 1 {
+            let (base, arg) = if builtin == Some(BuiltinFn::Log) && args.len() == 1 {
                 // log(x) = base-10 log
                 (sentinel_log10, args[0])
+            } else if let Some((base, arg)) = extract_log_base_argument(ctx, expr) {
+                (base, arg)
             } else {
                 // Not a recognized log form, recurse into args
                 let mut new_args = Vec::with_capacity(args.len());
@@ -359,20 +347,8 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
         use crate::helpers::prove_positive;
         use crate::rule::ChainedRewrite;
 
-        let (name, args) = match ctx.get(expr) {
-            Expr::Function(name, args) => (*name, args.clone()),
-            _ => return None,
-        };
-
         // Handle ln(x) or log(base, x)
-        let (base, arg) = match ctx.builtin_of(name) {
-            Some(BuiltinFn::Ln) if args.len() == 1 => {
-                let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
-                (e, args[0])
-            }
-            Some(BuiltinFn::Log) if args.len() == 2 => (args[0], args[1]),
-            _ => return None,
-        };
+        let (base, arg) = extract_log_base_argument(ctx, expr)?;
 
         // Match log(base, x^exp) where exp is even integer
         let (p_base, p_exp) = match ctx.get(arg) {
@@ -387,7 +363,7 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
 
         // V2.14.20: Also skip if this is ln(exp(...)^n) - let LogExpInverseRule handle first
         // This prevents matching ln(exp(x)) which should simplify to x directly
-        if let Expr::Constant(cas_ast::Constant::E) = ctx.get(base) {
+        if is_e_constant_expr(ctx, base) {
             if let Expr::Function(fname, _) = ctx.get(p_base) {
                 if ctx.is_builtin(*fname, BuiltinFn::Exp) {
                     return None;
@@ -535,20 +511,8 @@ impl crate::rule::Rule for LogAbsPowerRule {
         expr: ExprId,
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        let (name, args) = match ctx.get(expr) {
-            Expr::Function(name, args) => (*name, args.clone()),
-            _ => return None,
-        };
-
         // Handle ln(x) or log(base, x)
-        let (base, arg) = match ctx.builtin_of(name) {
-            Some(BuiltinFn::Ln) if args.len() == 1 => {
-                let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
-                (e, args[0])
-            }
-            Some(BuiltinFn::Log) if args.len() == 2 => (args[0], args[1]),
-            _ => return None,
-        };
+        let (base, arg) = extract_log_base_argument(ctx, expr)?;
 
         // Match log(base, |u|^n)
         let (p_base, p_exp) = match ctx.get(arg) {
