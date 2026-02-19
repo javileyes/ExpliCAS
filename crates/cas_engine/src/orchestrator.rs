@@ -305,8 +305,7 @@ impl Orchestrator {
         all_steps.extend(lower_steps);
 
         // Check for specialized strategies first
-        if let Some(result) =
-            crate::telescoping::try_dirichlet_kernel_identity_pub(&simplifier.context, current)
+        if let Some(result) = crate::try_dirichlet_kernel_identity_pub(&simplifier.context, current)
         {
             let zero = simplifier.context.num(0);
             if self.options.collect_steps {

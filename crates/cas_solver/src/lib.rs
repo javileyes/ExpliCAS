@@ -8,12 +8,10 @@ pub mod substitute;
 pub use cas_engine::canonical_forms;
 pub use cas_engine::normalize_and_dedupe_conditions;
 pub use cas_engine::phase::{ExpandPolicy, SimplifyPhase};
-pub use cas_engine::rationalize;
 pub use cas_engine::rules;
 pub use cas_engine::rules::logarithms::LogExpansionRule;
 pub use cas_engine::semantics::{BranchPolicy, InverseTrigPolicy, ValueDomain};
 pub use cas_engine::solver::*;
-pub use cas_engine::telescoping;
 pub use cas_engine::visualizer;
 pub use cas_engine::ConstFoldMode;
 pub use cas_engine::ParentContext;
@@ -52,5 +50,18 @@ pub mod engine {
     pub use cas_engine::{
         eval_f64, eval_f64_checked, Engine, EquivalenceResult, EvalCheckedError,
         EvalCheckedOptions, LoopConfig, Simplifier,
+    };
+}
+
+/// Backward-compatible facade for former `cas_engine::rationalize::*` imports.
+pub mod rationalize {
+    pub use cas_engine::{rationalize_denominator, RationalizeConfig, RationalizeResult};
+}
+
+/// Backward-compatible facade for former `cas_engine::telescoping::*` imports.
+pub mod telescoping {
+    pub use cas_engine::{
+        telescope, try_dirichlet_kernel_identity_pub, DirichletKernelResult, TelescopingResult,
+        TelescopingStep,
     };
 }

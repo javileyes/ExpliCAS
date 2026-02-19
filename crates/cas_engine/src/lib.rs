@@ -27,7 +27,7 @@ pub(crate) mod parent_context;
 pub mod phase;
 pub(crate) mod profile_cache;
 pub(crate) mod profiler;
-pub mod rationalize;
+pub(crate) mod rationalize;
 pub(crate) mod rationalize_policy;
 pub(crate) mod recursion_guard;
 pub(crate) mod rule;
@@ -39,7 +39,7 @@ pub(crate) mod step;
 pub(crate) mod step_optimization;
 pub(crate) mod strategies;
 pub mod substitute;
-pub mod telescoping;
+pub(crate) mod telescoping;
 pub(crate) mod timeline;
 
 // Property-based numeric tests for rewrite correctness
@@ -110,6 +110,7 @@ pub use phase::{
 };
 pub use profile_cache::ProfileCache;
 pub use profiler::{RuleProfiler, RuleStats};
+pub use rationalize::{rationalize_denominator, RationalizeConfig, RationalizeResult};
 pub use rationalize_policy::{AutoRationalizeLevel, RationalizeOutcome, RationalizeReason};
 pub use rule::{ChainedRewrite, Rewrite, Rule, SimpleRule, SoundnessLabel};
 pub use semantics::{
@@ -118,6 +119,10 @@ pub use semantics::{
 pub use solve_safety::{RequirementDescriptor, SimplifyPurpose, SolveSafety};
 pub use step::{
     pathsteps_to_expr_path, DisplayEvalSteps, ImportanceLevel, PathStep, Step, StepCategory,
+};
+pub use telescoping::{
+    telescope, try_dirichlet_kernel_identity_pub, DirichletKernelResult, TelescopingResult,
+    TelescopingStep,
 };
 pub use timeline::{html_escape, latex_escape, SolveTimelineHtml, TimelineHtml, VerbosityLevel};
 pub use visitors::{DepthVisitor, VariableCollector};
