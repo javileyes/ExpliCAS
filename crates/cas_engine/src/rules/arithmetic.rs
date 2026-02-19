@@ -1,8 +1,8 @@
 use crate::define_rule;
 use crate::helpers::{as_add, as_div, as_mul, as_sub};
 use crate::rule::Rewrite;
-use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::Expr;
+use cas_math::expr_rewrite::smart_mul;
 use num_traits::{One, Zero};
 
 define_rule!(

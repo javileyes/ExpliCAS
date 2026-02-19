@@ -1,7 +1,7 @@
 use crate::helpers::{as_div, as_mul};
 use crate::rule::Rewrite;
-use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_rewrite::smart_mul;
 
 // Re-use helpers from parent module
 use super::{extract_log_parts, make_log};

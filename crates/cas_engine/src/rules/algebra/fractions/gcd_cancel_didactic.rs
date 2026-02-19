@@ -27,7 +27,7 @@ pub(super) fn try_expand_binomial_square_in_den_for_cancel(
     _parent_ctx: &crate::parent_context::ParentContext,
 ) -> Option<Rewrite> {
     use crate::implicit_domain::ImplicitCondition;
-    use crate::rules::algebra::helpers::smart_mul;
+    use cas_math::expr_rewrite::smart_mul;
 
     // STEP 1: Check if den = Pow(base, 2) where base = Add(a, b)
     let (base, exp) = crate::helpers::as_pow(ctx, den)?;
@@ -94,7 +94,7 @@ pub(super) fn try_difference_of_squares_in_num(
     _parent_ctx: &crate::parent_context::ParentContext,
 ) -> Option<Rewrite> {
     use crate::implicit_domain::ImplicitCondition;
-    use crate::rules::algebra::helpers::smart_mul;
+    use cas_math::expr_rewrite::smart_mul;
 
     // STEP 1: Check if num is a² - b² form
     // Try Sub(Pow(a,2), Pow(b,2)) first, also handle Pow(a,2) - Number(k²)
@@ -214,7 +214,7 @@ pub(super) fn try_perfect_square_minus_in_num(
     _parent_ctx: &crate::parent_context::ParentContext,
 ) -> Option<Rewrite> {
     use crate::implicit_domain::ImplicitCondition;
-    use crate::rules::algebra::helpers::smart_mul;
+    use cas_math::expr_rewrite::smart_mul;
 
     // STEP 1: Check if den is (a - b) - try Sub first, then Add(a, Neg(b))
     let (a, b) = if let Some((a, b)) = crate::helpers::as_sub(ctx, den) {
@@ -285,7 +285,7 @@ pub(super) fn try_sum_diff_of_cubes_in_num(
     _parent_ctx: &crate::parent_context::ParentContext,
 ) -> Option<Rewrite> {
     use crate::implicit_domain::ImplicitCondition;
-    use crate::rules::algebra::helpers::smart_mul;
+    use cas_math::expr_rewrite::smart_mul;
 
     // Check if num is a³ - b³ (as Sub or Add with Neg)
     let (a, b, is_difference) = if let Some((left, right)) = crate::helpers::as_sub(ctx, num) {

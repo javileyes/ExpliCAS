@@ -3,8 +3,8 @@
 use crate::define_rule;
 use crate::helpers::extract_double_angle_arg;
 use crate::rule::Rewrite;
-use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{BuiltinFn, Expr, ExprId};
+use cas_math::expr_rewrite::smart_mul;
 
 // Import helpers from sibling modules (via re-exports in parent)
 use super::{build_avg, build_half_diff, is_multiple_angle, normalize_for_even_fn};

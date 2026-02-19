@@ -19,8 +19,8 @@ pub use properties::{
 use crate::define_rule;
 use crate::ordering::compare_expr;
 use crate::rule::Rewrite;
-use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_rewrite::smart_mul;
 use num_traits::{One, Zero};
 use std::cmp::Ordering;
 
@@ -633,9 +633,7 @@ define_rule!(
                                     let dx = if d == one {
                                         var_expr
                                     } else {
-                                        crate::rules::algebra::helpers::smart_mul(
-                                            ctx, d_expr, var_expr,
-                                        )
+                                        cas_math::expr_rewrite::smart_mul(ctx, d_expr, var_expr)
                                     };
 
                                     let linear = if e.is_zero() {
@@ -721,9 +719,8 @@ define_rule!(
                                 let root_num = ctx.add(Expr::Number(
                                     num_rational::BigRational::from_integer(coeff_root),
                                 ));
-                                let factor = crate::rules::algebra::helpers::smart_mul(
-                                    ctx, root_num, pow_root,
-                                );
+                                let factor =
+                                    cas_math::expr_rewrite::smart_mul(ctx, root_num, pow_root);
                                 return build_result(
                                     ctx,
                                     factor,

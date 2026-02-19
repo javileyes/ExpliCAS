@@ -1,8 +1,8 @@
 use crate::define_rule;
 use crate::helpers::{flatten_add_sub_chain, flatten_mul_chain, is_one, is_zero};
 use crate::rule::Rewrite;
-use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_rewrite::smart_mul;
 use std::collections::HashMap;
 
 define_rule!(CollectRule, "Collect Terms", |ctx, expr| {

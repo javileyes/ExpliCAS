@@ -2,9 +2,9 @@
 
 use crate::define_rule;
 use crate::rule::Rewrite;
-use crate::rules::algebra::helpers::smart_mul;
 use crate::rules::trigonometry::{evaluation, pythagorean, pythagorean_secondary};
 use cas_ast::{BuiltinFn, Expr, ExprId};
+use cas_math::expr_rewrite::smart_mul;
 use num_traits::One;
 use std::cmp::Ordering;
 

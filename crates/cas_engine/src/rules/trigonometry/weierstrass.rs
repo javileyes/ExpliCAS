@@ -11,9 +11,9 @@
 //! - tan(x) → 2t/(1-t²)
 
 use crate::define_rule;
-use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_formatter::DisplayExpr;
+use cas_math::expr_rewrite::smart_mul;
 use num_traits::One;
 
 /// Build the Weierstrass expression for sin(x): 2t/(1+t²)

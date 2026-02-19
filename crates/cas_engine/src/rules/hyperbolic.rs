@@ -971,14 +971,12 @@ define_rule!(
                                 ctx.call_builtin(cas_ast::BuiltinFn::Sinh, vec![inner_var]);
 
                             // 3·sinh(x)
-                            let term1 =
-                                crate::rules::algebra::helpers::smart_mul(ctx, three, sinh_x);
+                            let term1 = cas_math::expr_rewrite::smart_mul(ctx, three, sinh_x);
 
                             // sinh³(x) = sinh(x)^3
                             let sinh_cubed = ctx.add(Expr::Pow(sinh_x, exp_three));
                             // 4·sinh³(x)
-                            let term2 =
-                                crate::rules::algebra::helpers::smart_mul(ctx, four, sinh_cubed);
+                            let term2 = cas_math::expr_rewrite::smart_mul(ctx, four, sinh_cubed);
 
                             // 3·sinh(x) + 4·sinh³(x)
                             let new_expr = ctx.add(Expr::Add(term1, term2));
@@ -997,12 +995,10 @@ define_rule!(
                             // cosh³(x) = cosh(x)^3
                             let cosh_cubed = ctx.add(Expr::Pow(cosh_x, exp_three));
                             // 4·cosh³(x)
-                            let term1 =
-                                crate::rules::algebra::helpers::smart_mul(ctx, four, cosh_cubed);
+                            let term1 = cas_math::expr_rewrite::smart_mul(ctx, four, cosh_cubed);
 
                             // 3·cosh(x)
-                            let term2 =
-                                crate::rules::algebra::helpers::smart_mul(ctx, three, cosh_x);
+                            let term2 = cas_math::expr_rewrite::smart_mul(ctx, three, cosh_x);
 
                             // 4·cosh³(x) - 3·cosh(x)
                             let new_expr = ctx.add(Expr::Sub(term1, term2));

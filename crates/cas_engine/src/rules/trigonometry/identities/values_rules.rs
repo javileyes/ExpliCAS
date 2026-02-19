@@ -3,9 +3,9 @@
 use crate::define_rule;
 use crate::helpers::{as_add, as_div, as_mul, as_sub};
 use crate::rule::Rewrite;
-use crate::rules::algebra::helpers::smart_mul;
 use crate::rules::trigonometry::values::detect_special_angle;
 use cas_ast::{BuiltinFn, Expr, ExprId};
+use cas_math::expr_rewrite::smart_mul;
 
 // =============================================================================
 // TRIPLE TANGENT PRODUCT IDENTITY

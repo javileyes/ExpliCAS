@@ -11,8 +11,8 @@
 
 use crate::define_rule;
 use crate::rule::Rewrite;
-use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_rewrite::smart_mul;
 
 define_rule!(
     TrigPythagoreanSimplifyRule,
@@ -1256,7 +1256,7 @@ fn try_high_power_pythagorean(
                 let two = ctx.num(2);
                 let other_sq = ctx.add(Expr::Pow(other_fn, two));
 
-                let result = crate::rules::algebra::helpers::smart_mul(ctx, small_term, other_sq);
+                let result = cas_math::expr_rewrite::smart_mul(ctx, small_term, other_sq);
 
                 let func_name = builtin.unwrap().name();
                 let other_name = other_builtin.name();

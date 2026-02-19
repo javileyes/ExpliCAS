@@ -1,7 +1,7 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
-use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{BuiltinFn, Context, Expr};
+use cas_math::expr_rewrite::smart_mul;
 use num_traits::{Signed, Zero};
 
 define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {

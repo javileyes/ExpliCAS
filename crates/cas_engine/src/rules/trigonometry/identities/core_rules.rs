@@ -3,8 +3,8 @@
 use crate::define_rule;
 use crate::helpers::{as_add, as_div, as_mul, as_neg, as_sub, is_pi, is_pi_over_n};
 use crate::rule::Rewrite;
-use crate::rules::algebra::helpers::smart_mul;
 use cas_ast::{Expr, ExprId};
+use cas_math::expr_rewrite::smart_mul;
 use num_traits::{One, Zero};
 
 // Import helpers from sibling modules (via re-exports in parent)

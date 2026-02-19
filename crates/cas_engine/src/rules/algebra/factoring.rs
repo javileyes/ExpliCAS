@@ -474,9 +474,9 @@ define_rule!(
         // Sum of bases is zero! Apply the identity: x³ + y³ + z³ = 3xyz
         let three = ctx.num(3);
         // Build 3 * x * y * z
-        let xy = crate::rules::algebra::helpers::smart_mul(ctx, bases[0], bases[1]);
-        let xyz = crate::rules::algebra::helpers::smart_mul(ctx, xy, bases[2]);
-        let inner_result = crate::rules::algebra::helpers::smart_mul(ctx, three, xyz);
+        let xy = cas_math::expr_rewrite::smart_mul(ctx, bases[0], bases[1]);
+        let xyz = cas_math::expr_rewrite::smart_mul(ctx, xy, bases[2]);
+        let inner_result = cas_math::expr_rewrite::smart_mul(ctx, three, xyz);
         // Wrap in __hold to prevent DistributeRule from expanding
         let result = cas_ast::hold::wrap_hold(ctx, inner_result);
 
