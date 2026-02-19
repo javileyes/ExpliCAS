@@ -59,79 +59,8 @@ pub(super) use cas_math::poly_compare::{poly_eq, poly_relation, SignRelation};
 // A1: Structural Factor Cancellation (without polynomial expansion)
 // =============================================================================
 
-/// Collect multiplicative factors with integer exponents from an expression.
-/// - Mul(...) is flattened
-/// - Pow(base, k) with integer k becomes (base, k)
-/// - Neg(x) is unwrapped and factors collected from x (for intersection purposes)
-/// - Everything else becomes (expr, 1)
-pub(super) fn collect_mul_factors_int_pow(ctx: &Context, expr: ExprId) -> Vec<(ExprId, i64)> {
-    let mut factors = Vec::new();
-    // Unwrap top-level Neg for factor collection (enables intersection with positive terms)
-    let actual_expr = match ctx.get(expr) {
-        Expr::Neg(inner) => *inner,
-        _ => expr,
-    };
-    collect_mul_factors_recursive(ctx, actual_expr, 1, &mut factors);
-    factors
-}
-
-fn collect_mul_factors_recursive(
-    ctx: &Context,
-    expr: ExprId,
-    mult: i64,
-    factors: &mut Vec<(ExprId, i64)>,
-) {
-    match ctx.get(expr) {
-        Expr::Mul(left, right) => {
-            // Binary Mul: recursively collect both sides
-            collect_mul_factors_recursive(ctx, *left, mult, factors);
-            collect_mul_factors_recursive(ctx, *right, mult, factors);
-        }
-        Expr::Pow(base, exp) => {
-            // Check if exponent is an integer
-            if let Some(k) = get_integer_exponent_a1(ctx, *exp) {
-                factors.push((*base, mult * k));
-            } else {
-                factors.push((expr, mult));
-            }
-        }
-        _ => {
-            factors.push((expr, mult));
-        }
-    }
-}
-
-/// Extract integer from exponent expression (Number or Neg(Number))
-fn get_integer_exponent_a1(ctx: &Context, exp: ExprId) -> Option<i64> {
-    match ctx.get(exp) {
-        Expr::Number(n) => {
-            if n.is_integer() {
-                n.to_integer().try_into().ok()
-            } else {
-                None
-            }
-        }
-        Expr::Neg(inner) => get_integer_exponent_a1(ctx, *inner).map(|k| -k),
-        _ => None,
-    }
-}
-
-/// Build a product from factors with integer exponents.
-///
-/// Uses canonical `MulBuilder` (right-fold with exponents).
-/// (See ARCHITECTURE.md "Canonical Utilities Registry")
-pub(super) fn build_mul_from_factors_a1(ctx: &mut Context, factors: &[(ExprId, i64)]) -> ExprId {
-    use cas_ast::views::MulBuilder;
-
-    let mut builder = MulBuilder::new_simple();
-    for &(base, exp) in factors {
-        if exp > 0 {
-            builder.push_pow(base, exp);
-        }
-        // Negative exponents shouldn't appear in numerator/denominator factors
-    }
-    builder.build(ctx)
-}
+pub(super) use cas_math::fraction_factors::build_mul_from_factors_int_pow as build_mul_from_factors_a1;
+pub(super) use cas_math::fraction_factors::collect_mul_factors_int_pow;
 
 // =============================================================================
 // Multivariate GCD (Layers 1 + 2 + 2.5)

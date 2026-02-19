@@ -1,5 +1,6 @@
 pub mod const_eval;
 pub mod expr_extract;
+pub mod fraction_factors;
 pub mod gcd_exact;
 pub mod gcd_zippel_modp;
 pub mod matrix;
