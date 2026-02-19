@@ -23,7 +23,7 @@ pub fn filter_non_productive_steps(
 
         // Filter local no-op steps: if step.before == step.after semantically, skip
         {
-            let checker = crate::semantic_equality::SemanticEqualityChecker::new(ctx);
+            let checker = cas_math::semantic_equality::SemanticEqualityChecker::new(ctx);
             if checker.are_equal(step.before, step.after) {
                 // Local no-op - don't include this step
                 continue;
@@ -53,7 +53,7 @@ pub fn filter_non_productive_steps(
         }
 
         let global_after = reconstruct_global(ctx, current_global, step.path(), step.after);
-        let checker = crate::semantic_equality::SemanticEqualityChecker::new(ctx);
+        let checker = cas_math::semantic_equality::SemanticEqualityChecker::new(ctx);
         if !checker.are_equal(current_global, global_after) {
             filtered.push(step);
             current_global = global_after;

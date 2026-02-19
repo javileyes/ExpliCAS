@@ -101,7 +101,7 @@ impl Simplifier {
     /// - `False` if numeric verification finds counterexample
     pub fn are_equivalent_extended(&mut self, a: ExprId, b: ExprId) -> EquivalenceResult {
         use crate::rule::SoundnessLabel;
-        use crate::semantic_equality::SemanticEqualityChecker;
+        use cas_math::semantic_equality::SemanticEqualityChecker;
 
         // Enable step collection to track soundness labels
         let was_collecting = self.collect_steps();

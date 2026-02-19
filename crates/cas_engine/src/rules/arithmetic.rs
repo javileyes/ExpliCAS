@@ -472,7 +472,7 @@ define_rule!(
     "Subtraction Self-Cancel",
     priority: 500, // High priority: before any expansion rules
     |ctx, expr, parent_ctx| {
-        use crate::semantic_equality::SemanticEqualityChecker;
+        use cas_math::semantic_equality::SemanticEqualityChecker;
 
         // Helper: check if expression contains any Div with non-literal denominator
         // Delegates to canonical implementation that handles Hold/Matrix

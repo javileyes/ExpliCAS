@@ -1,6 +1,6 @@
-use crate::semantic_equality::SemanticEqualityChecker;
 use crate::step::Step;
 use cas_ast::{Context, ExprId};
+use cas_math::semantic_equality::SemanticEqualityChecker;
 
 /// Result of step optimization with semantic analysis
 #[derive(Debug)]

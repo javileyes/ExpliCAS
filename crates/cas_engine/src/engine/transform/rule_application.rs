@@ -113,7 +113,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                             || rule.name() == "Sum Exponents";
 
                         if !is_didactic_rule {
-                            use crate::semantic_equality::SemanticEqualityChecker;
+                            use cas_math::semantic_equality::SemanticEqualityChecker;
                             let checker = SemanticEqualityChecker::new(self.context);
                             if checker.are_equal(expr_id, rewrite.new_expr) {
                                 debug!(
@@ -321,7 +321,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         rule.name() == "Evaluate Numeric Power" || rule.name() == "Sum Exponents";
 
                     if !is_didactic_rule {
-                        use crate::semantic_equality::SemanticEqualityChecker;
+                        use cas_math::semantic_equality::SemanticEqualityChecker;
                         let checker = SemanticEqualityChecker::new(self.context);
                         if checker.are_equal(expr_id, rewrite.new_expr) {
                             // Provably equal - only accept if it improves normal form

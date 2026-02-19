@@ -40,7 +40,6 @@ pub mod rationalize_policy;
 pub(crate) mod recursion_guard;
 pub mod rule;
 pub mod rules;
-pub(crate) mod semantic_equality;
 pub mod semantics;
 pub mod solve_safety;
 pub mod solver;
