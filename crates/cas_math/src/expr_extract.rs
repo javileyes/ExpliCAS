@@ -48,6 +48,27 @@ pub fn extract_exp_argument(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     }
 }
 
+/// Extract `(base, arg)` from logarithmic forms.
+///
+/// Recognizes:
+/// - `log(base, arg)` -> `(base, arg)`
+/// - `ln(arg)` -> `(e, arg)` where `e` is inserted in the context
+pub fn extract_log_base_argument(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    let (fn_id, args) = match ctx.get(expr) {
+        Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+        _ => return None,
+    };
+
+    if ctx.is_builtin(fn_id, BuiltinFn::Log) && args.len() == 2 {
+        return Some((args[0], args[1]));
+    }
+    if ctx.is_builtin(fn_id, BuiltinFn::Ln) && args.len() == 1 {
+        let e = ctx.add(Expr::Constant(Constant::E));
+        return Some((e, args[0]));
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,5 +103,35 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("x^2", &mut ctx).expect("parse x^2");
         assert!(extract_exp_argument(&ctx, expr).is_none());
+    }
+
+    #[test]
+    fn extracts_log_base_argument_from_log() {
+        let mut ctx = Context::new();
+        let expr = parse("log(2, x)", &mut ctx).expect("parse log");
+        let (base, arg) = extract_log_base_argument(&mut ctx, expr).expect("must extract log");
+        let two = parse("2", &mut ctx).expect("parse 2");
+        let x = parse("x", &mut ctx).expect("parse x");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, base, two),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, arg, x),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn extracts_log_base_argument_from_ln_as_e() {
+        let mut ctx = Context::new();
+        let expr = parse("ln(x)", &mut ctx).expect("parse ln");
+        let (base, arg) = extract_log_base_argument(&mut ctx, expr).expect("must extract ln");
+        let x = parse("x", &mut ctx).expect("parse x");
+        assert!(matches!(ctx.get(base), Expr::Constant(Constant::E)));
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, arg, x),
+            std::cmp::Ordering::Equal
+        );
     }
 }

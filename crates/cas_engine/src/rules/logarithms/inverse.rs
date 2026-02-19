@@ -3,6 +3,8 @@ use crate::helpers::{as_add, as_div, as_mul, as_pow};
 use crate::ordering::compare_expr;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_extract::extract_log_base_argument;
+use cas_math::expr_predicates::is_e_constant_expr;
 use cas_math::expr_rewrite::smart_mul;
 use num_traits::{One, Zero};
 use std::cmp::Ordering;
@@ -31,23 +33,7 @@ impl crate::rule::Rule for ExponentialLogRule {
             let get_log_parts = |ctx: &mut cas_ast::Context,
                                  e_id: cas_ast::ExprId|
              -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
-                let (name, args) = match ctx.get(e_id) {
-                    Expr::Function(name, args) => (*name, args.clone()),
-                    _ => return None,
-                };
-                {
-                    match ctx.builtin_of(name) {
-                        Some(BuiltinFn::Log) if args.len() == 2 => {
-                            return Some((args[0], args[1]));
-                        }
-                        Some(BuiltinFn::Ln) if args.len() == 1 => {
-                            let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
-                            return Some((e, args[0]));
-                        }
-                        _ => {}
-                    }
-                }
-                None
+                extract_log_base_argument(ctx, e_id)
             };
 
             // Case 1: b^log(b, x) → x
@@ -198,7 +184,7 @@ define_rule!(
     // e^(a + b) -> e^a * e^b IF a or b is a log
     let (base, exp) = as_pow(ctx, expr)?;
     {
-        let base_is_e = matches!(ctx.get(base), Expr::Constant(cas_ast::Constant::E));
+        let base_is_e = is_e_constant_expr(ctx, base);
         if base_is_e {
             if let Some((lhs, rhs)) = as_add(ctx, exp) {
                 let lhs_is_log = is_log(ctx, lhs);
@@ -359,19 +345,14 @@ impl crate::rule::Rule for LogExpInverseRule {
         expr: cas_ast::ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        let (fn_id, args) = match ctx.get(expr) {
-            Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+        let fn_id = match ctx.get(expr) {
+            Expr::Function(fn_id, _) => *fn_id,
             _ => return None,
         };
         {
-            use cas_ast::BuiltinFn;
             // Handle ln(x) as log(e, x), or log(b, x)
             let (base, arg) = match ctx.builtin_of(fn_id) {
-                Some(BuiltinFn::Ln) if args.len() == 1 => {
-                    let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
-                    (e, args[0])
-                }
-                Some(BuiltinFn::Log) if args.len() == 2 => (args[0], args[1]),
+                Some(BuiltinFn::Ln) | Some(BuiltinFn::Log) => extract_log_base_argument(ctx, expr)?,
                 _ => return None,
             };
 
@@ -414,8 +395,7 @@ impl crate::rule::Rule for LogExpInverseRule {
                         }
 
                         // RealOnly: Check if base is provably valid (>0 and ≠1)
-                        let is_e_base =
-                            matches!(ctx.get(base), Expr::Constant(cas_ast::Constant::E));
+                        let is_e_base = is_e_constant_expr(ctx, base);
 
                         if !is_e_base {
                             // For non-e bases, require prove_positive(base) == Proven

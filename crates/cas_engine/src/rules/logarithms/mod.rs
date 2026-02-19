@@ -20,6 +20,8 @@ use crate::define_rule;
 use crate::ordering::compare_expr;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_extract::extract_log_base_argument;
+use cas_math::expr_predicates::is_e_constant_expr;
 use cas_math::expr_rewrite::smart_mul;
 use num_traits::{One, Zero};
 use std::cmp::Ordering;
@@ -33,7 +35,7 @@ pub(super) fn make_log(ctx: &mut Context, base: ExprId, arg: ExprId) -> ExprId {
     if base == sentinel_log10 {
         return ctx.call_builtin(cas_ast::BuiltinFn::Log, vec![arg]);
     }
-    if let Expr::Constant(cas_ast::Constant::E) = ctx.get(base) {
+    if is_e_constant_expr(ctx, base) {
         ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![arg])
     } else {
         ctx.call_builtin(cas_ast::BuiltinFn::Log, vec![base, arg])
@@ -152,134 +154,122 @@ fn prime_exponent_map(n: &num_bigint::BigInt) -> HashMap<num_bigint::BigInt, u32
 use std::collections::HashMap;
 
 define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
-    if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        let (fn_id, args) = (*fn_id, args.clone());
-        use cas_ast::BuiltinFn;
-        // Handle ln(x) as log(e, x)
-        let (base, arg) = match ctx.builtin_of(fn_id) {
-            Some(BuiltinFn::Ln) if args.len() == 1 => {
-                let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
-                (e, args[0])
-            }
-            Some(BuiltinFn::Log) if args.len() == 2 => (args[0], args[1]),
-            _ => return None,
-        };
+    let (base, arg) = extract_log_base_argument(ctx, expr)?;
 
-        // 1. log(b, 1) = 0, log(b, 0) = -infinity, log(b, neg) = undefined
-        if let Expr::Number(n) = ctx.get(arg) {
-            let n = n.clone();
-            if n.is_one() {
-                let zero = ctx.num(0);
-                return Some(Rewrite::new(zero).desc("log(b, 1) = 0"));
-            }
-            if n.is_zero() {
-                let inf = ctx.add(Expr::Constant(cas_ast::Constant::Infinity));
-                let neg_inf = ctx.add(Expr::Neg(inf));
-                return Some(Rewrite::new(neg_inf).desc("log(b, 0) = -infinity"));
-            }
-            if n < num_rational::BigRational::zero() {
-                let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
-                return Some(Rewrite::new(undef).desc("log(b, neg) = undefined"));
-            }
-
-            // Check if n is a power of base (if base is a number)
-            if let Expr::Number(b) = ctx.get(base) {
-                let b = b.clone();
-                // Try to evaluate log(base, val) as a rational number
-                // This handles cases like:
-                //   log(2, 8) = 3      (8 = 2^3)
-                //   log(8, 2) = 1/3    (2 = 8^(1/3))
-                //   log(16, 8) = 3/4   (16 = 2^4, 8 = 2^3, so log_16(8) = 3/4)
-                if b.is_integer() && n.is_integer() {
-                    let b_int = b.to_integer();
-                    let n_int = n.to_integer();
-                    if let Some(ratio) = eval_log_rational(&b_int, &n_int) {
-                        let new_expr = ctx.add(Expr::Number(ratio.clone()));
-                        return Some(
-                            Rewrite::new(new_expr)
-                                .desc_lazy(|| format!("log({}, {}) = {}", b, n, ratio)),
-                        );
-                    }
-                }
-            }
+    // 1. log(b, 1) = 0, log(b, 0) = -infinity, log(b, neg) = undefined
+    if let Expr::Number(n) = ctx.get(arg) {
+        let n = n.clone();
+        if n.is_one() {
+            let zero = ctx.num(0);
+            return Some(Rewrite::new(zero).desc("log(b, 1) = 0"));
+        }
+        if n.is_zero() {
+            let inf = ctx.add(Expr::Constant(cas_ast::Constant::Infinity));
+            let neg_inf = ctx.add(Expr::Neg(inf));
+            return Some(Rewrite::new(neg_inf).desc("log(b, 0) = -infinity"));
+        }
+        if n < num_rational::BigRational::zero() {
+            let undef = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
+            return Some(Rewrite::new(undef).desc("log(b, neg) = undefined"));
         }
 
-        // 2. log(b, b) = 1
-        if base == arg || ctx.get(base) == ctx.get(arg) {
-            let one = ctx.num(1);
-            return Some(Rewrite::new(one).desc("log(b, b) = 1"));
-        }
-
-        // 3. log(b, b^x) = x
-        // NOTE: This inverse composition is now handled by LogExpInverseRule
-        // which respects inv_trig policy (like arctan(tan(x)) → x).
-        // Removed from here to avoid unconditional simplification.
-
-        // 4. Expansion: log(b, x^y) = y * log(b, x)
-        // Note: This overlaps with rule 3 if x == b. Rule 3 is more specific/simpler, so it should match first.
-        // This rule is good for canonicalization.
-        // GUARD: When x == b (inverse composition), only simplify if exponent is a number.
-        // For variable exponents like log(e, e^x), let LogExpInverseRule handle with policy.
-        if let Expr::Pow(p_base, p_exp) = ctx.get(arg) {
-            let (p_base, p_exp) = (*p_base, *p_exp);
-            let is_inverse_composition = p_base == base || ctx.get(p_base) == ctx.get(base);
-
-            if is_inverse_composition {
-                // log(b, b^n) where n is a number → n (always safe, like log(x, x^2) → 2)
-                if matches!(ctx.get(p_exp), Expr::Number(_)) {
-                    return Some(Rewrite::new(p_exp).desc("log(b, b^n) = n"));
-                }
-                // For variable exponents like log(e, e^x), skip and let LogExpInverseRule handle
-                // with inv_trig policy check
-            } else {
-                // Non-inverse case: log(b, x^y) = y * log(b, x)
-                //
-                // MATHEMATICAL CORRECTNESS:
-                // - For even integer exponents: ln(x^2) = ln(|x|^2) = 2·ln(|x|)
-                //   This is valid for all x ≠ 0, no sign assumption needed.
-                // - For odd/non-integer exponents: ln(x^y) = y·ln(x) requires x > 0
-                //
-                // Check if exponent is an even integer
-                let is_even_integer = match ctx.get(p_exp) {
-                    Expr::Number(n) if n.is_integer() => {
-                        let int_val = n.to_integer();
-                        let two: num_bigint::BigInt = 2.into();
-                        &int_val % &two == 0.into() && int_val != 0.into()
-                    }
-                    _ => false,
-                };
-
-                if is_even_integer {
-                    // Even exponent: ln(x^(2k)) = 2k·ln(|x|) - but this introduces abs()
-                    //
-                    // V2.14.45 ANTI-WORSEN GUARD:
-                    // In Generic/Strict: BLOCK - this would introduce abs() without resolution
-                    // Let LogEvenPowerWithChainedAbsRule handle this case in Assume mode
-                    //
-                    // NOTE: EvaluateLogRule uses define_rule! without parent_ctx, so we
-                    // delegate to LogEvenPowerWithChainedAbsRule which has proper domain checks.
-                    // Just skip this case here - the specialized rule will handle it.
-                    return None;
-                } else {
-                    // Odd or non-integer exponent: requires x > 0
-                    // Only allow in Generic/Assume modes, block in Strict
-                    let log_inner = make_log(ctx, base, p_base);
-                    let new_expr = smart_mul(ctx, p_exp, log_inner);
+        // Check if n is a power of base (if base is a number)
+        if let Expr::Number(b) = ctx.get(base) {
+            let b = b.clone();
+            // Try to evaluate log(base, val) as a rational number
+            // This handles cases like:
+            //   log(2, 8) = 3      (8 = 2^3)
+            //   log(8, 2) = 1/3    (2 = 8^(1/3))
+            //   log(16, 8) = 3/4   (16 = 2^4, 8 = 2^3, so log_16(8) = 3/4)
+            if b.is_integer() && n.is_integer() {
+                let b_int = b.to_integer();
+                let n_int = n.to_integer();
+                if let Some(ratio) = eval_log_rational(&b_int, &n_int) {
+                    let new_expr = ctx.add(Expr::Number(ratio.clone()));
                     return Some(
                         Rewrite::new(new_expr)
-                            .desc("log(b, x^y) = y * log(b, x)")
-                            .assume(crate::assumptions::AssumptionEvent::positive_assumed(
-                                ctx, p_base,
-                            )),
+                            .desc_lazy(|| format!("log({}, {}) = {}", b, n, ratio)),
                     );
                 }
             }
         }
-
-        // NOTE: Product/quotient expansions (log(xy) = log(x)+log(y), log(x/y) = log(x)-log(y))
-        // are moved to LogExpansionRule which has domain_mode + value_domain gates.
-        // These expansions require x > 0 and y > 0, and are NOT valid in complex domain with principal branch.
     }
+
+    // 2. log(b, b) = 1
+    if base == arg || ctx.get(base) == ctx.get(arg) {
+        let one = ctx.num(1);
+        return Some(Rewrite::new(one).desc("log(b, b) = 1"));
+    }
+
+    // 3. log(b, b^x) = x
+    // NOTE: This inverse composition is now handled by LogExpInverseRule
+    // which respects inv_trig policy (like arctan(tan(x)) → x).
+    // Removed from here to avoid unconditional simplification.
+
+    // 4. Expansion: log(b, x^y) = y * log(b, x)
+    // Note: This overlaps with rule 3 if x == b. Rule 3 is more specific/simpler, so it should match first.
+    // This rule is good for canonicalization.
+    // GUARD: When x == b (inverse composition), only simplify if exponent is a number.
+    // For variable exponents like log(e, e^x), let LogExpInverseRule handle with policy.
+    if let Expr::Pow(p_base, p_exp) = ctx.get(arg) {
+        let (p_base, p_exp) = (*p_base, *p_exp);
+        let is_inverse_composition = p_base == base || ctx.get(p_base) == ctx.get(base);
+
+        if is_inverse_composition {
+            // log(b, b^n) where n is a number → n (always safe, like log(x, x^2) → 2)
+            if matches!(ctx.get(p_exp), Expr::Number(_)) {
+                return Some(Rewrite::new(p_exp).desc("log(b, b^n) = n"));
+            }
+            // For variable exponents like log(e, e^x), skip and let LogExpInverseRule handle
+            // with inv_trig policy check
+        } else {
+            // Non-inverse case: log(b, x^y) = y * log(b, x)
+            //
+            // MATHEMATICAL CORRECTNESS:
+            // - For even integer exponents: ln(x^2) = ln(|x|^2) = 2·ln(|x|)
+            //   This is valid for all x ≠ 0, no sign assumption needed.
+            // - For odd/non-integer exponents: ln(x^y) = y·ln(x) requires x > 0
+            //
+            // Check if exponent is an even integer
+            let is_even_integer = match ctx.get(p_exp) {
+                Expr::Number(n) if n.is_integer() => {
+                    let int_val = n.to_integer();
+                    let two: num_bigint::BigInt = 2.into();
+                    &int_val % &two == 0.into() && int_val != 0.into()
+                }
+                _ => false,
+            };
+
+            if is_even_integer {
+                // Even exponent: ln(x^(2k)) = 2k·ln(|x|) - but this introduces abs()
+                //
+                // V2.14.45 ANTI-WORSEN GUARD:
+                // In Generic/Strict: BLOCK - this would introduce abs() without resolution
+                // Let LogEvenPowerWithChainedAbsRule handle this case in Assume mode
+                //
+                // NOTE: EvaluateLogRule uses define_rule! without parent_ctx, so we
+                // delegate to LogEvenPowerWithChainedAbsRule which has proper domain checks.
+                // Just skip this case here - the specialized rule will handle it.
+                return None;
+            } else {
+                // Odd or non-integer exponent: requires x > 0
+                // Only allow in Generic/Assume modes, block in Strict
+                let log_inner = make_log(ctx, base, p_base);
+                let new_expr = smart_mul(ctx, p_exp, log_inner);
+                return Some(
+                    Rewrite::new(new_expr)
+                        .desc("log(b, x^y) = y * log(b, x)")
+                        .assume(crate::assumptions::AssumptionEvent::positive_assumed(
+                            ctx, p_base,
+                        )),
+                );
+            }
+        }
+    }
+
+    // NOTE: Product/quotient expansions (log(xy) = log(x)+log(y), log(x/y) = log(x)-log(y))
+    // are moved to LogExpansionRule which has domain_mode + value_domain gates.
+    // These expansions require x > 0 and y > 0, and are NOT valid in complex domain with principal branch.
     None
 });
 
@@ -305,8 +295,8 @@ define_rule!(LnEProductRule, "Factor e from ln Product", |ctx, expr| {
         // Match Mul(e, x) or Mul(x, e) in the argument
         if let Expr::Mul(l, r) = ctx.get(arg) {
             let (l, r) = (*l, *r);
-            let l_is_e = matches!(ctx.get(l), Expr::Constant(cas_ast::Constant::E));
-            let r_is_e = matches!(ctx.get(r), Expr::Constant(cas_ast::Constant::E));
+            let l_is_e = is_e_constant_expr(ctx, l);
+            let r_is_e = is_e_constant_expr(ctx, r);
 
             // ln(e*x) → 1 + ln(x) or ln(x*e) → 1 + ln(x)
             let other = if l_is_e {
@@ -346,8 +336,8 @@ define_rule!(LnEDivRule, "Factor e from ln Quotient", |ctx, expr| {
         // Match Div(x, e) or Div(e, x) in the argument
         if let Expr::Div(num, den) = ctx.get(arg) {
             let (num, den) = (*num, *den);
-            let num_is_e = matches!(ctx.get(num), Expr::Constant(cas_ast::Constant::E));
-            let den_is_e = matches!(ctx.get(den), Expr::Constant(cas_ast::Constant::E));
+            let num_is_e = is_e_constant_expr(ctx, num);
+            let den_is_e = is_e_constant_expr(ctx, den);
 
             if den_is_e && !num_is_e {
                 // ln(x/e) → ln(x) - 1
@@ -374,10 +364,10 @@ pub(super) fn exprs_match(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
 
     // ln sentinel matches Constant::E
     if e1 == sentinel {
-        return matches!(ctx.get(e2), Expr::Constant(cas_ast::Constant::E));
+        return is_e_constant_expr(ctx, e2);
     }
     if e2 == sentinel {
-        return matches!(ctx.get(e1), Expr::Constant(cas_ast::Constant::E));
+        return is_e_constant_expr(ctx, e1);
     }
 
     // Direct ID match
@@ -519,13 +509,13 @@ pub(super) fn bases_equal(
 
     // One is ln, other is explicit log(e, ...)
     if base_l == sentinel {
-        if let Expr::Constant(cas_ast::Constant::E) = ctx.get(base_r) {
+        if is_e_constant_expr(ctx, base_r) {
             return true;
         }
         return false;
     }
     if base_r == sentinel {
-        if let Expr::Constant(cas_ast::Constant::E) = ctx.get(base_l) {
+        if is_e_constant_expr(ctx, base_l) {
             return true;
         }
         return false;
@@ -538,9 +528,7 @@ pub(super) fn bases_equal(
     }
 
     // Check if both are e constant
-    if let (Expr::Constant(cas_ast::Constant::E), Expr::Constant(cas_ast::Constant::E)) =
-        (ctx.get(base_l), ctx.get(base_r))
-    {
+    if is_e_constant_expr(ctx, base_l) && is_e_constant_expr(ctx, base_r) {
         return true;
     }
 
@@ -569,17 +557,13 @@ define_rule!(
         use cas_ast::BuiltinFn;
 
         // Match ln(arg) or log(base, arg)
-        let (fn_id, args) = match ctx.get(expr) {
-            Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+        let fn_id = match ctx.get(expr) {
+            Expr::Function(fn_id, _) => *fn_id,
             _ => return None,
         };
 
         let (log_base, arg) = match ctx.builtin_of(fn_id) {
-            Some(BuiltinFn::Ln) if args.len() == 1 => {
-                let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
-                (e, args[0])
-            }
-            Some(BuiltinFn::Log) if args.len() == 2 => (args[0], args[1]),
+            Some(BuiltinFn::Ln) | Some(BuiltinFn::Log) => extract_log_base_argument(ctx, expr)?,
             _ => return None,
         };
 

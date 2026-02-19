@@ -1,6 +1,6 @@
 //! Structural expression predicates used across algebra rules.
 
-use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{One, Signed};
 
@@ -84,6 +84,11 @@ pub fn is_minus_one_expr(ctx: &Context, id: ExprId) -> bool {
         Expr::Neg(inner) => is_one_expr(ctx, *inner),
         _ => false,
     }
+}
+
+/// Check if expression is Euler's constant `e`.
+pub fn is_e_constant_expr(ctx: &Context, id: ExprId) -> bool {
+    matches!(ctx.get(id), Expr::Constant(Constant::E))
 }
 
 /// Check if expression contains any explicit division node.
@@ -188,10 +193,12 @@ mod tests {
         let two = parse("2", &mut ctx).expect("parse two");
         let half = ctx.rational(1, 2);
         let minus_one = parse("-1", &mut ctx).expect("parse minus one");
+        let e = parse("e", &mut ctx).expect("parse e");
         assert!(is_one_expr(&ctx, one));
         assert!(is_two_expr(&ctx, two));
         assert!(is_half_expr(&ctx, half));
         assert!(is_minus_one_expr(&ctx, minus_one));
+        assert!(is_e_constant_expr(&ctx, e));
         assert!(!is_minus_one_expr(&ctx, one));
     }
 

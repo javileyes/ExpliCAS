@@ -5,6 +5,7 @@ use crate::ordering::compare_expr;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_predicates::is_e_constant_expr;
 
 use num_integer::Integer;
 use num_rational::BigRational;
@@ -172,8 +173,8 @@ define_rule!(ExpQuotientRule, "Exp Quotient", |ctx, expr| {
         let den_pow = as_pow(ctx, den);
 
         if let (Some((num_base, num_exp)), Some((den_base, den_exp))) = (num_pow, den_pow) {
-            let num_base_is_e = matches!(ctx.get(num_base), Expr::Constant(cas_ast::Constant::E));
-            let den_base_is_e = matches!(ctx.get(den_base), Expr::Constant(cas_ast::Constant::E));
+            let num_base_is_e = is_e_constant_expr(ctx, num_base);
+            let den_base_is_e = is_e_constant_expr(ctx, den_base);
 
             if num_base_is_e && den_base_is_e {
                 let diff = ctx.add(Expr::Sub(num_exp, den_exp));
@@ -184,9 +185,9 @@ define_rule!(ExpQuotientRule, "Exp Quotient", |ctx, expr| {
         }
 
         // e / e^b → e^(1-b)
-        if matches!(ctx.get(num), Expr::Constant(cas_ast::Constant::E)) {
+        if is_e_constant_expr(ctx, num) {
             if let Some((den_base, den_exp)) = den_pow {
-                if matches!(ctx.get(den_base), Expr::Constant(cas_ast::Constant::E)) {
+                if is_e_constant_expr(ctx, den_base) {
                     let one = ctx.num(1);
                     let diff = ctx.add(Expr::Sub(one, den_exp));
                     let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
@@ -197,9 +198,9 @@ define_rule!(ExpQuotientRule, "Exp Quotient", |ctx, expr| {
         }
 
         // e^a / e → e^(a-1)
-        if matches!(ctx.get(den), Expr::Constant(cas_ast::Constant::E)) {
+        if is_e_constant_expr(ctx, den) {
             if let Some((num_base, num_exp)) = num_pow {
-                if matches!(ctx.get(num_base), Expr::Constant(cas_ast::Constant::E)) {
+                if is_e_constant_expr(ctx, num_base) {
                     let one = ctx.num(1);
                     let diff = ctx.add(Expr::Sub(num_exp, one));
                     let e = ctx.add(Expr::Constant(cas_ast::Constant::E));
