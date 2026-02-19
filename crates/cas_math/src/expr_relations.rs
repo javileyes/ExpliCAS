@@ -562,6 +562,49 @@ pub fn count_additive_terms(ctx: &Context, expr: ExprId) -> usize {
     }
 }
 
+/// Check if an expression is structurally zero after additive cancellation.
+///
+/// This handles cyclic additive telescoping shapes like:
+/// `(a-b) + (b-c) + (c-a)`.
+pub fn is_structurally_zero(ctx: &Context, expr: ExprId) -> bool {
+    use num_traits::Zero;
+
+    if let Expr::Number(n) = ctx.get(expr) {
+        return n.is_zero();
+    }
+
+    fn add_atom(ctx: &Context, atoms: &mut Vec<(ExprId, i32)>, atom: ExprId, sign: i32) {
+        for (existing, coeff) in atoms.iter_mut() {
+            if compare_expr(ctx, *existing, atom) == Ordering::Equal {
+                *coeff += sign;
+                return;
+            }
+        }
+        atoms.push((atom, sign));
+    }
+
+    fn collect_atoms(ctx: &Context, expr: ExprId, sign: i32, atoms: &mut Vec<(ExprId, i32)>) {
+        match ctx.get(expr) {
+            Expr::Add(l, r) => {
+                collect_atoms(ctx, *l, sign, atoms);
+                collect_atoms(ctx, *r, sign, atoms);
+            }
+            Expr::Sub(l, r) => {
+                collect_atoms(ctx, *l, sign, atoms);
+                collect_atoms(ctx, *r, -sign, atoms);
+            }
+            Expr::Neg(inner) => {
+                collect_atoms(ctx, *inner, -sign, atoms);
+            }
+            _ => add_atom(ctx, atoms, expr, sign),
+        }
+    }
+
+    let mut atoms = Vec::new();
+    collect_atoms(ctx, expr, 1, &mut atoms);
+    atoms.into_iter().all(|(_, coeff)| coeff == 0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -639,5 +682,19 @@ mod tests {
         let left = parse("a^2 + 2*b^2 + 2*a*b", &mut ctx).expect("left");
         let right = parse("a^2 + 2*b^2 - 2*a*b", &mut ctx).expect("right");
         assert!(conjugate_nary_add_sub_pair(&mut ctx, left, right).is_some());
+    }
+
+    #[test]
+    fn structural_zero_detects_telescoping_sum() {
+        let mut ctx = Context::new();
+        let expr = parse("(a-b)+(b-c)+(c-a)", &mut ctx).expect("expr");
+        assert!(is_structurally_zero(&ctx, expr));
+    }
+
+    #[test]
+    fn structural_zero_rejects_nonzero_sum() {
+        let mut ctx = Context::new();
+        let expr = parse("(a-b)+(b-c)", &mut ctx).expect("expr");
+        assert!(!is_structurally_zero(&ctx, expr));
     }
 }
