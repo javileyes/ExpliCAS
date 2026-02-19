@@ -1,6 +1,14 @@
 //! Fraction-shape helpers over AST expressions.
 
 use cas_ast::{Context, Expr, ExprId};
+use num_traits::One;
+
+/// Recognizes ±1 in various AST forms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignOne {
+    PlusOne,
+    MinusOne,
+}
 
 fn as_div(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
     match ctx.get(expr) {
@@ -51,6 +59,50 @@ fn try_extract_factor(ctx: &Context, expr: ExprId, factor: ExprId) -> Option<Exp
     }
 
     None
+}
+
+/// Check if expression is `+1` or `-1` (including `Neg(1)` shape).
+pub fn sign_one(ctx: &Context, id: ExprId) -> Option<SignOne> {
+    use num_rational::BigRational;
+    match ctx.get(id) {
+        Expr::Number(n) => {
+            if n == &BigRational::from_integer((-1).into()) {
+                Some(SignOne::MinusOne)
+            } else if n.is_one() {
+                Some(SignOne::PlusOne)
+            } else {
+                None
+            }
+        }
+        Expr::Neg(inner) => match ctx.get(*inner) {
+            Expr::Number(n) if n.is_one() => Some(SignOne::MinusOne),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Normalize binomial denominator into `(left, right_norm, is_add, right_is_abs_one)`.
+///
+/// Examples:
+/// - `a + 1` => `(a, 1, true,  true)`
+/// - `a - 1` => `(a, 1, false, true)`
+/// - `a + (-1)` => `(a, 1, false, true)` (normalized to subtraction)
+pub fn split_binomial_den(ctx: &mut Context, den: ExprId) -> Option<(ExprId, ExprId, bool, bool)> {
+    let one = ctx.num(1);
+    match ctx.get(den) {
+        Expr::Add(l, r) => match sign_one(ctx, *r) {
+            Some(SignOne::PlusOne) => Some((*l, one, true, true)),
+            Some(SignOne::MinusOne) => Some((*l, one, false, true)),
+            None => Some((*l, *r, true, false)),
+        },
+        Expr::Sub(l, r) => match sign_one(ctx, *r) {
+            Some(SignOne::PlusOne) => Some((*l, one, false, true)),
+            Some(SignOne::MinusOne) => Some((*l, one, true, true)),
+            None => Some((*l, *r, false, false)),
+        },
+        _ => None,
+    }
 }
 
 /// Extract `(numerator, denominator, is_fraction)` from an expression.
@@ -203,5 +255,31 @@ mod tests {
         assert!(poly_eq(&ctx, nn1, exp_n1));
         assert!(poly_eq(&ctx, nn2, n2));
         assert!(poly_eq(&ctx, cd, d2));
+    }
+
+    #[test]
+    fn sign_one_detects_plus_and_minus_one() {
+        let mut ctx = Context::new();
+        let plus = parse("1", &mut ctx).expect("parse +1");
+        let minus = parse("-1", &mut ctx).expect("parse -1");
+        assert_eq!(sign_one(&ctx, plus), Some(SignOne::PlusOne));
+        assert_eq!(sign_one(&ctx, minus), Some(SignOne::MinusOne));
+    }
+
+    #[test]
+    fn split_binomial_den_normalizes_signs() {
+        let mut ctx = Context::new();
+        let den_add = parse("sqrt(x)+(-1)", &mut ctx).expect("parse add");
+        let den_sub = parse("sqrt(x)-(-1)", &mut ctx).expect("parse sub");
+
+        let (_, r1, add1, abs_one1) = split_binomial_den(&mut ctx, den_add).expect("split add");
+        let (_, r2, add2, abs_one2) = split_binomial_den(&mut ctx, den_sub).expect("split sub");
+
+        assert!(matches!(ctx.get(r1), Expr::Number(n) if n.is_one()));
+        assert!(!add1);
+        assert!(abs_one1);
+        assert!(matches!(ctx.get(r2), Expr::Number(n) if n.is_one()));
+        assert!(add2);
+        assert!(abs_one2);
     }
 }

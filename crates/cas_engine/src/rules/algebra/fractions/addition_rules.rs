@@ -10,10 +10,12 @@ use crate::rule::Rewrite;
 use crate::rules::algebra::helpers::are_denominators_opposite;
 use cas_ast::{count_nodes, Context, Expr, ExprId};
 use cas_math::expr_predicates::{
-    contains_function, contains_root_term, is_constant_expr, is_trivial_denom_one,
+    contains_div_term, contains_function, contains_function_or_root, contains_root_term,
+    is_constant_expr, is_constant_fraction, is_minus_one_expr, is_one_expr,
+    is_simple_number_abs_leq, is_trivial_denom_one,
 };
 use cas_math::polynomial::Polynomial;
-use num_traits::{One, Signed, Zero};
+use num_traits::{One, Zero};
 use std::cmp::Ordering;
 
 // Import helpers from sibling core_rules module
@@ -103,43 +105,11 @@ define_rule!(
 
         // V2.15.8: Guard: Skip if term is or contains a Div (let AddFractionsRule handle both fractions)
         // This fixes: 1/(x-1) - 1/(x+1) should use AddFractionsRule, not treat -1/(x+1) as scalar k
-        fn is_or_contains_div(ctx: &Context, id: ExprId) -> bool {
-            match ctx.get(id) {
-                Expr::Div(_, _) => true,
-                Expr::Neg(inner) => is_or_contains_div(ctx, *inner),
-                Expr::Mul(l, r) => is_or_contains_div(ctx, *l) || is_or_contains_div(ctx, *r),
-                _ => false,
-            }
-        }
-        if is_or_contains_div(ctx, term) {
+        if contains_div_term(ctx, term) {
             return None;
         }
 
         // Guard: Skip if term contains functions or roots (preserve arctan(x) + 1/y)
-        fn contains_function_or_root(ctx: &Context, id: ExprId) -> bool {
-            match ctx.get(id) {
-                Expr::Function(_, _) => true,
-                Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
-                    contains_function_or_root(ctx, *l) || contains_function_or_root(ctx, *r)
-                }
-                Expr::Neg(e) => contains_function_or_root(ctx, *e),
-                // Detect fractional exponents (roots): x^(1/2), x^(1/3), etc.
-                Expr::Pow(base, exp) => {
-                    // Check if exponent is a fraction with numerator smaller than denominator
-                    let is_fractional = match ctx.get(*exp) {
-                        Expr::Number(n) => {
-                            !n.is_integer()
-                                && n.abs() < num_rational::BigRational::from_integer(1.into())
-                        }
-                        Expr::Div(_, _) => true, // Any explicit division in exponent is a root
-                        _ => false,
-                    };
-                    is_fractional || contains_function_or_root(ctx, *base)
-                }
-                Expr::Hold(inner) => contains_function_or_root(ctx, *inner),
-                _ => false,
-            }
-        }
         if contains_function_or_root(ctx, term) {
             return None;
         }
@@ -285,11 +255,6 @@ define_rule!(
         // Case to block: arctan(1/3) - pi/2  (function expr + constant fraction)
         // Cases to allow: 1 + 1/2, 1/2 + 1/3, x/2 + x/3, etc.
 
-        // Check if fraction n/d is purely constant (both n and d are constants)
-        fn is_constant_fraction(ctx: &Context, n: ExprId, d: ExprId) -> bool {
-            is_constant_expr(ctx, n) && is_constant_expr(ctx, d)
-        }
-
         // Block case: function expr + constant fraction (like arctan(1/3) + pi/2)
         let l_has_func = contains_function(ctx, l);
         let r_has_func = contains_function(ctx, r);
@@ -371,28 +336,19 @@ define_rule!(
         // (same_sign = both positive or both negative; opposite = one +, one -)
         let same_sign = fp_l.sign == fp_r.sign;
 
-        // V2.15.8: Optimized numerator construction - avoid multiplying by 1 or -1
-        fn is_one_val(ctx: &Context, id: ExprId) -> bool {
-            matches!(ctx.get(id), Expr::Number(n) if n.is_one())
-        }
-        fn is_minus_one_val(ctx: &Context, id: ExprId) -> bool {
-            use num_rational::BigRational;
-            matches!(ctx.get(id), Expr::Number(n) if *n == BigRational::from_integer((-1).into()))
-        }
-
         // a/b + c/d = (ad + bc) / bd
         // Optimize: if n1=1, ad=d2; if n1=-1, ad=-d2; else ad=n1*d2
-        let ad = if is_one_val(ctx, n1) {
+        let ad = if is_one_expr(ctx, n1) {
             d2
-        } else if is_minus_one_val(ctx, n1) {
+        } else if is_minus_one_expr(ctx, n1) {
             ctx.add(Expr::Neg(d2))
         } else {
             mul2_raw(ctx, n1, d2)
         };
 
-        let bc = if is_one_val(ctx, n2) {
+        let bc = if is_one_expr(ctx, n2) {
             d1
-        } else if is_minus_one_val(ctx, n2) {
+        } else if is_minus_one_expr(ctx, n2) {
             ctx.add(Expr::Neg(d1))
         } else {
             mul2_raw(ctx, n2, d1)
@@ -550,14 +506,8 @@ define_rule!(
         // The result simplifies well because the numerator cancellation is straightforward
         let growth_ok = new_complexity <= old_complexity * 3 / 2 + 2;
 
-        fn is_simple_num(ctx: &Context, id: ExprId) -> bool {
-            match ctx.get(id) {
-                Expr::Number(n) => n.abs() <= num_rational::BigRational::from_integer(2.into()),
-                Expr::Neg(inner) => is_simple_num(ctx, *inner),
-                _ => false,
-            }
-        }
-        let both_simple_numerators = is_simple_num(ctx, n1) && is_simple_num(ctx, n2);
+        let both_simple_numerators =
+            is_simple_number_abs_leq(ctx, n1, 2) && is_simple_number_abs_leq(ctx, n2, 2);
         let allow_growth =
             growth_ok && !opposite_denom && !same_denom && (same_sign || both_simple_numerators);
 
@@ -697,20 +647,16 @@ define_rule!(
         let same_denom = same_denom || divisible_denom;
 
         // Build: (n1·d2 - n2·d1) / (d1·d2), or (n1 - n2) / common_den for same denom
-        fn is_one_val(ctx: &Context, id: ExprId) -> bool {
-            matches!(ctx.get(id), Expr::Number(n) if n.is_one())
-        }
-
         let new_num = if same_denom {
             ctx.add(Expr::Sub(n1, n2))
         } else {
             // n1·d2 - n2·d1
-            let ad = if is_one_val(ctx, n1) {
+            let ad = if is_one_expr(ctx, n1) {
                 d2
             } else {
                 mul2_raw(ctx, n1, d2)
             };
-            let bc = if is_one_val(ctx, n2) {
+            let bc = if is_one_expr(ctx, n2) {
                 d1
             } else {
                 mul2_raw(ctx, n2, d1)

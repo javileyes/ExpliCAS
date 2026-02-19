@@ -2,7 +2,7 @@
 
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_rational::BigRational;
-use num_traits::Signed;
+use num_traits::{One, Signed};
 
 /// Check if expression contains any function call.
 ///
@@ -45,19 +45,69 @@ pub fn contains_root_term(ctx: &Context, id: ExprId) -> bool {
             contains_root_term(ctx, *l) || contains_root_term(ctx, *r)
         }
         Expr::Neg(e) | Expr::Hold(e) => contains_root_term(ctx, *e),
-        Expr::Pow(_, exp) => match ctx.get(*exp) {
-            Expr::Number(n) => !n.is_integer() && n.abs() < BigRational::from_integer(1.into()),
-            Expr::Div(_, _) => true,
-            _ => false,
-        },
+        Expr::Pow(base, exp) => {
+            let fractional_exp = match ctx.get(*exp) {
+                Expr::Number(n) => !n.is_integer() && n.abs() < BigRational::from_integer(1.into()),
+                Expr::Div(_, _) => true,
+                _ => false,
+            };
+            fractional_exp || contains_root_term(ctx, *base)
+        }
         _ => false,
     }
 }
 
 /// Check if denominator is trivially equal to 1.
 pub fn is_trivial_denom_one(ctx: &Context, d: ExprId) -> bool {
-    use num_traits::One;
     matches!(ctx.get(d), Expr::Number(n) if n.is_one())
+}
+
+/// Check if expression is numerically equal to `+1`.
+pub fn is_one_expr(ctx: &Context, id: ExprId) -> bool {
+    matches!(ctx.get(id), Expr::Number(n) if n.is_one())
+}
+
+/// Check if expression is numerically equal to `-1`.
+pub fn is_minus_one_expr(ctx: &Context, id: ExprId) -> bool {
+    match ctx.get(id) {
+        Expr::Number(n) => n == &BigRational::from_integer((-1).into()),
+        Expr::Neg(inner) => is_one_expr(ctx, *inner),
+        _ => false,
+    }
+}
+
+/// Check if expression contains any explicit division node.
+pub fn contains_div_term(ctx: &Context, id: ExprId) -> bool {
+    match ctx.get(id) {
+        Expr::Div(_, _) => true,
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
+            contains_div_term(ctx, *l) || contains_div_term(ctx, *r)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => contains_div_term(ctx, *inner),
+        _ => false,
+    }
+}
+
+/// Check if expression contains a function call or any root form.
+pub fn contains_function_or_root(ctx: &Context, id: ExprId) -> bool {
+    contains_function(ctx, id) || contains_root_term(ctx, id)
+}
+
+/// Check if numerator/denominator pair is a constant fraction.
+pub fn is_constant_fraction(ctx: &Context, n: ExprId, d: ExprId) -> bool {
+    is_constant_expr(ctx, n) && is_constant_expr(ctx, d)
+}
+
+/// Check if expression is a small numeric literal in `[-max_abs, max_abs]`.
+pub fn is_simple_number_abs_leq(ctx: &Context, id: ExprId, max_abs: i64) -> bool {
+    if max_abs < 0 {
+        return false;
+    }
+    match ctx.get(id) {
+        Expr::Number(n) => n.abs() <= BigRational::from_integer(max_abs.into()),
+        Expr::Neg(inner) => is_simple_number_abs_leq(ctx, *inner, max_abs),
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -85,8 +135,44 @@ mod tests {
     fn root_detection() {
         let mut ctx = Context::new();
         let sqrt_expr = parse("sqrt(x)", &mut ctx).expect("parse sqrt");
+        let root_in_base = parse("(sqrt(x))^2", &mut ctx).expect("parse root in pow base");
         let plain = parse("x^2", &mut ctx).expect("parse plain");
         assert!(contains_root_term(&ctx, sqrt_expr));
+        assert!(contains_root_term(&ctx, root_in_base));
         assert!(!contains_root_term(&ctx, plain));
+    }
+
+    #[test]
+    fn one_minus_one_detection() {
+        let mut ctx = Context::new();
+        let one = parse("1", &mut ctx).expect("parse one");
+        let minus_one = parse("-1", &mut ctx).expect("parse minus one");
+        assert!(is_one_expr(&ctx, one));
+        assert!(is_minus_one_expr(&ctx, minus_one));
+        assert!(!is_minus_one_expr(&ctx, one));
+    }
+
+    #[test]
+    fn div_and_function_root_detection() {
+        let mut ctx = Context::new();
+        let with_div = parse("x*(1/y)", &mut ctx).expect("parse div");
+        let with_root = parse("a + sqrt(b)", &mut ctx).expect("parse root");
+        let plain = parse("x*y", &mut ctx).expect("parse plain");
+        assert!(contains_div_term(&ctx, with_div));
+        assert!(contains_function_or_root(&ctx, with_root));
+        assert!(!contains_div_term(&ctx, plain));
+    }
+
+    #[test]
+    fn constant_fraction_and_small_number_detection() {
+        let mut ctx = Context::new();
+        let n = parse("2*pi", &mut ctx).expect("parse n");
+        let d = parse("3", &mut ctx).expect("parse d");
+        let sym = parse("x", &mut ctx).expect("parse x");
+        let minus_two = parse("-2", &mut ctx).expect("parse -2");
+        assert!(is_constant_fraction(&ctx, n, d));
+        assert!(!is_constant_fraction(&ctx, sym, d));
+        assert!(is_simple_number_abs_leq(&ctx, minus_two, 2));
+        assert!(!is_simple_number_abs_leq(&ctx, minus_two, 1));
     }
 }

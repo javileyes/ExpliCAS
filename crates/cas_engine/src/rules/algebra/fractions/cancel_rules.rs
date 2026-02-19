@@ -7,62 +7,11 @@ use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_math::expr_terms::{
     build_sum, collect_additive_terms_flat_add as collect_additive_terms, contains_irrational,
 };
-use num_traits::One;
-
-/// Recognizes ±1 in various AST forms
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SignOne {
-    PlusOne,
-    MinusOne,
-}
-
-/// Check if expr is +1 or -1 (in any AST form)
-fn sign_one(ctx: &Context, id: ExprId) -> Option<SignOne> {
-    use num_rational::BigRational;
-    match ctx.get(id) {
-        Expr::Number(n) => {
-            if n == &BigRational::from_integer((-1).into()) {
-                Some(SignOne::MinusOne)
-            } else if n.is_one() {
-                Some(SignOne::PlusOne)
-            } else {
-                None
-            }
-        }
-        Expr::Neg(inner) => match ctx.get(*inner) {
-            Expr::Number(n) if n.is_one() => Some(SignOne::MinusOne),
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
-/// Normalize binomial denominator: canonicalize Add(l, Neg(1)) to conceptual Sub(l, 1)
-/// Returns (left_term, right_term_normalized, is_add_normalized, right_is_abs_one)
-fn split_binomial_den(ctx: &mut Context, den: ExprId) -> Option<(ExprId, ExprId, bool, bool)> {
-    let one = ctx.num(1);
-
-    // Use zero-clone helpers
-    if let Some((l, r)) = crate::helpers::as_add(ctx, den) {
-        return match sign_one(ctx, r) {
-            Some(SignOne::PlusOne) => Some((l, one, true, true)), // l + 1
-            Some(SignOne::MinusOne) => Some((l, one, false, true)), // l + (-1) → l - 1
-            None => Some((l, r, true, false)),                    // l + r
-        };
-    }
-    if let Some((l, r)) = crate::helpers::as_sub(ctx, den) {
-        return match sign_one(ctx, r) {
-            Some(SignOne::PlusOne) => Some((l, one, false, true)), // l - 1
-            Some(SignOne::MinusOne) => Some((l, one, true, true)), // l - (-1) → l + 1
-            None => Some((l, r, false, false)),                    // l - r
-        };
-    }
-    None
-}
+use cas_math::fraction_forms::split_binomial_den;
 
 define_rule!(
     RationalizeDenominatorRule,
