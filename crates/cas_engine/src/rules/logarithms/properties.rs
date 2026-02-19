@@ -304,11 +304,6 @@ pub fn expand_logs_with_assumptions(
     (result, events)
 }
 
-/// Simple wrapper that discards assumptions (for backwards compatibility)
-pub fn expand_logs(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> cas_ast::ExprId {
-    expand_logs_with_assumptions(ctx, expr).0
-}
-///
 /// Domain-aware:
 /// - Strict: only if prove_positive(expr) == Proven
 /// - Generic: allow (like x/x → 1 in Generic)
