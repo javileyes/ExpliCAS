@@ -6,13 +6,12 @@ use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::expr_predicates::is_e_constant_expr;
+use cas_math::root_forms::can_distribute_root_safely;
 
 use num_integer::Integer;
 use num_rational::BigRational;
 use num_traits::{One, Zero};
 use std::cmp::Ordering;
-
-use super::can_distribute_root_safely;
 
 define_rule!(
     IdentityPowerRule,

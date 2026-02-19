@@ -17,9 +17,6 @@ pub use simplification::{
 
 use crate::build::mul2_raw;
 use cas_ast::{Context, Expr, ExprId};
-use num_bigint::BigInt;
-use num_integer::Integer;
-use num_traits::{One, Signed, Zero};
 
 /// Helper: Add two exponents, folding if both are constants
 /// This prevents ugly exponents like x^(1+2) and produces x^3 instead
@@ -51,127 +48,6 @@ pub(super) fn has_numeric_factor(ctx: &Context, expr: ExprId) -> bool {
             matches!(ctx.get(*l), Expr::Number(_)) || matches!(ctx.get(*r), Expr::Number(_))
         }
         _ => false,
-    }
-}
-
-pub(super) fn extract_root_factor(n: &BigInt, k: u32) -> (BigInt, BigInt) {
-    if n.is_zero() {
-        return (BigInt::zero(), BigInt::one());
-    }
-    if n.is_one() {
-        return (BigInt::one(), BigInt::one());
-    }
-
-    let sign = if n.is_negative() { -1 } else { 1 };
-    let mut n_abs = n.abs();
-
-    let mut outside = BigInt::one();
-    let mut inside = BigInt::one();
-
-    // Trial division - check 2
-    let mut count = 0;
-    while n_abs.is_even() {
-        count += 1;
-        n_abs /= 2;
-    }
-    if count > 0 {
-        let out_exp = count / k;
-        let in_exp = count % k;
-        if out_exp > 0 {
-            outside *= BigInt::from(2).pow(out_exp);
-        }
-        if in_exp > 0 {
-            inside *= BigInt::from(2).pow(in_exp);
-        }
-    }
-
-    let mut d = BigInt::from(3);
-    while &d * &d <= n_abs {
-        if (&n_abs % &d).is_zero() {
-            let mut count = 0;
-            while (&n_abs % &d).is_zero() {
-                count += 1;
-                n_abs /= &d;
-            }
-            let out_exp = count / k;
-            let in_exp = count % k;
-            if out_exp > 0 {
-                outside *= d.pow(out_exp);
-            }
-            if in_exp > 0 {
-                inside *= d.pow(in_exp);
-            }
-        }
-        d += 2;
-    }
-
-    if n_abs > BigInt::one() {
-        inside *= n_abs;
-    }
-
-    // Handle sign
-    if sign == -1 {
-        if !k.is_multiple_of(2) {
-            outside = -outside;
-        } else {
-            inside = -inside;
-        }
-    }
-
-    (outside, inside)
-}
-
-/// Check if distributing a fractional exponent (1/n) over a product is safe.
-/// Returns true if:
-/// 1. Base is purely numeric (no variables), OR
-/// 2. All variable factors have powers that are exact multiples of n
-///    (e.g., x^2 under sqrt is safe because 2 % 2 == 0)
-pub(super) fn can_distribute_root_safely(
-    ctx: &Context,
-    expr: ExprId,
-    root_index: &num_bigint::BigInt,
-) -> bool {
-    match ctx.get(expr) {
-        Expr::Number(_) => true,
-        Expr::Variable(_) | Expr::Constant(_) => root_index == &num_bigint::BigInt::from(1),
-        Expr::Pow(base, exp) => {
-            if is_purely_numeric(ctx, *base) {
-                return true;
-            }
-            if let Expr::Number(exp_num) = ctx.get(*exp) {
-                if exp_num.is_integer() {
-                    let exp_int = exp_num.to_integer();
-                    return (&exp_int % root_index).is_zero();
-                }
-            }
-            false
-        }
-        Expr::Mul(l, r) => {
-            can_distribute_root_safely(ctx, *l, root_index)
-                && can_distribute_root_safely(ctx, *r, root_index)
-        }
-        Expr::Div(l, r) => {
-            can_distribute_root_safely(ctx, *l, root_index)
-                && can_distribute_root_safely(ctx, *r, root_index)
-        }
-        Expr::Neg(inner) => can_distribute_root_safely(ctx, *inner, root_index),
-        _ => false,
-    }
-}
-
-/// Check if expression is purely numeric (no variables/constants)
-fn is_purely_numeric(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Number(_) => true,
-        Expr::Variable(_) | Expr::Constant(_) => false,
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
-            is_purely_numeric(ctx, *l) && is_purely_numeric(ctx, *r)
-        }
-        Expr::Neg(inner) => is_purely_numeric(ctx, *inner),
-        Expr::Hold(inner) => is_purely_numeric(ctx, *inner),
-        Expr::Function(_, args) => args.iter().all(|a| is_purely_numeric(ctx, *a)),
-        Expr::Matrix { data, .. } => data.iter().all(|e| is_purely_numeric(ctx, *e)),
-        Expr::SessionRef(_) => false,
     }
 }
 

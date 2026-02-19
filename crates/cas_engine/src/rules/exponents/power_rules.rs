@@ -5,6 +5,7 @@ use crate::ordering::compare_expr;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::root_forms::extract_root_factor;
 use num_integer::Integer;
 use num_traits::{One, Signed, ToPrimitive};
 use std::cmp::Ordering;
@@ -590,8 +591,8 @@ define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", importance: crate::ste
                 let b_num = b.numer();
                 let b_den = b.denom();
 
-                let (out_n, in_n) = super::extract_root_factor(b_num, n);
-                let (out_d, in_d) = super::extract_root_factor(b_den, n);
+                let (out_n, in_n) = extract_root_factor(b_num, n);
+                let (out_d, in_d) = extract_root_factor(b_den, n);
 
                 if !out_n.is_one() || !out_d.is_one() {
                     if let Some(pow_num) = numer.to_i32() {

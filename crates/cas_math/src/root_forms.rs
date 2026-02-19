@@ -1,6 +1,8 @@
 //! Root-shape helpers over AST expressions.
 
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use num_bigint::BigInt;
+use num_integer::Integer;
 use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
 
@@ -77,6 +79,121 @@ pub fn extract_numeric_sqrt_radicand(ctx: &Context, expr: ExprId) -> Option<i64>
         }
     }
     None
+}
+
+/// Extracts perfect `k`-th-power factors from integer `n`.
+///
+/// Returns `(outside, inside)` such that:
+/// - `outside^k * inside == n`
+/// - `inside` has no remaining `k`-th-power factors
+pub fn extract_root_factor(n: &BigInt, k: u32) -> (BigInt, BigInt) {
+    if n.is_zero() {
+        return (BigInt::zero(), BigInt::one());
+    }
+    if n.is_one() {
+        return (BigInt::one(), BigInt::one());
+    }
+
+    let sign = if n.is_negative() { -1 } else { 1 };
+    let mut n_abs = n.abs();
+
+    let mut outside = BigInt::one();
+    let mut inside = BigInt::one();
+
+    // Trial division for factor 2 first.
+    let mut count = 0;
+    while n_abs.is_even() {
+        count += 1;
+        n_abs /= 2;
+    }
+    if count > 0 {
+        let out_exp = count / k;
+        let in_exp = count % k;
+        if out_exp > 0 {
+            outside *= BigInt::from(2).pow(out_exp);
+        }
+        if in_exp > 0 {
+            inside *= BigInt::from(2).pow(in_exp);
+        }
+    }
+
+    let mut d = BigInt::from(3);
+    while &d * &d <= n_abs {
+        if (&n_abs % &d).is_zero() {
+            let mut count = 0;
+            while (&n_abs % &d).is_zero() {
+                count += 1;
+                n_abs /= &d;
+            }
+            let out_exp = count / k;
+            let in_exp = count % k;
+            if out_exp > 0 {
+                outside *= d.pow(out_exp);
+            }
+            if in_exp > 0 {
+                inside *= d.pow(in_exp);
+            }
+        }
+        d += 2;
+    }
+
+    if n_abs > BigInt::one() {
+        inside *= n_abs;
+    }
+
+    // Preserve sign: odd roots keep sign outside, even roots keep sign inside.
+    if sign == -1 {
+        if !k.is_multiple_of(2) {
+            outside = -outside;
+        } else {
+            inside = -inside;
+        }
+    }
+
+    (outside, inside)
+}
+
+/// Check if distributing a fractional root exponent (`1/n`) over `expr` is safe.
+///
+/// Safe cases:
+/// - Purely numeric subexpressions.
+/// - Symbolic factors whose exponents are integer multiples of `n`.
+pub fn can_distribute_root_safely(ctx: &Context, expr: ExprId, root_index: &BigInt) -> bool {
+    match ctx.get(expr) {
+        Expr::Number(_) => true,
+        Expr::Variable(_) | Expr::Constant(_) => root_index == &BigInt::from(1),
+        Expr::Pow(base, exp) => {
+            if is_purely_numeric(ctx, *base) {
+                return true;
+            }
+            if let Expr::Number(exp_num) = ctx.get(*exp) {
+                if exp_num.is_integer() {
+                    let exp_int = exp_num.to_integer();
+                    return (&exp_int % root_index).is_zero();
+                }
+            }
+            false
+        }
+        Expr::Mul(l, r) | Expr::Div(l, r) => {
+            can_distribute_root_safely(ctx, *l, root_index)
+                && can_distribute_root_safely(ctx, *r, root_index)
+        }
+        Expr::Neg(inner) => can_distribute_root_safely(ctx, *inner, root_index),
+        _ => false,
+    }
+}
+
+fn is_purely_numeric(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Number(_) => true,
+        Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => false,
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            is_purely_numeric(ctx, *l) && is_purely_numeric(ctx, *r)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => is_purely_numeric(ctx, *inner),
+        Expr::Function(_, args) => args.iter().all(|a| is_purely_numeric(ctx, *a)),
+        Expr::Matrix { data, .. } => data.iter().all(|e| is_purely_numeric(ctx, *e)),
+    }
 }
 
 fn is_surd_like(ctx: &Context, expr: ExprId) -> bool {
@@ -469,5 +586,30 @@ mod tests {
             root == BigRational::from_integer(2.into())
                 || root == BigRational::from_integer((-1).into())
         );
+    }
+
+    #[test]
+    fn extract_root_factor_preserves_sign_by_parity() {
+        use num_bigint::BigInt;
+
+        let n = BigInt::from(-72);
+
+        let (outside_even, inside_even) = extract_root_factor(&n, 2);
+        assert_eq!(outside_even, BigInt::from(6));
+        assert_eq!(inside_even, BigInt::from(-2));
+
+        let (outside_odd, inside_odd) = extract_root_factor(&n, 3);
+        assert_eq!(outside_odd, BigInt::from(-2));
+        assert_eq!(inside_odd, BigInt::from(9));
+    }
+
+    #[test]
+    fn can_distribute_root_safely_accepts_multiple_powers_only() {
+        let mut ctx = Context::new();
+        let safe = parse("x^2*9", &mut ctx).expect("safe");
+        let unsafe_expr = parse("x*9", &mut ctx).expect("unsafe");
+
+        assert!(can_distribute_root_safely(&ctx, safe, &2.into()));
+        assert!(!can_distribute_root_safely(&ctx, unsafe_expr, &2.into()));
     }
 }
