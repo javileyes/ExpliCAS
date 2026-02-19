@@ -4,12 +4,12 @@
 //! differentiation rules: constant, sum, product, quotient, power, chain.
 
 use crate::build::mul2_raw;
-use crate::solver::contains_var;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_predicates::contains_named_var;
 
 pub(crate) fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
     // 1. Constant Rule: diff(c, x) = 0
-    if !contains_var(ctx, expr, var) {
+    if !contains_named_var(ctx, expr, var) {
         return Some(ctx.num(0));
     }
 
@@ -64,14 +64,14 @@ pub(crate) fn differentiate(ctx: &mut Context, expr: ExprId, var: &str) -> Optio
             let de = differentiate(ctx, exp, var)?;
 
             // If exponent is constant (de = 0)
-            if !contains_var(ctx, exp, var) {
+            if !contains_named_var(ctx, exp, var) {
                 // n * u^(n-1) * u'
                 let one = ctx.num(1);
                 let n_minus_one = ctx.add(Expr::Sub(exp, one));
                 let pow_term = ctx.add(Expr::Pow(base, n_minus_one));
                 let term = mul2_raw(ctx, exp, pow_term);
                 Some(mul2_raw(ctx, term, db))
-            } else if !contains_var(ctx, base, var) {
+            } else if !contains_named_var(ctx, base, var) {
                 // a^u * ln(a) * u'
                 let ln_a = ctx.call_builtin(cas_ast::BuiltinFn::Ln, vec![base]);
                 let term = mul2_raw(ctx, expr, ln_a);

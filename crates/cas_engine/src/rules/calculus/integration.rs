@@ -3,8 +3,8 @@
 //! Contains `integrate()` and helper functions `get_linear_coeffs()` and `is_var()`.
 
 use crate::build::mul2_raw;
-use crate::solver::contains_var;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_predicates::contains_named_var;
 use num_rational::BigRational;
 
 pub(crate) fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
@@ -47,12 +47,12 @@ pub(crate) fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<Ex
     // 3. Constant Multiple: integrate(c * f(x)) = c * integrate(f(x))
     // We need to check if one operand is constant (w.r.t var).
     if let IntKind::Mul(l, r) = kind {
-        if !contains_var(ctx, l, var) {
+        if !contains_named_var(ctx, l, var) {
             if let Some(int_r) = integrate(ctx, r, var) {
                 return Some(mul2_raw(ctx, l, int_r));
             }
         }
-        if !contains_var(ctx, r, var) {
+        if !contains_named_var(ctx, r, var) {
             if let Some(int_l) = integrate(ctx, l, var) {
                 return Some(mul2_raw(ctx, r, int_l));
             }
@@ -62,7 +62,7 @@ pub(crate) fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<Ex
     // 4. Basic Rules & Linear Substitution
 
     // Constant: integrate(c) = c*x
-    if !contains_var(ctx, expr, var) {
+    if !contains_named_var(ctx, expr, var) {
         let var_expr = ctx.var(var);
         return Some(mul2_raw(ctx, expr, var_expr));
     }
@@ -73,7 +73,7 @@ pub(crate) fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<Ex
     if let IntKind::Pow(base, exp) = kind {
         // Case 1: u^n where u is linear (ax+b)
         if let Some((a, _)) = get_linear_coeffs(ctx, base, var) {
-            if !contains_var(ctx, exp, var) {
+            if !contains_named_var(ctx, exp, var) {
                 // Check for n = -1 case (1/u)
                 if let Expr::Number(n) = ctx.get(exp) {
                     if *n == BigRational::from_integer((-1).into()) {
@@ -105,7 +105,7 @@ pub(crate) fn integrate(ctx: &mut Context, expr: ExprId, var: &str) -> Option<Ex
         // Case 2: c^u where u is linear (ax+b)
         // integrate(c^(ax+b)) = c^(ax+b) / (a * ln(c))
         // If c = e, ln(c) = 1, so e^(ax+b) / a
-        if !contains_var(ctx, base, var) {
+        if !contains_named_var(ctx, base, var) {
             if let Some((a, _)) = get_linear_coeffs(ctx, exp, var) {
                 let is_a_one = if let Expr::Number(n) = ctx.get(a) {
                     n.is_one()
@@ -216,7 +216,7 @@ pub(crate) fn get_linear_coeffs(
     expr: ExprId,
     var: &str,
 ) -> Option<(ExprId, ExprId)> {
-    if !contains_var(ctx, expr, var) {
+    if !contains_named_var(ctx, expr, var) {
         return Some((ctx.num(0), expr));
     }
 
@@ -225,11 +225,11 @@ pub(crate) fn get_linear_coeffs(
         Expr::Mul(l, r) => {
             let (l, r) = (*l, *r);
             // c * x
-            if !contains_var(ctx, l, var) && is_var(ctx, r, var) {
+            if !contains_named_var(ctx, l, var) && is_var(ctx, r, var) {
                 return Some((l, ctx.num(0)));
             }
             // x * c
-            if is_var(ctx, l, var) && !contains_var(ctx, r, var) {
+            if is_var(ctx, l, var) && !contains_named_var(ctx, r, var) {
                 return Some((r, ctx.num(0)));
             }
             None
@@ -241,7 +241,7 @@ pub(crate) fn get_linear_coeffs(
             let r_coeffs = get_linear_coeffs(ctx, r, var);
 
             if let (Some((a1, b1)), Some((a2, b2))) = (l_coeffs, r_coeffs) {
-                if !contains_var(ctx, a1, var) && !contains_var(ctx, a2, var) {
+                if !contains_named_var(ctx, a1, var) && !contains_named_var(ctx, a2, var) {
                     let a = ctx.add(Expr::Add(a1, a2));
                     let b = ctx.add(Expr::Add(b1, b2));
                     return Some((a, b));
@@ -255,7 +255,7 @@ pub(crate) fn get_linear_coeffs(
             let l_coeffs = get_linear_coeffs(ctx, l, var);
             let r_coeffs = get_linear_coeffs(ctx, r, var);
             if let (Some((a1, b1)), Some((a2, b2))) = (l_coeffs, r_coeffs) {
-                if !contains_var(ctx, a1, var) && !contains_var(ctx, a2, var) {
+                if !contains_named_var(ctx, a1, var) && !contains_named_var(ctx, a2, var) {
                     let a = ctx.add(Expr::Sub(a1, a2));
                     let b = ctx.add(Expr::Sub(b1, b2));
                     return Some((a, b));

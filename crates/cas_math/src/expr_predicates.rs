@@ -40,6 +40,37 @@ pub fn contains_variable(ctx: &Context, root: ExprId) -> bool {
     false
 }
 
+/// Check if expression contains a specific variable name.
+///
+/// Uses iterative traversal to avoid recursion limits on deep trees.
+pub fn contains_named_var(ctx: &Context, root: ExprId, var: &str) -> bool {
+    let mut stack = vec![root];
+
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Variable(sym_id) => {
+                if ctx.sym_name(*sym_id) == var {
+                    return true;
+                }
+            }
+            Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+        }
+    }
+
+    false
+}
+
 /// Check if an expression is structurally always non-negative.
 ///
 /// Conservative predicate used for condition cleanup.
@@ -354,6 +385,17 @@ mod tests {
         let numeric = parse("sqrt(4) + 1", &mut ctx).expect("parse numeric");
         assert!(contains_variable(&ctx, symbolic));
         assert!(!contains_variable(&ctx, numeric));
+    }
+
+    #[test]
+    fn contains_named_variable_detection() {
+        let mut ctx = Context::new();
+        let symbolic = parse("sqrt(x) + y", &mut ctx).expect("parse symbolic");
+        let numeric = parse("sqrt(4) + 1", &mut ctx).expect("parse numeric");
+        assert!(contains_named_var(&ctx, symbolic, "x"));
+        assert!(contains_named_var(&ctx, symbolic, "y"));
+        assert!(!contains_named_var(&ctx, symbolic, "z"));
+        assert!(!contains_named_var(&ctx, numeric, "x"));
     }
 
     #[test]
