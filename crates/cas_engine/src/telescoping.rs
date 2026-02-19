@@ -1,5 +1,4 @@
 use crate::build::mul2_raw;
-use crate::nary::AddView;
 // Telescoping Strategy for Dirichlet Kernel and similar identities
 //
 // This module implements a step-by-step proof strategy for telescoping sums
@@ -96,7 +95,7 @@ pub fn telescope(ctx: &mut Context, expr: ExprId) -> TelescopingResult {
     }
 
     // Step 1: Check if expression has the form A - B/C where we can multiply by C
-    let multiplier = find_denominator_for_clearing(ctx, expr);
+    let multiplier = cas_math::telescoping_support::find_denominator_for_clearing(ctx, expr);
 
     if let Some(mult_expr) = multiplier {
         // Create description string before mutating ctx
@@ -195,32 +194,6 @@ pub fn telescope(ctx: &mut Context, expr: ExprId) -> TelescopingResult {
             after: result,
         }],
         final_result: Some(result),
-    }
-}
-
-/// Find a suitable multiplier to clear denominators (looks for sin(x/2) patterns)
-/// Uses AddView for shape-independent traversal of sum terms.
-fn find_denominator_for_clearing(ctx: &Context, expr: ExprId) -> Option<ExprId> {
-    // Use AddView to traverse all terms regardless of tree shape
-    let view = AddView::from_expr(ctx, expr);
-
-    // Look for any term that has a denominator
-    for &(term, _sign) in &view.terms {
-        if let Some(denom) = extract_denominator(ctx, term) {
-            return Some(denom);
-        }
-    }
-
-    None
-}
-
-// nary-lint: allow-binary (structural, not n-ary sum traversal)
-fn extract_denominator(ctx: &Context, expr: ExprId) -> Option<ExprId> {
-    match ctx.get(expr) {
-        Expr::Div(_, denom) => Some(*denom),
-        Expr::Neg(inner) => extract_denominator(ctx, *inner),
-        Expr::Mul(l, r) => extract_denominator(ctx, *l).or_else(|| extract_denominator(ctx, *r)),
-        _ => None,
     }
 }
 
