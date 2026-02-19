@@ -20,6 +20,11 @@ impl<'a> SemanticEqualityChecker<'a> {
     /// Check if expr_a is the negation of expr_b
     /// Handles cases like: Neg(x) vs x, Mul(-1, x) vs x, -n vs n
     fn is_negation_of(&self, a: ExprId, b: ExprId) -> bool {
+        // Fast structural path shared with rule helpers.
+        if cas_math::expr_relations::is_negation(self.context, a, b) {
+            return true;
+        }
+
         let expr_a = self.context.get(a);
 
         // Case 1: a = Neg(inner) and inner equals b

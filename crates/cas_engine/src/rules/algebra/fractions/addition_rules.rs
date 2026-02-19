@@ -453,20 +453,7 @@ define_rule!(
                 }
             }
 
-            // Check negation
-            let is_negation = |ctx: &Context, a: ExprId, b: ExprId| -> bool {
-                if let Expr::Neg(n) = ctx.get(a) {
-                    *n == b
-                } else if let Expr::Neg(n) = ctx.get(b) {
-                    *n == a
-                } else if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(a), ctx.get(b)) {
-                    n1 == &-n2
-                } else {
-                    false
-                }
-            };
-
-            if is_negation(ctx, num, den) {
+            if cas_math::expr_relations::is_negation(ctx, num, den) {
                 return (true, false);
             }
 
