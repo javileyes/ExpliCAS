@@ -2,7 +2,7 @@
 #![allow(clippy::field_reassign_with_default)]
 #![allow(dead_code)]
 #![allow(unused_variables)]
-use cas_engine::eval::{Engine, EvalAction, EvalRequest, EvalResult};
+use cas_engine::{Engine, EvalAction, EvalRequest, EvalResult};
 use cas_parser::Statement;
 mod support;
 use support::{EntryKind, SessionState};

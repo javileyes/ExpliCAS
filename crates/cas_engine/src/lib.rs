@@ -15,7 +15,7 @@ pub(crate) mod domain;
 pub mod domain_facts;
 pub mod domain_oracle;
 pub mod engine;
-pub mod eval;
+pub(crate) mod eval;
 pub mod eval_step_pipeline;
 pub mod expand;
 pub mod helpers;

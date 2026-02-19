@@ -6,8 +6,8 @@
 //! 3. Combined expressions inherit requires from all sub-expressions
 
 use cas_ast::Expr;
-use cas_engine::eval::{EvalAction, EvalRequest};
 use cas_engine::Engine;
+use cas_engine::{EvalAction, EvalRequest};
 mod support;
 use support::SessionState;
 

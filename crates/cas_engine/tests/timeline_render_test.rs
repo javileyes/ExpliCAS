@@ -1,9 +1,9 @@
 //! Integration test to verify timeline step rendering
-use cas_engine::eval::{Engine, EvalAction, EvalRequest};
 use cas_engine::eval_step_pipeline::to_display_steps;
 use cas_engine::step::ImportanceLevel;
 use cas_engine::timeline::{TimelineHtml, VerbosityLevel};
 use cas_engine::Simplifier;
+use cas_engine::{Engine, EvalAction, EvalRequest};
 mod support;
 use support::SessionState;
 
@@ -114,7 +114,7 @@ fn test_timeline_renders_cache_hit_step() {
         output2.steps.as_slice(),
         expr2,
         match output2.result {
-            cas_engine::eval::EvalResult::Expr(e) => Some(e),
+            cas_engine::EvalResult::Expr(e) => Some(e),
             _ => None,
         },
         VerbosityLevel::Normal,
