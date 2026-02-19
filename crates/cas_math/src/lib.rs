@@ -1,6 +1,7 @@
 pub mod auto_expand_scan;
 pub mod build;
 pub mod canonical_forms;
+pub mod collect_terms;
 pub mod combinatorics;
 pub mod const_eval;
 pub mod expand_estimate;
