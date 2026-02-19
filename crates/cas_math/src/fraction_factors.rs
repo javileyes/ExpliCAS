@@ -4,6 +4,26 @@
 
 use cas_ast::{Context, Expr, ExprId};
 
+/// Collect multiplicative factors by flattening only `Mul(...)` nodes.
+///
+/// This keeps factors as-is (e.g. `Pow(x, 2)` remains one factor) and is
+/// useful when rules reason structurally about product terms.
+pub fn collect_mul_factors_flat(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
+    let mut factors = Vec::new();
+    collect_mul_factors_flat_recursive(ctx, expr, &mut factors);
+    factors
+}
+
+fn collect_mul_factors_flat_recursive(ctx: &Context, expr: ExprId, factors: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Mul(left, right) => {
+            collect_mul_factors_flat_recursive(ctx, *left, factors);
+            collect_mul_factors_flat_recursive(ctx, *right, factors);
+        }
+        _ => factors.push(expr),
+    }
+}
+
 /// Collect multiplicative factors with integer exponents from an expression.
 ///
 /// Rules:
@@ -78,6 +98,27 @@ mod tests {
     use super::*;
     use crate::poly_compare::poly_eq;
     use cas_parser::parse;
+
+    #[test]
+    fn collect_flat_mul_only() {
+        let mut ctx = Context::new();
+        let expr = parse("(a*b)*(c^2)", &mut ctx).expect("parse");
+        let factors = collect_mul_factors_flat(&ctx, expr);
+
+        assert_eq!(factors.len(), 3);
+        let expected_a = parse("a", &mut ctx).expect("parse a");
+        let expected_b = parse("b", &mut ctx).expect("parse b");
+        let expected_c2 = parse("c^2", &mut ctx).expect("parse c2");
+        assert!(factors
+            .iter()
+            .any(|&f| crate::poly_compare::poly_eq(&ctx, f, expected_a)));
+        assert!(factors
+            .iter()
+            .any(|&f| crate::poly_compare::poly_eq(&ctx, f, expected_b)));
+        assert!(factors
+            .iter()
+            .any(|&f| crate::poly_compare::poly_eq(&ctx, f, expected_c2)));
+    }
 
     #[test]
     fn collect_strips_top_level_neg() {

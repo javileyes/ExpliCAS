@@ -9,28 +9,10 @@ use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::fraction_factors::collect_mul_factors_flat as collect_mul_factors;
 use num_traits::{One, Zero};
 
 use super::addition_rules::contains_irrational;
-
-/// Collect all multiplicative factors from an expression
-fn collect_mul_factors(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
-    let mut factors = Vec::new();
-    collect_factors_recursive(ctx, expr, &mut factors);
-    factors
-}
-
-fn collect_factors_recursive(ctx: &Context, expr: ExprId, factors: &mut Vec<ExprId>) {
-    match ctx.get(expr) {
-        Expr::Mul(l, r) => {
-            collect_factors_recursive(ctx, *l, factors);
-            collect_factors_recursive(ctx, *r, factors);
-        }
-        _ => {
-            factors.push(expr);
-        }
-    }
-}
 
 /// Extract root from expression: sqrt(n) or n^(1/k)
 /// Returns (radicand, index) where expr = radicand^(1/index)
