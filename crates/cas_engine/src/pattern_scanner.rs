@@ -1,6 +1,7 @@
 use crate::pattern_detection::{is_cot_squared, is_csc_squared, is_sec_squared, is_tan_squared};
 use crate::pattern_marks::PatternMarks;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_predicates::{is_half_expr, is_one_expr, is_two_expr};
 
 /// Scan the entire expression tree and mark ExprIds that are part of Pythagorean patterns.
 /// This pre-analysis pass allows guards to make correct decisions even with bottom-up processing.
@@ -114,17 +115,15 @@ fn check_and_mark_sqrt_square_pattern(ctx: &Context, expr_id: ExprId, marks: &mu
     // Check for Pow(base, 1/2) where base is u² or u*u
     if let Expr::Pow(base, exp) = ctx.get(expr_id) {
         // Check if exponent is 1/2
-        if crate::helpers::is_half(ctx, *exp) {
+        if is_half_expr(ctx, *exp) {
             let base_id = *base;
             let base_expr = ctx.get(base_id);
 
             // Case 1: base is Pow(u, 2) → mark the whole base (the u² expression)
             if let Expr::Pow(_, inner_exp) = base_expr {
-                if let Expr::Number(n) = ctx.get(*inner_exp) {
-                    if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
-                        marks.mark_sqrt_square(base_id);
-                        return;
-                    }
+                if is_two_expr(ctx, *inner_exp) {
+                    marks.mark_sqrt_square(base_id);
+                    return;
                 }
             }
 
@@ -146,11 +145,9 @@ fn check_and_mark_sqrt_square_pattern(ctx: &Context, expr_id: ExprId, marks: &mu
 
             // Case 1: base is Pow(u, 2)
             if let Expr::Pow(_, inner_exp) = base_expr {
-                if let Expr::Number(n) = ctx.get(*inner_exp) {
-                    if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
-                        marks.mark_sqrt_square(base_id);
-                        return;
-                    }
+                if is_two_expr(ctx, *inner_exp) {
+                    marks.mark_sqrt_square(base_id);
+                    return;
                 }
             }
 
@@ -182,16 +179,14 @@ fn check_and_mark_trig_square_pattern(ctx: &Context, expr_id: ExprId, marks: &mu
             // Match Pow(Function("sin"|"cos", [arg]), 2)
             if let Expr::Pow(base, exp) = ctx.get(term) {
                 // Check exponent is 2
-                if let Expr::Number(n) = ctx.get(*exp) {
-                    if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
-                        // Check base is sin or cos
-                        if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                            if args.len() == 1 {
-                                match ctx.sym_name(*fn_id) {
-                                    "sin" => return Some(("sin", *base, args[0])),
-                                    "cos" => return Some(("cos", *base, args[0])),
-                                    _ => {}
-                                }
+                if is_two_expr(ctx, *exp) {
+                    // Check base is sin or cos
+                    if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                        if args.len() == 1 {
+                            match ctx.sym_name(*fn_id) {
+                                "sin" => return Some(("sin", *base, args[0])),
+                                "cos" => return Some(("cos", *base, args[0])),
+                                _ => {}
                             }
                         }
                     }
@@ -606,18 +601,10 @@ fn try_match_tan_diff_identity(
 
     // Mark tan nodes in denominator product
     if let Expr::Add(add_l, add_r) = ctx.get(den) {
-        let product_part = if let Expr::Number(n) = ctx.get(*add_l) {
-            if *n == num_rational::BigRational::from_integer(1.into()) {
-                *add_r
-            } else {
-                *add_l
-            }
-        } else if let Expr::Number(n) = ctx.get(*add_r) {
-            if *n == num_rational::BigRational::from_integer(1.into()) {
-                *add_l
-            } else {
-                *add_r
-            }
+        let product_part = if is_one_expr(ctx, *add_l) {
+            *add_r
+        } else if is_one_expr(ctx, *add_r) {
+            *add_l
         } else {
             return true; // Pattern matched, even if we can't mark all tan nodes
         };
@@ -639,18 +626,10 @@ fn matches_one_plus_tan_product(ctx: &Context, expr: ExprId, a: ExprId, b: ExprI
     let l = *l;
     let r = *r;
 
-    let (one_part, product_part) = if let Expr::Number(n) = ctx.get(l) {
-        if *n == num_rational::BigRational::from_integer(1.into()) {
-            (l, r)
-        } else {
-            return false;
-        }
-    } else if let Expr::Number(n) = ctx.get(r) {
-        if *n == num_rational::BigRational::from_integer(1.into()) {
-            (r, l)
-        } else {
-            return false;
-        }
+    let (one_part, product_part) = if is_one_expr(ctx, l) {
+        (l, r)
+    } else if is_one_expr(ctx, r) {
+        (r, l)
     } else {
         return false;
     };
@@ -801,14 +780,10 @@ fn try_match_sin4x_identity(
                 if let Expr::Mul(cl, cr) = ctx.get(arg) {
                     let cl = *cl;
                     let cr = *cr;
-                    let is_2t = if let Expr::Number(n) = ctx.get(cl) {
-                        *n == num_rational::BigRational::from_integer(2.into())
-                            && crate::ordering::compare_expr(ctx, cr, t)
-                                == std::cmp::Ordering::Equal
-                    } else if let Expr::Number(n) = ctx.get(cr) {
-                        *n == num_rational::BigRational::from_integer(2.into())
-                            && crate::ordering::compare_expr(ctx, cl, t)
-                                == std::cmp::Ordering::Equal
+                    let is_2t = if is_two_expr(ctx, cl) {
+                        crate::ordering::compare_expr(ctx, cr, t) == std::cmp::Ordering::Equal
+                    } else if is_two_expr(ctx, cr) {
+                        crate::ordering::compare_expr(ctx, cl, t) == std::cmp::Ordering::Equal
                     } else {
                         false
                     };
@@ -850,14 +825,12 @@ fn try_match_sin4x_identity(
 
 fn is_sin_squared_t(ctx: &Context, expr: ExprId, t: ExprId) -> bool {
     if let Expr::Pow(base, exp) = ctx.get(expr) {
-        if let Expr::Number(n) = ctx.get(*exp) {
-            if *n == num_rational::BigRational::from_integer(2.into()) {
-                if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                    let name = ctx.sym_name(*fn_id);
-                    if name == "sin" && args.len() == 1 {
-                        return crate::ordering::compare_expr(ctx, args[0], t)
-                            == std::cmp::Ordering::Equal;
-                    }
+        if is_two_expr(ctx, *exp) {
+            if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                let name = ctx.sym_name(*fn_id);
+                if name == "sin" && args.len() == 1 {
+                    return crate::ordering::compare_expr(ctx, args[0], t)
+                        == std::cmp::Ordering::Equal;
                 }
             }
         }
@@ -867,14 +840,12 @@ fn is_sin_squared_t(ctx: &Context, expr: ExprId, t: ExprId) -> bool {
 
 fn is_cos_squared_t(ctx: &Context, expr: ExprId, t: ExprId) -> bool {
     if let Expr::Pow(base, exp) = ctx.get(expr) {
-        if let Expr::Number(n) = ctx.get(*exp) {
-            if *n == num_rational::BigRational::from_integer(2.into()) {
-                if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                    let name = ctx.sym_name(*fn_id);
-                    if name == "cos" && args.len() == 1 {
-                        return crate::ordering::compare_expr(ctx, args[0], t)
-                            == std::cmp::Ordering::Equal;
-                    }
+        if is_two_expr(ctx, *exp) {
+            if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                let name = ctx.sym_name(*fn_id);
+                if name == "cos" && args.len() == 1 {
+                    return crate::ordering::compare_expr(ctx, args[0], t)
+                        == std::cmp::Ordering::Equal;
                 }
             }
         }
@@ -885,11 +856,7 @@ fn is_cos_squared_t(ctx: &Context, expr: ExprId, t: ExprId) -> bool {
 /// Check if lhs - rhs matches 2·cos²(t) - 1
 fn is_2cos_sq_minus_1(ctx: &Context, lhs: ExprId, rhs: ExprId, t: ExprId) -> bool {
     // rhs should be 1
-    if let Expr::Number(n) = ctx.get(rhs) {
-        if *n != num_rational::BigRational::from_integer(1.into()) {
-            return false;
-        }
-    } else {
+    if !is_one_expr(ctx, rhs) {
         return false;
     }
 
@@ -898,15 +865,11 @@ fn is_2cos_sq_minus_1(ctx: &Context, lhs: ExprId, rhs: ExprId, t: ExprId) -> boo
         let ml = *ml;
         let mr = *mr;
         // Check for 2 * cos²(t)
-        if let Expr::Number(n) = ctx.get(ml) {
-            if *n == num_rational::BigRational::from_integer(2.into()) {
-                return is_cos_squared_t(ctx, mr, t);
-            }
+        if is_two_expr(ctx, ml) {
+            return is_cos_squared_t(ctx, mr, t);
         }
-        if let Expr::Number(n) = ctx.get(mr) {
-            if *n == num_rational::BigRational::from_integer(2.into()) {
-                return is_cos_squared_t(ctx, ml, t);
-            }
+        if is_two_expr(ctx, mr) {
+            return is_cos_squared_t(ctx, ml, t);
         }
     }
     false
@@ -915,11 +878,7 @@ fn is_2cos_sq_minus_1(ctx: &Context, lhs: ExprId, rhs: ExprId, t: ExprId) -> boo
 /// Check if lhs - rhs matches 1 - 2·sin²(t)
 fn is_1_minus_2sin_sq(ctx: &Context, lhs: ExprId, rhs: ExprId, t: ExprId) -> bool {
     // lhs should be 1
-    if let Expr::Number(n) = ctx.get(lhs) {
-        if *n != num_rational::BigRational::from_integer(1.into()) {
-            return false;
-        }
-    } else {
+    if !is_one_expr(ctx, lhs) {
         return false;
     }
 
@@ -928,15 +887,11 @@ fn is_1_minus_2sin_sq(ctx: &Context, lhs: ExprId, rhs: ExprId, t: ExprId) -> boo
         let ml = *ml;
         let mr = *mr;
         // Check for 2 * sin²(t)
-        if let Expr::Number(n) = ctx.get(ml) {
-            if *n == num_rational::BigRational::from_integer(2.into()) {
-                return is_sin_squared_t(ctx, mr, t);
-            }
+        if is_two_expr(ctx, ml) {
+            return is_sin_squared_t(ctx, mr, t);
         }
-        if let Expr::Number(n) = ctx.get(mr) {
-            if *n == num_rational::BigRational::from_integer(2.into()) {
-                return is_sin_squared_t(ctx, ml, t);
-            }
+        if is_two_expr(ctx, mr) {
+            return is_sin_squared_t(ctx, ml, t);
         }
     }
     false
@@ -977,17 +932,12 @@ fn extract_2_times_tan(ctx: &Context, expr: ExprId) -> Option<ExprId> {
         return None;
     };
     let (l, r) = (*l, *r);
-    let two = num_rational::BigRational::from_integer(2.into());
 
-    if let Expr::Number(n) = ctx.get(l) {
-        if *n == two {
-            return extract_tan_arg(ctx, r);
-        }
+    if is_two_expr(ctx, l) {
+        return extract_tan_arg(ctx, r);
     }
-    if let Expr::Number(n) = ctx.get(r) {
-        if *n == two {
-            return extract_tan_arg(ctx, l);
-        }
+    if is_two_expr(ctx, r) {
+        return extract_tan_arg(ctx, l);
     }
     None
 }
@@ -1006,22 +956,19 @@ fn extract_tan_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
 fn is_one_minus_tan_squared(ctx: &Context, expr: ExprId, t: ExprId) -> bool {
     // Form 1: Sub(1, tan²(t))
     if let Expr::Sub(l, r) = ctx.get(expr) {
-        if matches!(ctx.get(*l), Expr::Number(n) if *n == num_rational::BigRational::from_integer(1.into()))
-        {
+        if is_one_expr(ctx, *l) {
             return is_tan_squared_of_t(ctx, *r, t);
         }
     }
     // Form 2: Add(1, Neg(tan²(t))) or Add(Neg(tan²(t)), 1)
     if let Expr::Add(l, r) = ctx.get(expr) {
         let (l, r) = (*l, *r);
-        if matches!(ctx.get(l), Expr::Number(n) if *n == num_rational::BigRational::from_integer(1.into()))
-        {
+        if is_one_expr(ctx, l) {
             if let Expr::Neg(inner) = ctx.get(r) {
                 return is_tan_squared_of_t(ctx, *inner, t);
             }
         }
-        if matches!(ctx.get(r), Expr::Number(n) if *n == num_rational::BigRational::from_integer(1.into()))
-        {
+        if is_one_expr(ctx, r) {
             if let Expr::Neg(inner) = ctx.get(l) {
                 return is_tan_squared_of_t(ctx, *inner, t);
             }
@@ -1033,15 +980,11 @@ fn is_one_minus_tan_squared(ctx: &Context, expr: ExprId, t: ExprId) -> bool {
 /// Check if expr is tan(t)² with the given argument t
 fn is_tan_squared_of_t(ctx: &Context, expr: ExprId, t: ExprId) -> bool {
     if let Expr::Pow(base, exp) = ctx.get(expr) {
-        let two = num_rational::BigRational::from_integer(2.into());
-        if let Expr::Number(n) = ctx.get(*exp) {
-            if *n == two {
-                if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                    return ctx.is_builtin(*fn_id, BuiltinFn::Tan)
-                        && args.len() == 1
-                        && crate::ordering::compare_expr(ctx, args[0], t)
-                            == std::cmp::Ordering::Equal;
-                }
+        if is_two_expr(ctx, *exp) {
+            if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                return ctx.is_builtin(*fn_id, BuiltinFn::Tan)
+                    && args.len() == 1
+                    && crate::ordering::compare_expr(ctx, args[0], t) == std::cmp::Ordering::Equal;
             }
         }
     }
