@@ -6,7 +6,7 @@
 //! 3. Duplicate equivalent conditions are removed
 
 use cas_ast::{Context, Expr};
-use cas_engine::implicit_domain::{
+use cas_engine::{
     normalize_and_dedupe_conditions, normalize_condition, render_conditions_normalized,
     ImplicitCondition,
 };

@@ -317,7 +317,7 @@ fn bisect_only_sub() {
 /// With the fix, it should be called only 1-3 times (cache + fallback).
 #[test]
 fn test_domain_inference_call_count_regression() {
-    use cas_engine::implicit_domain::{infer_domain_calls_get, infer_domain_calls_reset};
+    use cas_engine::{infer_domain_calls_get, infer_domain_calls_reset};
 
     // Expression that previously caused stack overflow
     let expr_str = "sin((3 - x + sin(x))^4)^2";

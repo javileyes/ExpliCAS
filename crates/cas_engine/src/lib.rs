@@ -19,7 +19,7 @@ pub(crate) mod eval;
 pub(crate) mod eval_step_pipeline;
 pub(crate) mod expand;
 pub(crate) mod helpers;
-pub mod implicit_domain;
+pub(crate) mod implicit_domain;
 pub(crate) mod limits;
 pub(crate) mod options;
 pub(crate) mod orchestrator;
@@ -100,7 +100,13 @@ pub use expand::{
 };
 pub use helpers::{is_zero, prove_nonzero, prove_positive};
 pub use implicit_domain::{
-    normalize_and_dedupe_conditions, ImplicitCondition, RequiresDisplayLevel,
+    check_analytic_expansion, classify_assumption, classify_assumptions_in_place,
+    derive_requires_from_equation, domain_delta_check, expands_analytic_domain,
+    expands_analytic_in_context, filter_requires_for_display, infer_domain_calls_get,
+    infer_domain_calls_reset, infer_implicit_domain, normalize_and_dedupe_conditions,
+    normalize_condition, normalize_condition_expr, render_conditions_normalized, witness_survives,
+    witness_survives_in_context, AnalyticExpansionResult, DomainContext, DomainDelta,
+    ImplicitCondition, ImplicitDomain, RequiresDisplayLevel, WitnessKind,
 };
 pub use limits::{limit, Approach, LimitOptions, LimitResult, PreSimplifyMode};
 pub use options::{

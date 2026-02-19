@@ -26,7 +26,7 @@ fn make_simplify_request(engine: &mut Engine, expr_str: &str) -> EvalRequest {
 /// Test: sqrt(x) produces x ≥ 0, and this propagates when reused
 #[test]
 fn requires_propagate_on_sqrt_reuse() {
-    use cas_engine::implicit_domain::ImplicitCondition;
+    use cas_engine::ImplicitCondition;
 
     let mut engine = Engine::new();
     let mut state = SessionState::default();
@@ -71,7 +71,7 @@ fn requires_propagate_on_sqrt_reuse() {
 /// Test: ln(y) produces y > 0, and this propagates when reused
 #[test]
 fn requires_propagate_on_ln_reuse() {
-    use cas_engine::implicit_domain::ImplicitCondition;
+    use cas_engine::ImplicitCondition;
 
     let mut engine = Engine::new();
     let mut state = SessionState::default();
@@ -110,7 +110,7 @@ fn requires_propagate_on_ln_reuse() {
 /// Test: Combined expressions inherit requires from all sub-expressions
 #[test]
 fn requires_combine_from_multiple_sources() {
-    use cas_engine::implicit_domain::ImplicitCondition;
+    use cas_engine::ImplicitCondition;
 
     let mut engine = Engine::new();
     let mut state = SessionState::default();
@@ -146,7 +146,7 @@ fn requires_combine_from_multiple_sources() {
 /// Test: Division by variable produces x ≠ 0 requirement
 #[test]
 fn requires_nonzero_from_division() {
-    use cas_engine::implicit_domain::ImplicitCondition;
+    use cas_engine::ImplicitCondition;
 
     let mut engine = Engine::new();
     let mut state = SessionState::default();

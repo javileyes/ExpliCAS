@@ -12,10 +12,10 @@
 //! coupling to internal representation (e.g., Positive(x) vs Positive(x*y)).
 
 use cas_ast::SolutionSet;
-use cas_engine::implicit_domain::ImplicitCondition;
 use cas_engine::semantics::ValueDomain;
 use cas_engine::solver::{solve_with_display_steps, SolverOptions};
 use cas_engine::DomainMode;
+use cas_engine::ImplicitCondition;
 use cas_engine::Simplifier;
 use cas_parser::{parse_statement, Statement};
 

@@ -137,7 +137,7 @@ fn inv_trig_defaults_to_branch_choice() {
 /// This is a contract test for the classifier.
 #[test]
 fn branch_choice_never_promoted() {
-    use cas_engine::implicit_domain::{classify_assumption, DomainContext};
+    use cas_engine::{classify_assumption, DomainContext};
 
     let mut ctx = Context::new();
     let x = ctx.var("x");
@@ -220,7 +220,7 @@ fn heuristic_assumption_is_displayed() {
 /// to DerivedFromRequires and not displayed.
 #[test]
 fn classifier_reclassifies_implied_to_derived() {
-    use cas_engine::implicit_domain::{classify_assumption, DomainContext, ImplicitCondition};
+    use cas_engine::{classify_assumption, DomainContext, ImplicitCondition};
 
     let mut ctx = Context::new();
     let x = ctx.var("x");
@@ -251,7 +251,7 @@ fn classifier_reclassifies_implied_to_derived() {
 /// When a condition is NOT implied, RequiresIntroduced should be promoted.
 #[test]
 fn classifier_promotes_unimplied_to_requires_introduced() {
-    use cas_engine::implicit_domain::{classify_assumption, DomainContext, ImplicitCondition};
+    use cas_engine::{classify_assumption, DomainContext, ImplicitCondition};
 
     let mut ctx = Context::new();
     let x = ctx.var("x");
