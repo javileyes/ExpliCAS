@@ -698,68 +698,7 @@ fn as_exp(ctx: &Context, id: ExprId) -> Option<ExprId> {
 
 /// Helper: Check if arg is the negation of target (i.e., arg = -target)
 fn is_negation_of(ctx: &Context, arg: ExprId, target: ExprId) -> bool {
-    match ctx.get(arg) {
-        // Case: Neg(inner) where inner == target
-        Expr::Neg(inner) => {
-            *inner == target
-                || crate::ordering::compare_expr(ctx, *inner, target) == Ordering::Equal
-        }
-        // Case: Mul(-1, inner) where inner == target
-        Expr::Mul(l, r) => {
-            let minus_one = num_rational::BigRational::from_integer((-1).into());
-            if let Expr::Number(n) = ctx.get(*l) {
-                if *n == minus_one {
-                    return *r == target
-                        || crate::ordering::compare_expr(ctx, *r, target) == Ordering::Equal;
-                }
-            }
-            if let Expr::Number(n) = ctx.get(*r) {
-                if *n == minus_one {
-                    return *l == target
-                        || crate::ordering::compare_expr(ctx, *l, target) == Ordering::Equal;
-                }
-            }
-            // Case: Mul(n, x) vs Mul(-n, x) - e.g., 2*x vs -2*x
-            // Check if target is also a Mul with negated coefficient
-            if let Expr::Mul(tl, tr) = ctx.get(target) {
-                // Try: arg = Mul(n, x), target = Mul(-n, x)
-                if let (Expr::Number(n_arg), Expr::Number(n_target)) = (ctx.get(*l), ctx.get(*tl)) {
-                    if n_arg == &(-n_target.clone())
-                        && (*r == *tr
-                            || crate::ordering::compare_expr(ctx, *r, *tr) == Ordering::Equal)
-                    {
-                        return true;
-                    }
-                }
-                if let (Expr::Number(n_arg), Expr::Number(n_target)) = (ctx.get(*l), ctx.get(*tr)) {
-                    if n_arg == &(-n_target.clone())
-                        && (*r == *tl
-                            || crate::ordering::compare_expr(ctx, *r, *tl) == Ordering::Equal)
-                    {
-                        return true;
-                    }
-                }
-                if let (Expr::Number(n_arg), Expr::Number(n_target)) = (ctx.get(*r), ctx.get(*tl)) {
-                    if n_arg == &(-n_target.clone())
-                        && (*l == *tr
-                            || crate::ordering::compare_expr(ctx, *l, *tr) == Ordering::Equal)
-                    {
-                        return true;
-                    }
-                }
-                if let (Expr::Number(n_arg), Expr::Number(n_target)) = (ctx.get(*r), ctx.get(*tr)) {
-                    if n_arg == &(-n_target.clone())
-                        && (*l == *tl
-                            || crate::ordering::compare_expr(ctx, *l, *tl) == Ordering::Equal)
-                    {
-                        return true;
-                    }
-                }
-            }
-            false
-        }
-        _ => false,
-    }
+    cas_math::expr_relations::is_negation(ctx, arg, target)
 }
 
 /// Helper: Check if expression equals 1/2

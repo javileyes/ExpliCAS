@@ -15,7 +15,15 @@ use std::cmp::Ordering;
 /// - `Neg(a)`
 /// - `Mul(-1, a)` and `Mul(a, -1)`
 pub fn is_negation(ctx: &Context, a: ExprId, b: ExprId) -> bool {
-    check_negation_structure(ctx, b, a) || check_negation_structure(ctx, a, b)
+    if let (Expr::Number(n_a), Expr::Number(n_b)) = (ctx.get(a), ctx.get(b)) {
+        if n_a == &(-n_b.clone()) {
+            return true;
+        }
+    }
+
+    check_negation_structure(ctx, b, a)
+        || check_negation_structure(ctx, a, b)
+        || check_negated_mul_coeff(ctx, a, b)
 }
 
 fn check_negation_structure(ctx: &Context, potential_neg: ExprId, original: ExprId) -> bool {
@@ -36,6 +44,31 @@ fn check_negation_structure(ctx: &Context, potential_neg: ExprId, original: Expr
         }
         _ => false,
     }
+}
+
+fn check_negated_mul_coeff(ctx: &Context, a: ExprId, b: ExprId) -> bool {
+    let Some((coeff_a, term_a)) = extract_numeric_factor(ctx, a) else {
+        return false;
+    };
+    let Some((coeff_b, term_b)) = extract_numeric_factor(ctx, b) else {
+        return false;
+    };
+
+    coeff_a == -coeff_b && compare_expr(ctx, term_a, term_b) == Ordering::Equal
+}
+
+fn extract_numeric_factor(ctx: &Context, expr: ExprId) -> Option<(BigRational, ExprId)> {
+    let Expr::Mul(l, r) = ctx.get(expr) else {
+        return None;
+    };
+
+    if let Expr::Number(n) = ctx.get(*l) {
+        return Some((n.clone(), *r));
+    }
+    if let Expr::Number(n) = ctx.get(*r) {
+        return Some((n.clone(), *l));
+    }
+    None
 }
 
 /// Check whether `a` and `b` are a conjugate additive pair.
@@ -113,8 +146,21 @@ mod tests {
         let x = parse("x", &mut ctx).expect("x");
         let neg_x = parse("-x", &mut ctx).expect("-x");
         let mul_neg_x = parse("(-1)*x", &mut ctx).expect("(-1)*x");
+        let three = parse("3", &mut ctx).expect("3");
+        let neg_three = parse("-3", &mut ctx).expect("-3");
         assert!(is_negation(&ctx, x, neg_x));
         assert!(is_negation(&ctx, x, mul_neg_x));
+        assert!(is_negation(&ctx, three, neg_three));
+    }
+
+    #[test]
+    fn negation_detection_covers_opposite_mul_coefficients() {
+        let mut ctx = Context::new();
+        let pos = parse("2*x", &mut ctx).expect("2*x");
+        let neg = parse("-2*x", &mut ctx).expect("-2*x");
+        let non_neg = parse("3*x", &mut ctx).expect("3*x");
+        assert!(is_negation(&ctx, pos, neg));
+        assert!(!is_negation(&ctx, pos, non_neg));
     }
 
     #[test]

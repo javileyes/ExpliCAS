@@ -4,6 +4,7 @@
 //! verification utilities used by the factoring rules.
 
 use cas_ast::Expr;
+use cas_math::expr_relations::is_negation;
 use std::cmp::Ordering;
 
 /// Check if two expressions form a conjugate pair: (A+B) and (A-B) or vice versa
@@ -60,44 +61,6 @@ pub(super) fn is_conjugate_pair(
             None
         }
         _ => None,
-    }
-}
-
-/// Check if `b` is the negation of `a` (Neg(a) or Mul(-1, a) or Number(-n) vs Number(n))
-pub(super) fn is_negation(ctx: &cas_ast::Context, a: cas_ast::ExprId, b: cas_ast::ExprId) -> bool {
-    // Check numeric negation: Number(n) vs Number(-n)
-    if let (Expr::Number(n_a), Expr::Number(n_b)) = (ctx.get(a), ctx.get(b)) {
-        if n_a == &(-n_b.clone()) {
-            return true;
-        }
-    }
-
-    match ctx.get(b) {
-        Expr::Neg(inner) if *inner == a => true,
-        Expr::Mul(l, r) => {
-            // Check for -1 * a or a * -1
-            let l_id = *l;
-            let r_id = *r;
-            (is_minus_one(ctx, l_id) && r_id == a) || (is_minus_one(ctx, r_id) && l_id == a)
-        }
-        _ => false,
-    }
-}
-
-/// Check if expression is -1
-pub(super) fn is_minus_one(ctx: &cas_ast::Context, e: cas_ast::ExprId) -> bool {
-    use num_bigint::BigInt;
-    use num_rational::BigRational;
-    if let Expr::Number(n) = ctx.get(e) {
-        n == &BigRational::from_integer(BigInt::from(-1))
-    } else if let Expr::Neg(inner) = ctx.get(e) {
-        if let Expr::Number(n) = ctx.get(*inner) {
-            n == &BigRational::from_integer(BigInt::from(1))
-        } else {
-            false
-        }
-    } else {
-        false
     }
 }
 
