@@ -6,6 +6,7 @@ use crate::engine::Simplifier;
 use crate::solver::solution_set::{neg_inf, pos_inf};
 use crate::solver::{SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
 use cas_ast::{BoundType, Context, Equation, Expr, ExprId, Interval, RelOp, SolutionSet};
+use cas_math::expr_predicates::contains_named_var;
 
 use crate::error::CasError;
 
@@ -215,17 +216,7 @@ pub(crate) fn simplify_rhs(
 }
 
 pub fn contains_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
-    match ctx.get(expr) {
-        Expr::Variable(sym_id) => ctx.sym_name(*sym_id) == var,
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
-            contains_var(ctx, *l, var) || contains_var(ctx, *r, var)
-        }
-        Expr::Neg(e) | Expr::Hold(e) => contains_var(ctx, *e, var),
-        Expr::Function(_, args) => args.iter().any(|a| contains_var(ctx, *a, var)),
-        Expr::Matrix { data, .. } => data.iter().any(|elem| contains_var(ctx, *elem, var)),
-        // Leaves — no children to check
-        Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => false,
-    }
+    contains_named_var(ctx, expr, var)
 }
 
 /// Attempt to recompose a^e / b^e -> (a/b)^e when both powers have the same exponent.
