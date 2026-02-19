@@ -4,7 +4,9 @@
 
 use super::extract_rational_pi_multiple;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
-use cas_math::expr_extract::extract_unary_log_argument_view;
+use cas_math::expr_extract::{
+    extract_abs_argument_view, extract_sqrt_argument_view, extract_unary_log_argument_view,
+};
 use num_traits::{One, Signed};
 
 /// Check if expression is the number 1
@@ -423,10 +425,11 @@ fn prove_positive_depth(
         }
 
         // abs(x): always ≥ 0, but only > 0 if x ≠ 0
-        Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 =>
-        {
-            let inner_nonzero = prove_nonzero_depth(ctx, args[0], depth - 1);
+        Expr::Function(_, _) if extract_abs_argument_view(ctx, expr).is_some() => {
+            let Some(arg) = extract_abs_argument_view(ctx, expr) else {
+                return Proof::Unknown;
+            };
+            let inner_nonzero = prove_nonzero_depth(ctx, arg, depth - 1);
             if inner_nonzero == Proof::Proven {
                 Proof::Proven
             } else if inner_nonzero == Proof::Disproven {
@@ -460,10 +463,11 @@ fn prove_positive_depth(
         }
 
         // sqrt(x) with x > 0 gives positive result
-        Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
-        {
-            prove_positive_depth(ctx, args[0], value_domain, depth - 1)
+        Expr::Function(_, _) if extract_sqrt_argument_view(ctx, expr).is_some() => {
+            let Some(arg) = extract_sqrt_argument_view(ctx, expr) else {
+                return Proof::Unknown;
+            };
+            prove_positive_depth(ctx, arg, value_domain, depth - 1)
         }
 
         // Neg: -x > 0 iff x < 0
@@ -582,19 +586,16 @@ fn prove_nonnegative_depth(
         }
 
         // abs(x): always ≥ 0
-        Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 =>
-        {
-            Proof::Proven
-        }
+        Expr::Function(_, _) if extract_abs_argument_view(ctx, expr).is_some() => Proof::Proven,
 
         // sqrt(x): if defined, result is ≥ 0 (by principal root convention)
         // But we can't prove sqrt is defined without proving arg ≥ 0 (circular)
-        Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
-        {
+        Expr::Function(_, _) if extract_sqrt_argument_view(ctx, expr).is_some() => {
+            let Some(arg) = extract_sqrt_argument_view(ctx, expr) else {
+                return Proof::Unknown;
+            };
             // If the arg is provably non-negative, sqrt(arg) ≥ 0
-            prove_nonnegative_depth(ctx, args[0], value_domain, depth - 1)
+            prove_nonnegative_depth(ctx, arg, value_domain, depth - 1)
         }
 
         // exp(x) > 0 for all real x, hence ≥ 0

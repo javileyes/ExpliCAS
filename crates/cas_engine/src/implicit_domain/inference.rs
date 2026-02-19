@@ -3,8 +3,10 @@
 use super::witness::{witness_survives_in_context, WitnessKind};
 use super::{ImplicitCondition, ImplicitDomain};
 use crate::semantics::ValueDomain;
-use cas_ast::{BuiltinFn, Context, Expr, ExprId};
-use cas_math::expr_extract::{extract_sqrt_argument_view, extract_unary_log_argument_view};
+use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_extract::{
+    extract_abs_argument_view, extract_sqrt_argument_view, extract_unary_log_argument_view,
+};
 use num_integer::Integer;
 use num_rational::BigRational;
 
@@ -327,9 +329,7 @@ pub fn derive_requires_from_equation(
     let mut derived = Vec::new();
 
     // Helper to check if expr is abs(...)
-    let is_abs = |ctx: &Context, e: ExprId| -> bool {
-        matches!(ctx.get(e), Expr::Function(fn_id, args) if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1)
-    };
+    let is_abs = |ctx: &Context, e: ExprId| -> bool { extract_abs_argument_view(ctx, e).is_some() };
 
     // Helper to check if expression has structural constraints that enforce positivity.
     // Only these expressions benefit from derived positivity requirements.
@@ -413,10 +413,11 @@ fn add_positive_and_propagate(
         // abs(t) > 0 ⟺ t ≠ 0 (since abs is always ≥ 0)
         // Don't add Positive(abs(t)) - it's redundant and confusing
         // Instead add NonZero(t) which is the actual constraint
-        Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 =>
-        {
-            derived.push(ImplicitCondition::NonZero(args[0]));
+        Expr::Function(_, _) if extract_abs_argument_view(ctx, expr).is_some() => {
+            let Some(arg) = extract_abs_argument_view(ctx, expr) else {
+                return;
+            };
+            derived.push(ImplicitCondition::NonZero(arg));
         }
         // sqrt(t) > 0 implies t > 0
         Expr::Function(_, _) if extract_sqrt_argument_view(ctx, expr).is_some() => {
@@ -509,11 +510,7 @@ fn is_always_nonnegative_depth(ctx: &Context, expr: ExprId, depth: usize) -> boo
         }
 
         // |x| is always non-negative
-        Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 =>
-        {
-            true
-        }
+        Expr::Function(_, _) if extract_abs_argument_view(ctx, expr).is_some() => true,
 
         // sqrt(x) is non-negative by definition (for real)
         Expr::Function(_, _) if extract_sqrt_argument_view(ctx, expr).is_some() => true,

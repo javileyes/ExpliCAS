@@ -120,6 +120,21 @@ pub fn extract_sqrt_argument_view(ctx: &Context, expr: ExprId) -> Option<ExprId>
     None
 }
 
+/// Extract the argument from unary absolute-value form.
+///
+/// Recognizes:
+/// - `abs(arg)` -> `arg`
+pub fn extract_abs_argument_view(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let (fn_id, args) = match ctx.get(expr) {
+        Expr::Function(fn_id, args) => (*fn_id, args),
+        _ => return None,
+    };
+    if ctx.is_builtin(fn_id, BuiltinFn::Abs) && args.len() == 1 {
+        return Some(args[0]);
+    }
+    None
+}
+
 fn strip_unary_neg(ctx: &Context, mut expr: ExprId) -> ExprId {
     loop {
         match ctx.get(expr) {
@@ -363,5 +378,24 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("sin(z)", &mut ctx).expect("parse sin(z)");
         assert!(extract_sqrt_argument_view(&ctx, expr).is_none());
+    }
+
+    #[test]
+    fn extracts_abs_argument_from_unary_abs() {
+        let mut ctx = Context::new();
+        let expr = parse("abs(t)", &mut ctx).expect("parse abs(t)");
+        let arg = extract_abs_argument_view(&ctx, expr).expect("must extract abs arg");
+        let t = parse("t", &mut ctx).expect("parse t");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, arg, t),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn abs_argument_rejects_non_abs_function() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(t)", &mut ctx).expect("parse sqrt(t)");
+        assert!(extract_abs_argument_view(&ctx, expr).is_none());
     }
 }

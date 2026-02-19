@@ -1,7 +1,8 @@
 //! Condition normalization, deduplication, and dominance rules.
 
 use super::ImplicitCondition;
-use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_extract::extract_abs_argument_view;
 
 // =============================================================================
 // Condition Normalization (Canonical Form + Sign Normalization + Dedupe)
@@ -456,10 +457,8 @@ fn collect_product_bases(ctx: &Context, expr: ExprId, bases: &mut Vec<ExprId>) {
 
 /// Check if expr is Abs(inner_expr), i.e., |inner_expr|
 fn is_abs_of(ctx: &Context, expr: ExprId, inner: ExprId) -> bool {
-    if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 {
-            return exprs_equivalent(ctx, args[0], inner);
-        }
+    if let Some(arg) = extract_abs_argument_view(ctx, expr) {
+        return exprs_equivalent(ctx, arg, inner);
     }
     false
 }
