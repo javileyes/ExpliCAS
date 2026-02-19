@@ -16,6 +16,7 @@ pub mod latex_core;
 pub mod latex_highlight;
 pub mod latex_no_roots;
 pub mod root_style;
+pub mod visualizer;
 
 pub use conditions::{
     condition_predicate_to_display, condition_predicate_to_latex, condition_set_to_display,
@@ -37,3 +38,4 @@ pub use latex_highlight::{
 };
 pub use latex_no_roots::LatexNoRoots;
 pub use root_style::{detect_root_style, ParseStyleSignals, RootStyle, StylePreferences};
+pub use visualizer::AstVisualizer;
