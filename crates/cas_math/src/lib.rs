@@ -21,6 +21,7 @@ pub mod numeric;
 pub mod numeric_eval;
 pub mod pi_helpers;
 pub mod poly_compare;
+pub mod poly_convert;
 pub mod poly_gcd_mode;
 pub mod poly_gcd_structural;
 pub mod poly_lowering_ops;

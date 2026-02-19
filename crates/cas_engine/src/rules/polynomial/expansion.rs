@@ -553,10 +553,8 @@ impl crate::rule::Rule for AutoExpandSubCancelRule {
         // For Sub(a,b) this computes a-b
         // For Add(a, Neg(b), Neg(c), ...) this computes a + (-b) + (-c) + ...
         // If the result is 0, we have cancellation
-        let poly = cas_math::multipoly::multipoly_from_expr(ctx, expr, &budget).ok()?;
-        if poly.vars.len() > 4 {
-            return None;
-        }
+        let poly =
+            cas_math::poly_convert::try_multipoly_from_expr_with_var_limit(ctx, expr, &budget, 4)?;
 
         // If the result is zero, we have proved cancellation!
         if poly.is_zero() {

@@ -82,10 +82,8 @@ impl PolynomialIdentityZeroRule {
         vars: &mut Vec<String>,
         budget: &PolyBudget,
     ) -> Option<MultiPoly> {
-        let poly = cas_math::multipoly::multipoly_from_expr(ctx, id, budget).ok()?;
-        if poly.vars.len() > 4 {
-            return None;
-        }
+        let poly =
+            cas_math::poly_convert::try_multipoly_from_expr_with_var_limit(ctx, id, budget, 4)?;
         *vars = poly.vars.clone();
         Some(poly)
     }
@@ -742,7 +740,8 @@ impl crate::rule::Rule for HeuristicPolyNormalizeAddRule {
             max_pow_exp: 6,
         };
 
-        let poly = cas_math::multipoly::multipoly_from_expr(ctx, expr, &budget).ok()?;
+        let poly =
+            cas_math::poly_convert::try_multipoly_from_expr_with_var_limit(ctx, expr, &budget, 4)?;
 
         // Check if result is reasonable
         if poly.terms.len() > 30 || poly.vars.len() > 3 {
