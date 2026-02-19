@@ -2,6 +2,7 @@ use crate::define_rule;
 use crate::helpers::{is_one, is_zero};
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_extract::extract_exp_argument;
 use cas_math::expr_predicates::{is_half_expr, is_two_expr};
 use num_traits::Signed;
 use std::cmp::Ordering;
@@ -667,27 +668,6 @@ define_rule!(
 
 // ==================== Recognize Hyperbolic From Exponential ====================
 
-/// Helper: Check if expression is e^arg and return Some(arg), handling both Pow(e, arg) and exp(arg)
-fn as_exp(ctx: &Context, id: ExprId) -> Option<ExprId> {
-    match ctx.get(id) {
-        // Case: e^arg (Pow with base = Constant(E))
-        Expr::Pow(base, exp) => {
-            if matches!(ctx.get(*base), Expr::Constant(cas_ast::Constant::E)) {
-                Some(*exp)
-            } else {
-                None
-            }
-        }
-        // Case: exp(arg) function
-        Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, BuiltinFn::Exp) && args.len() == 1 =>
-        {
-            Some(args[0])
-        }
-        _ => None,
-    }
-}
-
 /// Helper: Check if arg is the negation of target (i.e., arg = -target)
 fn is_negation_of(ctx: &Context, arg: ExprId, target: ExprId) -> bool {
     cas_math::expr_relations::is_negation(ctx, arg, target)
@@ -702,7 +682,9 @@ fn extract_exp_pair(ctx: &Context, id: ExprId) -> Option<(ExprId, bool, bool)> {
     // Try Add: exp(a) + exp(-a) -> cosh(a)
     if let Expr::Add(l, r) = ctx.get(id) {
         // Try l = exp(a), r = exp(-a)
-        if let (Some(l_arg), Some(r_arg)) = (as_exp(ctx, *l), as_exp(ctx, *r)) {
+        if let (Some(l_arg), Some(r_arg)) =
+            (extract_exp_argument(ctx, *l), extract_exp_argument(ctx, *r))
+        {
             if is_negation_of(ctx, r_arg, l_arg) {
                 return Some((l_arg, true, true)); // cosh pattern
             }
@@ -714,7 +696,9 @@ fn extract_exp_pair(ctx: &Context, id: ExprId) -> Option<(ExprId, bool, bool)> {
 
     // Try Sub: exp(a) - exp(-a) -> sinh(a), or exp(-a) - exp(a) -> -sinh(a)
     if let Expr::Sub(l, r) = ctx.get(id) {
-        if let (Some(l_arg), Some(r_arg)) = (as_exp(ctx, *l), as_exp(ctx, *r)) {
+        if let (Some(l_arg), Some(r_arg)) =
+            (extract_exp_argument(ctx, *l), extract_exp_argument(ctx, *r))
+        {
             // exp(a) - exp(-a) = sinh(a) * 2, positive_first = true
             if is_negation_of(ctx, r_arg, l_arg) {
                 return Some((l_arg, false, true)); // sinh pattern, positive
@@ -729,7 +713,10 @@ fn extract_exp_pair(ctx: &Context, id: ExprId) -> Option<(ExprId, bool, bool)> {
     // Try Add with Neg: Add(l, Neg(r)) which is like Sub(l, r)
     if let Expr::Add(l, r) = ctx.get(id) {
         if let Expr::Neg(neg_inner) = ctx.get(*r) {
-            if let (Some(l_arg), Some(r_arg)) = (as_exp(ctx, *l), as_exp(ctx, *neg_inner)) {
+            if let (Some(l_arg), Some(r_arg)) = (
+                extract_exp_argument(ctx, *l),
+                extract_exp_argument(ctx, *neg_inner),
+            ) {
                 if is_negation_of(ctx, r_arg, l_arg) {
                     return Some((l_arg, false, true)); // sinh pattern
                 }
@@ -739,7 +726,10 @@ fn extract_exp_pair(ctx: &Context, id: ExprId) -> Option<(ExprId, bool, bool)> {
             }
         }
         if let Expr::Neg(neg_inner) = ctx.get(*l) {
-            if let (Some(l_arg), Some(r_arg)) = (as_exp(ctx, *neg_inner), as_exp(ctx, *r)) {
+            if let (Some(l_arg), Some(r_arg)) = (
+                extract_exp_argument(ctx, *neg_inner),
+                extract_exp_argument(ctx, *r),
+            ) {
                 if is_negation_of(ctx, l_arg, r_arg) {
                     return Some((r_arg, false, true)); // sinh pattern (r - l)
                 }

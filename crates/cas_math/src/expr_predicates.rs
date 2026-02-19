@@ -98,6 +98,35 @@ pub fn contains_div_term(ctx: &Context, id: ExprId) -> bool {
     }
 }
 
+/// Check if expression contains division-like structure.
+///
+/// Recognizes explicit `Div` plus inverse-power encodings like `x^(-1)`.
+pub fn contains_division_like_term(ctx: &Context, id: ExprId) -> bool {
+    match ctx.get(id) {
+        Expr::Div(_, _) => true,
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
+            contains_division_like_term(ctx, *l) || contains_division_like_term(ctx, *r)
+        }
+        Expr::Pow(base, exp) => {
+            exponent_implies_division(ctx, *exp)
+                || contains_division_like_term(ctx, *base)
+                || contains_division_like_term(ctx, *exp)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => contains_division_like_term(ctx, *inner),
+        Expr::Function(_, args) => args.iter().any(|a| contains_division_like_term(ctx, *a)),
+        Expr::Matrix { data, .. } => data.iter().any(|e| contains_division_like_term(ctx, *e)),
+        _ => false,
+    }
+}
+
+fn exponent_implies_division(ctx: &Context, id: ExprId) -> bool {
+    match ctx.get(id) {
+        Expr::Neg(_) => true,
+        Expr::Number(n) => n.is_negative(),
+        _ => false,
+    }
+}
+
 /// Check if expression contains a function call or any root form.
 pub fn contains_function_or_root(ctx: &Context, id: ExprId) -> bool {
     contains_function(ctx, id) || contains_root_term(ctx, id)
@@ -170,10 +199,15 @@ mod tests {
     fn div_and_function_root_detection() {
         let mut ctx = Context::new();
         let with_div = parse("x*(1/y)", &mut ctx).expect("parse div");
+        let with_neg_pow = parse("a + b^(-1)", &mut ctx).expect("parse neg pow");
+        let with_function_div = parse("sin(1/x)", &mut ctx).expect("parse function div");
         let with_root = parse("a + sqrt(b)", &mut ctx).expect("parse root");
         let plain = parse("x*y", &mut ctx).expect("parse plain");
         assert!(contains_div_term(&ctx, with_div));
+        assert!(contains_division_like_term(&ctx, with_neg_pow));
+        assert!(contains_division_like_term(&ctx, with_function_div));
         assert!(contains_function_or_root(&ctx, with_root));
+        assert!(!contains_division_like_term(&ctx, plain));
         assert!(!contains_div_term(&ctx, plain));
     }
 

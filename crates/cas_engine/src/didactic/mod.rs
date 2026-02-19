@@ -324,10 +324,10 @@ impl IsOne for BigInt {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_math::expr_predicates::contains_division_like_term;
     use fraction_steps::FractionSumInfo;
     use nested_fractions::{
-        classify_nested_fraction, contains_div, extract_combined_fraction_str,
-        NestedFractionPattern,
+        classify_nested_fraction, extract_combined_fraction_str, NestedFractionPattern,
     };
 
     #[test]
@@ -456,14 +456,14 @@ mod tests {
         let one = ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(1))));
 
         // x does not contain div
-        assert!(!contains_div(&ctx, x));
+        assert!(!contains_division_like_term(&ctx, x));
 
         // 1/x contains div
         let div = ctx.add(Expr::Div(one, x));
-        assert!(contains_div(&ctx, div));
+        assert!(contains_division_like_term(&ctx, div));
 
         // 1 + 1/x contains div
         let add = ctx.add(Expr::Add(one, div));
-        assert!(contains_div(&ctx, add));
+        assert!(contains_division_like_term(&ctx, add));
     }
 }

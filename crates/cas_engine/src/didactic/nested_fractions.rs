@@ -1,5 +1,6 @@
 use crate::step::Step;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_predicates::contains_division_like_term;
 use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::Signed;
@@ -19,32 +20,6 @@ pub(crate) enum NestedFractionPattern {
     SumWithFractionOverScalar,
     /// Fallback for complex patterns
     General,
-}
-
-/// Check if expression contains a division (nested fraction)
-pub(crate) fn contains_div(ctx: &Context, id: ExprId) -> bool {
-    match ctx.get(id) {
-        Expr::Div(_, _) => true,
-        Expr::Add(l, r) | Expr::Sub(l, r) => contains_div(ctx, *l) || contains_div(ctx, *r),
-        Expr::Mul(l, r) => contains_div(ctx, *l) || contains_div(ctx, *r),
-        Expr::Pow(b, e) => {
-            // Check for negative exponent (b^(-1) = 1/b)
-            if let Expr::Neg(_) = ctx.get(*e) {
-                return true;
-            }
-            if let Expr::Number(n) = ctx.get(*e) {
-                if n.is_negative() {
-                    return true;
-                }
-            }
-            contains_div(ctx, *b) || contains_div(ctx, *e)
-        }
-        Expr::Neg(inner) | Expr::Hold(inner) => contains_div(ctx, *inner),
-        Expr::Function(_, args) => args.iter().any(|a| contains_div(ctx, *a)),
-        Expr::Matrix { data, .. } => data.iter().any(|e| contains_div(ctx, *e)),
-        // Leaves
-        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => false,
-    }
 }
 
 /// Find and return the first Div node within an expression
@@ -108,12 +83,12 @@ pub(crate) fn classify_nested_fraction(
         }
 
         // P4: (A + 1/B)/C - numerator contains fraction
-        if contains_div(ctx, *num) && !contains_div(ctx, *den) {
+        if contains_division_like_term(ctx, *num) && !contains_division_like_term(ctx, *den) {
             return Some(NestedFractionPattern::SumWithFractionOverScalar);
         }
 
         // General nested: denominator has nested structure
-        if contains_div(ctx, *den) {
+        if contains_division_like_term(ctx, *den) {
             return Some(NestedFractionPattern::General);
         }
     }
