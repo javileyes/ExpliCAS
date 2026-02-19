@@ -4,6 +4,8 @@
 //! size of `transform_expr_recursive`.
 
 use super::*;
+use cas_math::expr_predicates::{is_half_expr, is_two_expr};
+use cas_math::expr_relations::is_negation;
 
 impl<'a> LocalSimplificationTransformer<'a> {
     /// Transform binary expression (Add/Sub/Mul) by simplifying children.
@@ -135,7 +137,6 @@ impl<'a> LocalSimplificationTransformer<'a> {
             }
             (Expr::Add(a1, a2), Expr::Add(b1, b2)) => {
                 // (A+B) and (A+(-B)) — where negation can be on either B term
-                use crate::rules::polynomial::polynomial_helpers::is_negation;
                 // Cases where B is negated: a2 vs b2 or a2 vs b1
                 if is_negation(self.context, *a2, *b2) || is_negation(self.context, *a2, *b1) {
                     Some((*a1, *a2))
@@ -157,7 +158,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
     pub(super) fn transform_pow(&mut self, id: ExprId, base: ExprId, exp: ExprId) -> ExprId {
         // EARLY DETECTION: sqrt-of-square pattern (u^2)^(1/2) -> |u|
         // Must check BEFORE recursing into children to prevent binomial expansion
-        if crate::helpers::is_half(self.context, exp) {
+        if is_half_expr(self.context, exp) {
             // Try (something^2)^(1/2) -> |something|
             if let Some(result) = self.try_sqrt_of_square(id, base) {
                 return result;
@@ -209,17 +210,15 @@ impl<'a> LocalSimplificationTransformer<'a> {
     #[inline(never)]
     fn try_sqrt_of_square(&mut self, id: ExprId, base: ExprId) -> Option<ExprId> {
         if let Expr::Pow(inner_base, inner_exp) = self.context.get(base) {
-            if let Expr::Number(n) = self.context.get(*inner_exp) {
-                if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
-                    let abs_expr = self.context.call("abs", vec![*inner_base]);
-                    self.record_step(
-                        "sqrt(u^2) = |u|",
-                        "Simplify Square Root of Square",
-                        id,
-                        abs_expr,
-                    );
-                    return Some(self.transform_expr_recursive(abs_expr));
-                }
+            if is_two_expr(self.context, *inner_exp) {
+                let abs_expr = self.context.call("abs", vec![*inner_base]);
+                self.record_step(
+                    "sqrt(u^2) = |u|",
+                    "Simplify Square Root of Square",
+                    id,
+                    abs_expr,
+                );
+                return Some(self.transform_expr_recursive(abs_expr));
             }
         }
         None

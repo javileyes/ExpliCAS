@@ -1,6 +1,6 @@
 //! Helper functions for polynomial rules.
 //!
-//! Contains structural comparison helpers (`is_conjugate`, `is_negation`, `poly_equal`),
+//! Contains structural comparison helpers (`is_conjugate`, `poly_equal`),
 //! additive-term flattening, and didactic focus selection utilities.
 
 use crate::ordering::compare_expr;
@@ -15,10 +15,6 @@ use std::cmp::Ordering;
 
 pub(crate) fn is_conjugate(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     cas_math::expr_relations::is_conjugate_add_sub(ctx, a, b)
-}
-
-pub(crate) fn is_negation(ctx: &Context, a: ExprId, b: ExprId) -> bool {
-    cas_math::expr_relations::is_negation(ctx, a, b)
 }
 
 /// Unwrap __hold(X) to X, otherwise return the expression unchanged
