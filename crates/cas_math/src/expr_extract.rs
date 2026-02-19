@@ -3,6 +3,36 @@
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use num_traits::ToPrimitive;
 
+/// Extract an integer as `i64` from an expression.
+///
+/// Returns `None` for non-numeric expressions, non-integers, or values that do
+/// not fit in `i64`.
+pub fn extract_i64_integer(ctx: &Context, expr: ExprId) -> Option<i64> {
+    if let Expr::Number(n) = ctx.get(expr) {
+        if n.is_integer() {
+            return n.to_integer().to_i64();
+        }
+    }
+    None
+}
+
+/// Extract an integer as an exact `BigInt` from an expression.
+///
+/// Also accepts unary negation wrappers, e.g. `-(5)` -> `-5`.
+pub fn extract_integer_exact(ctx: &Context, expr: ExprId) -> Option<num_bigint::BigInt> {
+    match ctx.get(expr) {
+        Expr::Number(n) => {
+            if n.is_integer() {
+                Some(n.to_integer())
+            } else {
+                None
+            }
+        }
+        Expr::Neg(inner) => extract_integer_exact(ctx, *inner).map(|n| -n),
+        _ => None,
+    }
+}
+
 /// Extract a non-negative integer as `u64` from an expression.
 pub fn extract_u64_integer(ctx: &Context, expr: ExprId) -> Option<u64> {
     if let Expr::Number(n) = ctx.get(expr) {
@@ -204,6 +234,25 @@ pub fn extract_scaled_log_base_argument_relaxed_view(
 mod tests {
     use super::*;
     use cas_parser::parse;
+
+    #[test]
+    fn extracts_i64_integer_from_number() {
+        let mut ctx = Context::new();
+        let five = parse("5", &mut ctx).expect("parse 5");
+        let half = parse("1/2", &mut ctx).expect("parse 1/2");
+        assert_eq!(extract_i64_integer(&ctx, five), Some(5));
+        assert_eq!(extract_i64_integer(&ctx, half), None);
+    }
+
+    #[test]
+    fn extracts_integer_exact_with_negation() {
+        let mut ctx = Context::new();
+        let value = parse("-(42)", &mut ctx).expect("parse -(42)");
+        assert_eq!(
+            extract_integer_exact(&ctx, value),
+            Some(num_bigint::BigInt::from(-42))
+        );
+    }
 
     #[test]
     fn extracts_exp_argument_from_builtin_exp() {
