@@ -12,6 +12,7 @@ pub mod target_kind; // Expr discriminant mapping for rule dispatch
 pub mod traversal; // Canonical traversal utilities (count_nodes, etc.)
 pub mod views; // Unified views for pattern matching
 pub mod visitor;
+pub mod visitors; // Common concrete visitors (depth, variables)
 
 pub use builtin::{BuiltinFn, BuiltinIds, ALL_BUILTINS};
 
@@ -31,6 +32,7 @@ pub use traversal::{
 // Legacy alias for backward compatibility
 pub use traversal::count_all_nodes as count_nodes;
 pub use visitor::{Transformer, Visitor};
+pub use visitors::{DepthVisitor, VariableCollector};
 
 // use std::rc::Rc; // Removed Rc usage
 
