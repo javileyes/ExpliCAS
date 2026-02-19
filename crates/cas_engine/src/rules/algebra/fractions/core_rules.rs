@@ -3,44 +3,11 @@
 //! This module contains the main simplification and cancellation rules,
 //! along with helper functions for polynomial comparison and factor collection.
 
-use cas_ast::{Context, ExprId};
-
 // =============================================================================
 // Context-aware helpers for AddFractionsRule gating
 // =============================================================================
 
-/// Check if a function name is trigonometric (sin, cos, tan and inverses/hyperbolics)
-pub(super) fn is_trig_function_name(name: &str) -> bool {
-    matches!(
-        name,
-        "sin"
-            | "cos"
-            | "tan"
-            | "csc"
-            | "sec"
-            | "cot"
-            | "asin"
-            | "acos"
-            | "atan"
-            | "sinh"
-            | "cosh"
-            | "tanh"
-            | "asinh"
-            | "acosh"
-            | "atanh"
-    )
-}
-
-/// Check if a function (by SymbolId) is trigonometric
-pub(super) fn is_trig_function(ctx: &Context, fn_id: usize) -> bool {
-    ctx.builtin_of(fn_id)
-        .is_some_and(|b| is_trig_function_name(b.name()))
-}
-
-/// Check if expression is a constant involving π (e.g., pi, pi/9, 2*pi/3)
-pub(super) fn is_pi_constant(ctx: &Context, id: ExprId) -> bool {
-    crate::helpers::extract_rational_pi_multiple(ctx, id).is_some()
-}
+pub(super) use cas_math::expr_classify::{is_pi_constant, is_trig_function};
 
 // =============================================================================
 // Polynomial equality helper (for canonical comparison ignoring AST order)
