@@ -25,7 +25,6 @@ pub mod options;
 pub mod orchestrator;
 pub mod parent_context;
 pub mod phase;
-pub(crate) mod poly_lowering;
 pub mod profile_cache;
 pub mod profiler;
 pub mod rationalize;

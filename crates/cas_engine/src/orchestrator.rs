@@ -4,7 +4,9 @@ use crate::phase::{SimplifyOptions, SimplifyPhase};
 use crate::rationalize_policy::AutoRationalizeLevel;
 use crate::rules::algebra::gcd_modp::eager_eval_poly_gcd_calls;
 use crate::{Simplifier, Step};
-use cas_ast::{BuiltinFn, ExprId};
+use cas_ast::{BuiltinFn, Context, ExprId};
+use cas_math::poly_lowering::{self, PolyLowerStepKind};
+use cas_math::poly_lowering_ops::PolyBinaryOp;
 use cas_math::poly_store::clear_thread_local_store;
 use std::collections::HashSet;
 
@@ -17,6 +19,45 @@ fn to_math_auto_expand_budget(
         max_generated_terms: budget.max_generated_terms,
         max_vars: budget.max_vars,
     }
+}
+
+fn poly_step_message(kind: PolyLowerStepKind) -> &'static str {
+    match kind {
+        PolyLowerStepKind::Direct { op } => match op {
+            PolyBinaryOp::Add => "Poly lowering: combined poly_result + poly_result",
+            PolyBinaryOp::Sub => "Poly lowering: combined poly_result - poly_result",
+            PolyBinaryOp::Mul => "Poly lowering: combined poly_result * poly_result",
+        },
+        PolyLowerStepKind::Promoted => "Poly lowering: promoted and combined expressions",
+    }
+}
+
+fn run_poly_lower_pass(
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> (ExprId, Vec<Step>) {
+    let result = poly_lowering::poly_lower_pass(ctx, expr, collect_steps);
+    let steps = if collect_steps {
+        result
+            .steps
+            .into_iter()
+            .map(|step| {
+                Step::new(
+                    poly_step_message(step.kind),
+                    "Polynomial Combination",
+                    step.before,
+                    step.after,
+                    Vec::new(),
+                    Some(ctx),
+                )
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    (result.expr, steps)
 }
 
 pub struct Orchestrator {
@@ -259,10 +300,9 @@ impl Orchestrator {
 
         // PRE-PASS 3: Poly lowering - combine poly_result operations before simplification
         // This handles poly_result(0) + poly_result(1) → poly_result(2) internally
-        let lower_result =
-            crate::poly_lowering::poly_lower_pass(&mut simplifier.context, current, collect_steps);
-        let current = lower_result.expr;
-        all_steps.extend(lower_result.steps);
+        let (current, lower_steps) =
+            run_poly_lower_pass(&mut simplifier.context, current, collect_steps);
+        all_steps.extend(lower_steps);
 
         // Check for specialized strategies first
         if let Some(result) =
