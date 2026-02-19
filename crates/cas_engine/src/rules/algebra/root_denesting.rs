@@ -11,100 +11,6 @@ use cas_ast::Expr;
 // Simplifies ∛(m+t) + ∛(m-t) when the result is a rational number.
 // =============================================================================
 
-/// Find a rational root of depressed cubic: x³ + px + q = 0
-/// Uses Rational Root Theorem correctly for rational coefficients.
-/// After clearing denominators: a·x³ + b·x + c = 0
-/// Candidates are ±(divisors of |c|) / (divisors of |a|)
-fn find_rational_root_depressed_cubic(
-    p: &num_rational::BigRational,
-    q: &num_rational::BigRational,
-) -> Option<num_rational::BigRational> {
-    use num_bigint::BigInt;
-    use num_traits::{Signed, Zero};
-
-    if q.is_zero() {
-        // x³ + px = 0 => x(x² + p) = 0 => x = 0 is always a root
-        return Some(num_rational::BigRational::zero());
-    }
-
-    // Clear denominators: multiply by LCM of all denominators
-    // x³ + (p_n/p_d)x + (q_n/q_d) = 0
-    // Multiply by LCM(p_d, q_d): LCM·x³ + (p_n·...)*x + (q_n·...) = 0
-    let lcm_denom = num_integer::lcm(p.denom().clone(), q.denom().clone());
-
-    // After clearing, we have: L·x³ + P'·x + Q' = 0
-    // where L = lcm_denom, P' = p * L, Q' = q * L
-    let leading_coef = lcm_denom.clone(); // coefficient of x³
-    let constant_coef = q * num_rational::BigRational::from_integer(lcm_denom.clone());
-    let constant_int = constant_coef.to_integer();
-
-    // RRT: x = ±d/e where d divides |constant| and e divides |leading|
-    let c_abs = if constant_int.is_negative() {
-        -constant_int.clone()
-    } else {
-        constant_int.clone()
-    };
-    let a_abs = if leading_coef.is_negative() {
-        -leading_coef.clone()
-    } else {
-        leading_coef.clone()
-    };
-
-    // Find divisors (limit to reasonable size for puzzles)
-    fn small_divisors(n: &BigInt, limit: i64) -> Vec<BigInt> {
-        let mut divs = Vec::new();
-        if n.is_zero() {
-            return vec![BigInt::from(1)];
-        }
-        let n_abs = if n.is_negative() {
-            -n.clone()
-        } else {
-            n.clone()
-        };
-        for d in 1..=limit {
-            let bd = BigInt::from(d);
-            if &n_abs % &bd == BigInt::zero() {
-                divs.push(bd.clone());
-                let quotient = &n_abs / &bd;
-                if !divs.contains(&quotient) {
-                    divs.push(quotient);
-                }
-            }
-        }
-        if divs.is_empty() {
-            divs.push(BigInt::from(1));
-        }
-        divs
-    }
-
-    let c_divisors = small_divisors(&c_abs, 50); // divisors of constant term
-    let a_divisors = small_divisors(&a_abs, 20); // divisors of leading coef
-
-    // Test candidates ±d/e
-    for d in &c_divisors {
-        for e in &a_divisors {
-            for sign in &[1i32, -1i32] {
-                let candidate = if *sign == 1 {
-                    num_rational::BigRational::new(d.clone(), e.clone())
-                } else {
-                    -num_rational::BigRational::new(d.clone(), e.clone())
-                };
-
-                // Evaluate x³ + px + q at candidate
-                let x2 = &candidate * &candidate;
-                let x3 = &x2 * &candidate;
-                let val = &x3 + p * &candidate + q;
-
-                if val.is_zero() {
-                    return Some(candidate);
-                }
-            }
-        }
-    }
-
-    None
-}
-
 define_rule!(
     CubicConjugateTrapRule,
     "Cubic Conjugate Identity",
@@ -163,7 +69,7 @@ define_rule!(
         }
 
         // Find rational root via RRT
-        let root = find_rational_root_depressed_cubic(&p_coef, &q_coef)?;
+        let root = cas_math::root_forms::find_rational_root_depressed_cubic(&p_coef, &q_coef)?;
 
         // Success! Return the root as the result
         let result = ctx.add(Expr::Number(root.clone()));

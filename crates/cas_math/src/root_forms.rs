@@ -251,6 +251,84 @@ pub fn surd_square_rational(ctx: &Context, t: ExprId) -> Option<BigRational> {
     }
 }
 
+/// Find a rational root of the depressed cubic `x³ + p·x + q = 0`.
+///
+/// Uses Rational Root Theorem after clearing denominators.
+pub fn find_rational_root_depressed_cubic(p: &BigRational, q: &BigRational) -> Option<BigRational> {
+    use num_bigint::BigInt;
+
+    if q.is_zero() {
+        return Some(BigRational::zero());
+    }
+
+    let lcm_denom = num_integer::lcm(p.denom().clone(), q.denom().clone());
+    let leading_coef = lcm_denom.clone();
+    let constant_coef = q * BigRational::from_integer(lcm_denom.clone());
+    let constant_int = constant_coef.to_integer();
+
+    let c_abs = if constant_int.is_negative() {
+        -constant_int.clone()
+    } else {
+        constant_int.clone()
+    };
+    let a_abs = if leading_coef.is_negative() {
+        -leading_coef.clone()
+    } else {
+        leading_coef.clone()
+    };
+
+    fn small_divisors(n: &BigInt, limit: i64) -> Vec<BigInt> {
+        let mut divs = Vec::new();
+        if n.is_zero() {
+            return vec![BigInt::from(1)];
+        }
+        let n_abs = if n.is_negative() {
+            -n.clone()
+        } else {
+            n.clone()
+        };
+        for d in 1..=limit {
+            let bd = BigInt::from(d);
+            if &n_abs % &bd == BigInt::zero() {
+                divs.push(bd.clone());
+                let quotient = &n_abs / &bd;
+                if !divs.contains(&quotient) {
+                    divs.push(quotient);
+                }
+            }
+        }
+        if divs.is_empty() {
+            divs.push(BigInt::from(1));
+        }
+        divs
+    }
+
+    let c_divisors = small_divisors(&c_abs, 50);
+    let a_divisors = small_divisors(&a_abs, 20);
+
+    for d in &c_divisors {
+        for e in &a_divisors {
+            for sign in &[1i32, -1i32] {
+                let candidate = if *sign == 1 {
+                    BigRational::new(d.clone(), e.clone())
+                } else {
+                    -BigRational::new(d.clone(), e.clone())
+                };
+
+                let x2 = &candidate * &candidate;
+                let x3 = &x2 * &candidate;
+                let val = &x3 + p * &candidate + q;
+
+                if val.is_zero() {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -334,5 +412,17 @@ mod tests {
         let expr = parse("3*sqrt(2)", &mut ctx).expect("expr");
         let t2 = surd_square_rational(&ctx, expr).expect("t2");
         assert_eq!(t2, BigRational::from_integer(18.into()));
+    }
+
+    #[test]
+    fn find_rational_root_depressed_cubic_finds_simple_root() {
+        // x^3 - 3x - 2 = 0 has rational roots 2 and -1
+        let p = BigRational::from_integer((-3).into());
+        let q = BigRational::from_integer((-2).into());
+        let root = find_rational_root_depressed_cubic(&p, &q).expect("root");
+        assert!(
+            root == BigRational::from_integer(2.into())
+                || root == BigRational::from_integer((-1).into())
+        );
     }
 }
