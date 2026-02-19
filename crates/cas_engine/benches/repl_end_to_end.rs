@@ -9,9 +9,9 @@ use cas_ast::Context;
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
-use cas_engine::options::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
-use cas_engine::profile_cache::ProfileCache;
-use cas_engine::Simplifier;
+use cas_engine::{
+    BranchMode, ComplexMode, ContextMode, EvalOptions, ProfileCache, Simplifier, StepsMode,
+};
 
 /// Full REPL flow: parse → simplify → format result
 fn full_eval(profile_cache: &mut ProfileCache, opts: &EvalOptions, input: &str) -> String {

@@ -106,7 +106,7 @@ mod prepass_tests {
 
 mod solve_tactic_tests {
     use super::*;
-    use cas_engine::domain::DomainMode;
+    use cas_engine::DomainMode;
     use cas_engine::SimplifyOptions;
 
     /// SolveTactic in Assume mode SHOULD allow Analytic rules.

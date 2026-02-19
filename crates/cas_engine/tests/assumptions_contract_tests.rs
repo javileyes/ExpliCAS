@@ -4,7 +4,7 @@
 //! and reporting across different modes and configurations.
 
 use cas_ast::Context;
-use cas_engine::assumptions::{AssumptionCollector, AssumptionEvent, AssumptionReporting};
+use cas_engine::{AssumptionCollector, AssumptionEvent, AssumptionReporting};
 
 /// Test 1: Default Off does not collect or report assumptions
 #[test]
@@ -214,7 +214,7 @@ fn legacy_string_parsing() {
 /// Strings matching multiple patterns will use the first match.
 #[test]
 fn legacy_string_parsing_whitelist() {
-    use cas_engine::assumptions::AssumptionEvent;
+    use cas_engine::AssumptionEvent;
 
     // Known domain_assumption strings and their expected kinds
     // Note: strings containing "≠ 0" or "!= 0" will always be nonzero

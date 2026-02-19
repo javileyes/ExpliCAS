@@ -2,10 +2,11 @@ use cas_api_models::{
     AssumptionDto, AssumptionRecord as ApiAssumptionRecord, BlockedHintDto, ConditionDto,
     EngineJsonWarning,
 };
+use cas_engine::{AssumptionRecord, BlockedHint, DomainWarning, ImplicitCondition};
 use cas_formatter::DisplayExpr;
 
 pub(super) fn map_domain_warnings_to_engine_warnings(
-    warnings: &[cas_engine::eval::DomainWarning],
+    warnings: &[DomainWarning],
 ) -> Vec<EngineJsonWarning> {
     warnings
         .iter()
@@ -17,7 +18,7 @@ pub(super) fn map_domain_warnings_to_engine_warnings(
 }
 
 pub(super) fn map_solver_assumptions_to_api_records(
-    assumptions: &[cas_engine::assumptions::AssumptionRecord],
+    assumptions: &[AssumptionRecord],
 ) -> Vec<ApiAssumptionRecord> {
     assumptions
         .iter()
@@ -31,11 +32,9 @@ pub(super) fn map_solver_assumptions_to_api_records(
 }
 
 pub(super) fn map_required_conditions(
-    required_conditions: &[cas_engine::implicit_domain::ImplicitCondition],
+    required_conditions: &[ImplicitCondition],
     ctx: &cas_ast::Context,
 ) -> Vec<ConditionDto> {
-    use cas_engine::implicit_domain::ImplicitCondition;
-
     required_conditions
         .iter()
         .map(|cond| {
@@ -60,8 +59,8 @@ pub(super) fn map_required_conditions(
 }
 
 pub(super) fn map_assumptions_used(
-    assumptions: &[cas_engine::assumptions::AssumptionRecord],
-    warnings: &[cas_engine::eval::DomainWarning],
+    assumptions: &[AssumptionRecord],
+    warnings: &[DomainWarning],
 ) -> Vec<AssumptionDto> {
     let mut out: Vec<AssumptionDto> = assumptions
         .iter()
@@ -81,9 +80,7 @@ pub(super) fn map_assumptions_used(
     out
 }
 
-pub(super) fn map_blocked_hints(
-    blocked_hints: &[cas_engine::domain::BlockedHint],
-) -> Vec<BlockedHintDto> {
+pub(super) fn map_blocked_hints(blocked_hints: &[BlockedHint]) -> Vec<BlockedHintDto> {
     blocked_hints
         .iter()
         .map(|h| BlockedHintDto {

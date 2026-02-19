@@ -4,6 +4,7 @@ use super::mappers::{
 use cas_api_models::{
     BudgetJsonInfo, EngineJsonError, EngineJsonResponse, EngineJsonStep, JsonRunOptions, SpanJson,
 };
+use cas_engine::{strip_all_holds, Engine, EvalAction, EvalRequest, EvalResult};
 
 /// Evaluate an expression and return JSON response.
 ///
@@ -49,7 +50,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
     let budget_info = BudgetJsonInfo::new(&opts.budget.preset, strict);
 
     // Create engine and explicit eval components (stateless-friendly API)
-    let mut engine = cas_engine::eval::Engine::new();
+    let mut engine = Engine::new();
     let mut session = cas_session::SessionState::new();
 
     // Parse expression
@@ -73,10 +74,10 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
     };
 
     // Build eval request
-    let req = cas_engine::eval::EvalRequest {
+    let req = EvalRequest {
         raw_input: expr.to_string(),
         parsed,
-        action: cas_engine::eval::EvalAction::Simplify,
+        action: EvalAction::Simplify,
         auto_store: false,
     };
 
@@ -97,8 +98,8 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
 
     // Format result
     let result_str = match &output.result {
-        cas_engine::eval::EvalResult::Expr(e) => {
-            let clean = cas_engine::engine::strip_all_holds(&mut engine.simplifier.context, *e);
+        EvalResult::Expr(e) => {
+            let clean = strip_all_holds(&mut engine.simplifier.context, *e);
             format!(
                 "{}",
                 cas_formatter::DisplayExpr {
@@ -107,8 +108,8 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
                 }
             )
         }
-        cas_engine::eval::EvalResult::Set(v) if !v.is_empty() => {
-            let clean = cas_engine::engine::strip_all_holds(&mut engine.simplifier.context, v[0]);
+        EvalResult::Set(v) if !v.is_empty() => {
+            let clean = strip_all_holds(&mut engine.simplifier.context, v[0]);
             format!(
                 "{}",
                 cas_formatter::DisplayExpr {
@@ -117,7 +118,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
                 }
             )
         }
-        cas_engine::eval::EvalResult::Bool(b) => b.to_string(),
+        EvalResult::Bool(b) => b.to_string(),
         _ => "(no result)".to_string(),
     };
 
@@ -128,8 +129,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
             .iter()
             .map(|s| {
                 let before_str = s.global_before.map(|id| {
-                    let clean =
-                        cas_engine::engine::strip_all_holds(&mut engine.simplifier.context, id);
+                    let clean = strip_all_holds(&mut engine.simplifier.context, id);
                     format!(
                         "{}",
                         cas_formatter::DisplayExpr {
@@ -139,8 +139,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
                     )
                 });
                 let after_str = s.global_after.map(|id| {
-                    let clean =
-                        cas_engine::engine::strip_all_holds(&mut engine.simplifier.context, id);
+                    let clean = strip_all_holds(&mut engine.simplifier.context, id);
                     format!(
                         "{}",
                         cas_formatter::DisplayExpr {

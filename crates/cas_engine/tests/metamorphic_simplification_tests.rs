@@ -3704,9 +3704,9 @@ fn metatest_individual_identities_impl() {
     // Determine test mode from environment
     let use_assume_mode = env::var("METATEST_MODE").ok().as_deref() == Some("assume");
     let domain_mode = if use_assume_mode {
-        cas_engine::domain::DomainMode::Assume
+        cas_engine::DomainMode::Assume
     } else {
-        cas_engine::domain::DomainMode::Generic
+        cas_engine::DomainMode::Generic
     };
 
     eprintln!(

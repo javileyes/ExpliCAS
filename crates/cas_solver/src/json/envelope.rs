@@ -2,10 +2,13 @@ use super::mappers::{map_assumptions_used, map_blocked_hints, map_required_condi
 use cas_api_models::{
     EnvelopeEvalOptions, ExprDto, OutputEnvelope, RequestInfo, RequestOptions, TransparencyDto,
 };
+use cas_engine::{
+    DomainMode, Engine, EvalAction, EvalOutput, EvalRequest, EvalResult, ValueDomain,
+};
 use cas_formatter::DisplayExpr;
 
 pub fn eval_str_to_output_envelope(expr: &str, opts: &EnvelopeEvalOptions) -> OutputEnvelope {
-    let mut engine = cas_engine::eval::Engine::new();
+    let mut engine = Engine::new();
     let mut session = cas_session::SessionState::new();
 
     session.options_mut().shared.semantics.domain_mode = parse_domain_mode(&opts.domain);
@@ -21,10 +24,10 @@ pub fn eval_str_to_output_envelope(expr: &str, opts: &EnvelopeEvalOptions) -> Ou
         }
     };
 
-    let req = cas_engine::eval::EvalRequest {
+    let req = EvalRequest {
         raw_input: expr.to_string(),
         parsed,
-        action: cas_engine::eval::EvalAction::Simplify,
+        action: EvalAction::Simplify,
         auto_store: false,
     };
 
@@ -34,17 +37,17 @@ pub fn eval_str_to_output_envelope(expr: &str, opts: &EnvelopeEvalOptions) -> Ou
     };
 
     match &output.result {
-        cas_engine::eval::EvalResult::Expr(id) => OutputEnvelope::eval_success(
+        EvalResult::Expr(id) => OutputEnvelope::eval_success(
             build_request_info(expr, opts),
             ExprDto::from_display(display_expr(&engine.simplifier.context, *id)),
             build_transparency(&output, &engine.simplifier.context),
         ),
-        cas_engine::eval::EvalResult::Set(v) if !v.is_empty() => OutputEnvelope::eval_success(
+        EvalResult::Set(v) if !v.is_empty() => OutputEnvelope::eval_success(
             build_request_info(expr, opts),
             ExprDto::from_display(display_expr(&engine.simplifier.context, v[0])),
             build_transparency(&output, &engine.simplifier.context),
         ),
-        cas_engine::eval::EvalResult::Bool(b) => OutputEnvelope::eval_success(
+        EvalResult::Bool(b) => OutputEnvelope::eval_success(
             build_request_info(expr, opts),
             ExprDto::from_display(b.to_string()),
             build_transparency(&output, &engine.simplifier.context),
@@ -69,10 +72,7 @@ fn build_request_info(expr: &str, opts: &EnvelopeEvalOptions) -> RequestInfo {
     )
 }
 
-fn build_transparency(
-    output: &cas_engine::eval::EvalOutput,
-    ctx: &cas_ast::Context,
-) -> TransparencyDto {
+fn build_transparency(output: &EvalOutput, ctx: &cas_ast::Context) -> TransparencyDto {
     let required_conditions = map_required_conditions(&output.required_conditions, ctx);
     let assumptions_used =
         map_assumptions_used(&output.solver_assumptions, &output.domain_warnings);
@@ -85,17 +85,17 @@ fn build_transparency(
     }
 }
 
-fn parse_domain_mode(domain: &str) -> cas_engine::domain::DomainMode {
+fn parse_domain_mode(domain: &str) -> DomainMode {
     match domain {
-        "strict" => cas_engine::domain::DomainMode::Strict,
-        "assume" => cas_engine::domain::DomainMode::Assume,
-        _ => cas_engine::domain::DomainMode::Generic,
+        "strict" => DomainMode::Strict,
+        "assume" => DomainMode::Assume,
+        _ => DomainMode::Generic,
     }
 }
 
-fn parse_value_domain(value_domain: &str) -> cas_engine::semantics::ValueDomain {
+fn parse_value_domain(value_domain: &str) -> ValueDomain {
     match value_domain {
-        "complex" => cas_engine::semantics::ValueDomain::ComplexEnabled,
-        _ => cas_engine::semantics::ValueDomain::RealOnly,
+        "complex" => ValueDomain::ComplexEnabled,
+        _ => ValueDomain::RealOnly,
     }
 }

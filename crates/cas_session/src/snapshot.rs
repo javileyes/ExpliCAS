@@ -437,7 +437,7 @@ mod tests {
 
     #[test]
     fn test_session_snapshot_save_load() {
-        use cas_engine::domain::DomainMode;
+        use cas_engine::DomainMode;
 
         let dir = tempdir().unwrap();
         let path = dir.path().join("test.session");

@@ -6,9 +6,9 @@
 //! 3. Required conditions propagate correctly to the output
 
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
-use cas_engine::domain::DomainMode;
 use cas_engine::semantics::ValueDomain;
 use cas_engine::solver::{solve_with_display_steps, SolveBudget, SolverOptions};
+use cas_engine::DomainMode;
 use cas_engine::Simplifier;
 
 fn make_solver_opts(mode: DomainMode) -> SolverOptions {

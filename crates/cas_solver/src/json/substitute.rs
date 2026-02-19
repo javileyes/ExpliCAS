@@ -5,6 +5,7 @@ pub use cas_api_models::{
     SubstituteJsonOptions, SubstituteJsonResponse, SubstituteOptionsInner, SubstituteOptionsJson,
     SubstituteRequestEcho,
 };
+use cas_engine::strip_all_holds;
 
 /// Substitute an expression and return JSON response.
 ///
@@ -126,7 +127,7 @@ pub fn substitute_str_to_json(
         crate::substitute::substitute_with_steps(&mut ctx, expr, target, replacement, sub_opts);
 
     // Strip __hold from result
-    let clean_result = cas_engine::engine::strip_all_holds(&mut ctx, sub_result.expr);
+    let clean_result = strip_all_holds(&mut ctx, sub_result.expr);
     let result_str = format!(
         "{}",
         cas_formatter::DisplayExpr {

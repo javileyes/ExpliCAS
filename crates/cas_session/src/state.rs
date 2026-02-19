@@ -1,24 +1,22 @@
 use cas_ast::ExprId;
-use cas_engine::diagnostics::Diagnostics;
-use cas_engine::eval::{CacheHitEntryId, EvalSession, EvalStore, StoredInputKind};
-use cas_engine::options::EvalOptions;
-use cas_engine::profile_cache::ProfileCache;
+use cas_engine::{
+    CacheHitEntryId, Diagnostics, EvalOptions, EvalResolveError, EvalSession, EvalStore,
+    ProfileCache, SimplifiedCache, StoredInputKind,
+};
 
 use crate::{
     snapshot::SessionSnapshot, Environment, ResolveError, SessionStore, SimplifyCacheKey,
     SnapshotError,
 };
 
-fn map_eval_resolve_error(err: ResolveError) -> cas_engine::eval::EvalResolveError {
+fn map_eval_resolve_error(err: ResolveError) -> EvalResolveError {
     match err {
-        ResolveError::NotFound(id) => cas_engine::eval::EvalResolveError::NotFound(id),
-        ResolveError::CircularReference(id) => {
-            cas_engine::eval::EvalResolveError::CircularReference(id)
-        }
+        ResolveError::NotFound(id) => EvalResolveError::NotFound(id),
+        ResolveError::CircularReference(id) => EvalResolveError::CircularReference(id),
     }
 }
 
-/// Local adapter that bridges `cas_session::SessionStore` to `cas_engine::eval::EvalStore`.
+/// Local adapter that bridges `cas_session::SessionStore` to `cas_engine::EvalStore`.
 #[derive(Debug, Default)]
 pub struct SessionEvalStore(pub SessionStore);
 
@@ -65,7 +63,7 @@ impl EvalStore for SessionEvalStore {
         self.0.update_diagnostics(id, diagnostics);
     }
 
-    fn update_simplified(&mut self, id: u64, cache: cas_engine::eval::SimplifiedCache) {
+    fn update_simplified(&mut self, id: u64, cache: SimplifiedCache) {
         self.0.update_simplified(id, cache);
     }
 }
@@ -258,8 +256,7 @@ impl EvalSession for SessionState {
         &self,
         ctx: &mut cas_ast::Context,
         expr: ExprId,
-    ) -> Result<(ExprId, Diagnostics, Vec<CacheHitEntryId>), cas_engine::eval::EvalResolveError>
-    {
+    ) -> Result<(ExprId, Diagnostics, Vec<CacheHitEntryId>), EvalResolveError> {
         self.resolve_state_refs_with_diagnostics(ctx, expr)
             .map_err(map_eval_resolve_error)
     }

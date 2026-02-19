@@ -21,7 +21,6 @@
 #![allow(unused_imports)]
 
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
-use cas_engine::domain::DomainMode;
 use cas_engine::domain_facts::{DomainOracle, FactStrength, Predicate};
 use cas_engine::domain_oracle::StandardOracle;
 use cas_engine::engine::eval_f64;
@@ -32,6 +31,7 @@ use cas_engine::implicit_domain::{
 use cas_engine::semantics::ValueDomain;
 use cas_engine::solver::check::{verify_solution_set, VerifyResult, VerifyStatus, VerifySummary};
 use cas_engine::solver::solve;
+use cas_engine::DomainMode;
 use cas_engine::Simplifier;
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;

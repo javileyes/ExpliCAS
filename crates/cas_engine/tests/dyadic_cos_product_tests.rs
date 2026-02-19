@@ -107,7 +107,7 @@ fn test_dyadic_cos_product_generic_symbolic_blocked() {
 /// In Assume mode with symbolic θ, the rule should apply with warning
 #[test]
 fn test_dyadic_cos_product_assume_symbolic_allowed() {
-    use cas_engine::domain::DomainMode;
+    use cas_engine::DomainMode;
 
     let opts = EvalOptions {
         steps_mode: StepsMode::On,
@@ -150,8 +150,8 @@ fn test_dyadic_cos_product_assume_symbolic_allowed() {
 /// sin(π/9) should be provably non-zero (1/9 is not an integer)
 #[test]
 fn test_prove_nonzero_sin_pi_over_9() {
-    use cas_engine::domain::Proof;
     use cas_engine::helpers::prove_nonzero;
+    use cas_engine::Proof;
 
     let mut ctx = Context::new();
     let pi = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::Pi));
@@ -169,8 +169,8 @@ fn test_prove_nonzero_sin_pi_over_9() {
 /// sin(π) should be provably zero (1 is an integer)
 #[test]
 fn test_prove_nonzero_sin_pi() {
-    use cas_engine::domain::Proof;
     use cas_engine::helpers::prove_nonzero;
+    use cas_engine::Proof;
 
     let mut ctx = Context::new();
     let pi = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::Pi));
@@ -186,8 +186,8 @@ fn test_prove_nonzero_sin_pi() {
 /// sin(18π/9) = sin(2π) should be provably zero (18/9 = 2 is an integer)
 #[test]
 fn test_prove_nonzero_sin_18pi_over_9() {
-    use cas_engine::domain::Proof;
     use cas_engine::helpers::prove_nonzero;
+    use cas_engine::Proof;
 
     let mut ctx = Context::new();
     let pi = ctx.add(cas_ast::Expr::Constant(cas_ast::Constant::Pi));
@@ -208,8 +208,8 @@ fn test_prove_nonzero_sin_18pi_over_9() {
 /// sin(a) with symbolic a should be Unknown
 #[test]
 fn test_prove_nonzero_sin_symbolic() {
-    use cas_engine::domain::Proof;
     use cas_engine::helpers::prove_nonzero;
+    use cas_engine::Proof;
 
     let mut ctx = Context::new();
     let a = ctx.var("a");

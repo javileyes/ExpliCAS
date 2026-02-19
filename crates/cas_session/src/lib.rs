@@ -1,19 +1,19 @@
 //! Session-related components extracted from `cas_engine`.
 
+use cas_engine::{Diagnostics, DomainMode, RequireOrigin, RequiredItem};
+
 pub mod env;
 mod snapshot;
 mod state;
 
-pub type SimplifyCacheKey = cas_engine::eval::SimplifyCacheKey;
-pub type SimplifiedCache = cas_engine::eval::SimplifiedCache;
-pub type CacheHitEntryId = cas_engine::eval::CacheHitEntryId;
-pub type ResolvedExpr =
-    cas_session_core::cache::ResolvedExpr<cas_engine::diagnostics::RequiredItem>;
+pub type SimplifyCacheKey = cas_engine::SimplifyCacheKey;
+pub type SimplifiedCache = cas_engine::SimplifiedCache;
+pub type CacheHitEntryId = cas_engine::CacheHitEntryId;
 
-pub type Entry =
-    cas_session_core::store::Entry<cas_engine::diagnostics::Diagnostics, SimplifiedCache>;
-pub type SessionStore =
-    cas_session_core::store::SessionStore<cas_engine::diagnostics::Diagnostics, SimplifiedCache>;
+pub type ResolvedExpr = cas_session_core::cache::ResolvedExpr<RequiredItem>;
+
+pub type Entry = cas_session_core::store::Entry<Diagnostics, SimplifiedCache>;
+pub type SessionStore = cas_session_core::store::SessionStore<Diagnostics, SimplifiedCache>;
 pub use cas_session_core::types::{CacheConfig, EntryId, EntryKind, RefMode, ResolveError};
 pub use env::{is_reserved, substitute, substitute_with_shadow, Environment};
 pub use snapshot::SnapshotError;
@@ -44,7 +44,7 @@ pub(crate) fn session_store_with_cache_config(cache_config: CacheConfig) -> Sess
 }
 
 fn map_cache_hit_traces(
-    hits: Vec<cas_session_core::cache::CacheHitTrace<cas_engine::diagnostics::RequiredItem>>,
+    hits: Vec<cas_session_core::cache::CacheHitTrace<RequiredItem>>,
 ) -> Vec<CacheHitEntryId> {
     hits.into_iter().map(|h| h.entry_id).collect()
 }
@@ -64,8 +64,8 @@ pub fn resolve_session_refs_with_diagnostics(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
     store: &SessionStore,
-) -> Result<(cas_ast::ExprId, cas_engine::diagnostics::Diagnostics), ResolveError> {
-    let mut inherited = cas_engine::diagnostics::Diagnostics::new();
+) -> Result<(cas_ast::ExprId, Diagnostics), ResolveError> {
+    let mut inherited = Diagnostics::new();
     let mut lookup = |id: EntryId| store.get(id).map(|entry| entry.kind.clone());
     let mut on_visit = |id: EntryId| {
         if let Some(entry) = store.get(id) {
@@ -103,11 +103,9 @@ pub fn resolve_session_refs_with_mode(
             }),
         })
     };
-    let mut same_requirement =
-        |lhs: &cas_engine::diagnostics::RequiredItem,
-         rhs: &cas_engine::diagnostics::RequiredItem| { lhs.cond == rhs.cond };
-    let mut mark_session_propagated = |item: &mut cas_engine::diagnostics::RequiredItem| {
-        item.merge_origin(cas_engine::diagnostics::RequireOrigin::SessionPropagated);
+    let mut same_requirement = |lhs: &RequiredItem, rhs: &RequiredItem| lhs.cond == rhs.cond;
+    let mut mark_session_propagated = |item: &mut RequiredItem| {
+        item.merge_origin(RequireOrigin::SessionPropagated);
     };
 
     cas_session_core::resolve::resolve_session_refs_with_mode_lookup(
@@ -138,25 +136,15 @@ fn resolve_all_with_diagnostics(
     expr: cas_ast::ExprId,
     store: &SessionStore,
     env: &Environment,
-    domain_mode: cas_engine::domain::DomainMode,
-) -> Result<
-    (
-        cas_ast::ExprId,
-        cas_engine::diagnostics::Diagnostics,
-        Vec<CacheHitEntryId>,
-    ),
-    ResolveError,
-> {
+    domain_mode: DomainMode,
+) -> Result<(cas_ast::ExprId, Diagnostics, Vec<CacheHitEntryId>), ResolveError> {
     let cache_key = SimplifyCacheKey::from_context(domain_mode);
     let resolved =
         resolve_session_refs_with_mode(ctx, expr, store, RefMode::PreferSimplified, &cache_key)?;
 
-    let mut inherited = cas_engine::diagnostics::Diagnostics::new();
+    let mut inherited = Diagnostics::new();
     for item in resolved.requires {
-        inherited.push_required(
-            item.cond,
-            cas_engine::diagnostics::RequireOrigin::SessionPropagated,
-        );
+        inherited.push_required(item.cond, RequireOrigin::SessionPropagated);
     }
 
     let fully_resolved = substitute(ctx, env, resolved.expr);

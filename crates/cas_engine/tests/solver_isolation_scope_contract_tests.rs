@@ -9,10 +9,10 @@
 //! a Conditional solution set.
 
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
-use cas_engine::domain::DomainMode;
 use cas_engine::implicit_domain::ImplicitCondition;
 use cas_engine::semantics::{AssumeScope, ValueDomain};
 use cas_engine::solver::{solve_with_display_steps, SolverOptions};
+use cas_engine::DomainMode;
 use cas_engine::Engine;
 
 fn make_opts(mode: DomainMode, scope: AssumeScope) -> SolverOptions {

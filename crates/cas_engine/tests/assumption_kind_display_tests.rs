@@ -7,7 +7,7 @@
 //! 4. DomainExtension events ARE displayed with 🧿
 
 use cas_ast::Context;
-use cas_engine::assumptions::{AssumptionEvent, AssumptionKind};
+use cas_engine::{AssumptionEvent, AssumptionKind};
 
 // =============================================================================
 // Test 1: DerivedFromRequires is hidden

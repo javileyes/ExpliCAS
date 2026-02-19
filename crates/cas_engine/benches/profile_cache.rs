@@ -5,9 +5,9 @@ use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use cas_ast::Context;
 use cas_parser::parse;
 
-use cas_engine::options::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
-use cas_engine::profile_cache::ProfileCache;
-use cas_engine::Simplifier;
+use cas_engine::{
+    BranchMode, ComplexMode, ContextMode, EvalOptions, ProfileCache, Simplifier, StepsMode,
+};
 
 fn build_expr(input: &str) -> (Context, cas_ast::ExprId) {
     let mut ctx = Context::new();

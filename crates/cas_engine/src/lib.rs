@@ -2,7 +2,7 @@
 // See too_many_arguments allows in: inverse_trig.rs, step.rs
 // See arc_with_non_send_sync allows in: profile_cache.rs
 
-pub mod assumptions;
+pub(crate) mod assumptions;
 pub(crate) mod best_so_far;
 pub mod budget;
 pub(crate) mod collect;
@@ -11,7 +11,7 @@ pub(crate) mod cycle_detector;
 pub mod cycle_events;
 pub mod diagnostics;
 pub mod didactic;
-pub mod domain;
+pub(crate) mod domain;
 pub mod domain_facts;
 pub mod domain_oracle;
 pub mod engine;
@@ -25,7 +25,7 @@ pub mod options;
 pub mod orchestrator;
 pub mod parent_context;
 pub mod phase;
-pub mod profile_cache;
+pub(crate) mod profile_cache;
 pub mod profiler;
 pub mod rationalize;
 pub mod rationalize_policy;
@@ -70,23 +70,34 @@ pub use cas_formatter::visualizer;
 pub(crate) use cas_math::pattern_scanner;
 
 pub use assumptions::{
-    AssumptionCollector, AssumptionEvent, AssumptionKey, AssumptionRecord, AssumptionReporting,
+    AssumptionCollector, AssumptionEvent, AssumptionKey, AssumptionKind, AssumptionRecord,
+    AssumptionReporting, ConditionClass,
 };
 pub use budget::{Budget, BudgetExceeded, BudgetScope, Metric, Operation, PassStats};
 pub use cycle_events::{CycleEvent, CycleLevel};
-pub use domain::{can_cancel_factor, BlockedHint, CancelDecision, DomainMode, Proof};
+pub use diagnostics::{Diagnostics, RequireOrigin, RequiredItem};
+pub use domain::{
+    can_apply_analytic, can_cancel_factor, take_blocked_hints, BlockedHint, CancelDecision,
+    DomainMode, Proof,
+};
 pub use engine::{
     eval_f64_checked, strip_all_holds, EquivalenceResult, EvalCheckedError, EvalCheckedOptions,
     Simplifier,
 };
 pub use error::{CasError, CasResult};
 pub use eval::*;
-pub use options::AutoExpandBinomials; // V2.15.8: education mode expansion
-pub use options::HeuristicPoly; // V2.15.9: smart polynomial simplification
+pub use implicit_domain::{
+    normalize_and_dedupe_conditions, ImplicitCondition, RequiresDisplayLevel,
+};
+pub use options::{
+    AutoExpandBinomials, BranchMode, ComplexMode, ContextMode, EvalOptions, HeuristicPoly,
+    StepsMode,
+};
 pub use phase::{
     ExpandBudget, ExpandPolicy, PhaseBudgets, PhaseStats, PipelineStats, SimplifyOptions,
     SimplifyPhase,
 };
+pub use profile_cache::ProfileCache;
 pub use rationalize_policy::{AutoRationalizeLevel, RationalizeOutcome, RationalizeReason};
 pub use rule::{Rule, SoundnessLabel};
 pub use semantics::{
