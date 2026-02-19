@@ -12,116 +12,6 @@ use num_traits::Zero;
 // Simplifies ∛(m+t) + ∛(m-t) when the result is a rational number.
 // =============================================================================
 
-/// Try to split an expression as `m ± t` where m is rational and t is a surd.
-/// Returns (m, t, sign) where sign = +1 means m+t, sign = -1 means m-t.
-/// Handles different orderings from parser canonicalization.
-fn split_as_m_plus_t(
-    ctx: &cas_ast::Context,
-    expr: cas_ast::ExprId,
-) -> Option<(cas_ast::ExprId, cas_ast::ExprId, i32)> {
-    // Helper to check if an expression contains a sqrt (surd-like)
-    fn is_surd_like(ctx: &cas_ast::Context, e: cas_ast::ExprId) -> bool {
-        match ctx.get(e) {
-            Expr::Function(fn_id, args)
-                if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
-            {
-                true
-            }
-            Expr::Pow(_, exp) => {
-                if let Expr::Number(n) = ctx.get(*exp) {
-                    *n.numer() == 1.into() && *n.denom() == 2.into()
-                } else {
-                    false
-                }
-            }
-            Expr::Mul(l, r) => is_surd_like(ctx, *l) || is_surd_like(ctx, *r),
-            Expr::Neg(inner) => is_surd_like(ctx, *inner),
-            _ => false,
-        }
-    }
-
-    fn is_numeric(ctx: &cas_ast::Context, e: cas_ast::ExprId) -> bool {
-        matches!(ctx.get(e), Expr::Number(_))
-    }
-
-    // Extract terms and effective sign
-    // For Add(a, b): sign of t is +1
-    // For Sub(a, b): sign of t is -1 (when t is the right operand)
-    // For Add(a, Neg(b)): sign of t is -1 (when t is b)
-    match ctx.get(expr) {
-        Expr::Add(l, r) => {
-            // Check for Add(a, Neg(b)) = a - b
-            if let Expr::Neg(neg_inner) = ctx.get(*r) {
-                // a + (-b) where b = neg_inner
-                if is_numeric(ctx, *l) && is_surd_like(ctx, *neg_inner) {
-                    // m + (-t) = m - t
-                    return Some((*l, *neg_inner, -1));
-                }
-                if is_surd_like(ctx, *l) && is_numeric(ctx, *neg_inner) {
-                    // t + (-m) = t - m = -(m - t) => this represents -(m - t)
-                    // Actually we should not match this as it's not (m ± t)
-                    return None;
-                }
-            }
-
-            // Regular Add(a, b)
-            if is_numeric(ctx, *l) && is_surd_like(ctx, *r) {
-                // m + t
-                return Some((*l, *r, 1));
-            }
-            if is_surd_like(ctx, *l) && is_numeric(ctx, *r) {
-                // t + m = m + t (commutative)
-                return Some((*r, *l, 1));
-            }
-            None
-        }
-        Expr::Sub(l, r) => {
-            if is_numeric(ctx, *l) && is_surd_like(ctx, *r) {
-                // m - t
-                return Some((*l, *r, -1));
-            }
-            if is_surd_like(ctx, *l) && is_numeric(ctx, *r) {
-                // t - m: This is NOT (m ± t), it's -(m - t)
-                // We could represent it as m - t with sign flipped externally,
-                // but for clarity, we only match when m is first in Sub
-                return None;
-            }
-            None
-        }
-        _ => None,
-    }
-}
-
-/// Check if two expressions are conjugates: base1 = m + t, base2 = m - t (or vice versa).
-/// Returns Some((m, t)) if they are conjugates.
-fn is_conjugate_pair(
-    ctx: &cas_ast::Context,
-    base1: cas_ast::ExprId,
-    base2: cas_ast::ExprId,
-) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
-    use crate::ordering::compare_expr;
-    use std::cmp::Ordering;
-
-    let (m1, t1, sign1) = split_as_m_plus_t(ctx, base1)?;
-    let (m2, t2, sign2) = split_as_m_plus_t(ctx, base2)?;
-
-    // Must have same m and same t
-    if compare_expr(ctx, m1, m2) != Ordering::Equal {
-        return None;
-    }
-    if compare_expr(ctx, t1, t2) != Ordering::Equal {
-        return None;
-    }
-
-    // One must be +1 (addition), one must be -1 (subtraction)
-    // i.e., sign1 * sign2 == -1
-    if sign1 + sign2 != 0 {
-        return None;
-    }
-
-    Some((m1, t1))
-}
-
 /// Extract exponent from Pow(base, exp) and check if it equals 1/3.
 fn is_cube_root_pow(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> Option<cas_ast::ExprId> {
     if let Expr::Pow(base, exp) = ctx.get(expr) {
@@ -283,7 +173,7 @@ define_rule!(
         let base_b = is_cube_root_pow(ctx, right)?;
 
         // Check if A and B are conjugates (m + t) and (m - t)
-        let (m, t) = is_conjugate_pair(ctx, base_a, base_b)?;
+        let (m, t) = cas_math::root_forms::conjugate_numeric_surd_pair(ctx, base_a, base_b)?;
 
         // Compute S = A + B = 2m (directly, without simplify)
         // Since A = m + t and B = m - t, A + B = 2m

@@ -46,6 +46,91 @@ pub fn extract_root_base_and_index(ctx: &mut Context, expr: ExprId) -> Option<(E
     None
 }
 
+fn is_surd_like(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
+        {
+            true
+        }
+        Expr::Pow(_, exp) => {
+            if let Expr::Number(n) = ctx.get(*exp) {
+                *n.numer() == 1.into() && *n.denom() == 2.into()
+            } else {
+                false
+            }
+        }
+        Expr::Mul(l, r) => is_surd_like(ctx, *l) || is_surd_like(ctx, *r),
+        Expr::Neg(inner) => is_surd_like(ctx, *inner),
+        _ => false,
+    }
+}
+
+/// Split an expression as `m ± t`, where `m` is numeric and `t` is surd-like.
+///
+/// Returns `(m, t, sign)`, where `sign = +1` means `m+t` and `sign = -1` means `m-t`.
+pub fn split_numeric_plus_surd(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId, i32)> {
+    let is_numeric = |e: ExprId| matches!(ctx.get(e), Expr::Number(_));
+
+    match ctx.get(expr) {
+        Expr::Add(l, r) => {
+            if let Expr::Neg(neg_inner) = ctx.get(*r) {
+                if is_numeric(*l) && is_surd_like(ctx, *neg_inner) {
+                    return Some((*l, *neg_inner, -1));
+                }
+                if is_surd_like(ctx, *l) && is_numeric(*neg_inner) {
+                    return None;
+                }
+            }
+
+            if is_numeric(*l) && is_surd_like(ctx, *r) {
+                return Some((*l, *r, 1));
+            }
+            if is_surd_like(ctx, *l) && is_numeric(*r) {
+                return Some((*r, *l, 1));
+            }
+            None
+        }
+        Expr::Sub(l, r) => {
+            if is_numeric(*l) && is_surd_like(ctx, *r) {
+                return Some((*l, *r, -1));
+            }
+            if is_surd_like(ctx, *l) && is_numeric(*r) {
+                return None;
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Check whether two expressions are conjugates in the `m ± t` form.
+///
+/// Returns `(m, t)` when both sides share the same `m` and `t` and opposite sign.
+pub fn conjugate_numeric_surd_pair(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    use cas_ast::ordering::compare_expr;
+    use std::cmp::Ordering;
+
+    let (m1, t1, sign1) = split_numeric_plus_surd(ctx, left)?;
+    let (m2, t2, sign2) = split_numeric_plus_surd(ctx, right)?;
+
+    if compare_expr(ctx, m1, m2) != Ordering::Equal {
+        return None;
+    }
+    if compare_expr(ctx, t1, t2) != Ordering::Equal {
+        return None;
+    }
+    if sign1 + sign2 != 0 {
+        return None;
+    }
+
+    Some((m1, t1))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -81,5 +166,31 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("x^(2/3)", &mut ctx).expect("parse");
         assert!(extract_root_base_and_index(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn split_numeric_plus_surd_detects_add_and_sub() {
+        let mut ctx = Context::new();
+        let plus = parse("5+sqrt(2)", &mut ctx).expect("plus");
+        let minus = parse("5-sqrt(2)", &mut ctx).expect("minus");
+
+        let (m_plus, t_plus, sign_plus) = split_numeric_plus_surd(&ctx, plus).expect("split +");
+        let (m_minus, t_minus, sign_minus) = split_numeric_plus_surd(&ctx, minus).expect("split -");
+
+        assert!(poly_eq(&ctx, m_plus, m_minus));
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, t_plus, t_minus),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(sign_plus, 1);
+        assert_eq!(sign_minus, -1);
+    }
+
+    #[test]
+    fn conjugate_numeric_surd_pair_detects_match() {
+        let mut ctx = Context::new();
+        let left = parse("3+sqrt(7)", &mut ctx).expect("left");
+        let right = parse("3-sqrt(7)", &mut ctx).expect("right");
+        assert!(conjugate_numeric_surd_pair(&ctx, left, right).is_some());
     }
 }
