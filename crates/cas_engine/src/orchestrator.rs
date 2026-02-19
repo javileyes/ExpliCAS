@@ -8,6 +8,17 @@ use cas_ast::{BuiltinFn, ExprId};
 use cas_math::poly_store::clear_thread_local_store;
 use std::collections::HashSet;
 
+fn to_math_auto_expand_budget(
+    budget: &crate::phase::ExpandBudget,
+) -> cas_math::auto_expand_scan::ExpandBudget {
+    cas_math::auto_expand_scan::ExpandBudget {
+        max_pow_exp: budget.max_pow_exp,
+        max_base_terms: budget.max_base_terms,
+        max_generated_terms: budget.max_generated_terms,
+        max_vars: budget.max_vars,
+    }
+}
+
 pub struct Orchestrator {
     // Configuration for the pipeline
     pub max_iterations: usize,
@@ -87,10 +98,11 @@ impl Orchestrator {
             // Always scan for cancellation contexts (unless in Solve mode)
             // This enables Smart Expansion: auto-expand only when it leads to cancellation
             if !is_solve_mode {
-                crate::auto_expand_scan::mark_auto_expand_candidates(
+                let math_budget = to_math_auto_expand_budget(&self.options.shared.expand_budget);
+                cas_math::auto_expand_scan::mark_auto_expand_candidates(
                     &simplifier.context,
                     current,
-                    &self.options.shared.expand_budget,
+                    &math_budget,
                     &mut self.pattern_marks,
                 );
             }

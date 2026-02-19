@@ -3,7 +3,6 @@
 // See arc_with_non_send_sync allows in: profile_cache.rs
 
 pub mod assumptions;
-pub mod auto_expand_scan;
 pub(crate) mod best_so_far;
 pub mod budget;
 pub mod canonical_forms;

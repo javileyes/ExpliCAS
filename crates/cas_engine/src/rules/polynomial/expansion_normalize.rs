@@ -415,7 +415,7 @@ impl HeuristicPolyNormalizeAddRule {
                             if let Some(e) = n.to_integer().to_u32() {
                                 // Must be polynomial-like base (no functions like sqrt, sin)
                                 if (2..=6).contains(&e)
-                                    && crate::auto_expand_scan::looks_polynomial_like(ctx, *base)
+                                    && cas_math::auto_expand_scan::looks_polynomial_like(ctx, *base)
                                 {
                                     return true;
                                 }

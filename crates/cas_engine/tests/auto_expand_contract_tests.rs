@@ -187,9 +187,8 @@ fn determinism_difference_quotient() {
 
 #[test]
 fn scanner_marks_difference_quotient_context() {
-    use cas_engine::auto_expand_scan::mark_auto_expand_candidates;
-    use cas_engine::pattern_marks::PatternMarks;
-    use cas_engine::phase::ExpandBudget;
+    use cas_math::auto_expand_scan::{mark_auto_expand_candidates, ExpandBudget};
+    use cas_math::pattern_marks::PatternMarks;
 
     // Build: ((x+h)^3 - x^3)/h
     let mut ctx = Context::new();
@@ -218,9 +217,8 @@ fn scanner_marks_difference_quotient_context() {
 
 #[test]
 fn scanner_does_not_mark_standalone_pow() {
-    use cas_engine::auto_expand_scan::mark_auto_expand_candidates;
-    use cas_engine::pattern_marks::PatternMarks;
-    use cas_engine::phase::ExpandBudget;
+    use cas_math::auto_expand_scan::{mark_auto_expand_candidates, ExpandBudget};
+    use cas_math::pattern_marks::PatternMarks;
 
     // Build: (x+1)^3 - should NOT be marked
     let mut ctx = Context::new();
@@ -287,9 +285,8 @@ fn auto_sub_does_not_expand_standalone() {
 
 #[test]
 fn scanner_marks_sub_with_pow_and_polynomial() {
-    use cas_engine::auto_expand_scan::mark_auto_expand_candidates;
-    use cas_engine::pattern_marks::PatternMarks;
-    use cas_engine::phase::ExpandBudget;
+    use cas_math::auto_expand_scan::{mark_auto_expand_candidates, ExpandBudget};
+    use cas_math::pattern_marks::PatternMarks;
 
     // Build: (x+1)^2 - (x^2 + 2*x + 1)
     let mut ctx = Context::new();
@@ -323,9 +320,8 @@ fn scanner_marks_sub_with_pow_and_polynomial() {
 
 #[test]
 fn scanner_does_not_mark_sub_without_polynomial_rhs() {
-    use cas_engine::auto_expand_scan::mark_auto_expand_candidates;
-    use cas_engine::pattern_marks::PatternMarks;
-    use cas_engine::phase::ExpandBudget;
+    use cas_math::auto_expand_scan::{mark_auto_expand_candidates, ExpandBudget};
+    use cas_math::pattern_marks::PatternMarks;
 
     // Build: (x+1)^2 - sin(x) -- sin(x) is not polynomial-like
     let mut ctx = Context::new();
