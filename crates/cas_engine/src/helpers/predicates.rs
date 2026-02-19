@@ -7,25 +7,8 @@ use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_extract::{
     extract_abs_argument_view, extract_sqrt_argument_view, extract_unary_log_argument_view,
 };
+use cas_math::expr_predicates::is_zero_expr as is_zero;
 use num_traits::{One, Signed};
-
-/// Check if expression is the number 1
-pub(crate) fn is_one(ctx: &Context, expr: ExprId) -> bool {
-    if let Expr::Number(n) = ctx.get(expr) {
-        n.is_one()
-    } else {
-        false
-    }
-}
-
-/// Check if expression is the number 0
-pub fn is_zero(ctx: &Context, expr: ExprId) -> bool {
-    if let Expr::Number(n) = ctx.get(expr) {
-        num_traits::Zero::is_zero(n)
-    } else {
-        false
-    }
-}
 
 /// Attempt to prove whether an expression is non-zero.
 ///

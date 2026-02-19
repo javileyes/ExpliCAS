@@ -5,7 +5,7 @@ use crate::expr_extract::{
 };
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use num_rational::BigRational;
-use num_traits::{One, Signed};
+use num_traits::{One, Signed, Zero};
 
 /// Check if an exponent represents an even root (`p/q` with even `q`).
 pub fn is_even_root_exponent(n: &BigRational) -> bool {
@@ -176,6 +176,11 @@ pub fn is_one_expr(ctx: &Context, id: ExprId) -> bool {
     matches!(ctx.get(id), Expr::Number(n) if n.is_one())
 }
 
+/// Check if expression is numerically equal to `0`.
+pub fn is_zero_expr(ctx: &Context, id: ExprId) -> bool {
+    matches!(ctx.get(id), Expr::Number(n) if n.is_zero())
+}
+
 /// Check if expression is numerically equal to `+2`.
 pub fn is_two_expr(ctx: &Context, id: ExprId) -> bool {
     matches!(ctx.get(id), Expr::Number(n) if *n == BigRational::from_integer(2.into()))
@@ -299,11 +304,13 @@ mod tests {
     fn one_minus_one_detection() {
         let mut ctx = Context::new();
         let one = parse("1", &mut ctx).expect("parse one");
+        let zero = parse("0", &mut ctx).expect("parse zero");
         let two = parse("2", &mut ctx).expect("parse two");
         let half = ctx.rational(1, 2);
         let minus_one = parse("-1", &mut ctx).expect("parse minus one");
         let e = parse("e", &mut ctx).expect("parse e");
         assert!(is_one_expr(&ctx, one));
+        assert!(is_zero_expr(&ctx, zero));
         assert!(is_two_expr(&ctx, two));
         assert!(is_half_expr(&ctx, half));
         assert!(is_minus_one_expr(&ctx, minus_one));

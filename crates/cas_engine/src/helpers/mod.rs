@@ -20,6 +20,8 @@ pub(crate) use cas_math::expr_extract::{
     extract_i64_integer as get_integer, extract_integer_exact as get_integer_exact,
 };
 pub(crate) use cas_math::expr_nf_scoring::*;
+pub(crate) use cas_math::expr_predicates::is_one_expr as is_one;
+pub use cas_math::expr_predicates::is_zero_expr as is_zero;
 pub(crate) use cas_math::expr_trig_roots_flatten::*;
 pub(crate) use cas_math::pi_helpers::*;
 // predicates has `is_zero` and `prove_nonzero` used by integration tests — keep pub
