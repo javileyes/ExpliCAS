@@ -10,7 +10,7 @@ pub(crate) mod const_fold;
 pub(crate) mod cycle_detector;
 pub(crate) mod cycle_events;
 pub(crate) mod diagnostics;
-pub mod didactic;
+pub(crate) mod didactic;
 pub(crate) mod domain;
 pub mod domain_facts;
 pub mod domain_oracle;
@@ -40,7 +40,7 @@ pub(crate) mod step_optimization;
 pub(crate) mod strategies;
 pub mod substitute;
 pub mod telescoping;
-pub mod timeline;
+pub(crate) mod timeline;
 
 // Property-based numeric tests for rewrite correctness
 #[cfg(test)]
@@ -77,6 +77,7 @@ pub use budget::{Budget, BudgetExceeded, BudgetScope, Metric, Operation, PassSta
 pub use const_fold::{fold_constants, ConstFoldMode, ConstFoldResult};
 pub use cycle_events::{CycleEvent, CycleLevel};
 pub use diagnostics::{Diagnostics, RequireOrigin, RequiredItem};
+pub use didactic::{enrich_steps, get_standalone_substeps, EnrichedStep, SubStep};
 pub use domain::{
     can_apply_analytic, can_cancel_factor, take_blocked_hints, BlockedHint, CancelDecision,
     DomainMode, Proof,
@@ -110,6 +111,7 @@ pub use semantics::{
 };
 pub use solve_safety::{RequirementDescriptor, SimplifyPurpose, SolveSafety};
 pub use step::{DisplayEvalSteps, Step};
+pub use timeline::{html_escape, latex_escape, SolveTimelineHtml, TimelineHtml, VerbosityLevel};
 pub use visitors::{DepthVisitor, VariableCollector};
 
 // Equation-level primitives (not simplifier rules — used by solver pipeline)

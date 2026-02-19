@@ -4,11 +4,11 @@
 //! for nested fraction simplification.
 
 use cas_ast::Context;
-use cas_engine::didactic::enrich_steps;
+use cas_engine::enrich_steps;
 use cas_engine::Engine;
 
 /// Helper function to simplify expression and get enriched steps
-fn simplify_and_enrich(input: &str) -> (Context, Vec<cas_engine::didactic::EnrichedStep>) {
+fn simplify_and_enrich(input: &str) -> (Context, Vec<cas_engine::EnrichedStep>) {
     let mut engine = Engine::new();
     let ctx = &mut engine.simplifier.context;
 
