@@ -8,8 +8,6 @@ use cas_math::expr_extract::{
     extract_abs_argument_view, extract_sqrt_argument_view, extract_unary_log_argument_view,
 };
 use cas_math::expr_predicates::is_even_root_exponent;
-use num_integer::Integer;
-use num_rational::BigRational;
 
 // =============================================================================
 // Domain Delta Check (Airbag)
@@ -448,30 +446,8 @@ fn add_positive_and_propagate(
 }
 
 /// Check if expression contains any variables.
-/// Uses iterative traversal to prevent stack overflow on deep expressions.
 pub(crate) fn contains_variable(ctx: &Context, root: ExprId) -> bool {
-    let mut stack = vec![root];
-
-    while let Some(expr) = stack.pop() {
-        match ctx.get(expr) {
-            Expr::Variable(_) => return true,
-            Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
-            Expr::Add(l, r)
-            | Expr::Sub(l, r)
-            | Expr::Mul(l, r)
-            | Expr::Div(l, r)
-            | Expr::Pow(l, r) => {
-                stack.push(*l);
-                stack.push(*r);
-            }
-            Expr::Neg(inner) => stack.push(*inner),
-            Expr::Hold(inner) => stack.push(*inner),
-            Expr::Function(_, args) => stack.extend(args.iter().copied()),
-            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
-        }
-    }
-
-    false
+    cas_math::expr_predicates::contains_variable(ctx, root)
 }
 
 /// Check if an expression is always non-negative for real values.
@@ -480,60 +456,7 @@ pub(crate) fn contains_variable(ctx: &Context, root: ExprId) -> bool {
 /// - |x| (absolute value)
 /// - x⁴, x⁶, etc. (any even power)
 pub(crate) fn is_always_nonnegative(ctx: &Context, expr: ExprId) -> bool {
-    // Use depth-limited version with max 50 levels to prevent stack overflow
-    is_always_nonnegative_depth(ctx, expr, 50)
-}
-
-/// Internal is_always_nonnegative with explicit depth limit.
-fn is_always_nonnegative_depth(ctx: &Context, expr: ExprId, depth: usize) -> bool {
-    // Depth guard: return false if we've recursed too deep (conservative)
-    if depth == 0 {
-        return false;
-    }
-
-    match ctx.get(expr) {
-        // Numeric constants: check if ≥ 0
-        Expr::Number(n) => *n >= BigRational::from_integer(0.into()),
-
-        // x^n where n is an even positive integer
-        Expr::Pow(_base, exp) => {
-            if let Expr::Number(n) = ctx.get(*exp) {
-                // Even integer exponent means always non-negative for real base
-                if n.is_integer() {
-                    let numer = n.numer();
-                    if numer.is_even() && *numer > num_bigint::BigInt::from(0) {
-                        return true;
-                    }
-                }
-            }
-            // Fallback: check if base is non-negative and exponent is positive
-            false
-        }
-
-        // |x| is always non-negative
-        Expr::Function(_, _) if extract_abs_argument_view(ctx, expr).is_some() => true,
-
-        // sqrt(x) is non-negative by definition (for real)
-        Expr::Function(_, _) if extract_sqrt_argument_view(ctx, expr).is_some() => true,
-
-        // x * x where both sides are the same = x², always non-negative
-        Expr::Mul(l, r) => {
-            if *l == *r {
-                return true; // x * x = x²
-            }
-            // Product of two non-negatives is non-negative
-            is_always_nonnegative_depth(ctx, *l, depth - 1)
-                && is_always_nonnegative_depth(ctx, *r, depth - 1)
-        }
-
-        // Sum of non-negatives is non-negative
-        Expr::Add(l, r) => {
-            is_always_nonnegative_depth(ctx, *l, depth - 1)
-                && is_always_nonnegative_depth(ctx, *r, depth - 1)
-        }
-
-        _ => false,
-    }
+    cas_math::expr_predicates::is_always_nonnegative_expr(ctx, expr)
 }
 
 /// Iterative domain inference (replaces recursive version).

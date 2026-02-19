@@ -1,5 +1,6 @@
 //! Structural expression predicates used across algebra rules.
 
+use crate::expr_extract::{extract_abs_argument_view, extract_sqrt_argument_view};
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{One, Signed};
@@ -8,6 +9,82 @@ use num_traits::{One, Signed};
 pub fn is_even_root_exponent(n: &BigRational) -> bool {
     use num_integer::Integer;
     n.denom().is_even()
+}
+
+/// Check if expression contains any variable.
+///
+/// Uses iterative traversal to avoid recursion limits on deep trees.
+pub fn contains_variable(ctx: &Context, root: ExprId) -> bool {
+    let mut stack = vec![root];
+
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Variable(_) => return true,
+            Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+            Expr::Add(l, r)
+            | Expr::Sub(l, r)
+            | Expr::Mul(l, r)
+            | Expr::Div(l, r)
+            | Expr::Pow(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+        }
+    }
+
+    false
+}
+
+/// Check if an expression is structurally always non-negative.
+///
+/// Conservative predicate used for condition cleanup.
+pub fn is_always_nonnegative_expr(ctx: &Context, expr: ExprId) -> bool {
+    is_always_nonnegative_depth(ctx, expr, 50)
+}
+
+fn is_always_nonnegative_depth(ctx: &Context, expr: ExprId, depth: usize) -> bool {
+    use num_integer::Integer;
+
+    if depth == 0 {
+        return false;
+    }
+
+    match ctx.get(expr) {
+        Expr::Number(n) => *n >= BigRational::from_integer(0.into()),
+
+        Expr::Pow(_base, exp) => {
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if n.is_integer() {
+                    let exp_int = n.to_integer();
+                    if exp_int > 0.into() && exp_int.is_even() {
+                        return true;
+                    }
+                }
+            }
+            false
+        }
+
+        Expr::Function(_, _) if extract_abs_argument_view(ctx, expr).is_some() => true,
+        Expr::Function(_, _) if extract_sqrt_argument_view(ctx, expr).is_some() => true,
+
+        Expr::Mul(l, r) => {
+            if *l == *r {
+                return true;
+            }
+            is_always_nonnegative_depth(ctx, *l, depth - 1)
+                && is_always_nonnegative_depth(ctx, *r, depth - 1)
+        }
+
+        Expr::Add(l, r) => {
+            is_always_nonnegative_depth(ctx, *l, depth - 1)
+                && is_always_nonnegative_depth(ctx, *r, depth - 1)
+        }
+
+        _ => false,
+    }
 }
 
 /// Check if expression contains any function call.
@@ -238,6 +315,15 @@ mod tests {
     }
 
     #[test]
+    fn contains_variable_detection() {
+        let mut ctx = Context::new();
+        let symbolic = parse("sqrt(x) + 1", &mut ctx).expect("parse symbolic");
+        let numeric = parse("sqrt(4) + 1", &mut ctx).expect("parse numeric");
+        assert!(contains_variable(&ctx, symbolic));
+        assert!(!contains_variable(&ctx, numeric));
+    }
+
+    #[test]
     fn even_root_exponent_detection() {
         let half = BigRational::new(1.into(), 2.into());
         let three_quarters = BigRational::new(3.into(), 4.into());
@@ -247,5 +333,21 @@ mod tests {
         assert!(is_even_root_exponent(&three_quarters));
         assert!(!is_even_root_exponent(&one_third));
         assert!(!is_even_root_exponent(&two));
+    }
+
+    #[test]
+    fn always_nonnegative_structural_detection() {
+        let mut ctx = Context::new();
+        let sq = parse("x^2", &mut ctx).expect("parse square");
+        let abs = parse("abs(x)", &mut ctx).expect("parse abs");
+        let sqrt = parse("sqrt(x)", &mut ctx).expect("parse sqrt");
+        let sum = parse("x^2 + 1", &mut ctx).expect("parse sum");
+        let odd = parse("x^3", &mut ctx).expect("parse odd power");
+
+        assert!(is_always_nonnegative_expr(&ctx, sq));
+        assert!(is_always_nonnegative_expr(&ctx, abs));
+        assert!(is_always_nonnegative_expr(&ctx, sqrt));
+        assert!(is_always_nonnegative_expr(&ctx, sum));
+        assert!(!is_always_nonnegative_expr(&ctx, odd));
     }
 }
