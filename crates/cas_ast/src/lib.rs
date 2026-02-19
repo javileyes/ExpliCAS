@@ -8,6 +8,7 @@ pub mod hold; // __hold barrier utilities (canonical implementation)
 pub mod ordering; // Canonical ordering utilities
 pub mod span; // Canonical source span for error reporting
 pub mod symbol; // Symbol interning for variable names
+pub mod target_kind; // Expr discriminant mapping for rule dispatch
 pub mod traversal; // Canonical traversal utilities (count_nodes, etc.)
 pub mod views; // Unified views for pattern matching
 pub mod visitor;
@@ -21,6 +22,7 @@ pub use expr_path::{path_to_string, ExprPath};
 pub use expression::{Constant, Context, ContextStats, Expr, ExprId, MulCommutativity};
 // Span re-export (canonical source location)
 pub use span::Span;
+pub use target_kind::{TargetKind, TargetKindSet};
 // Traversal re-exports (canonical implementations)
 pub use traversal::{
     collect_variables, count_all_nodes, count_nodes_and_max_depth, count_nodes_matching,
