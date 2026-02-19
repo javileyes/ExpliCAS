@@ -4,13 +4,11 @@
 //! - Expression simplification steps ([`TimelineHtml`])
 //! - Equation solving steps ([`SolveTimelineHtml`])
 
-mod escape;
-mod latex_clean;
 mod simplify;
 mod solve;
 
 // Re-export the public API
-pub use escape::{html_escape, latex_escape};
+pub use cas_formatter::{html_escape, latex_escape};
 pub use simplify::{TimelineHtml, VerbosityLevel};
 pub use solve::SolveTimelineHtml;
 

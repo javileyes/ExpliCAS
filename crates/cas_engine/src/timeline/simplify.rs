@@ -1,5 +1,3 @@
-use super::escape::{html_escape, latex_escape};
-use super::latex_clean::clean_latex_identities;
 use crate::step::{pathsteps_to_expr_path, PathStep, Step};
 use cas_ast::{Context, Expr, ExprId, ExprPath};
 use cas_formatter::path::{
@@ -7,8 +5,8 @@ use cas_formatter::path::{
     extract_add_terms, find_path_to_expr, navigate_to_subexpr,
 };
 use cas_formatter::{
-    HighlightColor, HighlightConfig, LaTeXExprHighlighted, PathHighlightConfig,
-    PathHighlightedLatexRenderer,
+    clean_latex_identities, html_escape, latex_escape, HighlightColor, HighlightConfig,
+    LaTeXExprHighlighted, PathHighlightConfig, PathHighlightedLatexRenderer,
 };
 
 /// Timeline HTML generator - exports simplification steps to interactive HTML
