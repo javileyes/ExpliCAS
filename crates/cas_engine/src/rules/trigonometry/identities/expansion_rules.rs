@@ -29,7 +29,8 @@ define_rule!(
     TrigSumToProductRule,
     "Sum-to-Product Identity",
     |ctx, expr| {
-        use crate::helpers::{extract_rational_pi_multiple, match_trig_diff, match_trig_sum};
+        use crate::helpers::extract_rational_pi_multiple;
+        use crate::rules::trigonometry::trig_matchers::{match_trig_diff, match_trig_sum};
 
         // Try all four patterns
         enum Pattern {

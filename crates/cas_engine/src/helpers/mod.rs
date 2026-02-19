@@ -26,8 +26,6 @@ pub(crate) use cas_math::pi_helpers::*;
 pub(crate) use cas_math::trig_roots_flatten::*;
 // predicates has `is_zero` and `prove_nonzero` used by integration tests — keep pub
 pub use predicates::*;
-// trig_matchers moved to rules/trigonometry/trig_matchers.rs — re-export for backwards compat
-pub(crate) use crate::rules::trigonometry::trig_matchers::*;
 
 #[cfg(test)]
 mod tests;
