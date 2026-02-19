@@ -4,6 +4,7 @@ use crate::rule::Rewrite;
 use cas_ast::count_nodes;
 use cas_ast::Expr;
 use cas_math::expr_rewrite::distribute;
+use cas_math::poly_store::expand_expr_modp_materialized_hold;
 
 /// Maximum terms to materialize in expand().
 /// Above this, expand() is left unevaluated with a warning.
@@ -11,7 +12,7 @@ use cas_math::expr_rewrite::distribute;
 pub const EXPAND_MAX_MATERIALIZE_TERMS: u64 = 200_000;
 
 /// Threshold for using fast mod-p expansion instead of symbolic.
-/// Above this many terms, use `expand_modp_safe` which is much faster.
+/// Above this many terms, use materialized mod-p expansion which is much faster.
 pub const EXPAND_MODP_THRESHOLD: u64 = 1_000;
 
 // ExpandRule: only runs in Transform phase
@@ -47,7 +48,7 @@ define_rule!(
 
                 // Strategy: use mod-p fast path for large polynomials (> 1000 terms)
                 if est.unwrap_or(0) > EXPAND_MODP_THRESHOLD {
-                    if let Some(result) = crate::expand::expand_modp_safe(ctx, arg) {
+                    if let Some(result) = expand_expr_modp_materialized_hold(ctx, arg) {
                         let new_expr = crate::strip_all_holds(ctx, result);
                         return Some(Rewrite::new(new_expr).desc("expand() [mod-p fast path]"));
                     }

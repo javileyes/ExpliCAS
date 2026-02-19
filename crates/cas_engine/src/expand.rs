@@ -160,13 +160,6 @@ fn expand_to_poly_ref_or_hold(ctx: &mut Context, expr: ExprId) -> Option<ExprId>
     cas_math::poly_store::expand_expr_modp_to_poly_ref_or_hold(ctx, expr, EXPAND_MATERIALIZE_LIMIT)
 }
 
-/// Legacy function for backward compatibility.
-/// Now uses expand_to_poly_ref_or_hold internally.
-pub fn expand_modp_safe(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
-    // Always materialize AST for this function (used by distribution.rs).
-    cas_math::poly_store::expand_expr_modp_materialized_hold(ctx, expr)
-}
-
 /// Expand with budget tracking, returning PassStats for unified budget charging.
 ///
 /// Tracks `nodes_delta` and estimates `terms_materialized` based on the expansion.
@@ -264,7 +257,7 @@ pub fn expand(ctx: &mut Context, expr: ExprId) -> ExprId {
     // If user calls expand(), they want FULL expansion. Canonical preservation should
     // only be applied in simplify(), not expand().
 
-    // V2.15.35: mod-p expansion (expand_modp_safe) is NOT used here because:
+    // V2.15.35: materialized mod-p expansion is NOT used here because:
     // 1. The bottleneck is AST reconstruction, not polynomial arithmetic
     // 2. mod-p is only useful for internal consumption (e.g., poly_gcd_modp)
     //    where the result stays in mod-p form without AST reconstruction
