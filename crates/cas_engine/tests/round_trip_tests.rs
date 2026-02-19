@@ -29,12 +29,12 @@ fn simp_full(input: &str) -> Option<(ExprId, String, Simplifier)> {
     let e = parse(input, &mut s.context).ok()?;
     let (r, _) = s.simplify(e);
     let cfg = cas_engine::semantics::EvalConfig::default();
-    let mut budget = cas_engine::budget::Budget::preset_cli();
-    let r2 = if let Ok(res) = cas_engine::const_fold::fold_constants(
+    let mut budget = cas_engine::Budget::preset_cli();
+    let r2 = if let Ok(res) = cas_engine::fold_constants(
         &mut s.context,
         r,
         &cfg,
-        cas_engine::const_fold::ConstFoldMode::Safe,
+        cas_engine::ConstFoldMode::Safe,
         &mut budget,
     ) {
         res.expr
@@ -53,12 +53,12 @@ fn simp_full(input: &str) -> Option<(ExprId, String, Simplifier)> {
 fn simp_expr(s: &mut Simplifier, expr: ExprId) -> ExprId {
     let (r, _) = s.simplify(expr);
     let cfg = cas_engine::semantics::EvalConfig::default();
-    let mut budget = cas_engine::budget::Budget::preset_cli();
-    if let Ok(res) = cas_engine::const_fold::fold_constants(
+    let mut budget = cas_engine::Budget::preset_cli();
+    if let Ok(res) = cas_engine::fold_constants(
         &mut s.context,
         r,
         &cfg,
-        cas_engine::const_fold::ConstFoldMode::Safe,
+        cas_engine::ConstFoldMode::Safe,
         &mut budget,
     ) {
         res.expr

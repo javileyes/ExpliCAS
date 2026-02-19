@@ -562,21 +562,21 @@ fn numeric_only_root_cause_analysis() {
                     let mut s_final = s;
                     {
                         let cfg = cas_engine::semantics::EvalConfig::default();
-                        let mut budget = cas_engine::budget::Budget::preset_cli();
-                        if let Ok(r) = cas_engine::const_fold::fold_constants(
+                        let mut budget = cas_engine::Budget::preset_cli();
+                        if let Ok(r) = cas_engine::fold_constants(
                             &mut simp.context,
                             e_final,
                             &cfg,
-                            cas_engine::const_fold::ConstFoldMode::Safe,
+                            cas_engine::ConstFoldMode::Safe,
                             &mut budget,
                         ) {
                             e_final = r.expr;
                         }
-                        if let Ok(r) = cas_engine::const_fold::fold_constants(
+                        if let Ok(r) = cas_engine::fold_constants(
                             &mut simp.context,
                             s_final,
                             &cfg,
-                            cas_engine::const_fold::ConstFoldMode::Safe,
+                            cas_engine::ConstFoldMode::Safe,
                             &mut budget,
                         ) {
                             s_final = r.expr;
@@ -595,12 +595,12 @@ fn numeric_only_root_cause_analysis() {
                     let (mut diff, _) = simp.simplify(d);
                     {
                         let cfg = cas_engine::semantics::EvalConfig::default();
-                        let mut budget = cas_engine::budget::Budget::preset_cli();
-                        if let Ok(r) = cas_engine::const_fold::fold_constants(
+                        let mut budget = cas_engine::Budget::preset_cli();
+                        if let Ok(r) = cas_engine::fold_constants(
                             &mut simp.context,
                             diff,
                             &cfg,
-                            cas_engine::const_fold::ConstFoldMode::Safe,
+                            cas_engine::ConstFoldMode::Safe,
                             &mut budget,
                         ) {
                             diff = r.expr;

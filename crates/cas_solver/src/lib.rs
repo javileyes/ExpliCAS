@@ -6,7 +6,6 @@ pub mod json;
 pub mod substitute;
 
 pub use cas_engine::canonical_forms;
-pub use cas_engine::const_fold::ConstFoldMode;
 pub use cas_engine::limits::{limit, Approach, LimitOptions, PreSimplifyMode};
 pub use cas_engine::normalize_and_dedupe_conditions;
 pub use cas_engine::parent_context::ParentContext;
@@ -21,6 +20,7 @@ pub use cas_engine::solve_safety::*;
 pub use cas_engine::solver::*;
 pub use cas_engine::telescoping;
 pub use cas_engine::visualizer;
+pub use cas_engine::ConstFoldMode;
 pub use cas_engine::{engine, error, expand, helpers, options, pattern_marks, phase, semantics};
 pub use cas_engine::{
     take_blocked_hints, AssumeScope, AssumptionKey, AssumptionReporting, AutoExpandBinomials,

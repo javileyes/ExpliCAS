@@ -4,8 +4,8 @@
 //! that the system fails fast without excessive allocation.
 
 use cas_ast::Context;
-use cas_engine::budget::{Budget, Metric, Operation, PassStats};
 use cas_engine::expand::expand_with_stats;
+use cas_engine::{Budget, Metric, Operation, PassStats};
 use cas_math::multinomial_expand::MultinomialExpandBudget;
 use cas_parser::parse;
 

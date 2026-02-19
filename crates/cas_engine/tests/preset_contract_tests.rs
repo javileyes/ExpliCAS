@@ -3,10 +3,10 @@
 //! These tests verify that preset configurations are correctly defined.
 //! Note: Full behavior tests require REPL integration; these verify axes at config level.
 
-use cas_engine::const_fold::ConstFoldMode;
 use cas_engine::semantics::{
     AssumeScope, BranchPolicy, EvalConfig, InverseTrigPolicy, ValueDomain,
 };
+use cas_engine::ConstFoldMode;
 use cas_engine::DomainMode;
 
 // ============================================================================
@@ -80,8 +80,8 @@ fn preset_school_axes() {
 #[test]
 fn const_fold_safe_enables_sqrt_negative_to_i() {
     use cas_ast::Context;
-    use cas_engine::budget::Budget;
-    use cas_engine::const_fold::fold_constants;
+    use cas_engine::fold_constants;
+    use cas_engine::Budget;
 
     let mut ctx = Context::new();
     let neg_one = ctx.num(-1);
@@ -119,8 +119,8 @@ fn const_fold_safe_enables_sqrt_negative_to_i() {
 #[test]
 fn const_fold_off_preserves_sqrt_negative() {
     use cas_ast::Context;
-    use cas_engine::budget::Budget;
-    use cas_engine::const_fold::fold_constants;
+    use cas_engine::fold_constants;
+    use cas_engine::Budget;
 
     let mut ctx = Context::new();
     let neg_one = ctx.num(-1);

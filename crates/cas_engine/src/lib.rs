@@ -4,9 +4,9 @@
 
 pub(crate) mod assumptions;
 pub(crate) mod best_so_far;
-pub mod budget;
+pub(crate) mod budget;
 pub(crate) mod collect;
-pub mod const_fold;
+pub(crate) mod const_fold;
 pub(crate) mod cycle_detector;
 pub mod cycle_events;
 pub mod diagnostics;
@@ -74,6 +74,7 @@ pub use assumptions::{
     AssumptionReporting, ConditionClass,
 };
 pub use budget::{Budget, BudgetExceeded, BudgetScope, Metric, Operation, PassStats};
+pub use const_fold::{fold_constants, ConstFoldMode, ConstFoldResult};
 pub use cycle_events::{CycleEvent, CycleLevel};
 pub use diagnostics::{Diagnostics, RequireOrigin, RequiredItem};
 pub use domain::{
