@@ -4,7 +4,10 @@ use crate::rule::Rewrite;
 use cas_ast::count_nodes;
 use cas_ast::Expr;
 
-use super::factoring_helpers::{is_conjugate_pair, is_nary_conjugate_pair, is_structurally_zero};
+use cas_math::expr_relations::{
+    conjugate_add_sub_pair as is_conjugate_pair,
+    conjugate_nary_add_sub_pair as is_nary_conjugate_pair, is_structurally_zero,
+};
 
 // DifferenceOfSquaresRule: Expands conjugate products
 // (a - b) * (a + b) → a² - b²

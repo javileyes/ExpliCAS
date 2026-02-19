@@ -8,7 +8,6 @@ pub mod distribution;
 pub use distribution::*;
 
 pub mod factoring;
-mod factoring_helpers;
 pub use factoring::*;
 
 pub mod roots;
