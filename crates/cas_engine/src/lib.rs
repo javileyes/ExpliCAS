@@ -22,7 +22,7 @@ pub mod helpers;
 pub mod implicit_domain;
 pub(crate) mod limits;
 pub(crate) mod options;
-pub mod orchestrator;
+pub(crate) mod orchestrator;
 pub(crate) mod parent_context;
 pub mod phase;
 pub(crate) mod profile_cache;
@@ -33,7 +33,7 @@ pub(crate) mod recursion_guard;
 pub mod rule;
 pub mod rules;
 pub mod semantics;
-pub mod solve_safety;
+pub(crate) mod solve_safety;
 pub mod solver;
 pub mod step;
 pub(crate) mod step_optimization;
@@ -95,6 +95,7 @@ pub use options::{
     AutoExpandBinomials, BranchMode, ComplexMode, ContextMode, EvalOptions, HeuristicPoly,
     StepsMode,
 };
+pub use orchestrator::Orchestrator;
 pub use parent_context::ParentContext;
 pub use phase::{
     ExpandBudget, ExpandPolicy, PhaseBudgets, PhaseStats, PipelineStats, SimplifyOptions,
@@ -106,6 +107,7 @@ pub use rule::{Rule, SoundnessLabel};
 pub use semantics::{
     AssumeScope, BranchPolicy, EvalConfig, InverseTrigPolicy, NormalFormGoal, ValueDomain,
 };
+pub use solve_safety::{RequirementDescriptor, SimplifyPurpose, SolveSafety};
 pub use step::{DisplayEvalSteps, Step};
 pub use visitors::{DepthVisitor, VariableCollector};
 

@@ -33,7 +33,7 @@ mod prepass_tests {
     fn cancel_common_factors_rule_marked_correctly() {
         use cas_engine::rule::SimpleRule;
         use cas_engine::rules::algebra::fractions::CancelCommonFactorsRule;
-        use cas_engine::solve_safety::SolveSafety;
+        use cas_engine::SolveSafety;
 
         let rule = CancelCommonFactorsRule;
         let safety = rule.solve_safety();
@@ -57,7 +57,7 @@ mod prepass_tests {
     fn simplify_fraction_rule_marked_correctly() {
         use cas_engine::rule::SimpleRule;
         use cas_engine::rules::algebra::fractions::SimplifyFractionRule;
-        use cas_engine::solve_safety::SolveSafety;
+        use cas_engine::SolveSafety;
 
         let rule = SimplifyFractionRule;
         let safety = rule.solve_safety();
@@ -304,7 +304,7 @@ mod solver_tests {
 /// without proper SolveSafety classification.
 mod guardrail_tests {
     use cas_engine::rule::{Rule, SimpleRule};
-    use cas_engine::solve_safety::SolveSafety;
+    use cas_engine::SolveSafety;
 
     /// Helper macro for SimpleRule implementations
     macro_rules! assert_simple_not_always {

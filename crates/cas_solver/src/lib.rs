@@ -13,7 +13,6 @@ pub use cas_engine::rule::Rule;
 pub use cas_engine::rules;
 pub use cas_engine::rules::logarithms::LogExpansionRule;
 pub use cas_engine::semantics::{BranchPolicy, InverseTrigPolicy, ValueDomain};
-pub use cas_engine::solve_safety::*;
 pub use cas_engine::solver::*;
 pub use cas_engine::telescoping;
 pub use cas_engine::visualizer;
@@ -28,6 +27,7 @@ pub use cas_engine::{
     ImplicitCondition, PipelineStats, RequiresDisplayLevel, Simplifier, SimplifyOptions, StepsMode,
 };
 pub use cas_engine::{AutoRationalizeLevel, RationalizeOutcome};
+pub use cas_engine::{RequirementDescriptor, SimplifyPurpose, SolveSafety};
 pub use cas_math::poly_store::{try_get_poly_result_term_count, try_render_poly_result};
 pub use json::{
     eval_str_to_json, eval_str_to_output_envelope, substitute_str_to_json, EnvelopeEvalOptions,
