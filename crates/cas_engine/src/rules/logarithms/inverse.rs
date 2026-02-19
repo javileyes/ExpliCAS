@@ -3,7 +3,7 @@ use crate::helpers::{as_add, as_div, as_mul, as_pow};
 use crate::ordering::compare_expr;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
-use cas_math::expr_extract::extract_log_base_argument;
+use cas_math::expr_extract::{extract_log_base_argument, extract_log_base_argument_view};
 use cas_math::expr_predicates::is_e_constant_expr;
 use cas_math::expr_rewrite::smart_mul;
 use num_traits::{One, Zero};
@@ -246,22 +246,9 @@ define_rule!(
         // Returns Some(Some(base)) for log(b, x), Some(None) for ln(x) -> base e
         let check_log_denom =
             |ctx: &Context, denom: cas_ast::ExprId| -> Option<Option<cas_ast::ExprId>> {
-                if let Expr::Function(fn_id, args) = ctx.get(denom) {
-                    match ctx.builtin_of(*fn_id) {
-                        Some(BuiltinFn::Log) if args.len() == 2 => {
-                            let log_base = args[0];
-                            let log_arg = args[1];
-                            if compare_expr(ctx, log_arg, base) == Ordering::Equal {
-                                return Some(Some(log_base));
-                            }
-                        }
-                        Some(BuiltinFn::Ln) if args.len() == 1 => {
-                            let log_arg = args[0];
-                            if compare_expr(ctx, log_arg, base) == Ordering::Equal {
-                                return Some(None);
-                            }
-                        }
-                        _ => {}
+                if let Some((base_opt, log_arg)) = extract_log_base_argument_view(ctx, denom) {
+                    if compare_expr(ctx, log_arg, base) == Ordering::Equal {
+                        return Some(base_opt);
                     }
                 }
                 None

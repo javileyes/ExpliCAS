@@ -54,17 +54,32 @@ pub fn extract_exp_argument(ctx: &Context, expr: ExprId) -> Option<ExprId> {
 /// - `log(base, arg)` -> `(base, arg)`
 /// - `ln(arg)` -> `(e, arg)` where `e` is inserted in the context
 pub fn extract_log_base_argument(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    let (base_opt, arg) = extract_log_base_argument_view(ctx, expr)?;
+    if let Some(base) = base_opt {
+        return Some((base, arg));
+    }
+    let e = ctx.add(Expr::Constant(Constant::E));
+    Some((e, arg))
+}
+
+/// Extract `(base_opt, arg)` from logarithmic forms without mutating context.
+///
+/// Recognizes:
+/// - `log(base, arg)` -> `(Some(base), arg)`
+/// - `ln(arg)` -> `(None, arg)` (implicit base `e`)
+pub fn extract_log_base_argument_view(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(Option<ExprId>, ExprId)> {
     let (fn_id, args) = match ctx.get(expr) {
-        Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+        Expr::Function(fn_id, args) => (*fn_id, args),
         _ => return None,
     };
-
     if ctx.is_builtin(fn_id, BuiltinFn::Log) && args.len() == 2 {
-        return Some((args[0], args[1]));
+        return Some((Some(args[0]), args[1]));
     }
     if ctx.is_builtin(fn_id, BuiltinFn::Ln) && args.len() == 1 {
-        let e = ctx.add(Expr::Constant(Constant::E));
-        return Some((e, args[0]));
+        return Some((None, args[0]));
     }
     None
 }
@@ -129,6 +144,20 @@ mod tests {
         let (base, arg) = extract_log_base_argument(&mut ctx, expr).expect("must extract ln");
         let x = parse("x", &mut ctx).expect("parse x");
         assert!(matches!(ctx.get(base), Expr::Constant(Constant::E)));
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, arg, x),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn extracts_log_base_argument_view_without_mutation() {
+        let mut ctx = Context::new();
+        let expr = parse("ln(x)", &mut ctx).expect("parse ln");
+        let (base_opt, arg) =
+            extract_log_base_argument_view(&ctx, expr).expect("must extract view");
+        let x = parse("x", &mut ctx).expect("parse x");
+        assert!(base_opt.is_none());
         assert_eq!(
             cas_ast::ordering::compare_expr(&ctx, arg, x),
             std::cmp::Ordering::Equal
