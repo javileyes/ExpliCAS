@@ -16,16 +16,15 @@ mod destructure;
 mod extraction;
 pub(crate) mod ground_eval;
 mod nf_scoring;
-mod pi;
 mod predicates;
 mod trig_roots_flatten;
 
 // Re-export all items for internal use
+pub(crate) use cas_math::pi_helpers::*;
 pub(crate) use complexity::*;
 pub(crate) use destructure::*;
 pub(crate) use extraction::*;
 pub(crate) use nf_scoring::*;
-pub(crate) use pi::*;
 // predicates has `is_zero` and `prove_nonzero` used by integration tests — keep pub
 pub use predicates::*;
 // trig_matchers moved to rules/trigonometry/trig_matchers.rs — re-export for backwards compat

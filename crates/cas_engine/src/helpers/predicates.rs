@@ -2,7 +2,7 @@
 // These functions were previously duplicated across multiple files.
 // Now consolidated here for consistency and maintainability.
 
-use super::pi::extract_rational_pi_multiple;
+use super::extract_rational_pi_multiple;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_traits::{One, Signed};
 
