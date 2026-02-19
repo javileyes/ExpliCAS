@@ -282,25 +282,12 @@ fn extract_power_base_exp(ctx: &Context, expr: ExprId) -> (ExprId, i64) {
     }
 }
 
-fn is_poly_ref(ctx: &Context, id: ExprId) -> bool {
-    if crate::poly_result::is_poly_result(ctx, id) {
-        return true;
-    }
-    if let Expr::Function(fn_id, args) = ctx.get(id) {
-        let name = ctx.sym_name(*fn_id);
-        if args.len() == 1 && name == "poly_ref" {
-            return true;
-        }
-    }
-    false
-}
-
 fn add_terms_no_sign(ctx: &Context, root: ExprId) -> Vec<ExprId> {
     let mut out = Vec::new();
     let mut stack = vec![root];
 
     while let Some(id) = stack.pop() {
-        if is_poly_ref(ctx, id) {
+        if crate::poly_result::is_poly_ref_or_result(ctx, id) {
             out.push(id);
             continue;
         }
@@ -328,7 +315,7 @@ fn mul_factors(ctx: &Context, root: ExprId) -> Vec<ExprId> {
     let mut stack = vec![root];
 
     while let Some(id) = stack.pop() {
-        if is_poly_ref(ctx, id) {
+        if crate::poly_result::is_poly_ref_or_result(ctx, id) {
             out.push(id);
             continue;
         }

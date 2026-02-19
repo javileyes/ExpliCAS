@@ -25,6 +25,22 @@ pub fn is_poly_result(ctx: &Context, id: ExprId) -> bool {
     )
 }
 
+/// Check if expression is an opaque polynomial reference.
+///
+/// Recognizes both:
+/// - `poly_result(id)` (canonical wrapper)
+/// - `poly_ref(id)` (legacy wrapper)
+#[inline]
+pub fn is_poly_ref_or_result(ctx: &Context, id: ExprId) -> bool {
+    if is_poly_result(ctx, id) {
+        return true;
+    }
+    matches!(
+        ctx.get(id),
+        Expr::Function(fn_id, args) if args.len() == 1 && ctx.sym_name(*fn_id) == "poly_ref"
+    )
+}
+
 /// Extract the raw argument from a poly_result wrapper.
 /// Returns `None` if not a poly_result.
 ///
@@ -97,6 +113,20 @@ mod tests {
         assert!(!is_poly_result(&ctx, x));
         assert!(!is_poly_result(&ctx, id_expr));
         assert!(is_poly_result(&ctx, poly_result));
+    }
+
+    #[test]
+    fn test_is_poly_ref_or_result() {
+        let mut ctx = Context::new();
+        let id_expr = ctx.num(7);
+        let poly_result = ctx.call_builtin(cas_ast::BuiltinFn::PolyResult, vec![id_expr]);
+        let poly_ref_sym = ctx.intern_symbol("poly_ref");
+        let poly_ref = ctx.add(Expr::Function(poly_ref_sym, vec![id_expr]));
+        let x = ctx.var("x");
+
+        assert!(is_poly_ref_or_result(&ctx, poly_result));
+        assert!(is_poly_ref_or_result(&ctx, poly_ref));
+        assert!(!is_poly_ref_or_result(&ctx, x));
     }
 
     #[test]

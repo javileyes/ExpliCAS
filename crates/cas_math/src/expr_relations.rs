@@ -286,25 +286,12 @@ impl AddSign {
     }
 }
 
-fn is_poly_ref_or_result(ctx: &Context, id: ExprId) -> bool {
-    if crate::poly_result::is_poly_result(ctx, id) {
-        return true;
-    }
-    if let Expr::Function(fn_id, args) = ctx.get(id) {
-        let name = ctx.sym_name(*fn_id);
-        if args.len() == 1 && name == "poly_ref" {
-            return true;
-        }
-    }
-    false
-}
-
 fn add_terms_signed(ctx: &Context, root: ExprId) -> Vec<(ExprId, AddSign)> {
     let mut out = Vec::new();
     let mut stack = vec![(root, AddSign::Pos)];
 
     while let Some((id, sign)) = stack.pop() {
-        if is_poly_ref_or_result(ctx, id) {
+        if crate::poly_result::is_poly_ref_or_result(ctx, id) {
             out.push((id, sign));
             continue;
         }
