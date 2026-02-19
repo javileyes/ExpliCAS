@@ -7,6 +7,7 @@ use cas_ast::{Context, Expr, ExprId};
 use cas_math::expr_extract::{
     extract_abs_argument_view, extract_sqrt_argument_view, extract_unary_log_argument_view,
 };
+use cas_math::expr_predicates::is_even_root_exponent;
 use num_integer::Integer;
 use num_rational::BigRational;
 
@@ -604,11 +605,4 @@ fn infer_recursive(ctx: &Context, root: ExprId, domain: &mut ImplicitDomain) {
             }
         }
     }
-}
-
-/// Check if an exponent represents an even root (e.g., 1/2, 1/4, 3/4).
-pub(crate) fn is_even_root_exponent(n: &BigRational) -> bool {
-    let denom = n.denom();
-    // Check if denominator is even (2, 4, 6, ...)
-    denom.is_even()
 }

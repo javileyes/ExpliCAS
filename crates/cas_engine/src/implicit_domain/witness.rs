@@ -1,6 +1,5 @@
 //! Witness survival checks and assumption classification.
 
-use super::inference::is_even_root_exponent;
 use super::normalization::{
     conditions_equivalent, exprs_equivalent, is_odd_power_of, is_positive_multiple_of,
     is_power_of_base,
@@ -8,6 +7,7 @@ use super::normalization::{
 use super::ImplicitCondition;
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::expr_extract::{extract_sqrt_argument_view, extract_unary_log_argument_view};
+use cas_math::expr_predicates::is_even_root_exponent;
 
 // =============================================================================
 // Witness Survival

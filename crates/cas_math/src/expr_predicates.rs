@@ -4,6 +4,12 @@ use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{One, Signed};
 
+/// Check if an exponent represents an even root (`p/q` with even `q`).
+pub fn is_even_root_exponent(n: &BigRational) -> bool {
+    use num_integer::Integer;
+    n.denom().is_even()
+}
+
 /// Check if expression contains any function call.
 ///
 /// Note: for powers, this follows existing engine behavior and only descends
@@ -229,5 +235,17 @@ mod tests {
         assert!(!is_constant_fraction(&ctx, sym, d));
         assert!(is_simple_number_abs_leq(&ctx, minus_two, 2));
         assert!(!is_simple_number_abs_leq(&ctx, minus_two, 1));
+    }
+
+    #[test]
+    fn even_root_exponent_detection() {
+        let half = BigRational::new(1.into(), 2.into());
+        let three_quarters = BigRational::new(3.into(), 4.into());
+        let one_third = BigRational::new(1.into(), 3.into());
+        let two = BigRational::from_integer(2.into());
+        assert!(is_even_root_exponent(&half));
+        assert!(is_even_root_exponent(&three_quarters));
+        assert!(!is_even_root_exponent(&one_third));
+        assert!(!is_even_root_exponent(&two));
     }
 }
