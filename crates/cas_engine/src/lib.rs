@@ -16,7 +16,7 @@ pub mod domain_facts;
 pub mod domain_oracle;
 pub mod engine;
 pub(crate) mod eval;
-pub mod eval_step_pipeline;
+pub(crate) mod eval_step_pipeline;
 pub mod expand;
 pub mod helpers;
 pub mod implicit_domain;
@@ -87,6 +87,7 @@ pub use engine::{
 };
 pub use error::{CasError, CasResult};
 pub use eval::*;
+pub use eval_step_pipeline::to_display_steps;
 pub use implicit_domain::{
     normalize_and_dedupe_conditions, ImplicitCondition, RequiresDisplayLevel,
 };

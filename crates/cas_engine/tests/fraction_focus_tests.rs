@@ -8,7 +8,7 @@
 //! the step should show focus: "a/x + b/x → (a+b)/x"
 
 use cas_ast::Context;
-use cas_engine::eval_step_pipeline::to_display_steps;
+use cas_engine::to_display_steps;
 use cas_engine::Simplifier;
 use cas_formatter::DisplayExpr;
 

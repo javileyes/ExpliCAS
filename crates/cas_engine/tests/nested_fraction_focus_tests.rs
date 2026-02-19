@@ -3,7 +3,7 @@
 //! These tests verify that the focus shows the complex fraction being simplified.
 
 use cas_ast::Context;
-use cas_engine::eval_step_pipeline::to_display_steps;
+use cas_engine::to_display_steps;
 use cas_engine::Simplifier;
 use cas_formatter::DisplayExpr;
 

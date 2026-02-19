@@ -6,7 +6,7 @@
 //!
 //! Fix: DistributeRule now skips when a factor is 1 (visual no-op).
 
-use cas_engine::eval_step_pipeline::to_display_steps;
+use cas_engine::to_display_steps;
 use cas_engine::Simplifier;
 
 #[test]

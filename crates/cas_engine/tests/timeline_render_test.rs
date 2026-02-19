@@ -1,7 +1,7 @@
 //! Integration test to verify timeline step rendering
-use cas_engine::eval_step_pipeline::to_display_steps;
 use cas_engine::step::ImportanceLevel;
 use cas_engine::timeline::{TimelineHtml, VerbosityLevel};
+use cas_engine::to_display_steps;
 use cas_engine::Simplifier;
 use cas_engine::{Engine, EvalAction, EvalRequest};
 mod support;

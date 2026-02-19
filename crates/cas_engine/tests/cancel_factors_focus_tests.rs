@@ -4,7 +4,7 @@
 //! including the factor cancelled.
 
 use cas_ast::{Context, Expr};
-use cas_engine::eval_step_pipeline::to_display_steps;
+use cas_engine::to_display_steps;
 use cas_engine::Simplifier;
 use cas_formatter::DisplayExpr;
 
