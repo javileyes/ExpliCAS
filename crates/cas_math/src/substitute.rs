@@ -6,13 +6,12 @@
 //!
 //! This is crucial for calculus operations like u-substitution in integration.
 
+use cas_ast::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::{One, Zero};
 use std::cmp::Ordering;
-
-use crate::ordering::compare_expr;
 
 /// Options for power-aware substitution.
 #[derive(Clone, Copy, Debug)]
@@ -68,22 +67,22 @@ impl SubstituteOptions {
 
 /// A single substitution step for traceability.
 #[derive(Clone, Debug)]
-pub struct SubstituteStep {
+pub struct SubstituteTraceStep {
     /// Rule name: "SubstituteExact", "SubstitutePowerMultiple", "SubstitutePowOfTarget"
     pub rule: String,
-    /// Expression before substitution (as string)
-    pub before: String,
-    /// Expression after substitution (as string)
-    pub after: String,
+    /// Expression before substitution
+    pub before: ExprId,
+    /// Expression after substitution
+    pub after: ExprId,
     /// Optional note (e.g., "n=4, k=2, m=2")
     pub note: Option<String>,
 }
 
 /// Result of substitution including optional steps.
 #[derive(Clone, Debug)]
-pub struct SubstituteResult {
+pub struct SubstituteTraceResult {
     pub expr: ExprId,
-    pub steps: Vec<SubstituteStep>,
+    pub steps: Vec<SubstituteTraceStep>,
 }
 
 /// Extract integer exponent from a Number expression.
@@ -203,15 +202,13 @@ pub fn substitute_power_aware(
 /// Perform power-aware substitution with step collection.
 ///
 /// Same as `substitute_power_aware` but returns steps for traceability.
-pub fn substitute_with_steps(
+pub fn substitute_with_trace(
     ctx: &mut Context,
     root: ExprId,
     target: ExprId,
     replacement: ExprId,
     opts: SubstituteOptions,
-) -> SubstituteResult {
-    use cas_formatter::DisplayExpr;
-
+) -> SubstituteTraceResult {
     // Pre-compute target power pattern if power_aware
     let target_power = if opts.power_aware {
         as_power_int(ctx, target)
@@ -230,32 +227,19 @@ pub fn substitute_with_steps(
         &mut steps,
     );
 
-    // Convert ExprId steps to string steps
-    let string_steps: Vec<SubstituteStep> = steps
+    let trace_steps: Vec<SubstituteTraceStep> = steps
         .into_iter()
-        .map(|(rule, before, after, note)| SubstituteStep {
+        .map(|(rule, before, after, note)| SubstituteTraceStep {
             rule,
-            before: format!(
-                "{}",
-                DisplayExpr {
-                    context: ctx,
-                    id: before
-                }
-            ),
-            after: format!(
-                "{}",
-                DisplayExpr {
-                    context: ctx,
-                    id: after
-                }
-            ),
+            before,
+            after,
             note,
         })
         .collect();
 
-    SubstituteResult {
+    SubstituteTraceResult {
         expr,
-        steps: string_steps,
+        steps: trace_steps,
     }
 }
 

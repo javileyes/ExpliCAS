@@ -1,4 +1,5 @@
 pub mod auto_expand_scan;
+pub mod build;
 pub mod canonical_forms;
 pub mod combinatorics;
 pub mod const_eval;
@@ -45,6 +46,7 @@ pub mod poly_store;
 pub mod polynomial;
 pub mod root_forms;
 pub mod semantic_equality;
+pub mod substitute;
 pub mod trig_pattern_detection;
 pub mod trig_roots_flatten;
 pub mod unipoly_modp;
