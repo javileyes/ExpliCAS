@@ -12,8 +12,8 @@ pub(crate) mod cycle_events;
 pub(crate) mod diagnostics;
 pub(crate) mod didactic;
 pub(crate) mod domain;
-pub mod domain_facts;
-pub mod domain_oracle;
+pub(crate) mod domain_facts;
+pub(crate) mod domain_oracle;
 pub(crate) mod engine;
 pub(crate) mod eval;
 pub(crate) mod eval_step_pipeline;
@@ -82,6 +82,11 @@ pub use domain::{
     can_apply_analytic, can_cancel_factor, take_blocked_hints, BlockedHint, CancelDecision,
     DomainMode, Proof,
 };
+pub use domain_facts::{
+    decide, decide_by_class, mode_allows_predicate, predicate_condition_class, proof_to_strength,
+    strength_to_proof, DomainFact, DomainOracle, FactStrength, Predicate, Provenance,
+};
+pub use domain_oracle::{oracle_allows_with_hint, StandardOracle};
 pub use engine::{
     eval_f64, eval_f64_checked, strip_all_holds, substitute_expr_by_id, EquivalenceResult,
     EvalCheckedError, EvalCheckedOptions, LoopConfig, Simplifier,

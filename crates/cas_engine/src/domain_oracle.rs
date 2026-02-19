@@ -7,8 +7,7 @@
 //! # Usage
 //!
 //! ```ignore
-//! use cas_engine::domain_oracle::StandardOracle;
-//! use cas_engine::domain_facts::{Predicate, DomainOracle};
+//! use cas_engine::{DomainOracle, Predicate, StandardOracle};
 //!
 //! let oracle = StandardOracle::new(ctx, DomainMode::Generic, ValueDomain::RealOnly);
 //! let decision = oracle.allows(&Predicate::NonZero(factor_id));
