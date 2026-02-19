@@ -1,3 +1,4 @@
+pub mod canonical_forms;
 pub mod combinatorics;
 pub mod const_eval;
 pub mod expr_classify;
