@@ -8,10 +8,10 @@ use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_terms::{
+    build_sum, collect_additive_terms_flat_add as collect_additive_terms, contains_irrational,
+};
 use num_traits::One;
-
-// Import shared helpers from addition_rules
-use super::addition_rules::{build_sum, collect_additive_terms, contains_irrational};
 
 /// Recognizes ±1 in various AST forms
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

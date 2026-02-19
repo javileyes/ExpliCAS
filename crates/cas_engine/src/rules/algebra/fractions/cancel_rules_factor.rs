@@ -9,11 +9,10 @@ use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::Expr;
+use cas_math::expr_terms::contains_irrational;
 use cas_math::fraction_factors::collect_mul_factors_flat as collect_mul_factors;
 use cas_math::root_forms::extract_root_base_and_index as extract_root_base;
 use num_traits::{One, Zero};
-
-use super::addition_rules::contains_irrational;
 
 define_rule!(
     RationalizeProductDenominatorRule,

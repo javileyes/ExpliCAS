@@ -19,61 +19,6 @@ use super::core_rules::{
 };
 
 // =============================================================================
-// Shared helpers (pub(super) so cancel_rules can use them)
-// =============================================================================
-
-/// Build a sum from a list of terms.
-pub(super) fn build_sum(ctx: &mut Context, terms: &[ExprId]) -> ExprId {
-    if terms.is_empty() {
-        return ctx.num(0);
-    }
-    let mut result = terms[0];
-    for &term in terms.iter().skip(1) {
-        result = ctx.add(Expr::Add(result, term));
-    }
-    result
-}
-
-/// Collect all additive terms from an expression.
-/// For `a + b + c`, returns [a, b, c].
-pub(super) fn collect_additive_terms(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
-    let mut terms = Vec::new();
-    collect_additive_terms_recursive(ctx, expr, &mut terms);
-    terms
-}
-
-fn collect_additive_terms_recursive(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
-    match ctx.get(expr) {
-        Expr::Add(l, r) => {
-            collect_additive_terms_recursive(ctx, *l, terms);
-            collect_additive_terms_recursive(ctx, *r, terms);
-        }
-        _ => {
-            terms.push(expr);
-        }
-    }
-}
-
-/// Check if an expression contains an irrational (root).
-pub(super) fn contains_irrational(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Pow(_, exp) => {
-            if let Expr::Number(n) = ctx.get(*exp) {
-                !n.is_integer()
-            } else {
-                false
-            }
-        }
-        Expr::Function(name, _) => ctx.is_builtin(*name, cas_ast::BuiltinFn::Sqrt),
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
-            contains_irrational(ctx, *l) || contains_irrational(ctx, *r)
-        }
-        Expr::Neg(e) | Expr::Hold(e) => contains_irrational(ctx, *e),
-        _ => false,
-    }
-}
-
-// =============================================================================
 // Fold Add Into Fraction: k + p/q → (k·q + p)/q
 // =============================================================================
 //

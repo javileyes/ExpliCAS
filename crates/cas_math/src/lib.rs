@@ -1,6 +1,7 @@
 pub mod const_eval;
 pub mod expr_classify;
 pub mod expr_extract;
+pub mod expr_terms;
 pub mod fraction_factors;
 pub mod fraction_forms;
 pub mod fraction_multivar_gcd;
