@@ -17,7 +17,7 @@ pub mod domain_oracle;
 pub(crate) mod engine;
 pub(crate) mod eval;
 pub(crate) mod eval_step_pipeline;
-pub mod expand;
+pub(crate) mod expand;
 pub mod helpers;
 pub mod implicit_domain;
 pub(crate) mod limits;
@@ -89,6 +89,10 @@ pub use engine::{
 pub use error::{CasError, CasResult};
 pub use eval::*;
 pub use eval_step_pipeline::to_display_steps;
+pub use expand::{
+    eager_eval_expand_calls, estimate_expand_terms, expand, expand_div, expand_mul, expand_pow,
+    expand_with_stats,
+};
 pub use implicit_domain::{
     normalize_and_dedupe_conditions, ImplicitCondition, RequiresDisplayLevel,
 };

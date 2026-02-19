@@ -580,7 +580,7 @@ fn test_factor_expand_one(input: &str, vars: &[&str], timeout: Duration) -> Opti
         }
 
         // e = expand(factor(simplify(x)))
-        let expanded = cas_engine::expand::expand(&mut s.context, factored);
+        let expanded = cas_engine::expand(&mut s.context, factored);
 
         // c = simplify(expand(factor(simplify(x))))
         let c = simp_expr(&mut s, expanded);

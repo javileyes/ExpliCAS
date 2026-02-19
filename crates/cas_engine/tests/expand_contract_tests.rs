@@ -48,8 +48,8 @@ fn simplify_expand(input: &str) -> (String, cas_ast::ExprId, cas_ast::Context) {
     let mut simplifier = Simplifier::with_default_rules();
     let expr = parse(input, &mut simplifier.context).expect("parse failed");
 
-    // Use cas_engine::expand::expand() directly like REPL does
-    let expanded = cas_engine::expand::expand(&mut simplifier.context, expr);
+    // Use cas_engine::expand() directly like REPL does
+    let expanded = cas_engine::expand(&mut simplifier.context, expr);
     // Then simplify to clean up
     let (result, _) = simplifier.simplify(expanded);
 
@@ -269,10 +269,10 @@ fn test_expand_negative_exponent_preserved() {
 /// Test 9: Expand mode doesn't contaminate subsequent Standard evaluations
 #[test]
 fn test_expand_no_contamination() {
-    // First: expand using cas_engine::expand::expand() directly
+    // First: expand using cas_engine::expand() directly
     let mut simplifier = Simplifier::with_default_rules();
     let expr1 = parse("(x+1)^3", &mut simplifier.context).expect("parse failed");
-    let expanded_raw = cas_engine::expand::expand(&mut simplifier.context, expr1);
+    let expanded_raw = cas_engine::expand(&mut simplifier.context, expr1);
     let (expanded_result, _) = simplifier.simplify(expanded_raw);
     let expanded_str = format!(
         "{}",

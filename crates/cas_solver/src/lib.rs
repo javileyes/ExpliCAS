@@ -18,7 +18,7 @@ pub use cas_engine::visualizer;
 pub use cas_engine::ConstFoldMode;
 pub use cas_engine::ParentContext;
 pub use cas_engine::Rule;
-pub use cas_engine::{error, expand, helpers, pattern_marks, phase, semantics};
+pub use cas_engine::{error, helpers, pattern_marks, phase, semantics};
 pub use cas_engine::{limit, Approach, LimitOptions, PreSimplifyMode};
 pub use cas_engine::{
     take_blocked_hints, AssumeScope, AssumptionKey, AssumptionReporting, AutoExpandBinomials,
@@ -33,6 +33,14 @@ pub use json::{
     eval_str_to_json, eval_str_to_output_envelope, substitute_str_to_json, EnvelopeEvalOptions,
 };
 pub use substitute::{substitute_power_aware, substitute_with_steps, SubstituteOptions};
+
+/// Backward-compatible facade for former `cas_engine::expand::*` imports.
+pub mod expand {
+    pub use cas_engine::{
+        eager_eval_expand_calls, estimate_expand_terms, expand, expand_div, expand_mul, expand_pow,
+        expand_with_stats,
+    };
+}
 
 /// Backward-compatible facade for former `cas_engine::engine::*` imports.
 pub mod engine {
