@@ -27,6 +27,12 @@ pub fn extract_add_terms(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
     terms
 }
 
+/// Find path from `root` to `target` by `ExprId`.
+/// Returns empty path when `target == root` or when `target` is not found.
+pub fn find_path_to_expr(ctx: &Context, root: ExprId, target: ExprId) -> ExprPath {
+    diff_find_path_to_expr(ctx, root, target).unwrap_or_default()
+}
+
 /// Diff-based fallback: find path to target expression within a tree (V2.9.18)
 /// When direct path lookup fails, this performs a depth-first search to find
 /// where the target expression appears in the tree.

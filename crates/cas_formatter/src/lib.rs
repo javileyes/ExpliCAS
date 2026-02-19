@@ -44,7 +44,7 @@ pub use latex_highlight::{
 pub use latex_no_roots::LatexNoRoots;
 pub use path::{
     diff_find_all_paths_to_expr, diff_find_path_to_expr, diff_find_paths_by_structure,
-    extract_add_terms, navigate_to_subexpr,
+    extract_add_terms, find_path_to_expr, navigate_to_subexpr,
 };
 pub use root_style::{detect_root_style, ParseStyleSignals, RootStyle, StylePreferences};
 pub use visualizer::AstVisualizer;
