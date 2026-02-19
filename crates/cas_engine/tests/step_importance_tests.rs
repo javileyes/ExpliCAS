@@ -1,5 +1,5 @@
 //! Test to verify step importance is correctly propagated from rules
-use cas_engine::step::ImportanceLevel;
+use cas_engine::ImportanceLevel;
 use cas_engine::Simplifier;
 
 #[test]

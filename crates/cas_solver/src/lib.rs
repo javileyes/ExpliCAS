@@ -9,7 +9,6 @@ pub use cas_engine::canonical_forms;
 pub use cas_engine::normalize_and_dedupe_conditions;
 pub use cas_engine::phase::{ExpandPolicy, SimplifyPhase};
 pub use cas_engine::rationalize;
-pub use cas_engine::rule::Rule;
 pub use cas_engine::rules;
 pub use cas_engine::rules::logarithms::LogExpansionRule;
 pub use cas_engine::semantics::{BranchPolicy, InverseTrigPolicy, ValueDomain};
@@ -18,6 +17,7 @@ pub use cas_engine::telescoping;
 pub use cas_engine::visualizer;
 pub use cas_engine::ConstFoldMode;
 pub use cas_engine::ParentContext;
+pub use cas_engine::Rule;
 pub use cas_engine::{error, expand, helpers, pattern_marks, phase, semantics};
 pub use cas_engine::{limit, Approach, LimitOptions, PreSimplifyMode};
 pub use cas_engine::{

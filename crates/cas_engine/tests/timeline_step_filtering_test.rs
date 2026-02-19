@@ -1,6 +1,6 @@
 //! Test to verify timeline step filtering for atan expression
-use cas_engine::step::ImportanceLevel;
 use cas_engine::to_display_steps;
+use cas_engine::ImportanceLevel;
 use cas_engine::Simplifier;
 
 #[test]

@@ -31,8 +31,8 @@ mod prepass_tests {
     /// This ensures it won't be applied in SolvePrepass mode.
     #[test]
     fn cancel_common_factors_rule_marked_correctly() {
-        use cas_engine::rule::SimpleRule;
         use cas_engine::rules::algebra::fractions::CancelCommonFactorsRule;
+        use cas_engine::SimpleRule;
         use cas_engine::SolveSafety;
 
         let rule = CancelCommonFactorsRule;
@@ -55,8 +55,8 @@ mod prepass_tests {
     /// SimplifyFractionRule should also have NeedsCondition(Definability).
     #[test]
     fn simplify_fraction_rule_marked_correctly() {
-        use cas_engine::rule::SimpleRule;
         use cas_engine::rules::algebra::fractions::SimplifyFractionRule;
+        use cas_engine::SimpleRule;
         use cas_engine::SolveSafety;
 
         let rule = SimplifyFractionRule;
@@ -303,8 +303,8 @@ mod solver_tests {
 /// as NeedsCondition. If these tests fail, a dangerous rule was added
 /// without proper SolveSafety classification.
 mod guardrail_tests {
-    use cas_engine::rule::{Rule, SimpleRule};
     use cas_engine::SolveSafety;
+    use cas_engine::{Rule, SimpleRule};
 
     /// Helper macro for SimpleRule implementations
     macro_rules! assert_simple_not_always {

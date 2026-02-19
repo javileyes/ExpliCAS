@@ -117,9 +117,9 @@ fn importance_levels_are_consistent_across_renderers() {
         assert!(
             matches!(
                 step.importance,
-                cas_engine::step::ImportanceLevel::Low
-                    | cas_engine::step::ImportanceLevel::Medium
-                    | cas_engine::step::ImportanceLevel::High
+                cas_engine::ImportanceLevel::Low
+                    | cas_engine::ImportanceLevel::Medium
+                    | cas_engine::ImportanceLevel::High
             ),
             "Step {} must have valid importance level",
             i + 1

@@ -30,12 +30,12 @@ pub mod profiler;
 pub mod rationalize;
 pub(crate) mod rationalize_policy;
 pub(crate) mod recursion_guard;
-pub mod rule;
+pub(crate) mod rule;
 pub mod rules;
 pub mod semantics;
 pub(crate) mod solve_safety;
 pub mod solver;
-pub mod step;
+pub(crate) mod step;
 pub(crate) mod step_optimization;
 pub(crate) mod strategies;
 pub mod substitute;
@@ -105,12 +105,14 @@ pub use phase::{
 };
 pub use profile_cache::ProfileCache;
 pub use rationalize_policy::{AutoRationalizeLevel, RationalizeOutcome, RationalizeReason};
-pub use rule::{Rule, SoundnessLabel};
+pub use rule::{ChainedRewrite, Rewrite, Rule, SimpleRule, SoundnessLabel};
 pub use semantics::{
     AssumeScope, BranchPolicy, EvalConfig, InverseTrigPolicy, NormalFormGoal, ValueDomain,
 };
 pub use solve_safety::{RequirementDescriptor, SimplifyPurpose, SolveSafety};
-pub use step::{DisplayEvalSteps, Step};
+pub use step::{
+    pathsteps_to_expr_path, DisplayEvalSteps, ImportanceLevel, PathStep, Step, StepCategory,
+};
 pub use timeline::{html_escape, latex_escape, SolveTimelineHtml, TimelineHtml, VerbosityLevel};
 pub use visitors::{DepthVisitor, VariableCollector};
 

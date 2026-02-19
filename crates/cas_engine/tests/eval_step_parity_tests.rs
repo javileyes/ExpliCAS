@@ -14,9 +14,9 @@
 //! These tests enforce that guarantee by verifying parity properties.
 
 use cas_ast::Context;
-use cas_engine::step::{DisplayEvalSteps, ImportanceLevel, Step};
 use cas_engine::to_display_steps;
 use cas_engine::Simplifier;
+use cas_engine::{DisplayEvalSteps, ImportanceLevel, Step};
 
 // =============================================================================
 // Helper: Simplify canonical expression and get DisplayEvalSteps via pipeline

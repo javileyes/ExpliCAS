@@ -281,8 +281,8 @@ fn test_priority_ordering_50_before_0() {
 // =============================================================================
 
 use cas_ast::ExprId;
-use cas_engine::rule::{Rewrite, Rule};
 use cas_engine::ParentContext;
+use cas_engine::{Rewrite, Rule};
 
 /// Test rule that matches only value 999 and rewrites to marker
 struct OneTimeMarkerRule {
