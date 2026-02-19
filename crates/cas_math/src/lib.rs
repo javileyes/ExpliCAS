@@ -50,6 +50,7 @@ pub mod rationalize;
 pub mod root_forms;
 pub mod semantic_equality;
 pub mod substitute;
+pub mod telescoping_dirichlet;
 pub mod trig_pattern_detection;
 pub mod trig_roots_flatten;
 pub mod unipoly_modp;
