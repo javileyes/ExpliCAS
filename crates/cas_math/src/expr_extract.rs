@@ -84,6 +84,71 @@ pub fn extract_log_base_argument_view(
     None
 }
 
+fn strip_unary_neg(ctx: &Context, mut expr: ExprId) -> ExprId {
+    loop {
+        match ctx.get(expr) {
+            Expr::Neg(inner) => expr = *inner,
+            _ => return expr,
+        }
+    }
+}
+
+/// Extract `(base_opt, arg)` from logarithmic forms with permissive log arity.
+///
+/// Recognizes:
+/// - `log(arg)` -> `(None, arg)` (implicit base)
+/// - `log(base, arg)` -> `(Some(base), arg)`
+/// - `ln(arg)` -> `(None, arg)`
+/// - unary negation wrappers around those forms
+pub fn extract_log_base_argument_relaxed_view(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(Option<ExprId>, ExprId)> {
+    let expr = strip_unary_neg(ctx, expr);
+    let (fn_id, args) = match ctx.get(expr) {
+        Expr::Function(fn_id, args) => (*fn_id, args),
+        _ => return None,
+    };
+    if ctx.is_builtin(fn_id, BuiltinFn::Log) {
+        return match args.as_slice() {
+            [arg] => Some((None, *arg)),
+            [base, arg] => Some((Some(*base), *arg)),
+            _ => None,
+        };
+    }
+    if ctx.is_builtin(fn_id, BuiltinFn::Ln) && args.len() == 1 {
+        return Some((None, args[0]));
+    }
+    None
+}
+
+/// Extract `(base_opt, arg)` from a plain or scaled logarithm term.
+///
+/// Recognizes:
+/// - plain logs accepted by `extract_log_base_argument_relaxed_view`
+/// - `k * log(...)` / `k * ln(...)` where one factor is numeric
+/// - unary negation wrappers around those forms
+pub fn extract_scaled_log_base_argument_relaxed_view(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(Option<ExprId>, ExprId)> {
+    let expr = strip_unary_neg(ctx, expr);
+    if let Some(info) = extract_log_base_argument_relaxed_view(ctx, expr) {
+        return Some(info);
+    }
+    let (l, r) = match ctx.get(expr) {
+        Expr::Mul(l, r) => (*l, *r),
+        _ => return None,
+    };
+    let l_is_num = matches!(ctx.get(l), Expr::Number(_));
+    let r_is_num = matches!(ctx.get(r), Expr::Number(_));
+    if l_is_num == r_is_num {
+        return None;
+    }
+    let log_expr = if l_is_num { r } else { l };
+    extract_log_base_argument_relaxed_view(ctx, log_expr)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,6 +225,56 @@ mod tests {
         assert!(base_opt.is_none());
         assert_eq!(
             cas_ast::ordering::compare_expr(&ctx, arg, x),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn extracts_relaxed_log_argument_from_single_arg_log() {
+        let mut ctx = Context::new();
+        let expr = parse("log(x)", &mut ctx).expect("parse log(x)");
+        let (base_opt, arg) =
+            extract_log_base_argument_relaxed_view(&ctx, expr).expect("must extract relaxed log");
+        let x = parse("x", &mut ctx).expect("parse x");
+        assert!(base_opt.is_none());
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, arg, x),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn extracts_relaxed_log_argument_through_negation() {
+        let mut ctx = Context::new();
+        let expr = parse("-ln(x)", &mut ctx).expect("parse -ln(x)");
+        let (base_opt, arg) = extract_log_base_argument_relaxed_view(&ctx, expr)
+            .expect("must extract relaxed negated ln");
+        let x = parse("x", &mut ctx).expect("parse x");
+        assert!(base_opt.is_none());
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, arg, x),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn extracts_scaled_log_argument_from_numeric_coefficient_term() {
+        let mut ctx = Context::new();
+        let expr = parse("-2*log(3, y)", &mut ctx).expect("parse -2*log(3, y)");
+        let (base_opt, arg) = extract_scaled_log_base_argument_relaxed_view(&ctx, expr)
+            .expect("must extract scaled log");
+        let three = parse("3", &mut ctx).expect("parse 3");
+        let y = parse("y", &mut ctx).expect("parse y");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(
+                &ctx,
+                base_opt.expect("base expected for log(3, y)"),
+                three
+            ),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, arg, y),
             std::cmp::Ordering::Equal
         );
     }

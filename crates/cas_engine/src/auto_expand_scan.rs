@@ -9,7 +9,8 @@
 
 use crate::pattern_marks::PatternMarks;
 use crate::phase::ExpandBudget;
-use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_extract::extract_scaled_log_base_argument_relaxed_view;
 use num_traits::{Signed, ToPrimitive, Zero};
 
 /// Scan expression tree and mark auto-expand contexts where expansion is beneficial.
@@ -542,19 +543,13 @@ fn try_mark_log_cancellation(ctx: &Context, id: ExprId, marks: &mut PatternMarks
     let mut simple_log_count = 0;
 
     for term in &terms {
-        if let Some(info) = extract_log_info(ctx, *term) {
-            if is_expandable_log_arg(ctx, info.arg) {
-                expandable_log_count += 1;
-            } else {
-                simple_log_count += 1;
-            }
-        } else if let Some(info) = extract_log_from_coefficient(ctx, *term) {
-            // Term is k * log(...) — check if the inner log is expandable
-            if is_expandable_log_arg(ctx, info.arg) {
-                expandable_log_count += 1;
-            } else {
-                simple_log_count += 1;
-            }
+        let Some((_, arg)) = extract_scaled_log_base_argument_relaxed_view(ctx, *term) else {
+            continue;
+        };
+        if is_expandable_log_arg(ctx, arg) {
+            expandable_log_count += 1;
+        } else {
+            simple_log_count += 1;
         }
     }
 
@@ -566,43 +561,6 @@ fn try_mark_log_cancellation(ctx: &Context, id: ExprId, marks: &mut PatternMarks
     // Pattern matches! Mark the Add/Sub as auto-expand context for logs.
     marks.mark_auto_expand_context(id);
     true
-}
-
-/// Info about a log expression: the argument and base
-struct LogInfo {
-    arg: ExprId,
-    #[allow(dead_code)]
-    base: Option<ExprId>, // None for ln, Some(base) for log(base, arg)
-}
-
-/// Extract log info from a Function node
-fn extract_log_info(ctx: &Context, id: ExprId) -> Option<LogInfo> {
-    match ctx.get(id) {
-        Expr::Function(fn_id, args) if ctx.is_builtin(*fn_id, BuiltinFn::Ln) && args.len() == 1 => {
-            Some(LogInfo {
-                arg: args[0],
-                base: None,
-            })
-        }
-        Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, BuiltinFn::Log) && args.len() == 1 =>
-        {
-            Some(LogInfo {
-                arg: args[0],
-                base: None,
-            })
-        }
-        Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, BuiltinFn::Log) && args.len() == 2 =>
-        {
-            Some(LogInfo {
-                arg: args[1],
-                base: Some(args[0]),
-            })
-        }
-        Expr::Neg(inner) => extract_log_info(ctx, *inner),
-        _ => None,
-    }
 }
 
 /// Check if a log argument is "expandable" (contains Mul, Div, or Pow)
@@ -621,28 +579,6 @@ fn is_expandable_log_arg(ctx: &Context, arg: ExprId) -> bool {
             false
         }
         _ => false,
-    }
-}
-
-/// Extract log info from a term of form `k * log(x)` or `k * ln(x)` (coefficient times log).
-/// Returns the LogInfo of the inner log, allowing callers to check expandability.
-fn extract_log_from_coefficient(ctx: &Context, id: ExprId) -> Option<LogInfo> {
-    match ctx.get(id) {
-        Expr::Mul(l, r) => {
-            // Check if one side is a number and the other is a log
-            let l_is_num = matches!(ctx.get(*l), Expr::Number(_));
-            let r_is_num = matches!(ctx.get(*r), Expr::Number(_));
-
-            if l_is_num {
-                extract_log_info(ctx, *r)
-            } else if r_is_num {
-                extract_log_info(ctx, *l)
-            } else {
-                None
-            }
-        }
-        Expr::Neg(inner) => extract_log_from_coefficient(ctx, *inner),
-        _ => None,
     }
 }
 
