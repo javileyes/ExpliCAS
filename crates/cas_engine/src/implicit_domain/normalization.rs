@@ -1,9 +1,12 @@
 //! Condition normalization, deduplication, and dominance rules.
 
 use super::ImplicitCondition;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{Context, ExprId};
 use cas_math::expr_domain::{
     exprs_equivalent, is_abs_of, is_power_of_base, is_product_dominated_by_positives,
+};
+use cas_math::expr_normalization::{
+    extract_even_positive_power_base, normalize_condition_expr as normalize_condition_expr_math,
 };
 
 // =============================================================================
@@ -23,41 +26,7 @@ use cas_math::expr_domain::{
 /// The normalized ExprId is only used for DISPLAY - it does not affect the
 /// underlying AST or comparisons.
 pub fn normalize_condition_expr(ctx: &mut Context, expr: ExprId) -> ExprId {
-    use cas_math::multipoly::{multipoly_from_expr, multipoly_to_expr, PolyBudget};
-
-    // Small budget - we're just normalizing for display, not doing heavy algebra
-    let budget = PolyBudget {
-        max_terms: 50,
-        max_total_degree: 20,
-        max_pow_exp: 10,
-    };
-
-    // Try polynomial normalization
-    if let Ok(poly) = multipoly_from_expr(ctx, expr, &budget) {
-        // Check leading coefficient sign
-        let needs_negation = if let Some((_coeff, _mono)) = poly.leading_term_lex() {
-            // Leading coefficient is negative if coeff < 0
-            _coeff < &num_rational::BigRational::from_integer(0.into())
-        } else {
-            false
-        };
-
-        // If leading coeff is negative, negate the polynomial
-        let normalized_poly = if needs_negation { poly.neg() } else { poly };
-
-        // Convert back to expression
-        return multipoly_to_expr(&normalized_poly, ctx);
-    }
-
-    // Fallback: expression is not polynomial
-    // Check if it's a Neg node and unwrap it
-    if let Expr::Neg(inner) = ctx.get(expr) {
-        // -E ≠ 0 is equivalent to E ≠ 0, prefer non-negated form
-        return *inner;
-    }
-
-    // Otherwise return original (DisplayExpr will apply term ordering)
-    expr
+    normalize_condition_expr_math(ctx, expr)
 }
 
 /// Normalize a condition for display (applies normalization to the inner expression).
@@ -68,13 +37,9 @@ pub fn normalize_condition(ctx: &mut Context, cond: &ImplicitCondition) -> Impli
     // Special case: Positive(x^even) → NonZero(x)
     // Because x^(2k) > 0 is equivalent to x ≠ 0 for real numbers
     if let ImplicitCondition::Positive(e) = cond {
-        if let Some((base, normalized_to_nonzero)) =
-            try_convert_even_power_positive_to_nonzero(ctx, *e)
-        {
-            if normalized_to_nonzero {
-                let normalized_base = normalize_condition_expr(ctx, base);
-                return ImplicitCondition::NonZero(normalized_base);
-            }
+        if let Some(base) = extract_even_positive_power_base(ctx, *e) {
+            let normalized_base = normalize_condition_expr(ctx, base);
+            return ImplicitCondition::NonZero(normalized_base);
         }
     }
 
@@ -90,28 +55,6 @@ pub fn normalize_condition(ctx: &mut Context, cond: &ImplicitCondition) -> Impli
         ImplicitCondition::Positive(_) => ImplicitCondition::Positive(normalized_expr),
         ImplicitCondition::NonZero(_) => ImplicitCondition::NonZero(normalized_expr),
     }
-}
-
-/// Check if expression is x^(even positive integer) and should be converted to NonZero(x).
-/// Returns Some((base, true)) if conversion should happen, None otherwise.
-fn try_convert_even_power_positive_to_nonzero(
-    ctx: &Context,
-    expr: ExprId,
-) -> Option<(ExprId, bool)> {
-    if let Expr::Pow(base, exp) = ctx.get(expr) {
-        if let Expr::Number(n) = ctx.get(*exp) {
-            if n.is_integer() {
-                let exp_int = n.to_integer();
-                let two: num_bigint::BigInt = 2.into();
-                let zero: num_bigint::BigInt = 0.into();
-                // Check: even AND positive (not zero)
-                if &exp_int % &two == zero && exp_int > zero {
-                    return Some((*base, true));
-                }
-            }
-        }
-    }
-    None
 }
 
 /// Check if two conditions are equivalent (same type and polynomial-equivalent expressions).

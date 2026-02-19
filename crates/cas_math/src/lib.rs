@@ -3,6 +3,7 @@ pub mod const_eval;
 pub mod expr_classify;
 pub mod expr_domain;
 pub mod expr_extract;
+pub mod expr_normalization;
 pub mod expr_predicates;
 pub mod expr_relations;
 pub mod expr_rewrite;
