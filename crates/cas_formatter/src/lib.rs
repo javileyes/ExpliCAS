@@ -9,6 +9,7 @@ pub use cas_ast::{Constant, Context, Expr, ExprId};
 pub mod conditions;
 pub mod display;
 pub mod display_context;
+pub mod display_hint_builder;
 pub mod display_transforms;
 pub mod latex;
 pub mod latex_core;
@@ -22,6 +23,9 @@ pub use conditions::{
 };
 pub use display::{DisplayExpr, DisplayExprStyled, DisplayExprWithHints, RawDisplayExpr};
 pub use display_context::{DisplayContext, DisplayHint};
+pub use display_hint_builder::{
+    build_display_context, build_display_context_with_result, DisplayStepLike,
+};
 pub use display_transforms::{
     DisplayTransform, DisplayTransformRegistry, ScopeTag, ScopedRenderer,
 };
