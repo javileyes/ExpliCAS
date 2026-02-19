@@ -46,12 +46,7 @@ define_rule!(
             }
 
             // Case 2: Denominator is directly √n (function or power form)
-            _ => {
-                let Some(n) = extract_numeric_sqrt_radicand(ctx, den) else {
-                    return None;
-                };
-                (n, vec![])
-            }
+            _ => (extract_numeric_sqrt_radicand(ctx, den)?, vec![]),
         };
 
         // Build the rationalized form: (num * √n) / (other_den * n)
