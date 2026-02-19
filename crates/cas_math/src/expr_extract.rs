@@ -84,6 +84,27 @@ pub fn extract_log_base_argument_view(
     None
 }
 
+/// Extract the argument from unary logarithmic forms.
+///
+/// Recognizes:
+/// - `ln(arg)` -> `arg`
+/// - `log(arg)` -> `arg`
+///
+/// This intentionally excludes `log(base, arg)`.
+pub fn extract_unary_log_argument_view(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let (fn_id, args) = match ctx.get(expr) {
+        Expr::Function(fn_id, args) => (*fn_id, args),
+        _ => return None,
+    };
+    if ctx.is_builtin(fn_id, BuiltinFn::Ln) && args.len() == 1 {
+        return Some(args[0]);
+    }
+    if ctx.is_builtin(fn_id, BuiltinFn::Log) && args.len() == 1 {
+        return Some(args[0]);
+    }
+    None
+}
+
 fn strip_unary_neg(ctx: &Context, mut expr: ExprId) -> ExprId {
     loop {
         match ctx.get(expr) {
@@ -277,5 +298,36 @@ mod tests {
             cas_ast::ordering::compare_expr(&ctx, arg, y),
             std::cmp::Ordering::Equal
         );
+    }
+
+    #[test]
+    fn extracts_unary_log_argument_from_ln() {
+        let mut ctx = Context::new();
+        let expr = parse("ln(x)", &mut ctx).expect("parse ln(x)");
+        let arg = extract_unary_log_argument_view(&ctx, expr).expect("must extract ln arg");
+        let x = parse("x", &mut ctx).expect("parse x");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, arg, x),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn extracts_unary_log_argument_from_log() {
+        let mut ctx = Context::new();
+        let expr = parse("log(x)", &mut ctx).expect("parse log(x)");
+        let arg = extract_unary_log_argument_view(&ctx, expr).expect("must extract log arg");
+        let x = parse("x", &mut ctx).expect("parse x");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, arg, x),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn unary_log_argument_rejects_binary_log() {
+        let mut ctx = Context::new();
+        let expr = parse("log(2, x)", &mut ctx).expect("parse log(2, x)");
+        assert!(extract_unary_log_argument_view(&ctx, expr).is_none());
     }
 }

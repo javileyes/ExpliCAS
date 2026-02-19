@@ -4,6 +4,7 @@
 
 use super::extract_rational_pi_multiple;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_extract::extract_unary_log_argument_view;
 use num_traits::{One, Signed};
 
 /// Check if expression is the number 1
@@ -164,13 +165,12 @@ pub(crate) fn prove_nonzero_depth(
         }
 
         // ln(x) or log(x): non-zero iff x ≠ 1 (and x > 0 for it to be defined)
-        // We check if x is a numeric constant that is > 0 and ≠ 1
-        Expr::Function(fn_id, args)
-            if (ctx.is_builtin(*fn_id, BuiltinFn::Ln)
-                || ctx.is_builtin(*fn_id, BuiltinFn::Log))
-                && args.len() == 1 =>
-        {
-            match ctx.get(args[0]) {
+        // We check if x is a numeric constant that is > 0 and ≠ 1.
+        Expr::Function(_, _) if extract_unary_log_argument_view(ctx, expr).is_some() => {
+            let Some(arg) = extract_unary_log_argument_view(ctx, expr) else {
+                return Proof::Unknown;
+            };
+            match ctx.get(arg) {
                 Expr::Number(n) => {
                     let one = num_rational::BigRational::one();
                     let zero = num_rational::BigRational::zero();

@@ -7,6 +7,7 @@ use super::normalization::{
 };
 use super::ImplicitCondition;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_extract::extract_unary_log_argument_view;
 
 // =============================================================================
 // Witness Survival
@@ -62,15 +63,14 @@ pub(crate) fn search_witness(
             }
 
             // Check if this node is a witness: ln(target) or log(target)
-            Expr::Function(fn_id, args)
-                if (ctx.is_builtin(*fn_id, BuiltinFn::Ln)
-                    || ctx.is_builtin(*fn_id, BuiltinFn::Log))
-                    && args.len() == 1 =>
-            {
-                if kind == WitnessKind::Log && exprs_equal(ctx, args[0], target) {
+            Expr::Function(_, _) if extract_unary_log_argument_view(ctx, expr).is_some() => {
+                let Some(arg) = extract_unary_log_argument_view(ctx, expr) else {
+                    continue;
+                };
+                if kind == WitnessKind::Log && exprs_equal(ctx, arg, target) {
                     return true;
                 }
-                stack.push(args[0]);
+                stack.push(arg);
             }
 
             // Check for t^(1/2) form as witness for sqrt
@@ -183,15 +183,14 @@ fn search_witness_in_context(
             }
 
             // Check if this node is a witness: ln(target) or log(target)
-            Expr::Function(fn_id, args)
-                if (ctx.is_builtin(*fn_id, BuiltinFn::Ln)
-                    || ctx.is_builtin(*fn_id, BuiltinFn::Log))
-                    && args.len() == 1 =>
-            {
-                if kind == WitnessKind::Log && exprs_equal(ctx, args[0], target) {
+            Expr::Function(_, _) if extract_unary_log_argument_view(ctx, expr).is_some() => {
+                let Some(arg) = extract_unary_log_argument_view(ctx, expr) else {
+                    continue;
+                };
+                if kind == WitnessKind::Log && exprs_equal(ctx, arg, target) {
                     return true;
                 }
-                stack.push(args[0]);
+                stack.push(arg);
             }
 
             // Check for t^(1/2) form as witness for sqrt

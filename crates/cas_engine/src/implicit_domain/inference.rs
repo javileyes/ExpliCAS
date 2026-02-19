@@ -4,6 +4,7 @@ use super::witness::{witness_survives_in_context, WitnessKind};
 use super::{ImplicitCondition, ImplicitDomain};
 use crate::semantics::ValueDomain;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_extract::extract_unary_log_argument_view;
 use num_integer::Integer;
 use num_rational::BigRational;
 
@@ -335,18 +336,13 @@ pub fn derive_requires_from_equation(
     // Examples: sqrt(y), ln(y), y^(1/2), etc.
     // We DON'T want to derive positivity for plain polynomials like "2*x + 3".
     let has_positivity_structure = |ctx: &Context, e: ExprId| -> bool {
+        if extract_unary_log_argument_view(ctx, e).is_some() {
+            return true;
+        }
         match ctx.get(e) {
             // sqrt(x) requires x >= 0 and sqrt(x) > 0 implies x > 0
             Expr::Function(fn_id, args)
                 if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) && args.len() == 1 =>
-            {
-                true
-            }
-            // ln(x) and log(x) require x > 0
-            Expr::Function(fn_id, args)
-                if (ctx.is_builtin(*fn_id, BuiltinFn::Ln)
-                    || ctx.is_builtin(*fn_id, BuiltinFn::Log))
-                    && args.len() == 1 =>
             {
                 true
             }
@@ -567,13 +563,12 @@ fn infer_recursive(ctx: &Context, root: ExprId, domain: &mut ImplicitDomain) {
             }
 
             // ln(t) or log(t) → Positive(t)
-            Expr::Function(fn_id, args)
-                if (ctx.is_builtin(*fn_id, BuiltinFn::Ln)
-                    || ctx.is_builtin(*fn_id, BuiltinFn::Log))
-                    && args.len() == 1 =>
-            {
-                domain.add_positive(args[0]);
-                stack.push(args[0]);
+            Expr::Function(_, _) if extract_unary_log_argument_view(ctx, expr).is_some() => {
+                let Some(arg) = extract_unary_log_argument_view(ctx, expr) else {
+                    continue;
+                };
+                domain.add_positive(arg);
+                stack.push(arg);
             }
 
             // t^(1/2) or t^(p/q) where q is even → NonNegative(t)
