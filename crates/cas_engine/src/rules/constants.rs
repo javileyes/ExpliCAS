@@ -9,6 +9,7 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_ast::{Constant, Expr};
+use cas_math::expr_predicates::is_half_expr;
 
 // Rule 1: Recognize (1 + √5)/2 as φ
 // Matches both:
@@ -48,9 +49,9 @@ define_rule!(
 
         // Pattern 2: Mul(1/2, Add(1, sqrt(5))) or Mul(Add(1, sqrt(5)), 1/2)
         if let Expr::Mul(l, r) = ctx.get(expr) {
-            let (half_id, sum_id) = if is_half(ctx, *l) {
+            let (half_id, sum_id) = if is_half_expr(ctx, *l) {
                 (*l, *r)
-            } else if is_half(ctx, *r) {
+            } else if is_half_expr(ctx, *r) {
                 (*r, *l)
             } else {
                 return None;
@@ -126,15 +127,6 @@ define_rule!(
 );
 
 // Note: is_one uses crate::helpers::is_one (canonical)
-
-// Helper: check if expression is 1/2
-fn is_half(ctx: &cas_ast::Context, id: cas_ast::ExprId) -> bool {
-    if let Expr::Number(n) = ctx.get(id) {
-        n == &num_rational::BigRational::new(1.into(), 2.into())
-    } else {
-        false
-    }
-}
 
 // Helper: check if expression is √5 (Pow(5, 1/2) or Function("sqrt", [5]))
 fn is_sqrt5(ctx: &cas_ast::Context, id: cas_ast::ExprId) -> bool {

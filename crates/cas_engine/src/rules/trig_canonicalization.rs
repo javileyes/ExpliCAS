@@ -3,6 +3,7 @@ use crate::define_rule;
 use crate::helpers::is_one;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_predicates::is_two_expr;
 
 // ==================== Sophisticated Context-Aware Canonicalization ====================
 // STRATEGY: Only convert when it demonstrably helps simplification
@@ -14,14 +15,6 @@ use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 // ==================== Helper Functions for Pattern Detection ====================
 
 // is_one is now imported from crate::helpers
-
-// Check if expression is a number equal to 2
-fn is_two(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Number(n) => *n == num_rational::Ratio::from_integer(2.into()),
-        _ => false,
-    }
-}
 
 fn is_reciprocal_trig_builtin(b: BuiltinFn) -> bool {
     matches!(
@@ -175,7 +168,7 @@ fn has_multiple_trig_types(funcs: &HashSet<String>) -> bool {
 fn is_any_trig_function_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => {
-            if is_two(ctx, *exp) {
+            if is_two_expr(ctx, *exp) {
                 match ctx.get(*base) {
                     Expr::Function(fn_id, args) if args.len() == 1 => {
                         // Check if it's a trig function (sin, cos, tan, cot, sec, csc)
@@ -542,7 +535,7 @@ define_rule!(
 fn is_function_squared(ctx: &Context, expr: ExprId, fname: &str) -> Option<ExprId> {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => {
-            if is_two(ctx, *exp) {
+            if is_two_expr(ctx, *exp) {
                 match ctx.get(*base) {
                     Expr::Function(fn_id, args)
                         if ctx.builtin_of(*fn_id).is_some_and(|b| b.name() == fname)

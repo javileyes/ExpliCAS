@@ -2,21 +2,13 @@ use crate::define_rule;
 use crate::helpers::{is_one, is_zero};
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_predicates::{is_half_expr, is_two_expr};
 use num_traits::Signed;
 use std::cmp::Ordering;
 
 // ==================== Helper Functions ====================
 
 // is_zero and is_one are now imported from crate::helpers
-
-/// Check if expression equals 2
-fn is_two(ctx: &Context, expr: ExprId) -> bool {
-    if let Expr::Number(n) = ctx.get(expr) {
-        *n == num_rational::Ratio::from_integer(2.into())
-    } else {
-        false
-    }
-}
 
 // ==================== Hyperbolic Function Rules ====================
 
@@ -302,7 +294,7 @@ define_rule!(
             if let (Expr::Pow(l_base, l_exp), Expr::Pow(r_base, r_exp)) = (ctx.get(l), ctx.get(r)) {
                 let (l_base, l_exp, r_base, r_exp) = (*l_base, *l_exp, *r_base, *r_exp);
                 // Both should be squared
-                if is_two(ctx, l_exp) && is_two(ctx, r_exp) {
+                if is_two_expr(ctx, l_exp) && is_two_expr(ctx, r_exp) {
                     if let (Expr::Function(l_fn, l_args), Expr::Function(r_fn, r_args)) =
                         (ctx.get(l_base), ctx.get(r_base))
                     {
@@ -432,7 +424,7 @@ define_rule!(
             if let (Expr::Pow(l_base, l_exp), Expr::Pow(r_base, r_exp)) = (ctx.get(l), ctx.get(r)) {
                 let (l_base, l_exp, r_base, r_exp) = (*l_base, *l_exp, *r_base, *r_exp);
                 // Both should be squared
-                if is_two(ctx, l_exp) && is_two(ctx, r_exp) {
+                if is_two_expr(ctx, l_exp) && is_two_expr(ctx, r_exp) {
                     if let (Expr::Function(l_fn, l_args), Expr::Function(r_fn, r_args)) =
                         (ctx.get(l_base), ctx.get(r_base))
                     {
@@ -576,7 +568,7 @@ define_rule!(
         let as_neg_hyp_squared = |e: ExprId| -> Option<(ExprId, bool)> {
             if let Expr::Neg(inner) = ctx.get(e) {
                 if let Expr::Pow(base, exp) = ctx.get(*inner) {
-                    if is_two(ctx, *exp) {
+                    if is_two_expr(ctx, *exp) {
                         if let Expr::Function(fn_id, args) = ctx.get(*base) {
                             if args.len() == 1 {
                                 if ctx.is_builtin(*fn_id, BuiltinFn::Cosh) {
@@ -701,15 +693,6 @@ fn is_negation_of(ctx: &Context, arg: ExprId, target: ExprId) -> bool {
     cas_math::expr_relations::is_negation(ctx, arg, target)
 }
 
-/// Helper: Check if expression equals 1/2
-fn is_half(ctx: &Context, expr: ExprId) -> bool {
-    if let Expr::Number(n) = ctx.get(expr) {
-        *n == num_rational::BigRational::new(1.into(), 2.into())
-    } else {
-        false
-    }
-}
-
 /// Try to extract the pair (exp(a), exp(-a)) from an Add or Sub expression.
 /// Returns Some((arg, is_positive)) where:
 /// - arg is the argument 'a' (such that we have exp(a) and exp(-a))
@@ -781,7 +764,7 @@ define_rule!(
     |ctx, expr| {
         // Pattern 1: Div(sum_or_diff, 2)
         if let Expr::Div(num, den) = ctx.get(expr) {
-            if is_two(ctx, *den) {
+            if is_two_expr(ctx, *den) {
                 if let Some((arg, is_cosh, positive_first)) = extract_exp_pair(ctx, *num) {
                     if is_cosh {
                         // (e^x + e^(-x))/2 = cosh(x)
@@ -803,9 +786,9 @@ define_rule!(
 
         // Pattern 2: Mul(1/2, sum_or_diff) or Mul(sum_or_diff, 1/2)
         if let Expr::Mul(l, r) = ctx.get(expr) {
-            let (half_id, sum_id) = if is_half(ctx, *l) {
+            let (half_id, sum_id) = if is_half_expr(ctx, *l) {
                 (*l, *r)
-            } else if is_half(ctx, *r) {
+            } else if is_half_expr(ctx, *r) {
                 (*r, *l)
             } else {
                 return None;

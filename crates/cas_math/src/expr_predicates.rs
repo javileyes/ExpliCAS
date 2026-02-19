@@ -67,6 +67,16 @@ pub fn is_one_expr(ctx: &Context, id: ExprId) -> bool {
     matches!(ctx.get(id), Expr::Number(n) if n.is_one())
 }
 
+/// Check if expression is numerically equal to `+2`.
+pub fn is_two_expr(ctx: &Context, id: ExprId) -> bool {
+    matches!(ctx.get(id), Expr::Number(n) if *n == BigRational::from_integer(2.into()))
+}
+
+/// Check if expression is numerically equal to `+1/2`.
+pub fn is_half_expr(ctx: &Context, id: ExprId) -> bool {
+    matches!(ctx.get(id), Expr::Number(n) if *n == BigRational::new(1.into(), 2.into()))
+}
+
 /// Check if expression is numerically equal to `-1`.
 pub fn is_minus_one_expr(ctx: &Context, id: ExprId) -> bool {
     match ctx.get(id) {
@@ -146,8 +156,12 @@ mod tests {
     fn one_minus_one_detection() {
         let mut ctx = Context::new();
         let one = parse("1", &mut ctx).expect("parse one");
+        let two = parse("2", &mut ctx).expect("parse two");
+        let half = ctx.rational(1, 2);
         let minus_one = parse("-1", &mut ctx).expect("parse minus one");
         assert!(is_one_expr(&ctx, one));
+        assert!(is_two_expr(&ctx, two));
+        assert!(is_half_expr(&ctx, half));
         assert!(is_minus_one_expr(&ctx, minus_one));
         assert!(!is_minus_one_expr(&ctx, one));
     }

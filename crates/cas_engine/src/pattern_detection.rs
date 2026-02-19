@@ -1,17 +1,7 @@
 #![allow(dead_code)]
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_predicates::is_two_expr;
 use std::cmp::Ordering;
-
-/// Check if expression equals 2
-fn is_two(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Number(n) => {
-            use num_traits::ToPrimitive;
-            n.to_i32() == Some(2)
-        }
-        _ => false,
-    }
-}
 
 /// Check if two expressions are semantically equal
 fn args_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
@@ -22,7 +12,7 @@ fn args_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
 pub fn is_sec_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => {
-            if is_two(ctx, *exp) {
+            if is_two_expr(ctx, *exp) {
                 match ctx.get(*base) {
                     Expr::Function(fn_id, args)
                         if ctx.is_builtin(*fn_id, BuiltinFn::Sec) && args.len() == 1 =>
@@ -43,7 +33,7 @@ pub fn is_sec_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
 pub fn is_tan_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => {
-            if is_two(ctx, *exp) {
+            if is_two_expr(ctx, *exp) {
                 match ctx.get(*base) {
                     Expr::Function(fn_id, args)
                         if ctx.is_builtin(*fn_id, BuiltinFn::Tan) && args.len() == 1 =>
@@ -64,7 +54,7 @@ pub fn is_tan_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
 pub fn is_csc_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => {
-            if is_two(ctx, *exp) {
+            if is_two_expr(ctx, *exp) {
                 match ctx.get(*base) {
                     Expr::Function(fn_id, args)
                         if ctx.is_builtin(*fn_id, BuiltinFn::Csc) && args.len() == 1 =>
@@ -85,7 +75,7 @@ pub fn is_csc_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
 pub fn is_cot_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => {
-            if is_two(ctx, *exp) {
+            if is_two_expr(ctx, *exp) {
                 match ctx.get(*base) {
                     Expr::Function(fn_id, args)
                         if ctx.is_builtin(*fn_id, BuiltinFn::Cot) && args.len() == 1 =>
@@ -210,7 +200,7 @@ pub fn should_preserve_trig_function(
         //     ctx.get(ancestor)
         // );
         if let Expr::Pow(base, exp) = ctx.get(ancestor) {
-            if *base == func_expr && is_two(ctx, *exp) {
+            if *base == func_expr && is_two_expr(ctx, *exp) {
                 // println!("    -> Found squared! {:?}", ancestor);
                 squared_id = Some(ancestor);
                 break;

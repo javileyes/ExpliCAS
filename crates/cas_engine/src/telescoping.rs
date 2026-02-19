@@ -13,6 +13,7 @@ use crate::nary::{AddView, Sign};
 
 use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
+use cas_math::expr_predicates::is_half_expr;
 use num_traits::{One, Zero};
 
 /// Result of telescoping analysis
@@ -373,7 +374,7 @@ fn is_half_angle(ctx: &Context, expr: ExprId, base_var: ExprId) -> bool {
         Expr::Div(num, den) => *num == base_var && is_number(ctx, *den, 2),
         Expr::Mul(l, r) => {
             // Check for (1/2)*x or x*(1/2)
-            (is_half(ctx, *l) && *r == base_var) || (is_half(ctx, *r) && *l == base_var)
+            (is_half_expr(ctx, *l) && *r == base_var) || (is_half_expr(ctx, *r) && *l == base_var)
         }
         _ => false,
     }
@@ -448,14 +449,6 @@ fn extract_multiple_of_var(ctx: &Context, expr: ExprId) -> Option<(usize, ExprId
 fn is_number(ctx: &Context, expr: ExprId, expected: i32) -> bool {
     if let Expr::Number(n) = ctx.get(expr) {
         *n == num_rational::BigRational::from_integer(expected.into())
-    } else {
-        false
-    }
-}
-
-fn is_half(ctx: &Context, expr: ExprId) -> bool {
-    if let Expr::Number(n) = ctx.get(expr) {
-        *n == num_rational::BigRational::new(1.into(), 2.into())
     } else {
         false
     }
