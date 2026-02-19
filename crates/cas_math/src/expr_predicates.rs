@@ -1,6 +1,8 @@
 //! Structural expression predicates used across algebra rules.
 
-use crate::expr_extract::{extract_abs_argument_view, extract_sqrt_argument_view};
+use crate::expr_extract::{
+    extract_abs_argument_view, extract_sqrt_argument_view, extract_unary_log_argument_view,
+};
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::{One, Signed};
@@ -83,6 +85,30 @@ fn is_always_nonnegative_depth(ctx: &Context, expr: ExprId, depth: usize) -> boo
                 && is_always_nonnegative_depth(ctx, *r, depth - 1)
         }
 
+        _ => false,
+    }
+}
+
+/// Check if expression has structural constraints that justify positivity propagation.
+///
+/// Recognizes:
+/// - `sqrt(t)`
+/// - unary `ln(t)` / `log(t)`
+/// - `t^(p/q)` where `q` is even
+pub fn has_positivity_structure(ctx: &Context, expr: ExprId) -> bool {
+    if extract_sqrt_argument_view(ctx, expr).is_some() {
+        return true;
+    }
+    if extract_unary_log_argument_view(ctx, expr).is_some() {
+        return true;
+    }
+    match ctx.get(expr) {
+        Expr::Pow(_, exp) => {
+            if let Expr::Number(n) = ctx.get(*exp) {
+                return is_even_root_exponent(n);
+            }
+            false
+        }
         _ => false,
     }
 }
@@ -349,5 +375,21 @@ mod tests {
         assert!(is_always_nonnegative_expr(&ctx, sqrt));
         assert!(is_always_nonnegative_expr(&ctx, sum));
         assert!(!is_always_nonnegative_expr(&ctx, odd));
+    }
+
+    #[test]
+    fn positivity_structure_detection() {
+        let mut ctx = Context::new();
+        let sqrt = parse("sqrt(x)", &mut ctx).expect("parse sqrt");
+        let ln = parse("ln(x)", &mut ctx).expect("parse ln");
+        let poly = parse("2*x + 3", &mut ctx).expect("parse polynomial");
+        let x = ctx.var("x");
+        let half = ctx.rational(1, 2);
+        let half_pow = ctx.add(Expr::Pow(x, half));
+
+        assert!(has_positivity_structure(&ctx, sqrt));
+        assert!(has_positivity_structure(&ctx, ln));
+        assert!(has_positivity_structure(&ctx, half_pow));
+        assert!(!has_positivity_structure(&ctx, poly));
     }
 }

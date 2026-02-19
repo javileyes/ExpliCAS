@@ -7,7 +7,7 @@ use cas_ast::{Context, Expr, ExprId};
 use cas_math::expr_extract::{
     extract_abs_argument_view, extract_sqrt_argument_view, extract_unary_log_argument_view,
 };
-use cas_math::expr_predicates::is_even_root_exponent;
+use cas_math::expr_predicates::{has_positivity_structure, is_even_root_exponent};
 
 // =============================================================================
 // Domain Delta Check (Airbag)
@@ -329,30 +329,6 @@ pub fn derive_requires_from_equation(
 
     // Helper to check if expr is abs(...)
     let is_abs = |ctx: &Context, e: ExprId| -> bool { extract_abs_argument_view(ctx, e).is_some() };
-
-    // Helper to check if expression has structural constraints that enforce positivity.
-    // Only these expressions benefit from derived positivity requirements.
-    // Examples: sqrt(y), ln(y), y^(1/2), etc.
-    // We DON'T want to derive positivity for plain polynomials like "2*x + 3".
-    let has_positivity_structure = |ctx: &Context, e: ExprId| -> bool {
-        if extract_sqrt_argument_view(ctx, e).is_some() {
-            return true;
-        }
-        if extract_unary_log_argument_view(ctx, e).is_some() {
-            return true;
-        }
-        match ctx.get(e) {
-            // x^(p/q) where q is even requires x >= 0
-            Expr::Pow(_base, exp) => {
-                if let Expr::Number(n) = ctx.get(*exp) {
-                    is_even_root_exponent(n)
-                } else {
-                    false
-                }
-            }
-            _ => false,
-        }
-    };
 
     // Check if LHS is provably positive AND RHS has structure that needs it
     let lhs_positive = crate::helpers::prove_positive(ctx, lhs, vd);
