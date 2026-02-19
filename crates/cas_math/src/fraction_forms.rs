@@ -1,7 +1,9 @@
 //! Fraction-shape helpers over AST expressions.
 
+use cas_ast::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
 use num_traits::One;
+use std::cmp::Ordering;
 
 /// Recognizes ±1 in various AST forms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,6 +104,99 @@ pub fn split_binomial_den(ctx: &mut Context, den: ExprId) -> Option<(ExprId, Exp
             None => Some((*l, *r, false, false)),
         },
         _ => None,
+    }
+}
+
+/// Check if two denominator expressions are structural opposites.
+///
+/// Examples:
+/// - `(a - b)` vs `(b - a)`
+/// - `(-a + b)` vs `(a - b)`
+/// - `(a-b)(a-c)` vs `(a-c)(b-a)`
+pub fn are_denominators_opposite(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
+    match (ctx.get(e1), ctx.get(e2)) {
+        // Case 1: (a - b) vs (b - a)
+        (Expr::Sub(l1, r1), Expr::Sub(l2, r2)) => {
+            compare_expr(ctx, *l1, *r2) == Ordering::Equal
+                && compare_expr(ctx, *r1, *l2) == Ordering::Equal
+        }
+        // Case 2: (-a + b) vs (a - b), including Number(-n) normalization
+        (Expr::Add(l1, r1), Expr::Sub(l2, r2)) => {
+            if let Expr::Neg(neg_inner) = ctx.get(*l1) {
+                if compare_expr(ctx, *neg_inner, *l2) == Ordering::Equal
+                    && compare_expr(ctx, *r1, *r2) == Ordering::Equal
+                {
+                    return true;
+                }
+            }
+            if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(*l1), ctx.get(*l2)) {
+                let neg_n2 = -n2.clone();
+                if n1 == &neg_n2 && compare_expr(ctx, *r1, *r2) == Ordering::Equal {
+                    return true;
+                }
+            }
+            false
+        }
+        // Case 3: reverse of case 2
+        (Expr::Sub(_, _), Expr::Add(_, _)) => are_denominators_opposite(ctx, e2, e1),
+        // Case 4: both Add, multiple opposite layouts
+        (Expr::Add(l1, r1), Expr::Add(l2, r2)) => {
+            if let (Expr::Neg(neg_l1), Expr::Neg(neg_l2)) = (ctx.get(*l1), ctx.get(*l2)) {
+                if compare_expr(ctx, *neg_l1, *r2) == Ordering::Equal
+                    && compare_expr(ctx, *r1, *neg_l2) == Ordering::Equal
+                {
+                    return true;
+                }
+            }
+
+            if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(*l1), ctx.get(*l2)) {
+                if let Expr::Neg(neg_r2) = ctx.get(*r2) {
+                    let neg_n2 = -n2.clone();
+                    if n1 == &neg_n2 && compare_expr(ctx, *r1, *neg_r2) == Ordering::Equal {
+                        return true;
+                    }
+                }
+                if let Expr::Neg(neg_r1) = ctx.get(*r1) {
+                    let neg_n2 = -n2.clone();
+                    if n1 == &neg_n2 && compare_expr(ctx, *neg_r1, *r2) == Ordering::Equal {
+                        return true;
+                    }
+                }
+            }
+
+            if let (Expr::Neg(neg_r1), Expr::Neg(neg_r2)) = (ctx.get(*r1), ctx.get(*r2)) {
+                if compare_expr(ctx, *l1, *neg_r2) == Ordering::Equal
+                    && compare_expr(ctx, *l2, *neg_r1) == Ordering::Equal
+                {
+                    return true;
+                }
+            }
+            false
+        }
+        // Case 5: multiplicative expressions where one factor pair is opposite
+        (Expr::Mul(m1_l, m1_r), Expr::Mul(m2_l, m2_r)) => {
+            let factors_opposite =
+                |f1: ExprId, f2: ExprId| -> bool { are_denominators_opposite(ctx, f1, f2) };
+
+            if compare_expr(ctx, *m1_l, *m2_l) == Ordering::Equal && factors_opposite(*m1_r, *m2_r)
+            {
+                return true;
+            }
+            if compare_expr(ctx, *m1_l, *m2_r) == Ordering::Equal && factors_opposite(*m1_r, *m2_l)
+            {
+                return true;
+            }
+            if compare_expr(ctx, *m1_r, *m2_l) == Ordering::Equal && factors_opposite(*m1_l, *m2_r)
+            {
+                return true;
+            }
+            if compare_expr(ctx, *m1_r, *m2_r) == Ordering::Equal && factors_opposite(*m1_l, *m2_l)
+            {
+                return true;
+            }
+            false
+        }
+        _ => false,
     }
 }
 
@@ -281,5 +376,13 @@ mod tests {
         assert!(matches!(ctx.get(r2), Expr::Number(n) if n.is_one()));
         assert!(add2);
         assert!(abs_one2);
+    }
+
+    #[test]
+    fn opposite_denominator_detection() {
+        let mut ctx = Context::new();
+        let d1 = parse("a-b", &mut ctx).expect("parse d1");
+        let d2 = parse("b-a", &mut ctx).expect("parse d2");
+        assert!(are_denominators_opposite(&ctx, d1, d2));
     }
 }

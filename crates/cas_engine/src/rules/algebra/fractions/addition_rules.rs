@@ -7,13 +7,13 @@
 use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::rule::Rewrite;
-use crate::rules::algebra::helpers::are_denominators_opposite;
 use cas_ast::{count_nodes, Context, Expr, ExprId};
 use cas_math::expr_predicates::{
     contains_div_term, contains_function, contains_function_or_root, contains_root_term,
     is_constant_expr, is_constant_fraction, is_minus_one_expr, is_one_expr,
     is_simple_number_abs_leq, is_trivial_denom_one,
 };
+use cas_math::fraction_forms::are_denominators_opposite;
 use cas_math::polynomial::Polynomial;
 use num_traits::{One, Zero};
 use std::cmp::Ordering;
