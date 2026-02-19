@@ -1,6 +1,7 @@
 pub mod combinatorics;
 pub mod const_eval;
 pub mod expr_classify;
+pub mod expr_complexity;
 pub mod expr_destructure;
 pub mod expr_domain;
 pub mod expr_extract;

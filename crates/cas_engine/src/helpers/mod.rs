@@ -10,19 +10,18 @@
 //! - **Flatten/roots**: `trig_roots_flatten`
 //! - **Scoring**: `nf_scoring`
 
-mod complexity;
 pub(crate) mod ground_eval;
 mod nf_scoring;
 mod predicates;
 mod trig_roots_flatten;
 
 // Re-export all items for internal use
+pub(crate) use cas_math::expr_complexity::*;
 pub(crate) use cas_math::expr_destructure::*;
 pub(crate) use cas_math::expr_extract::{
     extract_i64_integer as get_integer, extract_integer_exact as get_integer_exact,
 };
 pub(crate) use cas_math::pi_helpers::*;
-pub(crate) use complexity::*;
 pub(crate) use nf_scoring::*;
 // predicates has `is_zero` and `prove_nonzero` used by integration tests — keep pub
 pub use predicates::*;
