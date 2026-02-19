@@ -46,6 +46,7 @@ pub mod poly_modp_conv;
 pub mod poly_result;
 pub mod poly_store;
 pub mod polynomial;
+pub mod rationalize;
 pub mod root_forms;
 pub mod semantic_equality;
 pub mod substitute;
