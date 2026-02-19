@@ -150,12 +150,12 @@ pub(crate) fn collect_with_semantics(
     })
 }
 
-/// Collects like terms in an expression (legacy wrapper, uses Generic mode).
+/// Collects like terms in an expression using Generic mode semantics.
 /// e.g. 2*x + 3*x -> 5*x
 ///      x + x -> 2*x
 ///      x^2 + 2*x^2 -> 3*x^2
-pub fn collect(ctx: &mut Context, expr: ExprId) -> ExprId {
-    // Use Generic mode for backward compatibility (no blocking, no warnings)
+pub(crate) fn collect(ctx: &mut Context, expr: ExprId) -> ExprId {
+    // Generic mode keeps legacy behavior (no blocking, no warnings).
     let fake_parent = ParentContext::root();
     match collect_with_semantics(ctx, expr, &fake_parent) {
         Some(result) => result.new_expr,
@@ -522,6 +522,7 @@ fn try_sum_numeric_fractions(ctx: &Context, exp: ExprId) -> Option<BigRational> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_ast::Expr;
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
 
@@ -581,5 +582,64 @@ mod tests {
         // The result should be different (simplified)
         assert_ne!(res, expr, "Expression should be simplified");
         assert_eq!(s(&ctx, res), "x^(5/6)");
+    }
+
+    #[test]
+    fn test_collect_double_negation() {
+        let mut ctx = Context::new();
+        let x = parse("x", &mut ctx).unwrap();
+        let neg_x = ctx.add(Expr::Neg(x));
+        let neg_neg_x = ctx.add(Expr::Neg(neg_x));
+        let res = collect(&mut ctx, neg_neg_x);
+        assert_eq!(s(&ctx, res), "x");
+    }
+
+    #[test]
+    fn test_collect_sub_neg() {
+        let mut ctx = Context::new();
+        let expr = parse("a - (-b)", &mut ctx).unwrap();
+        let res = collect(&mut ctx, expr);
+        let res_str = s(&ctx, res);
+        assert!(res_str == "a + b" || res_str == "b + a");
+    }
+
+    #[test]
+    fn test_collect_nested_neg_add() {
+        let mut ctx = Context::new();
+        let expr = parse("a + -(-b)", &mut ctx).unwrap();
+        let res = collect(&mut ctx, expr);
+        let res_str = s(&ctx, res);
+        assert!(res_str == "a + b" || res_str == "b + a");
+    }
+
+    #[test]
+    fn test_collect_neg_neg_cos() {
+        let mut ctx = Context::new();
+        let expr = parse("-(-cos(x))", &mut ctx).unwrap();
+        let res = collect(&mut ctx, expr);
+        assert_eq!(s(&ctx, res), "cos(x)");
+    }
+
+    #[test]
+    fn test_collect_sub_neg_cos() {
+        let mut ctx = Context::new();
+        let expr = parse("-3 - (-cos(x))", &mut ctx).unwrap();
+        let res = collect(&mut ctx, expr);
+        let res_str = s(&ctx, res);
+        assert!(res_str.contains("cos(x)"));
+        assert!(!res_str.contains("- -"));
+        assert!(!res_str.contains("- (-"));
+    }
+
+    #[test]
+    fn test_collect_user_repro() {
+        let mut ctx = Context::new();
+        let expr = parse("8 * sin(x)^4 - (3 - 4 * cos(2 * x) + cos(4 * x))", &mut ctx).unwrap();
+        let res = collect(&mut ctx, expr);
+        let res_str = s(&ctx, res);
+        assert!(!res_str.contains("- -cos"));
+        assert!(!res_str.contains("- (-cos"));
+        assert!(res_str.contains("cos(4 * x)"));
+        assert!(res_str.contains("3"));
     }
 }
