@@ -3,8 +3,7 @@ use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::count_nodes;
 use cas_ast::Expr;
-
-use super::helpers::*;
+use cas_math::expr_rewrite::distribute;
 
 /// Maximum terms to materialize in expand().
 /// Above this, expand() is left unevaluated with a warning.

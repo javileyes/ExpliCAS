@@ -6,10 +6,9 @@
 use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::rule::{ChainedRewrite, Rewrite};
-use crate::rules::algebra::helpers::{collect_denominators, count_nodes_of_type, distribute};
-use crate::target_kind::TargetKind;
 use cas_ast::{Expr, ExprId};
 use cas_formatter::DisplayExpr;
+use cas_math::expr_rewrite::{collect_denominators, count_div_nodes, distribute};
 use cas_math::numeric::gcd_rational;
 use cas_math::polynomial::Polynomial;
 use num_traits::{One, Zero};
@@ -581,7 +580,7 @@ define_rule!(
 
         // Complexity Check: Ensure we actually reduced the number of divisions or total nodes
         // Counting Div nodes is a good heuristic for "nested fraction simplified"
-        let count_divs = |id| count_nodes_of_type(ctx, id, TargetKind::Div);
+        let count_divs = |id| count_div_nodes(ctx, id);
         let old_divs = count_divs(expr);
         let new_divs = count_divs(new_expr);
 
