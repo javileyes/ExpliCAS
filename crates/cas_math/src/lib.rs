@@ -3,6 +3,7 @@ pub mod build;
 pub mod canonical_forms;
 pub mod combinatorics;
 pub mod const_eval;
+pub mod expand_estimate;
 pub mod expr_classify;
 pub mod expr_complexity;
 pub mod expr_destructure;
