@@ -1,7 +1,7 @@
 use crate::helpers::{as_div, as_mul};
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
-use cas_math::expr_extract::extract_log_base_argument;
+use cas_math::expr_extract::{extract_log_base_argument, extract_log_base_argument_view};
 use cas_math::expr_predicates::is_e_constant_expr;
 use cas_math::expr_rewrite::smart_mul;
 
@@ -592,19 +592,7 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
         use crate::semantics::ValueDomain;
 
         // Match ln(arg) or log(base, arg)
-        let (base_opt, arg) = match ctx.get(expr) {
-            Expr::Function(fn_id, args)
-                if ctx.is_builtin(*fn_id, BuiltinFn::Ln) && args.len() == 1 =>
-            {
-                (None, args[0])
-            }
-            Expr::Function(fn_id, args)
-                if ctx.is_builtin(*fn_id, BuiltinFn::Log) && args.len() == 2 =>
-            {
-                (Some(args[0]), args[1])
-            }
-            _ => return None,
-        };
+        let (base_opt, arg) = extract_log_base_argument_view(ctx, expr)?;
 
         // Match abs(inner)
         let inner = match ctx.get(arg) {
