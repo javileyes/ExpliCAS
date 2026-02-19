@@ -24,7 +24,6 @@ mod normalization;
 mod witness;
 
 // Re-export all public items from submodules
-pub(crate) use inference::contains_variable;
 pub use inference::{
     check_analytic_expansion, derive_requires_from_equation, domain_delta_check,
     expands_analytic_domain, expands_analytic_in_context, infer_implicit_domain,
@@ -132,7 +131,7 @@ impl ImplicitCondition {
         };
 
         // Case 1: No variables = fully numeric constant (always trivial)
-        if !inference::contains_variable(ctx, expr) {
+        if !contains_variable(ctx, expr) {
             return true;
         }
 
@@ -142,7 +141,7 @@ impl ImplicitCondition {
             // - x² (even power of variable)
             // - |x| (absolute value)
             // - x² + y² (sum of squares)
-            if inference::is_always_nonnegative(ctx, *e) {
+            if cas_math::expr_predicates::is_always_nonnegative_expr(ctx, *e) {
                 return true;
             }
         }
@@ -166,6 +165,11 @@ impl ImplicitCondition {
             }
         }
     }
+}
+
+/// Check if expression contains any variables.
+pub(crate) fn contains_variable(ctx: &Context, root: ExprId) -> bool {
+    cas_math::expr_predicates::contains_variable(ctx, root)
 }
 
 // =============================================================================

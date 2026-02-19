@@ -291,7 +291,7 @@ pub fn infer_implicit_domain(ctx: &Context, root: ExprId, vd: ValueDomain) -> Im
     }
 
     // Skip if expression has no variables - fully numeric expressions don't need implicit domain
-    if !contains_variable(ctx, root) {
+    if !super::contains_variable(ctx, root) {
         return ImplicitDomain::empty();
     }
 
@@ -419,20 +419,6 @@ fn add_positive_and_propagate(
             derived.push(ImplicitCondition::Positive(expr));
         }
     }
-}
-
-/// Check if expression contains any variables.
-pub(crate) fn contains_variable(ctx: &Context, root: ExprId) -> bool {
-    cas_math::expr_predicates::contains_variable(ctx, root)
-}
-
-/// Check if an expression is always non-negative for real values.
-/// Returns true for patterns like:
-/// - x² (x^2 for any even exponent)
-/// - |x| (absolute value)
-/// - x⁴, x⁶, etc. (any even power)
-pub(crate) fn is_always_nonnegative(ctx: &Context, expr: ExprId) -> bool {
-    cas_math::expr_predicates::is_always_nonnegative_expr(ctx, expr)
 }
 
 /// Iterative domain inference (replaces recursive version).
