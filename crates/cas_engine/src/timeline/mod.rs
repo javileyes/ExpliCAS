@@ -6,7 +6,6 @@
 
 mod escape;
 mod latex_clean;
-mod path;
 mod simplify;
 mod solve;
 

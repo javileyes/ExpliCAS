@@ -1,11 +1,11 @@
 use super::escape::{html_escape, latex_escape};
 use super::latex_clean::clean_latex_identities;
-use super::path::{
+use crate::step::{pathsteps_to_expr_path, PathStep, Step};
+use cas_ast::{Context, Expr, ExprId, ExprPath};
+use cas_formatter::path::{
     diff_find_all_paths_to_expr, diff_find_path_to_expr, diff_find_paths_by_structure,
     extract_add_terms, find_path_to_expr, navigate_to_subexpr,
 };
-use crate::step::{pathsteps_to_expr_path, PathStep, Step};
-use cas_ast::{Context, Expr, ExprId, ExprPath};
 use cas_formatter::{
     HighlightColor, HighlightConfig, LaTeXExprHighlighted, PathHighlightConfig,
     PathHighlightedLatexRenderer,
