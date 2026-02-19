@@ -178,7 +178,7 @@ fn requires_nonzero_from_division() {
 /// inherited with SessionPropagated added to their origins.
 #[test]
 fn session_propagated_origin_appears_on_reuse() {
-    use cas_engine::diagnostics::RequireOrigin;
+    use cas_engine::RequireOrigin;
 
     let mut engine = Engine::new();
     let mut state = SessionState::default();

@@ -2,8 +2,8 @@
 //! Tests ensure: budget limits, determinism, mode isolation, no false positives
 
 use cas_ast::Context;
-use cas_engine::options::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
 use cas_engine::Simplifier;
+use cas_engine::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
 use cas_parser::parse;
 mod support;
 use support::SessionState;

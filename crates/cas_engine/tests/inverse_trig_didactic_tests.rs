@@ -2,7 +2,7 @@
 // Ensures atan(x) + atan(1/x) identity fires directly without Add Fractions steps
 
 use cas_ast::Context;
-use cas_engine::options::EvalOptions;
+use cas_engine::EvalOptions;
 use cas_engine::Simplifier;
 use cas_parser::parse;
 

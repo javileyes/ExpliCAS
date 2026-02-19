@@ -6,9 +6,9 @@
 //! - Mode isolation: ComplexMode::Off should not simplify i
 
 use cas_ast::Context;
-use cas_engine::options::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
 use cas_engine::phase::ExpandPolicy;
 use cas_engine::Simplifier;
+use cas_engine::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
 use cas_parser::parse;
 
 /// Helper: run simplification with given options and return result string

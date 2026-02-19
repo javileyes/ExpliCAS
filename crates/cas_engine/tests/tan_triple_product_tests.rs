@@ -3,7 +3,7 @@
 //! Verifies that tan(u)·tan(π/3+u)·tan(π/3-u) simplifies to tan(3u)
 
 use cas_ast::Context;
-use cas_engine::options::EvalOptions;
+use cas_engine::EvalOptions;
 use cas_engine::Simplifier;
 use cas_parser::parse;
 

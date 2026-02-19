@@ -6,8 +6,8 @@
 //! - Compact produces steps without before_local/after_local
 
 use cas_ast::Context;
-use cas_engine::options::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
 use cas_engine::Simplifier;
+use cas_engine::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
 use cas_parser::parse;
 
 /// Helper: simplify with given steps_mode and return (result_string, steps, steps_mode)

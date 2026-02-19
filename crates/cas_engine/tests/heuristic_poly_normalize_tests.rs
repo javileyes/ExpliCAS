@@ -7,8 +7,8 @@
 //! This prevents "silent widening" of Heuristic mode in future changes.
 
 use cas_ast::Context;
-use cas_engine::options::AutoExpandBinomials;
 use cas_engine::phase::SimplifyOptions;
+use cas_engine::AutoExpandBinomials;
 use cas_engine::HeuristicPoly;
 use cas_engine::Simplifier;
 use cas_parser::parse;

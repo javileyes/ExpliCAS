@@ -5,8 +5,8 @@
 //! This covers the Olympiad problem: 8·cos(π/9)·cos(2π/9)·cos(4π/9) = 1
 
 use cas_ast::Context;
-use cas_engine::options::{EvalOptions, StepsMode};
 use cas_engine::Simplifier;
+use cas_engine::{EvalOptions, StepsMode};
 use cas_parser::parse;
 
 fn simplify(input: &str) -> String {

@@ -162,7 +162,7 @@ fn test_standard_negative_exponent() {
 /// Test 5: ContextMode::Solve no activa expansión
 #[test]
 fn test_solve_context_no_expansion() {
-    use cas_engine::options::{ContextMode, EvalOptions};
+    use cas_engine::{ContextMode, EvalOptions};
 
     let opts = EvalOptions {
         shared: cas_engine::phase::SharedSemanticConfig {

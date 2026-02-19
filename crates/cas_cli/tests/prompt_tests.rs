@@ -3,8 +3,8 @@
 //! These tests verify that the prompt indicator format is stable and predictable,
 //! helping prevent UX regressions when multiple modes are active.
 
-use cas_solver::options::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
 use cas_solver::phase::ExpandPolicy;
+use cas_solver::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
 
 /// Build prompt indicators string (pure function for testing).
 /// Mirrors the logic in Repl::build_prompt() without requiring a full Repl instance.

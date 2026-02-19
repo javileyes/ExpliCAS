@@ -19,7 +19,7 @@ pub use cas_engine::telescoping;
 pub use cas_engine::visualizer;
 pub use cas_engine::ConstFoldMode;
 pub use cas_engine::ParentContext;
-pub use cas_engine::{engine, error, expand, helpers, options, pattern_marks, phase, semantics};
+pub use cas_engine::{engine, error, expand, helpers, pattern_marks, phase, semantics};
 pub use cas_engine::{limit, Approach, LimitOptions, PreSimplifyMode};
 pub use cas_engine::{
     take_blocked_hints, AssumeScope, AssumptionKey, AssumptionReporting, AutoExpandBinomials,

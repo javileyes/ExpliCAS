@@ -79,7 +79,7 @@ fn x_div_x_simplifies_with_default_config() {
 
 #[test]
 fn eval_options_propagates_new_axes_to_simplify_options() {
-    use cas_engine::options::EvalOptions;
+    use cas_engine::EvalOptions;
 
     let eval_opts = EvalOptions::default();
     let simplify_opts = eval_opts.to_simplify_options();

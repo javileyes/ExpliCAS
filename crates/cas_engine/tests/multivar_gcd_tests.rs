@@ -3,8 +3,8 @@
 //! Tests for multivariate polynomial GCD in fraction simplification.
 
 use cas_ast::Context;
-use cas_engine::options::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
 use cas_engine::Simplifier;
+use cas_engine::{BranchMode, ComplexMode, ContextMode, EvalOptions, StepsMode};
 use cas_parser::parse;
 
 /// Helper: simplify expression and return result string

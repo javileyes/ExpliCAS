@@ -268,7 +268,7 @@ fn simplify_options_has_assumption_reporting() {
 /// Test: EvalOptions includes assumption_reporting
 #[test]
 fn eval_options_has_assumption_reporting() {
-    use cas_engine::options::EvalOptions;
+    use cas_engine::EvalOptions;
 
     let opts = EvalOptions::default();
     // Default should be Off
@@ -278,7 +278,7 @@ fn eval_options_has_assumption_reporting() {
 /// Test: Options propagate through to_simplify_options
 #[test]
 fn options_propagation() {
-    use cas_engine::options::EvalOptions;
+    use cas_engine::EvalOptions;
 
     let eval_opts = EvalOptions {
         shared: cas_engine::phase::SharedSemanticConfig {

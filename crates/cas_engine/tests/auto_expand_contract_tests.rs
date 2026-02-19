@@ -11,8 +11,8 @@
 //! - Expand (expand_mode): aggressively expands everything
 
 use cas_ast::{Context, Expr};
-use cas_engine::options::ContextMode;
 use cas_engine::phase::{ExpandPolicy, SimplifyOptions};
+use cas_engine::ContextMode;
 use cas_engine::Simplifier;
 use cas_parser::parse;
 
@@ -47,7 +47,7 @@ fn simplify_auto(input: &str) -> String {
 
 /// Helper for Solve mode with auto-expand enabled (should still block)
 fn simplify_solve_with_auto(input: &str) -> String {
-    use cas_engine::options::HeuristicPoly;
+    use cas_engine::HeuristicPoly;
     let mut opts = SimplifyOptions::default();
     opts.shared.expand_policy = ExpandPolicy::Auto;
     opts.shared.context_mode = ContextMode::Solve;

@@ -1,5 +1,5 @@
-use cas_engine::options::EvalOptions;
 use cas_engine::phase::ExpandPolicy;
+use cas_engine::EvalOptions;
 use cas_engine::Simplifier;
 use cas_parser::parse;
 
