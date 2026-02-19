@@ -18,7 +18,7 @@ pub(crate) mod engine;
 pub(crate) mod eval;
 pub(crate) mod eval_step_pipeline;
 pub(crate) mod expand;
-pub mod helpers;
+pub(crate) mod helpers;
 pub mod implicit_domain;
 pub(crate) mod limits;
 pub(crate) mod options;
@@ -93,6 +93,7 @@ pub use expand::{
     eager_eval_expand_calls, estimate_expand_terms, expand, expand_div, expand_mul, expand_pow,
     expand_with_stats,
 };
+pub use helpers::{is_zero, prove_nonzero, prove_positive};
 pub use implicit_domain::{
     normalize_and_dedupe_conditions, ImplicitCondition, RequiresDisplayLevel,
 };

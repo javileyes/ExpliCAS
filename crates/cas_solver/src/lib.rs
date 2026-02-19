@@ -18,7 +18,7 @@ pub use cas_engine::visualizer;
 pub use cas_engine::ConstFoldMode;
 pub use cas_engine::ParentContext;
 pub use cas_engine::Rule;
-pub use cas_engine::{error, helpers, pattern_marks, phase, semantics};
+pub use cas_engine::{error, pattern_marks, phase, semantics};
 pub use cas_engine::{limit, Approach, LimitOptions, PreSimplifyMode};
 pub use cas_engine::{
     take_blocked_hints, AssumeScope, AssumptionKey, AssumptionReporting, AutoExpandBinomials,
@@ -40,6 +40,11 @@ pub mod expand {
         eager_eval_expand_calls, estimate_expand_terms, expand, expand_div, expand_mul, expand_pow,
         expand_with_stats,
     };
+}
+
+/// Backward-compatible facade for former `cas_engine::helpers::*` imports.
+pub mod helpers {
+    pub use cas_engine::{is_zero, prove_nonzero, prove_positive};
 }
 
 /// Backward-compatible facade for former `cas_engine::engine::*` imports.

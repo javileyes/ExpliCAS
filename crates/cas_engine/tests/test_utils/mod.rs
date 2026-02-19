@@ -21,7 +21,7 @@
 
 use cas_ast::{Context, Expr, ExprId};
 use cas_engine::eval_f64;
-use cas_engine::helpers::is_zero;
+use cas_engine::is_zero;
 use cas_engine::Simplifier;
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;

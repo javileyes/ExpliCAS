@@ -281,7 +281,7 @@ fn test_strict_x_plus_y_div_x_plus_y_stays_unchanged() {
 
 #[test]
 fn test_prove_nonzero_numbers() {
-    use cas_engine::helpers::prove_nonzero;
+    use cas_engine::prove_nonzero;
     use cas_engine::Proof;
 
     let mut ctx = Context::new();
@@ -302,7 +302,7 @@ fn test_prove_nonzero_numbers() {
 
 #[test]
 fn test_prove_nonzero_constants() {
-    use cas_engine::helpers::prove_nonzero;
+    use cas_engine::prove_nonzero;
     use cas_engine::Proof;
 
     let mut ctx = Context::new();
@@ -318,7 +318,7 @@ fn test_prove_nonzero_constants() {
 
 #[test]
 fn test_prove_nonzero_variables() {
-    use cas_engine::helpers::prove_nonzero;
+    use cas_engine::prove_nonzero;
     use cas_engine::Proof;
 
     let mut ctx = Context::new();
@@ -332,7 +332,7 @@ fn test_prove_nonzero_variables() {
 
 #[test]
 fn test_prove_nonzero_products() {
-    use cas_engine::helpers::prove_nonzero;
+    use cas_engine::prove_nonzero;
     use cas_engine::Proof;
 
     let mut ctx = Context::new();
@@ -361,7 +361,7 @@ fn test_prove_nonzero_products() {
 
 #[test]
 fn test_prove_positive_numbers() {
-    use cas_engine::helpers::prove_positive;
+    use cas_engine::prove_positive;
     use cas_engine::semantics::ValueDomain;
     use cas_engine::Proof;
 
@@ -379,7 +379,7 @@ fn test_prove_positive_numbers() {
 
 #[test]
 fn test_prove_positive_constants() {
-    use cas_engine::helpers::prove_positive;
+    use cas_engine::prove_positive;
     use cas_engine::semantics::ValueDomain;
     use cas_engine::Proof;
 
@@ -397,7 +397,7 @@ fn test_prove_positive_constants() {
 
 #[test]
 fn test_prove_positive_products() {
-    use cas_engine::helpers::prove_positive;
+    use cas_engine::prove_positive;
     use cas_engine::semantics::ValueDomain;
     use cas_engine::Proof;
 
@@ -420,7 +420,7 @@ fn test_prove_positive_products() {
 
 #[test]
 fn test_prove_positive_exp() {
-    use cas_engine::helpers::prove_positive;
+    use cas_engine::prove_positive;
     use cas_engine::semantics::ValueDomain;
     use cas_engine::Proof;
 
