@@ -33,46 +33,7 @@ impl PolynomialIdentityZeroRule {
     /// Quick check: does expression look polynomial-like and worth checking?
     /// Avoids expensive conversion for obviously non-polynomial expressions.
     fn is_polynomial_candidate(ctx: &Context, expr: ExprId) -> bool {
-        Self::is_polynomial_candidate_inner(ctx, expr, 0)
-    }
-
-    fn is_polynomial_candidate_inner(ctx: &Context, expr: ExprId, depth: usize) -> bool {
-        if depth > 30 {
-            return false; // Too deep
-        }
-
-        match ctx.get(expr) {
-            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) => true,
-            // Opaque function calls are valid polynomial "leaves" (treated as
-            // atomic variables after substitution)
-            Expr::Function(_, _) => true,
-            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
-                Self::is_polynomial_candidate_inner(ctx, *l, depth + 1)
-                    && Self::is_polynomial_candidate_inner(ctx, *r, depth + 1)
-            }
-            Expr::Neg(inner) => Self::is_polynomial_candidate_inner(ctx, *inner, depth + 1),
-            Expr::Pow(base, exp) => {
-                // Only integer exponents, and check base
-                if let Expr::Number(n) = ctx.get(*exp) {
-                    if n.is_integer() && !n.is_negative() {
-                        use num_traits::ToPrimitive;
-                        if let Some(e) = n.to_integer().to_u32() {
-                            if e <= 6 {
-                                // V2.15.8: Extended budget for binomial identities
-                                return Self::is_polynomial_candidate_inner(ctx, *base, depth + 1);
-                            }
-                        }
-                    }
-                }
-                // e^(k·u) is an opaque polynomial leaf (treated as atom after
-                // exponential substitution in try_opaque_zero)
-                if matches!(ctx.get(*base), Expr::Constant(cas_ast::Constant::E)) {
-                    return true;
-                }
-                false
-            }
-            _ => false, // Division, etc. are not polynomial
-        }
+        cas_math::opaque_atoms::is_polynomial_candidate(ctx, expr, 30, 6)
     }
 
     /// Convert expression to MultiPoly (reusing AutoExpandSubCancelRule's method)
@@ -86,209 +47,6 @@ impl PolynomialIdentityZeroRule {
             cas_math::poly_convert::try_multipoly_from_expr_with_var_limit(ctx, id, budget, 4)?;
         *vars = poly.vars.clone();
         Some(poly)
-    }
-
-    /// Collect all function calls in an expression (e.g., sin(u), arctan(u))
-    fn collect_func_calls(ctx: &Context, expr: ExprId, out: &mut Vec<ExprId>, depth: usize) {
-        if depth > 4 {
-            return;
-        }
-        match ctx.get(expr) {
-            Expr::Function(_, _) => {
-                out.push(expr);
-            }
-            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
-                Self::collect_func_calls(ctx, *l, out, depth + 1);
-                Self::collect_func_calls(ctx, *r, out, depth + 1);
-            }
-            Expr::Pow(base, exp) => {
-                Self::collect_func_calls(ctx, *base, out, depth + 1);
-                Self::collect_func_calls(ctx, *exp, out, depth + 1);
-            }
-            Expr::Neg(inner) => {
-                Self::collect_func_calls(ctx, *inner, out, depth + 1);
-            }
-            _ => {}
-        }
-    }
-
-    /// Deduplicate function calls by structural comparison
-    fn dedup_func_calls(ctx: &Context, calls: &[ExprId]) -> Vec<ExprId> {
-        let mut unique = Vec::new();
-        for &call in calls {
-            let already = unique
-                .iter()
-                .any(|&u| crate::ordering::compare_expr(ctx, call, u) == std::cmp::Ordering::Equal);
-            if !already {
-                unique.push(call);
-            }
-        }
-        unique
-    }
-
-    // ── Exponential atom detection ─────────────────────────────────────
-
-    /// Collect all `e^(arg)` exponent arguments from an expression.
-    /// For `e^(3u) + e^u + 1`, collects `[3u, u]`.
-    fn collect_exp_exponents(ctx: &Context, expr: ExprId, out: &mut Vec<ExprId>, depth: usize) {
-        if depth > 30 {
-            return;
-        }
-        match ctx.get(expr) {
-            Expr::Pow(base, exp) => {
-                if matches!(ctx.get(*base), Expr::Constant(cas_ast::Constant::E)) {
-                    out.push(*exp);
-                } else {
-                    // Check base and integer exponent children
-                    Self::collect_exp_exponents(ctx, *base, out, depth + 1);
-                }
-            }
-            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
-                Self::collect_exp_exponents(ctx, *l, out, depth + 1);
-                Self::collect_exp_exponents(ctx, *r, out, depth + 1);
-            }
-            Expr::Neg(inner) => {
-                Self::collect_exp_exponents(ctx, *inner, out, depth + 1);
-            }
-            _ => {}
-        }
-    }
-
-    /// Try to split `expr` into `(k, rest)` where `expr = k * rest` and k is
-    /// a positive integer. Returns `(1, expr)` if no integer factor found.
-    fn extract_integer_factor(ctx: &Context, expr: ExprId) -> (u32, ExprId) {
-        match ctx.get(expr) {
-            Expr::Mul(l, r) => {
-                if let Expr::Number(n) = ctx.get(*l) {
-                    if n.is_integer() && n.is_positive() {
-                        use num_traits::ToPrimitive;
-                        if let Some(k) = n.to_integer().to_u32() {
-                            if k <= 6 {
-                                return (k, *r);
-                            }
-                        }
-                    }
-                }
-                if let Expr::Number(n) = ctx.get(*r) {
-                    if n.is_integer() && n.is_positive() {
-                        use num_traits::ToPrimitive;
-                        if let Some(k) = n.to_integer().to_u32() {
-                            if k <= 6 {
-                                return (k, *l);
-                            }
-                        }
-                    }
-                }
-                (1, expr)
-            }
-            _ => (1, expr),
-        }
-    }
-
-    /// Given a list of exponent arguments (from `e^arg` atoms), find a common
-    /// base such that every exponent is `k * base` for some positive integer k.
-    /// Returns the base ExprId if found.
-    fn find_exp_base(ctx: &Context, exponents: &[ExprId]) -> Option<ExprId> {
-        if exponents.is_empty() {
-            return None;
-        }
-
-        // Extract (k, rest) for each exponent
-        let factored: Vec<(u32, ExprId)> = exponents
-            .iter()
-            .map(|&e| Self::extract_integer_factor(ctx, e))
-            .collect();
-
-        // All 'rest' parts must be structurally equal
-        let base = factored[0].1;
-        for &(_, rest) in &factored[1..] {
-            if crate::ordering::compare_expr(ctx, base, rest) != std::cmp::Ordering::Equal {
-                return None;
-            }
-        }
-        Some(base)
-    }
-
-    /// Substitute all `e^(k*base)` nodes with `var^k` in the expression tree.
-    fn substitute_exp_atoms(
-        ctx: &mut Context,
-        expr: ExprId,
-        exp_base: ExprId,
-        replacement_var: ExprId,
-        depth: usize,
-    ) -> ExprId {
-        if depth > 30 {
-            return expr;
-        }
-        match ctx.get(expr).clone() {
-            Expr::Pow(base, exp)
-                if matches!(ctx.get(base), Expr::Constant(cas_ast::Constant::E)) =>
-            {
-                let (k, rest) = Self::extract_integer_factor(ctx, exp);
-                if crate::ordering::compare_expr(ctx, rest, exp_base) == std::cmp::Ordering::Equal {
-                    if k == 1 {
-                        return replacement_var;
-                    }
-                    let exp_k = ctx.num(k as i64);
-                    return ctx.add(Expr::Pow(replacement_var, exp_k));
-                }
-                // Not matching our pattern, return as-is
-                expr
-            }
-            Expr::Add(l, r) => {
-                let new_l =
-                    Self::substitute_exp_atoms(ctx, l, exp_base, replacement_var, depth + 1);
-                let new_r =
-                    Self::substitute_exp_atoms(ctx, r, exp_base, replacement_var, depth + 1);
-                if new_l == l && new_r == r {
-                    expr
-                } else {
-                    ctx.add(Expr::Add(new_l, new_r))
-                }
-            }
-            Expr::Sub(l, r) => {
-                let new_l =
-                    Self::substitute_exp_atoms(ctx, l, exp_base, replacement_var, depth + 1);
-                let new_r =
-                    Self::substitute_exp_atoms(ctx, r, exp_base, replacement_var, depth + 1);
-                if new_l == l && new_r == r {
-                    expr
-                } else {
-                    ctx.add(Expr::Sub(new_l, new_r))
-                }
-            }
-            Expr::Mul(l, r) => {
-                let new_l =
-                    Self::substitute_exp_atoms(ctx, l, exp_base, replacement_var, depth + 1);
-                let new_r =
-                    Self::substitute_exp_atoms(ctx, r, exp_base, replacement_var, depth + 1);
-                if new_l == l && new_r == r {
-                    expr
-                } else {
-                    ctx.add(Expr::Mul(new_l, new_r))
-                }
-            }
-            Expr::Neg(inner) => {
-                let new_inner =
-                    Self::substitute_exp_atoms(ctx, inner, exp_base, replacement_var, depth + 1);
-                if new_inner == inner {
-                    expr
-                } else {
-                    ctx.add(Expr::Neg(new_inner))
-                }
-            }
-            Expr::Pow(base, exp) => {
-                // Non-exponential power: recurse into base (exp is integer)
-                let new_base =
-                    Self::substitute_exp_atoms(ctx, base, exp_base, replacement_var, depth + 1);
-                if new_base == base {
-                    expr
-                } else {
-                    ctx.add(Expr::Pow(new_base, exp))
-                }
-            }
-            _ => expr,
-        }
     }
 
     /// Try to prove the expression is zero by substituting opaque function calls
@@ -306,18 +64,12 @@ impl PolynomialIdentityZeroRule {
         expr: ExprId,
     ) -> Option<cas_math::multipoly_display::PolynomialProofData> {
         // ── Phase 1: collect opaque atoms ──────────────────────────────
-        let mut calls = Vec::new();
-        Self::collect_func_calls(ctx, expr, &mut calls, 0);
-        let unique_calls = Self::dedup_func_calls(ctx, &calls);
+        let calls = cas_math::opaque_atoms::collect_function_calls(ctx, expr, 4);
+        let unique_calls = cas_math::opaque_atoms::dedup_expr_ids(ctx, &calls);
 
         // Also check for exponential atoms: e^(k·base)
-        let mut exp_exponents = Vec::new();
-        Self::collect_exp_exponents(ctx, expr, &mut exp_exponents, 0);
-        let exp_base = if !exp_exponents.is_empty() {
-            Self::find_exp_base(ctx, &exp_exponents)
-        } else {
-            None
-        };
+        let exp_exponents = cas_math::opaque_atoms::collect_exp_exponents(ctx, expr, 30);
+        let exp_base = cas_math::opaque_atoms::find_exp_base(ctx, &exp_exponents, 6);
 
         let total_atoms = unique_calls.len() + if exp_base.is_some() { 1 } else { 0 };
         if total_atoms == 0 || total_atoms > 4 {
@@ -346,7 +98,14 @@ impl PolynomialIdentityZeroRule {
         if let Some(base) = exp_base {
             let temp_name = format!("__opq{}", atom_idx);
             let temp_var = tmp_ctx.var(&temp_name);
-            sub_expr = Self::substitute_exp_atoms(&mut tmp_ctx, sub_expr, base, temp_var, 0);
+            sub_expr = cas_math::opaque_atoms::substitute_exp_atoms(
+                &mut tmp_ctx,
+                sub_expr,
+                base,
+                temp_var,
+                30,
+                6,
+            );
             // Build the display e^base expression for the proof data
             let e_const = ctx.add(Expr::Constant(cas_ast::Constant::E));
             let exp_display = ctx.add(Expr::Pow(e_const, base));
@@ -388,7 +147,14 @@ impl PolynomialIdentityZeroRule {
         // 5a: Substitute exponential atoms for display
         if let Some(base) = exp_base {
             let disp_var = ctx.var(&display_name(disp_idx));
-            display_expr = Self::substitute_exp_atoms(ctx, display_expr, base, disp_var, 0);
+            display_expr = cas_math::opaque_atoms::substitute_exp_atoms(
+                ctx,
+                display_expr,
+                base,
+                disp_var,
+                30,
+                6,
+            );
             disp_idx += 1;
         }
 

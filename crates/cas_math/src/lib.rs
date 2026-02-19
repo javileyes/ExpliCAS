@@ -19,6 +19,7 @@ pub mod multipoly_display;
 pub mod multipoly_modp;
 pub mod numeric;
 pub mod numeric_eval;
+pub mod opaque_atoms;
 pub mod pi_helpers;
 pub mod poly_compare;
 pub mod poly_convert;
