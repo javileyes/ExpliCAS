@@ -11,6 +11,7 @@ pub mod multipoly_display;
 pub mod multipoly_modp;
 pub mod numeric;
 pub mod numeric_eval;
+pub mod poly_compare;
 pub mod poly_gcd_mode;
 pub mod poly_gcd_structural;
 pub mod poly_lowering_ops;

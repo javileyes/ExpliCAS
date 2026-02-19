@@ -53,60 +53,7 @@ pub(super) fn is_pi_constant(ctx: &Context, id: ExprId) -> bool {
 // Polynomial equality helper (for canonical comparison ignoring AST order)
 // =============================================================================
 
-/// Compare two expressions as polynomials (ignoring AST structure/order).
-/// Returns true if both convert to the same canonical polynomial form.
-/// Falls back to false if either is not a polynomial (budget exceeded, non-poly, etc).
-pub(super) fn poly_eq(ctx: &Context, a: ExprId, b: ExprId) -> bool {
-    // Use a tight budget for recognizer comparisons
-    let budget = PolyBudget {
-        max_terms: 100,
-        max_total_degree: 10,
-        max_pow_exp: 5,
-    };
-
-    let pa = match multipoly_from_expr(ctx, a, &budget) {
-        Ok(p) => p,
-        Err(_) => return false,
-    };
-    let pb = match multipoly_from_expr(ctx, b, &budget) {
-        Ok(p) => p,
-        Err(_) => return false,
-    };
-
-    pa == pb
-}
-
-/// Relation between two polynomial expressions
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SignRelation {
-    Same,    // a == b
-    Negated, // a == -b (e.g., x-y vs y-x)
-}
-
-/// Compare two expressions to detect if they are equal or negated.
-/// Returns Some(Same) if a == b, Some(Negated) if a == -b, None otherwise.
-pub(super) fn poly_relation(ctx: &Context, a: ExprId, b: ExprId) -> Option<SignRelation> {
-    let budget = PolyBudget {
-        max_terms: 100,
-        max_total_degree: 10,
-        max_pow_exp: 5,
-    };
-
-    let pa = multipoly_from_expr(ctx, a, &budget).ok()?;
-    let pb = multipoly_from_expr(ctx, b, &budget).ok()?;
-
-    if pa == pb {
-        return Some(SignRelation::Same);
-    }
-
-    // Check if pa == -pb
-    let neg_pb = pb.neg();
-    if pa == neg_pb {
-        return Some(SignRelation::Negated);
-    }
-
-    None
-}
+pub(super) use cas_math::poly_compare::{poly_eq, poly_relation, SignRelation};
 
 // =============================================================================
 // A1: Structural Factor Cancellation (without polynomial expansion)
