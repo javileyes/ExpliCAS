@@ -4,65 +4,9 @@
 //! verification utilities used by the factoring rules.
 
 use cas_ast::Expr;
-use cas_math::expr_relations::is_negation;
 use std::cmp::Ordering;
 
-/// Check if two expressions form a conjugate pair: (A+B) and (A-B) or vice versa
-/// Returns Some((a, b)) if they are conjugates, None otherwise
-pub(super) fn is_conjugate_pair(
-    ctx: &cas_ast::Context,
-    l: cas_ast::ExprId,
-    r: cas_ast::ExprId,
-) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
-    use crate::ordering::compare_expr;
-
-    let l_expr = ctx.get(l);
-    let r_expr = ctx.get(r);
-
-    match (l_expr, r_expr) {
-        (Expr::Add(a1, a2), Expr::Sub(b1, b2)) | (Expr::Sub(b1, b2), Expr::Add(a1, a2)) => {
-            // Copy the ExprIds (they're Copy types from pattern match)
-            let (a1, a2, b1, b2) = (*a1, *a2, *b1, *b2);
-
-            // Direct match: (A+B) vs (A-B)
-            if compare_expr(ctx, a1, b1) == Ordering::Equal
-                && compare_expr(ctx, a2, b2) == Ordering::Equal
-            {
-                return Some((a1, a2));
-            }
-            // Commutative: (B+A) vs (A-B) → A=b1, B=a1
-            if compare_expr(ctx, a2, b1) == Ordering::Equal
-                && compare_expr(ctx, a1, b2) == Ordering::Equal
-            {
-                return Some((b1, b2));
-            }
-            None
-        }
-        // Handle canonicalized form: Sub(a, b) becomes Add(-b, a) or Add(a, -b)
-        (Expr::Add(a1, a2), Expr::Add(b1, b2)) => {
-            let (a1, a2, b1, b2) = (*a1, *a2, *b1, *b2);
-
-            // Case 1: (A+B) vs (A+(-B)) where b2 = -a2
-            if is_negation(ctx, a2, b2) && compare_expr(ctx, a1, b1) == Ordering::Equal {
-                return Some((a1, a2));
-            }
-            // Case 2: (A+B) vs ((-B)+A) where b1 = -a2
-            if is_negation(ctx, a2, b1) && compare_expr(ctx, a1, b2) == Ordering::Equal {
-                return Some((a1, a2));
-            }
-            // Case 3: (A+B) vs (B+(-A)) where b2 = -a1
-            if is_negation(ctx, a1, b2) && compare_expr(ctx, a2, b1) == Ordering::Equal {
-                return Some((a2, a1)); // b^2 - a^2
-            }
-            // Case 4: (A+B) vs ((-A)+B) where b1 = -a1
-            if is_negation(ctx, a1, b1) && compare_expr(ctx, a2, b2) == Ordering::Equal {
-                return Some((a2, a1));
-            }
-            None
-        }
-        _ => None,
-    }
-}
+pub(super) use cas_math::expr_relations::conjugate_add_sub_pair as is_conjugate_pair;
 
 /// Check if two N-ary sums form a conjugate pair: (U+V) and (U-V)
 /// where U can be any sum of terms and V is the single differing term.

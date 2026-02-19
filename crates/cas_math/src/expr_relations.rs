@@ -123,6 +123,64 @@ pub fn is_conjugate_add_sub(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     }
 }
 
+/// Extract `(A, B)` when two expressions are an additive conjugate pair.
+///
+/// Recognizes:
+/// - `(A + B)` with `(A - B)` (including swapped term order)
+/// - canonicalized additive form `(A + B)` with `(A + (-B))`
+///
+/// Returns `Some((A, B))` preserving the base orientation for difference-of-squares usage.
+pub fn conjugate_add_sub_pair(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    let left_expr = ctx.get(left);
+    let right_expr = ctx.get(right);
+
+    match (left_expr, right_expr) {
+        (Expr::Add(a1, a2), Expr::Sub(b1, b2)) | (Expr::Sub(b1, b2), Expr::Add(a1, a2)) => {
+            let a1 = *a1;
+            let a2 = *a2;
+            let b1 = *b1;
+            let b2 = *b2;
+
+            if compare_expr(ctx, a1, b1) == Ordering::Equal
+                && compare_expr(ctx, a2, b2) == Ordering::Equal
+            {
+                return Some((a1, a2));
+            }
+            if compare_expr(ctx, a2, b1) == Ordering::Equal
+                && compare_expr(ctx, a1, b2) == Ordering::Equal
+            {
+                return Some((b1, b2));
+            }
+            None
+        }
+        (Expr::Add(a1, a2), Expr::Add(b1, b2)) => {
+            let a1 = *a1;
+            let a2 = *a2;
+            let b1 = *b1;
+            let b2 = *b2;
+
+            if is_negation(ctx, a2, b2) && compare_expr(ctx, a1, b1) == Ordering::Equal {
+                return Some((a1, a2));
+            }
+            if is_negation(ctx, a2, b1) && compare_expr(ctx, a1, b2) == Ordering::Equal {
+                return Some((a1, a2));
+            }
+            if is_negation(ctx, a1, b2) && compare_expr(ctx, a2, b1) == Ordering::Equal {
+                return Some((a2, a1));
+            }
+            if is_negation(ctx, a1, b1) && compare_expr(ctx, a2, b2) == Ordering::Equal {
+                return Some((a2, a1));
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
 /// Check whether two binomials are conjugates with sign normalization.
 ///
 /// Recognizes cases like:
@@ -256,6 +314,18 @@ mod tests {
         assert!(is_conjugate_add_sub(&ctx, add, sub));
         assert!(is_conjugate_add_sub(&ctx, add, add_neg));
         assert!(!is_conjugate_add_sub(&ctx, add, same));
+    }
+
+    #[test]
+    fn conjugate_pair_extraction_returns_terms() {
+        let mut ctx = Context::new();
+        let left = parse("x+3", &mut ctx).expect("left");
+        let right = parse("x-3", &mut ctx).expect("right");
+        let pair = conjugate_add_sub_pair(&ctx, left, right).expect("pair");
+        let x = parse("x", &mut ctx).expect("x");
+        let three = parse("3", &mut ctx).expect("3");
+        assert_eq!(compare_expr(&ctx, pair.0, x), Ordering::Equal);
+        assert_eq!(compare_expr(&ctx, pair.1, three), Ordering::Equal);
     }
 
     #[test]
