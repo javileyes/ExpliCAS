@@ -3,7 +3,8 @@
 use super::ImplicitCondition;
 use cas_ast::{Context, ExprId};
 use cas_math::expr_domain::{
-    exprs_equivalent, is_abs_of, is_power_of_base, is_product_dominated_by_positives,
+    exprs_equivalent, exprs_equivalent_up_to_sign, is_abs_of, is_power_of_base,
+    is_product_dominated_by_positives,
 };
 use cas_math::expr_normalization::{
     extract_even_positive_power_base, normalize_condition_expr as normalize_condition_expr_math,
@@ -63,8 +64,6 @@ pub(crate) fn conditions_equivalent(
     c1: &ImplicitCondition,
     c2: &ImplicitCondition,
 ) -> bool {
-    use cas_math::multipoly::{multipoly_from_expr, PolyBudget};
-
     // Must be same condition type
     let (e1, e2) = match (c1, c2) {
         (ImplicitCondition::NonNegative(a), ImplicitCondition::NonNegative(b)) => (*a, *b),
@@ -73,37 +72,7 @@ pub(crate) fn conditions_equivalent(
         _ => return false,
     };
 
-    // Same ExprId = definitely equivalent
-    if e1 == e2 {
-        return true;
-    }
-
-    // Try polynomial comparison
-    let budget = PolyBudget {
-        max_terms: 50,
-        max_total_degree: 20,
-        max_pow_exp: 10,
-    };
-
-    if let (Ok(p1), Ok(p2)) = (
-        multipoly_from_expr(ctx, e1, &budget),
-        multipoly_from_expr(ctx, e2, &budget),
-    ) {
-        // For NonZero, E ≠ 0 is equivalent to -E ≠ 0
-        // So check if p1 == p2 OR p1 == -p2
-        if p1 == p2 {
-            return true;
-        }
-
-        // Check negation equivalence (E ≠ 0 ⟺ -E ≠ 0)
-        // Also applies to Positive (E > 0 ⟺ -E < 0, but for reals we handle this)
-        let p2_neg = p2.neg();
-        if p1 == p2_neg {
-            return true;
-        }
-    }
-
-    false
+    exprs_equivalent_up_to_sign(ctx, e1, e2)
 }
 
 /// Normalize and deduplicate a list of conditions for display.

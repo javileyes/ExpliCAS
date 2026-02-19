@@ -34,6 +34,33 @@ pub fn exprs_equivalent(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
     false
 }
 
+/// Check if two expressions are equivalent up to global sign.
+///
+/// This treats `E` and `-E` as equivalent, which is useful for predicates like
+/// `E != 0` where multiplying by `-1` does not change truth value.
+pub fn exprs_equivalent_up_to_sign(ctx: &Context, e1: ExprId, e2: ExprId) -> bool {
+    use crate::multipoly::{multipoly_from_expr, PolyBudget};
+
+    if e1 == e2 {
+        return true;
+    }
+
+    let budget = PolyBudget {
+        max_terms: 50,
+        max_total_degree: 20,
+        max_pow_exp: 10,
+    };
+
+    if let (Ok(p1), Ok(p2)) = (
+        multipoly_from_expr(ctx, e1, &budget),
+        multipoly_from_expr(ctx, e2, &budget),
+    ) {
+        return p1 == p2 || p1 == p2.neg();
+    }
+
+    false
+}
+
 /// Check if `source` is `target^(odd positive integer)`.
 pub fn is_odd_power_of(ctx: &Context, source: ExprId, target: ExprId) -> bool {
     if let Expr::Pow(base, exp) = ctx.get(source) {
@@ -168,6 +195,17 @@ mod tests {
         let e1 = parse("x+1", &mut ctx).expect("parse");
         let e2 = parse("1+x", &mut ctx).expect("parse");
         assert!(exprs_equivalent(&ctx, e1, e2));
+    }
+
+    #[test]
+    fn equivalence_up_to_sign_detects_negation() {
+        let mut ctx = Context::new();
+        let e1 = parse("x+1", &mut ctx).expect("parse");
+        let e2 = parse("-(x+1)", &mut ctx).expect("parse");
+        let e3 = parse("x+2", &mut ctx).expect("parse");
+
+        assert!(exprs_equivalent_up_to_sign(&ctx, e1, e2));
+        assert!(!exprs_equivalent_up_to_sign(&ctx, e1, e3));
     }
 
     #[test]
