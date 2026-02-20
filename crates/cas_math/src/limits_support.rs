@@ -296,6 +296,125 @@ pub fn try_limit_rules_at_infinity(
     rational_poly_limit(ctx, expr, var, approach)
 }
 
+const PRESIMPLIFY_MAX_DEPTH: usize = 500;
+
+fn expr_is_zero(ctx: &Context, expr: ExprId) -> bool {
+    use num_traits::Zero;
+    matches!(ctx.get(expr), Expr::Number(n) if n.is_zero())
+}
+
+fn expr_is_one(ctx: &Context, expr: ExprId) -> bool {
+    use num_traits::One;
+    matches!(ctx.get(expr), Expr::Number(n) if n.is_one())
+}
+
+fn apply_safe_add_rules(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    if expr_is_zero(ctx, b) {
+        return a;
+    }
+    if expr_is_zero(ctx, a) {
+        return b;
+    }
+
+    if let Expr::Neg(neg_inner) = ctx.get(b) {
+        if *neg_inner == a {
+            return ctx.num(0);
+        }
+    }
+    if let Expr::Neg(neg_inner) = ctx.get(a) {
+        if *neg_inner == b {
+            return ctx.num(0);
+        }
+    }
+
+    ctx.add(Expr::Add(a, b))
+}
+
+fn apply_safe_sub_rules(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    if expr_is_zero(ctx, b) {
+        return a;
+    }
+    if a == b {
+        return ctx.num(0);
+    }
+    ctx.add(Expr::Sub(a, b))
+}
+
+fn apply_safe_mul_rules(ctx: &mut Context, a: ExprId, b: ExprId) -> ExprId {
+    if expr_is_zero(ctx, a) || expr_is_zero(ctx, b) {
+        return ctx.num(0);
+    }
+    if expr_is_one(ctx, b) {
+        return a;
+    }
+    if expr_is_one(ctx, a) {
+        return b;
+    }
+    ctx.add(Expr::Mul(a, b))
+}
+
+fn presimplify_recursive(ctx: &mut Context, expr: ExprId, depth: usize) -> ExprId {
+    if depth > PRESIMPLIFY_MAX_DEPTH {
+        return expr;
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Add(a, b) => {
+            let a2 = presimplify_recursive(ctx, a, depth + 1);
+            let b2 = presimplify_recursive(ctx, b, depth + 1);
+            apply_safe_add_rules(ctx, a2, b2)
+        }
+        Expr::Sub(a, b) => {
+            let a2 = presimplify_recursive(ctx, a, depth + 1);
+            let b2 = presimplify_recursive(ctx, b, depth + 1);
+            apply_safe_sub_rules(ctx, a2, b2)
+        }
+        Expr::Mul(a, b) => {
+            let a2 = presimplify_recursive(ctx, a, depth + 1);
+            let b2 = presimplify_recursive(ctx, b, depth + 1);
+            apply_safe_mul_rules(ctx, a2, b2)
+        }
+        Expr::Neg(a) => {
+            let a2 = presimplify_recursive(ctx, a, depth + 1);
+            if let Expr::Neg(inner) = ctx.get(a2) {
+                return *inner;
+            }
+            ctx.add(Expr::Neg(a2))
+        }
+        Expr::Div(num, den) => {
+            let num2 = presimplify_recursive(ctx, num, depth + 1);
+            let den2 = presimplify_recursive(ctx, den, depth + 1);
+            ctx.add(Expr::Div(num2, den2))
+        }
+        Expr::Pow(base, exp) => {
+            let base2 = presimplify_recursive(ctx, base, depth + 1);
+            let exp2 = presimplify_recursive(ctx, exp, depth + 1);
+            ctx.add(Expr::Pow(base2, exp2))
+        }
+        Expr::Function(name, args) => {
+            let mut new_args = Vec::with_capacity(args.len());
+            for arg in args {
+                new_args.push(presimplify_recursive(ctx, arg, depth + 1));
+            }
+            ctx.add(Expr::Function(name, new_args))
+        }
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) => expr,
+        Expr::Hold(inner) => {
+            let inner2 = presimplify_recursive(ctx, inner, depth + 1);
+            ctx.add(Expr::Hold(inner2))
+        }
+        Expr::Matrix { .. } | Expr::SessionRef(_) => expr,
+    }
+}
+
+/// Safe pre-simplification for limit evaluation.
+///
+/// This is an allowlist-only pass and intentionally excludes transforms that
+/// require domain assumptions (for example, `a/a -> 1` or `a^0 -> 1`).
+pub fn presimplify_safe_for_limit(ctx: &mut Context, expr: ExprId) -> ExprId {
+    presimplify_recursive(ctx, expr, 0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -450,5 +569,22 @@ mod tests {
         assert!(
             matches!(ctx.get(out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
         );
+    }
+
+    #[test]
+    fn presimplify_safe_for_limit_applies_allowlisted_rewrites() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let expr = parse_expr(&mut ctx, "x + 0");
+        let out = presimplify_safe_for_limit(&mut ctx, expr);
+        assert_eq!(out, x);
+    }
+
+    #[test]
+    fn presimplify_safe_for_limit_does_not_apply_domain_sensitive_rewrites() {
+        let mut ctx = Context::new();
+        let expr = parse_expr(&mut ctx, "x/x");
+        let out = presimplify_safe_for_limit(&mut ctx, expr);
+        assert!(matches!(ctx.get(out), Expr::Div(_, _)));
     }
 }
