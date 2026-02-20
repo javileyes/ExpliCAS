@@ -13,7 +13,9 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::expr_rewrite::smart_mul;
-use cas_math::trig_power_identity_support::extract_coeff_trig_pow2;
+use cas_math::trig_power_identity_support::{
+    extract_coeff_tan_or_cot_pow2, extract_coeff_trig_pow2,
+};
 
 define_rule!(
     TrigPythagoreanSimplifyRule,
@@ -880,7 +882,7 @@ define_rule!(
                 }
             }
             // Check for tan²(x)
-            if let Some((func_name, arg, coef)) = extract_tan_or_cot_squared(ctx, term) {
+            if let Some((coef, func_name, arg)) = extract_coeff_tan_or_cot_pow2(ctx, term) {
                 let one = num_rational::BigRational::from_integer(1.into());
                 if func_name == "tan" && coef == one {
                     tan2_idx = Some(i);
@@ -951,7 +953,7 @@ define_rule!(
                 }
             }
             // Check for cot²(x)
-            if let Some((func_name, arg, coef)) = extract_tan_or_cot_squared(ctx, term) {
+            if let Some((coef, func_name, arg)) = extract_coeff_tan_or_cot_pow2(ctx, term) {
                 let one = num_rational::BigRational::from_integer(1.into());
                 if func_name == "cot" && coef == one {
                     cot2_idx = Some(i);
@@ -992,72 +994,6 @@ define_rule!(
         None
     }
 );
-
-/// Extract (function_name, argument, coefficient) from tan²(t) or cot²(t) terms.
-fn extract_tan_or_cot_squared(
-    ctx: &Context,
-    term: ExprId,
-) -> Option<(String, ExprId, num_rational::BigRational)> {
-    use num_rational::BigRational;
-    use num_traits::One;
-
-    let mut coef = BigRational::one();
-    let mut working = term;
-
-    // Handle Neg wrapper
-    if let Expr::Neg(inner) = ctx.get(term) {
-        coef = -coef;
-        working = *inner;
-    }
-
-    // Check direct Pow(trig, 2)
-    if let Expr::Pow(base, exp) = ctx.get(working) {
-        if let Expr::Number(n) = ctx.get(*exp) {
-            if *n == BigRational::from_integer(2.into()) {
-                if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                    let builtin = ctx.builtin_of(*fn_id);
-                    if matches!(
-                        builtin,
-                        Some(cas_ast::BuiltinFn::Tan | cas_ast::BuiltinFn::Cot)
-                    ) && args.len() == 1
-                    {
-                        return Some((builtin.unwrap().name().to_string(), args[0], coef));
-                    }
-                }
-            }
-        }
-    }
-
-    // Check Mul(k, Pow(trig, 2)) or Mul(Pow(trig, 2), k)
-    if let Expr::Mul(l, r) = ctx.get(working) {
-        for (maybe_coef, maybe_pow) in [(*l, *r), (*r, *l)] {
-            if let Expr::Number(n) = ctx.get(maybe_coef) {
-                if let Expr::Pow(base, exp) = ctx.get(maybe_pow) {
-                    if let Expr::Number(e) = ctx.get(*exp) {
-                        if *e == BigRational::from_integer(2.into()) {
-                            if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                                let builtin = ctx.builtin_of(*fn_id);
-                                if matches!(
-                                    builtin,
-                                    Some(cas_ast::BuiltinFn::Tan | cas_ast::BuiltinFn::Cot)
-                                ) && args.len() == 1
-                                {
-                                    return Some((
-                                        builtin.unwrap().name().to_string(),
-                                        args[0],
-                                        coef * n.clone(),
-                                    ));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    None
-}
 
 // =============================================================================
 // TrigPythagoreanHighPowerRule: R − R·trig²(x) → R·other²(x)

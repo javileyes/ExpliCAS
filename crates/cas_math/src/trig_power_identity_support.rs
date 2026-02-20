@@ -5,16 +5,23 @@ use num_rational::BigRational;
 use num_traits::One;
 use std::cmp::Ordering;
 
-fn extract_trig_pow_n(ctx: &Context, term: ExprId, n: i64) -> Option<(ExprId, &'static str)> {
+const SIN_COS_BUILTINS: [BuiltinFn; 2] = [BuiltinFn::Sin, BuiltinFn::Cos];
+const TAN_COT_BUILTINS: [BuiltinFn; 2] = [BuiltinFn::Tan, BuiltinFn::Cot];
+
+fn extract_trig_pow_n_from_set(
+    ctx: &Context,
+    term: ExprId,
+    n: i64,
+    allowed: &[BuiltinFn],
+) -> Option<(ExprId, &'static str)> {
     if let Expr::Pow(base, exp) = ctx.get(term) {
         if let Expr::Number(pow) = ctx.get(*exp) {
             if pow.is_integer() && *pow.numer() == n.into() {
                 if let Expr::Function(fn_id, args) = ctx.get(*base) {
                     if args.len() == 1 {
-                        match ctx.builtin_of(*fn_id) {
-                            Some(BuiltinFn::Sin) => return Some((args[0], "sin")),
-                            Some(BuiltinFn::Cos) => return Some((args[0], "cos")),
-                            _ => {}
+                        let builtin = ctx.builtin_of(*fn_id)?;
+                        if allowed.contains(&builtin) {
+                            return Some((args[0], builtin.name()));
                         }
                     }
                 }
@@ -22,6 +29,10 @@ fn extract_trig_pow_n(ctx: &Context, term: ExprId, n: i64) -> Option<(ExprId, &'
         }
     }
     None
+}
+
+fn extract_trig_pow_n(ctx: &Context, term: ExprId, n: i64) -> Option<(ExprId, &'static str)> {
+    extract_trig_pow_n_from_set(ctx, term, n, &SIN_COS_BUILTINS)
 }
 
 pub fn extract_trig_pow2(ctx: &Context, term: ExprId) -> Option<(ExprId, &'static str)> {
@@ -40,6 +51,7 @@ fn extract_coeff_trig_pow_n(
     ctx: &Context,
     term: ExprId,
     n: i64,
+    allowed: &[BuiltinFn],
 ) -> Option<(BigRational, &'static str, ExprId)> {
     let mut coef = BigRational::one();
     let mut working = term;
@@ -58,7 +70,7 @@ fn extract_coeff_trig_pow_n(
             continue;
         }
 
-        if let Some((arg, name)) = extract_trig_pow_n(ctx, factor, n) {
+        if let Some((arg, name)) = extract_trig_pow_n_from_set(ctx, factor, n, allowed) {
             if trig_match.is_some() {
                 return None;
             }
@@ -78,7 +90,7 @@ pub fn extract_coeff_trig_pow4(
     ctx: &Context,
     term: ExprId,
 ) -> Option<(BigRational, &'static str, ExprId)> {
-    extract_coeff_trig_pow_n(ctx, term, 4)
+    extract_coeff_trig_pow_n(ctx, term, 4, &SIN_COS_BUILTINS)
 }
 
 /// Extract `(coefficient, trig_name, argument)` from `k * sin(arg)^2` or `k * cos(arg)^2`.
@@ -86,7 +98,15 @@ pub fn extract_coeff_trig_pow2(
     ctx: &Context,
     term: ExprId,
 ) -> Option<(BigRational, &'static str, ExprId)> {
-    extract_coeff_trig_pow_n(ctx, term, 2)
+    extract_coeff_trig_pow_n(ctx, term, 2, &SIN_COS_BUILTINS)
+}
+
+/// Extract `(coefficient, trig_name, argument)` from `k * tan(arg)^2` or `k * cot(arg)^2`.
+pub fn extract_coeff_tan_or_cot_pow2(
+    ctx: &Context,
+    term: ExprId,
+) -> Option<(BigRational, &'static str, ExprId)> {
+    extract_coeff_trig_pow_n(ctx, term, 2, &TAN_COT_BUILTINS)
 }
 
 /// Extract `coeff * sin(arg)^2 * cos(arg)^2` from a product term.
@@ -218,6 +238,31 @@ mod tests {
         assert_eq!(name2, "cos");
         assert_eq!(
             cas_ast::ordering::compare_expr(&ctx, arg2, t),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn extract_coeff_tan_or_cot_pow2_detects_sign_and_coefficient() {
+        let mut ctx = Context::new();
+        let term1 = parse("4*tan(u)^2", &mut ctx).expect("term1");
+        let term2 = parse("-cot(u)^2", &mut ctx).expect("term2");
+        let u = parse("u", &mut ctx).expect("u");
+
+        let (coef1, name1, arg1) = extract_coeff_tan_or_cot_pow2(&ctx, term1).expect("term1 match");
+        let (coef2, name2, arg2) = extract_coeff_tan_or_cot_pow2(&ctx, term2).expect("term2 match");
+
+        assert_eq!(coef1, BigRational::from_integer(4.into()));
+        assert_eq!(name1, "tan");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, arg1, u),
+            Ordering::Equal
+        );
+
+        assert_eq!(coef2, BigRational::from_integer((-1).into()));
+        assert_eq!(name2, "cot");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, arg2, u),
             Ordering::Equal
         );
     }
