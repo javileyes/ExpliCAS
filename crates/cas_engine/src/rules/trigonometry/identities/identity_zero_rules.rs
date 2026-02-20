@@ -10,6 +10,9 @@
 use crate::helpers::{as_add, as_neg, as_sub};
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
+use cas_math::trig_identity_zero_support::{
+    is_cos_squared_t, is_sin_squared_t, match_one_plus_tan_product,
+};
 use cas_math::trig_weierstrass_support::{
     match_one_minus_tan_half_squared, match_one_plus_tan_half_squared, match_two_tan_half,
 };
@@ -370,7 +373,7 @@ impl Sin4xIdentityZeroRule {
                 if let Expr::Sub(sl, sr) = ctx.get(factor) {
                     let sl = *sl;
                     let sr = *sr;
-                    if self.is_cos_squared_t(ctx, sl, t) && self.is_sin_squared_t(ctx, sr, t) {
+                    if is_cos_squared_t(ctx, sl, t) && is_sin_squared_t(ctx, sr, t) {
                         has_diff_squares = true;
                         continue;
                     }
@@ -385,40 +388,6 @@ impl Sin4xIdentityZeroRule {
             }
         }
         None
-    }
-
-    fn is_sin_squared_t(&self, ctx: &cas_ast::Context, expr: ExprId, t: ExprId) -> bool {
-        if let Expr::Pow(base, exp) = ctx.get(expr) {
-            if let Expr::Number(n) = ctx.get(*exp) {
-                if *n == num_rational::BigRational::from_integer(2.into()) {
-                    if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                        if matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Sin)) && args.len() == 1
-                        {
-                            return crate::ordering::compare_expr(ctx, args[0], t)
-                                == std::cmp::Ordering::Equal;
-                        }
-                    }
-                }
-            }
-        }
-        false
-    }
-
-    fn is_cos_squared_t(&self, ctx: &cas_ast::Context, expr: ExprId, t: ExprId) -> bool {
-        if let Expr::Pow(base, exp) = ctx.get(expr) {
-            if let Expr::Number(n) = ctx.get(*exp) {
-                if *n == num_rational::BigRational::from_integer(2.into()) {
-                    if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                        if matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Cos)) && args.len() == 1
-                        {
-                            return crate::ordering::compare_expr(ctx, args[0], t)
-                                == std::cmp::Ordering::Equal;
-                        }
-                    }
-                }
-            }
-        }
-        false
     }
 }
 
@@ -548,7 +517,7 @@ impl TanDifferenceIdentityZeroRule {
                 }
 
                 // Check denominator: 1 + tan(a)*tan(b)
-                if !self.match_one_plus_tan_product(ctx, den, a, b) {
+                if !match_one_plus_tan_product(ctx, den, a, b) {
                     return None;
                 }
 
@@ -560,67 +529,5 @@ impl TanDifferenceIdentityZeroRule {
             }
         }
         None
-    }
-
-    fn match_one_plus_tan_product(
-        &self,
-        ctx: &cas_ast::Context,
-        expr: ExprId,
-        a: ExprId,
-        b: ExprId,
-    ) -> bool {
-        // Match 1 + tan(a)*tan(b) (in any order)
-        if let Expr::Add(l, r) = ctx.get(expr) {
-            let (one_part, product_part) = if let Expr::Number(n) = ctx.get(*l) {
-                if *n == num_rational::BigRational::from_integer(1.into()) {
-                    (*l, *r)
-                } else {
-                    return false;
-                }
-            } else if let Expr::Number(n) = ctx.get(*r) {
-                if *n == num_rational::BigRational::from_integer(1.into()) {
-                    (*r, *l)
-                } else {
-                    return false;
-                }
-            } else {
-                return false;
-            };
-            let _ = one_part;
-
-            // product_part should be tan(a)*tan(b)
-            if let Expr::Mul(ml, mr) = ctx.get(product_part) {
-                let (tan1, tan2) = (*ml, *mr);
-
-                // Check if both are tan functions
-                if let (Expr::Function(fn_id1, args1), Expr::Function(fn_id2, args2)) =
-                    (ctx.get(tan1), ctx.get(tan2))
-                {
-                    let b1 = ctx.builtin_of(*fn_id1);
-                    let b2 = ctx.builtin_of(*fn_id2);
-                    if matches!(b1, Some(BuiltinFn::Tan))
-                        && matches!(b2, Some(BuiltinFn::Tan))
-                        && args1.len() == 1
-                        && args2.len() == 1
-                    {
-                        let arg1 = args1[0];
-                        let arg2 = args2[0];
-
-                        // Check (arg1==a && arg2==b) or (arg1==b && arg2==a)
-                        let match1 = crate::ordering::compare_expr(ctx, arg1, a)
-                            == std::cmp::Ordering::Equal
-                            && crate::ordering::compare_expr(ctx, arg2, b)
-                                == std::cmp::Ordering::Equal;
-                        let match2 = crate::ordering::compare_expr(ctx, arg1, b)
-                            == std::cmp::Ordering::Equal
-                            && crate::ordering::compare_expr(ctx, arg2, a)
-                                == std::cmp::Ordering::Equal;
-
-                        return match1 || match2;
-                    }
-                }
-            }
-        }
-        false
     }
 }
