@@ -118,6 +118,39 @@ pub fn match_one_minus_tan_half_squared(ctx: &Context, expr: ExprId) -> Option<(
     None
 }
 
+/// Build the Weierstrass substitution image of `sin(x)` using `t = tan(x/2)`.
+/// Returns `2t/(1+t^2)`.
+pub fn build_weierstrass_sin(ctx: &mut Context, t: ExprId) -> ExprId {
+    let two = ctx.num(2);
+    let one = ctx.num(1);
+    let t_squared = ctx.add(Expr::Pow(t, two));
+    let numerator = crate::expr_rewrite::smart_mul(ctx, two, t);
+    let denominator = ctx.add(Expr::Add(one, t_squared));
+    ctx.add(Expr::Div(numerator, denominator))
+}
+
+/// Build the Weierstrass substitution image of `cos(x)` using `t = tan(x/2)`.
+/// Returns `(1-t^2)/(1+t^2)`.
+pub fn build_weierstrass_cos(ctx: &mut Context, t: ExprId) -> ExprId {
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    let t_squared = ctx.add(Expr::Pow(t, two));
+    let numerator = ctx.add(Expr::Sub(one, t_squared));
+    let denominator = ctx.add(Expr::Add(one, t_squared));
+    ctx.add(Expr::Div(numerator, denominator))
+}
+
+/// Build the Weierstrass substitution image of `tan(x)` using `t = tan(x/2)`.
+/// Returns `2t/(1-t^2)`.
+pub fn build_weierstrass_tan(ctx: &mut Context, t: ExprId) -> ExprId {
+    let two = ctx.num(2);
+    let one = ctx.num(1);
+    let t_squared = ctx.add(Expr::Pow(t, two));
+    let numerator = crate::expr_rewrite::smart_mul(ctx, two, t);
+    let denominator = ctx.add(Expr::Sub(one, t_squared));
+    ctx.add(Expr::Div(numerator, denominator))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -161,5 +194,31 @@ mod tests {
 
         assert!(match_two_tan_half(&ctx, tan_form).is_some());
         assert!(match_two_tan_half(&ctx, ratio_form).is_some());
+    }
+
+    #[test]
+    fn weierstrass_builders_emit_expected_forms() {
+        let mut ctx = Context::new();
+        let t = parse("t", &mut ctx).expect("t");
+        let expected_sin = parse("2*t/(1+t^2)", &mut ctx).expect("expected sin");
+        let expected_cos = parse("(1-t^2)/(1+t^2)", &mut ctx).expect("expected cos");
+        let expected_tan = parse("2*t/(1-t^2)", &mut ctx).expect("expected tan");
+
+        let sin_form = build_weierstrass_sin(&mut ctx, t);
+        let cos_form = build_weierstrass_cos(&mut ctx, t);
+        let tan_form = build_weierstrass_tan(&mut ctx, t);
+
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, sin_form, expected_sin),
+            Ordering::Equal
+        );
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, cos_form, expected_cos),
+            Ordering::Equal
+        );
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, tan_form, expected_tan),
+            Ordering::Equal
+        );
     }
 }

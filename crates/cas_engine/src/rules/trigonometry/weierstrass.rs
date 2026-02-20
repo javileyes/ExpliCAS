@@ -11,41 +11,14 @@
 //! - tan(x) → 2t/(1-t²)
 
 use crate::define_rule;
-use cas_ast::{BuiltinFn, Expr, ExprId};
+use cas_ast::{BuiltinFn, Expr};
 use cas_formatter::DisplayExpr;
 use cas_math::expr_rewrite::smart_mul;
-use cas_math::trig_weierstrass_support::extract_tan_half_angle_like;
+use cas_math::trig_weierstrass_support::{
+    build_weierstrass_cos, build_weierstrass_sin, build_weierstrass_tan,
+    extract_tan_half_angle_like,
+};
 use num_traits::One;
-
-/// Build the Weierstrass expression for sin(x): 2t/(1+t²)
-fn weierstrass_sin(ctx: &mut cas_ast::Context, t: ExprId) -> ExprId {
-    let two = ctx.num(2);
-    let one = ctx.num(1);
-    let t_squared = ctx.add(Expr::Pow(t, two));
-    let numerator = smart_mul(ctx, two, t);
-    let denominator = ctx.add(Expr::Add(one, t_squared));
-    ctx.add(Expr::Div(numerator, denominator))
-}
-
-/// Build the Weierstrass expression for cos(x): (1-t²)/(1+t²)
-fn weierstrass_cos(ctx: &mut cas_ast::Context, t: ExprId) -> ExprId {
-    let one = ctx.num(1);
-    let two = ctx.num(2);
-    let t_squared = ctx.add(Expr::Pow(t, two));
-    let numerator = ctx.add(Expr::Sub(one, t_squared));
-    let denominator = ctx.add(Expr::Add(one, t_squared));
-    ctx.add(Expr::Div(numerator, denominator))
-}
-
-/// Build the Weierstrass expression for tan(x): 2t/(1-t²)
-fn weierstrass_tan(ctx: &mut cas_ast::Context, t: ExprId) -> ExprId {
-    let two = ctx.num(2);
-    let one = ctx.num(1);
-    let t_squared = ctx.add(Expr::Pow(t, two));
-    let numerator = smart_mul(ctx, two, t);
-    let denominator = ctx.add(Expr::Sub(one, t_squared));
-    ctx.add(Expr::Div(numerator, denominator))
-}
 
 define_rule!(
     WeierstrassSubstitutionRule,
@@ -75,7 +48,7 @@ define_rule!(
 
         let (new_expr, desc) = match name {
             "sin" => {
-                let result = weierstrass_sin(ctx, t);
+                let result = build_weierstrass_sin(ctx, t);
                 let desc = format!(
                     "Weierstrass: sin({}) = 2t/(1+t²) where t = tan({}/2)",
                     DisplayExpr {
@@ -90,7 +63,7 @@ define_rule!(
                 (result, desc)
             }
             "cos" => {
-                let result = weierstrass_cos(ctx, t);
+                let result = build_weierstrass_cos(ctx, t);
                 let desc = format!(
                     "Weierstrass: cos({}) = (1-t²)/(1+t²) where t = tan({}/2)",
                     DisplayExpr {
@@ -105,7 +78,7 @@ define_rule!(
                 (result, desc)
             }
             "tan" => {
-                let result = weierstrass_tan(ctx, t);
+                let result = build_weierstrass_tan(ctx, t);
                 let desc = format!(
                     "Weierstrass: tan({}) = 2t/(1-t²) where t = tan({}/2)",
                     DisplayExpr {
@@ -215,7 +188,7 @@ mod tests {
     fn test_weierstrass_sin() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
-        let t = weierstrass_sin(&mut ctx, x);
+        let t = build_weierstrass_sin(&mut ctx, x);
         let result = format!(
             "{}",
             DisplayExpr {

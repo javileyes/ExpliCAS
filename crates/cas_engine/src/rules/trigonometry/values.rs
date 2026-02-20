@@ -4,6 +4,7 @@
 //! at special angles like 0, π/6, π/4, π/3, π/2, π using static tables.
 
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::root_forms::extract_numeric_sqrt_radicand;
 
 /// Represents a simplified trigonometric result value.
 #[derive(Clone, Debug, PartialEq)]
@@ -643,32 +644,6 @@ impl InverseTrigInput {
     }
 }
 
-/// Check if expression is n^(1/2) and return n as i64
-fn is_sqrt_expr(ctx: &Context, expr: ExprId) -> Option<i64> {
-    if let Expr::Pow(base, exp) = ctx.get(expr) {
-        // Case 1: exponent is Div(1, 2) — structural form
-        if let Expr::Div(num, den) = ctx.get(*exp) {
-            if let (Expr::Number(n), Expr::Number(d)) = (ctx.get(*num), ctx.get(*den)) {
-                use num_traits::One;
-                if n.is_one() && *d == num_rational::BigRational::from_integer(2.into()) {
-                    if let Expr::Number(b) = ctx.get(*base) {
-                        return b.to_integer().try_into().ok();
-                    }
-                }
-            }
-        }
-        // Case 2: exponent is Number(1/2) — folded rational form
-        if let Expr::Number(exp_val) = ctx.get(*exp) {
-            if *exp_val == num_rational::BigRational::new(1.into(), 2.into()) {
-                if let Expr::Number(b) = ctx.get(*base) {
-                    return b.to_integer().try_into().ok();
-                }
-            }
-        }
-    }
-    None
-}
-
 /// Detect if an expression is a special input for inverse trig
 pub fn detect_inverse_trig_input(ctx: &Context, expr: ExprId) -> Option<InverseTrigInput> {
     use num_traits::{One, Zero};
@@ -695,19 +670,19 @@ pub fn detect_inverse_trig_input(ctx: &Context, expr: ExprId) -> Option<InverseT
 
                 // √2/2
                 if denom == 2 {
-                    if let Some(2) = is_sqrt_expr(ctx, *num) {
+                    if let Some(2) = extract_numeric_sqrt_radicand(ctx, *num) {
                         return Some(InverseTrigInput::Sqrt2Over2);
                     }
                 }
                 // √3/2
                 if denom == 2 {
-                    if let Some(3) = is_sqrt_expr(ctx, *num) {
+                    if let Some(3) = extract_numeric_sqrt_radicand(ctx, *num) {
                         return Some(InverseTrigInput::Sqrt3Over2);
                     }
                 }
                 // √3/3 = 1/√3
                 if denom == 3 {
-                    if let Some(3) = is_sqrt_expr(ctx, *num) {
+                    if let Some(3) = extract_numeric_sqrt_radicand(ctx, *num) {
                         return Some(InverseTrigInput::OneOverSqrt3);
                     }
                 }
@@ -715,7 +690,7 @@ pub fn detect_inverse_trig_input(ctx: &Context, expr: ExprId) -> Option<InverseT
             // 1/√3
             if let Expr::Number(n) = ctx.get(*num) {
                 if n.is_one() {
-                    if let Some(3) = is_sqrt_expr(ctx, *den) {
+                    if let Some(3) = extract_numeric_sqrt_radicand(ctx, *den) {
                         return Some(InverseTrigInput::OneOverSqrt3);
                     }
                 }
@@ -732,7 +707,7 @@ pub fn detect_inverse_trig_input(ctx: &Context, expr: ExprId) -> Option<InverseT
                 (*r, *l)
             };
 
-            if let Some(sqrt_base) = is_sqrt_expr(ctx, sqrt_id) {
+            if let Some(sqrt_base) = extract_numeric_sqrt_radicand(ctx, sqrt_id) {
                 if let Expr::Number(n) = ctx.get(num_id) {
                     // (1/3)·√3 = √3/3 = 1/√3
                     if sqrt_base == 3 && *n == num_rational::BigRational::new(1.into(), 3.into()) {
@@ -753,7 +728,7 @@ pub fn detect_inverse_trig_input(ctx: &Context, expr: ExprId) -> Option<InverseT
 
         // Pow patterns: √3 alone
         Expr::Pow(_, _) => {
-            if let Some(3) = is_sqrt_expr(ctx, expr) {
+            if let Some(3) = extract_numeric_sqrt_radicand(ctx, expr) {
                 return Some(InverseTrigInput::Sqrt3);
             }
             None
