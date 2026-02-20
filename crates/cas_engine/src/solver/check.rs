@@ -49,8 +49,18 @@ pub fn verify_solution(
     solution: ExprId,
 ) -> VerifyStatus {
     // Step 1: Substitute solution into lhs and rhs
-    let lhs_sub = substitute(simplifier, equation.lhs, var, solution);
-    let rhs_sub = substitute(simplifier, equation.rhs, var, solution);
+    let lhs_sub = cas_solver_core::substitution::substitute_named_var(
+        &mut simplifier.context,
+        equation.lhs,
+        var,
+        solution,
+    );
+    let rhs_sub = cas_solver_core::substitution::substitute_named_var(
+        &mut simplifier.context,
+        equation.rhs,
+        var,
+        solution,
+    );
 
     // Step 2: Compute difference lhs - rhs
     let diff = simplifier.context.add(Expr::Sub(lhs_sub, rhs_sub));
@@ -233,68 +243,6 @@ pub fn verify_solution_set(
                 summary,
                 guard_description: None,
             }
-        }
-    }
-}
-
-/// Substitute a variable with a value in an expression.
-fn substitute(simplifier: &mut Simplifier, expr: ExprId, var: &str, value: ExprId) -> ExprId {
-    let expr_data = simplifier.context.get(expr).clone();
-
-    match expr_data {
-        Expr::Variable(sym_id) if simplifier.context.sym_name(sym_id) == var => value,
-        Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => expr,
-
-        Expr::Add(a, b) => {
-            let a_sub = substitute(simplifier, a, var, value);
-            let b_sub = substitute(simplifier, b, var, value);
-            simplifier.context.add(Expr::Add(a_sub, b_sub))
-        }
-        Expr::Sub(a, b) => {
-            let a_sub = substitute(simplifier, a, var, value);
-            let b_sub = substitute(simplifier, b, var, value);
-            simplifier.context.add(Expr::Sub(a_sub, b_sub))
-        }
-        Expr::Mul(a, b) => {
-            let a_sub = substitute(simplifier, a, var, value);
-            let b_sub = substitute(simplifier, b, var, value);
-            simplifier.context.add(Expr::Mul(a_sub, b_sub))
-        }
-        Expr::Div(a, b) => {
-            let a_sub = substitute(simplifier, a, var, value);
-            let b_sub = substitute(simplifier, b, var, value);
-            simplifier.context.add(Expr::Div(a_sub, b_sub))
-        }
-        Expr::Pow(a, b) => {
-            let a_sub = substitute(simplifier, a, var, value);
-            let b_sub = substitute(simplifier, b, var, value);
-            simplifier.context.add(Expr::Pow(a_sub, b_sub))
-        }
-        Expr::Neg(a) => {
-            let a_sub = substitute(simplifier, a, var, value);
-            simplifier.context.add(Expr::Neg(a_sub))
-        }
-        Expr::Function(name, args) => {
-            let args_sub: Vec<_> = args
-                .iter()
-                .map(|&arg| substitute(simplifier, arg, var, value))
-                .collect();
-            simplifier.context.add(Expr::Function(name, args_sub))
-        }
-        Expr::Matrix { rows, cols, data } => {
-            let data_sub: Vec<_> = data
-                .iter()
-                .map(|&elem| substitute(simplifier, elem, var, value))
-                .collect();
-            simplifier.context.add(Expr::Matrix {
-                rows,
-                cols,
-                data: data_sub,
-            })
-        }
-        Expr::Hold(inner) => {
-            let inner_sub = substitute(simplifier, inner, var, value);
-            simplifier.context.add(Expr::Hold(inner_sub))
         }
     }
 }
