@@ -1,4 +1,5 @@
 use crate::infinity_support::{mk_infinity, InfSign};
+use crate::limit_types::{Approach, LimitEvalOutcome, LimitOptions, PreSimplifyMode};
 use cas_ast::{Constant, Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_rational::BigRational;
@@ -294,6 +295,38 @@ pub fn try_limit_rules_at_infinity(
         return Some(r);
     }
     rational_poly_limit(ctx, expr, var, approach)
+}
+
+/// Evaluate a limit at infinity using conservative rules.
+///
+/// This runs optional safe pre-simplification, applies direct rules in order,
+/// and otherwise returns a residual `limit(...)` expression.
+pub fn eval_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: Approach,
+    opts: &LimitOptions,
+) -> LimitEvalOutcome {
+    let simplified_expr = match opts.presimplify {
+        PreSimplifyMode::Off => expr,
+        PreSimplifyMode::Safe => presimplify_safe_for_limit(ctx, expr),
+    };
+
+    if let Some(result_expr) =
+        try_limit_rules_at_infinity(ctx, simplified_expr, var, approach.inf_sign())
+    {
+        return LimitEvalOutcome {
+            expr: result_expr,
+            warning: None,
+        };
+    }
+
+    let residual = mk_limit(ctx, simplified_expr, var, approach.inf_sign());
+    LimitEvalOutcome {
+        expr: residual,
+        warning: Some("Could not determine limit safely".to_string()),
+    }
 }
 
 const PRESIMPLIFY_MAX_DEPTH: usize = 500;

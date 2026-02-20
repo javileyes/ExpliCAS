@@ -1,5 +1,8 @@
 //! Shared types for limit computation configuration.
 
+use crate::infinity_support::InfSign;
+use cas_ast::ExprId;
+
 /// Direction of limit approach.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Approach {
@@ -8,6 +11,16 @@ pub enum Approach {
     /// x -> -inf
     NegInfinity,
     // V3 future: Point(ExprId) for x -> a
+}
+
+impl Approach {
+    /// Convert an approach direction to the corresponding infinity sign.
+    pub fn inf_sign(self) -> InfSign {
+        match self {
+            Approach::PosInfinity => InfSign::Pos,
+            Approach::NegInfinity => InfSign::Neg,
+        }
+    }
 }
 
 /// Pre-simplification mode for limits.
@@ -33,4 +46,13 @@ pub struct LimitOptions {
     pub aggressive: bool,
     /// Pre-simplification mode (default: Off).
     pub presimplify: PreSimplifyMode,
+}
+
+/// Result produced by pure limit evaluation.
+#[derive(Debug, Clone)]
+pub struct LimitEvalOutcome {
+    /// The computed expression (or residual `limit(...)` call if unresolved).
+    pub expr: ExprId,
+    /// Warning when no safe limit was found.
+    pub warning: Option<String>,
 }

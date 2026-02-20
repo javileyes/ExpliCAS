@@ -3,19 +3,11 @@
 //! Entry point for computing limits with conservative policy.
 
 use cas_ast::{Context, ExprId};
-use cas_math::infinity_support::InfSign;
-use cas_math::limits_support::{mk_limit, presimplify_safe_for_limit, try_limit_rules_at_infinity};
+use cas_math::limits_support::eval_limit_at_infinity;
 
 use crate::{Budget, CasError};
 
-use super::types::{Approach, LimitOptions, LimitResult, PreSimplifyMode};
-
-fn approach_sign(approach: Approach) -> InfSign {
-    match approach {
-        Approach::PosInfinity => InfSign::Pos,
-        Approach::NegInfinity => InfSign::Neg,
-    }
-}
+use super::types::{Approach, LimitOptions, LimitResult};
 
 /// Compute the limit of an expression.
 ///
@@ -43,33 +35,12 @@ pub fn limit(
     _budget: &mut Budget,
 ) -> Result<LimitResult, CasError> {
     let steps = Vec::new();
-
-    // Step 1: Pre-simplify the expression (if enabled)
-    let simplified_expr = match opts.presimplify {
-        PreSimplifyMode::Off => expr,
-        PreSimplifyMode::Safe => presimplify_safe_for_limit(ctx, expr),
-    };
-
-    // Step 2: Try limit rules
-    if let Some(result_expr) =
-        try_limit_rules_at_infinity(ctx, simplified_expr, var, approach_sign(approach))
-    {
-        // Limit was resolved
-        // Note: Steps are not collected in V1 (TODO for V1.1)
-        return Ok(LimitResult {
-            expr: result_expr,
-            steps,
-            warning: None,
-        });
-    }
-
-    // Step 3: Return residual limit expression
-    let residual = mk_limit(ctx, simplified_expr, var, approach_sign(approach));
+    let outcome = eval_limit_at_infinity(ctx, expr, var, approach, opts);
 
     Ok(LimitResult {
-        expr: residual,
+        expr: outcome.expr,
         steps,
-        warning: Some("Could not determine limit safely".to_string()),
+        warning: outcome.warning,
     })
 }
 
