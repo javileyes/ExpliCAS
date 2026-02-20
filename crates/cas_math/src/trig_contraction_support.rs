@@ -1,4 +1,4 @@
-use crate::expr_destructure::{as_mul, as_neg, as_sub};
+use crate::expr_destructure::{as_add, as_mul, as_neg, as_sub};
 use crate::expr_nary::mul_leaves;
 use crate::trig_sum_product_support::extract_trig_arg;
 use cas_ast::ordering::compare_expr;
@@ -355,6 +355,50 @@ pub fn extract_coeff_trig_squared(
     Some((trig_arg, is_sin, numeric_coeff))
 }
 
+/// Match `(sin(a)cos(b) + cos(a)sin(b)) / (cos(a)cos(b) - sin(a)sin(b))`.
+/// Returns `(a, b)` if matched.
+pub fn match_angle_sum_fraction(
+    ctx: &Context,
+    numerator: ExprId,
+    denominator: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    let (nl, nr) = as_add(ctx, numerator)?;
+    let (a, b) = extract_sin_cos_product_pair(ctx, nl, nr)?;
+
+    let (dl, dr) = semantic_sub(ctx, denominator)?;
+    let (a2, b2) = extract_cos_cos_minus_sin_sin(ctx, dl, dr)?;
+
+    if args_equal(ctx, a, a2) && args_equal(ctx, b, b2) {
+        return Some((a, b));
+    }
+    if args_equal(ctx, a, b2) && args_equal(ctx, b, a2) {
+        return Some((a, b));
+    }
+    None
+}
+
+/// Match `(sin(a)cos(b) - cos(a)sin(b)) / (cos(a)cos(b) + sin(a)sin(b))`.
+/// Returns `(a, b)` if matched.
+pub fn match_angle_diff_fraction(
+    ctx: &Context,
+    numerator: ExprId,
+    denominator: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    let (nl, nr) = semantic_sub(ctx, numerator)?;
+    let (a, b) = extract_sin_cos_product_pair(ctx, nl, nr)?;
+
+    let (dl, dr) = as_add(ctx, denominator)?;
+    let (a2, b2) = extract_cos_cos_and_sin_sin(ctx, dl, dr)?;
+
+    if args_equal(ctx, a, a2) && args_equal(ctx, b, b2) {
+        return Some((a, b));
+    }
+    if args_equal(ctx, a, b2) && args_equal(ctx, b, a2) {
+        return Some((a, b));
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -442,5 +486,31 @@ mod tests {
         assert!(args_equal(&ctx, arg, x));
         assert!(is_sin);
         assert_eq!(coeff, neg_two);
+    }
+
+    #[test]
+    fn matches_angle_sum_fraction_pattern() {
+        let mut ctx = Context::new();
+        let num = parse("sin(a)*cos(b)+cos(a)*sin(b)", &mut ctx).expect("num");
+        let den = parse("cos(a)*cos(b)-sin(a)*sin(b)", &mut ctx).expect("den");
+        let a = parse("a", &mut ctx).expect("a");
+        let b = parse("b", &mut ctx).expect("b");
+
+        let (ma, mb) = match_angle_sum_fraction(&ctx, num, den).expect("sum match");
+        assert!(args_equal(&ctx, ma, a));
+        assert!(args_equal(&ctx, mb, b));
+    }
+
+    #[test]
+    fn matches_angle_diff_fraction_pattern() {
+        let mut ctx = Context::new();
+        let num = parse("sin(a)*cos(b)-cos(a)*sin(b)", &mut ctx).expect("num");
+        let den = parse("cos(a)*cos(b)+sin(a)*sin(b)", &mut ctx).expect("den");
+        let a = parse("a", &mut ctx).expect("a");
+        let b = parse("b", &mut ctx).expect("b");
+
+        let (ma, mb) = match_angle_diff_fraction(&ctx, num, den).expect("diff match");
+        assert!(args_equal(&ctx, ma, a));
+        assert!(args_equal(&ctx, mb, b));
     }
 }

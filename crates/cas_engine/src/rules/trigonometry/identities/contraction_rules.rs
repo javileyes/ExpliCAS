@@ -8,9 +8,8 @@ use crate::nary::Sign;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_math::trig_contraction_support::{
-    args_equal as trig_args_equal, extract_coeff_trig_squared, extract_cos2_minus_sin2,
-    extract_cos_cos_and_sin_sin, extract_cos_cos_minus_sin_sin, extract_sin_cos_product_pair,
-    extract_two_sin_cos, semantic_sub,
+    extract_coeff_trig_squared, extract_cos2_minus_sin2, extract_two_sin_cos,
+    match_angle_diff_fraction, match_angle_sum_fraction,
 };
 
 // =============================================================================
@@ -495,7 +494,7 @@ impl crate::rule::Rule for AngleSumFractionToTanRule {
 
         // Try angle-sum pattern: numerator = sin(a)cos(b) + cos(a)sin(b)
         //                        denominator = cos(a)cos(b) - sin(a)sin(b)
-        if let Some((a, b)) = self.try_match_sum(ctx, num, den) {
+        if let Some((a, b)) = match_angle_sum_fraction(ctx, num, den) {
             let sum_arg = ctx.add(Expr::Add(a, b));
             let tan_result = ctx.call_builtin(BuiltinFn::Tan, vec![sum_arg]);
             return Some(
@@ -506,7 +505,7 @@ impl crate::rule::Rule for AngleSumFractionToTanRule {
 
         // Try angle-difference pattern: numerator = sin(a)cos(b) - cos(a)sin(b)
         //                               denominator = cos(a)cos(b) + sin(a)sin(b)
-        if let Some((a, b)) = self.try_match_diff(ctx, num, den) {
+        if let Some((a, b)) = match_angle_diff_fraction(ctx, num, den) {
             let diff_arg = ctx.add(Expr::Sub(a, b));
             let tan_result = ctx.call_builtin(BuiltinFn::Tan, vec![diff_arg]);
             return Some(
@@ -524,66 +523,5 @@ impl crate::rule::Rule for AngleSumFractionToTanRule {
 
     fn importance(&self) -> crate::step::ImportanceLevel {
         crate::step::ImportanceLevel::High
-    }
-}
-
-impl AngleSumFractionToTanRule {
-    /// Try to match numerator = sin(a)cos(b) + cos(a)sin(b) and
-    ///                 denominator = cos(a)cos(b) - sin(a)sin(b)
-    /// Returns Some((a, b)) if matched.
-    fn try_match_sum(
-        &self,
-        ctx: &cas_ast::Context,
-        num: ExprId,
-        den: ExprId,
-    ) -> Option<(ExprId, ExprId)> {
-        // Numerator: A + B where A = sin(a)cos(b), B = cos(a)sin(b)
-        let (nl, nr) = crate::helpers::as_add(ctx, num)?;
-        let (a, b) = extract_sin_cos_product_pair(ctx, nl, nr)?;
-
-        // Denominator: C - D where C = cos(a)cos(b), D = sin(a)sin(b)
-        // Handles both Sub(C, D) and Add(C, Neg(D))
-        let (dl, dr) = semantic_sub(ctx, den)?;
-        let (a2, b2) = extract_cos_cos_minus_sin_sin(ctx, dl, dr)?;
-
-        // Verify arguments match
-        if trig_args_equal(ctx, a, a2) && trig_args_equal(ctx, b, b2) {
-            return Some((a, b));
-        }
-        // Try (a,b) swapped in denominator
-        if trig_args_equal(ctx, a, b2) && trig_args_equal(ctx, b, a2) {
-            return Some((a, b));
-        }
-
-        None
-    }
-
-    /// Try to match numerator = sin(a)cos(b) - cos(a)sin(b) and
-    ///                 denominator = cos(a)cos(b) + sin(a)sin(b)
-    /// Returns Some((a, b)) if matched.
-    fn try_match_diff(
-        &self,
-        ctx: &cas_ast::Context,
-        num: ExprId,
-        den: ExprId,
-    ) -> Option<(ExprId, ExprId)> {
-        // Numerator: A - B where A = sin(a)cos(b), B = cos(a)sin(b)
-        // Handles both Sub(A, B) and Add(A, Neg(B))
-        let (nl, nr) = semantic_sub(ctx, num)?;
-        let (a, b) = extract_sin_cos_product_pair(ctx, nl, nr)?;
-
-        // Denominator: C + D where C = cos(a)cos(b), D = sin(a)sin(b)
-        let (dl, dr) = crate::helpers::as_add(ctx, den)?;
-        let (a2, b2) = extract_cos_cos_and_sin_sin(ctx, dl, dr)?;
-
-        // Verify arguments match
-        if trig_args_equal(ctx, a, a2) && trig_args_equal(ctx, b, b2) {
-            return Some((a, b));
-        }
-        if trig_args_equal(ctx, a, b2) && trig_args_equal(ctx, b, a2) {
-            return Some((a, b));
-        }
-
-        None
     }
 }
