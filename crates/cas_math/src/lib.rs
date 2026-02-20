@@ -56,6 +56,7 @@ pub mod substitute;
 pub mod telescoping_dirichlet;
 pub mod telescoping_support;
 pub mod trig_pattern_detection;
+pub mod trig_linear_support;
 pub mod trig_power_identity_support;
 pub mod trig_reciprocal_support;
 pub mod trig_roots_flatten;

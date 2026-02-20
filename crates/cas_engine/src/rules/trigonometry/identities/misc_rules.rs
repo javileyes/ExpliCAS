@@ -4,7 +4,10 @@
 //! - TrigSumToProductContractionRule: sin(a)+sin(b) → product form
 
 use crate::rule::Rewrite;
-use cas_ast::{BuiltinFn, Expr, ExprId};
+use cas_ast::{Expr, ExprId};
+use cas_math::trig_linear_support::{
+    build_coef_times_base, extract_linear_coefficients, extract_sin_cos_fn_arg,
+};
 
 // =============================================================================
 // TrigSumToProductContractionRule: sin(a)+sin(b) → 2*sin((a+b)/2)*cos((a-b)/2)
@@ -44,8 +47,8 @@ impl crate::rule::Rule for TrigSumToProductContractionRule {
         };
 
         // Both must be sin or cos functions
-        let (l_name, l_arg) = extract_trig_fn(ctx, left)?;
-        let (r_name, r_arg) = extract_trig_fn(ctx, right)?;
+        let (l_name, l_arg) = extract_sin_cos_fn_arg(ctx, left)?;
+        let (r_name, r_arg) = extract_sin_cos_fn_arg(ctx, right)?;
 
         // Must be same function type (sin+sin or cos+cos)
         if l_name != r_name {
@@ -71,7 +74,7 @@ impl crate::rule::Rule for TrigSumToProductContractionRule {
 
         // Build the product form based on function name and operation
         let two_id = ctx.num(2);
-        let result = match (l_name.as_str(), is_add) {
+        let result = match (l_name, is_add) {
             ("sin", true) => {
                 // sin(a) + sin(b) → 2*sin((a+b)/2)*cos((a-b)/2)
                 let sin_half_sum = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![half_sum_arg]);
@@ -113,96 +116,6 @@ impl crate::rule::Rule for TrigSumToProductContractionRule {
 
     fn importance(&self) -> crate::step::ImportanceLevel {
         crate::step::ImportanceLevel::Medium
-    }
-}
-
-/// Extract trig function name and argument
-fn extract_trig_fn(ctx: &cas_ast::Context, expr: ExprId) -> Option<(String, ExprId)> {
-    if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        let builtin = ctx.builtin_of(*fn_id);
-        if args.len() == 1 {
-            match builtin {
-                Some(BuiltinFn::Sin) => return Some(("sin".to_string(), args[0])),
-                Some(BuiltinFn::Cos) => return Some(("cos".to_string(), args[0])),
-                _ => {}
-            }
-        }
-    }
-    None
-}
-
-/// Extract linear coefficients if both args are linear multiples of a common base.
-/// Returns (base, coef_a, coef_b) where a = coef_a * base, b = coef_b * base
-fn extract_linear_coefficients(
-    ctx: &cas_ast::Context,
-    a: ExprId,
-    b: ExprId,
-) -> Option<(ExprId, num_rational::BigRational, num_rational::BigRational)> {
-    let (coef_a, base_a) = extract_coef_and_base(ctx, a);
-    let (coef_b, base_b) = extract_coef_and_base(ctx, b);
-
-    // Check if bases are structurally equal
-    if crate::ordering::compare_expr(ctx, base_a, base_b) == std::cmp::Ordering::Equal {
-        Some((base_a, coef_a, coef_b))
-    } else {
-        None
-    }
-}
-
-/// Extract coefficient and base from an expression.
-/// n*t → (n, t), t → (1, t), 3 (literal) → (3, 1)
-fn extract_coef_and_base(
-    ctx: &cas_ast::Context,
-    expr: ExprId,
-) -> (num_rational::BigRational, ExprId) {
-    match ctx.get(expr) {
-        Expr::Mul(l, r) => {
-            let (l, r) = (*l, *r);
-            // Check if left is a number
-            if let Expr::Number(n) = ctx.get(l) {
-                return (n.clone(), r);
-            }
-            // Check if right is a number
-            if let Expr::Number(n) = ctx.get(r) {
-                return (n.clone(), l);
-            }
-            // No numeric coefficient - treat as 1 * expr
-            (num_rational::BigRational::from_integer(1.into()), expr)
-        }
-        Expr::Number(n) => {
-            // Pure number - but we need a "dummy" base that matches
-            // This case shouldn't happen in typical trig args, return as-is
-            (n.clone(), expr)
-        }
-        Expr::Neg(inner) => {
-            let inner = *inner;
-            // -t → (-1, t)
-            let (inner_coef, inner_base) = extract_coef_and_base(ctx, inner);
-            (-inner_coef, inner_base)
-        }
-        _ => {
-            // Variable or function: treat as 1 * expr
-            (num_rational::BigRational::from_integer(1.into()), expr)
-        }
-    }
-}
-
-fn build_coef_times_base(
-    ctx: &mut cas_ast::Context,
-    coef: &num_rational::BigRational,
-    base: ExprId,
-) -> ExprId {
-    use num_traits::{One, Zero};
-
-    if coef.is_zero() {
-        ctx.num(0)
-    } else if coef.is_one() {
-        base
-    } else if *coef == -num_rational::BigRational::one() {
-        ctx.add(Expr::Neg(base))
-    } else {
-        let coef_id = ctx.add(Expr::Number(coef.clone()));
-        ctx.add(Expr::Mul(coef_id, base))
     }
 }
 
