@@ -2,9 +2,6 @@
 //!
 //! This module re-exports all identity rules from specialized submodules.
 
-// --- Table-driven trig evaluation (Phases 1-6) ---
-pub use cas_math::trig_table::{AngleSpec, ValueSpec};
-
 // --- Core evaluation and fundamental identities ---
 mod core_rules;
 pub use core_rules::{
@@ -13,7 +10,6 @@ pub use core_rules::{
 };
 
 mod values_rules;
-pub use cas_math::trig_multi_angle_support::{has_large_coefficient, is_multiple_angle};
 pub use values_rules::{
     CscCotPythagoreanRule, SecTanPythagoreanRule, TanToSinCosRule, TanTripleProductRule,
     TrigQuotientRule,
@@ -43,7 +39,6 @@ mod sum_to_product_rules;
 pub use sum_to_product_rules::{register, AngleConsistencyRule, DyadicCosProductToSinRule};
 
 mod power_products_rules;
-pub use cas_math::trig_sum_product_support::{extract_trig_arg, normalize_for_even_fn};
 pub use power_products_rules::{
     SinCosQuarticSumRule, SinCosSumQuotientRule, TrigHiddenCubicIdentityRule,
 };

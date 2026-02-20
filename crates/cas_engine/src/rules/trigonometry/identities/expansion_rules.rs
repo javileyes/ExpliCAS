@@ -5,13 +5,11 @@ use crate::helpers::extract_double_angle_arg;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_math::expr_rewrite::smart_mul;
+use cas_math::trig_multi_angle_support::is_multiple_angle;
 use cas_math::trig_sum_product_support::{
     build_avg_with_simplifier, build_half_diff_with_simplifier, extract_trig_two_term_diff,
-    extract_trig_two_term_sum,
+    extract_trig_two_term_sum, normalize_for_even_fn,
 };
-
-// Import helpers from sibling modules (via re-exports in parent)
-use super::{is_multiple_angle, normalize_for_even_fn};
 
 // =============================================================================
 // STANDALONE SUM-TO-PRODUCT RULE
