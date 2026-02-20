@@ -10,7 +10,7 @@ use cas_math::expr_extract::{
 use cas_math::expr_predicates::is_e_constant_expr;
 use cas_math::expr_rewrite::smart_mul;
 use cas_math::logarithm_inverse_support::{
-    collect_mul_factors, count_mul_factors, is_log, normalize_to_power, simplify_exp_log,
+    collect_mul_factors, estimate_log_terms, is_log, normalize_to_power, simplify_exp_log,
 };
 use num_traits::{One, Zero};
 use std::cmp::Ordering;
@@ -580,52 +580,6 @@ impl crate::rule::Rule for LogPowerBaseRule {
 // ============================================================================
 // Auto Expand Log Rule with ExpandBudget Integration
 // ============================================================================
-
-/// Estimates the number of terms that would result from expanding a log expression.
-/// Returns `(base_terms, gen_terms, pow_exp)`:
-/// - base_terms: number of factors in the log argument
-/// - gen_terms: number of log terms that would be generated
-/// - pow_exp: if the argument is u^n, returns Some(n) for integer n
-///
-/// Returns None if the expression is not expandable (not Mul/Div/Pow).
-pub fn estimate_log_terms(ctx: &Context, arg: ExprId) -> Option<(u32, u32, Option<u32>)> {
-    match ctx.get(arg) {
-        // Mul(a, b) - could be nested, so we flatten
-        Expr::Mul(_, _) => {
-            let factors = count_mul_factors(ctx, arg);
-            if factors <= 1 {
-                return None; // No benefit from expanding
-            }
-            Some((factors, factors, None))
-        }
-        // Div(num, den) - expands to log(num) - log(den)
-        Expr::Div(num, den) => {
-            let num_factors = count_mul_factors(ctx, *num);
-            let den_factors = count_mul_factors(ctx, *den);
-            let total = num_factors + den_factors;
-            if total <= 1 {
-                return None;
-            }
-            Some((total, total, None))
-        }
-        // Pow(base, exp) - expands to exp * log(base) if exp is integer
-        Expr::Pow(_, exp) => {
-            // Only expand if exponent is a positive integer
-            if let Expr::Number(n) = ctx.get(*exp) {
-                if n.is_integer() {
-                    let exp_i64: i64 = n.to_integer().try_into().ok()?;
-                    if exp_i64 > 0 {
-                        let exp_u32 = exp_i64 as u32;
-                        // log(u^n) -> n*log(u): base_terms=1, gen_terms=1
-                        return Some((1, 1, Some(exp_u32)));
-                    }
-                }
-            }
-            None
-        }
-        _ => None,
-    }
-}
 
 // NOTE: Local is_provably_positive was removed in V2.15.9.
 // Use crate::helpers::prove_positive instead, which handles:
