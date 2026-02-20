@@ -109,6 +109,151 @@ pub fn extract_coeff_tan_or_cot_pow2(
     extract_coeff_trig_pow_n(ctx, term, 2, &TAN_COT_BUILTINS)
 }
 
+/// Extract all `(is_sin, argument, coefficient_factors)` candidates from a term containing
+/// trigonometric squares.
+///
+/// For `cos(u)^2*sin(x)^2`, this returns two candidates:
+/// - `sin(x)^2` with residual `[cos(u)^2]`
+/// - `cos(u)^2` with residual `[sin(x)^2]`
+///
+/// For higher powers `trig^n` (`n >= 3`), this decomposes as `trig^(n-2) * trig^2`,
+/// so `sin(x)^3` contributes a `sin(x)^2` candidate with residual `[sin(x)]`.
+pub fn extract_all_trig_squared_candidates(
+    ctx: &mut Context,
+    term: ExprId,
+) -> Vec<(bool, ExprId, Vec<ExprId>)> {
+    let mut results = Vec::new();
+
+    {
+        let mut case1_info = None;
+        if let Expr::Pow(base, exp) = ctx.get(term) {
+            let base = *base;
+            let exp = *exp;
+            if let Expr::Number(n) = ctx.get(exp) {
+                if let Expr::Function(fn_id, args) = ctx.get(base) {
+                    let builtin = ctx.builtin_of(*fn_id);
+                    if args.len() == 1 && matches!(builtin, Some(BuiltinFn::Sin | BuiltinFn::Cos)) {
+                        let is_sin = matches!(builtin, Some(BuiltinFn::Sin));
+                        let arg = args[0];
+                        let two = num_rational::BigRational::from_integer(2.into());
+                        if *n == two {
+                            case1_info = Some((is_sin, arg, base, None));
+                        } else if *n > two && n.is_integer() {
+                            let remainder = n - &two;
+                            case1_info = Some((is_sin, arg, base, Some(remainder)));
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some((is_sin, arg, base, remainder_opt)) = case1_info {
+            match remainder_opt {
+                None => {
+                    results.push((is_sin, arg, vec![]));
+                }
+                Some(remainder) => {
+                    let one = num_rational::BigRational::from_integer(1.into());
+                    let leftover = if remainder == one {
+                        base
+                    } else {
+                        let remainder_id = ctx.add(Expr::Number(remainder));
+                        ctx.add(Expr::Pow(base, remainder_id))
+                    };
+                    results.push((is_sin, arg, vec![leftover]));
+                }
+            }
+            return results;
+        }
+        if matches!(ctx.get(term), Expr::Pow(_, _)) {
+            return results;
+        }
+    }
+
+    if let Expr::Mul(_, _) = ctx.get(term) {
+        let mut factors = Vec::new();
+        let mut stack = vec![term];
+        while let Some(curr) = stack.pop() {
+            if let Expr::Mul(l, r) = ctx.get(curr) {
+                stack.push(*r);
+                stack.push(*l);
+            } else {
+                factors.push(curr);
+            }
+        }
+
+        struct CandidateInfo {
+            factor_idx: usize,
+            is_sin: bool,
+            arg: ExprId,
+            base: ExprId,
+            remainder: Option<num_rational::BigRational>,
+        }
+        let mut candidates_info: Vec<CandidateInfo> = Vec::new();
+
+        for (i, &f) in factors.iter().enumerate() {
+            if let Expr::Pow(base, exp) = ctx.get(f) {
+                let base = *base;
+                let exp = *exp;
+                if let Expr::Number(n) = ctx.get(exp) {
+                    if let Expr::Function(fn_id, args) = ctx.get(base) {
+                        let builtin = ctx.builtin_of(*fn_id);
+                        if args.len() == 1
+                            && matches!(builtin, Some(BuiltinFn::Sin | BuiltinFn::Cos))
+                        {
+                            let is_sin = matches!(builtin, Some(BuiltinFn::Sin));
+                            let arg = args[0];
+                            let two = num_rational::BigRational::from_integer(2.into());
+                            if *n == two {
+                                candidates_info.push(CandidateInfo {
+                                    factor_idx: i,
+                                    is_sin,
+                                    arg,
+                                    base,
+                                    remainder: None,
+                                });
+                            } else if *n > two && n.is_integer() {
+                                let rem = n - &two;
+                                candidates_info.push(CandidateInfo {
+                                    factor_idx: i,
+                                    is_sin,
+                                    arg,
+                                    base,
+                                    remainder: Some(rem),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for info in candidates_info {
+            let mut coef_factors: Vec<ExprId> = factors
+                .iter()
+                .enumerate()
+                .filter(|(j, _)| *j != info.factor_idx)
+                .map(|(_, &g)| g)
+                .collect();
+
+            if let Some(remainder) = info.remainder {
+                let one = num_rational::BigRational::from_integer(1.into());
+                let leftover = if remainder == one {
+                    info.base
+                } else {
+                    let remainder_id = ctx.add(Expr::Number(remainder));
+                    ctx.add(Expr::Pow(info.base, remainder_id))
+                };
+                coef_factors.push(leftover);
+            }
+
+            results.push((info.is_sin, info.arg, coef_factors));
+        }
+    }
+
+    results
+}
+
 /// Extract `coeff * sin(arg)^2 * cos(arg)^2` from a product term.
 /// Returns `(coeff, arg)` when both squared trig factors share the same argument.
 pub fn extract_sin2_cos2_product(ctx: &mut Context, term: ExprId) -> Option<(ExprId, ExprId)> {
@@ -180,6 +325,61 @@ mod tests {
         assert!(extract_trig_pow2(&ctx, s2).is_some());
         assert!(extract_trig_pow4(&ctx, c4).is_some());
         assert!(extract_trig_pow6(&ctx, s6).is_some());
+    }
+
+    #[test]
+    fn extract_all_trig_squared_candidates_handles_two_trig_squares() {
+        let mut ctx = Context::new();
+        let term = parse("cos(u)^2*sin(x)^2", &mut ctx).expect("term");
+        let u = parse("u", &mut ctx).expect("u");
+        let x = parse("x", &mut ctx).expect("x");
+
+        let candidates = extract_all_trig_squared_candidates(&mut ctx, term);
+        assert_eq!(candidates.len(), 2);
+
+        let mut saw_sin = false;
+        let mut saw_cos = false;
+        for (is_sin, arg, residual) in candidates {
+            assert_eq!(residual.len(), 1);
+            if is_sin {
+                saw_sin = true;
+                assert_eq!(
+                    cas_ast::ordering::compare_expr(&ctx, arg, x),
+                    Ordering::Equal
+                );
+            } else {
+                saw_cos = true;
+                assert_eq!(
+                    cas_ast::ordering::compare_expr(&ctx, arg, u),
+                    Ordering::Equal
+                );
+            }
+        }
+
+        assert!(saw_sin && saw_cos);
+    }
+
+    #[test]
+    fn extract_all_trig_squared_candidates_decomposes_higher_power() {
+        let mut ctx = Context::new();
+        let term = parse("sin(x)^3", &mut ctx).expect("term");
+        let x = parse("x", &mut ctx).expect("x");
+        let sin_x = parse("sin(x)", &mut ctx).expect("sin_x");
+
+        let candidates = extract_all_trig_squared_candidates(&mut ctx, term);
+        assert_eq!(candidates.len(), 1);
+        let (is_sin, arg, residual) = &candidates[0];
+
+        assert!(*is_sin);
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, *arg, x),
+            Ordering::Equal
+        );
+        assert_eq!(residual.len(), 1);
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, residual[0], sin_x),
+            Ordering::Equal
+        );
     }
 
     #[test]
