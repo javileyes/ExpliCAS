@@ -7,36 +7,8 @@ use crate::helpers::{as_mul, as_pow, extract_triple_angle_arg};
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_math::expr_rewrite::smart_mul;
+use cas_math::trig_multi_angle_support::{is_binary_trig_op, is_trig_sum, is_trivial_angle};
 use num_traits::{One, Zero};
-
-// Import helpers from sibling modules (via re-exports in parent)
-use super::extract_trig_arg;
-
-/// Check if a trig argument is "trivial" — a bare variable, constant,
-/// or simple numeric multiple thereof (e.g. `x`, `2x`, `π`).
-///
-/// Used by both TripleAngleRule and TripleAngleContractionRule to
-/// partition the domain and avoid cycles:
-/// - TripleAngleRule only EXPANDS when arg IS trivial (useful)
-/// - ContractionRule only CONTRACTS when arg is NOT trivial (safe)
-fn is_trivial_angle(ctx: &cas_ast::Context, arg: ExprId) -> bool {
-    match ctx.get(arg) {
-        Expr::Variable(_) | Expr::Constant(_) | Expr::Number(_) => true,
-        Expr::Mul(l, r) => {
-            let l_simple = matches!(
-                ctx.get(*l),
-                Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_)
-            );
-            let r_simple = matches!(
-                ctx.get(*r),
-                Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_)
-            );
-            l_simple && r_simple
-        }
-        Expr::Neg(inner) => is_trivial_angle(ctx, *inner),
-        _ => false,
-    }
-}
 
 // Triple Angle Shortcut Rule: sin(3x) → 3sin(x) - 4sin³(x), cos(3x) → 4cos³(x) - 3cos(x)
 // This is a performance optimization to avoid recursive expansion via double-angle rules.
@@ -252,50 +224,6 @@ fn is_inside_trig_quotient_pattern(
             false
         }
     })
-}
-
-/// Check if expr is Add(trig(A), trig(B)) or Sub(trig(A), trig(B)) or Add(trig(A), Neg(trig(B)))
-fn is_binary_trig_op(ctx: &cas_ast::Context, expr: ExprId, fn_name: &str) -> bool {
-    match ctx.get(expr) {
-        Expr::Add(l, r) => {
-            // Check for Add(sin(A), sin(B))
-            if extract_trig_arg(ctx, *l, fn_name).is_some()
-                && extract_trig_arg(ctx, *r, fn_name).is_some()
-            {
-                return true;
-            }
-            // Check for Add(sin(A), Neg(sin(B)))
-            if let Expr::Neg(inner) = ctx.get(*r) {
-                if extract_trig_arg(ctx, *l, fn_name).is_some()
-                    && extract_trig_arg(ctx, *inner, fn_name).is_some()
-                {
-                    return true;
-                }
-            }
-            if let Expr::Neg(inner) = ctx.get(*l) {
-                if extract_trig_arg(ctx, *r, fn_name).is_some()
-                    && extract_trig_arg(ctx, *inner, fn_name).is_some()
-                {
-                    return true;
-                }
-            }
-            false
-        }
-        Expr::Sub(l, r) => {
-            extract_trig_arg(ctx, *l, fn_name).is_some()
-                && extract_trig_arg(ctx, *r, fn_name).is_some()
-        }
-        _ => false,
-    }
-}
-
-/// Check if expr is Add(trig(A), trig(B))
-fn is_trig_sum(ctx: &cas_ast::Context, expr: ExprId, fn_name: &str) -> bool {
-    if let Expr::Add(l, r) = ctx.get(expr) {
-        return extract_trig_arg(ctx, *l, fn_name).is_some()
-            && extract_trig_arg(ctx, *r, fn_name).is_some();
-    }
-    false
 }
 
 define_rule!(
