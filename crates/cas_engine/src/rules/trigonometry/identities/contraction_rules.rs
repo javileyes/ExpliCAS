@@ -8,8 +8,9 @@ use crate::nary::Sign;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_math::trig_contraction_support::{
-    args_equal as trig_args_equal, extract_cos_cos_and_sin_sin, extract_cos_cos_minus_sin_sin,
-    extract_sin_cos_product_pair, semantic_sub,
+    args_equal as trig_args_equal, extract_coeff_trig_squared, extract_cos2_minus_sin2,
+    extract_cos_cos_and_sin_sin, extract_cos_cos_minus_sin_sin, extract_sin_cos_product_pair,
+    extract_two_sin_cos, semantic_sub,
 };
 
 // =============================================================================
@@ -278,7 +279,7 @@ impl crate::rule::Rule for DoubleAngleContractionRule {
         // Pattern 1: 2·sin(t)·cos(t) → sin(2t)
         // Matches Mul(2, Mul(sin(t), cos(t))) or Mul(Mul(2, sin(t)), cos(t)) etc.
         if let Some((l, r)) = as_mul(ctx, expr) {
-            if let Some((sin_arg, cos_arg)) = self.extract_two_sin_cos(ctx, l, r) {
+            if let Some((sin_arg, cos_arg)) = extract_two_sin_cos(ctx, l, r) {
                 // Check if sin and cos have the same argument
                 if crate::ordering::compare_expr(ctx, sin_arg, cos_arg) == std::cmp::Ordering::Equal
                 {
@@ -293,7 +294,7 @@ impl crate::rule::Rule for DoubleAngleContractionRule {
 
         // Pattern 2: cos²(t) - sin²(t) → cos(2t)
         if let Some((l, r)) = as_sub(ctx, expr) {
-            if let Some((cos_arg, sin_arg)) = self.extract_cos2_minus_sin2(ctx, l, r) {
+            if let Some((cos_arg, sin_arg)) = extract_cos2_minus_sin2(ctx, l, r) {
                 // Check if cos² and sin² have the same argument
                 if crate::ordering::compare_expr(ctx, cos_arg, sin_arg) == std::cmp::Ordering::Equal
                 {
@@ -319,164 +320,6 @@ impl crate::rule::Rule for DoubleAngleContractionRule {
 
     fn priority(&self) -> i32 {
         200 // Run before expansion rules to prevent ping-pong
-    }
-}
-
-impl DoubleAngleContractionRule {
-    /// Extract (sin_arg, cos_arg) from 2·sin(t)·cos(t) pattern
-    fn extract_two_sin_cos(
-        &self,
-        ctx: &cas_ast::Context,
-        l: ExprId,
-        r: ExprId,
-    ) -> Option<(ExprId, ExprId)> {
-        // Check all possible arrangements of 2, sin(t), cos(t)
-        let two_rat = num_rational::BigRational::from_integer(2.into());
-
-        // Case: Mul(2, Mul(sin, cos))
-        if let Expr::Number(n) = ctx.get(l) {
-            if *n == two_rat {
-                if let Expr::Mul(a, b) = ctx.get(r) {
-                    return self.extract_sin_cos_pair(ctx, *a, *b);
-                }
-            }
-        }
-
-        // Case: Mul(Mul(...), 2)
-        if let Expr::Number(n) = ctx.get(r) {
-            if *n == two_rat {
-                if let Expr::Mul(a, b) = ctx.get(l) {
-                    return self.extract_sin_cos_pair(ctx, *a, *b);
-                }
-            }
-        }
-
-        // Case: Mul(Mul(2, sin), cos) or Mul(Mul(2, cos), sin)
-        if let Expr::Mul(inner_l, inner_r) = ctx.get(l) {
-            if let Expr::Number(n) = ctx.get(*inner_l) {
-                if *n == two_rat {
-                    // inner_r is either sin or cos
-                    return self.extract_trig_and_match(ctx, *inner_r, r);
-                }
-            }
-            if let Expr::Number(n) = ctx.get(*inner_r) {
-                if *n == two_rat {
-                    return self.extract_trig_and_match(ctx, *inner_l, r);
-                }
-            }
-        }
-
-        // Case: Mul(sin, Mul(2, cos)) or similar
-        if let Expr::Mul(inner_l, inner_r) = ctx.get(r) {
-            if let Expr::Number(n) = ctx.get(*inner_l) {
-                if *n == two_rat {
-                    return self.extract_trig_and_match(ctx, *inner_r, l);
-                }
-            }
-            if let Expr::Number(n) = ctx.get(*inner_r) {
-                if *n == two_rat {
-                    return self.extract_trig_and_match(ctx, *inner_l, l);
-                }
-            }
-        }
-
-        None
-    }
-
-    fn extract_sin_cos_pair(
-        &self,
-        ctx: &cas_ast::Context,
-        a: ExprId,
-        b: ExprId,
-    ) -> Option<(ExprId, ExprId)> {
-        // Check if a is sin and b is cos, or vice versa
-        if let Expr::Function(fn_id_a, args_a) = ctx.get(a) {
-            if let Expr::Function(fn_id_b, args_b) = ctx.get(b) {
-                if args_a.len() == 1 && args_b.len() == 1 {
-                    let builtin_a = ctx.builtin_of(*fn_id_a);
-                    let builtin_b = ctx.builtin_of(*fn_id_b);
-                    if matches!(builtin_a, Some(BuiltinFn::Sin))
-                        && matches!(builtin_b, Some(BuiltinFn::Cos))
-                    {
-                        return Some((args_a[0], args_b[0]));
-                    }
-                    if matches!(builtin_a, Some(BuiltinFn::Cos))
-                        && matches!(builtin_b, Some(BuiltinFn::Sin))
-                    {
-                        return Some((args_b[0], args_a[0]));
-                    }
-                }
-            }
-        }
-        None
-    }
-
-    fn extract_trig_and_match(
-        &self,
-        ctx: &cas_ast::Context,
-        trig1: ExprId,
-        trig2: ExprId,
-    ) -> Option<(ExprId, ExprId)> {
-        if let Expr::Function(fn_id1, args1) = ctx.get(trig1) {
-            if let Expr::Function(fn_id2, args2) = ctx.get(trig2) {
-                if args1.len() == 1 && args2.len() == 1 {
-                    let builtin1 = ctx.builtin_of(*fn_id1);
-                    let builtin2 = ctx.builtin_of(*fn_id2);
-                    if matches!(builtin1, Some(BuiltinFn::Sin))
-                        && matches!(builtin2, Some(BuiltinFn::Cos))
-                    {
-                        return Some((args1[0], args2[0]));
-                    }
-                    if matches!(builtin1, Some(BuiltinFn::Cos))
-                        && matches!(builtin2, Some(BuiltinFn::Sin))
-                    {
-                        return Some((args2[0], args1[0]));
-                    }
-                }
-            }
-        }
-        None
-    }
-
-    /// Extract (cos_arg, sin_arg) from cos²(t) - sin²(t) pattern
-    fn extract_cos2_minus_sin2(
-        &self,
-        ctx: &cas_ast::Context,
-        l: ExprId,
-        r: ExprId,
-    ) -> Option<(ExprId, ExprId)> {
-        // l should be cos²(t), r should be sin²(t)
-        let two_rat = num_rational::BigRational::from_integer(2.into());
-
-        if let Expr::Pow(base_l, exp_l) = ctx.get(l) {
-            if let Expr::Number(n) = ctx.get(*exp_l) {
-                if *n == two_rat {
-                    if let Expr::Function(fn_id_l, args_l) = ctx.get(*base_l) {
-                        if matches!(ctx.builtin_of(*fn_id_l), Some(BuiltinFn::Cos))
-                            && args_l.len() == 1
-                        {
-                            // Check r is sin²
-                            if let Expr::Pow(base_r, exp_r) = ctx.get(r) {
-                                if let Expr::Number(m) = ctx.get(*exp_r) {
-                                    if *m == two_rat {
-                                        if let Expr::Function(fn_id_r, args_r) = ctx.get(*base_r) {
-                                            if matches!(
-                                                ctx.builtin_of(*fn_id_r),
-                                                Some(BuiltinFn::Sin)
-                                            ) && args_r.len() == 1
-                                            {
-                                                return Some((args_l[0], args_r[0]));
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        None
     }
 }
 
@@ -555,7 +398,7 @@ impl crate::rule::Rule for Cos2xAdditiveContractionRule {
                 }
 
                 if let Some((trig_arg, trig_is_sin, mut coeff)) =
-                    Self::extract_coeff_trig_squared(ctx, term_j)
+                    extract_coeff_trig_squared(ctx, term_j)
                 {
                     // Account for the additive sign from the signed decomposition
                     if sign_j == Sign::Neg {
@@ -614,87 +457,6 @@ impl crate::rule::Rule for Cos2xAdditiveContractionRule {
 
     fn priority(&self) -> i32 {
         200
-    }
-}
-
-impl Cos2xAdditiveContractionRule {
-    /// Extract (trig_arg, is_sin, coefficient) from a term like ±k·sin²(t) or ±k·cos²(t).
-    /// Returns the argument to the trig function, whether it's sin (true) or cos (false),
-    /// and the signed coefficient (including the sign from Neg).
-    fn extract_coeff_trig_squared(
-        ctx: &cas_ast::Context,
-        term: ExprId,
-    ) -> Option<(ExprId, bool, num_rational::BigRational)> {
-        let two_rat = num_rational::BigRational::from_integer(2.into());
-
-        // Handle negation: Neg(inner) → extract from inner with negated coeff
-        let (base_term, sign) = if let Expr::Neg(inner) = ctx.get(term) {
-            (*inner, num_rational::BigRational::from_integer((-1).into()))
-        } else {
-            (term, num_rational::BigRational::from_integer(1.into()))
-        };
-
-        // Flatten multiplication factors
-        let mut factors = Vec::new();
-        let mut stack = vec![base_term];
-        while let Some(curr) = stack.pop() {
-            if let Expr::Mul(l, r) = ctx.get(curr) {
-                stack.push(*l);
-                stack.push(*r);
-            } else {
-                factors.push(curr);
-            }
-        }
-
-        // Find trig²(t) factor and numeric coefficient
-        let mut trig_arg = None;
-        let mut is_sin = false;
-        let mut trig_idx = None;
-        let mut numeric_coeff = sign;
-
-        for (i, &f) in factors.iter().enumerate() {
-            // Check for trig²(t) = Pow(trig(t), 2)
-            if let Expr::Pow(base, exp) = ctx.get(f) {
-                if let Expr::Number(n) = ctx.get(*exp) {
-                    if *n == two_rat {
-                        if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                            if args.len() == 1 {
-                                let builtin = ctx.builtin_of(*fn_id);
-                                if matches!(builtin, Some(cas_ast::BuiltinFn::Sin)) {
-                                    trig_arg = Some(args[0]);
-                                    is_sin = true;
-                                    trig_idx = Some(i);
-                                    break;
-                                } else if matches!(builtin, Some(cas_ast::BuiltinFn::Cos)) {
-                                    trig_arg = Some(args[0]);
-                                    is_sin = false;
-                                    trig_idx = Some(i);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        let trig_arg = trig_arg?;
-        let trig_idx = trig_idx?;
-
-        // Multiply remaining factors to get the coefficient
-        for (i, &f) in factors.iter().enumerate() {
-            if i == trig_idx {
-                continue;
-            }
-            if let Expr::Number(n) = ctx.get(f) {
-                numeric_coeff *= n.clone();
-            } else {
-                // Non-numeric factor: this isn't a simple k·trig²(t) pattern
-                return None;
-            }
-        }
-
-        Some((trig_arg, is_sin, numeric_coeff))
     }
 }
 
