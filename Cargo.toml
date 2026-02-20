@@ -12,6 +12,7 @@ members = [
     "crates/cas_session",
     "crates/cas_api_models",
     "crates/cas_session_core",
+    "crates/cas_solver_core",
 ]
 resolver = "2"
 

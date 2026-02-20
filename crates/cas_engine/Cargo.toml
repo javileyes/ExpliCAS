@@ -8,6 +8,7 @@ rust-version.workspace = true
 cas_ast = { path = "../cas_ast" }
 cas_formatter = { path = "../cas_formatter" }
 cas_math = { path = "../cas_math", default-features = false }
+cas_solver_core = { path = "../cas_solver_core" }
 num-rational = "0.4"
 num-bigint = "0.4"
 num-traits = "0.2"
