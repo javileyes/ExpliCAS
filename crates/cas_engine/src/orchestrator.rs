@@ -1,13 +1,13 @@
 use crate::best_so_far::{BestSoFar, BestSoFarBudget};
 use crate::expand::eager_eval_expand_calls;
 use crate::phase::{SimplifyOptions, SimplifyPhase};
-use crate::rationalize_policy::AutoRationalizeLevel;
 use crate::rules::algebra::gcd_modp::eager_eval_poly_gcd_calls;
 use crate::{Simplifier, Step};
 use cas_ast::{BuiltinFn, Context, ExprId};
 use cas_math::poly_lowering::{self, PolyLowerStepKind};
 use cas_math::poly_lowering_ops::PolyBinaryOp;
 use cas_math::poly_store::clear_thread_local_store;
+use cas_math::rationalize_policy::AutoRationalizeLevel;
 use std::collections::HashSet;
 
 fn to_math_auto_expand_budget(
@@ -377,14 +377,15 @@ impl Orchestrator {
             pipeline_stats.rationalize_level = Some(auto_level);
             if stats.changed {
                 pipeline_stats.rationalize_outcome =
-                    Some(crate::rationalize_policy::RationalizeOutcome::Applied);
+                    Some(cas_math::rationalize_policy::RationalizeOutcome::Applied);
             } else {
                 // If enabled but didn't change, it was blocked for some reason
                 // We don't have detailed reason here; would need deeper integration
-                pipeline_stats.rationalize_outcome =
-                    Some(crate::rationalize_policy::RationalizeOutcome::NotApplied(
-                        crate::rationalize_policy::RationalizeReason::NoBinomialFound,
-                    ));
+                pipeline_stats.rationalize_outcome = Some(
+                    cas_math::rationalize_policy::RationalizeOutcome::NotApplied(
+                        cas_math::rationalize_policy::RationalizeReason::NoBinomialFound,
+                    ),
+                );
             }
 
             current = next;
@@ -394,10 +395,11 @@ impl Orchestrator {
             best.consider(current, &all_steps, &simplifier.context);
         } else {
             pipeline_stats.rationalize_level = Some(AutoRationalizeLevel::Off);
-            pipeline_stats.rationalize_outcome =
-                Some(crate::rationalize_policy::RationalizeOutcome::NotApplied(
-                    crate::rationalize_policy::RationalizeReason::PolicyDisabled,
-                ));
+            pipeline_stats.rationalize_outcome = Some(
+                cas_math::rationalize_policy::RationalizeOutcome::NotApplied(
+                    cas_math::rationalize_policy::RationalizeReason::PolicyDisabled,
+                ),
+            );
         }
 
         // Phase 4: PostCleanup - Final cleanup

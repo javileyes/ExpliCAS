@@ -1236,14 +1236,14 @@ define_rule!(
                     for (i, (num_call, den_call)) in shared.iter().enumerate() {
                         let temp_name = format!("__opq{}", i);
                         let temp_var = ctx.var(&temp_name);
-                        let opts = crate::substitute::SubstituteOptions {
+                        let opts = cas_math::substitute::SubstituteOptions {
                             power_aware: true,
                             ..Default::default()
                         };
-                        sub_num = crate::substitute::substitute_power_aware(
+                        sub_num = cas_math::substitute::substitute_power_aware(
                             ctx, sub_num, *num_call, temp_var, opts,
                         );
-                        sub_den = crate::substitute::substitute_power_aware(
+                        sub_den = cas_math::substitute::substitute_power_aware(
                             ctx, sub_den, *den_call, temp_var, opts,
                         );
                         temp_vars.push((*num_call, temp_var));
@@ -1276,8 +1276,8 @@ define_rule!(
                         if !is_still_div {
                             let mut final_result = simplified;
                             for (call_id, temp_var) in &temp_vars {
-                                let opts = crate::substitute::SubstituteOptions::default();
-                                final_result = crate::substitute::substitute_power_aware(
+                                let opts = cas_math::substitute::SubstituteOptions::default();
+                                final_result = cas_math::substitute::substitute_power_aware(
                                     &mut simplifier.context,
                                     final_result,
                                     *temp_var,

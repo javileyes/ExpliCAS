@@ -27,8 +27,6 @@ pub(crate) mod parent_context;
 pub(crate) mod phase;
 pub(crate) mod profile_cache;
 pub(crate) mod profiler;
-pub(crate) mod rationalize;
-pub(crate) mod rationalize_policy;
 pub(crate) mod recursion_guard;
 pub(crate) mod rule;
 pub mod rules;
@@ -38,7 +36,6 @@ pub mod solver;
 pub(crate) mod step;
 pub(crate) mod step_optimization;
 pub(crate) mod strategies;
-pub(crate) mod substitute;
 pub(crate) mod telescoping;
 pub(crate) mod timeline;
 
@@ -74,6 +71,14 @@ pub use assumptions::{
     AssumptionReporting, ConditionClass,
 };
 pub use budget::{Budget, BudgetExceeded, BudgetScope, Metric, Operation, PassStats};
+pub use cas_math::rationalize::{rationalize_denominator, RationalizeConfig, RationalizeResult};
+pub use cas_math::rationalize_policy::{
+    AutoRationalizeLevel, RationalizeOutcome, RationalizeReason,
+};
+pub use cas_math::substitute::{
+    substitute_power_aware, substitute_with_trace, SubstituteOptions, SubstituteTraceResult,
+    SubstituteTraceStep,
+};
 pub use const_fold::{fold_constants, ConstFoldMode, ConstFoldResult};
 pub use cycle_events::{CycleEvent, CycleLevel};
 pub use diagnostics::{Diagnostics, RequireOrigin, RequiredItem};
@@ -121,8 +126,6 @@ pub use phase::{
 };
 pub use profile_cache::ProfileCache;
 pub use profiler::{RuleProfiler, RuleStats};
-pub use rationalize::{rationalize_denominator, RationalizeConfig, RationalizeResult};
-pub use rationalize_policy::{AutoRationalizeLevel, RationalizeOutcome, RationalizeReason};
 pub use rule::{ChainedRewrite, Rewrite, Rule, SimpleRule, SoundnessLabel};
 pub use semantics::{
     AssumeScope, BranchPolicy, EvalConfig, InverseTrigPolicy, NormalFormGoal, ValueDomain,
@@ -130,10 +133,6 @@ pub use semantics::{
 pub use solve_safety::{RequirementDescriptor, SimplifyPurpose, SolveSafety};
 pub use step::{
     pathsteps_to_expr_path, DisplayEvalSteps, ImportanceLevel, PathStep, Step, StepCategory,
-};
-pub use substitute::{
-    substitute_power_aware, substitute_with_trace, SubstituteOptions, SubstituteTraceResult,
-    SubstituteTraceStep,
 };
 pub use telescoping::{
     telescope, try_dirichlet_kernel_identity_pub, DirichletKernelResult, TelescopingResult,

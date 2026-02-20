@@ -142,9 +142,9 @@ pub struct PipelineStats {
     pub post_cleanup: PhaseStats,
     pub total_rewrites: usize,
     /// Outcome of rationalization attempt (if phase was run)
-    pub rationalize_outcome: Option<crate::rationalize_policy::RationalizeOutcome>,
+    pub rationalize_outcome: Option<cas_math::rationalize_policy::RationalizeOutcome>,
     /// The level that was attempted
-    pub rationalize_level: Option<crate::rationalize_policy::AutoRationalizeLevel>,
+    pub rationalize_level: Option<cas_math::rationalize_policy::AutoRationalizeLevel>,
     /// Collected assumptions (deduplicated, with counts)
     pub assumptions: Vec<crate::assumptions::AssumptionRecord>,
     /// Collected cycle events detected during simplification
@@ -325,7 +325,7 @@ pub struct SimplifyOptions {
 
     /// Rationalization policy (includes auto_level and budgets).
     /// Set auto_level to Off for `simplify --no-rationalize`.
-    pub rationalize: crate::rationalize_policy::RationalizePolicy,
+    pub rationalize: cas_math::rationalize_policy::RationalizePolicy,
 
     /// Per-phase iteration budgets.
     pub budgets: PhaseBudgets,
@@ -359,7 +359,7 @@ impl Default for SimplifyOptions {
     fn default() -> Self {
         Self {
             enable_transform: true,
-            rationalize: crate::rationalize_policy::RationalizePolicy::default(),
+            rationalize: cas_math::rationalize_policy::RationalizePolicy::default(),
             budgets: PhaseBudgets::default(),
             collect_steps: true,
             expand_mode: false,
@@ -375,7 +375,7 @@ impl SimplifyOptions {
     /// Forces aggressive distribution by setting expand_mode = true
     pub fn for_expand() -> Self {
         let mut opt = Self::default();
-        opt.rationalize.auto_level = crate::rationalize_policy::AutoRationalizeLevel::Off;
+        opt.rationalize.auto_level = cas_math::rationalize_policy::AutoRationalizeLevel::Off;
         opt.expand_mode = true;
         opt
     }
@@ -391,7 +391,7 @@ impl SimplifyOptions {
     /// Options for `simplify --no-rationalize`
     pub fn no_rationalize() -> Self {
         let mut opt = Self::default();
-        opt.rationalize.auto_level = crate::rationalize_policy::AutoRationalizeLevel::Off;
+        opt.rationalize.auto_level = cas_math::rationalize_policy::AutoRationalizeLevel::Off;
         opt
     }
 

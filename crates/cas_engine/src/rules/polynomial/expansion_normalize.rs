@@ -117,11 +117,11 @@ impl PolynomialIdentityZeroRule {
         for &call_id in &unique_calls {
             let temp_name = format!("__opq{}", atom_idx);
             let temp_var = tmp_ctx.var(&temp_name);
-            let opts = crate::substitute::SubstituteOptions {
+            let opts = cas_math::substitute::SubstituteOptions {
                 power_aware: true,
                 ..Default::default()
             };
-            sub_expr = crate::substitute::substitute_power_aware(
+            sub_expr = cas_math::substitute::substitute_power_aware(
                 &mut tmp_ctx,
                 sub_expr,
                 call_id,
@@ -161,11 +161,11 @@ impl PolynomialIdentityZeroRule {
         // 5b: Substitute function calls for display
         for &call_id in &unique_calls {
             let disp_var = ctx.var(&display_name(disp_idx));
-            let opts = crate::substitute::SubstituteOptions {
+            let opts = cas_math::substitute::SubstituteOptions {
                 power_aware: true,
                 ..Default::default()
             };
-            display_expr = crate::substitute::substitute_power_aware(
+            display_expr = cas_math::substitute::substitute_power_aware(
                 ctx,
                 display_expr,
                 call_id,

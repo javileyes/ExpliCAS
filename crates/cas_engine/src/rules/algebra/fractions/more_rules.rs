@@ -24,8 +24,8 @@ define_rule!(
     None,
     PhaseMask::RATIONALIZE,
     |ctx, expr| {
-        use crate::rationalize_policy::RationalizeReason;
         use cas_ast::views::{as_rational_const, count_distinct_numeric_surds, is_surd_free};
+        use cas_math::rationalize_policy::RationalizeReason;
         use num_rational::BigRational;
 
         // Only match Div expressions - use zero-clone helper
