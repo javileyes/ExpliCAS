@@ -217,27 +217,6 @@ define_rule!(
 // (sin(A)+sin(B))/(cos(A)+cos(B)) → sin((A+B)/2)/cos((A+B)/2)
 // =============================================================================
 
-/// Build half_diff = (A-B)/2 preserving the order of A and B.
-/// Use this for sin((A-B)/2) where the sign matters.
-/// Pre-simplifies the difference to produce cleaner output.
-pub fn build_half_diff(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> ExprId {
-    build_half_diff_with_simplifier(ctx, a, b, false, crate::collect::collect)
-}
-
-/// Build canonical half_diff = (A-B)/2 with consistent ordering.
-/// Since cos((A-B)/2) == cos((B-A)/2), we use canonical order to ensure
-/// numerator and denominator produce identical expressions for cancellation.
-/// Use this for cos((A-B)/2) where the sign doesn't matter.
-fn build_canonical_half_diff(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> ExprId {
-    build_half_diff_with_simplifier(ctx, a, b, true, crate::collect::collect)
-}
-
-/// Build avg = (A+B)/2, pre-simplifying sum for cleaner output
-/// This eliminates the need for a separate "Combine Like Terms" step
-pub fn build_avg(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> ExprId {
-    build_avg_with_simplifier(ctx, a, b, crate::collect::collect)
-}
-
 // SinCosSumQuotientRule: Handles two patterns:
 // 1. (sin(A)+sin(B))/(cos(A)+cos(B)) → tan((A+B)/2)  [uses sin sum identity]
 // 2. (sin(A)-sin(B))/(cos(A)+cos(B)) → tan((A-B)/2)  [uses sin diff identity]
@@ -293,7 +272,7 @@ define_rule!(
         }
 
         // Build avg = (A+B)/2 (commutative, order doesn't matter)
-        let avg = build_avg(ctx, sin_a, sin_b);
+        let avg = build_avg_with_simplifier(ctx, sin_a, sin_b, crate::collect::collect);
 
         // Normalize avg for even functions (cos)
         let avg_normalized = normalize_for_even_fn(ctx, avg);
@@ -303,7 +282,8 @@ define_rule!(
         if is_diff {
             // DIFFERENCE CASE: sin(A) - sin(B) = 2·cos(avg)·sin(half_diff)
             // half_diff = (A-B)/2 - ORDER MATTERS for sin! Use build_half_diff.
-            let half_diff = build_half_diff(ctx, sin_a, sin_b);
+            let half_diff =
+                build_half_diff_with_simplifier(ctx, sin_a, sin_b, false, crate::collect::collect);
             // For cos(half_diff), we can normalize since cos is even
             let half_diff_for_cos = normalize_for_even_fn(ctx, half_diff);
             // DIFFERENCE CASE: sin(A) - sin(B) = 2·cos(avg)·sin(half_diff)
@@ -354,7 +334,8 @@ define_rule!(
             // cos(A) + cos(B) = 2·cos(avg)·cos(half_diff)
             // Cancel 2·cos(half_diff) → sin(avg)/cos(avg) = tan(avg)
             // For sum case, we use canonical half_diff since only cos uses it (even function)
-            let half_diff = build_canonical_half_diff(ctx, sin_a, sin_b);
+            let half_diff =
+                build_half_diff_with_simplifier(ctx, sin_a, sin_b, true, crate::collect::collect);
             let half_diff_normalized = normalize_for_even_fn(ctx, half_diff);
 
             // Final result: sin(avg)/cos(avg)

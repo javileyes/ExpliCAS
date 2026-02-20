@@ -7,7 +7,9 @@ use crate::rules::trigonometry::values::detect_special_angle;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_math::expr_rewrite::smart_mul;
 use cas_math::trig_multi_angle_support::is_multiple_angle;
-use cas_math::trig_tan_triple_support::{is_pi_over_3_minus_u, is_u_plus_pi_over_3};
+use cas_math::trig_tan_triple_support::{
+    is_part_of_tan_triple_product_with_ancestors, is_pi_over_3_minus_u, is_u_plus_pi_over_3,
+};
 
 // =============================================================================
 // TRIPLE TANGENT PRODUCT IDENTITY
@@ -161,91 +163,6 @@ impl crate::rule::Rule for TanTripleProductRule {
     }
 }
 
-/// Runtime check: is this tan() part of a tan(u)·tan(π/3+u)·tan(π/3-u) triple product?
-/// This is called during rule application to prevent TanToSinCosRule from expanding
-/// tan() nodes that will be handled by TanTripleProductRule.
-fn is_part_of_tan_triple_product(
-    ctx: &cas_ast::Context,
-    tan_expr: ExprId,
-    parent_ctx: &crate::parent_context::ParentContext,
-) -> bool {
-    // Verify this is actually a tan() function
-    if !matches!(ctx.get(tan_expr), Expr::Function(fn_id, args) if ctx.is_builtin(*fn_id, BuiltinFn::Tan) && args.len() == 1)
-    {
-        return false;
-    }
-
-    // Find the highest Mul ancestor in the chain
-    // Ancestors are stored from furthest to closest: [great-grandparent, grandparent, parent]
-    // We want to find the outermost Mul that contains this tan()
-    let ancestors = parent_ctx.all_ancestors();
-
-    // Find the first (earliest in list = highest in tree) Mul ancestor
-    let mut mul_root: Option<ExprId> = None;
-    for &ancestor in ancestors {
-        if matches!(ctx.get(ancestor), Expr::Mul(_, _)) {
-            mul_root = Some(ancestor);
-            break; // Take the highest Mul (first in ancestor list)
-        }
-    }
-
-    let Some(mul_root) = mul_root else {
-        return false;
-    };
-
-    // Flatten the Mul to get all factors
-    let mut factors = Vec::new();
-    let mut stack = vec![mul_root];
-    while let Some(id) = stack.pop() {
-        match ctx.get(id) {
-            Expr::Mul(l, r) => {
-                stack.push(*l);
-                stack.push(*r);
-            }
-            _ => factors.push(id),
-        }
-    }
-
-    // Collect tan() arguments
-    let mut tan_args: Vec<ExprId> = Vec::new();
-    for &factor in &factors {
-        if let Expr::Function(fn_id, args) = ctx.get(factor) {
-            if ctx.is_builtin(*fn_id, BuiltinFn::Tan) && args.len() == 1 {
-                tan_args.push(args[0]);
-            }
-        }
-    }
-
-    // Need exactly 3 tan() factors for triple product
-    if tan_args.len() != 3 {
-        return false;
-    }
-
-    // Check if they form the triple product pattern {u, u+π/3, π/3-u}
-    for i in 0..3 {
-        let u = tan_args[i];
-        let others: Vec<_> = tan_args
-            .iter()
-            .enumerate()
-            .filter(|&(j, _)| j != i)
-            .map(|(_, &arg)| arg)
-            .collect();
-
-        let arg_j = others[0];
-        let arg_k = others[1];
-
-        // Check both orderings
-        let match1 = is_u_plus_pi_over_3(ctx, arg_j, u) && is_pi_over_3_minus_u(ctx, arg_k, u);
-        let match2 = is_pi_over_3_minus_u(ctx, arg_j, u) && is_u_plus_pi_over_3(ctx, arg_k, u);
-
-        if match1 || match2 {
-            return true;
-        }
-    }
-
-    false
-}
-
 /// Convert tan(x) to sin(x)/cos(x) UNLESS it's part of a Pythagorean pattern
 pub struct TanToSinCosRule;
 
@@ -312,7 +229,7 @@ impl crate::rule::Rule for TanToSinCosRule {
         // If this tan() is inside a Mul that forms tan(u)·tan(π/3+u)·tan(π/3-u), don't expand.
         // This works even after ExprIds change from canonicalization because we check the
         // current structure, not pre-scanned marks.
-        if is_part_of_tan_triple_product(ctx, expr, parent_ctx) {
+        if is_part_of_tan_triple_product_with_ancestors(ctx, expr, parent_ctx.all_ancestors()) {
             return None; // Let TanTripleProductRule handle it
         }
 

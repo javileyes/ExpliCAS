@@ -5,10 +5,13 @@ use crate::helpers::extract_double_angle_arg;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_math::expr_rewrite::smart_mul;
-use cas_math::trig_sum_product_support::{extract_trig_two_term_diff, extract_trig_two_term_sum};
+use cas_math::trig_sum_product_support::{
+    build_avg_with_simplifier, build_half_diff_with_simplifier, extract_trig_two_term_diff,
+    extract_trig_two_term_sum,
+};
 
 // Import helpers from sibling modules (via re-exports in parent)
-use super::{build_avg, build_half_diff, is_multiple_angle, normalize_for_even_fn};
+use super::{is_multiple_angle, normalize_for_even_fn};
 
 // =============================================================================
 // STANDALONE SUM-TO-PRODUCT RULE
@@ -69,8 +72,9 @@ define_rule!(
         }
 
         // Build avg = (A+B)/2 and half_diff = (A-B)/2
-        let avg = build_avg(ctx, arg_a, arg_b);
-        let half_diff = build_half_diff(ctx, arg_a, arg_b);
+        let avg = build_avg_with_simplifier(ctx, arg_a, arg_b, crate::collect::collect);
+        let half_diff =
+            build_half_diff_with_simplifier(ctx, arg_a, arg_b, false, crate::collect::collect);
         let two = ctx.num(2);
 
         let (result, desc) = match (fn_name, is_diff) {

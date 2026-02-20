@@ -45,7 +45,6 @@ pub use sum_to_product_rules::{register, AngleConsistencyRule, DyadicCosProductT
 
 mod power_products_rules;
 pub use cas_math::trig_sum_product_support::{extract_trig_arg, normalize_for_even_fn};
-pub use power_products_rules::{build_avg, build_half_diff};
 pub use power_products_rules::{
     SinCosQuarticSumRule, SinCosSumQuotientRule, TrigHiddenCubicIdentityRule,
 };

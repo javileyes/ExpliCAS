@@ -1,3 +1,4 @@
+use crate::expr_nary::mul_leaves;
 use cas_ast::{Context, Expr, ExprId};
 use std::cmp::Ordering;
 
@@ -81,6 +82,69 @@ pub fn is_pi_over_3_minus_u(ctx: &Context, expr: ExprId, u: ExprId) -> bool {
     false
 }
 
+/// Check if `tan_expr` participates in a triple-product scaffold
+/// `tan(u)·tan(π/3+u)·tan(π/3-u)` within the provided ancestor chain.
+pub fn is_part_of_tan_triple_product_with_ancestors(
+    ctx: &Context,
+    tan_expr: ExprId,
+    ancestors: &[ExprId],
+) -> bool {
+    if !matches!(
+        ctx.get(tan_expr),
+        Expr::Function(fn_id, args) if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Tan) && args.len() == 1
+    ) {
+        return false;
+    }
+
+    let mut mul_root: Option<ExprId> = None;
+    for &ancestor in ancestors {
+        if matches!(ctx.get(ancestor), Expr::Mul(_, _)) {
+            mul_root = Some(ancestor);
+            break;
+        }
+    }
+
+    let Some(mul_root) = mul_root else {
+        return false;
+    };
+
+    let factors = mul_leaves(ctx, mul_root);
+    let mut tan_args: Vec<ExprId> = Vec::new();
+
+    for &factor in &factors {
+        if let Expr::Function(fn_id, args) = ctx.get(factor) {
+            if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Tan) && args.len() == 1 {
+                tan_args.push(args[0]);
+            }
+        }
+    }
+
+    if tan_args.len() != 3 {
+        return false;
+    }
+
+    for i in 0..3 {
+        let u = tan_args[i];
+        let others: Vec<_> = tan_args
+            .iter()
+            .enumerate()
+            .filter(|&(j, _)| j != i)
+            .map(|(_, &arg)| arg)
+            .collect();
+
+        let arg_j = others[0];
+        let arg_k = others[1];
+
+        let match1 = is_u_plus_pi_over_3(ctx, arg_j, u) && is_pi_over_3_minus_u(ctx, arg_k, u);
+        let match2 = is_pi_over_3_minus_u(ctx, arg_j, u) && is_u_plus_pi_over_3(ctx, arg_k, u);
+        if match1 || match2 {
+            return true;
+        }
+    }
+
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,5 +171,31 @@ mod tests {
         assert!(is_u_plus_pi_over_3(&ctx, plus, u));
         assert!(is_pi_over_3_minus_u(&ctx, minus, u));
         assert!(is_pi_over_3_minus_u(&ctx, minus_canonical, u));
+    }
+
+    #[test]
+    fn tan_triple_product_pattern_is_detected_from_ancestors() {
+        let mut ctx = Context::new();
+        let expr = parse("tan(u)*tan(pi/3+u)*tan(pi/3-u)", &mut ctx).expect("expr");
+        let tan_u = parse("tan(u)", &mut ctx).expect("tan_u");
+
+        assert!(is_part_of_tan_triple_product_with_ancestors(
+            &ctx,
+            tan_u,
+            &[expr]
+        ));
+    }
+
+    #[test]
+    fn non_matching_tan_product_is_rejected() {
+        let mut ctx = Context::new();
+        let expr = parse("tan(u)*tan(v)*tan(w)", &mut ctx).expect("expr");
+        let tan_u = parse("tan(u)", &mut ctx).expect("tan_u");
+
+        assert!(!is_part_of_tan_triple_product_with_ancestors(
+            &ctx,
+            tan_u,
+            &[expr]
+        ));
     }
 }
