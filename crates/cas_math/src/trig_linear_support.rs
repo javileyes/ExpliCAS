@@ -83,7 +83,10 @@ mod tests {
         let sin_x = parse("sin(x)", &mut ctx).expect("parse sin");
         let tan_x = parse("tan(x)", &mut ctx).expect("parse tan");
 
-        assert_eq!(extract_sin_cos_fn_arg(&ctx, sin_x).map(|(n, _)| n), Some("sin"));
+        assert_eq!(
+            extract_sin_cos_fn_arg(&ctx, sin_x).map(|(n, _)| n),
+            Some("sin")
+        );
         assert!(extract_sin_cos_fn_arg(&ctx, tan_x).is_none());
     }
 
@@ -108,7 +111,8 @@ mod tests {
 
         let zero = build_coef_times_base(&mut ctx, &BigRational::from_integer(0.into()), base);
         let one = build_coef_times_base(&mut ctx, &BigRational::from_integer(1.into()), base);
-        let minus_one = build_coef_times_base(&mut ctx, &BigRational::from_integer((-1).into()), base);
+        let minus_one =
+            build_coef_times_base(&mut ctx, &BigRational::from_integer((-1).into()), base);
 
         let expected_zero = parse("0", &mut ctx).expect("parse 0");
         let expected_one = parse("x", &mut ctx).expect("parse x");

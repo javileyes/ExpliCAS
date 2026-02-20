@@ -59,10 +59,7 @@ pub fn extract_trig_half_angle(ctx: &Context, expr: ExprId) -> Option<(ExprId, b
 
 /// Extract coefficient and cot argument from a term.
 /// Returns `(coefficient_opt, cot_arg, is_positive)` where `coefficient_opt=None` means `1`.
-pub fn extract_cot_term(
-    ctx: &Context,
-    term: ExprId,
-) -> Option<(Option<ExprId>, ExprId, bool)> {
+pub fn extract_cot_term(ctx: &Context, term: ExprId) -> Option<(Option<ExprId>, ExprId, bool)> {
     let term_data = ctx.get(term);
 
     let (inner_term, is_positive) = match term_data {
@@ -104,7 +101,10 @@ mod tests {
         let mut ctx = Context::new();
         let div = parse("x/2", &mut ctx).expect("x/2");
         let x = parse("x", &mut ctx).expect("x");
-        let half = ctx.add(Expr::Number(num_rational::BigRational::new(1.into(), 2.into())));
+        let half = ctx.add(Expr::Number(num_rational::BigRational::new(
+            1.into(),
+            2.into(),
+        )));
         let mul = ctx.add(Expr::Mul(half, x));
 
         assert_eq!(
