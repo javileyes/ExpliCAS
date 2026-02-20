@@ -25,7 +25,6 @@
 use cas_ast::{Equation, Expr, ExprId, SolutionSet};
 use cas_formatter::DisplayExpr;
 use cas_math::expr_predicates::contains_variable;
-use cas_solver_core::verification::{conditional_summary, discrete_summary};
 use num_traits::Zero;
 
 use crate::engine::Simplifier;
@@ -143,93 +142,8 @@ pub fn verify_solution_set(
     var: &str,
     solutions: &SolutionSet,
 ) -> VerifyResult {
-    match solutions {
-        SolutionSet::Empty => VerifyResult {
-            solutions: vec![],
-            summary: VerifySummary::Empty,
-            guard_description: None,
-        },
-
-        SolutionSet::Discrete(sols) => {
-            let mut results = Vec::with_capacity(sols.len());
-            let mut verified_count = 0;
-
-            for &sol in sols {
-                let status = verify_solution(simplifier, equation, var, sol);
-                if matches!(status, VerifyStatus::Verified) {
-                    verified_count += 1;
-                }
-                results.push((sol, status));
-            }
-
-            let summary = discrete_summary(results.len(), verified_count);
-
-            VerifyResult {
-                solutions: results,
-                summary,
-                guard_description: None,
-            }
-        }
-
-        SolutionSet::AllReals => VerifyResult {
-            solutions: vec![],
-            summary: VerifySummary::NotCheckable,
-            guard_description: Some("not checkable (infinite set: all reals)".to_string()),
-        },
-
-        SolutionSet::Continuous(_interval) => VerifyResult {
-            solutions: vec![],
-            summary: VerifySummary::NotCheckable,
-            guard_description: Some("not checkable (continuous interval)".to_string()),
-        },
-
-        SolutionSet::Union(_intervals) => VerifyResult {
-            solutions: vec![],
-            summary: VerifySummary::NotCheckable,
-            guard_description: Some("not checkable (union of intervals)".to_string()),
-        },
-
-        SolutionSet::Residual(_expr) => VerifyResult {
-            solutions: vec![],
-            summary: VerifySummary::NotCheckable,
-            guard_description: Some("unverifiable (residual expression)".to_string()),
-        },
-
-        SolutionSet::Conditional(cases) => {
-            // For conditional, verify each case separately
-            let mut all_results = Vec::new();
-            let mut has_verified = false;
-            let mut has_not_checkable = false;
-
-            for case in cases {
-                // Get the solution set from this case's SolveResult
-                let case_solutions = &case.then.solutions;
-
-                // Recursively verify this case's solutions
-                let case_result = verify_solution_set(simplifier, equation, var, case_solutions);
-
-                match case_result.summary {
-                    VerifySummary::AllVerified | VerifySummary::PartiallyVerified => {
-                        has_verified = true;
-                    }
-                    VerifySummary::NotCheckable => {
-                        has_not_checkable = true;
-                    }
-                    _ => {}
-                }
-
-                all_results.extend(case_result.solutions);
-            }
-
-            let summary = conditional_summary(has_verified, has_not_checkable);
-
-            VerifyResult {
-                solutions: all_results,
-                summary,
-                guard_description: None,
-            }
-        }
-    }
+    let mut verify_one = |sol: ExprId| verify_solution(simplifier, equation, var, sol);
+    cas_solver_core::verification::verify_solution_set_with(solutions, &mut verify_one)
 }
 
 #[cfg(test)]

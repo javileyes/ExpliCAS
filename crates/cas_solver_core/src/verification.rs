@@ -1,4 +1,4 @@
-use cas_ast::ExprId;
+use cas_ast::{ExprId, SolutionSet};
 
 /// Result of verifying a single solution.
 #[derive(Debug, Clone)]
@@ -45,6 +45,94 @@ pub struct VerifyResult {
     pub guard_description: Option<String>,
 }
 
+/// Verify a solution set using a callback for each discrete candidate.
+///
+/// The callback is invoked only for `SolutionSet::Discrete` entries.
+/// Non-discrete sets are mapped to `NotCheckable` summaries.
+pub fn verify_solution_set_with<F>(solutions: &SolutionSet, verify_discrete: &mut F) -> VerifyResult
+where
+    F: FnMut(ExprId) -> VerifyStatus,
+{
+    match solutions {
+        SolutionSet::Empty => VerifyResult {
+            solutions: vec![],
+            summary: VerifySummary::Empty,
+            guard_description: None,
+        },
+
+        SolutionSet::Discrete(sols) => {
+            let mut results = Vec::with_capacity(sols.len());
+            let mut verified_count = 0;
+
+            for &sol in sols {
+                let status = verify_discrete(sol);
+                if matches!(status, VerifyStatus::Verified) {
+                    verified_count += 1;
+                }
+                results.push((sol, status));
+            }
+
+            VerifyResult {
+                summary: discrete_summary(results.len(), verified_count),
+                solutions: results,
+                guard_description: None,
+            }
+        }
+
+        SolutionSet::AllReals => VerifyResult {
+            solutions: vec![],
+            summary: VerifySummary::NotCheckable,
+            guard_description: Some("not checkable (infinite set: all reals)".to_string()),
+        },
+
+        SolutionSet::Continuous(_interval) => VerifyResult {
+            solutions: vec![],
+            summary: VerifySummary::NotCheckable,
+            guard_description: Some("not checkable (continuous interval)".to_string()),
+        },
+
+        SolutionSet::Union(_intervals) => VerifyResult {
+            solutions: vec![],
+            summary: VerifySummary::NotCheckable,
+            guard_description: Some("not checkable (union of intervals)".to_string()),
+        },
+
+        SolutionSet::Residual(_expr) => VerifyResult {
+            solutions: vec![],
+            summary: VerifySummary::NotCheckable,
+            guard_description: Some("unverifiable (residual expression)".to_string()),
+        },
+
+        SolutionSet::Conditional(cases) => {
+            let mut all_results = Vec::new();
+            let mut has_verified = false;
+            let mut has_not_checkable = false;
+
+            for case in cases {
+                let case_result = verify_solution_set_with(&case.then.solutions, verify_discrete);
+
+                match case_result.summary {
+                    VerifySummary::AllVerified | VerifySummary::PartiallyVerified => {
+                        has_verified = true;
+                    }
+                    VerifySummary::NotCheckable => {
+                        has_not_checkable = true;
+                    }
+                    _ => {}
+                }
+
+                all_results.extend(case_result.solutions);
+            }
+
+            VerifyResult {
+                solutions: all_results,
+                summary: conditional_summary(has_verified, has_not_checkable),
+                guard_description: None,
+            }
+        }
+    }
+}
+
 /// Compute summary for discrete verification outcomes.
 pub fn discrete_summary(total: usize, verified_count: usize) -> VerifySummary {
     if total == 0 {
@@ -74,6 +162,7 @@ pub fn conditional_summary(has_verified: bool, has_not_checkable: bool) -> Verif
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_ast::Context;
 
     #[test]
     fn test_discrete_summary() {
@@ -98,5 +187,23 @@ mod tests {
             conditional_summary(false, false),
             VerifySummary::NoneVerified
         );
+    }
+
+    #[test]
+    fn test_verify_solution_set_with_discrete() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let set = SolutionSet::Discrete(vec![one, two]);
+        let mut calls = 0usize;
+        let mut verify = |_id: ExprId| {
+            calls += 1;
+            VerifyStatus::Verified
+        };
+
+        let result = verify_solution_set_with(&set, &mut verify);
+        assert_eq!(calls, 2);
+        assert_eq!(result.summary, VerifySummary::AllVerified);
+        assert_eq!(result.solutions.len(), 2);
     }
 }
