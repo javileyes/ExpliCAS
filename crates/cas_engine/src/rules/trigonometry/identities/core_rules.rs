@@ -7,13 +7,11 @@ use cas_ast::{Expr, ExprId};
 use cas_math::expr_relations::extract_negated_inner;
 use cas_math::expr_rewrite::smart_mul;
 use cas_math::trig_pattern_detection::try_extract_all_negative_sum;
+use cas_math::trig_table::{eval_inv_trig_special, eval_trig_special, InvTrigFn, TrigFn};
 use num_traits::{One, Zero};
 
 // Import helpers from sibling modules (via re-exports in parent)
 use super::{has_large_coefficient, is_multiple_angle};
-
-// Import table-driven evaluation
-use super::trig_table::{eval_inv_trig_special, eval_trig_special, InvTrigFn, TrigFn};
 
 // =============================================================================
 // SinCosIntegerPiRule: Pre-order evaluation of sin(n·π) and cos(n·π)

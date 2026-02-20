@@ -3,13 +3,13 @@
 use crate::define_rule;
 use crate::helpers::{as_add, as_div};
 use crate::rule::Rewrite;
-use crate::rules::trigonometry::values::detect_special_angle;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_math::expr_rewrite::smart_mul;
 use cas_math::trig_multi_angle_support::is_multiple_angle;
 use cas_math::trig_tan_triple_support::{
     is_part_of_tan_triple_product_with_ancestors, is_pi_over_3_minus_u, is_u_plus_pi_over_3,
 };
+use cas_math::trig_values::detect_special_angle;
 
 // =============================================================================
 // TRIPLE TANGENT PRODUCT IDENTITY
