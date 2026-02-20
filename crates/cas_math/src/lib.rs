@@ -27,6 +27,7 @@ pub mod gcd_exact;
 pub mod gcd_zippel_modp;
 pub mod infinity_support;
 pub mod inv_trig_n_angle_support;
+pub mod limits_support;
 pub mod logarithm_inverse_support;
 pub mod matrix;
 pub mod modp;
