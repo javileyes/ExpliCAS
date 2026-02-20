@@ -9,6 +9,9 @@ use cas_math::expr_extract::{
 };
 use cas_math::expr_predicates::is_e_constant_expr;
 use cas_math::expr_rewrite::smart_mul;
+use cas_math::logarithm_inverse_support::{
+    collect_mul_factors, count_mul_factors, is_log, normalize_to_power, simplify_exp_log,
+};
 use num_traits::{One, Zero};
 use std::cmp::Ordering;
 
@@ -204,35 +207,6 @@ define_rule!(
     }
     None
 });
-
-fn simplify_exp_log(context: &mut Context, base: ExprId, exp: ExprId) -> ExprId {
-    // Check if exp is log(base, x)
-    if let Expr::Function(name, args) = context.get(exp) {
-        if context.is_builtin(*name, BuiltinFn::Log) && args.len() == 2 {
-            let log_base = args[0];
-            let log_arg = args[1];
-            if log_base == base {
-                return log_arg;
-            }
-        }
-    }
-    // Also check n*log(base, x) -> x^n?
-    // Maybe later. For now just direct cancellation.
-    context.add(Expr::Pow(base, exp))
-}
-
-fn is_log(context: &Context, expr: ExprId) -> bool {
-    if let Expr::Function(name, _) = context.get(expr) {
-        if let Some(b) = context.builtin_of(*name) {
-            return b == BuiltinFn::Log || b == BuiltinFn::Ln;
-        }
-    }
-    // Also check for n*log(x)
-    if let Expr::Mul(l, r) = context.get(expr) {
-        return is_log(context, *l) || is_log(context, *r);
-    }
-    false
-}
 
 define_rule!(
     LogInversePowerRule,
@@ -603,35 +577,6 @@ impl crate::rule::Rule for LogPowerBaseRule {
     }
 }
 
-/// Normalize an expression to (core, exponent) form:
-/// - a → (a, 1)
-/// - a^m → (a, m)
-/// - 1/a → (a, -1)
-/// - a^m/b → not handled, returns original
-fn normalize_to_power(ctx: &mut cas_ast::Context, expr: ExprId) -> (ExprId, ExprId) {
-    match ctx.get(expr) {
-        Expr::Pow(base, exp) => (*base, *exp),
-        Expr::Div(num, den) => {
-            let (num, den) = (*num, *den);
-            // Check if num is 1 (literal 1)
-            if matches!(ctx.get(num), Expr::Number(n) if n.is_one()) {
-                // 1/a → (a, -1)
-                let neg_one = ctx.num(-1);
-                (den, neg_one)
-            } else {
-                // Not a simple reciprocal, return as is
-                let one = ctx.num(1);
-                (expr, one)
-            }
-        }
-        _ => {
-            // Just a → (a, 1)
-            let one = ctx.num(1);
-            (expr, one)
-        }
-    }
-}
-
 // ============================================================================
 // Auto Expand Log Rule with ExpandBudget Integration
 // ============================================================================
@@ -679,14 +624,6 @@ pub fn estimate_log_terms(ctx: &Context, arg: ExprId) -> Option<(u32, u32, Optio
             None
         }
         _ => None,
-    }
-}
-
-/// Count the number of multiplicative factors in a flattened Mul expression.
-fn count_mul_factors(ctx: &Context, expr: ExprId) -> u32 {
-    match ctx.get(expr) {
-        Expr::Mul(a, b) => count_mul_factors(ctx, *a) + count_mul_factors(ctx, *b),
-        _ => 1,
     }
 }
 
@@ -853,18 +790,6 @@ impl crate::rule::Rule for AutoExpandLogRule {
     fn importance(&self) -> crate::step::ImportanceLevel {
         // Didactically important: users should see log expansions
         crate::step::ImportanceLevel::Medium
-    }
-}
-
-/// Collect all multiplicative factors from a Mul expression (flattened).
-fn collect_mul_factors(ctx: &Context, expr: ExprId) -> Vec<ExprId> {
-    match ctx.get(expr) {
-        Expr::Mul(a, b) => {
-            let mut factors = collect_mul_factors(ctx, *a);
-            factors.extend(collect_mul_factors(ctx, *b));
-            factors
-        }
-        _ => vec![expr],
     }
 }
 
