@@ -1,8 +1,8 @@
 use crate::define_rule;
-use crate::helpers::{as_add, as_div, as_mul, as_pow};
 use crate::ordering::compare_expr;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_destructure::{as_add, as_div, as_mul, as_pow};
 use cas_math::expr_extract::{
     extract_log_base_argument, extract_log_base_argument_relaxed_view,
     extract_log_base_argument_view,

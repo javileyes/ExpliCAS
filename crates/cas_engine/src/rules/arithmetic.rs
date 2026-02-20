@@ -1,7 +1,7 @@
 use crate::define_rule;
-use crate::helpers::{as_add, as_div, as_mul, as_sub};
 use crate::rule::Rewrite;
 use cas_ast::Expr;
+use cas_math::expr_destructure::{as_add, as_div, as_mul, as_sub};
 use cas_math::expr_rewrite::smart_mul;
 use num_traits::{One, Zero};
 

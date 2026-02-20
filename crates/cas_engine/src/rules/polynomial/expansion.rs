@@ -6,6 +6,7 @@ use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::combinatorics::binomial_coeff;
+use cas_math::expr_destructure::{as_add, as_pow};
 use cas_math::multipoly::PolyBudget;
 use num_traits::{Signed, ToPrimitive};
 
@@ -243,7 +244,7 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
         }
 
         // Pattern: Pow(Add(...), n) - use zero-clone destructuring
-        let (base, exp) = crate::helpers::as_pow(ctx, expr)?;
+        let (base, exp) = as_pow(ctx, expr)?;
 
         // Check exponent is a small positive integer
         let n_val = {
@@ -264,7 +265,7 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
         }
 
         // Check base is an Add and extract terms
-        let (a, b) = match crate::helpers::as_add(ctx, base) {
+        let (a, b) = match as_add(ctx, base) {
             Some((a, b)) => (a, b),
             None => return None,
         };

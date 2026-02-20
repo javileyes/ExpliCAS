@@ -1,10 +1,10 @@
 use crate::build::mul2_raw;
 use crate::define_rule;
-use crate::helpers::{as_div, as_mul, as_neg, as_pow};
 use crate::ordering::compare_expr;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_destructure::{as_div, as_mul, as_neg, as_pow};
 use cas_math::expr_predicates::is_e_constant_expr;
 use cas_math::root_forms::can_distribute_root_safely;
 

@@ -1,10 +1,10 @@
 use crate::build::mul2_raw;
 use crate::define_rule;
-use crate::helpers::{as_add, as_div, as_mul, as_neg, as_pow, as_sub};
 use crate::ordering::compare_expr;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::Expr;
+use cas_math::expr_destructure::{as_add, as_div, as_function, as_mul, as_neg, as_pow, as_sub};
 use cas_math::expr_rewrite::smart_mul;
 use num_integer::Integer;
 use num_traits::Zero;
@@ -334,7 +334,7 @@ define_rule!(CanonicalizeDivRule, "Canonicalize Division", importance: crate::st
 });
 
 define_rule!(CanonicalizeRootRule, "Canonicalize Roots", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
-    if let Some((fn_id, args)) = crate::helpers::as_function(ctx, expr) {
+    if let Some((fn_id, args)) = as_function(ctx, expr) {
         if ctx.builtin_of(fn_id) == Some(cas_ast::BuiltinFn::Sqrt) {
             if args.len() == 1 {
                 let arg = args[0];
@@ -715,7 +715,7 @@ impl crate::rule::Rule for ExpToEPowRule {
             return None;
         }
 
-        if let Some((fn_id, args)) = crate::helpers::as_function(ctx, expr) {
+        if let Some((fn_id, args)) = as_function(ctx, expr) {
             if ctx.builtin_of(fn_id) == Some(cas_ast::BuiltinFn::Exp) && args.len() == 1 {
                 let arg = args[0];
                 let e = ctx.add(Expr::Constant(cas_ast::Constant::E));

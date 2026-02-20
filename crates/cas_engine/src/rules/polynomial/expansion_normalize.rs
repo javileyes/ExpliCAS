@@ -6,6 +6,7 @@
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_destructure::as_pow;
 use cas_math::multinomial_expand::{try_expand_multinomial_direct, MultinomialExpandBudget};
 use cas_math::multipoly::{MultiPoly, PolyBudget};
 use num_traits::Signed;
@@ -588,7 +589,7 @@ impl crate::rule::Rule for ExpandSmallBinomialPowRule {
         }
 
         // Pattern: Pow(base, exp)
-        let (base, exp) = crate::helpers::as_pow(ctx, expr)?;
+        let (base, exp) = as_pow(ctx, expr)?;
 
         // Very restrictive budget for automatic expansion in generic mode
         // - max_exp: 6 (binomial (x+1)^6 = 7 terms, trinomial (a+b+c)^4 = 15 terms)

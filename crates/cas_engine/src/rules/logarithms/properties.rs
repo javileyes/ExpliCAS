@@ -1,6 +1,6 @@
-use crate::helpers::{as_div, as_mul};
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_destructure::{as_div, as_mul};
 use cas_math::expr_extract::{extract_log_base_argument, extract_log_base_argument_view};
 use cas_math::expr_predicates::is_e_constant_expr;
 use cas_math::expr_rewrite::smart_mul;

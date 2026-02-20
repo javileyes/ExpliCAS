@@ -1,8 +1,8 @@
 use crate::define_rule;
-use crate::helpers::as_pow;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr};
+use cas_math::expr_destructure::as_pow;
 use num_integer::Integer;
 use num_traits::Signed;
 

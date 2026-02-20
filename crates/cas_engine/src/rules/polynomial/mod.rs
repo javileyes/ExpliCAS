@@ -31,6 +31,7 @@ use crate::ordering::compare_expr;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_destructure::{as_add, as_div, as_mul, as_sub};
 use cas_math::expr_rewrite::smart_mul;
 use cas_math::polynomial::Polynomial;
 use num_integer::Integer;
@@ -235,7 +236,7 @@ define_rule!(
     None,
     PhaseMask::CORE,
     |ctx, expr| {
-        let (l, r) = crate::helpers::as_mul(ctx, expr)?;
+        let (l, r) = as_mul(ctx, expr)?;
 
         let (x, c_cubed, _is_sum) = extract_cube_identity(ctx, l, r)?;
 
@@ -795,7 +796,7 @@ define_rule!(
             }
         }
         // Use zero-clone destructuring pattern
-        let (l, r) = crate::helpers::as_mul(ctx, expr)?;
+        let (l, r) = as_mul(ctx, expr)?;
 
         // GUARD: Skip distribution when a factor is 1.
         // 1*(a+b) -> 1*a + 1*b is a visual no-op (MulOne is applied in rendering),
@@ -807,7 +808,7 @@ define_rule!(
         }
 
         // a * (b + c) -> a*b + a*c
-        if let Some((b, c)) = crate::helpers::as_add(ctx, r) {
+        if let Some((b, c)) = as_add(ctx, r) {
             // PERFORMANCE: Don't distribute expensive factors (complex irrationals,
             // fractional exponents, multi-variable fractions) across polynomials.
             if is_expensive_factor(ctx, l, r) {
@@ -879,7 +880,7 @@ define_rule!(
         }
 
         // a * (b - c) -> a*b - a*c
-        if let Some((b, c)) = crate::helpers::as_sub(ctx, r) {
+        if let Some((b, c)) = as_sub(ctx, r) {
             // PERFORMANCE: Same expensive-factor guard as Add branch
             if is_expensive_factor(ctx, l, r) {
                 return None;
@@ -940,7 +941,7 @@ define_rule!(
         }
 
         // (b + c) * a -> b*a + c*a
-        if let Some((b, c)) = crate::helpers::as_add(ctx, l) {
+        if let Some((b, c)) = as_add(ctx, l) {
             // PERFORMANCE: Same expensive-factor guard (mirror of a*(b+c))
             if is_expensive_factor(ctx, r, l) {
                 return None;
@@ -1004,7 +1005,7 @@ define_rule!(
         }
 
         // (b - c) * a -> b*a - c*a
-        if let Some((b, c)) = crate::helpers::as_sub(ctx, l) {
+        if let Some((b, c)) = as_sub(ctx, l) {
             // PERFORMANCE: Same expensive-factor guard (mirror of a*(b-c))
             if is_expensive_factor(ctx, r, l) {
                 return None;
@@ -1066,7 +1067,7 @@ define_rule!(
 
         // Handle Division Distribution: (a + b) / c -> a/c + b/c
         // Using AddView for shape-independent n-ary handling
-        if let Some((numer, denom)) = crate::helpers::as_div(ctx, expr) {
+        if let Some((numer, denom)) = as_div(ctx, expr) {
             // Helper to check if division simplifies (shares factors) and return factor size
             let get_simplification_reduction = |ctx: &Context, num: ExprId, den: ExprId| -> usize {
                 if num == den {
