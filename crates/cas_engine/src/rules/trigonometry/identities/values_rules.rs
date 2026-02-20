@@ -1,11 +1,12 @@
 //! Trig values and specialized identity rules.
 
 use crate::define_rule;
-use crate::helpers::{as_add, as_div, as_mul, as_sub};
+use crate::helpers::{as_add, as_div};
 use crate::rule::Rewrite;
 use crate::rules::trigonometry::values::detect_special_angle;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_math::expr_rewrite::smart_mul;
+use cas_math::trig_tan_triple_support::{is_pi_over_3_minus_u, is_u_plus_pi_over_3};
 
 // =============================================================================
 // TRIPLE TANGENT PRODUCT IDENTITY
@@ -157,89 +158,6 @@ impl crate::rule::Rule for TanTripleProductRule {
 
         None
     }
-}
-
-/// Check if expr equals u + π/3 (or π/3 + u)
-fn is_u_plus_pi_over_3(ctx: &cas_ast::Context, expr: ExprId, u: ExprId) -> bool {
-    if let Some((l, r)) = as_add(ctx, expr) {
-        // Case: u + π/3
-        if crate::ordering::compare_expr(ctx, l, u) == std::cmp::Ordering::Equal {
-            return is_pi_over_3(ctx, r);
-        }
-        // Case: π/3 + u
-        if crate::ordering::compare_expr(ctx, r, u) == std::cmp::Ordering::Equal {
-            return is_pi_over_3(ctx, l);
-        }
-    }
-    false
-}
-
-/// Check if expr equals π/3 - u (or -u + π/3 in canonicalized form)
-fn is_pi_over_3_minus_u(ctx: &cas_ast::Context, expr: ExprId, u: ExprId) -> bool {
-    // Pattern 1: Sub(π/3, u)
-    if let Some((l, r)) = as_sub(ctx, expr) {
-        if is_pi_over_3(ctx, l)
-            && crate::ordering::compare_expr(ctx, r, u) == std::cmp::Ordering::Equal
-        {
-            return true;
-        }
-    }
-    // Pattern 2: Add(π/3, Neg(u)) or Add(Neg(u), π/3) - canonicalized subtraction
-    if let Some((l, r)) = as_add(ctx, expr) {
-        // Add(π/3, Neg(u))
-        if is_pi_over_3(ctx, l) {
-            if let Expr::Neg(inner) = ctx.get(r) {
-                if crate::ordering::compare_expr(ctx, *inner, u) == std::cmp::Ordering::Equal {
-                    return true;
-                }
-            }
-        }
-        // Add(Neg(u), π/3)
-        if is_pi_over_3(ctx, r) {
-            if let Expr::Neg(inner) = ctx.get(l) {
-                if crate::ordering::compare_expr(ctx, *inner, u) == std::cmp::Ordering::Equal {
-                    return true;
-                }
-            }
-        }
-    }
-    false
-}
-
-/// Check if an expression is π/3 (i.e., Div(π, 3) or canonicalized Mul(1/3, π))
-fn is_pi_over_3(ctx: &cas_ast::Context, expr: ExprId) -> bool {
-    // Pattern 1: Div(π, 3)
-    if let Some((num, den)) = as_div(ctx, expr) {
-        if matches!(ctx.get(num), Expr::Constant(cas_ast::Constant::Pi)) {
-            if let Expr::Number(n) = ctx.get(den) {
-                if n.is_integer() && *n.numer() == 3.into() {
-                    return true;
-                }
-            }
-        }
-    }
-
-    // Pattern 2: Mul(Number(1/3), π) - canonicalized form from CanonicalizeDivRule
-    if let Some((l, r)) = as_mul(ctx, expr) {
-        // Check Mul(1/3, π)
-        if let Expr::Number(n) = ctx.get(l) {
-            if *n == num_rational::BigRational::new(1.into(), 3.into())
-                && matches!(ctx.get(r), Expr::Constant(cas_ast::Constant::Pi))
-            {
-                return true;
-            }
-        }
-        // Check Mul(π, 1/3)
-        if let Expr::Number(n) = ctx.get(r) {
-            if *n == num_rational::BigRational::new(1.into(), 3.into())
-                && matches!(ctx.get(l), Expr::Constant(cas_ast::Constant::Pi))
-            {
-                return true;
-            }
-        }
-    }
-
-    false
 }
 
 /// Runtime check: is this tan() part of a tan(u)·tan(π/3+u)·tan(π/3-u) triple product?
