@@ -3,6 +3,7 @@
 //! These predicates are used by polynomial/factoring rules to detect
 //! negation and conjugate relationships without binding to engine modules.
 
+use crate::polynomial::Polynomial;
 use cas_ast::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
 use num_rational::BigRational;
@@ -559,6 +560,149 @@ pub fn count_additive_terms(ctx: &Context, expr: ExprId) -> usize {
     }
 }
 
+/// Collect additive terms as `(term, is_negated)` pairs.
+///
+/// Uses canonical additive decomposition and keeps `__hold(...)` transparent.
+fn collect_additive_terms_signed(
+    ctx: &Context,
+    expr: ExprId,
+    negated: bool,
+    terms: &mut Vec<(ExprId, bool)>,
+) {
+    let signed_terms = add_terms_signed(ctx, expr);
+
+    for (term, sign) in signed_terms {
+        let is_negated = match sign {
+            AddSign::Pos => negated,
+            AddSign::Neg => !negated,
+        };
+        terms.push((term, is_negated));
+    }
+}
+
+fn normalize_term_sign_for_poly_eq(ctx: &Context, term: ExprId, neg: bool) -> (ExprId, bool) {
+    // Check if it's a Mul with a negative numeric factor.
+    if let Expr::Mul(l, r) = ctx.get(term) {
+        if let Expr::Number(n) = ctx.get(*l) {
+            if n.is_negative() {
+                return (term, !neg);
+            }
+        }
+        if let Expr::Number(n) = ctx.get(*r) {
+            if n.is_negative() {
+                return (term, !neg);
+            }
+        }
+    }
+
+    // Or a negative numeric literal directly.
+    if let Expr::Number(n) = ctx.get(term) {
+        if n.is_negative() {
+            return (term, !neg);
+        }
+    }
+
+    (term, neg)
+}
+
+/// Check if two expressions are polynomially equal (same after expansion).
+pub fn poly_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
+    if a == b {
+        return true;
+    }
+
+    if compare_expr(ctx, a, b) == Ordering::Equal {
+        return true;
+    }
+
+    let expr_a = ctx.get(a);
+    let expr_b = ctx.get(b);
+
+    if let (Expr::Pow(base_a, exp_a), Expr::Pow(base_b, exp_b)) = (expr_a, expr_b) {
+        if poly_equal(ctx, *exp_a, *exp_b) {
+            return poly_equal(ctx, *base_a, *base_b);
+        }
+    }
+
+    if let (Expr::Mul(l_a, r_a), Expr::Mul(l_b, r_b)) = (expr_a, expr_b) {
+        if (poly_equal(ctx, *l_a, *l_b) && poly_equal(ctx, *r_a, *r_b))
+            || (poly_equal(ctx, *l_a, *r_b) && poly_equal(ctx, *r_a, *l_b))
+        {
+            return true;
+        }
+
+        // Same up to opposite numeric coefficient sign.
+        if let (Expr::Number(n_a), Expr::Number(n_b)) = (ctx.get(*l_a), ctx.get(*l_b)) {
+            if n_a == &-n_b.clone() && poly_equal(ctx, *r_a, *r_b) {
+                return true;
+            }
+        }
+        if let (Expr::Number(n_a), Expr::Number(n_b)) = (ctx.get(*r_a), ctx.get(*r_b)) {
+            if n_a == &-n_b.clone() && poly_equal(ctx, *l_a, *l_b) {
+                return true;
+            }
+        }
+    }
+
+    if let (Expr::Neg(inner_a), Expr::Neg(inner_b)) = (expr_a, expr_b) {
+        return poly_equal(ctx, *inner_a, *inner_b);
+    }
+
+    let is_additive_a = matches!(expr_a, Expr::Add(_, _) | Expr::Sub(_, _));
+    let is_additive_b = matches!(expr_b, Expr::Add(_, _) | Expr::Sub(_, _));
+
+    if is_additive_a && is_additive_b {
+        let mut terms_a: Vec<(ExprId, bool)> = Vec::new();
+        let mut terms_b: Vec<(ExprId, bool)> = Vec::new();
+        collect_additive_terms_signed(ctx, a, false, &mut terms_a);
+        collect_additive_terms_signed(ctx, b, false, &mut terms_b);
+
+        if terms_a.len() == terms_b.len() {
+            let mut matched = vec![false; terms_b.len()];
+            for (term_a, neg_a) in &terms_a {
+                let mut found = false;
+                let (norm_a, eff_neg_a) = normalize_term_sign_for_poly_eq(ctx, *term_a, *neg_a);
+
+                for (j, (term_b, neg_b)) in terms_b.iter().enumerate() {
+                    if matched[j] {
+                        continue;
+                    }
+                    let (norm_b, eff_neg_b) = normalize_term_sign_for_poly_eq(ctx, *term_b, *neg_b);
+                    if eff_neg_a != eff_neg_b {
+                        continue;
+                    }
+                    if poly_equal(ctx, norm_a, norm_b) {
+                        matched[j] = true;
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    return false;
+                }
+            }
+            if matched.iter().all(|&m| m) {
+                return true;
+            }
+        }
+    }
+
+    // Fallback: canonical univariate polynomial comparison.
+    let vars_a: Vec<_> = cas_ast::collect_variables(ctx, a).into_iter().collect();
+    let vars_b: Vec<_> = cas_ast::collect_variables(ctx, b).into_iter().collect();
+    if vars_a.len() == 1 && vars_b.len() == 1 && vars_a[0] == vars_b[0] {
+        let var = &vars_a[0];
+        if let (Ok(poly_a), Ok(poly_b)) = (
+            Polynomial::from_expr(ctx, a, var),
+            Polynomial::from_expr(ctx, b, var),
+        ) {
+            return poly_a == poly_b;
+        }
+    }
+
+    false
+}
+
 /// Check if an expression is structurally zero after additive cancellation.
 ///
 /// This handles cyclic additive telescoping shapes like:
@@ -686,6 +830,34 @@ mod tests {
         let neg = parse("-(a+b)", &mut ctx).expect("neg");
         assert_eq!(count_additive_terms(&ctx, nested), 3);
         assert_eq!(count_additive_terms(&ctx, neg), 2);
+    }
+
+    #[test]
+    fn collect_additive_terms_signed_tracks_signs_across_subtractions() {
+        let mut ctx = Context::new();
+        let expr = parse("a-(b-c)", &mut ctx).expect("expr");
+        let a = parse("a", &mut ctx).expect("a");
+        let b = parse("b", &mut ctx).expect("b");
+        let c = parse("c", &mut ctx).expect("c");
+
+        let mut terms = Vec::new();
+        collect_additive_terms_signed(&ctx, expr, false, &mut terms);
+
+        assert_eq!(terms.len(), 3);
+        assert!(terms.iter().any(|(id, neg)| *id == a && !*neg));
+        assert!(terms.iter().any(|(id, neg)| *id == b && *neg));
+        assert!(terms.iter().any(|(id, neg)| *id == c && !*neg));
+    }
+
+    #[test]
+    fn poly_equal_matches_equivalent_univariate_forms() {
+        let mut ctx = Context::new();
+        let a = parse("(x+1)^2", &mut ctx).expect("a");
+        let b = parse("x^2 + 2*x + 1", &mut ctx).expect("b");
+        let c = parse("x^2 + 1", &mut ctx).expect("c");
+
+        assert!(poly_equal(&ctx, a, b));
+        assert!(!poly_equal(&ctx, a, c));
     }
 
     #[test]
