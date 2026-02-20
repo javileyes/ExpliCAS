@@ -4,11 +4,10 @@
 
 use cas_ast::{Context, ExprId};
 use cas_math::infinity_support::InfSign;
-use cas_math::limits_support::{mk_limit, try_limit_rules_at_infinity};
+use cas_math::limits_support::{mk_limit, presimplify_safe_for_limit, try_limit_rules_at_infinity};
 
 use crate::{Budget, CasError};
 
-use super::presimplify::presimplify_safe;
 use super::types::{Approach, LimitOptions, LimitResult, PreSimplifyMode};
 
 fn approach_sign(approach: Approach) -> InfSign {
@@ -41,14 +40,14 @@ pub fn limit(
     var: ExprId,
     approach: Approach,
     opts: &LimitOptions,
-    budget: &mut Budget,
+    _budget: &mut Budget,
 ) -> Result<LimitResult, CasError> {
     let steps = Vec::new();
 
     // Step 1: Pre-simplify the expression (if enabled)
     let simplified_expr = match opts.presimplify {
         PreSimplifyMode::Off => expr,
-        PreSimplifyMode::Safe => presimplify_safe(ctx, expr, budget)?,
+        PreSimplifyMode::Safe => presimplify_safe_for_limit(ctx, expr),
     };
 
     // Step 2: Try limit rules

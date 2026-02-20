@@ -13,7 +13,6 @@
 //! ```
 
 mod engine;
-mod presimplify;
 mod types;
 
 pub use engine::limit;
