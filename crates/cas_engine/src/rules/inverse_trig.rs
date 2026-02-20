@@ -3,6 +3,7 @@ use crate::helpers::is_one;
 use crate::nary::build_balanced_add;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::numeric_eval::as_rational_const;
 use num_traits::One;
 use std::cmp::Ordering;
 
@@ -27,8 +28,8 @@ fn are_reciprocals(ctx: &Context, expr1: ExprId, expr2: ExprId) -> bool {
     }
 
     // Case 3: Both are numeric and their product is 1
-    let num1_opt = extract_numeric_value(ctx, expr1);
-    let num2_opt = extract_numeric_value(ctx, expr2);
+    let num1_opt = as_rational_const(ctx, expr1);
+    let num2_opt = as_rational_const(ctx, expr2);
 
     if let (Some(n1), Some(n2)) = (num1_opt, num2_opt) {
         if (n1 * n2).is_one() {
@@ -37,21 +38,6 @@ fn are_reciprocals(ctx: &Context, expr1: ExprId, expr2: ExprId) -> bool {
     }
 
     false
-}
-
-/// Extract numeric value from an expression if it's a pure number or fraction of numbers
-fn extract_numeric_value(ctx: &Context, id: ExprId) -> Option<num_rational::BigRational> {
-    match ctx.get(id) {
-        Expr::Number(n) => Some(n.clone()),
-        Expr::Div(num_id, den_id) => {
-            if let (Expr::Number(num), Expr::Number(den)) = (ctx.get(*num_id), ctx.get(*den_id)) {
-                Some(num / den)
-            } else {
-                None
-            }
-        }
-        _ => None,
-    }
 }
 
 /// Check if any reciprocal atan pairs exist in the list of terms
@@ -610,8 +596,8 @@ impl crate::rule::Rule for AtanAddRationalRule {
                         let arg_j = args_j[0];
 
                         // Extract rational values from both arguments
-                        let val_i = extract_numeric_value(ctx, arg_i);
-                        let val_j = extract_numeric_value(ctx, arg_j);
+                        let val_i = as_rational_const(ctx, arg_i);
+                        let val_j = as_rational_const(ctx, arg_j);
 
                         if let (Some(a), Some(b)) = (val_i, val_j) {
                             // Guard: 1 - a*b > 0 (ensures no branch crossing)
