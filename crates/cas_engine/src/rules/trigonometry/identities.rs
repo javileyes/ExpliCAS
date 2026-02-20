@@ -51,7 +51,6 @@ pub use power_products_rules::{
 
 // --- Phase shift and supplementary angle ---
 mod phase_shift_rules;
-pub use phase_shift_rules::extract_phase_shift;
 pub use phase_shift_rules::SinSupplementaryAngleRule;
 
 // --- Half-angle and Weierstrass substitution ---

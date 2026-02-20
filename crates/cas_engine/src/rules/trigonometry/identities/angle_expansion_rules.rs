@@ -8,9 +8,7 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_math::expr_rewrite::smart_mul;
-
-// Import from parent (identities.rs) - function defined in half_angle_phase.rs include
-use super::extract_phase_shift;
+use cas_math::trig_phase_shift_support::extract_phase_shift;
 
 // =============================================================================
 // PRODUCT-TO-SUM IDENTITIES
