@@ -15,42 +15,6 @@ pub use simplification::{
     NegativeBasePowerRule, PowerProductRule, PowerQuotientRule,
 };
 
-use crate::build::mul2_raw;
-use cas_ast::{Context, Expr, ExprId};
-
-/// Helper: Add two exponents, folding if both are constants
-/// This prevents ugly exponents like x^(1+2) and produces x^3 instead
-pub(super) fn add_exp(ctx: &mut Context, e1: ExprId, e2: ExprId) -> ExprId {
-    if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(e1), ctx.get(e2)) {
-        let sum = n1 + n2;
-        ctx.add(Expr::Number(sum))
-    } else {
-        ctx.add(Expr::Add(e1, e2))
-    }
-}
-
-/// Helper: Multiply two exponents, folding if both are constants
-/// This prevents ugly exponents like x^(2*3) and produces x^6 instead
-pub(super) fn mul_exp(ctx: &mut Context, e1: ExprId, e2: ExprId) -> ExprId {
-    if let (Expr::Number(n1), Expr::Number(n2)) = (ctx.get(e1), ctx.get(e2)) {
-        let prod = n1 * n2;
-        ctx.add(Expr::Number(prod))
-    } else {
-        mul2_raw(ctx, e1, e2)
-    }
-}
-
-/// Check if an expression contains a numeric factor at the top level
-pub(super) fn has_numeric_factor(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Number(_) => true,
-        Expr::Mul(l, r) => {
-            matches!(ctx.get(*l), Expr::Number(_)) || matches!(ctx.get(*r), Expr::Number(_))
-        }
-        _ => false,
-    }
-}
-
 pub fn register(simplifier: &mut crate::Simplifier) {
     // N-ary mul combine rule: handles (a*b)*a^2 → a^3*b
     simplifier.add_rule(Box::new(MulNaryCombinePowersRule));
@@ -89,7 +53,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
 mod tests {
     use super::*;
     use crate::rule::Rule;
-    use cas_ast::Context;
+    use cas_ast::{Context, Expr};
     use cas_formatter::DisplayExpr;
 
     #[test]

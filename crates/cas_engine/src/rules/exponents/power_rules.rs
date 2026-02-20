@@ -5,12 +5,11 @@ use crate::ordering::compare_expr;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::exponents_support::{add_exp, has_numeric_factor, mul_exp};
 use cas_math::root_forms::extract_root_factor;
 use num_integer::Integer;
 use num_traits::{One, Signed, ToPrimitive};
 use std::cmp::Ordering;
-
-use super::{add_exp, has_numeric_factor, mul_exp};
 
 define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
     // x^a * x^b -> x^(a+b)
