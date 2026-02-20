@@ -5,6 +5,7 @@
 
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::root_forms::extract_numeric_sqrt_radicand;
+use num_integer::Integer;
 use num_traits::{ToPrimitive, Zero};
 use std::cmp::Ordering;
 
@@ -32,7 +33,7 @@ impl AngleSpec {
         let (num, den) = if den < 0 { (-num, -den) } else { (num, den) };
 
         // Reduce by gcd
-        let g = gcd(num.unsigned_abs(), den.unsigned_abs()) as i32;
+        let g = num.unsigned_abs().gcd(&den.unsigned_abs()) as i32;
         Self {
             num: num / g,
             den: den / g,
@@ -147,15 +148,6 @@ impl std::ops::Sub for AngleSpec {
 
     fn sub(self, other: Self) -> Self {
         self + other.negate()
-    }
-}
-
-/// Compute GCD using Euclidean algorithm
-fn gcd(a: u32, b: u32) -> u32 {
-    if b == 0 {
-        a
-    } else {
-        gcd(b, a % b)
     }
 }
 
@@ -730,7 +722,7 @@ pub fn parse_special_value(ctx: &Context, expr: ExprId) -> Option<ValueSpec> {
                     }
 
                     // sqrt(2)/2 or sqrt(3)/2
-                    if let Some(sqrt_base) = extract_numeric_sqrt_i32(ctx, *num) {
+                    if let Some(sqrt_base) = extract_numeric_sqrt_radicand(ctx, *num) {
                         if sqrt_base == 2 {
                             return Some(ValueSpec::Sqrt2Over2);
                         }
@@ -741,7 +733,7 @@ pub fn parse_special_value(ctx: &Context, expr: ExprId) -> Option<ValueSpec> {
 
                     // -sqrt(2)/2 or -sqrt(3)/2
                     if let Expr::Neg(inner) = ctx.get(*num) {
-                        if let Some(sqrt_base) = extract_numeric_sqrt_i32(ctx, *inner) {
+                        if let Some(sqrt_base) = extract_numeric_sqrt_radicand(ctx, *inner) {
                             if sqrt_base == 2 {
                                 return Some(ValueSpec::NegSqrt2Over2);
                             }
@@ -754,13 +746,13 @@ pub fn parse_special_value(ctx: &Context, expr: ExprId) -> Option<ValueSpec> {
 
                 // sqrt(3)/3 = 1/sqrt(3)
                 if denom == 3 {
-                    if let Some(sqrt_base) = extract_numeric_sqrt_i32(ctx, *num) {
+                    if let Some(sqrt_base) = extract_numeric_sqrt_radicand(ctx, *num) {
                         if sqrt_base == 3 {
                             return Some(ValueSpec::OneOverSqrt3);
                         }
                     }
                     if let Expr::Neg(inner) = ctx.get(*num) {
-                        if let Some(sqrt_base) = extract_numeric_sqrt_i32(ctx, *inner) {
+                        if let Some(sqrt_base) = extract_numeric_sqrt_radicand(ctx, *inner) {
                             if sqrt_base == 3 {
                                 return Some(ValueSpec::NegOneOverSqrt3);
                             }
@@ -772,7 +764,7 @@ pub fn parse_special_value(ctx: &Context, expr: ExprId) -> Option<ValueSpec> {
             // 1/sqrt(3)
             if let Expr::Number(n) = ctx.get(*num) {
                 if n.is_one() {
-                    if let Some(sqrt_base) = extract_numeric_sqrt_i32(ctx, *den) {
+                    if let Some(sqrt_base) = extract_numeric_sqrt_radicand(ctx, *den) {
                         if sqrt_base == 3 {
                             return Some(ValueSpec::OneOverSqrt3);
                         }
@@ -786,7 +778,7 @@ pub fn parse_special_value(ctx: &Context, expr: ExprId) -> Option<ValueSpec> {
         // sqrt(n) alone
         Expr::Pow(_, _) => {
             // Check if this is sqrt(3)
-            if let Some(sqrt_base) = extract_numeric_sqrt_i32(ctx, expr) {
+            if let Some(sqrt_base) = extract_numeric_sqrt_radicand(ctx, expr) {
                 if sqrt_base == 3 {
                     return Some(ValueSpec::Sqrt3);
                 }
@@ -804,7 +796,7 @@ pub fn parse_special_value(ctx: &Context, expr: ExprId) -> Option<ValueSpec> {
             };
 
             // Check if sqrt_id is √n
-            if let Some(sqrt_base) = extract_numeric_sqrt_i32(ctx, sqrt_id) {
+            if let Some(sqrt_base) = extract_numeric_sqrt_radicand(ctx, sqrt_id) {
                 // Check if num_id is 1/n (where n = sqrt_base)
                 if let Expr::Number(n) = ctx.get(num_id) {
                     // (1/3) * √3 → OneOverSqrt3
@@ -837,7 +829,7 @@ pub fn parse_special_value(ctx: &Context, expr: ExprId) -> Option<ValueSpec> {
                     if let (Expr::Number(n), Expr::Number(d)) =
                         (ctx.get(*div_num), ctx.get(*div_den))
                     {
-                        if n.is_one() && d.to_integer().to_i32() == Some(sqrt_base) {
+                        if n.is_one() && d.to_integer().to_i64() == Some(sqrt_base) {
                             // 1/n * √n → OneOverSqrt(n) or Sqrt(n)/n
                             if sqrt_base == 3 {
                                 return Some(ValueSpec::OneOverSqrt3);
@@ -852,7 +844,7 @@ pub fn parse_special_value(ctx: &Context, expr: ExprId) -> Option<ValueSpec> {
 
             // Also check Neg(sqrt) * frac patterns
             if let Expr::Neg(inner) = ctx.get(sqrt_id) {
-                if let Some(sqrt_base) = extract_numeric_sqrt_i32(ctx, *inner) {
+                if let Some(sqrt_base) = extract_numeric_sqrt_radicand(ctx, *inner) {
                     if let Expr::Number(n) = ctx.get(num_id) {
                         if sqrt_base == 3 && *n == num_rational::Ratio::new(1.into(), 3.into()) {
                             return Some(ValueSpec::NegOneOverSqrt3);
@@ -866,10 +858,6 @@ pub fn parse_special_value(ctx: &Context, expr: ExprId) -> Option<ValueSpec> {
 
         _ => None,
     }
-}
-
-fn extract_numeric_sqrt_i32(ctx: &Context, expr: ExprId) -> Option<i32> {
-    extract_numeric_sqrt_radicand(ctx, expr).and_then(|n| i32::try_from(n).ok())
 }
 
 /// Evaluate inverse trig (asin/acos/atan) at a special value.
