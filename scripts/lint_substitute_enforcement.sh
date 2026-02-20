@@ -19,15 +19,15 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-FILE="$ROOT/crates/cas_engine/src/substitute.rs"
+FILE="$ROOT/crates/cas_math/src/substitute.rs"
 
 # Check file exists
 if [ ! -f "$FILE" ]; then
-    echo "ERROR: substitute.rs not found: $FILE"
+    echo "ERROR: substitute core file not found: $FILE"
     exit 1
 fi
 
-echo "==> Checking substitute.rs denylist..."
+echo "==> Checking cas_math substitute denylist..."
 
 # Denylist patterns with function call syntax (excludes comment mentions)
 deny_patterns=(
@@ -50,7 +50,7 @@ deny_patterns=(
 for pat in "${deny_patterns[@]}"; do
     if grep -n "$pat" "$FILE" 2>/dev/null; then
         echo ""
-        echo "ERROR: substitute.rs must not call '$pat'"
+        echo "ERROR: cas_math::substitute must not call '$pat'"
         echo "       This violates the isolation contract."
         exit 1
     fi
