@@ -1,70 +1,12 @@
 use crate::define_rule;
-use crate::helpers::is_one;
 use crate::nary::build_balanced_add;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::numeric_eval::as_rational_const;
+use cas_math::trig_reciprocal_support::{are_reciprocals, has_reciprocal_atan_pair};
 use num_traits::One;
-use std::cmp::Ordering;
 
 // ==================== Helper Functions for Pattern Matching ====================
-
-// is_one is now imported from crate::helpers
-
-/// Check if two expressions are reciprocals: a = 1/b or b = 1/a
-fn are_reciprocals(ctx: &Context, expr1: ExprId, expr2: ExprId) -> bool {
-    // Case 1: expr2 = 1 / expr1
-    if let Expr::Div(num, den) = ctx.get(expr2) {
-        if is_one(ctx, *num) && crate::ordering::compare_expr(ctx, *den, expr1) == Ordering::Equal {
-            return true;
-        }
-    }
-
-    // Case 2: expr1 = 1 / expr2
-    if let Expr::Div(num, den) = ctx.get(expr1) {
-        if is_one(ctx, *num) && crate::ordering::compare_expr(ctx, *den, expr2) == Ordering::Equal {
-            return true;
-        }
-    }
-
-    // Case 3: Both are numeric and their product is 1
-    let num1_opt = as_rational_const(ctx, expr1);
-    let num2_opt = as_rational_const(ctx, expr2);
-
-    if let (Some(n1), Some(n2)) = (num1_opt, num2_opt) {
-        if (n1 * n2).is_one() {
-            return true;
-        }
-    }
-
-    false
-}
-
-/// Check if any reciprocal atan pairs exist in the list of terms
-/// This helps Machin rule avoid combining terms when reciprocal pairs should be matched first
-fn has_reciprocal_atan_pair(ctx: &Context, terms: &[ExprId]) -> bool {
-    // Collect all atan arguments
-    let mut atan_args: Vec<ExprId> = Vec::new();
-    for &term in terms {
-        if let Expr::Function(fn_id, args) = ctx.get(term) {
-            if let Some(b) = ctx.builtin_of(*fn_id) {
-                if matches!(b, BuiltinFn::Atan | BuiltinFn::Arctan) && args.len() == 1 {
-                    atan_args.push(args[0]);
-                }
-            }
-        }
-    }
-
-    // Check if any pair are reciprocals
-    for i in 0..atan_args.len() {
-        for j in (i + 1)..atan_args.len() {
-            if are_reciprocals(ctx, atan_args[i], atan_args[j]) {
-                return true;
-            }
-        }
-    }
-    false
-}
 
 /// Build sum of all terms except indices i and j
 /// Returns None if no terms remain, Some(expr) otherwise
