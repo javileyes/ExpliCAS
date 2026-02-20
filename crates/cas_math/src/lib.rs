@@ -33,6 +33,7 @@ pub mod multinomial_expand;
 pub mod multipoly;
 pub mod multipoly_display;
 pub mod multipoly_modp;
+pub mod number_theory_support;
 pub mod numeric;
 pub mod numeric_eval;
 pub mod opaque_atoms;

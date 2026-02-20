@@ -1,6 +1,7 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
-use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_ast::{Context, Expr, ExprId};
+use cas_math::number_theory_support::{contains_poly_result, has_large_unexpanded_power};
 use num_bigint::BigInt;
 use num_integer::Integer;
 use num_rational::BigRational;
@@ -10,81 +11,6 @@ use num_traits::{One, Signed, Zero};
 pub struct GcdResult {
     pub value: Option<ExprId>,
     pub steps: Vec<String>,
-}
-
-// =============================================================================
-// Large Polynomial Detection Helpers (V2.15.36)
-// =============================================================================
-
-/// Check if expression contains a poly_result reference.
-/// poly_result(n) is an opaque handle that requires algebraic (not structural) GCD.
-fn contains_poly_result(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Function(fn_id, args) => {
-            if ctx.is_builtin(*fn_id, BuiltinFn::PolyResult) {
-                return true;
-            }
-            // Also check __hold wrappers
-            if ctx.is_builtin(*fn_id, BuiltinFn::Hold) && !args.is_empty() {
-                return contains_poly_result(ctx, args[0]);
-            }
-            // Recurse into function arguments
-            args.iter().any(|&arg| contains_poly_result(ctx, arg))
-        }
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
-            contains_poly_result(ctx, *l) || contains_poly_result(ctx, *r)
-        }
-        Expr::Pow(base, exp) => contains_poly_result(ctx, *base) || contains_poly_result(ctx, *exp),
-        Expr::Neg(inner) => contains_poly_result(ctx, *inner),
-        _ => false,
-    }
-}
-
-/// Check if expression has large unexpanded powers (exponent > 2).
-/// These should be expanded before structural GCD comparison.
-fn has_large_unexpanded_power(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Pow(base, exp) => {
-            // Check if exponent is a large integer
-            if let Some(n) = get_integer_exponent(ctx, *exp) {
-                if n > 2 {
-                    // Check if base is not a simple variable (i.e., it's a compound expression)
-                    if !matches!(ctx.get(*base), Expr::Variable(_) | Expr::Number(_)) {
-                        return true;
-                    }
-                }
-            }
-            // Recurse
-            has_large_unexpanded_power(ctx, *base) || has_large_unexpanded_power(ctx, *exp)
-        }
-        Expr::Function(fn_id, args) => {
-            // Skip poly_result - it's already expanded
-            if ctx.is_builtin(*fn_id, BuiltinFn::PolyResult) {
-                return false;
-            }
-            args.iter().any(|&arg| has_large_unexpanded_power(ctx, arg))
-        }
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
-            has_large_unexpanded_power(ctx, *l) || has_large_unexpanded_power(ctx, *r)
-        }
-        Expr::Neg(inner) => has_large_unexpanded_power(ctx, *inner),
-        _ => false,
-    }
-}
-
-/// Extract integer exponent from expression
-fn get_integer_exponent(ctx: &Context, exp: ExprId) -> Option<i64> {
-    match ctx.get(exp) {
-        Expr::Number(n) => {
-            if n.is_integer() {
-                n.to_integer().try_into().ok()
-            } else {
-                None
-            }
-        }
-        Expr::Neg(inner) => get_integer_exponent(ctx, *inner).map(|k| -k),
-        _ => None,
-    }
 }
 
 define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
