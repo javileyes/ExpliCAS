@@ -5,6 +5,7 @@ use crate::helpers::{as_add, as_div, as_sub};
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_math::expr_rewrite::smart_mul;
+use cas_math::trig_half_angle_support::{extract_cot_term, extract_tan_half_angle, is_half_angle};
 use num_traits::One;
 use std::cmp::Ordering;
 
@@ -21,80 +22,6 @@ use std::cmp::Ordering;
 // - k*cot(u/2) - k*cot(u) → k/sin(u)
 // - Works on n-ary sums via flatten_add
 
-/// Helper: Check if arg represents u/2 and return u
-/// Supports: Mul(1/2, u), Div(u, 2)
-fn is_half_angle(ctx: &cas_ast::Context, arg: ExprId) -> Option<ExprId> {
-    match ctx.get(arg) {
-        Expr::Mul(coef, inner) => {
-            if let Expr::Number(n) = ctx.get(*coef) {
-                if *n == num_rational::BigRational::new(1.into(), 2.into()) {
-                    return Some(*inner);
-                }
-            }
-            // Check reversed order: inner * 1/2
-            if let Expr::Number(n) = ctx.get(*inner) {
-                if *n == num_rational::BigRational::new(1.into(), 2.into()) {
-                    return Some(*coef);
-                }
-            }
-        }
-        Expr::Div(numer, denom) => {
-            if let Expr::Number(d) = ctx.get(*denom) {
-                if *d == num_rational::BigRational::from_integer(2.into()) {
-                    return Some(*numer);
-                }
-            }
-        }
-        _ => {}
-    }
-    None
-}
-
-/// Helper: Extract coefficient and cot argument from a term
-/// Returns (coefficient_opt, cot_arg, is_positive)
-/// coefficient_opt=None means coefficient is implicitly 1
-/// is_positive=false means the term is negated (represents -coeff*cot(arg))
-fn extract_cot_term(
-    ctx: &cas_ast::Context,
-    term: ExprId,
-) -> Option<(Option<ExprId>, ExprId, bool)> {
-    let term_data = ctx.get(term);
-
-    // Check for Neg(...)
-    let (inner_term, is_positive) = match term_data {
-        Expr::Neg(inner) => (*inner, false),
-        _ => (term, true),
-    };
-
-    let inner_data = ctx.get(inner_term);
-
-    // Check for cot(arg) directly
-    if let Expr::Function(fn_id, args) = inner_data {
-        if matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Cot)) && args.len() == 1 {
-            // Coefficient is implicitly 1
-            return Some((None, args[0], is_positive));
-        }
-    }
-
-    // Check for Mul(coef, cot(arg))
-    if let Expr::Mul(l, r) = inner_data {
-        // Check if right is cot
-        if let Expr::Function(fn_id, args) = ctx.get(*r) {
-            if matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Cot)) && args.len() == 1 {
-                return Some((Some(*l), args[0], is_positive));
-            }
-        }
-        // Check if left is cot
-        if let Expr::Function(fn_id, args) = ctx.get(*l) {
-            if matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Cot)) && args.len() == 1 {
-                return Some((Some(*r), args[0], is_positive));
-            }
-        }
-    }
-
-    None
-}
-
 // =============================================================================
 // WEIERSTRASS HALF-ANGLE TANGENT CONTRACTION RULES
 // =============================================================================
@@ -102,44 +29,6 @@ fn extract_cot_term(
 // - 2*t / (1 + t²) → sin(x)
 // - (1 - t²) / (1 + t²) → cos(x)
 // This is the CONTRACTION direction (safe, doesn't worsen expressions)
-
-/// Helper: Check if expr is tan(arg/2) and return Some(arg), i.e. the full angle
-pub(super) fn extract_tan_half_angle(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
-    if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        if matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Tan)) && args.len() == 1 {
-            // Check if the argument is x/2 or (1/2)*x
-            let arg = args[0];
-            // Pattern: Div(x, 2) or Mul(1/2, x) or Mul(x, 1/2)
-            match ctx.get(arg) {
-                Expr::Div(num, den) => {
-                    // x/2 pattern
-                    if let Expr::Number(n) = ctx.get(*den) {
-                        if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into())
-                        {
-                            return Some(*num); // return x (the full angle)
-                        }
-                    }
-                }
-                Expr::Mul(l, r) => {
-                    // (1/2)*x or x*(1/2) pattern
-                    let half = num_rational::BigRational::new(1.into(), 2.into());
-                    if let Expr::Number(n) = ctx.get(*l) {
-                        if *n == half {
-                            return Some(*r);
-                        }
-                    }
-                    if let Expr::Number(n) = ctx.get(*r) {
-                        if *n == half {
-                            return Some(*l);
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    None
-}
 
 /// Helper: Check if expr is 1 + tan(x/2)² and return (x, tan_half_id)
 fn match_one_plus_tan_squared(ctx: &cas_ast::Context, expr: ExprId) -> Option<(ExprId, ExprId)> {

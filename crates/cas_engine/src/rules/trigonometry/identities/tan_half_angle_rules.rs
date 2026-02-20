@@ -10,6 +10,7 @@ use crate::define_rule;
 use crate::helpers::as_div;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
+use cas_math::trig_half_angle_support::extract_trig_half_angle;
 use num_traits::One;
 
 // =============================================================================
@@ -111,54 +112,6 @@ define_rule!(
 //
 // Also matches Mul(sin(x/2), sin(x/2)) and Mul(cos(x/2), cos(x/2)) for cases
 // where the AST uses product form instead of Pow.
-
-/// Helper: Check if `arg` represents `u/2` and return `u`.
-/// Supports: `Mul(1/2, u)`, `Mul(u, 1/2)`, `Div(u, 2)`.
-fn trig_is_half_angle(ctx: &cas_ast::Context, arg: ExprId) -> Option<ExprId> {
-    match ctx.get(arg) {
-        Expr::Mul(l, r) => {
-            let half = num_rational::BigRational::new(1.into(), 2.into());
-            if let Expr::Number(n) = ctx.get(*l) {
-                if *n == half {
-                    return Some(*r);
-                }
-            }
-            if let Expr::Number(n) = ctx.get(*r) {
-                if *n == half {
-                    return Some(*l);
-                }
-            }
-            None
-        }
-        Expr::Div(num, den) => {
-            if let Expr::Number(d) = ctx.get(*den) {
-                if *d == num_rational::BigRational::from_integer(2.into()) {
-                    return Some(*num);
-                }
-            }
-            None
-        }
-        _ => None,
-    }
-}
-
-/// Helper: If `expr` is `sin(half)` or `cos(half)` where `half` represents `x/2`,
-/// returns `(full_angle, is_sin)`.
-fn extract_trig_half_angle(ctx: &cas_ast::Context, expr: ExprId) -> Option<(ExprId, bool)> {
-    if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        if args.len() == 1 {
-            let builtin = ctx.builtin_of(*fn_id);
-            let is_sin = matches!(builtin, Some(BuiltinFn::Sin));
-            let is_cos = matches!(builtin, Some(BuiltinFn::Cos));
-            if is_sin || is_cos {
-                if let Some(full_angle) = trig_is_half_angle(ctx, args[0]) {
-                    return Some((full_angle, is_sin));
-                }
-            }
-        }
-    }
-    None
-}
 
 pub struct TrigHalfAngleSquaresRule;
 

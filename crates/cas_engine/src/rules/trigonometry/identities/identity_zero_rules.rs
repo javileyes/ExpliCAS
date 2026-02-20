@@ -10,9 +10,8 @@
 use crate::helpers::{as_add, as_neg, as_sub};
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
+use cas_math::trig_half_angle_support::extract_tan_half_angle;
 use num_traits::One;
-
-use super::half_angle_phase_rules::extract_tan_half_angle;
 
 // =============================================================================
 // WEIERSTRASS IDENTITY ZERO RULES (Pattern-Driven Cancellation)
