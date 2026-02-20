@@ -346,7 +346,7 @@ impl crate::rule::Rule for TrigQuotientRule {
         }
 
         // Pattern: 1/sin(x) → csc(x)
-        if crate::helpers::is_one(ctx, num) {
+        if cas_math::expr_predicates::is_one_expr(ctx, num) {
             if let Some((den_fn_id, ref den_args)) = den_fn_info {
                 let den_builtin = ctx.builtin_of(den_fn_id);
                 if matches!(den_builtin, Some(BuiltinFn::Sin)) && den_args.len() == 1 {

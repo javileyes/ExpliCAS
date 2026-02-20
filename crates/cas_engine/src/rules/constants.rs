@@ -33,9 +33,9 @@ define_rule!(
 
             // Check numerator is Add(1, sqrt(5)) or Add(sqrt(5), 1)
             if let Expr::Add(l, r) = ctx.get(*num) {
-                let (one_id, sqrt5_id) = if crate::helpers::is_one(ctx, *l) && is_sqrt5(ctx, *r) {
+                let (one_id, sqrt5_id) = if cas_math::expr_predicates::is_one_expr(ctx, *l) && is_sqrt5(ctx, *r) {
                     (*l, *r)
-                } else if is_sqrt5(ctx, *l) && crate::helpers::is_one(ctx, *r) {
+                } else if is_sqrt5(ctx, *l) && cas_math::expr_predicates::is_one_expr(ctx, *r) {
                     (*r, *l)
                 } else {
                     return None;
@@ -59,7 +59,7 @@ define_rule!(
             let _ = half_id; // suppress unused warning
 
             if let Expr::Add(a, b) = ctx.get(sum_id) {
-                if (crate::helpers::is_one(ctx, *a) && is_sqrt5(ctx, *b)) || (is_sqrt5(ctx, *a) && crate::helpers::is_one(ctx, *b))
+                if (cas_math::expr_predicates::is_one_expr(ctx, *a) && is_sqrt5(ctx, *b)) || (is_sqrt5(ctx, *a) && cas_math::expr_predicates::is_one_expr(ctx, *b))
                 {
                     let phi = ctx.add(Expr::Constant(Constant::Phi));
                     return Some(Rewrite::new(phi).desc("(1 + √5)/2 = φ"));
@@ -106,7 +106,7 @@ define_rule!(
     |ctx, expr| {
         if let Expr::Div(num, den) = ctx.get(expr) {
             // Check numerator is 1
-            if !crate::helpers::is_one(ctx, *num) {
+            if !cas_math::expr_predicates::is_one_expr(ctx, *num) {
                 return None;
             }
 
@@ -126,7 +126,7 @@ define_rule!(
     }
 );
 
-// Note: is_one uses crate::helpers::is_one (canonical)
+// Note: is_one checks now route directly to cas_math::expr_predicates::is_one_expr.
 
 // Helper: check if expression is √5 (Pow(5, 1/2) or Function("sqrt", [5]))
 fn is_sqrt5(ctx: &cas_ast::Context, id: cas_ast::ExprId) -> bool {

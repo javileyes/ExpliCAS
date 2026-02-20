@@ -7,9 +7,9 @@
 //! Example: `1/R = 1/R1 + 1/R2` → `R = R1·R2/(R1+R2)`
 
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp};
+use cas_math::expr_predicates::is_one_expr as is_one;
 
 use crate::engine::Simplifier;
-use crate::helpers::is_one;
 use crate::nary::add_terms_no_sign;
 use crate::solver::{contains_var, SolveStep};
 

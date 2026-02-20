@@ -1,6 +1,7 @@
 use super::*;
 use cas_ast::{Context, Expr};
 use cas_math::expr_extract::extract_i64_integer;
+use cas_math::expr_predicates::{is_one_expr as is_one, is_zero_expr as is_zero};
 use cas_math::numeric_eval::{as_rational_const, as_rational_const_depth};
 use cas_parser::parse;
 

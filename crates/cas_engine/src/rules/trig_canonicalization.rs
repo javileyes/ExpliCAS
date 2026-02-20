@@ -1,7 +1,7 @@
 use crate::define_rule;
-use crate::helpers::is_one;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr};
+use cas_math::expr_predicates::is_one_expr as is_one;
 use cas_math::trig_canonicalization_support::{
     check_reciprocal_pair, convert_trig_to_sincos, is_function_squared, is_mixed_trig_fraction,
     is_trig_of_inverse_trig,

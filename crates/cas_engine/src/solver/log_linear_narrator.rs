@@ -14,9 +14,9 @@
 //! The key insight is that the MATHEMATICAL result is correct, but the TRACE
 //! needs to be restructured for didactic clarity.
 
-use crate::helpers::is_one;
 use crate::solver::SolveStep;
 use cas_ast::{BuiltinFn, Context, Equation, Expr, ExprId};
+use cas_math::expr_predicates::is_one_expr as is_one;
 
 // =============================================================================
 // Display-only cleanup: remove "1·" identity coefficients from equations

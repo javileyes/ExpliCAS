@@ -1,7 +1,8 @@
 use crate::define_rule;
-use crate::helpers::{flatten_add_sub_chain, flatten_mul_chain, is_one, is_zero};
+use crate::helpers::{flatten_add_sub_chain, flatten_mul_chain};
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_predicates::{is_one_expr as is_one, is_zero_expr as is_zero};
 use cas_math::expr_rewrite::smart_mul;
 use std::collections::HashMap;
 
@@ -113,7 +114,7 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
     None
 });
 
-// is_one and is_zero are now imported from crate::helpers
+// is_one and is_zero are imported from cas_math::expr_predicates.
 
 // flatten_add_chain and flatten_mul_chain are now imported from crate::helpers
 

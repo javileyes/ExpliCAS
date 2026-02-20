@@ -800,7 +800,9 @@ define_rule!(
         // GUARD: Skip distribution when a factor is 1.
         // 1*(a+b) -> 1*a + 1*b is a visual no-op (MulOne is applied in rendering),
         // and produces confusing "Before/After identical" steps.
-        if crate::helpers::is_one(ctx, l) || crate::helpers::is_one(ctx, r) {
+        if cas_math::expr_predicates::is_one_expr(ctx, l)
+            || cas_math::expr_predicates::is_one_expr(ctx, r)
+        {
             return None;
         }
 

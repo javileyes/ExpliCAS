@@ -7,9 +7,9 @@
 //! These transformations are purely display-level and don't affect
 //! the solver's internal operation or correctness.
 
-use crate::helpers::is_zero;
 use crate::solver::SolveStep;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_predicates::is_zero_expr as is_zero;
 
 /// Clean up solve steps for better didactic display.
 ///

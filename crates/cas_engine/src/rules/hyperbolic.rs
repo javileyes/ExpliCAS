@@ -1,15 +1,16 @@
 use crate::define_rule;
-use crate::helpers::{is_one, is_zero};
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_extract::extract_exp_argument;
-use cas_math::expr_predicates::{is_half_expr, is_two_expr};
+use cas_math::expr_predicates::{
+    is_half_expr, is_one_expr as is_one, is_two_expr, is_zero_expr as is_zero,
+};
 use num_traits::Signed;
 use std::cmp::Ordering;
 
 // ==================== Helper Functions ====================
 
-// is_zero and is_one are now imported from crate::helpers
+// is_zero and is_one are imported from cas_math::expr_predicates.
 
 // ==================== Hyperbolic Function Rules ====================
 

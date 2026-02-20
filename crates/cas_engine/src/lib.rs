@@ -72,6 +72,7 @@ pub use assumptions::{
     AssumptionReporting, ConditionClass,
 };
 pub use budget::{Budget, BudgetExceeded, BudgetScope, Metric, Operation, PassStats};
+pub use cas_math::expr_predicates::is_zero_expr as is_zero;
 pub use cas_math::rationalize::{rationalize_denominator, RationalizeConfig, RationalizeResult};
 pub use cas_math::rationalize_policy::{
     AutoRationalizeLevel, RationalizeOutcome, RationalizeReason,
@@ -104,7 +105,7 @@ pub use expand::{
     eager_eval_expand_calls, estimate_expand_terms, expand, expand_div, expand_mul, expand_pow,
     expand_with_stats,
 };
-pub use helpers::{is_zero, prove_nonzero, prove_positive};
+pub use helpers::{prove_nonzero, prove_positive};
 pub use implicit_domain::{
     check_analytic_expansion, classify_assumption, classify_assumptions_in_place,
     derive_requires_from_equation, domain_delta_check, expands_analytic_domain,

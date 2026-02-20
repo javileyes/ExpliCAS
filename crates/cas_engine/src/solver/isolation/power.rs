@@ -377,7 +377,7 @@ fn isolate_pow_exponent(
     // ================================================================
     // DOMAIN GUARDS for log operation (RealOnly mode)
     // ================================================================
-    use crate::helpers::is_one;
+    use cas_math::expr_predicates::is_one_expr as is_one;
 
     // GUARD 1: Handle base = 1 special case
     if is_one(&simplifier.context, b) {
