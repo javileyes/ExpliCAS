@@ -2,11 +2,12 @@
 //!
 //! Extracted from `pythagorean.rs` to reduce file size.
 //! - SecToRecipCosRule, CscToRecipSinRule, CotToCosSinRule
-//! - TrigEvenPowerDifferenceRule + extract_trig_fourth_power
+//! - TrigEvenPowerDifferenceRule (with extraction delegated to cas_math)
 
 use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_ast::Expr;
+use cas_math::trig_power_identity_support::extract_coeff_trig_pow4;
 
 // =============================================================================
 // SecToRecipCosRule: sec(x) → 1/cos(x) (canonical expansion)
@@ -101,7 +102,7 @@ define_rule!(
         let mut cos4_terms: Vec<(num_rational::BigRational, cas_ast::ExprId, usize)> = Vec::new();
 
         for (i, &term) in terms.iter().enumerate() {
-            if let Some((coef, func_name, arg)) = extract_trig_fourth_power(ctx, term) {
+            if let Some((coef, func_name, arg)) = extract_coeff_trig_pow4(ctx, term) {
                 if func_name == "sin" {
                     sin4_terms.push((coef, arg, i));
                 } else if func_name == "cos" {
@@ -176,89 +177,6 @@ define_rule!(
     }
 );
 
-/// Extract (coefficient, trig_function_name, argument) from a term like k * sin(u)^4
-/// Returns None if the term doesn't match this pattern.
-fn extract_trig_fourth_power(
-    ctx: &cas_ast::Context,
-    term: cas_ast::ExprId,
-) -> Option<(num_rational::BigRational, String, cas_ast::ExprId)> {
-    use num_rational::BigRational;
-    use num_traits::One;
-
-    let mut coef = BigRational::one();
-    let mut working = term;
-
-    // Handle Neg wrapper
-    if let Expr::Neg(inner) = ctx.get(term) {
-        coef = -coef;
-        working = *inner;
-    }
-
-    // Flatten multiplication
-    let mut factors = Vec::new();
-    let mut stack = vec![working];
-    while let Some(curr) = stack.pop() {
-        match ctx.get(curr) {
-            Expr::Mul(l, r) => {
-                stack.push(*r);
-                stack.push(*l);
-            }
-            _ => factors.push(curr),
-        }
-    }
-
-    // Look for trig⁴(arg) and extract numeric coefficients
-    let mut trig_func_name = None;
-    let mut trig_arg = None;
-    let mut trig_idx = None;
-
-    for (i, &f) in factors.iter().enumerate() {
-        // Check for Number (accumulate into coefficient)
-        if let Expr::Number(n) = ctx.get(f) {
-            coef *= n.clone();
-            continue;
-        }
-
-        // Check for Pow(trig_func, 4)
-        if let Expr::Pow(base, exp) = ctx.get(f) {
-            if let Expr::Number(n) = ctx.get(*exp) {
-                if *n == BigRational::from_integer(4.into()) {
-                    if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                        let builtin = ctx.builtin_of(*fn_id);
-                        if matches!(
-                            builtin,
-                            Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
-                        ) && args.len() == 1
-                        {
-                            trig_func_name = Some(builtin.unwrap().name().to_string());
-                            trig_arg = Some(args[0]);
-                            trig_idx = Some(i);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Verify we found exactly one trig⁴ and possibly some numeric factors
-    let func_name = trig_func_name?;
-    let arg = trig_arg?;
-    let idx = trig_idx?;
-
-    // Verify remaining factors are all numbers (already accumulated into coef)
-    for (i, &f) in factors.iter().enumerate() {
-        if i == idx {
-            continue;
-        }
-        if !matches!(ctx.get(f), Expr::Number(_)) {
-            // Non-numeric factor that isn't the trig⁴, pattern doesn't match cleanly
-            return None;
-        }
-    }
-
-    Some((coef, func_name, arg))
-}
-
 // ============================================================================
 // TrigEvenPowerSumRule
 // ============================================================================
@@ -284,7 +202,7 @@ define_rule!(
         let mut cos4_terms: Vec<(num_rational::BigRational, cas_ast::ExprId, usize)> = Vec::new();
 
         for (i, &term) in terms.iter().enumerate() {
-            if let Some((coef, func_name, arg)) = extract_trig_fourth_power(ctx, term) {
+            if let Some((coef, func_name, arg)) = extract_coeff_trig_pow4(ctx, term) {
                 if func_name == "sin" {
                     sin4_terms.push((coef, arg, i));
                 } else if func_name == "cos" {

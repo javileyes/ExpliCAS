@@ -1,6 +1,8 @@
 use crate::expr_nary::mul_leaves;
 use crate::numeric_eval::as_rational_const;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use num_rational::BigRational;
+use num_traits::One;
 use std::cmp::Ordering;
 
 fn extract_trig_pow_n(ctx: &Context, term: ExprId, n: i64) -> Option<(ExprId, &'static str)> {
@@ -32,6 +34,51 @@ pub fn extract_trig_pow4(ctx: &Context, term: ExprId) -> Option<(ExprId, &'stati
 
 pub fn extract_trig_pow6(ctx: &Context, term: ExprId) -> Option<(ExprId, &'static str)> {
     extract_trig_pow_n(ctx, term, 6)
+}
+
+fn extract_coeff_trig_pow_n(
+    ctx: &Context,
+    term: ExprId,
+    n: i64,
+) -> Option<(BigRational, &'static str, ExprId)> {
+    let mut coef = BigRational::one();
+    let mut working = term;
+
+    if let Expr::Neg(inner) = ctx.get(term) {
+        coef = -coef;
+        working = *inner;
+    }
+
+    let factors = mul_leaves(ctx, working);
+    let mut trig_match: Option<(&'static str, ExprId)> = None;
+
+    for factor in factors {
+        if let Expr::Number(num) = ctx.get(factor) {
+            coef *= num.clone();
+            continue;
+        }
+
+        if let Some((arg, name)) = extract_trig_pow_n(ctx, factor, n) {
+            if trig_match.is_some() {
+                return None;
+            }
+            trig_match = Some((name, arg));
+            continue;
+        }
+
+        return None;
+    }
+
+    let (name, arg) = trig_match?;
+    Some((coef, name, arg))
+}
+
+/// Extract `(coefficient, trig_name, argument)` from `k * sin(arg)^4` or `k * cos(arg)^4`.
+pub fn extract_coeff_trig_pow4(
+    ctx: &Context,
+    term: ExprId,
+) -> Option<(BigRational, &'static str, ExprId)> {
+    extract_coeff_trig_pow_n(ctx, term, 4)
 }
 
 /// Extract `coeff * sin(arg)^2 * cos(arg)^2` from a product term.
@@ -105,6 +152,41 @@ mod tests {
         assert!(extract_trig_pow2(&ctx, s2).is_some());
         assert!(extract_trig_pow4(&ctx, c4).is_some());
         assert!(extract_trig_pow6(&ctx, s6).is_some());
+    }
+
+    #[test]
+    fn extract_coeff_trig_pow4_detects_sign_and_coefficient() {
+        let mut ctx = Context::new();
+        let term1 = parse("3*sin(t)^4", &mut ctx).expect("term1");
+        let term2 = parse("-cos(t)^4", &mut ctx).expect("term2");
+        let t = parse("t", &mut ctx).expect("t");
+
+        let (coef1, name1, arg1) = extract_coeff_trig_pow4(&ctx, term1).expect("term1 match");
+        let (coef2, name2, arg2) = extract_coeff_trig_pow4(&ctx, term2).expect("term2 match");
+
+        assert_eq!(coef1, BigRational::from_integer(3.into()));
+        assert_eq!(name1, "sin");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, arg1, t),
+            Ordering::Equal
+        );
+
+        assert_eq!(coef2, BigRational::from_integer((-1).into()));
+        assert_eq!(name2, "cos");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, arg2, t),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn extract_coeff_trig_pow4_rejects_non_numeric_residuals() {
+        let mut ctx = Context::new();
+        let bad1 = parse("x*sin(t)^4", &mut ctx).expect("bad1");
+        let bad2 = parse("sin(t)^4*cos(t)^4", &mut ctx).expect("bad2");
+
+        assert!(extract_coeff_trig_pow4(&ctx, bad1).is_none());
+        assert!(extract_coeff_trig_pow4(&ctx, bad2).is_none());
     }
 
     #[test]
