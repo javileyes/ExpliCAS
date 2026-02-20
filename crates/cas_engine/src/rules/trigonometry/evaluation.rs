@@ -6,8 +6,7 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_ast::Expr;
-use cas_math::expr_relations::extract_negated_inner;
-use cas_math::trig_eval_table_support::lookup_trig_or_inverse;
+use cas_math::trig_eval_table_support::{lookup_trig_or_inverse, rewrite_negative_trig_argument};
 
 define_rule!(
     EvaluateTrigTableRule,
@@ -38,26 +37,8 @@ define_rule!(
                     );
                 }
 
-                // Handle negative arguments: sin(-x) = -sin(x), cos(-x) = cos(x), tan(-x) = -tan(x)
-                let inner_opt = extract_negated_inner(ctx, arg);
-                if let Some(inner) = inner_opt {
-                    match name.as_str() {
-                        "sin" => {
-                            let sin_inner = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![inner]);
-                            let new_expr = ctx.add(Expr::Neg(sin_inner));
-                            return Some(Rewrite::new(new_expr).desc("sin(-x) = -sin(x)"));
-                        }
-                        "cos" => {
-                            let new_expr = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![inner]);
-                            return Some(Rewrite::new(new_expr).desc("cos(-x) = cos(x)"));
-                        }
-                        "tan" => {
-                            let tan_inner = ctx.call_builtin(cas_ast::BuiltinFn::Tan, vec![inner]);
-                            let new_expr = ctx.add(Expr::Neg(tan_inner));
-                            return Some(Rewrite::new(new_expr).desc("tan(-x) = -tan(x)"));
-                        }
-                        _ => {}
-                    }
+                if let Some((new_expr, desc)) = rewrite_negative_trig_argument(ctx, &name, arg) {
+                    return Some(Rewrite::new(new_expr).desc(desc));
                 }
             }
         }
