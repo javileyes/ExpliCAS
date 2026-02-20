@@ -14,7 +14,6 @@
 
 mod engine;
 mod presimplify;
-mod rules;
 mod types;
 
 pub use engine::limit;

@@ -4,12 +4,11 @@
 
 use cas_ast::{Context, ExprId};
 use cas_math::infinity_support::InfSign;
-use cas_math::limits_support::mk_limit;
+use cas_math::limits_support::{mk_limit, try_limit_rules_at_infinity};
 
 use crate::{Budget, CasError};
 
 use super::presimplify::presimplify_safe;
-use super::rules::try_limit_rules;
 use super::types::{Approach, LimitOptions, LimitResult, PreSimplifyMode};
 
 fn approach_sign(approach: Approach) -> InfSign {
@@ -53,7 +52,9 @@ pub fn limit(
     };
 
     // Step 2: Try limit rules
-    if let Some(result_expr) = try_limit_rules(ctx, simplified_expr, var, approach, budget) {
+    if let Some(result_expr) =
+        try_limit_rules_at_infinity(ctx, simplified_expr, var, approach_sign(approach))
+    {
         // Limit was resolved
         // Note: Steps are not collected in V1 (TODO for V1.1)
         return Ok(LimitResult {
