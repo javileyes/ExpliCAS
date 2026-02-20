@@ -82,6 +82,87 @@ pub fn mk_inf(ctx: &mut Context, sign: InfSign) -> ExprId {
     mk_infinity(ctx, sign)
 }
 
+/// Rule 1: Constant - lim c = c (if `expr` doesn't depend on `var`).
+pub fn apply_constant_rule(ctx: &Context, expr: ExprId, var: ExprId) -> Option<ExprId> {
+    if !depends_on(ctx, expr, var) {
+        Some(expr)
+    } else {
+        None
+    }
+}
+
+/// Rule 2: Variable - lim x = ±∞ based on approach sign.
+pub fn apply_variable_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    if expr != var {
+        return None;
+    }
+    Some(mk_infinity(ctx, approach))
+}
+
+/// Rule 3: Power - lim x^n for integer n.
+///
+/// - n > 0: ±∞ (sign depends on approach and parity)
+/// - n = 0: 1
+/// - n < 0: 0
+pub fn apply_power_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    let (base, n) = parse_pow_int(ctx, expr)?;
+
+    // Base must be exactly the limit variable
+    if base != var {
+        return None;
+    }
+
+    if n == 0 {
+        return Some(ctx.num(1));
+    }
+    if n < 0 {
+        return Some(ctx.num(0));
+    }
+
+    let sign = limit_sign(approach, n);
+    Some(mk_infinity(ctx, sign))
+}
+
+/// Rule 4: Reciprocal power - lim c/x^n = 0 for n > 0 and c independent of x.
+pub fn apply_reciprocal_power_rule(ctx: &mut Context, expr: ExprId, var: ExprId) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    // Numerator must be constant wrt variable.
+    if depends_on(ctx, num, var) {
+        return None;
+    }
+
+    // Denominator must be x^n with n > 0, or plain x.
+    let power = if den == var {
+        1
+    } else if let Some((base, n)) = parse_pow_int(ctx, den) {
+        if base != var || n <= 0 {
+            return None;
+        }
+        n
+    } else {
+        return None;
+    };
+
+    if power > 0 {
+        Some(ctx.num(0))
+    } else {
+        None
+    }
+}
+
 /// Rational polynomial limit rule for `P(x)/Q(x)` as `x -> ±∞`.
 ///
 /// Compares polynomial degrees in `var`:
@@ -186,6 +267,35 @@ pub fn rational_poly_limit(
     Some(mk_infinity(ctx, sign))
 }
 
+/// Try all limit-at-infinity rules in conservative order.
+///
+/// Order:
+/// 1. Constant
+/// 2. Variable
+/// 3. Power
+/// 4. Reciprocal power
+/// 5. Rational polynomial
+pub fn try_limit_rules_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    if let Some(r) = apply_constant_rule(ctx, expr, var) {
+        return Some(r);
+    }
+    if let Some(r) = apply_variable_rule(ctx, expr, var, approach) {
+        return Some(r);
+    }
+    if let Some(r) = apply_power_rule(ctx, expr, var, approach) {
+        return Some(r);
+    }
+    if let Some(r) = apply_reciprocal_power_rule(ctx, expr, var) {
+        return Some(r);
+    }
+    rational_poly_limit(ctx, expr, var, approach)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -265,5 +375,80 @@ mod tests {
 
         assert!(matches!(ctx.get(equal_out), Expr::Number(_)));
         assert!(matches!(ctx.get(higher_out), Expr::Neg(_)));
+    }
+
+    #[test]
+    fn rational_poly_limit_rejects_non_polynomial_and_symbolic_leading_coeff() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let non_poly = parse_expr(&mut ctx, "sin(x)/x");
+        let symbolic_lc = parse_expr(&mut ctx, "(y*x^2)/x^2");
+
+        let out1 = rational_poly_limit(&mut ctx, non_poly, x, InfSign::Pos);
+        let out2 = rational_poly_limit(&mut ctx, symbolic_lc, x, InfSign::Pos);
+
+        assert!(out1.is_none());
+        assert!(out2.is_none());
+    }
+
+    #[test]
+    fn apply_power_rule_handles_zero_and_negative_exponents() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let x0 = parse_expr(&mut ctx, "x^0");
+        let xneg = parse_expr(&mut ctx, "x^-3");
+
+        let out0 = apply_power_rule(&mut ctx, x0, x, InfSign::Pos).expect("x^0");
+        let out_neg = apply_power_rule(&mut ctx, xneg, x, InfSign::Neg).expect("x^-3");
+
+        assert!(
+            matches!(ctx.get(out0), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(1)))
+        );
+        assert!(
+            matches!(ctx.get(out_neg), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+    }
+
+    #[test]
+    fn apply_reciprocal_power_rule_handles_one_over_xn() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let expr1 = parse_expr(&mut ctx, "1/x");
+        let expr2 = parse_expr(&mut ctx, "5/x^3");
+
+        let out1 = apply_reciprocal_power_rule(&mut ctx, expr1, x).expect("1/x");
+        let out2 = apply_reciprocal_power_rule(&mut ctx, expr2, x).expect("5/x^3");
+
+        assert!(
+            matches!(ctx.get(out1), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(
+            matches!(ctx.get(out2), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+    }
+
+    #[test]
+    fn try_limit_rules_at_infinity_resolves_constant_and_variable() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let c = parse_expr(&mut ctx, "7");
+
+        let c_out = try_limit_rules_at_infinity(&mut ctx, c, x, InfSign::Pos).expect("constant");
+        let x_out = try_limit_rules_at_infinity(&mut ctx, x, x, InfSign::Neg).expect("variable");
+
+        assert_eq!(c_out, c);
+        assert!(matches!(ctx.get(x_out), Expr::Neg(_)));
+    }
+
+    #[test]
+    fn try_limit_rules_at_infinity_uses_rational_poly_fallback() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let expr = parse_expr(&mut ctx, "x^2/x^3");
+
+        let out = try_limit_rules_at_infinity(&mut ctx, expr, x, InfSign::Pos).expect("rational");
+        assert!(
+            matches!(ctx.get(out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
     }
 }
