@@ -7,10 +7,10 @@
 //! 4. RationalPolyRule - P(x)/Q(x) polynomial division
 
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::infinity_support::{mk_infinity, InfSign};
 use num_bigint::BigInt;
 use num_rational::BigRational;
 
-use crate::rules::infinity::{mk_infinity, InfSign};
 use crate::Budget;
 
 use super::helpers::{depends_on, limit_sign, mk_inf, parse_pow_int};

@@ -1,7 +1,7 @@
 //! Helper functions for limit computation.
 
-use crate::rules::infinity::{mk_infinity, InfSign};
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::infinity_support::{mk_infinity, InfSign};
 
 use super::types::Approach;
 

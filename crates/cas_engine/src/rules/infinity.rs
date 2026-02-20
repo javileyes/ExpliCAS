@@ -10,120 +10,13 @@
 //! - `0 · ∞ → Undefined` (indeterminate)
 
 use crate::rule::Rewrite;
-use cas_ast::{Constant, Context, Expr, ExprId};
+use cas_ast::{Context, Expr, ExprId};
+pub use cas_math::infinity_support::{
+    classify_finiteness, collect_add_terms_with_sign, inf_sign, is_finite_literal,
+    is_negative_literal, mk_infinity, mk_undefined, Finiteness, InfSign,
+};
 use num_bigint::BigInt;
 use num_rational::BigRational;
-
-// ============================================================
-// HELPERS
-// ============================================================
-
-/// Sign of infinity: positive (+∞) or negative (−∞).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum InfSign {
-    Pos,
-    Neg,
-}
-
-/// Detect if an expression is ±∞.
-///
-/// Recognizes:
-/// - `Constant::Infinity` → `InfSign::Pos`
-/// - `Neg(Constant::Infinity)` → `InfSign::Neg`
-pub fn inf_sign(ctx: &Context, id: ExprId) -> Option<InfSign> {
-    match ctx.get(id) {
-        Expr::Constant(Constant::Infinity) => Some(InfSign::Pos),
-        Expr::Neg(inner) => match ctx.get(*inner) {
-            Expr::Constant(Constant::Infinity) => Some(InfSign::Neg),
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
-/// Construct ±∞.
-pub fn mk_infinity(ctx: &mut Context, sign: InfSign) -> ExprId {
-    let inf = ctx.add(Expr::Constant(Constant::Infinity));
-    match sign {
-        InfSign::Pos => inf,
-        InfSign::Neg => ctx.add(Expr::Neg(inf)),
-    }
-}
-
-/// Construct Undefined (for indeterminate forms).
-pub fn mk_undefined(ctx: &mut Context) -> ExprId {
-    ctx.add(Expr::Constant(Constant::Undefined))
-}
-
-/// Check if an expression is a "finite literal".
-///
-/// Conservative policy: only true for expressions we KNOW are finite:
-/// - Numbers (BigRational)
-/// - Constants that are not Infinity or Undefined (π, e, i)
-///
-/// This prevents unsound simplifications like `f(x) + ∞ → ∞` where f(x) might be −∞.
-pub fn is_finite_literal(ctx: &Context, id: ExprId) -> bool {
-    match ctx.get(id) {
-        Expr::Number(_) => true,
-        Expr::Constant(c) => !matches!(c, Constant::Infinity | Constant::Undefined),
-        _ => false,
-    }
-}
-
-// ============================================================
-// FINITENESS CLASSIFICATION (for limit support)
-// ============================================================
-
-/// Classification of an expression's finiteness.
-///
-/// This is a conservative classification:
-/// - `FiniteLiteral`: We KNOW the expression is a finite value
-/// - `Infinity(sign)`: We KNOW the expression is ±∞
-/// - `Unknown`: Expression could be finite, infinite, or undefined
-///
-/// Example usage for limits:
-/// ```ignore
-/// match classify_finiteness(ctx, expr) {
-///     Finiteness::FiniteLiteral => { /* can safely absorb into infinity */ },
-///     Finiteness::Infinity(sign) => { /* propagate infinity with sign */ },
-///     Finiteness::Unknown => { /* cannot simplify - may need limit rules */ },
-/// }
-/// ```
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Finiteness {
-    /// Expression is a known finite value (number, π, e, i)
-    FiniteLiteral,
-    /// Expression is ±∞ with known sign
-    Infinity(InfSign),
-    /// Unknown finiteness - could be finite, infinite, or undefined
-    /// This includes: variables, functions, complex expressions
-    Unknown,
-}
-
-/// Classify an expression's finiteness.
-///
-/// Returns:
-/// - `FiniteLiteral`: Numbers and finite constants (π, e, i)
-/// - `Infinity(Pos)`: Expression is +∞
-/// - `Infinity(Neg)`: Expression is -∞
-/// - `Unknown`: Variables, functions, or complex expressions
-///
-/// Note: `Undefined` is classified as `Unknown` since it represents
-/// an indeterminate form, not a known value.
-pub fn classify_finiteness(ctx: &Context, id: ExprId) -> Finiteness {
-    // Check for infinity first
-    if let Some(sign) = inf_sign(ctx, id) {
-        return Finiteness::Infinity(sign);
-    }
-
-    // Check for finite literals
-    if is_finite_literal(ctx, id) {
-        return Finiteness::FiniteLiteral;
-    }
-
-    // Everything else is unknown (conservative)
-    Finiteness::Unknown
-}
 
 /// Check if expression is zero - uses the canonical helper.
 fn is_zero(ctx: &Context, id: ExprId) -> bool {
@@ -188,33 +81,6 @@ pub fn add_infinity_absorption(ctx: &mut Context, expr: ExprId) -> Option<Rewrit
     Some(Rewrite::new(new_expr).desc(description))
 }
 
-/// Collect additive terms with their signs (iterative, handles Sub).
-fn collect_add_terms_with_sign(
-    ctx: &Context,
-    id: ExprId,
-    is_positive: bool,
-    terms: &mut Vec<(ExprId, bool)>,
-) {
-    let mut stack = vec![(id, is_positive)];
-
-    while let Some((current, sign)) = stack.pop() {
-        match ctx.get(current) {
-            Expr::Add(l, r) => {
-                stack.push((*r, sign));
-                stack.push((*l, sign));
-            }
-            Expr::Sub(l, r) => {
-                stack.push((*r, !sign)); // Right side gets inverted sign
-                stack.push((*l, sign));
-            }
-            Expr::Neg(inner) => {
-                stack.push((*inner, !sign));
-            }
-            _ => terms.push((current, sign)),
-        }
-    }
-}
-
 /// Rule: Division by infinity.
 ///
 /// `finite / ∞ → 0`
@@ -255,30 +121,6 @@ pub fn mul_zero_infinity(ctx: &mut Context, expr: ExprId) -> Option<Rewrite> {
         return Some(Rewrite::new(mk_undefined(ctx)).desc("0 · ∞ is indeterminate"));
     }
     None
-}
-
-/// Check if expression is a positive finite literal (for sign determination).
-fn is_positive_literal(ctx: &Context, id: ExprId) -> bool {
-    match ctx.get(id) {
-        Expr::Number(n) => {
-            use num_traits::Signed;
-            n.is_positive()
-        }
-        Expr::Constant(c) => matches!(c, Constant::Pi | Constant::E), // π and e are positive
-        _ => false,
-    }
-}
-
-/// Check if expression is a negative finite literal.
-fn is_negative_literal(ctx: &Context, id: ExprId) -> bool {
-    match ctx.get(id) {
-        Expr::Number(n) => {
-            use num_traits::Signed;
-            n.is_negative()
-        }
-        Expr::Neg(inner) => is_positive_literal(ctx, *inner),
-        _ => false,
-    }
 }
 
 /// Rule: Finite (non-zero) times infinity.
@@ -433,6 +275,7 @@ pub fn register(simplifier: &mut crate::Simplifier) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_ast::Constant;
     use cas_parser::parse;
     use num_traits::Zero;
 
