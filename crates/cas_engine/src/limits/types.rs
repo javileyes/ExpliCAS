@@ -2,7 +2,6 @@
 
 use crate::Step;
 use cas_ast::ExprId;
-pub use cas_math::limit_types::{Approach, LimitOptions, PreSimplifyMode};
 
 /// Result of limit computation.
 #[derive(Debug)]

@@ -12,6 +12,7 @@ use crate::build::mul2_raw;
 
 use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
+use cas_math::telescoping_dirichlet::DirichletKernelResult;
 use num_traits::Zero;
 
 /// Result of telescoping analysis
@@ -196,8 +197,6 @@ pub fn telescope(ctx: &mut Context, expr: ExprId) -> TelescopingResult {
         final_result: Some(result),
     }
 }
-
-pub use cas_math::telescoping_dirichlet::DirichletKernelResult;
 
 /// Try to detect Dirichlet kernel identity pattern (public interface for orchestrator).
 pub fn try_dirichlet_kernel_identity_pub(

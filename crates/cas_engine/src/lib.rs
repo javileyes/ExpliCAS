@@ -59,6 +59,7 @@ pub use cas_math::canonical_forms;
 pub use cas_math::expr_nary as nary;
 pub use cas_math::factor;
 pub use cas_math::pattern_marks;
+pub use cas_math::telescoping_dirichlet::DirichletKernelResult;
 
 pub use cas_ast::ordering;
 pub use cas_ast::target_kind;
@@ -135,8 +136,7 @@ pub use step::{
     pathsteps_to_expr_path, DisplayEvalSteps, ImportanceLevel, PathStep, Step, StepCategory,
 };
 pub use telescoping::{
-    telescope, try_dirichlet_kernel_identity_pub, DirichletKernelResult, TelescopingResult,
-    TelescopingStep,
+    telescope, try_dirichlet_kernel_identity_pub, TelescopingResult, TelescopingStep,
 };
 pub use timeline::{html_escape, latex_escape, SolveTimelineHtml, TimelineHtml, VerbosityLevel};
 pub use visitors::{DepthVisitor, VariableCollector};

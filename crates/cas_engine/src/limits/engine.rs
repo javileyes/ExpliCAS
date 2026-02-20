@@ -7,7 +7,7 @@ use cas_math::limits_support::eval_limit_at_infinity;
 
 use crate::{Budget, CasError};
 
-use super::types::{Approach, LimitOptions, LimitResult};
+use super::{Approach, LimitOptions, LimitResult};
 
 /// Compute the limit of an expression.
 ///

@@ -15,5 +15,6 @@
 mod engine;
 mod types;
 
+pub use cas_math::limit_types::{Approach, LimitOptions, PreSimplifyMode};
 pub use engine::limit;
-pub use types::{Approach, LimitOptions, LimitResult, PreSimplifyMode};
+pub use types::LimitResult;
