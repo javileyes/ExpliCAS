@@ -14,7 +14,8 @@ use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::expr_rewrite::smart_mul;
 use cas_math::trig_power_identity_support::{
-    extract_all_trig_squared_candidates, extract_coeff_tan_or_cot_pow2, extract_coeff_trig_pow2,
+    decompose_term_with_residual_multi, extract_all_trig_squared_candidates, extract_as_product,
+    extract_coeff_tan_or_cot_pow2, extract_coeff_trig_pow2,
 };
 
 define_rule!(
@@ -551,148 +552,6 @@ define_rule!(
         None
     }
 );
-
-/// Multi-candidate version: returns ALL possible (is_sin, arg, numeric_coef, residual_factors)
-/// decompositions from a term with potentially multiple trig² factors.
-/// For example, `2·cos(x)²·sin(u)²` generates:
-///   - (false, x, 2, [sin(u)²]) - treating cos(x)² as the main trig
-///   - (true, u, 2, [cos(x)²]) - treating sin(u)² as the main trig
-fn decompose_term_with_residual_multi(
-    ctx: &Context,
-    term: ExprId,
-) -> Vec<(bool, ExprId, num_rational::BigRational, Vec<ExprId>)> {
-    use num_rational::BigRational;
-    use num_traits::One;
-
-    let mut factors = Vec::new();
-    let mut stack = vec![term];
-    let mut is_negated = false;
-
-    if let Expr::Neg(inner) = ctx.get(term) {
-        is_negated = true;
-        stack = vec![*inner];
-    }
-
-    while let Some(curr) = stack.pop() {
-        match ctx.get(curr) {
-            Expr::Mul(l, r) => {
-                stack.push(*r);
-                stack.push(*l);
-            }
-            Expr::Neg(inner) => {
-                is_negated = !is_negated;
-                stack.push(*inner);
-            }
-            _ => factors.push(curr),
-        }
-    }
-
-    // Find ALL trig² factors (sin²/cos² with any argument)
-    let mut trig_indices: Vec<(usize, bool, ExprId)> = Vec::new(); // (index, is_sin, arg)
-
-    for (i, &f) in factors.iter().enumerate() {
-        if let Expr::Pow(base, exp) = ctx.get(f) {
-            if let Expr::Number(n) = ctx.get(*exp) {
-                if *n == BigRational::from_integer(2.into()) {
-                    if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                        let builtin = ctx.builtin_of(*fn_id);
-                        if args.len() == 1
-                            && matches!(
-                                builtin,
-                                Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
-                            )
-                        {
-                            trig_indices.push((
-                                i,
-                                matches!(builtin, Some(cas_ast::BuiltinFn::Sin)),
-                                args[0],
-                            ));
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Generate one candidate for each trig² factor
-    let mut results = Vec::new();
-    let base_numeric_coef: BigRational = if is_negated {
-        -BigRational::one()
-    } else {
-        BigRational::one()
-    };
-
-    for (trig_idx, is_sin, arg) in trig_indices {
-        let mut numeric_coef = base_numeric_coef.clone();
-        let mut residual: Vec<ExprId> = Vec::new();
-
-        for (i, &f) in factors.iter().enumerate() {
-            if i == trig_idx {
-                continue;
-            }
-            if let Expr::Number(n) = ctx.get(f) {
-                numeric_coef *= n.clone();
-            } else {
-                residual.push(f);
-            }
-        }
-
-        results.push((is_sin, arg, numeric_coef, residual));
-    }
-
-    // Cap at 6 candidates to avoid blow-up
-    results.truncate(6);
-    results
-}
-
-/// Extract term as product of factors with numeric coefficient
-fn extract_as_product(
-    ctx: &Context,
-    term: ExprId,
-) -> Option<(Vec<ExprId>, num_rational::BigRational)> {
-    use num_rational::BigRational;
-    use num_traits::One;
-
-    let mut factors = Vec::new();
-    let mut stack = vec![term];
-    let mut is_negated = false;
-
-    if let Expr::Neg(inner) = ctx.get(term) {
-        is_negated = true;
-        stack = vec![*inner];
-    }
-
-    while let Some(curr) = stack.pop() {
-        match ctx.get(curr) {
-            Expr::Mul(l, r) => {
-                stack.push(*r);
-                stack.push(*l);
-            }
-            Expr::Neg(inner) => {
-                is_negated = !is_negated;
-                stack.push(*inner);
-            }
-            _ => factors.push(curr),
-        }
-    }
-
-    let mut numeric_coef = BigRational::one();
-    let mut non_numeric: Vec<ExprId> = Vec::new();
-
-    for &f in &factors {
-        if let Expr::Number(n) = ctx.get(f) {
-            numeric_coef *= n.clone();
-        } else {
-            non_numeric.push(f);
-        }
-    }
-
-    if is_negated {
-        numeric_coef = -numeric_coef;
-    }
-
-    Some((non_numeric, numeric_coef))
-}
 
 // =============================================================================
 // RecognizeSecSquaredRule: 1 + tan²(x) → sec²(x) (contraction to canonical form)

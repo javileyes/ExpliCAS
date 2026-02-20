@@ -254,6 +254,133 @@ pub fn extract_all_trig_squared_candidates(
     results
 }
 
+/// Return all possible decompositions of a term as:
+/// `(is_sin, trig_argument, numeric_coefficient, residual_factors)`.
+///
+/// For `2*cos(x)^2*sin(u)^2`, this yields two entries:
+/// - treating `cos(x)^2` as the chosen trig-square
+/// - treating `sin(u)^2` as the chosen trig-square
+pub fn decompose_term_with_residual_multi(
+    ctx: &Context,
+    term: ExprId,
+) -> Vec<(bool, ExprId, BigRational, Vec<ExprId>)> {
+    let mut factors = Vec::new();
+    let mut stack = vec![term];
+    let mut is_negated = false;
+
+    if let Expr::Neg(inner) = ctx.get(term) {
+        is_negated = true;
+        stack = vec![*inner];
+    }
+
+    while let Some(curr) = stack.pop() {
+        match ctx.get(curr) {
+            Expr::Mul(l, r) => {
+                stack.push(*r);
+                stack.push(*l);
+            }
+            Expr::Neg(inner) => {
+                is_negated = !is_negated;
+                stack.push(*inner);
+            }
+            _ => factors.push(curr),
+        }
+    }
+
+    let mut trig_indices: Vec<(usize, bool, ExprId)> = Vec::new();
+    for (i, &f) in factors.iter().enumerate() {
+        if let Expr::Pow(base, exp) = ctx.get(f) {
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if *n == BigRational::from_integer(2.into()) {
+                    if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                        let builtin = ctx.builtin_of(*fn_id);
+                        if args.len() == 1
+                            && matches!(builtin, Some(BuiltinFn::Sin | BuiltinFn::Cos))
+                        {
+                            trig_indices.push((
+                                i,
+                                matches!(builtin, Some(BuiltinFn::Sin)),
+                                args[0],
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut results = Vec::new();
+    let base_numeric_coef = if is_negated {
+        -BigRational::one()
+    } else {
+        BigRational::one()
+    };
+
+    for (trig_idx, is_sin, arg) in trig_indices {
+        let mut numeric_coef = base_numeric_coef.clone();
+        let mut residual: Vec<ExprId> = Vec::new();
+
+        for (i, &f) in factors.iter().enumerate() {
+            if i == trig_idx {
+                continue;
+            }
+            if let Expr::Number(n) = ctx.get(f) {
+                numeric_coef *= n.clone();
+            } else {
+                residual.push(f);
+            }
+        }
+
+        results.push((is_sin, arg, numeric_coef, residual));
+    }
+
+    results.truncate(6);
+    results
+}
+
+/// Flatten a product term and separate numeric coefficient from non-numeric factors.
+pub fn extract_as_product(ctx: &Context, term: ExprId) -> Option<(Vec<ExprId>, BigRational)> {
+    let mut factors = Vec::new();
+    let mut stack = vec![term];
+    let mut is_negated = false;
+
+    if let Expr::Neg(inner) = ctx.get(term) {
+        is_negated = true;
+        stack = vec![*inner];
+    }
+
+    while let Some(curr) = stack.pop() {
+        match ctx.get(curr) {
+            Expr::Mul(l, r) => {
+                stack.push(*r);
+                stack.push(*l);
+            }
+            Expr::Neg(inner) => {
+                is_negated = !is_negated;
+                stack.push(*inner);
+            }
+            _ => factors.push(curr),
+        }
+    }
+
+    let mut numeric_coef = BigRational::one();
+    let mut non_numeric: Vec<ExprId> = Vec::new();
+
+    for &f in &factors {
+        if let Expr::Number(n) = ctx.get(f) {
+            numeric_coef *= n.clone();
+        } else {
+            non_numeric.push(f);
+        }
+    }
+
+    if is_negated {
+        numeric_coef = -numeric_coef;
+    }
+
+    Some((non_numeric, numeric_coef))
+}
+
 /// Extract `coeff * sin(arg)^2 * cos(arg)^2` from a product term.
 /// Returns `(coeff, arg)` when both squared trig factors share the same argument.
 pub fn extract_sin2_cos2_product(ctx: &mut Context, term: ExprId) -> Option<(ExprId, ExprId)> {
@@ -380,6 +507,49 @@ mod tests {
             cas_ast::ordering::compare_expr(&ctx, residual[0], sin_x),
             Ordering::Equal
         );
+    }
+
+    #[test]
+    fn decompose_term_with_residual_multi_returns_both_trig_choices() {
+        let mut ctx = Context::new();
+        let term = parse("2*cos(x)^2*sin(u)^2", &mut ctx).expect("term");
+        let x = parse("x", &mut ctx).expect("x");
+        let u = parse("u", &mut ctx).expect("u");
+
+        let decomps = decompose_term_with_residual_multi(&ctx, term);
+        assert_eq!(decomps.len(), 2);
+
+        let mut saw_sin_u = false;
+        let mut saw_cos_x = false;
+        for (is_sin, arg, coeff, residual) in decomps {
+            assert_eq!(coeff, BigRational::from_integer(2.into()));
+            assert_eq!(residual.len(), 1);
+            if is_sin {
+                saw_sin_u = true;
+                assert_eq!(
+                    cas_ast::ordering::compare_expr(&ctx, arg, u),
+                    Ordering::Equal
+                );
+            } else {
+                saw_cos_x = true;
+                assert_eq!(
+                    cas_ast::ordering::compare_expr(&ctx, arg, x),
+                    Ordering::Equal
+                );
+            }
+        }
+
+        assert!(saw_sin_u && saw_cos_x);
+    }
+
+    #[test]
+    fn extract_as_product_splits_numeric_coefficient() {
+        let mut ctx = Context::new();
+        let term = parse("-2*a*b", &mut ctx).expect("term");
+        let (factors, coeff) = extract_as_product(&ctx, term).expect("decomposition");
+
+        assert_eq!(coeff, BigRational::from_integer((-2).into()));
+        assert_eq!(factors.len(), 2);
     }
 
     #[test]
