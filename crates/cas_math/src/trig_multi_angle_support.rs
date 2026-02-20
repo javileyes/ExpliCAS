@@ -22,6 +22,56 @@ pub fn is_trivial_angle(ctx: &Context, arg: ExprId) -> bool {
     }
 }
 
+/// Check whether `arg` is a multiple-angle form `n*x` (or `x*n`)
+/// with integer `|n| > 1`.
+pub fn is_multiple_angle(ctx: &Context, arg: ExprId) -> bool {
+    let Expr::Mul(l, r) = ctx.get(arg) else {
+        return false;
+    };
+
+    let is_large_integer_factor = |id: ExprId| -> bool {
+        if let Expr::Number(n) = ctx.get(id) {
+            if n.is_integer() {
+                let val = n.numer().clone();
+                return val > 1.into() || val < (-1).into();
+            }
+        }
+        false
+    };
+
+    is_large_integer_factor(*l) || is_large_integer_factor(*r)
+}
+
+/// Check whether `arg` has a large trig coefficient.
+///
+/// Preserves engine behavior:
+/// - `n*x` with integer `|n| > 2` is considered large.
+/// - For `a+b` / `a-b`, if either side is a multiple-angle (`|n| > 1`),
+///   it is considered large.
+pub fn has_large_coefficient(ctx: &Context, arg: ExprId) -> bool {
+    if let Expr::Mul(l, r) = ctx.get(arg) {
+        let is_very_large_integer_factor = |id: ExprId| -> bool {
+            if let Expr::Number(n) = ctx.get(id) {
+                if n.is_integer() {
+                    let val = n.numer().clone();
+                    return val > 2.into() || val < (-2).into();
+                }
+            }
+            false
+        };
+
+        if is_very_large_integer_factor(*l) || is_very_large_integer_factor(*r) {
+            return true;
+        }
+    }
+
+    if let Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) = ctx.get(arg) {
+        return is_multiple_angle(ctx, *lhs) || is_multiple_angle(ctx, *rhs);
+    }
+
+    false
+}
+
 /// Check if `expr` is a binary trig add/sub operation:
 /// - `Add(trig(A), trig(B))`
 /// - `Sub(trig(A), trig(B))`
@@ -108,5 +158,33 @@ mod tests {
 
         assert!(is_trig_sum(&ctx, sum, "cos"));
         assert!(!is_trig_sum(&ctx, diff, "cos"));
+    }
+
+    #[test]
+    fn multiple_angle_detection_matches_integer_multiplier_policy() {
+        let mut ctx = Context::new();
+        let two_x = parse("2*x", &mut ctx).expect("2*x");
+        let neg_three_x = parse("-3*x", &mut ctx).expect("-3*x");
+        let half_x = parse("x/2", &mut ctx).expect("x/2");
+        let one_x = parse("1*x", &mut ctx).expect("1*x");
+
+        assert!(is_multiple_angle(&ctx, two_x));
+        assert!(is_multiple_angle(&ctx, neg_three_x));
+        assert!(!is_multiple_angle(&ctx, half_x));
+        assert!(!is_multiple_angle(&ctx, one_x));
+    }
+
+    #[test]
+    fn large_coefficient_detection_matches_existing_engine_behavior() {
+        let mut ctx = Context::new();
+        let three_x = parse("3*x", &mut ctx).expect("3*x");
+        let two_x = parse("2*x", &mut ctx).expect("2*x");
+        let sum_with_multiple = parse("x + 2*y", &mut ctx).expect("x+2*y");
+        let simple_sum = parse("x + y", &mut ctx).expect("x+y");
+
+        assert!(has_large_coefficient(&ctx, three_x));
+        assert!(!has_large_coefficient(&ctx, two_x));
+        assert!(has_large_coefficient(&ctx, sum_with_multiple));
+        assert!(!has_large_coefficient(&ctx, simple_sum));
     }
 }

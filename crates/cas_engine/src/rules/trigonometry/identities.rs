@@ -14,7 +14,7 @@ pub use core_rules::{
 };
 
 mod values_rules;
-pub use values_rules::{has_large_coefficient, is_multiple_angle};
+pub use cas_math::trig_multi_angle_support::{has_large_coefficient, is_multiple_angle};
 pub use values_rules::{
     CscCotPythagoreanRule, SecTanPythagoreanRule, TanToSinCosRule, TanTripleProductRule,
     TrigQuotientRule,

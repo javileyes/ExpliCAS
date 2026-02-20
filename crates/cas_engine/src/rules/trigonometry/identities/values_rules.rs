@@ -6,6 +6,7 @@ use crate::rule::Rewrite;
 use crate::rules::trigonometry::values::detect_special_angle;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_math::expr_rewrite::smart_mul;
+use cas_math::trig_multi_angle_support::is_multiple_angle;
 use cas_math::trig_tan_triple_support::{is_pi_over_3_minus_u, is_u_plus_pi_over_3};
 
 // =============================================================================
@@ -238,74 +239,6 @@ fn is_part_of_tan_triple_product(
         let match2 = is_pi_over_3_minus_u(ctx, arg_j, u) && is_u_plus_pi_over_3(ctx, arg_k, u);
 
         if match1 || match2 {
-            return true;
-        }
-    }
-
-    false
-}
-
-/// Check if an expression is a "multiple angle" pattern: n*x where n is integer > 1.
-/// This is used to gate tan(n*x) → sin/cos expansion, which leads to complexity explosion
-/// via triple-angle formulas.
-pub fn is_multiple_angle(ctx: &cas_ast::Context, arg: ExprId) -> bool {
-    use cas_ast::Expr;
-
-    // Pattern: Mul(Number(n), x) or Mul(x, Number(n)) where n is integer > 1
-    if let Expr::Mul(l, r) = ctx.get(arg) {
-        // Check left side for integer > 1
-        if let Expr::Number(n) = ctx.get(*l) {
-            if n.is_integer() {
-                let val = n.numer().clone();
-                if val > 1.into() || val < (-1).into() {
-                    return true;
-                }
-            }
-        }
-        // Check right side for integer > 1
-        if let Expr::Number(n) = ctx.get(*r) {
-            if n.is_integer() {
-                let val = n.numer().clone();
-                if val > 1.into() || val < (-1).into() {
-                    return true;
-                }
-            }
-        }
-    }
-
-    false
-}
-
-/// Check if an expression has a "large coefficient" pattern: n*x where |n| > 2.
-/// This guards against exponential explosion in trig expansions.
-/// sin(16*x) would trigger this, blocking sin(a+b) decomposition.
-pub fn has_large_coefficient(ctx: &cas_ast::Context, arg: ExprId) -> bool {
-    use cas_ast::Expr;
-
-    // Pattern: Mul(Number(n), x) or Mul(x, Number(n)) where |n| > 2
-    if let Expr::Mul(l, r) = ctx.get(arg) {
-        let check_large = |id: ExprId| -> bool {
-            if let Expr::Number(n) = ctx.get(id) {
-                if n.is_integer() {
-                    let val = n.numer().clone();
-                    val > num_bigint::BigInt::from(2) || val < num_bigint::BigInt::from(-2)
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
-        };
-        // Check both sides
-        if check_large(*l) || check_large(*r) {
-            return true;
-        }
-    }
-
-    // Also check for Add/Sub patterns that contain multiples
-    // This catches sin(13x + 3x) patterns
-    if let Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) = ctx.get(arg) {
-        if is_multiple_angle(ctx, *lhs) || is_multiple_angle(ctx, *rhs) {
             return true;
         }
     }
