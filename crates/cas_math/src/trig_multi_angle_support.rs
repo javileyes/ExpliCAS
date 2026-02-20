@@ -134,6 +134,14 @@ pub fn is_trig_sum_quotient_div_pattern(ctx: &Context, expr: ExprId) -> bool {
     num_is_sin_sum_or_diff && den_is_cos_sum
 }
 
+/// Check whether any ancestor expression matches a trig sum-quotient scaffold.
+pub fn is_inside_trig_sum_quotient_with_ancestors(ctx: &Context, ancestors: &[ExprId]) -> bool {
+    ancestors
+        .iter()
+        .copied()
+        .any(|ancestor| is_trig_sum_quotient_div_pattern(ctx, ancestor))
+}
+
 /// Check whether `large` and `small` satisfy a double-angle relation.
 ///
 /// Recognized shapes:
@@ -451,6 +459,30 @@ mod tests {
         assert!(is_trig_sum_quotient_div_pattern(&ctx, yes));
         assert!(!is_trig_sum_quotient_div_pattern(&ctx, no_den));
         assert!(!is_trig_sum_quotient_div_pattern(&ctx, no_num));
+    }
+
+    #[test]
+    fn inside_trig_sum_quotient_detects_matching_ancestor() {
+        let mut ctx = Context::new();
+        let yes = parse("(sin(a)-sin(b))/(cos(a)+cos(b))", &mut ctx).expect("yes");
+        let leaf = parse("sin(a)", &mut ctx).expect("leaf");
+
+        assert!(is_inside_trig_sum_quotient_with_ancestors(
+            &ctx,
+            &[leaf, yes]
+        ));
+    }
+
+    #[test]
+    fn inside_trig_sum_quotient_rejects_non_matching_ancestors() {
+        let mut ctx = Context::new();
+        let no = parse("(sin(a)-sin(b))/(cos(a)-cos(b))", &mut ctx).expect("no");
+        let leaf = parse("sin(a)", &mut ctx).expect("leaf");
+
+        assert!(!is_inside_trig_sum_quotient_with_ancestors(
+            &ctx,
+            &[leaf, no]
+        ));
     }
 
     #[test]

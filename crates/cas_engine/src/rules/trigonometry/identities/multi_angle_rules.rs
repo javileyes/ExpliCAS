@@ -7,7 +7,9 @@ use crate::helpers::{as_mul, as_pow, extract_triple_angle_arg};
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_math::expr_rewrite::smart_mul;
-use cas_math::trig_multi_angle_support::{is_trig_sum_quotient_div_pattern, is_trivial_angle};
+use cas_math::trig_multi_angle_support::{
+    is_inside_trig_sum_quotient_with_ancestors, is_trivial_angle,
+};
 use num_traits::{One, Zero};
 
 // Triple Angle Shortcut Rule: sin(3x) → 3sin(x) - 4sin³(x), cos(3x) → 4cos³(x) - 3cos(x)
@@ -25,7 +27,7 @@ define_rule!(
         }
 
         // GUARD 2: Skip if inside sum-quotient pattern (defer to SinCosSumQuotientRule)
-        if is_inside_trig_quotient_pattern(ctx, expr, parent_ctx) {
+        if is_inside_trig_sum_quotient_with_ancestors(ctx, parent_ctx.all_ancestors()) {
             return None;
         }
 
@@ -130,7 +132,7 @@ define_rule!(
         }
 
         // GUARD 2: Skip if inside sum-quotient pattern
-        if is_inside_trig_quotient_pattern(ctx, expr, parent_ctx) {
+        if is_inside_trig_sum_quotient_with_ancestors(ctx, parent_ctx.all_ancestors()) {
             return None;
         }
 
@@ -204,18 +206,6 @@ define_rule!(
     }
 );
 
-/// Check if a trig function is inside a potential sum-quotient pattern
-/// (sin(A)±sin(B)) / (cos(A)±cos(B))
-/// Returns true if expansion should be deferred to SinCosSumQuotientRule
-fn is_inside_trig_quotient_pattern(
-    ctx: &cas_ast::Context,
-    _expr: ExprId,
-    parent_ctx: &crate::parent_context::ParentContext,
-) -> bool {
-    // Check if any ancestor is a Div with the sum-quotient pattern
-    parent_ctx.has_ancestor_matching(ctx, is_trig_sum_quotient_div_pattern)
-}
-
 define_rule!(
     RecursiveTrigExpansionRule,
     "Recursive Trig Expansion",
@@ -236,7 +226,7 @@ define_rule!(
         // This heuristic checks: if the trig function is inside a Div, and both
         // numerator and denominator are Add/Sub of trig functions, defer to
         // SinCosSumQuotientRule instead of expanding.
-        if is_inside_trig_quotient_pattern(ctx, expr, parent_ctx) {
+        if is_inside_trig_sum_quotient_with_ancestors(ctx, parent_ctx.all_ancestors()) {
             return None;
         }
 
