@@ -68,5 +68,6 @@ pub mod trig_roots_flatten;
 pub mod trig_sum_product_support;
 pub mod trig_tan_triple_support;
 pub mod trig_value_detection_support;
+pub mod trig_values;
 pub mod trig_weierstrass_support;
 pub mod unipoly_modp;
