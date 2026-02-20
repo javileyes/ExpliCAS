@@ -4,7 +4,9 @@
 //! at special angles like 0, π/6, π/4, π/3, π/2, π using static tables.
 
 use cas_ast::{Context, Expr, ExprId};
-use cas_math::root_forms::extract_numeric_sqrt_radicand;
+pub use cas_math::trig_value_detection_support::{
+    detect_inverse_trig_input, detect_special_angle, InverseTrigInput, SpecialAngle,
+};
 
 /// Represents a simplified trigonometric result value.
 #[derive(Clone, Debug, PartialEq)]
@@ -290,44 +292,6 @@ impl TrigValue {
     }
 }
 
-/// Angle key enum for special angles
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum SpecialAngle {
-    Zero,         // 0
-    Pi,           // π
-    PiOver2,      // π/2
-    PiOver3,      // π/3
-    PiOver4,      // π/4
-    PiOver6,      // π/6
-    PiOver8,      // π/8 = 22.5°
-    PiOver12,     // π/12 = 15°
-    ThreePiOver8, // 3π/8 = 67.5°
-    FivePiOver12, // 5π/12 = 75°
-    PiOver5,      // π/5 = 36° (golden angle)
-    TwoPiOver5,   // 2π/5 = 72°
-    PiOver10,     // π/10 = 18°
-}
-
-impl SpecialAngle {
-    pub fn display(&self) -> &'static str {
-        match self {
-            SpecialAngle::Zero => "0",
-            SpecialAngle::Pi => "π",
-            SpecialAngle::PiOver2 => "π/2",
-            SpecialAngle::PiOver3 => "π/3",
-            SpecialAngle::PiOver4 => "π/4",
-            SpecialAngle::PiOver6 => "π/6",
-            SpecialAngle::PiOver8 => "π/8",
-            SpecialAngle::PiOver12 => "π/12",
-            SpecialAngle::ThreePiOver8 => "3π/8",
-            SpecialAngle::FivePiOver12 => "5π/12",
-            SpecialAngle::PiOver5 => "π/5",
-            SpecialAngle::TwoPiOver5 => "2π/5",
-            SpecialAngle::PiOver10 => "π/10",
-        }
-    }
-}
-
 /// Static lookup table: (function_name, special_angle) -> TrigValue
 ///
 /// This table contains the known exact values for sin, cos, tan at special angles.
@@ -545,197 +509,12 @@ pub static INVERSE_TRIG_VALUES: &[(&str, &str, TrigValue)] = &[
     ("arccos", "1/2", TrigValue::PiDiv(3)),
 ];
 
-/// Detect if an expression represents a special angle
-///
-/// Checks for 0, π, π/2, π/3, π/4, π/6, π/8, π/12, 3π/8, 5π/12 using helper functions.
-pub fn detect_special_angle(ctx: &Context, expr: ExprId) -> Option<SpecialAngle> {
-    use crate::helpers::{extract_rational_pi_multiple, is_pi, is_pi_over_n};
-    use num_rational::BigRational;
-    use num_traits::Zero;
-
-    // Check for 0
-    if let Expr::Number(n) = ctx.get(expr) {
-        if n.is_zero() {
-            return Some(SpecialAngle::Zero);
-        }
-    }
-
-    // Check for π
-    if is_pi(ctx, expr) {
-        return Some(SpecialAngle::Pi);
-    }
-
-    // Check for simple π/n values first (faster path)
-    if is_pi_over_n(ctx, expr, 2) {
-        return Some(SpecialAngle::PiOver2);
-    }
-    if is_pi_over_n(ctx, expr, 3) {
-        return Some(SpecialAngle::PiOver3);
-    }
-    if is_pi_over_n(ctx, expr, 4) {
-        return Some(SpecialAngle::PiOver4);
-    }
-    if is_pi_over_n(ctx, expr, 6) {
-        return Some(SpecialAngle::PiOver6);
-    }
-    if is_pi_over_n(ctx, expr, 8) {
-        return Some(SpecialAngle::PiOver8);
-    }
-    if is_pi_over_n(ctx, expr, 12) {
-        return Some(SpecialAngle::PiOver12);
-    }
-    if is_pi_over_n(ctx, expr, 5) {
-        return Some(SpecialAngle::PiOver5);
-    }
-    if is_pi_over_n(ctx, expr, 10) {
-        return Some(SpecialAngle::PiOver10);
-    }
-
-    // For fractional multiples like 3π/8, 5π/12, 2π/5, use extract_rational_pi_multiple
-    if let Some(k) = extract_rational_pi_multiple(ctx, expr) {
-        // Check for 3/8
-        if k == BigRational::new(3.into(), 8.into()) {
-            return Some(SpecialAngle::ThreePiOver8);
-        }
-        // Check for 5/12
-        if k == BigRational::new(5.into(), 12.into()) {
-            return Some(SpecialAngle::FivePiOver12);
-        }
-        // Check for 2/5
-        if k == BigRational::new(2.into(), 5.into()) {
-            return Some(SpecialAngle::TwoPiOver5);
-        }
-    }
-
-    None
-}
-
 /// Look up a trig value from the static table
 pub fn lookup_trig_value(func_name: &str, angle: SpecialAngle) -> Option<&'static TrigValue> {
     TRIG_VALUES
         .iter()
         .find(|(f, a, _)| *f == func_name && *a == angle)
         .map(|(_, _, v)| v)
-}
-
-/// Special input values for inverse trig functions
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum InverseTrigInput {
-    Zero,         // 0
-    One,          // 1
-    Half,         // 1/2
-    Sqrt2Over2,   // √2/2
-    Sqrt3Over2,   // √3/2
-    OneOverSqrt3, // 1/√3 = √3/3
-    Sqrt3,        // √3
-}
-
-impl InverseTrigInput {
-    pub fn display(&self) -> &'static str {
-        match self {
-            InverseTrigInput::Zero => "0",
-            InverseTrigInput::One => "1",
-            InverseTrigInput::Half => "1/2",
-            InverseTrigInput::Sqrt2Over2 => "√2/2",
-            InverseTrigInput::Sqrt3Over2 => "√3/2",
-            InverseTrigInput::OneOverSqrt3 => "√3/3",
-            InverseTrigInput::Sqrt3 => "√3",
-        }
-    }
-}
-
-/// Detect if an expression is a special input for inverse trig
-pub fn detect_inverse_trig_input(ctx: &Context, expr: ExprId) -> Option<InverseTrigInput> {
-    use num_traits::{One, Zero};
-
-    match ctx.get(expr) {
-        // Integer/rational constants: 0, 1, 1/2
-        Expr::Number(n) => {
-            if n.is_zero() {
-                return Some(InverseTrigInput::Zero);
-            }
-            if n.is_one() {
-                return Some(InverseTrigInput::One);
-            }
-            if *n == num_rational::BigRational::new(1.into(), 2.into()) {
-                return Some(InverseTrigInput::Half);
-            }
-            None
-        }
-
-        // Div patterns: √n/d or 1/√n
-        Expr::Div(num, den) => {
-            if let Expr::Number(d) = ctx.get(*den) {
-                let denom: i64 = d.to_integer().try_into().ok()?;
-
-                // √2/2
-                if denom == 2 {
-                    if let Some(2) = extract_numeric_sqrt_radicand(ctx, *num) {
-                        return Some(InverseTrigInput::Sqrt2Over2);
-                    }
-                }
-                // √3/2
-                if denom == 2 {
-                    if let Some(3) = extract_numeric_sqrt_radicand(ctx, *num) {
-                        return Some(InverseTrigInput::Sqrt3Over2);
-                    }
-                }
-                // √3/3 = 1/√3
-                if denom == 3 {
-                    if let Some(3) = extract_numeric_sqrt_radicand(ctx, *num) {
-                        return Some(InverseTrigInput::OneOverSqrt3);
-                    }
-                }
-            }
-            // 1/√3
-            if let Expr::Number(n) = ctx.get(*num) {
-                if n.is_one() {
-                    if let Some(3) = extract_numeric_sqrt_radicand(ctx, *den) {
-                        return Some(InverseTrigInput::OneOverSqrt3);
-                    }
-                }
-            }
-            None
-        }
-
-        // Mul patterns: rationalized forms like (1/3)·√3, (1/2)·√2, etc.
-        Expr::Mul(l, r) => {
-            // Try both orderings
-            let (num_id, sqrt_id) = if matches!(ctx.get(*l), Expr::Number(_) | Expr::Div(_, _)) {
-                (*l, *r)
-            } else {
-                (*r, *l)
-            };
-
-            if let Some(sqrt_base) = extract_numeric_sqrt_radicand(ctx, sqrt_id) {
-                if let Expr::Number(n) = ctx.get(num_id) {
-                    // (1/3)·√3 = √3/3 = 1/√3
-                    if sqrt_base == 3 && *n == num_rational::BigRational::new(1.into(), 3.into()) {
-                        return Some(InverseTrigInput::OneOverSqrt3);
-                    }
-                    // (1/2)·√2 = √2/2
-                    if sqrt_base == 2 && *n == num_rational::BigRational::new(1.into(), 2.into()) {
-                        return Some(InverseTrigInput::Sqrt2Over2);
-                    }
-                    // (1/2)·√3 = √3/2
-                    if sqrt_base == 3 && *n == num_rational::BigRational::new(1.into(), 2.into()) {
-                        return Some(InverseTrigInput::Sqrt3Over2);
-                    }
-                }
-            }
-            None
-        }
-
-        // Pow patterns: √3 alone
-        Expr::Pow(_, _) => {
-            if let Some(3) = extract_numeric_sqrt_radicand(ctx, expr) {
-                return Some(InverseTrigInput::Sqrt3);
-            }
-            None
-        }
-
-        _ => None,
-    }
 }
 
 /// Lookup table for inverse trig values
