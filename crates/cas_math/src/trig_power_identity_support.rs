@@ -465,6 +465,187 @@ pub fn flatten_with_trig_decomp(ctx: &mut Context, term: ExprId) -> (bool, Vec<E
     (is_neg, decomposed)
 }
 
+fn extract_sin_or_cos_square(ctx: &Context, factor: ExprId) -> Option<(BuiltinFn, ExprId)> {
+    if let Expr::Pow(base, exp) = ctx.get(factor) {
+        if let Expr::Number(n) = ctx.get(*exp) {
+            if *n == BigRational::from_integer(2.into()) {
+                if let Expr::Function(fn_id, args) = ctx.get(*base) {
+                    if args.len() == 1 {
+                        let builtin = ctx.builtin_of(*fn_id)?;
+                        if matches!(builtin, BuiltinFn::Sin | BuiltinFn::Cos) {
+                            return Some((builtin, args[0]));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn complementary_sin_cos(builtin: BuiltinFn) -> Option<BuiltinFn> {
+    match builtin {
+        BuiltinFn::Sin => Some(BuiltinFn::Cos),
+        BuiltinFn::Cos => Some(BuiltinFn::Sin),
+        _ => None,
+    }
+}
+
+fn find_single_extra_factor(
+    ctx: &Context,
+    smaller: &[ExprId],
+    bigger: &[ExprId],
+) -> Option<ExprId> {
+    if bigger.len() != smaller.len() + 1 {
+        return None;
+    }
+
+    let mut smaller_sorted = smaller.to_vec();
+    let mut bigger_sorted = bigger.to_vec();
+    smaller_sorted.sort_by(|a, b| cas_ast::ordering::compare_expr(ctx, *a, *b));
+    bigger_sorted.sort_by(|a, b| cas_ast::ordering::compare_expr(ctx, *a, *b));
+
+    let mut extra_factor = None;
+    let mut smaller_index = 0usize;
+    let mut bigger_index = 0usize;
+    let mut mismatches = 0usize;
+
+    while bigger_index < bigger_sorted.len() {
+        if smaller_index < smaller_sorted.len()
+            && cas_ast::ordering::compare_expr(
+                ctx,
+                smaller_sorted[smaller_index],
+                bigger_sorted[bigger_index],
+            ) == Ordering::Equal
+        {
+            smaller_index += 1;
+            bigger_index += 1;
+            continue;
+        }
+
+        mismatches += 1;
+        if mismatches > 1 {
+            return None;
+        }
+        extra_factor = Some(bigger_sorted[bigger_index]);
+        bigger_index += 1;
+    }
+
+    if smaller_index != smaller_sorted.len() {
+        return None;
+    }
+
+    extra_factor
+}
+
+/// Try to match `small_term + big_term` where `big_term = -small_term * trig(x)^2`.
+/// Returns `(rewritten_expr, trig, other)` for the identity:
+/// `R - R*trig(x)^2 = R*other(x)^2`.
+pub fn try_high_power_pythagorean(
+    ctx: &mut Context,
+    small_term: ExprId,
+    big_term: ExprId,
+) -> Option<(ExprId, BuiltinFn, BuiltinFn)> {
+    let (small_neg, small_factors) = flatten_with_trig_decomp(ctx, small_term);
+    let (big_neg, big_factors) = flatten_with_trig_decomp(ctx, big_term);
+
+    if small_neg == big_neg {
+        return None;
+    }
+
+    let extra_factor = find_single_extra_factor(ctx, &small_factors, &big_factors)?;
+    let (trig, arg) = extract_sin_or_cos_square(ctx, extra_factor)?;
+    let other = complementary_sin_cos(trig)?;
+
+    let other_fn = ctx.call_builtin(other, vec![arg]);
+    let two = ctx.num(2);
+    let other_sq = ctx.add(Expr::Pow(other_fn, two));
+    let result = crate::expr_rewrite::smart_mul(ctx, small_term, other_sq);
+
+    Some((result, trig, other))
+}
+
+/// Check if `(c_term, t_term)` matches `k - k*trig(x)^2` with `trig ∈ {sin, cos}`.
+/// Returns `(rewritten_expr, trig, other)` for the identity:
+/// `k - k*trig(x)^2 = k*other(x)^2`.
+pub fn check_pythagorean_pattern(
+    ctx: &mut Context,
+    c_term: ExprId,
+    t_term: ExprId,
+) -> Option<(ExprId, BuiltinFn, BuiltinFn)> {
+    let (base_term, is_neg) = if let Expr::Neg(inner) = ctx.get(t_term) {
+        (*inner, true)
+    } else {
+        (t_term, false)
+    };
+
+    let mut factors = Vec::new();
+    let mut stack = vec![base_term];
+    while let Some(curr) = stack.pop() {
+        if let Expr::Mul(l, r) = ctx.get(curr) {
+            stack.push(*r);
+            stack.push(*l);
+        } else {
+            factors.push(curr);
+        }
+    }
+
+    let mut trig_index = None;
+    let mut trig_builtin = None;
+    let mut trig_arg = None;
+    for (i, &factor) in factors.iter().enumerate() {
+        if let Some((builtin, arg)) = extract_sin_or_cos_square(ctx, factor) {
+            trig_index = Some(i);
+            trig_builtin = Some(builtin);
+            trig_arg = Some(arg);
+            break;
+        }
+    }
+
+    let trig_idx = trig_index?;
+    let trig = trig_builtin?;
+    let arg = trig_arg?;
+    let other = complementary_sin_cos(trig)?;
+
+    let mut coeff_factors = Vec::new();
+    if is_neg {
+        coeff_factors.push(ctx.num(-1));
+    }
+    for (i, &factor) in factors.iter().enumerate() {
+        if i != trig_idx {
+            coeff_factors.push(factor);
+        }
+    }
+
+    let coeff = if coeff_factors.is_empty() {
+        ctx.num(1)
+    } else {
+        let mut acc = coeff_factors[0];
+        for factor in coeff_factors.iter().skip(1) {
+            acc = crate::expr_rewrite::smart_mul(ctx, acc, *factor);
+        }
+        acc
+    };
+
+    let neg_coeff = if let Expr::Number(n) = ctx.get(coeff) {
+        ctx.add(Expr::Number(-n.clone()))
+    } else if let Expr::Neg(inner) = ctx.get(coeff) {
+        *inner
+    } else {
+        ctx.add(Expr::Neg(coeff))
+    };
+
+    if cas_ast::ordering::compare_expr(ctx, c_term, neg_coeff) != Ordering::Equal {
+        return None;
+    }
+
+    let other_fn = ctx.call_builtin(other, vec![arg]);
+    let two = ctx.num(2);
+    let other_sq = ctx.add(Expr::Pow(other_fn, two));
+    let result = crate::expr_rewrite::smart_mul(ctx, c_term, other_sq);
+    Some((result, trig, other))
+}
+
 /// Extract `coeff * sin(arg)^2 * cos(arg)^2` from a product term.
 /// Returns `(coeff, arg)` when both squared trig factors share the same argument.
 pub fn extract_sin2_cos2_product(ctx: &mut Context, term: ExprId) -> Option<(ExprId, ExprId)> {
@@ -657,6 +838,40 @@ mod tests {
         assert!(factors
             .iter()
             .any(|&f| cas_ast::ordering::compare_expr(&ctx, f, sin_x_sq) == Ordering::Equal));
+    }
+
+    #[test]
+    fn try_high_power_pythagorean_rewrites_trig_cube_pattern() {
+        let mut ctx = Context::new();
+        let small = parse("sin(x)", &mut ctx).expect("small");
+        let big = parse("-sin(x)^3", &mut ctx).expect("big");
+        let expected = parse("sin(x)*cos(x)^2", &mut ctx).expect("expected");
+
+        let (result, trig, other) =
+            try_high_power_pythagorean(&mut ctx, small, big).expect("pattern match");
+        assert_eq!(trig, BuiltinFn::Sin);
+        assert_eq!(other, BuiltinFn::Cos);
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, result, expected),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn check_pythagorean_pattern_rewrites_one_minus_sin_sq() {
+        let mut ctx = Context::new();
+        let c_term = parse("1", &mut ctx).expect("c_term");
+        let t_term = parse("-sin(x)^2", &mut ctx).expect("t_term");
+        let expected = parse("cos(x)^2", &mut ctx).expect("expected");
+
+        let (result, trig, other) =
+            check_pythagorean_pattern(&mut ctx, c_term, t_term).expect("pattern match");
+        assert_eq!(trig, BuiltinFn::Sin);
+        assert_eq!(other, BuiltinFn::Cos);
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, result, expected),
+            Ordering::Equal
+        );
     }
 
     #[test]

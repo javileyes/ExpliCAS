@@ -11,11 +11,11 @@
 
 use crate::define_rule;
 use crate::rule::Rewrite;
-use cas_ast::{Context, Expr, ExprId};
-use cas_math::expr_rewrite::smart_mul;
+use cas_ast::{Expr, ExprId};
 use cas_math::trig_power_identity_support::{
-    decompose_term_with_residual_multi, extract_all_trig_squared_candidates, extract_as_product,
-    extract_coeff_tan_or_cot_pow2, extract_coeff_trig_pow2, flatten_with_trig_decomp,
+    check_pythagorean_pattern, decompose_term_with_residual_multi,
+    extract_all_trig_squared_candidates, extract_as_product, extract_coeff_tan_or_cot_pow2,
+    extract_coeff_trig_pow2, try_high_power_pythagorean,
 };
 
 define_rule!(
@@ -34,10 +34,12 @@ define_rule!(
         let t2 = terms[1];
 
         // Try both orderings: (c_term, trig_term) or (trig_term, c_term)
-        if let Some((result, desc)) = check_pythagorean_pattern(ctx, t1, t2) {
+        if let Some((result, trig, other)) = check_pythagorean_pattern(ctx, t1, t2) {
+            let desc = format!("1 - {}²(x) = {}²(x)", trig.name(), other.name());
             return Some(Rewrite::new(result).desc(desc));
         }
-        if let Some((result, desc)) = check_pythagorean_pattern(ctx, t2, t1) {
+        if let Some((result, trig, other)) = check_pythagorean_pattern(ctx, t2, t1) {
+            let desc = format!("1 - {}²(x) = {}²(x)", trig.name(), other.name());
             return Some(Rewrite::new(result).desc(desc));
         }
 
@@ -722,8 +724,11 @@ define_rule!(
 
         // Try both orderings: (small, big) where big = small * trig²
         for (small_term, big_term) in [(terms[0], terms[1]), (terms[1], terms[0])] {
-            if let Some(result) = try_high_power_pythagorean(ctx, small_term, big_term) {
-                return Some(result);
+            if let Some((result, trig, other)) =
+                try_high_power_pythagorean(ctx, small_term, big_term)
+            {
+                let desc = format!("R − R·{}²(x) = R·{}²(x)", trig.name(), other.name());
+                return Some(Rewrite::new(result).desc(desc));
             }
         }
 
@@ -731,223 +736,11 @@ define_rule!(
     }
 );
 
-/// Try to match: small_term + big_term where big_term = −small_term · trig²(x)
-/// If matched, rewrite as small_term · other²(x)
-fn try_high_power_pythagorean(
-    ctx: &mut Context,
-    small_term: ExprId,
-    big_term: ExprId,
-) -> Option<Rewrite> {
-    use num_rational::BigRational;
-
-    // Flatten both terms into (is_negated, sorted_factors) where factors are atomic
-    // For trig^n, decompose into trig^(n-2) and trig² separately
-    let (small_neg, small_factors) = flatten_with_trig_decomp(ctx, small_term);
-    let (big_neg, big_factors) = flatten_with_trig_decomp(ctx, big_term);
-
-    // We need opposite signs: small + big = R − R·trig² → R·other²
-    if small_neg == big_neg {
-        return None; // Same sign, can't cancel
-    }
-
-    // big_factors should be a superset of small_factors + one extra trig² factor
-    if big_factors.len() != small_factors.len() + 1 {
-        return None;
-    }
-
-    // Sort both factor lists for comparison
-    let mut small_sorted: Vec<ExprId> = small_factors.clone();
-    let mut big_sorted: Vec<ExprId> = big_factors.clone();
-    small_sorted.sort_by(|a, b| crate::ordering::compare_expr(ctx, *a, *b));
-    big_sorted.sort_by(|a, b| crate::ordering::compare_expr(ctx, *a, *b));
-
-    // Find the one extra factor in big that's not in small
-    let mut extra_factor = None;
-    let mut si = 0;
-    let mut bi = 0;
-    let mut mismatches = 0;
-
-    while bi < big_sorted.len() {
-        if si < small_sorted.len()
-            && crate::ordering::compare_expr(ctx, small_sorted[si], big_sorted[bi])
-                == std::cmp::Ordering::Equal
-        {
-            si += 1;
-            bi += 1;
-        } else {
-            // big has an extra factor
-            mismatches += 1;
-            if mismatches > 1 {
-                return None;
-            }
-            extra_factor = Some(big_sorted[bi]);
-            bi += 1;
-        }
-    }
-    // Any remaining in small means they didn't match
-    if si != small_sorted.len() {
-        return None;
-    }
-
-    let extra = extra_factor?;
-
-    // Check if excess factor is trig²(x)
-    if let Expr::Pow(base, exp) = ctx.get(extra) {
-        let base = *base;
-        let exp = *exp;
-        if let Expr::Number(n) = ctx.get(exp) {
-            if *n != BigRational::from_integer(2.into()) {
-                return None;
-            }
-            if let Expr::Function(fn_id, args) = ctx.get(base) {
-                let builtin = ctx.builtin_of(*fn_id);
-                if !matches!(
-                    builtin,
-                    Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
-                ) || args.len() != 1
-                {
-                    return None;
-                }
-
-                let trig_arg = args[0];
-                let other_builtin = if matches!(builtin, Some(cas_ast::BuiltinFn::Sin)) {
-                    cas_ast::BuiltinFn::Cos
-                } else {
-                    cas_ast::BuiltinFn::Sin
-                };
-
-                // Pattern confirmed! small_term + big_term = R + (−R·trig²(x))
-                // Since we checked big has the extra trig² and signs differ:
-                //   If small = +R, big = −R·trig² → sum = R(1−trig²) = +R·other²
-                //   If small = −R, big = +R·trig² → sum = −R + R·trig² = R(trig²−1) = −R·other²
-                // In both cases the result sign matches small_term's sign.
-                // Use the original small_term as the R multiplier.
-
-                let other_fn = ctx.call_builtin(other_builtin, vec![trig_arg]);
-                let two = ctx.num(2);
-                let other_sq = ctx.add(Expr::Pow(other_fn, two));
-
-                let result = cas_math::expr_rewrite::smart_mul(ctx, small_term, other_sq);
-
-                let func_name = builtin.unwrap().name();
-                let other_name = other_builtin.name();
-                let desc = format!("R − R·{}²(x) = R·{}²(x)", func_name, other_name);
-                return Some(Rewrite::new(result).desc(desc));
-            }
-        }
-    }
-
-    None
-}
-
-/// Check if (c_term, trig_term) matches the pattern k - k*trig²(x) = k*other²(x)
-/// where trig is sin or cos, and other is the complementary function.
-fn check_pythagorean_pattern(
-    ctx: &mut Context,
-    c_term: ExprId,
-    t_term: ExprId,
-) -> Option<(ExprId, String)> {
-    // Parse t_term for k * trig^2 (possibly negated)
-    let (base_term, is_neg) = if let Expr::Neg(inner) = ctx.get(t_term) {
-        (*inner, true)
-    } else {
-        (t_term, false)
-    };
-
-    // Flatten multiplication factors
-    let mut factors = Vec::new();
-    let mut stack = vec![base_term];
-    while let Some(curr) = stack.pop() {
-        if let Expr::Mul(l, r) = ctx.get(curr) {
-            stack.push(*r);
-            stack.push(*l);
-        } else {
-            factors.push(curr);
-        }
-    }
-
-    // Find trig²(x) factor
-    let mut trig_idx = None;
-    let mut func_name = String::new();
-    let mut arg = None;
-
-    for (i, &f) in factors.iter().enumerate() {
-        if let Expr::Pow(b, exp) = ctx.get(f) {
-            if let Expr::Number(n) = ctx.get(*exp) {
-                if *n == num_rational::BigRational::from_integer(2.into()) {
-                    if let Expr::Function(fn_id, args) = ctx.get(*b) {
-                        let builtin = ctx.builtin_of(*fn_id);
-                        if matches!(
-                            builtin,
-                            Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
-                        ) && args.len() == 1
-                        {
-                            trig_idx = Some(i);
-                            func_name = builtin.unwrap().name().to_string();
-                            arg = Some(args[0]);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    let idx = trig_idx?;
-    let arg = arg?;
-
-    // Collect coefficient factors (excluding trig²)
-    let mut coeff_factors = Vec::new();
-    if is_neg {
-        coeff_factors.push(ctx.num(-1));
-    }
-    for (i, &f) in factors.iter().enumerate() {
-        if i != idx {
-            coeff_factors.push(f);
-        }
-    }
-
-    // Build coefficient
-    let coeff = if coeff_factors.is_empty() {
-        ctx.num(1)
-    } else {
-        let mut c = coeff_factors[0];
-        for &f in coeff_factors.iter().skip(1) {
-            c = smart_mul(ctx, c, f);
-        }
-        c
-    };
-
-    // The pattern is: c_term + (-coeff * trig²) where c_term == -(-coeff) = coeff
-    // So we need c_term == -coeff (negative of the coefficient)
-    let neg_coeff = if let Expr::Number(n) = ctx.get(coeff) {
-        ctx.add(Expr::Number(-n.clone()))
-    } else if let Expr::Neg(inner) = ctx.get(coeff) {
-        *inner
-    } else {
-        ctx.add(Expr::Neg(coeff))
-    };
-
-    if crate::ordering::compare_expr(ctx, c_term, neg_coeff) == std::cmp::Ordering::Equal {
-        // Pattern matches! Apply identity: k - k*sin² = k*cos², k - k*cos² = k*sin²
-        let other_name = if func_name == "sin" { "cos" } else { "sin" };
-        let func = ctx.call(other_name, vec![arg]);
-        let two = ctx.num(2);
-        let pow = ctx.add(Expr::Pow(func, two));
-        let result = smart_mul(ctx, c_term, pow);
-
-        let desc = format!("1 - {}²(x) = {}²(x)", func_name, other_name);
-
-        return Some((result, desc));
-    }
-
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::rule::SimpleRule;
+    use cas_ast::Context;
 
     #[test]
     fn test_one_minus_sin_squared() {
