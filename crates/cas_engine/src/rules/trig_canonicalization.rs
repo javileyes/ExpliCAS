@@ -1,9 +1,11 @@
-use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::helpers::is_one;
 use crate::rule::Rewrite;
-use cas_ast::{BuiltinFn, Context, Expr, ExprId};
-use cas_math::expr_predicates::is_two_expr;
+use cas_ast::{BuiltinFn, Expr};
+use cas_math::trig_canonicalization_support::{
+    check_reciprocal_pair, convert_trig_to_sincos, is_function_squared, is_mixed_trig_fraction,
+    is_trig_of_inverse_trig,
+};
 
 // ==================== Sophisticated Context-Aware Canonicalization ====================
 // STRATEGY: Only convert when it demonstrably helps simplification
@@ -11,60 +13,6 @@ use cas_math::expr_predicates::is_two_expr;
 // 1. Never convert: compositions like tan(arctan(x))
 // 2. Always convert: known patterns like sec²-tan², mixed fractions
 // 3. Selective: on-demand for complex cases
-
-// ==================== Helper Functions for Pattern Detection ====================
-
-// is_one is now imported from crate::helpers
-
-fn is_reciprocal_trig_builtin(b: BuiltinFn) -> bool {
-    matches!(
-        b,
-        BuiltinFn::Tan | BuiltinFn::Cot | BuiltinFn::Sec | BuiltinFn::Csc
-    )
-}
-
-// String version kept for HashSet-based analysis
-fn is_reciprocal_trig_name(name: &str) -> bool {
-    matches!(name, "tan" | "cot" | "sec" | "csc")
-}
-
-fn is_inverse_trig_builtin(b: BuiltinFn) -> bool {
-    matches!(
-        b,
-        BuiltinFn::Asin
-            | BuiltinFn::Acos
-            | BuiltinFn::Atan
-            | BuiltinFn::Acot
-            | BuiltinFn::Asec
-            | BuiltinFn::Acsc
-            | BuiltinFn::Arcsin
-            | BuiltinFn::Arccos
-            | BuiltinFn::Arctan
-    )
-}
-
-// Check if expression is a composition like tan(arctan(x))
-fn is_trig_of_inverse_trig(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Function(outer_fn_id, outer_args) if outer_args.len() == 1 => {
-            let inner = outer_args[0];
-            match ctx.get(inner) {
-                Expr::Function(inner_fn_id, _) => {
-                    let outer_b = ctx.builtin_of(*outer_fn_id);
-                    let inner_b = ctx.builtin_of(*inner_fn_id);
-                    match (outer_b, inner_b) {
-                        (Some(o), Some(i)) => {
-                            is_reciprocal_trig_builtin(o) && is_inverse_trig_builtin(i)
-                        }
-                        _ => false,
-                    }
-                }
-                _ => false,
-            }
-        }
-        _ => false,
-    }
-}
 
 // ============================== Function Name Canonicalization ==============================
 
@@ -102,223 +50,6 @@ define_rule!(
         None
     }
 );
-
-// ==================== Phase 4: Mixed Fraction Helpers ====================
-
-use std::collections::HashSet;
-
-// Recursively collect all trig function names in an expression
-fn collect_trig_recursive(ctx: &Context, expr: ExprId, funcs: &mut HashSet<String>) {
-    match ctx.get(expr) {
-        Expr::Function(fn_id, args) => {
-            // Add if it's a trig function (use builtin_of for O(1))
-            if let Some(b) = ctx.builtin_of(*fn_id) {
-                if matches!(
-                    b,
-                    BuiltinFn::Sin
-                        | BuiltinFn::Cos
-                        | BuiltinFn::Tan
-                        | BuiltinFn::Cot
-                        | BuiltinFn::Sec
-                        | BuiltinFn::Csc
-                ) {
-                    funcs.insert(b.name().to_string());
-                }
-            }
-            // Recurse into arguments
-            for &arg in args {
-                collect_trig_recursive(ctx, arg, funcs);
-            }
-        }
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
-            collect_trig_recursive(ctx, *l, funcs);
-            collect_trig_recursive(ctx, *r, funcs);
-        }
-        Expr::Pow(base, exp) => {
-            collect_trig_recursive(ctx, *base, funcs);
-            collect_trig_recursive(ctx, *exp, funcs);
-        }
-        Expr::Neg(inner) | Expr::Hold(inner) => {
-            collect_trig_recursive(ctx, *inner, funcs);
-        }
-        Expr::Matrix { data, .. } => {
-            for elem in data {
-                collect_trig_recursive(ctx, *elem, funcs);
-            }
-        }
-        // Leaves
-        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
-    }
-}
-
-// Collect all trig function names in expression
-fn collect_trig_functions(ctx: &Context, expr: ExprId) -> HashSet<String> {
-    let mut funcs = HashSet::new();
-    collect_trig_recursive(ctx, expr, &mut funcs);
-    funcs
-}
-
-// Check if has multiple different trig function types
-fn has_multiple_trig_types(funcs: &HashSet<String>) -> bool {
-    funcs.len() >= 2
-}
-
-// Check if expression is f²(x) where f is any trig function
-// Returns the argument of the trig function if it matches, otherwise None.
-fn is_any_trig_function_squared(ctx: &Context, expr: ExprId) -> Option<ExprId> {
-    match ctx.get(expr) {
-        Expr::Pow(base, exp) => {
-            if is_two_expr(ctx, *exp) {
-                match ctx.get(*base) {
-                    Expr::Function(fn_id, args) if args.len() == 1 => {
-                        // Check if it's a trig function (sin, cos, tan, cot, sec, csc)
-                        if let Some(b) = ctx.builtin_of(*fn_id) {
-                            if matches!(
-                                b,
-                                BuiltinFn::Sin
-                                    | BuiltinFn::Cos
-                                    | BuiltinFn::Tan
-                                    | BuiltinFn::Cot
-                                    | BuiltinFn::Sec
-                                    | BuiltinFn::Csc
-                            ) {
-                                return Some(args[0]);
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            None
-        }
-        _ => None,
-    }
-}
-
-// Check if expression is a Pythagorean-style pattern (f² ± g² or 1 ± f²)
-// These should be handled by direct Pythagorean rules, not converted
-fn is_pythagorean_style(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Add(l, r) | Expr::Sub(l, r) => {
-            let l_is_squared = is_any_trig_function_squared(ctx, *l).is_some();
-            let r_is_squared = is_any_trig_function_squared(ctx, *r).is_some();
-            let l_is_one = is_one(ctx, *l);
-            let r_is_one = is_one(ctx, *r);
-
-            // Patterns: f²±g², 1±f², f²±1
-            // Simplified: r_is_squared && (l_is_one || l_is_squared), or l_is_squared && r_is_one
-            (r_is_squared && (l_is_one || l_is_squared)) || (l_is_squared && r_is_one)
-        }
-        _ => false,
-    }
-}
-
-// Check if should trigger mixed fraction conversion
-fn is_mixed_trig_fraction(ctx: &Context, num: ExprId, den: ExprId) -> bool {
-    // Don't convert if numerator or denominator is a Pythagorean pattern
-    // Those are handled better by direct Pythagorean identity rules
-    if is_pythagorean_style(ctx, num) || is_pythagorean_style(ctx, den) {
-        return false;
-    }
-
-    let num_funcs = collect_trig_functions(ctx, num);
-    let den_funcs = collect_trig_functions(ctx, den);
-
-    // Must have some trig functions
-    if num_funcs.is_empty() && den_funcs.is_empty() {
-        return false;
-    }
-
-    // Check for mixed types in numerator OR denominator
-    let num_has_mixed = has_multiple_trig_types(&num_funcs);
-    let den_has_mixed = has_multiple_trig_types(&den_funcs);
-
-    // Check if there's any reciprocal trig
-    let has_reciprocal = num_funcs.iter().any(|n| is_reciprocal_trig_name(n))
-        || den_funcs.iter().any(|n| is_reciprocal_trig_name(n));
-
-    (num_has_mixed || den_has_mixed) && has_reciprocal
-}
-
-// Recursively convert trig functions to sin/cos
-fn convert_trig_to_sincos(ctx: &mut Context, expr: ExprId) -> ExprId {
-    enum TrigOp {
-        Function(usize, Vec<ExprId>),
-        Binary(ExprId, ExprId, u8), // 0=Add, 1=Sub, 2=Mul, 3=Div
-        Pow(ExprId, ExprId),
-        Neg(ExprId),
-        Leaf,
-    }
-    let op = match ctx.get(expr) {
-        Expr::Function(fn_id, args) if args.len() == 1 => TrigOp::Function(*fn_id, args.clone()),
-        Expr::Add(l, r) => TrigOp::Binary(*l, *r, 0),
-        Expr::Sub(l, r) => TrigOp::Binary(*l, *r, 1),
-        Expr::Mul(l, r) => TrigOp::Binary(*l, *r, 2),
-        Expr::Div(l, r) => TrigOp::Binary(*l, *r, 3),
-        Expr::Pow(base, exp) => TrigOp::Pow(*base, *exp),
-        Expr::Neg(inner) => TrigOp::Neg(*inner),
-        _ => TrigOp::Leaf,
-    };
-    match op {
-        TrigOp::Function(fn_id, args) => {
-            let arg = args[0];
-            let converted_arg = convert_trig_to_sincos(ctx, arg);
-
-            match ctx.builtin_of(fn_id) {
-                Some(BuiltinFn::Tan) => {
-                    // tan(x) → sin(x)/cos(x)
-                    let sin_x = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![converted_arg]);
-                    let cos_x = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![converted_arg]);
-                    ctx.add(Expr::Div(sin_x, cos_x))
-                }
-                Some(BuiltinFn::Cot) => {
-                    // cot(x) → cos(x)/sin(x)
-                    let sin_x = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![converted_arg]);
-                    let cos_x = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![converted_arg]);
-                    ctx.add(Expr::Div(cos_x, sin_x))
-                }
-                Some(BuiltinFn::Sec) => {
-                    // sec(x) → 1/cos(x)
-                    let one = ctx.num(1);
-                    let cos_x = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![converted_arg]);
-                    ctx.add(Expr::Div(one, cos_x))
-                }
-                Some(BuiltinFn::Csc) => {
-                    // csc(x) → 1/sin(x)
-                    let one = ctx.num(1);
-                    let sin_x = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![converted_arg]);
-                    ctx.add(Expr::Div(one, sin_x))
-                }
-                _ => {
-                    // Keep sin/cos as-is, but with converted arg
-                    ctx.add(Expr::Function(fn_id, vec![converted_arg]))
-                }
-            }
-        }
-        TrigOp::Binary(l, r, op_code) => {
-            let new_l = convert_trig_to_sincos(ctx, l);
-            let new_r = convert_trig_to_sincos(ctx, r);
-            match op_code {
-                0 => ctx.add(Expr::Add(new_l, new_r)),
-                1 => ctx.add(Expr::Sub(new_l, new_r)),
-                2 => mul2_raw(ctx, new_l, new_r),
-                _ => ctx.add(Expr::Div(new_l, new_r)),
-            }
-        }
-        TrigOp::Pow(base, exp) => {
-            let new_base = convert_trig_to_sincos(ctx, base);
-            // Don't recurse into exponent
-            ctx.add(Expr::Pow(new_base, exp))
-        }
-        TrigOp::Neg(inner) => {
-            let new_inner = convert_trig_to_sincos(ctx, inner);
-            ctx.add(Expr::Neg(new_inner))
-        }
-        TrigOp::Leaf => expr, // Return as-is for other types
-    }
-}
-
-// ==================== End Phase 4 Helpers ====================
 
 // ==================== Tier 1: Preserve Compositions (Negative Rule) ====================
 
@@ -530,29 +261,6 @@ define_rule!(
     }
 );
 
-// Helper: Check if expr is f²(arg) for a specific function name
-// Returns Some(arg) if match, None otherwise
-fn is_function_squared(ctx: &Context, expr: ExprId, fname: &str) -> Option<ExprId> {
-    match ctx.get(expr) {
-        Expr::Pow(base, exp) => {
-            if is_two_expr(ctx, *exp) {
-                match ctx.get(*base) {
-                    Expr::Function(fn_id, args)
-                        if ctx.builtin_of(*fn_id).is_some_and(|b| b.name() == fname)
-                            && args.len() == 1 =>
-                    {
-                        Some(args[0])
-                    }
-                    _ => None,
-                }
-            } else {
-                None
-            }
-        }
-        _ => None,
-    }
-}
-
 // Convert reciprocal products like tan(x)*cot(x) → 1
 define_rule!(
     ConvertReciprocalProductRule,
@@ -572,30 +280,6 @@ define_rule!(
         None
     }
 );
-
-// Check if two expressions are reciprocal trig functions with same argument
-fn check_reciprocal_pair(ctx: &Context, expr1: ExprId, expr2: ExprId) -> (bool, Option<ExprId>) {
-    match (ctx.get(expr1), ctx.get(expr2)) {
-        (Expr::Function(name1, args1), Expr::Function(name2, args2))
-            if args1.len() == 1 && args2.len() == 1 && args1[0] == args2[0] =>
-        {
-            let arg = args1[0];
-            let b1 = ctx.builtin_of(*name1);
-            let b2 = ctx.builtin_of(*name2);
-            let is_pair = matches!(
-                (b1, b2),
-                (Some(BuiltinFn::Tan), Some(BuiltinFn::Cot))
-                    | (Some(BuiltinFn::Cot), Some(BuiltinFn::Tan))
-                    | (Some(BuiltinFn::Sec), Some(BuiltinFn::Cos))
-                    | (Some(BuiltinFn::Cos), Some(BuiltinFn::Sec))
-                    | (Some(BuiltinFn::Csc), Some(BuiltinFn::Sin))
-                    | (Some(BuiltinFn::Sin), Some(BuiltinFn::Csc))
-            );
-            (is_pair, if is_pair { Some(arg) } else { None })
-        }
-        _ => (false, None),
-    }
-}
 
 // ==================== Phase 4: Mixed Fraction Conversion ====================
 
