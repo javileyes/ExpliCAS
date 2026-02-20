@@ -44,3 +44,59 @@ pub struct VerifyResult {
     /// Guard under which verification was performed (for Conditional).
     pub guard_description: Option<String>,
 }
+
+/// Compute summary for discrete verification outcomes.
+pub fn discrete_summary(total: usize, verified_count: usize) -> VerifySummary {
+    if total == 0 {
+        VerifySummary::Empty
+    } else if verified_count == total {
+        VerifySummary::AllVerified
+    } else if verified_count > 0 {
+        VerifySummary::PartiallyVerified
+    } else {
+        VerifySummary::NoneVerified
+    }
+}
+
+/// Compute summary for aggregated conditional verification outcomes.
+pub fn conditional_summary(has_verified: bool, has_not_checkable: bool) -> VerifySummary {
+    if has_verified && !has_not_checkable {
+        VerifySummary::AllVerified
+    } else if has_verified {
+        VerifySummary::PartiallyVerified
+    } else if has_not_checkable {
+        VerifySummary::NotCheckable
+    } else {
+        VerifySummary::NoneVerified
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_discrete_summary() {
+        assert_eq!(discrete_summary(0, 0), VerifySummary::Empty);
+        assert_eq!(discrete_summary(3, 3), VerifySummary::AllVerified);
+        assert_eq!(discrete_summary(3, 1), VerifySummary::PartiallyVerified);
+        assert_eq!(discrete_summary(3, 0), VerifySummary::NoneVerified);
+    }
+
+    #[test]
+    fn test_conditional_summary() {
+        assert_eq!(conditional_summary(true, false), VerifySummary::AllVerified);
+        assert_eq!(
+            conditional_summary(true, true),
+            VerifySummary::PartiallyVerified
+        );
+        assert_eq!(
+            conditional_summary(false, true),
+            VerifySummary::NotCheckable
+        );
+        assert_eq!(
+            conditional_summary(false, false),
+            VerifySummary::NoneVerified
+        );
+    }
+}

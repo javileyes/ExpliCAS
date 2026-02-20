@@ -25,6 +25,7 @@
 use cas_ast::{Equation, Expr, ExprId, SolutionSet};
 use cas_formatter::DisplayExpr;
 use cas_math::expr_predicates::contains_variable;
+use cas_solver_core::verification::{conditional_summary, discrete_summary};
 use num_traits::Zero;
 
 use crate::engine::Simplifier;
@@ -161,15 +162,7 @@ pub fn verify_solution_set(
                 results.push((sol, status));
             }
 
-            let summary = if results.is_empty() {
-                VerifySummary::Empty
-            } else if verified_count == results.len() {
-                VerifySummary::AllVerified
-            } else if verified_count > 0 {
-                VerifySummary::PartiallyVerified
-            } else {
-                VerifySummary::NoneVerified
-            };
+            let summary = discrete_summary(results.len(), verified_count);
 
             VerifyResult {
                 solutions: results,
@@ -228,15 +221,7 @@ pub fn verify_solution_set(
                 all_results.extend(case_result.solutions);
             }
 
-            let summary = if has_verified && !has_not_checkable {
-                VerifySummary::AllVerified
-            } else if has_verified {
-                VerifySummary::PartiallyVerified
-            } else if has_not_checkable {
-                VerifySummary::NotCheckable
-            } else {
-                VerifySummary::NoneVerified
-            };
+            let summary = conditional_summary(has_verified, has_not_checkable);
 
             VerifyResult {
                 solutions: all_results,
