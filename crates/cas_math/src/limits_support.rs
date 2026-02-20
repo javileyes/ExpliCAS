@@ -1,4 +1,5 @@
-use cas_ast::{Context, Expr, ExprId};
+use crate::infinity_support::{mk_infinity, InfSign};
+use cas_ast::{Constant, Context, Expr, ExprId};
 
 /// Check if an expression depends on a specific variable id.
 ///
@@ -48,6 +49,37 @@ pub fn parse_pow_int(ctx: &Context, expr: ExprId) -> Option<(ExprId, i64)> {
     }
 }
 
+/// Create a residual limit expression: `limit(expr, var, approach_symbol)`.
+pub fn mk_limit(ctx: &mut Context, expr: ExprId, var: ExprId, approach: InfSign) -> ExprId {
+    let approach_sym = match approach {
+        InfSign::Pos => ctx.add(Expr::Constant(Constant::Infinity)),
+        InfSign::Neg => {
+            let inf = ctx.add(Expr::Constant(Constant::Infinity));
+            ctx.add(Expr::Neg(inf))
+        }
+    };
+    ctx.call("limit", vec![expr, var, approach_sym])
+}
+
+/// Determine resulting infinity sign from approach sign and exponent parity.
+pub fn limit_sign(approach: InfSign, power: i64) -> InfSign {
+    match approach {
+        InfSign::Pos => InfSign::Pos,
+        InfSign::Neg => {
+            if power % 2 == 0 {
+                InfSign::Pos // (-∞)^even = +∞
+            } else {
+                InfSign::Neg // (-∞)^odd = -∞
+            }
+        }
+    }
+}
+
+/// Create infinity with appropriate sign.
+pub fn mk_inf(ctx: &mut Context, sign: InfSign) -> ExprId {
+    mk_infinity(ctx, sign)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -79,5 +111,38 @@ mod tests {
         let expr = parse_expr(&mut ctx, "x^3");
         let (_, n) = parse_pow_int(&ctx, expr).expect("power");
         assert_eq!(n, 3);
+    }
+
+    #[test]
+    fn limit_sign_handles_neg_infinity_parity() {
+        assert_eq!(limit_sign(InfSign::Pos, 7), InfSign::Pos);
+        assert_eq!(limit_sign(InfSign::Neg, 2), InfSign::Pos);
+        assert_eq!(limit_sign(InfSign::Neg, 3), InfSign::Neg);
+    }
+
+    #[test]
+    fn mk_limit_builds_limit_call_with_signed_infinity_symbol() {
+        let mut ctx = Context::new();
+        let expr = parse_expr(&mut ctx, "x^2");
+        let var = parse_expr(&mut ctx, "x");
+        let lim = mk_limit(&mut ctx, expr, var, InfSign::Neg);
+
+        let Expr::Function(_fn_id, args) = ctx.get(lim) else {
+            panic!("expected limit function call");
+        };
+        assert_eq!(args.len(), 3);
+        assert_eq!(args[0], expr);
+        assert_eq!(args[1], var);
+
+        let approach = args[2];
+        match ctx.get(approach) {
+            Expr::Neg(inner) => {
+                assert!(matches!(
+                    ctx.get(*inner),
+                    Expr::Constant(Constant::Infinity)
+                ));
+            }
+            _ => panic!("expected negative infinity argument"),
+        }
     }
 }

@@ -13,7 +13,6 @@
 //! ```
 
 mod engine;
-mod helpers;
 mod presimplify;
 mod rules;
 mod types;

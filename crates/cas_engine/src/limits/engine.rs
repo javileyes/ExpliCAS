@@ -3,13 +3,21 @@
 //! Entry point for computing limits with conservative policy.
 
 use cas_ast::{Context, ExprId};
+use cas_math::infinity_support::InfSign;
+use cas_math::limits_support::mk_limit;
 
 use crate::{Budget, CasError};
 
-use super::helpers::mk_limit;
 use super::presimplify::presimplify_safe;
 use super::rules::try_limit_rules;
 use super::types::{Approach, LimitOptions, LimitResult, PreSimplifyMode};
+
+fn approach_sign(approach: Approach) -> InfSign {
+    match approach {
+        Approach::PosInfinity => InfSign::Pos,
+        Approach::NegInfinity => InfSign::Neg,
+    }
+}
 
 /// Compute the limit of an expression.
 ///
@@ -56,7 +64,7 @@ pub fn limit(
     }
 
     // Step 3: Return residual limit expression
-    let residual = mk_limit(ctx, simplified_expr, var, approach);
+    let residual = mk_limit(ctx, simplified_expr, var, approach_sign(approach));
 
     Ok(LimitResult {
         expr: residual,

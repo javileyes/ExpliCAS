@@ -8,13 +8,20 @@
 
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::infinity_support::{mk_infinity, InfSign};
+use cas_math::limits_support::{depends_on, limit_sign, parse_pow_int};
 use num_bigint::BigInt;
 use num_rational::BigRational;
 
 use crate::Budget;
 
-use super::helpers::{depends_on, limit_sign, mk_inf, parse_pow_int};
 use super::types::Approach;
+
+fn approach_sign(approach: Approach) -> InfSign {
+    match approach {
+        Approach::PosInfinity => InfSign::Pos,
+        Approach::NegInfinity => InfSign::Neg,
+    }
+}
 
 /// Rule 1: Constant - lim c = c (if c doesn't depend on var)
 pub fn apply_constant_rule(ctx: &Context, expr: ExprId, var: ExprId) -> Option<ExprId> {
@@ -69,8 +76,8 @@ pub fn apply_power_rule(
     }
 
     // n > 0: infinity with appropriate sign
-    let sign = limit_sign(approach, n);
-    Some(mk_inf(ctx, sign))
+    let sign = limit_sign(approach_sign(approach), n);
+    Some(mk_infinity(ctx, sign))
 }
 
 /// Rule 4: Simple fraction 1/x^n - special case of rational
@@ -198,9 +205,9 @@ pub fn try_rational_poly_rule(
     let ratio_positive = ratio.is_positive();
 
     // Determine sign of x^k for the approach
-    let xk_positive = match approach {
-        Approach::PosInfinity => true,
-        Approach::NegInfinity => k % 2 == 0, // x^even is positive, x^odd is negative
+    let xk_positive = match approach_sign(approach) {
+        InfSign::Pos => true,
+        InfSign::Neg => k % 2 == 0, // x^even is positive, x^odd is negative
     };
 
     // Combined sign: positive if both same, negative if different
@@ -211,7 +218,7 @@ pub fn try_rational_poly_rule(
         InfSign::Neg
     };
 
-    Some(mk_inf(ctx, sign))
+    Some(mk_infinity(ctx, sign))
 }
 
 /// Try all limit rules in order.
