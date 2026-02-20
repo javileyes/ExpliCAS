@@ -25,6 +25,7 @@ pub mod fraction_forms;
 pub mod fraction_multivar_gcd;
 pub mod gcd_exact;
 pub mod gcd_zippel_modp;
+pub mod inv_trig_n_angle_support;
 pub mod matrix;
 pub mod modp;
 pub mod mono;

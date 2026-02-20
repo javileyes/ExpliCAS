@@ -37,7 +37,11 @@
 //! - `sin(n·arcsin(t)) = Sₙ` via `S_{k+1} = Sₖ·√(1-t²) + Cₖ·t`
 //! - `cos(n·arcsin(t)) = Cₙ` via `C_{k+1} = Cₖ·√(1-t²) - Sₖ·t`
 
-use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Expr};
+use cas_math::inv_trig_n_angle_support::{
+    arcsin_recurrence, build_one_minus_t_sq, build_one_plus_t_sq, build_sqrt, chebyshev_t,
+    chebyshev_u_nm1, count_nodes_dedup, weierstrass_recurrence,
+};
 use num_bigint::BigInt;
 use num_rational::BigRational;
 
@@ -56,66 +60,6 @@ const MAX_INNER_NODES: usize = 20;
 /// Prevents recurrence from producing unreasonably large ASTs.
 const MAX_OUTPUT_NODES: usize = 300;
 
-// ---------------------------------------------------------------------------
-// Shared AST builders
-// ---------------------------------------------------------------------------
-
-/// Build `expr^(1/2)` i.e. `√(expr)`.
-fn build_sqrt(ctx: &mut Context, expr: ExprId) -> ExprId {
-    let half = ctx.add(Expr::Number(BigRational::new(
-        BigInt::from(1),
-        BigInt::from(2),
-    )));
-    ctx.add(Expr::Pow(expr, half))
-}
-
-/// Build `1 + t²`.
-fn build_one_plus_t_sq(ctx: &mut Context, t: ExprId) -> ExprId {
-    let one = ctx.num(1);
-    let two = ctx.num(2);
-    let t_sq = ctx.add(Expr::Pow(t, two));
-    ctx.add(Expr::Add(one, t_sq))
-}
-
-/// Build `1 - t²`.
-fn build_one_minus_t_sq(ctx: &mut Context, t: ExprId) -> ExprId {
-    let one = ctx.num(1);
-    let two = ctx.num(2);
-    let t_sq = ctx.add(Expr::Pow(t, two));
-    ctx.add(Expr::Sub(one, t_sq))
-}
-
-/// Count UNIQUE AST nodes for size guards (DAG-deduplicated).
-///
-/// The recurrence builders create DAG-structured ASTs with heavy sharing
-/// (e.g., `t` and `√(1-t²)` are referenced many times). A tree traversal
-/// would exponentially overcount. This function walks the DAG, counting
-/// each ExprId only once.
-fn count_nodes_dedup(ctx: &Context, root: ExprId) -> usize {
-    use cas_ast::Expr;
-    let mut visited = std::collections::HashSet::new();
-    let mut stack = vec![root];
-    while let Some(id) = stack.pop() {
-        if !visited.insert(id) {
-            continue; // already counted
-        }
-        match ctx.get(id) {
-            Expr::Add(l, r)
-            | Expr::Sub(l, r)
-            | Expr::Mul(l, r)
-            | Expr::Div(l, r)
-            | Expr::Pow(l, r) => {
-                stack.push(*l);
-                stack.push(*r);
-            }
-            Expr::Neg(inner) => stack.push(*inner),
-            Expr::Function(_, args) => stack.extend(args.iter()),
-            _ => {} // Number, Variable, Constant — leaf nodes
-        }
-    }
-    visited.len()
-}
-
 // =============================================================================
 // Arctan: Weierstrass recurrence  (sin/cos/tan)
 // =============================================================================
@@ -126,27 +70,6 @@ fn count_nodes_dedup(ctx: &Context, root: ExprId) -> usize {
 // sin(n·atan(t)) = Bₙ / (1+t²)^(n/2)
 // cos(n·atan(t)) = Aₙ / (1+t²)^(n/2)
 // tan(n·atan(t)) = Bₙ / Aₙ
-
-/// Build Weierstrass polynomials Aₙ(t), Bₙ(t) via recurrence.
-/// Returns `(a_n, b_n)` as ExprId.
-fn weierstrass_recurrence(ctx: &mut Context, t: ExprId, n: usize) -> (ExprId, ExprId) {
-    // A₀ = 1, B₀ = 0
-    let mut a = ctx.num(1);
-    let mut b = ctx.num(0);
-
-    for _ in 0..n {
-        // A_{k+1} = Aₖ - t·Bₖ
-        // B_{k+1} = Bₖ + t·Aₖ
-        let t_b = ctx.add(Expr::Mul(t, b));
-        let t_a = ctx.add(Expr::Mul(t, a));
-        let new_a = ctx.add(Expr::Sub(a, t_b));
-        let new_b = ctx.add(Expr::Add(b, t_a));
-        a = new_a;
-        b = new_b;
-    }
-
-    (a, b)
-}
 
 define_rule!(
     NAngleAtanRule,
@@ -265,49 +188,6 @@ define_rule!(
 //
 // T₀=1, T₁=t, T_{k+1} = 2t·Tₖ - T_{k-1}
 // U₀=1, U₁=2t, U_{k+1} = 2t·Uₖ - U_{k-1}
-
-/// Build Chebyshev Tₙ(t) via recurrence. Returns the ExprId for Tₙ.
-fn chebyshev_t(ctx: &mut Context, t: ExprId, n: usize) -> ExprId {
-    if n == 0 {
-        return ctx.num(1);
-    }
-    if n == 1 {
-        return t;
-    }
-    let two = ctx.num(2);
-    let two_t = ctx.add(Expr::Mul(two, t));
-    let mut prev = ctx.num(1); // T₀
-    let mut curr = t; // T₁
-    for _ in 2..=n {
-        // T_{k+1} = 2t·Tₖ - T_{k-1}
-        let next = ctx.add(Expr::Mul(two_t, curr));
-        let next = ctx.add(Expr::Sub(next, prev));
-        prev = curr;
-        curr = next;
-    }
-    curr
-}
-
-/// Build Chebyshev Uₙ₋₁(t) via recurrence (for sin(n·arccos(t))).
-/// Returns the ExprId for Uₙ₋₁.
-fn chebyshev_u_nm1(ctx: &mut Context, t: ExprId, n: usize) -> ExprId {
-    debug_assert!(n >= 1, "chebyshev_u_nm1 requires n >= 1");
-    if n == 1 {
-        return ctx.num(1); // U₀ = 1
-    }
-    let two = ctx.num(2);
-    let two_t = ctx.add(Expr::Mul(two, t));
-    let mut prev = ctx.num(1); // U₀
-    let mut curr = two_t; // U₁ = 2t
-    for _ in 2..n {
-        // U_{k+1} = 2t·Uₖ - U_{k-1}
-        let next = ctx.add(Expr::Mul(two_t, curr));
-        let next = ctx.add(Expr::Sub(next, prev));
-        prev = curr;
-        curr = next;
-    }
-    curr // Uₙ₋₁
-}
 
 define_rule!(
     NAngleAcosRule,
@@ -441,34 +321,6 @@ define_rule!(
 // sin(n·arcsin(t)) = Sₙ
 // cos(n·arcsin(t)) = Cₙ
 // tan(n·arcsin(t)) = Sₙ / Cₙ  (NonZero(Cₙ))
-
-/// Build sin/cos(n·arcsin(t)) via recurrence.
-/// Returns `(s_n, c_n)`.
-fn arcsin_recurrence(
-    ctx: &mut Context,
-    t: ExprId,
-    cos_theta: ExprId, // √(1-t²), pre-built
-    n: usize,
-) -> (ExprId, ExprId) {
-    // S₀=0, C₀=1
-    let mut s = ctx.num(0);
-    let mut c = ctx.num(1);
-
-    for _ in 0..n {
-        // S_{k+1} = Sₖ·cosθ + Cₖ·t
-        // C_{k+1} = Cₖ·cosθ - Sₖ·t
-        let s_cos = ctx.add(Expr::Mul(s, cos_theta));
-        let c_t = ctx.add(Expr::Mul(c, t));
-        let c_cos = ctx.add(Expr::Mul(c, cos_theta));
-        let s_t = ctx.add(Expr::Mul(s, t));
-        let new_s = ctx.add(Expr::Add(s_cos, c_t));
-        let new_c = ctx.add(Expr::Sub(c_cos, s_t));
-        s = new_s;
-        c = new_c;
-    }
-
-    (s, c)
-}
 
 define_rule!(
     NAngleAsinRule,
