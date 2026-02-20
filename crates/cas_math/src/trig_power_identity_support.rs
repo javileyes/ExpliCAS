@@ -81,6 +81,14 @@ pub fn extract_coeff_trig_pow4(
     extract_coeff_trig_pow_n(ctx, term, 4)
 }
 
+/// Extract `(coefficient, trig_name, argument)` from `k * sin(arg)^2` or `k * cos(arg)^2`.
+pub fn extract_coeff_trig_pow2(
+    ctx: &Context,
+    term: ExprId,
+) -> Option<(BigRational, &'static str, ExprId)> {
+    extract_coeff_trig_pow_n(ctx, term, 2)
+}
+
 /// Extract `coeff * sin(arg)^2 * cos(arg)^2` from a product term.
 /// Returns `(coeff, arg)` when both squared trig factors share the same argument.
 pub fn extract_sin2_cos2_product(ctx: &mut Context, term: ExprId) -> Option<(ExprId, ExprId)> {
@@ -187,6 +195,31 @@ mod tests {
 
         assert!(extract_coeff_trig_pow4(&ctx, bad1).is_none());
         assert!(extract_coeff_trig_pow4(&ctx, bad2).is_none());
+    }
+
+    #[test]
+    fn extract_coeff_trig_pow2_detects_sign_and_coefficient() {
+        let mut ctx = Context::new();
+        let term1 = parse("2*sin(t)^2", &mut ctx).expect("term1");
+        let term2 = parse("-3*cos(t)^2", &mut ctx).expect("term2");
+        let t = parse("t", &mut ctx).expect("t");
+
+        let (coef1, name1, arg1) = extract_coeff_trig_pow2(&ctx, term1).expect("term1 match");
+        let (coef2, name2, arg2) = extract_coeff_trig_pow2(&ctx, term2).expect("term2 match");
+
+        assert_eq!(coef1, BigRational::from_integer(2.into()));
+        assert_eq!(name1, "sin");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, arg1, t),
+            Ordering::Equal
+        );
+
+        assert_eq!(coef2, BigRational::from_integer((-3).into()));
+        assert_eq!(name2, "cos");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, arg2, t),
+            Ordering::Equal
+        );
     }
 
     #[test]
