@@ -5,8 +5,7 @@ use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::Expr;
 use cas_formatter::DisplayExpr;
-
-pub use cas_math::gcd_exact::{gcd_exact, GcdExactBudget, GcdExactLayer, GcdExactResult};
+use cas_math::gcd_exact::{gcd_exact, GcdExactBudget};
 
 // Rule for poly_gcd_exact(a, b) function.
 // Computes algebraic GCD of two polynomial expressions over ℚ.

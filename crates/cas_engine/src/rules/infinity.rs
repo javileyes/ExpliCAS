@@ -11,9 +11,11 @@
 
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
-pub use cas_math::infinity_support::{
-    classify_finiteness, collect_add_terms_with_sign, inf_sign, is_finite_literal,
-    is_negative_literal, mk_infinity, mk_undefined, Finiteness, InfSign,
+#[cfg(test)]
+use cas_math::infinity_support::{classify_finiteness, Finiteness};
+use cas_math::infinity_support::{
+    collect_add_terms_with_sign, inf_sign, is_finite_literal, is_negative_literal, mk_infinity,
+    mk_undefined, InfSign,
 };
 use num_bigint::BigInt;
 use num_rational::BigRational;

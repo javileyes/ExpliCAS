@@ -23,7 +23,7 @@ use cas_math::poly_gcd_mode::parse_modp_options;
 use cas_math::poly_gcd_structural::poly_gcd_structural;
 use num_traits::One;
 
-pub use cas_math::poly_gcd_mode::{parse_gcd_mode, GcdGoal, GcdMode};
+use cas_math::poly_gcd_mode::{parse_gcd_mode, GcdGoal, GcdMode};
 
 /// Pre-evaluate an expression to resolve specific function wrappers.
 ///

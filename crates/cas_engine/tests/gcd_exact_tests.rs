@@ -305,7 +305,7 @@ fn test_gcd_exact_expression_integration() {
 #[ignore] // Enable when testing budget limits specifically
 fn test_gcd_exact_budget_warning() {
     use cas_ast::Context;
-    use cas_engine::rules::algebra::gcd_exact::{gcd_exact, GcdExactBudget, GcdExactLayer};
+    use cas_math::gcd_exact::{gcd_exact, GcdExactBudget, GcdExactLayer};
     use cas_parser::parse;
 
     let mut ctx = Context::new();

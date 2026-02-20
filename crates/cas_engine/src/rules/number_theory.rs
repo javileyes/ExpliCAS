@@ -50,9 +50,8 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
                 }
 
                 // Not integers - delegate to poly_gcd router
-                use crate::rules::algebra::poly_gcd::{
-                    compute_poly_gcd_unified, parse_gcd_mode, GcdGoal, GcdMode,
-                };
+                use crate::rules::algebra::poly_gcd::compute_poly_gcd_unified;
+                use cas_math::poly_gcd_mode::{parse_gcd_mode, GcdGoal, GcdMode};
 
                 // Parse explicit mode from user (if provided)
                 let explicit_mode = if args.len() >= 3 {

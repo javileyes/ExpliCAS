@@ -13,7 +13,6 @@ pub mod pythagorean;
 pub mod pythagorean_secondary;
 pub mod weierstrass;
 
-pub use cas_math::trig_values::{detect_special_angle, lookup_trig_value, SpecialAngle, TrigValue};
 pub use evaluation::EvaluateTrigTableRule;
 pub use identities::*;
 pub use pythagorean::{
