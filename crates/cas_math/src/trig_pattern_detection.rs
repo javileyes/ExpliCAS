@@ -1,11 +1,100 @@
 #![allow(dead_code)]
+use crate::expr_destructure::{as_mul, as_neg};
 use crate::expr_predicates::is_two_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use num_rational::BigRational;
 use std::cmp::Ordering;
 
 /// Check if two expressions are semantically equal
 fn args_equal(ctx: &Context, a: ExprId, b: ExprId) -> bool {
     cas_ast::ordering::compare_expr(ctx, a, b) == Ordering::Equal
+}
+
+/// Collect top-level additive terms from an Add chain.
+/// Only flattens Add nodes; Sub, Neg, etc. are treated as leaf terms.
+pub fn collect_add_chain(ctx: &Context, expr: ExprId, terms: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Add(a, b) => {
+            collect_add_chain(ctx, *a, terms);
+            collect_add_chain(ctx, *b, terms);
+        }
+        _ => terms.push(expr),
+    }
+}
+
+/// Check if all top-level additive terms of `expr` are negative, and if so,
+/// return the fully negated expression.
+///
+/// Examples:
+/// - `-2*u - 3` -> `Some(2*u + 3)`
+/// - `-u + 3` -> `None`
+pub fn try_extract_all_negative_sum(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Option<BigRational>)> {
+    let mut terms: Vec<ExprId> = Vec::new();
+    collect_add_chain(ctx, expr, &mut terms);
+
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let zero = BigRational::from_integer(0.into());
+    let one = BigRational::from_integer(1.into());
+    let mut negated_terms: Vec<ExprId> = Vec::new();
+
+    for &term in &terms {
+        if let Some(inner) = as_neg(ctx, term) {
+            negated_terms.push(inner);
+            continue;
+        }
+
+        if let Expr::Number(n) = ctx.get(term) {
+            if *n < zero {
+                negated_terms.push(ctx.add(Expr::Number(-n.clone())));
+                continue;
+            }
+            return None;
+        }
+
+        if let Some((a, b)) = as_mul(ctx, term) {
+            if let Expr::Number(n) = ctx.get(a) {
+                if *n < zero {
+                    let abs_n = -n.clone();
+                    if abs_n == one {
+                        negated_terms.push(b);
+                    } else {
+                        let abs_expr = ctx.add(Expr::Number(abs_n));
+                        negated_terms.push(ctx.add(Expr::Mul(abs_expr, b)));
+                    }
+                    continue;
+                }
+                return None;
+            }
+
+            if let Expr::Number(n) = ctx.get(b) {
+                if *n < zero {
+                    let abs_n = -n.clone();
+                    if abs_n == one {
+                        negated_terms.push(a);
+                    } else {
+                        let abs_expr = ctx.add(Expr::Number(abs_n));
+                        negated_terms.push(ctx.add(Expr::Mul(a, abs_expr)));
+                    }
+                    continue;
+                }
+                return None;
+            }
+        }
+
+        return None;
+    }
+
+    let mut result = negated_terms[0];
+    for &term in &negated_terms[1..] {
+        result = ctx.add(Expr::Add(result, term));
+    }
+    Some((result, None))
 }
 
 /// Check if expression is sec²(x), returns Some(x) if true
@@ -274,6 +363,7 @@ pub fn should_preserve_trig_function(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_parser::parse;
 
     fn build_context_with_sec_tan_minus_one() -> (Context, ExprId, ExprId, ExprId) {
         let mut ctx = Context::new();
@@ -296,6 +386,30 @@ mod tests {
     fn test_is_sec_squared() {
         let (ctx, _, sec_sq, _) = build_context_with_sec_tan_minus_one();
         assert!(is_sec_squared(&ctx, sec_sq).is_some());
+    }
+
+    #[test]
+    fn test_try_extract_all_negative_sum_extracts_expected_expression() {
+        let mut ctx = Context::new();
+        let u = ctx.var("u");
+        let neg_two = ctx.num(-2);
+        let neg_three = ctx.num(-3);
+        let neg_two_u = ctx.add(Expr::Mul(neg_two, u));
+        let expr = ctx.add(Expr::Add(neg_two_u, neg_three));
+        let (extracted, _) =
+            try_extract_all_negative_sum(&mut ctx, expr).expect("should extract negative sum");
+        let expected = parse("2*u + 3", &mut ctx).expect("expected");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, extracted, expected),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn test_try_extract_all_negative_sum_rejects_mixed_sign_sum() {
+        let mut ctx = Context::new();
+        let expr = parse("-u + 3", &mut ctx).expect("expr");
+        assert!(try_extract_all_negative_sum(&mut ctx, expr).is_none());
     }
 
     #[test]
