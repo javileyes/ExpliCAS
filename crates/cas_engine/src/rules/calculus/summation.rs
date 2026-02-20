@@ -63,8 +63,8 @@ define_rule!(SumRule, "Finite Summation", |ctx, expr| {
             }
 
             // Try to evaluate start and end as integers for numeric evaluation
-            let start = get_integer(ctx, start_expr);
-            let end = get_integer(ctx, end_expr);
+            let start = extract_integer_i64(ctx, start_expr);
+            let end = extract_integer_i64(ctx, end_expr);
 
             if let (Some(start), Some(end)) = (start, end) {
                 // Safety limit for direct evaluation
@@ -218,12 +218,12 @@ fn extract_linear_offset(ctx: &Context, expr: ExprId, var: &str) -> Option<i64> 
         Expr::Add(l, r) => {
             if let Expr::Variable(sym_id) = ctx.get(*l) {
                 if ctx.sym_name(*sym_id) == var {
-                    return get_integer(ctx, *r);
+                    return extract_integer_i64(ctx, *r);
                 }
             }
             if let Expr::Variable(sym_id) = ctx.get(*r) {
                 if ctx.sym_name(*sym_id) == var {
-                    return get_integer(ctx, *l);
+                    return extract_integer_i64(ctx, *l);
                 }
             }
             None
@@ -233,7 +233,7 @@ fn extract_linear_offset(ctx: &Context, expr: ExprId, var: &str) -> Option<i64> 
         Expr::Sub(l, r) => {
             if let Expr::Variable(sym_id) = ctx.get(*l) {
                 if ctx.sym_name(*sym_id) == var {
-                    return get_integer(ctx, *r).map(|c| -c);
+                    return extract_integer_i64(ctx, *r).map(|c| -c);
                 }
             }
             None
@@ -243,12 +243,8 @@ fn extract_linear_offset(ctx: &Context, expr: ExprId, var: &str) -> Option<i64> 
     }
 }
 
-/// Get integer value from expression.
-///
-/// Uses canonical implementation from helpers.rs.
-/// (See ARCHITECTURE.md "Canonical Utilities Registry")
-fn get_integer(ctx: &Context, expr: ExprId) -> Option<i64> {
-    crate::helpers::get_integer(ctx, expr)
+fn extract_integer_i64(ctx: &Context, expr: ExprId) -> Option<i64> {
+    cas_math::expr_extract::extract_i64_integer(ctx, expr)
 }
 
 /// Substitute variable with value in expression
@@ -408,8 +404,8 @@ define_rule!(ProductRule, "Finite Product", |ctx, expr| {
             }
 
             // Try to evaluate start and end as integers for numeric evaluation
-            let start = get_integer(ctx, start_expr);
-            let end = get_integer(ctx, end_expr);
+            let start = extract_integer_i64(ctx, start_expr);
+            let end = extract_integer_i64(ctx, end_expr);
 
             if let (Some(start), Some(end)) = (start, end) {
                 // Safety limit for direct evaluation
@@ -549,7 +545,7 @@ fn try_factorizable_product(
             // Evaluate ∏(k-1)/k from start to end
             // = (start-1)/start · start/(start+1) · ... · (end-1)/end
             // = (start-1) / end (telescopes to first numerator / last denominator)
-            let start_minus_1 = if let Some(n) = get_integer(ctx, start) {
+            let start_minus_1 = if let Some(n) = extract_integer_i64(ctx, start) {
                 ctx.num(n - 1)
             } else {
                 let one = ctx.num(1);
@@ -559,7 +555,7 @@ fn try_factorizable_product(
             // Evaluate ∏(k+1)/k from start to end
             // = (start+1)/start · (start+2)/(start+1) · ... · (end+1)/end
             // = (end+1) / start (telescopes to last numerator / first denominator)
-            let end_plus_1 = if let Some(n) = get_integer(ctx, end) {
+            let end_plus_1 = if let Some(n) = extract_integer_i64(ctx, end) {
                 ctx.num(n + 1)
             } else {
                 let one = ctx.num(1);
@@ -632,7 +628,7 @@ fn detect_reciprocal_power(ctx: &Context, expr: ExprId, var: &str) -> Option<(St
                 if let Expr::Pow(base, exp) = ctx.get(*den) {
                     if let Expr::Variable(sym_id) = ctx.get(*base) {
                         if ctx.sym_name(*sym_id) == var {
-                            if let Some(power) = get_integer(ctx, *exp) {
+                            if let Some(power) = extract_integer_i64(ctx, *exp) {
                                 return Some((ctx.sym_name(*sym_id).to_string(), power));
                             }
                         }
@@ -653,14 +649,14 @@ fn detect_reciprocal_power(ctx: &Context, expr: ExprId, var: &str) -> Option<(St
         if let Expr::Variable(sym_id) = ctx.get(*base) {
             if ctx.sym_name(*sym_id) == var {
                 if let Expr::Neg(inner_exp) = ctx.get(*exp) {
-                    if let Some(power) = get_integer(ctx, *inner_exp) {
+                    if let Some(power) = extract_integer_i64(ctx, *inner_exp) {
                         return Some((ctx.sym_name(*sym_id).to_string(), power));
                     }
                 }
                 // Check for negative number exponent
                 if let Expr::Number(n) = ctx.get(*exp) {
                     if *n < num_rational::BigRational::from_integer(0.into()) {
-                        if let Some(power) = get_integer(ctx, *exp) {
+                        if let Some(power) = extract_integer_i64(ctx, *exp) {
                             return Some((ctx.sym_name(*sym_id).to_string(), -power));
                         }
                     }

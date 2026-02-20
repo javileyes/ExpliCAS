@@ -1,5 +1,6 @@
 use super::*;
 use cas_ast::{Context, Expr};
+use cas_math::expr_extract::extract_i64_integer;
 use cas_math::numeric_eval::{as_rational_const, as_rational_const_depth};
 use cas_parser::parse;
 
@@ -39,9 +40,9 @@ fn test_get_integer() {
     )));
     let x = ctx.var("x");
 
-    assert_eq!(get_integer(&ctx, five), Some(5));
-    assert_eq!(get_integer(&ctx, half), None); // Not an integer
-    assert_eq!(get_integer(&ctx, x), None);
+    assert_eq!(extract_i64_integer(&ctx, five), Some(5));
+    assert_eq!(extract_i64_integer(&ctx, half), None); // Not an integer
+    assert_eq!(extract_i64_integer(&ctx, x), None);
 }
 
 #[test]

@@ -27,9 +27,10 @@ define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
             // gcd(poly, poly [, mode]) -> polynomial GCD via router
             if args.len() >= 2 {
                 // Try integer GCD first (if both are integers)
-                if let (Some(val_a), Some(val_b)) =
-                    (get_integer(ctx, args[0]), get_integer(ctx, args[1]))
-                {
+                if let (Some(val_a), Some(val_b)) = (
+                    extract_integer_bigint(ctx, args[0]),
+                    extract_integer_bigint(ctx, args[1]),
+                ) {
                     use num_integer::Integer;
                     let gcd = val_a.gcd(&val_b);
                     return Some(
@@ -211,7 +212,10 @@ pub fn compute_gcd(ctx: &mut Context, a: ExprId, b: ExprId, explain: bool) -> Gc
     let mut steps = Vec::new();
 
     // Attempt integer GCD first
-    if let (Some(val_a), Some(val_b)) = (get_integer(ctx, a), get_integer(ctx, b)) {
+    if let (Some(val_a), Some(val_b)) = (
+        extract_integer_bigint(ctx, a),
+        extract_integer_bigint(ctx, b),
+    ) {
         use num_traits::ToPrimitive;
 
         if explain {
@@ -311,8 +315,8 @@ pub fn explain_gcd(ctx: &mut Context, a: ExprId, b: ExprId) -> GcdResult {
 }
 
 fn compute_lcm(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprId> {
-    let val_a = get_integer(ctx, a)?;
-    let val_b = get_integer(ctx, b)?;
+    let val_a = extract_integer_bigint(ctx, a)?;
+    let val_b = extract_integer_bigint(ctx, b)?;
     if val_a.is_zero() && val_b.is_zero() {
         return Some(ctx.num(0));
     }
@@ -321,8 +325,8 @@ fn compute_lcm(ctx: &mut Context, a: ExprId, b: ExprId) -> Option<ExprId> {
 }
 
 fn compute_mod(ctx: &mut Context, a: ExprId, n: ExprId) -> Option<ExprId> {
-    let val_a = get_integer(ctx, a)?;
-    let val_n = get_integer(ctx, n)?;
+    let val_a = extract_integer_bigint(ctx, a)?;
+    let val_n = extract_integer_bigint(ctx, n)?;
     if val_n.is_zero() {
         return None; // Undefined
     }
@@ -332,7 +336,7 @@ fn compute_mod(ctx: &mut Context, a: ExprId, n: ExprId) -> Option<ExprId> {
 }
 
 fn compute_prime_factors(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
-    let val = get_integer(ctx, n)?;
+    let val = extract_integer_bigint(ctx, n)?;
     if val.is_zero() {
         return Some(ctx.num(0));
     }
@@ -410,7 +414,7 @@ fn compute_prime_factors(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
 }
 
 fn compute_factorial(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
-    let val = get_integer(ctx, n)?;
+    let val = extract_integer_bigint(ctx, n)?;
     if val.is_negative() {
         return None; // Undefined for negative integers
     }
@@ -431,8 +435,8 @@ fn compute_factorial(ctx: &mut Context, n: ExprId) -> Option<ExprId> {
 }
 
 fn compute_choose(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
-    let val_n = get_integer(ctx, n)?;
-    let val_k = get_integer(ctx, k)?;
+    let val_n = extract_integer_bigint(ctx, n)?;
+    let val_k = extract_integer_bigint(ctx, k)?;
 
     if val_k.is_negative() || val_k > val_n {
         return Some(ctx.num(0));
@@ -466,8 +470,8 @@ fn compute_choose(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
 }
 
 fn compute_perm(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
-    let val_n = get_integer(ctx, n)?;
-    let val_k = get_integer(ctx, k)?;
+    let val_n = extract_integer_bigint(ctx, n)?;
+    let val_k = extract_integer_bigint(ctx, k)?;
 
     if val_k.is_negative() || val_k > val_n {
         return Some(ctx.num(0));
@@ -488,12 +492,8 @@ fn compute_perm(ctx: &mut Context, n: ExprId, k: ExprId) -> Option<ExprId> {
     Some(ctx.add(Expr::Number(BigRational::from_integer(res))))
 }
 
-/// Get integer value from expression as BigInt.
-///
-/// Uses canonical implementation from helpers.rs.
-/// (See ARCHITECTURE.md "Canonical Utilities Registry")
-fn get_integer(ctx: &Context, expr: ExprId) -> Option<BigInt> {
-    crate::helpers::get_integer_exact(ctx, expr)
+fn extract_integer_bigint(ctx: &Context, expr: ExprId) -> Option<BigInt> {
+    cas_math::expr_extract::extract_integer_exact(ctx, expr)
 }
 
 /// Compute GCD of two integers with educational step-by-step explanation
