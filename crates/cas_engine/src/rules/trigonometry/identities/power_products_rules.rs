@@ -4,6 +4,10 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_math::expr_rewrite::smart_mul;
+use cas_math::trig_sum_product_support::{
+    args_match_as_multiset, extract_trig_two_term_diff, extract_trig_two_term_sum,
+    normalize_for_even_fn, simplify_numeric_div,
+};
 use std::cmp::Ordering;
 
 // =============================================================================
@@ -348,92 +352,6 @@ define_rule!(
 // (sin(A)+sin(B))/(cos(A)+cos(B)) → sin((A+B)/2)/cos((A+B)/2)
 // =============================================================================
 
-/// Extract the argument from a trig function: sin(arg) → Some(arg), else None
-pub fn extract_trig_arg(ctx: &cas_ast::Context, id: ExprId, fn_name: &str) -> Option<ExprId> {
-    if let Expr::Function(fn_id, args) = ctx.get(id) {
-        if ctx.builtin_of(*fn_id).is_some_and(|b| b.name() == fn_name) && args.len() == 1 {
-            return Some(args[0]);
-        }
-    }
-    None
-}
-
-/// Extract two trig function args from a 2-term sum: sin(A) + sin(B) → Some((A, B))
-/// Uses flatten_add for robustness against nested Add structures
-fn extract_trig_two_term_sum(
-    ctx: &cas_ast::Context,
-    expr: ExprId,
-    fn_name: &str,
-) -> Option<(ExprId, ExprId)> {
-    let terms = crate::nary::add_leaves(ctx, expr);
-
-    // Must have exactly 2 terms (both same trig function)
-    if terms.len() != 2 {
-        return None;
-    }
-
-    // Check both are the target function (sin or cos)
-    let arg1 = extract_trig_arg(ctx, terms[0], fn_name)?;
-    let arg2 = extract_trig_arg(ctx, terms[1], fn_name)?;
-
-    Some((arg1, arg2))
-}
-
-/// Extract two trig function args from a 2-term difference: sin(A) - sin(B) → Some((A, B))
-/// Handles both Sub(sin(A), sin(B)) and Add(sin(A), Neg(sin(B)))
-fn extract_trig_two_term_diff(
-    ctx: &cas_ast::Context,
-    expr: ExprId,
-    fn_name: &str,
-) -> Option<(ExprId, ExprId)> {
-    // Pattern 1: Sub(sin(A), sin(B))
-    if let Expr::Sub(l, r) = ctx.get(expr) {
-        let arg1 = extract_trig_arg(ctx, *l, fn_name)?;
-        let arg2 = extract_trig_arg(ctx, *r, fn_name)?;
-        return Some((arg1, arg2));
-    }
-
-    // Pattern 2: Add(sin(A), Neg(sin(B))) - normalized form
-    if let Expr::Add(l, r) = ctx.get(expr) {
-        // Check if one is Neg(sin(B))
-        if let Expr::Neg(inner) = ctx.get(*r) {
-            let arg1 = extract_trig_arg(ctx, *l, fn_name)?;
-            let arg2 = extract_trig_arg(ctx, *inner, fn_name)?;
-            return Some((arg1, arg2));
-        }
-        if let Expr::Neg(inner) = ctx.get(*l) {
-            let arg1 = extract_trig_arg(ctx, *r, fn_name)?;
-            let arg2 = extract_trig_arg(ctx, *inner, fn_name)?;
-            // Note: sin(A) - sin(B) vs -sin(B) + sin(A) = sin(A) - sin(B)
-            return Some((arg1, arg2));
-        }
-    }
-
-    None
-}
-
-/// Check if two pairs of args match as multisets: {A,B} == {C,D}
-fn args_match_as_multiset(
-    ctx: &cas_ast::Context,
-    a1: ExprId,
-    a2: ExprId,
-    b1: ExprId,
-    b2: ExprId,
-) -> bool {
-    use crate::ordering::compare_expr;
-    use std::cmp::Ordering;
-
-    // Direct match: (A,B) == (C,D)
-    let direct = compare_expr(ctx, a1, b1) == Ordering::Equal
-        && compare_expr(ctx, a2, b2) == Ordering::Equal;
-
-    // Crossed match: (A,B) == (D,C)
-    let crossed = compare_expr(ctx, a1, b2) == Ordering::Equal
-        && compare_expr(ctx, a2, b1) == Ordering::Equal;
-
-    direct || crossed
-}
-
 /// Build half_diff = (A-B)/2 preserving the order of A and B.
 /// Use this for sin((A-B)/2) where the sign matters.
 /// Pre-simplifies the difference to produce cleaner output.
@@ -472,34 +390,6 @@ fn build_canonical_half_diff(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -
     simplify_numeric_div(ctx, result)
 }
 
-/// Normalize an expression for even functions like cos.
-/// For even functions: f(-x) = f(x), so we can strip the negation.
-/// Returns the unwrapped inner expression if input is Neg(inner), else returns input.
-pub fn normalize_for_even_fn(ctx: &cas_ast::Context, expr: ExprId) -> ExprId {
-    use num_bigint::BigInt;
-    use num_rational::BigRational;
-
-    // If expr is Neg(inner), return inner
-    if let Expr::Neg(inner) = ctx.get(expr) {
-        return *inner;
-    }
-    // Also handle Mul(-1, x) or Mul(x, -1)
-    if let Expr::Mul(l, r) = ctx.get(expr) {
-        let minus_one = BigRational::from_integer(BigInt::from(-1));
-        if let Expr::Number(n) = ctx.get(*l) {
-            if n == &minus_one {
-                return *r;
-            }
-        }
-        if let Expr::Number(n) = ctx.get(*r) {
-            if n == &minus_one {
-                return *l;
-            }
-        }
-    }
-    expr
-}
-
 /// Build avg = (A+B)/2, pre-simplifying sum for cleaner output
 /// This eliminates the need for a separate "Combine Like Terms" step
 pub fn build_avg(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> ExprId {
@@ -510,66 +400,6 @@ pub fn build_avg(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> ExprId {
     let result = ctx.add(Expr::Div(sum_simplified, two));
     // Try to simplify the division (e.g., 4x/2 → 2x)
     simplify_numeric_div(ctx, result)
-}
-
-/// Try to simplify a division when numerator has a coefficient divisible by denominator
-/// e.g., 4x/2 → 2x, -2x/2 → -x
-fn simplify_numeric_div(ctx: &mut cas_ast::Context, expr: ExprId) -> ExprId {
-    use cas_math::numeric::as_i64;
-
-    let (num, den) = if let Expr::Div(n, d) = ctx.get(expr) {
-        (*n, *d)
-    } else {
-        return expr;
-    };
-
-    // Check if denominator is a small integer
-    let Some(den_val) = as_i64(ctx, den) else {
-        return expr;
-    };
-    if den_val == 0 {
-        return expr; // Avoid division by zero
-    }
-
-    // Check if numerator is a product k*x where k is divisible by den
-    if let Expr::Mul(l, r) = ctx.get(num) {
-        let (l, r) = (*l, *r);
-        if let Some(coeff) = as_i64(ctx, l) {
-            if coeff % den_val == 0 {
-                let new_coeff = coeff / den_val;
-                if new_coeff == 1 {
-                    return r; // 2x/2 → x
-                } else if new_coeff == -1 {
-                    return ctx.add(Expr::Neg(r)); // -2x/2 → -x
-                } else {
-                    let new_coeff_expr = ctx.num(new_coeff);
-                    return ctx.add(Expr::Mul(new_coeff_expr, r)); // 4x/2 → 2x
-                }
-            }
-        }
-        if let Some(coeff) = as_i64(ctx, r) {
-            if coeff % den_val == 0 {
-                let new_coeff = coeff / den_val;
-                if new_coeff == 1 {
-                    return l; // x*2/2 → x
-                } else if new_coeff == -1 {
-                    return ctx.add(Expr::Neg(l)); // x*(-2)/2 → -x
-                } else {
-                    let new_coeff_expr = ctx.num(new_coeff);
-                    return ctx.add(Expr::Mul(l, new_coeff_expr)); // x*4/2 → x*2
-                }
-            }
-        }
-    }
-
-    // Check if numerator is a plain number divisible by den
-    if let Some(num_val) = as_i64(ctx, num) {
-        if num_val % den_val == 0 {
-            return ctx.num(num_val / den_val); // 4/2 → 2
-        }
-    }
-
-    expr
 }
 
 // SinCosSumQuotientRule: Handles two patterns:
