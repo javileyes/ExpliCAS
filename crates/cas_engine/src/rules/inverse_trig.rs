@@ -2,6 +2,7 @@ use crate::define_rule;
 use crate::nary::build_balanced_add;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_math::expr_relations::extract_negated_inner;
 use cas_math::numeric_eval::as_rational_const;
 use cas_math::trig_reciprocal_support::{are_reciprocals, has_reciprocal_atan_pair};
 use num_traits::One;
@@ -612,27 +613,7 @@ define_rule!(
                 let arg = args[0];
 
                 // Check for negative argument: Neg(x) or Mul(-1, x)
-                let inner_opt = match ctx.get(arg) {
-                    Expr::Neg(inner) => Some(*inner),
-                    Expr::Mul(l, r) => {
-                        if let Expr::Number(n) = ctx.get(*l) {
-                            if *n == num_rational::BigRational::from_integer((-1).into()) {
-                                Some(*r)
-                            } else {
-                                None
-                            }
-                        } else if let Expr::Number(n) = ctx.get(*r) {
-                            if *n == num_rational::BigRational::from_integer((-1).into()) {
-                                Some(*l)
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                };
+                let inner_opt = extract_negated_inner(ctx, arg);
 
                 if let Some(inner) = inner_opt {
                     match ctx.builtin_of(*fn_id) {

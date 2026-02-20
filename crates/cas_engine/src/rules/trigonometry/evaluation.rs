@@ -5,7 +5,8 @@
 
 use crate::define_rule;
 use crate::rule::Rewrite;
-use cas_ast::{Expr, ExprId};
+use cas_ast::Expr;
+use cas_math::expr_relations::extract_negated_inner;
 
 use super::values::{
     detect_inverse_trig_input, detect_special_angle, lookup_inverse_trig_value, lookup_trig_value,
@@ -77,27 +78,6 @@ define_rule!(
         None
     }
 );
-
-/// Extract the inner expression from Neg(x) or Mul(-1, x)
-fn extract_negated_inner(ctx: &cas_ast::Context, arg: ExprId) -> Option<ExprId> {
-    match ctx.get(arg) {
-        Expr::Neg(inner) => Some(*inner),
-        Expr::Mul(l, r) => {
-            if let Expr::Number(n) = ctx.get(*l) {
-                if *n == num_rational::BigRational::from_integer((-1).into()) {
-                    return Some(*r);
-                }
-            }
-            if let Expr::Number(n) = ctx.get(*r) {
-                if *n == num_rational::BigRational::from_integer((-1).into()) {
-                    return Some(*l);
-                }
-            }
-            None
-        }
-        _ => None,
-    }
-}
 
 #[cfg(test)]
 mod tests {

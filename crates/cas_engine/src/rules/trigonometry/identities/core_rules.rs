@@ -4,6 +4,7 @@ use crate::define_rule;
 use crate::helpers::{as_add, as_div, as_mul, as_neg, as_sub, is_pi, is_pi_over_n};
 use crate::rule::Rewrite;
 use cas_ast::{Expr, ExprId};
+use cas_math::expr_relations::extract_negated_inner;
 use cas_math::expr_rewrite::smart_mul;
 use num_traits::{One, Zero};
 
@@ -530,27 +531,7 @@ define_rule!(
 
                 // Case 7: Identities for negative arguments
                 // Check for Expr::Neg(inner) OR Expr::Mul(-1, inner)
-                let inner_opt = match ctx.get(arg) {
-                    Expr::Neg(inner) => Some(*inner),
-                    Expr::Mul(l, r) => {
-                        if let Expr::Number(n) = ctx.get(*l) {
-                            if *n == num_rational::BigRational::from_integer((-1).into()) {
-                                Some(*r)
-                            } else {
-                                None
-                            }
-                        } else if let Expr::Number(n) = ctx.get(*r) {
-                            if *n == num_rational::BigRational::from_integer((-1).into()) {
-                                Some(*l)
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                };
+                let inner_opt = extract_negated_inner(ctx, arg);
 
                 if let Some(inner) = inner_opt {
                     match name.as_str() {

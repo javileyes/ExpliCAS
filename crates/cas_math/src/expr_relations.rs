@@ -26,24 +26,34 @@ pub fn is_negation(ctx: &Context, a: ExprId, b: ExprId) -> bool {
         || check_negated_mul_coeff(ctx, a, b)
 }
 
-fn check_negation_structure(ctx: &Context, potential_neg: ExprId, original: ExprId) -> bool {
-    match ctx.get(potential_neg) {
-        Expr::Neg(n) => compare_expr(ctx, original, *n) == Ordering::Equal,
+/// Extract the inner expression from a structural negation:
+/// - `Neg(x)` -> `x`
+/// - `Mul(-1, x)` / `Mul(x, -1)` -> `x`
+pub fn extract_negated_inner(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => Some(*inner),
         Expr::Mul(l, r) => {
             if let Expr::Number(n) = ctx.get(*l) {
-                if *n == -BigRational::one() && compare_expr(ctx, *r, original) == Ordering::Equal {
-                    return true;
+                if *n == -BigRational::one() {
+                    return Some(*r);
                 }
             }
             if let Expr::Number(n) = ctx.get(*r) {
-                if *n == -BigRational::one() && compare_expr(ctx, *l, original) == Ordering::Equal {
-                    return true;
+                if *n == -BigRational::one() {
+                    return Some(*l);
                 }
             }
-            false
+            None
         }
-        _ => false,
+        _ => None,
     }
+}
+
+fn check_negation_structure(ctx: &Context, potential_neg: ExprId, original: ExprId) -> bool {
+    if let Some(inner) = extract_negated_inner(ctx, potential_neg) {
+        return compare_expr(ctx, original, inner) == Ordering::Equal;
+    }
+    false
 }
 
 fn check_negated_mul_coeff(ctx: &Context, a: ExprId, b: ExprId) -> bool {
@@ -618,6 +628,21 @@ mod tests {
         let non_neg = parse("3*x", &mut ctx).expect("3*x");
         assert!(is_negation(&ctx, pos, neg));
         assert!(!is_negation(&ctx, pos, non_neg));
+    }
+
+    #[test]
+    fn extract_negated_inner_handles_neg_and_mul_minus_one() {
+        let mut ctx = Context::new();
+        let x = parse("x", &mut ctx).expect("x");
+        let neg_x = parse("-x", &mut ctx).expect("-x");
+        let mul_left = parse("(-1)*x", &mut ctx).expect("(-1)*x");
+        let mul_right = parse("x*(-1)", &mut ctx).expect("x*(-1)");
+        let pos_x = parse("x", &mut ctx).expect("x-again");
+
+        assert_eq!(extract_negated_inner(&ctx, neg_x), Some(x));
+        assert_eq!(extract_negated_inner(&ctx, mul_left), Some(x));
+        assert_eq!(extract_negated_inner(&ctx, mul_right), Some(x));
+        assert_eq!(extract_negated_inner(&ctx, pos_x), None);
     }
 
     #[test]
