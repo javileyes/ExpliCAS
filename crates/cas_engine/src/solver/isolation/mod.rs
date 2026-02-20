@@ -6,16 +6,13 @@ use crate::engine::Simplifier;
 use crate::solver::solution_set::{neg_inf, pos_inf};
 use crate::solver::{SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
 use cas_ast::{BoundType, Context, Equation, Expr, ExprId, Interval, RelOp, SolutionSet};
-use cas_math::expr_predicates::contains_named_var;
 
 use crate::error::CasError;
 
 /// Create a residual solve expression: solve(__eq__(lhs, rhs), var)
 /// Used when solver can't justify a step but wants graceful degradation.
 pub(super) fn mk_residual_solve(ctx: &mut Context, lhs: ExprId, rhs: ExprId, var: &str) -> ExprId {
-    let eq_expr = cas_ast::eq::wrap_eq(ctx, lhs, rhs);
-    let var_expr = ctx.var(var);
-    ctx.call("solve", vec![eq_expr, var_expr])
+    cas_solver_core::isolation_utils::mk_residual_solve(ctx, lhs, rhs, var)
 }
 
 pub(crate) fn isolate(
@@ -181,12 +178,7 @@ pub(crate) fn prepend_steps(
 /// This is specific to solver isolation logic where we need to determine
 /// sign to correctly flip inequalities when multiplying/dividing.
 pub(crate) fn is_known_negative(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Number(n) => *n < num_rational::BigRational::from_integer(0.into()),
-        Expr::Neg(_) => true,
-        Expr::Mul(l, r) => is_known_negative(ctx, *l) ^ is_known_negative(ctx, *r),
-        _ => false,
-    }
+    cas_solver_core::isolation_utils::is_known_negative(ctx, expr)
 }
 
 pub(crate) fn simplify_rhs(
@@ -216,7 +208,7 @@ pub(crate) fn simplify_rhs(
 }
 
 pub fn contains_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
-    contains_named_var(ctx, expr, var)
+    cas_solver_core::isolation_utils::contains_var(ctx, expr, var)
 }
 
 /// Attempt to recompose a^e / b^e -> (a/b)^e when both powers have the same exponent.
@@ -230,31 +222,9 @@ pub fn contains_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
 /// Returns Some(recomposed_expr) where recomposed = (a/b)^e, if pattern matches.
 /// Returns None if pattern does not match.
 pub(crate) fn try_recompose_pow_quotient(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
-    use crate::ordering::compare_expr;
-    use std::cmp::Ordering;
-
-    let expr_data = ctx.get(expr).clone();
-    if let Expr::Div(num, den) = expr_data {
-        let num_data = ctx.get(num).clone();
-        let den_data = ctx.get(den).clone();
-        if let (Expr::Pow(a, e1), Expr::Pow(b, e2)) = (num_data, den_data) {
-            // Use structural comparison instead of ExprId ==
-            if compare_expr(ctx, e1, e2) == Ordering::Equal {
-                let new_base = ctx.add(Expr::Div(a, b));
-                return Some(ctx.add(Expr::Pow(new_base, e1)));
-            }
-        }
-    }
-    None
+    cas_solver_core::isolation_utils::try_recompose_pow_quotient(ctx, expr)
 }
 
 pub(crate) fn flip_inequality(op: RelOp) -> RelOp {
-    match op {
-        RelOp::Eq => RelOp::Eq,
-        RelOp::Neq => RelOp::Neq,
-        RelOp::Lt => RelOp::Gt,
-        RelOp::Gt => RelOp::Lt,
-        RelOp::Leq => RelOp::Geq,
-        RelOp::Geq => RelOp::Leq,
-    }
+    cas_solver_core::isolation_utils::flip_inequality(op)
 }

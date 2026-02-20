@@ -334,6 +334,7 @@ name = "cas_solver_core"
 version = "0.1.0"
 dependencies = [
  "cas_ast",
+ "cas_math",
  "num-rational",
 ]
 
