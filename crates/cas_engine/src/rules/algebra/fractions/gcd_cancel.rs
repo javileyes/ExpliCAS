@@ -9,13 +9,12 @@ use crate::rule::{ChainedRewrite, Rewrite};
 use cas_ast::{Expr, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_math::expr_rewrite::{collect_denominators, count_div_nodes, distribute};
+use cas_math::fraction_multivar_gcd::try_multivar_gcd;
+use cas_math::multipoly::GcdLayer;
 use cas_math::numeric::gcd_rational;
+use cas_math::poly_compare::{poly_relation, SignRelation};
 use cas_math::polynomial::Polynomial;
 use num_traits::{One, Zero};
-
-// Import helpers from sibling core_rules module
-use super::core_rules::{poly_relation, try_multivar_gcd, SignRelation};
-use cas_math::multipoly::GcdLayer;
 
 // ========== Micro-API for safe Mul construction ==========
 // Use this instead of ctx.add(Expr::Mul(...)) in this file.

@@ -6,11 +6,6 @@
 //! - Combining (AddFractionsRule, FoldAddIntoFractionRule)
 //! - Rationalization (RationalizeDenominatorRule, etc.)
 
-// Core fraction helpers module
-mod core_rules;
-
-// core_rules helpers are imported directly by sibling modules via `super::core_rules::{...}`
-
 // GCD-based cancellation rules module
 mod gcd_cancel;
 mod gcd_cancel_didactic;

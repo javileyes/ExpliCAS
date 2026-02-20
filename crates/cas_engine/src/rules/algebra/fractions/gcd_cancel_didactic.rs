@@ -8,8 +8,7 @@
 
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
-
-use super::core_rules::poly_eq;
+use cas_math::poly_compare::poly_eq;
 
 // =============================================================================
 // EARLY RETURN: Didactic expansion of perfect-square denominators for cancellation

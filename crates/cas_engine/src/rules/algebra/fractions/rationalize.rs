@@ -2,10 +2,10 @@ use crate::build::mul2_raw;
 use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::fraction_factors::{
+    build_mul_from_factors_int_pow as build_mul_from_factors_a1, collect_mul_factors_int_pow,
+};
 use num_traits::{One, Zero};
-
-// Use parent module's helpers
-use super::core_rules::{build_mul_from_factors_a1, collect_mul_factors_int_pow};
 
 // =============================================================================
 // DivAddCommonFactorFromDenRule: Factor out MULTI-FACTOR from Add numerator
