@@ -152,6 +152,45 @@ pub fn simplify_numeric_div(ctx: &mut Context, expr: ExprId) -> ExprId {
     expr
 }
 
+/// Build `(A-B)/2`, optionally canonicalizing order before subtraction.
+///
+/// The caller provides `simplify_expr` to pre-simplify the numerator difference
+/// before dividing by 2 (engine currently uses `collect` for this step).
+pub fn build_half_diff_with_simplifier(
+    ctx: &mut Context,
+    a: ExprId,
+    b: ExprId,
+    canonical_order: bool,
+    simplify_expr: fn(&mut Context, ExprId) -> ExprId,
+) -> ExprId {
+    let (first, second) =
+        if canonical_order && cas_ast::ordering::compare_expr(ctx, a, b) == Ordering::Greater {
+            (b, a)
+        } else {
+            (a, b)
+        };
+
+    let diff = ctx.add(Expr::Sub(first, second));
+    let diff_simplified = simplify_expr(ctx, diff);
+    let two = ctx.num(2);
+    let result = ctx.add(Expr::Div(diff_simplified, two));
+    simplify_numeric_div(ctx, result)
+}
+
+/// Build `(A+B)/2`, pre-simplifying the sum via the caller-provided callback.
+pub fn build_avg_with_simplifier(
+    ctx: &mut Context,
+    a: ExprId,
+    b: ExprId,
+    simplify_expr: fn(&mut Context, ExprId) -> ExprId,
+) -> ExprId {
+    let sum = ctx.add(Expr::Add(a, b));
+    let sum_simplified = simplify_expr(ctx, sum);
+    let two = ctx.num(2);
+    let result = ctx.add(Expr::Div(sum_simplified, two));
+    simplify_numeric_div(ctx, result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -203,6 +242,57 @@ mod tests {
         let expected = parse("2*x", &mut ctx).expect("expected");
         assert_eq!(
             cas_ast::ordering::compare_expr(&ctx, simplified, expected),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn build_half_diff_with_simplifier_respects_canonical_order() {
+        fn passthrough(_: &mut Context, id: ExprId) -> ExprId {
+            id
+        }
+
+        let mut ctx = Context::new();
+        let y = parse("y", &mut ctx).expect("y");
+        let x = parse("x", &mut ctx).expect("x");
+
+        let canonical = build_half_diff_with_simplifier(&mut ctx, y, x, true, passthrough);
+        let expected_canonical = parse("(x-y)/2", &mut ctx).expect("expected_canonical");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, canonical, expected_canonical),
+            Ordering::Equal
+        );
+
+        let non_canonical = build_half_diff_with_simplifier(&mut ctx, y, x, false, passthrough);
+        let expected_non_canonical = parse("(y-x)/2", &mut ctx).expect("expected_non_canonical");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, non_canonical, expected_non_canonical),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn build_avg_with_simplifier_applies_callback_before_division() {
+        fn collapse_duplicate_add(ctx: &mut Context, expr: ExprId) -> ExprId {
+            let (l, r) = if let Expr::Add(l, r) = ctx.get(expr) {
+                (*l, *r)
+            } else {
+                return expr;
+            };
+            if cas_ast::ordering::compare_expr(ctx, l, r) == Ordering::Equal {
+                let two = ctx.num(2);
+                return ctx.add(Expr::Mul(two, l));
+            }
+            expr
+        }
+
+        let mut ctx = Context::new();
+        let x = parse("x", &mut ctx).expect("x");
+        let avg = build_avg_with_simplifier(&mut ctx, x, x, collapse_duplicate_add);
+        let expected = parse("x", &mut ctx).expect("expected");
+
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, avg, expected),
             Ordering::Equal
         );
     }

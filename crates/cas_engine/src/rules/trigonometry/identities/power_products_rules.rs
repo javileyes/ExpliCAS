@@ -8,8 +8,8 @@ use cas_math::trig_power_identity_support::{
     coeff_is_three, extract_sin2_cos2_product, extract_trig_pow4, extract_trig_pow6,
 };
 use cas_math::trig_sum_product_support::{
-    args_match_as_multiset, extract_trig_two_term_diff, extract_trig_two_term_sum,
-    normalize_for_even_fn, simplify_numeric_div,
+    args_match_as_multiset, build_avg_with_simplifier, build_half_diff_with_simplifier,
+    extract_trig_two_term_diff, extract_trig_two_term_sum, normalize_for_even_fn,
 };
 use std::cmp::Ordering;
 
@@ -221,13 +221,7 @@ define_rule!(
 /// Use this for sin((A-B)/2) where the sign matters.
 /// Pre-simplifies the difference to produce cleaner output.
 pub fn build_half_diff(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> ExprId {
-    let diff = ctx.add(Expr::Sub(a, b));
-    // Pre-simplify the difference (e.g., 5x - 3x → 2x)
-    let diff_simplified = crate::collect::collect(ctx, diff);
-    let two = ctx.num(2);
-    let result = ctx.add(Expr::Div(diff_simplified, two));
-    // Try to simplify the division (e.g., 2x/2 → x)
-    simplify_numeric_div(ctx, result)
+    build_half_diff_with_simplifier(ctx, a, b, false, crate::collect::collect)
 }
 
 /// Build canonical half_diff = (A-B)/2 with consistent ordering.
@@ -235,36 +229,13 @@ pub fn build_half_diff(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> Expr
 /// numerator and denominator produce identical expressions for cancellation.
 /// Use this for cos((A-B)/2) where the sign doesn't matter.
 fn build_canonical_half_diff(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> ExprId {
-    use crate::ordering::compare_expr;
-    use std::cmp::Ordering;
-
-    // Use canonical order: if A > B, swap to (B-A)/2
-    // This ensures consistent expression for cos(half_diff) in num and den
-    let (first, second) = if compare_expr(ctx, a, b) == Ordering::Greater {
-        (b, a)
-    } else {
-        (a, b)
-    };
-
-    let diff = ctx.add(Expr::Sub(first, second));
-    // Pre-simplify the difference (e.g., x - 3x → -2x)
-    let diff_simplified = crate::collect::collect(ctx, diff);
-    let two = ctx.num(2);
-    let result = ctx.add(Expr::Div(diff_simplified, two));
-    // Try to simplify the division (e.g., -2x/2 → -x)
-    simplify_numeric_div(ctx, result)
+    build_half_diff_with_simplifier(ctx, a, b, true, crate::collect::collect)
 }
 
 /// Build avg = (A+B)/2, pre-simplifying sum for cleaner output
 /// This eliminates the need for a separate "Combine Like Terms" step
 pub fn build_avg(ctx: &mut cas_ast::Context, a: ExprId, b: ExprId) -> ExprId {
-    let sum = ctx.add(Expr::Add(a, b));
-    // Pre-simplify the sum (e.g., x + 3x → 4x)
-    let sum_simplified = crate::collect::collect(ctx, sum);
-    let two = ctx.num(2);
-    let result = ctx.add(Expr::Div(sum_simplified, two));
-    // Try to simplify the division (e.g., 4x/2 → 2x)
-    simplify_numeric_div(ctx, result)
+    build_avg_with_simplifier(ctx, a, b, crate::collect::collect)
 }
 
 // SinCosSumQuotientRule: Handles two patterns:

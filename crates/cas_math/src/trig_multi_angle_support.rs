@@ -122,6 +122,18 @@ pub fn is_trig_sum(ctx: &Context, expr: ExprId, fn_name: &str) -> bool {
     false
 }
 
+/// Check whether an expression matches a trig sum-quotient scaffold:
+/// `(sin(A) ± sin(B)) / (cos(C) + cos(D))`.
+pub fn is_trig_sum_quotient_div_pattern(ctx: &Context, expr: ExprId) -> bool {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return false;
+    };
+
+    let num_is_sin_sum_or_diff = is_binary_trig_op(ctx, *num, "sin");
+    let den_is_cos_sum = is_trig_sum(ctx, *den, "cos");
+    num_is_sin_sum_or_diff && den_is_cos_sum
+}
+
 /// Check whether `large` and `small` satisfy a double-angle relation.
 ///
 /// Recognized shapes:
@@ -427,6 +439,18 @@ mod tests {
 
         assert!(is_trig_sum(&ctx, sum, "cos"));
         assert!(!is_trig_sum(&ctx, diff, "cos"));
+    }
+
+    #[test]
+    fn trig_sum_quotient_div_pattern_detects_expected_shape() {
+        let mut ctx = Context::new();
+        let yes = parse("(sin(a)-sin(b))/(cos(a)+cos(b))", &mut ctx).expect("yes");
+        let no_den = parse("(sin(a)-sin(b))/(cos(a)-cos(b))", &mut ctx).expect("no_den");
+        let no_num = parse("(sin(a)*sin(b))/(cos(a)+cos(b))", &mut ctx).expect("no_num");
+
+        assert!(is_trig_sum_quotient_div_pattern(&ctx, yes));
+        assert!(!is_trig_sum_quotient_div_pattern(&ctx, no_den));
+        assert!(!is_trig_sum_quotient_div_pattern(&ctx, no_num));
     }
 
     #[test]

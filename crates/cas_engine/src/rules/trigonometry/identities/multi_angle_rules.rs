@@ -7,7 +7,7 @@ use crate::helpers::{as_mul, as_pow, extract_triple_angle_arg};
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_math::expr_rewrite::smart_mul;
-use cas_math::trig_multi_angle_support::{is_binary_trig_op, is_trig_sum, is_trivial_angle};
+use cas_math::trig_multi_angle_support::{is_trig_sum_quotient_div_pattern, is_trivial_angle};
 use num_traits::{One, Zero};
 
 // Triple Angle Shortcut Rule: sin(3x) → 3sin(x) - 4sin³(x), cos(3x) → 4cos³(x) - 3cos(x)
@@ -213,17 +213,7 @@ fn is_inside_trig_quotient_pattern(
     parent_ctx: &crate::parent_context::ParentContext,
 ) -> bool {
     // Check if any ancestor is a Div with the sum-quotient pattern
-    parent_ctx.has_ancestor_matching(ctx, |c, id| {
-        if let Expr::Div(num, den) = c.get(id) {
-            // Check if numerator is Add or Sub of sin functions
-            let num_is_sin_sum_or_diff = is_binary_trig_op(c, *num, "sin");
-            // Check if denominator is Add of cos functions
-            let den_is_cos_sum = is_trig_sum(c, *den, "cos");
-            num_is_sin_sum_or_diff && den_is_cos_sum
-        } else {
-            false
-        }
-    })
+    parent_ctx.has_ancestor_matching(ctx, is_trig_sum_quotient_div_pattern)
 }
 
 define_rule!(
