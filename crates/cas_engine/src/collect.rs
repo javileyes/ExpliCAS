@@ -1,8 +1,7 @@
 use crate::parent_context::ParentContext;
 use crate::DomainMode;
 use cas_ast::{Context, Expr, ExprId};
-
-pub(crate) use cas_math::collect_terms::{CancelledGroup, CombinedGroup};
+use cas_math::collect_terms::{CancelledGroup, CombinedGroup};
 
 /// Result of a semantics-aware collection operation.
 /// Contains the new expression and tracking of what was cancelled/combined.
