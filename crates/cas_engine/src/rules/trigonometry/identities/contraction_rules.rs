@@ -7,6 +7,7 @@ use crate::helpers::{as_div, as_mul, as_neg, as_sub};
 use crate::nary::Sign;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
+use cas_math::trig_sum_product_support::extract_trig_arg as extract_trig_arg_named;
 
 // =============================================================================
 // HALF-ANGLE TANGENT RULE
@@ -878,14 +879,14 @@ impl AngleSumFractionToTanRule {
         let (l, r) = as_mul(ctx, expr)?;
 
         // Try l=sin, r=cos
-        if let Some(sin_arg) = self.extract_trig_arg(ctx, l, BuiltinFn::Sin) {
-            if let Some(cos_arg) = self.extract_trig_arg(ctx, r, BuiltinFn::Cos) {
+        if let Some(sin_arg) = extract_trig_arg_named(ctx, l, BuiltinFn::Sin.name()) {
+            if let Some(cos_arg) = extract_trig_arg_named(ctx, r, BuiltinFn::Cos.name()) {
                 return Some((sin_arg, cos_arg));
             }
         }
         // Try l=cos, r=sin
-        if let Some(cos_arg) = self.extract_trig_arg(ctx, l, BuiltinFn::Cos) {
-            if let Some(sin_arg) = self.extract_trig_arg(ctx, r, BuiltinFn::Sin) {
+        if let Some(cos_arg) = extract_trig_arg_named(ctx, l, BuiltinFn::Cos.name()) {
+            if let Some(sin_arg) = extract_trig_arg_named(ctx, r, BuiltinFn::Sin.name()) {
                 return Some((sin_arg, cos_arg));
             }
         }
@@ -938,7 +939,7 @@ impl AngleSumFractionToTanRule {
         target: BuiltinFn,
     ) -> Option<ExprId> {
         for &f in factors {
-            if let Some(arg) = self.extract_trig_arg(ctx, f, target) {
+            if let Some(arg) = extract_trig_arg_named(ctx, f, target.name()) {
                 return Some(arg);
             }
         }
@@ -1013,8 +1014,8 @@ impl AngleSumFractionToTanRule {
     ) -> Option<(ExprId, ExprId)> {
         // Direct Mul
         if let Some((l, r)) = as_mul(ctx, expr) {
-            if let Some(a) = self.extract_trig_arg(ctx, l, target) {
-                if let Some(b) = self.extract_trig_arg(ctx, r, target) {
+            if let Some(a) = extract_trig_arg_named(ctx, l, target.name()) {
+                if let Some(b) = extract_trig_arg_named(ctx, r, target.name()) {
                     return Some((a, b));
                 }
             }
@@ -1023,28 +1024,13 @@ impl AngleSumFractionToTanRule {
         // Flattened mul_leaves
         let factors = crate::nary::mul_leaves(ctx, expr);
         if factors.len() == 2 {
-            if let Some(a) = self.extract_trig_arg(ctx, factors[0], target) {
-                if let Some(b) = self.extract_trig_arg(ctx, factors[1], target) {
+            if let Some(a) = extract_trig_arg_named(ctx, factors[0], target.name()) {
+                if let Some(b) = extract_trig_arg_named(ctx, factors[1], target.name()) {
                     return Some((a, b));
                 }
             }
         }
 
-        None
-    }
-
-    /// Extract arg from trig_fn(arg).
-    fn extract_trig_arg(
-        &self,
-        ctx: &cas_ast::Context,
-        expr: ExprId,
-        target: BuiltinFn,
-    ) -> Option<ExprId> {
-        if let Expr::Function(fn_id, args) = ctx.get(expr) {
-            if ctx.is_builtin(*fn_id, target) && args.len() == 1 {
-                return Some(args[0]);
-            }
-        }
         None
     }
 
