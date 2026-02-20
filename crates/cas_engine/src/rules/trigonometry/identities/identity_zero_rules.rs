@@ -10,8 +10,9 @@
 use crate::helpers::{as_add, as_neg, as_sub};
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
-use cas_math::trig_half_angle_support::extract_tan_half_angle;
-use num_traits::One;
+use cas_math::trig_weierstrass_support::{
+    match_one_minus_tan_half_squared, match_one_plus_tan_half_squared, match_two_tan_half,
+};
 
 // =============================================================================
 // WEIERSTRASS IDENTITY ZERO RULES (Pattern-Driven Cancellation)
@@ -21,100 +22,6 @@ use num_traits::One;
 //
 // sin(x) - 2*tan(x/2)/(1 + tan(x/2)²) → 0
 // cos(x) - (1 - tan(x/2)²)/(1 + tan(x/2)²) → 0
-
-/// Helper: Check if expr matches 2*tan(x/2) and return the full angle x
-fn match_two_tan_half(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
-    let two_rat = num_rational::BigRational::from_integer(2.into());
-
-    if let Expr::Mul(l, r) = ctx.get(expr) {
-        // Check Mul(2, tan(x/2)) or Mul(tan(x/2), 2)
-        if let Expr::Number(n) = ctx.get(*l) {
-            if *n == two_rat {
-                return extract_tan_half_angle(ctx, *r);
-            }
-        }
-        if let Expr::Number(n) = ctx.get(*r) {
-            if *n == two_rat {
-                return extract_tan_half_angle(ctx, *l);
-            }
-        }
-    }
-    None
-}
-
-/// Helper: Check if expr matches 1 + tan(x/2)² and return (full_angle, tan_half_id)
-fn match_one_plus_tan_half_squared(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
-    if let Expr::Add(l, r) = ctx.get(expr) {
-        let two_rat = num_rational::BigRational::from_integer(2.into());
-
-        // Pattern: 1 + tan²(x/2) or tan²(x/2) + 1
-        let (one_candidate, pow_candidate) = if matches!(ctx.get(*l), Expr::Number(n) if n.is_one())
-        {
-            (*l, *r)
-        } else if matches!(ctx.get(*r), Expr::Number(n) if n.is_one()) {
-            (*r, *l)
-        } else {
-            return None;
-        };
-        let _ = one_candidate;
-
-        // Check pow_candidate is tan(x/2)^2
-        if let Expr::Pow(base, exp) = ctx.get(pow_candidate) {
-            if let Expr::Number(n) = ctx.get(*exp) {
-                if *n == two_rat {
-                    return extract_tan_half_angle(ctx, *base);
-                }
-            }
-        }
-    }
-    None
-}
-
-/// Helper: Check if expr matches 1 - tan(x/2)² and return full_angle
-fn match_one_minus_tan_half_squared(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
-    let two_rat = num_rational::BigRational::from_integer(2.into());
-
-    // Pattern: 1 - tan²(x/2) as Sub(1, tan²)
-    if let Expr::Sub(l, r) = ctx.get(expr) {
-        if let Expr::Number(n) = ctx.get(*l) {
-            if n.is_one() {
-                if let Expr::Pow(base, exp) = ctx.get(*r) {
-                    if let Expr::Number(e) = ctx.get(*exp) {
-                        if *e == two_rat {
-                            return extract_tan_half_angle(ctx, *base);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Also try Add(1, Neg(tan²)) or Add(Neg(tan²), 1)
-    if let Expr::Add(l, r) = ctx.get(expr) {
-        // 1 + (-tan²) or (-tan²) + 1
-        let (one_candidate, neg_candidate) = if matches!(ctx.get(*l), Expr::Number(n) if n.is_one())
-        {
-            (*l, *r)
-        } else if matches!(ctx.get(*r), Expr::Number(n) if n.is_one()) {
-            (*r, *l)
-        } else {
-            return None;
-        };
-        let _ = one_candidate;
-
-        if let Expr::Neg(inner) = ctx.get(neg_candidate) {
-            if let Expr::Pow(base, exp) = ctx.get(*inner) {
-                if let Expr::Number(e) = ctx.get(*exp) {
-                    if *e == two_rat {
-                        return extract_tan_half_angle(ctx, *base);
-                    }
-                }
-            }
-        }
-    }
-
-    None
-}
 
 // WeierstrassSinIdentityZeroRule: sin(x) - 2*tan(x/2)/(1+tan²(x/2)) → 0
 // Pattern-driven cancellation, no expansion.
@@ -192,7 +99,7 @@ impl WeierstrassSinIdentityZeroRule {
                 // Numerator: 2*tan(x/2)
                 if let Some(num_angle) = match_two_tan_half(ctx, *num) {
                     // Denominator: 1 + tan²(x/2)
-                    if let Some(den_angle) = match_one_plus_tan_half_squared(ctx, *den) {
+                    if let Some((den_angle, _)) = match_one_plus_tan_half_squared(ctx, *den) {
                         // Check all angles match
                         if crate::ordering::compare_expr(ctx, full_angle, num_angle)
                             == std::cmp::Ordering::Equal
@@ -285,9 +192,9 @@ impl WeierstrassCosIdentityZeroRule {
             // Check if rhs is (1 - tan²(x/2)) / (1 + tan²(x/2))
             if let Expr::Div(num, den) = ctx.get(rhs) {
                 // Numerator: 1 - tan²(x/2)
-                if let Some(num_angle) = match_one_minus_tan_half_squared(ctx, *num) {
+                if let Some((num_angle, _)) = match_one_minus_tan_half_squared(ctx, *num) {
                     // Denominator: 1 + tan²(x/2)
-                    if let Some(den_angle) = match_one_plus_tan_half_squared(ctx, *den) {
+                    if let Some((den_angle, _)) = match_one_plus_tan_half_squared(ctx, *den) {
                         // Check all angles match
                         if crate::ordering::compare_expr(ctx, full_angle, num_angle)
                             == std::cmp::Ordering::Equal

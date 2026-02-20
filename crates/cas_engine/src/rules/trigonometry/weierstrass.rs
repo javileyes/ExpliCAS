@@ -14,6 +14,7 @@ use crate::define_rule;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_math::expr_rewrite::smart_mul;
+use cas_math::trig_weierstrass_support::extract_tan_half_angle_like;
 use num_traits::One;
 
 /// Build the Weierstrass expression for sin(x): 2t/(1+t²)
@@ -125,63 +126,6 @@ define_rule!(
     }
 );
 
-/// Helper to check if an expression is a tan(arg/2) pattern
-/// Returns the original angle (x) if the pattern matches
-fn is_tan_half_angle(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
-    // Helper: check if an argument is of the form x/2 (either Mul(1/2, x) or Div(x, 2))
-    let check_half_angle = |arg: ExprId| -> Option<ExprId> {
-        match ctx.get(arg) {
-            Expr::Mul(coef, inner) => {
-                if let Expr::Number(n) = ctx.get(*coef) {
-                    if *n == num_rational::BigRational::new(1.into(), 2.into()) {
-                        return Some(*inner);
-                    }
-                }
-            }
-            Expr::Div(numer, denom) => {
-                if let Expr::Number(d) = ctx.get(*denom) {
-                    if *d == num_rational::BigRational::from_integer(2.into()) {
-                        return Some(*numer);
-                    }
-                }
-            }
-            _ => {}
-        }
-        None
-    };
-
-    // Check for sin(arg/2) / cos(arg/2) pattern
-    if let Expr::Div(sin_id, cos_id) = ctx.get(expr) {
-        if let (Expr::Function(sin_name, sin_args), Expr::Function(cos_name, cos_args)) =
-            (ctx.get(*sin_id), ctx.get(*cos_id))
-        {
-            if matches!(ctx.builtin_of(*sin_name), Some(BuiltinFn::Sin))
-                && matches!(ctx.builtin_of(*cos_name), Some(BuiltinFn::Cos))
-                && sin_args.len() == 1
-                && cos_args.len() == 1
-            {
-                let sin_arg = sin_args[0];
-                let cos_arg = cos_args[0];
-                if sin_arg == cos_arg {
-                    if let Some(original_angle) = check_half_angle(sin_arg) {
-                        return Some(original_angle);
-                    }
-                }
-            }
-        }
-    }
-
-    // Also check for tan(arg/2) function directly
-    if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        if matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Tan)) && args.len() == 1 {
-            if let Some(original_angle) = check_half_angle(args[0]) {
-                return Some(original_angle);
-            }
-        }
-    }
-    None
-}
-
 // Reverse Weierstrass: Convert 2t/(1+t²) back to sin(x) when t = tan(x/2)
 define_rule!(
     ReverseWeierstrassRule,
@@ -214,7 +158,7 @@ define_rule!(
         };
 
         // Check if t is tan(x/2)
-        let original_angle = is_tan_half_angle(ctx, t_id)?;
+        let original_angle = extract_tan_half_angle_like(ctx, t_id)?;
 
         // Check denominator: 1 + t²
         let (one_id, t_sq_id) = match ctx.get(den) {
@@ -283,10 +227,10 @@ mod tests {
     }
 
     #[test]
-    fn test_is_tan_half_angle() {
+    fn test_extract_tan_half_angle_like() {
         let mut ctx = Context::new();
         let expr = parse("sin(x/2) / cos(x/2)", &mut ctx).unwrap();
-        let result = is_tan_half_angle(&ctx, expr);
+        let result = extract_tan_half_angle_like(&ctx, expr);
         assert!(result.is_some());
     }
 }

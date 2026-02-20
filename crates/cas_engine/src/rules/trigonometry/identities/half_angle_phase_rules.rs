@@ -6,7 +6,10 @@ use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_math::expr_rewrite::smart_mul;
 use cas_math::trig_half_angle_support::{extract_cot_term, extract_tan_half_angle, is_half_angle};
-use num_traits::One;
+use cas_math::trig_weierstrass_support::{
+    match_one_minus_tan_half_squared as match_one_minus_tan_squared,
+    match_one_plus_tan_half_squared as match_one_plus_tan_squared,
+};
 use std::cmp::Ordering;
 
 // ============================================================================
@@ -29,81 +32,6 @@ use std::cmp::Ordering;
 // - 2*t / (1 + t²) → sin(x)
 // - (1 - t²) / (1 + t²) → cos(x)
 // This is the CONTRACTION direction (safe, doesn't worsen expressions)
-
-/// Helper: Check if expr is 1 + tan(x/2)² and return (x, tan_half_id)
-fn match_one_plus_tan_squared(ctx: &cas_ast::Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
-    if let Expr::Add(l, r) = ctx.get(expr) {
-        // Check both orders: 1 + tan²(...) or tan²(...) + 1
-        let (one_id, pow_id) = if matches!(ctx.get(*l), Expr::Number(n) if n.is_one()) {
-            (*l, *r)
-        } else if matches!(ctx.get(*r), Expr::Number(n) if n.is_one()) {
-            (*r, *l)
-        } else {
-            return None;
-        };
-        let _ = one_id;
-
-        // Check if pow_id is tan(x/2)^2
-        if let Expr::Pow(base, exp) = ctx.get(pow_id) {
-            if let Expr::Number(n) = ctx.get(*exp) {
-                if n.is_integer() && *n == num_rational::BigRational::from_integer(2.into()) {
-                    if let Some(full_angle) = extract_tan_half_angle(ctx, *base) {
-                        return Some((full_angle, *base));
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-/// Helper: Check if expr is 1 - tan(x/2)² and return (x, tan_half_id)
-fn match_one_minus_tan_squared(ctx: &cas_ast::Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
-    // Check Sub(1, tan²)
-    if let Expr::Sub(l, r) = ctx.get(expr) {
-        if let Expr::Number(n) = ctx.get(*l) {
-            if n.is_one() {
-                // Check if r is tan(x/2)^2
-                if let Expr::Pow(base, exp) = ctx.get(*r) {
-                    if let Expr::Number(e) = ctx.get(*exp) {
-                        if e.is_integer() && *e == num_rational::BigRational::from_integer(2.into())
-                        {
-                            if let Some(full_angle) = extract_tan_half_angle(ctx, *base) {
-                                return Some((full_angle, *base));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Also check Add(1, Neg(tan²)) which is canonicalized form
-    if let Expr::Add(l, r) = ctx.get(expr) {
-        let (one_id, neg_id) = if matches!(ctx.get(*l), Expr::Number(n) if n.is_one()) {
-            (*l, *r)
-        } else if matches!(ctx.get(*r), Expr::Number(n) if n.is_one()) {
-            (*r, *l)
-        } else {
-            return None;
-        };
-        let _ = one_id;
-
-        if let Expr::Neg(inner) = ctx.get(neg_id) {
-            if let Expr::Pow(base, exp) = ctx.get(*inner) {
-                if let Expr::Number(e) = ctx.get(*exp) {
-                    if e.is_integer() && *e == num_rational::BigRational::from_integer(2.into()) {
-                        if let Some(full_angle) = extract_tan_half_angle(ctx, *base) {
-                            return Some((full_angle, *base));
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    None
-}
 
 // Weierstrass Contraction Rule: 2*tan(x/2)/(1+tan²(x/2)) → sin(x)
 // and (1-tan²(x/2))/(1+tan²(x/2)) → cos(x)

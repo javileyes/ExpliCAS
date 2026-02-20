@@ -64,4 +64,5 @@ pub mod trig_power_identity_support;
 pub mod trig_reciprocal_support;
 pub mod trig_roots_flatten;
 pub mod trig_sum_product_support;
+pub mod trig_weierstrass_support;
 pub mod unipoly_modp;
