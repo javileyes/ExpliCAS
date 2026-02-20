@@ -16,9 +16,9 @@
 //!
 //! A hard budget guard ensures we never exceed `input_nodes + max_extra_nodes`.
 
-use crate::helpers::node_count_tree;
 use crate::Step;
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_complexity::node_count_tree;
 use num_traits::One;
 
 /// Budget configuration for best-so-far tracking.

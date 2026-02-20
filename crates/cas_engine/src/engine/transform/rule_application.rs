@@ -137,7 +137,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         if !parent_ctx.is_expand_mode()
                             && !parent_ctx.in_auto_expand_context()
                             && !rewrite.budget_exempt
-                            && crate::helpers::rewrite_worsens_too_much(
+                            && cas_math::expr_complexity::rewrite_worsens_too_much(
                                 self.context,
                                 expr_id,
                                 rewrite.new_expr,
@@ -166,9 +166,12 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
                         // Record rule application with delta_nodes for health metrics
                         let delta = if self.profiler.is_health_enabled() {
-                            let before = crate::helpers::count_all_nodes(self.context, expr_id);
-                            let after =
-                                crate::helpers::count_all_nodes(self.context, rewrite.new_expr);
+                            let before =
+                                cas_math::expr_nf_scoring::count_all_nodes(self.context, expr_id);
+                            let after = cas_math::expr_nf_scoring::count_all_nodes(
+                                self.context,
+                                rewrite.new_expr,
+                            );
                             after as i64 - before as i64
                         } else {
                             0
@@ -184,10 +187,14 @@ impl<'a> LocalSimplificationTransformer<'a> {
                                 .append(true)
                                 .open("/tmp/rule_trace.log")
                             {
-                                let node_count_before =
-                                    crate::helpers::node_count_tree(self.context, expr_id);
-                                let node_count_after =
-                                    crate::helpers::node_count_tree(self.context, rewrite.new_expr);
+                                let node_count_before = cas_math::expr_complexity::node_count_tree(
+                                    self.context,
+                                    expr_id,
+                                );
+                                let node_count_after = cas_math::expr_complexity::node_count_tree(
+                                    self.context,
+                                    rewrite.new_expr,
+                                );
                                 let _ = writeln!(
                                     f,
                                     "APPLIED depth={} rule={} nodes={}->{}",
@@ -325,7 +332,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                         let checker = SemanticEqualityChecker::new(self.context);
                         if checker.are_equal(expr_id, rewrite.new_expr) {
                             // Provably equal - only accept if it improves normal form
-                            if !crate::helpers::nf_score_after_is_better(
+                            if !cas_math::expr_nf_scoring::nf_score_after_is_better(
                                 self.context,
                                 expr_id,
                                 rewrite.new_expr,
