@@ -5,8 +5,11 @@ use crate::rule::Rewrite;
 use crate::rules::trigonometry::{evaluation, pythagorean, pythagorean_secondary};
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_math::expr_rewrite::smart_mul;
+use cas_math::trig_multi_angle_support::{
+    collect_trig_args_recursive, expand_trig_angle, is_double_angle_relation,
+    verify_dyadic_pi_sequence,
+};
 use num_traits::One;
-use std::cmp::Ordering;
 
 // Import rules from parent module (still defined in include!() files)
 use super::{
@@ -107,7 +110,7 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
         let mut theta: Option<ExprId> = None;
 
         for candidate in &cos_args {
-            if verify_dyadic_sequence(ctx, *candidate, &cos_args) {
+            if verify_dyadic_pi_sequence(ctx, *candidate, &cos_args) {
                 theta = Some(*candidate);
                 break;
             }
@@ -173,61 +176,6 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
         // The transformation requires sin(θ) ≠ 0, which is either proven or assumed
         crate::rule::SoundnessLabel::EquivalenceUnderIntroducedRequires
     }
-}
-
-/// Verify that cos_args form a dyadic sequence: θ, 2θ, 4θ, ..., 2^(n-1)θ
-///
-/// Instead of structural comparison (which fails on normalized forms),
-/// we extract the rational coefficient of each arg relative to π and check
-/// if they form the sequence k, 2k, 4k, ..., 2^(n-1)k for some base k.
-fn verify_dyadic_sequence(ctx: &mut cas_ast::Context, theta: ExprId, cos_args: &[ExprId]) -> bool {
-    use crate::helpers::extract_rational_pi_multiple;
-    use num_rational::BigRational;
-
-    let n = cos_args.len() as u32;
-    if n == 0 {
-        return false;
-    }
-
-    // Extract the base coefficient from theta
-    let base_coeff = match extract_rational_pi_multiple(ctx, theta) {
-        Some(k) => k,
-        None => return false, // theta must be a rational multiple of π
-    };
-
-    // Collect all coefficients from cos_args
-    let mut coeffs: Vec<BigRational> = Vec::with_capacity(n as usize);
-    for &arg in cos_args {
-        match extract_rational_pi_multiple(ctx, arg) {
-            Some(k) => coeffs.push(k),
-            None => return false, // All args must be rational multiples of π
-        }
-    }
-
-    // Build expected coefficients: base, 2*base, 4*base, ..., 2^(n-1)*base
-    let mut expected: Vec<BigRational> = Vec::with_capacity(n as usize);
-    for k in 0..n {
-        let multiplier = BigRational::from_integer((1u64 << k).into());
-        expected.push(&base_coeff * &multiplier);
-    }
-
-    // Check if coeffs matches expected as multiset
-    let mut used = vec![false; expected.len()];
-    for coeff in &coeffs {
-        let mut found = false;
-        for (i, exp) in expected.iter().enumerate() {
-            if !used[i] && coeff == exp {
-                used[i] = true;
-                found = true;
-                break;
-            }
-        }
-        if !found {
-            return false;
-        }
-    }
-
-    used.iter().all(|&u| u)
 }
 
 pub fn register(simplifier: &mut crate::Simplifier) {
@@ -397,7 +345,7 @@ define_rule!(
                 let a = trig_args[i];
                 let b = trig_args[j];
 
-                if is_double(ctx, a, b) {
+                if is_double_angle_relation(ctx, a, b) {
                     target_expansion = Some((a, b));
                     break;
                 }
@@ -419,227 +367,3 @@ define_rule!(
         None
     }
 );
-
-fn collect_trig_args_recursive(ctx: &cas_ast::Context, expr: ExprId, args: &mut Vec<ExprId>) {
-    match ctx.get(expr) {
-        Expr::Function(fn_id, fargs) => {
-            if matches!(
-                ctx.builtin_of(*fn_id),
-                Some(BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Tan)
-            ) && fargs.len() == 1
-            {
-                args.push(fargs[0]);
-            }
-            for arg in fargs {
-                collect_trig_args_recursive(ctx, *arg, args);
-            }
-        }
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
-            collect_trig_args_recursive(ctx, *l, args);
-            collect_trig_args_recursive(ctx, *r, args);
-        }
-        Expr::Neg(e) => collect_trig_args_recursive(ctx, *e, args),
-        _ => {}
-    }
-}
-
-fn is_double(ctx: &cas_ast::Context, large: ExprId, small: ExprId) -> bool {
-    // Check if large == 2 * small
-
-    // Case 1: large = 2 * small
-    if let Expr::Mul(l, r) = ctx.get(large) {
-        if let Expr::Number(n) = ctx.get(*l) {
-            if n == &num_rational::BigRational::from_integer(2.into())
-                && crate::ordering::compare_expr(ctx, *r, small) == Ordering::Equal
-            {
-                return true;
-            }
-        }
-        if let Expr::Number(n) = ctx.get(*r) {
-            if n == &num_rational::BigRational::from_integer(2.into())
-                && crate::ordering::compare_expr(ctx, *l, small) == Ordering::Equal
-            {
-                return true;
-            }
-        }
-    }
-
-    // Case 2: small = large / 2
-    if let Expr::Div(n, d) = ctx.get(small) {
-        if let Expr::Number(val) = ctx.get(*d) {
-            if val == &num_rational::BigRational::from_integer(2.into())
-                && crate::ordering::compare_expr(ctx, *n, large) == Ordering::Equal
-            {
-                return true;
-            }
-        }
-    }
-
-    // Case 3: small = large * 0.5
-    if let Expr::Mul(l, r) = ctx.get(small) {
-        if let Expr::Number(n) = ctx.get(*l) {
-            if n == &num_rational::BigRational::new(1.into(), 2.into())
-                && crate::ordering::compare_expr(ctx, *r, large) == Ordering::Equal
-            {
-                return true;
-            }
-        }
-        if let Expr::Number(n) = ctx.get(*r) {
-            if n == &num_rational::BigRational::new(1.into(), 2.into())
-                && crate::ordering::compare_expr(ctx, *l, large) == Ordering::Equal
-            {
-                return true;
-            }
-        }
-    }
-
-    false
-}
-
-fn expand_trig_angle(
-    ctx: &mut cas_ast::Context,
-    expr: ExprId,
-    large_angle: ExprId,
-    small_angle: ExprId,
-) -> ExprId {
-    // Check if this node is trig(large_angle)
-    if let Expr::Function(fn_id, args) = ctx.get(expr) {
-        if args.len() == 1
-            && crate::ordering::compare_expr(ctx, args[0], large_angle) == Ordering::Equal
-        {
-            let fn_id = *fn_id;
-            match ctx.builtin_of(fn_id) {
-                Some(BuiltinFn::Sin) => {
-                    // sin(A) -> 2sin(A/2)cos(A/2)
-                    let two = ctx.num(2);
-                    let sin_half = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![small_angle]);
-                    let cos_half = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![small_angle]);
-                    let term = smart_mul(ctx, sin_half, cos_half);
-                    return smart_mul(ctx, two, term);
-                }
-                Some(BuiltinFn::Cos) => {
-                    // cos(A) -> 2cos^2(A/2) - 1
-                    let two = ctx.num(2);
-                    let one = ctx.num(1);
-                    let cos_half = ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![small_angle]);
-                    let cos_sq = ctx.add(Expr::Pow(cos_half, two));
-                    let term = smart_mul(ctx, two, cos_sq);
-                    return ctx.add(Expr::Sub(term, one));
-                }
-                Some(BuiltinFn::Tan) => {
-                    // tan(A) -> 2tan(A/2) / (1 - tan^2(A/2))
-                    let two = ctx.num(2);
-                    let one = ctx.num(1);
-                    let tan_half = ctx.call_builtin(cas_ast::BuiltinFn::Tan, vec![small_angle]);
-                    let num = smart_mul(ctx, two, tan_half);
-
-                    let tan_sq = ctx.add(Expr::Pow(tan_half, two));
-                    let den = ctx.add(Expr::Sub(one, tan_sq));
-
-                    return ctx.add(Expr::Div(num, den));
-                }
-                _ => {}
-            }
-        }
-    }
-
-    // Recurse — extract ExprId fields via ref-and-copy
-    enum Shape {
-        Add(ExprId, ExprId),
-        Sub(ExprId, ExprId),
-        Mul(ExprId, ExprId),
-        Div(ExprId, ExprId),
-        Pow(ExprId, ExprId),
-        Neg(ExprId),
-        Func(usize, Vec<ExprId>),
-        Other,
-    }
-
-    let shape = match ctx.get(expr) {
-        Expr::Add(l, r) => Shape::Add(*l, *r),
-        Expr::Sub(l, r) => Shape::Sub(*l, *r),
-        Expr::Mul(l, r) => Shape::Mul(*l, *r),
-        Expr::Div(l, r) => Shape::Div(*l, *r),
-        Expr::Pow(b, e) => Shape::Pow(*b, *e),
-        Expr::Neg(e) => Shape::Neg(*e),
-        Expr::Function(fn_id, args) => Shape::Func(*fn_id, args.clone()),
-        _ => Shape::Other,
-    };
-
-    match shape {
-        Shape::Add(l, r) => {
-            let nl = expand_trig_angle(ctx, l, large_angle, small_angle);
-            let nr = expand_trig_angle(ctx, r, large_angle, small_angle);
-            if nl != l || nr != r {
-                ctx.add(Expr::Add(nl, nr))
-            } else {
-                expr
-            }
-        }
-        Shape::Sub(l, r) => {
-            let nl = expand_trig_angle(ctx, l, large_angle, small_angle);
-            let nr = expand_trig_angle(ctx, r, large_angle, small_angle);
-            if nl != l || nr != r {
-                ctx.add(Expr::Sub(nl, nr))
-            } else {
-                expr
-            }
-        }
-        Shape::Mul(l, r) => {
-            let nl = expand_trig_angle(ctx, l, large_angle, small_angle);
-            let nr = expand_trig_angle(ctx, r, large_angle, small_angle);
-            if nl != l || nr != r {
-                smart_mul(ctx, nl, nr)
-            } else {
-                expr
-            }
-        }
-        Shape::Div(l, r) => {
-            let nl = expand_trig_angle(ctx, l, large_angle, small_angle);
-            let nr = expand_trig_angle(ctx, r, large_angle, small_angle);
-            if nl != l || nr != r {
-                ctx.add(Expr::Div(nl, nr))
-            } else {
-                expr
-            }
-        }
-        Shape::Pow(b, e) => {
-            let nb = expand_trig_angle(ctx, b, large_angle, small_angle);
-            let ne = expand_trig_angle(ctx, e, large_angle, small_angle);
-            if nb != b || ne != e {
-                ctx.add(Expr::Pow(nb, ne))
-            } else {
-                expr
-            }
-        }
-        Shape::Neg(e) => {
-            let ne = expand_trig_angle(ctx, e, large_angle, small_angle);
-            if ne != e {
-                ctx.add(Expr::Neg(ne))
-            } else {
-                expr
-            }
-        }
-        Shape::Func(fn_id, args) => {
-            let fn_name = ctx
-                .builtin_of(fn_id)
-                .map(|b| b.name().to_string())
-                .unwrap_or_else(|| ctx.sym_name(fn_id).to_string());
-            let mut new_args = Vec::new();
-            let mut changed = false;
-            for arg in args {
-                let na = expand_trig_angle(ctx, arg, large_angle, small_angle);
-                if na != arg {
-                    changed = true;
-                }
-                new_args.push(na);
-            }
-            if changed {
-                ctx.call(&fn_name, new_args)
-            } else {
-                expr
-            }
-        }
-        Shape::Other => expr,
-    }
-}
