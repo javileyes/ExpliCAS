@@ -22,7 +22,7 @@ define_rule!(
     PhaseMask::RATIONALIZE,
     |ctx, expr| {
         // Only match Div expressions - use zero-clone helper
-        let (num, den) = crate::helpers::as_div(ctx, expr)?;
+        let (num, den) = cas_math::expr_destructure::as_div(ctx, expr)?;
 
         // Check denominator for Pow(Number(n), 1/2) patterns
         // We need to find exactly one surd in the denominator factors

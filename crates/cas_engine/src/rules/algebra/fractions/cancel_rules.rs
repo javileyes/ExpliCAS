@@ -131,32 +131,33 @@ define_rule!(
         // Track if we need to flip the sign (for r - t case, handle as -(t - r))
         let mut sign_flip = false;
 
-        let (t, r, base, n, is_sub) = if let Some((l, r_side)) = crate::helpers::as_add(ctx, den) {
-            // den = l + r_side
-            if let Some((base, n)) = extract_nth_root(l) {
-                // t is on left: t + r
-                (l, r_side, base, n, false)
-            } else if let Some((base, n)) = extract_nth_root(r_side) {
-                // t is on right: r + t (same as t + r due to commutativity)
-                (r_side, l, base, n, false)
+        let (t, r, base, n, is_sub) =
+            if let Some((l, r_side)) = cas_math::expr_destructure::as_add(ctx, den) {
+                // den = l + r_side
+                if let Some((base, n)) = extract_nth_root(l) {
+                    // t is on left: t + r
+                    (l, r_side, base, n, false)
+                } else if let Some((base, n)) = extract_nth_root(r_side) {
+                    // t is on right: r + t (same as t + r due to commutativity)
+                    (r_side, l, base, n, false)
+                } else {
+                    return None;
+                }
+            } else if let Some((l, r_side)) = cas_math::expr_destructure::as_sub(ctx, den) {
+                // den = l - r_side
+                if let Some((base, n)) = extract_nth_root(l) {
+                    // t is on left: t - r
+                    (l, r_side, base, n, true)
+                } else if let Some((base, n)) = extract_nth_root(r_side) {
+                    // t is on right: r - t => need sign flip: 1/(r - t) = -1/(t - r)
+                    sign_flip = true;
+                    (r_side, l, base, n, true)
+                } else {
+                    return None;
+                }
             } else {
                 return None;
-            }
-        } else if let Some((l, r_side)) = crate::helpers::as_sub(ctx, den) {
-            // den = l - r_side
-            if let Some((base, n)) = extract_nth_root(l) {
-                // t is on left: t - r
-                (l, r_side, base, n, true)
-            } else if let Some((base, n)) = extract_nth_root(r_side) {
-                // t is on right: r - t => need sign flip: 1/(r - t) = -1/(t - r)
-                sign_flip = true;
-                (r_side, l, base, n, true)
-            } else {
-                return None;
-            }
-        } else {
-            return None;
-        };
+            };
 
         // Limit n to prevent explosion (max 8 terms)
         if n > 8 {
@@ -284,13 +285,14 @@ define_rule!(
 
         // Match den = t ± r where t = u^(1/n)
         // Use zero-clone destructuring
-        let (left, right, den_is_add) = if let Some((l, r)) = crate::helpers::as_add(ctx, den) {
-            (l, r, true)
-        } else if let Some((l, r)) = crate::helpers::as_sub(ctx, den) {
-            (l, r, false)
-        } else {
-            return None;
-        };
+        let (left, right, den_is_add) =
+            if let Some((l, r)) = cas_math::expr_destructure::as_add(ctx, den) {
+                (l, r, true)
+            } else if let Some((l, r)) = cas_math::expr_destructure::as_sub(ctx, den) {
+                (l, r, false)
+            } else {
+                return None;
+            };
 
         // Helper to extract (base, n) from u^(1/n)
         let extract_nth_root = |e: ExprId| -> Option<(ExprId, u32)> {
@@ -355,9 +357,9 @@ define_rule!(
         // Check if numerator matches expected pattern
         // Use zero-clone destructuring
         let (num_left, num_right, num_is_add) =
-            if let Some((l, rr)) = crate::helpers::as_add(ctx, num) {
+            if let Some((l, rr)) = cas_math::expr_destructure::as_add(ctx, num) {
                 (l, rr, true)
-            } else if let Some((l, rr)) = crate::helpers::as_sub(ctx, num) {
+            } else if let Some((l, rr)) = cas_math::expr_destructure::as_sub(ctx, num) {
                 (l, rr, false)
             } else {
                 return None;

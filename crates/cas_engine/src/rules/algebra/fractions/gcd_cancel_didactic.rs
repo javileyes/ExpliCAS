@@ -29,7 +29,7 @@ pub(super) fn try_expand_binomial_square_in_den_for_cancel(
     use cas_math::expr_rewrite::smart_mul;
 
     // STEP 1: Check if den = Pow(base, 2) where base = Add(a, b)
-    let (base, exp) = crate::helpers::as_pow(ctx, den)?;
+    let (base, exp) = cas_math::expr_destructure::as_pow(ctx, den)?;
 
     // Exponent must be exactly 2 (integer)
     let exp_val = cas_math::numeric::as_i64(ctx, exp)?;
@@ -38,7 +38,7 @@ pub(super) fn try_expand_binomial_square_in_den_for_cancel(
     }
 
     // Base must be a binomial (a + b)
-    let (a, b) = crate::helpers::as_add(ctx, base)?;
+    let (a, b) = cas_math::expr_destructure::as_add(ctx, base)?;
 
     // STEP 2: Build expanded form: a^2 + 2*a*b + b^2
     // Using right-associative Add: Add(a^2, Add(2*a*b, b^2)) to match typical parser output
@@ -97,16 +97,16 @@ pub(super) fn try_difference_of_squares_in_num(
 
     // STEP 1: Check if num is a² - b² form
     // Try Sub(Pow(a,2), Pow(b,2)) first, also handle Pow(a,2) - Number(k²)
-    let (a, b) = if let Some((left, right)) = crate::helpers::as_sub(ctx, num) {
+    let (a, b) = if let Some((left, right)) = cas_math::expr_destructure::as_sub(ctx, num) {
         // left - right, check if left is a square
-        let (a, exp_a) = crate::helpers::as_pow(ctx, left)?;
+        let (a, exp_a) = cas_math::expr_destructure::as_pow(ctx, left)?;
         let exp_a_val = cas_math::numeric::as_i64(ctx, exp_a)?;
         if exp_a_val != 2 {
             return None;
         }
 
         // right can be Pow(b, 2) or Number(k²)
-        if let Some((b, exp_b)) = crate::helpers::as_pow(ctx, right) {
+        if let Some((b, exp_b)) = cas_math::expr_destructure::as_pow(ctx, right) {
             let exp_b_val = cas_math::numeric::as_i64(ctx, exp_b)?;
             if exp_b_val != 2 {
                 return None;
@@ -123,17 +123,17 @@ pub(super) fn try_difference_of_squares_in_num(
         } else {
             return None;
         }
-    } else if let Some((left, right)) = crate::helpers::as_add(ctx, num) {
+    } else if let Some((left, right)) = cas_math::expr_destructure::as_add(ctx, num) {
         // Try Add(Pow(a,2), Neg(Pow(b,2))) which is how parser represents a² - b²
-        let (a, exp_a) = crate::helpers::as_pow(ctx, left)?;
+        let (a, exp_a) = cas_math::expr_destructure::as_pow(ctx, left)?;
         let exp_a_val = cas_math::numeric::as_i64(ctx, exp_a)?;
         if exp_a_val != 2 {
             return None;
         }
 
         // right must be Neg(Pow(b,2)) or Neg(Number(k²))
-        let neg_inner = crate::helpers::as_neg(ctx, right)?;
-        if let Some((b, exp_b)) = crate::helpers::as_pow(ctx, neg_inner) {
+        let neg_inner = cas_math::expr_destructure::as_neg(ctx, right)?;
+        if let Some((b, exp_b)) = cas_math::expr_destructure::as_pow(ctx, neg_inner) {
             let exp_b_val = cas_math::numeric::as_i64(ctx, exp_b)?;
             if exp_b_val != 2 {
                 return None;
@@ -154,7 +154,8 @@ pub(super) fn try_difference_of_squares_in_num(
     };
 
     // STEP 2: Check if den matches (a+b) or (a-b)
-    let den_matches_a_plus_b = if let Some((da, db)) = crate::helpers::as_add(ctx, den) {
+    let den_matches_a_plus_b = if let Some((da, db)) = cas_math::expr_destructure::as_add(ctx, den)
+    {
         // Check if {da, db} == {a, b} in some order
         (crate::ordering::compare_expr(ctx, da, a) == std::cmp::Ordering::Equal
             && crate::ordering::compare_expr(ctx, db, b) == std::cmp::Ordering::Equal)
@@ -164,7 +165,8 @@ pub(super) fn try_difference_of_squares_in_num(
         false
     };
 
-    let den_matches_a_minus_b = if let Some((da, db)) = crate::helpers::as_sub(ctx, den) {
+    let den_matches_a_minus_b = if let Some((da, db)) = cas_math::expr_destructure::as_sub(ctx, den)
+    {
         // Check if den = a - b
         crate::ordering::compare_expr(ctx, da, a) == std::cmp::Ordering::Equal
             && crate::ordering::compare_expr(ctx, db, b) == std::cmp::Ordering::Equal
@@ -216,13 +218,13 @@ pub(super) fn try_perfect_square_minus_in_num(
     use cas_math::expr_rewrite::smart_mul;
 
     // STEP 1: Check if den is (a - b) - try Sub first, then Add(a, Neg(b))
-    let (a, b) = if let Some((a, b)) = crate::helpers::as_sub(ctx, den) {
+    let (a, b) = if let Some((a, b)) = cas_math::expr_destructure::as_sub(ctx, den) {
         (a, b)
-    } else if let Some((left, right)) = crate::helpers::as_add(ctx, den) {
+    } else if let Some((left, right)) = cas_math::expr_destructure::as_add(ctx, den) {
         // Try Add(a, Neg(b)) which is how parser represents a - b
-        if let Some(neg_inner) = crate::helpers::as_neg(ctx, right) {
+        if let Some(neg_inner) = cas_math::expr_destructure::as_neg(ctx, right) {
             (left, neg_inner)
-        } else if let Some(neg_inner) = crate::helpers::as_neg(ctx, left) {
+        } else if let Some(neg_inner) = cas_math::expr_destructure::as_neg(ctx, left) {
             // Try Add(Neg(b), a) = a - b = -(b - a)
             (right, neg_inner) // This gives (a, b) = (right, inner) which is b - (inner)
         } else {
@@ -287,54 +289,55 @@ pub(super) fn try_sum_diff_of_cubes_in_num(
     use cas_math::expr_rewrite::smart_mul;
 
     // Check if num is a³ - b³ (as Sub or Add with Neg)
-    let (a, b, is_difference) = if let Some((left, right)) = crate::helpers::as_sub(ctx, num) {
-        // a³ - b³
-        let (a, exp_a) = crate::helpers::as_pow(ctx, left)?;
-        if cas_math::numeric::as_i64(ctx, exp_a)? != 3 {
-            return None;
-        }
+    let (a, b, is_difference) =
+        if let Some((left, right)) = cas_math::expr_destructure::as_sub(ctx, num) {
+            // a³ - b³
+            let (a, exp_a) = cas_math::expr_destructure::as_pow(ctx, left)?;
+            if cas_math::numeric::as_i64(ctx, exp_a)? != 3 {
+                return None;
+            }
 
-        let (b, exp_b) = crate::helpers::as_pow(ctx, right)?;
-        if cas_math::numeric::as_i64(ctx, exp_b)? != 3 {
-            return None;
-        }
-
-        (a, b, true)
-    } else if let Some((left, right)) = crate::helpers::as_add(ctx, num) {
-        // Try a³ + (-b³) for difference, or a³ + b³ for sum
-        let (a, exp_a) = crate::helpers::as_pow(ctx, left)?;
-        if cas_math::numeric::as_i64(ctx, exp_a)? != 3 {
-            return None;
-        }
-
-        if let Some(neg_inner) = crate::helpers::as_neg(ctx, right) {
-            // a³ + (-b³) = a³ - b³
-            let (b, exp_b) = crate::helpers::as_pow(ctx, neg_inner)?;
+            let (b, exp_b) = cas_math::expr_destructure::as_pow(ctx, right)?;
             if cas_math::numeric::as_i64(ctx, exp_b)? != 3 {
                 return None;
             }
+
             (a, b, true)
-        } else {
-            // a³ + b³
-            let (b, exp_b) = crate::helpers::as_pow(ctx, right)?;
-            if cas_math::numeric::as_i64(ctx, exp_b)? != 3 {
+        } else if let Some((left, right)) = cas_math::expr_destructure::as_add(ctx, num) {
+            // Try a³ + (-b³) for difference, or a³ + b³ for sum
+            let (a, exp_a) = cas_math::expr_destructure::as_pow(ctx, left)?;
+            if cas_math::numeric::as_i64(ctx, exp_a)? != 3 {
                 return None;
             }
-            (a, b, false)
-        }
-    } else {
-        return None;
-    };
+
+            if let Some(neg_inner) = cas_math::expr_destructure::as_neg(ctx, right) {
+                // a³ + (-b³) = a³ - b³
+                let (b, exp_b) = cas_math::expr_destructure::as_pow(ctx, neg_inner)?;
+                if cas_math::numeric::as_i64(ctx, exp_b)? != 3 {
+                    return None;
+                }
+                (a, b, true)
+            } else {
+                // a³ + b³
+                let (b, exp_b) = cas_math::expr_destructure::as_pow(ctx, right)?;
+                if cas_math::numeric::as_i64(ctx, exp_b)? != 3 {
+                    return None;
+                }
+                (a, b, false)
+            }
+        } else {
+            return None;
+        };
 
     // Check if den matches the expected factor
     // Try Sub(a,b) first, then Add(a, Neg(b))
-    let den_is_a_minus_b = if let Some((da, db)) = crate::helpers::as_sub(ctx, den) {
+    let den_is_a_minus_b = if let Some((da, db)) = cas_math::expr_destructure::as_sub(ctx, den) {
         poly_eq(ctx, da, a) && poly_eq(ctx, db, b)
-    } else if let Some((left, right)) = crate::helpers::as_add(ctx, den) {
+    } else if let Some((left, right)) = cas_math::expr_destructure::as_add(ctx, den) {
         // Try Add(a, Neg(b)) = a - b
-        if let Some(neg_inner) = crate::helpers::as_neg(ctx, right) {
+        if let Some(neg_inner) = cas_math::expr_destructure::as_neg(ctx, right) {
             poly_eq(ctx, left, a) && poly_eq(ctx, neg_inner, b)
-        } else if let Some(neg_inner) = crate::helpers::as_neg(ctx, left) {
+        } else if let Some(neg_inner) = cas_math::expr_destructure::as_neg(ctx, left) {
             poly_eq(ctx, right, a) && poly_eq(ctx, neg_inner, b)
         } else {
             false
@@ -343,9 +346,11 @@ pub(super) fn try_sum_diff_of_cubes_in_num(
         false
     };
 
-    let den_is_a_plus_b = if let Some((da, db)) = crate::helpers::as_add(ctx, den) {
+    let den_is_a_plus_b = if let Some((da, db)) = cas_math::expr_destructure::as_add(ctx, den) {
         // Skip if it's actually a subtraction (Add with Neg)
-        if crate::helpers::as_neg(ctx, da).is_some() || crate::helpers::as_neg(ctx, db).is_some() {
+        if cas_math::expr_destructure::as_neg(ctx, da).is_some()
+            || cas_math::expr_destructure::as_neg(ctx, db).is_some()
+        {
             false // This is actually a subtraction, not a+b
         } else {
             (poly_eq(ctx, da, a) && poly_eq(ctx, db, b))
@@ -428,18 +433,20 @@ pub(super) fn try_power_quotient_preserve_form(
 
     // Extract base and exponent from numerator
     // Handle both Pow(base, exp) and just base (implicitly exp=1)
-    let (num_base, num_exp) = if let Some((base, exp)) = crate::helpers::as_pow(ctx, num) {
-        (base, Some(exp))
-    } else {
-        (num, None) // Treat as P^1
-    };
+    let (num_base, num_exp) =
+        if let Some((base, exp)) = cas_math::expr_destructure::as_pow(ctx, num) {
+            (base, Some(exp))
+        } else {
+            (num, None) // Treat as P^1
+        };
 
     // Extract base and exponent from denominator
-    let (den_base, den_exp) = if let Some((base, exp)) = crate::helpers::as_pow(ctx, den) {
-        (base, Some(exp))
-    } else {
-        (den, None) // Treat as P^1
-    };
+    let (den_base, den_exp) =
+        if let Some((base, exp)) = cas_math::expr_destructure::as_pow(ctx, den) {
+            (base, Some(exp))
+        } else {
+            (den, None) // Treat as P^1
+        };
 
     // Check if bases are structurally equal using polynomial comparison
     // This handles reordering like (x-1) vs (1-x) if signs are handled

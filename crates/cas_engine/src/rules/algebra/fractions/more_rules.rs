@@ -29,7 +29,7 @@ define_rule!(
         use num_rational::BigRational;
 
         // Only match Div expressions - use zero-clone helper
-        let (num, den) = match crate::helpers::as_div(ctx, expr) {
+        let (num, den) = match cas_math::expr_destructure::as_div(ctx, expr) {
             Some((n, d)) => (n, d),
             None => {
                 tracing::trace!(target: "rationalize", "skipped: not a division");

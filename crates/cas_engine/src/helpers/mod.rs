@@ -12,8 +12,6 @@
 pub(crate) mod ground_eval;
 mod predicates;
 
-// Re-export all items for internal use
-pub(crate) use cas_math::expr_destructure::*;
 // predicates has `is_zero` and `prove_nonzero` used by integration tests — keep pub
 pub use predicates::*;
 

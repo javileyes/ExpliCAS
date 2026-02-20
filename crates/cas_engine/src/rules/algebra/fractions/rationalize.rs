@@ -37,7 +37,7 @@ define_rule!(
         }
 
         // Only match Div(num, den)
-        let (num, den) = crate::helpers::as_div(ctx, expr)?;
+        let (num, den) = cas_math::expr_destructure::as_div(ctx, expr)?;
 
         // Numerator must be Add
         if !matches!(ctx.get(num), Expr::Add(_, _)) {
@@ -212,7 +212,7 @@ define_rule!(
         use std::collections::HashMap;
 
         // Only match Div(num, den)
-        let (num, den) = crate::helpers::as_div(ctx, expr)?;
+        let (num, den) = cas_math::expr_destructure::as_div(ctx, expr)?;
 
         // Denominator must be Add
         if !matches!(ctx.get(den), Expr::Add(_, _)) {
@@ -382,7 +382,7 @@ define_rule!(
     |ctx, expr| {
         use std::collections::HashMap;
 
-        let (num, den) = crate::helpers::as_div(ctx, expr)?;
+        let (num, den) = cas_math::expr_destructure::as_div(ctx, expr)?;
 
         // Denominator must be an Add
         if !matches!(ctx.get(den), Expr::Add(_, _)) {
@@ -652,7 +652,7 @@ define_rule!(
         }
 
         // Only match Div(num, den)
-        let (num, den) = crate::helpers::as_div(ctx, expr)?;
+        let (num, den) = cas_math::expr_destructure::as_div(ctx, expr)?;
 
         // BOTH must be Add
         if !matches!(ctx.get(num), Expr::Add(_, _)) {
@@ -1149,7 +1149,7 @@ define_rule!(
     DivExpandToCancelRule,
     "Expand to Cancel Fraction",
     |ctx, expr| {
-        let (num, den) = crate::helpers::as_div(ctx, expr)?;
+        let (num, den) = cas_math::expr_destructure::as_div(ctx, expr)?;
 
         // Guard: skip trivial cases — both sides must be non-leaf
         let num_is_leaf = matches!(

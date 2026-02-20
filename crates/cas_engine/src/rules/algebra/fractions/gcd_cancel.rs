@@ -37,9 +37,9 @@ define_rule!(
         use crate::implicit_domain::ImplicitCondition;
 
         // Match Div(Pow(base_num, exp_num), Pow(base_den, exp_den))
-        let (num, den) = crate::helpers::as_div(ctx, expr)?;
-        let (base_num, exp_num) = crate::helpers::as_pow(ctx, num)?;
-        let (base_den, exp_den) = crate::helpers::as_pow(ctx, den)?;
+        let (num, den) = cas_math::expr_destructure::as_div(ctx, expr)?;
+        let (base_num, exp_num) = cas_math::expr_destructure::as_pow(ctx, num)?;
+        let (base_den, exp_den) = cas_math::expr_destructure::as_pow(ctx, den)?;
 
         // STRUCTURAL COMPARISON: Use compare_expr to check if bases are structurally equal
         // This handles cases where (x+y) is parsed separately in num and den
@@ -125,7 +125,7 @@ define_rule!(
         use crate::implicit_domain::ImplicitCondition;
 
         // Match Div(num, den)
-        let (num, den) = crate::helpers::as_div(ctx, expr)?;
+        let (num, den) = cas_math::expr_destructure::as_div(ctx, expr)?;
 
         // Check if num == den structurally
         if crate::ordering::compare_expr(ctx, num, den) != std::cmp::Ordering::Equal {
@@ -171,8 +171,8 @@ define_rule!(
         use crate::implicit_domain::ImplicitCondition;
 
         // Match Div(Pow(base, exp), den)
-        let (num, den) = crate::helpers::as_div(ctx, expr)?;
-        let (base, exp) = crate::helpers::as_pow(ctx, num)?;
+        let (num, den) = cas_math::expr_destructure::as_div(ctx, expr)?;
+        let (base, exp) = cas_math::expr_destructure::as_pow(ctx, num)?;
 
         // Check if base == den OR base == -den using poly_relation
         let relation = poly_relation(ctx, base, den)?;
@@ -602,7 +602,7 @@ define_rule!(
         use cas_ast::views::FractionParts;
 
         // Use zero-clone destructuring
-        let (l, r) = crate::helpers::as_mul(ctx, expr)?;
+        let (l, r) = cas_math::expr_destructure::as_mul(ctx, expr)?;
 
         // Use FractionParts to detect any fraction-like structure
         let fp_l = FractionParts::from(&*ctx, l);

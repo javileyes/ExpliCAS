@@ -43,7 +43,7 @@ define_rule!(
     "Common Denominator",
     |ctx, expr, parent_ctx| {
         // Match Add(l, r) where one is a fraction and the other is not
-        let (l, r) = crate::helpers::as_add(ctx, expr)?;
+        let (l, r) = cas_math::expr_destructure::as_add(ctx, expr)?;
 
         // Determine which is the fraction
         let (term, p, q, swapped) = if let Expr::Div(p, q) = ctx.get(r) {
@@ -172,7 +172,7 @@ define_rule!(
         // After canonicalization, Sub(a, b) becomes Add(a, Neg(b)).
         // So we match Add(term, Neg(Div(p, q))) where q == term.
         // Also handles Add(Neg(Div(p, q)), term) where q == term.
-        let (l, r) = crate::helpers::as_add(ctx, expr)?;
+        let (l, r) = cas_math::expr_destructure::as_add(ctx, expr)?;
 
         // Try both orderings: Add(term, Neg(Div(p, q))) and Add(Neg(Div(p, q)), term)
         let (term, p, q) = if let Expr::Neg(inner) = ctx.get(r) {
@@ -222,7 +222,7 @@ define_rule!(
         use cas_ast::views::FractionParts;
 
         // Use zero-clone destructuring
-        let (l, r) = crate::helpers::as_add(ctx, expr)?;
+        let (l, r) = cas_math::expr_destructure::as_add(ctx, expr)?;
 
         // First try FractionParts (handles direct Div and complex multiplicative patterns)
         let fp_l = FractionParts::from(&*ctx, l);
@@ -536,7 +536,7 @@ define_rule!(
     |ctx, expr, parent_ctx| {
         use cas_ast::views::FractionParts;
 
-        let (l, r) = crate::helpers::as_sub(ctx, expr)?;
+        let (l, r) = cas_math::expr_destructure::as_sub(ctx, expr)?;
 
         // Extract fraction parts
         let fp_l = FractionParts::from(&*ctx, l);
