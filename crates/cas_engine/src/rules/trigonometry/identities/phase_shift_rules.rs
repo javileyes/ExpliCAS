@@ -4,9 +4,10 @@
 //! used by other trigonometric rule modules.
 
 use crate::define_rule;
-use crate::helpers::{as_add, as_mul, is_pi, is_pi_over_n};
+use crate::helpers::{as_add, as_mul, is_pi};
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
+use cas_math::trig_phase_shift_support::{extract_pi_coefficient, extract_pi_half_multiple};
 use num_traits::One;
 
 // =============================================================================
@@ -270,114 +271,6 @@ pub fn extract_phase_shift(ctx: &mut cas_ast::Context, expr: ExprId) -> Option<(
                     };
                     let base = rest_view.rebuild(ctx);
                     return Some((base, k));
-                }
-            }
-        }
-    }
-
-    None
-}
-
-/// Extract the coefficient of π from an expression.
-/// - π → 1
-/// - k*π → k  
-/// - π*k → k
-fn extract_pi_coefficient(ctx: &cas_ast::Context, expr: ExprId) -> Option<i32> {
-    // Check for π alone
-    if is_pi(ctx, expr) {
-        return Some(1);
-    }
-
-    // Check for Mul(k, π) or Mul(π, k)
-    if let Expr::Mul(l, r) = ctx.get(expr) {
-        if is_pi(ctx, *r) {
-            if let Expr::Number(n) = ctx.get(*l) {
-                if n.is_integer() {
-                    return n.to_integer().try_into().ok();
-                }
-            }
-        }
-        if is_pi(ctx, *l) {
-            if let Expr::Number(n) = ctx.get(*r) {
-                if n.is_integer() {
-                    return n.to_integer().try_into().ok();
-                }
-            }
-        }
-    }
-
-    None
-}
-
-/// Extract k from expressions like k*π/2, π/2, π, 3π/2, etc.
-/// Returns Some(k) if the expression equals k*π/2 for integer k.
-fn extract_pi_half_multiple(ctx: &cas_ast::Context, expr: ExprId) -> Option<i32> {
-    // Check for π/2 (k=1)
-    if is_pi_over_n(ctx, expr, 2) {
-        return Some(1);
-    }
-
-    // Check for π (k=2)
-    if is_pi(ctx, expr) {
-        return Some(2);
-    }
-
-    // Check for Mul(k, π/2) or Mul(π/2, k)
-    if let Expr::Mul(l, r) = ctx.get(expr) {
-        // Check Mul(Number, π/2)
-        if let Expr::Number(n) = ctx.get(*l) {
-            if is_pi_over_n(ctx, *r, 2) && n.is_integer() {
-                if let Ok(k) = n.to_integer().try_into() {
-                    return Some(k);
-                }
-            }
-            // Check Mul(Number, π) means k = 2*number
-            if is_pi(ctx, *r) && n.is_integer() {
-                if let Ok(k_half) = n.to_integer().try_into() {
-                    let k: i32 = k_half;
-                    return Some(k * 2);
-                }
-            }
-        }
-        // Check Mul(π/2, Number)
-        if let Expr::Number(n) = ctx.get(*r) {
-            if is_pi_over_n(ctx, *l, 2) && n.is_integer() {
-                if let Ok(k) = n.to_integer().try_into() {
-                    return Some(k);
-                }
-            }
-            if is_pi(ctx, *l) && n.is_integer() {
-                if let Ok(k_half) = n.to_integer().try_into() {
-                    let k: i32 = k_half;
-                    return Some(k * 2);
-                }
-            }
-        }
-    }
-
-    // Check for Div(k*π, 2)
-    if let Expr::Div(num, den) = ctx.get(expr) {
-        if let Expr::Number(d) = ctx.get(*den) {
-            if d.is_integer() && *d == num_rational::BigRational::from_integer(2.into()) {
-                // Check if numerator is k*π or just π
-                if is_pi(ctx, *num) {
-                    return Some(1);
-                }
-                if let Expr::Mul(l, r) = ctx.get(*num) {
-                    if let Expr::Number(n) = ctx.get(*l) {
-                        if is_pi(ctx, *r) && n.is_integer() {
-                            if let Ok(k) = n.to_integer().try_into() {
-                                return Some(k);
-                            }
-                        }
-                    }
-                    if let Expr::Number(n) = ctx.get(*r) {
-                        if is_pi(ctx, *l) && n.is_integer() {
-                            if let Ok(k) = n.to_integer().try_into() {
-                                return Some(k);
-                            }
-                        }
-                    }
                 }
             }
         }
