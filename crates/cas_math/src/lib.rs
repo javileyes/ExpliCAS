@@ -66,6 +66,7 @@ pub mod trig_multi_angle_support;
 pub mod trig_pattern_detection;
 pub mod trig_phase_shift_support;
 pub mod trig_power_identity_support;
+pub mod trig_reciprocal_eval_support;
 pub mod trig_reciprocal_support;
 pub mod trig_roots_flatten;
 pub mod trig_sum_product_support;

@@ -1,74 +1,10 @@
 use crate::define_rule;
-use crate::helpers::{build_pi_over_n, is_one, is_pi_over_n, is_zero};
 use crate::rule::Rewrite;
-use cas_ast::{Context, Expr, ExprId};
-
-// ==================== Helper Functions ====================
-// is_zero and is_one are now imported from crate::helpers==================
-
-// ==================== Evaluation Table ====================
-
-type EvalCheck = fn(&Context, ExprId) -> bool;
-type ResultBuilder = fn(&mut Context) -> ExprId;
-
-fn build_zero(ctx: &mut Context) -> ExprId {
-    ctx.num(0)
-}
-fn build_one(ctx: &mut Context) -> ExprId {
-    ctx.num(1)
-}
-fn build_pi_over_2(ctx: &mut Context) -> ExprId {
-    build_pi_over_n(ctx, 2)
-}
-fn build_pi_over_4(ctx: &mut Context) -> ExprId {
-    build_pi_over_n(ctx, 4)
-}
-
-const EVAL_RULES: &[(&str, EvalCheck, ResultBuilder, &str)] = &[
-    (
-        "cot",
-        |ctx, e| is_pi_over_n(ctx, e, 4),
-        build_one,
-        "cot(π/4) = 1",
-    ),
-    (
-        "cot",
-        |ctx, e| is_pi_over_n(ctx, e, 2),
-        build_zero,
-        "cot(π/2) = 0",
-    ),
-    ("sec", |ctx, e| is_zero(ctx, e), build_one, "sec(0) = 1"),
-    (
-        "csc",
-        |ctx, e| is_pi_over_n(ctx, e, 2),
-        build_one,
-        "csc(π/2) = 1",
-    ),
-    (
-        "arccot",
-        |ctx, e| is_one(ctx, e),
-        build_pi_over_4,
-        "arccot(1) = π/4",
-    ),
-    (
-        "arccot",
-        |ctx, e| is_zero(ctx, e),
-        build_pi_over_2,
-        "arccot(0) = π/2",
-    ),
-    (
-        "arcsec",
-        |ctx, e| is_one(ctx, e),
-        build_zero,
-        "arcsec(1) = 0",
-    ),
-    (
-        "arccsc",
-        |ctx, e| is_one(ctx, e),
-        build_pi_over_2,
-        "arccsc(1) = π/2",
-    ),
-];
+use cas_ast::Expr;
+use cas_math::trig_reciprocal_eval_support::{
+    eval_reciprocal_trig_value, is_reciprocal_trig_composition,
+    rewrite_negative_reciprocal_trig_argument,
+};
 
 define_rule!(
     EvaluateReciprocalTrigRule,
@@ -80,29 +16,17 @@ define_rule!(
                 Some(b) => b.name(),
                 None => return None,
             };
-            if args.len() == 1 {
-                let arg = args[0];
-                for (func, check, build, desc) in EVAL_RULES {
-                    if name == *func && check(ctx, arg) {
-                        return Some(Rewrite::new(build(ctx)).desc(*desc));
-                    }
-                }
+            if args.len() != 1 {
+                return None;
+            }
+            let arg = args[0];
+            if let Some((new_expr, desc)) = eval_reciprocal_trig_value(ctx, name, arg) {
+                return Some(Rewrite::new(new_expr).desc(desc));
             }
         }
         None
     }
 );
-
-// ==================== Composition Pairs ====================
-
-const COMPOSITION_PAIRS: &[(&str, &str)] = &[
-    ("cot", "arccot"),
-    ("sec", "arcsec"),
-    ("csc", "arccsc"),
-    ("arccot", "cot"),
-    ("arcsec", "sec"),
-    ("arccsc", "csc"),
-];
 
 define_rule!(
     ReciprocalTrigCompositionRule,
@@ -110,52 +34,34 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         if let Expr::Function(outer_fn_id, outer_args) = ctx.get(expr) {
-            if outer_args.len() == 1 {
-                let inner_expr = outer_args[0];
-                if let Expr::Function(inner_fn_id, inner_args) = ctx.get(inner_expr) {
-                    if inner_args.len() == 1 {
-                        let x = inner_args[0];
-                        let outer_name = match ctx.builtin_of(*outer_fn_id) {
-                            Some(b) => b.name(),
-                            None => return None,
-                        };
-                        let inner_name = match ctx.builtin_of(*inner_fn_id) {
-                            Some(b) => b.name(),
-                            None => return None,
-                        };
-                        for (outer, inner) in COMPOSITION_PAIRS {
-                            if outer_name == *outer && inner_name == *inner {
-                                return Some(
-                                    Rewrite::new(x)
-                                        .desc_lazy(|| format!("{}({}(x)) = x", outer, inner)),
-                                );
-                            }
-                        }
-                    }
+            if outer_args.len() != 1 {
+                return None;
+            }
+            let inner_expr = outer_args[0];
+            if let Expr::Function(inner_fn_id, inner_args) = ctx.get(inner_expr) {
+                if inner_args.len() != 1 {
+                    return None;
+                }
+                let x = inner_args[0];
+                let outer_name = match ctx.builtin_of(*outer_fn_id) {
+                    Some(b) => b.name(),
+                    None => return None,
+                };
+                let inner_name = match ctx.builtin_of(*inner_fn_id) {
+                    Some(b) => b.name(),
+                    None => return None,
+                };
+                if is_reciprocal_trig_composition(outer_name, inner_name) {
+                    return Some(
+                        Rewrite::new(x)
+                            .desc_lazy(|| format!("{}({}(x)) = x", outer_name, inner_name)),
+                    );
                 }
             }
         }
         None
     }
 );
-
-// ==================== Negative Argument Table ====================
-
-#[derive(Clone, Copy)]
-enum NegBehavior {
-    Odd,
-    Even,
-    PiMinus,
-}
-
-const NEG_BEHAVIORS: &[(&str, NegBehavior)] = &[
-    ("cot", NegBehavior::Odd),
-    ("sec", NegBehavior::Even),
-    ("csc", NegBehavior::Odd),
-    ("arccot", NegBehavior::Odd),
-    ("arcsec", NegBehavior::PiMinus),
-    ("arccsc", NegBehavior::Odd),
-];
 
 define_rule!(
     ReciprocalTrigNegativeRule,
@@ -167,34 +73,14 @@ define_rule!(
                 Some(b) => b.name(),
                 None => return None,
             };
-            if args.len() == 1 {
-                let arg = args[0];
-                if let Expr::Neg(inner) = ctx.get(arg) {
-                    let inner = *inner;
-
-                    for (func, behavior) in NEG_BEHAVIORS {
-                        if name == *func {
-                            let f_inner = ctx.call(func, vec![inner]);
-                            let (new_expr, desc) = match behavior {
-                                NegBehavior::Odd => (
-                                    ctx.add(Expr::Neg(f_inner)),
-                                    format!("{}(-x) = -{}(x)", func, func),
-                                ),
-                                NegBehavior::Even => {
-                                    (f_inner, format!("{}(-x) = {}(x)", func, func))
-                                }
-                                NegBehavior::PiMinus => {
-                                    let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
-                                    (
-                                        ctx.add(Expr::Sub(pi, f_inner)),
-                                        format!("{}(-x) = π - {}(x)", func, func),
-                                    )
-                                }
-                            };
-                            return Some(Rewrite::new(new_expr).desc(desc));
-                        }
-                    }
-                }
+            if args.len() != 1 {
+                return None;
+            }
+            let arg = args[0];
+            if let Some((new_expr, desc)) =
+                rewrite_negative_reciprocal_trig_argument(ctx, name, arg)
+            {
+                return Some(Rewrite::new(new_expr).desc(desc));
             }
         }
         None
