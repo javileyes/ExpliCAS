@@ -381,6 +381,90 @@ pub fn extract_as_product(ctx: &Context, term: ExprId) -> Option<(Vec<ExprId>, B
     Some((non_numeric, numeric_coef))
 }
 
+/// Flatten a term into `(is_negated, factors)`.
+///
+/// For trig powers `sin/cos` with integer exponent `n >= 3`, decomposes
+/// `trig^n` into `trig^(n-2)` and `trig^2` to expose a square factor.
+pub fn flatten_with_trig_decomp(ctx: &mut Context, term: ExprId) -> (bool, Vec<ExprId>) {
+    use num_traits::{One, Signed};
+
+    let mut is_neg = false;
+    let mut factors = Vec::new();
+    let mut stack = vec![term];
+
+    if let Expr::Neg(inner) = ctx.get(term) {
+        is_neg = true;
+        stack = vec![*inner];
+    }
+
+    while let Some(curr) = stack.pop() {
+        match ctx.get(curr) {
+            Expr::Mul(l, r) => {
+                stack.push(*r);
+                stack.push(*l);
+            }
+            Expr::Neg(inner) => {
+                is_neg = !is_neg;
+                stack.push(*inner);
+            }
+            _ => factors.push(curr),
+        }
+    }
+
+    let mut final_factors = Vec::with_capacity(factors.len());
+    for f in factors {
+        if let Expr::Number(n) = ctx.get(f) {
+            if n.is_negative() {
+                is_neg = !is_neg;
+                let abs_val = -n.clone();
+                if abs_val == BigRational::one() {
+                    continue;
+                }
+                let abs_id = ctx.add(Expr::Number(abs_val));
+                final_factors.push(abs_id);
+                continue;
+            }
+        }
+        final_factors.push(f);
+    }
+    let factors = final_factors;
+
+    let mut decomposed = Vec::new();
+    for &f in &factors {
+        if let Expr::Pow(base, exp) = ctx.get(f) {
+            let base = *base;
+            let exp = *exp;
+            if let Expr::Number(n) = ctx.get(exp) {
+                let two = BigRational::from_integer(2.into());
+                if *n > two && n.is_integer() {
+                    if let Expr::Function(fn_id, args) = ctx.get(base) {
+                        let builtin = ctx.builtin_of(*fn_id);
+                        if matches!(builtin, Some(BuiltinFn::Sin | BuiltinFn::Cos))
+                            && args.len() == 1
+                        {
+                            let remainder = n - &two;
+                            let leftover = if remainder == BigRational::one() {
+                                base
+                            } else {
+                                let rem_id = ctx.add(Expr::Number(remainder));
+                                ctx.add(Expr::Pow(base, rem_id))
+                            };
+                            let two_id = ctx.num(2);
+                            let trig_sq = ctx.add(Expr::Pow(base, two_id));
+                            decomposed.push(leftover);
+                            decomposed.push(trig_sq);
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+        decomposed.push(f);
+    }
+
+    (is_neg, decomposed)
+}
+
 /// Extract `coeff * sin(arg)^2 * cos(arg)^2` from a product term.
 /// Returns `(coeff, arg)` when both squared trig factors share the same argument.
 pub fn extract_sin2_cos2_product(ctx: &mut Context, term: ExprId) -> Option<(ExprId, ExprId)> {
@@ -550,6 +634,29 @@ mod tests {
 
         assert_eq!(coeff, BigRational::from_integer((-2).into()));
         assert_eq!(factors.len(), 2);
+    }
+
+    #[test]
+    fn flatten_with_trig_decomp_splits_trig_cubes_and_sign() {
+        let mut ctx = Context::new();
+        let term = parse("-4*sin(x)^3", &mut ctx).expect("term");
+        let four = parse("4", &mut ctx).expect("four");
+        let sin_x = parse("sin(x)", &mut ctx).expect("sin_x");
+        let sin_x_sq = parse("sin(x)^2", &mut ctx).expect("sin_x_sq");
+
+        let (is_neg, factors) = flatten_with_trig_decomp(&mut ctx, term);
+
+        assert!(is_neg);
+        assert_eq!(factors.len(), 3);
+        assert!(factors
+            .iter()
+            .any(|&f| cas_ast::ordering::compare_expr(&ctx, f, four) == Ordering::Equal));
+        assert!(factors
+            .iter()
+            .any(|&f| cas_ast::ordering::compare_expr(&ctx, f, sin_x) == Ordering::Equal));
+        assert!(factors
+            .iter()
+            .any(|&f| cas_ast::ordering::compare_expr(&ctx, f, sin_x_sq) == Ordering::Equal));
     }
 
     #[test]

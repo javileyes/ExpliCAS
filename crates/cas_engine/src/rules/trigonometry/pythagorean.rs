@@ -15,7 +15,7 @@ use cas_ast::{Context, Expr, ExprId};
 use cas_math::expr_rewrite::smart_mul;
 use cas_math::trig_power_identity_support::{
     decompose_term_with_residual_multi, extract_all_trig_squared_candidates, extract_as_product,
-    extract_coeff_tan_or_cot_pow2, extract_coeff_trig_pow2,
+    extract_coeff_tan_or_cot_pow2, extract_coeff_trig_pow2, flatten_with_trig_decomp,
 };
 
 define_rule!(
@@ -838,98 +838,6 @@ fn try_high_power_pythagorean(
     }
 
     None
-}
-
-/// Flatten a term into (is_negated, factor_list).
-/// For trig^n (n≥2), decompose into [trig^(n-2), trig²] to expose the trig² for matching.
-fn flatten_with_trig_decomp(ctx: &mut Context, term: ExprId) -> (bool, Vec<ExprId>) {
-    use num_rational::BigRational;
-    use num_traits::{One, Signed};
-
-    let mut is_neg = false;
-    let mut factors = Vec::new();
-    let mut stack = vec![term];
-
-    // Handle outer Neg
-    if let Expr::Neg(inner) = ctx.get(term) {
-        is_neg = true;
-        stack = vec![*inner];
-    }
-
-    // Flatten Mul tree
-    while let Some(curr) = stack.pop() {
-        match ctx.get(curr) {
-            Expr::Mul(l, r) => {
-                stack.push(*r);
-                stack.push(*l);
-            }
-            Expr::Neg(inner) => {
-                is_neg = !is_neg;
-                stack.push(*inner);
-            }
-            _ => factors.push(curr),
-        }
-    }
-
-    // Extract sign from negative numeric coefficients
-    // e.g., Mul(-4, sin³(x)) should be is_neg=true with factor 4
-    let mut final_factors = Vec::with_capacity(factors.len());
-    for f in factors {
-        if let Expr::Number(n) = ctx.get(f) {
-            if n.is_negative() {
-                is_neg = !is_neg;
-                let abs_val = -n.clone();
-                if abs_val == BigRational::one() {
-                    // Factor of -1 → just flip sign, don't add factor 1
-                    continue;
-                }
-                let abs_id = ctx.add(Expr::Number(abs_val));
-                final_factors.push(abs_id);
-                continue;
-            }
-        }
-        final_factors.push(f);
-    }
-    let factors = final_factors;
-
-    // Decompose any trig^n (n≥3) into trig^(n-2) + trig²
-    let mut decomposed = Vec::new();
-    for &f in &factors {
-        if let Expr::Pow(base, exp) = ctx.get(f) {
-            let base = *base;
-            let exp = *exp;
-            if let Expr::Number(n) = ctx.get(exp) {
-                let two = BigRational::from_integer(2.into());
-                if *n > two && n.is_integer() {
-                    if let Expr::Function(fn_id, args) = ctx.get(base) {
-                        let builtin = ctx.builtin_of(*fn_id);
-                        if matches!(
-                            builtin,
-                            Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
-                        ) && args.len() == 1
-                        {
-                            // Decompose: trig^n → trig^(n-2) · trig²
-                            let remainder = n - &two;
-                            let leftover = if remainder == BigRational::one() {
-                                base // trig^3 → trig · trig²
-                            } else {
-                                let rem_id = ctx.add(Expr::Number(remainder));
-                                ctx.add(Expr::Pow(base, rem_id))
-                            };
-                            let two_id = ctx.num(2);
-                            let trig_sq = ctx.add(Expr::Pow(base, two_id));
-                            decomposed.push(leftover);
-                            decomposed.push(trig_sq);
-                            continue;
-                        }
-                    }
-                }
-            }
-        }
-        decomposed.push(f);
-    }
-
-    (is_neg, decomposed)
 }
 
 /// Check if (c_term, trig_term) matches the pattern k - k*trig²(x) = k*other²(x)
