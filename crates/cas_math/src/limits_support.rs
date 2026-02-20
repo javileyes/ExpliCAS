@@ -1,5 +1,7 @@
 use crate::infinity_support::{mk_infinity, InfSign};
 use cas_ast::{Constant, Context, Expr, ExprId};
+use num_bigint::BigInt;
+use num_rational::BigRational;
 
 /// Check if an expression depends on a specific variable id.
 ///
@@ -80,6 +82,110 @@ pub fn mk_inf(ctx: &mut Context, sign: InfSign) -> ExprId {
     mk_infinity(ctx, sign)
 }
 
+/// Rational polynomial limit rule for `P(x)/Q(x)` as `x -> ±∞`.
+///
+/// Compares polynomial degrees in `var`:
+/// - `deg(P) < deg(Q) -> 0`
+/// - `deg(P) = deg(Q) -> lc(P)/lc(Q)` when both leading coefficients are numeric
+/// - `deg(P) > deg(Q) -> ±∞` according to leading coefficient sign and parity
+pub fn rational_poly_limit(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    use crate::multipoly::{multipoly_from_expr, PolyBudget};
+    use num_traits::Signed;
+
+    // Match Div(num, den)
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    // Get variable name
+    let Expr::Variable(var_sym_id) = ctx.get(var).clone() else {
+        return None;
+    };
+    let var_name = ctx.sym_name(var_sym_id);
+
+    // Conservative budget for polynomial conversion
+    let budget = PolyBudget {
+        max_terms: 100,
+        max_total_degree: 20,
+        max_pow_exp: 4,
+    };
+
+    // Convert numerator and denominator to polynomials
+    let p_num = multipoly_from_expr(ctx, num, &budget).ok()?;
+    let p_den = multipoly_from_expr(ctx, den, &budget).ok()?;
+
+    // Get variable index in polynomial
+    // If var not in poly, it's constant wrt var (degree 0)
+    let var_idx_num = p_num.var_index(var_name);
+    let var_idx_den = p_den.var_index(var_name);
+
+    // If neither contains the variable, constant rule handles it
+    if var_idx_num.is_none() && var_idx_den.is_none() {
+        return None; // Let constant rule handle it
+    }
+
+    // Check for zero denominator polynomial
+    if p_den.is_zero() {
+        return None; // Division by zero - don't handle here
+    }
+
+    // Get degrees
+    let deg_p = var_idx_num.map(|idx| p_num.degree_in(idx)).unwrap_or(0);
+    let deg_q = var_idx_den.map(|idx| p_den.degree_in(idx)).unwrap_or(0);
+
+    // Get leading coefficients
+    let lc_p = var_idx_num
+        .map(|idx| p_num.leading_coeff_in(idx))
+        .unwrap_or_else(|| p_num.clone());
+    let lc_q = var_idx_den
+        .map(|idx| p_den.leading_coeff_in(idx))
+        .unwrap_or_else(|| p_den.clone());
+
+    // Both leading coefficients must be numeric constants
+    let lc_p_val = lc_p.constant_value()?;
+    let lc_q_val = lc_q.constant_value()?;
+
+    // Case 1: deg(P) < deg(Q) -> 0
+    if deg_p < deg_q {
+        return Some(ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(0)))));
+    }
+
+    // Case 2: deg(P) = deg(Q) -> lc(P)/lc(Q)
+    if deg_p == deg_q {
+        let ratio = &lc_p_val / &lc_q_val;
+        return Some(ctx.add(Expr::Number(ratio)));
+    }
+
+    // Case 3: deg(P) > deg(Q) -> ±∞
+    // Sign = sign(lc_p/lc_q) * sign(x^k) where k = deg_p - deg_q
+    let k = deg_p - deg_q;
+    let ratio = &lc_p_val / &lc_q_val;
+
+    // Determine sign of ratio
+    let ratio_positive = ratio.is_positive();
+
+    // Determine sign of x^k for the approach
+    let xk_positive = match approach {
+        InfSign::Pos => true,
+        InfSign::Neg => k % 2 == 0, // x^even is positive, x^odd is negative
+    };
+
+    // Combined sign: positive if both same, negative if different
+    let result_positive = ratio_positive == xk_positive;
+    let sign = if result_positive {
+        InfSign::Pos
+    } else {
+        InfSign::Neg
+    };
+
+    Some(mk_infinity(ctx, sign))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,5 +250,20 @@ mod tests {
             }
             _ => panic!("expected negative infinity argument"),
         }
+    }
+
+    #[test]
+    fn rational_poly_limit_handles_equal_and_higher_degree_cases() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+
+        let equal = parse_expr(&mut ctx, "(3*x^2 + 1)/(6*x^2 - 5)");
+        let higher = parse_expr(&mut ctx, "(2*x^3)/(x^2+1)");
+
+        let equal_out = rational_poly_limit(&mut ctx, equal, x, InfSign::Pos).expect("equal");
+        let higher_out = rational_poly_limit(&mut ctx, higher, x, InfSign::Neg).expect("higher");
+
+        assert!(matches!(ctx.get(equal_out), Expr::Number(_)));
+        assert!(matches!(ctx.get(higher_out), Expr::Neg(_)));
     }
 }
