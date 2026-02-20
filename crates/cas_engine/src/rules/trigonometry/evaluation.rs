@@ -7,10 +7,7 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_ast::Expr;
 use cas_math::expr_relations::extract_negated_inner;
-
-use super::values::{
-    detect_inverse_trig_input, detect_special_angle, lookup_inverse_trig_value, lookup_trig_value,
-};
+use cas_math::trig_eval_table_support::lookup_trig_or_inverse;
 
 define_rule!(
     EvaluateTrigTableRule,
@@ -31,25 +28,14 @@ define_rule!(
             if args.len() == 1 {
                 let arg = args[0];
 
-                // Check if argument is a special angle (for sin, cos, tan)
-                if let Some(angle) = detect_special_angle(ctx, arg) {
-                    // Look up the value in our static table
-                    if let Some(trig_value) = lookup_trig_value(&name, angle) {
-                        let new_expr = trig_value.to_expr(ctx);
-                        return Some(Rewrite::new(new_expr).desc_lazy(|| {
-                            format!("{}({}) = {}", name, angle.display(), trig_value.display())
-                        }));
-                    }
-                }
-
-                // Check for inverse trig functions at special inputs (0, 1, 1/2)
-                if let Some(input) = detect_inverse_trig_input(ctx, arg) {
-                    if let Some(trig_value) = lookup_inverse_trig_value(&name, input) {
-                        let new_expr = trig_value.to_expr(ctx);
-                        return Some(Rewrite::new(new_expr).desc_lazy(|| {
-                            format!("{}({}) = {}", name, input.display(), trig_value.display())
-                        }));
-                    }
+                if let Some(hit) = lookup_trig_or_inverse(ctx, &name, arg) {
+                    let new_expr = hit.value.to_expr(ctx);
+                    let key_display = hit.key_display;
+                    let value_display = hit.value.display();
+                    return Some(
+                        Rewrite::new(new_expr)
+                            .desc_lazy(|| format!("{}({}) = {}", name, key_display, value_display)),
+                    );
                 }
 
                 // Handle negative arguments: sin(-x) = -sin(x), cos(-x) = cos(x), tan(-x) = -tan(x)
