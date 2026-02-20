@@ -5,6 +5,7 @@ use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_relations::extract_negated_inner;
 use cas_math::numeric_eval::as_rational_const;
 use cas_math::trig_reciprocal_support::{are_reciprocals, has_reciprocal_atan_pair};
+use cas_math::trig_roots_flatten::flatten_add_sub_chain;
 use num_traits::One;
 
 // ==================== Helper Functions for Pattern Matching ====================
@@ -306,7 +307,7 @@ define_rule!(
     Some(crate::target_kind::TargetKindSet::ADD),
     |ctx, expr| {
         // Flatten Add tree to get all terms
-        let terms = crate::helpers::flatten_add_sub_chain(ctx, expr);
+        let terms = flatten_add_sub_chain(ctx, expr);
 
         // Search for asin/acos pairs among all terms
         for i in 0..terms.len() {
@@ -407,7 +408,7 @@ impl crate::rule::Rule for InverseTrigAtanRule {
         }
 
         // Collect all additive terms (flattens nested Add nodes)
-        let terms = crate::helpers::flatten_add_sub_chain(ctx, expr);
+        let terms = flatten_add_sub_chain(ctx, expr);
 
         // Need at least 2 terms to find a pair
         if terms.len() < 2 {
@@ -504,7 +505,7 @@ impl crate::rule::Rule for AtanAddRationalRule {
         }
 
         // Collect all additive terms
-        let terms = crate::helpers::flatten_add_sub_chain(ctx, expr);
+        let terms = flatten_add_sub_chain(ctx, expr);
 
         // Need at least 2 terms
         if terms.len() < 2 {

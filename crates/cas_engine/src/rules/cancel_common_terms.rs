@@ -219,7 +219,7 @@ fn normalize_for_cancel(ctx: &mut Context, id: ExprId, depth: usize) -> (ExprId,
                 let is_sin = matches!(builtin, Some(cas_ast::BuiltinFn::Sin));
                 if is_cos || is_sin {
                     if let Some((true, inner)) =
-                        crate::helpers::extract_int_multiple_additive(ctx, arg, 2)
+                        cas_math::trig_roots_flatten::extract_int_multiple_additive(ctx, arg, 2)
                     {
                         if is_cos {
                             Action::ExpandCos2x(inner)

@@ -5,6 +5,7 @@ use cas_math::expr_extract::extract_exp_argument;
 use cas_math::expr_predicates::{
     is_half_expr, is_one_expr as is_one, is_two_expr, is_zero_expr as is_zero,
 };
+use cas_math::trig_roots_flatten::{extract_double_angle_arg, extract_triple_angle_arg};
 use num_traits::Signed;
 use std::cmp::Ordering;
 
@@ -511,7 +512,7 @@ define_rule!(
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             if ctx.builtin_of(*fn_id) == Some(BuiltinFn::Sinh) && args.len() == 1 {
                 // Check if arg is 2*x or x*2
-                if let Some(inner_var) = crate::helpers::extract_double_angle_arg(ctx, args[0]) {
+                if let Some(inner_var) = extract_double_angle_arg(ctx, args[0]) {
                     // sinh(2x) → 2·sinh(x)·cosh(x)
                     let two = ctx.num(2);
                     let sinh_x = ctx.call_builtin(cas_ast::BuiltinFn::Sinh, vec![inner_var]);
@@ -556,7 +557,7 @@ define_rule!(
             for (i, &t) in terms.iter().enumerate() {
                 if let Expr::Function(fn_id, args) = ctx.get(t) {
                     if ctx.builtin_of(*fn_id) == Some(BuiltinFn::Cosh) && args.len() == 1 {
-                        if let Some(x) = crate::helpers::extract_double_angle_arg(ctx, args[0]) {
+                        if let Some(x) = extract_double_angle_arg(ctx, args[0]) {
                             return Some((i, x));
                         }
                     }
@@ -846,7 +847,7 @@ define_rule!(
     |ctx, expr| {
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             if args.len() == 1 {
-                if let Some(inner_var) = crate::helpers::extract_triple_angle_arg(ctx, args[0]) {
+                if let Some(inner_var) = extract_triple_angle_arg(ctx, args[0]) {
                     // Only expand for trivial arguments (same guard as TripleAngleRule)
                     match ctx.get(inner_var) {
                         Expr::Variable(_) | Expr::Constant(_) | Expr::Number(_) => {}

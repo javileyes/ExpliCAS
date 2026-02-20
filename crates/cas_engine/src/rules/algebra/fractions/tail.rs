@@ -23,7 +23,8 @@ define_rule!(
     "Combine Same Denominator Fractions",
     |ctx, expr, parent_ctx| {
         use crate::domain::Proof;
-        use crate::helpers::{flatten_add_sub_chain, prove_nonzero};
+        use crate::helpers::prove_nonzero;
+        use cas_math::trig_roots_flatten::flatten_add_sub_chain;
         use std::collections::HashMap;
 
         // Only handle Add or Sub at root

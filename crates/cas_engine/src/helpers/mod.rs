@@ -14,7 +14,6 @@ mod predicates;
 
 // Re-export all items for internal use
 pub(crate) use cas_math::expr_destructure::*;
-pub(crate) use cas_math::trig_roots_flatten::*;
 // predicates has `is_zero` and `prove_nonzero` used by integration tests — keep pub
 pub use predicates::*;
 

@@ -42,11 +42,11 @@ use cas_math::inv_trig_n_angle_support::{
     arcsin_recurrence, build_one_minus_t_sq, build_one_plus_t_sq, build_sqrt, chebyshev_t,
     chebyshev_u_nm1, count_nodes_dedup, weierstrass_recurrence,
 };
+use cas_math::trig_roots_flatten::extract_int_multiple;
 use num_bigint::BigInt;
 use num_rational::BigRational;
 
 use crate::define_rule;
-use crate::helpers::extract_int_multiple;
 use crate::rule::Rewrite;
 use crate::target_kind::TargetKindSet;
 

@@ -4,6 +4,7 @@ use cas_math::expr_extract::extract_i64_integer;
 use cas_math::expr_predicates::{is_one_expr as is_one, is_zero_expr as is_zero};
 use cas_math::numeric_eval::{as_rational_const, as_rational_const_depth};
 use cas_math::pi_helpers::{build_pi_over_n, is_half, is_pi, is_pi_over_n};
+use cas_math::trig_roots_flatten::{flatten_add_sub_chain, flatten_mul_chain};
 use cas_parser::parse;
 
 #[test]

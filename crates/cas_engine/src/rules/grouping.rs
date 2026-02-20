@@ -1,9 +1,9 @@
 use crate::define_rule;
-use crate::helpers::{flatten_add_sub_chain, flatten_mul_chain};
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::expr_predicates::{is_one_expr as is_one, is_zero_expr as is_zero};
 use cas_math::expr_rewrite::smart_mul;
+use cas_math::trig_roots_flatten::{flatten_add_sub_chain, flatten_mul_chain};
 use std::collections::HashMap;
 
 define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
@@ -116,7 +116,7 @@ define_rule!(CollectRule, "Collect Terms", |ctx, expr| {
 
 // is_one and is_zero are imported from cas_math::expr_predicates.
 
-// flatten_add_chain and flatten_mul_chain are now imported from crate::helpers
+// flatten_add_chain and flatten_mul_chain are imported from cas_math::trig_roots_flatten.
 
 // Returns (coefficient, degree) for a term with respect to var
 fn extract_coeff_degree(ctx: &mut Context, term: ExprId, var: &str) -> (ExprId, i64) {

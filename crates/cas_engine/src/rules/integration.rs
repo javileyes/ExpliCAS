@@ -10,6 +10,7 @@ use crate::engine::Simplifier;
 use crate::parent_context::ParentContext;
 use crate::rule::{Rewrite, Rule};
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::trig_roots_flatten::flatten_mul_chain;
 
 /// Product-to-sum identity for trigonometric products (Werner formulas).
 ///
@@ -36,7 +37,7 @@ impl Rule for ProductToSumRule {
         // Look for: 2 * sin(A) * cos(B) or similar patterns
         // First, flatten the multiplication and check for coefficient 2
 
-        let factors = crate::helpers::flatten_mul_chain(ctx, expr);
+        let factors = flatten_mul_chain(ctx, expr);
 
         // Check if we have at least 3 factors (coeff, sin, cos)
         if factors.len() < 2 {
@@ -125,7 +126,7 @@ impl Rule for CosProductTelescopingRule {
         use num_rational::BigRational;
 
         // Flatten the product
-        let factors = crate::helpers::flatten_mul_chain(ctx, expr);
+        let factors = flatten_mul_chain(ctx, expr);
 
         // We need at least 2 cosine factors
         if factors.len() < 2 {
