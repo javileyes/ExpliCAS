@@ -7,9 +7,9 @@
 //! - Tan double angle contraction
 
 use crate::define_rule;
-use crate::helpers::as_div;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
+use cas_math::expr_destructure::as_div;
 use cas_math::trig_half_angle_support::extract_trig_half_angle;
 use num_traits::One;
 

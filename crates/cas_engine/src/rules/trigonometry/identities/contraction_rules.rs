@@ -3,10 +3,10 @@
 //! These are the INVERSE of expansion rules — they contract expanded forms back
 //! to compact representations (half-angle tangent, double angle contraction).
 
-use crate::helpers::{as_div, as_mul, as_sub};
 use crate::nary::Sign;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
+use cas_math::expr_destructure::{as_div, as_mul, as_sub};
 use cas_math::trig_contraction_support::{
     extract_coeff_trig_squared, extract_cos2_minus_sin2, extract_two_sin_cos,
     match_angle_diff_fraction, match_angle_sum_fraction,
@@ -47,8 +47,8 @@ impl crate::rule::Rule for HalfAngleTangentRule {
         expr: ExprId,
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        use crate::helpers::extract_double_angle_arg;
         use crate::implicit_domain::ImplicitCondition;
+        use cas_math::trig_roots_flatten::extract_double_angle_arg;
 
         // Only match Div nodes
         let (num_id, den_id) = as_div(ctx, expr)?;

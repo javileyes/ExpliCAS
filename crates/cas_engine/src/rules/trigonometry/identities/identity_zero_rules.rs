@@ -7,9 +7,9 @@
 //! - Sin4xIdentityZeroRule: sin(4t) - 4*sin(t)*cos(t)*(cos²(t)-sin²(t)) → 0
 //! - TanDifferenceIdentityZeroRule: tan(a-b) - (tan(a)-tan(b))/(1+tan(a)*tan(b)) → 0
 
-use crate::helpers::{as_add, as_neg, as_sub};
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
+use cas_math::expr_destructure::{as_add, as_neg, as_sub};
 use cas_math::trig_identity_zero_support::{
     is_cos_squared_t, is_sin_squared_t, match_one_plus_tan_product,
 };

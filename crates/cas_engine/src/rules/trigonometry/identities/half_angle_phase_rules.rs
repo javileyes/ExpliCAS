@@ -1,9 +1,9 @@
 //! Half-angle, cotangent half-angle, Weierstrass, and identity zero rules.
 
 use crate::define_rule;
-use crate::helpers::{as_add, as_div, as_sub};
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
+use cas_math::expr_destructure::{as_add, as_div, as_sub};
 use cas_math::expr_rewrite::smart_mul;
 use cas_math::trig_half_angle_support::{extract_cot_term, extract_tan_half_angle, is_half_angle};
 use cas_math::trig_weierstrass_support::{

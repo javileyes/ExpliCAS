@@ -1,9 +1,9 @@
 //! Core trigonometric identity rules for evaluation at special values.
 
 use crate::define_rule;
-use crate::helpers::{as_add, as_div, as_mul, as_neg, as_sub};
 use crate::rule::Rewrite;
 use cas_ast::{Expr, ExprId};
+use cas_math::expr_destructure::{as_add, as_div, as_mul, as_neg, as_sub};
 use cas_math::expr_relations::extract_negated_inner;
 use cas_math::expr_rewrite::smart_mul;
 use cas_math::pi_helpers::{extract_rational_pi_multiple, is_pi, is_pi_over_n};

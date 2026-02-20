@@ -3,13 +3,14 @@
 //! Extracted from `expansion_rules.rs` to keep module size manageable.
 
 use crate::define_rule;
-use crate::helpers::{as_mul, as_pow, extract_triple_angle_arg};
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
+use cas_math::expr_destructure::{as_mul, as_pow};
 use cas_math::expr_rewrite::smart_mul;
 use cas_math::trig_multi_angle_support::{
     is_inside_trig_sum_quotient_with_ancestors, is_trivial_angle,
 };
+use cas_math::trig_roots_flatten::{extract_quintuple_angle_arg, extract_triple_angle_arg};
 use num_traits::{One, Zero};
 
 // Triple Angle Shortcut Rule: sin(3x) → 3sin(x) - 4sin³(x), cos(3x) → 4cos³(x) - 3cos(x)
@@ -139,7 +140,7 @@ define_rule!(
         if let Expr::Function(fn_id, args) = ctx.get(expr) {
             if args.len() == 1 {
                 // Check if arg is 5*x or x*5
-                if let Some(inner_var) = crate::helpers::extract_quintuple_angle_arg(ctx, args[0]) {
+                if let Some(inner_var) = extract_quintuple_angle_arg(ctx, args[0]) {
                     match ctx.builtin_of(*fn_id) {
                         Some(BuiltinFn::Sin) => {
                             // sin(5x) → 16sin⁵(x) - 20sin³(x) + 5sin(x)

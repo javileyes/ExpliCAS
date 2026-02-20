@@ -1,11 +1,12 @@
 //! Trig values and specialized identity rules.
 
 use crate::define_rule;
-use crate::helpers::{as_add, as_div};
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
+use cas_math::expr_destructure::{as_add, as_div, as_fn1};
 use cas_math::expr_rewrite::smart_mul;
 use cas_math::trig_multi_angle_support::is_multiple_angle;
+use cas_math::trig_roots_flatten::flatten_mul_chain;
 use cas_math::trig_tan_triple_support::{
     is_part_of_tan_triple_product_with_ancestors, is_pi_over_3_minus_u, is_u_plus_pi_over_3,
 };
@@ -44,8 +45,6 @@ impl crate::rule::Rule for TanTripleProductRule {
         expr: cas_ast::ExprId,
         _parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
-        use crate::helpers::{as_fn1, flatten_mul_chain};
-
         // Flatten multiplication to get factors
         let factors = flatten_mul_chain(ctx, expr);
 
