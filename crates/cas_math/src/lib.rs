@@ -55,6 +55,7 @@ pub mod semantic_equality;
 pub mod substitute;
 pub mod telescoping_dirichlet;
 pub mod telescoping_support;
+pub mod trig_contraction_support;
 pub mod trig_half_angle_support;
 pub mod trig_linear_support;
 pub mod trig_multi_angle_support;

@@ -3,11 +3,14 @@
 //! These are the INVERSE of expansion rules — they contract expanded forms back
 //! to compact representations (half-angle tangent, double angle contraction).
 
-use crate::helpers::{as_div, as_mul, as_neg, as_sub};
+use crate::helpers::{as_div, as_mul, as_sub};
 use crate::nary::Sign;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
-use cas_math::trig_sum_product_support::extract_trig_arg as extract_trig_arg_named;
+use cas_math::trig_contraction_support::{
+    args_equal as trig_args_equal, extract_cos_cos_and_sin_sin, extract_cos_cos_minus_sin_sin,
+    extract_sin_cos_product_pair, semantic_sub,
+};
 
 // =============================================================================
 // HALF-ANGLE TANGENT RULE
@@ -763,25 +766,6 @@ impl crate::rule::Rule for AngleSumFractionToTanRule {
 }
 
 impl AngleSumFractionToTanRule {
-    /// Semantic subtraction: matches Sub(a, b) OR Add(a, Neg(b)) OR Add(Neg(b), a).
-    /// Returns (positive_part, subtracted_part).
-    fn semantic_sub(&self, ctx: &cas_ast::Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
-        // Direct Sub
-        if let Some((l, r)) = as_sub(ctx, expr) {
-            return Some((l, r));
-        }
-        // Add(a, Neg(b)) or Add(Neg(b), a)
-        if let Expr::Add(l, r) = ctx.get(expr) {
-            if let Some(inner) = as_neg(ctx, *r) {
-                return Some((*l, inner));
-            }
-            if let Some(inner) = as_neg(ctx, *l) {
-                return Some((*r, inner));
-            }
-        }
-        None
-    }
-
     /// Try to match numerator = sin(a)cos(b) + cos(a)sin(b) and
     ///                 denominator = cos(a)cos(b) - sin(a)sin(b)
     /// Returns Some((a, b)) if matched.
@@ -793,19 +777,19 @@ impl AngleSumFractionToTanRule {
     ) -> Option<(ExprId, ExprId)> {
         // Numerator: A + B where A = sin(a)cos(b), B = cos(a)sin(b)
         let (nl, nr) = crate::helpers::as_add(ctx, num)?;
-        let (a, b) = self.extract_sin_cos_product_pair(ctx, nl, nr)?;
+        let (a, b) = extract_sin_cos_product_pair(ctx, nl, nr)?;
 
         // Denominator: C - D where C = cos(a)cos(b), D = sin(a)sin(b)
         // Handles both Sub(C, D) and Add(C, Neg(D))
-        let (dl, dr) = self.semantic_sub(ctx, den)?;
-        let (a2, b2) = self.extract_cos_cos_minus_sin_sin(ctx, dl, dr)?;
+        let (dl, dr) = semantic_sub(ctx, den)?;
+        let (a2, b2) = extract_cos_cos_minus_sin_sin(ctx, dl, dr)?;
 
         // Verify arguments match
-        if self.args_equal(ctx, a, a2) && self.args_equal(ctx, b, b2) {
+        if trig_args_equal(ctx, a, a2) && trig_args_equal(ctx, b, b2) {
             return Some((a, b));
         }
         // Try (a,b) swapped in denominator
-        if self.args_equal(ctx, a, b2) && self.args_equal(ctx, b, a2) {
+        if trig_args_equal(ctx, a, b2) && trig_args_equal(ctx, b, a2) {
             return Some((a, b));
         }
 
@@ -823,218 +807,21 @@ impl AngleSumFractionToTanRule {
     ) -> Option<(ExprId, ExprId)> {
         // Numerator: A - B where A = sin(a)cos(b), B = cos(a)sin(b)
         // Handles both Sub(A, B) and Add(A, Neg(B))
-        let (nl, nr) = self.semantic_sub(ctx, num)?;
-        let (a, b) = self.extract_sin_cos_product_pair(ctx, nl, nr)?;
+        let (nl, nr) = semantic_sub(ctx, num)?;
+        let (a, b) = extract_sin_cos_product_pair(ctx, nl, nr)?;
 
         // Denominator: C + D where C = cos(a)cos(b), D = sin(a)sin(b)
         let (dl, dr) = crate::helpers::as_add(ctx, den)?;
-        let (a2, b2) = self.extract_cos_cos_and_sin_sin(ctx, dl, dr)?;
+        let (a2, b2) = extract_cos_cos_and_sin_sin(ctx, dl, dr)?;
 
         // Verify arguments match
-        if self.args_equal(ctx, a, a2) && self.args_equal(ctx, b, b2) {
+        if trig_args_equal(ctx, a, a2) && trig_args_equal(ctx, b, b2) {
             return Some((a, b));
         }
-        if self.args_equal(ctx, a, b2) && self.args_equal(ctx, b, a2) {
+        if trig_args_equal(ctx, a, b2) && trig_args_equal(ctx, b, a2) {
             return Some((a, b));
         }
 
         None
-    }
-
-    /// Extract (a, b) from a pair where one is sin(a)·cos(b) and the other is cos(a)·sin(b).
-    /// The first term should be the sin(a)·cos(b) term (matches the sign convention).
-    fn extract_sin_cos_product_pair(
-        &self,
-        ctx: &cas_ast::Context,
-        term1: ExprId,
-        term2: ExprId,
-    ) -> Option<(ExprId, ExprId)> {
-        // Try: term1 = sin(a)·cos(b), term2 = cos(a)·sin(b)
-        if let Some((sin_arg1, cos_arg1)) = self.extract_sin_times_cos(ctx, term1) {
-            if let Some((sin_arg2, cos_arg2)) = self.extract_sin_times_cos(ctx, term2) {
-                // sin(a)·cos(b) paired with cos(a)·sin(b) means:
-                // sin_arg1=a, cos_arg1=b, cos_arg2=a, sin_arg2=b
-                if self.args_equal(ctx, sin_arg1, cos_arg2)
-                    && self.args_equal(ctx, cos_arg1, sin_arg2)
-                {
-                    return Some((sin_arg1, cos_arg1));
-                }
-            }
-        }
-
-        // Also try with mul_leaves for flattened products
-        if let Some(result) = self.try_extract_via_mul_leaves(ctx, term1, term2) {
-            return Some(result);
-        }
-
-        None
-    }
-
-    /// Extract (sin_arg, cos_arg) from sin(x)·cos(y) product.
-    fn extract_sin_times_cos(
-        &self,
-        ctx: &cas_ast::Context,
-        expr: ExprId,
-    ) -> Option<(ExprId, ExprId)> {
-        let (l, r) = as_mul(ctx, expr)?;
-
-        // Try l=sin, r=cos
-        if let Some(sin_arg) = extract_trig_arg_named(ctx, l, BuiltinFn::Sin.name()) {
-            if let Some(cos_arg) = extract_trig_arg_named(ctx, r, BuiltinFn::Cos.name()) {
-                return Some((sin_arg, cos_arg));
-            }
-        }
-        // Try l=cos, r=sin
-        if let Some(cos_arg) = extract_trig_arg_named(ctx, l, BuiltinFn::Cos.name()) {
-            if let Some(sin_arg) = extract_trig_arg_named(ctx, r, BuiltinFn::Sin.name()) {
-                return Some((sin_arg, cos_arg));
-            }
-        }
-
-        None
-    }
-
-    /// Try extracting the pattern from flattened mul_leaves.
-    /// Handles cases like Mul(Mul(sin(a), cos(b)), Mul(cos(a), sin(b)))
-    /// where mul_leaves gives [sin(a), cos(b)] and [cos(a), sin(b)].
-    fn try_extract_via_mul_leaves(
-        &self,
-        ctx: &cas_ast::Context,
-        term1: ExprId,
-        term2: ExprId,
-    ) -> Option<(ExprId, ExprId)> {
-        let factors1 = crate::nary::mul_leaves(ctx, term1);
-        let factors2 = crate::nary::mul_leaves(ctx, term2);
-
-        // Each term should have exactly 2 trig factors
-        if factors1.len() != 2 || factors2.len() != 2 {
-            return None;
-        }
-
-        // Try all combinations to find (sin(a), cos(b)) and (cos(a), sin(b))
-        let sin1 = self.find_trig_in_factors(ctx, &factors1, BuiltinFn::Sin);
-        let cos1 = self.find_trig_in_factors(ctx, &factors1, BuiltinFn::Cos);
-        let sin2 = self.find_trig_in_factors(ctx, &factors2, BuiltinFn::Sin);
-        let cos2 = self.find_trig_in_factors(ctx, &factors2, BuiltinFn::Cos);
-
-        if let (Some(sin_arg1), Some(cos_arg1), Some(sin_arg2), Some(cos_arg2)) =
-            (sin1, cos1, sin2, cos2)
-        {
-            // Pattern: sin(a)·cos(b) and cos(a)·sin(b)
-            // sin_arg1=a, cos_arg1=b, cos_arg2=a, sin_arg2=b
-            if self.args_equal(ctx, sin_arg1, cos_arg2) && self.args_equal(ctx, cos_arg1, sin_arg2)
-            {
-                return Some((sin_arg1, cos_arg1));
-            }
-        }
-
-        None
-    }
-
-    /// Find a trig function argument in a list of factors.
-    fn find_trig_in_factors(
-        &self,
-        ctx: &cas_ast::Context,
-        factors: &[ExprId],
-        target: BuiltinFn,
-    ) -> Option<ExprId> {
-        for &f in factors {
-            if let Some(arg) = extract_trig_arg_named(ctx, f, target.name()) {
-                return Some(arg);
-            }
-        }
-        None
-    }
-
-    /// Extract (a, b) from cos(a)·cos(b) minus sin(a)·sin(b).
-    fn extract_cos_cos_minus_sin_sin(
-        &self,
-        ctx: &cas_ast::Context,
-        left: ExprId,
-        right: ExprId,
-    ) -> Option<(ExprId, ExprId)> {
-        // left = cos(a)·cos(b)
-        let (cos_a, cos_b) = self.extract_same_trig_product(ctx, left, BuiltinFn::Cos)?;
-        // right = sin(a)·sin(b)
-        let (sin_a, sin_b) = self.extract_same_trig_product(ctx, right, BuiltinFn::Sin)?;
-
-        // Verify argument consistency: cos_a matches sin_a, cos_b matches sin_b
-        if self.args_equal(ctx, cos_a, sin_a) && self.args_equal(ctx, cos_b, sin_b) {
-            return Some((cos_a, cos_b));
-        }
-        // Or: cos_a matches sin_b, cos_b matches sin_a
-        if self.args_equal(ctx, cos_a, sin_b) && self.args_equal(ctx, cos_b, sin_a) {
-            return Some((cos_a, cos_b));
-        }
-
-        None
-    }
-
-    /// Extract (a, b) from cos(a)·cos(b) and sin(a)·sin(b) (both positive, for sum pattern).
-    fn extract_cos_cos_and_sin_sin(
-        &self,
-        ctx: &cas_ast::Context,
-        left: ExprId,
-        right: ExprId,
-    ) -> Option<(ExprId, ExprId)> {
-        // Try left=cos·cos, right=sin·sin
-        if let Some((cos_a, cos_b)) = self.extract_same_trig_product(ctx, left, BuiltinFn::Cos) {
-            if let Some((sin_a, sin_b)) = self.extract_same_trig_product(ctx, right, BuiltinFn::Sin)
-            {
-                if self.args_equal(ctx, cos_a, sin_a) && self.args_equal(ctx, cos_b, sin_b) {
-                    return Some((cos_a, cos_b));
-                }
-                if self.args_equal(ctx, cos_a, sin_b) && self.args_equal(ctx, cos_b, sin_a) {
-                    return Some((cos_a, cos_b));
-                }
-            }
-        }
-        // Try left=sin·sin, right=cos·cos
-        if let Some((sin_a, sin_b)) = self.extract_same_trig_product(ctx, left, BuiltinFn::Sin) {
-            if let Some((cos_a, cos_b)) = self.extract_same_trig_product(ctx, right, BuiltinFn::Cos)
-            {
-                if self.args_equal(ctx, cos_a, sin_a) && self.args_equal(ctx, cos_b, sin_b) {
-                    return Some((cos_a, cos_b));
-                }
-                if self.args_equal(ctx, cos_a, sin_b) && self.args_equal(ctx, cos_b, sin_a) {
-                    return Some((cos_a, cos_b));
-                }
-            }
-        }
-
-        None
-    }
-
-    /// Extract two arguments from f(a)·f(b) where f is a specific trig function.
-    fn extract_same_trig_product(
-        &self,
-        ctx: &cas_ast::Context,
-        expr: ExprId,
-        target: BuiltinFn,
-    ) -> Option<(ExprId, ExprId)> {
-        // Direct Mul
-        if let Some((l, r)) = as_mul(ctx, expr) {
-            if let Some(a) = extract_trig_arg_named(ctx, l, target.name()) {
-                if let Some(b) = extract_trig_arg_named(ctx, r, target.name()) {
-                    return Some((a, b));
-                }
-            }
-        }
-
-        // Flattened mul_leaves
-        let factors = crate::nary::mul_leaves(ctx, expr);
-        if factors.len() == 2 {
-            if let Some(a) = extract_trig_arg_named(ctx, factors[0], target.name()) {
-                if let Some(b) = extract_trig_arg_named(ctx, factors[1], target.name()) {
-                    return Some((a, b));
-                }
-            }
-        }
-
-        None
-    }
-
-    fn args_equal(&self, ctx: &cas_ast::Context, a: ExprId, b: ExprId) -> bool {
-        a == b || crate::ordering::compare_expr(ctx, a, b) == std::cmp::Ordering::Equal
     }
 }
