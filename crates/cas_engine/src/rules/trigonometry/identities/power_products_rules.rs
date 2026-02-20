@@ -4,6 +4,9 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_math::expr_rewrite::smart_mul;
+use cas_math::trig_power_identity_support::{
+    coeff_is_three, extract_sin2_cos2_product, extract_trig_pow4, extract_trig_pow6,
+};
 use cas_math::trig_sum_product_support::{
     args_match_as_multiset, extract_trig_two_term_diff, extract_trig_two_term_sum,
     normalize_for_even_fn, simplify_numeric_div,
@@ -14,121 +17,6 @@ use std::cmp::Ordering;
 // HIDDEN CUBIC TRIG IDENTITY
 // sin^6(x) + cos^6(x) + 3*sin^2(x)*cos^2(x) = (sin^2(x) + cos^2(x))^3
 // =============================================================================
-
-/// Extract sin(arg)^6 or cos(arg)^6 from a term.
-/// Returns Some((arg, "sin"|"cos")) if matched.
-fn extract_trig_pow6(ctx: &cas_ast::Context, term: ExprId) -> Option<(ExprId, &'static str)> {
-    if let Expr::Pow(base, exp) = ctx.get(term) {
-        // Check exponent is 6
-        if let Expr::Number(n) = ctx.get(*exp) {
-            if n.is_integer() && *n.numer() == 6.into() {
-                // Check base is sin(arg) or cos(arg)
-                if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                    if args.len() == 1 {
-                        match ctx.builtin_of(*fn_id) {
-                            Some(BuiltinFn::Sin) => return Some((args[0], "sin")),
-                            Some(BuiltinFn::Cos) => return Some((args[0], "cos")),
-                            _ => {}
-                        }
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-/// Extract sin(arg)^2 or cos(arg)^2 from terms.
-/// Returns Some((arg, "sin"|"cos")) if matched.
-fn extract_trig_pow2(ctx: &cas_ast::Context, term: ExprId) -> Option<(ExprId, &'static str)> {
-    if let Expr::Pow(base, exp) = ctx.get(term) {
-        // Check exponent is 2
-        if let Expr::Number(n) = ctx.get(*exp) {
-            if n.is_integer() && *n.numer() == 2.into() {
-                // Check base is sin(arg) or cos(arg)
-                if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                    if args.len() == 1 {
-                        match ctx.builtin_of(*fn_id) {
-                            Some(BuiltinFn::Sin) => return Some((args[0], "sin")),
-                            Some(BuiltinFn::Cos) => return Some((args[0], "cos")),
-                            _ => {}
-                        }
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-/// Extract coeff * sin(arg)^2 * cos(arg)^2 from a term.
-/// Returns Some((coeff_expr, arg)) where coeff_expr is the coefficient expression.
-/// The caller should verify coeff_expr simplifies to 3.
-fn extract_sin2_cos2_product(ctx: &mut cas_ast::Context, term: ExprId) -> Option<(ExprId, ExprId)> {
-    // Flatten the multiplication
-    let factors = crate::helpers::flatten_mul_chain(ctx, term);
-
-    if factors.len() < 2 {
-        return None;
-    }
-
-    let mut sin2_arg: Option<ExprId> = None;
-    let mut cos2_arg: Option<ExprId> = None;
-    let mut other_factors: Vec<ExprId> = Vec::new();
-
-    for factor in &factors {
-        if let Some((arg, name)) = extract_trig_pow2(ctx, *factor) {
-            match name {
-                "sin" if sin2_arg.is_none() => sin2_arg = Some(arg),
-                "cos" if cos2_arg.is_none() => cos2_arg = Some(arg),
-                _ => other_factors.push(*factor), // Duplicate or already matched
-            }
-        } else {
-            other_factors.push(*factor);
-        }
-    }
-
-    // Must have exactly one sin^2 and one cos^2 with same argument
-    let sin_arg = sin2_arg?;
-    let cos_arg = cos2_arg?;
-
-    // Verify same argument
-    if crate::ordering::compare_expr(ctx, sin_arg, cos_arg) != Ordering::Equal {
-        return None;
-    }
-
-    // Build the coefficient expression from remaining factors
-    let coeff = if other_factors.is_empty() {
-        ctx.num(1)
-    } else if other_factors.len() == 1 {
-        other_factors[0]
-    } else {
-        // Build product of remaining factors
-        let mut result = other_factors[0];
-        for &f in &other_factors[1..] {
-            result = ctx.add(Expr::Mul(result, f));
-        }
-        result
-    };
-
-    Some((coeff, sin_arg))
-}
-
-/// Check if a coefficient expression equals 3.
-/// Uses simplification: coeff - 3 == 0
-fn coeff_is_three(ctx: &mut cas_ast::Context, coeff: ExprId) -> bool {
-    // Fast path: direct number check
-    if let Expr::Number(n) = ctx.get(coeff) {
-        return n.is_integer() && *n.numer() == 3.into();
-    }
-
-    // Use as_rational_const for expressions like 6/2
-    if let Some(val) = cas_math::numeric_eval::as_rational_const(ctx, coeff) {
-        return val == num_rational::BigRational::from_integer(3.into());
-    }
-
-    false
-}
 
 define_rule!(
     TrigHiddenCubicIdentityRule,
@@ -236,29 +124,6 @@ define_rule!(
 // Derivation: (sin²+cos²)² = sin⁴ + 2sin²cos² + cos⁴ = 1
 // Therefore:  sin⁴ + cos⁴ = 1 − 2sin²cos²
 // =============================================================================
-
-/// Extract sin(arg)^4 or cos(arg)^4 from a term.
-/// Returns Some((arg, "sin"|"cos")) if matched.
-fn extract_trig_pow4(ctx: &cas_ast::Context, term: ExprId) -> Option<(ExprId, &'static str)> {
-    if let Expr::Pow(base, exp) = ctx.get(term) {
-        // Check exponent is 4
-        if let Expr::Number(n) = ctx.get(*exp) {
-            if n.is_integer() && *n.numer() == 4.into() {
-                // Check base is sin(arg) or cos(arg)
-                if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                    if args.len() == 1 {
-                        match ctx.builtin_of(*fn_id) {
-                            Some(BuiltinFn::Sin) => return Some((args[0], "sin")),
-                            Some(BuiltinFn::Cos) => return Some((args[0], "cos")),
-                            _ => {}
-                        }
-                    }
-                }
-            }
-        }
-    }
-    None
-}
 
 define_rule!(
     SinCosQuarticSumRule,
