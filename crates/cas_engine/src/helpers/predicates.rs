@@ -2,12 +2,12 @@
 // These functions were previously duplicated across multiple files.
 // Now consolidated here for consistency and maintainability.
 
-use super::extract_rational_pi_multiple;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_extract::{
     extract_abs_argument_view, extract_sqrt_argument_view, extract_unary_log_argument_view,
 };
 use cas_math::expr_predicates::{contains_variable, is_zero_expr as is_zero};
+use cas_math::pi_helpers::extract_rational_pi_multiple;
 use num_traits::{One, Signed};
 
 /// Attempt to prove whether an expression is non-zero.

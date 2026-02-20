@@ -1,11 +1,12 @@
 use crate::build::mul2_raw;
 use crate::define_rule;
-use crate::helpers::{as_div, as_mul, as_pow, is_half};
+use crate::helpers::{as_div, as_mul, as_pow};
 use crate::ordering::compare_expr;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::exponents_support::{add_exp, has_numeric_factor, mul_exp};
+use cas_math::pi_helpers::is_half;
 use cas_math::root_forms::extract_root_factor;
 use num_integer::Integer;
 use num_traits::{One, Signed, ToPrimitive};

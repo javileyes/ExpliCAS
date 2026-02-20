@@ -5,6 +5,7 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr};
+use cas_math::pi_helpers::extract_rational_pi_multiple;
 
 // =============================================================================
 // Sin Supplementary Angle Rule
@@ -19,7 +20,6 @@ define_rule!(
     SinSupplementaryAngleRule,
     "Supplementary Angle",
     |ctx, expr| {
-        use crate::helpers::extract_rational_pi_multiple;
         use num_rational::BigRational;
 
         let (fn_id, args) = match ctx.get(expr) {

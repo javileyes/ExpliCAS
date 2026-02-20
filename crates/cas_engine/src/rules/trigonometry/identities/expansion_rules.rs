@@ -5,6 +5,7 @@ use crate::helpers::extract_double_angle_arg;
 use crate::rule::Rewrite;
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_math::expr_rewrite::smart_mul;
+use cas_math::pi_helpers::extract_rational_pi_multiple;
 use cas_math::trig_multi_angle_support::is_multiple_angle;
 use cas_math::trig_sum_product_support::{
     build_avg_with_simplifier, build_half_diff_with_simplifier, extract_trig_two_term_diff,
@@ -31,8 +32,6 @@ define_rule!(
     TrigSumToProductRule,
     "Sum-to-Product Identity",
     |ctx, expr| {
-        use crate::helpers::extract_rational_pi_multiple;
-
         // Try all four patterns
         enum Pattern {
             SinSum { arg1: ExprId, arg2: ExprId },

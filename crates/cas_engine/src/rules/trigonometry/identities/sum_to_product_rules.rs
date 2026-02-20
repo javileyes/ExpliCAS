@@ -60,9 +60,9 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
         expr: ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
-        use crate::helpers::is_provably_sin_nonzero;
         use crate::rule::Rewrite;
         use cas_math::numeric::as_number;
+        use cas_math::pi_helpers::is_provably_sin_nonzero;
         use num_bigint::BigInt;
         use num_rational::BigRational;
 

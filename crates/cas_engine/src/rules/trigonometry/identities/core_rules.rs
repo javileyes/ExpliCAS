@@ -1,11 +1,12 @@
 //! Core trigonometric identity rules for evaluation at special values.
 
 use crate::define_rule;
-use crate::helpers::{as_add, as_div, as_mul, as_neg, as_sub, is_pi, is_pi_over_n};
+use crate::helpers::{as_add, as_div, as_mul, as_neg, as_sub};
 use crate::rule::Rewrite;
 use cas_ast::{Expr, ExprId};
 use cas_math::expr_relations::extract_negated_inner;
 use cas_math::expr_rewrite::smart_mul;
+use cas_math::pi_helpers::{extract_rational_pi_multiple, is_pi, is_pi_over_n};
 use cas_math::trig_multi_angle_support::{has_large_coefficient, is_multiple_angle};
 use cas_math::trig_pattern_detection::try_extract_all_negative_sum;
 use cas_math::trig_table::{eval_inv_trig_special, eval_trig_special, InvTrigFn, TrigFn};
@@ -28,8 +29,6 @@ define_rule!(
     priority: 100, // Run before expansion rules
     importance: crate::step::ImportanceLevel::High,
     |ctx, expr| {
-        use crate::helpers::extract_rational_pi_multiple;
-
         let (fn_id, args) = match ctx.get(expr) {
             Expr::Function(fn_id, args) => (*fn_id, args.clone()),
             _ => return None,
