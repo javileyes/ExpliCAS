@@ -6,7 +6,7 @@
 //!
 //! Example: `1/R = 1/R1 + 1/R2` → `R = R1·R2/(R1+R2)`
 
-use cas_ast::{Equation, Expr, ExprId, RelOp};
+use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::linear_solution::NonZeroStatus;
 
@@ -22,7 +22,7 @@ pub(crate) fn try_reciprocal_solve(
     rhs: ExprId,
     var: &str,
     simplifier: &mut Simplifier,
-) -> Option<(crate::solver::SolutionSet, Vec<SolveStep>)> {
+) -> Option<(SolutionSet, Vec<SolveStep>)> {
     // Check pattern: LHS must be 1/var
     if !cas_solver_core::isolation_utils::is_simple_reciprocal(&simplifier.context, lhs, var) {
         return None;

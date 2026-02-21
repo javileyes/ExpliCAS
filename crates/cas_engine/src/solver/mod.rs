@@ -14,7 +14,9 @@ pub use cas_solver_core::verify_stats;
 
 #[cfg(test)]
 use crate::engine::Simplifier;
-use cas_ast::{Equation, SolutionSet};
+use cas_ast::Equation;
+#[cfg(test)]
+use cas_ast::SolutionSet;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
