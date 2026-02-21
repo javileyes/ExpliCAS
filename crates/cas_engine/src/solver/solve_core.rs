@@ -10,10 +10,12 @@ use std::collections::HashSet;
 
 use crate::engine::Simplifier;
 use crate::error::CasError;
-use crate::solver::strategies::{
-    CollectTermsStrategy, IsolationStrategy, QuadraticStrategy, RationalExponentStrategy,
-    RationalRootsStrategy, SubstitutionStrategy, UnwrapStrategy,
+use crate::solver::strategies::isolation_strategy::{
+    CollectTermsStrategy, IsolationStrategy, RationalExponentStrategy, UnwrapStrategy,
 };
+use crate::solver::strategies::quadratic::QuadraticStrategy;
+use crate::solver::strategies::rational_roots::RationalRootsStrategy;
+use crate::solver::strategies::substitution::SubstitutionStrategy;
 use crate::solver::strategy::SolverStrategy;
 
 use super::{
