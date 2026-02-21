@@ -5,7 +5,9 @@ use cas_ast::symbol::SymbolId;
 use cas_ast::{
     BuiltinFn, Case, ConditionPredicate, ConditionSet, Equation, Expr, ExprId, RelOp, SolutionSet,
 };
-use cas_solver_core::isolation_utils::{combine_abs_branch_sets, contains_var, flip_inequality};
+use cas_solver_core::isolation_utils::{
+    combine_abs_branch_sets, contains_var, flip_inequality, numeric_sign, NumericSign,
+};
 
 use super::{isolate, prepend_steps};
 
@@ -65,17 +67,20 @@ fn isolate_abs(
     // ── Pre-check: numeric RHS ──────────────────────────────────────────
     // |A| is always ≥ 0, so |A| = negative is impossible.
     if matches!(op, RelOp::Eq) {
-        if let Expr::Number(n) = simplifier.context.get(rhs) {
-            use num_traits::{Signed, Zero};
-            if n.is_negative() {
-                // |A| = (negative) → no solution
-                return Ok((SolutionSet::Empty, steps));
+        if let Some(sign) = numeric_sign(&simplifier.context, rhs) {
+            match sign {
+                NumericSign::Negative => {
+                    // |A| = (negative) → no solution
+                    return Ok((SolutionSet::Empty, steps));
+                }
+                NumericSign::Zero => {
+                    // |A| = 0  →  A = 0  (only one branch needed)
+                    return isolate(arg, rhs, op, var, simplifier, opts, ctx);
+                }
+                NumericSign::Positive => {
+                    // n > 0: fall through to normal branch split
+                }
             }
-            if n.is_zero() {
-                // |A| = 0  →  A = 0  (only one branch needed)
-                return isolate(arg, rhs, op, var, simplifier, opts, ctx);
-            }
-            // n > 0: fall through to normal branch split
         }
     }
 

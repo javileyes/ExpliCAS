@@ -88,6 +88,29 @@ pub fn is_numeric_zero(ctx: &Context, expr: ExprId) -> bool {
     )
 }
 
+/// Trinary numeric sign classification for literal numeric expressions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NumericSign {
+    Negative,
+    Zero,
+    Positive,
+}
+
+/// Return sign for numeric literal expressions, or `None` for non-numeric nodes.
+pub fn numeric_sign(ctx: &Context, expr: ExprId) -> Option<NumericSign> {
+    let Expr::Number(n) = ctx.get(expr) else {
+        return None;
+    };
+    let zero = num_rational::BigRational::from_integer(0.into());
+    if *n < zero {
+        Some(NumericSign::Negative)
+    } else if *n == zero {
+        Some(NumericSign::Zero)
+    } else {
+        Some(NumericSign::Positive)
+    }
+}
+
 /// True iff expression is a numeric even integer literal.
 pub fn is_even_integer_expr(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
@@ -319,6 +342,20 @@ mod tests {
         let two = ctx.num(2);
         assert!(is_numeric_zero(&ctx, zero));
         assert!(!is_numeric_zero(&ctx, two));
+    }
+
+    #[test]
+    fn test_numeric_sign() {
+        let mut ctx = Context::new();
+        let neg = ctx.num(-3);
+        let zero = ctx.num(0);
+        let pos = ctx.num(5);
+        let sym = ctx.var("x");
+
+        assert_eq!(numeric_sign(&ctx, neg), Some(NumericSign::Negative));
+        assert_eq!(numeric_sign(&ctx, zero), Some(NumericSign::Zero));
+        assert_eq!(numeric_sign(&ctx, pos), Some(NumericSign::Positive));
+        assert_eq!(numeric_sign(&ctx, sym), None);
     }
 
     #[test]
