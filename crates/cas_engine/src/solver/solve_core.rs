@@ -73,19 +73,6 @@ fn verify_solution(
     simplifier.are_equivalent(lhs_sim, rhs_sim)
 }
 
-fn apply_domain_guards(
-    result: Result<(SolutionSet, Vec<SolveStep>), CasError>,
-    exclusions: &[ExprId],
-) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    if exclusions.is_empty() {
-        return result;
-    }
-    let (solution_set, steps) = result?;
-    let guarded =
-        cas_solver_core::solve_analysis::apply_nonzero_exclusion_guards(solution_set, exclusions);
-    Ok((guarded, steps))
-}
-
 /// Solve with default options (for backward compatibility with tests).
 /// Uses RealOnly domain and Generic mode.
 ///
@@ -251,7 +238,15 @@ fn solve_inner(
     if eq.op == cas_ast::RelOp::Eq {
         if let Some(result) = try_solve_rational_exponent(eq, var, simplifier, &ctx) {
             // Wrap result with domain guards if needed
-            return apply_domain_guards(result, &domain_exclusions);
+            if domain_exclusions.is_empty() {
+                return result;
+            }
+            let (solution_set, steps) = result?;
+            let guarded = cas_solver_core::solve_analysis::apply_nonzero_exclusion_guards(
+                solution_set,
+                &domain_exclusions,
+            );
+            return Ok((guarded, steps));
         }
     }
 
@@ -444,7 +439,14 @@ fn solve_inner(
                 };
 
                 // V2.1 Issue #10: Apply domain guards if any denominators contained the variable
-                return apply_domain_guards(Ok((SolutionSet::AllReals, steps)), &domain_exclusions);
+                if domain_exclusions.is_empty() {
+                    return Ok((SolutionSet::AllReals, steps));
+                }
+                let guarded = cas_solver_core::solve_analysis::apply_nonzero_exclusion_guards(
+                    SolutionSet::AllReals,
+                    &domain_exclusions,
+                );
+                return Ok((guarded, steps));
             }
         }
     }
