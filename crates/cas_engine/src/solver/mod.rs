@@ -10,8 +10,8 @@ pub(crate) mod solve_core;
 pub(crate) mod step_cleanup;
 pub(crate) mod strategies;
 pub(crate) mod strategy;
-pub use cas_solver_core::verify_stats;
 pub use cas_solver_core::isolation_utils::contains_var;
+pub use cas_solver_core::verify_stats;
 
 #[cfg(test)]
 use crate::engine::Simplifier;
