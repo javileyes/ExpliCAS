@@ -9,6 +9,7 @@ use cas_solver_core::function_inverse::UnaryInverseKind;
 use cas_solver_core::isolation_utils::{
     combine_abs_branch_sets, contains_var, flip_inequality, numeric_sign, NumericSign,
 };
+use cas_solver_core::log_isolation::LogIsolationPlan;
 
 use super::{isolate, prepend_steps};
 
@@ -179,58 +180,53 @@ fn isolate_log(
     mut steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    if contains_var(&simplifier.context, arg, var) && !contains_var(&simplifier.context, base, var)
-    {
-        // log(b, x) = RHS -> x = b^RHS
-        let new_rhs = simplifier.context.add(Expr::Pow(base, rhs));
-        let new_eq = Equation {
-            lhs: arg,
-            rhs: new_rhs,
-            op: op.clone(),
-        };
-        if simplifier.collect_steps() {
-            steps.push(SolveStep {
-                description: format!(
-                    "Exponentiate both sides with base {}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: base
-                    }
-                ),
-                equation_after: new_eq,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
-        }
-        let results = isolate(arg, new_rhs, op, var, simplifier, opts, ctx)?;
-        prepend_steps(results, steps)
-    } else if contains_var(&simplifier.context, base, var)
-        && !contains_var(&simplifier.context, arg, var)
-    {
-        let one = simplifier.context.num(1);
-        let inv_rhs = simplifier.context.add(Expr::Div(one, rhs));
-        let new_rhs = simplifier.context.add(Expr::Pow(arg, inv_rhs));
-        let new_eq = Equation {
-            lhs: base,
-            rhs: new_rhs,
-            op: op.clone(),
-        };
-        if simplifier.collect_steps() {
-            steps.push(SolveStep {
-                description: "Isolate base of logarithm".to_string(),
-                equation_after: new_eq,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
-        }
-        let results = isolate(base, new_rhs, op, var, simplifier, opts, ctx)?;
-        prepend_steps(results, steps)
-    } else {
-        Err(CasError::IsolationError(
-            var.to_string(),
-            "Cannot isolate from log function".to_string(),
-        ))
+    let plan = cas_solver_core::log_isolation::plan_log_isolation(
+        &mut simplifier.context,
+        base,
+        arg,
+        rhs,
+        var,
+    )
+    .ok_or_else(|| {
+        CasError::IsolationError(var.to_string(), "Cannot isolate from log function".to_string())
+    })?;
+
+    let (new_lhs, new_rhs, description) = match plan {
+        LogIsolationPlan::SolveArgument {
+            lhs,
+            rhs: transformed_rhs,
+        } => (
+            lhs,
+            transformed_rhs,
+            format!(
+                "Exponentiate both sides with base {}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id: base
+                }
+            ),
+        ),
+        LogIsolationPlan::SolveBase {
+            lhs,
+            rhs: transformed_rhs,
+        } => (lhs, transformed_rhs, "Isolate base of logarithm".to_string()),
+    };
+
+    let new_eq = Equation {
+        lhs: new_lhs,
+        rhs: new_rhs,
+        op: op.clone(),
+    };
+    if simplifier.collect_steps() {
+        steps.push(SolveStep {
+            description,
+            equation_after: new_eq,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        });
     }
+    let results = isolate(new_lhs, new_rhs, op, var, simplifier, opts, ctx)?;
+    prepend_steps(results, steps)
 }
 
 /// Handle single-argument functions: ln, exp, sqrt, sin, cos, tan
