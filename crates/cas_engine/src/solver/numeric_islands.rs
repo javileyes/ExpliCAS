@@ -23,8 +23,9 @@
 use std::collections::HashMap;
 
 use cas_ast::{Context, Expr, ExprId};
-use cas_math::expr_predicates::contains_variable;
-use cas_solver_core::numeric_islands::{count_nodes_dedup, is_benign_fold_result, transplant_expr};
+use cas_solver_core::numeric_islands::{
+    is_benign_fold_result, precheck_fold_candidate, transplant_expr, IslandFoldPrecheck,
+};
 
 use crate::helpers::ground_eval::GroundEvalGuard;
 
@@ -190,23 +191,14 @@ fn fold_recursive(ctx: &mut Context, id: ExprId, memo: &mut HashMap<ExprId, Expr
 ///
 /// Returns the folded ExprId if successful, otherwise the original.
 fn try_fold_island(ctx: &mut Context, id: ExprId) -> ExprId {
-    // Skip if this subtree contains variables — not a ground island
-    if contains_variable(ctx, id) {
-        return id;
-    }
-
-    // Skip if already a simple leaf
-    match ctx.get(id) {
-        Expr::Number(_) | Expr::Constant(_) => return id,
-        _ => {}
-    }
-
-    // Check size/depth limits (dedup count)
-    let (node_count, depth) = count_nodes_dedup(ctx, id);
-    if node_count > MAX_ISLAND_NODES || depth > MAX_ISLAND_DEPTH {
-        cas_solver_core::verify_stats::record_skipped_limits();
-        return id;
-    }
+    let node_count = match precheck_fold_candidate(ctx, id, MAX_ISLAND_NODES, MAX_ISLAND_DEPTH) {
+        IslandFoldPrecheck::NotGround | IslandFoldPrecheck::Leaf => return id,
+        IslandFoldPrecheck::OverLimit => {
+            cas_solver_core::verify_stats::record_skipped_limits();
+            return id;
+        }
+        IslandFoldPrecheck::Eligible { node_count } => node_count,
+    };
 
     // Try simplifying with Generic mode in a temporary simplifier
     let mut tmp = crate::engine::Simplifier::with_context(ctx.clone());
@@ -250,6 +242,7 @@ fn try_fold_island(ctx: &mut Context, id: ExprId) -> ExprId {
 mod tests {
     use super::*;
     use cas_ast::Expr;
+    use cas_math::expr_predicates::contains_variable;
 
     // -----------------------------------------------------------------------
     // Helpers

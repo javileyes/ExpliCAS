@@ -1,6 +1,20 @@
 use std::collections::HashSet;
 
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_predicates::contains_variable;
+
+/// Pre-check classification for numeric-island folding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IslandFoldPrecheck {
+    /// Candidate subtree contains variables.
+    NotGround,
+    /// Candidate is already a simple numeric leaf.
+    Leaf,
+    /// Candidate exceeds configured size/depth budget.
+    OverLimit,
+    /// Candidate can be attempted; carries dedup node count.
+    Eligible { node_count: usize },
+}
 
 /// Count unique nodes and max depth (dedup by ExprId).
 pub fn count_nodes_dedup(ctx: &Context, root: ExprId) -> (usize, usize) {
@@ -150,6 +164,29 @@ pub fn is_benign_fold_result(ctx: &Context, result: ExprId, original_node_count:
     }
 }
 
+/// Pre-check whether a subtree should be considered for numeric-island folding.
+pub fn precheck_fold_candidate(
+    ctx: &Context,
+    id: ExprId,
+    max_nodes: usize,
+    max_depth: usize,
+) -> IslandFoldPrecheck {
+    if contains_variable(ctx, id) {
+        return IslandFoldPrecheck::NotGround;
+    }
+
+    if matches!(ctx.get(id), Expr::Number(_) | Expr::Constant(_)) {
+        return IslandFoldPrecheck::Leaf;
+    }
+
+    let (node_count, depth) = count_nodes_dedup(ctx, id);
+    if node_count > max_nodes || depth > max_depth {
+        return IslandFoldPrecheck::OverLimit;
+    }
+
+    IslandFoldPrecheck::Eligible { node_count }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -213,5 +250,39 @@ mod tests {
             add,
             count_nodes_dedup(&ctx, add).0
         ));
+    }
+
+    #[test]
+    fn precheck_rejects_non_ground_candidates() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let expr = ctx.add(Expr::Add(x, one));
+        assert_eq!(
+            precheck_fold_candidate(&ctx, expr, 80, 4),
+            IslandFoldPrecheck::NotGround
+        );
+    }
+
+    #[test]
+    fn precheck_rejects_leaf_candidates() {
+        let mut ctx = Context::new();
+        let three = ctx.num(3);
+        assert_eq!(
+            precheck_fold_candidate(&ctx, three, 80, 4),
+            IslandFoldPrecheck::Leaf
+        );
+    }
+
+    #[test]
+    fn precheck_accepts_small_ground_non_leaf() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let expr = ctx.add(Expr::Add(one, two));
+        assert_eq!(
+            precheck_fold_candidate(&ctx, expr, 80, 4),
+            IslandFoldPrecheck::Eligible { node_count: 3 }
+        );
     }
 }
