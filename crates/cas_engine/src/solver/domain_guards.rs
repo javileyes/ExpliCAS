@@ -17,6 +17,10 @@ use crate::domain::{DomainMode, Proof};
 use crate::helpers::prove_positive;
 use crate::semantics::ValueDomain;
 use crate::solver::SolverOptions;
+use cas_solver_core::log_domain::{
+    DomainModeKind, LogAssumption as CoreLogAssumption, LogSolveDecision as CoreLogSolveDecision,
+    ProofStatus,
+};
 
 /// Decision for whether a logarithmic solve step is valid.
 #[derive(Debug, Clone)]
@@ -157,67 +161,48 @@ pub(crate) fn classify_log_solve(
         prove_positive(ctx, rhs, vd)
     };
 
-    // Case: base>0 proven and rhs<0 proven => EmptySet
-    // (a^x > 0 for all real x when a > 0, so no solution exists)
-    if matches!(base_proof, Proof::Proven | Proof::ProvenImplicit) && rhs_proof == Proof::Disproven
-    {
-        return LogSolveDecision::EmptySet(
-            "No real solutions: base^x > 0 for all real x, but RHS ≤ 0".to_string(),
-        );
+    let core_decision = cas_solver_core::log_domain::classify_log_solve_by_proofs(
+        to_core_mode(mode),
+        to_core_proof(base_proof),
+        to_core_proof(rhs_proof),
+    );
+    from_core_decision(core_decision)
+}
+
+fn to_core_mode(mode: DomainMode) -> DomainModeKind {
+    match mode {
+        DomainMode::Strict => DomainModeKind::Strict,
+        DomainMode::Generic => DomainModeKind::Generic,
+        DomainMode::Assume => DomainModeKind::Assume,
     }
+}
 
-    // If base≤0 proven => needs complex (can't take real log of negative base)
-    if base_proof == Proof::Disproven {
-        return LogSolveDecision::NeedsComplex(
-            "Cannot take real logarithm: base is not positive".to_string(),
-        );
+fn to_core_proof(proof: Proof) -> ProofStatus {
+    match proof {
+        Proof::Proven | Proof::ProvenImplicit => ProofStatus::Proven,
+        Proof::Unknown => ProofStatus::Unknown,
+        Proof::Disproven => ProofStatus::Disproven,
     }
+}
 
-    // If rhs≤0 proven (and base proof not yet covered) => needs complex
-    if rhs_proof == Proof::Disproven {
-        return LogSolveDecision::NeedsComplex(
-            "Cannot take real logarithm: RHS is not positive".to_string(),
-        );
+fn from_core_assumption(a: CoreLogAssumption) -> SolverAssumption {
+    match a {
+        CoreLogAssumption::PositiveRhs => SolverAssumption::PositiveRhs,
+        CoreLogAssumption::PositiveBase => SolverAssumption::PositiveBase,
     }
+}
 
-    // At this point: base is Proven/ProvenImplicit or Unknown, rhs is Proven/ProvenImplicit or Unknown
-    // Treat ProvenImplicit as equivalent to Proven for this decision table.
-    let base_ok = matches!(base_proof, Proof::Proven | Proof::ProvenImplicit);
-    let rhs_ok = matches!(rhs_proof, Proof::Proven | Proof::ProvenImplicit);
-
-    match (base_ok, rhs_ok, mode) {
-        // Both proven positive: safe to proceed
-        (true, true, _) => LogSolveDecision::Ok,
-
-        // Base proven, RHS unknown: only Assume mode allows
-        (true, false, DomainMode::Assume) => {
-            LogSolveDecision::OkWithAssumptions(vec![SolverAssumption::PositiveRhs])
+fn from_core_decision(d: CoreLogSolveDecision) -> LogSolveDecision {
+    match d {
+        CoreLogSolveDecision::Ok => LogSolveDecision::Ok,
+        CoreLogSolveDecision::OkWithAssumptions(v) => {
+            LogSolveDecision::OkWithAssumptions(v.into_iter().map(from_core_assumption).collect())
         }
-        (true, false, DomainMode::Strict | DomainMode::Generic) => LogSolveDecision::Unsupported(
-            "Cannot prove RHS > 0 for logarithm".to_string(),
-            vec![SolverAssumption::PositiveRhs],
-        ),
-
-        // Base unknown, RHS proven: only Assume mode allows
-        (false, true, DomainMode::Assume) => {
-            LogSolveDecision::OkWithAssumptions(vec![SolverAssumption::PositiveBase])
-        }
-        (false, true, DomainMode::Strict | DomainMode::Generic) => LogSolveDecision::Unsupported(
-            "Cannot prove base > 0 for logarithm".to_string(),
-            vec![SolverAssumption::PositiveBase],
-        ),
-
-        // Both unknown: only Assume mode allows (with both assumptions)
-        (false, false, DomainMode::Assume) => LogSolveDecision::OkWithAssumptions(vec![
-            SolverAssumption::PositiveBase,
-            SolverAssumption::PositiveRhs,
-        ]),
-        (false, false, DomainMode::Strict | DomainMode::Generic) => LogSolveDecision::Unsupported(
-            "Cannot prove base > 0 and RHS > 0 for logarithm".to_string(),
-            vec![
-                SolverAssumption::PositiveBase,
-                SolverAssumption::PositiveRhs,
-            ],
+        CoreLogSolveDecision::EmptySet(msg) => LogSolveDecision::EmptySet(msg.to_string()),
+        CoreLogSolveDecision::NeedsComplex(msg) => LogSolveDecision::NeedsComplex(msg.to_string()),
+        CoreLogSolveDecision::Unsupported(msg, v) => LogSolveDecision::Unsupported(
+            msg.to_string(),
+            v.into_iter().map(from_core_assumption).collect(),
         ),
     }
 }

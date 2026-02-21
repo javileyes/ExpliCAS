@@ -3,6 +3,7 @@ pub mod isolation_utils;
 pub mod linear_form;
 pub mod linear_kernel;
 pub mod linear_terms;
+pub mod log_domain;
 pub mod reciprocal;
 pub mod solution_set;
 pub mod solve_analysis;
