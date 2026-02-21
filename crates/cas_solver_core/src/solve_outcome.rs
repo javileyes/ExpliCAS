@@ -1,4 +1,4 @@
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{Context, Expr, ExprId, RelOp, SolutionSet};
 
 /// Classification of a variable-free equation residual `diff = lhs - rhs`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -19,6 +19,15 @@ pub fn classify_var_free_difference(ctx: &Context, diff: ExprId) -> VarFreeDiffK
         }
         Expr::Number(_) => VarFreeDiffKind::ContradictionNonZero,
         _ => VarFreeDiffKind::Constraint,
+    }
+}
+
+/// Solve outcome for `B^E op RHS` when `E` is even and `RHS` is proven negative.
+pub fn even_power_negative_rhs_outcome(op: RelOp) -> SolutionSet {
+    match op {
+        RelOp::Eq => SolutionSet::Empty,
+        RelOp::Gt | RelOp::Geq | RelOp::Neq => SolutionSet::AllReals,
+        RelOp::Lt | RelOp::Leq => SolutionSet::Empty,
     }
 }
 
@@ -54,5 +63,21 @@ mod tests {
             classify_var_free_difference(&ctx, y),
             VarFreeDiffKind::Constraint
         );
+    }
+
+    #[test]
+    fn even_power_negative_rhs_outcome_for_eq_is_empty() {
+        assert!(matches!(
+            even_power_negative_rhs_outcome(RelOp::Eq),
+            SolutionSet::Empty
+        ));
+    }
+
+    #[test]
+    fn even_power_negative_rhs_outcome_for_neq_is_all_reals() {
+        assert!(matches!(
+            even_power_negative_rhs_outcome(RelOp::Neq),
+            SolutionSet::AllReals
+        ));
     }
 }

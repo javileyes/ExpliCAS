@@ -7,6 +7,7 @@ use cas_solver_core::isolation_utils::{
 };
 use cas_solver_core::log_domain::{LogAssumption, LogSolveDecision};
 use cas_solver_core::solution_set::get_number;
+use cas_solver_core::solve_outcome::even_power_negative_rhs_outcome;
 use num_traits::Zero;
 
 use super::{isolate, prepend_steps};
@@ -58,11 +59,7 @@ fn isolate_pow_base(
     if is_even {
         // Check if RHS is negative
         if is_known_negative(&simplifier.context, rhs) {
-            let result = match op {
-                RelOp::Eq => SolutionSet::Empty,
-                RelOp::Gt | RelOp::Geq | RelOp::Neq => SolutionSet::AllReals,
-                RelOp::Lt | RelOp::Leq => SolutionSet::Empty,
-            };
+            let result = even_power_negative_rhs_outcome(op.clone());
             if simplifier.collect_steps() {
                 steps.push(SolveStep {
                     description: format!(
