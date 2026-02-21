@@ -189,7 +189,10 @@ fn isolate_log(
         var,
     )
     .ok_or_else(|| {
-        CasError::IsolationError(var.to_string(), "Cannot isolate from log function".to_string())
+        CasError::IsolationError(
+            var.to_string(),
+            "Cannot isolate from log function".to_string(),
+        )
     })?;
 
     let (new_lhs, new_rhs, description) = match plan {
@@ -210,7 +213,11 @@ fn isolate_log(
         LogIsolationPlan::SolveBase {
             lhs,
             rhs: transformed_rhs,
-        } => (lhs, transformed_rhs, "Isolate base of logarithm".to_string()),
+        } => (
+            lhs,
+            transformed_rhs,
+            "Isolate base of logarithm".to_string(),
+        ),
     };
 
     let new_eq = Equation {

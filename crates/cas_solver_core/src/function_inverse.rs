@@ -130,7 +130,10 @@ mod tests {
             UnaryInverseKind::Exp.step_description(),
             "Take natural log of both sides"
         );
-        assert_eq!(UnaryInverseKind::Sqrt.step_description(), "Square both sides");
+        assert_eq!(
+            UnaryInverseKind::Sqrt.step_description(),
+            "Square both sides"
+        );
         assert_eq!(
             UnaryInverseKind::Sin.step_description(),
             "Take arcsin of both sides"

@@ -68,7 +68,9 @@ impl SolverStrategy for RationalRootsStrategy {
         )?;
 
         let (degree, mut roots) = match outcome {
-            NumericPolynomialSolveOutcome::AllReals => return Some(Ok((SolutionSet::AllReals, vec![]))),
+            NumericPolynomialSolveOutcome::AllReals => {
+                return Some(Ok((SolutionSet::AllReals, vec![])))
+            }
             NumericPolynomialSolveOutcome::CandidateRoots { degree, roots } => (
                 degree,
                 roots

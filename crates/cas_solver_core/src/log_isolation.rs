@@ -57,12 +57,17 @@ mod tests {
         let x = ctx.var("x");
         let rhs = ctx.num(3);
 
-        let plan =
-            plan_log_isolation(&mut ctx, b, x, rhs, "x").expect("should isolate logarithm argument");
+        let plan = plan_log_isolation(&mut ctx, b, x, rhs, "x")
+            .expect("should isolate logarithm argument");
         match plan {
-            LogIsolationPlan::SolveArgument { lhs, rhs: planned_rhs } => {
+            LogIsolationPlan::SolveArgument {
+                lhs,
+                rhs: planned_rhs,
+            } => {
                 assert_eq!(lhs, x);
-                assert!(matches!(ctx.get(planned_rhs), Expr::Pow(base, exp) if *base == b && *exp == rhs));
+                assert!(
+                    matches!(ctx.get(planned_rhs), Expr::Pow(base, exp) if *base == b && *exp == rhs)
+                );
             }
             LogIsolationPlan::SolveBase { .. } => panic!("expected SolveArgument plan"),
         }
@@ -78,7 +83,10 @@ mod tests {
         let plan =
             plan_log_isolation(&mut ctx, x, arg, rhs, "x").expect("should isolate logarithm base");
         match plan {
-            LogIsolationPlan::SolveBase { lhs, rhs: planned_rhs } => {
+            LogIsolationPlan::SolveBase {
+                lhs,
+                rhs: planned_rhs,
+            } => {
                 assert_eq!(lhs, x);
                 assert!(matches!(ctx.get(planned_rhs), Expr::Pow(base, _) if *base == arg));
             }
