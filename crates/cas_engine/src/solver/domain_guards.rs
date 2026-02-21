@@ -18,8 +18,7 @@ use crate::helpers::prove_positive;
 use crate::semantics::ValueDomain;
 use crate::solver::SolverOptions;
 use cas_solver_core::log_domain::{
-    DomainModeKind, LogAssumption as CoreLogAssumption, LogSolveDecision as CoreLogSolveDecision,
-    ProofStatus,
+    DomainModeKind, LogSolveDecision as CoreLogSolveDecision, ProofStatus,
 };
 
 /// Decision for whether a logarithmic solve step is valid.
@@ -46,74 +45,75 @@ pub enum LogSolveDecision {
 }
 
 /// Assumptions that the solver may record when proceeding under `Assume` mode.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SolverAssumption {
-    /// Assumed: RHS > 0
-    PositiveRhs,
-    /// Assumed: Base > 0
-    PositiveBase,
+pub type SolverAssumption = cas_solver_core::log_domain::LogAssumption;
+
+/// Convert to a human-readable assumption string.
+pub fn assumption_to_string(
+    assumption: SolverAssumption,
+    ctx: &Context,
+    base: ExprId,
+    rhs: ExprId,
+) -> String {
+    match assumption {
+        SolverAssumption::PositiveRhs => {
+            format!(
+                "positive({})",
+                cas_formatter::DisplayExpr {
+                    context: ctx,
+                    id: rhs
+                }
+            )
+        }
+        SolverAssumption::PositiveBase => {
+            format!(
+                "positive({})",
+                cas_formatter::DisplayExpr {
+                    context: ctx,
+                    id: base
+                }
+            )
+        }
+    }
 }
 
-impl SolverAssumption {
-    /// Convert to a human-readable assumption string.
-    pub fn to_string(&self, ctx: &Context, base: ExprId, rhs: ExprId) -> String {
-        match self {
-            SolverAssumption::PositiveRhs => {
-                format!(
-                    "positive({})",
-                    cas_formatter::DisplayExpr {
-                        context: ctx,
-                        id: rhs
-                    }
-                )
-            }
-            SolverAssumption::PositiveBase => {
-                format!(
-                    "positive({})",
-                    cas_formatter::DisplayExpr {
-                        context: ctx,
-                        id: base
-                    }
-                )
-            }
-        }
+/// Convert to an AssumptionEvent for the assumptions pipeline.
+pub fn assumption_to_assumption_event(
+    assumption: SolverAssumption,
+    ctx: &Context,
+    base: ExprId,
+    rhs: ExprId,
+) -> crate::assumptions::AssumptionEvent {
+    use crate::assumptions::AssumptionEvent;
+    match assumption {
+        SolverAssumption::PositiveRhs => AssumptionEvent::positive(ctx, rhs),
+        SolverAssumption::PositiveBase => AssumptionEvent::positive(ctx, base),
     }
+}
 
-    /// Convert to an AssumptionEvent for the assumptions pipeline.
-    pub fn to_assumption_event(
-        &self,
-        ctx: &Context,
-        base: ExprId,
-        rhs: ExprId,
-    ) -> crate::assumptions::AssumptionEvent {
-        use crate::assumptions::AssumptionEvent;
-        match self {
-            SolverAssumption::PositiveRhs => AssumptionEvent::positive(ctx, rhs),
-            SolverAssumption::PositiveBase => AssumptionEvent::positive(ctx, base),
-        }
+/// Convert to a ConditionPredicate for conditional solutions (V2.0).
+pub fn assumption_to_condition_predicate(
+    assumption: SolverAssumption,
+    base: ExprId,
+    rhs: ExprId,
+) -> cas_ast::ConditionPredicate {
+    use cas_ast::ConditionPredicate;
+    match assumption {
+        SolverAssumption::PositiveRhs => ConditionPredicate::Positive(rhs),
+        SolverAssumption::PositiveBase => ConditionPredicate::Positive(base),
     }
+}
 
-    /// Convert to a ConditionPredicate for conditional solutions (V2.0).
-    pub fn to_condition_predicate(&self, base: ExprId, rhs: ExprId) -> cas_ast::ConditionPredicate {
-        use cas_ast::ConditionPredicate;
-        match self {
-            SolverAssumption::PositiveRhs => ConditionPredicate::Positive(rhs),
-            SolverAssumption::PositiveBase => ConditionPredicate::Positive(base),
-        }
-    }
-
-    /// Convert a list of SolverAssumptions to a ConditionSet
-    pub fn to_condition_set(
-        assumptions: &[SolverAssumption],
-        base: ExprId,
-        rhs: ExprId,
-    ) -> cas_ast::ConditionSet {
-        let predicates: Vec<cas_ast::ConditionPredicate> = assumptions
-            .iter()
-            .map(|a| a.to_condition_predicate(base, rhs))
-            .collect();
-        cas_ast::ConditionSet::from_predicates(predicates)
-    }
+/// Convert a list of SolverAssumptions to a ConditionSet.
+pub fn assumptions_to_condition_set(
+    assumptions: &[SolverAssumption],
+    base: ExprId,
+    rhs: ExprId,
+) -> cas_ast::ConditionSet {
+    let predicates: Vec<cas_ast::ConditionPredicate> = assumptions
+        .iter()
+        .map(|a| assumption_to_condition_predicate(*a, base, rhs))
+        .collect();
+    cas_ast::ConditionSet::from_predicates(predicates)
 }
 
 /// Classify whether a logarithmic solve step (for `base^x = rhs`) is valid.
@@ -185,25 +185,15 @@ fn to_core_proof(proof: Proof) -> ProofStatus {
     }
 }
 
-fn from_core_assumption(a: CoreLogAssumption) -> SolverAssumption {
-    match a {
-        CoreLogAssumption::PositiveRhs => SolverAssumption::PositiveRhs,
-        CoreLogAssumption::PositiveBase => SolverAssumption::PositiveBase,
-    }
-}
-
 fn from_core_decision(d: CoreLogSolveDecision) -> LogSolveDecision {
     match d {
         CoreLogSolveDecision::Ok => LogSolveDecision::Ok,
-        CoreLogSolveDecision::OkWithAssumptions(v) => {
-            LogSolveDecision::OkWithAssumptions(v.into_iter().map(from_core_assumption).collect())
-        }
+        CoreLogSolveDecision::OkWithAssumptions(v) => LogSolveDecision::OkWithAssumptions(v),
         CoreLogSolveDecision::EmptySet(msg) => LogSolveDecision::EmptySet(msg.to_string()),
         CoreLogSolveDecision::NeedsComplex(msg) => LogSolveDecision::NeedsComplex(msg.to_string()),
-        CoreLogSolveDecision::Unsupported(msg, v) => LogSolveDecision::Unsupported(
-            msg.to_string(),
-            v.into_iter().map(from_core_assumption).collect(),
-        ),
+        CoreLogSolveDecision::Unsupported(msg, v) => {
+            LogSolveDecision::Unsupported(msg.to_string(), v)
+        }
     }
 }
 

@@ -462,7 +462,12 @@ fn isolate_pow_exponent(
         }
         LogSolveDecision::OkWithAssumptions(assumptions) => {
             for assumption in assumptions {
-                let event = assumption.to_assumption_event(&simplifier.context, b, rhs);
+                let event = crate::solver::domain_guards::assumption_to_assumption_event(
+                    assumption,
+                    &simplifier.context,
+                    b,
+                    rhs,
+                );
                 crate::solver::note_assumption(event);
             }
         }
@@ -510,7 +515,7 @@ fn isolate_pow_exponent(
             }
 
             // Build guard set from missing conditions
-            let guard = crate::solver::domain_guards::SolverAssumption::to_condition_set(
+            let guard = crate::solver::domain_guards::assumptions_to_condition_set(
                 &missing_conditions,
                 b,
                 rhs,
@@ -518,7 +523,12 @@ fn isolate_pow_exponent(
 
             // Register blocked hints for pedagogical feedback
             for condition in &missing_conditions {
-                let event = condition.to_assumption_event(&simplifier.context, b, rhs);
+                let event = crate::solver::domain_guards::assumption_to_assumption_event(
+                    *condition,
+                    &simplifier.context,
+                    b,
+                    rhs,
+                );
                 let expr_id = match condition {
                     crate::solver::domain_guards::SolverAssumption::PositiveBase => b,
                     crate::solver::domain_guards::SolverAssumption::PositiveRhs => rhs,
