@@ -3,10 +3,10 @@ use crate::error::CasError;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
-    contains_var, flip_inequality, is_known_negative, is_numeric_zero, mk_residual_solve,
+    contains_var, flip_inequality, is_even_integer_expr, is_known_negative, is_numeric_zero,
+    mk_residual_solve,
 };
 use cas_solver_core::log_domain::{LogAssumption, LogSolveDecision};
-use cas_solver_core::solution_set::get_number;
 use cas_solver_core::solve_outcome::even_power_negative_rhs_outcome;
 
 use super::{isolate, prepend_steps};
@@ -49,11 +49,7 @@ fn isolate_pow_base(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // Check if exponent is an even integer
-    let is_even = if let Some(n) = get_number(&simplifier.context, e) {
-        n.is_integer() && (n.to_integer() % 2 == 0.into())
-    } else {
-        false
-    };
+    let is_even = is_even_integer_expr(&simplifier.context, e);
 
     if is_even {
         // Check if RHS is negative

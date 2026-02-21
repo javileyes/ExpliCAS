@@ -88,6 +88,14 @@ pub fn is_numeric_zero(ctx: &Context, expr: ExprId) -> bool {
     )
 }
 
+/// True iff expression is a numeric even integer literal.
+pub fn is_even_integer_expr(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Number(n) => n.is_integer() && (n.to_integer() % 2 == 0.into()),
+        _ => false,
+    }
+}
+
 /// Combine the two branch solution sets generated from `|A| op B`.
 ///
 /// For equalities/greater-than forms both branches are alternatives (union).
@@ -166,7 +174,7 @@ pub fn product_zero_inequality_cases(op: RelOp) -> Option<(SignCaseOps, SignCase
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cas_ast::{BoundType, Interval};
+    use cas_ast::{BoundType, Expr, Interval};
 
     #[test]
     fn test_is_simple_reciprocal() {
@@ -287,5 +295,16 @@ mod tests {
         let two = ctx.num(2);
         assert!(is_numeric_zero(&ctx, zero));
         assert!(!is_numeric_zero(&ctx, two));
+    }
+
+    #[test]
+    fn test_is_even_integer_expr() {
+        let mut ctx = Context::new();
+        let four = ctx.num(4);
+        let three = ctx.num(3);
+        let half = ctx.add(Expr::Number(num_rational::BigRational::new(1.into(), 2.into())));
+        assert!(is_even_integer_expr(&ctx, four));
+        assert!(!is_even_integer_expr(&ctx, three));
+        assert!(!is_even_integer_expr(&ctx, half));
     }
 }
