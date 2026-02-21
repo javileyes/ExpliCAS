@@ -47,35 +47,6 @@ pub enum LogSolveDecision {
 /// Assumptions that the solver may record when proceeding under `Assume` mode.
 pub type SolverAssumption = cas_solver_core::log_domain::LogAssumption;
 
-/// Convert to a human-readable assumption string.
-pub fn assumption_to_string(
-    assumption: SolverAssumption,
-    ctx: &Context,
-    base: ExprId,
-    rhs: ExprId,
-) -> String {
-    match assumption {
-        SolverAssumption::PositiveRhs => {
-            format!(
-                "positive({})",
-                cas_formatter::DisplayExpr {
-                    context: ctx,
-                    id: rhs
-                }
-            )
-        }
-        SolverAssumption::PositiveBase => {
-            format!(
-                "positive({})",
-                cas_formatter::DisplayExpr {
-                    context: ctx,
-                    id: base
-                }
-            )
-        }
-    }
-}
-
 /// Convert to an AssumptionEvent for the assumptions pipeline.
 pub fn assumption_to_assumption_event(
     assumption: SolverAssumption,
@@ -88,32 +59,6 @@ pub fn assumption_to_assumption_event(
         SolverAssumption::PositiveRhs => AssumptionEvent::positive(ctx, rhs),
         SolverAssumption::PositiveBase => AssumptionEvent::positive(ctx, base),
     }
-}
-
-/// Convert to a ConditionPredicate for conditional solutions (V2.0).
-pub fn assumption_to_condition_predicate(
-    assumption: SolverAssumption,
-    base: ExprId,
-    rhs: ExprId,
-) -> cas_ast::ConditionPredicate {
-    use cas_ast::ConditionPredicate;
-    match assumption {
-        SolverAssumption::PositiveRhs => ConditionPredicate::Positive(rhs),
-        SolverAssumption::PositiveBase => ConditionPredicate::Positive(base),
-    }
-}
-
-/// Convert a list of SolverAssumptions to a ConditionSet.
-pub fn assumptions_to_condition_set(
-    assumptions: &[SolverAssumption],
-    base: ExprId,
-    rhs: ExprId,
-) -> cas_ast::ConditionSet {
-    let predicates: Vec<cas_ast::ConditionPredicate> = assumptions
-        .iter()
-        .map(|a| assumption_to_condition_predicate(*a, base, rhs))
-        .collect();
-    cas_ast::ConditionSet::from_predicates(predicates)
 }
 
 /// Classify whether a logarithmic solve step (for `base^x = rhs`) is valid.

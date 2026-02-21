@@ -515,7 +515,7 @@ fn isolate_pow_exponent(
             }
 
             // Build guard set from missing conditions
-            let guard = crate::solver::domain_guards::assumptions_to_condition_set(
+            let guard = cas_solver_core::log_domain::assumptions_to_condition_set(
                 &missing_conditions,
                 b,
                 rhs,

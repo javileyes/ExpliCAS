@@ -31,6 +31,31 @@ pub enum LogSolveDecision {
     Unsupported(&'static str, Vec<LogAssumption>),
 }
 
+/// Convert one logical assumption into a `ConditionPredicate`.
+pub fn assumption_to_condition_predicate(
+    assumption: LogAssumption,
+    base: ExprId,
+    rhs: ExprId,
+) -> ConditionPredicate {
+    match assumption {
+        LogAssumption::PositiveRhs => ConditionPredicate::Positive(rhs),
+        LogAssumption::PositiveBase => ConditionPredicate::Positive(base),
+    }
+}
+
+/// Convert a list of assumptions into a `ConditionSet`.
+pub fn assumptions_to_condition_set(
+    assumptions: &[LogAssumption],
+    base: ExprId,
+    rhs: ExprId,
+) -> ConditionSet {
+    let predicates: Vec<ConditionPredicate> = assumptions
+        .iter()
+        .map(|a| assumption_to_condition_predicate(*a, base, rhs))
+        .collect();
+    ConditionSet::from_predicates(predicates)
+}
+
 /// Classify a logarithmic solve step using only proof states and domain mode.
 ///
 /// This function is intentionally context-free and does not inspect AST nodes.
@@ -140,3 +165,4 @@ mod tests {
         assert!(matches!(d, LogSolveDecision::Unsupported(_, _)));
     }
 }
+use cas_ast::{ConditionPredicate, ConditionSet, ExprId};
