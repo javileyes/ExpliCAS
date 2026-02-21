@@ -5,7 +5,6 @@ use cas_ast::{Context, ExprId, SolutionSet};
 use crate::build::mul2_raw;
 use crate::engine::Simplifier;
 use crate::error::CasError;
-use crate::solver::isolation::contains_var;
 use crate::solver::SolveStep;
 
 /// Verify a candidate solution by substitution into the original equation.
@@ -31,19 +30,7 @@ pub(crate) fn verify_solution(
 /// Symbolic expressions cannot be verified by substitution because they don't
 /// simplify to pure numbers. Examples: ln(c/d)/ln(a/b), x + a, sqrt(y)
 pub(crate) fn is_symbolic_expr(ctx: &Context, expr: ExprId) -> bool {
-    use cas_ast::Expr;
-    match ctx.get(expr) {
-        Expr::Number(_) => false,
-        Expr::Constant(_) => true, // Pi, E, etc are symbolic
-        Expr::Variable(_) => true,
-        Expr::Function(_, _) => true,
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
-            is_symbolic_expr(ctx, *l) || is_symbolic_expr(ctx, *r)
-        }
-        Expr::Neg(e) | Expr::Hold(e) => is_symbolic_expr(ctx, *e),
-        Expr::Matrix { data, .. } => data.iter().any(|d| is_symbolic_expr(ctx, *d)),
-        Expr::SessionRef(_) => true, // Unresolved reference — treat as symbolic
-    }
+    cas_solver_core::solve_analysis::is_symbolic_expr(ctx, expr)
 }
 
 /// Substitute a variable with a value expression throughout the AST.
@@ -161,50 +148,7 @@ pub(crate) fn substitute(ctx: &mut Context, expr: ExprId, var: &str, val: ExprId
 ///
 /// Example: `(x*y)/x` returns `[x]` (the denominator x contains var "x")
 pub(crate) fn extract_denominators_with_var(ctx: &Context, expr: ExprId, var: &str) -> Vec<ExprId> {
-    use std::collections::HashSet;
-    let mut denoms_set: HashSet<ExprId> = HashSet::new();
-    collect_denominators_into_set(ctx, expr, var, &mut denoms_set);
-    denoms_set.into_iter().collect()
-}
-
-/// Helper to recursively collect denominators into a HashSet
-fn collect_denominators_into_set(
-    ctx: &Context,
-    expr: ExprId,
-    var: &str,
-    denoms: &mut std::collections::HashSet<ExprId>,
-) {
-    use cas_ast::Expr;
-    match ctx.get(expr) {
-        Expr::Div(num, denom) => {
-            // Check if denominator contains the variable
-            if contains_var(ctx, *denom, var) {
-                denoms.insert(*denom);
-            }
-            // Also check for nested divisions in numerator and denominator
-            collect_denominators_into_set(ctx, *num, var, denoms);
-            collect_denominators_into_set(ctx, *denom, var, denoms);
-        }
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Pow(l, r) => {
-            collect_denominators_into_set(ctx, *l, var, denoms);
-            collect_denominators_into_set(ctx, *r, var, denoms);
-        }
-        Expr::Neg(e) | Expr::Hold(e) => {
-            collect_denominators_into_set(ctx, *e, var, denoms);
-        }
-        Expr::Function(_, args) => {
-            for arg in args {
-                collect_denominators_into_set(ctx, *arg, var, denoms);
-            }
-        }
-        Expr::Matrix { data, .. } => {
-            for elem in data {
-                collect_denominators_into_set(ctx, *elem, var, denoms);
-            }
-        }
-        // Leaves — no children to collect from
-        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
-    }
+    cas_solver_core::solve_analysis::extract_denominators_with_var(ctx, expr, var)
 }
 
 /// V2.1 Issue #10: Wrap a solve result with domain guards for denominators.
@@ -222,18 +166,7 @@ pub(crate) fn wrap_with_domain_guards(
     }
 
     let (solution_set, steps) = result?;
-
-    // Build the NonZero guard condition set
-    let mut guard = cas_ast::ConditionSet::empty();
-    for &denom in exclusions {
-        guard.push(cas_ast::ConditionPredicate::NonZero(denom));
-    }
-
-    // Wrap in Conditional: [guard -> solution, otherwise -> Empty (undefined)]
-    let cases = vec![
-        cas_ast::Case::new(guard, solution_set),
-        cas_ast::Case::new(cas_ast::ConditionSet::empty(), SolutionSet::Empty),
-    ];
-
-    Ok((SolutionSet::Conditional(cases).simplify(), steps))
+    let guarded =
+        cas_solver_core::solve_analysis::apply_nonzero_exclusion_guards(solution_set, exclusions);
+    Ok((guarded, steps))
 }
