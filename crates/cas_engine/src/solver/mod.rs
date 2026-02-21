@@ -6,13 +6,12 @@ pub mod log_linear_narrator;
 pub(crate) mod numeric_islands;
 pub mod quadratic_steps;
 pub mod reciprocal_solve;
-pub mod solution_set;
 pub mod solve_core;
 pub mod step_cleanup;
 pub mod strategies;
 pub mod strategy;
 pub mod utilities;
-pub mod verify_stats;
+pub use cas_solver_core::verify_stats;
 
 #[cfg(test)]
 use crate::engine::Simplifier;

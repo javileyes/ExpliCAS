@@ -2,11 +2,11 @@ use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::ordering::compare_expr;
 use crate::solver::contains_var;
-use crate::solver::solution_set::{compare_values, neg_inf, pos_inf};
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{BoundType, Context, Equation, Expr, ExprId, Interval, RelOp, SolutionSet};
+use cas_solver_core::solution_set::{compare_values, get_number, neg_inf, pos_inf};
 use num_rational::BigRational;
 use num_traits::{Signed, Zero};
 use std::cmp::Ordering;
@@ -208,9 +208,9 @@ impl SolverStrategy for QuadraticStrategy {
             }
 
             // Check if coefficients are all numeric to support inequalities
-            let a_num = crate::solver::solution_set::get_number(&simplifier.context, sim_a);
-            let b_num = crate::solver::solution_set::get_number(&simplifier.context, sim_b);
-            let c_num = crate::solver::solution_set::get_number(&simplifier.context, sim_c);
+            let a_num = get_number(&simplifier.context, sim_a);
+            let b_num = get_number(&simplifier.context, sim_b);
+            let c_num = get_number(&simplifier.context, sim_c);
 
             if let (Some(a_val), Some(b_val), Some(c_val)) = (a_num, b_num, c_num) {
                 // Use numeric logic for better inequality support

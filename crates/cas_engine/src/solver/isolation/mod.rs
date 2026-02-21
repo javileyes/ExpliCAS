@@ -3,10 +3,10 @@ mod functions;
 mod power;
 
 use crate::engine::Simplifier;
-use crate::solver::solution_set::{neg_inf, pos_inf};
 use crate::solver::{SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
 use cas_ast::{BoundType, Equation, Expr, ExprId, Interval, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
+use cas_solver_core::solution_set::{neg_inf, pos_inf};
 
 use crate::error::CasError;
 

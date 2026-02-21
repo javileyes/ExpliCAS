@@ -5,6 +5,7 @@ use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
     contains_var, flip_inequality, is_known_negative, mk_residual_solve,
 };
+use cas_solver_core::solution_set::get_number;
 use num_traits::Zero;
 
 use super::{isolate, prepend_steps};
@@ -47,7 +48,7 @@ fn isolate_pow_base(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // Check if exponent is an even integer
-    let is_even = if let Some(n) = crate::solver::solution_set::get_number(&simplifier.context, e) {
+    let is_even = if let Some(n) = get_number(&simplifier.context, e) {
         n.is_integer() && (n.to_integer() % 2 == 0.into())
     } else {
         false

@@ -78,14 +78,14 @@ pub fn verify_solution(
     // then re-simplify with Strict.  This lets expressions like `sqrt(2)/sqrt(2)`
     // reduce without leaving Strict mode.
     if contains_variable(&simplifier.context, strict_result) {
-        super::verify_stats::record_attempted();
+        cas_solver_core::verify_stats::record_attempted();
         let folded =
             super::numeric_islands::fold_numeric_islands(&mut simplifier.context, strict_result);
         if folded != strict_result {
-            super::verify_stats::record_changed();
+            cas_solver_core::verify_stats::record_changed();
             let (folded_result, _, _) = simplifier.simplify_with_stats(folded, strict_opts);
             if matches!(simplifier.context.get(folded_result), Expr::Number(n) if n.is_zero()) {
-                super::verify_stats::record_verified();
+                cas_solver_core::verify_stats::record_verified();
                 return VerifyStatus::Verified;
             }
         }

@@ -1,12 +1,12 @@
 use crate::engine::Simplifier;
 use crate::error::CasError;
-use crate::solver::solution_set::{intersect_solution_sets, union_solution_sets};
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
 use cas_ast::{
     BuiltinFn, Case, ConditionPredicate, ConditionSet, Equation, Expr, ExprId, RelOp, SolutionSet,
 };
 use cas_solver_core::isolation_utils::contains_var;
+use cas_solver_core::solution_set::{intersect_solution_sets, union_solution_sets};
 
 use super::{isolate, prepend_steps, simplify_rhs};
 

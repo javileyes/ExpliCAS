@@ -203,7 +203,7 @@ fn try_fold_island(ctx: &mut Context, id: ExprId) -> ExprId {
     // Check size/depth limits (dedup count)
     let (node_count, depth) = count_nodes_dedup(ctx, id);
     if node_count > MAX_ISLAND_NODES || depth > MAX_ISLAND_DEPTH {
-        super::verify_stats::record_skipped_limits();
+        cas_solver_core::verify_stats::record_skipped_limits();
         return id;
     }
 

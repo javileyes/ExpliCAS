@@ -1,10 +1,12 @@
 use crate::engine::Simplifier;
 use crate::error::CasError;
-use crate::solver::solution_set::{intersect_solution_sets, neg_inf, pos_inf, union_solution_sets};
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::{BoundType, Equation, Expr, ExprId, Interval, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{contains_var, flip_inequality, is_known_negative};
+use cas_solver_core::solution_set::{
+    intersect_solution_sets, neg_inf, pos_inf, union_solution_sets,
+};
 use num_traits::Zero;
 
 use super::{isolate, prepend_steps};
