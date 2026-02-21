@@ -166,30 +166,21 @@ impl SolverStrategy for RationalRootsStrategy {
                 roots.push(sim_root);
             } else if discriminant.is_positive() {
                 // Two real roots — compute symbolically for cleaner output
-                let neg_b = cas_solver_core::rational_roots::rational_to_expr(
-                    &mut simplifier.context,
-                    &(-b.clone()),
-                );
+                let a_expr =
+                    cas_solver_core::rational_roots::rational_to_expr(&mut simplifier.context, a);
                 let disc_expr = cas_solver_core::rational_roots::rational_to_expr(
                     &mut simplifier.context,
                     &discriminant,
                 );
-                let two_a = cas_solver_core::rational_roots::rational_to_expr(
+                let b_expr =
+                    cas_solver_core::rational_roots::rational_to_expr(&mut simplifier.context, b);
+                let (sol1, sol2) = cas_solver_core::quadratic_formula::roots_from_a_b_delta(
                     &mut simplifier.context,
-                    &(BigRational::from_integer(2.into()) * a.clone()),
+                    a_expr,
+                    b_expr,
+                    disc_expr,
                 );
-
-                let one = simplifier.context.num(1);
-                let two = simplifier.context.num(2);
-                let half = simplifier.context.add(Expr::Div(one, two));
-                let sqrt_disc = simplifier.context.add(Expr::Pow(disc_expr, half));
-
-                let num1 = simplifier.context.add(Expr::Sub(neg_b, sqrt_disc));
-                let sol1 = simplifier.context.add(Expr::Div(num1, two_a));
                 let (sim1, _) = simplifier.simplify(sol1);
-
-                let num2 = simplifier.context.add(Expr::Add(neg_b, sqrt_disc));
-                let sol2 = simplifier.context.add(Expr::Div(num2, two_a));
                 let (sim2, _) = simplifier.simplify(sol2);
 
                 roots.push(sim1);

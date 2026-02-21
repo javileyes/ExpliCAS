@@ -4,9 +4,12 @@ use crate::ordering::compare_expr;
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
-use cas_ast::{BoundType, Equation, Expr, Interval, RelOp, SolutionSet};
+use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{contains_var, is_numeric_zero, split_zero_product_factors};
-use cas_solver_core::solution_set::{compare_values, get_number, neg_inf, pos_inf};
+use cas_solver_core::quadratic_formula::{
+    roots_from_a_b_and_sqrt, roots_from_a_b_delta, sqrt_expr,
+};
+use cas_solver_core::solution_set::{compare_values, get_number, quadratic_numeric_solution};
 use num_rational::BigRational;
 use num_traits::Zero;
 use std::cmp::Ordering;
@@ -204,26 +207,9 @@ impl SolverStrategy for QuadraticStrategy {
                 // We need to return solutions in terms of Expr
                 // x = (-b +/- sqrt(delta)) / 2a
 
-                let neg_b = -b_val;
-                let two_a = BigRational::from_integer(2.into()) * a_val.clone();
-
                 let delta_expr = simplifier.context.add(Expr::Number(delta.clone()));
-                let neg_b_expr = simplifier.context.add(Expr::Number(neg_b));
-                let two_a_expr = simplifier.context.add(Expr::Number(two_a));
-
-                // sqrt(delta)
-                let one = simplifier.context.num(1);
-                let two = simplifier.context.num(2);
-                let half = simplifier.context.add(Expr::Div(one, two));
-                let sqrt_delta = simplifier.context.add(Expr::Pow(delta_expr, half));
-
-                // x1 = (-b - sqrt(delta)) / 2a (Smaller root if a > 0)
-                let num1 = simplifier.context.add(Expr::Sub(neg_b_expr, sqrt_delta));
-                let sol1 = simplifier.context.add(Expr::Div(num1, two_a_expr));
-
-                // x2 = (-b + sqrt(delta)) / 2a (Larger root if a > 0)
-                let num2 = simplifier.context.add(Expr::Add(neg_b_expr, sqrt_delta));
-                let sol2 = simplifier.context.add(Expr::Div(num2, two_a_expr));
+                let (sol1, sol2) =
+                    roots_from_a_b_delta(&mut simplifier.context, sim_a, sim_b, delta_expr);
 
                 let (sim_sol1, _) = simplifier.simplify(sol1);
                 let (sim_sol2, _) = simplifier.simplify(sol2);
@@ -240,245 +226,14 @@ impl SolverStrategy for QuadraticStrategy {
                 // Determine parabola direction
                 let opens_up = a_val > BigRational::zero();
 
-                // Helper for intervals
-                let mk_interval = |min, min_type, max, max_type| {
-                    SolutionSet::Continuous(Interval {
-                        min,
-                        min_type,
-                        max,
-                        max_type,
-                    })
-                };
-
-                let result = if delta > BigRational::zero() {
-                    // Two distinct roots r1 < r2
-                    match eq.op {
-                        RelOp::Eq => SolutionSet::Discrete(vec![r1, r2]),
-                        RelOp::Neq => {
-                            // (-inf, r1) U (r1, r2) U (r2, inf)
-                            let i1 = Interval {
-                                min: neg_inf(&mut simplifier.context),
-                                min_type: BoundType::Open,
-                                max: r1,
-                                max_type: BoundType::Open,
-                            };
-                            let i2 = Interval {
-                                min: r1,
-                                min_type: BoundType::Open,
-                                max: r2,
-                                max_type: BoundType::Open,
-                            };
-                            let i3 = Interval {
-                                min: r2,
-                                min_type: BoundType::Open,
-                                max: pos_inf(&mut simplifier.context),
-                                max_type: BoundType::Open,
-                            };
-                            SolutionSet::Union(vec![i1, i2, i3])
-                        }
-                        RelOp::Lt => {
-                            if opens_up {
-                                // Parabola < 0 between roots: (r1, r2)
-                                mk_interval(r1, BoundType::Open, r2, BoundType::Open)
-                            } else {
-                                // Parabola < 0 outside roots: (-inf, r1) U (r2, inf)
-                                let i1 = Interval {
-                                    min: neg_inf(&mut simplifier.context),
-                                    min_type: BoundType::Open,
-                                    max: r1,
-                                    max_type: BoundType::Open,
-                                };
-                                let i2 = Interval {
-                                    min: r2,
-                                    min_type: BoundType::Open,
-                                    max: pos_inf(&mut simplifier.context),
-                                    max_type: BoundType::Open,
-                                };
-                                SolutionSet::Union(vec![i1, i2])
-                            }
-                        }
-                        RelOp::Leq => {
-                            if opens_up {
-                                // [r1, r2]
-                                mk_interval(r1, BoundType::Closed, r2, BoundType::Closed)
-                            } else {
-                                // (-inf, r1] U [r2, inf)
-                                let i1 = Interval {
-                                    min: neg_inf(&mut simplifier.context),
-                                    min_type: BoundType::Open,
-                                    max: r1,
-                                    max_type: BoundType::Closed,
-                                };
-                                let i2 = Interval {
-                                    min: r2,
-                                    min_type: BoundType::Closed,
-                                    max: pos_inf(&mut simplifier.context),
-                                    max_type: BoundType::Open,
-                                };
-                                SolutionSet::Union(vec![i1, i2])
-                            }
-                        }
-                        RelOp::Gt => {
-                            if opens_up {
-                                // Parabola > 0 outside roots: (-inf, r1) U (r2, inf)
-                                let i1 = Interval {
-                                    min: neg_inf(&mut simplifier.context),
-                                    min_type: BoundType::Open,
-                                    max: r1,
-                                    max_type: BoundType::Open,
-                                };
-                                let i2 = Interval {
-                                    min: r2,
-                                    min_type: BoundType::Open,
-                                    max: pos_inf(&mut simplifier.context),
-                                    max_type: BoundType::Open,
-                                };
-                                SolutionSet::Union(vec![i1, i2])
-                            } else {
-                                // Parabola > 0 between roots: (r1, r2)
-                                mk_interval(r1, BoundType::Open, r2, BoundType::Open)
-                            }
-                        }
-                        RelOp::Geq => {
-                            if opens_up {
-                                // (-inf, r1] U [r2, inf)
-                                let i1 = Interval {
-                                    min: neg_inf(&mut simplifier.context),
-                                    min_type: BoundType::Open,
-                                    max: r1,
-                                    max_type: BoundType::Closed,
-                                };
-                                let i2 = Interval {
-                                    min: r2,
-                                    min_type: BoundType::Closed,
-                                    max: pos_inf(&mut simplifier.context),
-                                    max_type: BoundType::Open,
-                                };
-                                SolutionSet::Union(vec![i1, i2])
-                            } else {
-                                // [r1, r2]
-                                mk_interval(r1, BoundType::Closed, r2, BoundType::Closed)
-                            }
-                        }
-                    }
-                } else if delta == BigRational::zero() {
-                    // One repeated root r1
-                    match eq.op {
-                        RelOp::Eq => SolutionSet::Discrete(vec![r1]),
-                        RelOp::Neq => {
-                            // (-inf, r1) U (r1, inf)
-                            let i1 = Interval {
-                                min: neg_inf(&mut simplifier.context),
-                                min_type: BoundType::Open,
-                                max: r1,
-                                max_type: BoundType::Open,
-                            };
-                            let i2 = Interval {
-                                min: r1,
-                                min_type: BoundType::Open,
-                                max: pos_inf(&mut simplifier.context),
-                                max_type: BoundType::Open,
-                            };
-                            SolutionSet::Union(vec![i1, i2])
-                        }
-                        RelOp::Lt => {
-                            if opens_up {
-                                // (x-r)^2 < 0 -> Empty
-                                SolutionSet::Empty
-                            } else {
-                                // -(x-r)^2 < 0 -> All Reals except r
-                                let i1 = Interval {
-                                    min: neg_inf(&mut simplifier.context),
-                                    min_type: BoundType::Open,
-                                    max: r1,
-                                    max_type: BoundType::Open,
-                                };
-                                let i2 = Interval {
-                                    min: r1,
-                                    min_type: BoundType::Open,
-                                    max: pos_inf(&mut simplifier.context),
-                                    max_type: BoundType::Open,
-                                };
-                                SolutionSet::Union(vec![i1, i2])
-                            }
-                        }
-                        RelOp::Leq => {
-                            if opens_up {
-                                // (x-r)^2 <= 0 -> x = r
-                                SolutionSet::Discrete(vec![r1])
-                            } else {
-                                // -(x-r)^2 <= 0 -> All Reals
-                                SolutionSet::AllReals
-                            }
-                        }
-                        RelOp::Gt => {
-                            if opens_up {
-                                // (x-r)^2 > 0 -> All Reals except r
-                                let i1 = Interval {
-                                    min: neg_inf(&mut simplifier.context),
-                                    min_type: BoundType::Open,
-                                    max: r1,
-                                    max_type: BoundType::Open,
-                                };
-                                let i2 = Interval {
-                                    min: r1,
-                                    min_type: BoundType::Open,
-                                    max: pos_inf(&mut simplifier.context),
-                                    max_type: BoundType::Open,
-                                };
-                                SolutionSet::Union(vec![i1, i2])
-                            } else {
-                                // -(x-r)^2 > 0 -> Empty
-                                SolutionSet::Empty
-                            }
-                        }
-                        RelOp::Geq => {
-                            if opens_up {
-                                // (x-r)^2 >= 0 -> All Reals
-                                SolutionSet::AllReals
-                            } else {
-                                // -(x-r)^2 >= 0 -> x = r
-                                SolutionSet::Discrete(vec![r1])
-                            }
-                        }
-                    }
-                } else {
-                    // delta < 0, no real roots
-                    // Parabola is always positive (if a > 0) or always negative (if a < 0)
-                    let always_pos = opens_up;
-                    match eq.op {
-                        RelOp::Eq => SolutionSet::Empty,
-                        RelOp::Neq => SolutionSet::AllReals,
-                        RelOp::Lt => {
-                            if always_pos {
-                                SolutionSet::Empty
-                            } else {
-                                SolutionSet::AllReals
-                            }
-                        }
-                        RelOp::Leq => {
-                            if always_pos {
-                                SolutionSet::Empty
-                            } else {
-                                SolutionSet::AllReals
-                            }
-                        }
-                        RelOp::Gt => {
-                            if always_pos {
-                                SolutionSet::AllReals
-                            } else {
-                                SolutionSet::Empty
-                            }
-                        }
-                        RelOp::Geq => {
-                            if always_pos {
-                                SolutionSet::AllReals
-                            } else {
-                                SolutionSet::Empty
-                            }
-                        }
-                    }
-                };
+                let result = quadratic_numeric_solution(
+                    &mut simplifier.context,
+                    eq.op.clone(),
+                    &delta,
+                    opens_up,
+                    r1,
+                    r2,
+                );
 
                 // Emit scope for display transforms (sqrt display in quadratic context)
                 crate::solver::emit_scope(cas_formatter::display_transforms::ScopeTag::Rule(
@@ -505,13 +260,7 @@ impl SolverStrategy for QuadraticStrategy {
 
             // x = (-b +/- sqrt(delta)) / 2a
 
-            let neg_b = simplifier.context.add(Expr::Neg(sim_b));
-            let two = simplifier.context.num(2);
-            let two_a = simplifier.context.add(Expr::Mul(two, sim_a));
-
-            let one = simplifier.context.num(1);
-            let half = simplifier.context.add(Expr::Div(one, two));
-            let sqrt_delta_raw = simplifier.context.add(Expr::Pow(sim_delta, half));
+            let sqrt_delta_raw = sqrt_expr(&mut simplifier.context, sim_delta);
 
             // POST-SIMPLIFY: Pull perfect square numeric factors from sqrt
             // This converts sqrt(4*y) → 2*sqrt(y)
@@ -520,13 +269,8 @@ impl SolverStrategy for QuadraticStrategy {
                 sqrt_delta_raw,
             );
 
-            // x1 = (-b - sqrt(delta)) / 2a
-            let num1 = simplifier.context.add(Expr::Sub(neg_b, sqrt_delta));
-            let sol1_raw = simplifier.context.add(Expr::Div(num1, two_a));
-
-            // x2 = (-b + sqrt(delta)) / 2a
-            let num2 = simplifier.context.add(Expr::Add(neg_b, sqrt_delta));
-            let sol2_raw = simplifier.context.add(Expr::Div(num2, two_a));
+            let (sol1_raw, sol2_raw) =
+                roots_from_a_b_and_sqrt(&mut simplifier.context, sim_a, sim_b, sqrt_delta);
 
             // POST-SIMPLIFY: Expand and simplify solutions for cleaner form
             // This converts "(4 ± 2*sqrt(y)) / 2" → "2 ± sqrt(y)"

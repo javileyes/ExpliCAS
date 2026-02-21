@@ -1,5 +1,6 @@
 use cas_ast::{BoundType, Constant, Context, Expr, ExprId, Interval, RelOp, SolutionSet};
 use num_rational::BigRational;
+use num_traits::Zero;
 use std::cmp::Ordering;
 
 // Helper to create -infinity
@@ -133,6 +134,146 @@ pub fn open_negative_domain(ctx: &mut Context) -> SolutionSet {
         max: ctx.num(0),
         max_type: BoundType::Open,
     })
+}
+
+fn interval(min: ExprId, min_type: BoundType, max: ExprId, max_type: BoundType) -> Interval {
+    Interval {
+        min,
+        min_type,
+        max,
+        max_type,
+    }
+}
+
+fn open_interval(min: ExprId, max: ExprId) -> SolutionSet {
+    SolutionSet::Continuous(interval(min, BoundType::Open, max, BoundType::Open))
+}
+
+fn closed_interval(min: ExprId, max: ExprId) -> SolutionSet {
+    SolutionSet::Continuous(interval(min, BoundType::Closed, max, BoundType::Closed))
+}
+
+fn except_point(ctx: &mut Context, point: ExprId) -> SolutionSet {
+    SolutionSet::Union(vec![
+        interval(neg_inf(ctx), BoundType::Open, point, BoundType::Open),
+        interval(point, BoundType::Open, pos_inf(ctx), BoundType::Open),
+    ])
+}
+
+fn outside_roots(
+    ctx: &mut Context,
+    r1: ExprId,
+    r2: ExprId,
+    left_root_type: BoundType,
+    right_root_type: BoundType,
+) -> SolutionSet {
+    SolutionSet::Union(vec![
+        interval(neg_inf(ctx), BoundType::Open, r1, left_root_type),
+        interval(r2, right_root_type, pos_inf(ctx), BoundType::Open),
+    ])
+}
+
+/// Build solution sets for numeric quadratic relations `a*x^2 + b*x + c <op> 0`.
+///
+/// Assumes `r1 <= r2` when `delta > 0`. For `delta == 0`, `r1` is the repeated root.
+pub fn quadratic_numeric_solution(
+    ctx: &mut Context,
+    op: RelOp,
+    delta: &BigRational,
+    opens_up: bool,
+    r1: ExprId,
+    r2: ExprId,
+) -> SolutionSet {
+    if delta > &BigRational::zero() {
+        match op {
+            RelOp::Eq => SolutionSet::Discrete(vec![r1, r2]),
+            RelOp::Neq => SolutionSet::Union(vec![
+                interval(neg_inf(ctx), BoundType::Open, r1, BoundType::Open),
+                interval(r1, BoundType::Open, r2, BoundType::Open),
+                interval(r2, BoundType::Open, pos_inf(ctx), BoundType::Open),
+            ]),
+            RelOp::Lt => {
+                if opens_up {
+                    open_interval(r1, r2)
+                } else {
+                    outside_roots(ctx, r1, r2, BoundType::Open, BoundType::Open)
+                }
+            }
+            RelOp::Leq => {
+                if opens_up {
+                    closed_interval(r1, r2)
+                } else {
+                    outside_roots(ctx, r1, r2, BoundType::Closed, BoundType::Closed)
+                }
+            }
+            RelOp::Gt => {
+                if opens_up {
+                    outside_roots(ctx, r1, r2, BoundType::Open, BoundType::Open)
+                } else {
+                    open_interval(r1, r2)
+                }
+            }
+            RelOp::Geq => {
+                if opens_up {
+                    outside_roots(ctx, r1, r2, BoundType::Closed, BoundType::Closed)
+                } else {
+                    closed_interval(r1, r2)
+                }
+            }
+        }
+    } else if delta.is_zero() {
+        match op {
+            RelOp::Eq => SolutionSet::Discrete(vec![r1]),
+            RelOp::Neq => except_point(ctx, r1),
+            RelOp::Lt => {
+                if opens_up {
+                    SolutionSet::Empty
+                } else {
+                    except_point(ctx, r1)
+                }
+            }
+            RelOp::Leq => {
+                if opens_up {
+                    SolutionSet::Discrete(vec![r1])
+                } else {
+                    SolutionSet::AllReals
+                }
+            }
+            RelOp::Gt => {
+                if opens_up {
+                    except_point(ctx, r1)
+                } else {
+                    SolutionSet::Empty
+                }
+            }
+            RelOp::Geq => {
+                if opens_up {
+                    SolutionSet::AllReals
+                } else {
+                    SolutionSet::Discrete(vec![r1])
+                }
+            }
+        }
+    } else {
+        match op {
+            RelOp::Eq => SolutionSet::Empty,
+            RelOp::Neq => SolutionSet::AllReals,
+            RelOp::Lt | RelOp::Leq => {
+                if opens_up {
+                    SolutionSet::Empty
+                } else {
+                    SolutionSet::AllReals
+                }
+            }
+            RelOp::Gt | RelOp::Geq => {
+                if opens_up {
+                    SolutionSet::AllReals
+                } else {
+                    SolutionSet::Empty
+                }
+            }
+        }
+    }
 }
 
 pub fn intersect_intervals(ctx: &Context, i1: &Interval, i2: &Interval) -> SolutionSet {
@@ -460,5 +601,51 @@ mod tests {
             }
             other => panic!("Expected continuous interval, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_quadratic_numeric_solution_delta_positive_eq() {
+        let mut ctx = Context::new();
+        let r1 = ctx.num(1);
+        let r2 = ctx.num(3);
+        let delta = BigRational::from_integer(4.into());
+        let set = quadratic_numeric_solution(&mut ctx, RelOp::Eq, &delta, true, r1, r2);
+        assert!(matches!(set, SolutionSet::Discrete(v) if v == vec![r1, r2]));
+    }
+
+    #[test]
+    fn test_quadratic_numeric_solution_delta_positive_lt_opens_up() {
+        let mut ctx = Context::new();
+        let r1 = ctx.num(1);
+        let r2 = ctx.num(3);
+        let delta = BigRational::from_integer(4.into());
+        let set = quadratic_numeric_solution(&mut ctx, RelOp::Lt, &delta, true, r1, r2);
+        match set {
+            SolutionSet::Continuous(i) => {
+                assert_eq!(get_number(&ctx, i.min).unwrap().to_integer(), 1.into());
+                assert_eq!(get_number(&ctx, i.max).unwrap().to_integer(), 3.into());
+                assert_eq!(i.min_type, BoundType::Open);
+                assert_eq!(i.max_type, BoundType::Open);
+            }
+            other => panic!("Expected continuous interval, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_quadratic_numeric_solution_delta_zero_geq_opens_down() {
+        let mut ctx = Context::new();
+        let r = ctx.num(2);
+        let delta = BigRational::zero();
+        let set = quadratic_numeric_solution(&mut ctx, RelOp::Geq, &delta, false, r, r);
+        assert!(matches!(set, SolutionSet::Discrete(v) if v == vec![r]));
+    }
+
+    #[test]
+    fn test_quadratic_numeric_solution_delta_negative_gt_opens_down() {
+        let mut ctx = Context::new();
+        let r = ctx.num(0);
+        let delta = -BigRational::from_integer(1.into());
+        let set = quadratic_numeric_solution(&mut ctx, RelOp::Gt, &delta, false, r, r);
+        assert!(matches!(set, SolutionSet::Empty));
     }
 }
