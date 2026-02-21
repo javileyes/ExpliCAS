@@ -5,11 +5,11 @@
 
 use super::SolveDiagnostics;
 use cas_ast::{ExprId, SolutionSet};
+use cas_solver_core::isolation_utils::contains_var;
 use std::collections::HashSet;
 
 use crate::engine::Simplifier;
 use crate::error::CasError;
-use crate::solver::contains_var;
 use crate::solver::strategies::{
     CollectTermsStrategy, IsolationStrategy, QuadraticStrategy, RationalExponentStrategy,
     RationalRootsStrategy, SubstitutionStrategy, UnwrapStrategy,

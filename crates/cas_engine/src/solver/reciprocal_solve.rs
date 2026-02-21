@@ -7,10 +7,11 @@
 //! Example: `1/R = 1/R1 + 1/R2` → `R = R1·R2/(R1+R2)`
 
 use cas_ast::{Equation, Expr, ExprId, RelOp};
+use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::linear_solution::NonZeroStatus;
 
 use crate::engine::Simplifier;
-use crate::solver::{contains_var, SolveStep};
+use crate::solver::SolveStep;
 
 /// Try to solve `1/var = expr` using pedagogical steps.
 ///

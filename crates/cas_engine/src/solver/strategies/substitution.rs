@@ -1,10 +1,10 @@
 use crate::engine::Simplifier;
 use crate::error::CasError;
-use crate::solver::contains_var;
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, RelOp, SolutionSet};
+use cas_solver_core::isolation_utils::contains_var;
 
 pub struct SubstitutionStrategy;
 

@@ -414,7 +414,7 @@ fn try_extract_x_coefficient(ctx: &Context, expr: ExprId) -> Option<ExprId> {
 
 /// Check if expression contains a specific variable
 fn expr_contains_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
-    use crate::solver::contains_var;
+    use cas_solver_core::isolation_utils::contains_var;
     contains_var(ctx, expr, var)
 }
 

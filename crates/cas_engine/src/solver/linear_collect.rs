@@ -10,12 +10,12 @@
 //! 3. Solve: P = A / (1 + r*t)  [guard: 1 + r*t ≠ 0]
 
 use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
+use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::linear_solution::{build_linear_solution_set, NonZeroStatus};
 use cas_solver_core::linear_terms::{build_sum, split_linear_term, TermClass};
 
 use crate::engine::Simplifier;
 use crate::nary::{add_terms_signed, Sign};
-use crate::solver::contains_var;
 use crate::solver::SolveStep;
 
 fn proof_to_nonzero_status(proof: crate::domain::Proof) -> NonZeroStatus {

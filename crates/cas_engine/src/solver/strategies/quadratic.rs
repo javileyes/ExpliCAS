@@ -1,11 +1,11 @@
 use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::ordering::compare_expr;
-use crate::solver::contains_var;
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{BoundType, Context, Equation, Expr, ExprId, Interval, RelOp, SolutionSet};
+use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solution_set::{compare_values, get_number, neg_inf, pos_inf};
 use num_rational::BigRational;
 use num_traits::{Signed, Zero};
