@@ -171,6 +171,15 @@ pub fn product_zero_inequality_cases(op: RelOp) -> Option<(SignCaseOps, SignCase
     }
 }
 
+/// For inequality `A / B op C`, returns operators for denominator sign split:
+/// `(op_when_B_positive, op_when_B_negative)`.
+pub fn denominator_sign_case_ops(op: RelOp) -> Option<(RelOp, RelOp)> {
+    match op {
+        RelOp::Lt | RelOp::Gt | RelOp::Leq | RelOp::Geq => Some((op.clone(), flip_inequality(op))),
+        RelOp::Eq | RelOp::Neq => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -302,9 +311,20 @@ mod tests {
         let mut ctx = Context::new();
         let four = ctx.num(4);
         let three = ctx.num(3);
-        let half = ctx.add(Expr::Number(num_rational::BigRational::new(1.into(), 2.into())));
+        let half = ctx.add(Expr::Number(num_rational::BigRational::new(
+            1.into(),
+            2.into(),
+        )));
         assert!(is_even_integer_expr(&ctx, four));
         assert!(!is_even_integer_expr(&ctx, three));
         assert!(!is_even_integer_expr(&ctx, half));
+    }
+
+    #[test]
+    fn test_denominator_sign_case_ops() {
+        let (pos, neg) = denominator_sign_case_ops(RelOp::Leq).expect("expected cases");
+        assert_eq!(pos, RelOp::Leq);
+        assert_eq!(neg, RelOp::Geq);
+        assert!(denominator_sign_case_ops(RelOp::Eq).is_none());
     }
 }
