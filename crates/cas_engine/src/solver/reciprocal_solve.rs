@@ -6,29 +6,11 @@
 //!
 //! Example: `1/R = 1/R1 + 1/R2` → `R = R1·R2/(R1+R2)`
 
-use cas_ast::{Context, Equation, Expr, ExprId, RelOp};
+use cas_ast::{Equation, Expr, ExprId, RelOp};
 use cas_solver_core::linear_solution::NonZeroStatus;
 
 use crate::engine::Simplifier;
 use crate::solver::{contains_var, SolveStep};
-
-/// Check if expr is `1/var` pattern (simple reciprocal of target variable)
-pub(crate) fn is_simple_reciprocal(ctx: &Context, expr: ExprId, var: &str) -> bool {
-    cas_solver_core::isolation_utils::is_simple_reciprocal(ctx, expr, var)
-}
-
-/// Combine multiple fractions into a single fraction (numerator, denominator).
-///
-/// Uses common denominator D = ∏ den_i
-/// Numerator N = Σ (num_i × (D/den_i))
-///
-/// Returns (N, D) after light normalization (canonicalized order).
-pub(crate) fn combine_fractions_deterministic(
-    ctx: &mut Context,
-    expr: ExprId,
-) -> Option<(ExprId, ExprId)> {
-    cas_solver_core::reciprocal::combine_fractions_deterministic(ctx, expr)
-}
 
 /// Try to solve `1/var = expr` using pedagogical steps.
 ///
@@ -41,7 +23,7 @@ pub(crate) fn try_reciprocal_solve(
     simplifier: &mut Simplifier,
 ) -> Option<(crate::solver::SolutionSet, Vec<SolveStep>)> {
     // Check pattern: LHS must be 1/var
-    if !is_simple_reciprocal(&simplifier.context, lhs, var) {
+    if !cas_solver_core::isolation_utils::is_simple_reciprocal(&simplifier.context, lhs, var) {
         return None;
     }
 
@@ -51,7 +33,8 @@ pub(crate) fn try_reciprocal_solve(
     }
 
     // Combine fractions on RHS
-    let (numerator, denominator) = combine_fractions_deterministic(&mut simplifier.context, rhs)?;
+    let (numerator, denominator) =
+        cas_solver_core::reciprocal::combine_fractions_deterministic(&mut simplifier.context, rhs)?;
 
     let mut steps = Vec::new();
 
@@ -132,9 +115,15 @@ mod tests {
         let one = ctx.num(1);
         let reciprocal = ctx.add(Expr::Div(one, r));
 
-        assert!(is_simple_reciprocal(&ctx, reciprocal, "R"));
-        assert!(!is_simple_reciprocal(&ctx, reciprocal, "X"));
-        assert!(!is_simple_reciprocal(&ctx, r, "R"));
+        assert!(cas_solver_core::isolation_utils::is_simple_reciprocal(
+            &ctx, reciprocal, "R"
+        ));
+        assert!(!cas_solver_core::isolation_utils::is_simple_reciprocal(
+            &ctx, reciprocal, "X"
+        ));
+        assert!(!cas_solver_core::isolation_utils::is_simple_reciprocal(
+            &ctx, r, "R"
+        ));
     }
 
     #[test]
@@ -150,7 +139,7 @@ mod tests {
         let frac2 = ctx.add(Expr::Div(one2, r2));
         let sum = ctx.add(Expr::Add(frac1, frac2));
 
-        let result = combine_fractions_deterministic(&mut ctx, sum);
+        let result = cas_solver_core::reciprocal::combine_fractions_deterministic(&mut ctx, sum);
         assert!(result.is_some());
 
         let (num, denom) = result.unwrap();
