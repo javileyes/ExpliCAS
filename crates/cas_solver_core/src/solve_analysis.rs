@@ -17,6 +17,34 @@ pub fn is_symbolic_expr(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
+/// Split discrete solutions into `(symbolic, non_symbolic)` buckets.
+pub fn partition_discrete_symbolic(ctx: &Context, sols: &[ExprId]) -> (Vec<ExprId>, Vec<ExprId>) {
+    let mut symbolic = Vec::new();
+    let mut non_symbolic = Vec::new();
+    for &sol in sols {
+        if is_symbolic_expr(ctx, sol) {
+            symbolic.push(sol);
+        } else {
+            non_symbolic.push(sol);
+        }
+    }
+    (symbolic, non_symbolic)
+}
+
+/// Keep only solutions accepted by a verifier callback.
+pub fn retain_verified_discrete<F>(sols: Vec<ExprId>, mut verify: F) -> Vec<ExprId>
+where
+    F: FnMut(ExprId) -> bool,
+{
+    let mut out = Vec::new();
+    for sol in sols {
+        if verify(sol) {
+            out.push(sol);
+        }
+    }
+    out
+}
+
 /// Extract all denominators that contain the target variable.
 pub fn extract_denominators_with_var(ctx: &Context, expr: ExprId, var: &str) -> Vec<ExprId> {
     let mut denoms_set: HashSet<ExprId> = HashSet::new();
@@ -136,5 +164,29 @@ mod tests {
         let rhs = ctx.add(Expr::Div(one2, x));
         let denoms = collect_unique_denominators_with_var(&ctx, lhs, rhs, "x");
         assert_eq!(denoms.len(), 1);
+    }
+
+    #[test]
+    fn partition_discrete_symbolic_splits_expected() {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let x = ctx.var("x");
+        let (symbolic, non_symbolic) = partition_discrete_symbolic(&ctx, &[two, x]);
+        assert_eq!(symbolic, vec![x]);
+        assert_eq!(non_symbolic, vec![two]);
+    }
+
+    #[test]
+    fn retain_verified_discrete_keeps_only_verified() {
+        let sols = vec![
+            cas_ast::ExprId::from_raw(1),
+            cas_ast::ExprId::from_raw(2),
+            cas_ast::ExprId::from_raw(3),
+        ];
+        let kept = retain_verified_discrete(sols, |id| id.index() % 2 == 1);
+        assert_eq!(
+            kept,
+            vec![cas_ast::ExprId::from_raw(1), cas_ast::ExprId::from_raw(3)]
+        );
     }
 }

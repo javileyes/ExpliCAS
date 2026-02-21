@@ -463,26 +463,23 @@ fn solve_inner(
                         if !strategy.should_verify() {
                             return Ok((SolutionSet::Discrete(sols), steps));
                         }
-                        let mut valid_sols = Vec::new();
-                        for sol in sols {
-                            // Skip verification for symbolic solutions (containing functions/variables)
-                            // These can't be verified by substitution. Examples: ln(c/d)/ln(a/b)
-                            // Only verify pure numeric solutions to catch extraneous roots.
-                            if cas_solver_core::solve_analysis::is_symbolic_expr(
+                        let (mut symbolic_solutions, numeric_solutions) =
+                            cas_solver_core::solve_analysis::partition_discrete_symbolic(
                                 &simplifier.context,
-                                sol,
-                            ) {
-                                // Trust symbolic solutions - can't verify
-                                valid_sols.push(sol);
-                            } else {
-                                // CRITICAL: Verify against ORIGINAL equation, not simplified
-                                // This ensures we reject solutions that cause division by zero
-                                // in the original equation, even if they work in the simplified form
-                                if verify_solution(eq, var, sol, simplifier) {
-                                    valid_sols.push(sol);
-                                }
-                            }
-                        }
+                                &sols,
+                            );
+                        let verified_numeric =
+                            cas_solver_core::solve_analysis::retain_verified_discrete(
+                                numeric_solutions,
+                                |sol| {
+                                    // CRITICAL: Verify against ORIGINAL equation, not simplified
+                                    // This ensures we reject solutions that cause division by zero
+                                    // in the original equation, even if they work in the simplified form
+                                    verify_solution(eq, var, sol, simplifier)
+                                },
+                            );
+                        symbolic_solutions.extend(verified_numeric);
+                        let valid_sols = symbolic_solutions;
                         return Ok((SolutionSet::Discrete(valid_sols), steps));
                     }
                     return Ok((result, steps));
@@ -552,12 +549,10 @@ fn try_solve_rational_exponent(
 
             // Verify solutions against original equation (handles extraneous roots)
             if let SolutionSet::Discrete(sols) = set {
-                let mut valid_sols = Vec::new();
-                for sol in sols {
-                    if verify_solution(eq, var, sol, simplifier) {
-                        valid_sols.push(sol);
-                    }
-                }
+                let valid_sols =
+                    cas_solver_core::solve_analysis::retain_verified_discrete(sols, |sol| {
+                        verify_solution(eq, var, sol, simplifier)
+                    });
                 Some(Ok((SolutionSet::Discrete(valid_sols), steps)))
             } else {
                 Some(Ok((set, steps)))
