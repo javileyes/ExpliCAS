@@ -1,4 +1,3 @@
-use super::pull_square_from_sqrt;
 use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::ordering::compare_expr;
@@ -534,7 +533,10 @@ impl SolverStrategy for QuadraticStrategy {
 
             // POST-SIMPLIFY: Pull perfect square numeric factors from sqrt
             // This converts sqrt(4*y) → 2*sqrt(y)
-            let sqrt_delta = pull_square_from_sqrt(&mut simplifier.context, sqrt_delta_raw);
+            let sqrt_delta = cas_solver_core::quadratic_sqrt::pull_square_from_sqrt(
+                &mut simplifier.context,
+                sqrt_delta_raw,
+            );
 
             // x1 = (-b - sqrt(delta)) / 2a
             let num1 = simplifier.context.add(Expr::Sub(neg_b, sqrt_delta));

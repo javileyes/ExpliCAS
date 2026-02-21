@@ -6,6 +6,7 @@ pub mod linear_solution;
 pub mod linear_terms;
 pub mod log_domain;
 pub mod quadratic_coeffs;
+pub mod quadratic_sqrt;
 pub mod rational_power;
 pub mod reciprocal;
 pub mod solution_set;
