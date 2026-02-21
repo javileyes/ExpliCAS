@@ -5,7 +5,7 @@ use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{BoundType, Context, Equation, Expr, ExprId, Interval, RelOp, SolutionSet};
-use cas_solver_core::isolation_utils::contains_var;
+use cas_solver_core::isolation_utils::{contains_var, is_numeric_zero};
 use cas_solver_core::solution_set::{compare_values, get_number, neg_inf, pos_inf};
 use num_rational::BigRational;
 use num_traits::{Signed, Zero};
@@ -167,10 +167,8 @@ impl SolverStrategy for QuadraticStrategy {
             // If a is zero, it's linear, not quadratic.
             // But if 'a' is symbolic, we might assume it's non-zero or return a conditional solution?
             // For now, if 'a' simplifies to explicit 0, we reject.
-            if let Expr::Number(n) = simplifier.context.get(sim_a) {
-                if n.is_zero() {
-                    return None;
-                }
+            if is_numeric_zero(&simplifier.context, sim_a) {
+                return None;
             }
 
             if simplifier.collect_steps() {
