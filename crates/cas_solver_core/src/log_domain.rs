@@ -33,6 +33,29 @@ pub enum LogSolveDecision {
     Unsupported(&'static str, Vec<LogAssumption>),
 }
 
+/// Terminal handling action for a log-solve decision in solver pipelines.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogTerminalAction {
+    Continue,
+    ReturnEmptySet,
+    ReturnResidualInWildcard,
+}
+
+/// Map a decision to terminal solver action.
+pub fn classify_terminal_action(
+    decision: &LogSolveDecision,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+) -> LogTerminalAction {
+    match decision {
+        LogSolveDecision::EmptySet(_) => LogTerminalAction::ReturnEmptySet,
+        LogSolveDecision::NeedsComplex(_) if mode == DomainModeKind::Assume && wildcard_scope => {
+            LogTerminalAction::ReturnResidualInWildcard
+        }
+        _ => LogTerminalAction::Continue,
+    }
+}
+
 /// Convert one logical assumption into a `ConditionPredicate`.
 pub fn assumption_to_condition_predicate(
     assumption: LogAssumption,
@@ -165,5 +188,26 @@ mod tests {
             ProofStatus::Unknown,
         );
         assert!(matches!(d, LogSolveDecision::Unsupported(_, _)));
+    }
+
+    #[test]
+    fn terminal_action_empty_set() {
+        let d = LogSolveDecision::EmptySet("x");
+        let action = classify_terminal_action(&d, DomainModeKind::Generic, false);
+        assert_eq!(action, LogTerminalAction::ReturnEmptySet);
+    }
+
+    #[test]
+    fn terminal_action_needs_complex_wildcard_assume() {
+        let d = LogSolveDecision::NeedsComplex("x");
+        let action = classify_terminal_action(&d, DomainModeKind::Assume, true);
+        assert_eq!(action, LogTerminalAction::ReturnResidualInWildcard);
+    }
+
+    #[test]
+    fn terminal_action_needs_complex_non_wildcard() {
+        let d = LogSolveDecision::NeedsComplex("x");
+        let action = classify_terminal_action(&d, DomainModeKind::Assume, false);
+        assert_eq!(action, LogTerminalAction::Continue);
     }
 }

@@ -10,7 +10,9 @@ use cas_solver_core::isolation_utils::{
     contains_var, flip_inequality, is_numeric_one, is_positive_integer_expr,
     match_exponential_var_in_base, match_exponential_var_in_exponent,
 };
-use cas_solver_core::log_domain::LogSolveDecision;
+use cas_solver_core::log_domain::{
+    classify_terminal_action, DomainModeKind, LogSolveDecision, LogTerminalAction,
+};
 
 pub struct IsolationStrategy;
 
@@ -92,11 +94,18 @@ fn terminal_exponential_decision_result(
     simplifier: &mut Simplifier,
     opts: &SolverOptions,
 ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-    use crate::domain::DomainMode;
-    use crate::semantics::AssumeScope;
+    let mode = match opts.domain_mode {
+        crate::domain::DomainMode::Strict => DomainModeKind::Strict,
+        crate::domain::DomainMode::Generic => DomainModeKind::Generic,
+        crate::domain::DomainMode::Assume => DomainModeKind::Assume,
+    };
+    let wildcard_scope = opts.assume_scope == crate::semantics::AssumeScope::Wildcard;
 
-    match decision {
-        LogSolveDecision::EmptySet(msg) => {
+    match classify_terminal_action(decision, mode, wildcard_scope) {
+        LogTerminalAction::ReturnEmptySet => {
+            let LogSolveDecision::EmptySet(msg) = decision else {
+                return None;
+            };
             let mut steps = Vec::new();
             if simplifier.collect_steps() {
                 steps.push(SolveStep {
@@ -108,10 +117,10 @@ fn terminal_exponential_decision_result(
             }
             Some(Ok((SolutionSet::Empty, steps)))
         }
-        LogSolveDecision::NeedsComplex(msg)
-            if opts.domain_mode == DomainMode::Assume
-                && opts.assume_scope == AssumeScope::Wildcard =>
-        {
+        LogTerminalAction::ReturnResidualInWildcard => {
+            let LogSolveDecision::NeedsComplex(msg) = decision else {
+                return None;
+            };
             let residual = cas_solver_core::isolation_utils::mk_residual_solve(
                 &mut simplifier.context,
                 eq.lhs,
@@ -129,7 +138,7 @@ fn terminal_exponential_decision_result(
             }
             Some(Ok((SolutionSet::Residual(residual), steps)))
         }
-        _ => None,
+        LogTerminalAction::Continue => None,
     }
 }
 

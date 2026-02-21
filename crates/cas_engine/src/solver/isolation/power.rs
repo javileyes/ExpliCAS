@@ -6,7 +6,9 @@ use cas_solver_core::isolation_utils::{
     apply_sign_flip, contains_var, is_even_integer_expr, is_known_negative, is_numeric_one,
     is_numeric_zero, mk_residual_solve,
 };
-use cas_solver_core::log_domain::{LogAssumption, LogSolveDecision};
+use cas_solver_core::log_domain::{
+    classify_terminal_action, DomainModeKind, LogAssumption, LogSolveDecision, LogTerminalAction,
+};
 use cas_solver_core::solve_outcome::{
     even_power_negative_rhs_outcome, power_base_one_outcome, power_equals_base_symbolic_outcome,
 };
@@ -416,6 +418,46 @@ fn isolate_pow_exponent(
         &ctx.domain_env,
     );
 
+    let mode = match opts.domain_mode {
+        crate::domain::DomainMode::Strict => DomainModeKind::Strict,
+        crate::domain::DomainMode::Generic => DomainModeKind::Generic,
+        crate::domain::DomainMode::Assume => DomainModeKind::Assume,
+    };
+    let wildcard_scope = opts.assume_scope == crate::semantics::AssumeScope::Wildcard;
+
+    match classify_terminal_action(&decision, mode, wildcard_scope) {
+        LogTerminalAction::ReturnEmptySet => {
+            let LogSolveDecision::EmptySet(msg) = decision else {
+                unreachable!("terminal action mismatch: expected EmptySet")
+            };
+            if simplifier.collect_steps() {
+                steps.push(SolveStep {
+                    description: msg.to_string(),
+                    equation_after: Equation { lhs, rhs, op },
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
+            return Ok((SolutionSet::Empty, steps));
+        }
+        LogTerminalAction::ReturnResidualInWildcard => {
+            let LogSolveDecision::NeedsComplex(msg) = decision else {
+                unreachable!("terminal action mismatch: expected NeedsComplex")
+            };
+            let residual = mk_residual_solve(&mut simplifier.context, lhs, rhs, var);
+            if simplifier.collect_steps() {
+                steps.push(SolveStep {
+                    description: format!("{} (residual)", msg),
+                    equation_after: Equation { lhs, rhs, op },
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
+            return Ok((SolutionSet::Residual(residual), steps));
+        }
+        LogTerminalAction::Continue => {}
+    }
+
     match decision {
         LogSolveDecision::Ok => {
             // Base>0 and RHS>0 proven - safe to proceed
@@ -431,33 +473,7 @@ fn isolate_pow_exponent(
                 crate::solver::note_assumption(event);
             }
         }
-        LogSolveDecision::EmptySet(msg) => {
-            if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: msg.to_string(),
-                    equation_after: Equation { lhs, rhs, op },
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-            return Ok((SolutionSet::Empty, steps));
-        }
         LogSolveDecision::NeedsComplex(msg) => {
-            use crate::semantics::AssumeScope;
-            if opts.domain_mode == crate::domain::DomainMode::Assume
-                && opts.assume_scope == AssumeScope::Wildcard
-            {
-                let residual = mk_residual_solve(&mut simplifier.context, lhs, rhs, var);
-                if simplifier.collect_steps() {
-                    steps.push(SolveStep {
-                        description: format!("{} (residual)", msg),
-                        equation_after: Equation { lhs, rhs, op },
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    });
-                }
-                return Ok((SolutionSet::Residual(residual), steps));
-            }
             return Err(CasError::UnsupportedInRealDomain(msg.to_string()));
         }
         LogSolveDecision::Unsupported(msg, missing_conditions) => {
@@ -566,6 +582,7 @@ fn isolate_pow_exponent(
                 }
             }
         }
+        LogSolveDecision::EmptySet(_) => unreachable!("handled by terminal action"),
     }
     // ================================================================
     // End of domain guards
