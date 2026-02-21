@@ -483,6 +483,7 @@ fn solve_inner(
 
     // 4. Try strategies on the simplified equation
     for strategy in strategies {
+        let _strategy_name = strategy.name();
         if let Some(res) = strategy.apply(&simplified_eq, var, simplifier, &opts, &ctx) {
             match res {
                 Ok((result, steps)) => {

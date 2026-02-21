@@ -1,15 +1,15 @@
 pub mod check;
-pub mod domain_guards;
-pub mod isolation;
-pub mod linear_collect;
-pub mod log_linear_narrator;
+pub(crate) mod domain_guards;
+pub(crate) mod isolation;
+pub(crate) mod linear_collect;
+pub(crate) mod log_linear_narrator;
 pub(crate) mod numeric_islands;
-pub mod quadratic_steps;
-pub mod reciprocal_solve;
-pub mod solve_core;
-pub mod step_cleanup;
-pub mod strategies;
-pub mod strategy;
+pub(crate) mod quadratic_steps;
+pub(crate) mod reciprocal_solve;
+pub(crate) mod solve_core;
+pub(crate) mod step_cleanup;
+pub(crate) mod strategies;
+pub(crate) mod strategy;
 pub use cas_solver_core::verify_stats;
 
 #[cfg(test)]
