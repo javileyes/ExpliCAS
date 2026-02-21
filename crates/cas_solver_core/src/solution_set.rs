@@ -1,4 +1,4 @@
-use cas_ast::{BoundType, Constant, Context, Expr, ExprId, Interval, SolutionSet};
+use cas_ast::{BoundType, Constant, Context, Expr, ExprId, Interval, RelOp, SolutionSet};
 use num_rational::BigRational;
 use std::cmp::Ordering;
 
@@ -66,6 +66,53 @@ pub fn compare_values(ctx: &Context, a: ExprId, b: ExprId) -> Ordering {
 
     // Fallback: Use structural comparison if we can't compare values
     cas_ast::ordering::compare_expr(ctx, a, b)
+}
+
+/// Build the solution set obtained after isolating a variable on the LHS:
+/// `var <op> rhs`.
+pub fn isolated_var_solution(ctx: &mut Context, rhs: ExprId, op: RelOp) -> SolutionSet {
+    match op {
+        RelOp::Eq => SolutionSet::Discrete(vec![rhs]),
+        RelOp::Neq => {
+            let i1 = Interval {
+                min: neg_inf(ctx),
+                min_type: BoundType::Open,
+                max: rhs,
+                max_type: BoundType::Open,
+            };
+            let i2 = Interval {
+                min: rhs,
+                min_type: BoundType::Open,
+                max: pos_inf(ctx),
+                max_type: BoundType::Open,
+            };
+            SolutionSet::Union(vec![i1, i2])
+        }
+        RelOp::Lt => SolutionSet::Continuous(Interval {
+            min: neg_inf(ctx),
+            min_type: BoundType::Open,
+            max: rhs,
+            max_type: BoundType::Open,
+        }),
+        RelOp::Gt => SolutionSet::Continuous(Interval {
+            min: rhs,
+            min_type: BoundType::Open,
+            max: pos_inf(ctx),
+            max_type: BoundType::Open,
+        }),
+        RelOp::Leq => SolutionSet::Continuous(Interval {
+            min: neg_inf(ctx),
+            min_type: BoundType::Open,
+            max: rhs,
+            max_type: BoundType::Closed,
+        }),
+        RelOp::Geq => SolutionSet::Continuous(Interval {
+            min: rhs,
+            min_type: BoundType::Closed,
+            max: pos_inf(ctx),
+            max_type: BoundType::Open,
+        }),
+    }
 }
 
 pub fn intersect_intervals(ctx: &Context, i1: &Interval, i2: &Interval) -> SolutionSet {
@@ -339,6 +386,29 @@ mod tests {
             assert_eq!(intervals.len(), 2);
         } else {
             panic!("Expected Union set, got {:?}", union);
+        }
+    }
+
+    #[test]
+    fn test_isolated_var_solution_eq() {
+        let mut ctx = Context::new();
+        let rhs = ctx.num(7);
+        let set = isolated_var_solution(&mut ctx, rhs, RelOp::Eq);
+        assert!(matches!(set, SolutionSet::Discrete(v) if v == vec![rhs]));
+    }
+
+    #[test]
+    fn test_isolated_var_solution_neq() {
+        let mut ctx = Context::new();
+        let rhs = ctx.num(5);
+        let set = isolated_var_solution(&mut ctx, rhs, RelOp::Neq);
+        match set {
+            SolutionSet::Union(intervals) => {
+                assert_eq!(intervals.len(), 2);
+                assert!(is_neg_infinity(&ctx, intervals[0].min));
+                assert!(is_infinity(&ctx, intervals[1].max));
+            }
+            other => panic!("Expected Union, got {:?}", other),
         }
     }
 }

@@ -4,9 +4,9 @@ mod power;
 
 use crate::engine::Simplifier;
 use crate::solver::{SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
-use cas_ast::{BoundType, Equation, Expr, ExprId, Interval, RelOp, SolutionSet};
+use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
-use cas_solver_core::solution_set::{neg_inf, pos_inf};
+use cas_solver_core::solution_set::isolated_var_solution;
 
 use crate::error::CasError;
 
@@ -66,48 +66,7 @@ pub(crate) fn isolate(
                 return Ok((SolutionSet::Residual(residual), steps));
             }
 
-            let set = match op {
-                RelOp::Eq => SolutionSet::Discrete(vec![sim_rhs]),
-                RelOp::Neq => {
-                    let i1 = Interval {
-                        min: neg_inf(&mut simplifier.context),
-                        min_type: BoundType::Open,
-                        max: sim_rhs,
-                        max_type: BoundType::Open,
-                    };
-                    let i2 = Interval {
-                        min: sim_rhs,
-                        min_type: BoundType::Open,
-                        max: pos_inf(&mut simplifier.context),
-                        max_type: BoundType::Open,
-                    };
-                    SolutionSet::Union(vec![i1, i2])
-                }
-                RelOp::Lt => SolutionSet::Continuous(Interval {
-                    min: neg_inf(&mut simplifier.context),
-                    min_type: BoundType::Open,
-                    max: sim_rhs,
-                    max_type: BoundType::Open,
-                }),
-                RelOp::Gt => SolutionSet::Continuous(Interval {
-                    min: sim_rhs,
-                    min_type: BoundType::Open,
-                    max: pos_inf(&mut simplifier.context),
-                    max_type: BoundType::Open,
-                }),
-                RelOp::Leq => SolutionSet::Continuous(Interval {
-                    min: neg_inf(&mut simplifier.context),
-                    min_type: BoundType::Open,
-                    max: sim_rhs,
-                    max_type: BoundType::Closed,
-                }),
-                RelOp::Geq => SolutionSet::Continuous(Interval {
-                    min: sim_rhs,
-                    min_type: BoundType::Closed,
-                    max: pos_inf(&mut simplifier.context),
-                    max_type: BoundType::Open,
-                }),
-            };
+            let set = isolated_var_solution(&mut simplifier.context, sim_rhs, op);
             Ok((set, steps))
         }
         Expr::Add(l, r) => {
