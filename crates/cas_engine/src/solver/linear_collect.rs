@@ -193,20 +193,16 @@ pub(crate) fn try_linear_collect_v2(
     var: &str,
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
-    // Build expr = lhs - rhs (so expr = 0)
-    let expr = simplifier.context.add(Expr::Sub(lhs, rhs));
-
-    // Extract linear form: expr = coef * var + constant = 0
-    let lf = cas_solver_core::linear_form::linear_form(&mut simplifier.context, expr, var)?;
+    let kernel = cas_solver_core::linear_kernel::derive_linear_solve_kernel(
+        &mut simplifier.context,
+        lhs,
+        rhs,
+        var,
+    )?;
 
     // Simplify for cleaner display
-    let (coef, _) = simplifier.simplify(lf.coef);
-    let (constant, _) = simplifier.simplify(lf.constant);
-
-    // Check if coef contains var (shouldn't, but safety check)
-    if contains_var(&simplifier.context, coef, var) {
-        return None;
-    }
+    let (coef, _) = simplifier.simplify(kernel.coef);
+    let (constant, _) = simplifier.simplify(kernel.constant);
 
     // Solution: var = -constant / coef  (from coef*var + constant = 0)
     let neg_constant = simplifier.context.add(Expr::Neg(constant));
