@@ -88,6 +88,14 @@ pub fn is_numeric_zero(ctx: &Context, expr: ExprId) -> bool {
     )
 }
 
+/// True iff expression is the numeric literal one.
+pub fn is_numeric_one(ctx: &Context, expr: ExprId) -> bool {
+    matches!(
+        ctx.get(expr),
+        Expr::Number(n) if *n == num_rational::BigRational::from_integer(1.into())
+    )
+}
+
 /// Trinary numeric sign classification for literal numeric expressions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NumericSign {
@@ -366,6 +374,15 @@ mod tests {
         let two = ctx.num(2);
         assert!(is_numeric_zero(&ctx, zero));
         assert!(!is_numeric_zero(&ctx, two));
+    }
+
+    #[test]
+    fn test_is_numeric_one() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        assert!(is_numeric_one(&ctx, one));
+        assert!(!is_numeric_one(&ctx, two));
     }
 
     #[test]

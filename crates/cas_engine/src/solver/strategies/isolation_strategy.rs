@@ -5,7 +5,7 @@ use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveDomainEnv, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
-use cas_solver_core::isolation_utils::{contains_var, is_positive_integer_expr};
+use cas_solver_core::isolation_utils::{contains_var, is_numeric_one, is_positive_integer_expr};
 use cas_solver_core::log_domain::LogSolveDecision;
 
 pub struct IsolationStrategy;
@@ -384,25 +384,10 @@ impl SolverStrategy for UnwrapStrategy {
 
                         use crate::solver::domain_guards::classify_log_solve;
 
-                        // PRE-CHECK: Handle base = 1 before classifier
-                        // 1^x = 1 -> AllReals, 1^x = b (b≠1) -> Empty
-                        if let Expr::Number(n) = simplifier.context.get(b) {
-                            if *n == num_rational::BigRational::from_integer(1.into()) {
-                                // Base is 1
-                                if let Expr::Number(rhs_n) = simplifier.context.get(other) {
-                                    if *rhs_n == num_rational::BigRational::from_integer(1.into()) {
-                                        // 1^x = 1 -> AllReals (handled specially)
-                                        // We can't return AllReals directly from invert closure,
-                                        // so skip and let IsolationStrategy handle it
-                                        return None;
-                                    } else {
-                                        // 1^x = b (b≠1) -> Empty (also skip)
-                                        return None;
-                                    }
-                                }
-                                // 1^x = symbolic -> skip (can be 1 or not)
-                                return None;
-                            }
+                        // PRE-CHECK: Handle base = 1 before classifier.
+                        // This branch is solved by higher-level strategy handling.
+                        if is_numeric_one(&simplifier.context, b) {
+                            return None;
                         }
 
                         // Use the domain classifier
