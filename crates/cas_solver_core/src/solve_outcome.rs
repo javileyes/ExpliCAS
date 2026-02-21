@@ -1,4 +1,7 @@
-use cas_ast::{Context, Expr, ExprId, RelOp, SolutionSet};
+use crate::solution_set::open_positive_domain;
+use cas_ast::{
+    Case, ConditionPredicate, ConditionSet, Context, Expr, ExprId, RelOp, SolutionSet, SolveResult,
+};
 
 /// Classification of a variable-free equation residual `diff = lhs - rhs`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,6 +32,42 @@ pub fn even_power_negative_rhs_outcome(op: RelOp) -> SolutionSet {
         RelOp::Gt | RelOp::Geq | RelOp::Neq => SolutionSet::AllReals,
         RelOp::Lt | RelOp::Leq => SolutionSet::Empty,
     }
+}
+
+/// Outcome for `1^x op rhs` in real arithmetic.
+pub fn power_base_one_outcome(rhs_is_one: bool) -> SolutionSet {
+    if rhs_is_one {
+        SolutionSet::AllReals
+    } else {
+        SolutionSet::Empty
+    }
+}
+
+/// Outcome for symbolic `a^x = a` (with `a` symbolic).
+///
+/// Returns:
+/// - `a = 1`  -> `AllReals`
+/// - `a = 0`  -> `x in (0, +inf)`
+/// - otherwise -> `x = 1`
+pub fn power_equals_base_symbolic_outcome(ctx: &mut Context, base: ExprId) -> SolutionSet {
+    let one = ctx.num(1);
+
+    let case_one_guard = ConditionSet::single(ConditionPredicate::EqOne(base));
+    let case_one = Case::with_result(case_one_guard, SolveResult::solved(SolutionSet::AllReals));
+
+    let case_zero_guard = ConditionSet::single(ConditionPredicate::EqZero(base));
+    let case_zero = Case::with_result(
+        case_zero_guard,
+        SolveResult::solved(open_positive_domain(ctx)),
+    );
+
+    let case_default_guard = ConditionSet::empty();
+    let case_default = Case::with_result(
+        case_default_guard,
+        SolveResult::solved(SolutionSet::Discrete(vec![one])),
+    );
+
+    SolutionSet::Conditional(vec![case_one, case_zero, case_default])
 }
 
 #[cfg(test)]
@@ -79,5 +118,29 @@ mod tests {
             even_power_negative_rhs_outcome(RelOp::Neq),
             SolutionSet::AllReals
         ));
+    }
+
+    #[test]
+    fn power_equals_base_symbolic_outcome_has_three_cases() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let out = power_equals_base_symbolic_outcome(&mut ctx, a);
+        match out {
+            SolutionSet::Conditional(cases) => assert_eq!(cases.len(), 3),
+            other => panic!("Expected conditional set, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn power_base_one_outcome_all_reals_when_rhs_is_one() {
+        assert!(matches!(
+            power_base_one_outcome(true),
+            SolutionSet::AllReals
+        ));
+    }
+
+    #[test]
+    fn power_base_one_outcome_empty_when_rhs_not_one() {
+        assert!(matches!(power_base_one_outcome(false), SolutionSet::Empty));
     }
 }

@@ -278,6 +278,63 @@ pub fn synthetic_division(coeffs: &[BigRational], root: &BigRational) -> Vec<Big
     quotient
 }
 
+/// Extract rational roots by repeated candidate testing + synthetic deflation.
+///
+/// Returns `(roots, residual_coeffs)` where:
+/// - `roots` are found rational roots (possibly with multiplicity),
+/// - `residual_coeffs` is the remaining polynomial coefficient vector.
+///
+/// The routine stops deflation once residual degree is <= 2.
+pub fn find_rational_roots(
+    mut coeffs: Vec<BigRational>,
+    max_candidates: usize,
+) -> (Vec<BigRational>, Vec<BigRational>) {
+    let mut roots = Vec::new();
+
+    loop {
+        if coeffs.len() <= 1 {
+            break;
+        }
+
+        // a0 == 0 => root x=0; remove constant term and continue.
+        while coeffs.len() > 1 && coeffs[0].is_zero() {
+            coeffs.remove(0);
+            roots.push(BigRational::zero());
+        }
+
+        if coeffs.len() <= 1 {
+            break;
+        }
+
+        let degree = coeffs.len() - 1;
+        if degree <= 2 {
+            break;
+        }
+
+        let int_coeffs = normalize_to_integers(&coeffs);
+        let candidates = rational_root_candidates(&int_coeffs, max_candidates);
+        if candidates.is_empty() {
+            break;
+        }
+
+        let mut found = false;
+        for candidate in &candidates {
+            if horner_eval(&coeffs, candidate).is_zero() {
+                roots.push(candidate.clone());
+                coeffs = synthetic_division(&coeffs, candidate);
+                found = true;
+                break;
+            }
+        }
+
+        if !found {
+            break;
+        }
+    }
+
+    (roots, coeffs)
+}
+
 /// Solve a residual polynomial of degree <= 2 with rational coefficients.
 ///
 /// Coeff order is `[a0, a1, ..., an]` (low-to-high degree).
@@ -403,5 +460,19 @@ mod tests {
         let coeffs = vec![BigRational::one(), BigRational::zero(), BigRational::one()];
         let roots = solve_residual_degree_leq_two(&mut ctx, &coeffs);
         assert!(roots.is_empty());
+    }
+
+    #[test]
+    fn find_rational_roots_stops_at_quadratic_residual() {
+        // x^3 - x = x*(x^2 - 1)
+        let coeffs = vec![
+            BigRational::zero(),
+            BigRational::from_integer((-1).into()),
+            BigRational::zero(),
+            BigRational::one(),
+        ];
+        let (roots, residual) = find_rational_roots(coeffs, 200);
+        assert_eq!(roots, vec![BigRational::zero()]);
+        assert_eq!(residual.len(), 3); // quadratic residual
     }
 }

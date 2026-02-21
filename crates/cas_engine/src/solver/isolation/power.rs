@@ -7,7 +7,9 @@ use cas_solver_core::isolation_utils::{
     is_numeric_zero, mk_residual_solve,
 };
 use cas_solver_core::log_domain::{LogAssumption, LogSolveDecision};
-use cas_solver_core::solve_outcome::even_power_negative_rhs_outcome;
+use cas_solver_core::solve_outcome::{
+    even_power_negative_rhs_outcome, power_base_one_outcome, power_equals_base_symbolic_outcome,
+};
 
 use super::{isolate, prepend_steps};
 
@@ -200,7 +202,6 @@ fn isolate_pow_exponent(
             // base^x = base ⟹ x = 1 (when base ≠ 0, ≠ 1)
             let base_is_numeric = matches!(simplifier.context.get(b), Expr::Number(_));
             let one = simplifier.context.num(1);
-            let zero = simplifier.context.num(0);
 
             if base_is_numeric {
                 if simplifier.collect_steps() {
@@ -264,34 +265,6 @@ fn isolate_pow_exponent(
                 return prepend_steps(results, steps);
             }
 
-            // Build the three cases
-            use cas_ast::{
-                BoundType, Case, ConditionPredicate, ConditionSet, Interval, SolveResult,
-            };
-
-            // Case 1: a = 1 → AllReals
-            let case_one_guard = ConditionSet::single(ConditionPredicate::EqOne(b));
-            let case_one_result = SolveResult::solved(SolutionSet::AllReals);
-            let case_one = Case::with_result(case_one_guard, case_one_result);
-
-            // Case 2: a = 0 → x > 0
-            let case_zero_guard = ConditionSet::single(ConditionPredicate::EqZero(b));
-            let pos_infinity = simplifier.context.var("infinity");
-            let interval_x_positive = Interval {
-                min: zero,
-                min_type: BoundType::Open,
-                max: pos_infinity,
-                max_type: BoundType::Open,
-            };
-            let case_zero_result =
-                SolveResult::solved(SolutionSet::Continuous(interval_x_positive));
-            let case_zero = Case::with_result(case_zero_guard, case_zero_result);
-
-            // Case 3: otherwise → x = 1
-            let case_default_guard = ConditionSet::empty();
-            let case_default_result = SolveResult::solved(SolutionSet::Discrete(vec![one]));
-            let case_default = Case::with_result(case_default_guard, case_default_result);
-
             // Pedagogical step
             if simplifier.collect_steps() {
                 steps.push(SolveStep {
@@ -312,7 +285,7 @@ fn isolate_pow_exponent(
                 });
             }
 
-            let conditional = SolutionSet::Conditional(vec![case_one, case_zero, case_default]);
+            let conditional = power_equals_base_symbolic_outcome(&mut simplifier.context, b);
             return Ok((conditional, steps));
         }
     }
@@ -371,13 +344,10 @@ fn isolate_pow_exponent(
     // ================================================================
     // GUARD 1: Handle base = 1 special case
     if is_numeric_one(&simplifier.context, b) {
-        let result = if is_numeric_one(&simplifier.context, rhs) {
-            SolutionSet::AllReals
-        } else {
-            SolutionSet::Empty
-        };
+        let rhs_is_one = is_numeric_one(&simplifier.context, rhs);
+        let result = power_base_one_outcome(rhs_is_one);
         if simplifier.collect_steps() {
-            let desc = if is_numeric_one(&simplifier.context, rhs) {
+            let desc = if rhs_is_one {
                 "1^x = 1 for all x → any real number is a solution".to_string()
             } else {
                 format!(

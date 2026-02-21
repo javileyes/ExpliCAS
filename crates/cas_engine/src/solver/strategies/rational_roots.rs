@@ -79,72 +79,17 @@ impl SolverStrategy for RationalRootsStrategy {
             return Some(Ok((SolutionSet::AllReals, vec![])));
         }
 
-        // Find rational roots
+        // Find rational roots (pure deflation in solver core)
         let mut roots = Vec::new();
-        let mut current_coeffs = rat_coeffs;
-
-        loop {
-            if current_coeffs.len() <= 1 {
-                break;
-            }
-
-            // Strip trailing zeros (factor out x): each trailing zero = root at x=0
-            while current_coeffs.len() > 1 && current_coeffs[0].is_zero() {
-                current_coeffs.remove(0);
-                let zero_expr = simplifier.context.num(0);
-                roots.push(zero_expr);
-            }
-
-            if current_coeffs.len() <= 1 {
-                break;
-            }
-
-            let deg = current_coeffs.len() - 1;
-            if deg <= 2 {
-                // Delegate to quadratic/linear
-                break;
-            }
-
-            // Normalize to integer coefficients
-            let int_coeffs =
-                cas_solver_core::rational_roots::normalize_to_integers(&current_coeffs);
-
-            // Generate candidates
-            let candidates = cas_solver_core::rational_roots::rational_root_candidates(
-                &int_coeffs,
-                MAX_CANDIDATES,
+        let (rational_roots, current_coeffs) =
+            cas_solver_core::rational_roots::find_rational_roots(rat_coeffs, MAX_CANDIDATES);
+        for candidate in &rational_roots {
+            let root_expr = cas_solver_core::rational_roots::rational_to_expr(
+                &mut simplifier.context,
+                candidate,
             );
-            if candidates.is_empty() {
-                break;
-            }
-
-            // Try each candidate
-            let mut found_root = false;
-            for candidate in &candidates {
-                if cas_solver_core::rational_roots::horner_eval(&current_coeffs, candidate)
-                    .is_zero()
-                {
-                    // Confirmed root! Add to results
-                    let root_expr = cas_solver_core::rational_roots::rational_to_expr(
-                        &mut simplifier.context,
-                        candidate,
-                    );
-                    let (sim_root, _) = simplifier.simplify(root_expr);
-                    roots.push(sim_root);
-
-                    // Deflate
-                    current_coeffs = cas_solver_core::rational_roots::synthetic_division(
-                        &current_coeffs,
-                        candidate,
-                    );
-                    found_root = true;
-                    break; // restart candidate search on deflated polynomial
-                }
-            }
-
-            if !found_root {
-                break; // no rational roots found in remaining polynomial
-            }
+            let (sim_root, _) = simplifier.simplify(root_expr);
+            roots.push(sim_root);
         }
 
         // Handle residual polynomial (degree ≤ 2) via solver core.
