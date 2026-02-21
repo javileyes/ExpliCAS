@@ -69,6 +69,15 @@ pub fn compare_values(ctx: &Context, a: ExprId, b: ExprId) -> Ordering {
     cas_ast::ordering::compare_expr(ctx, a, b)
 }
 
+/// Order two expression ids so the first is `<=` the second under `compare_values`.
+pub fn order_pair_by_value(ctx: &Context, a: ExprId, b: ExprId) -> (ExprId, ExprId) {
+    if compare_values(ctx, a, b) == Ordering::Greater {
+        (b, a)
+    } else {
+        (a, b)
+    }
+}
+
 /// Sort and deduplicate expression ids using canonical structural ordering.
 pub fn sort_and_dedup_exprs(ctx: &Context, exprs: &mut Vec<ExprId>) {
     exprs.sort_by(|a, b| cas_ast::ordering::compare_expr(ctx, *a, *b));
@@ -617,6 +626,16 @@ mod tests {
         let mut roots = vec![two, one, two];
         sort_and_dedup_exprs(&ctx, &mut roots);
         assert_eq!(roots, vec![one, two]);
+    }
+
+    #[test]
+    fn test_order_pair_by_value_swaps() {
+        let mut ctx = Context::new();
+        let five = ctx.num(5);
+        let two = ctx.num(2);
+        let (left, right) = order_pair_by_value(&ctx, five, two);
+        assert_eq!(get_number(&ctx, left).unwrap().to_integer(), 2.into());
+        assert_eq!(get_number(&ctx, right).unwrap().to_integer(), 5.into());
     }
 
     #[test]

@@ -9,11 +9,10 @@ use cas_solver_core::quadratic_formula::{
     discriminant, discriminant_expr, roots_from_a_b_and_sqrt, roots_from_a_b_delta, sqrt_expr,
 };
 use cas_solver_core::solution_set::{
-    compare_values, get_number, quadratic_numeric_solution, sort_and_dedup_exprs,
+    get_number, order_pair_by_value, quadratic_numeric_solution, sort_and_dedup_exprs,
 };
 use num_rational::BigRational;
 use num_traits::Zero;
-use std::cmp::Ordering;
 
 pub struct QuadraticStrategy;
 
@@ -212,13 +211,7 @@ impl SolverStrategy for QuadraticStrategy {
                 let (sim_sol2, _) = simplifier.simplify(sol2);
 
                 // Ensure r1 <= r2
-                let (r1, r2) = if compare_values(&simplifier.context, sim_sol1, sim_sol2)
-                    == Ordering::Greater
-                {
-                    (sim_sol2, sim_sol1)
-                } else {
-                    (sim_sol1, sim_sol2)
-                };
+                let (r1, r2) = order_pair_by_value(&simplifier.context, sim_sol1, sim_sol2);
 
                 // Determine parabola direction
                 let opens_up = a_val > BigRational::zero();
