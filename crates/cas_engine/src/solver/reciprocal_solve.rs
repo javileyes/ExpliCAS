@@ -7,6 +7,7 @@
 //! Example: `1/R = 1/R1 + 1/R2` → `R = R1·R2/(R1+R2)`
 
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp};
+use cas_solver_core::linear_solution::NonZeroStatus;
 
 use crate::engine::Simplifier;
 use crate::solver::{contains_var, SolveStep};
@@ -97,26 +98,24 @@ pub(crate) fn try_reciprocal_solve(
         });
     }
 
-    // Build solution set - may need guard for numerator ≠ 0
-    use crate::domain::Proof;
+    // Build solution set with domain guard for numerator != 0 when needed.
     use crate::helpers::prove_nonzero;
-    use cas_ast::{Case, ConditionPredicate, ConditionSet, SolutionSet};
 
     // Simplify the numerator for cleaner display and proof checking
     let (simplified_numerator, _) = simplifier.simplify(numerator);
 
-    // Check if numerator is provably non-zero (e.g., literal 2 in "1/x = 2")
-    // If so, we can return a simple Discrete solution without conditional guard
-    let solution_set = if prove_nonzero(&simplifier.context, simplified_numerator) == Proof::Proven
-    {
-        // Trivially satisfied - no guard needed
-        SolutionSet::Discrete(vec![simplified_solution])
-    } else {
-        // Need conditional guard: numerator ≠ 0
-        let guard = ConditionSet::single(ConditionPredicate::NonZero(simplified_numerator));
-        let case = Case::new(guard, SolutionSet::Discrete(vec![simplified_solution]));
-        SolutionSet::Conditional(vec![case])
+    let numerator_status = match prove_nonzero(&simplifier.context, simplified_numerator) {
+        crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit => {
+            NonZeroStatus::NonZero
+        }
+        crate::domain::Proof::Disproven => NonZeroStatus::Zero,
+        crate::domain::Proof::Unknown => NonZeroStatus::Unknown,
     };
+    let solution_set = cas_solver_core::reciprocal::build_reciprocal_solution_set(
+        simplified_numerator,
+        simplified_solution,
+        numerator_status,
+    );
 
     Some((solution_set, steps))
 }

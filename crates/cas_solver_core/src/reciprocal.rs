@@ -1,4 +1,5 @@
-use cas_ast::{Context, Expr, ExprId};
+use crate::linear_solution::NonZeroStatus;
+use cas_ast::{Case, ConditionPredicate, ConditionSet, Context, Expr, ExprId, SolutionSet};
 use cas_math::expr_nary::add_terms_no_sign;
 use cas_math::expr_predicates::is_one_expr as is_one;
 
@@ -97,6 +98,22 @@ pub fn combine_fractions_deterministic(
     Some((numerator, common_denom))
 }
 
+/// Build solution set for reciprocal equations `1/x = N/D` where
+/// candidate solution is `x = D/N` and the domain requires `N != 0`.
+pub fn build_reciprocal_solution_set(
+    numerator: ExprId,
+    solution: ExprId,
+    numerator_status: NonZeroStatus,
+) -> SolutionSet {
+    if numerator_status == NonZeroStatus::NonZero {
+        return SolutionSet::Discrete(vec![solution]);
+    }
+
+    let guard = ConditionSet::single(ConditionPredicate::NonZero(numerator));
+    let case = Case::new(guard, SolutionSet::Discrete(vec![solution]));
+    SolutionSet::Conditional(vec![case])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,5 +138,23 @@ mod tests {
         assert!(contains_var(&ctx, num, "R1") || contains_var(&ctx, num, "R2"));
         assert!(contains_var(&ctx, denom, "R1"));
         assert!(contains_var(&ctx, denom, "R2"));
+    }
+
+    #[test]
+    fn reciprocal_solution_nonzero_is_discrete() {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let sol = ctx.var("x0");
+        let set = build_reciprocal_solution_set(num, sol, NonZeroStatus::NonZero);
+        assert_eq!(set, SolutionSet::Discrete(vec![sol]));
+    }
+
+    #[test]
+    fn reciprocal_solution_unknown_is_conditional() {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let sol = ctx.var("x0");
+        let set = build_reciprocal_solution_set(num, sol, NonZeroStatus::Unknown);
+        assert!(matches!(set, SolutionSet::Conditional(_)));
     }
 }
