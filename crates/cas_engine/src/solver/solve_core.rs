@@ -381,19 +381,19 @@ fn solve_inner(
     // Check if the difference has NO variable
     if !contains_var(&simplifier.context, diff_simplified, var) {
         // Variable disappeared - this is either an identity, contradiction, or parameter-dependent
-        use cas_ast::Expr;
-        match simplifier.context.get(diff_simplified) {
-            Expr::Number(n) => {
-                use num_traits::Zero;
-                if n.is_zero() {
-                    // 0 = 0: Identity, all real numbers
-                    return Ok((SolutionSet::AllReals, vec![]));
-                } else {
-                    // c = 0 where c ≠ 0: Contradiction, no solution
-                    return Ok((SolutionSet::Empty, vec![]));
-                }
+        match cas_solver_core::solve_outcome::classify_var_free_difference(
+            &simplifier.context,
+            diff_simplified,
+        ) {
+            cas_solver_core::solve_outcome::VarFreeDiffKind::IdentityZero => {
+                // 0 = 0: Identity, all real numbers
+                return Ok((SolutionSet::AllReals, vec![]));
             }
-            _ => {
+            cas_solver_core::solve_outcome::VarFreeDiffKind::ContradictionNonZero => {
+                // c = 0 where c ≠ 0: Contradiction, no solution
+                return Ok((SolutionSet::Empty, vec![]));
+            }
+            cas_solver_core::solve_outcome::VarFreeDiffKind::Constraint => {
                 // Variable was eliminated during simplification (e.g., x/x = 1)
                 // The equation is now a constraint on OTHER variables.
                 // Example: (x*y)/x = 0 simplifies to y = 0
@@ -408,10 +408,13 @@ fn solve_inner(
                         ),
                         equation_after: cas_ast::Equation {
                             lhs: diff_simplified,
-                            rhs: simplifier.context.add(Expr::Number(num_rational::BigRational::from_integer(0.into()))),
+                            rhs: simplifier.context.add(cas_ast::Expr::Number(
+                                num_rational::BigRational::from_integer(0.into()),
+                            )),
                             op: cas_ast::RelOp::Eq,
                         },
-                        importance: crate::step::ImportanceLevel::Medium, substeps: vec![],
+                        importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
                     }]
                 } else {
                     vec![]
