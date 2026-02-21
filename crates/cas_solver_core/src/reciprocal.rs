@@ -1,3 +1,4 @@
+use crate::isolation_utils::{contains_var, is_simple_reciprocal};
 use crate::linear_solution::NonZeroStatus;
 use cas_ast::{Case, ConditionPredicate, ConditionSet, Context, Expr, ExprId, SolutionSet};
 use cas_math::expr_nary::add_terms_no_sign;
@@ -98,6 +99,34 @@ pub fn combine_fractions_deterministic(
     Some((numerator, common_denom))
 }
 
+/// Normalized data for reciprocal solve `1/var = rhs`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReciprocalSolveKernel {
+    pub numerator: ExprId,
+    pub denominator: ExprId,
+}
+
+/// Derive reciprocal-solve kernel if equation matches `1/var = rhs` and
+/// the RHS is independent of `var`.
+pub fn derive_reciprocal_solve_kernel(
+    ctx: &mut Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+) -> Option<ReciprocalSolveKernel> {
+    if !is_simple_reciprocal(ctx, lhs, var) {
+        return None;
+    }
+    if contains_var(ctx, rhs, var) {
+        return None;
+    }
+    let (numerator, denominator) = combine_fractions_deterministic(ctx, rhs)?;
+    Some(ReciprocalSolveKernel {
+        numerator,
+        denominator,
+    })
+}
+
 /// Build solution set for reciprocal equations `1/x = N/D` where
 /// candidate solution is `x = D/N` and the domain requires `N != 0`.
 pub fn build_reciprocal_solution_set(
@@ -117,7 +146,7 @@ pub fn build_reciprocal_solution_set(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::isolation_utils::contains_var;
+    use crate::isolation_utils::{contains_var, is_simple_reciprocal};
 
     #[test]
     fn test_combine_fractions_simple() {
@@ -156,5 +185,40 @@ mod tests {
         let sol = ctx.var("x0");
         let set = build_reciprocal_solution_set(num, sol, NonZeroStatus::Unknown);
         assert!(matches!(set, SolutionSet::Conditional(_)));
+    }
+
+    #[test]
+    fn derive_reciprocal_solve_kernel_matches_simple_case() {
+        let mut ctx = Context::new();
+        let r = ctx.var("R");
+        let r1 = ctx.var("R1");
+        let r2 = ctx.var("R2");
+        let one = ctx.num(1);
+        let lhs = ctx.add(Expr::Div(one, r));
+        let one2 = ctx.num(1);
+        let frac1 = ctx.add(Expr::Div(one2, r1));
+        let one3 = ctx.num(1);
+        let frac2 = ctx.add(Expr::Div(one3, r2));
+        let rhs = ctx.add(Expr::Add(frac1, frac2));
+
+        let kernel = derive_reciprocal_solve_kernel(&mut ctx, lhs, rhs, "R")
+            .expect("must derive reciprocal kernel");
+        assert!(
+            contains_var(&ctx, kernel.numerator, "R1")
+                || contains_var(&ctx, kernel.numerator, "R2")
+        );
+        assert!(contains_var(&ctx, kernel.denominator, "R1"));
+        assert!(contains_var(&ctx, kernel.denominator, "R2"));
+    }
+
+    #[test]
+    fn derive_reciprocal_solve_kernel_rejects_rhs_with_var() {
+        let mut ctx = Context::new();
+        let r = ctx.var("R");
+        let one = ctx.num(1);
+        let lhs = ctx.add(Expr::Div(one, r));
+        let rhs = r;
+        assert!(is_simple_reciprocal(&ctx, lhs, "R"));
+        assert!(derive_reciprocal_solve_kernel(&mut ctx, lhs, rhs, "R").is_none());
     }
 }

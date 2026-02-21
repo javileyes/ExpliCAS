@@ -7,7 +7,6 @@
 //! Example: `1/R = 1/R1 + 1/R2` → `R = R1·R2/(R1+R2)`
 
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
-use cas_solver_core::isolation_utils::contains_var;
 
 use crate::engine::Simplifier;
 use crate::solver::proof_bridge::proof_to_nonzero_status;
@@ -23,19 +22,14 @@ pub(crate) fn try_reciprocal_solve(
     var: &str,
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
-    // Check pattern: LHS must be 1/var
-    if !cas_solver_core::isolation_utils::is_simple_reciprocal(&simplifier.context, lhs, var) {
-        return None;
-    }
-
-    // Check: RHS must NOT contain var (otherwise this is more complex)
-    if contains_var(&simplifier.context, rhs, var) {
-        return None;
-    }
-
-    // Combine fractions on RHS
-    let (numerator, denominator) =
-        cas_solver_core::reciprocal::combine_fractions_deterministic(&mut simplifier.context, rhs)?;
+    let kernel = cas_solver_core::reciprocal::derive_reciprocal_solve_kernel(
+        &mut simplifier.context,
+        lhs,
+        rhs,
+        var,
+    )?;
+    let numerator = kernel.numerator;
+    let denominator = kernel.denominator;
 
     let mut steps = Vec::new();
 
@@ -103,6 +97,7 @@ pub(crate) fn try_reciprocal_solve(
 mod tests {
     use super::*;
     use cas_ast::Context;
+    use cas_solver_core::isolation_utils::contains_var;
 
     #[test]
     fn test_is_simple_reciprocal() {
