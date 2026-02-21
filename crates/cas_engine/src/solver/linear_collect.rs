@@ -16,17 +16,8 @@ use cas_solver_core::linear_terms::{build_sum, split_linear_term, TermClass};
 
 use crate::engine::Simplifier;
 use crate::nary::{add_terms_signed, Sign};
+use crate::solver::proof_bridge::proof_to_nonzero_status;
 use crate::solver::SolveStep;
-
-fn proof_to_nonzero_status(proof: crate::domain::Proof) -> NonZeroStatus {
-    match proof {
-        crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit => {
-            NonZeroStatus::NonZero
-        }
-        crate::domain::Proof::Disproven => NonZeroStatus::Zero,
-        crate::domain::Proof::Unknown => NonZeroStatus::Unknown,
-    }
-}
 
 /// Try to solve a linear equation where variable appears in multiple additive terms.
 ///

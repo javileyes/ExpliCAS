@@ -8,9 +8,9 @@
 
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
-use cas_solver_core::linear_solution::NonZeroStatus;
 
 use crate::engine::Simplifier;
+use crate::solver::proof_bridge::proof_to_nonzero_status;
 use crate::solver::SolveStep;
 
 /// Try to solve `1/var = expr` using pedagogical steps.
@@ -88,13 +88,8 @@ pub(crate) fn try_reciprocal_solve(
     // Simplify the numerator for cleaner display and proof checking
     let (simplified_numerator, _) = simplifier.simplify(numerator);
 
-    let numerator_status = match prove_nonzero(&simplifier.context, simplified_numerator) {
-        crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit => {
-            NonZeroStatus::NonZero
-        }
-        crate::domain::Proof::Disproven => NonZeroStatus::Zero,
-        crate::domain::Proof::Unknown => NonZeroStatus::Unknown,
-    };
+    let numerator_status =
+        proof_to_nonzero_status(prove_nonzero(&simplifier.context, simplified_numerator));
     let solution_set = cas_solver_core::reciprocal::build_reciprocal_solution_set(
         simplified_numerator,
         simplified_solution,
