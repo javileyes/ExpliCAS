@@ -7,7 +7,7 @@ use cas_solver_core::isolation_utils::{
     is_numeric_zero, mk_residual_solve,
 };
 use cas_solver_core::log_domain::{
-    classify_terminal_action, DomainModeKind, LogAssumption, LogSolveDecision, LogTerminalAction,
+    classify_terminal_action, LogAssumption, LogSolveDecision, LogTerminalAction,
 };
 use cas_solver_core::solve_outcome::{
     even_power_negative_rhs_outcome, power_base_one_outcome, power_equals_base_symbolic_outcome,
@@ -418,11 +418,7 @@ fn isolate_pow_exponent(
         &ctx.domain_env,
     );
 
-    let mode = match opts.domain_mode {
-        crate::domain::DomainMode::Strict => DomainModeKind::Strict,
-        crate::domain::DomainMode::Generic => DomainModeKind::Generic,
-        crate::domain::DomainMode::Assume => DomainModeKind::Assume,
-    };
+    let mode = crate::solver::domain_guards::to_core_domain_mode(opts.domain_mode);
     let wildcard_scope = opts.assume_scope == crate::semantics::AssumeScope::Wildcard;
 
     match classify_terminal_action(&decision, mode, wildcard_scope) {

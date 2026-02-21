@@ -10,9 +10,7 @@ use cas_solver_core::isolation_utils::{
     contains_var, flip_inequality, is_numeric_one, is_positive_integer_expr,
     match_exponential_var_in_base, match_exponential_var_in_exponent,
 };
-use cas_solver_core::log_domain::{
-    classify_terminal_action, DomainModeKind, LogSolveDecision, LogTerminalAction,
-};
+use cas_solver_core::log_domain::{classify_terminal_action, LogSolveDecision, LogTerminalAction};
 
 pub struct IsolationStrategy;
 
@@ -94,11 +92,7 @@ fn terminal_exponential_decision_result(
     simplifier: &mut Simplifier,
     opts: &SolverOptions,
 ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-    let mode = match opts.domain_mode {
-        crate::domain::DomainMode::Strict => DomainModeKind::Strict,
-        crate::domain::DomainMode::Generic => DomainModeKind::Generic,
-        crate::domain::DomainMode::Assume => DomainModeKind::Assume,
-    };
+    let mode = crate::solver::domain_guards::to_core_domain_mode(opts.domain_mode);
     let wildcard_scope = opts.assume_scope == crate::semantics::AssumeScope::Wildcard;
 
     match classify_terminal_action(decision, mode, wildcard_scope) {

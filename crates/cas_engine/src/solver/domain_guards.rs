@@ -66,13 +66,13 @@ pub(crate) fn classify_log_solve(
     };
 
     cas_solver_core::log_domain::classify_log_solve_by_proofs(
-        to_core_mode(mode),
+        to_core_domain_mode(mode),
         proof_to_status(base_proof),
         proof_to_status(rhs_proof),
     )
 }
 
-fn to_core_mode(mode: DomainMode) -> DomainModeKind {
+pub(crate) fn to_core_domain_mode(mode: DomainMode) -> DomainModeKind {
     match mode {
         DomainMode::Strict => DomainModeKind::Strict,
         DomainMode::Generic => DomainModeKind::Generic,
