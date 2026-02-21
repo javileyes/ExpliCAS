@@ -121,7 +121,7 @@ fn check_exponential_needs_complex(
                         let mut steps = Vec::new();
                         if simplifier.collect_steps() {
                             steps.push(SolveStep {
-                                description: msg.clone(),
+                                description: msg.to_string(),
                                 equation_after: eq.clone(),
                                 importance: crate::step::ImportanceLevel::Medium,
                                 substeps: vec![],
@@ -178,7 +178,7 @@ fn check_exponential_needs_complex(
                         let mut steps = Vec::new();
                         if simplifier.collect_steps() {
                             steps.push(SolveStep {
-                                description: msg.clone(),
+                                description: msg.to_string(),
                                 equation_after: eq.clone(),
                                 importance: crate::step::ImportanceLevel::Medium,
                                 substeps: vec![],

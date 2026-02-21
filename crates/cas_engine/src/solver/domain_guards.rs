@@ -17,32 +17,10 @@ use crate::domain::{DomainMode, Proof};
 use crate::helpers::prove_positive;
 use crate::semantics::ValueDomain;
 use crate::solver::SolverOptions;
-use cas_solver_core::log_domain::{
-    DomainModeKind, LogSolveDecision as CoreLogSolveDecision, ProofStatus,
-};
+use cas_solver_core::log_domain::{DomainModeKind, ProofStatus};
 
 /// Decision for whether a logarithmic solve step is valid.
-#[derive(Debug, Clone)]
-pub enum LogSolveDecision {
-    /// Safe to proceed: both base>0 and rhs>0 are proven.
-    Ok,
-
-    /// Safe to proceed with recorded assumptions.
-    /// Only valid when `domain_mode = Assume`.
-    OkWithAssumptions(Vec<SolverAssumption>),
-
-    /// No solutions exist in ℝ (e.g., base>0 but rhs<0).
-    EmptySet(String),
-
-    /// Requires complex logarithm (base≤0 or rhs≤0 proven).
-    /// In `assume_scope=Real`: error
-    /// In `assume_scope=Wildcard`: residual + warning
-    NeedsComplex(String),
-
-    /// Cannot justify the step in current mode (strict/generic with unknown).
-    /// Carries the missing conditions that would need to be assumed.
-    Unsupported(String, Vec<SolverAssumption>),
-}
+pub type LogSolveDecision = cas_solver_core::log_domain::LogSolveDecision;
 
 /// Assumptions that the solver may record when proceeding under `Assume` mode.
 pub type SolverAssumption = cas_solver_core::log_domain::LogAssumption;
@@ -106,12 +84,11 @@ pub(crate) fn classify_log_solve(
         prove_positive(ctx, rhs, vd)
     };
 
-    let core_decision = cas_solver_core::log_domain::classify_log_solve_by_proofs(
+    cas_solver_core::log_domain::classify_log_solve_by_proofs(
         to_core_mode(mode),
         to_core_proof(base_proof),
         to_core_proof(rhs_proof),
-    );
-    from_core_decision(core_decision)
+    )
 }
 
 fn to_core_mode(mode: DomainMode) -> DomainModeKind {
@@ -127,18 +104,6 @@ fn to_core_proof(proof: Proof) -> ProofStatus {
         Proof::Proven | Proof::ProvenImplicit => ProofStatus::Proven,
         Proof::Unknown => ProofStatus::Unknown,
         Proof::Disproven => ProofStatus::Disproven,
-    }
-}
-
-fn from_core_decision(d: CoreLogSolveDecision) -> LogSolveDecision {
-    match d {
-        CoreLogSolveDecision::Ok => LogSolveDecision::Ok,
-        CoreLogSolveDecision::OkWithAssumptions(v) => LogSolveDecision::OkWithAssumptions(v),
-        CoreLogSolveDecision::EmptySet(msg) => LogSolveDecision::EmptySet(msg.to_string()),
-        CoreLogSolveDecision::NeedsComplex(msg) => LogSolveDecision::NeedsComplex(msg.to_string()),
-        CoreLogSolveDecision::Unsupported(msg, v) => {
-            LogSolveDecision::Unsupported(msg.to_string(), v)
-        }
     }
 }
 

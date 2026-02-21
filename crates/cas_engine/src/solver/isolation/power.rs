@@ -474,7 +474,7 @@ fn isolate_pow_exponent(
         LogSolveDecision::EmptySet(msg) => {
             if simplifier.collect_steps() {
                 steps.push(SolveStep {
-                    description: msg,
+                    description: msg.to_string(),
                     equation_after: Equation { lhs, rhs, op },
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
@@ -498,7 +498,7 @@ fn isolate_pow_exponent(
                 }
                 return Ok((SolutionSet::Residual(residual), steps));
             }
-            return Err(CasError::UnsupportedInRealDomain(msg));
+            return Err(CasError::UnsupportedInRealDomain(msg.to_string()));
         }
         LogSolveDecision::Unsupported(msg, missing_conditions) => {
             if !opts.budget.can_branch() {
