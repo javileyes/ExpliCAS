@@ -17,6 +17,7 @@
 //! a single AssumptionRecord with count=3, not 3 separate warnings.
 
 use cas_ast::{Context, ExprId};
+use cas_solver_core::log_domain::LogAssumption;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -318,6 +319,19 @@ pub struct AssumptionEvent {
 }
 
 impl AssumptionEvent {
+    /// Create an event from a log-domain assumption emitted by solver log guards.
+    pub fn from_log_assumption(
+        assumption: LogAssumption,
+        ctx: &Context,
+        base: ExprId,
+        rhs: ExprId,
+    ) -> Self {
+        match assumption {
+            LogAssumption::PositiveRhs => Self::positive(ctx, rhs),
+            LogAssumption::PositiveBase => Self::positive(ctx, base),
+        }
+    }
+
     /// Create a NonZero assumption event
     pub fn nonzero(ctx: &Context, expr: ExprId) -> Self {
         let fp = expr_fingerprint(ctx, expr);

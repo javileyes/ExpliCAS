@@ -17,21 +17,7 @@ use crate::domain::{DomainMode, Proof};
 use crate::helpers::prove_positive;
 use crate::semantics::ValueDomain;
 use crate::solver::SolverOptions;
-use cas_solver_core::log_domain::{DomainModeKind, LogAssumption, LogSolveDecision, ProofStatus};
-
-/// Convert to an AssumptionEvent for the assumptions pipeline.
-pub(crate) fn assumption_to_assumption_event(
-    assumption: LogAssumption,
-    ctx: &Context,
-    base: ExprId,
-    rhs: ExprId,
-) -> crate::assumptions::AssumptionEvent {
-    use crate::assumptions::AssumptionEvent;
-    match assumption {
-        LogAssumption::PositiveRhs => AssumptionEvent::positive(ctx, rhs),
-        LogAssumption::PositiveBase => AssumptionEvent::positive(ctx, base),
-    }
-}
+use cas_solver_core::log_domain::{DomainModeKind, LogSolveDecision, ProofStatus};
 
 /// Classify whether a logarithmic solve step (for `base^x = rhs`) is valid.
 ///
@@ -105,6 +91,7 @@ fn to_core_proof(proof: Proof) -> ProofStatus {
 mod tests {
     use super::*;
     use crate::semantics::AssumeScope;
+    use cas_solver_core::log_domain::LogAssumption;
 
     fn make_test_ctx_and_opts(mode: DomainMode, scope: AssumeScope) -> (Context, SolverOptions) {
         let ctx = Context::new();

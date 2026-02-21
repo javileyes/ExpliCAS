@@ -465,7 +465,7 @@ fn isolate_pow_exponent(
         }
         LogSolveDecision::OkWithAssumptions(assumptions) => {
             for assumption in assumptions {
-                let event = crate::solver::domain_guards::assumption_to_assumption_event(
+                let event = crate::assumptions::AssumptionEvent::from_log_assumption(
                     assumption,
                     &simplifier.context,
                     b,
@@ -526,7 +526,7 @@ fn isolate_pow_exponent(
 
             // Register blocked hints for pedagogical feedback
             for condition in &missing_conditions {
-                let event = crate::solver::domain_guards::assumption_to_assumption_event(
+                let event = crate::assumptions::AssumptionEvent::from_log_assumption(
                     *condition,
                     &simplifier.context,
                     b,

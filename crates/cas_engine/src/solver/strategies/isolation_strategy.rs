@@ -447,12 +447,13 @@ impl SolverStrategy for UnwrapStrategy {
                             LogSolveDecision::OkWithAssumptions(assumptions) => {
                                 // Record each assumption via the thread-local collector
                                 for assumption in assumptions {
-                                    let event = crate::solver::domain_guards::assumption_to_assumption_event(
-                                        assumption,
-                                        &simplifier.context,
-                                        b,
-                                        other,
-                                    );
+                                    let event =
+                                        crate::assumptions::AssumptionEvent::from_log_assumption(
+                                            assumption,
+                                            &simplifier.context,
+                                            b,
+                                            other,
+                                        );
                                     crate::solver::note_assumption(event);
                                 }
                             }
