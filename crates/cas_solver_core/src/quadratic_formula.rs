@@ -1,4 +1,5 @@
 use cas_ast::{Context, Expr, ExprId};
+use num_rational::BigRational;
 
 /// Build `sqrt(radicand)` as `radicand^(1/2)` in AST form.
 pub fn sqrt_expr(ctx: &mut Context, radicand: ExprId) -> ExprId {
@@ -43,6 +44,11 @@ pub fn roots_from_a_b_delta(
     roots_from_a_b_and_sqrt(ctx, a, b, sqrt_delta)
 }
 
+/// Compute the quadratic discriminant `b^2 - 4ac`.
+pub fn discriminant(a: &BigRational, b: &BigRational, c: &BigRational) -> BigRational {
+    b.clone() * b.clone() - BigRational::from_integer(4.into()) * a.clone() * c.clone()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -78,5 +84,14 @@ mod tests {
 
         assert!(matches!(ctx.get(x1), Expr::Div(_, _)));
         assert!(matches!(ctx.get(x2), Expr::Div(_, _)));
+    }
+
+    #[test]
+    fn test_discriminant() {
+        let a = BigRational::from_integer(1.into());
+        let b = BigRational::from_integer(3.into());
+        let c = BigRational::from_integer(2.into());
+        let d = discriminant(&a, &b, &c);
+        assert_eq!(d, BigRational::from_integer(1.into()));
     }
 }

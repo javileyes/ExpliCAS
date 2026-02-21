@@ -69,6 +69,12 @@ pub fn compare_values(ctx: &Context, a: ExprId, b: ExprId) -> Ordering {
     cas_ast::ordering::compare_expr(ctx, a, b)
 }
 
+/// Sort and deduplicate expression ids using canonical structural ordering.
+pub fn sort_and_dedup_exprs(ctx: &Context, exprs: &mut Vec<ExprId>) {
+    exprs.sort_by(|a, b| cas_ast::ordering::compare_expr(ctx, *a, *b));
+    exprs.dedup_by(|a, b| cas_ast::ordering::compare_expr(ctx, *a, *b) == Ordering::Equal);
+}
+
 /// Build the solution set obtained after isolating a variable on the LHS:
 /// `var <op> rhs`.
 pub fn isolated_var_solution(ctx: &mut Context, rhs: ExprId, op: RelOp) -> SolutionSet {
@@ -601,6 +607,16 @@ mod tests {
             }
             other => panic!("Expected continuous interval, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_sort_and_dedup_exprs() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let mut roots = vec![two, one, two];
+        sort_and_dedup_exprs(&ctx, &mut roots);
+        assert_eq!(roots, vec![one, two]);
     }
 
     #[test]

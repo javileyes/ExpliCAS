@@ -1,4 +1,5 @@
 use crate::isolation_utils::contains_var;
+use crate::quadratic_formula::{discriminant, roots_from_a_b_delta};
 use cas_ast::{Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_integer::Integer;
@@ -277,6 +278,55 @@ pub fn synthetic_division(coeffs: &[BigRational], root: &BigRational) -> Vec<Big
     quotient
 }
 
+/// Solve a residual polynomial of degree <= 2 with rational coefficients.
+///
+/// Coeff order is `[a0, a1, ..., an]` (low-to-high degree).
+/// Returns zero, one, or two root expressions.
+pub fn solve_residual_degree_leq_two(ctx: &mut Context, coeffs: &[BigRational]) -> Vec<ExprId> {
+    if coeffs.len() == 3 {
+        // Quadratic: a*x^2 + b*x + c = 0
+        let a = &coeffs[2];
+        let b = &coeffs[1];
+        let c = &coeffs[0];
+
+        if a.is_zero() {
+            // Degenerated quadratic -> linear
+            if b.is_zero() {
+                return vec![];
+            }
+            let root = -c.clone() / b.clone();
+            return vec![rational_to_expr(ctx, &root)];
+        }
+
+        let discriminant = discriminant(a, b, c);
+
+        if discriminant.is_zero() {
+            let root = -b.clone() / (BigRational::from_integer(2.into()) * a.clone());
+            vec![rational_to_expr(ctx, &root)]
+        } else if discriminant.is_positive() {
+            let a_expr = rational_to_expr(ctx, a);
+            let b_expr = rational_to_expr(ctx, b);
+            let disc_expr = rational_to_expr(ctx, &discriminant);
+            let (r1, r2) = roots_from_a_b_delta(ctx, a_expr, b_expr, disc_expr);
+            vec![r1, r2]
+        } else {
+            vec![]
+        }
+    } else if coeffs.len() == 2 {
+        // Linear: a*x + b = 0
+        let a = &coeffs[1];
+        let b = &coeffs[0];
+        if a.is_zero() {
+            vec![]
+        } else {
+            let root = -b.clone() / a.clone();
+            vec![rational_to_expr(ctx, &root)]
+        }
+    } else {
+        vec![]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -315,5 +365,43 @@ mod tests {
         let mut vals: Vec<u64> = divs.iter().map(|d| d.try_into().unwrap_or(0)).collect();
         vals.sort();
         assert_eq!(vals, vec![1, 2, 3, 4, 6, 12]);
+    }
+
+    #[test]
+    fn solve_residual_linear_works() {
+        let mut ctx = Context::new();
+        // 2x + 4 = 0 -> x = -2
+        let coeffs = vec![
+            BigRational::from_integer(4.into()),
+            BigRational::from_integer(2.into()),
+        ];
+        let roots = solve_residual_degree_leq_two(&mut ctx, &coeffs);
+        assert_eq!(roots.len(), 1);
+        assert_eq!(
+            get_rational(&ctx, roots[0]).expect("root should be numeric"),
+            BigRational::from_integer((-2).into())
+        );
+    }
+
+    #[test]
+    fn solve_residual_quadratic_positive_discriminant_returns_two() {
+        let mut ctx = Context::new();
+        // x^2 - 1 = 0
+        let coeffs = vec![
+            BigRational::from_integer((-1).into()),
+            BigRational::zero(),
+            BigRational::one(),
+        ];
+        let roots = solve_residual_degree_leq_two(&mut ctx, &coeffs);
+        assert_eq!(roots.len(), 2);
+    }
+
+    #[test]
+    fn solve_residual_quadratic_negative_discriminant_returns_none() {
+        let mut ctx = Context::new();
+        // x^2 + 1 = 0 (no real roots)
+        let coeffs = vec![BigRational::one(), BigRational::zero(), BigRational::one()];
+        let roots = solve_residual_degree_leq_two(&mut ctx, &coeffs);
+        assert!(roots.is_empty());
     }
 }

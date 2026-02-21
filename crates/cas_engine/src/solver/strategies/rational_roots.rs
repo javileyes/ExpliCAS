@@ -15,8 +15,9 @@ use crate::error::CasError;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
+use cas_solver_core::solution_set::sort_and_dedup_exprs;
 use num_rational::BigRational;
-use num_traits::{Signed, Zero};
+use num_traits::Zero;
 
 /// Maximum number of candidate rational roots to try before bailing.
 /// Prevents combinatorial blowup on polynomials with large leading/constant coefficients.
@@ -146,57 +147,12 @@ impl SolverStrategy for RationalRootsStrategy {
             }
         }
 
-        // Handle residual polynomial (degree ≤ 2)
-        if current_coeffs.len() == 3 {
-            // Quadratic: use quadratic formula directly
-            let a = &current_coeffs[2];
-            let b = &current_coeffs[1];
-            let c = &current_coeffs[0];
-
-            let discriminant =
-                b.clone() * b.clone() - BigRational::from_integer(4.into()) * a.clone() * c.clone();
-
-            if discriminant.is_zero() {
-                let root = -b.clone() / (BigRational::from_integer(2.into()) * a.clone());
-                let root_expr = cas_solver_core::rational_roots::rational_to_expr(
-                    &mut simplifier.context,
-                    &root,
-                );
-                let (sim_root, _) = simplifier.simplify(root_expr);
-                roots.push(sim_root);
-            } else if discriminant.is_positive() {
-                // Two real roots — compute symbolically for cleaner output
-                let a_expr =
-                    cas_solver_core::rational_roots::rational_to_expr(&mut simplifier.context, a);
-                let disc_expr = cas_solver_core::rational_roots::rational_to_expr(
-                    &mut simplifier.context,
-                    &discriminant,
-                );
-                let b_expr =
-                    cas_solver_core::rational_roots::rational_to_expr(&mut simplifier.context, b);
-                let (sol1, sol2) = cas_solver_core::quadratic_formula::roots_from_a_b_delta(
-                    &mut simplifier.context,
-                    a_expr,
-                    b_expr,
-                    disc_expr,
-                );
-                let (sim1, _) = simplifier.simplify(sol1);
-                let (sim2, _) = simplifier.simplify(sol2);
-
-                roots.push(sim1);
-                roots.push(sim2);
-            }
-            // else: discriminant < 0 → no real roots from this factor (complex)
-        } else if current_coeffs.len() == 2 {
-            // Linear: ax + b = 0 → x = -b/a
-            let a = &current_coeffs[1];
-            let b = &current_coeffs[0];
-            if !a.is_zero() {
-                let root = -b.clone() / a.clone();
-                let root_expr = cas_solver_core::rational_roots::rational_to_expr(
-                    &mut simplifier.context,
-                    &root,
-                );
+        // Handle residual polynomial (degree ≤ 2) via solver core.
+        if current_coeffs.len() == 3 || current_coeffs.len() == 2 {
+            for root_expr in cas_solver_core::rational_roots::solve_residual_degree_leq_two(
+                &mut simplifier.context,
+                &current_coeffs,
+            ) {
                 let (sim_root, _) = simplifier.simplify(root_expr);
                 roots.push(sim_root);
             }
@@ -208,10 +164,7 @@ impl SolverStrategy for RationalRootsStrategy {
         }
 
         // Dedup roots
-        use crate::ordering::compare_expr;
-        use std::cmp::Ordering;
-        roots.sort_by(|a, b| compare_expr(&simplifier.context, *a, *b));
-        roots.dedup_by(|a, b| compare_expr(&simplifier.context, *a, *b) == Ordering::Equal);
+        sort_and_dedup_exprs(&simplifier.context, &mut roots);
 
         let steps = if simplifier.collect_steps() {
             vec![SolveStep {

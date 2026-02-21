@@ -1,15 +1,16 @@
 use crate::engine::Simplifier;
 use crate::error::CasError;
-use crate::ordering::compare_expr;
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{contains_var, is_numeric_zero, split_zero_product_factors};
 use cas_solver_core::quadratic_formula::{
-    roots_from_a_b_and_sqrt, roots_from_a_b_delta, sqrt_expr,
+    discriminant, roots_from_a_b_and_sqrt, roots_from_a_b_delta, sqrt_expr,
 };
-use cas_solver_core::solution_set::{compare_values, get_number, quadratic_numeric_solution};
+use cas_solver_core::solution_set::{
+    compare_values, get_number, quadratic_numeric_solution, sort_and_dedup_exprs,
+};
 use num_rational::BigRational;
 use num_traits::Zero;
 use std::cmp::Ordering;
@@ -128,9 +129,7 @@ impl SolverStrategy for QuadraticStrategy {
                     }
                 }
                 // Remove duplicates
-                all_solutions.sort_by(|a, b| compare_expr(&simplifier.context, *a, *b));
-                all_solutions
-                    .dedup_by(|a, b| compare_expr(&simplifier.context, *a, *b) == Ordering::Equal);
+                sort_and_dedup_exprs(&simplifier.context, &mut all_solutions);
 
                 return Some(Ok((SolutionSet::Discrete(all_solutions), steps)));
             }
@@ -200,9 +199,7 @@ impl SolverStrategy for QuadraticStrategy {
             if let (Some(a_val), Some(b_val), Some(c_val)) = (a_num, b_num, c_num) {
                 // Use numeric logic for better inequality support
                 // delta = b^2 - 4ac
-                let b2 = b_val.clone() * b_val.clone();
-                let four_ac = BigRational::from_integer(4.into()) * a_val.clone() * c_val;
-                let delta = b2 - four_ac;
+                let delta = discriminant(&a_val, &b_val, &c_val);
 
                 // We need to return solutions in terms of Expr
                 // x = (-b +/- sqrt(delta)) / 2a
