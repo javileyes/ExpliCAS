@@ -20,7 +20,6 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 pub use self::solve_core::{solve, solve_with_display_steps};
-pub use cas_solver_core::isolation_utils::contains_var;
 
 /// Solver context — threaded explicitly through the solve pipeline.
 ///
