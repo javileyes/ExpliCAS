@@ -6,7 +6,7 @@ use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{contains_var, is_numeric_zero, split_zero_product_factors};
 use cas_solver_core::quadratic_formula::{
-    discriminant, roots_from_a_b_and_sqrt, roots_from_a_b_delta, sqrt_expr,
+    discriminant, discriminant_expr, roots_from_a_b_and_sqrt, roots_from_a_b_delta, sqrt_expr,
 };
 use cas_solver_core::solution_set::{
     compare_values, get_number, quadratic_numeric_solution, sort_and_dedup_exprs,
@@ -243,12 +243,7 @@ impl SolverStrategy for QuadraticStrategy {
             // Symbolic coefficients
 
             // delta = b^2 - 4ac
-            let two_num = simplifier.context.num(2);
-            let b2 = simplifier.context.add(Expr::Pow(sim_b, two_num));
-            let four = simplifier.context.num(4);
-            let four_a = simplifier.context.add(Expr::Mul(four, sim_a));
-            let four_ac = simplifier.context.add(Expr::Mul(four_a, sim_c));
-            let delta_raw = simplifier.context.add(Expr::Sub(b2, four_ac));
+            let delta_raw = discriminant_expr(&mut simplifier.context, sim_a, sim_b, sim_c);
 
             // POST-SIMPLIFY: Expand then simplify discriminant for cleaner form
             // This converts "16 + 4*(y - 4)" → "4*y"

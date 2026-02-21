@@ -44,6 +44,16 @@ pub fn roots_from_a_b_delta(
     roots_from_a_b_and_sqrt(ctx, a, b, sqrt_delta)
 }
 
+/// Build symbolic discriminant expression `b^2 - 4ac`.
+pub fn discriminant_expr(ctx: &mut Context, a: ExprId, b: ExprId, c: ExprId) -> ExprId {
+    let two = ctx.num(2);
+    let b2 = ctx.add(Expr::Pow(b, two));
+    let four = ctx.num(4);
+    let four_a = ctx.add(Expr::Mul(four, a));
+    let four_ac = ctx.add(Expr::Mul(four_a, c));
+    ctx.add(Expr::Sub(b2, four_ac))
+}
+
 /// Compute the quadratic discriminant `b^2 - 4ac`.
 pub fn discriminant(a: &BigRational, b: &BigRational, c: &BigRational) -> BigRational {
     b.clone() * b.clone() - BigRational::from_integer(4.into()) * a.clone() * c.clone()
@@ -93,5 +103,15 @@ mod tests {
         let c = BigRational::from_integer(2.into());
         let d = discriminant(&a, &b, &c);
         assert_eq!(d, BigRational::from_integer(1.into()));
+    }
+
+    #[test]
+    fn test_discriminant_expr_shape() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let c = ctx.var("c");
+        let d = discriminant_expr(&mut ctx, a, b, c);
+        assert!(matches!(ctx.get(d), Expr::Sub(_, _)));
     }
 }
