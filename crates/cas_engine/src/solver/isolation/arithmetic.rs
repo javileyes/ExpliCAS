@@ -3,7 +3,9 @@ use crate::error::CasError;
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
-use cas_solver_core::isolation_utils::{contains_var, flip_inequality, is_known_negative};
+use cas_solver_core::isolation_utils::{
+    contains_var, flip_inequality, is_known_negative, product_zero_inequality_cases,
+};
 use cas_solver_core::solution_set::{
     intersect_solution_sets, open_negative_domain, open_positive_domain, pos_inf,
     union_solution_sets,
@@ -179,126 +181,45 @@ pub(super) fn isolate_mul(
     // CRITICAL: For inequalities with products, need sign analysis
     let both_have_var =
         contains_var(&simplifier.context, l, var) && contains_var(&simplifier.context, r, var);
-    let is_inequality = matches!(op, RelOp::Lt | RelOp::Gt | RelOp::Leq | RelOp::Geq);
-
     let rhs_is_zero = matches!(simplifier.context.get(rhs), Expr::Number(n) if n.is_zero());
 
-    if both_have_var && is_inequality && rhs_is_zero {
-        // Product inequality: A * B > 0 (or < 0, etc.)
-        let zero = simplifier.context.num(0);
+    if both_have_var && rhs_is_zero {
+        // Product inequality split: A * B op 0
+        if let Some((case1, case2)) = product_zero_inequality_cases(op.clone()) {
+            let zero = simplifier.context.num(0);
 
-        match op {
-            RelOp::Gt | RelOp::Geq => {
-                // A * B > 0: Both same sign
-                // Case 1: Both positive
-                let eq_a_pos = Equation {
-                    lhs: l,
-                    rhs: zero,
-                    op: if matches!(op, RelOp::Gt) {
-                        RelOp::Gt
-                    } else {
-                        RelOp::Geq
-                    },
-                };
-                let eq_b_pos = Equation {
-                    lhs: r,
-                    rhs: zero,
-                    op: if matches!(op, RelOp::Gt) {
-                        RelOp::Gt
-                    } else {
-                        RelOp::Geq
-                    },
-                };
+            // Case 1
+            let eq_a_case1 = Equation {
+                lhs: l,
+                rhs: zero,
+                op: case1.left,
+            };
+            let eq_b_case1 = Equation {
+                lhs: r,
+                rhs: zero,
+                op: case1.right,
+            };
+            let (set_a_case1, _) = solve_with_ctx(&eq_a_case1, var, simplifier, ctx)?;
+            let (set_b_case1, _) = solve_with_ctx(&eq_b_case1, var, simplifier, ctx)?;
+            let case_set1 = intersect_solution_sets(&simplifier.context, set_a_case1, set_b_case1);
 
-                let (set_a_pos, _) = solve_with_ctx(&eq_a_pos, var, simplifier, ctx)?;
-                let (set_b_pos, _) = solve_with_ctx(&eq_b_pos, var, simplifier, ctx)?;
-                let case_pos = intersect_solution_sets(&simplifier.context, set_a_pos, set_b_pos);
+            // Case 2
+            let eq_a_case2 = Equation {
+                lhs: l,
+                rhs: zero,
+                op: case2.left,
+            };
+            let eq_b_case2 = Equation {
+                lhs: r,
+                rhs: zero,
+                op: case2.right,
+            };
+            let (set_a_case2, _) = solve_with_ctx(&eq_a_case2, var, simplifier, ctx)?;
+            let (set_b_case2, _) = solve_with_ctx(&eq_b_case2, var, simplifier, ctx)?;
+            let case_set2 = intersect_solution_sets(&simplifier.context, set_a_case2, set_b_case2);
 
-                // Case 2: Both negative
-                let eq_a_neg = Equation {
-                    lhs: l,
-                    rhs: zero,
-                    op: if matches!(op, RelOp::Gt) {
-                        RelOp::Lt
-                    } else {
-                        RelOp::Leq
-                    },
-                };
-                let eq_b_neg = Equation {
-                    lhs: r,
-                    rhs: zero,
-                    op: if matches!(op, RelOp::Gt) {
-                        RelOp::Lt
-                    } else {
-                        RelOp::Leq
-                    },
-                };
-
-                let (set_a_neg, _) = solve_with_ctx(&eq_a_neg, var, simplifier, ctx)?;
-                let (set_b_neg, _) = solve_with_ctx(&eq_b_neg, var, simplifier, ctx)?;
-                let case_neg = intersect_solution_sets(&simplifier.context, set_a_neg, set_b_neg);
-
-                let final_set = union_solution_sets(&simplifier.context, case_pos, case_neg);
-
-                return Ok((final_set, steps));
-            }
-            RelOp::Lt | RelOp::Leq => {
-                // A * B < 0: Different signs
-                // Case 1: A positive, B negative
-                let eq_a_pos = Equation {
-                    lhs: l,
-                    rhs: zero,
-                    op: if matches!(op, RelOp::Lt) {
-                        RelOp::Gt
-                    } else {
-                        RelOp::Geq
-                    },
-                };
-                let eq_b_neg = Equation {
-                    lhs: r,
-                    rhs: zero,
-                    op: if matches!(op, RelOp::Lt) {
-                        RelOp::Lt
-                    } else {
-                        RelOp::Leq
-                    },
-                };
-
-                let (set_a_pos, _) = solve_with_ctx(&eq_a_pos, var, simplifier, ctx)?;
-                let (set_b_neg, _) = solve_with_ctx(&eq_b_neg, var, simplifier, ctx)?;
-                let case1 = intersect_solution_sets(&simplifier.context, set_a_pos, set_b_neg);
-
-                // Case 2: A negative, B positive
-                let eq_a_neg = Equation {
-                    lhs: l,
-                    rhs: zero,
-                    op: if matches!(op, RelOp::Lt) {
-                        RelOp::Lt
-                    } else {
-                        RelOp::Leq
-                    },
-                };
-                let eq_b_pos = Equation {
-                    lhs: r,
-                    rhs: zero,
-                    op: if matches!(op, RelOp::Lt) {
-                        RelOp::Gt
-                    } else {
-                        RelOp::Geq
-                    },
-                };
-
-                let (set_a_neg, _) = solve_with_ctx(&eq_a_neg, var, simplifier, ctx)?;
-                let (set_b_pos, _) = solve_with_ctx(&eq_b_pos, var, simplifier, ctx)?;
-                let case2 = intersect_solution_sets(&simplifier.context, set_a_neg, set_b_pos);
-
-                let final_set = union_solution_sets(&simplifier.context, case1, case2);
-
-                return Ok((final_set, steps));
-            }
-            _ => {
-                // Equality - fall through to regular division
-            }
+            let final_set = union_solution_sets(&simplifier.context, case_set1, case_set2);
+            return Ok((final_set, steps));
         }
     }
 

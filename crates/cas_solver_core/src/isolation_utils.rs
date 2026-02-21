@@ -98,6 +98,63 @@ pub fn combine_abs_branch_sets(
     }
 }
 
+/// Relational operators to apply to each factor in a product-sign split case.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SignCaseOps {
+    pub left: RelOp,
+    pub right: RelOp,
+}
+
+/// Build the two sign cases for product inequalities with zero RHS:
+/// `A*B op 0`.
+///
+/// Returns `None` for non-inequality operators.
+pub fn product_zero_inequality_cases(op: RelOp) -> Option<(SignCaseOps, SignCaseOps)> {
+    match op {
+        RelOp::Gt => Some((
+            SignCaseOps {
+                left: RelOp::Gt,
+                right: RelOp::Gt,
+            },
+            SignCaseOps {
+                left: RelOp::Lt,
+                right: RelOp::Lt,
+            },
+        )),
+        RelOp::Geq => Some((
+            SignCaseOps {
+                left: RelOp::Geq,
+                right: RelOp::Geq,
+            },
+            SignCaseOps {
+                left: RelOp::Leq,
+                right: RelOp::Leq,
+            },
+        )),
+        RelOp::Lt => Some((
+            SignCaseOps {
+                left: RelOp::Gt,
+                right: RelOp::Lt,
+            },
+            SignCaseOps {
+                left: RelOp::Lt,
+                right: RelOp::Gt,
+            },
+        )),
+        RelOp::Leq => Some((
+            SignCaseOps {
+                left: RelOp::Geq,
+                right: RelOp::Leq,
+            },
+            SignCaseOps {
+                left: RelOp::Leq,
+                right: RelOp::Geq,
+            },
+        )),
+        RelOp::Eq | RelOp::Neq => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,5 +226,49 @@ mod tests {
             }
             other => panic!("Expected Continuous intersection, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_product_zero_inequality_cases_gt() {
+        let (c1, c2) = product_zero_inequality_cases(RelOp::Gt).expect("expected cases");
+        assert_eq!(
+            c1,
+            SignCaseOps {
+                left: RelOp::Gt,
+                right: RelOp::Gt
+            }
+        );
+        assert_eq!(
+            c2,
+            SignCaseOps {
+                left: RelOp::Lt,
+                right: RelOp::Lt
+            }
+        );
+    }
+
+    #[test]
+    fn test_product_zero_inequality_cases_leq() {
+        let (c1, c2) = product_zero_inequality_cases(RelOp::Leq).expect("expected cases");
+        assert_eq!(
+            c1,
+            SignCaseOps {
+                left: RelOp::Geq,
+                right: RelOp::Leq
+            }
+        );
+        assert_eq!(
+            c2,
+            SignCaseOps {
+                left: RelOp::Leq,
+                right: RelOp::Geq
+            }
+        );
+    }
+
+    #[test]
+    fn test_product_zero_inequality_cases_eq_none() {
+        assert!(product_zero_inequality_cases(RelOp::Eq).is_none());
+        assert!(product_zero_inequality_cases(RelOp::Neq).is_none());
     }
 }
