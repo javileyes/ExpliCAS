@@ -2,10 +2,11 @@ use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::{SolveStep, SolverOptions};
-use cas_ast::{BoundType, Equation, Expr, ExprId, Interval, RelOp, SolutionSet};
+use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{contains_var, flip_inequality, is_known_negative};
 use cas_solver_core::solution_set::{
-    intersect_solution_sets, neg_inf, pos_inf, union_solution_sets,
+    intersect_solution_sets, open_negative_domain, open_positive_domain, pos_inf,
+    union_solution_sets,
 };
 use num_traits::Zero;
 
@@ -587,12 +588,7 @@ pub(super) fn isolate_div(
                 let (set_pos, steps_pos) = prepend_steps(results_pos, steps_case1)?;
 
                 // Intersect with (0, inf)
-                let domain_pos = SolutionSet::Continuous(Interval {
-                    min: simplifier.context.num(0),
-                    min_type: BoundType::Open,
-                    max: pos_inf(&mut simplifier.context),
-                    max_type: BoundType::Open,
-                });
+                let domain_pos = open_positive_domain(&mut simplifier.context);
                 let final_pos = intersect_solution_sets(&simplifier.context, set_pos, domain_pos);
 
                 // Case 2: x < 0. Multiply by x (negative) -> Inequality flips.
@@ -626,12 +622,7 @@ pub(super) fn isolate_div(
                 let (set_neg, steps_neg) = prepend_steps(results_neg, steps_case2)?;
 
                 // Intersect with (-inf, 0)
-                let domain_neg = SolutionSet::Continuous(Interval {
-                    min: neg_inf(&mut simplifier.context),
-                    min_type: BoundType::Open,
-                    max: simplifier.context.num(0),
-                    max_type: BoundType::Open,
-                });
+                let domain_neg = open_negative_domain(&mut simplifier.context);
                 let final_neg = intersect_solution_sets(&simplifier.context, set_neg, domain_neg);
 
                 // Union

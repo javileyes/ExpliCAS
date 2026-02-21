@@ -115,6 +115,26 @@ pub fn isolated_var_solution(ctx: &mut Context, rhs: ExprId, op: RelOp) -> Solut
     }
 }
 
+/// Open positive domain: `(0, +inf)`.
+pub fn open_positive_domain(ctx: &mut Context) -> SolutionSet {
+    SolutionSet::Continuous(Interval {
+        min: ctx.num(0),
+        min_type: BoundType::Open,
+        max: pos_inf(ctx),
+        max_type: BoundType::Open,
+    })
+}
+
+/// Open negative domain: `(-inf, 0)`.
+pub fn open_negative_domain(ctx: &mut Context) -> SolutionSet {
+    SolutionSet::Continuous(Interval {
+        min: neg_inf(ctx),
+        min_type: BoundType::Open,
+        max: ctx.num(0),
+        max_type: BoundType::Open,
+    })
+}
+
 pub fn intersect_intervals(ctx: &Context, i1: &Interval, i2: &Interval) -> SolutionSet {
     // Intersection of [a, b] and [c, d] is [max(a,c), min(b,d)]
 
@@ -409,6 +429,36 @@ mod tests {
                 assert!(is_infinity(&ctx, intervals[1].max));
             }
             other => panic!("Expected Union, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_open_positive_domain() {
+        let mut ctx = Context::new();
+        let set = open_positive_domain(&mut ctx);
+        match set {
+            SolutionSet::Continuous(i) => {
+                assert_eq!(get_number(&ctx, i.min).unwrap().to_integer(), 0.into());
+                assert!(is_infinity(&ctx, i.max));
+                assert_eq!(i.min_type, BoundType::Open);
+                assert_eq!(i.max_type, BoundType::Open);
+            }
+            other => panic!("Expected continuous interval, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_open_negative_domain() {
+        let mut ctx = Context::new();
+        let set = open_negative_domain(&mut ctx);
+        match set {
+            SolutionSet::Continuous(i) => {
+                assert!(is_neg_infinity(&ctx, i.min));
+                assert_eq!(get_number(&ctx, i.max).unwrap().to_integer(), 0.into());
+                assert_eq!(i.min_type, BoundType::Open);
+                assert_eq!(i.max_type, BoundType::Open);
+            }
+            other => panic!("Expected continuous interval, got {:?}", other),
         }
     }
 }
