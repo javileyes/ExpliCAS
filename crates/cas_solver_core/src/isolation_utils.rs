@@ -119,6 +119,30 @@ pub fn is_even_integer_expr(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
+/// True iff expression denotes a positive integer numeric literal.
+///
+/// Accepts either:
+/// - `Number(n)` where `n` is an integer > 0
+/// - `Div(Number(n), Number(d))` that evaluates to an integer > 0
+pub fn is_positive_integer_expr(ctx: &Context, expr: ExprId) -> bool {
+    let zero = num_rational::BigRational::from_integer(0.into());
+    match ctx.get(expr) {
+        Expr::Number(n) => n.is_integer() && *n > zero,
+        Expr::Div(n_id, d_id) => {
+            if let (Expr::Number(n), Expr::Number(d)) = (ctx.get(*n_id), ctx.get(*d_id)) {
+                if *d == zero {
+                    return false;
+                }
+                let val = n / d;
+                val.is_integer() && val > zero
+            } else {
+                false
+            }
+        }
+        _ => false,
+    }
+}
+
 /// Combine the two branch solution sets generated from `|A| op B`.
 ///
 /// For equalities/greater-than forms both branches are alternatives (union).
@@ -356,6 +380,30 @@ mod tests {
         assert_eq!(numeric_sign(&ctx, zero), Some(NumericSign::Zero));
         assert_eq!(numeric_sign(&ctx, pos), Some(NumericSign::Positive));
         assert_eq!(numeric_sign(&ctx, sym), None);
+    }
+
+    #[test]
+    fn test_is_positive_integer_expr() {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let neg_two = ctx.num(-2);
+        let three = ctx.num(3);
+        let six = ctx.num(6);
+        let one = ctx.num(1);
+        let two_den = ctx.num(2);
+        let half = ctx.add(Expr::Div(one, two_den));
+        let two_from_div = ctx.add(Expr::Div(six, three));
+        let one2 = ctx.num(1);
+        let zero = ctx.num(0);
+        let div_zero = ctx.add(Expr::Div(one2, zero));
+        let x = ctx.var("x");
+
+        assert!(is_positive_integer_expr(&ctx, two));
+        assert!(!is_positive_integer_expr(&ctx, neg_two));
+        assert!(is_positive_integer_expr(&ctx, two_from_div));
+        assert!(!is_positive_integer_expr(&ctx, half));
+        assert!(!is_positive_integer_expr(&ctx, div_zero));
+        assert!(!is_positive_integer_expr(&ctx, x));
     }
 
     #[test]

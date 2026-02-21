@@ -4,10 +4,9 @@ use crate::solver::isolation::isolate;
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveDomainEnv, SolveStep, SolverOptions};
-use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
-use cas_solver_core::isolation_utils::contains_var;
+use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
+use cas_solver_core::isolation_utils::{contains_var, is_positive_integer_expr};
 use cas_solver_core::log_domain::LogSolveDecision;
-use num_traits::Zero;
 
 pub struct IsolationStrategy;
 
@@ -351,32 +350,7 @@ impl SolverStrategy for UnwrapStrategy {
                     {
                         // Prevent unwrapping positive integer powers (handled by Polynomial/Quadratic)
                         // e.g. x^2 = ... don't turn into x = sqrt(...)
-                        let is_pos_int = |ctx: &Context, e_id: ExprId| -> bool {
-                            match ctx.get(e_id) {
-                                Expr::Number(n) => {
-                                    n.is_integer()
-                                        && *n > num_rational::BigRational::from_integer(0.into())
-                                }
-                                Expr::Div(n_id, d_id) => {
-                                    if let (Expr::Number(n), Expr::Number(d)) =
-                                        (ctx.get(*n_id), ctx.get(*d_id))
-                                    {
-                                        if !d.is_zero() {
-                                            let val = n / d;
-                                            return val.is_integer()
-                                                && val
-                                                    > num_rational::BigRational::from_integer(
-                                                        0.into(),
-                                                    );
-                                        }
-                                    }
-                                    false
-                                }
-                                _ => false,
-                            }
-                        };
-
-                        if is_pos_int(&simplifier.context, e) {
+                        if is_positive_integer_expr(&simplifier.context, e) {
                             // Don't unwrap x^2, x^4 etc.
                             return None;
                         }
