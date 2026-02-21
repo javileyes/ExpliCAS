@@ -5,6 +5,11 @@
 pub mod json;
 pub mod substitute;
 
+/// Backward-compatible facade for former `cas_engine::strategies::substitute_expr` imports.
+pub mod strategies {
+    pub use cas_ast::substitute_expr_by_id as substitute_expr;
+}
+
 pub use cas_engine::canonical_forms;
 pub use cas_engine::normalize_and_dedupe_conditions;
 pub use cas_engine::rules;

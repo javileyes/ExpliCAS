@@ -1,3 +1,5 @@
+use cas_ast::{ConditionPredicate, ConditionSet, ExprId};
+
 /// Domain mode used by the pure logarithmic decision table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DomainModeKind {
@@ -165,4 +167,3 @@ mod tests {
         assert!(matches!(d, LogSolveDecision::Unsupported(_, _)));
     }
 }
-use cas_ast::{ConditionPredicate, ConditionSet, ExprId};
