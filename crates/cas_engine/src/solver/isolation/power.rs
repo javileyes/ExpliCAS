@@ -3,12 +3,11 @@ use crate::error::CasError;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
-    contains_var, flip_inequality, is_known_negative, mk_residual_solve,
+    contains_var, flip_inequality, is_known_negative, is_numeric_zero, mk_residual_solve,
 };
 use cas_solver_core::log_domain::{LogAssumption, LogSolveDecision};
 use cas_solver_core::solution_set::get_number;
 use cas_solver_core::solve_outcome::even_power_negative_rhs_outcome;
-use num_traits::Zero;
 
 use super::{isolate, prepend_steps};
 
@@ -175,12 +174,12 @@ fn isolate_pow_exponent(
         } else {
             let diff = simplifier.context.add(Expr::Sub(b, rhs));
             let (sim_diff, _) = simplifier.simplify(diff);
-            matches!(simplifier.context.get(sim_diff), Expr::Number(n) if n.is_zero())
+            is_numeric_zero(&simplifier.context, sim_diff)
         }
     };
 
     if bases_equal && op == RelOp::Eq {
-        let base_is_zero = matches!(simplifier.context.get(b), Expr::Number(n) if n.is_zero());
+        let base_is_zero = is_numeric_zero(&simplifier.context, b);
 
         if base_is_zero {
             // 0^x = 0 ⟹ x > 0
@@ -335,7 +334,7 @@ fn isolate_pow_exponent(
             } else {
                 let diff = simplifier.context.add(Expr::Sub(b, rhs_base));
                 let (sim_diff, _) = simplifier.simplify(diff);
-                matches!(simplifier.context.get(sim_diff), Expr::Number(n) if n.is_zero())
+                is_numeric_zero(&simplifier.context, sim_diff)
             }
         };
 

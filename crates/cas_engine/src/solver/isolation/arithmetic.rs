@@ -4,13 +4,13 @@ use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
-    contains_var, flip_inequality, is_known_negative, product_zero_inequality_cases,
+    contains_var, flip_inequality, is_known_negative, is_numeric_zero,
+    product_zero_inequality_cases,
 };
 use cas_solver_core::solution_set::{
     intersect_solution_sets, open_negative_domain, open_positive_domain, pos_inf,
     union_solution_sets,
 };
-use num_traits::Zero;
 
 use super::{isolate, prepend_steps};
 
@@ -181,7 +181,7 @@ pub(super) fn isolate_mul(
     // CRITICAL: For inequalities with products, need sign analysis
     let both_have_var =
         contains_var(&simplifier.context, l, var) && contains_var(&simplifier.context, r, var);
-    let rhs_is_zero = matches!(simplifier.context.get(rhs), Expr::Number(n) if n.is_zero());
+    let rhs_is_zero = is_numeric_zero(&simplifier.context, rhs);
 
     if both_have_var && rhs_is_zero {
         // Product inequality split: A * B op 0
@@ -462,7 +462,7 @@ pub(super) fn isolate_div(
         }
 
         // CRITICAL FIX: Check if RHS is zero to avoid creating undefined (1/0)
-        let is_rhs_zero = matches!(simplifier.context.get(rhs), Expr::Number(n) if n.is_zero());
+        let is_rhs_zero = is_numeric_zero(&simplifier.context, rhs);
 
         let sim_rhs = if is_rhs_zero {
             pos_inf(&mut simplifier.context)

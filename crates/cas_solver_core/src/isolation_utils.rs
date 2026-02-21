@@ -80,6 +80,14 @@ pub fn is_simple_reciprocal(ctx: &Context, expr: ExprId, var: &str) -> bool {
     }
 }
 
+/// True iff expression is the numeric literal zero.
+pub fn is_numeric_zero(ctx: &Context, expr: ExprId) -> bool {
+    matches!(
+        ctx.get(expr),
+        Expr::Number(n) if *n == num_rational::BigRational::from_integer(0.into())
+    )
+}
+
 /// Combine the two branch solution sets generated from `|A| op B`.
 ///
 /// For equalities/greater-than forms both branches are alternatives (union).
@@ -270,5 +278,14 @@ mod tests {
     fn test_product_zero_inequality_cases_eq_none() {
         assert!(product_zero_inequality_cases(RelOp::Eq).is_none());
         assert!(product_zero_inequality_cases(RelOp::Neq).is_none());
+    }
+
+    #[test]
+    fn test_is_numeric_zero() {
+        let mut ctx = Context::new();
+        let zero = ctx.num(0);
+        let two = ctx.num(2);
+        assert!(is_numeric_zero(&ctx, zero));
+        assert!(!is_numeric_zero(&ctx, two));
     }
 }
