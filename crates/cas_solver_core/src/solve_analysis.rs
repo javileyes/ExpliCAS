@@ -24,6 +24,19 @@ pub fn extract_denominators_with_var(ctx: &Context, expr: ExprId, var: &str) -> 
     denoms_set.into_iter().collect()
 }
 
+/// Collect unique denominator expressions containing `var` across equation sides.
+pub fn collect_unique_denominators_with_var(
+    ctx: &Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+) -> Vec<ExprId> {
+    let mut denoms_set: HashSet<ExprId> = HashSet::new();
+    denoms_set.extend(extract_denominators_with_var(ctx, lhs, var));
+    denoms_set.extend(extract_denominators_with_var(ctx, rhs, var));
+    denoms_set.into_iter().collect()
+}
+
 fn collect_denominators_into_set(
     ctx: &Context,
     expr: ExprId,
@@ -111,5 +124,17 @@ mod tests {
         let sol = SolutionSet::Discrete(vec![ctx.num(1)]);
         let guarded = apply_nonzero_exclusion_guards(sol, &[x]);
         assert!(matches!(guarded, SolutionSet::Conditional(_)));
+    }
+
+    #[test]
+    fn collect_unique_denominators_deduplicates_between_sides() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let lhs = ctx.add(Expr::Div(one, x));
+        let one2 = ctx.num(1);
+        let rhs = ctx.add(Expr::Div(one2, x));
+        let denoms = collect_unique_denominators_with_var(&ctx, lhs, rhs, "x");
+        assert_eq!(denoms.len(), 1);
     }
 }

@@ -36,16 +36,6 @@ pub(crate) fn is_symbolic_expr(ctx: &Context, expr: ExprId) -> bool {
     cas_solver_core::solve_analysis::is_symbolic_expr(ctx, expr)
 }
 
-/// V2.1 Issue #10: Extract all denominators from an expression that contain the given variable.
-///
-/// Used to detect domain restrictions when solving equations with fractions.
-/// Returns a list of ExprIds that appear as denominators and contain the variable.
-///
-/// Example: `(x*y)/x` returns `[x]` (the denominator x contains var "x")
-pub(crate) fn extract_denominators_with_var(ctx: &Context, expr: ExprId, var: &str) -> Vec<ExprId> {
-    cas_solver_core::solve_analysis::extract_denominators_with_var(ctx, expr, var)
-}
-
 /// V2.1 Issue #10: Wrap a solve result with domain guards for denominators.
 ///
 /// If there are domain exclusions (denominators that must be non-zero),

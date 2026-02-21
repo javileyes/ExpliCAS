@@ -4,7 +4,7 @@
 //! entry points, plus the rational-exponent pre-check.
 
 use super::SolveDiagnostics;
-use cas_ast::{ExprId, SolutionSet};
+use cas_ast::SolutionSet;
 use std::collections::HashSet;
 
 use crate::engine::Simplifier;
@@ -16,9 +16,7 @@ use crate::solver::strategies::{
 };
 use crate::solver::strategy::SolverStrategy;
 
-use super::utilities::{
-    extract_denominators_with_var, is_symbolic_expr, verify_solution, wrap_with_domain_guards,
-};
+use super::utilities::{is_symbolic_expr, verify_solution, wrap_with_domain_guards};
 use super::{
     step_cleanup, DepthGuard, DisplaySolveSteps, SolveDomainEnv, SolveStep, SolverOptions,
     MAX_SOLVE_DEPTH, SOLVE_DEPTH,
@@ -175,18 +173,12 @@ fn solve_inner(
 
     // V2.1 Issue #10: Extract denominators containing the variable BEFORE simplification
     // These will be used to create NonZero guards in the final result
-    let mut domain_exclusions: std::collections::HashSet<ExprId> = std::collections::HashSet::new();
-    domain_exclusions.extend(extract_denominators_with_var(
+    let domain_exclusions = cas_solver_core::solve_analysis::collect_unique_denominators_with_var(
         &simplifier.context,
         eq.lhs,
-        var,
-    ));
-    domain_exclusions.extend(extract_denominators_with_var(
-        &simplifier.context,
         eq.rhs,
         var,
-    ));
-    let domain_exclusions: Vec<ExprId> = domain_exclusions.into_iter().collect();
+    );
 
     // V2.2+: Build SolveDomainEnv with global required conditions
     // This is the "semantic ground" for all solver decisions
