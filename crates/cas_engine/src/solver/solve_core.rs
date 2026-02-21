@@ -4,7 +4,7 @@
 //! entry points, plus the rational-exponent pre-check.
 
 use super::SolveDiagnostics;
-use cas_ast::SolutionSet;
+use cas_ast::{ExprId, SolutionSet};
 use std::collections::HashSet;
 
 use crate::engine::Simplifier;
@@ -16,7 +16,7 @@ use crate::solver::strategies::{
 };
 use crate::solver::strategy::SolverStrategy;
 
-use super::utilities::{is_symbolic_expr, verify_solution, wrap_with_domain_guards};
+use super::utilities::verify_solution;
 use super::{
     step_cleanup, DepthGuard, DisplaySolveSteps, SolveDomainEnv, SolveStep, SolverOptions,
     MAX_SOLVE_DEPTH, SOLVE_DEPTH,
@@ -55,6 +55,19 @@ impl Drop for CycleGuard {
             s.borrow_mut().remove(&self.fp);
         });
     }
+}
+
+fn apply_domain_guards(
+    result: Result<(SolutionSet, Vec<SolveStep>), CasError>,
+    exclusions: &[ExprId],
+) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+    if exclusions.is_empty() {
+        return result;
+    }
+    let (solution_set, steps) = result?;
+    let guarded =
+        cas_solver_core::solve_analysis::apply_nonzero_exclusion_guards(solution_set, exclusions);
+    Ok((guarded, steps))
 }
 
 /// Solve with default options (for backward compatibility with tests).
@@ -222,7 +235,7 @@ fn solve_inner(
     if eq.op == cas_ast::RelOp::Eq {
         if let Some(result) = try_solve_rational_exponent(eq, var, simplifier, &ctx) {
             // Wrap result with domain guards if needed
-            return wrap_with_domain_guards(result, &domain_exclusions, simplifier);
+            return apply_domain_guards(result, &domain_exclusions);
         }
     }
 
@@ -413,11 +426,7 @@ fn solve_inner(
                 };
 
                 // V2.1 Issue #10: Apply domain guards if any denominators contained the variable
-                return wrap_with_domain_guards(
-                    Ok((SolutionSet::AllReals, steps)),
-                    &domain_exclusions,
-                    simplifier,
-                );
+                return apply_domain_guards(Ok((SolutionSet::AllReals, steps)), &domain_exclusions);
             }
         }
     }
@@ -467,7 +476,10 @@ fn solve_inner(
                             // Skip verification for symbolic solutions (containing functions/variables)
                             // These can't be verified by substitution. Examples: ln(c/d)/ln(a/b)
                             // Only verify pure numeric solutions to catch extraneous roots.
-                            if is_symbolic_expr(&simplifier.context, sol) {
+                            if cas_solver_core::solve_analysis::is_symbolic_expr(
+                                &simplifier.context,
+                                sol,
+                            ) {
                                 // Trust symbolic solutions - can't verify
                                 valid_sols.push(sol);
                             } else {
