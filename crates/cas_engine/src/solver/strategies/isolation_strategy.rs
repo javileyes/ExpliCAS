@@ -731,53 +731,5 @@ pub(crate) fn match_rational_power(
     expr: ExprId,
     var: &str,
 ) -> Option<(ExprId, i64, i64)> {
-    if let Expr::Pow(base, exp) = ctx.get(expr) {
-        // Check that base contains the variable
-        if !contains_var(ctx, *base, var) {
-            return None;
-        }
-
-        // Check if exp is a rational number p/q with q != 1
-        let exp_data = ctx.get(*exp);
-
-        match exp_data {
-            Expr::Number(n) => {
-                // Check if denominator != 1 (not an integer)
-                let denom = n.denom();
-                let numer = n.numer();
-                if *denom == 1.into() {
-                    // Integer exponent, not what we're looking for
-                    return None;
-                }
-                // Convert to i64 (if possible)
-                let p: i64 = numer.try_into().ok()?;
-                let q: i64 = denom.try_into().ok()?;
-                if q <= 0 {
-                    return None;
-                }
-                Some((*base, p, q))
-            }
-            Expr::Div(num_id, den_id) => {
-                // Check if it's a simple p/q
-                if let (Expr::Number(p_rat), Expr::Number(q_rat)) =
-                    (ctx.get(*num_id), ctx.get(*den_id))
-                {
-                    if !p_rat.is_integer() || !q_rat.is_integer() {
-                        return None;
-                    }
-                    let p: i64 = p_rat.numer().try_into().ok()?;
-                    let q: i64 = q_rat.numer().try_into().ok()?;
-                    if q <= 1 {
-                        return None;
-                    }
-                    Some((*base, p, q))
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
-    } else {
-        None
-    }
+    cas_solver_core::rational_power::match_rational_power(ctx, expr, var)
 }
