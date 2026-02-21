@@ -6,7 +6,6 @@
 use super::SolveDiagnostics;
 use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
-use std::collections::HashSet;
 
 use crate::engine::Simplifier;
 use crate::error::CasError;
@@ -29,34 +28,6 @@ use super::{
 //   - rules/rational_canonicalization.rs (CanonicalizeRationalDivRule, CanonicalizeNestedPowRule)
 //   - rules/cancel_common_terms.rs (CancelCommonAdditiveTermsRule)
 // These are now applied automatically by simplify_for_solve().
-
-// ---------------------------------------------------------------------------
-// Cycle detection: per-call-stack fingerprint set (diagnostic TLS)
-// ---------------------------------------------------------------------------
-// SOLVE_SEEN is a legacy TLS cell for cycle detection only.
-// It must NOT carry solver-semantic information.
-// See solver/mod.rs for the full TLS policy.
-
-thread_local! {
-    /// Set of equation fingerprints seen in the current top-level solve call.
-    /// Prevents infinite loops where strategies rewrite an equation into an
-    /// equivalent form that would be solved again.
-    static SOLVE_SEEN: std::cell::RefCell<HashSet<u64>> =
-        std::cell::RefCell::new(HashSet::new());
-}
-
-/// RAII guard that removes a fingerprint from SOLVE_SEEN on drop.
-struct CycleGuard {
-    fp: u64,
-}
-
-impl Drop for CycleGuard {
-    fn drop(&mut self) {
-        SOLVE_SEEN.with(|s| {
-            s.borrow_mut().remove(&self.fp);
-        });
-    }
-}
 
 fn verify_solution(
     eq: &cas_ast::Equation,
@@ -463,13 +434,11 @@ fn solve_inner(
         simplified_eq.rhs,
         var,
     );
-    let is_cycle = SOLVE_SEEN.with(|s| !s.borrow_mut().insert(fp));
-    if is_cycle {
-        return Err(CasError::SolverError(
+    let _cycle_guard = cas_solver_core::cycle_guard::try_enter(fp).ok_or_else(|| {
+        CasError::SolverError(
             "Cycle detected: equation revisited after rewriting (equivalent form loop)".to_string(),
-        ));
-    }
-    let _cycle_guard = CycleGuard { fp };
+        )
+    })?;
 
     // 3. Define strategies
     // In a real app, these might be configured in Simplifier or passed in.
