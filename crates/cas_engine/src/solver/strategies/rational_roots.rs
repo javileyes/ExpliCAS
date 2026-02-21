@@ -15,9 +15,8 @@ use crate::error::CasError;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
+use cas_solver_core::rational_roots::NumericPolynomialSolveOutcome;
 use cas_solver_core::solution_set::sort_and_dedup_exprs;
-use num_rational::BigRational;
-use num_traits::Zero;
 
 /// Maximum number of candidate rational roots to try before bailing.
 /// Prevents combinatorial blowup on polynomials with large leading/constant coefficients.
@@ -60,37 +59,27 @@ impl SolverStrategy for RationalRootsStrategy {
             var,
             MAX_DEGREE,
         )?;
-
-        let degree = coeffs.len() - 1;
-
-        // Only handle degree ≥ 3 (degree ≤ 2 is handled by QuadraticStrategy/Linear)
-        if !(3..=MAX_DEGREE).contains(&degree) {
-            return None;
-        }
-
-        // All coefficients must be numeric (rational)
-        let rat_coeffs: Vec<BigRational> = coeffs
-            .iter()
-            .map(|&c| cas_solver_core::rational_roots::get_rational(&simplifier.context, c))
-            .collect::<Option<Vec<_>>>()?;
-
-        // All zeros check
-        if rat_coeffs.iter().all(|c| c.is_zero()) {
-            return Some(Ok((SolutionSet::AllReals, vec![])));
-        }
-
-        // Find rational roots (pure deflation in solver core)
-        let mut roots = cas_solver_core::rational_roots::extract_candidate_roots(
+        let outcome = cas_solver_core::rational_roots::solve_numeric_coeff_polynomial(
             &mut simplifier.context,
-            rat_coeffs,
+            &coeffs,
+            3,
+            MAX_DEGREE,
             MAX_CANDIDATES,
-        )
-        .into_iter()
-        .map(|root_expr| {
-            let (sim_root, _) = simplifier.simplify(root_expr);
-            sim_root
-        })
-        .collect::<Vec<_>>();
+        )?;
+
+        let (degree, mut roots) = match outcome {
+            NumericPolynomialSolveOutcome::AllReals => return Some(Ok((SolutionSet::AllReals, vec![]))),
+            NumericPolynomialSolveOutcome::CandidateRoots { degree, roots } => (
+                degree,
+                roots
+                    .into_iter()
+                    .map(|root_expr| {
+                        let (sim_root, _) = simplifier.simplify(root_expr);
+                        sim_root
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+        };
 
         if roots.is_empty() {
             return None; // No roots found, let other strategies try

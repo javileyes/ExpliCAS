@@ -335,6 +335,48 @@ pub fn find_rational_roots(
     (roots, coeffs)
 }
 
+/// Outcome of solving a numeric-coefficient univariate polynomial.
+pub enum NumericPolynomialSolveOutcome {
+    /// All coefficients are zero, so equation `0 = 0` holds for every real value.
+    AllReals,
+    /// Candidate roots found for an in-range polynomial degree.
+    CandidateRoots { degree: usize, roots: Vec<ExprId> },
+}
+
+/// Solve a polynomial represented by coefficient expressions `[a0, a1, ..., an]`.
+///
+/// Returns `None` when:
+/// - degree is outside `[min_degree, max_degree]`, or
+/// - any coefficient is non-numeric (non-rational).
+pub fn solve_numeric_coeff_polynomial(
+    ctx: &mut Context,
+    coeff_exprs: &[ExprId],
+    min_degree: usize,
+    max_degree: usize,
+    max_candidates: usize,
+) -> Option<NumericPolynomialSolveOutcome> {
+    if coeff_exprs.is_empty() {
+        return None;
+    }
+
+    let degree = coeff_exprs.len().saturating_sub(1);
+    if !(min_degree..=max_degree).contains(&degree) {
+        return None;
+    }
+
+    let rat_coeffs: Vec<BigRational> = coeff_exprs
+        .iter()
+        .map(|&c| get_rational(ctx, c))
+        .collect::<Option<Vec<_>>>()?;
+
+    if rat_coeffs.iter().all(|c| c.is_zero()) {
+        return Some(NumericPolynomialSolveOutcome::AllReals);
+    }
+
+    let roots = extract_candidate_roots(ctx, rat_coeffs, max_candidates);
+    Some(NumericPolynomialSolveOutcome::CandidateRoots { degree, roots })
+}
+
 /// Extract all discrete candidate roots for a degree>=3 polynomial with
 /// rational coefficients.
 ///
@@ -513,5 +555,47 @@ mod tests {
         let mut ctx = Context::new();
         let roots = extract_candidate_roots(&mut ctx, coeffs, 200);
         assert_eq!(roots.len(), 3);
+    }
+
+    #[test]
+    fn solve_numeric_coeff_polynomial_all_reals_when_all_zero() {
+        let mut ctx = Context::new();
+        let coeffs = vec![ctx.num(0), ctx.num(0), ctx.num(0), ctx.num(0)];
+        let out = solve_numeric_coeff_polynomial(&mut ctx, &coeffs, 3, 10, 200)
+            .expect("in-range degree with numeric coeffs should produce outcome");
+        assert!(matches!(out, NumericPolynomialSolveOutcome::AllReals));
+    }
+
+    #[test]
+    fn solve_numeric_coeff_polynomial_returns_candidates_for_cubic() {
+        let mut ctx = Context::new();
+        // x^3 - x
+        let coeffs = vec![ctx.num(0), ctx.num(-1), ctx.num(0), ctx.num(1)];
+        let out = solve_numeric_coeff_polynomial(&mut ctx, &coeffs, 3, 10, 200)
+            .expect("in-range degree with numeric coeffs should produce outcome");
+        match out {
+            NumericPolynomialSolveOutcome::CandidateRoots { degree, roots } => {
+                assert_eq!(degree, 3);
+                assert_eq!(roots.len(), 3);
+            }
+            NumericPolynomialSolveOutcome::AllReals => {
+                panic!("expected candidate roots for non-zero polynomial")
+            }
+        }
+    }
+
+    #[test]
+    fn solve_numeric_coeff_polynomial_rejects_degree_out_of_range() {
+        let mut ctx = Context::new();
+        let coeffs = vec![ctx.num(1), ctx.num(2), ctx.num(3)];
+        assert!(solve_numeric_coeff_polynomial(&mut ctx, &coeffs, 3, 10, 200).is_none());
+    }
+
+    #[test]
+    fn solve_numeric_coeff_polynomial_rejects_non_numeric_coefficients() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let coeffs = vec![ctx.num(0), x, ctx.num(0), ctx.num(1)];
+        assert!(solve_numeric_coeff_polynomial(&mut ctx, &coeffs, 3, 10, 200).is_none());
     }
 }
