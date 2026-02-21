@@ -9,3 +9,4 @@ pub mod solve_outcome;
 pub mod substitution;
 pub mod verification;
 pub mod verify_stats;
+pub mod verify_substitution;

@@ -48,22 +48,13 @@ pub fn verify_solution(
     var: &str,
     solution: ExprId,
 ) -> VerifyStatus {
-    // Step 1: Substitute solution into lhs and rhs
-    let lhs_sub = cas_solver_core::substitution::substitute_named_var(
+    // Step 1: Substitute solution and build residual diff = lhs_sub - rhs_sub
+    let diff = cas_solver_core::verify_substitution::substitute_equation_diff(
         &mut simplifier.context,
-        equation.lhs,
+        equation,
         var,
         solution,
     );
-    let rhs_sub = cas_solver_core::substitution::substitute_named_var(
-        &mut simplifier.context,
-        equation.rhs,
-        var,
-        solution,
-    );
-
-    // Step 2: Compute difference lhs - rhs
-    let diff = simplifier.context.add(Expr::Sub(lhs_sub, rhs_sub));
 
     // Phase 1: Strict mode — domain-honest, won't erase conditions
     let strict_opts = crate::SimplifyOptions {

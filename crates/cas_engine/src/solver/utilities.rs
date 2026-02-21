@@ -13,16 +13,10 @@ pub(crate) fn verify_solution(
     sol: ExprId,
     simplifier: &mut Simplifier,
 ) -> bool {
-    // 1. Substitute
-    let lhs_sub = cas_solver_core::substitution::substitute_named_var(
+    // 1. Substitute candidate into equation sides
+    let (lhs_sub, rhs_sub) = cas_solver_core::verify_substitution::substitute_equation_sides(
         &mut simplifier.context,
-        eq.lhs,
-        var,
-        sol,
-    );
-    let rhs_sub = cas_solver_core::substitution::substitute_named_var(
-        &mut simplifier.context,
-        eq.rhs,
+        eq,
         var,
         sol,
     );
