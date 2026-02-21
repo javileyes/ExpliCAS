@@ -335,6 +335,31 @@ pub fn find_rational_roots(
     (roots, coeffs)
 }
 
+/// Extract all discrete candidate roots for a degree>=3 polynomial with
+/// rational coefficients.
+///
+/// This combines:
+/// - rational-root deflation for high-degree components, and
+/// - residual solving for the remaining degree<=2 polynomial.
+pub fn extract_candidate_roots(
+    ctx: &mut Context,
+    coeffs: Vec<BigRational>,
+    max_candidates: usize,
+) -> Vec<ExprId> {
+    let mut roots = Vec::new();
+    let (rational_roots, residual_coeffs) = find_rational_roots(coeffs, max_candidates);
+
+    for r in &rational_roots {
+        roots.push(rational_to_expr(ctx, r));
+    }
+
+    if residual_coeffs.len() == 3 || residual_coeffs.len() == 2 {
+        roots.extend(solve_residual_degree_leq_two(ctx, &residual_coeffs));
+    }
+
+    roots
+}
+
 /// Solve a residual polynomial of degree <= 2 with rational coefficients.
 ///
 /// Coeff order is `[a0, a1, ..., an]` (low-to-high degree).
@@ -474,5 +499,19 @@ mod tests {
         let (roots, residual) = find_rational_roots(coeffs, 200);
         assert_eq!(roots, vec![BigRational::zero()]);
         assert_eq!(residual.len(), 3); // quadratic residual
+    }
+
+    #[test]
+    fn extract_candidate_roots_combines_deflation_and_residual() {
+        // x^3 - x = x*(x^2-1), roots: -1, 0, 1
+        let coeffs = vec![
+            BigRational::zero(),
+            BigRational::from_integer((-1).into()),
+            BigRational::zero(),
+            BigRational::one(),
+        ];
+        let mut ctx = Context::new();
+        let roots = extract_candidate_roots(&mut ctx, coeffs, 200);
+        assert_eq!(roots.len(), 3);
     }
 }

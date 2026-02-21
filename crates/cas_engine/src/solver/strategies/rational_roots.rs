@@ -80,29 +80,17 @@ impl SolverStrategy for RationalRootsStrategy {
         }
 
         // Find rational roots (pure deflation in solver core)
-        let mut roots = Vec::new();
-        let (rational_roots, current_coeffs) =
-            cas_solver_core::rational_roots::find_rational_roots(rat_coeffs, MAX_CANDIDATES);
-        for candidate in &rational_roots {
-            let root_expr = cas_solver_core::rational_roots::rational_to_expr(
-                &mut simplifier.context,
-                candidate,
-            );
+        let mut roots = cas_solver_core::rational_roots::extract_candidate_roots(
+            &mut simplifier.context,
+            rat_coeffs,
+            MAX_CANDIDATES,
+        )
+        .into_iter()
+        .map(|root_expr| {
             let (sim_root, _) = simplifier.simplify(root_expr);
-            roots.push(sim_root);
-        }
-
-        // Handle residual polynomial (degree ≤ 2) via solver core.
-        if current_coeffs.len() == 3 || current_coeffs.len() == 2 {
-            for root_expr in cas_solver_core::rational_roots::solve_residual_degree_leq_two(
-                &mut simplifier.context,
-                &current_coeffs,
-            ) {
-                let (sim_root, _) = simplifier.simplify(root_expr);
-                roots.push(sim_root);
-            }
-        }
-        // else: degree ≥ 3 with no rational roots — can't solve further, but we may have partial roots
+            sim_root
+        })
+        .collect::<Vec<_>>();
 
         if roots.is_empty() {
             return None; // No roots found, let other strategies try
