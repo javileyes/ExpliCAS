@@ -8,6 +8,7 @@ pub mod log_domain;
 pub mod quadratic_coeffs;
 pub mod quadratic_sqrt;
 pub mod rational_power;
+pub mod rational_roots;
 pub mod reciprocal;
 pub mod solution_set;
 pub mod solve_analysis;
