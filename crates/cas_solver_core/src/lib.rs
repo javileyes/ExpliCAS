@@ -1,5 +1,6 @@
 pub mod cycle_guard;
 pub mod fingerprint;
+pub mod function_inverse;
 pub mod isolation_utils;
 pub mod linear_form;
 pub mod linear_kernel;

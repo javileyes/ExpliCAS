@@ -5,6 +5,7 @@ use cas_ast::symbol::SymbolId;
 use cas_ast::{
     BuiltinFn, Case, ConditionPredicate, ConditionSet, Equation, Expr, ExprId, RelOp, SolutionSet,
 };
+use cas_solver_core::function_inverse::UnaryInverseKind;
 use cas_solver_core::isolation_utils::{
     combine_abs_branch_sets, contains_var, flip_inequality, numeric_sign, NumericSign,
 };
@@ -245,133 +246,43 @@ fn isolate_unary_function(
     mut steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    match simplifier.context.sym_name(fn_id) {
-        "ln" => {
-            let e = simplifier.context.add(Expr::Constant(cas_ast::Constant::E));
-            let new_rhs = simplifier.context.add(Expr::Pow(e, rhs));
-            let new_eq = Equation {
-                lhs: arg,
-                rhs: new_rhs,
-                op: op.clone(),
-            };
-            if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: "Exponentiate both sides with base e".to_string(),
-                    equation_after: new_eq,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-            let results = isolate(arg, new_rhs, op, var, simplifier, opts, ctx)?;
-            prepend_steps(results, steps)
-        }
-        "exp" => {
-            let new_rhs = simplifier.context.call("ln", vec![rhs]);
-            let new_eq = Equation {
-                lhs: arg,
-                rhs: new_rhs,
-                op: op.clone(),
-            };
-            if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: "Take natural log of both sides".to_string(),
-                    equation_after: new_eq,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-            let results = isolate(arg, new_rhs, op, var, simplifier, opts, ctx)?;
-            prepend_steps(results, steps)
-        }
-        "sqrt" => {
-            let two = simplifier.context.num(2);
-            let new_rhs = simplifier.context.add(Expr::Pow(rhs, two));
-            let new_eq = Equation {
-                lhs: arg,
-                rhs: new_rhs,
-                op: op.clone(),
-            };
-            if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: "Square both sides".to_string(),
-                    equation_after: new_eq,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-            let results = isolate(arg, new_rhs, op, var, simplifier, opts, ctx)?;
-            prepend_steps(results, steps)
-        }
-        "sin" => {
-            let new_rhs = simplifier.context.call("arcsin", vec![rhs]);
-            let new_eq = Equation {
-                lhs: arg,
-                rhs: new_rhs,
-                op: op.clone(),
-            };
-            if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: "Take arcsin of both sides".to_string(),
-                    equation_after: new_eq,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
+    let fn_name = simplifier.context.sym_name(fn_id).to_string();
+    let inverse_kind = UnaryInverseKind::from_name(&fn_name)
+        .ok_or_else(|| CasError::UnknownFunction(fn_name.clone()))?;
+    let new_rhs = inverse_kind.build_rhs(&mut simplifier.context, rhs);
+    let new_eq = Equation {
+        lhs: arg,
+        rhs: new_rhs,
+        op: op.clone(),
+    };
 
-            let (simplified_rhs, sim_steps) = simplify_rhs(new_rhs, arg, op.clone(), simplifier);
-            steps.extend(sim_steps);
-
-            let results = isolate(arg, simplified_rhs, op, var, simplifier, opts, ctx)?;
-            prepend_steps(results, steps)
-        }
-        "cos" => {
-            let new_rhs = simplifier.context.call("arccos", vec![rhs]);
-            let new_eq = Equation {
-                lhs: arg,
-                rhs: new_rhs,
-                op: op.clone(),
-            };
-            if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: "Take arccos of both sides".to_string(),
-                    equation_after: new_eq,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-
-            let (simplified_rhs, sim_steps) = simplify_rhs(new_rhs, arg, op.clone(), simplifier);
-            steps.extend(sim_steps);
-
-            let results = isolate(arg, simplified_rhs, op, var, simplifier, opts, ctx)?;
-            prepend_steps(results, steps)
-        }
-        "tan" => {
-            let new_rhs = simplifier.context.call("arctan", vec![rhs]);
-            let new_eq = Equation {
-                lhs: arg,
-                rhs: new_rhs,
-                op: op.clone(),
-            };
-            if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: "Take arctan of both sides".to_string(),
-                    equation_after: new_eq,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-
-            let (simplified_rhs, sim_steps) = simplify_rhs(new_rhs, arg, op.clone(), simplifier);
-            steps.extend(sim_steps);
-
-            let results = isolate(arg, simplified_rhs, op, var, simplifier, opts, ctx)?;
-            prepend_steps(results, steps)
-        }
-        _ => Err(CasError::UnknownFunction(
-            simplifier.context.sym_name(fn_id).to_string(),
-        )),
+    if simplifier.collect_steps() {
+        let description = match inverse_kind {
+            UnaryInverseKind::Ln => "Exponentiate both sides with base e",
+            UnaryInverseKind::Exp => "Take natural log of both sides",
+            UnaryInverseKind::Sqrt => "Square both sides",
+            UnaryInverseKind::Sin => "Take arcsin of both sides",
+            UnaryInverseKind::Cos => "Take arccos of both sides",
+            UnaryInverseKind::Tan => "Take arctan of both sides",
+        };
+        steps.push(SolveStep {
+            description: description.to_string(),
+            equation_after: new_eq,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        });
     }
+
+    let target_rhs = if inverse_kind.needs_rhs_cleanup() {
+        let (simplified_rhs, sim_steps) = simplify_rhs(new_rhs, arg, op.clone(), simplifier);
+        steps.extend(sim_steps);
+        simplified_rhs
+    } else {
+        new_rhs
+    };
+
+    let results = isolate(arg, target_rhs, op, var, simplifier, opts, ctx)?;
+    prepend_steps(results, steps)
 }
 
 fn simplify_rhs(

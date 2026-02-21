@@ -162,6 +162,47 @@ pub fn split_zero_product_factors(ctx: &Context, expr: ExprId) -> Option<Vec<Exp
     }
 }
 
+/// Matched exponential expression `base^exponent`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExponentialPattern {
+    pub base: ExprId,
+    pub exponent: ExprId,
+}
+
+/// Match `base^exponent` where `base` contains `var` and exponent does not.
+pub fn match_exponential_var_in_base(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExponentialPattern> {
+    if let Expr::Pow(base, exponent) = ctx.get(expr) {
+        if contains_var(ctx, *base, var) && !contains_var(ctx, *exponent, var) {
+            return Some(ExponentialPattern {
+                base: *base,
+                exponent: *exponent,
+            });
+        }
+    }
+    None
+}
+
+/// Match `base^exponent` where exponent contains `var` and base does not.
+pub fn match_exponential_var_in_exponent(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExponentialPattern> {
+    if let Expr::Pow(base, exponent) = ctx.get(expr) {
+        if contains_var(ctx, *exponent, var) && !contains_var(ctx, *base, var) {
+            return Some(ExponentialPattern {
+                base: *base,
+                exponent: *exponent,
+            });
+        }
+    }
+    None
+}
+
 /// Combine the two branch solution sets generated from `|A| op B`.
 ///
 /// For equalities/greater-than forms both branches are alternatives (union).
@@ -461,6 +502,28 @@ mod tests {
         let zero = ctx.num(0);
         let pow = ctx.add(Expr::Pow(x, zero));
         assert!(split_zero_product_factors(&ctx, pow).is_none());
+    }
+
+    #[test]
+    fn test_match_exponential_var_in_base() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let expr = ctx.add(Expr::Pow(x, two));
+        let m = match_exponential_var_in_base(&ctx, expr, "x").expect("must match");
+        assert_eq!(m.base, x);
+        assert_eq!(m.exponent, two);
+    }
+
+    #[test]
+    fn test_match_exponential_var_in_exponent() {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let x = ctx.var("x");
+        let expr = ctx.add(Expr::Pow(two, x));
+        let m = match_exponential_var_in_exponent(&ctx, expr, "x").expect("must match");
+        assert_eq!(m.base, two);
+        assert_eq!(m.exponent, x);
     }
 
     #[test]
