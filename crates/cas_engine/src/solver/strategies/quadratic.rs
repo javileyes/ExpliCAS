@@ -1,4 +1,4 @@
-use super::{extract_quadratic_coefficients_impl, pull_square_from_sqrt};
+use super::pull_square_from_sqrt;
 use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::ordering::compare_expr;
@@ -154,9 +154,11 @@ impl SolverStrategy for QuadraticStrategy {
         // QuadraticStrategy relies on A*x^2 + B*x + C structure (Add/Sub chain)
         let expanded_expr = crate::expand::expand(&mut simplifier.context, sim_poly_expr);
 
-        if let Some((a, b, c)) =
-            extract_quadratic_coefficients_impl(&mut simplifier.context, expanded_expr, var)
-        {
+        if let Some((a, b, c)) = cas_solver_core::quadratic_coeffs::extract_quadratic_coefficients(
+            &mut simplifier.context,
+            expanded_expr,
+            var,
+        ) {
             // Check if it is actually quadratic (a != 0)
             // We need to simplify 'a' to check if it's zero.
             let (sim_a, _) = simplifier.simplify(a);

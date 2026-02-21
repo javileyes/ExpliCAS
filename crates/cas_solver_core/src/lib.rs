@@ -5,6 +5,7 @@ pub mod linear_kernel;
 pub mod linear_solution;
 pub mod linear_terms;
 pub mod log_domain;
+pub mod quadratic_coeffs;
 pub mod rational_power;
 pub mod reciprocal;
 pub mod solution_set;
