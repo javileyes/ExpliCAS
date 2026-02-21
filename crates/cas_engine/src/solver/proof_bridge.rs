@@ -2,6 +2,7 @@
 
 use cas_solver_core::linear_solution::NonZeroStatus;
 use cas_solver_core::log_domain::ProofStatus;
+use cas_solver_core::proof_status::proof_status_to_nonzero_status;
 
 /// Convert engine proof outcome to solver-core proof status.
 pub(crate) fn proof_to_status(proof: crate::domain::Proof) -> ProofStatus {
@@ -14,9 +15,5 @@ pub(crate) fn proof_to_status(proof: crate::domain::Proof) -> ProofStatus {
 
 /// Convert engine proof outcome to NonZeroStatus used by solver result builders.
 pub(crate) fn proof_to_nonzero_status(proof: crate::domain::Proof) -> NonZeroStatus {
-    match proof_to_status(proof) {
-        ProofStatus::Proven => NonZeroStatus::NonZero,
-        ProofStatus::Disproven => NonZeroStatus::Zero,
-        ProofStatus::Unknown => NonZeroStatus::Unknown,
-    }
+    proof_status_to_nonzero_status(proof_to_status(proof))
 }

@@ -7,6 +7,7 @@ pub mod linear_solution;
 pub mod linear_terms;
 pub mod log_domain;
 pub mod numeric_islands;
+pub mod proof_status;
 pub mod quadratic_coeffs;
 pub mod quadratic_sqrt;
 pub mod rational_power;
