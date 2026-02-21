@@ -5,7 +5,8 @@ use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
     apply_sign_flip, contains_var, denominator_sign_case_ops, flip_inequality, is_inequality_relop,
-    is_known_negative, is_numeric_zero, product_zero_inequality_cases,
+    is_known_negative, is_numeric_zero, isolated_denominator_variable_case_ops,
+    product_zero_inequality_cases,
 };
 use cas_solver_core::solution_set::{
     intersect_solution_sets, open_negative_domain, open_positive_domain, pos_inf,
@@ -471,12 +472,8 @@ pub(super) fn isolate_div(
         if let Expr::Variable(sym_id) = simplifier.context.get(r) {
             if simplifier.context.sym_name(*sym_id) == var && is_inequality_relop(&op) {
                 // Split into x > 0 and x < 0
-                let (raw_pos, raw_neg) = denominator_sign_case_ops(op.clone())
+                let (op_pos, op_neg) = isolated_denominator_variable_case_ops(op.clone())
                     .expect("inequality branch requires denominator sign cases");
-
-                // We are isolating the denominator itself (x = l/rhs), so case
-                // operators are inverted relative to direct A/B op C splitting.
-                let op_pos = raw_neg;
 
                 let mut steps_case1 = steps.clone();
                 if simplifier.collect_steps() {
@@ -504,8 +501,6 @@ pub(super) fn isolate_div(
                 let final_pos = intersect_solution_sets(&simplifier.context, set_pos, domain_pos);
 
                 // Case 2: x < 0. Multiply by x (negative) -> Inequality flips.
-                let op_neg = raw_pos;
-
                 let mut steps_case2 = steps.clone();
                 if simplifier.collect_steps() {
                     steps_case2.push(SolveStep {

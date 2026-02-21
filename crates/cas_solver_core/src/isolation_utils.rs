@@ -288,6 +288,15 @@ pub fn denominator_sign_case_ops(op: RelOp) -> Option<(RelOp, RelOp)> {
     }
 }
 
+/// For `A / x op B` while isolating denominator variable `x` directly,
+/// returns operators `(op_when_x_positive, op_when_x_negative)`.
+///
+/// This is the inverse perspective of [`denominator_sign_case_ops`], so
+/// the pair is intentionally swapped.
+pub fn isolated_denominator_variable_case_ops(op: RelOp) -> Option<(RelOp, RelOp)> {
+    denominator_sign_case_ops(op).map(|(op_when_pos, op_when_neg)| (op_when_neg, op_when_pos))
+}
+
 /// True iff relation operator is an inequality (`<`, `>`, `<=`, `>=`).
 pub fn is_inequality_relop(op: &RelOp) -> bool {
     matches!(op, RelOp::Lt | RelOp::Gt | RelOp::Leq | RelOp::Geq)
@@ -546,6 +555,15 @@ mod tests {
         assert_eq!(pos, RelOp::Leq);
         assert_eq!(neg, RelOp::Geq);
         assert!(denominator_sign_case_ops(RelOp::Eq).is_none());
+    }
+
+    #[test]
+    fn test_isolated_denominator_variable_case_ops() {
+        let (pos, neg) =
+            isolated_denominator_variable_case_ops(RelOp::Leq).expect("expected cases");
+        assert_eq!(pos, RelOp::Geq);
+        assert_eq!(neg, RelOp::Leq);
+        assert!(isolated_denominator_variable_case_ops(RelOp::Eq).is_none());
     }
 
     #[test]
