@@ -8,8 +8,9 @@
 //! the solver's internal operation or correctness.
 
 use crate::solver::SolveStep;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::Context;
 use cas_math::expr_predicates::is_zero_expr as is_zero;
+use cas_solver_core::sign_normalize::{cleanup_step_description, normalize_expr_signs};
 
 /// Clean up solve steps for better didactic display.
 ///
@@ -98,156 +99,6 @@ fn normalize_step_signs(ctx: &mut Context, mut step: SolveStep) -> SolveStep {
     step
 }
 
-/// Clean up step descriptions for better readability.
-fn cleanup_step_description(desc: &str) -> String {
-    // Pattern: "Subtract -(...)" → "Move terms to one side"
-    if desc.starts_with("Subtract -(") || desc.starts_with("Subtract -") {
-        return "Move terms to one side".to_string();
-    }
-
-    // Pattern: "Add -(...)" → "Move terms to one side"
-    if desc.starts_with("Add -(") || desc.starts_with("Add -") {
-        return "Move terms to one side".to_string();
-    }
-
-    desc.to_string()
-}
-
-/// Normalize signs in an expression for cleaner display.
-fn normalize_expr_signs(ctx: &mut Context, expr: ExprId) -> ExprId {
-    normalize_signs_recursive(ctx, expr)
-}
-
-fn normalize_signs_recursive(ctx: &mut Context, expr: ExprId) -> ExprId {
-    let expr_data = ctx.get(expr).clone();
-
-    match expr_data {
-        // Pattern: 0 - (-(t)) → t
-        // Pattern: 0 - t → -t (cleaner)
-        Expr::Sub(lhs, rhs) => {
-            // First normalize children
-            let norm_lhs = normalize_signs_recursive(ctx, lhs);
-            let norm_rhs = normalize_signs_recursive(ctx, rhs);
-
-            // Check if LHS is 0
-            if is_zero(ctx, norm_lhs) {
-                // 0 - (-(t)) → t
-                if let Expr::Neg(inner) = ctx.get(norm_rhs).clone() {
-                    return normalize_signs_recursive(ctx, inner);
-                }
-                // 0 - t → -t (more concise)
-                return ctx.add(Expr::Neg(norm_rhs));
-            }
-
-            // Pattern: a - -b → a + b
-            if let Expr::Neg(inner) = ctx.get(norm_rhs).clone() {
-                return ctx.add(Expr::Add(norm_lhs, inner));
-            }
-
-            // No change needed, but children may have changed
-            if norm_lhs != lhs || norm_rhs != rhs {
-                ctx.add(Expr::Sub(norm_lhs, norm_rhs))
-            } else {
-                expr
-            }
-        }
-
-        // Pattern: -(-(x)) → x
-        Expr::Neg(inner) => {
-            let norm_inner = normalize_signs_recursive(ctx, inner);
-            if let Expr::Neg(inner_inner) = ctx.get(norm_inner).clone() {
-                return normalize_signs_recursive(ctx, inner_inner);
-            }
-            if norm_inner != inner {
-                ctx.add(Expr::Neg(norm_inner))
-            } else {
-                expr
-            }
-        }
-
-        // Recursively normalize other expressions
-        Expr::Add(l, r) => {
-            let nl = normalize_signs_recursive(ctx, l);
-            let nr = normalize_signs_recursive(ctx, r);
-            if nl != l || nr != r {
-                ctx.add(Expr::Add(nl, nr))
-            } else {
-                expr
-            }
-        }
-
-        Expr::Mul(l, r) => {
-            let nl = normalize_signs_recursive(ctx, l);
-            let nr = normalize_signs_recursive(ctx, r);
-            if nl != l || nr != r {
-                ctx.add(Expr::Mul(nl, nr))
-            } else {
-                expr
-            }
-        }
-
-        Expr::Div(l, r) => {
-            let nl = normalize_signs_recursive(ctx, l);
-            let nr = normalize_signs_recursive(ctx, r);
-            if nl != l || nr != r {
-                ctx.add(Expr::Div(nl, nr))
-            } else {
-                expr
-            }
-        }
-
-        Expr::Pow(base, exp) => {
-            let nb = normalize_signs_recursive(ctx, base);
-            let ne = normalize_signs_recursive(ctx, exp);
-            if nb != base || ne != exp {
-                ctx.add(Expr::Pow(nb, ne))
-            } else {
-                expr
-            }
-        }
-
-        Expr::Function(name, args) => {
-            let new_args: Vec<ExprId> = args
-                .iter()
-                .map(|&a| normalize_signs_recursive(ctx, a))
-                .collect();
-            if new_args != args {
-                ctx.add(Expr::Function(name, new_args))
-            } else {
-                expr
-            }
-        }
-
-        Expr::Hold(inner) => {
-            let norm_inner = normalize_signs_recursive(ctx, inner);
-            if norm_inner != inner {
-                ctx.add(Expr::Hold(norm_inner))
-            } else {
-                expr
-            }
-        }
-
-        Expr::Matrix { rows, cols, data } => {
-            let new_data: Vec<ExprId> = data
-                .iter()
-                .map(|&d| normalize_signs_recursive(ctx, d))
-                .collect();
-            if new_data != data {
-                ctx.add(Expr::Matrix {
-                    rows,
-                    cols,
-                    data: new_data,
-                })
-            } else {
-                expr
-            }
-        }
-
-        // Leaves — no children to normalize
-        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => expr,
-    }
-}
-
 /// Remove redundant step pairs from the step list.
 ///
 /// Detects patterns like:
@@ -324,6 +175,7 @@ fn is_step_undo_normalization(ctx: &Context, prev: &SolveStep, curr: &SolveStep)
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_ast::Expr;
 
     #[test]
     fn test_normalize_zero_minus_neg() {

@@ -13,6 +13,7 @@ pub mod quadratic_sqrt;
 pub mod rational_power;
 pub mod rational_roots;
 pub mod reciprocal;
+pub mod sign_normalize;
 pub mod solution_set;
 pub mod solve_analysis;
 pub mod solve_outcome;
