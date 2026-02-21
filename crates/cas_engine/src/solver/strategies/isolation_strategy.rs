@@ -134,11 +134,12 @@ fn check_exponential_needs_complex(
                         if opts.domain_mode == DomainMode::Assume
                             && opts.assume_scope == AssumeScope::Wildcard
                         {
-                            // Create a solve(eq, var) residual
-                            let eq_expr = create_equation_expr(simplifier, eq);
-                            let var_expr = simplifier.context.var(var);
-                            let residual =
-                                simplifier.context.call("solve", vec![eq_expr, var_expr]);
+                            let residual = cas_solver_core::isolation_utils::mk_residual_solve(
+                                &mut simplifier.context,
+                                eq.lhs,
+                                eq.rhs,
+                                var,
+                            );
 
                             // Create step with warning
                             let mut steps = Vec::new();
@@ -190,10 +191,12 @@ fn check_exponential_needs_complex(
                         if opts.domain_mode == DomainMode::Assume
                             && opts.assume_scope == AssumeScope::Wildcard
                         {
-                            let eq_expr = create_equation_expr(simplifier, eq);
-                            let var_expr = simplifier.context.var(var);
-                            let residual =
-                                simplifier.context.call("solve", vec![eq_expr, var_expr]);
+                            let residual = cas_solver_core::isolation_utils::mk_residual_solve(
+                                &mut simplifier.context,
+                                eq.lhs,
+                                eq.rhs,
+                                var,
+                            );
 
                             let mut steps = Vec::new();
                             if simplifier.collect_steps() {
@@ -218,13 +221,6 @@ fn check_exponential_needs_complex(
     }
 
     None
-}
-
-/// Create an expression representing the equation for residual notation
-fn create_equation_expr(simplifier: &mut Simplifier, eq: &Equation) -> ExprId {
-    // We represent eq as Function("__eq__", [lhs, rhs])
-    // This is just for internal residual representation
-    cas_ast::eq::wrap_eq(&mut simplifier.context, eq.lhs, eq.rhs)
 }
 
 pub struct UnwrapStrategy;
