@@ -503,7 +503,6 @@ fn try_solve_rational_exponent(
     simplifier: &mut Simplifier,
     ctx: &super::SolveCtx,
 ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-    use super::strategies::match_rational_power;
     use cas_ast::Expr;
 
     // Check if RHS contains the variable (we only handle simple cases)
@@ -512,7 +511,8 @@ fn try_solve_rational_exponent(
     }
 
     // Try to match x^(p/q) on LHS
-    let (base, p, q) = match_rational_power(&simplifier.context, eq.lhs, var)?;
+    let (base, p, q) =
+        cas_solver_core::rational_power::match_rational_power(&simplifier.context, eq.lhs, var)?;
 
     let mut steps = Vec::new();
 

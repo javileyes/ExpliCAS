@@ -671,7 +671,11 @@ impl SolverStrategy for RationalExponentStrategy {
         }
 
         // Try to match Pow(base, p/q) on LHS
-        let (base, p, q) = match_rational_power(&simplifier.context, eq.lhs, var)?;
+        let (base, p, q) = cas_solver_core::rational_power::match_rational_power(
+            &simplifier.context,
+            eq.lhs,
+            var,
+        )?;
 
         let mut steps = Vec::new();
 
@@ -719,13 +723,4 @@ impl SolverStrategy for RationalExponentStrategy {
             Err(e) => Some(Err(e)),
         }
     }
-}
-
-/// Match Pow(base, p/q) where base contains var and p/q is a non-integer rational
-pub(crate) fn match_rational_power(
-    ctx: &Context,
-    expr: ExprId,
-    var: &str,
-) -> Option<(ExprId, i64, i64)> {
-    cas_solver_core::rational_power::match_rational_power(ctx, expr, var)
 }

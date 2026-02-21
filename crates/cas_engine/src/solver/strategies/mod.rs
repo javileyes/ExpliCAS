@@ -3,7 +3,6 @@ pub mod quadratic;
 pub mod rational_roots;
 pub mod substitution;
 
-pub(crate) use isolation_strategy::match_rational_power;
 pub use isolation_strategy::{
     CollectTermsStrategy, IsolationStrategy, RationalExponentStrategy, UnwrapStrategy,
 };
