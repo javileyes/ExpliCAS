@@ -1,3 +1,4 @@
+use crate::isolation_utils::NumericSign;
 use crate::solution_set::open_positive_domain;
 use cas_ast::{
     Case, ConditionPredicate, ConditionSet, Context, Expr, ExprId, RelOp, SolutionSet, SolveResult,
@@ -40,6 +41,26 @@ pub fn power_base_one_outcome(rhs_is_one: bool) -> SolutionSet {
         SolutionSet::AllReals
     } else {
         SolutionSet::Empty
+    }
+}
+
+/// Pre-check decision for absolute-value equalities `|A| = RHS`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AbsEqualityPrecheck {
+    /// `RHS < 0` -> impossible.
+    ReturnEmptySet,
+    /// `RHS = 0` -> reduce to `A = 0`.
+    CollapseToZero,
+    /// `RHS > 0` -> keep normal branch split.
+    Continue,
+}
+
+/// Classify numeric RHS sign for `|A| = RHS`.
+pub fn abs_equality_precheck(sign: NumericSign) -> AbsEqualityPrecheck {
+    match sign {
+        NumericSign::Negative => AbsEqualityPrecheck::ReturnEmptySet,
+        NumericSign::Zero => AbsEqualityPrecheck::CollapseToZero,
+        NumericSign::Positive => AbsEqualityPrecheck::Continue,
     }
 }
 
@@ -142,5 +163,29 @@ mod tests {
     #[test]
     fn power_base_one_outcome_empty_when_rhs_not_one() {
         assert!(matches!(power_base_one_outcome(false), SolutionSet::Empty));
+    }
+
+    #[test]
+    fn abs_equality_precheck_negative_is_empty() {
+        assert_eq!(
+            abs_equality_precheck(NumericSign::Negative),
+            AbsEqualityPrecheck::ReturnEmptySet
+        );
+    }
+
+    #[test]
+    fn abs_equality_precheck_zero_collapses_to_zero() {
+        assert_eq!(
+            abs_equality_precheck(NumericSign::Zero),
+            AbsEqualityPrecheck::CollapseToZero
+        );
+    }
+
+    #[test]
+    fn abs_equality_precheck_positive_continues() {
+        assert_eq!(
+            abs_equality_precheck(NumericSign::Positive),
+            AbsEqualityPrecheck::Continue
+        );
     }
 }

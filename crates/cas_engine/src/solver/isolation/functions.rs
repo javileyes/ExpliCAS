@@ -7,9 +7,10 @@ use cas_ast::{
 };
 use cas_solver_core::function_inverse::UnaryInverseKind;
 use cas_solver_core::isolation_utils::{
-    combine_abs_branch_sets, contains_var, flip_inequality, numeric_sign, NumericSign,
+    combine_abs_branch_sets, contains_var, flip_inequality, numeric_sign,
 };
 use cas_solver_core::log_isolation::LogIsolationPlan;
+use cas_solver_core::solve_outcome::{abs_equality_precheck, AbsEqualityPrecheck};
 
 use super::{isolate, prepend_steps};
 
@@ -70,16 +71,16 @@ fn isolate_abs(
     // |A| is always ≥ 0, so |A| = negative is impossible.
     if matches!(op, RelOp::Eq) {
         if let Some(sign) = numeric_sign(&simplifier.context, rhs) {
-            match sign {
-                NumericSign::Negative => {
+            match abs_equality_precheck(sign) {
+                AbsEqualityPrecheck::ReturnEmptySet => {
                     // |A| = (negative) → no solution
                     return Ok((SolutionSet::Empty, steps));
                 }
-                NumericSign::Zero => {
+                AbsEqualityPrecheck::CollapseToZero => {
                     // |A| = 0  →  A = 0  (only one branch needed)
                     return isolate(arg, rhs, op, var, simplifier, opts, ctx);
                 }
-                NumericSign::Positive => {
+                AbsEqualityPrecheck::Continue => {
                     // n > 0: fall through to normal branch split
                 }
             }
