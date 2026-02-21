@@ -5,10 +5,10 @@ use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{BoundType, Context, Equation, Expr, ExprId, Interval, RelOp, SolutionSet};
-use cas_solver_core::isolation_utils::{contains_var, is_numeric_zero};
+use cas_solver_core::isolation_utils::{contains_var, is_numeric_zero, numeric_sign, NumericSign};
 use cas_solver_core::solution_set::{compare_values, get_number, neg_inf, pos_inf};
 use num_rational::BigRational;
-use num_traits::{Signed, Zero};
+use num_traits::Zero;
 use std::cmp::Ordering;
 
 pub struct QuadraticStrategy;
@@ -45,10 +45,8 @@ impl SolverStrategy for QuadraticStrategy {
             match ctx.get(expr) {
                 Expr::Mul(l, r) => Some(vec![*l, *r]), // We could flatten more
                 Expr::Pow(b, e) => {
-                    if let Expr::Number(n) = ctx.get(*e) {
-                        if n.is_positive() {
-                            return Some(vec![*b]);
-                        }
+                    if numeric_sign(ctx, *e) == Some(NumericSign::Positive) {
+                        return Some(vec![*b]);
                     }
                     None
                 }
