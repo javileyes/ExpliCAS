@@ -169,29 +169,3 @@ pub(crate) fn prepend_steps(
     steps.append(&mut res_steps);
     Ok((set, steps))
 }
-
-pub(crate) fn simplify_rhs(
-    rhs: ExprId,
-    lhs: ExprId,
-    op: RelOp,
-    simplifier: &mut Simplifier,
-) -> (ExprId, Vec<SolveStep>) {
-    let (simplified_rhs, sim_steps) = simplifier.simplify(rhs);
-    let mut steps = Vec::new();
-
-    if simplifier.collect_steps() {
-        for step in sim_steps {
-            steps.push(SolveStep {
-                description: step.description,
-                equation_after: Equation {
-                    lhs,
-                    rhs: step.after,
-                    op: op.clone(),
-                },
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
-        }
-    }
-    (simplified_rhs, steps)
-}

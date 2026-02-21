@@ -8,7 +8,7 @@ use cas_ast::{
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solution_set::{intersect_solution_sets, union_solution_sets};
 
-use super::{isolate, prepend_steps, simplify_rhs};
+use super::{isolate, prepend_steps};
 
 /// Handle isolation for `Function(fn_id, args)`: abs, log, ln, exp, sqrt, trig
 #[allow(clippy::too_many_arguments)]
@@ -380,4 +380,30 @@ fn isolate_unary_function(
             simplifier.context.sym_name(fn_id).to_string(),
         )),
     }
+}
+
+fn simplify_rhs(
+    rhs: ExprId,
+    lhs: ExprId,
+    op: RelOp,
+    simplifier: &mut Simplifier,
+) -> (ExprId, Vec<SolveStep>) {
+    let (simplified_rhs, sim_steps) = simplifier.simplify(rhs);
+    let mut steps = Vec::new();
+
+    if simplifier.collect_steps() {
+        for step in sim_steps {
+            steps.push(SolveStep {
+                description: step.description,
+                equation_after: Equation {
+                    lhs,
+                    rhs: step.after,
+                    op: op.clone(),
+                },
+                importance: crate::step::ImportanceLevel::Medium,
+                substeps: vec![],
+            });
+        }
+    }
+    (simplified_rhs, steps)
 }
