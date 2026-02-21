@@ -4,8 +4,8 @@ use crate::ordering::compare_expr;
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
-use cas_ast::{BoundType, Context, Equation, Expr, ExprId, Interval, RelOp, SolutionSet};
-use cas_solver_core::isolation_utils::{contains_var, is_numeric_zero, numeric_sign, NumericSign};
+use cas_ast::{BoundType, Equation, Expr, Interval, RelOp, SolutionSet};
+use cas_solver_core::isolation_utils::{contains_var, is_numeric_zero, split_zero_product_factors};
 use cas_solver_core::solution_set::{compare_values, get_number, neg_inf, pos_inf};
 use num_rational::BigRational;
 use num_traits::Zero;
@@ -40,21 +40,7 @@ impl SolverStrategy for QuadraticStrategy {
 
         let zero = simplifier.context.num(0);
 
-        // Helper to check if we can split
-        let split_factors = |ctx: &Context, expr: ExprId| -> Option<Vec<ExprId>> {
-            match ctx.get(expr) {
-                Expr::Mul(l, r) => Some(vec![*l, *r]), // We could flatten more
-                Expr::Pow(b, e) => {
-                    if numeric_sign(ctx, *e) == Some(NumericSign::Positive) {
-                        return Some(vec![*b]);
-                    }
-                    None
-                }
-                _ => None,
-            }
-        };
-
-        if let Some(factors) = split_factors(&simplifier.context, sim_poly_expr) {
+        if let Some(factors) = split_zero_product_factors(&simplifier.context, sim_poly_expr) {
             // We found factors.
             if simplifier.collect_steps() {
                 steps.push(SolveStep {

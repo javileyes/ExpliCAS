@@ -151,6 +151,17 @@ pub fn is_positive_integer_expr(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
+/// Extract factors for zero-product splitting:
+/// - `A*B` -> `[A, B]`
+/// - `A^n` with positive-integer `n` -> `[A]`
+pub fn split_zero_product_factors(ctx: &Context, expr: ExprId) -> Option<Vec<ExprId>> {
+    match ctx.get(expr) {
+        Expr::Mul(l, r) => Some(vec![*l, *r]),
+        Expr::Pow(base, exp) if is_positive_integer_expr(ctx, *exp) => Some(vec![*base]),
+        _ => None,
+    }
+}
+
 /// Combine the two branch solution sets generated from `|A| op B`.
 ///
 /// For equalities/greater-than forms both branches are alternatives (union).
@@ -421,6 +432,35 @@ mod tests {
         assert!(!is_positive_integer_expr(&ctx, half));
         assert!(!is_positive_integer_expr(&ctx, div_zero));
         assert!(!is_positive_integer_expr(&ctx, x));
+    }
+
+    #[test]
+    fn test_split_zero_product_factors_mul() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let mul = ctx.add(Expr::Mul(a, b));
+        let factors = split_zero_product_factors(&ctx, mul).expect("expected factors");
+        assert_eq!(factors, vec![a, b]);
+    }
+
+    #[test]
+    fn test_split_zero_product_factors_pow_positive_int() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let pow = ctx.add(Expr::Pow(x, two));
+        let factors = split_zero_product_factors(&ctx, pow).expect("expected factors");
+        assert_eq!(factors, vec![x]);
+    }
+
+    #[test]
+    fn test_split_zero_product_factors_pow_non_positive_int() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let zero = ctx.num(0);
+        let pow = ctx.add(Expr::Pow(x, zero));
+        assert!(split_zero_product_factors(&ctx, pow).is_none());
     }
 
     #[test]
