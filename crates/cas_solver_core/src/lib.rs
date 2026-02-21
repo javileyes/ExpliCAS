@@ -1,6 +1,7 @@
 pub mod fingerprint;
 pub mod isolation_utils;
 pub mod linear_form;
+pub mod linear_terms;
 pub mod reciprocal;
 pub mod solution_set;
 pub mod solve_analysis;
