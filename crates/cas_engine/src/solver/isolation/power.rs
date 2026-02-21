@@ -3,7 +3,7 @@ use crate::error::CasError;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
-    contains_var, flip_inequality, is_even_integer_expr, is_known_negative, is_numeric_zero,
+    apply_sign_flip, contains_var, is_even_integer_expr, is_known_negative, is_numeric_zero,
     mk_residual_solve,
 };
 use cas_solver_core::log_domain::{LogAssumption, LogSolveDecision};
@@ -137,10 +137,7 @@ fn isolate_pow_base(
         }
 
         // Check if exponent is negative to flip inequality
-        let mut new_op = op;
-        if is_known_negative(&simplifier.context, e) {
-            new_op = flip_inequality(new_op);
-        }
+        let new_op = apply_sign_flip(op, is_known_negative(&simplifier.context, e));
 
         let results = isolate(b, new_rhs, new_op, var, simplifier, opts, ctx)?;
         prepend_steps(results, steps)

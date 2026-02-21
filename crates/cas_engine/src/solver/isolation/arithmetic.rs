@@ -4,7 +4,7 @@ use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
-    contains_var, denominator_sign_case_ops, flip_inequality, is_inequality_relop,
+    apply_sign_flip, contains_var, denominator_sign_case_ops, flip_inequality, is_inequality_relop,
     is_known_negative, is_numeric_zero, product_zero_inequality_cases,
 };
 use cas_solver_core::solution_set::{
@@ -237,10 +237,7 @@ pub(super) fn isolate_mul(
         }
 
         // A = RHS / B
-        let mut new_op = op;
-        if is_known_negative(&simplifier.context, r) {
-            new_op = flip_inequality(new_op);
-        }
+        let new_op = apply_sign_flip(op, is_known_negative(&simplifier.context, r));
 
         let new_rhs = simplifier.context.add(Expr::Div(rhs, r));
         let new_eq = Equation {
@@ -276,10 +273,7 @@ pub(super) fn isolate_mul(
             }
         }
 
-        let mut new_op = op;
-        if is_known_negative(&simplifier.context, l) {
-            new_op = flip_inequality(new_op);
-        }
+        let new_op = apply_sign_flip(op, is_known_negative(&simplifier.context, l));
 
         let new_rhs = simplifier.context.add(Expr::Div(rhs, l));
         let new_eq = Equation {
@@ -417,10 +411,7 @@ pub(super) fn isolate_div(
             Ok((final_set, all_steps))
         } else {
             // A = RHS * B
-            let mut new_op = op;
-            if is_known_negative(&simplifier.context, r) {
-                new_op = flip_inequality(new_op);
-            }
+            let new_op = apply_sign_flip(op, is_known_negative(&simplifier.context, r));
 
             let new_rhs = simplifier.context.add(Expr::Mul(rhs, r));
             let new_eq = Equation {

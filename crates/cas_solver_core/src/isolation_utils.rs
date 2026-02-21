@@ -186,6 +186,15 @@ pub fn is_inequality_relop(op: &RelOp) -> bool {
     matches!(op, RelOp::Lt | RelOp::Gt | RelOp::Leq | RelOp::Geq)
 }
 
+/// Flip inequality only when multiplying/dividing by a known negative term.
+pub fn apply_sign_flip(op: RelOp, known_negative: bool) -> RelOp {
+    if known_negative {
+        flip_inequality(op)
+    } else {
+        op
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -340,5 +349,12 @@ mod tests {
         assert!(is_inequality_relop(&RelOp::Geq));
         assert!(!is_inequality_relop(&RelOp::Eq));
         assert!(!is_inequality_relop(&RelOp::Neq));
+    }
+
+    #[test]
+    fn test_apply_sign_flip() {
+        assert_eq!(apply_sign_flip(RelOp::Gt, true), RelOp::Lt);
+        assert_eq!(apply_sign_flip(RelOp::Gt, false), RelOp::Gt);
+        assert_eq!(apply_sign_flip(RelOp::Eq, true), RelOp::Eq);
     }
 }
