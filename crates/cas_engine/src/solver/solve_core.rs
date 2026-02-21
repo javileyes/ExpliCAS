@@ -16,7 +16,6 @@ use crate::solver::strategies::{
 };
 use crate::solver::strategy::SolverStrategy;
 
-use super::utilities::verify_solution;
 use super::{
     step_cleanup, DepthGuard, DisplaySolveSteps, SolveDomainEnv, SolveStep, SolverOptions,
     MAX_SOLVE_DEPTH, SOLVE_DEPTH,
@@ -55,6 +54,23 @@ impl Drop for CycleGuard {
             s.borrow_mut().remove(&self.fp);
         });
     }
+}
+
+fn verify_solution(
+    eq: &cas_ast::Equation,
+    var: &str,
+    sol: ExprId,
+    simplifier: &mut Simplifier,
+) -> bool {
+    let (lhs_sub, rhs_sub) = cas_solver_core::verify_substitution::substitute_equation_sides(
+        &mut simplifier.context,
+        eq,
+        var,
+        sol,
+    );
+    let (lhs_sim, _) = simplifier.simplify(lhs_sub);
+    let (rhs_sim, _) = simplifier.simplify(rhs_sub);
+    simplifier.are_equivalent(lhs_sim, rhs_sim)
 }
 
 fn apply_domain_guards(

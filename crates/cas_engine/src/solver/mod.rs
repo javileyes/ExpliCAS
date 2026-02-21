@@ -10,7 +10,6 @@ pub mod solve_core;
 pub mod step_cleanup;
 pub mod strategies;
 pub mod strategy;
-pub mod utilities;
 pub use cas_solver_core::verify_stats;
 
 #[cfg(test)]
