@@ -1,4 +1,3 @@
-use super::{detect_substitution, substitute_expr};
 use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::isolation::contains_var;
@@ -22,7 +21,12 @@ impl SolverStrategy for SubstitutionStrategy {
         _opts: &SolverOptions,
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-        if let Some(sub_var_expr) = detect_substitution(&mut simplifier.context, eq, var) {
+        if let Some(sub_var_expr) = cas_solver_core::substitution::detect_exponential_substitution(
+            &mut simplifier.context,
+            eq.lhs,
+            eq.rhs,
+            var,
+        ) {
             let mut steps = Vec::new();
             if simplifier.collect_steps() {
                 steps.push(SolveStep {
@@ -36,8 +40,18 @@ impl SolverStrategy for SubstitutionStrategy {
             // Rewrite equation in terms of u
             let u_sym = "u";
             let u_var = simplifier.context.var(u_sym);
-            let new_lhs = substitute_expr(&mut simplifier.context, eq.lhs, sub_var_expr, u_var);
-            let new_rhs = substitute_expr(&mut simplifier.context, eq.rhs, sub_var_expr, u_var);
+            let new_lhs = cas_solver_core::substitution::substitute_expr_pattern(
+                &mut simplifier.context,
+                eq.lhs,
+                sub_var_expr,
+                u_var,
+            );
+            let new_rhs = cas_solver_core::substitution::substitute_expr_pattern(
+                &mut simplifier.context,
+                eq.rhs,
+                sub_var_expr,
+                u_var,
+            );
 
             let new_eq = Equation {
                 lhs: new_lhs,
@@ -47,7 +61,7 @@ impl SolverStrategy for SubstitutionStrategy {
 
             // Safety net: if the substituted equation still contains the original variable,
             // the substitution was incomplete (mixed polynomial+exponential that slipped past
-            // the detect_substitution guard). Bail out instead of entering an invalid solve path.
+            // the detect_exponential_substitution guard). Bail out instead of invalid solve path.
             if contains_var(&simplifier.context, new_lhs, var)
                 || contains_var(&simplifier.context, new_rhs, var)
             {

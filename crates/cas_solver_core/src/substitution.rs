@@ -1,4 +1,7 @@
-use cas_ast::{Context, Expr, ExprId};
+use crate::isolation_utils::contains_var;
+use cas_ast::{ordering::compare_expr, Constant, Context, Expr, ExprId};
+use cas_math::build::mul2_raw;
+use std::cmp::Ordering;
 
 /// Substitute a named variable with a value in an expression tree.
 pub fn substitute_named_var(ctx: &mut Context, expr: ExprId, var: &str, value: ExprId) -> ExprId {
@@ -62,6 +65,248 @@ pub fn substitute_named_var(ctx: &mut Context, expr: ExprId, var: &str, value: E
     }
 }
 
+fn is_e_base(ctx: &Context, base: ExprId) -> bool {
+    match ctx.get(base) {
+        Expr::Variable(sym_id) => ctx.sym_name(*sym_id) == "e",
+        Expr::Constant(c) => matches!(c, Constant::E),
+        _ => false,
+    }
+}
+
+/// Returns true if `var` appears in `expr` outside of any `Pow(e, ...)` context.
+fn var_outside_exponentials(ctx: &Context, expr: ExprId, var: &str) -> bool {
+    match ctx.get(expr) {
+        Expr::Variable(sym_id) => ctx.sym_name(*sym_id) == var,
+
+        // Treat e^(...) as an opaque leaf: var inside exponent is allowed.
+        Expr::Pow(b, _e) if is_e_base(ctx, *b) => false,
+
+        Expr::Pow(b, e) => {
+            var_outside_exponentials(ctx, *b, var) || var_outside_exponentials(ctx, *e, var)
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            var_outside_exponentials(ctx, *l, var) || var_outside_exponentials(ctx, *r, var)
+        }
+        Expr::Neg(e) | Expr::Hold(e) => var_outside_exponentials(ctx, *e, var),
+        Expr::Function(_, args) => args.iter().any(|&a| var_outside_exponentials(ctx, a, var)),
+        Expr::Matrix { data, .. } => data.iter().any(|&a| var_outside_exponentials(ctx, a, var)),
+        Expr::SessionRef(_) | Expr::Number(_) | Expr::Constant(_) => false,
+    }
+}
+
+fn collect_exponential_terms(ctx: &Context, expr: ExprId, var: &str, out: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Pow(b, e) => {
+            if is_e_base(ctx, *b) && contains_var(ctx, *e, var) {
+                out.push(expr);
+            }
+        }
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+            collect_exponential_terms(ctx, *l, var, out);
+            collect_exponential_terms(ctx, *r, var, out);
+        }
+        Expr::Neg(e) | Expr::Hold(e) => collect_exponential_terms(ctx, *e, var, out),
+        Expr::Function(_, args) => {
+            for &a in args {
+                collect_exponential_terms(ctx, a, var, out);
+            }
+        }
+        Expr::Matrix { data, .. } => {
+            for &a in data {
+                collect_exponential_terms(ctx, a, var, out);
+            }
+        }
+        Expr::SessionRef(_) | Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) => {}
+    }
+}
+
+/// Detect substitution candidate `u = e^x` (or base^x) for exponential equations.
+///
+/// Returns the base substitution term if the equation contains exponential
+/// terms where `var` appears only in exponents.
+pub fn detect_exponential_substitution(
+    ctx: &mut Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let mut terms = Vec::new();
+    collect_exponential_terms(ctx, lhs, var, &mut terms);
+    collect_exponential_terms(ctx, rhs, var, &mut terms);
+    if terms.is_empty() {
+        return None;
+    }
+
+    if var_outside_exponentials(ctx, lhs, var) || var_outside_exponentials(ctx, rhs, var) {
+        return None;
+    }
+
+    let mut found_complex = false;
+    let mut base_term = None;
+
+    for term in &terms {
+        if let Expr::Pow(_, exp) = ctx.get(*term) {
+            if let Expr::Variable(sym_id) = ctx.get(*exp) {
+                if ctx.sym_name(*sym_id) == var {
+                    base_term = Some(*term);
+                }
+            } else if contains_var(ctx, *exp, var) {
+                found_complex = true;
+            }
+        }
+    }
+
+    if !found_complex {
+        return None;
+    }
+
+    if let Some(base) = base_term {
+        return Some(base);
+    }
+
+    let inferred_base = match ctx.get(terms[0]) {
+        Expr::Pow(base, _) => Some(*base),
+        _ => None,
+    };
+    if let Some(base) = inferred_base {
+        let var_expr = ctx.var(var);
+        return Some(ctx.add(Expr::Pow(base, var_expr)));
+    }
+
+    None
+}
+
+/// Substitute `target` by `replacement` in an expression tree, with
+/// special handling for exponential patterns: `e^(k*x) -> replacement^k`.
+pub fn substitute_expr_pattern(
+    ctx: &mut Context,
+    expr: ExprId,
+    target: ExprId,
+    replacement: ExprId,
+) -> ExprId {
+    if compare_expr(ctx, expr, target) == Ordering::Equal {
+        return replacement;
+    }
+
+    let expr_data = ctx.get(expr).clone();
+
+    let target_pow = if let Expr::Pow(tb, te) = ctx.get(target) {
+        Some((*tb, *te))
+    } else {
+        None
+    };
+
+    if let Expr::Pow(b, e) = &expr_data {
+        if let Some((tb, te)) = target_pow {
+            if compare_expr(ctx, *b, tb) == Ordering::Equal {
+                let e_mul = if let Expr::Mul(l, r) = ctx.get(*e) {
+                    Some((*l, *r))
+                } else {
+                    None
+                };
+
+                if let Some((l, r)) = e_mul {
+                    let l_is_num = matches!(ctx.get(l), Expr::Number(_));
+                    let r_is_num = matches!(ctx.get(r), Expr::Number(_));
+
+                    let l_matches = compare_expr(ctx, l, te) == Ordering::Equal;
+                    let r_matches = compare_expr(ctx, r, te) == Ordering::Equal;
+
+                    if (l_matches && r_is_num) || (r_matches && l_is_num) {
+                        let coeff = if l_matches { r } else { l };
+                        return ctx.add(Expr::Pow(replacement, coeff));
+                    }
+                }
+            }
+        }
+    }
+
+    match expr_data {
+        Expr::Add(l, r) => {
+            let new_l = substitute_expr_pattern(ctx, l, target, replacement);
+            let new_r = substitute_expr_pattern(ctx, r, target, replacement);
+            if new_l != l || new_r != r {
+                return ctx.add(Expr::Add(new_l, new_r));
+            }
+        }
+        Expr::Sub(l, r) => {
+            let new_l = substitute_expr_pattern(ctx, l, target, replacement);
+            let new_r = substitute_expr_pattern(ctx, r, target, replacement);
+            if new_l != l || new_r != r {
+                return ctx.add(Expr::Sub(new_l, new_r));
+            }
+        }
+        Expr::Mul(l, r) => {
+            let new_l = substitute_expr_pattern(ctx, l, target, replacement);
+            let new_r = substitute_expr_pattern(ctx, r, target, replacement);
+            if new_l != l || new_r != r {
+                return mul2_raw(ctx, new_l, new_r);
+            }
+        }
+        Expr::Div(l, r) => {
+            let new_l = substitute_expr_pattern(ctx, l, target, replacement);
+            let new_r = substitute_expr_pattern(ctx, r, target, replacement);
+            if new_l != l || new_r != r {
+                return ctx.add(Expr::Div(new_l, new_r));
+            }
+        }
+        Expr::Pow(b, e) => {
+            let new_b = substitute_expr_pattern(ctx, b, target, replacement);
+            let new_e = substitute_expr_pattern(ctx, e, target, replacement);
+            if new_b != b || new_e != e {
+                return ctx.add(Expr::Pow(new_b, new_e));
+            }
+        }
+        Expr::Neg(e) => {
+            let new_e = substitute_expr_pattern(ctx, e, target, replacement);
+            if new_e != e {
+                return ctx.add(Expr::Neg(new_e));
+            }
+        }
+        Expr::Function(name, args) => {
+            let mut new_args = Vec::new();
+            let mut changed = false;
+            for arg in args {
+                let new_arg = substitute_expr_pattern(ctx, arg, target, replacement);
+                if new_arg != arg {
+                    changed = true;
+                }
+                new_args.push(new_arg);
+            }
+            if changed {
+                return ctx.add(Expr::Function(name, new_args));
+            }
+        }
+        Expr::Matrix { rows, cols, data } => {
+            let mut new_data = Vec::with_capacity(data.len());
+            let mut changed = false;
+            for elem in data {
+                let new_elem = substitute_expr_pattern(ctx, elem, target, replacement);
+                if new_elem != elem {
+                    changed = true;
+                }
+                new_data.push(new_elem);
+            }
+            if changed {
+                return ctx.add(Expr::Matrix {
+                    rows,
+                    cols,
+                    data: new_data,
+                });
+            }
+        }
+        Expr::Hold(inner) => {
+            let new_inner = substitute_expr_pattern(ctx, inner, target, replacement);
+            if new_inner != inner {
+                return ctx.add(Expr::Hold(new_inner));
+            }
+        }
+        Expr::Variable(_) | Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+    }
+
+    expr
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -97,6 +342,42 @@ mod tests {
                 );
             }
             other => panic!("expected Add after substitution, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn detect_exponential_substitution_finds_e_pow_x_base() {
+        let mut ctx = Context::new();
+        let e = ctx.add(Expr::Constant(Constant::E));
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let e_pow_x = ctx.add(Expr::Pow(e, x));
+        let two_x = ctx.add(Expr::Mul(two, x));
+        let e_pow_2x = ctx.add(Expr::Pow(e, two_x));
+        let sum = ctx.add(Expr::Add(e_pow_2x, e_pow_x));
+        let one = ctx.num(1);
+        let sub = detect_exponential_substitution(&mut ctx, sum, one, "x")
+            .expect("must detect substitution base");
+        assert_eq!(sub, e_pow_x);
+    }
+
+    #[test]
+    fn substitute_expr_pattern_handles_e_pow_2x() {
+        let mut ctx = Context::new();
+        let e = ctx.add(Expr::Constant(Constant::E));
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let u = ctx.var("u");
+        let e_pow_x = ctx.add(Expr::Pow(e, x));
+        let two_x = ctx.add(Expr::Mul(two, x));
+        let e_pow_2x = ctx.add(Expr::Pow(e, two_x));
+        let out = substitute_expr_pattern(&mut ctx, e_pow_2x, e_pow_x, u);
+        match ctx.get(out) {
+            Expr::Pow(base, exp) => {
+                assert_eq!(*base, u);
+                assert_eq!(*exp, two);
+            }
+            other => panic!("expected Pow(u,2), got {other:?}"),
         }
     }
 }
