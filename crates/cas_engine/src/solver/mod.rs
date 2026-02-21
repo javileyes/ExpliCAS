@@ -351,7 +351,7 @@ thread_local! {
 /// # Safety against leaks/reentrancy
 /// - Drop always clears or restores state
 /// - Nested solves get their own collectors (previous is saved)
-pub struct SolveAssumptionsGuard {
+pub(crate) struct SolveAssumptionsGuard {
     /// The previous collector (if any) that was active before this guard
     previous: Option<crate::assumptions::AssumptionCollector>,
     /// Whether collection is enabled for this guard
@@ -416,7 +416,7 @@ pub(crate) fn note_assumption(event: crate::assumptions::AssumptionEvent) {
 
 /// Emit a scope tag during solver operation for display transforms.
 /// Called by strategies like QuadraticFormula to mark the result context.
-pub fn emit_scope(scope: cas_formatter::display_transforms::ScopeTag) {
+pub(crate) fn emit_scope(scope: cas_formatter::display_transforms::ScopeTag) {
     OUTPUT_SCOPES.with(|s| {
         let mut scopes = s.borrow_mut();
         // Avoid duplicates
@@ -428,13 +428,8 @@ pub fn emit_scope(scope: cas_formatter::display_transforms::ScopeTag) {
 
 /// Take all emitted scopes, clearing the TLS collector.
 /// Called after solve to get scopes for EvalOutput.
-pub fn take_scopes() -> Vec<cas_formatter::display_transforms::ScopeTag> {
+pub(crate) fn take_scopes() -> Vec<cas_formatter::display_transforms::ScopeTag> {
     OUTPUT_SCOPES.with(|s| std::mem::take(&mut *s.borrow_mut()))
-}
-
-/// Clear emitted scopes without returning them.
-pub fn clear_scopes() {
-    OUTPUT_SCOPES.with(|s| s.borrow_mut().clear());
 }
 
 /// Guard that decrements depth on drop
