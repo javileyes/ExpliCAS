@@ -4,9 +4,8 @@
 //! entry points, plus the rational-exponent pre-check.
 
 use super::SolveDiagnostics;
-use cas_ast::{Expr, ExprId, SolutionSet};
+use cas_ast::{ExprId, SolutionSet};
 use std::collections::HashSet;
-use std::hash::{Hash, Hasher};
 
 use crate::engine::Simplifier;
 use crate::error::CasError;
@@ -45,53 +44,6 @@ thread_local! {
     /// equivalent form that would be solved again.
     static SOLVE_SEEN: std::cell::RefCell<HashSet<u64>> =
         std::cell::RefCell::new(HashSet::new());
-}
-
-/// Compute a deterministic structural hash of an AST subtree.
-/// Used to fingerprint equations for cycle detection.
-fn expr_fingerprint(ctx: &cas_ast::Context, id: ExprId, h: &mut impl Hasher) {
-    let node = ctx.get(id);
-    // Discriminant first for type safety
-    std::mem::discriminant(node).hash(h);
-    match node {
-        Expr::Number(n) => n.hash(h),
-        Expr::Variable(s) => ctx.sym_name(*s).hash(h),
-        Expr::Constant(c) => std::mem::discriminant(c).hash(h),
-        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
-            expr_fingerprint(ctx, *l, h);
-            expr_fingerprint(ctx, *r, h);
-        }
-        Expr::Pow(b, e) => {
-            expr_fingerprint(ctx, *b, h);
-            expr_fingerprint(ctx, *e, h);
-        }
-        Expr::Neg(e) | Expr::Hold(e) => expr_fingerprint(ctx, *e, h),
-        Expr::Function(name, args) => {
-            ctx.sym_name(*name).hash(h);
-            for a in args {
-                expr_fingerprint(ctx, *a, h);
-            }
-        }
-        Expr::Matrix { rows, cols, data } => {
-            rows.hash(h);
-            cols.hash(h);
-            for d in data {
-                expr_fingerprint(ctx, *d, h);
-            }
-        }
-        Expr::SessionRef(s) => s.hash(h),
-    }
-}
-
-/// Compute a u64 fingerprint for (var, simplified_lhs, simplified_rhs).
-fn equation_fingerprint(ctx: &cas_ast::Context, lhs: ExprId, rhs: ExprId, var: &str) -> u64 {
-    let mut hasher = std::hash::DefaultHasher::new();
-    var.hash(&mut hasher);
-    expr_fingerprint(ctx, lhs, &mut hasher);
-    // Separator to avoid hash collisions between different (lhs, rhs) splits
-    0xFFu8.hash(&mut hasher);
-    expr_fingerprint(ctx, rhs, &mut hasher);
-    hasher.finish()
 }
 
 /// RAII guard that removes a fingerprint from SOLVE_SEEN on drop.
@@ -479,7 +431,7 @@ fn solve_inner(
     // This catches loops where strategies rewrite equations into equivalent forms.
     // We fingerprint (var, simplified_lhs, simplified_rhs) — not the diff — to avoid
     // false positives when CollectTermsStrategy moves terms between sides.
-    let fp = equation_fingerprint(
+    let fp = cas_solver_core::fingerprint::equation_fingerprint(
         &simplifier.context,
         simplified_eq.lhs,
         simplified_eq.rhs,

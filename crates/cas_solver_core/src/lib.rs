@@ -1,3 +1,4 @@
+pub mod fingerprint;
 pub mod isolation_utils;
 pub mod reciprocal;
 pub mod solution_set;
