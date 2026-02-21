@@ -2,7 +2,6 @@
 
 use cas_ast::{Context, ExprId, SolutionSet};
 
-use crate::build::mul2_raw;
 use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::SolveStep;
@@ -15,8 +14,18 @@ pub(crate) fn verify_solution(
     simplifier: &mut Simplifier,
 ) -> bool {
     // 1. Substitute
-    let lhs_sub = substitute(&mut simplifier.context, eq.lhs, var, sol);
-    let rhs_sub = substitute(&mut simplifier.context, eq.rhs, var, sol);
+    let lhs_sub = cas_solver_core::substitution::substitute_named_var(
+        &mut simplifier.context,
+        eq.lhs,
+        var,
+        sol,
+    );
+    let rhs_sub = cas_solver_core::substitution::substitute_named_var(
+        &mut simplifier.context,
+        eq.rhs,
+        var,
+        sol,
+    );
 
     // 2. Simplify
     let (lhs_sim, _) = simplifier.simplify(lhs_sub);
@@ -31,114 +40,6 @@ pub(crate) fn verify_solution(
 /// simplify to pure numbers. Examples: ln(c/d)/ln(a/b), x + a, sqrt(y)
 pub(crate) fn is_symbolic_expr(ctx: &Context, expr: ExprId) -> bool {
     cas_solver_core::solve_analysis::is_symbolic_expr(ctx, expr)
-}
-
-/// Substitute a variable with a value expression throughout the AST.
-pub(crate) fn substitute(ctx: &mut Context, expr: ExprId, var: &str, val: ExprId) -> ExprId {
-    use cas_ast::Expr;
-    let expr_data = ctx.get(expr).clone();
-    match expr_data {
-        Expr::Variable(sym_id) if ctx.sym_name(sym_id) == var => val,
-        Expr::Add(l, r) => {
-            let nl = substitute(ctx, l, var, val);
-            let nr = substitute(ctx, r, var, val);
-            if nl != l || nr != r {
-                ctx.add(Expr::Add(nl, nr))
-            } else {
-                expr
-            }
-        }
-        Expr::Sub(l, r) => {
-            let nl = substitute(ctx, l, var, val);
-            let nr = substitute(ctx, r, var, val);
-            if nl != l || nr != r {
-                ctx.add(Expr::Sub(nl, nr))
-            } else {
-                expr
-            }
-        }
-        Expr::Mul(l, r) => {
-            let nl = substitute(ctx, l, var, val);
-            let nr = substitute(ctx, r, var, val);
-            if nl != l || nr != r {
-                mul2_raw(ctx, nl, nr)
-            } else {
-                expr
-            }
-        }
-        Expr::Div(l, r) => {
-            let nl = substitute(ctx, l, var, val);
-            let nr = substitute(ctx, r, var, val);
-            if nl != l || nr != r {
-                ctx.add(Expr::Div(nl, nr))
-            } else {
-                expr
-            }
-        }
-        Expr::Pow(b, e) => {
-            let nb = substitute(ctx, b, var, val);
-            let ne = substitute(ctx, e, var, val);
-            if nb != b || ne != e {
-                ctx.add(Expr::Pow(nb, ne))
-            } else {
-                expr
-            }
-        }
-        Expr::Neg(e) => {
-            let ne = substitute(ctx, e, var, val);
-            if ne != e {
-                ctx.add(Expr::Neg(ne))
-            } else {
-                expr
-            }
-        }
-        Expr::Function(name, args) => {
-            let mut new_args = Vec::new();
-            let mut changed = false;
-            for arg in args {
-                let new_arg = substitute(ctx, arg, var, val);
-                if new_arg != arg {
-                    changed = true;
-                }
-                new_args.push(new_arg);
-            }
-            if changed {
-                ctx.add(Expr::Function(name, new_args))
-            } else {
-                expr
-            }
-        }
-        Expr::Hold(inner) => {
-            let new_inner = substitute(ctx, inner, var, val);
-            if new_inner != inner {
-                ctx.add(Expr::Hold(new_inner))
-            } else {
-                expr
-            }
-        }
-        Expr::Matrix { rows, cols, data } => {
-            let mut new_data = Vec::new();
-            let mut changed = false;
-            for elem in data {
-                let new_elem = substitute(ctx, elem, var, val);
-                if new_elem != elem {
-                    changed = true;
-                }
-                new_data.push(new_elem);
-            }
-            if changed {
-                ctx.add(Expr::Matrix {
-                    rows,
-                    cols,
-                    data: new_data,
-                })
-            } else {
-                expr
-            }
-        }
-        // Leaves — no children to substitute into
-        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => expr,
-    }
 }
 
 /// V2.1 Issue #10: Extract all denominators from an expression that contain the given variable.
