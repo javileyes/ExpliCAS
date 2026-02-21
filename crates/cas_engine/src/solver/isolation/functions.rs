@@ -253,16 +253,8 @@ fn isolate_unary_function(
     };
 
     if simplifier.collect_steps() {
-        let description = match inverse_kind {
-            UnaryInverseKind::Ln => "Exponentiate both sides with base e",
-            UnaryInverseKind::Exp => "Take natural log of both sides",
-            UnaryInverseKind::Sqrt => "Square both sides",
-            UnaryInverseKind::Sin => "Take arcsin of both sides",
-            UnaryInverseKind::Cos => "Take arccos of both sides",
-            UnaryInverseKind::Tan => "Take arctan of both sides",
-        };
         steps.push(SolveStep {
-            description: description.to_string(),
+            description: inverse_kind.step_description().to_string(),
             equation_after: new_eq,
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],

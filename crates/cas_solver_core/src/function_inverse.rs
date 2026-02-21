@@ -49,6 +49,18 @@ impl UnaryInverseKind {
     pub fn needs_rhs_cleanup(self) -> bool {
         matches!(self, Self::Sin | Self::Cos | Self::Tan)
     }
+
+    /// Human-readable action used by solver step narration.
+    pub fn step_description(self) -> &'static str {
+        match self {
+            Self::Ln => "Exponentiate both sides with base e",
+            Self::Exp => "Take natural log of both sides",
+            Self::Sqrt => "Square both sides",
+            Self::Sin => "Take arcsin of both sides",
+            Self::Cos => "Take arccos of both sides",
+            Self::Tan => "Take arctan of both sides",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -106,5 +118,30 @@ mod tests {
         assert!(!UnaryInverseKind::Ln.needs_rhs_cleanup());
         assert!(!UnaryInverseKind::Exp.needs_rhs_cleanup());
         assert!(!UnaryInverseKind::Sqrt.needs_rhs_cleanup());
+    }
+
+    #[test]
+    fn step_descriptions_match_expected_wording() {
+        assert_eq!(
+            UnaryInverseKind::Ln.step_description(),
+            "Exponentiate both sides with base e"
+        );
+        assert_eq!(
+            UnaryInverseKind::Exp.step_description(),
+            "Take natural log of both sides"
+        );
+        assert_eq!(UnaryInverseKind::Sqrt.step_description(), "Square both sides");
+        assert_eq!(
+            UnaryInverseKind::Sin.step_description(),
+            "Take arcsin of both sides"
+        );
+        assert_eq!(
+            UnaryInverseKind::Cos.step_description(),
+            "Take arccos of both sides"
+        );
+        assert_eq!(
+            UnaryInverseKind::Tan.step_description(),
+            "Take arctan of both sides"
+        );
     }
 }
