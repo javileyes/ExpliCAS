@@ -1,4 +1,5 @@
-use cas_ast::{Context, Expr, ExprId, RelOp};
+use crate::solution_set::{intersect_solution_sets, union_solution_sets};
+use cas_ast::{Context, Expr, ExprId, RelOp, SolutionSet};
 use std::cmp::Ordering;
 
 /// Create a residual solve expression: solve(__eq__(lhs, rhs), var)
@@ -79,9 +80,28 @@ pub fn is_simple_reciprocal(ctx: &Context, expr: ExprId, var: &str) -> bool {
     }
 }
 
+/// Combine the two branch solution sets generated from `|A| op B`.
+///
+/// For equalities/greater-than forms both branches are alternatives (union).
+/// For less-than forms both constraints must hold simultaneously (intersection).
+pub fn combine_abs_branch_sets(
+    ctx: &Context,
+    op: RelOp,
+    positive_branch: SolutionSet,
+    negative_branch: SolutionSet,
+) -> SolutionSet {
+    match op {
+        RelOp::Eq | RelOp::Neq | RelOp::Gt | RelOp::Geq => {
+            union_solution_sets(ctx, positive_branch, negative_branch)
+        }
+        RelOp::Lt | RelOp::Leq => intersect_solution_sets(ctx, positive_branch, negative_branch),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_ast::{BoundType, Interval};
 
     #[test]
     fn test_is_simple_reciprocal() {
@@ -93,5 +113,61 @@ mod tests {
         assert!(is_simple_reciprocal(&ctx, reciprocal, "R"));
         assert!(!is_simple_reciprocal(&ctx, reciprocal, "X"));
         assert!(!is_simple_reciprocal(&ctx, r, "R"));
+    }
+
+    #[test]
+    fn test_combine_abs_branch_sets_union_for_eq() {
+        let mut ctx = Context::new();
+        let i1 = Interval {
+            min: ctx.num(0),
+            min_type: BoundType::Closed,
+            max: ctx.num(1),
+            max_type: BoundType::Closed,
+        };
+        let i2 = Interval {
+            min: ctx.num(2),
+            min_type: BoundType::Closed,
+            max: ctx.num(3),
+            max_type: BoundType::Closed,
+        };
+
+        let set = combine_abs_branch_sets(
+            &ctx,
+            RelOp::Eq,
+            SolutionSet::Continuous(i1),
+            SolutionSet::Continuous(i2),
+        );
+        assert!(matches!(set, SolutionSet::Union(v) if v.len() == 2));
+    }
+
+    #[test]
+    fn test_combine_abs_branch_sets_intersection_for_lt() {
+        let mut ctx = Context::new();
+        let i1 = Interval {
+            min: ctx.num(0),
+            min_type: BoundType::Closed,
+            max: ctx.num(2),
+            max_type: BoundType::Closed,
+        };
+        let i2 = Interval {
+            min: ctx.num(1),
+            min_type: BoundType::Closed,
+            max: ctx.num(3),
+            max_type: BoundType::Closed,
+        };
+
+        let set = combine_abs_branch_sets(
+            &ctx,
+            RelOp::Lt,
+            SolutionSet::Continuous(i1),
+            SolutionSet::Continuous(i2),
+        );
+        match set {
+            SolutionSet::Continuous(i) => {
+                assert_eq!(i.min, ctx.num(1));
+                assert_eq!(i.max, ctx.num(2));
+            }
+            other => panic!("Expected Continuous intersection, got {:?}", other),
+        }
     }
 }

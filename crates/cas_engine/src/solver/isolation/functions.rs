@@ -5,8 +5,7 @@ use cas_ast::symbol::SymbolId;
 use cas_ast::{
     BuiltinFn, Case, ConditionPredicate, ConditionSet, Equation, Expr, ExprId, RelOp, SolutionSet,
 };
-use cas_solver_core::isolation_utils::contains_var;
-use cas_solver_core::solution_set::{intersect_solution_sets, union_solution_sets};
+use cas_solver_core::isolation_utils::{combine_abs_branch_sets, contains_var, flip_inequality};
 
 use super::{isolate, prepend_steps};
 
@@ -111,14 +110,7 @@ fn isolate_abs(
 
     // ── Branch 2: Negative case ─────────────────────────────────────────
     let neg_rhs = simplifier.context.add(Expr::Neg(rhs));
-    let op2 = match op {
-        RelOp::Eq => RelOp::Eq,
-        RelOp::Neq => RelOp::Neq,
-        RelOp::Lt => RelOp::Gt,
-        RelOp::Leq => RelOp::Geq,
-        RelOp::Gt => RelOp::Lt,
-        RelOp::Geq => RelOp::Leq,
-    };
+    let op2 = flip_inequality(op.clone());
 
     let eq2 = Equation {
         lhs: arg,
@@ -149,12 +141,7 @@ fn isolate_abs(
     let (set2, steps2_out) = prepend_steps(results2, steps2)?;
 
     // ── Combine branches ────────────────────────────────────────────────
-    let combined_set = match op {
-        RelOp::Eq | RelOp::Neq | RelOp::Gt | RelOp::Geq => {
-            union_solution_sets(&simplifier.context, set1, set2)
-        }
-        RelOp::Lt | RelOp::Leq => intersect_solution_sets(&simplifier.context, set1, set2),
-    };
+    let combined_set = combine_abs_branch_sets(&simplifier.context, op, set1, set2);
 
     let mut all_steps = steps1_out;
     all_steps.extend(steps2_out);
