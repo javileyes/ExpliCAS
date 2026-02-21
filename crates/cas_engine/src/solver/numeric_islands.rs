@@ -20,10 +20,11 @@
 //! - Rejects folds that produce undefined results (`Div(_, 0)` etc.) or that
 //!   increase expression size.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::expr_predicates::contains_variable;
+use cas_solver_core::numeric_islands::{count_nodes_dedup, has_zero_denominator, transplant_expr};
 
 use crate::helpers::ground_eval::GroundEvalGuard;
 
@@ -233,7 +234,6 @@ fn try_fold_island(ctx: &mut Context, id: ExprId) -> ExprId {
     };
 
     let (result, _, _) = tmp.simplify_with_stats(id, opts);
-    let result_node = tmp.context.get(result).clone();
 
     // Acceptance filter: only accept if result is "benign"
     if !is_benign_result(&tmp.context, result, node_count) {
@@ -243,7 +243,7 @@ fn try_fold_island(ctx: &mut Context, id: ExprId) -> ExprId {
     // Transplant the result back into the original context.
     // For simple leaves, we can create directly. For more complex ground
     // results that are smaller, we need to deep-copy the subtree.
-    transplant_expr(&tmp.context, result, &result_node, ctx)
+    transplant_expr(&tmp.context, result, ctx)
 }
 
 /// Check if a simplification result is "benign" (safe to accept).
@@ -266,141 +266,6 @@ fn is_benign_result(ctx: &Context, result: ExprId, original_node_count: usize) -
             }
             // Reject results with division by zero
             !has_zero_denominator(ctx, result)
-        }
-    }
-}
-
-/// Check if expression contains any Div(_, 0) nodes.
-fn has_zero_denominator(ctx: &Context, id: ExprId) -> bool {
-    let mut stack = vec![id];
-    while let Some(node_id) = stack.pop() {
-        match ctx.get(node_id) {
-            Expr::Div(_, den) => {
-                if matches!(ctx.get(*den), Expr::Number(n) if num_traits::Zero::is_zero(n)) {
-                    return true;
-                }
-                stack.push(*den);
-                // Also check numerator
-                if let Expr::Div(num, _) = ctx.get(node_id) {
-                    stack.push(*num);
-                }
-            }
-            Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Pow(a, b) => {
-                stack.push(*a);
-                stack.push(*b);
-            }
-            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
-            Expr::Function(_, args) => stack.extend(args.iter().copied()),
-            _ => {}
-        }
-    }
-    false
-}
-
-/// Count unique nodes and max depth (dedup by ExprId).
-fn count_nodes_dedup(ctx: &Context, root: ExprId) -> (usize, usize) {
-    let mut seen = HashSet::new();
-    let mut max_depth = 0;
-    let mut stack: Vec<(ExprId, usize)> = vec![(root, 0)];
-
-    while let Some((id, depth)) = stack.pop() {
-        if !seen.insert(id) {
-            continue; // Already visited (DAG sharing)
-        }
-        max_depth = max_depth.max(depth);
-
-        let child_depth = depth + 1;
-        match ctx.get(id) {
-            Expr::Add(a, b)
-            | Expr::Sub(a, b)
-            | Expr::Mul(a, b)
-            | Expr::Div(a, b)
-            | Expr::Pow(a, b) => {
-                stack.push((*a, child_depth));
-                stack.push((*b, child_depth));
-            }
-            Expr::Neg(e) | Expr::Hold(e) => stack.push((*e, child_depth)),
-            Expr::Function(_, args) => {
-                for &arg in args {
-                    stack.push((arg, child_depth));
-                }
-            }
-            Expr::Matrix { data, .. } => {
-                for &elem in data {
-                    stack.push((elem, child_depth));
-                }
-            }
-            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
-        }
-    }
-
-    (seen.len(), max_depth)
-}
-
-/// Deep-copy an expression subtree from `src` context into `dst` context.
-///
-/// For simple leaves (Number, Constant), creates them directly in `dst`.
-/// For composite expressions, recursively transplants children first.
-fn transplant_expr(src: &Context, _id: ExprId, node: &Expr, dst: &mut Context) -> ExprId {
-    match node {
-        Expr::Number(n) => dst.add(Expr::Number(n.clone())),
-        Expr::Constant(c) => dst.add(Expr::Constant(c.clone())),
-        Expr::Variable(sym) => {
-            // Preserve variable name
-            let name = src.sym_name(*sym);
-            dst.var(name)
-        }
-        Expr::SessionRef(r) => dst.add(Expr::SessionRef(*r)),
-        Expr::Add(a, b) => {
-            let ta = transplant_expr(src, *a, src.get(*a), dst);
-            let tb = transplant_expr(src, *b, src.get(*b), dst);
-            dst.add(Expr::Add(ta, tb))
-        }
-        Expr::Sub(a, b) => {
-            let ta = transplant_expr(src, *a, src.get(*a), dst);
-            let tb = transplant_expr(src, *b, src.get(*b), dst);
-            dst.add(Expr::Sub(ta, tb))
-        }
-        Expr::Mul(a, b) => {
-            let ta = transplant_expr(src, *a, src.get(*a), dst);
-            let tb = transplant_expr(src, *b, src.get(*b), dst);
-            dst.add(Expr::Mul(ta, tb))
-        }
-        Expr::Div(a, b) => {
-            let ta = transplant_expr(src, *a, src.get(*a), dst);
-            let tb = transplant_expr(src, *b, src.get(*b), dst);
-            dst.add(Expr::Div(ta, tb))
-        }
-        Expr::Pow(a, b) => {
-            let ta = transplant_expr(src, *a, src.get(*a), dst);
-            let tb = transplant_expr(src, *b, src.get(*b), dst);
-            dst.add(Expr::Pow(ta, tb))
-        }
-        Expr::Neg(inner) => {
-            let ti = transplant_expr(src, *inner, src.get(*inner), dst);
-            dst.add(Expr::Neg(ti))
-        }
-        Expr::Function(name, args) => {
-            let targs: Vec<ExprId> = args
-                .iter()
-                .map(|&arg| transplant_expr(src, arg, src.get(arg), dst))
-                .collect();
-            dst.add(Expr::Function(*name, targs))
-        }
-        Expr::Hold(inner) => {
-            let ti = transplant_expr(src, *inner, src.get(*inner), dst);
-            dst.add(Expr::Hold(ti))
-        }
-        Expr::Matrix { rows, cols, data } => {
-            let tdata: Vec<ExprId> = data
-                .iter()
-                .map(|&elem| transplant_expr(src, elem, src.get(elem), dst))
-                .collect();
-            dst.add(Expr::Matrix {
-                rows: *rows,
-                cols: *cols,
-                data: tdata,
-            })
         }
     }
 }
