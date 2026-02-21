@@ -132,6 +132,24 @@ pub fn transplant_expr(src: &Context, id: ExprId, dst: &mut Context) -> ExprId {
     }
 }
 
+/// Check if a folded numeric-island result is safe/beneficial to accept.
+///
+/// Accepts:
+/// - `Number(_)` and `Constant(_)`
+/// - Other ground expressions only when strictly smaller and with no `Div(_, 0)`.
+pub fn is_benign_fold_result(ctx: &Context, result: ExprId, original_node_count: usize) -> bool {
+    match ctx.get(result) {
+        Expr::Number(_) | Expr::Constant(_) => true,
+        _ => {
+            let (result_count, _) = count_nodes_dedup(ctx, result);
+            if result_count >= original_node_count {
+                return false;
+            }
+            !has_zero_denominator(ctx, result)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,5 +186,32 @@ mod tests {
             Expr::Mul(_, _) => {}
             other => panic!("expected Mul, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn benign_fold_accepts_smaller_number() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let add = ctx.add(Expr::Add(one, two));
+        let three = ctx.num(3);
+        assert!(is_benign_fold_result(
+            &ctx,
+            three,
+            count_nodes_dedup(&ctx, add).0
+        ));
+    }
+
+    #[test]
+    fn benign_fold_rejects_non_shrinking_non_leaf() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let add = ctx.add(Expr::Add(x, y));
+        assert!(!is_benign_fold_result(
+            &ctx,
+            add,
+            count_nodes_dedup(&ctx, add).0
+        ));
     }
 }

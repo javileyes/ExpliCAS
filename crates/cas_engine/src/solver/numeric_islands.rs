@@ -24,7 +24,7 @@ use std::collections::HashMap;
 
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::expr_predicates::contains_variable;
-use cas_solver_core::numeric_islands::{count_nodes_dedup, has_zero_denominator, transplant_expr};
+use cas_solver_core::numeric_islands::{count_nodes_dedup, is_benign_fold_result, transplant_expr};
 
 use crate::helpers::ground_eval::GroundEvalGuard;
 
@@ -236,7 +236,7 @@ fn try_fold_island(ctx: &mut Context, id: ExprId) -> ExprId {
     let (result, _, _) = tmp.simplify_with_stats(id, opts);
 
     // Acceptance filter: only accept if result is "benign"
-    if !is_benign_result(&tmp.context, result, node_count) {
+    if !is_benign_fold_result(&tmp.context, result, node_count) {
         return id;
     }
 
@@ -244,30 +244,6 @@ fn try_fold_island(ctx: &mut Context, id: ExprId) -> ExprId {
     // For simple leaves, we can create directly. For more complex ground
     // results that are smaller, we need to deep-copy the subtree.
     transplant_expr(&tmp.context, result, ctx)
-}
-
-/// Check if a simplification result is "benign" (safe to accept).
-///
-/// Accepts:
-/// - `Number(_)` (ideal — fully evaluated)
-/// - `Constant(_)` (already canonical)
-/// - Any ground result that is strictly smaller (fewer dedup nodes)
-///   AND does not contain `Div(_, 0)` or undefined forms
-fn is_benign_result(ctx: &Context, result: ExprId, original_node_count: usize) -> bool {
-    match ctx.get(result) {
-        // Fully evaluated — always accept
-        Expr::Number(_) | Expr::Constant(_) => true,
-
-        // For non-leaf results, accept only if strictly smaller and safe
-        _ => {
-            let (result_count, _) = count_nodes_dedup(ctx, result);
-            if result_count >= original_node_count {
-                return false; // Didn't shrink — not helpful
-            }
-            // Reject results with division by zero
-            !has_zero_denominator(ctx, result)
-        }
-    }
 }
 
 #[cfg(test)]
