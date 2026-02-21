@@ -5,7 +5,9 @@ use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveDomainEnv, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
-use cas_solver_core::isolation_utils::{contains_var, is_numeric_one, is_positive_integer_expr};
+use cas_solver_core::isolation_utils::{
+    contains_var, flip_inequality, is_numeric_one, is_positive_integer_expr,
+};
 use cas_solver_core::log_domain::LogSolveDecision;
 
 pub struct IsolationStrategy;
@@ -45,14 +47,7 @@ impl SolverStrategy for IsolationStrategy {
 
         if !lhs_has && rhs_has {
             // Swap
-            let new_op = match eq.op {
-                RelOp::Eq => RelOp::Eq,
-                RelOp::Neq => RelOp::Neq,
-                RelOp::Lt => RelOp::Gt,
-                RelOp::Gt => RelOp::Lt,
-                RelOp::Leq => RelOp::Geq,
-                RelOp::Geq => RelOp::Leq,
-            };
+            let new_op = flip_inequality(eq.op.clone());
             let mut steps = Vec::new();
             if simplifier.collect_steps() {
                 steps.push(SolveStep {
