@@ -9,13 +9,24 @@
 //! 2. Factor: P*(1 + r*t) - A = 0
 //! 3. Solve: P = A / (1 + r*t)  [guard: 1 + r*t ≠ 0]
 
-use cas_ast::{Case, ConditionPredicate, ConditionSet, Expr, ExprId, RelOp, SolutionSet};
+use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
+use cas_solver_core::linear_solution::{build_linear_solution_set, NonZeroStatus};
 use cas_solver_core::linear_terms::{build_sum, split_linear_term, TermClass};
 
 use crate::engine::Simplifier;
 use crate::nary::{add_terms_signed, Sign};
 use crate::solver::isolation::contains_var;
 use crate::solver::SolveStep;
+
+fn proof_to_nonzero_status(proof: crate::domain::Proof) -> NonZeroStatus {
+    match proof {
+        crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit => {
+            NonZeroStatus::NonZero
+        }
+        crate::domain::Proof::Disproven => NonZeroStatus::Zero,
+        crate::domain::Proof::Unknown => NonZeroStatus::Unknown,
+    }
+}
 
 /// Try to solve a linear equation where variable appears in multiple additive terms.
 ///
@@ -131,55 +142,24 @@ pub(crate) fn try_linear_collect(
         });
     }
 
-    // 8. Check if we can give a direct solution (coef is a ground constant)
-    // If coef contains no variables and prove_nonzero returns Proven, skip the Conditional
-    if !contains_var(&simplifier.context, coeff, var) {
-        use crate::domain::Proof;
-        use crate::helpers::prove_nonzero;
+    // 8. Derive proof statuses for coefficient/constant degeneracy checks.
+    // Keep previous behavior: only attempt proof when coefficient is var-free.
+    let mut coef_status = NonZeroStatus::Unknown;
+    let mut constant_status = NonZeroStatus::Unknown;
 
-        let proof = prove_nonzero(&simplifier.context, coeff);
-        if proof == Proof::Proven {
-            // Direct solution: coeff is provably non-zero constant
-            return Some((SolutionSet::Discrete(vec![solution]), steps));
-        }
-        // If Disproven (coeff == 0), check neg_const
-        if proof == Proof::Disproven {
-            let const_proof = prove_nonzero(&simplifier.context, neg_const);
-            if const_proof == Proof::Disproven {
-                // Both are 0: 0*x + 0 = 0 → AllReals
-                return Some((SolutionSet::AllReals, steps));
-            } else if const_proof == Proof::Proven {
-                // 0*x + nonzero = 0 → Empty
-                return Some((SolutionSet::Empty, steps));
-            }
-            // Otherwise fall through to Conditional
+    if !contains_var(&simplifier.context, coeff, var) {
+        use crate::helpers::prove_nonzero;
+        coef_status = proof_to_nonzero_status(prove_nonzero(&simplifier.context, coeff));
+        if coef_status == NonZeroStatus::Zero {
+            constant_status =
+                proof_to_nonzero_status(prove_nonzero(&simplifier.context, neg_const));
         }
     }
 
-    // 9. Return as Conditional with guard: coeff ≠ 0
-    // Primary case: coeff ≠ 0 → { solution }
-    let guard = ConditionSet::single(ConditionPredicate::NonZero(coeff));
-    let primary_case = Case::new(guard, SolutionSet::Discrete(vec![solution]));
+    let solution_set =
+        build_linear_solution_set(coeff, neg_const, solution, coef_status, constant_status);
 
-    // Degenerate case: coeff = 0
-    // If coeff = 0 AND const = 0 → AllReals
-    // If coeff = 0 AND const ≠ 0 → EmptySet
-
-    // Case: coeff = 0 ∧ const = 0 → AllReals
-    // Note: we use neg_const (= -const_sum = A for our example) for cleaner display
-    let mut both_zero_guard = ConditionSet::single(ConditionPredicate::EqZero(coeff));
-    both_zero_guard.push(ConditionPredicate::EqZero(neg_const));
-    let all_reals_case = Case::new(both_zero_guard, SolutionSet::AllReals);
-
-    // Case: otherwise → EmptySet
-    let otherwise_case = Case::new(
-        ConditionSet::empty(), // "otherwise"
-        SolutionSet::Empty,
-    );
-
-    let conditional = SolutionSet::Conditional(vec![primary_case, all_reals_case, otherwise_case]);
-
-    Some((conditional, steps))
+    Some((solution_set, steps))
 }
 
 /// Try to solve using the structural linear form extractor.
@@ -249,45 +229,21 @@ pub(crate) fn try_linear_collect_v2(
         });
     }
 
-    // Check if we can give a direct solution (coef is a ground constant)
-    // If coef contains no variables and prove_nonzero returns Proven, skip the Conditional
-    if !contains_var(&simplifier.context, coef, var) {
-        use crate::domain::Proof;
-        use crate::helpers::prove_nonzero;
+    // Derive proof statuses for coefficient/constant degeneracy checks.
+    // Keep previous behavior: only attempt proof when coefficient is var-free.
+    let mut coef_status = NonZeroStatus::Unknown;
+    let mut constant_status = NonZeroStatus::Unknown;
 
-        let proof = prove_nonzero(&simplifier.context, coef);
-        if proof == Proof::Proven {
-            // Direct solution: coef is provably non-zero constant
-            return Some((SolutionSet::Discrete(vec![solution]), steps));
-        }
-        // If Disproven (coef == 0), check constant
-        if proof == Proof::Disproven {
-            let const_proof = prove_nonzero(&simplifier.context, constant);
-            if const_proof == Proof::Disproven {
-                // Both are 0: 0*x + 0 = 0 → AllReals
-                return Some((SolutionSet::AllReals, steps));
-            } else if const_proof == Proof::Proven {
-                // 0*x + nonzero = 0 → Empty
-                return Some((SolutionSet::Empty, steps));
-            }
-            // Otherwise fall through to Conditional
+    if !contains_var(&simplifier.context, coef, var) {
+        use crate::helpers::prove_nonzero;
+        coef_status = proof_to_nonzero_status(prove_nonzero(&simplifier.context, coef));
+        if coef_status == NonZeroStatus::Zero {
+            constant_status = proof_to_nonzero_status(prove_nonzero(&simplifier.context, constant));
         }
     }
 
-    // Build conditional solution set
-    // Primary case: coef ≠ 0 → {solution}
-    let primary_guard = ConditionSet::single(ConditionPredicate::NonZero(coef));
-    let primary_case = Case::new(primary_guard, SolutionSet::Discrete(vec![solution]));
-
-    // Degenerate case: coef = 0 ∧ constant = 0 → AllReals
-    let mut both_zero_guard = ConditionSet::single(ConditionPredicate::EqZero(coef));
-    both_zero_guard.push(ConditionPredicate::EqZero(constant));
-    let all_reals_case = Case::new(both_zero_guard, SolutionSet::AllReals);
-
-    // Otherwise → Empty
-    let otherwise_case = Case::new(ConditionSet::empty(), SolutionSet::Empty);
-
-    let solution_set = SolutionSet::Conditional(vec![primary_case, all_reals_case, otherwise_case]);
+    let solution_set =
+        build_linear_solution_set(coef, constant, solution, coef_status, constant_status);
 
     Some((solution_set, steps))
 }

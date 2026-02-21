@@ -2,6 +2,7 @@ pub mod fingerprint;
 pub mod isolation_utils;
 pub mod linear_form;
 pub mod linear_kernel;
+pub mod linear_solution;
 pub mod linear_terms;
 pub mod log_domain;
 pub mod rational_power;
