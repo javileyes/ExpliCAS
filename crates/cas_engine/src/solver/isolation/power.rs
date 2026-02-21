@@ -5,6 +5,7 @@ use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
     contains_var, flip_inequality, is_known_negative, mk_residual_solve,
 };
+use cas_solver_core::log_domain::{LogAssumption, LogSolveDecision};
 use cas_solver_core::solution_set::get_number;
 use num_traits::Zero;
 
@@ -411,7 +412,7 @@ fn isolate_pow_exponent(
     }
 
     // ================================================================
-    use crate::solver::domain_guards::{classify_log_solve, LogSolveDecision};
+    use crate::solver::domain_guards::classify_log_solve;
 
     // ================================================================
     // SOLVE TACTIC: Pre-simplify base/rhs with Analytic rules in Assume mode
@@ -532,8 +533,8 @@ fn isolate_pow_exponent(
                     rhs,
                 );
                 let expr_id = match condition {
-                    crate::solver::domain_guards::SolverAssumption::PositiveBase => b,
-                    crate::solver::domain_guards::SolverAssumption::PositiveRhs => rhs,
+                    LogAssumption::PositiveBase => b,
+                    LogAssumption::PositiveRhs => rhs,
                 };
                 crate::domain::register_blocked_hint(crate::domain::BlockedHint {
                     key: event.key,

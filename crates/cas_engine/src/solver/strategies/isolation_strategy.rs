@@ -6,6 +6,7 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveDomainEnv, SolveStep, SolverOptions};
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
+use cas_solver_core::log_domain::LogSolveDecision;
 use num_traits::Zero;
 
 pub struct IsolationStrategy;
@@ -105,7 +106,7 @@ fn check_exponential_needs_complex(
 ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
     use crate::domain::DomainMode;
     use crate::semantics::AssumeScope;
-    use crate::solver::domain_guards::{classify_log_solve, LogSolveDecision};
+    use crate::solver::domain_guards::classify_log_solve;
 
     // Check LHS for exponential a^x pattern
     if lhs_has && !rhs_has {
@@ -407,7 +408,7 @@ impl SolverStrategy for UnwrapStrategy {
                         // A^x = B -> x * ln(A) = ln(B)
                         // Use domain classifier for semantic-aware solving
 
-                        use crate::solver::domain_guards::{classify_log_solve, LogSolveDecision};
+                        use crate::solver::domain_guards::classify_log_solve;
 
                         // PRE-CHECK: Handle base = 1 before classifier
                         // 1^x = 1 -> AllReals, 1^x = b (b≠1) -> Empty

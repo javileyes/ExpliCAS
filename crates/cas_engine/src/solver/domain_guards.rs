@@ -17,25 +17,19 @@ use crate::domain::{DomainMode, Proof};
 use crate::helpers::prove_positive;
 use crate::semantics::ValueDomain;
 use crate::solver::SolverOptions;
-use cas_solver_core::log_domain::{DomainModeKind, ProofStatus};
-
-/// Decision for whether a logarithmic solve step is valid.
-pub type LogSolveDecision = cas_solver_core::log_domain::LogSolveDecision;
-
-/// Assumptions that the solver may record when proceeding under `Assume` mode.
-pub type SolverAssumption = cas_solver_core::log_domain::LogAssumption;
+use cas_solver_core::log_domain::{DomainModeKind, LogAssumption, LogSolveDecision, ProofStatus};
 
 /// Convert to an AssumptionEvent for the assumptions pipeline.
-pub fn assumption_to_assumption_event(
-    assumption: SolverAssumption,
+pub(crate) fn assumption_to_assumption_event(
+    assumption: LogAssumption,
     ctx: &Context,
     base: ExprId,
     rhs: ExprId,
 ) -> crate::assumptions::AssumptionEvent {
     use crate::assumptions::AssumptionEvent;
     match assumption {
-        SolverAssumption::PositiveRhs => AssumptionEvent::positive(ctx, rhs),
-        SolverAssumption::PositiveBase => AssumptionEvent::positive(ctx, base),
+        LogAssumption::PositiveRhs => AssumptionEvent::positive(ctx, rhs),
+        LogAssumption::PositiveBase => AssumptionEvent::positive(ctx, base),
     }
 }
 
@@ -187,7 +181,7 @@ mod tests {
         );
         match decision {
             LogSolveDecision::OkWithAssumptions(assumptions) => {
-                assert!(assumptions.contains(&SolverAssumption::PositiveRhs));
+                assert!(assumptions.contains(&LogAssumption::PositiveRhs));
             }
             _ => panic!("Expected OkWithAssumptions, got {:?}", decision),
         }
