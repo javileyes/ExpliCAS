@@ -22,10 +22,10 @@
 //! }
 //! ```
 
-use cas_ast::{Equation, Expr, ExprId, SolutionSet};
+use cas_ast::{Equation, ExprId, SolutionSet};
 use cas_formatter::DisplayExpr;
 use cas_math::expr_predicates::contains_variable;
-use num_traits::Zero;
+use cas_solver_core::isolation_utils::is_numeric_zero;
 
 use crate::engine::Simplifier;
 pub use cas_solver_core::verification::{VerifyResult, VerifyStatus, VerifySummary};
@@ -70,7 +70,7 @@ pub fn verify_solution(
     let (strict_result, _, _) = simplifier.simplify_with_stats(diff, strict_opts.clone());
 
     // Check if Strict already gives us 0
-    if matches!(simplifier.context.get(strict_result), Expr::Number(n) if n.is_zero()) {
+    if is_numeric_zero(&simplifier.context, strict_result) {
         return VerifyStatus::Verified;
     }
 
@@ -84,7 +84,7 @@ pub fn verify_solution(
         if folded != strict_result {
             cas_solver_core::verify_stats::record_changed();
             let (folded_result, _, _) = simplifier.simplify_with_stats(folded, strict_opts);
-            if matches!(simplifier.context.get(folded_result), Expr::Number(n) if n.is_zero()) {
+            if is_numeric_zero(&simplifier.context, folded_result) {
                 cas_solver_core::verify_stats::record_verified();
                 return VerifyStatus::Verified;
             }
@@ -109,7 +109,7 @@ pub fn verify_solution(
         };
         let (generic_result, _, _) = simplifier.simplify_with_stats(diff, generic_opts);
 
-        if matches!(simplifier.context.get(generic_result), Expr::Number(n) if n.is_zero()) {
+        if is_numeric_zero(&simplifier.context, generic_result) {
             return VerifyStatus::Verified;
         }
     }
@@ -140,6 +140,7 @@ pub fn verify_solution_set(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_ast::Expr;
     use cas_ast::RelOp;
 
     fn make_simplifier() -> Simplifier {
