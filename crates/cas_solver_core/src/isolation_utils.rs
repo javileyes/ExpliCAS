@@ -174,10 +174,16 @@ pub fn product_zero_inequality_cases(op: RelOp) -> Option<(SignCaseOps, SignCase
 /// For inequality `A / B op C`, returns operators for denominator sign split:
 /// `(op_when_B_positive, op_when_B_negative)`.
 pub fn denominator_sign_case_ops(op: RelOp) -> Option<(RelOp, RelOp)> {
-    match op {
-        RelOp::Lt | RelOp::Gt | RelOp::Leq | RelOp::Geq => Some((op.clone(), flip_inequality(op))),
-        RelOp::Eq | RelOp::Neq => None,
+    if is_inequality_relop(&op) {
+        Some((op.clone(), flip_inequality(op)))
+    } else {
+        None
     }
+}
+
+/// True iff relation operator is an inequality (`<`, `>`, `<=`, `>=`).
+pub fn is_inequality_relop(op: &RelOp) -> bool {
+    matches!(op, RelOp::Lt | RelOp::Gt | RelOp::Leq | RelOp::Geq)
 }
 
 #[cfg(test)]
@@ -326,5 +332,13 @@ mod tests {
         assert_eq!(pos, RelOp::Leq);
         assert_eq!(neg, RelOp::Geq);
         assert!(denominator_sign_case_ops(RelOp::Eq).is_none());
+    }
+
+    #[test]
+    fn test_is_inequality_relop() {
+        assert!(is_inequality_relop(&RelOp::Lt));
+        assert!(is_inequality_relop(&RelOp::Geq));
+        assert!(!is_inequality_relop(&RelOp::Eq));
+        assert!(!is_inequality_relop(&RelOp::Neq));
     }
 }

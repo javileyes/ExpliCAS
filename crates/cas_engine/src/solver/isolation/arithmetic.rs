@@ -4,8 +4,8 @@ use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
-    contains_var, denominator_sign_case_ops, flip_inequality, is_known_negative, is_numeric_zero,
-    product_zero_inequality_cases,
+    contains_var, denominator_sign_case_ops, flip_inequality, is_inequality_relop,
+    is_known_negative, is_numeric_zero, product_zero_inequality_cases,
 };
 use cas_solver_core::solution_set::{
     intersect_solution_sets, open_negative_domain, open_positive_domain, pos_inf,
@@ -321,9 +321,7 @@ pub(super) fn isolate_div(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     if contains_var(&simplifier.context, l, var) {
-        if contains_var(&simplifier.context, r, var)
-            && matches!(op, RelOp::Lt | RelOp::Gt | RelOp::Leq | RelOp::Geq)
-        {
+        if contains_var(&simplifier.context, r, var) && is_inequality_relop(&op) {
             // Denominator contains variable. Split into cases.
             // Case 1: Denominator > 0
             let (op_pos, op_neg) = denominator_sign_case_ops(op.clone())
@@ -480,9 +478,7 @@ pub(super) fn isolate_div(
 
         // Check if denominator is just the variable (simple case)
         if let Expr::Variable(sym_id) = simplifier.context.get(r) {
-            if simplifier.context.sym_name(*sym_id) == var
-                && matches!(op, RelOp::Lt | RelOp::Gt | RelOp::Leq | RelOp::Geq)
-            {
+            if simplifier.context.sym_name(*sym_id) == var && is_inequality_relop(&op) {
                 // Split into x > 0 and x < 0
                 let (raw_pos, raw_neg) = denominator_sign_case_ops(op.clone())
                     .expect("inequality branch requires denominator sign cases");
