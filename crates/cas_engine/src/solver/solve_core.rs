@@ -507,35 +507,30 @@ fn try_solve_rational_exponent(
     simplifier: &mut Simplifier,
     ctx: &super::SolveCtx,
 ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-    use cas_ast::Expr;
-
     // Check if RHS contains the variable (we only handle simple cases)
     if contains_var(&simplifier.context, eq.rhs, var) {
         return None;
     }
 
-    // Try to match x^(p/q) on LHS
-    let (base, p, q) =
-        cas_solver_core::rational_power::match_rational_power(&simplifier.context, eq.lhs, var)?;
+    // Try to rewrite x^(p/q) = rhs into x^p = rhs^q
+    let (raw_eq, _p, q) = cas_solver_core::rational_power::rewrite_rational_power_equation(
+        &mut simplifier.context,
+        eq.lhs,
+        eq.rhs,
+        var,
+    )?;
 
     let mut steps = Vec::new();
 
-    // Build new equation: base^p = rhs^q
-    let p_expr = simplifier.context.num(p);
-    let q_expr = simplifier.context.num(q);
-
-    let new_lhs = simplifier.context.add(Expr::Pow(base, p_expr));
-    let new_rhs = simplifier.context.add(Expr::Pow(eq.rhs, q_expr));
-
     // Simplify RHS (no variable, safe to simplify)
-    let (sim_rhs, _) = simplifier.simplify(new_rhs);
+    let (sim_rhs, _) = simplifier.simplify(raw_eq.rhs);
 
     // DON'T simplify LHS yet - it might contain x^p which we want to solve
 
     let new_eq = cas_ast::Equation {
-        lhs: new_lhs,
+        lhs: raw_eq.lhs,
         rhs: sim_rhs,
-        op: cas_ast::RelOp::Eq,
+        op: raw_eq.op,
     };
 
     if simplifier.collect_steps() {
