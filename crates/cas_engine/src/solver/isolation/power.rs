@@ -3,8 +3,8 @@ use crate::error::CasError;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
-    apply_sign_flip, contains_var, is_even_integer_expr, is_known_negative, is_numeric_zero,
-    mk_residual_solve,
+    apply_sign_flip, contains_var, is_even_integer_expr, is_known_negative, is_numeric_one,
+    is_numeric_zero, mk_residual_solve,
 };
 use cas_solver_core::log_domain::{LogAssumption, LogSolveDecision};
 use cas_solver_core::solve_outcome::even_power_negative_rhs_outcome;
@@ -369,17 +369,15 @@ fn isolate_pow_exponent(
     // ================================================================
     // DOMAIN GUARDS for log operation (RealOnly mode)
     // ================================================================
-    use cas_math::expr_predicates::is_one_expr as is_one;
-
     // GUARD 1: Handle base = 1 special case
-    if is_one(&simplifier.context, b) {
-        let result = if is_one(&simplifier.context, rhs) {
+    if is_numeric_one(&simplifier.context, b) {
+        let result = if is_numeric_one(&simplifier.context, rhs) {
             SolutionSet::AllReals
         } else {
             SolutionSet::Empty
         };
         if simplifier.collect_steps() {
-            let desc = if is_one(&simplifier.context, rhs) {
+            let desc = if is_numeric_one(&simplifier.context, rhs) {
                 "1^x = 1 for all x → any real number is a solution".to_string()
             } else {
                 format!(
