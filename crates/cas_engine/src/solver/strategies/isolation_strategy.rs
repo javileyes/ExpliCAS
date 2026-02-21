@@ -1,6 +1,7 @@
 use crate::engine::Simplifier;
 use crate::error::CasError;
-use crate::solver::isolation::{contains_var, isolate};
+use crate::solver::contains_var;
+use crate::solver::isolation::isolate;
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveDomainEnv, SolveStep, SolverOptions};

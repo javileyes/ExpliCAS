@@ -2,11 +2,12 @@ use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
+use cas_solver_core::isolation_utils::{
+    contains_var, flip_inequality, is_known_negative, mk_residual_solve,
+};
 use num_traits::Zero;
 
-use super::{
-    contains_var, flip_inequality, is_known_negative, isolate, mk_residual_solve, prepend_steps,
-};
+use super::{isolate, prepend_steps};
 
 /// Handle isolation for `Pow(b, e)`: `B^E = RHS`
 #[allow(clippy::too_many_arguments)]

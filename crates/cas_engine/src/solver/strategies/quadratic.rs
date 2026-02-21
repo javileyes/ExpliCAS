@@ -1,7 +1,7 @@
 use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::ordering::compare_expr;
-use crate::solver::isolation::contains_var;
+use crate::solver::contains_var;
 use crate::solver::solution_set::{compare_values, neg_inf, pos_inf};
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;

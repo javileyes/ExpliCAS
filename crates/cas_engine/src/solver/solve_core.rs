@@ -9,7 +9,7 @@ use std::collections::HashSet;
 
 use crate::engine::Simplifier;
 use crate::error::CasError;
-use crate::solver::isolation::contains_var;
+use crate::solver::contains_var;
 use crate::solver::strategies::{
     CollectTermsStrategy, IsolationStrategy, QuadraticStrategy, RationalExponentStrategy,
     RationalRootsStrategy, SubstitutionStrategy, UnwrapStrategy,
@@ -253,9 +253,10 @@ fn solve_inner(
         // After simplification, try to recompose a^x/b^x -> (a/b)^x
         // This fixes cases where (a/b)^x was expanded to a^x/b^x during simplify,
         // which would leave 'x' on both sides after isolation attempts.
-        if let Some(recomposed) =
-            super::isolation::try_recompose_pow_quotient(&mut simplifier.context, sim_lhs)
-        {
+        if let Some(recomposed) = cas_solver_core::isolation_utils::try_recompose_pow_quotient(
+            &mut simplifier.context,
+            sim_lhs,
+        ) {
             simplified_eq.lhs = recomposed;
         }
     }
@@ -267,9 +268,10 @@ fn solve_inner(
         simplified_eq.rhs = sim_rhs;
 
         // Also try recomposition on RHS
-        if let Some(recomposed) =
-            super::isolation::try_recompose_pow_quotient(&mut simplifier.context, sim_rhs)
-        {
+        if let Some(recomposed) = cas_solver_core::isolation_utils::try_recompose_pow_quotient(
+            &mut simplifier.context,
+            sim_rhs,
+        ) {
             simplified_eq.rhs = recomposed;
         }
     }

@@ -6,8 +6,9 @@ use cas_ast::symbol::SymbolId;
 use cas_ast::{
     BuiltinFn, Case, ConditionPredicate, ConditionSet, Equation, Expr, ExprId, RelOp, SolutionSet,
 };
+use cas_solver_core::isolation_utils::contains_var;
 
-use super::{contains_var, isolate, prepend_steps, simplify_rhs};
+use super::{isolate, prepend_steps, simplify_rhs};
 
 /// Handle isolation for `Function(fn_id, args)`: abs, log, ln, exp, sqrt, trig
 #[allow(clippy::too_many_arguments)]

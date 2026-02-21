@@ -5,15 +5,10 @@ mod power;
 use crate::engine::Simplifier;
 use crate::solver::solution_set::{neg_inf, pos_inf};
 use crate::solver::{SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
-use cas_ast::{BoundType, Context, Equation, Expr, ExprId, Interval, RelOp, SolutionSet};
+use cas_ast::{BoundType, Equation, Expr, ExprId, Interval, RelOp, SolutionSet};
+use cas_solver_core::isolation_utils::contains_var;
 
 use crate::error::CasError;
-
-/// Create a residual solve expression: solve(__eq__(lhs, rhs), var)
-/// Used when solver can't justify a step but wants graceful degradation.
-pub(super) fn mk_residual_solve(ctx: &mut Context, lhs: ExprId, rhs: ExprId, var: &str) -> ExprId {
-    cas_solver_core::isolation_utils::mk_residual_solve(ctx, lhs, rhs, var)
-}
 
 pub(crate) fn isolate(
     lhs: ExprId,
@@ -62,7 +57,12 @@ pub(crate) fn isolate(
                 }
 
                 // If linear_collect didn't work, return as Residual
-                let residual = mk_residual_solve(&mut simplifier.context, lhs, rhs, var);
+                let residual = cas_solver_core::isolation_utils::mk_residual_solve(
+                    &mut simplifier.context,
+                    lhs,
+                    rhs,
+                    var,
+                );
                 return Ok((SolutionSet::Residual(residual), steps));
             }
 
@@ -132,7 +132,7 @@ pub(crate) fn isolate(
             // -A = RHS -> A = -RHS
             // -A < RHS -> A > -RHS (Flip op)
             let new_rhs = simplifier.context.add(Expr::Neg(rhs));
-            let new_op = flip_inequality(op);
+            let new_op = cas_solver_core::isolation_utils::flip_inequality(op);
             let new_eq = Equation {
                 lhs: inner,
                 rhs: new_rhs,
@@ -170,17 +170,6 @@ pub(crate) fn prepend_steps(
     Ok((set, steps))
 }
 
-/// Check if an expression is known to be negative (extended version).
-///
-/// Unlike `helpers::is_negative`, this also recursively analyzes Mul products
-/// using XOR logic: (-a) * b = negative, (-a) * (-b) = positive.
-///
-/// This is specific to solver isolation logic where we need to determine
-/// sign to correctly flip inequalities when multiplying/dividing.
-pub(crate) fn is_known_negative(ctx: &Context, expr: ExprId) -> bool {
-    cas_solver_core::isolation_utils::is_known_negative(ctx, expr)
-}
-
 pub(crate) fn simplify_rhs(
     rhs: ExprId,
     lhs: ExprId,
@@ -205,26 +194,4 @@ pub(crate) fn simplify_rhs(
         }
     }
     (simplified_rhs, steps)
-}
-
-pub fn contains_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
-    cas_solver_core::isolation_utils::contains_var(ctx, expr, var)
-}
-
-/// Attempt to recompose a^e / b^e -> (a/b)^e when both powers have the same exponent.
-///
-/// This is used to undo the simplification (a/b)^x -> a^x/b^x when solving exponentials,
-/// allowing clean isolation: (a/b)^x = c/d -> x = log(a/b, c/d).
-///
-/// Uses structural comparison to match exponents that are semantically equal
-/// but may have different ExprIds (which happens during simplification).
-///
-/// Returns Some(recomposed_expr) where recomposed = (a/b)^e, if pattern matches.
-/// Returns None if pattern does not match.
-pub(crate) fn try_recompose_pow_quotient(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
-    cas_solver_core::isolation_utils::try_recompose_pow_quotient(ctx, expr)
-}
-
-pub(crate) fn flip_inequality(op: RelOp) -> RelOp {
-    cas_solver_core::isolation_utils::flip_inequality(op)
 }

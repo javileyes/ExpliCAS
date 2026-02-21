@@ -4,9 +4,10 @@ use crate::solver::solution_set::{intersect_solution_sets, neg_inf, pos_inf, uni
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::{BoundType, Equation, Expr, ExprId, Interval, RelOp, SolutionSet};
+use cas_solver_core::isolation_utils::{contains_var, flip_inequality, is_known_negative};
 use num_traits::Zero;
 
-use super::{contains_var, flip_inequality, is_known_negative, isolate, prepend_steps};
+use super::{isolate, prepend_steps};
 
 /// Handle isolation for `Add(l, r)`: `(A + B) = RHS`
 #[allow(clippy::too_many_arguments)]
