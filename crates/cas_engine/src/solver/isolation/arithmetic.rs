@@ -4,9 +4,9 @@ use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
-    contains_var, is_known_negative, product_zero_inequality_cases,
-    should_split_division_denominator_sign_cases, should_split_isolated_denominator_variable,
-    should_split_product_zero_inequality, should_try_reciprocal_solve,
+    contains_var, is_known_negative, should_split_division_denominator_sign_cases,
+    should_split_isolated_denominator_variable, should_split_product_zero_inequality,
+    should_try_reciprocal_solve,
 };
 use cas_solver_core::solution_set::{
     intersect_solution_sets, open_negative_domain, open_positive_domain, union_solution_sets,
@@ -15,7 +15,7 @@ use cas_solver_core::solve_outcome::{
     add_both_sides_message, denominator_negative_case_message, denominator_positive_case_message,
     divide_both_sides_message, end_case_message, isolated_denominator_negative_case_message,
     isolated_denominator_positive_case_message, move_and_flip_message, multiply_both_sides_message,
-    subtract_both_sides_message,
+    plan_product_zero_inequality_split, subtract_both_sides_message,
 };
 
 use super::{isolate, prepend_steps};
@@ -194,29 +194,15 @@ pub(super) fn isolate_mul(
     // CRITICAL: For inequalities with products, need sign analysis
     if should_split_product_zero_inequality(&simplifier.context, l, r, rhs, &op, var) {
         // Product inequality split: A * B op 0
-        if let Some((case1, case2)) = product_zero_inequality_cases(op.clone()) {
-            // Case 1
-            let (eq_a_case1, eq_b_case1) =
-                cas_solver_core::equation_rewrite::build_product_zero_sign_case(
-                    &mut simplifier.context,
-                    l,
-                    r,
-                    &case1,
-                );
-            let (set_a_case1, _) = solve_with_ctx(&eq_a_case1, var, simplifier, ctx)?;
-            let (set_b_case1, _) = solve_with_ctx(&eq_b_case1, var, simplifier, ctx)?;
+        if let Some(plan) =
+            plan_product_zero_inequality_split(&mut simplifier.context, l, r, op.clone())
+        {
+            let (set_a_case1, _) = solve_with_ctx(&plan.case1_left, var, simplifier, ctx)?;
+            let (set_b_case1, _) = solve_with_ctx(&plan.case1_right, var, simplifier, ctx)?;
             let case_set1 = intersect_solution_sets(&simplifier.context, set_a_case1, set_b_case1);
 
-            // Case 2
-            let (eq_a_case2, eq_b_case2) =
-                cas_solver_core::equation_rewrite::build_product_zero_sign_case(
-                    &mut simplifier.context,
-                    l,
-                    r,
-                    &case2,
-                );
-            let (set_a_case2, _) = solve_with_ctx(&eq_a_case2, var, simplifier, ctx)?;
-            let (set_b_case2, _) = solve_with_ctx(&eq_b_case2, var, simplifier, ctx)?;
+            let (set_a_case2, _) = solve_with_ctx(&plan.case2_left, var, simplifier, ctx)?;
+            let (set_b_case2, _) = solve_with_ctx(&plan.case2_right, var, simplifier, ctx)?;
             let case_set2 = intersect_solution_sets(&simplifier.context, set_a_case2, set_b_case2);
 
             let final_set = union_solution_sets(&simplifier.context, case_set1, case_set2);

@@ -861,6 +861,15 @@ pub enum AbsIsolationPlan {
     },
 }
 
+/// Pre-built sign-split equations for inequalities of the form `A*B op 0`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProductZeroInequalityPlan {
+    pub case1_left: Equation,
+    pub case1_right: Equation,
+    pub case2_left: Equation,
+    pub case2_right: Equation,
+}
+
 /// Classify numeric RHS sign for `|A| = RHS`.
 pub fn abs_equality_precheck(sign: NumericSign) -> AbsEqualityPrecheck {
     match sign {
@@ -883,6 +892,28 @@ pub fn classify_abs_isolation_fast_path(
         Some(AbsEqualityPrecheck::CollapseToZero) => AbsIsolationFastPath::CollapseToZero,
         _ => AbsIsolationFastPath::Continue,
     }
+}
+
+/// Build executable split plan for product inequalities `A*B op 0`.
+///
+/// Returns `None` for non-inequality operators (`=` / `!=`).
+pub fn plan_product_zero_inequality_split(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+    op: RelOp,
+) -> Option<ProductZeroInequalityPlan> {
+    let (case1_ops, case2_ops) = crate::isolation_utils::product_zero_inequality_cases(op)?;
+    let (case1_left, case1_right) =
+        crate::equation_rewrite::build_product_zero_sign_case(ctx, left, right, &case1_ops);
+    let (case2_left, case2_right) =
+        crate::equation_rewrite::build_product_zero_sign_case(ctx, left, right, &case2_ops);
+    Some(ProductZeroInequalityPlan {
+        case1_left,
+        case1_right,
+        case2_left,
+        case2_right,
+    })
 }
 
 /// Build an executable isolation plan for absolute-value equations.
@@ -1975,5 +2006,27 @@ mod tests {
             isolated_denominator_negative_case_message("x"),
             "Case 2: Assume x < 0. Multiply by x (negative). Inequality flips."
         );
+    }
+
+    #[test]
+    fn plan_product_zero_inequality_split_builds_two_sign_cases() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let plan =
+            plan_product_zero_inequality_split(&mut ctx, a, b, RelOp::Gt).expect("split plan");
+        assert_eq!(plan.case1_left.op, RelOp::Gt);
+        assert_eq!(plan.case1_right.op, RelOp::Gt);
+        assert_eq!(plan.case2_left.op, RelOp::Lt);
+        assert_eq!(plan.case2_right.op, RelOp::Lt);
+    }
+
+    #[test]
+    fn plan_product_zero_inequality_split_rejects_equality_operators() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        assert!(plan_product_zero_inequality_split(&mut ctx, a, b, RelOp::Eq).is_none());
+        assert!(plan_product_zero_inequality_split(&mut ctx, a, b, RelOp::Neq).is_none());
     }
 }
