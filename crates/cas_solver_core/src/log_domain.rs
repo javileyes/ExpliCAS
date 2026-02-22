@@ -41,6 +41,15 @@ pub enum LogTerminalAction {
     ReturnResidualInWildcard,
 }
 
+/// Policy for whether an `A^x = B` log-linear rewrite can proceed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogLinearRewritePolicy<'a> {
+    /// Rewrite is allowed. Any returned assumptions must be recorded by caller.
+    Proceed { assumptions: &'a [LogAssumption] },
+    /// Rewrite is blocked under current decision.
+    Blocked,
+}
+
 /// Map a decision to terminal solver action.
 pub fn classify_terminal_action(
     decision: &LogSolveDecision,
@@ -53,6 +62,21 @@ pub fn classify_terminal_action(
             LogTerminalAction::ReturnResidualInWildcard
         }
         _ => LogTerminalAction::Continue,
+    }
+}
+
+/// Classify whether the solver may rewrite `A^x = B` into a log-linear form.
+pub fn classify_log_linear_rewrite_policy<'a>(
+    decision: &'a LogSolveDecision,
+) -> LogLinearRewritePolicy<'a> {
+    match decision {
+        LogSolveDecision::Ok => LogLinearRewritePolicy::Proceed { assumptions: &[] },
+        LogSolveDecision::OkWithAssumptions(assumptions) => {
+            LogLinearRewritePolicy::Proceed { assumptions }
+        }
+        LogSolveDecision::EmptySet(_)
+        | LogSolveDecision::NeedsComplex(_)
+        | LogSolveDecision::Unsupported(_, _) => LogLinearRewritePolicy::Blocked,
     }
 }
 
@@ -231,6 +255,46 @@ mod tests {
         assert_eq!(
             assumption_target_expr(LogAssumption::PositiveRhs, base, rhs),
             rhs
+        );
+    }
+
+    #[test]
+    fn log_linear_policy_allows_ok_without_assumptions() {
+        let decision = LogSolveDecision::Ok;
+        assert_eq!(
+            classify_log_linear_rewrite_policy(&decision),
+            LogLinearRewritePolicy::Proceed { assumptions: &[] }
+        );
+    }
+
+    #[test]
+    fn log_linear_policy_allows_assume_with_assumptions() {
+        let decision = LogSolveDecision::OkWithAssumptions(vec![
+            LogAssumption::PositiveBase,
+            LogAssumption::PositiveRhs,
+        ]);
+        match classify_log_linear_rewrite_policy(&decision) {
+            LogLinearRewritePolicy::Proceed { assumptions } => {
+                assert_eq!(
+                    assumptions,
+                    &[LogAssumption::PositiveBase, LogAssumption::PositiveRhs]
+                );
+            }
+            LogLinearRewritePolicy::Blocked => panic!("expected proceed policy"),
+        }
+    }
+
+    #[test]
+    fn log_linear_policy_blocks_unsupported_and_needs_complex() {
+        let unsupported = LogSolveDecision::Unsupported("u", vec![LogAssumption::PositiveBase]);
+        let needs_complex = LogSolveDecision::NeedsComplex("c");
+        assert_eq!(
+            classify_log_linear_rewrite_policy(&unsupported),
+            LogLinearRewritePolicy::Blocked
+        );
+        assert_eq!(
+            classify_log_linear_rewrite_policy(&needs_complex),
+            LogLinearRewritePolicy::Blocked
         );
     }
 }

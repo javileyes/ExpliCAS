@@ -9,7 +9,7 @@ use cas_solver_core::isolation_utils::{
     contains_var, find_single_side_exponential_var_in_exponent, is_numeric_one,
     match_exponential_var_in_exponent,
 };
-use cas_solver_core::log_domain::LogSolveDecision;
+use cas_solver_core::log_domain::{classify_log_linear_rewrite_policy, LogLinearRewritePolicy};
 use cas_solver_core::solve_outcome::resolve_log_terminal_outcome;
 
 pub struct IsolationStrategy;
@@ -263,13 +263,10 @@ impl SolverStrategy for UnwrapStrategy {
                             &ctx.domain_env,
                         );
 
-                        match decision {
-                            LogSolveDecision::Ok => {
-                                // Safe to take ln - no assumptions needed
-                            }
-                            LogSolveDecision::OkWithAssumptions(assumptions) => {
-                                // Record each assumption via the thread-local collector
-                                for assumption in assumptions {
+                        match classify_log_linear_rewrite_policy(&decision) {
+                            LogLinearRewritePolicy::Proceed { assumptions } => {
+                                // Record each assumption via the thread-local collector.
+                                for assumption in assumptions.iter().copied() {
                                     let event =
                                         crate::assumptions::AssumptionEvent::from_log_assumption(
                                             assumption,
@@ -280,20 +277,9 @@ impl SolverStrategy for UnwrapStrategy {
                                     crate::solver::note_assumption(event);
                                 }
                             }
-                            LogSolveDecision::EmptySet(_) => {
-                                // Should have been caught by check_exponential_needs_complex
-                                // but if we get here somehow, skip (let outer handler deal with it)
-                                return None;
-                            }
-                            LogSolveDecision::NeedsComplex(msg) => {
-                                // In RealOnly, can't proceed
-                                // In wildcard scope: should return residual (not implemented here)
-                                // For now, skip and let IsolationStrategy handle
-                                let _ = msg; // suppress warning
-                                return None;
-                            }
-                            LogSolveDecision::Unsupported(_, _) => {
-                                // Cannot justify in current mode - skip
+                            LogLinearRewritePolicy::Blocked => {
+                                // Should have been caught by check_exponential_needs_complex in
+                                // terminal cases; otherwise we skip this strategy.
                                 return None;
                             }
                         }
