@@ -5,8 +5,8 @@ use cas_ast::symbol::SymbolId;
 use cas_ast::{BuiltinFn, Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{combine_abs_branch_sets, contains_var, numeric_sign};
 use cas_solver_core::solve_outcome::{
-    abs_split_case_message, classify_abs_isolation_fast_path,
-    guard_abs_solution_with_nonnegative_rhs, AbsIsolationFastPath, AbsSplitCase,
+    abs_split_case_message, guard_abs_solution_with_nonnegative_rhs, plan_abs_isolation,
+    AbsIsolationPlan, AbsSplitCase,
 };
 
 use super::{isolate, prepend_steps};
@@ -64,111 +64,108 @@ fn isolate_abs(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    // ── Pre-check: numeric RHS ──────────────────────────────────────────
-    // |A| is always ≥ 0, so |A| = negative is impossible.
-    match classify_abs_isolation_fast_path(op.clone(), numeric_sign(&simplifier.context, rhs)) {
-        AbsIsolationFastPath::ReturnEmptySet => {
-            // |A| = (negative) → no solution
-            return Ok((SolutionSet::Empty, steps));
-        }
-        AbsIsolationFastPath::CollapseToZero => {
-            // |A| = 0  →  A = 0  (only one branch needed)
-            return isolate(arg, rhs, op, var, simplifier, opts, ctx);
-        }
-        AbsIsolationFastPath::Continue => {
-            // n > 0 or non-numeric: fall through to normal branch split
+    let rhs_sign = numeric_sign(&simplifier.context, rhs);
+    let abs_plan = plan_abs_isolation(&mut simplifier.context, arg, rhs, op.clone(), rhs_sign);
+
+    match abs_plan {
+        AbsIsolationPlan::ReturnEmptySet => Ok((SolutionSet::Empty, steps)),
+        AbsIsolationPlan::IsolateSingleEquation { equation } => isolate(
+            equation.lhs,
+            equation.rhs,
+            equation.op,
+            var,
+            simplifier,
+            opts,
+            ctx,
+        ),
+        AbsIsolationPlan::SplitBranches { positive, negative } => {
+            // ── Branch 1: Positive case (A op B) ────────────────────────────────
+            let eq1 = positive;
+            let eq2 = negative;
+            let mut steps1 = steps.clone();
+            if simplifier.collect_steps() {
+                let arg_desc = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id: arg
+                    }
+                );
+                let rhs_desc = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id: rhs
+                    }
+                );
+                steps1.push(SolveStep {
+                    description: abs_split_case_message(
+                        AbsSplitCase::Positive,
+                        &arg_desc,
+                        &op.to_string(),
+                        &rhs_desc,
+                    ),
+                    equation_after: eq1.clone(),
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
+            let results1 = isolate(eq1.lhs, eq1.rhs, eq1.op, var, simplifier, opts, ctx)?;
+            let (set1, steps1_out) = prepend_steps(results1, steps1)?;
+
+            // ── Branch 2: Negative case ─────────────────────────────────────────
+            let neg_rhs = eq2.rhs;
+            let op2 = eq2.op.clone();
+            let mut steps2 = steps.clone();
+            if simplifier.collect_steps() {
+                let arg_desc = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id: arg
+                    }
+                );
+                let neg_rhs_desc = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id: neg_rhs
+                    }
+                );
+                steps2.push(SolveStep {
+                    description: abs_split_case_message(
+                        AbsSplitCase::Negative,
+                        &arg_desc,
+                        &op2.to_string(),
+                        &neg_rhs_desc,
+                    ),
+                    equation_after: eq2.clone(),
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
+            let results2 = isolate(eq2.lhs, eq2.rhs, eq2.op, var, simplifier, opts, ctx)?;
+            let (set2, steps2_out) = prepend_steps(results2, steps2)?;
+
+            // ── Combine branches ────────────────────────────────────────────────
+            let combined_set = combine_abs_branch_sets(&simplifier.context, op, set1, set2);
+
+            let mut all_steps = steps1_out;
+            all_steps.extend(steps2_out);
+
+            // ── Soundness guard: rhs ≥ 0 ───────────────────────────────────────
+            // When rhs contains the solve variable, the combined set may be unsound
+            // (e.g., |x| = x gives AllReals from branch 1 without domain restriction).
+            // Guard: wrap in Conditional with NonNegative(rhs).
+            let final_set = guard_abs_solution_with_nonnegative_rhs(
+                contains_var(&simplifier.context, rhs, var),
+                rhs,
+                combined_set,
+            );
+
+            Ok((final_set, all_steps))
         }
     }
-
-    // ── Branch 1: Positive case (A op B) ────────────────────────────────
-    let (eq1, eq2) = cas_solver_core::equation_rewrite::isolate_abs_branches(
-        &mut simplifier.context,
-        arg,
-        rhs,
-        op.clone(),
-    );
-    let mut steps1 = steps.clone();
-    if simplifier.collect_steps() {
-        let arg_desc = format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: &simplifier.context,
-                id: arg
-            }
-        );
-        let rhs_desc = format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: &simplifier.context,
-                id: rhs
-            }
-        );
-        steps1.push(SolveStep {
-            description: abs_split_case_message(
-                AbsSplitCase::Positive,
-                &arg_desc,
-                &op.to_string(),
-                &rhs_desc,
-            ),
-            equation_after: eq1.clone(),
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        });
-    }
-    let results1 = isolate(eq1.lhs, eq1.rhs, eq1.op, var, simplifier, opts, ctx)?;
-    let (set1, steps1_out) = prepend_steps(results1, steps1)?;
-
-    // ── Branch 2: Negative case ─────────────────────────────────────────
-    let neg_rhs = eq2.rhs;
-    let op2 = eq2.op.clone();
-    let mut steps2 = steps.clone();
-    if simplifier.collect_steps() {
-        let arg_desc = format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: &simplifier.context,
-                id: arg
-            }
-        );
-        let neg_rhs_desc = format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: &simplifier.context,
-                id: neg_rhs
-            }
-        );
-        steps2.push(SolveStep {
-            description: abs_split_case_message(
-                AbsSplitCase::Negative,
-                &arg_desc,
-                &op2.to_string(),
-                &neg_rhs_desc,
-            ),
-            equation_after: eq2.clone(),
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        });
-    }
-    let results2 = isolate(eq2.lhs, eq2.rhs, eq2.op, var, simplifier, opts, ctx)?;
-    let (set2, steps2_out) = prepend_steps(results2, steps2)?;
-
-    // ── Combine branches ────────────────────────────────────────────────
-    let combined_set = combine_abs_branch_sets(&simplifier.context, op, set1, set2);
-
-    let mut all_steps = steps1_out;
-    all_steps.extend(steps2_out);
-
-    // ── Soundness guard: rhs ≥ 0 ───────────────────────────────────────
-    // When rhs contains the solve variable, the combined set may be unsound
-    // (e.g., |x| = x gives AllReals from branch 1 without domain restriction).
-    // Guard: wrap in Conditional with NonNegative(rhs).
-    let final_set = guard_abs_solution_with_nonnegative_rhs(
-        contains_var(&simplifier.context, rhs, var),
-        rhs,
-        combined_set,
-    );
-
-    Ok((final_set, all_steps))
 }
 
 /// Handle `log(base, arg) = RHS`

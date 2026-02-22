@@ -520,6 +520,7 @@ pub fn classify_pow_base_isolation_route(
 }
 
 /// Build executable plan for base isolation in `B^E op RHS`.
+#[allow(clippy::too_many_arguments)]
 pub fn plan_pow_base_isolation(
     ctx: &mut Context,
     base: ExprId,
@@ -782,6 +783,19 @@ pub enum AbsSplitCase {
     Negative,
 }
 
+/// High-level routing plan for isolating `|A| op RHS`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AbsIsolationPlan {
+    ReturnEmptySet,
+    IsolateSingleEquation {
+        equation: Equation,
+    },
+    SplitBranches {
+        positive: Equation,
+        negative: Equation,
+    },
+}
+
 /// Classify numeric RHS sign for `|A| = RHS`.
 pub fn abs_equality_precheck(sign: NumericSign) -> AbsEqualityPrecheck {
     match sign {
@@ -803,6 +817,27 @@ pub fn classify_abs_isolation_fast_path(
         Some(AbsEqualityPrecheck::ReturnEmptySet) => AbsIsolationFastPath::ReturnEmptySet,
         Some(AbsEqualityPrecheck::CollapseToZero) => AbsIsolationFastPath::CollapseToZero,
         _ => AbsIsolationFastPath::Continue,
+    }
+}
+
+/// Build an executable isolation plan for absolute-value equations.
+pub fn plan_abs_isolation(
+    ctx: &mut Context,
+    arg: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    rhs_sign: Option<NumericSign>,
+) -> AbsIsolationPlan {
+    match classify_abs_isolation_fast_path(op.clone(), rhs_sign) {
+        AbsIsolationFastPath::ReturnEmptySet => AbsIsolationPlan::ReturnEmptySet,
+        AbsIsolationFastPath::CollapseToZero => AbsIsolationPlan::IsolateSingleEquation {
+            equation: Equation { lhs: arg, rhs, op },
+        },
+        AbsIsolationFastPath::Continue => {
+            let (positive, negative) =
+                crate::equation_rewrite::isolate_abs_branches(ctx, arg, rhs, op);
+            AbsIsolationPlan::SplitBranches { positive, negative }
+        }
     }
 }
 
@@ -1084,6 +1119,40 @@ mod tests {
     fn abs_split_case_message_formats_negative_case() {
         let msg = abs_split_case_message(AbsSplitCase::Negative, "x", "=", "-2");
         assert_eq!(msg, "Split absolute value (Case 2): x = -2");
+    }
+
+    #[test]
+    fn plan_abs_isolation_returns_empty_for_negative_eq_rhs() {
+        let mut ctx = Context::new();
+        let arg = ctx.var("x");
+        let rhs = ctx.num(-2);
+        let plan = plan_abs_isolation(&mut ctx, arg, rhs, RelOp::Eq, Some(NumericSign::Negative));
+        assert_eq!(plan, AbsIsolationPlan::ReturnEmptySet);
+    }
+
+    #[test]
+    fn plan_abs_isolation_collapses_to_single_equation_for_zero_rhs() {
+        let mut ctx = Context::new();
+        let arg = ctx.var("x");
+        let rhs = ctx.num(0);
+        let plan = plan_abs_isolation(&mut ctx, arg, rhs, RelOp::Eq, Some(NumericSign::Zero));
+        match plan {
+            AbsIsolationPlan::IsolateSingleEquation { equation } => {
+                assert_eq!(equation.lhs, arg);
+                assert_eq!(equation.rhs, rhs);
+                assert_eq!(equation.op, RelOp::Eq);
+            }
+            other => panic!("expected single-equation plan, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn plan_abs_isolation_splits_branches_for_regular_case() {
+        let mut ctx = Context::new();
+        let arg = ctx.var("x");
+        let rhs = ctx.num(3);
+        let plan = plan_abs_isolation(&mut ctx, arg, rhs, RelOp::Eq, Some(NumericSign::Positive));
+        assert!(matches!(plan, AbsIsolationPlan::SplitBranches { .. }));
     }
 
     #[test]
