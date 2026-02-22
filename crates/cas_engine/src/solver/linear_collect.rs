@@ -16,11 +16,10 @@ use cas_solver_core::linear_didactic::{
     build_linear_collect_factored_step_with,
 };
 use cas_solver_core::linear_solution::{build_linear_solution_set, derive_linear_nonzero_statuses};
-use cas_solver_core::linear_terms::{build_sum, split_linear_term, TermClass};
+use cas_solver_core::linear_terms::{build_sum, decompose_linear_collect_terms};
 
 use crate::engine::Simplifier;
 use crate::helpers::prove_nonzero;
-use crate::nary::{add_terms_signed, Sign};
 use crate::solver::proof_bridge::proof_to_nonzero_status;
 use crate::solver::SolveStep;
 
@@ -41,44 +40,10 @@ pub(crate) fn try_linear_collect(
     let expr = ctx.add(Expr::Sub(lhs, rhs));
     let (expr, _) = simplifier.simplify(expr);
 
-    // 2. Flatten as sum of SIGNED terms using canonical utility
-    let terms = add_terms_signed(&simplifier.context, expr);
-
-    // 3. Classify each term, respecting signs
-    let mut coeff_parts: Vec<ExprId> = Vec::new();
-    let mut const_parts: Vec<ExprId> = Vec::new();
-
-    for (term, sign) in terms {
-        match split_linear_term(&mut simplifier.context, term, var) {
-            TermClass::Const(_) => {
-                // Apply sign to constant term
-                let signed_term = match sign {
-                    Sign::Pos => term,
-                    Sign::Neg => simplifier.context.add(Expr::Neg(term)),
-                };
-                const_parts.push(signed_term);
-            }
-            TermClass::Linear(c) => {
-                // Convert None (implicit 1) to explicit 1
-                let coef = c.unwrap_or_else(|| simplifier.context.num(1));
-                // Apply sign to coefficient
-                let signed_coef = match sign {
-                    Sign::Pos => coef,
-                    Sign::Neg => simplifier.context.add(Expr::Neg(coef)),
-                };
-                coeff_parts.push(signed_coef);
-            }
-            TermClass::NonLinear => {
-                // Variable appears non-linearly, this strategy doesn't apply
-                return None;
-            }
-        }
-    }
-
-    // If no linear terms found, strategy doesn't apply
-    if coeff_parts.is_empty() {
-        return None;
-    }
+    // 2. Decompose signed terms into linear and constant parts.
+    let decomposition = decompose_linear_collect_terms(&mut simplifier.context, expr, var)?;
+    let coeff_parts = decomposition.coeff_parts;
+    let const_parts = decomposition.const_parts;
 
     // 4. Build coeff = sum of linear coefficients
     let coeff = build_sum(&mut simplifier.context, &coeff_parts);
@@ -218,6 +183,7 @@ pub(crate) fn try_linear_collect_v2(
 mod tests {
     use super::*;
     use cas_ast::Context;
+    use cas_solver_core::linear_terms::{split_linear_term, TermClass};
 
     #[test]
     fn test_add_terms_signed() {
@@ -230,8 +196,8 @@ mod tests {
         let ab = ctx.add(Expr::Add(a, b));
         let abc = ctx.add(Expr::Add(ab, c));
 
-        let terms = add_terms_signed(&ctx, abc);
-        assert_eq!(terms.len(), 3);
+        let decomp = decompose_linear_collect_terms(&mut ctx, abc, "x");
+        assert!(decomp.is_none(), "no linear terms for variable x");
     }
 
     #[test]
