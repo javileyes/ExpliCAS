@@ -133,6 +133,25 @@ pub fn rewrite_unary_inverse_equation_for_unwrap(
     }
 }
 
+/// Build an unwrap-safe unary inverse rewrite plan.
+///
+/// Returns `None` when the function is unsupported by `UnwrapStrategy`.
+pub fn plan_unary_inverse_rewrite_for_unwrap(
+    ctx: &mut Context,
+    fn_name: &str,
+    arg: ExprId,
+    other: ExprId,
+    op: RelOp,
+    is_lhs: bool,
+) -> Option<(Equation, &'static str)> {
+    let (equation, inverse_kind) =
+        rewrite_unary_inverse_equation_for_unwrap(ctx, fn_name, arg, other, op, is_lhs)?;
+    let description = inverse_kind
+        .unwrap_step_description()
+        .expect("unwrap filter guarantees supported inverse description");
+    Some((equation, description))
+}
+
 /// Build a full unary inverse rewrite plan with narration metadata.
 pub fn plan_unary_inverse_rewrite(
     ctx: &mut Context,
@@ -312,5 +331,27 @@ mod tests {
         assert_eq!(plan.step_description, "Take natural log of both sides");
         assert!(!plan.needs_rhs_cleanup);
         assert_eq!(plan.equation.lhs, x);
+    }
+
+    #[test]
+    fn plan_unary_inverse_rewrite_for_unwrap_returns_description() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let (eq, desc) =
+            plan_unary_inverse_rewrite_for_unwrap(&mut ctx, "ln", x, y, RelOp::Eq, true)
+                .expect("ln should be unwrap-safe");
+        assert_eq!(desc, "Exponentiate (base e)");
+        assert_eq!(eq.lhs, x);
+    }
+
+    #[test]
+    fn plan_unary_inverse_rewrite_for_unwrap_rejects_trig() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        assert!(
+            plan_unary_inverse_rewrite_for_unwrap(&mut ctx, "sin", x, y, RelOp::Eq, true).is_none()
+        );
     }
 }

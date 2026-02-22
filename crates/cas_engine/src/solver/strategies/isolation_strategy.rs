@@ -199,8 +199,8 @@ impl SolverStrategy for UnwrapStrategy {
                 Expr::Function(fn_id, args) if args.len() == 1 => {
                     let arg = args[0];
                     let name = simplifier.context.sym_name(fn_id).to_string();
-                    let (new_eq, inverse_kind) =
-                        cas_solver_core::function_inverse::rewrite_unary_inverse_equation_for_unwrap(
+                    let (new_eq, description) =
+                        cas_solver_core::function_inverse::plan_unary_inverse_rewrite_for_unwrap(
                             &mut simplifier.context,
                             &name,
                             arg,
@@ -208,9 +208,6 @@ impl SolverStrategy for UnwrapStrategy {
                             op,
                             is_lhs,
                         )?;
-                    let description = inverse_kind
-                        .unwrap_step_description()
-                        .expect("unwrap strategy filter guarantees supported inverse");
                     Some((new_eq, description.to_string()))
                 }
                 Expr::Pow(_, _) => {
