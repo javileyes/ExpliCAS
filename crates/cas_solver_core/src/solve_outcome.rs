@@ -228,6 +228,59 @@ pub fn resolve_log_terminal_outcome(
     }
 }
 
+/// Classify log-domain terminal decision for equations that have exactly one
+/// exponential side with the solve variable in exponent position.
+pub fn classify_single_side_exponential_log_decision<F>(
+    ctx: &Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    lhs_has_var: bool,
+    rhs_has_var: bool,
+    mut classify_log_solve: F,
+) -> Option<LogSolveDecision>
+where
+    F: FnMut(ExprId, ExprId) -> LogSolveDecision,
+{
+    let candidate = crate::isolation_utils::find_single_side_exponential_var_in_exponent(
+        ctx,
+        lhs,
+        rhs,
+        var,
+        lhs_has_var,
+        rhs_has_var,
+    )?;
+    Some(classify_log_solve(candidate.base, candidate.other_side))
+}
+
+/// Resolve terminal outcome for equations that have exactly one exponential side
+/// with the solve variable in exponent position.
+pub fn resolve_single_side_exponential_terminal_outcome<F>(
+    ctx: &mut Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    lhs_has_var: bool,
+    rhs_has_var: bool,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+    mut classify_log_solve: F,
+) -> Option<TerminalSolveOutcome>
+where
+    F: FnMut(ExprId, ExprId) -> LogSolveDecision,
+{
+    let decision = classify_single_side_exponential_log_decision(
+        ctx,
+        lhs,
+        rhs,
+        var,
+        lhs_has_var,
+        rhs_has_var,
+        &mut classify_log_solve,
+    )?;
+    resolve_log_terminal_outcome(ctx, &decision, mode, wildcard_scope, lhs, rhs, var)
+}
+
 /// Build a user-facing message for terminal outcomes, appending
 /// `residual_suffix` only when the outcome is residual.
 pub fn terminal_outcome_message(outcome: &TerminalSolveOutcome, residual_suffix: &str) -> String {
@@ -597,6 +650,48 @@ mod tests {
             x,
             y,
             "x",
+        );
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn resolve_single_side_exponential_terminal_outcome_returns_empty_when_classifier_says_empty() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let pow = ctx.add(Expr::Pow(two, x));
+        let neg_five = ctx.num(-5);
+
+        let out = resolve_single_side_exponential_terminal_outcome(
+            &mut ctx,
+            pow,
+            neg_five,
+            "x",
+            true,
+            false,
+            DomainModeKind::Generic,
+            false,
+            |_base, _rhs| LogSolveDecision::EmptySet("no real solutions"),
+        )
+        .expect("must produce terminal outcome");
+
+        assert_eq!(out.message, "no real solutions");
+        assert!(matches!(out.solutions, SolutionSet::Empty));
+    }
+
+    #[test]
+    fn classify_single_side_exponential_log_decision_returns_none_without_single_side_candidate() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let out = classify_single_side_exponential_log_decision(
+            &ctx,
+            x,
+            y,
+            "x",
+            true,
+            true,
+            |_base, _rhs| LogSolveDecision::Ok,
         );
         assert!(out.is_none());
     }
