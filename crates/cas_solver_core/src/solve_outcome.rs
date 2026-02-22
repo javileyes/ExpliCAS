@@ -1807,6 +1807,14 @@ pub struct IsolatedDenominatorSignSplitExecutionPlan {
     pub didactic: DivisionDenominatorSignSplitDidactic,
 }
 
+/// Executable split plan + didactic payload for absolute-value branch splits.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AbsSplitExecutionPlan {
+    pub positive_equation: Equation,
+    pub negative_equation: Equation,
+    pub didactic: AbsSplitDidacticPair,
+}
+
 /// Pre-built didactic equations for denominator-isolation rewrite:
 /// `num / den op rhs` -> `num op rhs*den` -> `den op num/rhs`.
 #[derive(Debug, Clone, PartialEq)]
@@ -2131,6 +2139,29 @@ where
             ),
             equation_after: negative_equation,
         },
+    }
+}
+
+/// Build runtime execution plan for absolute-value branch splitting.
+pub fn build_abs_split_execution_with<F>(
+    positive_equation: Equation,
+    negative_equation: Equation,
+    lhs_expr: ExprId,
+    render_expr: F,
+) -> AbsSplitExecutionPlan
+where
+    F: FnMut(ExprId) -> String,
+{
+    let didactic = build_abs_split_steps_with(
+        positive_equation.clone(),
+        negative_equation.clone(),
+        lhs_expr,
+        render_expr,
+    );
+    AbsSplitExecutionPlan {
+        positive_equation,
+        negative_equation,
+        didactic,
     }
 }
 
@@ -2539,6 +2570,45 @@ mod tests {
             "Split absolute value (Case 2): x = -2"
         );
         assert_eq!(payload.negative.equation_after, eq_neg);
+    }
+
+    #[test]
+    fn build_abs_split_execution_with_preserves_equations_and_didactic() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let neg_two = ctx.num(-2);
+        let eq_pos = Equation {
+            lhs: x,
+            rhs: two,
+            op: RelOp::Eq,
+        };
+        let eq_neg = Equation {
+            lhs: x,
+            rhs: neg_two,
+            op: RelOp::Eq,
+        };
+
+        let execution = build_abs_split_execution_with(eq_pos.clone(), eq_neg.clone(), x, |id| {
+            if id == two {
+                "2".to_string()
+            } else if id == neg_two {
+                "-2".to_string()
+            } else {
+                "x".to_string()
+            }
+        });
+
+        assert_eq!(execution.positive_equation, eq_pos);
+        assert_eq!(execution.negative_equation, eq_neg);
+        assert_eq!(
+            execution.didactic.positive.description,
+            "Split absolute value (Case 1): x = 2"
+        );
+        assert_eq!(
+            execution.didactic.negative.description,
+            "Split absolute value (Case 2): x = -2"
+        );
     }
 
     #[test]

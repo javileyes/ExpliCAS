@@ -5,7 +5,7 @@ use cas_ast::symbol::SymbolId;
 use cas_ast::{BuiltinFn, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::solve_outcome::{
-    build_abs_split_steps_with, finalize_abs_split_solution_set, plan_abs_isolation,
+    build_abs_split_execution_with, finalize_abs_split_solution_set, plan_abs_isolation,
     AbsIsolationPlan,
 };
 
@@ -82,8 +82,8 @@ fn isolate_abs(
             // ── Branch 1: Positive case (A op B) ────────────────────────────────
             let eq1 = positive;
             let eq2 = negative;
-            let split_steps = simplifier.collect_steps().then(|| {
-                build_abs_split_steps_with(eq1.clone(), eq2.clone(), arg, |id| {
+            let split_execution = simplifier.collect_steps().then(|| {
+                build_abs_split_execution_with(eq1.clone(), eq2.clone(), arg, |id| {
                     format!(
                         "{}",
                         cas_formatter::DisplayExpr {
@@ -94,10 +94,10 @@ fn isolate_abs(
                 })
             });
             let mut steps1 = steps.clone();
-            if let Some(split_steps) = split_steps.as_ref() {
+            if let Some(split_execution) = split_execution.as_ref() {
                 steps1.push(SolveStep {
-                    description: split_steps.positive.description.clone(),
-                    equation_after: split_steps.positive.equation_after.clone(),
+                    description: split_execution.didactic.positive.description.clone(),
+                    equation_after: split_execution.didactic.positive.equation_after.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -107,10 +107,10 @@ fn isolate_abs(
 
             // ── Branch 2: Negative case ─────────────────────────────────────────
             let mut steps2 = steps.clone();
-            if let Some(split_steps) = split_steps.as_ref() {
+            if let Some(split_execution) = split_execution.as_ref() {
                 steps2.push(SolveStep {
-                    description: split_steps.negative.description.clone(),
-                    equation_after: split_steps.negative.equation_after.clone(),
+                    description: split_execution.didactic.negative.description.clone(),
+                    equation_after: split_execution.didactic.negative.equation_after.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
