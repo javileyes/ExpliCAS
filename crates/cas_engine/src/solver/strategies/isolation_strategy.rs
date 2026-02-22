@@ -8,8 +8,7 @@ use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_outcome::{
     eliminate_fractional_exponent_message, resolve_single_side_exponential_terminal_outcome,
-    subtract_both_sides_message, take_log_base_message, terminal_outcome_message,
-    SWAP_SIDES_TO_LHS_MESSAGE,
+    subtract_both_sides_message, terminal_outcome_message, SWAP_SIDES_TO_LHS_MESSAGE,
 };
 
 pub struct IsolationStrategy;
@@ -188,8 +187,8 @@ impl SolverStrategy for UnwrapStrategy {
                           other: ExprId,
                           op: RelOp,
                           is_lhs: bool|
-         -> Option<(Equation, String)> {
-            match cas_solver_core::unwrap_plan::plan_unwrap_rewrite(
+         -> Option<(cas_solver_core::unwrap_plan::UnwrapExecutionPlan, ExprId)> {
+            let rewrite_plan = cas_solver_core::unwrap_plan::plan_unwrap_rewrite(
                 &mut simplifier.context,
                 target,
                 other,
@@ -199,61 +198,44 @@ impl SolverStrategy for UnwrapStrategy {
                 |core_ctx, base, other_side| {
                     classify_log_solve(core_ctx, base, other_side, opts, &ctx.domain_env)
                 },
-            )? {
-                cas_solver_core::unwrap_plan::UnwrapRewritePlan::Unary {
-                    equation,
-                    description,
-                } => Some((equation, description)),
-                cas_solver_core::unwrap_plan::UnwrapRewritePlan::PowVariableBase {
-                    equation,
-                    exponent,
-                } => {
-                    let exponent_desc = format!(
+            )?;
+            let execution =
+                cas_solver_core::unwrap_plan::build_unwrap_execution_plan_with(rewrite_plan, |id| {
+                    format!(
                         "{}",
                         cas_formatter::DisplayExpr {
                             context: &simplifier.context,
-                            id: exponent
+                            id
                         }
-                    );
-                    Some((
-                        equation,
-                        cas_solver_core::unwrap_plan::pow_variable_base_unwrap_message(
-                            &exponent_desc,
-                        ),
-                    ))
-                }
-                cas_solver_core::unwrap_plan::UnwrapRewritePlan::PowLogLinear {
-                    equation,
-                    base,
-                    assumptions,
-                } => {
-                    for assumption in assumptions {
-                        let event = crate::assumptions::AssumptionEvent::from_log_assumption(
-                            assumption,
-                            &simplifier.context,
-                            base,
-                            other,
-                        );
-                        crate::solver::note_assumption(event);
-                    }
-                    Some((equation, take_log_base_message("e")))
-                }
-            }
+                    )
+                });
+            Some((execution, other))
         };
 
         // Try LHS
         if lhs_has {
-            if let Some((new_eq, desc)) = invert(eq.lhs, eq.rhs, eq.op.clone(), true) {
+            if let Some((execution, other_side)) = invert(eq.lhs, eq.rhs, eq.op.clone(), true) {
+                if let Some(base) = execution.log_linear_base {
+                    for assumption in execution.assumptions.iter().copied() {
+                        let event = crate::assumptions::AssumptionEvent::from_log_assumption(
+                            assumption,
+                            &simplifier.context,
+                            base,
+                            other_side,
+                        );
+                        crate::solver::note_assumption(event);
+                    }
+                }
                 let mut steps = Vec::new();
                 if simplifier.collect_steps() {
                     steps.push(SolveStep {
-                        description: desc,
-                        equation_after: new_eq.clone(),
+                        description: execution.description.clone(),
+                        equation_after: execution.equation.clone(),
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
                     });
                 }
-                match solve_with_ctx(&new_eq, var, simplifier, ctx) {
+                match solve_with_ctx(&execution.equation, var, simplifier, ctx) {
                     Ok((set, mut sub_steps)) => {
                         steps.append(&mut sub_steps);
                         return Some(Ok((set, steps)));
@@ -265,17 +247,28 @@ impl SolverStrategy for UnwrapStrategy {
 
         // Try RHS
         if rhs_has {
-            if let Some((new_eq, desc)) = invert(eq.rhs, eq.lhs, eq.op.clone(), false) {
+            if let Some((execution, other_side)) = invert(eq.rhs, eq.lhs, eq.op.clone(), false) {
+                if let Some(base) = execution.log_linear_base {
+                    for assumption in execution.assumptions.iter().copied() {
+                        let event = crate::assumptions::AssumptionEvent::from_log_assumption(
+                            assumption,
+                            &simplifier.context,
+                            base,
+                            other_side,
+                        );
+                        crate::solver::note_assumption(event);
+                    }
+                }
                 let mut steps = Vec::new();
                 if simplifier.collect_steps() {
                     steps.push(SolveStep {
-                        description: desc,
-                        equation_after: new_eq.clone(),
+                        description: execution.description.clone(),
+                        equation_after: execution.equation.clone(),
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
                     });
                 }
-                match solve_with_ctx(&new_eq, var, simplifier, ctx) {
+                match solve_with_ctx(&execution.equation, var, simplifier, ctx) {
                     Ok((set, mut sub_steps)) => {
                         steps.append(&mut sub_steps);
                         return Some(Ok((set, steps)));

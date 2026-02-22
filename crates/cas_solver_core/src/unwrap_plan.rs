@@ -2,6 +2,7 @@
 
 use crate::log_domain::{LogAssumption, LogSolveDecision};
 use crate::rational_power::PowUnwrapPlan;
+use crate::solve_outcome::take_log_base_message;
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp};
 
 /// Planned unwrap rewrite from a target expression.
@@ -22,9 +23,58 @@ pub enum UnwrapRewritePlan {
     },
 }
 
+/// Solver-ready unwrap step derived from a rewrite plan.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnwrapExecutionPlan {
+    pub equation: Equation,
+    pub description: String,
+    pub assumptions: Vec<LogAssumption>,
+    pub log_linear_base: Option<ExprId>,
+}
+
 /// Build narration for variable-base power unwrap rewrites.
 pub fn pow_variable_base_unwrap_message(exponent_display: &str) -> String {
     format!("Raise both sides to 1/{}", exponent_display)
+}
+
+/// Convert a rewrite plan into an executable step payload.
+///
+/// `render_expr` is used only for variable-base power rewrites so callers
+/// can control display format (ASCII, LaTeX, etc.).
+pub fn build_unwrap_execution_plan_with<F>(
+    plan: UnwrapRewritePlan,
+    mut render_expr: F,
+) -> UnwrapExecutionPlan
+where
+    F: FnMut(ExprId) -> String,
+{
+    match plan {
+        UnwrapRewritePlan::Unary {
+            equation,
+            description,
+        } => UnwrapExecutionPlan {
+            equation,
+            description,
+            assumptions: vec![],
+            log_linear_base: None,
+        },
+        UnwrapRewritePlan::PowVariableBase { equation, exponent } => UnwrapExecutionPlan {
+            equation,
+            description: pow_variable_base_unwrap_message(&render_expr(exponent)),
+            assumptions: vec![],
+            log_linear_base: None,
+        },
+        UnwrapRewritePlan::PowLogLinear {
+            equation,
+            base,
+            assumptions,
+        } => UnwrapExecutionPlan {
+            equation,
+            description: take_log_base_message("e"),
+            assumptions,
+            log_linear_base: Some(base),
+        },
+    }
 }
 
 /// Plan unwrap rewrite for a target expression (`Function`/`Pow`).
@@ -131,5 +181,51 @@ mod tests {
             pow_variable_base_unwrap_message("2"),
             "Raise both sides to 1/2"
         );
+    }
+
+    #[test]
+    fn build_execution_plan_for_variable_base_uses_rendered_exponent() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let exponent = ctx.add(Expr::Div(one, two));
+        let equation = Equation {
+            lhs: x,
+            rhs: y,
+            op: RelOp::Eq,
+        };
+
+        let plan = build_unwrap_execution_plan_with(
+            UnwrapRewritePlan::PowVariableBase { equation, exponent },
+            |id| format!("{:?}", ctx.get(id)),
+        );
+        assert!(plan.description.contains("1/Div"));
+        assert_eq!(plan.log_linear_base, None);
+        assert!(plan.assumptions.is_empty());
+    }
+
+    #[test]
+    fn build_execution_plan_for_log_linear_keeps_assumptions() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let equation = Equation {
+            lhs: x,
+            rhs: y,
+            op: RelOp::Eq,
+        };
+        let plan = build_unwrap_execution_plan_with(
+            UnwrapRewritePlan::PowLogLinear {
+                equation,
+                base: x,
+                assumptions: vec![LogAssumption::PositiveBase],
+            },
+            |_| "unused".to_string(),
+        );
+        assert_eq!(plan.log_linear_base, Some(x));
+        assert_eq!(plan.assumptions, vec![LogAssumption::PositiveBase]);
+        assert_eq!(plan.description, "Take log base e of both sides");
     }
 }
