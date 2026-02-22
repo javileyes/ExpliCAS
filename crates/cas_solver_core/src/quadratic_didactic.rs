@@ -57,6 +57,21 @@ where
     }
 }
 
+/// Build didactic steps for a batch of zero-product factor equations.
+pub fn build_solve_factor_steps_with<F>(
+    factor_equations: &[Equation],
+    mut render_expr: F,
+) -> Vec<QuadraticDidacticStep>
+where
+    F: FnMut(ExprId) -> String,
+{
+    factor_equations
+        .iter()
+        .cloned()
+        .map(|eq| build_solve_factor_step_with(eq.clone(), eq.lhs, &mut render_expr))
+        .collect()
+}
+
 /// Build the top-level "quadratic formula" strategy step payload.
 pub fn build_quadratic_main_step(equation_after: Equation) -> QuadraticDidacticStep {
     QuadraticDidacticStep {
@@ -448,5 +463,32 @@ mod tests {
         assert_eq!(eqs[0].lhs, x_minus_one);
         assert_eq!(eqs[0].rhs, zero);
         assert_eq!(eqs[0].op, RelOp::Eq);
+    }
+
+    #[test]
+    fn build_solve_factor_steps_with_builds_one_step_per_equation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let zero = ctx.num(0);
+        let equations = vec![
+            Equation {
+                lhs: x,
+                rhs: zero,
+                op: RelOp::Eq,
+            },
+            Equation {
+                lhs: y,
+                rhs: zero,
+                op: RelOp::Eq,
+            },
+        ];
+
+        let steps = build_solve_factor_steps_with(&equations, |_| "f".to_string());
+        assert_eq!(steps.len(), 2);
+        assert_eq!(steps[0].description, "Solve factor: f = 0");
+        assert_eq!(steps[1].description, "Solve factor: f = 0");
+        assert_eq!(steps[0].equation_after, equations[0]);
+        assert_eq!(steps[1].equation_after, equations[1]);
     }
 }

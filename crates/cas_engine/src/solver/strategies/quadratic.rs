@@ -83,27 +83,27 @@ impl SolverStrategy for QuadraticStrategy {
                         var,
                         zero,
                     );
-                for factor_eq in factor_equations {
-                    let factor = factor_eq.lhs;
+                let factor_steps = simplifier.collect_steps().then(|| {
+                    cas_solver_core::quadratic_didactic::build_solve_factor_steps_with(
+                        &factor_equations,
+                        |id| {
+                            format!(
+                                "{}",
+                                cas_formatter::DisplayExpr {
+                                    context: &simplifier.context,
+                                    id
+                                }
+                            )
+                        },
+                    )
+                });
 
-                    if simplifier.collect_steps() {
-                        let didactic_step =
-                            cas_solver_core::quadratic_didactic::build_solve_factor_step_with(
-                                factor_eq.clone(),
-                                factor,
-                                |id| {
-                                    format!(
-                                        "{}",
-                                        cas_formatter::DisplayExpr {
-                                            context: &simplifier.context,
-                                            id
-                                        }
-                                    )
-                                },
-                            );
+                for (idx, factor_eq) in factor_equations.into_iter().enumerate() {
+                    if let Some(didactic_step) = factor_steps.as_ref().and_then(|all| all.get(idx))
+                    {
                         steps.push(SolveStep {
-                            description: didactic_step.description,
-                            equation_after: didactic_step.equation_after,
+                            description: didactic_step.description.clone(),
+                            equation_after: didactic_step.equation_after.clone(),
                             importance: crate::step::ImportanceLevel::Medium,
                             substeps: vec![],
                         });
