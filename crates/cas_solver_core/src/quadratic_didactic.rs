@@ -42,6 +42,13 @@ pub struct ZeroProductFactorExecutionItem {
     pub didactic: Option<QuadraticDidacticStep>,
 }
 
+/// Collect didactic steps for one zero-product factor execution item.
+pub fn collect_zero_product_factor_item_didactic_steps(
+    item: &ZeroProductFactorExecutionItem,
+) -> Vec<QuadraticDidacticStep> {
+    item.didactic.iter().cloned().collect()
+}
+
 /// Executable payload for factorized zero-product solving:
 /// top factorized entry step + per-factor equations and didactic steps.
 #[derive(Debug, Clone, PartialEq)]
@@ -159,12 +166,26 @@ where
     FactorizedZeroProductExecutionPlan { entry, factors }
 }
 
+/// Collect factorized entry didactic step in display order.
+pub fn collect_factorized_zero_product_entry_didactic_steps(
+    execution: &FactorizedZeroProductExecutionPlan,
+) -> Vec<QuadraticDidacticStep> {
+    vec![execution.entry.clone()]
+}
+
 /// Build the top-level "quadratic formula" strategy step payload.
 pub fn build_quadratic_main_step(equation_after: Equation) -> QuadraticDidacticStep {
     QuadraticDidacticStep {
         description: QUADRATIC_FORMULA_MAIN_STEP_DESCRIPTION.to_string(),
         equation_after,
     }
+}
+
+/// Collect quadratic-main didactic step in display order.
+pub fn collect_quadratic_main_didactic_steps(
+    step: &QuadraticDidacticStep,
+) -> Vec<QuadraticDidacticStep> {
+    vec![step.clone()]
 }
 
 /// Collect zero-product factor equations `factor = 0` that are relevant for
@@ -660,5 +681,65 @@ mod tests {
         assert_eq!(items[1].equation, execution.equations[1]);
         assert!(items[0].didactic.is_some());
         assert!(items[1].didactic.is_some());
+    }
+
+    #[test]
+    fn collect_zero_product_factor_item_didactic_steps_returns_present_step_only() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let zero = ctx.num(0);
+        let item = ZeroProductFactorExecutionItem {
+            equation: Equation {
+                lhs: x,
+                rhs: zero,
+                op: RelOp::Eq,
+            },
+            didactic: Some(QuadraticDidacticStep {
+                description: "Solve factor: f = 0".to_string(),
+                equation_after: Equation {
+                    lhs: x,
+                    rhs: zero,
+                    op: RelOp::Eq,
+                },
+            }),
+        };
+        let didactic = collect_zero_product_factor_item_didactic_steps(&item);
+        assert_eq!(didactic.len(), 1);
+        assert_eq!(didactic[0].description, "Solve factor: f = 0");
+    }
+
+    #[test]
+    fn collect_factorized_zero_product_entry_didactic_steps_returns_single_entry() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_minus_one = ctx.add(Expr::Sub(x, one));
+        let factored_expr = ctx.add(Expr::Mul(x, x_minus_one));
+        let zero = ctx.num(0);
+        let execution = build_factorized_zero_product_execution_with(
+            &ctx,
+            factored_expr,
+            &[x, x_minus_one],
+            "x",
+            zero,
+            |_| "f".to_string(),
+        );
+        let didactic = collect_factorized_zero_product_entry_didactic_steps(&execution);
+        assert_eq!(didactic.len(), 1);
+        assert_eq!(didactic[0], execution.entry);
+    }
+
+    #[test]
+    fn collect_quadratic_main_didactic_steps_returns_single_step() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let step = build_quadratic_main_step(Equation {
+            lhs: x,
+            rhs: ctx.num(0),
+            op: RelOp::Eq,
+        });
+        let didactic = collect_quadratic_main_didactic_steps(&step);
+        assert_eq!(didactic.len(), 1);
+        assert_eq!(didactic[0], step);
     }
 }

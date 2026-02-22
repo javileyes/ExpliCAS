@@ -5,7 +5,10 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{is_numeric_zero, split_zero_product_factors};
-use cas_solver_core::quadratic_didactic::collect_zero_product_factor_execution_items;
+use cas_solver_core::quadratic_didactic::{
+    collect_factorized_zero_product_entry_didactic_steps, collect_quadratic_main_didactic_steps,
+    collect_zero_product_factor_execution_items, collect_zero_product_factor_item_didactic_steps,
+};
 use cas_solver_core::quadratic_formula::{
     discriminant, discriminant_expr, roots_from_a_b_and_sqrt, roots_from_a_b_delta, sqrt_expr,
 };
@@ -65,12 +68,16 @@ impl SolverStrategy for QuadraticStrategy {
 
             // We found factors.
             if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: factorized_execution.entry.description,
-                    equation_after: factorized_execution.entry.equation_after,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
+                for didactic_step in
+                    collect_factorized_zero_product_entry_didactic_steps(&factorized_execution)
+                {
+                    steps.push(SolveStep {
+                        description: didactic_step.description,
+                        equation_after: didactic_step.equation_after,
+                        importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
+                    });
+                }
             }
 
             // For inequalities, splitting is complex (sign analysis).
@@ -81,17 +88,16 @@ impl SolverStrategy for QuadraticStrategy {
                     collect_zero_product_factor_execution_items(&factorized_execution.factors);
 
                 for item in factor_items {
-                    if let Some(didactic_step) = simplifier
-                        .collect_steps()
-                        .then_some(item.didactic)
-                        .flatten()
-                    {
-                        steps.push(SolveStep {
-                            description: didactic_step.description,
-                            equation_after: didactic_step.equation_after,
-                            importance: crate::step::ImportanceLevel::Medium,
-                            substeps: vec![],
-                        });
+                    if simplifier.collect_steps() {
+                        for didactic_step in collect_zero_product_factor_item_didactic_steps(&item)
+                        {
+                            steps.push(SolveStep {
+                                description: didactic_step.description,
+                                equation_after: didactic_step.equation_after,
+                                importance: crate::step::ImportanceLevel::Medium,
+                                substeps: vec![],
+                            });
+                        }
                     }
                     // Recursive solve
                     // We need to be careful about depth.
@@ -176,13 +182,14 @@ impl SolverStrategy for QuadraticStrategy {
                         rhs: simplifier.context.num(0),
                         op: RelOp::Eq,
                     });
-                let main_step = SolveStep {
-                    description: didactic_step.description,
-                    equation_after: didactic_step.equation_after,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps,
-                };
-                steps.push(main_step);
+                for step in collect_quadratic_main_didactic_steps(&didactic_step) {
+                    steps.push(SolveStep {
+                        description: step.description,
+                        equation_after: step.equation_after,
+                        importance: crate::step::ImportanceLevel::Medium,
+                        substeps: substeps.clone(),
+                    });
+                }
             }
 
             // Check if coefficients are all numeric to support inequalities
