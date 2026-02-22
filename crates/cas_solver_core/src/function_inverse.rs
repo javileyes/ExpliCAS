@@ -61,6 +61,21 @@ impl UnaryInverseKind {
             Self::Tan => "Take arctan of both sides",
         }
     }
+
+    /// Whether this inverse is allowed in `UnwrapStrategy`.
+    pub fn supports_unwrap_strategy(self) -> bool {
+        matches!(self, Self::Sqrt | Self::Ln | Self::Exp)
+    }
+
+    /// Step text used by `UnwrapStrategy`.
+    pub fn unwrap_step_description(self) -> Option<&'static str> {
+        match self {
+            Self::Sqrt => Some("Square both sides"),
+            Self::Ln => Some("Exponentiate (base e)"),
+            Self::Exp => Some("Take natural log"),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -146,5 +161,34 @@ mod tests {
             UnaryInverseKind::Tan.step_description(),
             "Take arctan of both sides"
         );
+    }
+
+    #[test]
+    fn unwrap_strategy_support_is_restricted_to_ln_exp_sqrt() {
+        assert!(UnaryInverseKind::Ln.supports_unwrap_strategy());
+        assert!(UnaryInverseKind::Exp.supports_unwrap_strategy());
+        assert!(UnaryInverseKind::Sqrt.supports_unwrap_strategy());
+        assert!(!UnaryInverseKind::Sin.supports_unwrap_strategy());
+        assert!(!UnaryInverseKind::Cos.supports_unwrap_strategy());
+        assert!(!UnaryInverseKind::Tan.supports_unwrap_strategy());
+    }
+
+    #[test]
+    fn unwrap_step_descriptions_match_expected_wording() {
+        assert_eq!(
+            UnaryInverseKind::Ln.unwrap_step_description(),
+            Some("Exponentiate (base e)")
+        );
+        assert_eq!(
+            UnaryInverseKind::Exp.unwrap_step_description(),
+            Some("Take natural log")
+        );
+        assert_eq!(
+            UnaryInverseKind::Sqrt.unwrap_step_description(),
+            Some("Square both sides")
+        );
+        assert_eq!(UnaryInverseKind::Sin.unwrap_step_description(), None);
+        assert_eq!(UnaryInverseKind::Cos.unwrap_step_description(), None);
+        assert_eq!(UnaryInverseKind::Tan.unwrap_step_description(), None);
     }
 }

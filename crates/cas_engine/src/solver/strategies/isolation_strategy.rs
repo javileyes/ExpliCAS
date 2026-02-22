@@ -238,10 +238,7 @@ impl SolverStrategy for UnwrapStrategy {
                     let inverse_kind = UnaryInverseKind::from_name(&name)?;
                     // Unwrap strategy intentionally keeps scope narrow; inverse trig
                     // is handled by direct isolation path.
-                    if !matches!(
-                        inverse_kind,
-                        UnaryInverseKind::Sqrt | UnaryInverseKind::Ln | UnaryInverseKind::Exp
-                    ) {
+                    if !inverse_kind.supports_unwrap_strategy() {
                         None
                     } else {
                         let new_other = inverse_kind.build_rhs(&mut simplifier.context, other);
@@ -258,12 +255,9 @@ impl SolverStrategy for UnwrapStrategy {
                                 op,
                             }
                         };
-                        let description = match inverse_kind {
-                            UnaryInverseKind::Sqrt => "Square both sides",
-                            UnaryInverseKind::Ln => "Exponentiate (base e)",
-                            UnaryInverseKind::Exp => "Take natural log",
-                            _ => unreachable!("filtered above"),
-                        };
+                        let description = inverse_kind
+                            .unwrap_step_description()
+                            .expect("unwrap strategy filter guarantees supported inverse");
                         Some((new_eq, description.to_string()))
                     }
                 }
