@@ -139,6 +139,13 @@ pub struct ReciprocalSolveExecution {
     pub solutions: SolutionSet,
 }
 
+/// One reciprocal execution item with aligned equation and didactic step.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReciprocalExecutionItem {
+    pub equation: Equation,
+    pub didactic: ReciprocalDidacticStep,
+}
+
 /// Collect reciprocal didactic steps in execution order.
 pub fn collect_reciprocal_didactic_steps(
     execution: &ReciprocalSolveExecution,
@@ -146,6 +153,22 @@ pub fn collect_reciprocal_didactic_steps(
     vec![
         execution.combine_step.clone(),
         execution.invert_step.clone(),
+    ]
+}
+
+/// Collect reciprocal execution items in execution order.
+pub fn collect_reciprocal_execution_items(
+    execution: &ReciprocalSolveExecution,
+) -> Vec<ReciprocalExecutionItem> {
+    vec![
+        ReciprocalExecutionItem {
+            equation: execution.combine_step.equation_after.clone(),
+            didactic: execution.combine_step.clone(),
+        },
+        ReciprocalExecutionItem {
+            equation: execution.invert_step.equation_after.clone(),
+            didactic: execution.invert_step.clone(),
+        },
     ]
 }
 
@@ -445,5 +468,23 @@ mod tests {
             didactic[1].equation_after,
             execution.invert_step.equation_after
         );
+    }
+
+    #[test]
+    fn collect_reciprocal_execution_items_aligns_equations_with_steps() {
+        let mut ctx = Context::new();
+        let n = ctx.var("n");
+        let d = ctx.var("d");
+        let c = ctx.var("c");
+        let s = ctx.var("s");
+        let execution =
+            build_reciprocal_execution(&mut ctx, "x", n, d, c, s, n, NonZeroStatus::Unknown);
+
+        let items = collect_reciprocal_execution_items(&execution);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].equation, execution.combine_step.equation_after);
+        assert_eq!(items[1].equation, execution.invert_step.equation_after);
+        assert_eq!(items[0].didactic, execution.combine_step);
+        assert_eq!(items[1].didactic, execution.invert_step);
     }
 }
