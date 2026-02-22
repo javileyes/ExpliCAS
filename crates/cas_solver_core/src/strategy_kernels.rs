@@ -15,6 +15,13 @@ pub struct StrategyDidacticStep {
     pub equation_after: Equation,
 }
 
+/// Execution payload for collect-terms strategy rewrite.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CollectTermsExecutionPlan {
+    pub equation: Equation,
+    pub didactic: StrategyDidacticStep,
+}
+
 /// Rewrite payload for `CollectTermsStrategy`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CollectTermsKernel {
@@ -57,6 +64,26 @@ where
         description: collect_terms_message(&rhs_desc),
         equation_after,
     }
+}
+
+/// Build executable collect-terms payload from simplified equation sides.
+pub fn build_collect_terms_execution_with<F>(
+    lhs_after: ExprId,
+    rhs_after: ExprId,
+    op: RelOp,
+    original_rhs: ExprId,
+    render_expr: F,
+) -> CollectTermsExecutionPlan
+where
+    F: FnMut(ExprId) -> String,
+{
+    let equation = Equation {
+        lhs: lhs_after,
+        rhs: rhs_after,
+        op,
+    };
+    let didactic = build_collect_terms_step_with(equation.clone(), original_rhs, render_expr);
+    CollectTermsExecutionPlan { equation, didactic }
 }
 
 /// Rewrite payload for `RationalExponentStrategy`.
@@ -102,6 +129,28 @@ pub fn build_rational_exponent_step(q: i64, equation_after: Equation) -> Strateg
         description: rational_exponent_message(q),
         equation_after,
     }
+}
+
+/// Execution payload for rational-exponent elimination rewrite.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RationalExponentExecutionPlan {
+    pub equation: Equation,
+    pub didactic: StrategyDidacticStep,
+}
+
+/// Build executable rational-exponent payload from simplified equation sides.
+pub fn build_rational_exponent_execution(
+    q: i64,
+    lhs_after: ExprId,
+    rhs_after: ExprId,
+) -> RationalExponentExecutionPlan {
+    let equation = Equation {
+        lhs: lhs_after,
+        rhs: rhs_after,
+        op: RelOp::Eq,
+    };
+    let didactic = build_rational_exponent_step(q, equation.clone());
+    RationalExponentExecutionPlan { equation, didactic }
 }
 
 #[cfg(test)]
@@ -190,5 +239,51 @@ mod tests {
             "Raise both sides to power 3 to eliminate fractional exponent"
         );
         assert_eq!(rational.equation_after, eq);
+    }
+
+    #[test]
+    fn build_collect_terms_execution_with_builds_equation_and_didactic() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let rhs_orig = ctx.var("rhs");
+
+        let execution =
+            build_collect_terms_execution_with(x, y, RelOp::Eq, rhs_orig, |_| "rhs".to_string());
+        assert_eq!(
+            execution.equation,
+            Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq
+            }
+        );
+        assert_eq!(
+            execution.didactic.description,
+            "Subtract rhs from both sides"
+        );
+        assert_eq!(execution.didactic.equation_after, execution.equation);
+    }
+
+    #[test]
+    fn build_rational_exponent_execution_builds_equation_and_didactic() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+
+        let execution = build_rational_exponent_execution(5, x, y);
+        assert_eq!(
+            execution.equation,
+            Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq
+            }
+        );
+        assert_eq!(
+            execution.didactic.description,
+            "Raise both sides to power 5 to eliminate fractional exponent"
+        );
+        assert_eq!(execution.didactic.equation_after, execution.equation);
     }
 }

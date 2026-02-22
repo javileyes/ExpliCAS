@@ -10,8 +10,8 @@ use cas_solver_core::solve_outcome::{
     plan_swap_sides_step, resolve_single_side_exponential_terminal_with_step,
 };
 use cas_solver_core::strategy_kernels::{
-    build_collect_terms_step_with, build_rational_exponent_step, derive_collect_terms_kernel,
-    derive_rational_exponent_kernel,
+    build_collect_terms_execution_with, build_rational_exponent_execution,
+    derive_collect_terms_kernel, derive_rational_exponent_kernel,
 };
 
 pub struct IsolationStrategy;
@@ -297,28 +297,21 @@ impl SolverStrategy for CollectTermsStrategy {
         // Simplify both sides
         let (simp_lhs, _) = simplifier.simplify(rewritten.lhs);
         let (simp_rhs, _) = simplifier.simplify(rewritten.rhs);
+        let execution =
+            build_collect_terms_execution_with(simp_lhs, simp_rhs, eq.op.clone(), eq.rhs, |id| {
+                format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id
+                    }
+                )
+            });
 
         if simplifier.collect_steps() {
-            let collect_step = build_collect_terms_step_with(
-                Equation {
-                    lhs: simp_lhs,
-                    rhs: simp_rhs,
-                    op: eq.op.clone(),
-                },
-                eq.rhs,
-                |id| {
-                    format!(
-                        "{}",
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id
-                        }
-                    )
-                },
-            );
             steps.push(SolveStep {
-                description: collect_step.description,
-                equation_after: collect_step.equation_after,
+                description: execution.didactic.description.clone(),
+                equation_after: execution.didactic.equation_after.clone(),
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -326,11 +319,7 @@ impl SolverStrategy for CollectTermsStrategy {
 
         // Now recursively solve the simplified equation
         // This should now have variable only on one side
-        let new_eq = Equation {
-            lhs: simp_lhs,
-            rhs: simp_rhs,
-            op: eq.op.clone(),
-        };
+        let new_eq = execution.equation.clone();
         match solve_with_ctx(&new_eq, var, simplifier, ctx) {
             Ok((set, mut solve_steps)) => {
                 steps.append(&mut solve_steps);
@@ -370,18 +359,13 @@ impl SolverStrategy for RationalExponentStrategy {
         // Simplify both sides
         let (sim_lhs, _) = simplifier.simplify(kernel.rewritten.lhs);
         let (sim_rhs, _) = simplifier.simplify(kernel.rewritten.rhs);
-
-        let new_eq = Equation {
-            lhs: sim_lhs,
-            rhs: sim_rhs,
-            op: RelOp::Eq,
-        };
+        let execution = build_rational_exponent_execution(kernel.q, sim_lhs, sim_rhs);
+        let new_eq = execution.equation.clone();
 
         if simplifier.collect_steps() {
-            let rational_step = build_rational_exponent_step(kernel.q, new_eq.clone());
             steps.push(SolveStep {
-                description: rational_step.description,
-                equation_after: rational_step.equation_after,
+                description: execution.didactic.description,
+                equation_after: execution.didactic.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
