@@ -10,9 +10,10 @@ use cas_solver_core::log_domain::{
     classify_log_unsupported_route, decision_assumptions, LogSolveDecision, LogUnsupportedRoute,
 };
 use cas_solver_core::solve_outcome::{
-    classify_pow_exponent_shortcut, even_power_negative_rhs_outcome, guarded_or_residual,
-    power_base_one_outcome, power_equals_base_symbolic_outcome, residual_expression,
-    resolve_log_terminal_outcome, PowExponentShortcut, PowerEqualsBaseRoute,
+    classify_pow_base_isolation_route, classify_pow_exponent_shortcut,
+    even_power_negative_rhs_outcome, guarded_or_residual, power_base_one_outcome,
+    power_equals_base_symbolic_outcome, residual_expression, resolve_log_terminal_outcome,
+    PowBaseIsolationRoute, PowExponentShortcut, PowerEqualsBaseRoute,
 };
 
 use super::{isolate, prepend_steps};
@@ -54,12 +55,14 @@ fn isolate_pow_base(
     mut steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    // Check if exponent is an even integer
-    let is_even = is_even_integer_expr(&simplifier.context, e);
+    let route = classify_pow_base_isolation_route(
+        is_even_integer_expr(&simplifier.context, e),
+        is_known_negative(&simplifier.context, rhs),
+        is_known_negative(&simplifier.context, e),
+    );
 
-    if is_even {
-        // Check if RHS is negative
-        if is_known_negative(&simplifier.context, rhs) {
+    match route {
+        PowBaseIsolationRoute::EvenExponentNegativeRhsImpossible => {
             let result = even_power_negative_rhs_outcome(op.clone());
             if simplifier.collect_steps() {
                 steps.push(SolveStep {
@@ -84,68 +87,54 @@ fn isolate_pow_base(
                     substeps: vec![],
                 });
             }
-            return Ok((result, steps));
+            Ok((result, steps))
         }
-
-        // B^E = RHS -> |B| = RHS^(1/E)
-        let new_eq = cas_solver_core::rational_power::build_root_isolation_equation(
-            &mut simplifier.context,
-            b,
-            e,
-            rhs,
-            op.clone(),
-            true,
-        );
-        let abs_b = new_eq.lhs;
-        let new_rhs = new_eq.rhs;
-        if simplifier.collect_steps() {
-            steps.push(SolveStep {
-                description: format!(
-                    "Take {}-th root of both sides (even root implies absolute value)",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: e
-                    }
-                ),
-                equation_after: new_eq.clone(),
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
+        PowBaseIsolationRoute::EvenExponentUseAbsRoot
+        | PowBaseIsolationRoute::GeneralRoot { .. } => {
+            let use_abs = matches!(route, PowBaseIsolationRoute::EvenExponentUseAbsRoot);
+            let new_eq = cas_solver_core::rational_power::build_root_isolation_equation(
+                &mut simplifier.context,
+                b,
+                e,
+                rhs,
+                op.clone(),
+                use_abs,
+            );
+            let new_rhs = new_eq.rhs;
+            if simplifier.collect_steps() {
+                let description = if use_abs {
+                    format!(
+                        "Take {}-th root of both sides (even root implies absolute value)",
+                        cas_formatter::DisplayExpr {
+                            context: &simplifier.context,
+                            id: e
+                        }
+                    )
+                } else {
+                    format!(
+                        "Take {}-th root of both sides",
+                        cas_formatter::DisplayExpr {
+                            context: &simplifier.context,
+                            id: e
+                        }
+                    )
+                };
+                steps.push(SolveStep {
+                    description,
+                    equation_after: new_eq.clone(),
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
+            let new_op = match route {
+                PowBaseIsolationRoute::GeneralRoot {
+                    flip_inequality_for_negative_exponent,
+                } => apply_sign_flip(op, flip_inequality_for_negative_exponent),
+                _ => op,
+            };
+            let results = isolate(new_eq.lhs, new_rhs, new_op, var, simplifier, opts, ctx)?;
+            prepend_steps(results, steps)
         }
-
-        let results = isolate(abs_b, new_rhs, op, var, simplifier, opts, ctx)?;
-        prepend_steps(results, steps)
-    } else {
-        // B = RHS^(1/E)
-        let new_eq = cas_solver_core::rational_power::build_root_isolation_equation(
-            &mut simplifier.context,
-            b,
-            e,
-            rhs,
-            op.clone(),
-            false,
-        );
-        let new_rhs = new_eq.rhs;
-        if simplifier.collect_steps() {
-            steps.push(SolveStep {
-                description: format!(
-                    "Take {}-th root of both sides",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: e
-                    }
-                ),
-                equation_after: new_eq.clone(),
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
-        }
-
-        // Check if exponent is negative to flip inequality
-        let new_op = apply_sign_flip(op, is_known_negative(&simplifier.context, e));
-
-        let results = isolate(new_eq.lhs, new_rhs, new_op, var, simplifier, opts, ctx)?;
-        prepend_steps(results, steps)
     }
 }
 

@@ -50,6 +50,19 @@ pub enum PowExponentShortcut {
     },
 }
 
+/// Routing for isolation when the variable is in the power base (`B^E = RHS`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PowBaseIsolationRoute {
+    /// `E` is even and `RHS` is known negative.
+    EvenExponentNegativeRhsImpossible,
+    /// `E` is even and root isolation must use absolute value.
+    EvenExponentUseAbsRoot,
+    /// General root isolation, optionally flipping inequality for negative exponent.
+    GeneralRoot {
+        flip_inequality_for_negative_exponent: bool,
+    },
+}
+
 /// Classify the simplified variable-free residual.
 pub fn classify_var_free_difference(ctx: &Context, diff: ExprId) -> VarFreeDiffKind {
     match ctx.get(diff) {
@@ -116,6 +129,23 @@ pub fn classify_pow_exponent_shortcut(
         return PowExponentShortcut::EqualPowBases { rhs_exp };
     }
     PowExponentShortcut::None
+}
+
+/// Classify route for base-isolation in a power equation.
+pub fn classify_pow_base_isolation_route(
+    exponent_is_even: bool,
+    rhs_is_known_negative: bool,
+    exponent_is_known_negative: bool,
+) -> PowBaseIsolationRoute {
+    if exponent_is_even && rhs_is_known_negative {
+        PowBaseIsolationRoute::EvenExponentNegativeRhsImpossible
+    } else if exponent_is_even {
+        PowBaseIsolationRoute::EvenExponentUseAbsRoot
+    } else {
+        PowBaseIsolationRoute::GeneralRoot {
+            flip_inequality_for_negative_exponent: exponent_is_known_negative,
+        }
+    }
 }
 
 /// Build a residual solution set `solve(__eq__(lhs, rhs), var)`.
@@ -624,5 +654,31 @@ mod tests {
     fn classify_pow_exponent_shortcut_returns_none_when_no_shortcut_applies() {
         let out = classify_pow_exponent_shortcut(RelOp::Eq, false, None, false, false, false);
         assert_eq!(out, PowExponentShortcut::None);
+    }
+
+    #[test]
+    fn classify_pow_base_isolation_route_impossible_even_negative_rhs() {
+        assert_eq!(
+            classify_pow_base_isolation_route(true, true, false),
+            PowBaseIsolationRoute::EvenExponentNegativeRhsImpossible
+        );
+    }
+
+    #[test]
+    fn classify_pow_base_isolation_route_even_uses_abs_root() {
+        assert_eq!(
+            classify_pow_base_isolation_route(true, false, true),
+            PowBaseIsolationRoute::EvenExponentUseAbsRoot
+        );
+    }
+
+    #[test]
+    fn classify_pow_base_isolation_route_general_tracks_negative_exponent() {
+        assert_eq!(
+            classify_pow_base_isolation_route(false, false, true),
+            PowBaseIsolationRoute::GeneralRoot {
+                flip_inequality_for_negative_exponent: true
+            }
+        );
     }
 }
