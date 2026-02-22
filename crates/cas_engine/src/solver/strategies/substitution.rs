@@ -5,8 +5,8 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, RelOp, SolutionSet};
 use cas_solver_core::substitution::{
-    build_back_substitute_step_with, build_detected_substitution_step_with,
-    build_substituted_equation_step_with, plan_exponential_substitution_rewrite,
+    build_back_substitute_step_with, build_substitution_intro_steps_with,
+    plan_exponential_substitution_rewrite,
 };
 
 pub struct SubstitutionStrategy;
@@ -30,10 +30,13 @@ impl SolverStrategy for SubstitutionStrategy {
             plan_exponential_substitution_rewrite(&mut simplifier.context, eq, var, SUB_VAR_NAME)
         {
             let mut steps = Vec::new();
+            let new_eq = rewrite_plan.equation;
+
             if simplifier.collect_steps() {
-                let detect_step = build_detected_substitution_step_with(
+                let intro_steps = build_substitution_intro_steps_with(
                     eq.clone(),
                     rewrite_plan.substitution_expr,
+                    new_eq.clone(),
                     |id| {
                         format!(
                             "{}",
@@ -45,28 +48,14 @@ impl SolverStrategy for SubstitutionStrategy {
                     },
                 );
                 steps.push(SolveStep {
-                    description: detect_step.description,
-                    equation_after: detect_step.equation_after,
+                    description: intro_steps.detected.description,
+                    equation_after: intro_steps.detected.equation_after,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
-            }
-
-            let new_eq = rewrite_plan.equation;
-
-            if simplifier.collect_steps() {
-                let substituted_step = build_substituted_equation_step_with(new_eq.clone(), |id| {
-                    format!(
-                        "{}",
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id
-                        }
-                    )
-                });
                 steps.push(SolveStep {
-                    description: substituted_step.description,
-                    equation_after: substituted_step.equation_after,
+                    description: intro_steps.rewritten.description,
+                    equation_after: intro_steps.rewritten.equation_after,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });

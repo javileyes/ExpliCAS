@@ -28,6 +28,13 @@ pub struct SubstitutionDidacticStep {
     pub equation_after: Equation,
 }
 
+/// Didactic pair emitted when substitution is introduced (`u = ...` + rewritten equation).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SubstitutionIntroDidacticSteps {
+    pub detected: SubstitutionDidacticStep,
+    pub rewritten: SubstitutionDidacticStep,
+}
+
 /// Build didactic payload for substitution detection (`u = expr`).
 pub fn build_detected_substitution_step_with<F>(
     equation_after: Equation,
@@ -74,6 +81,27 @@ where
     SubstitutionDidacticStep {
         description: back_substitute_message(&lhs_desc, &rhs_desc),
         equation_after,
+    }
+}
+
+/// Build didactic pair for substitution introduction:
+/// 1) detected substitution `u = expr`
+/// 2) equation rewritten in terms of `u`
+pub fn build_substitution_intro_steps_with<F>(
+    equation_before: Equation,
+    substitution_expr: ExprId,
+    rewritten_equation: Equation,
+    mut render_expr: F,
+) -> SubstitutionIntroDidacticSteps
+where
+    F: FnMut(ExprId) -> String,
+{
+    let detected =
+        build_detected_substitution_step_with(equation_before, substitution_expr, &mut render_expr);
+    let rewritten = build_substituted_equation_step_with(rewritten_equation, render_expr);
+    SubstitutionIntroDidacticSteps {
+        detected,
+        rewritten,
     }
 }
 
@@ -569,5 +597,32 @@ mod tests {
 
         let back = build_back_substitute_step_with(eq.clone(), |_| "v".to_string());
         assert_eq!(back.description, "Back-substitute: v = v");
+    }
+
+    #[test]
+    fn build_substitution_intro_steps_with_builds_detected_and_rewritten_steps() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let eq_before = Equation {
+            lhs: x,
+            rhs: y,
+            op: cas_ast::RelOp::Eq,
+        };
+        let eq_after = Equation {
+            lhs: y,
+            rhs: x,
+            op: cas_ast::RelOp::Eq,
+        };
+
+        let steps =
+            build_substitution_intro_steps_with(eq_before.clone(), x, eq_after.clone(), |_| {
+                "u".to_string()
+            });
+
+        assert_eq!(steps.detected.description, "Detected substitution: u = u");
+        assert_eq!(steps.detected.equation_after, eq_before);
+        assert_eq!(steps.rewritten.description, "Substituted equation: u = u");
+        assert_eq!(steps.rewritten.equation_after, eq_after);
     }
 }
