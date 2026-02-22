@@ -59,6 +59,21 @@ pub enum PowExponentShortcutResolution {
     ReturnSolutionSet(SolutionSet),
 }
 
+/// Executable action for exponent shortcuts, preserving the originating route.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PowExponentShortcutAction {
+    Continue,
+    IsolateExponent {
+        shortcut: PowExponentShortcut,
+        rhs: ExprId,
+        op: RelOp,
+    },
+    ReturnSolutionSet {
+        shortcut: PowExponentShortcut,
+        solutions: SolutionSet,
+    },
+}
+
 /// Structured outcome for unsupported logarithmic rewrites.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LogUnsupportedOutcome<'a> {
@@ -241,6 +256,24 @@ pub fn resolve_pow_exponent_shortcut(
             PowExponentShortcutResolution::IsolateExponent { rhs: rhs_exp, op }
         }
         PowExponentShortcut::None => PowExponentShortcutResolution::Continue,
+    }
+}
+
+/// Build an executable shortcut action by pairing classification and resolution.
+pub fn plan_pow_exponent_shortcut_action(
+    ctx: &mut Context,
+    shortcut: PowExponentShortcut,
+    base: ExprId,
+    op: RelOp,
+) -> PowExponentShortcutAction {
+    match resolve_pow_exponent_shortcut(ctx, shortcut, base, op) {
+        PowExponentShortcutResolution::Continue => PowExponentShortcutAction::Continue,
+        PowExponentShortcutResolution::IsolateExponent { rhs, op } => {
+            PowExponentShortcutAction::IsolateExponent { shortcut, rhs, op }
+        }
+        PowExponentShortcutResolution::ReturnSolutionSet(solutions) => {
+            PowExponentShortcutAction::ReturnSolutionSet { shortcut, solutions }
+        }
     }
 }
 
@@ -1110,6 +1143,50 @@ mod tests {
         assert!(matches!(
             out,
             PowExponentShortcutResolution::ReturnSolutionSet(SolutionSet::Conditional(_))
+        ));
+    }
+
+    #[test]
+    fn plan_pow_exponent_shortcut_action_keeps_shortcut_for_isolation_route() {
+        let mut ctx = Context::new();
+        let base = ctx.num(0);
+        let out = plan_pow_exponent_shortcut_action(
+            &mut ctx,
+            PowExponentShortcut::PowerEqualsBase(PowerEqualsBaseRoute::ExponentGreaterThanZero),
+            base,
+            RelOp::Eq,
+        );
+
+        assert!(matches!(
+            out,
+            PowExponentShortcutAction::IsolateExponent {
+                shortcut: PowExponentShortcut::PowerEqualsBase(
+                    PowerEqualsBaseRoute::ExponentGreaterThanZero
+                ),
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn plan_pow_exponent_shortcut_action_keeps_shortcut_for_solution_set_route() {
+        let mut ctx = Context::new();
+        let base = ctx.var("a");
+        let out = plan_pow_exponent_shortcut_action(
+            &mut ctx,
+            PowExponentShortcut::PowerEqualsBase(PowerEqualsBaseRoute::SymbolicCaseSplit),
+            base,
+            RelOp::Eq,
+        );
+
+        assert!(matches!(
+            out,
+            PowExponentShortcutAction::ReturnSolutionSet {
+                shortcut: PowExponentShortcut::PowerEqualsBase(
+                    PowerEqualsBaseRoute::SymbolicCaseSplit
+                ),
+                solutions: SolutionSet::Conditional(_)
+            }
         ));
     }
 

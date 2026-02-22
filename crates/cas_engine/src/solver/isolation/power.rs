@@ -11,9 +11,10 @@ use cas_solver_core::solve_outcome::{
     classify_pow_base_isolation_route, classify_pow_exponent_shortcut,
     classify_power_base_one_shortcut, detect_pow_exponent_shortcut_inputs,
     even_power_negative_rhs_outcome, guarded_or_residual, power_base_one_shortcut_solutions,
-    resolve_log_terminal_outcome, resolve_log_unsupported_outcome, resolve_pow_exponent_shortcut,
-    terminal_outcome_message, LogUnsupportedOutcome, PowBaseIsolationRoute, PowExponentShortcut,
-    PowExponentShortcutResolution, PowerBaseOneShortcut, PowerEqualsBaseRoute,
+    plan_pow_exponent_shortcut_action, resolve_log_terminal_outcome,
+    resolve_log_unsupported_outcome, terminal_outcome_message, LogUnsupportedOutcome,
+    PowBaseIsolationRoute, PowExponentShortcut, PowExponentShortcutAction, PowerBaseOneShortcut,
+    PowerEqualsBaseRoute,
 };
 
 use super::{isolate, prepend_steps};
@@ -184,17 +185,17 @@ fn isolate_pow_exponent(
         opts.budget.max_branches >= 2,
     );
 
-    let shortcut_resolution =
-        resolve_pow_exponent_shortcut(&mut simplifier.context, shortcut, b, op.clone());
+    let shortcut_action =
+        plan_pow_exponent_shortcut_action(&mut simplifier.context, shortcut, b, op.clone());
 
-    match (shortcut, shortcut_resolution) {
-        (
-            PowExponentShortcut::PowerEqualsBase(PowerEqualsBaseRoute::ExponentGreaterThanZero),
-            PowExponentShortcutResolution::IsolateExponent {
-                rhs: target_rhs,
-                op: target_op,
-            },
-        ) => {
+    match shortcut_action {
+        PowExponentShortcutAction::IsolateExponent {
+            shortcut: PowExponentShortcut::PowerEqualsBase(
+                PowerEqualsBaseRoute::ExponentGreaterThanZero,
+            ),
+            rhs: target_rhs,
+            op: target_op,
+        } => {
             if simplifier.collect_steps() {
                 steps.push(SolveStep {
                     description: format!(
@@ -213,15 +214,13 @@ fn isolate_pow_exponent(
             let results = isolate(e, target_rhs, target_op, var, simplifier, opts, ctx)?;
             return prepend_steps(results, steps);
         }
-        (
-            PowExponentShortcut::PowerEqualsBase(
+        PowExponentShortcutAction::IsolateExponent {
+            shortcut: PowExponentShortcut::PowerEqualsBase(
                 PowerEqualsBaseRoute::ExponentEqualsOneNumericBase,
             ),
-            PowExponentShortcutResolution::IsolateExponent {
-                rhs: target_rhs,
-                op: target_op,
-            },
-        ) => {
+            rhs: target_rhs,
+            op: target_op,
+        } => {
             if simplifier.collect_steps() {
                 steps.push(SolveStep {
                     description: format!(
@@ -249,15 +248,13 @@ fn isolate_pow_exponent(
             let results = isolate(e, target_rhs, target_op, var, simplifier, opts, ctx)?;
             return prepend_steps(results, steps);
         }
-        (
-            PowExponentShortcut::PowerEqualsBase(
+        PowExponentShortcutAction::IsolateExponent {
+            shortcut: PowExponentShortcut::PowerEqualsBase(
                 PowerEqualsBaseRoute::ExponentEqualsOneNoBranchBudget,
             ),
-            PowExponentShortcutResolution::IsolateExponent {
-                rhs: target_rhs,
-                op: target_op,
-            },
-        ) => {
+            rhs: target_rhs,
+            op: target_op,
+        } => {
             if simplifier.collect_steps() {
                 steps.push(SolveStep {
                     description: format!(
@@ -285,10 +282,10 @@ fn isolate_pow_exponent(
             let results = isolate(e, target_rhs, target_op, var, simplifier, opts, ctx)?;
             return prepend_steps(results, steps);
         }
-        (
-            PowExponentShortcut::PowerEqualsBase(PowerEqualsBaseRoute::SymbolicCaseSplit),
-            PowExponentShortcutResolution::ReturnSolutionSet(conditional),
-        ) => {
+        PowExponentShortcutAction::ReturnSolutionSet {
+            shortcut: PowExponentShortcut::PowerEqualsBase(PowerEqualsBaseRoute::SymbolicCaseSplit),
+            solutions: conditional,
+        } => {
             if simplifier.collect_steps() {
                 steps.push(SolveStep {
                     description: format!(
@@ -309,13 +306,11 @@ fn isolate_pow_exponent(
             }
             return Ok((conditional, steps));
         }
-        (
-            PowExponentShortcut::EqualPowBases { rhs_exp },
-            PowExponentShortcutResolution::IsolateExponent {
-                rhs: target_rhs,
-                op: target_op,
-            },
-        ) => {
+        PowExponentShortcutAction::IsolateExponent {
+            shortcut: PowExponentShortcut::EqualPowBases { rhs_exp },
+            rhs: target_rhs,
+            op: target_op,
+        } => {
             if simplifier.collect_steps() {
                 steps.push(SolveStep {
                     description: format!(
@@ -346,11 +341,11 @@ fn isolate_pow_exponent(
             let results = isolate(e, target_rhs, target_op, var, simplifier, opts, ctx)?;
             return prepend_steps(results, steps);
         }
-        (PowExponentShortcut::None, PowExponentShortcutResolution::Continue) => {}
+        PowExponentShortcutAction::Continue => {}
         _ => {
             debug_assert!(
                 false,
-                "pow exponent shortcut classification/resolution mismatch"
+                "pow exponent shortcut action mismatch"
             );
         }
     }
