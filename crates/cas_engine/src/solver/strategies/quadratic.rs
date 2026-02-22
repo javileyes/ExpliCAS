@@ -76,16 +76,12 @@ impl SolverStrategy for QuadraticStrategy {
             // For Eq, it's simple union.
             if eq.op == RelOp::Eq {
                 let mut all_solutions = Vec::new();
-                let factor_equations =
-                    cas_solver_core::quadratic_didactic::collect_zero_product_factor_equations(
+                let factor_execution =
+                    cas_solver_core::quadratic_didactic::build_zero_product_factor_execution_with(
                         &simplifier.context,
                         &factors,
                         var,
                         zero,
-                    );
-                let factor_steps = simplifier.collect_steps().then(|| {
-                    cas_solver_core::quadratic_didactic::build_solve_factor_steps_with(
-                        &factor_equations,
                         |id| {
                             format!(
                                 "{}",
@@ -95,10 +91,12 @@ impl SolverStrategy for QuadraticStrategy {
                                 }
                             )
                         },
-                    )
-                });
+                    );
+                let factor_steps = simplifier
+                    .collect_steps()
+                    .then_some(factor_execution.didactic);
 
-                for (idx, factor_eq) in factor_equations.into_iter().enumerate() {
+                for (idx, factor_eq) in factor_execution.equations.into_iter().enumerate() {
                     if let Some(didactic_step) = factor_steps.as_ref().and_then(|all| all.get(idx))
                     {
                         steps.push(SolveStep {

@@ -27,6 +27,14 @@ pub struct QuadraticDidacticStep {
     pub equation_after: Equation,
 }
 
+/// Executable batch for zero-product factor solving:
+/// `factor_i = 0` equations plus matching didactic steps.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ZeroProductFactorExecutionPlan {
+    pub equations: Vec<Equation>,
+    pub didactic: Vec<QuadraticDidacticStep>,
+}
+
 /// Build didactic step for a factorized equation entrypoint.
 pub fn build_factorized_equation_step_with<F>(
     equation_after: Equation,
@@ -70,6 +78,27 @@ where
         .cloned()
         .map(|eq| build_solve_factor_step_with(eq.clone(), eq.lhs, &mut render_expr))
         .collect()
+}
+
+/// Build execution payload for zero-product factor solving by:
+/// 1) collecting relevant `factor = 0` equations
+/// 2) generating matching didactic steps
+pub fn build_zero_product_factor_execution_with<F>(
+    ctx: &Context,
+    factors: &[ExprId],
+    var: &str,
+    zero: ExprId,
+    render_expr: F,
+) -> ZeroProductFactorExecutionPlan
+where
+    F: FnMut(ExprId) -> String,
+{
+    let equations = collect_zero_product_factor_equations(ctx, factors, var, zero);
+    let didactic = build_solve_factor_steps_with(&equations, render_expr);
+    ZeroProductFactorExecutionPlan {
+        equations,
+        didactic,
+    }
 }
 
 /// Build the top-level "quadratic formula" strategy step payload.
@@ -490,5 +519,31 @@ mod tests {
         assert_eq!(steps[1].description, "Solve factor: f = 0");
         assert_eq!(steps[0].equation_after, equations[0]);
         assert_eq!(steps[1].equation_after, equations[1]);
+    }
+
+    #[test]
+    fn build_zero_product_factor_execution_with_builds_equations_and_didactic() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let one = ctx.num(1);
+        let x_minus_one = ctx.add(Expr::Sub(x, one));
+        let factors = vec![x_minus_one, y];
+        let zero = ctx.num(0);
+
+        let execution = build_zero_product_factor_execution_with(&ctx, &factors, "x", zero, |_| {
+            "factor".to_string()
+        });
+
+        assert_eq!(execution.equations.len(), 1);
+        assert_eq!(execution.equations[0].lhs, x_minus_one);
+        assert_eq!(execution.equations[0].rhs, zero);
+        assert_eq!(execution.equations[0].op, RelOp::Eq);
+        assert_eq!(execution.didactic.len(), 1);
+        assert_eq!(
+            execution.didactic[0].description,
+            "Solve factor: factor = 0"
+        );
+        assert_eq!(execution.didactic[0].equation_after, execution.equations[0]);
     }
 }
