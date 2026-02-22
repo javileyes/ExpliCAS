@@ -2175,6 +2175,14 @@ pub struct AbsSplitDidacticPair {
     pub negative: AbsSplitDidacticStep,
 }
 
+/// Collect absolute-value split didactic steps in execution order:
+/// positive branch first, negative branch second.
+pub fn collect_abs_split_didactic_steps(
+    didactic: &AbsSplitDidacticPair,
+) -> Vec<AbsSplitDidacticStep> {
+    vec![didactic.positive.clone(), didactic.negative.clone()]
+}
+
 /// Build didactic payload for both absolute-value split branches.
 pub fn build_abs_split_steps_with<F>(
     positive_equation: Equation,
@@ -2675,6 +2683,47 @@ mod tests {
         );
         assert_eq!(
             execution.didactic.negative.description,
+            "Split absolute value (Case 2): x = -2"
+        );
+    }
+
+    #[test]
+    fn collect_abs_split_didactic_steps_preserves_positive_then_negative_order() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let neg_two = ctx.num(-2);
+        let execution = build_abs_split_execution_with(
+            Equation {
+                lhs: x,
+                rhs: two,
+                op: RelOp::Eq,
+            },
+            Equation {
+                lhs: x,
+                rhs: neg_two,
+                op: RelOp::Eq,
+            },
+            x,
+            |id| {
+                if id == two {
+                    "2".to_string()
+                } else if id == neg_two {
+                    "-2".to_string()
+                } else {
+                    "x".to_string()
+                }
+            },
+        );
+
+        let didactic = collect_abs_split_didactic_steps(&execution.didactic);
+        assert_eq!(didactic.len(), 2);
+        assert_eq!(
+            didactic[0].description,
+            "Split absolute value (Case 1): x = 2"
+        );
+        assert_eq!(
+            didactic[1].description,
             "Split absolute value (Case 2): x = -2"
         );
     }

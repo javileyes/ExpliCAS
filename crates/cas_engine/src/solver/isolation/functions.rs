@@ -5,8 +5,8 @@ use cas_ast::symbol::SymbolId;
 use cas_ast::{BuiltinFn, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::solve_outcome::{
-    build_abs_split_execution_with, finalize_abs_split_solution_set, plan_abs_isolation,
-    AbsIsolationPlan,
+    build_abs_split_execution_with, collect_abs_split_didactic_steps,
+    finalize_abs_split_solution_set, plan_abs_isolation, AbsIsolationPlan,
 };
 
 use super::{isolate, prepend_steps};
@@ -93,11 +93,14 @@ fn isolate_abs(
                     )
                 })
             });
+            let split_steps = split_execution
+                .as_ref()
+                .map(|execution| collect_abs_split_didactic_steps(&execution.didactic));
             let mut steps1 = steps.clone();
-            if let Some(split_execution) = split_execution.as_ref() {
+            if let Some(split_step) = split_steps.as_ref().and_then(|all| all.first()) {
                 steps1.push(SolveStep {
-                    description: split_execution.didactic.positive.description.clone(),
-                    equation_after: split_execution.didactic.positive.equation_after.clone(),
+                    description: split_step.description.clone(),
+                    equation_after: split_step.equation_after.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -107,10 +110,10 @@ fn isolate_abs(
 
             // ── Branch 2: Negative case ─────────────────────────────────────────
             let mut steps2 = steps.clone();
-            if let Some(split_execution) = split_execution.as_ref() {
+            if let Some(split_step) = split_steps.as_ref().and_then(|all| all.get(1)) {
                 steps2.push(SolveStep {
-                    description: split_execution.didactic.negative.description.clone(),
-                    equation_after: split_execution.didactic.negative.equation_after.clone(),
+                    description: split_step.description.clone(),
+                    equation_after: split_step.equation_after.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
