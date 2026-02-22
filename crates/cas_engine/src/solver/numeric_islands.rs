@@ -20,11 +20,9 @@
 //! - Rejects folds that produce undefined results (`Div(_, 0)` etc.) or that
 //!   increase expression size.
 
-use std::collections::HashMap;
-
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{Context, ExprId};
 use cas_solver_core::numeric_islands::{
-    is_benign_fold_result, precheck_fold_candidate, transplant_expr, IslandFoldPrecheck,
+    fold_numeric_islands_with, is_benign_fold_result, transplant_expr,
 };
 
 use crate::helpers::ground_eval::GroundEvalGuard;
@@ -53,153 +51,18 @@ pub(crate) fn fold_numeric_islands(ctx: &mut Context, root: ExprId) -> ExprId {
         None => return root,
     };
 
-    let mut memo: HashMap<ExprId, ExprId> = HashMap::new();
-    fold_recursive(ctx, root, &mut memo)
+    fold_numeric_islands_with(
+        ctx,
+        root,
+        MAX_ISLAND_NODES,
+        MAX_ISLAND_DEPTH,
+        cas_solver_core::verify_stats::record_skipped_limits,
+        fold_one_island_candidate,
+    )
 }
 
-/// Recursive post-order fold with memoization.
-///
-/// Works bottom-up: first fold children, then check if the resulting node
-/// is a foldable ground island.
-fn fold_recursive(ctx: &mut Context, id: ExprId, memo: &mut HashMap<ExprId, ExprId>) -> ExprId {
-    // Memoize: if we've already folded this node, return cached result
-    if let Some(&cached) = memo.get(&id) {
-        return cached;
-    }
-
-    // Leaves never need folding
-    let node = ctx.get(id).clone();
-    let result = match node {
-        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => id,
-
-        Expr::Add(a, b) => {
-            let fa = fold_recursive(ctx, a, memo);
-            let fb = fold_recursive(ctx, b, memo);
-            let new_id = if fa == a && fb == b {
-                id
-            } else {
-                ctx.add(Expr::Add(fa, fb))
-            };
-            try_fold_island(ctx, new_id)
-        }
-        Expr::Sub(a, b) => {
-            let fa = fold_recursive(ctx, a, memo);
-            let fb = fold_recursive(ctx, b, memo);
-            let new_id = if fa == a && fb == b {
-                id
-            } else {
-                ctx.add(Expr::Sub(fa, fb))
-            };
-            try_fold_island(ctx, new_id)
-        }
-        Expr::Mul(a, b) => {
-            let fa = fold_recursive(ctx, a, memo);
-            let fb = fold_recursive(ctx, b, memo);
-            let new_id = if fa == a && fb == b {
-                id
-            } else {
-                ctx.add(Expr::Mul(fa, fb))
-            };
-            try_fold_island(ctx, new_id)
-        }
-        Expr::Div(a, b) => {
-            let fa = fold_recursive(ctx, a, memo);
-            let fb = fold_recursive(ctx, b, memo);
-            let new_id = if fa == a && fb == b {
-                id
-            } else {
-                ctx.add(Expr::Div(fa, fb))
-            };
-            try_fold_island(ctx, new_id)
-        }
-        Expr::Pow(a, b) => {
-            let fa = fold_recursive(ctx, a, memo);
-            let fb = fold_recursive(ctx, b, memo);
-            let new_id = if fa == a && fb == b {
-                id
-            } else {
-                ctx.add(Expr::Pow(fa, fb))
-            };
-            try_fold_island(ctx, new_id)
-        }
-        Expr::Neg(a) => {
-            let fa = fold_recursive(ctx, a, memo);
-            let new_id = if fa == a { id } else { ctx.add(Expr::Neg(fa)) };
-            try_fold_island(ctx, new_id)
-        }
-        Expr::Function(name, ref args) => {
-            let mut changed = false;
-            let folded_args: Vec<ExprId> = args
-                .iter()
-                .map(|&arg| {
-                    let fa = fold_recursive(ctx, arg, memo);
-                    if fa != arg {
-                        changed = true;
-                    }
-                    fa
-                })
-                .collect();
-            let new_id = if changed {
-                ctx.add(Expr::Function(name, folded_args))
-            } else {
-                id
-            };
-            try_fold_island(ctx, new_id)
-        }
-        Expr::Hold(inner) => {
-            // Don't fold inside Hold — it's user-protected
-            let fi = fold_recursive(ctx, inner, memo);
-            if fi == inner {
-                id
-            } else {
-                ctx.add(Expr::Hold(fi))
-            }
-        }
-        Expr::Matrix {
-            rows,
-            cols,
-            ref data,
-        } => {
-            let mut changed = false;
-            let folded_data: Vec<ExprId> = data
-                .iter()
-                .map(|&elem| {
-                    let fe = fold_recursive(ctx, elem, memo);
-                    if fe != elem {
-                        changed = true;
-                    }
-                    fe
-                })
-                .collect();
-            if changed {
-                ctx.add(Expr::Matrix {
-                    rows,
-                    cols,
-                    data: folded_data,
-                })
-            } else {
-                id
-            }
-        }
-    };
-
-    memo.insert(id, result);
-    result
-}
-
-/// Attempt to fold a single node if it's a ground island within limits.
-///
-/// Returns the folded ExprId if successful, otherwise the original.
-fn try_fold_island(ctx: &mut Context, id: ExprId) -> ExprId {
-    let node_count = match precheck_fold_candidate(ctx, id, MAX_ISLAND_NODES, MAX_ISLAND_DEPTH) {
-        IslandFoldPrecheck::NotGround | IslandFoldPrecheck::Leaf => return id,
-        IslandFoldPrecheck::OverLimit => {
-            cas_solver_core::verify_stats::record_skipped_limits();
-            return id;
-        }
-        IslandFoldPrecheck::Eligible { node_count } => node_count,
-    };
-
+/// Fold one pre-checked eligible island.
+fn fold_one_island_candidate(ctx: &mut Context, id: ExprId, node_count: usize) -> ExprId {
     // Try simplifying with Generic mode in a temporary simplifier
     let mut tmp = crate::engine::Simplifier::with_context(ctx.clone());
     tmp.set_collect_steps(false);
