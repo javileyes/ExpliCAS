@@ -10,7 +10,8 @@ use cas_solver_core::solve_outcome::{
     resolve_var_eliminated_outcome_with, VarEliminatedSolveOutcome,
 };
 use cas_solver_core::strategy_kernels::{
-    build_rational_exponent_execution, derive_rational_exponent_kernel,
+    build_rational_exponent_execution, collect_rational_exponent_didactic_steps,
+    derive_rational_exponent_kernel,
 };
 
 use crate::engine::Simplifier;
@@ -545,12 +546,14 @@ fn try_solve_rational_exponent(
     let new_eq = execution.equation.clone();
 
     if simplifier.collect_steps() {
-        steps.push(SolveStep {
-            description: execution.didactic.description,
-            equation_after: execution.didactic.equation_after,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        });
+        for didactic_step in collect_rational_exponent_didactic_steps(&execution) {
+            steps.push(SolveStep {
+                description: didactic_step.description,
+                equation_after: didactic_step.equation_after,
+                importance: crate::step::ImportanceLevel::Medium,
+                substeps: vec![],
+            });
+        }
     }
 
     // Recursively solve (this will go through the full solve pipeline)

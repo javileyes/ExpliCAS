@@ -22,6 +22,13 @@ pub struct CollectTermsExecutionPlan {
     pub didactic: StrategyDidacticStep,
 }
 
+/// Collect collect-terms didactic steps in display order.
+pub fn collect_collect_terms_didactic_steps(
+    execution: &CollectTermsExecutionPlan,
+) -> Vec<StrategyDidacticStep> {
+    vec![execution.didactic.clone()]
+}
+
 /// Rewrite payload for `CollectTermsStrategy`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CollectTermsKernel {
@@ -136,6 +143,13 @@ pub fn build_rational_exponent_step(q: i64, equation_after: Equation) -> Strateg
 pub struct RationalExponentExecutionPlan {
     pub equation: Equation,
     pub didactic: StrategyDidacticStep,
+}
+
+/// Collect rational-exponent didactic steps in display order.
+pub fn collect_rational_exponent_didactic_steps(
+    execution: &RationalExponentExecutionPlan,
+) -> Vec<StrategyDidacticStep> {
+    vec![execution.didactic.clone()]
 }
 
 /// Build executable rational-exponent payload from simplified equation sides.
@@ -266,6 +280,20 @@ mod tests {
     }
 
     #[test]
+    fn collect_collect_terms_didactic_steps_returns_single_step() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let rhs_orig = ctx.var("rhs");
+        let execution =
+            build_collect_terms_execution_with(x, y, RelOp::Eq, rhs_orig, |_| "rhs".to_string());
+
+        let didactic = collect_collect_terms_didactic_steps(&execution);
+        assert_eq!(didactic.len(), 1);
+        assert_eq!(didactic[0], execution.didactic);
+    }
+
+    #[test]
     fn build_rational_exponent_execution_builds_equation_and_didactic() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -285,5 +313,17 @@ mod tests {
             "Raise both sides to power 5 to eliminate fractional exponent"
         );
         assert_eq!(execution.didactic.equation_after, execution.equation);
+    }
+
+    #[test]
+    fn collect_rational_exponent_didactic_steps_returns_single_step() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let execution = build_rational_exponent_execution(5, x, y);
+
+        let didactic = collect_rational_exponent_didactic_steps(&execution);
+        assert_eq!(didactic.len(), 1);
+        assert_eq!(didactic[0], execution.didactic);
     }
 }

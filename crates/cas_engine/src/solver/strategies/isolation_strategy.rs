@@ -11,6 +11,7 @@ use cas_solver_core::solve_outcome::{
 };
 use cas_solver_core::strategy_kernels::{
     build_collect_terms_execution_with, build_rational_exponent_execution,
+    collect_collect_terms_didactic_steps, collect_rational_exponent_didactic_steps,
     derive_collect_terms_kernel, derive_rational_exponent_kernel,
 };
 
@@ -309,12 +310,14 @@ impl SolverStrategy for CollectTermsStrategy {
             });
 
         if simplifier.collect_steps() {
-            steps.push(SolveStep {
-                description: execution.didactic.description.clone(),
-                equation_after: execution.didactic.equation_after.clone(),
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
+            for didactic_step in collect_collect_terms_didactic_steps(&execution) {
+                steps.push(SolveStep {
+                    description: didactic_step.description,
+                    equation_after: didactic_step.equation_after,
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
         }
 
         // Now recursively solve the simplified equation
@@ -363,12 +366,14 @@ impl SolverStrategy for RationalExponentStrategy {
         let new_eq = execution.equation.clone();
 
         if simplifier.collect_steps() {
-            steps.push(SolveStep {
-                description: execution.didactic.description,
-                equation_after: execution.didactic.equation_after,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
+            for didactic_step in collect_rational_exponent_didactic_steps(&execution) {
+                steps.push(SolveStep {
+                    description: didactic_step.description,
+                    equation_after: didactic_step.equation_after,
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
         }
 
         // Recursively solve the new equation
