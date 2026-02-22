@@ -994,6 +994,20 @@ pub struct TermIsolationRewritePlan {
     pub step: TermIsolationDidacticStep,
 }
 
+/// Route chosen for denominator isolation with zero-RHS guard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DivDenominatorIsolationRoute {
+    RhsZeroToInfinity,
+    DivisionRewrite,
+}
+
+/// Planned denominator isolation rewrite with route metadata.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DivDenominatorIsolationRewritePlan {
+    pub equation: Equation,
+    pub route: DivDenominatorIsolationRoute,
+}
+
 fn build_term_isolation_step_with<F>(
     equation_after: Equation,
     moved_term: ExprId,
@@ -1201,6 +1215,32 @@ where
     );
     let step = build_div_numerator_isolation_step_with(equation.clone(), denominator, render_expr);
     TermIsolationRewritePlan { equation, step }
+}
+
+/// Plan denominator isolation with `rhs == 0` safety guard.
+pub fn plan_div_denominator_isolation_with_zero_rhs_guard(
+    ctx: &mut Context,
+    denominator: ExprId,
+    numerator: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+) -> DivDenominatorIsolationRewritePlan {
+    let (equation, kind) = crate::equation_rewrite::isolate_div_denominator_with_zero_rhs_guard(
+        ctx,
+        denominator,
+        numerator,
+        rhs,
+        op,
+    );
+    let route = match kind {
+        crate::equation_rewrite::DivDenominatorIsolationKind::RhsZeroToInfinity => {
+            DivDenominatorIsolationRoute::RhsZeroToInfinity
+        }
+        crate::equation_rewrite::DivDenominatorIsolationKind::DivisionRewrite => {
+            DivDenominatorIsolationRoute::DivisionRewrite
+        }
+    };
+    DivDenominatorIsolationRewritePlan { equation, route }
 }
 
 /// Didactic payload for one equation step.
@@ -3630,6 +3670,34 @@ mod tests {
         assert_eq!(plan.negative_domain.lhs, den);
         assert_eq!(plan.positive_domain.op, RelOp::Gt);
         assert_eq!(plan.negative_domain.op, RelOp::Lt);
+    }
+
+    #[test]
+    fn plan_div_denominator_isolation_with_zero_rhs_guard_marks_infinity_route() {
+        let mut ctx = Context::new();
+        let den = ctx.var("d");
+        let num = ctx.var("n");
+        let zero = ctx.num(0);
+
+        let plan =
+            plan_div_denominator_isolation_with_zero_rhs_guard(&mut ctx, den, num, zero, RelOp::Eq);
+
+        assert_eq!(plan.equation.lhs, den);
+        assert_eq!(plan.route, DivDenominatorIsolationRoute::RhsZeroToInfinity);
+    }
+
+    #[test]
+    fn plan_div_denominator_isolation_with_zero_rhs_guard_marks_division_route() {
+        let mut ctx = Context::new();
+        let den = ctx.var("d");
+        let num = ctx.var("n");
+        let rhs = ctx.var("r");
+
+        let plan =
+            plan_div_denominator_isolation_with_zero_rhs_guard(&mut ctx, den, num, rhs, RelOp::Eq);
+
+        assert_eq!(plan.equation.lhs, den);
+        assert_eq!(plan.route, DivDenominatorIsolationRoute::DivisionRewrite);
     }
 
     #[test]

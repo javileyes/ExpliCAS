@@ -15,10 +15,11 @@ use cas_solver_core::solve_outcome::{
     build_division_denominator_didactic_steps_with,
     build_division_denominator_sign_split_steps_with,
     build_isolated_denominator_sign_split_steps_with, plan_add_operand_isolation_step_with,
-    plan_div_numerator_isolation_step_with, plan_division_denominator_didactic,
-    plan_division_denominator_sign_split, plan_isolated_denominator_sign_split,
-    plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split,
-    plan_sub_minuend_isolation_step_with, plan_sub_subtrahend_isolation_step_with,
+    plan_div_denominator_isolation_with_zero_rhs_guard, plan_div_numerator_isolation_step_with,
+    plan_division_denominator_didactic, plan_division_denominator_sign_split,
+    plan_isolated_denominator_sign_split, plan_mul_factor_isolation_step_with,
+    plan_product_zero_inequality_split, plan_sub_minuend_isolation_step_with,
+    plan_sub_subtrahend_isolation_step_with, DivDenominatorIsolationRoute,
 };
 
 use super::{isolate, prepend_steps};
@@ -473,17 +474,17 @@ pub(super) fn isolate_div(
             }
         }
 
-        let (isolated_eq, isolation_kind) =
-            cas_solver_core::equation_rewrite::isolate_div_denominator_with_zero_rhs_guard(
-                &mut simplifier.context,
-                r,
-                l,
-                rhs,
-                op.clone(),
-            );
+        let isolation_plan = plan_div_denominator_isolation_with_zero_rhs_guard(
+            &mut simplifier.context,
+            r,
+            l,
+            rhs,
+            op.clone(),
+        );
+        let isolated_eq = isolation_plan.equation;
         let sim_rhs = if matches!(
-            isolation_kind,
-            cas_solver_core::equation_rewrite::DivDenominatorIsolationKind::RhsZeroToInfinity
+            isolation_plan.route,
+            DivDenominatorIsolationRoute::RhsZeroToInfinity
         ) {
             isolated_eq.rhs
         } else {
