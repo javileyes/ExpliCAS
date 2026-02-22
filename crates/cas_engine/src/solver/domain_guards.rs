@@ -18,7 +18,9 @@ use crate::helpers::prove_positive;
 use crate::semantics::ValueDomain;
 use crate::solver::proof_bridge::proof_to_status;
 use crate::solver::SolverOptions;
-use cas_solver_core::log_domain::{DomainModeKind, LogSolveDecision, ProofStatus};
+use cas_solver_core::log_domain::{
+    classify_log_solve_for_value_domain, DomainModeKind, LogSolveDecision, ProofStatus,
+};
 
 /// Classify whether a logarithmic solve step (for `base^x = rhs`) is valid.
 ///
@@ -40,12 +42,6 @@ pub(crate) fn classify_log_solve(
     opts: &SolverOptions,
     env: &super::SolveDomainEnv,
 ) -> LogSolveDecision {
-    // Only applies to RealOnly mode
-    // In Complex mode, this PR doesn't decide multi-valued branches
-    if opts.value_domain != ValueDomain::RealOnly {
-        return LogSolveDecision::Ok;
-    }
-
     let mode = opts.domain_mode;
     let vd = opts.value_domain;
 
@@ -65,7 +61,8 @@ pub(crate) fn classify_log_solve(
         proof_to_status(prove_positive(ctx, rhs, vd))
     };
 
-    cas_solver_core::log_domain::classify_log_solve_with_env(
+    classify_log_solve_for_value_domain(
+        opts.value_domain == ValueDomain::RealOnly,
         to_core_domain_mode(mode),
         base_in_env,
         rhs_in_env,

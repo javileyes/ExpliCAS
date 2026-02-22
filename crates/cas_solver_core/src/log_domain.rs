@@ -266,6 +266,24 @@ pub fn classify_log_solve_with_env(
     classify_log_solve_by_proofs(mode, effective_base, effective_rhs)
 }
 
+/// Classify a log-solve step taking value-domain gating into account.
+///
+/// When not operating in real-only mode, logarithmic rewrite checks are skipped
+/// and the caller may proceed (multi-valued complex handling is outside this policy).
+pub fn classify_log_solve_for_value_domain(
+    value_domain_is_real_only: bool,
+    mode: DomainModeKind,
+    base_in_env: bool,
+    rhs_in_env: bool,
+    base_proof: ProofStatus,
+    rhs_proof: ProofStatus,
+) -> LogSolveDecision {
+    if !value_domain_is_real_only {
+        return LogSolveDecision::Ok;
+    }
+    classify_log_solve_with_env(mode, base_in_env, rhs_in_env, base_proof, rhs_proof)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -478,5 +496,31 @@ mod tests {
             ProofStatus::Proven,
         );
         assert!(matches!(out, LogSolveDecision::NeedsComplex(_)));
+    }
+
+    #[test]
+    fn classify_log_solve_for_value_domain_skips_checks_when_not_real_only() {
+        let out = classify_log_solve_for_value_domain(
+            false,
+            DomainModeKind::Generic,
+            false,
+            false,
+            ProofStatus::Disproven,
+            ProofStatus::Disproven,
+        );
+        assert_eq!(out, LogSolveDecision::Ok);
+    }
+
+    #[test]
+    fn classify_log_solve_for_value_domain_uses_real_policy_when_enabled() {
+        let out = classify_log_solve_for_value_domain(
+            true,
+            DomainModeKind::Generic,
+            false,
+            false,
+            ProofStatus::Proven,
+            ProofStatus::Disproven,
+        );
+        assert!(matches!(out, LogSolveDecision::EmptySet(_)));
     }
 }
