@@ -189,19 +189,25 @@ fn isolate_log(
         )
     })?;
 
-    let base_desc = format!(
-        "{}",
-        cas_formatter::DisplayExpr {
-            context: &simplifier.context,
-            id: base
-        }
+    let log_step = cas_solver_core::log_isolation::build_log_isolation_step_with(
+        plan,
+        base,
+        op.clone(),
+        |id| {
+            format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id
+                }
+            )
+        },
     );
-    let description = plan.step_description(&base_desc);
-    let new_eq = plan.into_equation(op.clone());
+    let new_eq = log_step.equation_after.clone();
     if simplifier.collect_steps() {
         steps.push(SolveStep {
-            description,
-            equation_after: new_eq.clone(),
+            description: log_step.description,
+            equation_after: log_step.equation_after,
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });

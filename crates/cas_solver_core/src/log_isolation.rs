@@ -1,6 +1,13 @@
 use crate::isolation_utils::contains_var;
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp};
 
+/// Didactic payload for one logarithm isolation rewrite.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LogIsolationStep {
+    pub description: String,
+    pub equation_after: Equation,
+}
+
 /// Planned transformation for isolating a logarithmic equation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogIsolationPlan {
@@ -28,6 +35,23 @@ impl LogIsolationPlan {
             }
             Self::SolveBase { .. } => "Isolate base of logarithm".to_string(),
         }
+    }
+}
+
+/// Build display-ready step payload for a logarithm isolation plan.
+pub fn build_log_isolation_step_with<F>(
+    plan: LogIsolationPlan,
+    base: ExprId,
+    op: RelOp,
+    mut render_expr: F,
+) -> LogIsolationStep
+where
+    F: FnMut(ExprId) -> String,
+{
+    let base_desc = render_expr(base);
+    LogIsolationStep {
+        description: plan.step_description(&base_desc),
+        equation_after: plan.into_equation(op),
     }
 }
 
@@ -153,5 +177,19 @@ mod tests {
         let rhs = ctx.var("y");
         let msg = LogIsolationPlan::SolveBase { lhs, rhs }.step_description("ignored");
         assert_eq!(msg, "Isolate base of logarithm");
+    }
+
+    #[test]
+    fn build_log_isolation_step_with_uses_rendered_base_and_equation() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("x");
+        let rhs = ctx.var("y");
+        let base = ctx.var("b");
+        let plan = LogIsolationPlan::SolveArgument { lhs, rhs };
+        let step = build_log_isolation_step_with(plan, base, RelOp::Eq, |_| "b".to_string());
+        assert_eq!(step.description, "Exponentiate both sides with base b");
+        assert_eq!(step.equation_after.lhs, lhs);
+        assert_eq!(step.equation_after.rhs, rhs);
+        assert_eq!(step.equation_after.op, RelOp::Eq);
     }
 }
