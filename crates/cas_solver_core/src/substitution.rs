@@ -52,7 +52,7 @@ pub fn collect_substitution_intro_execution_items(
         .into_iter()
         .map(|didactic| SubstitutionExecutionItem {
             equation: didactic.equation_after.clone(),
-            didactic,
+            description: didactic.description,
         })
         .collect()
 }
@@ -69,13 +69,13 @@ pub struct ExponentialSubstitutionExecutionPlan {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SubstitutionExecutionItem {
     pub equation: Equation,
-    pub didactic: SubstitutionDidacticStep,
+    pub description: String,
 }
 
 impl SubstitutionExecutionItem {
     /// User-facing narration for this execution item.
     pub fn description(&self) -> &str {
-        &self.didactic.description
+        &self.description
     }
 }
 
@@ -96,13 +96,13 @@ pub struct BackSubstitutionExecutionPlan {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BackSubstitutionExecutionItem {
     pub equation: Equation,
-    pub didactic: SubstitutionDidacticStep,
+    pub description: String,
 }
 
 impl BackSubstitutionExecutionItem {
     /// User-facing narration for this execution item.
     pub fn description(&self) -> &str {
-        &self.didactic.description
+        &self.description
     }
 }
 
@@ -116,7 +116,10 @@ pub fn collect_back_substitution_execution_items(
         .iter()
         .cloned()
         .zip(execution.didactic.iter().cloned())
-        .map(|(equation, didactic)| BackSubstitutionExecutionItem { equation, didactic })
+        .map(|(equation, didactic)| BackSubstitutionExecutionItem {
+            equation,
+            description: didactic.description,
+        })
         .collect()
 }
 
@@ -881,12 +884,12 @@ mod tests {
             items[0].equation,
             execution.didactic.detected.equation_after
         );
-        assert_eq!(items[0].didactic, execution.didactic.detected);
+        assert_eq!(items[0].description, execution.didactic.detected.description);
         assert_eq!(
             items[1].equation,
             execution.didactic.rewritten.equation_after
         );
-        assert_eq!(items[1].didactic, execution.didactic.rewritten);
+        assert_eq!(items[1].description, execution.didactic.rewritten.description);
     }
 
     #[test]
@@ -925,8 +928,8 @@ mod tests {
         let items = collect_back_substitution_execution_items(&execution);
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].equation, execution.equations[0]);
-        assert_eq!(items[0].didactic, execution.didactic[0]);
+        assert_eq!(items[0].description, execution.didactic[0].description);
         assert_eq!(items[1].equation, execution.equations[1]);
-        assert_eq!(items[1].didactic, execution.didactic[1]);
+        assert_eq!(items[1].description, execution.didactic[1].description);
     }
 }

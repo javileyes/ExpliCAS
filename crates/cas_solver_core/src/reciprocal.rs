@@ -143,13 +143,13 @@ pub struct ReciprocalSolveExecution {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReciprocalExecutionItem {
     pub equation: Equation,
-    pub didactic: ReciprocalDidacticStep,
+    pub description: String,
 }
 
 impl ReciprocalExecutionItem {
     /// User-facing narration for this execution item.
     pub fn description(&self) -> &str {
-        &self.didactic.description
+        &self.description
     }
 }
 
@@ -170,11 +170,11 @@ pub fn collect_reciprocal_execution_items(
     vec![
         ReciprocalExecutionItem {
             equation: execution.combine_step.equation_after.clone(),
-            didactic: execution.combine_step.clone(),
+            description: execution.combine_step.description.clone(),
         },
         ReciprocalExecutionItem {
             equation: execution.invert_step.equation_after.clone(),
-            didactic: execution.invert_step.clone(),
+            description: execution.invert_step.description.clone(),
         },
     ]
 }
@@ -491,7 +491,7 @@ mod tests {
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].equation, execution.combine_step.equation_after);
         assert_eq!(items[1].equation, execution.invert_step.equation_after);
-        assert_eq!(items[0].didactic, execution.combine_step);
-        assert_eq!(items[1].didactic, execution.invert_step);
+        assert_eq!(items[0].description, execution.combine_step.description);
+        assert_eq!(items[1].description, execution.invert_step.description);
     }
 }

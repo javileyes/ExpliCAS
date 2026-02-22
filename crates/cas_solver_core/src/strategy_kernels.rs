@@ -19,13 +19,13 @@ pub struct StrategyDidacticStep {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StrategyExecutionItem {
     pub equation: Equation,
-    pub didactic: StrategyDidacticStep,
+    pub description: String,
 }
 
 impl StrategyExecutionItem {
     /// User-facing narration for this execution item.
     pub fn description(&self) -> &str {
-        &self.didactic.description
+        &self.description
     }
 }
 
@@ -49,7 +49,7 @@ pub fn collect_collect_terms_execution_items(
 ) -> Vec<StrategyExecutionItem> {
     vec![StrategyExecutionItem {
         equation: execution.equation.clone(),
-        didactic: execution.didactic.clone(),
+        description: execution.didactic.description.clone(),
     }]
 }
 
@@ -182,7 +182,7 @@ pub fn collect_rational_exponent_execution_items(
 ) -> Vec<StrategyExecutionItem> {
     vec![StrategyExecutionItem {
         equation: execution.equation.clone(),
-        didactic: execution.didactic.clone(),
+        description: execution.didactic.description.clone(),
     }]
 }
 
@@ -339,7 +339,7 @@ mod tests {
         let items = collect_collect_terms_execution_items(&execution);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, execution.equation);
-        assert_eq!(items[0].didactic, execution.didactic);
+        assert_eq!(items[0].description, execution.didactic.description);
     }
 
     #[test]
@@ -386,6 +386,6 @@ mod tests {
         let items = collect_rational_exponent_execution_items(&execution);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, execution.equation);
-        assert_eq!(items[0].didactic, execution.didactic);
+        assert_eq!(items[0].description, execution.didactic.description);
     }
 }

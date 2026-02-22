@@ -18,13 +18,13 @@ pub struct LinearCollectDidacticPair {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LinearCollectExecutionItem {
     pub equation: Equation,
-    pub didactic: LinearCollectDidacticStep,
+    pub description: String,
 }
 
 impl LinearCollectExecutionItem {
     /// User-facing narration for this execution item.
     pub fn description(&self) -> &str {
-        &self.didactic.description
+        &self.description
     }
 }
 
@@ -43,7 +43,7 @@ pub fn collect_linear_collect_execution_items(
         .into_iter()
         .map(|didactic| LinearCollectExecutionItem {
             equation: didactic.equation_after.clone(),
-            didactic,
+            description: didactic.description,
         })
         .collect()
 }
@@ -342,12 +342,13 @@ mod tests {
             build_linear_collect_factored_steps_with(&mut ctx, "x", coef, rhs, solution, |_, _| {
                 "expr".into()
             });
+        let didactic = collect_linear_collect_didactic_steps(pair.clone());
 
         let items = collect_linear_collect_execution_items(pair);
         assert_eq!(items.len(), 2);
-        assert_eq!(items[0].equation, items[0].didactic.equation_after);
-        assert_eq!(items[1].equation, items[1].didactic.equation_after);
-        assert!(items[0].didactic.description.contains("Collect terms"));
-        assert!(items[1].didactic.description.contains("Divide"));
+        assert_eq!(items[0].equation, didactic[0].equation_after);
+        assert_eq!(items[1].equation, didactic[1].equation_after);
+        assert_eq!(items[0].description, didactic[0].description);
+        assert_eq!(items[1].description, didactic[1].description);
     }
 }

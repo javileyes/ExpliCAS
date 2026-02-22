@@ -38,13 +38,13 @@ pub struct UnaryInverseIsolationStepPlan {
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnaryInverseExecutionItem {
     pub equation: Equation,
-    pub didactic: UnaryInverseDidacticStep,
+    pub description: String,
 }
 
 impl UnaryInverseExecutionItem {
     /// User-facing narration for this execution item.
     pub fn description(&self) -> &str {
-        &self.didactic.description
+        &self.description
     }
 }
 
@@ -63,7 +63,7 @@ pub fn collect_unary_inverse_execution_items(
         .into_iter()
         .map(|didactic| UnaryInverseExecutionItem {
             equation: didactic.equation_after.clone(),
-            didactic,
+            description: didactic.description,
         })
         .collect()
 }
@@ -79,13 +79,13 @@ pub struct RhsSimplificationDidacticStep {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RhsSimplificationExecutionItem {
     pub equation: Equation,
-    pub didactic: RhsSimplificationDidacticStep,
+    pub description: String,
 }
 
 impl RhsSimplificationExecutionItem {
     /// User-facing narration for this execution item.
     pub fn description(&self) -> &str {
-        &self.didactic.description
+        &self.description
     }
 }
 
@@ -297,7 +297,7 @@ pub fn collect_rhs_simplification_execution_items(
         .cloned()
         .map(|didactic| RhsSimplificationExecutionItem {
             equation: didactic.equation_after.clone(),
-            didactic,
+            description: didactic.description,
         })
         .collect()
 }
@@ -529,7 +529,7 @@ mod tests {
         let items = collect_unary_inverse_execution_items(&plan);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, plan.equation);
-        assert_eq!(items[0].didactic, plan.step);
+        assert_eq!(items[0].description, plan.step.description);
     }
 
     #[test]
@@ -592,9 +592,9 @@ mod tests {
         let items = collect_rhs_simplification_execution_items(&out);
 
         assert_eq!(items.len(), 2);
-        assert_eq!(items[0].didactic.description, "step-1");
+        assert_eq!(items[0].description, "step-1");
         assert_eq!(items[0].equation, out[0].equation_after);
-        assert_eq!(items[1].didactic.description, "step-2");
+        assert_eq!(items[1].description, "step-2");
         assert_eq!(items[1].equation, out[1].equation_after);
     }
 
@@ -612,10 +612,10 @@ mod tests {
         );
 
         assert_eq!(items.len(), 2);
-        assert_eq!(items[0].didactic.description, "step-1");
+        assert_eq!(items[0].description, "step-1");
         assert_eq!(items[0].equation.lhs, x);
         assert_eq!(items[0].equation.rhs, y);
-        assert_eq!(items[1].didactic.description, "step-2");
+        assert_eq!(items[1].description, "step-2");
         assert_eq!(items[1].equation.lhs, x);
         assert_eq!(items[1].equation.rhs, z);
     }

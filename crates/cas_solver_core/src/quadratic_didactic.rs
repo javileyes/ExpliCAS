@@ -31,13 +31,13 @@ pub struct QuadraticDidacticStep {
 #[derive(Debug, Clone, PartialEq)]
 pub struct QuadraticExecutionItem {
     pub equation: Equation,
-    pub didactic: QuadraticDidacticStep,
+    pub description: String,
 }
 
 impl QuadraticExecutionItem {
     /// User-facing narration for this execution item.
     pub fn description(&self) -> &str {
-        &self.didactic.description
+        &self.description
     }
 }
 
@@ -71,7 +71,7 @@ pub fn collect_zero_product_factor_item_execution_items(
         .into_iter()
         .map(|didactic| QuadraticExecutionItem {
             equation: item.equation.clone(),
-            didactic,
+            description: didactic.description,
         })
         .collect()
 }
@@ -208,7 +208,7 @@ pub fn collect_factorized_zero_product_entry_execution_items(
         .into_iter()
         .map(|didactic| QuadraticExecutionItem {
             equation: didactic.equation_after.clone(),
-            didactic,
+            description: didactic.description,
         })
         .collect()
 }
@@ -236,7 +236,7 @@ pub fn collect_quadratic_main_execution_items(
         .into_iter()
         .map(|didactic| QuadraticExecutionItem {
             equation: didactic.equation_after.clone(),
-            didactic,
+            description: didactic.description,
         })
         .collect()
 }
@@ -784,10 +784,7 @@ mod tests {
         let items = collect_zero_product_factor_item_execution_items(&item);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, item.equation);
-        assert_eq!(
-            items[0].didactic.description,
-            "Solve factor: f = 0".to_string()
-        );
+        assert_eq!(items[0].description, "Solve factor: f = 0".to_string());
     }
 
     #[test]
@@ -831,7 +828,7 @@ mod tests {
         let items = collect_factorized_zero_product_entry_execution_items(&execution);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, execution.entry.equation_after);
-        assert_eq!(items[0].didactic, execution.entry);
+        assert_eq!(items[0].description, execution.entry.description);
     }
 
     #[test]
@@ -861,6 +858,6 @@ mod tests {
         let items = collect_quadratic_main_execution_items(&step);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, step.equation_after);
-        assert_eq!(items[0].didactic, step);
+        assert_eq!(items[0].description, step.description);
     }
 }

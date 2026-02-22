@@ -123,13 +123,13 @@ pub struct PowExponentShortcutDidacticStep {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowExponentShortcutExecutionItem {
     pub equation: Equation,
-    pub didactic: PowExponentShortcutDidacticStep,
+    pub description: String,
 }
 
 impl PowExponentShortcutExecutionItem {
     /// User-facing narration for this execution item.
     pub fn description(&self) -> &str {
-        &self.didactic.description
+        &self.description
     }
 }
 
@@ -168,7 +168,7 @@ pub fn collect_pow_exponent_shortcut_execution_items(
         .into_iter()
         .map(|didactic| PowExponentShortcutExecutionItem {
             equation: didactic.equation_after.clone(),
-            didactic,
+            description: didactic.description,
         })
         .collect()
 }
@@ -184,13 +184,13 @@ pub struct PowerBaseOneShortcutOutcome {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowerBaseOneShortcutExecutionItem {
     pub equation: Equation,
-    pub didactic: PowExponentShortcutDidacticStep,
+    pub description: String,
 }
 
 impl PowerBaseOneShortcutExecutionItem {
     /// User-facing narration for this execution item.
     pub fn description(&self) -> &str {
-        &self.didactic.description
+        &self.description
     }
 }
 
@@ -209,7 +209,7 @@ pub fn collect_power_base_one_shortcut_execution_items(
         .into_iter()
         .map(|didactic| PowerBaseOneShortcutExecutionItem {
             equation: didactic.equation_after.clone(),
-            didactic,
+            description: didactic.description,
         })
         .collect()
 }
@@ -232,13 +232,13 @@ pub struct PowExponentLogIsolationRewritePlan {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowExponentLogIsolationExecutionItem {
     pub equation: Equation,
-    pub didactic: PowExponentLogIsolationStep,
+    pub description: String,
 }
 
 impl PowExponentLogIsolationExecutionItem {
     /// User-facing narration for this execution item.
     pub fn description(&self) -> &str {
-        &self.didactic.description
+        &self.description
     }
 }
 
@@ -257,7 +257,7 @@ pub fn collect_pow_exponent_log_isolation_execution_items(
         .into_iter()
         .map(|didactic| PowExponentLogIsolationExecutionItem {
             equation: didactic.equation_after.clone(),
-            didactic,
+            description: didactic.description,
         })
         .collect()
 }
@@ -317,13 +317,13 @@ pub struct PowBaseIsolationDidacticStep {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowBaseIsolationExecutionItem {
     pub equation: Equation,
-    pub didactic: PowBaseIsolationDidacticStep,
+    pub description: String,
 }
 
 impl PowBaseIsolationExecutionItem {
     /// User-facing narration for this execution item.
     pub fn description(&self) -> &str {
-        &self.didactic.description
+        &self.description
     }
 }
 
@@ -359,7 +359,7 @@ pub fn collect_pow_base_isolation_execution_items(
         .into_iter()
         .map(|didactic| PowBaseIsolationExecutionItem {
             equation: didactic.equation_after.clone(),
-            didactic,
+            description: didactic.description,
         })
         .collect()
 }
@@ -1158,13 +1158,13 @@ pub struct TermIsolationRewritePlan {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TermIsolationRewriteExecutionItem {
     pub equation: Equation,
-    pub didactic: TermIsolationDidacticStep,
+    pub description: String,
 }
 
 impl TermIsolationRewriteExecutionItem {
     /// User-facing narration for this execution item.
     pub fn description(&self) -> &str {
-        &self.didactic.description
+        &self.description
     }
 }
 
@@ -1183,7 +1183,7 @@ pub fn collect_term_isolation_rewrite_execution_items(
         .into_iter()
         .map(|didactic| TermIsolationRewriteExecutionItem {
             equation: didactic.equation_after.clone(),
-            didactic,
+            description: didactic.description,
         })
         .collect()
 }
@@ -1448,13 +1448,13 @@ pub struct DivisionCaseDidacticStep {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DivisionDidacticExecutionItem {
     pub equation: Equation,
-    pub didactic: DivisionCaseDidacticStep,
+    pub description: String,
 }
 
 impl DivisionDidacticExecutionItem {
     /// User-facing narration for this execution item.
     pub fn description(&self) -> &str {
-        &self.didactic.description
+        &self.description
     }
 }
 
@@ -1487,7 +1487,7 @@ pub fn collect_division_denominator_sign_split_execution_items(
         .into_iter()
         .map(|didactic| DivisionDidacticExecutionItem {
             equation: didactic.equation_after.clone(),
-            didactic,
+            description: didactic.description,
         })
         .collect()
 }
@@ -1501,7 +1501,7 @@ pub fn collect_isolated_denominator_sign_split_execution_items(
         .into_iter()
         .map(|didactic| DivisionDidacticExecutionItem {
             equation: didactic.equation_after.clone(),
-            didactic,
+            description: didactic.description,
         })
         .collect()
 }
@@ -1675,13 +1675,13 @@ pub fn collect_term_isolation_didactic_steps(
 #[derive(Debug, Clone, PartialEq)]
 pub struct TermIsolationExecutionItem {
     pub equation: Equation,
-    pub didactic: TermIsolationDidacticStep,
+    pub description: String,
 }
 
 impl TermIsolationExecutionItem {
     /// User-facing narration for this execution item.
     pub fn description(&self) -> &str {
-        &self.didactic.description
+        &self.description
     }
 }
 
@@ -1693,7 +1693,7 @@ pub fn collect_term_isolation_execution_items(
         .into_iter()
         .map(|didactic| TermIsolationExecutionItem {
             equation: didactic.equation_after.clone(),
-            didactic,
+            description: didactic.description,
         })
         .collect()
 }
@@ -2157,7 +2157,7 @@ pub fn collect_division_denominator_execution_items(
         .into_iter()
         .map(|didactic| DivisionDidacticExecutionItem {
             equation: didactic.equation_after.clone(),
-            didactic,
+            description: didactic.description,
         })
         .collect()
 }
@@ -2524,13 +2524,13 @@ pub fn collect_abs_split_didactic_steps(
 #[derive(Debug, Clone, PartialEq)]
 pub struct AbsSplitExecutionItem {
     pub equation: Equation,
-    pub didactic: AbsSplitDidacticStep,
+    pub description: String,
 }
 
 impl AbsSplitExecutionItem {
     /// User-facing narration for this execution item.
     pub fn description(&self) -> &str {
-        &self.didactic.description
+        &self.description
     }
 }
 
@@ -2543,7 +2543,7 @@ pub fn collect_abs_split_execution_items(
         .into_iter()
         .map(|didactic| AbsSplitExecutionItem {
             equation: didactic.equation_after.clone(),
-            didactic,
+            description: didactic.description,
         })
         .collect()
 }
@@ -2909,7 +2909,7 @@ mod tests {
         let items = collect_power_base_one_shortcut_execution_items(&outcome);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, outcome.step.equation_after);
-        assert_eq!(items[0].didactic, outcome.step);
+        assert_eq!(items[0].description, outcome.step.description);
     }
 
     #[test]
@@ -3157,12 +3157,12 @@ mod tests {
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].equation, execution.positive_equation);
         assert_eq!(
-            items[0].didactic.description,
+            items[0].description,
             "Split absolute value (Case 1): x = 2"
         );
         assert_eq!(items[1].equation, execution.negative_equation);
         assert_eq!(
-            items[1].didactic.description,
+            items[1].description,
             "Split absolute value (Case 2): x = -2"
         );
     }
@@ -4126,9 +4126,8 @@ mod tests {
 
         let items = collect_pow_base_isolation_execution_items(&action);
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].equation, items[0].didactic.equation_after);
+        assert_eq!(items[0].equation, items[0].equation);
         assert!(items[0]
-            .didactic
             .description
             .contains("Even power cannot be negative"));
     }
@@ -4194,8 +4193,8 @@ mod tests {
         );
         let items = collect_pow_exponent_shortcut_execution_items(&action);
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].equation, items[0].didactic.equation_after);
-        assert!(items[0].didactic.description.contains("expr"));
+        assert_eq!(items[0].equation, items[0].equation);
+        assert!(items[0].description.contains("expr"));
     }
 
     #[test]
@@ -4448,7 +4447,7 @@ mod tests {
         let items = collect_term_isolation_rewrite_execution_items(&plan);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, plan.equation);
-        assert_eq!(items[0].didactic, plan.step);
+        assert_eq!(items[0].description, plan.step.description);
     }
 
     #[test]
@@ -4698,9 +4697,9 @@ mod tests {
 
         let items = collect_division_denominator_didactic_execution_items(&execution);
         assert_eq!(items.len(), 2);
-        assert_eq!(items[0].didactic.description, "Multiply both sides by d");
+        assert_eq!(items[0].description, "Multiply both sides by d");
         assert_eq!(items[0].equation, execution.multiply_equation);
-        assert_eq!(items[1].didactic.description, "Divide both sides by r");
+        assert_eq!(items[1].description, "Divide both sides by r");
         assert_eq!(items[1].equation, execution.divide_equation);
     }
 
@@ -4888,7 +4887,7 @@ mod tests {
         let items = collect_term_isolation_execution_items(&step);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, step.equation_after);
-        assert_eq!(items[0].didactic, step);
+        assert_eq!(items[0].description, step.description);
     }
 
     #[test]
@@ -4983,7 +4982,7 @@ mod tests {
         let items = collect_pow_exponent_log_isolation_execution_items(&plan);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, plan.equation);
-        assert_eq!(items[0].didactic, plan.step);
+        assert_eq!(items[0].description, plan.step.description);
     }
 
     #[test]
@@ -5056,16 +5055,16 @@ mod tests {
         let items = collect_division_denominator_sign_split_execution_items(&exec);
         assert_eq!(items.len(), 3);
         assert_eq!(
-            items[0].didactic.description,
+            items[0].description,
             "Case 1: Assume d > 0. Multiply by positive denominator."
         );
         assert_eq!(items[0].equation, exec.positive_equation);
         assert_eq!(
-            items[1].didactic.description,
+            items[1].description,
             "Case 2: Assume d < 0. Multiply by negative denominator (flips inequality)."
         );
         assert_eq!(items[1].equation, exec.negative_equation);
-        assert_eq!(items[2].didactic.description, "--- End of Case 1 ---");
+        assert_eq!(items[2].description, "--- End of Case 1 ---");
     }
 
     #[test]
@@ -5161,16 +5160,16 @@ mod tests {
         let items = collect_isolated_denominator_sign_split_execution_items(&exec);
         assert_eq!(items.len(), 3);
         assert_eq!(
-            items[0].didactic.description,
+            items[0].description,
             "Case 1: Assume x > 0. Multiply by x (positive). Inequality direction preserved (flipped from isolation logic)."
         );
         assert_eq!(items[0].equation, exec.positive_equation);
         assert_eq!(
-            items[1].didactic.description,
+            items[1].description,
             "Case 2: Assume x < 0. Multiply by x (negative). Inequality flips."
         );
         assert_eq!(items[1].equation, exec.negative_equation);
-        assert_eq!(items[2].didactic.description, "--- End of Case 1 ---");
+        assert_eq!(items[2].description, "--- End of Case 1 ---");
     }
 
     #[test]

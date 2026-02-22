@@ -19,13 +19,13 @@ pub struct LogIsolationRewritePlan {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LogIsolationExecutionItem {
     pub equation: Equation,
-    pub didactic: LogIsolationStep,
+    pub description: String,
 }
 
 impl LogIsolationExecutionItem {
     /// User-facing narration for this execution item.
     pub fn description(&self) -> &str {
-        &self.didactic.description
+        &self.description
     }
 }
 
@@ -44,7 +44,7 @@ pub fn collect_log_isolation_execution_items(
         .into_iter()
         .map(|didactic| LogIsolationExecutionItem {
             equation: didactic.equation_after.clone(),
-            didactic,
+            description: didactic.description,
         })
         .collect()
 }
@@ -330,6 +330,6 @@ mod tests {
         let items = collect_log_isolation_execution_items(&out);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, out.equation);
-        assert_eq!(items[0].didactic, out.step);
+        assert_eq!(items[0].description, out.step.description);
     }
 }

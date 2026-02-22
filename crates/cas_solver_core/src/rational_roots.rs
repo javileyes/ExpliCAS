@@ -354,13 +354,13 @@ pub struct RationalRootsDidacticStep {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RationalRootsExecutionItem {
     pub equation: Equation,
-    pub didactic: RationalRootsDidacticStep,
+    pub description: String,
 }
 
 impl RationalRootsExecutionItem {
     /// User-facing narration for this execution item.
     pub fn description(&self) -> &str {
-        &self.didactic.description
+        &self.description
     }
 }
 
@@ -406,7 +406,7 @@ pub fn collect_rational_roots_execution_items(
         .into_iter()
         .map(|didactic| RationalRootsExecutionItem {
             equation: didactic.equation_after.clone(),
-            didactic,
+            description: didactic.description,
         })
         .collect()
 }
@@ -786,6 +786,6 @@ mod tests {
         let items = collect_rational_roots_execution_items(&step);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, step.equation_after);
-        assert_eq!(items[0].didactic, step);
+        assert_eq!(items[0].description, step.description);
     }
 }

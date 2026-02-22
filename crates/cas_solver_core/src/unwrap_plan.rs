@@ -36,13 +36,13 @@ pub struct UnwrapExecutionPlan {
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnwrapExecutionItem {
     pub equation: Equation,
-    pub didactic: TermIsolationDidacticStep,
+    pub description: String,
 }
 
 impl UnwrapExecutionItem {
     /// User-facing narration for this execution item.
     pub fn description(&self) -> &str {
-        &self.didactic.description
+        &self.description
     }
 }
 
@@ -107,7 +107,7 @@ pub fn collect_unwrap_execution_items(execution: &UnwrapExecutionPlan) -> Vec<Un
         .into_iter()
         .map(|didactic| UnwrapExecutionItem {
             equation: didactic.equation_after.clone(),
-            didactic,
+            description: didactic.description,
         })
         .collect()
 }
@@ -305,7 +305,6 @@ mod tests {
         let items = collect_unwrap_execution_items(&execution);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, execution.equation);
-        assert_eq!(items[0].didactic.description, "unwrap");
-        assert_eq!(items[0].didactic.equation_after, execution.equation);
+        assert_eq!(items[0].description, "unwrap");
     }
 }
