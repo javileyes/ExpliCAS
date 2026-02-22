@@ -12,13 +12,12 @@ use cas_solver_core::solution_set::{
     intersect_solution_sets, open_negative_domain, open_positive_domain, union_solution_sets,
 };
 use cas_solver_core::solve_outcome::{
-    add_both_sides_message, build_division_denominator_sign_split_steps_with,
-    build_division_denominator_didactic_steps_with,
-    build_isolated_denominator_sign_split_steps_with, divide_both_sides_message,
-    move_and_flip_message, multiply_both_sides_message,
+    build_add_operand_isolation_step_with, build_div_numerator_isolation_step_with,
+    build_division_denominator_didactic_steps_with, build_division_denominator_sign_split_steps_with,
+    build_isolated_denominator_sign_split_steps_with, build_mul_factor_isolation_step_with,
+    build_sub_minuend_isolation_step_with, build_sub_subtrahend_isolation_step_with,
     plan_division_denominator_didactic, plan_division_denominator_sign_split,
     plan_isolated_denominator_sign_split, plan_product_zero_inequality_split,
-    subtract_both_sides_message,
 };
 
 use super::{isolate, prepend_steps};
@@ -63,16 +62,18 @@ pub(super) fn isolate_add(
         );
         let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
         if simplifier.collect_steps() {
-            let r_desc = format!(
-                "{}",
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: r
-                }
-            );
+            let step_payload = build_add_operand_isolation_step_with(new_eq.clone(), r, |id| {
+                format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id
+                    }
+                )
+            });
             steps.push(SolveStep {
-                description: subtract_both_sides_message(&r_desc),
-                equation_after: new_eq.clone(),
+                description: step_payload.description,
+                equation_after: step_payload.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -90,16 +91,18 @@ pub(super) fn isolate_add(
         );
         let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
         if simplifier.collect_steps() {
-            let l_desc = format!(
-                "{}",
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: l
-                }
-            );
+            let step_payload = build_add_operand_isolation_step_with(new_eq.clone(), l, |id| {
+                format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id
+                    }
+                )
+            });
             steps.push(SolveStep {
-                description: subtract_both_sides_message(&l_desc),
-                equation_after: new_eq.clone(),
+                description: step_payload.description,
+                equation_after: step_payload.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -133,16 +136,18 @@ pub(super) fn isolate_sub(
         );
         let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
         if simplifier.collect_steps() {
-            let r_desc = format!(
-                "{}",
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: r
-                }
-            );
+            let step_payload = build_sub_minuend_isolation_step_with(new_eq.clone(), r, |id| {
+                format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id
+                    }
+                )
+            });
             steps.push(SolveStep {
-                description: add_both_sides_message(&r_desc),
-                equation_after: new_eq.clone(),
+                description: step_payload.description,
+                equation_after: step_payload.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -161,16 +166,18 @@ pub(super) fn isolate_sub(
         let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
         let new_op = new_eq.op.clone();
         if simplifier.collect_steps() {
-            let l_desc = format!(
-                "{}",
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: l
-                }
-            );
+            let step_payload = build_sub_subtrahend_isolation_step_with(new_eq.clone(), l, |id| {
+                format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id
+                    }
+                )
+            });
             steps.push(SolveStep {
-                description: move_and_flip_message(&l_desc),
-                equation_after: new_eq.clone(),
+                description: step_payload.description,
+                equation_after: step_payload.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -239,16 +246,18 @@ pub(super) fn isolate_mul(
         let new_rhs = new_eq.rhs;
         let new_op = new_eq.op.clone();
         if simplifier.collect_steps() {
-            let r_desc = format!(
-                "{}",
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: r
-                }
-            );
+            let step_payload = build_mul_factor_isolation_step_with(new_eq.clone(), r, |id| {
+                format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id
+                    }
+                )
+            });
             steps.push(SolveStep {
-                description: divide_both_sides_message(&r_desc),
-                equation_after: new_eq.clone(),
+                description: step_payload.description,
+                equation_after: step_payload.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -279,16 +288,18 @@ pub(super) fn isolate_mul(
         let new_rhs = new_eq.rhs;
         let new_op = new_eq.op.clone();
         if simplifier.collect_steps() {
-            let l_desc = format!(
-                "{}",
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: l
-                }
-            );
+            let step_payload = build_mul_factor_isolation_step_with(new_eq.clone(), l, |id| {
+                format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id
+                    }
+                )
+            });
             steps.push(SolveStep {
-                description: divide_both_sides_message(&l_desc),
-                equation_after: new_eq.clone(),
+                description: step_payload.description,
+                equation_after: step_payload.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -434,16 +445,19 @@ pub(super) fn isolate_div(
             let new_rhs = new_eq.rhs;
             let new_op = new_eq.op.clone();
             if simplifier.collect_steps() {
-                let r_desc = format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: r
-                    }
-                );
+                let step_payload =
+                    build_div_numerator_isolation_step_with(new_eq.clone(), r, |id| {
+                        format!(
+                            "{}",
+                            cas_formatter::DisplayExpr {
+                                context: &simplifier.context,
+                                id
+                            }
+                        )
+                    });
                 steps.push(SolveStep {
-                    description: multiply_both_sides_message(&r_desc),
-                    equation_after: new_eq.clone(),
+                    description: step_payload.description,
+                    equation_after: step_payload.equation_after,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });

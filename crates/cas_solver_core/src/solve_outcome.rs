@@ -936,6 +936,109 @@ pub fn isolated_denominator_negative_case_message(den_display: &str) -> String {
     )
 }
 
+/// Didactic payload for one term-isolation rewrite step.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TermIsolationDidacticStep {
+    pub description: String,
+    pub equation_after: Equation,
+}
+
+fn build_term_isolation_step_with<F>(
+    equation_after: Equation,
+    moved_term: ExprId,
+    mut render_expr: F,
+    message_builder: fn(&str) -> String,
+) -> TermIsolationDidacticStep
+where
+    F: FnMut(ExprId) -> String,
+{
+    let moved_desc = render_expr(moved_term);
+    TermIsolationDidacticStep {
+        description: message_builder(&moved_desc),
+        equation_after,
+    }
+}
+
+/// Build didactic payload for `A + B = RHS -> A = RHS - B` (or symmetric case).
+pub fn build_add_operand_isolation_step_with<F>(
+    equation_after: Equation,
+    moved_term: ExprId,
+    render_expr: F,
+) -> TermIsolationDidacticStep
+where
+    F: FnMut(ExprId) -> String,
+{
+    build_term_isolation_step_with(
+        equation_after,
+        moved_term,
+        render_expr,
+        subtract_both_sides_message,
+    )
+}
+
+/// Build didactic payload for `A - B = RHS -> A = RHS + B`.
+pub fn build_sub_minuend_isolation_step_with<F>(
+    equation_after: Equation,
+    moved_term: ExprId,
+    render_expr: F,
+) -> TermIsolationDidacticStep
+where
+    F: FnMut(ExprId) -> String,
+{
+    build_term_isolation_step_with(
+        equation_after,
+        moved_term,
+        render_expr,
+        add_both_sides_message,
+    )
+}
+
+/// Build didactic payload for `A - B = RHS -> B = A - RHS`.
+pub fn build_sub_subtrahend_isolation_step_with<F>(
+    equation_after: Equation,
+    moved_term: ExprId,
+    render_expr: F,
+) -> TermIsolationDidacticStep
+where
+    F: FnMut(ExprId) -> String,
+{
+    build_term_isolation_step_with(equation_after, moved_term, render_expr, move_and_flip_message)
+}
+
+/// Build didactic payload for `A * B = RHS -> A = RHS / B` (or symmetric case).
+pub fn build_mul_factor_isolation_step_with<F>(
+    equation_after: Equation,
+    moved_term: ExprId,
+    render_expr: F,
+) -> TermIsolationDidacticStep
+where
+    F: FnMut(ExprId) -> String,
+{
+    build_term_isolation_step_with(
+        equation_after,
+        moved_term,
+        render_expr,
+        divide_both_sides_message,
+    )
+}
+
+/// Build didactic payload for `A / B = RHS -> A = RHS * B`.
+pub fn build_div_numerator_isolation_step_with<F>(
+    equation_after: Equation,
+    moved_term: ExprId,
+    render_expr: F,
+) -> TermIsolationDidacticStep
+where
+    F: FnMut(ExprId) -> String,
+{
+    build_term_isolation_step_with(
+        equation_after,
+        moved_term,
+        render_expr,
+        multiply_both_sides_message,
+    )
+}
+
 /// Didactic payload for one equation step.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DivisionCaseDidacticStep {
@@ -2962,6 +3065,37 @@ mod tests {
             isolated_denominator_negative_case_message("x"),
             "Case 2: Assume x < 0. Multiply by x (negative). Inequality flips."
         );
+    }
+
+    #[test]
+    fn term_isolation_step_builders_use_expected_messages() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let t = ctx.var("t");
+        let eq = Equation {
+            lhs: x,
+            rhs: t,
+            op: RelOp::Eq,
+        };
+
+        let add_step = build_add_operand_isolation_step_with(eq.clone(), t, |_| "t".to_string());
+        assert_eq!(add_step.description, "Subtract t from both sides");
+
+        let sub_step = build_sub_minuend_isolation_step_with(eq.clone(), t, |_| "t".to_string());
+        assert_eq!(sub_step.description, "Add t to both sides");
+
+        let subtrahend_step =
+            build_sub_subtrahend_isolation_step_with(eq.clone(), t, |_| "t".to_string());
+        assert_eq!(
+            subtrahend_step.description,
+            "Move t and multiply by -1 (flips inequality)"
+        );
+
+        let mul_step = build_mul_factor_isolation_step_with(eq.clone(), t, |_| "t".to_string());
+        assert_eq!(mul_step.description, "Divide both sides by t");
+
+        let div_step = build_div_numerator_isolation_step_with(eq.clone(), t, |_| "t".to_string());
+        assert_eq!(div_step.description, "Multiply both sides by t");
     }
 
     #[test]
