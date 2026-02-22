@@ -6,6 +6,7 @@
 use super::SolveDiagnostics;
 use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
+use cas_solver_core::solve_outcome::eliminate_rational_exponent_message;
 
 use crate::engine::Simplifier;
 use crate::error::CasError;
@@ -535,11 +536,9 @@ fn try_solve_rational_exponent(
     };
 
     if simplifier.collect_steps() {
+        let q_desc = q.to_string();
         steps.push(SolveStep {
-            description: format!(
-                "Raise both sides to power {} to eliminate rational exponent",
-                q
-            ),
+            description: eliminate_rational_exponent_message(&q_desc),
             equation_after: new_eq.clone(),
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],

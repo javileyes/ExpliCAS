@@ -721,6 +721,14 @@ pub fn eliminate_fractional_exponent_message(q_display: &str) -> String {
     )
 }
 
+/// Build narration for eliminating rational exponents by powering both sides.
+pub fn eliminate_rational_exponent_message(q_display: &str) -> String {
+    format!(
+        "Raise both sides to power {} to eliminate rational exponent",
+        q_display
+    )
+}
+
 /// Build a residual solution set `solve(__eq__(lhs, rhs), var)`.
 pub fn residual_solution_set(
     ctx: &mut Context,
@@ -2188,6 +2196,10 @@ mod tests {
         assert_eq!(
             eliminate_fractional_exponent_message("3"),
             "Raise both sides to power 3 to eliminate fractional exponent"
+        );
+        assert_eq!(
+            eliminate_rational_exponent_message("3"),
+            "Raise both sides to power 3 to eliminate rational exponent"
         );
     }
 
