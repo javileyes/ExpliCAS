@@ -13,7 +13,8 @@ use cas_ast::{Expr, ExprId, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::linear_didactic::{
     build_linear_collect_additive_equation, build_linear_collect_factored_equation,
-    build_linear_collect_solution_equation, linear_collect_divide_message,
+    build_linear_collect_solution_equation, linear_collect_collect_message,
+    linear_collect_divide_message,
     linear_collect_factored_message,
 };
 use cas_solver_core::linear_solution::{build_linear_solution_set, derive_linear_nonzero_statuses};
@@ -191,7 +192,7 @@ pub(crate) fn try_linear_collect_v2(
         );
 
         steps.push(SolveStep {
-            description: format!("Collect terms in {}", var),
+            description: linear_collect_collect_message(var),
             equation_after: build_linear_collect_additive_equation(
                 &mut simplifier.context,
                 var,

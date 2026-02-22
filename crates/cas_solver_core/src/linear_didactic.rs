@@ -22,6 +22,11 @@ pub fn linear_collect_divide_message(coeff_display: &str, mention_both_sides: bo
     }
 }
 
+/// Build narration for the additive collect step before division.
+pub fn linear_collect_collect_message(var: &str) -> String {
+    format!("Collect terms in {}", var)
+}
+
 /// Build equation `coef * var = rhs`.
 pub fn build_linear_collect_factored_equation(
     ctx: &mut Context,
@@ -83,6 +88,11 @@ mod tests {
             "Divide both sides by k"
         );
         assert_eq!(linear_collect_divide_message("k", false), "Divide by k");
+    }
+
+    #[test]
+    fn linear_collect_collect_message_formats_expected_text() {
+        assert_eq!(linear_collect_collect_message("x"), "Collect terms in x");
     }
 
     #[test]
