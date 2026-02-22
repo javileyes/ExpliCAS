@@ -884,6 +884,22 @@ pub const NEGATED_LHS_ISOLATION_MESSAGE: &str = "Multiply both sides by -1 (flip
 /// Standard narration for swapping equation sides to expose the solve variable.
 pub const SWAP_SIDES_TO_LHS_MESSAGE: &str = "Swap sides to put variable on LHS";
 
+/// Build didactic payload for isolating a negated left-hand side.
+pub fn build_negated_lhs_isolation_step(equation_after: Equation) -> TermIsolationDidacticStep {
+    TermIsolationDidacticStep {
+        description: NEGATED_LHS_ISOLATION_MESSAGE.to_string(),
+        equation_after,
+    }
+}
+
+/// Build didactic payload for side swap (`rhs op lhs`) to place variable on LHS.
+pub fn build_swap_sides_step(equation_after: Equation) -> TermIsolationDidacticStep {
+    TermIsolationDidacticStep {
+        description: SWAP_SIDES_TO_LHS_MESSAGE.to_string(),
+        equation_after,
+    }
+}
+
 /// Standard narration when solve-tactic normalization rewrites `base^x = rhs`
 /// before logarithm isolation in Assume mode.
 pub const SOLVE_TACTIC_NORMALIZATION_MESSAGE: &str =
@@ -3045,6 +3061,29 @@ mod tests {
             "Swap sides to put variable on LHS"
         );
         assert_eq!(end_case_message(1), "--- End of Case 1 ---");
+    }
+
+    #[test]
+    fn build_negated_lhs_and_swap_side_steps_use_standard_messages() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let eq = Equation {
+            lhs: x,
+            rhs: y,
+            op: RelOp::Eq,
+        };
+
+        let neg_step = build_negated_lhs_isolation_step(eq.clone());
+        assert_eq!(
+            neg_step.description,
+            "Multiply both sides by -1 (flips inequality)"
+        );
+        assert_eq!(neg_step.equation_after, eq);
+
+        let swap_step = build_swap_sides_step(eq.clone());
+        assert_eq!(swap_step.description, "Swap sides to put variable on LHS");
+        assert_eq!(swap_step.equation_after, eq);
     }
 
     #[test]

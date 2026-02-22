@@ -7,7 +7,7 @@ use crate::solver::{SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
 use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solution_set::isolated_var_solution;
-use cas_solver_core::solve_outcome::{residual_solution_set, NEGATED_LHS_ISOLATION_MESSAGE};
+use cas_solver_core::solve_outcome::{build_negated_lhs_isolation_step, residual_solution_set};
 
 use crate::error::CasError;
 
@@ -98,9 +98,10 @@ pub(crate) fn isolate(
             let new_op = new_eq.op.clone();
 
             if simplifier.collect_steps() {
+                let didactic_step = build_negated_lhs_isolation_step(new_eq);
                 steps.push(SolveStep {
-                    description: NEGATED_LHS_ISOLATION_MESSAGE.to_string(),
-                    equation_after: new_eq,
+                    description: didactic_step.description,
+                    equation_after: didactic_step.equation_after,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });

@@ -7,7 +7,7 @@ use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_outcome::{
-    resolve_single_side_exponential_terminal_with_message, SWAP_SIDES_TO_LHS_MESSAGE,
+    build_swap_sides_step, resolve_single_side_exponential_terminal_with_message,
 };
 use cas_solver_core::strategy_kernels::{
     collect_terms_message, derive_collect_terms_kernel, derive_rational_exponent_kernel,
@@ -54,9 +54,10 @@ impl SolverStrategy for IsolationStrategy {
             let swapped = cas_solver_core::equation_rewrite::swap_sides_with_inequality_flip(eq);
             let mut steps = Vec::new();
             if simplifier.collect_steps() {
+                let didactic_step = build_swap_sides_step(swapped.clone());
                 steps.push(SolveStep {
-                    description: SWAP_SIDES_TO_LHS_MESSAGE.to_string(),
-                    equation_after: swapped.clone(),
+                    description: didactic_step.description,
+                    equation_after: didactic_step.equation_after,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
