@@ -193,6 +193,13 @@ pub enum PowBaseIsolationPlan {
     },
 }
 
+/// Didactic payload for one branch produced by absolute-value splitting.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AbsSplitDidacticStep {
+    pub description: String,
+    pub equation_after: Equation,
+}
+
 /// Shortcut outcomes for `1^x = rhs`-style equations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PowerBaseOneShortcut {
@@ -1353,6 +1360,27 @@ pub fn abs_split_case_message(
     )
 }
 
+/// Build didactic payload for one absolute-value split branch.
+pub fn build_abs_split_step_with<F>(
+    case: AbsSplitCase,
+    equation_after: Equation,
+    lhs_expr: ExprId,
+    rhs_expr: ExprId,
+    op: RelOp,
+    mut render_expr: F,
+) -> AbsSplitDidacticStep
+where
+    F: FnMut(ExprId) -> String,
+{
+    let lhs_display = render_expr(lhs_expr);
+    let rhs_display = render_expr(rhs_expr);
+    let description = abs_split_case_message(case, &lhs_display, &op.to_string(), &rhs_display);
+    AbsSplitDidacticStep {
+        description,
+        equation_after,
+    }
+}
+
 /// For `|A| = rhs`, attach the soundness guard `rhs >= 0` when
 /// `rhs` depends on the solve variable.
 pub fn guard_abs_solution_with_nonnegative_rhs(
@@ -1683,6 +1711,31 @@ mod tests {
     fn abs_split_case_message_formats_negative_case() {
         let msg = abs_split_case_message(AbsSplitCase::Negative, "x", "=", "-2");
         assert_eq!(msg, "Split absolute value (Case 2): x = -2");
+    }
+
+    #[test]
+    fn build_abs_split_step_with_builds_payload() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let equation = Equation {
+            lhs: x,
+            rhs: two,
+            op: RelOp::Eq,
+        };
+        let payload = build_abs_split_step_with(
+            AbsSplitCase::Positive,
+            equation.clone(),
+            x,
+            two,
+            RelOp::Eq,
+            |_| "expr".to_string(),
+        );
+        assert_eq!(payload.equation_after, equation);
+        assert_eq!(
+            payload.description,
+            "Split absolute value (Case 1): expr = expr"
+        );
     }
 
     #[test]

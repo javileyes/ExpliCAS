@@ -5,7 +5,7 @@ use cas_ast::symbol::SymbolId;
 use cas_ast::{BuiltinFn, Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{combine_abs_branch_sets, contains_var, numeric_sign};
 use cas_solver_core::solve_outcome::{
-    abs_split_case_message, guard_abs_solution_with_nonnegative_rhs, plan_abs_isolation,
+    build_abs_split_step_with, guard_abs_solution_with_nonnegative_rhs, plan_abs_isolation,
     AbsIsolationPlan, AbsSplitCase,
 };
 
@@ -84,28 +84,25 @@ fn isolate_abs(
             let eq2 = negative;
             let mut steps1 = steps.clone();
             if simplifier.collect_steps() {
-                let arg_desc = format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: arg
-                    }
-                );
-                let rhs_desc = format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: rhs
-                    }
+                let split_step = build_abs_split_step_with(
+                    AbsSplitCase::Positive,
+                    eq1.clone(),
+                    arg,
+                    rhs,
+                    op.clone(),
+                    |id| {
+                        format!(
+                            "{}",
+                            cas_formatter::DisplayExpr {
+                                context: &simplifier.context,
+                                id
+                            }
+                        )
+                    },
                 );
                 steps1.push(SolveStep {
-                    description: abs_split_case_message(
-                        AbsSplitCase::Positive,
-                        &arg_desc,
-                        &op.to_string(),
-                        &rhs_desc,
-                    ),
-                    equation_after: eq1.clone(),
+                    description: split_step.description,
+                    equation_after: split_step.equation_after,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -118,28 +115,25 @@ fn isolate_abs(
             let op2 = eq2.op.clone();
             let mut steps2 = steps.clone();
             if simplifier.collect_steps() {
-                let arg_desc = format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: arg
-                    }
-                );
-                let neg_rhs_desc = format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: neg_rhs
-                    }
+                let split_step = build_abs_split_step_with(
+                    AbsSplitCase::Negative,
+                    eq2.clone(),
+                    arg,
+                    neg_rhs,
+                    op2.clone(),
+                    |id| {
+                        format!(
+                            "{}",
+                            cas_formatter::DisplayExpr {
+                                context: &simplifier.context,
+                                id
+                            }
+                        )
+                    },
                 );
                 steps2.push(SolveStep {
-                    description: abs_split_case_message(
-                        AbsSplitCase::Negative,
-                        &arg_desc,
-                        &op2.to_string(),
-                        &neg_rhs_desc,
-                    ),
-                    equation_after: eq2.clone(),
+                    description: split_step.description,
+                    equation_after: split_step.equation_after,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
