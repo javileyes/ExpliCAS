@@ -86,18 +86,16 @@ fn isolate_pow_base(
         }
 
         // B^E = RHS -> |B| = RHS^(1/E)
-        let one = simplifier.context.num(1);
-        let inv_exp = simplifier.context.add(Expr::Div(one, e));
-        let new_rhs = simplifier.context.add(Expr::Pow(rhs, inv_exp));
-
-        // Construct |B|
-        let abs_b = simplifier.context.call("abs", vec![b]);
-
-        let new_eq = Equation {
-            lhs: abs_b,
-            rhs: new_rhs,
-            op: op.clone(),
-        };
+        let new_eq = cas_solver_core::rational_power::build_root_isolation_equation(
+            &mut simplifier.context,
+            b,
+            e,
+            rhs,
+            op.clone(),
+            true,
+        );
+        let abs_b = new_eq.lhs;
+        let new_rhs = new_eq.rhs;
         if simplifier.collect_steps() {
             steps.push(SolveStep {
                 description: format!(
@@ -107,7 +105,7 @@ fn isolate_pow_base(
                         id: e
                     }
                 ),
-                equation_after: new_eq,
+                equation_after: new_eq.clone(),
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -117,14 +115,15 @@ fn isolate_pow_base(
         prepend_steps(results, steps)
     } else {
         // B = RHS^(1/E)
-        let one = simplifier.context.num(1);
-        let inv_exp = simplifier.context.add(Expr::Div(one, e));
-        let new_rhs = simplifier.context.add(Expr::Pow(rhs, inv_exp));
-        let new_eq = Equation {
-            lhs: b,
-            rhs: new_rhs,
-            op: op.clone(),
-        };
+        let new_eq = cas_solver_core::rational_power::build_root_isolation_equation(
+            &mut simplifier.context,
+            b,
+            e,
+            rhs,
+            op.clone(),
+            false,
+        );
+        let new_rhs = new_eq.rhs;
         if simplifier.collect_steps() {
             steps.push(SolveStep {
                 description: format!(
@@ -134,7 +133,7 @@ fn isolate_pow_base(
                         id: e
                     }
                 ),
-                equation_after: new_eq,
+                equation_after: new_eq.clone(),
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -143,7 +142,7 @@ fn isolate_pow_base(
         // Check if exponent is negative to flip inequality
         let new_op = apply_sign_flip(op, is_known_negative(&simplifier.context, e));
 
-        let results = isolate(b, new_rhs, new_op, var, simplifier, opts, ctx)?;
+        let results = isolate(new_eq.lhs, new_rhs, new_op, var, simplifier, opts, ctx)?;
         prepend_steps(results, steps)
     }
 }

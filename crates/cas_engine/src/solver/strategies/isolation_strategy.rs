@@ -448,8 +448,10 @@ impl SolverStrategy for CollectTermsStrategy {
         // ax + b = cx + d  ->  ax + b - (cx + d) = cx + d - (cx + d)
         //                  ->  ax - cx + b - d = 0
 
-        let rewritten =
-            cas_solver_core::equation_rewrite::subtract_rhs_from_both_sides(&mut simplifier.context, eq);
+        let rewritten = cas_solver_core::equation_rewrite::subtract_rhs_from_both_sides(
+            &mut simplifier.context,
+            eq,
+        );
 
         // Simplify both sides
         let (simp_lhs, _) = simplifier.simplify(rewritten.lhs);

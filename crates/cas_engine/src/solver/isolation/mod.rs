@@ -4,7 +4,7 @@ mod power;
 
 use crate::engine::Simplifier;
 use crate::solver::{SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
-use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
+use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solution_set::isolated_var_solution;
 
@@ -89,14 +89,15 @@ pub(crate) fn isolate(
         }
         Expr::Neg(inner) => {
             // -A = RHS -> A = -RHS
-            // -A < RHS -> A > -RHS (Flip op)
-            let new_rhs = simplifier.context.add(Expr::Neg(rhs));
-            let new_op = cas_solver_core::isolation_utils::flip_inequality(op);
-            let new_eq = Equation {
-                lhs: inner,
-                rhs: new_rhs,
-                op: new_op.clone(),
-            };
+            // -A < RHS -> A > -RHS (flip inequality)
+            let new_eq = cas_solver_core::equation_rewrite::isolate_negated_lhs(
+                &mut simplifier.context,
+                inner,
+                rhs,
+                op,
+            );
+            let new_rhs = new_eq.rhs;
+            let new_op = new_eq.op.clone();
 
             if simplifier.collect_steps() {
                 steps.push(SolveStep {

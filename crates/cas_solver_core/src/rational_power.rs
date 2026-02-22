@@ -144,6 +144,34 @@ pub fn build_log_linear_equation(
     }
 }
 
+/// Build the root-isolation rewrite of `base^exponent = rhs`:
+/// `base = rhs^(1/exponent)`.
+///
+/// When `use_abs_base` is true, the equation is built as
+/// `abs(base) = rhs^(1/exponent)` (used for even roots).
+pub fn build_root_isolation_equation(
+    ctx: &mut Context,
+    base: ExprId,
+    exponent: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    use_abs_base: bool,
+) -> Equation {
+    let one = ctx.num(1);
+    let inv_exp = ctx.add(Expr::Div(one, exponent));
+    let transformed_rhs = ctx.add(Expr::Pow(rhs, inv_exp));
+    let lhs = if use_abs_base {
+        ctx.call("abs", vec![base])
+    } else {
+        base
+    };
+    Equation {
+        lhs,
+        rhs: transformed_rhs,
+        op,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,15 +239,9 @@ mod tests {
         let half = ctx.rational(1, 2);
         let target = ctx.add(Expr::Pow(x, half));
 
-        let (eq, exp) = rewrite_variable_base_power_equation(
-            &mut ctx,
-            target,
-            y,
-            "x",
-            RelOp::Eq,
-            true,
-        )
-        .expect("non-integer exponent should rewrite");
+        let (eq, exp) =
+            rewrite_variable_base_power_equation(&mut ctx, target, y, "x", RelOp::Eq, true)
+                .expect("non-integer exponent should rewrite");
         assert_eq!(exp, half);
         assert_eq!(eq.lhs, x);
         assert!(matches!(ctx.get(eq.rhs), Expr::Pow(base, _) if *base == y));
@@ -246,15 +268,9 @@ mod tests {
         let half = ctx.rational(1, 2);
         let target = ctx.add(Expr::Pow(x, half));
 
-        let (eq, _) = rewrite_variable_base_power_equation(
-            &mut ctx,
-            target,
-            y,
-            "x",
-            RelOp::Eq,
-            false,
-        )
-        .expect("rewrite should support RHS target");
+        let (eq, _) =
+            rewrite_variable_base_power_equation(&mut ctx, target, y, "x", RelOp::Eq, false)
+                .expect("rewrite should support RHS target");
         assert!(matches!(ctx.get(eq.lhs), Expr::Pow(base, _) if *base == y));
         assert_eq!(eq.rhs, x);
     }
@@ -283,5 +299,30 @@ mod tests {
         assert_eq!(eq.op, RelOp::Eq);
         assert!(matches!(ctx.get(eq.lhs), Expr::Function(_, _)));
         assert!(matches!(ctx.get(eq.rhs), Expr::Mul(_, _)));
+    }
+
+    #[test]
+    fn build_root_isolation_equation_regular_base() {
+        let mut ctx = Context::new();
+        let b = ctx.var("b");
+        let e = ctx.var("e");
+        let r = ctx.var("r");
+        let eq = build_root_isolation_equation(&mut ctx, b, e, r, RelOp::Eq, false);
+        assert_eq!(eq.lhs, b);
+        assert_eq!(eq.op, RelOp::Eq);
+        assert!(matches!(ctx.get(eq.rhs), Expr::Pow(base, _) if *base == r));
+    }
+
+    #[test]
+    fn build_root_isolation_equation_abs_base() {
+        let mut ctx = Context::new();
+        let b = ctx.var("b");
+        let e = ctx.var("e");
+        let r = ctx.var("r");
+        let eq = build_root_isolation_equation(&mut ctx, b, e, r, RelOp::Eq, true);
+        assert!(
+            matches!(ctx.get(eq.lhs), Expr::Function(_, args) if args.len() == 1 && args[0] == b)
+        );
+        assert!(matches!(ctx.get(eq.rhs), Expr::Pow(base, _) if *base == r));
     }
 }
