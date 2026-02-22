@@ -27,6 +27,7 @@ pub mod solve_budget;
 pub mod solve_outcome;
 pub mod step_cleanup;
 pub mod substitution;
+pub mod strategy_kernels;
 pub mod unwrap_plan;
 pub mod verification;
 pub mod verify_stats;

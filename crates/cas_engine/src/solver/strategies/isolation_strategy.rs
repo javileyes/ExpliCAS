@@ -7,8 +7,12 @@ use crate::solver::{SolveCtx, SolveDomainEnv, SolveStep, SolverOptions};
 use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_outcome::{
-    eliminate_fractional_exponent_message, resolve_single_side_exponential_terminal_outcome,
-    subtract_both_sides_message, terminal_outcome_message, SWAP_SIDES_TO_LHS_MESSAGE,
+    resolve_single_side_exponential_terminal_outcome, terminal_outcome_message,
+    SWAP_SIDES_TO_LHS_MESSAGE,
+};
+use cas_solver_core::strategy_kernels::{
+    collect_terms_message, derive_collect_terms_kernel, derive_rational_exponent_kernel,
+    rational_exponent_message,
 };
 
 pub struct IsolationStrategy;
@@ -308,24 +312,14 @@ impl SolverStrategy for CollectTermsStrategy {
         _opts: &SolverOptions,
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-        let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
-        let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
-
-        // Only apply if variable is on BOTH sides
-        if !lhs_has || !rhs_has {
-            return None;
-        }
-
+        let kernel = derive_collect_terms_kernel(&mut simplifier.context, eq, var)?;
         let mut steps = Vec::new();
 
         // Strategy: Subtract RHS from both sides to move everything to LHS
         // ax + b = cx + d  ->  ax + b - (cx + d) = cx + d - (cx + d)
         //                  ->  ax - cx + b - d = 0
 
-        let rewritten = cas_solver_core::equation_rewrite::subtract_rhs_from_both_sides(
-            &mut simplifier.context,
-            eq,
-        );
+        let rewritten = kernel.rewritten;
 
         // Simplify both sides
         let (simp_lhs, _) = simplifier.simplify(rewritten.lhs);
@@ -340,7 +334,7 @@ impl SolverStrategy for CollectTermsStrategy {
                 }
             );
             steps.push(SolveStep {
-                description: subtract_both_sides_message(&rhs_desc),
+                description: collect_terms_message(&rhs_desc),
                 equation_after: Equation {
                     lhs: simp_lhs,
                     rhs: simp_rhs,
@@ -389,23 +383,19 @@ impl SolverStrategy for RationalExponentStrategy {
         let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
         let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
 
-        // Rewrite isolated lhs^(p/q)=rhs into lhs^p=rhs^q via solver core helper.
-        let (raw_eq, _p, q) =
-            cas_solver_core::rational_power::rewrite_isolated_rational_power_equation(
-                &mut simplifier.context,
-                eq.lhs,
-                eq.rhs,
-                var,
-                eq.op.clone(),
-                lhs_has,
-                rhs_has,
-            )?;
+        let kernel = derive_rational_exponent_kernel(
+            &mut simplifier.context,
+            eq,
+            var,
+            lhs_has,
+            rhs_has,
+        )?;
 
         let mut steps = Vec::new();
 
         // Simplify both sides
-        let (sim_lhs, _) = simplifier.simplify(raw_eq.lhs);
-        let (sim_rhs, _) = simplifier.simplify(raw_eq.rhs);
+        let (sim_lhs, _) = simplifier.simplify(kernel.rewritten.lhs);
+        let (sim_rhs, _) = simplifier.simplify(kernel.rewritten.rhs);
 
         let new_eq = Equation {
             lhs: sim_lhs,
@@ -414,9 +404,8 @@ impl SolverStrategy for RationalExponentStrategy {
         };
 
         if simplifier.collect_steps() {
-            let q_desc = q.to_string();
             steps.push(SolveStep {
-                description: eliminate_fractional_exponent_message(&q_desc),
+                description: rational_exponent_message(kernel.q),
                 equation_after: new_eq.clone(),
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],

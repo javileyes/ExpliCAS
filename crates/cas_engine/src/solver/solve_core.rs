@@ -7,8 +7,10 @@ use super::SolveDiagnostics;
 use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_outcome::{
-    build_zero_constraint_equation, eliminate_rational_exponent_message,
-    variable_canceled_constraint_message,
+    build_zero_constraint_equation, variable_canceled_constraint_message,
+};
+use cas_solver_core::strategy_kernels::{
+    derive_rational_exponent_kernel, rational_exponent_message,
 };
 
 use crate::engine::Simplifier;
@@ -513,35 +515,25 @@ fn try_solve_rational_exponent(
     let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
     let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
 
-    // Try to rewrite isolated x^(p/q) = rhs into x^p = rhs^q.
-    let (raw_eq, _p, q) =
-        cas_solver_core::rational_power::rewrite_isolated_rational_power_equation(
-            &mut simplifier.context,
-            eq.lhs,
-            eq.rhs,
-            var,
-            eq.op.clone(),
-            lhs_has,
-            rhs_has,
-        )?;
+    let kernel =
+        derive_rational_exponent_kernel(&mut simplifier.context, eq, var, lhs_has, rhs_has)?;
 
     let mut steps = Vec::new();
 
     // Simplify RHS (no variable, safe to simplify)
-    let (sim_rhs, _) = simplifier.simplify(raw_eq.rhs);
+    let (sim_rhs, _) = simplifier.simplify(kernel.rewritten.rhs);
 
     // DON'T simplify LHS yet - it might contain x^p which we want to solve
 
     let new_eq = cas_ast::Equation {
-        lhs: raw_eq.lhs,
+        lhs: kernel.rewritten.lhs,
         rhs: sim_rhs,
-        op: raw_eq.op,
+        op: kernel.rewritten.op,
     };
 
     if simplifier.collect_steps() {
-        let q_desc = q.to_string();
         steps.push(SolveStep {
-            description: eliminate_rational_exponent_message(&q_desc),
+            description: rational_exponent_message(kernel.q),
             equation_after: new_eq.clone(),
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
