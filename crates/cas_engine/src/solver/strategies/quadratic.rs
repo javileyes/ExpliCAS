@@ -6,7 +6,7 @@ use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{is_numeric_zero, split_zero_product_factors};
 use cas_solver_core::quadratic_didactic::{
-    collect_factorized_zero_product_entry_didactic_steps, collect_quadratic_main_didactic_steps,
+    collect_factorized_zero_product_entry_execution_items, collect_quadratic_main_execution_items,
     collect_zero_product_factor_execution_items, collect_zero_product_factor_item_didactic_steps,
 };
 use cas_solver_core::quadratic_formula::{
@@ -68,12 +68,12 @@ impl SolverStrategy for QuadraticStrategy {
 
             // We found factors.
             if simplifier.collect_steps() {
-                for didactic_step in
-                    collect_factorized_zero_product_entry_didactic_steps(&factorized_execution)
+                for item in
+                    collect_factorized_zero_product_entry_execution_items(&factorized_execution)
                 {
                     steps.push(SolveStep {
-                        description: didactic_step.description,
-                        equation_after: didactic_step.equation_after,
+                        description: item.didactic.description,
+                        equation_after: item.didactic.equation_after,
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
                     });
@@ -182,10 +182,10 @@ impl SolverStrategy for QuadraticStrategy {
                         rhs: simplifier.context.num(0),
                         op: RelOp::Eq,
                     });
-                for step in collect_quadratic_main_didactic_steps(&didactic_step) {
+                for item in collect_quadratic_main_execution_items(&didactic_step) {
                     steps.push(SolveStep {
-                        description: step.description,
-                        equation_after: step.equation_after,
+                        description: item.didactic.description,
+                        equation_after: item.didactic.equation_after,
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: substeps.clone(),
                     });
