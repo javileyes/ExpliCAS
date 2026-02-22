@@ -8,9 +8,8 @@ use cas_solver_core::isolation_utils::{
 };
 use cas_solver_core::log_domain::LogSolveDecision;
 use cas_solver_core::solve_outcome::{
-    classify_power_equals_base_route, even_power_negative_rhs_outcome,
-    guarded_solutions_with_residual_fallback, power_base_one_outcome,
-    power_equals_base_symbolic_outcome, residual_expression, residual_solution_set,
+    classify_power_equals_base_route, even_power_negative_rhs_outcome, guarded_or_residual,
+    power_base_one_outcome, power_equals_base_symbolic_outcome, residual_expression,
     resolve_log_terminal_outcome, PowerEqualsBaseRoute,
 };
 
@@ -450,8 +449,8 @@ fn isolate_pow_exponent(
             return Err(CasError::UnsupportedInRealDomain(msg.to_string()));
         }
         LogSolveDecision::Unsupported(msg, missing_conditions) => {
+            let residual = residual_expression(&mut simplifier.context, lhs, rhs, var);
             if !opts.budget.can_branch() {
-                let residual = residual_solution_set(&mut simplifier.context, lhs, rhs, var);
                 if simplifier.collect_steps() {
                     steps.push(SolveStep {
                         description: format!("{} (residual, budget exhausted)", msg),
@@ -460,7 +459,7 @@ fn isolate_pow_exponent(
                         substeps: vec![],
                     });
                 }
-                return Ok((residual, steps));
+                return Ok((guarded_or_residual(None, None, residual), steps));
             }
 
             // Build guard set from missing conditions
@@ -497,10 +496,8 @@ fn isolate_pow_exponent(
                 op.clone(),
             );
             let new_rhs = new_eq.rhs;
-
-            let mut guarded_steps = steps.clone();
             if simplifier.collect_steps() {
-                guarded_steps.push(SolveStep {
+                steps.push(SolveStep {
                     description: format!(
                         "Take log base {} of both sides (under guard: {})",
                         cas_formatter::DisplayExpr {
@@ -525,18 +522,8 @@ fn isolate_pow_exponent(
                 ctx,
             );
 
-            let residual = residual_expression(&mut simplifier.context, lhs, rhs, var);
-
-            match guarded_result {
-                Ok((guarded_solutions, mut solve_steps)) => {
-                    guarded_steps.append(&mut solve_steps);
-
-                    let conditional = guarded_solutions_with_residual_fallback(
-                        guard,
-                        guarded_solutions,
-                        residual,
-                    );
-
+            let guarded_solutions = match guarded_result {
+                Ok((guarded_solutions, _)) => {
                     if simplifier.collect_steps() {
                         steps.push(SolveStep {
                             description: format!("Conditional solution: {}", msg),
@@ -545,8 +532,7 @@ fn isolate_pow_exponent(
                             substeps: vec![],
                         });
                     }
-
-                    return Ok((conditional, steps));
+                    Some(guarded_solutions)
                 }
                 Err(_) => {
                     if simplifier.collect_steps() {
@@ -557,9 +543,14 @@ fn isolate_pow_exponent(
                             substeps: vec![],
                         });
                     }
-                    return Ok((SolutionSet::Residual(residual), steps));
+                    None
                 }
-            }
+            };
+
+            return Ok((
+                guarded_or_residual(Some(guard), guarded_solutions, residual),
+                steps,
+            ));
         }
         LogSolveDecision::EmptySet(_) => unreachable!("handled by terminal action"),
     }

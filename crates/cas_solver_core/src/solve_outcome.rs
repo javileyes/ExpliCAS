@@ -179,6 +179,21 @@ pub fn guarded_solutions_with_residual_fallback(
     ])
 }
 
+/// Build guarded conditional solutions when both pieces are available;
+/// otherwise fall back to residual.
+pub fn guarded_or_residual(
+    guard: Option<ConditionSet>,
+    guarded_solutions: Option<SolutionSet>,
+    residual_expr: ExprId,
+) -> SolutionSet {
+    match (guard, guarded_solutions) {
+        (Some(guard), Some(guarded_solutions)) => {
+            guarded_solutions_with_residual_fallback(guard, guarded_solutions, residual_expr)
+        }
+        _ => SolutionSet::Residual(residual_expr),
+    }
+}
+
 /// Outcome for symbolic `a^x = a` (with `a` symbolic).
 ///
 /// Returns:
@@ -410,6 +425,34 @@ mod tests {
             }
             other => panic!("expected conditional, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn guarded_or_residual_returns_conditional_when_guard_and_solutions_exist() {
+        let mut ctx = Context::new();
+        let b = ctx.var("b");
+        let residual = ctx.var("residual");
+        let guard = ConditionSet::single(ConditionPredicate::Positive(b));
+        let out = guarded_or_residual(Some(guard), Some(SolutionSet::AllReals), residual);
+        assert!(matches!(out, SolutionSet::Conditional(_)));
+    }
+
+    #[test]
+    fn guarded_or_residual_returns_residual_without_guard() {
+        let mut ctx = Context::new();
+        let residual = ctx.var("residual");
+        let out = guarded_or_residual(None, Some(SolutionSet::AllReals), residual);
+        assert!(matches!(out, SolutionSet::Residual(id) if id == residual));
+    }
+
+    #[test]
+    fn guarded_or_residual_returns_residual_without_guarded_solutions() {
+        let mut ctx = Context::new();
+        let b = ctx.var("b");
+        let residual = ctx.var("residual");
+        let guard = ConditionSet::single(ConditionPredicate::Positive(b));
+        let out = guarded_or_residual(Some(guard), None, residual);
+        assert!(matches!(out, SolutionSet::Residual(id) if id == residual));
     }
 
     #[test]
