@@ -2,7 +2,7 @@
 
 use crate::log_domain::{LogAssumption, LogSolveDecision};
 use crate::rational_power::PowUnwrapPlan;
-use crate::solve_outcome::take_log_base_message;
+use crate::solve_outcome::{take_log_base_message, TermIsolationDidacticStep};
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp};
 
 /// Planned unwrap rewrite from a target expression.
@@ -75,6 +75,16 @@ where
             log_linear_base: Some(base),
         },
     }
+}
+
+/// Collect didactic steps emitted by an unwrap execution in display order.
+pub fn collect_unwrap_execution_didactic_steps(
+    execution: &UnwrapExecutionPlan,
+) -> Vec<TermIsolationDidacticStep> {
+    vec![TermIsolationDidacticStep {
+        description: execution.description.clone(),
+        equation_after: execution.equation.clone(),
+    }]
 }
 
 /// Plan unwrap rewrite for a target expression (`Function`/`Pow`).
@@ -227,5 +237,27 @@ mod tests {
         assert_eq!(plan.log_linear_base, Some(x));
         assert_eq!(plan.assumptions, vec![LogAssumption::PositiveBase]);
         assert_eq!(plan.description, "Take log base e of both sides");
+    }
+
+    #[test]
+    fn collect_unwrap_execution_didactic_steps_returns_single_step() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let execution = UnwrapExecutionPlan {
+            equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            description: "unwrap".to_string(),
+            assumptions: vec![],
+            log_linear_base: None,
+        };
+
+        let didactic = collect_unwrap_execution_didactic_steps(&execution);
+        assert_eq!(didactic.len(), 1);
+        assert_eq!(didactic[0].description, "unwrap");
+        assert_eq!(didactic[0].equation_after, execution.equation);
     }
 }

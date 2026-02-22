@@ -7,7 +7,8 @@ use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_outcome::{
-    plan_swap_sides_step, resolve_single_side_exponential_terminal_with_step,
+    collect_term_isolation_rewrite_didactic_steps, plan_swap_sides_step,
+    resolve_single_side_exponential_terminal_with_step,
 };
 use cas_solver_core::strategy_kernels::{
     build_collect_terms_execution_with, build_rational_exponent_execution,
@@ -53,17 +54,18 @@ impl SolverStrategy for IsolationStrategy {
         if !lhs_has && rhs_has {
             // Swap
             let plan = plan_swap_sides_step(eq);
-            let swapped = plan.equation;
             let mut steps = Vec::new();
             if simplifier.collect_steps() {
-                let didactic_step = plan.step;
-                steps.push(SolveStep {
-                    description: didactic_step.description,
-                    equation_after: didactic_step.equation_after,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
+                for didactic_step in collect_term_isolation_rewrite_didactic_steps(&plan) {
+                    steps.push(SolveStep {
+                        description: didactic_step.description,
+                        equation_after: didactic_step.equation_after,
+                        importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
+                    });
+                }
             }
+            let swapped = plan.equation;
             // V2.0: Pass opts through to propagate budget
             match isolate(
                 swapped.lhs,
@@ -206,12 +208,18 @@ impl SolverStrategy for UnwrapStrategy {
                 }
                 let mut steps = Vec::new();
                 if simplifier.collect_steps() {
-                    steps.push(SolveStep {
-                        description: execution.description.clone(),
-                        equation_after: execution.equation.clone(),
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    });
+                    for didactic_step in
+                        cas_solver_core::unwrap_plan::collect_unwrap_execution_didactic_steps(
+                            &execution,
+                        )
+                    {
+                        steps.push(SolveStep {
+                            description: didactic_step.description,
+                            equation_after: didactic_step.equation_after,
+                            importance: crate::step::ImportanceLevel::Medium,
+                            substeps: vec![],
+                        });
+                    }
                 }
                 match solve_with_ctx(&execution.equation, var, simplifier, ctx) {
                     Ok((set, mut sub_steps)) => {
@@ -239,12 +247,18 @@ impl SolverStrategy for UnwrapStrategy {
                 }
                 let mut steps = Vec::new();
                 if simplifier.collect_steps() {
-                    steps.push(SolveStep {
-                        description: execution.description.clone(),
-                        equation_after: execution.equation.clone(),
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    });
+                    for didactic_step in
+                        cas_solver_core::unwrap_plan::collect_unwrap_execution_didactic_steps(
+                            &execution,
+                        )
+                    {
+                        steps.push(SolveStep {
+                            description: didactic_step.description,
+                            equation_after: didactic_step.equation_after,
+                            importance: crate::step::ImportanceLevel::Medium,
+                            substeps: vec![],
+                        });
+                    }
                 }
                 match solve_with_ctx(&execution.equation, var, simplifier, ctx) {
                     Ok((set, mut sub_steps)) => {
