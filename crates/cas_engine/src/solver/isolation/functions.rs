@@ -4,7 +4,7 @@ use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
 use cas_ast::{BuiltinFn, ExprId, RelOp, SolutionSet};
 use cas_solver_core::function_inverse::{
-    collect_rhs_simplification_execution_items, collect_unary_inverse_execution_items,
+    build_rhs_simplification_execution_items, collect_unary_inverse_execution_items,
 };
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::log_isolation::collect_log_isolation_execution_items;
@@ -253,14 +253,12 @@ fn simplify_rhs(
     let mut steps = Vec::new();
 
     if simplifier.collect_steps() {
-        let didactic_steps = cas_solver_core::function_inverse::build_rhs_simplification_steps(
+        let execution_items = build_rhs_simplification_execution_items(
             lhs,
             op,
-            sim_steps
-                .into_iter()
-                .map(|step| (step.description, step.after)),
+            sim_steps.into_iter().map(|step| (step.description, step.after)),
         );
-        for item in collect_rhs_simplification_execution_items(&didactic_steps) {
+        for item in execution_items {
             steps.push(SolveStep {
                 description: item.didactic.description,
                 equation_after: item.equation,

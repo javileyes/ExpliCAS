@@ -376,6 +376,14 @@ pub fn build_rational_roots_strategy_step(
     }
 }
 
+/// Build the full step payload for rational-roots strategy activation.
+pub fn build_rational_roots_step(
+    equation_after: Equation,
+    degree: usize,
+) -> RationalRootsDidacticStep {
+    build_rational_roots_strategy_step(equation_after, degree)
+}
+
 /// Collect Rational Root strategy didactic steps in display order.
 pub fn collect_rational_roots_didactic_steps(
     step: &RationalRootsDidacticStep,
@@ -410,6 +418,15 @@ pub fn plan_rational_roots_strategy_step(
         },
         degree,
     )
+}
+
+/// Plan rational-roots strategy step for equation `expanded_expr = 0`.
+pub fn plan_rational_roots_step(
+    ctx: &mut Context,
+    expanded_expr: ExprId,
+    degree: usize,
+) -> RationalRootsDidacticStep {
+    plan_rational_roots_strategy_step(ctx, expanded_expr, degree)
 }
 
 /// Solve a polynomial represented by coefficient expressions `[a0, a1, ..., an]`.
@@ -696,6 +713,25 @@ mod tests {
     }
 
     #[test]
+    fn build_rational_roots_step_alias_matches_strategy_builder() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let zero = ctx.num(0);
+        let eq = Equation {
+            lhs: x,
+            rhs: zero,
+            op: cas_ast::RelOp::Eq,
+        };
+
+        let step = build_rational_roots_step(eq.clone(), 4);
+        assert_eq!(
+            step.description,
+            "Applied Rational Root Theorem to degree-4 polynomial"
+        );
+        assert_eq!(step.equation_after, eq);
+    }
+
+    #[test]
     fn plan_rational_roots_strategy_step_builds_zero_rhs_equation() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -704,6 +740,21 @@ mod tests {
         assert_eq!(
             step.description,
             "Applied Rational Root Theorem to degree-5 polynomial"
+        );
+        assert_eq!(step.equation_after.lhs, x);
+        assert!(matches!(ctx.get(step.equation_after.rhs), Expr::Number(n) if n.is_zero()));
+        assert_eq!(step.equation_after.op, cas_ast::RelOp::Eq);
+    }
+
+    #[test]
+    fn plan_rational_roots_step_alias_builds_zero_rhs_equation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let step = plan_rational_roots_step(&mut ctx, x, 6);
+
+        assert_eq!(
+            step.description,
+            "Applied Rational Root Theorem to degree-6 polynomial"
         );
         assert_eq!(step.equation_after.lhs, x);
         assert!(matches!(ctx.get(step.equation_after.rhs), Expr::Number(n) if n.is_zero()));

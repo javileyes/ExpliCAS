@@ -51,7 +51,7 @@ impl SolverStrategy for SubstitutionStrategy {
                 for item in &intro_items {
                     steps.push(SolveStep {
                         description: item.didactic.description.clone(),
-                        equation_after: item.didactic.equation_after.clone(),
+                        equation_after: item.equation.clone(),
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
                     });
@@ -90,7 +90,7 @@ impl SolverStrategy for SubstitutionStrategy {
                         for item in collect_back_substitution_execution_items(back_execution) {
                             steps.push(SolveStep {
                                 description: item.didactic.description,
-                                equation_after: item.didactic.equation_after,
+                                equation_after: item.equation.clone(),
                                 importance: crate::step::ImportanceLevel::Medium,
                                 substeps: vec![],
                             });

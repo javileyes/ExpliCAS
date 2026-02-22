@@ -7,7 +7,7 @@ use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{is_numeric_zero, split_zero_product_factors};
 use cas_solver_core::quadratic_didactic::{
     collect_factorized_zero_product_entry_execution_items, collect_quadratic_main_execution_items,
-    collect_zero_product_factor_execution_items, collect_zero_product_factor_item_didactic_steps,
+    collect_zero_product_factor_execution_items, collect_zero_product_factor_item_execution_items,
 };
 use cas_solver_core::quadratic_formula::{
     discriminant, discriminant_expr, roots_from_a_b_and_sqrt, roots_from_a_b_delta, sqrt_expr,
@@ -73,7 +73,7 @@ impl SolverStrategy for QuadraticStrategy {
                 {
                     steps.push(SolveStep {
                         description: item.didactic.description,
-                        equation_after: item.didactic.equation_after,
+                        equation_after: item.equation,
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
                     });
@@ -89,11 +89,12 @@ impl SolverStrategy for QuadraticStrategy {
 
                 for item in factor_items {
                     if simplifier.collect_steps() {
-                        for didactic_step in collect_zero_product_factor_item_didactic_steps(&item)
+                        for execution_item in
+                            collect_zero_product_factor_item_execution_items(&item)
                         {
                             steps.push(SolveStep {
-                                description: didactic_step.description,
-                                equation_after: didactic_step.equation_after,
+                                description: execution_item.didactic.description,
+                                equation_after: execution_item.equation,
                                 importance: crate::step::ImportanceLevel::Medium,
                                 substeps: vec![],
                             });
@@ -185,7 +186,7 @@ impl SolverStrategy for QuadraticStrategy {
                 for item in collect_quadratic_main_execution_items(&didactic_step) {
                     steps.push(SolveStep {
                         description: item.didactic.description,
-                        equation_after: item.didactic.equation_after,
+                        equation_after: item.equation,
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: substeps.clone(),
                     });

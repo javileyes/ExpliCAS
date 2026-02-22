@@ -288,6 +288,20 @@ pub fn collect_rhs_simplification_execution_items(
         .collect()
 }
 
+/// Build RHS-simplification execution items directly from `(description, rhs_after)`
+/// tuples, fixing `lhs`/`op` for each generated equation.
+pub fn build_rhs_simplification_execution_items<I>(
+    lhs: ExprId,
+    op: RelOp,
+    entries: I,
+) -> Vec<RhsSimplificationExecutionItem>
+where
+    I: IntoIterator<Item = (String, ExprId)>,
+{
+    let steps = build_rhs_simplification_steps(lhs, op, entries);
+    collect_rhs_simplification_execution_items(&steps)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -568,5 +582,27 @@ mod tests {
         assert_eq!(items[0].equation, out[0].equation_after);
         assert_eq!(items[1].didactic.description, "step-2");
         assert_eq!(items[1].equation, out[1].equation_after);
+    }
+
+    #[test]
+    fn build_rhs_simplification_execution_items_builds_and_collects_in_one_pass() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+
+        let items = build_rhs_simplification_execution_items(
+            x,
+            RelOp::Eq,
+            vec![("step-1".to_string(), y), ("step-2".to_string(), z)],
+        );
+
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].didactic.description, "step-1");
+        assert_eq!(items[0].equation.lhs, x);
+        assert_eq!(items[0].equation.rhs, y);
+        assert_eq!(items[1].didactic.description, "step-2");
+        assert_eq!(items[1].equation.lhs, x);
+        assert_eq!(items[1].equation.rhs, z);
     }
 }

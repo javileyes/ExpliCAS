@@ -104,7 +104,7 @@ pub(crate) fn isolate(
                 for item in &execution_items {
                     steps.push(SolveStep {
                         description: item.didactic.description.clone(),
-                        equation_after: item.didactic.equation_after.clone(),
+                        equation_after: item.equation.clone(),
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
                     });

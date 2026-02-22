@@ -12,15 +12,15 @@ use cas_solver_core::solution_set::{
     intersect_solution_sets, open_negative_domain, open_positive_domain, union_solution_sets,
 };
 use cas_solver_core::solve_outcome::{
-    build_division_denominator_didactic_execution_with,
+    build_division_denominator_execution_with,
     build_division_denominator_sign_split_execution_with,
     build_isolated_denominator_sign_split_execution_with,
-    collect_division_denominator_didactic_execution_items,
+    collect_division_denominator_execution_items,
     collect_division_denominator_sign_split_execution_items,
     collect_isolated_denominator_sign_split_execution_items,
     collect_term_isolation_rewrite_execution_items, plan_add_operand_isolation_step_with,
     plan_div_denominator_isolation_with_zero_rhs_guard, plan_div_numerator_isolation_step_with,
-    plan_division_denominator_didactic, plan_division_denominator_sign_split,
+    plan_division_denominator, plan_division_denominator_sign_split,
     plan_isolated_denominator_sign_split, plan_mul_factor_isolation_step_with,
     plan_product_zero_inequality_split, plan_sub_minuend_isolation_step_with,
     plan_sub_subtrahend_isolation_step_with, DivDenominatorIsolationRoute,
@@ -623,7 +623,7 @@ pub(super) fn isolate_div(
 
         if simplifier.collect_steps() {
             // PEDAGOGICAL: Decompose denominator isolation into two explicit steps.
-            let didactic_plan = plan_division_denominator_didactic(
+            let execution_plan = plan_division_denominator(
                 &mut simplifier.context,
                 l,
                 r,
@@ -632,9 +632,9 @@ pub(super) fn isolate_div(
                 op.clone(),
             );
             let (rhs_times_r_simplified, _) =
-                simplifier.simplify(didactic_plan.multiply_equation.rhs);
-            let didactic_execution = build_division_denominator_didactic_execution_with(
-                didactic_plan,
+                simplifier.simplify(execution_plan.multiply_equation.rhs);
+            let execution = build_division_denominator_execution_with(
+                execution_plan,
                 rhs_times_r_simplified,
                 |id| {
                     format!(
@@ -647,7 +647,7 @@ pub(super) fn isolate_div(
                 },
             );
 
-            for item in collect_division_denominator_didactic_execution_items(&didactic_execution) {
+            for item in collect_division_denominator_execution_items(&execution) {
                 steps.push(SolveStep {
                     description: item.didactic.description,
                     equation_after: item.equation,

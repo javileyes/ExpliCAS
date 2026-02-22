@@ -2101,7 +2101,7 @@ pub fn collect_division_denominator_didactic_steps(
 
 /// Collect denominator-isolation execution items in display order:
 /// multiply step first, divide step second.
-pub fn collect_division_denominator_didactic_execution_items(
+pub fn collect_division_denominator_execution_items(
     execution: &DivisionDenominatorDidacticExecutionPlan,
 ) -> Vec<DivisionDidacticExecutionItem> {
     collect_division_denominator_didactic_steps(&execution.didactic)
@@ -2111,6 +2111,13 @@ pub fn collect_division_denominator_didactic_execution_items(
             didactic,
         })
         .collect()
+}
+
+/// Backward-compatible alias for denominator-isolation execution item collection.
+pub fn collect_division_denominator_didactic_execution_items(
+    execution: &DivisionDenominatorDidacticExecutionPlan,
+) -> Vec<DivisionDidacticExecutionItem> {
+    collect_division_denominator_execution_items(execution)
 }
 
 /// Executable denominator-isolation didactic plan, with optional simplification
@@ -2299,6 +2306,19 @@ pub fn plan_division_denominator_didactic(
     }
 }
 
+/// Plan the two denominator-isolation equations:
+/// `num / den op rhs` -> `num op rhs*den` -> `den op num/rhs`.
+pub fn plan_division_denominator(
+    ctx: &mut Context,
+    numerator: ExprId,
+    denominator: ExprId,
+    rhs: ExprId,
+    isolated_rhs: ExprId,
+    op: RelOp,
+) -> DivisionDenominatorDidacticPlan {
+    plan_division_denominator_didactic(ctx, numerator, denominator, rhs, isolated_rhs, op)
+}
+
 /// Build didactic payload for denominator-isolation as two explicit steps:
 /// 1. Multiply by denominator.
 /// 2. Divide by previous RHS.
@@ -2354,6 +2374,22 @@ where
         divide_equation,
         didactic,
     }
+}
+
+/// Build executable denominator-isolation steps, preserving didactic payload.
+pub fn build_division_denominator_execution_with<F>(
+    didactic_plan: DivisionDenominatorDidacticPlan,
+    simplified_multiply_rhs: ExprId,
+    render_expr: F,
+) -> DivisionDenominatorDidacticExecutionPlan
+where
+    F: FnMut(ExprId) -> String,
+{
+    build_division_denominator_didactic_execution_with(
+        didactic_plan,
+        simplified_multiply_rhs,
+        render_expr,
+    )
 }
 
 /// Build equation payload used when stitching branch traces with a case marker.

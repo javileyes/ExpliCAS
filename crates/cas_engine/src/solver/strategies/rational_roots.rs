@@ -16,7 +16,8 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_solver_core::rational_roots::{
-    collect_rational_roots_execution_items, NumericPolynomialSolveOutcome,
+    collect_rational_roots_execution_items, plan_rational_roots_step,
+    NumericPolynomialSolveOutcome,
 };
 use cas_solver_core::solution_set::sort_and_dedup_exprs;
 
@@ -93,16 +94,12 @@ impl SolverStrategy for RationalRootsStrategy {
         sort_and_dedup_exprs(&simplifier.context, &mut roots);
 
         let steps = if simplifier.collect_steps() {
-            let didactic_step = cas_solver_core::rational_roots::plan_rational_roots_strategy_step(
-                &mut simplifier.context,
-                expanded,
-                degree,
-            );
-            collect_rational_roots_execution_items(&didactic_step)
+            let step_plan = plan_rational_roots_step(&mut simplifier.context, expanded, degree);
+            collect_rational_roots_execution_items(&step_plan)
                 .into_iter()
                 .map(|item| SolveStep {
                     description: item.didactic.description,
-                    equation_after: item.didactic.equation_after,
+                    equation_after: item.equation,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 })
