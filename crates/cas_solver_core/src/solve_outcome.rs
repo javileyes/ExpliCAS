@@ -609,6 +609,71 @@ pub fn pow_base_root_isolation_message(exponent_display: &str, use_abs_root: boo
     }
 }
 
+/// Build didactic narration for additive isolation: `lhs ± term = rhs`.
+pub fn subtract_both_sides_message(term_display: &str) -> String {
+    format!("Subtract {} from both sides", term_display)
+}
+
+/// Build didactic narration for subtraction isolation: `lhs - term = rhs`.
+pub fn add_both_sides_message(term_display: &str) -> String {
+    format!("Add {} to both sides", term_display)
+}
+
+/// Build narration when moving a term requires multiplying by `-1`.
+pub fn move_and_flip_message(term_display: &str) -> String {
+    format!(
+        "Move {} and multiply by -1 (flips inequality)",
+        term_display
+    )
+}
+
+/// Build didactic narration for multiplicative isolation.
+pub fn divide_both_sides_message(term_display: &str) -> String {
+    format!("Divide both sides by {}", term_display)
+}
+
+/// Build didactic narration for division isolation.
+pub fn multiply_both_sides_message(term_display: &str) -> String {
+    format!("Multiply both sides by {}", term_display)
+}
+
+/// Build separator message for branch-based didactic traces.
+pub fn end_case_message(case_index: usize) -> String {
+    format!("--- End of Case {} ---", case_index)
+}
+
+/// Build narration for denominator-sign case split (`den > 0`).
+pub fn denominator_positive_case_message(den_display: &str) -> String {
+    format!(
+        "Case 1: Assume {} > 0. Multiply by positive denominator.",
+        den_display
+    )
+}
+
+/// Build narration for denominator-sign case split (`den < 0`).
+pub fn denominator_negative_case_message(den_display: &str) -> String {
+    format!(
+        "Case 2: Assume {} < 0. Multiply by negative denominator (flips inequality).",
+        den_display
+    )
+}
+
+/// Build narration for isolated-denominator split (`den > 0`).
+pub fn isolated_denominator_positive_case_message(den_display: &str) -> String {
+    format!(
+        "Case 1: Assume {} > 0. Multiply by {} (positive). Inequality direction preserved (flipped from isolation logic).",
+        den_display, den_display
+    )
+}
+
+/// Build narration for isolated-denominator split (`den < 0`).
+pub fn isolated_denominator_negative_case_message(den_display: &str) -> String {
+    format!(
+        "Case 2: Assume {} < 0. Multiply by {} (negative). Inequality flips.",
+        den_display, den_display
+    )
+}
+
 /// Build a residual solution set `solve(__eq__(lhs, rhs), var)`.
 pub fn residual_solution_set(
     ctx: &mut Context,
@@ -1873,6 +1938,42 @@ mod tests {
         assert_eq!(
             msg,
             "Take 2-th root of both sides (even root implies absolute value)"
+        );
+    }
+
+    #[test]
+    fn arithmetic_isolation_messages_format_expected_text() {
+        assert_eq!(
+            subtract_both_sides_message("y"),
+            "Subtract y from both sides"
+        );
+        assert_eq!(add_both_sides_message("y"), "Add y to both sides");
+        assert_eq!(divide_both_sides_message("k"), "Divide both sides by k");
+        assert_eq!(multiply_both_sides_message("k"), "Multiply both sides by k");
+        assert_eq!(
+            move_and_flip_message("x"),
+            "Move x and multiply by -1 (flips inequality)"
+        );
+        assert_eq!(end_case_message(1), "--- End of Case 1 ---");
+    }
+
+    #[test]
+    fn denominator_case_messages_include_sign_context() {
+        assert_eq!(
+            denominator_positive_case_message("d"),
+            "Case 1: Assume d > 0. Multiply by positive denominator."
+        );
+        assert_eq!(
+            denominator_negative_case_message("d"),
+            "Case 2: Assume d < 0. Multiply by negative denominator (flips inequality)."
+        );
+        assert_eq!(
+            isolated_denominator_positive_case_message("x"),
+            "Case 1: Assume x > 0. Multiply by x (positive). Inequality direction preserved (flipped from isolation logic)."
+        );
+        assert_eq!(
+            isolated_denominator_negative_case_message("x"),
+            "Case 2: Assume x < 0. Multiply by x (negative). Inequality flips."
         );
     }
 }

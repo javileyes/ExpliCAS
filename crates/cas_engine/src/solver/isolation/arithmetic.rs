@@ -11,6 +11,12 @@ use cas_solver_core::isolation_utils::{
 use cas_solver_core::solution_set::{
     intersect_solution_sets, open_negative_domain, open_positive_domain, union_solution_sets,
 };
+use cas_solver_core::solve_outcome::{
+    add_both_sides_message, denominator_negative_case_message, denominator_positive_case_message,
+    divide_both_sides_message, end_case_message, isolated_denominator_negative_case_message,
+    isolated_denominator_positive_case_message, move_and_flip_message, multiply_both_sides_message,
+    subtract_both_sides_message,
+};
 
 use super::{isolate, prepend_steps};
 
@@ -54,14 +60,15 @@ pub(super) fn isolate_add(
         );
         let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
         if simplifier.collect_steps() {
+            let r_desc = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id: r
+                }
+            );
             steps.push(SolveStep {
-                description: format!(
-                    "Subtract {} from both sides",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: r
-                    }
-                ),
+                description: subtract_both_sides_message(&r_desc),
                 equation_after: new_eq.clone(),
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
@@ -80,14 +87,15 @@ pub(super) fn isolate_add(
         );
         let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
         if simplifier.collect_steps() {
+            let l_desc = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id: l
+                }
+            );
             steps.push(SolveStep {
-                description: format!(
-                    "Subtract {} from both sides",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: l
-                    }
-                ),
+                description: subtract_both_sides_message(&l_desc),
                 equation_after: new_eq.clone(),
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
@@ -122,14 +130,15 @@ pub(super) fn isolate_sub(
         );
         let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
         if simplifier.collect_steps() {
+            let r_desc = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id: r
+                }
+            );
             steps.push(SolveStep {
-                description: format!(
-                    "Add {} to both sides",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: r
-                    }
-                ),
+                description: add_both_sides_message(&r_desc),
                 equation_after: new_eq.clone(),
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
@@ -149,14 +158,15 @@ pub(super) fn isolate_sub(
         let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
         let new_op = new_eq.op.clone();
         if simplifier.collect_steps() {
+            let l_desc = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id: l
+                }
+            );
             steps.push(SolveStep {
-                description: format!(
-                    "Move {} and multiply by -1 (flips inequality)",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: l
-                    }
-                ),
+                description: move_and_flip_message(&l_desc),
                 equation_after: new_eq.clone(),
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
@@ -240,14 +250,15 @@ pub(super) fn isolate_mul(
         let new_rhs = new_eq.rhs;
         let new_op = new_eq.op.clone();
         if simplifier.collect_steps() {
+            let r_desc = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id: r
+                }
+            );
             steps.push(SolveStep {
-                description: format!(
-                    "Divide both sides by {}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: r
-                    }
-                ),
+                description: divide_both_sides_message(&r_desc),
                 equation_after: new_eq.clone(),
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
@@ -279,14 +290,15 @@ pub(super) fn isolate_mul(
         let new_rhs = new_eq.rhs;
         let new_op = new_eq.op.clone();
         if simplifier.collect_steps() {
+            let l_desc = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id: l
+                }
+            );
             steps.push(SolveStep {
-                description: format!(
-                    "Divide both sides by {}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: l
-                    }
-                ),
+                description: divide_both_sides_message(&l_desc),
                 equation_after: new_eq.clone(),
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
@@ -329,14 +341,15 @@ pub(super) fn isolate_div(
             let eq_neg = split.negative;
 
             if simplifier.collect_steps() {
+                let r_desc = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id: r
+                    }
+                );
                 steps.push(SolveStep {
-                    description: format!(
-                        "Case 1: Assume {} > 0. Multiply by positive denominator.",
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id: r
-                        }
-                    ),
+                    description: denominator_positive_case_message(&r_desc),
                     equation_after: eq_pos.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
@@ -360,14 +373,15 @@ pub(super) fn isolate_div(
 
             // Case 2: Denominator < 0
             if simplifier.collect_steps() {
+                let r_desc = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id: r
+                    }
+                );
                 steps.push(SolveStep {
-                    description: format!(
-                        "Case 2: Assume {} < 0. Multiply by negative denominator (flips inequality).",
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id: r
-                        }
-                    ),
+                    description: denominator_negative_case_message(&r_desc),
                     equation_after: eq_neg.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
@@ -395,7 +409,7 @@ pub(super) fn isolate_div(
             // Combine steps
             let mut all_steps = steps_pos;
             all_steps.push(SolveStep {
-                description: "--- End of Case 1 ---".to_string(),
+                description: end_case_message(1),
                 equation_after: Equation {
                     lhs: l,
                     rhs: eq_neg.rhs,
@@ -421,14 +435,15 @@ pub(super) fn isolate_div(
             let new_rhs = new_eq.rhs;
             let new_op = new_eq.op.clone();
             if simplifier.collect_steps() {
+                let r_desc = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id: r
+                    }
+                );
                 steps.push(SolveStep {
-                    description: format!(
-                        "Multiply both sides by {}",
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id: r
-                        }
-                    ),
+                    description: multiply_both_sides_message(&r_desc),
                     equation_after: new_eq.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
@@ -487,12 +502,15 @@ pub(super) fn isolate_div(
 
             let mut steps_case1 = steps.clone();
             if simplifier.collect_steps() {
+                let r_desc = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id: r
+                    }
+                );
                 steps_case1.push(SolveStep {
-                    description: format!(
-                        "Case 1: Assume {} > 0. Multiply by {} (positive). Inequality direction preserved (flipped from isolation logic).",
-                        cas_formatter::DisplayExpr { context: &simplifier.context, id: r },
-                        cas_formatter::DisplayExpr { context: &simplifier.context, id: r }
-                    ),
+                    description: isolated_denominator_positive_case_message(&r_desc),
                     equation_after: eq_pos.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
@@ -517,18 +535,15 @@ pub(super) fn isolate_div(
             // Case 2: x < 0. Multiply by x (negative) -> Inequality flips.
             let mut steps_case2 = steps.clone();
             if simplifier.collect_steps() {
+                let r_desc = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id: r
+                    }
+                );
                 steps_case2.push(SolveStep {
-                    description: format!(
-                        "Case 2: Assume {} < 0. Multiply by {} (negative). Inequality flips.",
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id: r
-                        },
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id: r
-                        }
-                    ),
+                    description: isolated_denominator_negative_case_message(&r_desc),
                     equation_after: eq_neg.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
@@ -556,7 +571,7 @@ pub(super) fn isolate_div(
             // Combine steps
             let mut all_steps = steps_pos;
             all_steps.push(SolveStep {
-                description: "--- End of Case 1 ---".to_string(),
+                description: end_case_message(1),
                 equation_after: Equation {
                     lhs: r,
                     rhs: eq_neg.rhs,
@@ -577,13 +592,13 @@ pub(super) fn isolate_div(
             let (rhs_times_r_simplified, _) = simplifier.simplify(rhs_times_r);
 
             steps.push(SolveStep {
-                description: format!(
-                    "Multiply both sides by {}",
+                description: multiply_both_sides_message(&format!(
+                    "{}",
                     cas_formatter::DisplayExpr {
                         context: &simplifier.context,
                         id: r
                     }
-                ),
+                )),
                 equation_after: Equation {
                     lhs: l,
                     rhs: rhs_times_r_simplified,
@@ -595,13 +610,13 @@ pub(super) fn isolate_div(
 
             // Step 2: Divide both sides by rhs
             steps.push(SolveStep {
-                description: format!(
-                    "Divide both sides by {}",
+                description: divide_both_sides_message(&format!(
+                    "{}",
                     cas_formatter::DisplayExpr {
                         context: &simplifier.context,
                         id: rhs
                     }
-                ),
+                )),
                 equation_after: new_eq,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
