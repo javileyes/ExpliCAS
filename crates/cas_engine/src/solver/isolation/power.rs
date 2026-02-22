@@ -10,12 +10,12 @@ use cas_solver_core::solve_outcome::{
     build_pow_exponent_shortcut_execution_plan, conditional_solution_message,
     build_pow_exponent_log_isolation_step_with,
     detect_pow_exponent_shortcut_inputs, guarded_or_residual, map_pow_exponent_shortcut_with,
+    map_pow_base_isolation_plan_with,
     plan_pow_base_isolation, plan_pow_exponent_shortcut_action_from_inputs,
-    pow_base_isolation_terminal_message, pow_base_root_isolation_message,
     residual_budget_exhausted_message, residual_message, resolve_log_terminal_outcome,
     resolve_log_unsupported_outcome, resolve_power_base_one_shortcut_with,
     terminal_outcome_message, LogUnsupportedOutcome,
-    PowBaseIsolationPlan, PowExponentShortcutEngineAction, SOLVE_TACTIC_NORMALIZATION_MESSAGE,
+    PowBaseIsolationEngineAction, PowExponentShortcutEngineAction, SOLVE_TACTIC_NORMALIZATION_MESSAGE,
 };
 
 use super::{isolate, prepend_steps};
@@ -71,72 +71,44 @@ fn isolate_pow_base(
         exponent_is_known_negative,
     );
 
-    match plan {
-        PowBaseIsolationPlan::ReturnSolutionSet {
-            route,
-            equation,
-            solutions,
-        } => {
+    let action = map_pow_base_isolation_plan_with(plan, b, e, rhs, op, |id| {
+        format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id
+            }
+        )
+    });
+
+    match action {
+        PowBaseIsolationEngineAction::ReturnSolutionSet { solutions, step } => {
             if simplifier.collect_steps() {
-                let base_desc = format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: b
-                    }
-                );
-                let rhs_desc = format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: rhs
-                    }
-                );
                 steps.push(SolveStep {
-                    description: pow_base_isolation_terminal_message(
-                        route,
-                        &base_desc,
-                        &op.to_string(),
-                        &rhs_desc,
-                    ),
-                    equation_after: equation,
+                    description: step.description,
+                    equation_after: step.equation_after,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
             }
             Ok((solutions, steps))
         }
-        PowBaseIsolationPlan::IsolateBase {
-            equation: new_eq,
-            op: normalized_op,
-            use_abs_root,
-            ..
+        PowBaseIsolationEngineAction::IsolateBase {
+            rhs: target_rhs,
+            op: target_op,
+            step,
         } => {
-            let new_rhs = new_eq.rhs;
+            let lhs_after = step.equation_after.lhs;
             if simplifier.collect_steps() {
-                let exponent_desc = format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: e
-                    }
-                );
-                let description = pow_base_root_isolation_message(&exponent_desc, use_abs_root);
                 steps.push(SolveStep {
-                    description,
-                    equation_after: new_eq.clone(),
+                    description: step.description,
+                    equation_after: step.equation_after,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
             }
             let results = isolate(
-                new_eq.lhs,
-                new_rhs,
-                normalized_op,
-                var,
-                simplifier,
-                opts,
-                ctx,
+                lhs_after, target_rhs, target_op, var, simplifier, opts, ctx,
             )?;
             prepend_steps(results, steps)
         }

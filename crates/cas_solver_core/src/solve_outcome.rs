@@ -193,6 +193,27 @@ pub enum PowBaseIsolationPlan {
     },
 }
 
+/// Didactic payload for a planned base-isolation step.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PowBaseIsolationDidacticStep {
+    pub description: String,
+    pub equation_after: Equation,
+}
+
+/// Engine-facing action for base-isolation planning with didactic payload.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PowBaseIsolationEngineAction {
+    ReturnSolutionSet {
+        solutions: SolutionSet,
+        step: PowBaseIsolationDidacticStep,
+    },
+    IsolateBase {
+        rhs: ExprId,
+        op: RelOp,
+        step: PowBaseIsolationDidacticStep,
+    },
+}
+
 /// Didactic payload for one branch produced by absolute-value splitting.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AbsSplitDidacticStep {
@@ -751,6 +772,60 @@ pub fn plan_pow_base_isolation(
                 equation,
                 op: normalized_op,
                 use_abs_root,
+            }
+        }
+    }
+}
+
+/// Map base-isolation plan to an engine action with didactic payload.
+pub fn map_pow_base_isolation_plan_with<F>(
+    plan: PowBaseIsolationPlan,
+    base: ExprId,
+    exponent: ExprId,
+    rhs: ExprId,
+    original_op: RelOp,
+    mut render_expr: F,
+) -> PowBaseIsolationEngineAction
+where
+    F: FnMut(ExprId) -> String,
+{
+    match plan {
+        PowBaseIsolationPlan::ReturnSolutionSet {
+            route,
+            equation,
+            solutions,
+        } => {
+            let base_display = render_expr(base);
+            let rhs_display = render_expr(rhs);
+            let description = pow_base_isolation_terminal_message(
+                route,
+                &base_display,
+                &original_op.to_string(),
+                &rhs_display,
+            );
+            PowBaseIsolationEngineAction::ReturnSolutionSet {
+                solutions,
+                step: PowBaseIsolationDidacticStep {
+                    description,
+                    equation_after: equation,
+                },
+            }
+        }
+        PowBaseIsolationPlan::IsolateBase {
+            equation,
+            op,
+            use_abs_root,
+            ..
+        } => {
+            let exponent_display = render_expr(exponent);
+            let description = pow_base_root_isolation_message(&exponent_display, use_abs_root);
+            PowBaseIsolationEngineAction::IsolateBase {
+                rhs: equation.rhs,
+                op: op.clone(),
+                step: PowBaseIsolationDidacticStep {
+                    description,
+                    equation_after: equation,
+                },
             }
         }
     }
@@ -2559,6 +2634,65 @@ mod tests {
         match plan {
             PowBaseIsolationPlan::IsolateBase { op, .. } => assert_eq!(op, RelOp::Gt),
             other => panic!("expected isolate-base plan, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn map_pow_base_isolation_plan_with_builds_terminal_step_payload() {
+        let mut ctx = Context::new();
+        let base = ctx.var("x");
+        let exponent = ctx.num(2);
+        let rhs = ctx.num(-1);
+        let plan = plan_pow_base_isolation(
+            &mut ctx,
+            base,
+            exponent,
+            rhs,
+            RelOp::Eq,
+            true,
+            true,
+            false,
+        );
+        let action =
+            map_pow_base_isolation_plan_with(plan, base, exponent, rhs, RelOp::Eq, |_| {
+                "expr".to_string()
+            });
+        match action {
+            PowBaseIsolationEngineAction::ReturnSolutionSet { step, .. } => {
+                assert!(step.description.contains("Even power cannot be negative"));
+            }
+            other => panic!("expected terminal action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn map_pow_base_isolation_plan_with_builds_isolate_step_payload() {
+        let mut ctx = Context::new();
+        let base = ctx.var("x");
+        let exponent = ctx.num(2);
+        let rhs = ctx.num(9);
+        let plan = plan_pow_base_isolation(
+            &mut ctx,
+            base,
+            exponent,
+            rhs,
+            RelOp::Eq,
+            true,
+            false,
+            false,
+        );
+        let action =
+            map_pow_base_isolation_plan_with(plan, base, exponent, rhs, RelOp::Eq, |_| {
+                "2".to_string()
+            });
+        match action {
+            PowBaseIsolationEngineAction::IsolateBase { step, .. } => {
+                assert_eq!(
+                    step.description,
+                    "Take 2-th root of both sides (even root implies absolute value)"
+                );
+            }
+            other => panic!("expected isolate action, got {:?}", other),
         }
     }
 
