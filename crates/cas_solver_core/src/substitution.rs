@@ -64,6 +64,27 @@ pub struct BackSubstitutionExecutionPlan {
     pub didactic: Vec<SubstitutionDidacticStep>,
 }
 
+/// One executable back-substitution item: equation plus aligned didactic step.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BackSubstitutionExecutionItem {
+    pub equation: Equation,
+    pub didactic: SubstitutionDidacticStep,
+}
+
+/// Collect back-substitution execution items by zipping equations and didactic
+/// payloads in stable order.
+pub fn collect_back_substitution_execution_items(
+    execution: &BackSubstitutionExecutionPlan,
+) -> Vec<BackSubstitutionExecutionItem> {
+    execution
+        .equations
+        .iter()
+        .cloned()
+        .zip(execution.didactic.iter().cloned())
+        .map(|(equation, didactic)| BackSubstitutionExecutionItem { equation, didactic })
+        .collect()
+}
+
 /// Build didactic payload for substitution detection (`u = expr`).
 pub fn build_detected_substitution_step_with<F>(
     equation_after: Equation,
@@ -819,5 +840,22 @@ mod tests {
         assert_eq!(execution.equations.len(), 2);
         assert_eq!(execution.didactic.len(), 2);
         assert_eq!(execution.didactic[0].description, "Back-substitute: u = u");
+    }
+
+    #[test]
+    fn collect_back_substitution_execution_items_aligns_equations_with_didactic() {
+        let mut ctx = Context::new();
+        let u_expr = ctx.var("u_expr");
+        let v1 = ctx.var("v1");
+        let v2 = ctx.var("v2");
+        let plan = plan_back_substitution_equations(u_expr, &[v1, v2]);
+        let execution = build_back_substitution_execution_with(plan, |_| "u".to_string());
+
+        let items = collect_back_substitution_execution_items(&execution);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].equation, execution.equations[0]);
+        assert_eq!(items[0].didactic, execution.didactic[0]);
+        assert_eq!(items[1].equation, execution.equations[1]);
+        assert_eq!(items[1].didactic, execution.didactic[1]);
     }
 }

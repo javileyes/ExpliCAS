@@ -6,8 +6,8 @@ use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, SolutionSet};
 use cas_solver_core::substitution::{
     build_back_substitution_execution_with, build_exponential_substitution_execution_with,
-    collect_substitution_intro_didactic_steps, plan_back_substitution_equations,
-    plan_exponential_substitution_rewrite,
+    collect_back_substitution_execution_items, collect_substitution_intro_didactic_steps,
+    plan_back_substitution_equations, plan_exponential_substitution_rewrite,
 };
 
 pub struct SubstitutionStrategy;
@@ -84,27 +84,37 @@ impl SolverStrategy for SubstitutionStrategy {
                         })
                     });
 
-                    for (idx, sub_eq) in back_plan.equations.into_iter().enumerate() {
-                        if let Some(back_sub_step) =
-                            back_execution.as_ref().and_then(|v| v.didactic.get(idx))
-                        {
+                    if let Some(back_execution) = back_execution.as_ref() {
+                        for item in collect_back_substitution_execution_items(back_execution) {
                             steps.push(SolveStep {
-                                description: back_sub_step.description.clone(),
-                                equation_after: back_sub_step.equation_after.clone(),
+                                description: item.didactic.description,
+                                equation_after: item.didactic.equation_after,
                                 importance: crate::step::ImportanceLevel::Medium,
                                 substeps: vec![],
                             });
-                        }
-                        let (x_sol, mut x_steps) =
-                            match solve_with_ctx(&sub_eq, var, simplifier, ctx) {
-                                Ok(res) => res,
-                                Err(e) => return Some(Err(e)),
-                            };
-                        // eprintln!("Back-substitute result for val {:?}: {:?}", val, x_sol);
-                        steps.append(&mut x_steps);
+                            let (x_sol, mut x_steps) =
+                                match solve_with_ctx(&item.equation, var, simplifier, ctx) {
+                                    Ok(res) => res,
+                                    Err(e) => return Some(Err(e)),
+                                };
+                            steps.append(&mut x_steps);
 
-                        if let SolutionSet::Discrete(xs) = x_sol {
-                            final_solutions.extend(xs);
+                            if let SolutionSet::Discrete(xs) = x_sol {
+                                final_solutions.extend(xs);
+                            }
+                        }
+                    } else {
+                        for sub_eq in back_plan.equations {
+                            let (x_sol, mut x_steps) =
+                                match solve_with_ctx(&sub_eq, var, simplifier, ctx) {
+                                    Ok(res) => res,
+                                    Err(e) => return Some(Err(e)),
+                                };
+                            steps.append(&mut x_steps);
+
+                            if let SolutionSet::Discrete(xs) = x_sol {
+                                final_solutions.extend(xs);
+                            }
                         }
                     }
                     return Some(Ok((SolutionSet::Discrete(final_solutions), steps)));
