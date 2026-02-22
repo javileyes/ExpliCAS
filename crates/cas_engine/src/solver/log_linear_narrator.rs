@@ -17,7 +17,8 @@
 use crate::solver::SolveStep;
 use cas_ast::{Context, Equation};
 use cas_solver_core::log_linear_narration::{
-    build_detailed_collect_steps, is_log_linear_take_log_step, try_rewrite_ln_power,
+    build_detailed_collect_steps, collect_and_factor_terms_message, is_log_linear_take_log_step,
+    try_rewrite_ln_power,
     TAKE_LOG_BOTH_SIDES_STEP,
 };
 
@@ -102,7 +103,7 @@ pub(crate) fn rewrite_log_linear_steps(
             } else {
                 // Compact mode: single step with cleaner description
                 result.push(SolveStep {
-                    description: "Collect and factor x terms".to_string(),
+                    description: collect_and_factor_terms_message("x"),
                     equation_after: step.equation_after.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],

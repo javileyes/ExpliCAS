@@ -13,6 +13,11 @@ pub struct LogLinearNarrationStep {
 /// Marker used by solver traces to indicate log-linear rewrite entrypoint.
 pub const TAKE_LOG_BOTH_SIDES_STEP: &str = "Take log base e of both sides";
 
+/// Compact narration for the log-linear collect/factor step.
+pub fn collect_and_factor_terms_message(var: &str) -> String {
+    format!("Collect and factor {} terms", var)
+}
+
 /// Check whether a single step description is the log-linear entry marker.
 pub fn is_log_linear_take_log_step(description: &str) -> bool {
     description == TAKE_LOG_BOTH_SIDES_STEP
@@ -232,7 +237,7 @@ pub fn build_detailed_collect_steps(
         Some(eq) => eq,
         None => {
             steps.push(LogLinearNarrationStep {
-                description: "Collect and factor x terms".to_string(),
+                description: collect_and_factor_terms_message(var),
                 equation_after: final_eq.clone(),
             });
             return steps;
@@ -284,7 +289,7 @@ pub fn build_detailed_collect_steps(
 
     if steps.is_empty() {
         steps.push(LogLinearNarrationStep {
-            description: "Collect and factor x terms".to_string(),
+            description: collect_and_factor_terms_message(var),
             equation_after: final_eq.clone(),
         });
     }
@@ -343,7 +348,7 @@ mod tests {
 
         let out = build_detailed_collect_steps(&mut ctx, None, &eq, "x");
         assert_eq!(out.len(), 1);
-        assert_eq!(out[0].description, "Collect and factor x terms");
+        assert_eq!(out[0].description, collect_and_factor_terms_message("x"));
     }
 
     #[test]
@@ -371,5 +376,17 @@ mod tests {
     fn log_linear_marker_detection_matches_expected_step() {
         assert!(is_log_linear_take_log_step("Take log base e of both sides"));
         assert!(!is_log_linear_take_log_step("Square both sides"));
+    }
+
+    #[test]
+    fn collect_and_factor_terms_message_formats_expected_text() {
+        assert_eq!(
+            collect_and_factor_terms_message("x"),
+            "Collect and factor x terms"
+        );
+        assert_eq!(
+            collect_and_factor_terms_message("t"),
+            "Collect and factor t terms"
+        );
     }
 }
