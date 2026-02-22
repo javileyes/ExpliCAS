@@ -3,7 +3,9 @@ use crate::error::CasError;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
 use cas_ast::{BuiltinFn, ExprId, RelOp, SolutionSet};
-use cas_solver_core::function_inverse::collect_unary_inverse_execution_items;
+use cas_solver_core::function_inverse::{
+    collect_rhs_simplification_execution_items, collect_unary_inverse_execution_items,
+};
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::log_isolation::collect_log_isolation_execution_items;
 use cas_solver_core::solve_outcome::{
@@ -258,10 +260,10 @@ fn simplify_rhs(
                 .into_iter()
                 .map(|step| (step.description, step.after)),
         );
-        for step in didactic_steps {
+        for item in collect_rhs_simplification_execution_items(&didactic_steps) {
             steps.push(SolveStep {
-                description: step.description,
-                equation_after: step.equation_after,
+                description: item.didactic.description,
+                equation_after: item.equation,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });

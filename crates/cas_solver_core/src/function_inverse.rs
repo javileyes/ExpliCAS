@@ -68,6 +68,13 @@ pub struct RhsSimplificationDidacticStep {
     pub equation_after: Equation,
 }
 
+/// One executable RHS-simplification item aligned with didactic payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RhsSimplificationExecutionItem {
+    pub equation: Equation,
+    pub didactic: RhsSimplificationDidacticStep,
+}
+
 impl UnaryInverseKind {
     /// Classify a unary function name into an inversion kind.
     pub fn from_name(name: &str) -> Option<Self> {
@@ -263,6 +270,20 @@ where
                 rhs: rhs_after,
                 op: op.clone(),
             },
+        })
+        .collect()
+}
+
+/// Collect RHS-simplification execution items in display order.
+pub fn collect_rhs_simplification_execution_items(
+    steps: &[RhsSimplificationDidacticStep],
+) -> Vec<RhsSimplificationExecutionItem> {
+    steps
+        .iter()
+        .cloned()
+        .map(|didactic| RhsSimplificationExecutionItem {
+            equation: didactic.equation_after.clone(),
+            didactic,
         })
         .collect()
 }
@@ -526,5 +547,26 @@ mod tests {
         assert_eq!(out[1].equation_after.lhs, x);
         assert_eq!(out[1].equation_after.rhs, z);
         assert_eq!(out[1].equation_after.op, RelOp::Eq);
+    }
+
+    #[test]
+    fn collect_rhs_simplification_execution_items_preserves_order() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+
+        let out = build_rhs_simplification_steps(
+            x,
+            RelOp::Eq,
+            vec![("step-1".to_string(), y), ("step-2".to_string(), z)],
+        );
+        let items = collect_rhs_simplification_execution_items(&out);
+
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].didactic.description, "step-1");
+        assert_eq!(items[0].equation, out[0].equation_after);
+        assert_eq!(items[1].didactic.description, "step-2");
+        assert_eq!(items[1].equation, out[1].equation_after);
     }
 }
