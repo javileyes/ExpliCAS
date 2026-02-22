@@ -149,6 +149,13 @@ pub struct PowExponentLogIsolationStep {
     pub equation_after: Equation,
 }
 
+/// Combined rewrite + didactic step for logarithmic exponent isolation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PowExponentLogIsolationRewritePlan {
+    pub equation: Equation,
+    pub step: PowExponentLogIsolationStep,
+}
+
 /// Structured outcome for unsupported logarithmic rewrites.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LogUnsupportedOutcome<'a> {
@@ -1336,6 +1343,31 @@ where
     PowExponentLogIsolationStep {
         description,
         equation_after,
+    }
+}
+
+/// Plan `exponent = log(base, rhs)` and build its didactic payload.
+pub fn plan_pow_exponent_log_isolation_step(
+    ctx: &mut Context,
+    exponent: ExprId,
+    base: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    guard_message: Option<&str>,
+    base_display: &str,
+) -> PowExponentLogIsolationRewritePlan {
+    let step = build_pow_exponent_log_isolation_step_with(
+        ctx,
+        exponent,
+        base,
+        rhs,
+        op,
+        guard_message,
+        |_| base_display.to_string(),
+    );
+    PowExponentLogIsolationRewritePlan {
+        equation: step.equation_after.clone(),
+        step,
     }
 }
 
@@ -3553,6 +3585,32 @@ mod tests {
             "Take log base a of both sides (under guard: a > 0)"
         );
         assert_eq!(step.equation_after.lhs, exponent);
+    }
+
+    #[test]
+    fn plan_pow_exponent_log_isolation_step_builds_rewrite_and_step() {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+
+        let plan = plan_pow_exponent_log_isolation_step(
+            &mut ctx,
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            Some("a > 0"),
+            "a",
+        );
+
+        assert_eq!(plan.step.equation_after, plan.equation);
+        assert_eq!(
+            plan.step.description,
+            "Take log base a of both sides (under guard: a > 0)"
+        );
+        assert_eq!(plan.equation.lhs, exponent);
+        assert_eq!(plan.equation.op, RelOp::Eq);
     }
 
     #[test]
