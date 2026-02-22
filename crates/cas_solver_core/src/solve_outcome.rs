@@ -142,6 +142,13 @@ pub struct PowerBaseOneShortcutOutcome {
     pub step: PowExponentShortcutDidacticStep,
 }
 
+/// Didactic payload for logarithmic isolation of exponent equations.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PowExponentLogIsolationStep {
+    pub description: String,
+    pub equation_after: Equation,
+}
+
 /// Structured outcome for unsupported logarithmic rewrites.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LogUnsupportedOutcome<'a> {
@@ -873,6 +880,32 @@ pub fn residual_message(message: &str) -> String {
 /// Build narration for residual fallback when branch budget is exhausted.
 pub fn residual_budget_exhausted_message(message: &str) -> String {
     format!("{} (residual, budget exhausted)", message)
+}
+
+/// Build `exponent = log(base, rhs)` step payload with optional guard narration.
+pub fn build_pow_exponent_log_isolation_step_with<F>(
+    ctx: &mut Context,
+    exponent: ExprId,
+    base: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    guard_message: Option<&str>,
+    mut render_expr: F,
+) -> PowExponentLogIsolationStep
+where
+    F: FnMut(ExprId) -> String,
+{
+    let equation_after =
+        crate::rational_power::build_exponent_log_isolation_equation(ctx, exponent, base, rhs, op);
+    let base_desc = render_expr(base);
+    let description = match guard_message {
+        Some(msg) => take_log_base_under_guard_message(&base_desc, msg),
+        None => take_log_base_message(&base_desc),
+    };
+    PowExponentLogIsolationStep {
+        description,
+        equation_after,
+    }
 }
 
 /// Build narration for eliminating rational exponents by powering both sides.
@@ -2575,6 +2608,48 @@ mod tests {
             variable_canceled_constraint_message("x", "y - 2"),
             "Variable 'x' canceled during simplification. Solution depends on constraint: y - 2 = 0"
         );
+    }
+
+    #[test]
+    fn build_pow_exponent_log_isolation_step_with_plain_message() {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let step = build_pow_exponent_log_isolation_step_with(
+            &mut ctx,
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            None,
+            |_| "a".to_string(),
+        );
+        assert_eq!(step.description, "Take log base a of both sides");
+        assert_eq!(step.equation_after.lhs, exponent);
+        assert_eq!(step.equation_after.op, RelOp::Eq);
+    }
+
+    #[test]
+    fn build_pow_exponent_log_isolation_step_with_guarded_message() {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let step = build_pow_exponent_log_isolation_step_with(
+            &mut ctx,
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            Some("a > 0"),
+            |_| "a".to_string(),
+        );
+        assert_eq!(
+            step.description,
+            "Take log base a of both sides (under guard: a > 0)"
+        );
+        assert_eq!(step.equation_after.lhs, exponent);
     }
 
     #[test]

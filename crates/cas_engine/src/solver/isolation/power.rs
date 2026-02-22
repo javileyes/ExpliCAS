@@ -8,12 +8,13 @@ use cas_solver_core::isolation_utils::{
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
     build_pow_exponent_shortcut_execution_plan, conditional_solution_message,
+    build_pow_exponent_log_isolation_step_with,
     detect_pow_exponent_shortcut_inputs, guarded_or_residual, map_pow_exponent_shortcut_with,
     plan_pow_base_isolation, plan_pow_exponent_shortcut_action_from_inputs,
     pow_base_isolation_terminal_message, pow_base_root_isolation_message,
     residual_budget_exhausted_message, residual_message, resolve_log_terminal_outcome,
-    resolve_log_unsupported_outcome, resolve_power_base_one_shortcut_with, take_log_base_message,
-    take_log_base_under_guard_message, terminal_outcome_message, LogUnsupportedOutcome,
+    resolve_log_unsupported_outcome, resolve_power_base_one_shortcut_with,
+    terminal_outcome_message, LogUnsupportedOutcome,
     PowBaseIsolationPlan, PowExponentShortcutEngineAction, SOLVE_TACTIC_NORMALIZATION_MESSAGE,
 };
 
@@ -410,25 +411,28 @@ fn isolate_pow_exponent(
                 }
 
                 // Execute solver under guard
-                let new_eq = cas_solver_core::rational_power::build_exponent_log_isolation_equation(
+                let base_desc = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id: b
+                    }
+                );
+                let log_step = build_pow_exponent_log_isolation_step_with(
                     &mut simplifier.context,
                     e,
                     b,
                     rhs,
                     op.clone(),
+                    Some(msg),
+                    |_| base_desc.clone(),
                 );
+                let new_eq = log_step.equation_after.clone();
                 let new_rhs = new_eq.rhs;
                 if simplifier.collect_steps() {
-                    let base_desc = format!(
-                        "{}",
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id: b
-                        }
-                    );
                     steps.push(SolveStep {
-                        description: take_log_base_under_guard_message(&base_desc, msg),
-                        equation_after: new_eq.clone(),
+                        description: log_step.description,
+                        equation_after: log_step.equation_after,
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
                     });
@@ -480,24 +484,27 @@ fn isolate_pow_exponent(
     // End of domain guards
     // ================================================================
 
-    let new_eq = cas_solver_core::rational_power::build_exponent_log_isolation_equation(
+    let base_desc = format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: &simplifier.context,
+            id: b
+        }
+    );
+    let log_step = build_pow_exponent_log_isolation_step_with(
         &mut simplifier.context,
         e,
         b,
         rhs,
         op,
+        None,
+        |_| base_desc.clone(),
     );
+    let new_eq = log_step.equation_after.clone();
     if simplifier.collect_steps() {
-        let base_desc = format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: &simplifier.context,
-                id: b
-            }
-        );
         steps.push(SolveStep {
-            description: take_log_base_message(&base_desc),
-            equation_after: new_eq.clone(),
+            description: log_step.description,
+            equation_after: log_step.equation_after,
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });
