@@ -1369,6 +1369,13 @@ pub struct DivisionDenominatorDidacticPlan {
     pub divide_by: ExprId,
 }
 
+/// Didactic payload for the two explicit denominator-isolation steps.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DivisionDenominatorDidacticSteps {
+    pub multiply_step: DivisionCaseDidacticStep,
+    pub divide_step: DivisionCaseDidacticStep,
+}
+
 /// Classify numeric RHS sign for `|A| = RHS`.
 pub fn abs_equality_precheck(sign: NumericSign) -> AbsEqualityPrecheck {
     match sign {
@@ -1478,6 +1485,33 @@ pub fn plan_division_denominator_didactic(
         },
         multiply_by: denominator,
         divide_by: rhs,
+    }
+}
+
+/// Build didactic payload for denominator-isolation as two explicit steps:
+/// 1. Multiply by denominator.
+/// 2. Divide by previous RHS.
+pub fn build_division_denominator_didactic_steps_with<F>(
+    multiply_equation: Equation,
+    divide_equation: Equation,
+    multiply_by: ExprId,
+    divide_by: ExprId,
+    mut render_expr: F,
+) -> DivisionDenominatorDidacticSteps
+where
+    F: FnMut(ExprId) -> String,
+{
+    let multiply_by_desc = render_expr(multiply_by);
+    let divide_by_desc = render_expr(divide_by);
+    DivisionDenominatorDidacticSteps {
+        multiply_step: DivisionCaseDidacticStep {
+            description: multiply_both_sides_message(&multiply_by_desc),
+            equation_after: multiply_equation,
+        },
+        divide_step: DivisionCaseDidacticStep {
+            description: divide_both_sides_message(&divide_by_desc),
+            equation_after: divide_equation,
+        },
     }
 }
 
@@ -2940,6 +2974,46 @@ mod tests {
                 op: RelOp::Lt,
             }
         );
+    }
+
+    #[test]
+    fn build_division_denominator_didactic_steps_with_builds_payload() {
+        let mut ctx = Context::new();
+        let n = ctx.var("n");
+        let d = ctx.var("d");
+        let r = ctx.var("r");
+        let eq_mul = Equation {
+            lhs: n,
+            rhs: r,
+            op: RelOp::Eq,
+        };
+        let eq_div = Equation {
+            lhs: d,
+            rhs: n,
+            op: RelOp::Eq,
+        };
+
+        let payload = build_division_denominator_didactic_steps_with(
+            eq_mul.clone(),
+            eq_div.clone(),
+            d,
+            r,
+            |id| {
+                if id == d {
+                    "d".to_string()
+                } else {
+                    "r".to_string()
+                }
+            },
+        );
+
+        assert_eq!(
+            payload.multiply_step.description,
+            "Multiply both sides by d"
+        );
+        assert_eq!(payload.multiply_step.equation_after, eq_mul);
+        assert_eq!(payload.divide_step.description, "Divide both sides by r");
+        assert_eq!(payload.divide_step.equation_after, eq_div);
     }
 
     #[test]

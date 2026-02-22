@@ -13,10 +13,12 @@ use cas_solver_core::solution_set::{
 };
 use cas_solver_core::solve_outcome::{
     add_both_sides_message, build_division_denominator_sign_split_steps_with,
+    build_division_denominator_didactic_steps_with,
     build_isolated_denominator_sign_split_steps_with, divide_both_sides_message,
-    move_and_flip_message, multiply_both_sides_message, plan_division_denominator_didactic,
-    plan_division_denominator_sign_split, plan_isolated_denominator_sign_split,
-    plan_product_zero_inequality_split, subtract_both_sides_message,
+    move_and_flip_message, multiply_both_sides_message,
+    plan_division_denominator_didactic, plan_division_denominator_sign_split,
+    plan_isolated_denominator_sign_split, plan_product_zero_inequality_split,
+    subtract_both_sides_message,
 };
 
 use super::{isolate, prepend_steps};
@@ -586,36 +588,36 @@ pub(super) fn isolate_div(
             );
             let (rhs_times_r_simplified, _) =
                 simplifier.simplify(didactic_plan.multiply_equation.rhs);
-            let multiply_equation = Equation {
+            let multiply_equation_after = Equation {
                 lhs: didactic_plan.multiply_equation.lhs,
                 rhs: rhs_times_r_simplified,
                 op: didactic_plan.multiply_equation.op.clone(),
             };
-            let multiply_by_desc = format!(
-                "{}",
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: didactic_plan.multiply_by
-                }
+            let didactic_steps = build_division_denominator_didactic_steps_with(
+                multiply_equation_after,
+                didactic_plan.divide_equation,
+                didactic_plan.multiply_by,
+                didactic_plan.divide_by,
+                |id| {
+                    format!(
+                        "{}",
+                        cas_formatter::DisplayExpr {
+                            context: &simplifier.context,
+                            id
+                        }
+                    )
+                },
             );
 
             steps.push(SolveStep {
-                description: multiply_both_sides_message(&multiply_by_desc),
-                equation_after: multiply_equation,
+                description: didactic_steps.multiply_step.description,
+                equation_after: didactic_steps.multiply_step.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
-
-            let divide_by_desc = format!(
-                "{}",
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: didactic_plan.divide_by
-                }
-            );
             steps.push(SolveStep {
-                description: divide_both_sides_message(&divide_by_desc),
-                equation_after: didactic_plan.divide_equation,
+                description: didactic_steps.divide_step.description,
+                equation_after: didactic_steps.divide_step.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
