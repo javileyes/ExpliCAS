@@ -12,8 +12,7 @@
 use cas_ast::{Expr, ExprId, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::linear_didactic::{
-    build_linear_collect_additive_step, build_linear_collect_divide_step_with,
-    build_linear_collect_factored_step_with,
+    build_linear_collect_additive_steps_with, build_linear_collect_factored_steps_with,
 };
 use cas_solver_core::linear_solution::{build_linear_solution_set, derive_linear_nonzero_statuses};
 use cas_solver_core::linear_terms::{build_sum, decompose_linear_collect_terms};
@@ -62,30 +61,23 @@ pub(crate) fn try_linear_collect(
     // 7. Build step description
     let mut steps = Vec::new();
     if simplifier.collect_steps() {
-        let factored_step = build_linear_collect_factored_step_with(
+        let didactic = build_linear_collect_factored_steps_with(
             &mut simplifier.context,
             var,
             coeff,
             neg_const,
+            solution,
             |ctx, id| format!("{}", cas_formatter::DisplayExpr { context: ctx, id }),
         );
         steps.push(SolveStep {
-            description: factored_step.description,
-            equation_after: factored_step.equation_after,
+            description: didactic.collect.description,
+            equation_after: didactic.collect.equation_after,
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });
-        let divide_step = build_linear_collect_divide_step_with(
-            &mut simplifier.context,
-            var,
-            solution,
-            coeff,
-            true,
-            |ctx, id| format!("{}", cas_formatter::DisplayExpr { context: ctx, id }),
-        );
         steps.push(SolveStep {
-            description: divide_step.description,
-            equation_after: divide_step.equation_after,
+            description: didactic.divide.description,
+            equation_after: didactic.divide.equation_after,
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });
@@ -137,28 +129,23 @@ pub(crate) fn try_linear_collect_v2(
     let mut steps = Vec::new();
 
     if simplifier.collect_steps() {
-        // Step 1: Show the additive collected form
-        let collect_step =
-            build_linear_collect_additive_step(&mut simplifier.context, var, coef, constant);
-        steps.push(SolveStep {
-            description: collect_step.description,
-            equation_after: collect_step.equation_after,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        });
-
-        // Step 2: Divide by coefficient
-        let divide_step = build_linear_collect_divide_step_with(
+        let didactic = build_linear_collect_additive_steps_with(
             &mut simplifier.context,
             var,
-            solution,
             coef,
-            false,
+            constant,
+            solution,
             |ctx, id| format!("{}", cas_formatter::DisplayExpr { context: ctx, id }),
         );
         steps.push(SolveStep {
-            description: divide_step.description,
-            equation_after: divide_step.equation_after,
+            description: didactic.collect.description,
+            equation_after: didactic.collect.equation_after,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        });
+        steps.push(SolveStep {
+            description: didactic.divide.description,
+            equation_after: didactic.divide.equation_after,
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });

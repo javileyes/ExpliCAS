@@ -7,6 +7,13 @@ pub struct LinearCollectDidacticStep {
     pub equation_after: Equation,
 }
 
+/// Pair of didactic steps emitted by linear-collect execution.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LinearCollectDidacticPair {
+    pub collect: LinearCollectDidacticStep,
+    pub divide: LinearCollectDidacticStep,
+}
+
 /// Build narration for the factored linear-collect step:
 /// `coef * var = rhs`.
 pub fn linear_collect_factored_message(
@@ -129,6 +136,43 @@ where
     }
 }
 
+/// Build factored + divide didactic steps for linear-collect flow:
+/// `coef*var = rhs` then `var = solution`.
+pub fn build_linear_collect_factored_steps_with<F>(
+    ctx: &mut Context,
+    var: &str,
+    coef: ExprId,
+    rhs: ExprId,
+    solution: ExprId,
+    mut render_expr: F,
+) -> LinearCollectDidacticPair
+where
+    F: FnMut(&Context, ExprId) -> String,
+{
+    let collect = build_linear_collect_factored_step_with(ctx, var, coef, rhs, &mut render_expr);
+    let divide = build_linear_collect_divide_step_with(ctx, var, solution, coef, true, render_expr);
+    LinearCollectDidacticPair { collect, divide }
+}
+
+/// Build additive + divide didactic steps for linear-collect flow:
+/// `coef*var + constant = 0` then `var = solution`.
+pub fn build_linear_collect_additive_steps_with<F>(
+    ctx: &mut Context,
+    var: &str,
+    coef: ExprId,
+    constant: ExprId,
+    solution: ExprId,
+    render_expr: F,
+) -> LinearCollectDidacticPair
+where
+    F: FnMut(&Context, ExprId) -> String,
+{
+    let collect = build_linear_collect_additive_step(ctx, var, coef, constant);
+    let divide =
+        build_linear_collect_divide_step_with(ctx, var, solution, coef, false, render_expr);
+    LinearCollectDidacticPair { collect, divide }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,5 +241,40 @@ mod tests {
             });
         assert_eq!(step.description, "Divide both sides by k");
         assert_eq!(step.equation_after.op, RelOp::Eq);
+    }
+
+    #[test]
+    fn build_linear_collect_factored_steps_with_builds_pair() {
+        let mut ctx = Context::new();
+        let coef = ctx.var("k");
+        let rhs = ctx.var("r");
+        let solution = ctx.var("s");
+        let pair =
+            build_linear_collect_factored_steps_with(&mut ctx, "x", coef, rhs, solution, |_, _| {
+                "expr".into()
+            });
+        assert_eq!(
+            pair.collect.description,
+            "Collect terms in x and factor: expr · x = expr"
+        );
+        assert_eq!(pair.divide.description, "Divide both sides by expr");
+    }
+
+    #[test]
+    fn build_linear_collect_additive_steps_with_builds_pair() {
+        let mut ctx = Context::new();
+        let coef = ctx.var("k");
+        let constant = ctx.var("c");
+        let solution = ctx.var("s");
+        let pair = build_linear_collect_additive_steps_with(
+            &mut ctx,
+            "x",
+            coef,
+            constant,
+            solution,
+            |_, _| "k".into(),
+        );
+        assert_eq!(pair.collect.description, "Collect terms in x");
+        assert_eq!(pair.divide.description, "Divide by k");
     }
 }
