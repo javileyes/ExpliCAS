@@ -324,16 +324,9 @@ pub(super) fn isolate_div(
                 )
                 .expect("inequality branch requires denominator sign cases");
             let (sim_rhs, _) = simplifier.simplify(split.positive.rhs);
-            let eq_pos = Equation {
-                lhs: split.positive.lhs,
-                rhs: sim_rhs,
-                op: split.positive.op,
-            };
-            let eq_neg = Equation {
-                lhs: split.negative.lhs,
-                rhs: sim_rhs,
-                op: split.negative.op,
-            };
+            let split = cas_solver_core::equation_rewrite::with_shared_rhs(&split, sim_rhs);
+            let eq_pos = split.positive;
+            let eq_neg = split.negative;
 
             if simplifier.collect_steps() {
                 steps.push(SolveStep {

@@ -208,6 +208,22 @@ pub struct SignSplitEquations {
     pub negative: Equation,
 }
 
+/// Clone split operators/LHS and replace both branch RHS with a shared RHS.
+pub fn with_shared_rhs(split: &SignSplitEquations, rhs: ExprId) -> SignSplitEquations {
+    SignSplitEquations {
+        positive: Equation {
+            lhs: split.positive.lhs,
+            rhs,
+            op: split.positive.op.clone(),
+        },
+        negative: Equation {
+            lhs: split.negative.lhs,
+            rhs,
+            op: split.negative.op.clone(),
+        },
+    }
+}
+
 /// Build inequality split for `numerator / denominator op rhs`:
 /// - positive branch: `numerator op (rhs * denominator)`
 /// - negative branch: `numerator flip(op) (rhs * denominator)`
@@ -586,5 +602,23 @@ mod tests {
         // For isolated denominator case, pair is intentionally swapped.
         assert_eq!(split.positive.op, RelOp::Gt);
         assert_eq!(split.negative.op, RelOp::Lt);
+    }
+
+    #[test]
+    fn with_shared_rhs_replaces_branch_rhs_preserving_lhs_and_ops() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("x");
+        let rhs_a = ctx.var("a");
+        let rhs_b = ctx.var("b");
+        let split = build_isolated_denominator_sign_split(lhs, rhs_a, RelOp::Leq)
+            .expect("inequality split should be available");
+        let rewritten = with_shared_rhs(&split, rhs_b);
+
+        assert_eq!(rewritten.positive.lhs, split.positive.lhs);
+        assert_eq!(rewritten.negative.lhs, split.negative.lhs);
+        assert_eq!(rewritten.positive.op, split.positive.op);
+        assert_eq!(rewritten.negative.op, split.negative.op);
+        assert_eq!(rewritten.positive.rhs, rhs_b);
+        assert_eq!(rewritten.negative.rhs, rhs_b);
     }
 }
