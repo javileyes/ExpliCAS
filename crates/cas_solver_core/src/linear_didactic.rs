@@ -14,6 +14,13 @@ pub struct LinearCollectDidacticPair {
     pub divide: LinearCollectDidacticStep,
 }
 
+/// Convert linear-collect didactic pair into ordered step vector.
+pub fn collect_linear_collect_didactic_steps(
+    pair: LinearCollectDidacticPair,
+) -> Vec<LinearCollectDidacticStep> {
+    vec![pair.collect, pair.divide]
+}
+
 /// Build narration for the factored linear-collect step:
 /// `coef * var = rhs`.
 pub fn linear_collect_factored_message(
@@ -276,5 +283,25 @@ mod tests {
         );
         assert_eq!(pair.collect.description, "Collect terms in x");
         assert_eq!(pair.divide.description, "Divide by k");
+    }
+
+    #[test]
+    fn collect_linear_collect_didactic_steps_preserves_collect_then_divide() {
+        let mut ctx = Context::new();
+        let coef = ctx.var("k");
+        let rhs = ctx.var("r");
+        let solution = ctx.var("s");
+        let pair =
+            build_linear_collect_factored_steps_with(&mut ctx, "x", coef, rhs, solution, |_, _| {
+                "expr".into()
+            });
+        let steps = collect_linear_collect_didactic_steps(pair);
+
+        assert_eq!(steps.len(), 2);
+        assert_eq!(
+            steps[0].description,
+            "Collect terms in x and factor: expr · x = expr"
+        );
+        assert_eq!(steps[1].description, "Divide both sides by expr");
     }
 }
