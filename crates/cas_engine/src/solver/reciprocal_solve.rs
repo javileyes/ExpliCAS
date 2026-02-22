@@ -46,7 +46,8 @@ pub(crate) fn try_reciprocal_solve(
     if simplifier.collect_steps() {
         let mut equation_after = plan.combine_equation.clone();
         equation_after.rhs = display_rhs;
-        let combine_step = cas_solver_core::reciprocal::build_reciprocal_combine_step(equation_after);
+        let combine_step =
+            cas_solver_core::reciprocal::build_reciprocal_combine_step(equation_after);
 
         steps.push(SolveStep {
             description: combine_step.description,

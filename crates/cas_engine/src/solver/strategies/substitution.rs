@@ -33,10 +33,8 @@ impl SolverStrategy for SubstitutionStrategy {
         ) {
             let mut steps = Vec::new();
             if simplifier.collect_steps() {
-                let detect_step = build_detected_substitution_step_with(
-                    eq.clone(),
-                    sub_var_expr,
-                    |id| {
+                let detect_step =
+                    build_detected_substitution_step_with(eq.clone(), sub_var_expr, |id| {
                         format!(
                             "{}",
                             cas_formatter::DisplayExpr {
@@ -44,8 +42,7 @@ impl SolverStrategy for SubstitutionStrategy {
                                 id
                             }
                         )
-                    },
-                );
+                    });
                 steps.push(SolveStep {
                     description: detect_step.description,
                     equation_after: detect_step.equation_after,
@@ -86,16 +83,15 @@ impl SolverStrategy for SubstitutionStrategy {
             }
 
             if simplifier.collect_steps() {
-                let substituted_step =
-                    build_substituted_equation_step_with(new_eq.clone(), |id| {
-                        format!(
-                            "{}",
-                            cas_formatter::DisplayExpr {
-                                context: &simplifier.context,
-                                id
-                            }
-                        )
-                    });
+                let substituted_step = build_substituted_equation_step_with(new_eq.clone(), |id| {
+                    format!(
+                        "{}",
+                        cas_formatter::DisplayExpr {
+                            context: &simplifier.context,
+                            id
+                        }
+                    )
+                });
                 steps.push(SolveStep {
                     description: substituted_step.description,
                     equation_after: substituted_step.equation_after,

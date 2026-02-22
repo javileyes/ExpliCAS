@@ -15,19 +15,17 @@
 //! needs to be restructured for didactic clarity.
 
 use crate::solver::SolveStep;
-use cas_ast::{Context, Equation};
-use cas_solver_core::log_linear_narration::{
-    build_compact_collect_step, build_detailed_collect_steps, build_take_log_entry_step,
-    is_log_linear_take_log_step, try_rewrite_ln_power,
-};
+use cas_ast::Context;
+use cas_solver_core::log_linear_narration::rewrite_log_linear_steps_by;
+
+#[cfg(test)]
+use cas_solver_core::log_linear_narration::is_log_linear_pattern_by;
 
 /// Check if a step sequence is a log-linear solve pattern.
 /// Returns true if we should rewrite the steps for better didactic display.
+#[cfg(test)]
 pub(crate) fn is_log_linear_pattern(steps: &[SolveStep]) -> bool {
-    steps
-        .first()
-        .map(|s| is_log_linear_take_log_step(&s.description))
-        .unwrap_or(false)
+    is_log_linear_pattern_by(steps, |s| s.description.as_str())
 }
 
 /// Rewrite log-linear solve steps into a coherent didactic sequence.
@@ -45,81 +43,20 @@ pub(crate) fn rewrite_log_linear_steps(
     steps: Vec<SolveStep>,
     detailed: bool,
 ) -> Vec<SolveStep> {
-    if steps.is_empty() || !is_log_linear_pattern(&steps) {
-        return steps;
-    }
-
-    // Find the key steps in the original sequence
-    let mut result = Vec::new();
-    let mut i = 0;
-
-    // Track the equation after "Take log" for building intermediates
-    let mut log_eq: Option<Equation> = None;
-
-    while i < steps.len() {
-        let step = &steps[i];
-
-        // Step 1: Keep "Take log base e" but ensure RHS shows x·ln(b) not ln(b^x)
-        if is_log_linear_take_log_step(&step.description) {
-            // Check if RHS is ln(something^x) and rewrite to x·ln(something)
-            let improved_rhs = try_rewrite_ln_power(ctx, step.equation_after.rhs);
-
-            let eq = Equation {
-                lhs: step.equation_after.lhs,
-                rhs: improved_rhs.unwrap_or(step.equation_after.rhs),
-                op: step.equation_after.op.clone(),
-            };
-
-            // Save for building intermediates
-            log_eq = Some(eq.clone());
-            let take_log_step = build_take_log_entry_step(eq);
-
-            result.push(SolveStep {
-                description: take_log_step.description,
-                equation_after: take_log_step.equation_after,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
-
-            i += 1;
-            continue;
-        }
-
-        // Handle "Collect terms in x" - decompose if detailed mode
-        if step.description.starts_with("Collect terms in") {
-            if detailed {
-                // Decompose into atomic sub-steps with REAL intermediate equations
-                let sub_steps =
-                    build_detailed_collect_steps(ctx, log_eq.as_ref(), &step.equation_after, "x")
-                        .into_iter()
-                        .map(|s| SolveStep {
-                            description: s.description,
-                            equation_after: s.equation_after,
-                            importance: crate::step::ImportanceLevel::Medium,
-                            substeps: vec![],
-                        })
-                        .collect::<Vec<_>>();
-                result.extend(sub_steps);
-            } else {
-                // Compact mode: single step with cleaner description
-                let compact_step = build_compact_collect_step("x", step.equation_after.clone());
-                result.push(SolveStep {
-                    description: compact_step.description,
-                    equation_after: compact_step.equation_after,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-            i += 1;
-            continue;
-        }
-
-        // Default: keep the step
-        result.push(step.clone());
-        i += 1;
-    }
-
-    result
+    rewrite_log_linear_steps_by(
+        ctx,
+        steps,
+        detailed,
+        "x",
+        |s| s.description.as_str(),
+        |s| &s.equation_after,
+        |_template, payload| SolveStep {
+            description: payload.description,
+            equation_after: payload.equation_after,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        },
+    )
 }
 
 #[cfg(test)]
@@ -134,7 +71,7 @@ mod tests {
 
         let steps = vec![SolveStep {
             description: TAKE_LOG_BOTH_SIDES_STEP.to_string(),
-            equation_after: Equation {
+            equation_after: cas_ast::Equation {
                 lhs: x,
                 rhs: x,
                 op: cas_ast::RelOp::Eq,
@@ -153,7 +90,7 @@ mod tests {
 
         let steps = vec![SolveStep {
             description: "Square both sides".to_string(),
-            equation_after: Equation {
+            equation_after: cas_ast::Equation {
                 lhs: x,
                 rhs: x,
                 op: cas_ast::RelOp::Eq,

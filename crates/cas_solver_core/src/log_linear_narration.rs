@@ -23,12 +23,20 @@ pub fn is_log_linear_take_log_step(description: &str) -> bool {
     description == TAKE_LOG_BOTH_SIDES_STEP
 }
 
-/// Check if a step stream starts with the log-linear marker.
-pub fn is_log_linear_pattern(steps: &[LogLinearNarrationStep]) -> bool {
+/// Check if a step stream starts with the log-linear marker using an accessor.
+pub fn is_log_linear_pattern_by<T, FDesc>(steps: &[T], mut desc_of: FDesc) -> bool
+where
+    FDesc: FnMut(&T) -> &str,
+{
     steps
         .first()
-        .map(|s| is_log_linear_take_log_step(&s.description))
+        .map(|s| is_log_linear_take_log_step(desc_of(s)))
         .unwrap_or(false)
+}
+
+/// Check if a step stream starts with the log-linear marker.
+pub fn is_log_linear_pattern(steps: &[LogLinearNarrationStep]) -> bool {
+    is_log_linear_pattern_by(steps, |s| s.description.as_str())
 }
 
 /// Build the canonical "take log both sides" narration step.
@@ -40,14 +48,102 @@ pub fn build_take_log_entry_step(equation_after: Equation) -> LogLinearNarration
 }
 
 /// Build compact collect/factor narration step.
-pub fn build_compact_collect_step(
-    var: &str,
-    equation_after: Equation,
-) -> LogLinearNarrationStep {
+pub fn build_compact_collect_step(var: &str, equation_after: Equation) -> LogLinearNarrationStep {
     LogLinearNarrationStep {
         description: collect_and_factor_terms_message(var),
         equation_after,
     }
+}
+
+/// Rewrite log-linear solve traces into a didactic sequence using custom step accessors.
+///
+/// This keeps solver-core decoupled from engine-specific step types while allowing
+/// callers to preserve extra metadata on transformed steps.
+pub fn rewrite_log_linear_steps_by<T, FDesc, FEq, FBuild>(
+    ctx: &mut Context,
+    steps: Vec<T>,
+    detailed: bool,
+    var: &str,
+    mut desc_of: FDesc,
+    mut eq_of: FEq,
+    mut rebuild_from_template: FBuild,
+) -> Vec<T>
+where
+    T: Clone,
+    FDesc: FnMut(&T) -> &str,
+    FEq: FnMut(&T) -> &Equation,
+    FBuild: FnMut(&T, LogLinearNarrationStep) -> T,
+{
+    if steps.is_empty() || !is_log_linear_pattern_by(&steps, |s| desc_of(s)) {
+        return steps;
+    }
+
+    let mut result = Vec::new();
+    let mut i = 0;
+    let mut log_eq: Option<Equation> = None;
+
+    while i < steps.len() {
+        let step = &steps[i];
+
+        if is_log_linear_take_log_step(desc_of(step)) {
+            let source_eq = eq_of(step);
+            let improved_rhs = try_rewrite_ln_power(ctx, source_eq.rhs);
+            let rewritten_eq = Equation {
+                lhs: source_eq.lhs,
+                rhs: improved_rhs.unwrap_or(source_eq.rhs),
+                op: source_eq.op.clone(),
+            };
+
+            log_eq = Some(rewritten_eq.clone());
+            result.push(rebuild_from_template(
+                step,
+                build_take_log_entry_step(rewritten_eq),
+            ));
+            i += 1;
+            continue;
+        }
+
+        if desc_of(step).starts_with("Collect terms in") {
+            if detailed {
+                let detailed_steps =
+                    build_detailed_collect_steps(ctx, log_eq.as_ref(), eq_of(step), var);
+                result.extend(
+                    detailed_steps
+                        .into_iter()
+                        .map(|payload| rebuild_from_template(step, payload)),
+                );
+            } else {
+                let compact = build_compact_collect_step(var, eq_of(step).clone());
+                result.push(rebuild_from_template(step, compact));
+            }
+
+            i += 1;
+            continue;
+        }
+
+        result.push(step.clone());
+        i += 1;
+    }
+
+    result
+}
+
+/// Rewrite log-linear steps for solver-core step payloads.
+pub fn rewrite_log_linear_steps(
+    ctx: &mut Context,
+    steps: Vec<LogLinearNarrationStep>,
+    detailed: bool,
+    var: &str,
+) -> Vec<LogLinearNarrationStep> {
+    rewrite_log_linear_steps_by(
+        ctx,
+        steps,
+        detailed,
+        var,
+        |s| s.description.as_str(),
+        |s| &s.equation_after,
+        |_template, payload| payload,
+    )
 }
 
 /// Strip identity multipliers (`1*expr`/`expr*1`) recursively for cleaner display.
@@ -398,6 +494,19 @@ mod tests {
     }
 
     #[test]
+    fn is_log_linear_pattern_by_detects_marker_with_custom_type() {
+        #[derive(Clone)]
+        struct RichStep {
+            label: String,
+        }
+
+        let steps = vec![RichStep {
+            label: TAKE_LOG_BOTH_SIDES_STEP.to_string(),
+        }];
+        assert!(is_log_linear_pattern_by(&steps, |s| s.label.as_str()));
+    }
+
+    #[test]
     fn collect_and_factor_terms_message_formats_expected_text() {
         assert_eq!(
             collect_and_factor_terms_message("x"),
@@ -426,5 +535,90 @@ mod tests {
         let compact = build_compact_collect_step("x", eq.clone());
         assert_eq!(compact.description, "Collect and factor x terms");
         assert_eq!(compact.equation_after, eq);
+    }
+
+    #[test]
+    fn rewrite_log_linear_steps_compact_mode_rewrites_collect_message() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let a = ctx.var("a");
+        let pow = ctx.add(Expr::Pow(a, x));
+        let ln_pow = ctx.call_builtin(BuiltinFn::Ln, vec![pow]);
+        let eq_take_log = Equation {
+            lhs: x,
+            rhs: ln_pow,
+            op: cas_ast::RelOp::Eq,
+        };
+        let eq_collect = Equation {
+            lhs: x,
+            rhs: x,
+            op: cas_ast::RelOp::Eq,
+        };
+
+        let steps = vec![
+            build_take_log_entry_step(eq_take_log),
+            LogLinearNarrationStep {
+                description: "Collect terms in x".to_string(),
+                equation_after: eq_collect.clone(),
+            },
+        ];
+
+        let rewritten = rewrite_log_linear_steps(&mut ctx, steps, false, "x");
+        assert_eq!(rewritten.len(), 2);
+        assert_eq!(rewritten[1].description, "Collect and factor x terms");
+        assert_eq!(rewritten[1].equation_after, eq_collect);
+        assert!(matches!(
+            ctx.get(rewritten[0].equation_after.rhs),
+            Expr::Mul(_, _)
+        ));
+    }
+
+    #[test]
+    fn rewrite_log_linear_steps_by_preserves_custom_metadata() {
+        #[derive(Clone)]
+        struct RichStep {
+            description: String,
+            equation_after: Equation,
+            marker: usize,
+        }
+
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let eq = Equation {
+            lhs: x,
+            rhs: x,
+            op: cas_ast::RelOp::Eq,
+        };
+        let steps = vec![
+            RichStep {
+                description: TAKE_LOG_BOTH_SIDES_STEP.to_string(),
+                equation_after: eq.clone(),
+                marker: 7,
+            },
+            RichStep {
+                description: "Collect terms in x".to_string(),
+                equation_after: eq.clone(),
+                marker: 9,
+            },
+        ];
+
+        let rewritten = rewrite_log_linear_steps_by(
+            &mut ctx,
+            steps,
+            false,
+            "x",
+            |s| s.description.as_str(),
+            |s| &s.equation_after,
+            |template, payload| RichStep {
+                description: payload.description,
+                equation_after: payload.equation_after,
+                marker: template.marker,
+            },
+        );
+
+        assert_eq!(rewritten.len(), 2);
+        assert_eq!(rewritten[0].marker, 7);
+        assert_eq!(rewritten[1].marker, 9);
+        assert_eq!(rewritten[1].description, "Collect and factor x terms");
     }
 }

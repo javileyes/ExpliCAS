@@ -19,6 +19,51 @@ pub fn solve_factor_message(factor_display: &str) -> String {
     format!("Solve factor: {} = 0", factor_display)
 }
 
+/// Didactic step payload for top-level quadratic strategy narration.
+#[derive(Debug, Clone, PartialEq)]
+pub struct QuadraticDidacticStep {
+    pub description: String,
+    pub equation_after: Equation,
+}
+
+/// Build didactic step for a factorized equation entrypoint.
+pub fn build_factorized_equation_step_with<F>(
+    equation_after: Equation,
+    factorized_expr: ExprId,
+    mut render_expr: F,
+) -> QuadraticDidacticStep
+where
+    F: FnMut(ExprId) -> String,
+{
+    QuadraticDidacticStep {
+        description: factorized_equation_message(&render_expr(factorized_expr)),
+        equation_after,
+    }
+}
+
+/// Build didactic step for solving a specific zero-product factor.
+pub fn build_solve_factor_step_with<F>(
+    equation_after: Equation,
+    factor_expr: ExprId,
+    mut render_expr: F,
+) -> QuadraticDidacticStep
+where
+    F: FnMut(ExprId) -> String,
+{
+    QuadraticDidacticStep {
+        description: solve_factor_message(&render_expr(factor_expr)),
+        equation_after,
+    }
+}
+
+/// Build the top-level "quadratic formula" strategy step payload.
+pub fn build_quadratic_main_step(equation_after: Equation) -> QuadraticDidacticStep {
+    QuadraticDidacticStep {
+        description: QUADRATIC_FORMULA_MAIN_STEP_DESCRIPTION.to_string(),
+        equation_after,
+    }
+}
+
 /// Core didactic step payload for quadratic derivations.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DidacticSubstep {
@@ -338,5 +383,32 @@ mod tests {
             "Factorized equation: x*(x-1) = 0"
         );
         assert_eq!(solve_factor_message("x-1"), "Solve factor: x-1 = 0");
+    }
+
+    #[test]
+    fn step_builders_use_expected_messages_and_equations() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let zero = ctx.num(0);
+        let eq = Equation {
+            lhs: x,
+            rhs: zero,
+            op: RelOp::Eq,
+        };
+
+        let factored = build_factorized_equation_step_with(eq.clone(), x, |_id| "x".to_string());
+        assert_eq!(factored.description, "Factorized equation: x = 0");
+        assert_eq!(factored.equation_after, eq);
+
+        let solve = build_solve_factor_step_with(eq.clone(), x, |_id| "x".to_string());
+        assert_eq!(solve.description, "Solve factor: x = 0");
+        assert_eq!(solve.equation_after, eq);
+
+        let main = build_quadratic_main_step(eq.clone());
+        assert_eq!(
+            main.description,
+            "Detected quadratic equation. Applying quadratic formula."
+        );
+        assert_eq!(main.equation_after, eq);
     }
 }

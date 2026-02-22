@@ -168,9 +168,7 @@ mod tests {
         let coef = ctx.var("k");
         let rhs = ctx.var("r");
         let step =
-            build_linear_collect_factored_step_with(&mut ctx, "x", coef, rhs, |_, _| {
-                "expr".into()
-            });
+            build_linear_collect_factored_step_with(&mut ctx, "x", coef, rhs, |_, _| "expr".into());
         assert_eq!(
             step.description,
             "Collect terms in x and factor: expr · x = expr"
@@ -193,14 +191,10 @@ mod tests {
         let mut ctx = Context::new();
         let coef = ctx.var("k");
         let solution = ctx.var("s");
-        let step = build_linear_collect_divide_step_with(
-            &mut ctx,
-            "x",
-            solution,
-            coef,
-            true,
-            |_, _| "k".into(),
-        );
+        let step =
+            build_linear_collect_divide_step_with(&mut ctx, "x", solution, coef, true, |_, _| {
+                "k".into()
+            });
         assert_eq!(step.description, "Divide both sides by k");
         assert_eq!(step.equation_after.op, RelOp::Eq);
     }

@@ -7,15 +7,13 @@ use cas_solver_core::isolation_utils::{
 };
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
-    build_pow_exponent_shortcut_execution_plan, conditional_solution_message,
-    build_pow_exponent_log_isolation_step_with,
-    detect_pow_exponent_shortcut_inputs, guarded_or_residual, map_pow_exponent_shortcut_with,
-    map_pow_base_isolation_plan_with,
-    plan_pow_base_isolation, plan_pow_exponent_shortcut_action_from_inputs,
-    residual_budget_exhausted_message, residual_message, resolve_log_terminal_outcome,
-    build_solve_tactic_normalization_step,
-    resolve_log_unsupported_outcome, resolve_power_base_one_shortcut_with,
-    terminal_outcome_message, LogUnsupportedOutcome,
+    build_pow_exponent_log_isolation_step_with, build_pow_exponent_shortcut_execution_plan,
+    build_solve_tactic_normalization_step, conditional_solution_message,
+    detect_pow_exponent_shortcut_inputs, guarded_or_residual, map_pow_base_isolation_plan_with,
+    map_pow_exponent_shortcut_with, plan_pow_base_isolation,
+    plan_pow_exponent_shortcut_action_from_inputs, residual_budget_exhausted_message,
+    residual_message, resolve_log_terminal_outcome, resolve_log_unsupported_outcome,
+    resolve_power_base_one_shortcut_with, terminal_outcome_message, LogUnsupportedOutcome,
     PowBaseIsolationEngineAction, PowExponentShortcutEngineAction,
 };
 
@@ -108,9 +106,7 @@ fn isolate_pow_base(
                     substeps: vec![],
                 });
             }
-            let results = isolate(
-                lhs_after, target_rhs, target_op, var, simplifier, opts, ctx,
-            )?;
+            let results = isolate(lhs_after, target_rhs, target_op, var, simplifier, opts, ctx)?;
             prepend_steps(results, steps)
         }
     }
@@ -160,14 +156,8 @@ fn isolate_pow_exponent(
         opts.budget.max_branches >= 2,
     );
     let shortcut_plan = build_pow_exponent_shortcut_execution_plan(shortcut_action);
-    let shortcut_engine_action = map_pow_exponent_shortcut_with(
-        shortcut_plan,
-        e,
-        b,
-        rhs,
-        op.clone(),
-        var,
-        |id| {
+    let shortcut_engine_action =
+        map_pow_exponent_shortcut_with(shortcut_plan, e, b, rhs, op.clone(), var, |id| {
             format!(
                 "{}",
                 cas_formatter::DisplayExpr {
@@ -175,8 +165,7 @@ fn isolate_pow_exponent(
                     id
                 }
             )
-        },
-    );
+        });
 
     match shortcut_engine_action {
         PowExponentShortcutEngineAction::Continue => {}

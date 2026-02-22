@@ -91,15 +91,17 @@ impl SolverStrategy for RationalRootsStrategy {
         sort_and_dedup_exprs(&simplifier.context, &mut roots);
 
         let steps = if simplifier.collect_steps() {
-            vec![SolveStep {
-                description: cas_solver_core::rational_roots::rational_roots_strategy_message(
-                    degree,
-                ),
-                equation_after: Equation {
+            let didactic_step = cas_solver_core::rational_roots::build_rational_roots_strategy_step(
+                Equation {
                     lhs: expanded,
                     rhs: simplifier.context.num(0),
                     op: RelOp::Eq,
                 },
+                degree,
+            );
+            vec![SolveStep {
+                description: didactic_step.description,
+                equation_after: didactic_step.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             }]

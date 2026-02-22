@@ -173,12 +173,8 @@ pub(crate) fn try_linear_collect_v2(
 
     if simplifier.collect_steps() {
         // Step 1: Show the additive collected form
-        let collect_step = build_linear_collect_additive_step(
-            &mut simplifier.context,
-            var,
-            coef,
-            constant,
-        );
+        let collect_step =
+            build_linear_collect_additive_step(&mut simplifier.context, var, coef, constant);
         steps.push(SolveStep {
             description: collect_step.description,
             equation_after: collect_step.equation_after,

@@ -13,7 +13,8 @@ use cas_solver_core::solution_set::{
 };
 use cas_solver_core::solve_outcome::{
     build_add_operand_isolation_step_with, build_div_numerator_isolation_step_with,
-    build_division_denominator_didactic_steps_with, build_division_denominator_sign_split_steps_with,
+    build_division_denominator_didactic_steps_with,
+    build_division_denominator_sign_split_steps_with,
     build_isolated_denominator_sign_split_steps_with, build_mul_factor_isolation_step_with,
     build_sub_minuend_isolation_step_with, build_sub_subtrahend_isolation_step_with,
     plan_division_denominator_didactic, plan_division_denominator_sign_split,

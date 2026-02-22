@@ -592,7 +592,8 @@ where
         } => {
             let base_desc = render_expr(base);
             let rhs_desc = render_expr(rhs);
-            let description = pow_exponent_shortcut_message(narrative, var, &base_desc, &rhs_desc, None);
+            let description =
+                pow_exponent_shortcut_message(narrative, var, &base_desc, &rhs_desc, None);
             PowExponentShortcutEngineAction::ReturnSolutionSet {
                 solutions,
                 step: PowExponentShortcutDidacticStep {
@@ -1028,7 +1029,12 @@ pub fn build_sub_subtrahend_isolation_step_with<F>(
 where
     F: FnMut(ExprId) -> String,
 {
-    build_term_isolation_step_with(equation_after, moved_term, render_expr, move_and_flip_message)
+    build_term_isolation_step_with(
+        equation_after,
+        moved_term,
+        render_expr,
+        move_and_flip_message,
+    )
 }
 
 /// Build didactic payload for `A * B = RHS -> A = RHS / B` (or symmetric case).
@@ -1999,14 +2005,9 @@ mod tests {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let rhs = ctx.num(2);
-        let outcome = resolve_power_base_one_shortcut_with(
-            true,
-            false,
-            x,
-            rhs,
-            RelOp::Eq,
-            |_| "2".to_string(),
-        )
+        let outcome = resolve_power_base_one_shortcut_with(true, false, x, rhs, RelOp::Eq, |_| {
+            "2".to_string()
+        })
         .expect("shortcut should apply");
         assert!(matches!(outcome.solutions, SolutionSet::Empty));
         assert_eq!(outcome.step.equation_after.lhs, x);
@@ -2976,20 +2977,11 @@ mod tests {
         let base = ctx.var("x");
         let exponent = ctx.num(2);
         let rhs = ctx.num(-1);
-        let plan = plan_pow_base_isolation(
-            &mut ctx,
-            base,
-            exponent,
-            rhs,
-            RelOp::Eq,
-            true,
-            true,
-            false,
-        );
-        let action =
-            map_pow_base_isolation_plan_with(plan, base, exponent, rhs, RelOp::Eq, |_| {
-                "expr".to_string()
-            });
+        let plan =
+            plan_pow_base_isolation(&mut ctx, base, exponent, rhs, RelOp::Eq, true, true, false);
+        let action = map_pow_base_isolation_plan_with(plan, base, exponent, rhs, RelOp::Eq, |_| {
+            "expr".to_string()
+        });
         match action {
             PowBaseIsolationEngineAction::ReturnSolutionSet { step, .. } => {
                 assert!(step.description.contains("Even power cannot be negative"));
@@ -3004,20 +2996,11 @@ mod tests {
         let base = ctx.var("x");
         let exponent = ctx.num(2);
         let rhs = ctx.num(9);
-        let plan = plan_pow_base_isolation(
-            &mut ctx,
-            base,
-            exponent,
-            rhs,
-            RelOp::Eq,
-            true,
-            false,
-            false,
-        );
-        let action =
-            map_pow_base_isolation_plan_with(plan, base, exponent, rhs, RelOp::Eq, |_| {
-                "2".to_string()
-            });
+        let plan =
+            plan_pow_base_isolation(&mut ctx, base, exponent, rhs, RelOp::Eq, true, false, false);
+        let action = map_pow_base_isolation_plan_with(plan, base, exponent, rhs, RelOp::Eq, |_| {
+            "2".to_string()
+        });
         match action {
             PowBaseIsolationEngineAction::IsolateBase { step, .. } => {
                 assert_eq!(

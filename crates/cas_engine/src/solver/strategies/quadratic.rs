@@ -46,22 +46,27 @@ impl SolverStrategy for QuadraticStrategy {
         if let Some(factors) = split_zero_product_factors(&simplifier.context, sim_poly_expr) {
             // We found factors.
             if simplifier.collect_steps() {
-                let poly_desc = format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: sim_poly_expr
-                    }
-                );
+                let didactic_step =
+                    cas_solver_core::quadratic_didactic::build_factorized_equation_step_with(
+                        Equation {
+                            lhs: sim_poly_expr,
+                            rhs: zero,
+                            op: RelOp::Eq,
+                        },
+                        sim_poly_expr,
+                        |id| {
+                            format!(
+                                "{}",
+                                cas_formatter::DisplayExpr {
+                                    context: &simplifier.context,
+                                    id
+                                }
+                            )
+                        },
+                    );
                 steps.push(SolveStep {
-                    description: cas_solver_core::quadratic_didactic::factorized_equation_message(
-                        &poly_desc,
-                    ),
-                    equation_after: Equation {
-                        lhs: sim_poly_expr,
-                        rhs: zero,
-                        op: RelOp::Eq,
-                    },
+                    description: didactic_step.description,
+                    equation_after: didactic_step.equation_after,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -80,22 +85,27 @@ impl SolverStrategy for QuadraticStrategy {
                     }
 
                     if simplifier.collect_steps() {
-                        let factor_desc = format!(
-                            "{}",
-                            cas_formatter::DisplayExpr {
-                                context: &simplifier.context,
-                                id: factor
-                            }
-                        );
+                        let didactic_step =
+                            cas_solver_core::quadratic_didactic::build_solve_factor_step_with(
+                                Equation {
+                                    lhs: factor,
+                                    rhs: zero,
+                                    op: RelOp::Eq,
+                                },
+                                factor,
+                                |id| {
+                                    format!(
+                                        "{}",
+                                        cas_formatter::DisplayExpr {
+                                            context: &simplifier.context,
+                                            id
+                                        }
+                                    )
+                                },
+                            );
                         steps.push(SolveStep {
-                            description: cas_solver_core::quadratic_didactic::solve_factor_message(
-                                &factor_desc,
-                            ),
-                            equation_after: Equation {
-                                lhs: factor,
-                                rhs: zero,
-                                op: RelOp::Eq,
-                            },
+                            description: didactic_step.description,
+                            equation_after: didactic_step.equation_after,
                             importance: crate::step::ImportanceLevel::Medium,
                             substeps: vec![],
                         });
@@ -182,15 +192,15 @@ impl SolverStrategy for QuadraticStrategy {
                 );
 
                 // Main step with substeps attached
-                let main_step = SolveStep {
-                    description:
-                        cas_solver_core::quadratic_didactic::QUADRATIC_FORMULA_MAIN_STEP_DESCRIPTION
-                            .to_string(),
-                    equation_after: Equation {
+                let didactic_step =
+                    cas_solver_core::quadratic_didactic::build_quadratic_main_step(Equation {
                         lhs: sim_poly_expr,
                         rhs: simplifier.context.num(0),
                         op: RelOp::Eq,
-                    },
+                    });
+                let main_step = SolveStep {
+                    description: didactic_step.description,
+                    equation_after: didactic_step.equation_after,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps,
                 };

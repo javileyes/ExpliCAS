@@ -1,6 +1,6 @@
 use crate::isolation_utils::contains_var;
 use crate::quadratic_formula::{discriminant, roots_from_a_b_delta};
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{Context, Equation, Expr, ExprId};
 use num_bigint::BigInt;
 use num_integer::Integer;
 use num_rational::BigRational;
@@ -343,12 +343,30 @@ pub enum NumericPolynomialSolveOutcome {
     CandidateRoots { degree: usize, roots: Vec<ExprId> },
 }
 
+/// Didactic step payload for Rational Root strategy activation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RationalRootsDidacticStep {
+    pub description: String,
+    pub equation_after: Equation,
+}
+
 /// Build narration for Rational Root Theorem strategy activation.
 pub fn rational_roots_strategy_message(degree: usize) -> String {
     format!(
         "Applied Rational Root Theorem to degree-{} polynomial",
         degree
     )
+}
+
+/// Build the full didactic step payload for strategy activation.
+pub fn build_rational_roots_strategy_step(
+    equation_after: Equation,
+    degree: usize,
+) -> RationalRootsDidacticStep {
+    RationalRootsDidacticStep {
+        description: rational_roots_strategy_message(degree),
+        equation_after,
+    }
 }
 
 /// Solve a polynomial represented by coefficient expressions `[a0, a1, ..., an]`.
@@ -613,5 +631,24 @@ mod tests {
             rational_roots_strategy_message(4),
             "Applied Rational Root Theorem to degree-4 polynomial"
         );
+    }
+
+    #[test]
+    fn build_rational_roots_strategy_step_builds_payload() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let zero = ctx.num(0);
+        let eq = Equation {
+            lhs: x,
+            rhs: zero,
+            op: cas_ast::RelOp::Eq,
+        };
+
+        let step = build_rational_roots_strategy_step(eq.clone(), 3);
+        assert_eq!(
+            step.description,
+            "Applied Rational Root Theorem to degree-3 polynomial"
+        );
+        assert_eq!(step.equation_after, eq);
     }
 }
