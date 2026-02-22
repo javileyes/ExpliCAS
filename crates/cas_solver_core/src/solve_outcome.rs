@@ -2120,7 +2120,7 @@ pub struct IsolatedDenominatorSignSplitExecutionPlan {
 pub struct AbsSplitExecutionPlan {
     pub positive_equation: Equation,
     pub negative_equation: Equation,
-    pub didactic: AbsSplitDidacticPair,
+    pub items: Vec<AbsSplitExecutionItem>,
 }
 
 /// Pre-built didactic equations for denominator-isolation rewrite:
@@ -2539,13 +2539,7 @@ impl AbsSplitExecutionItem {
 pub fn collect_abs_split_execution_items(
     execution: &AbsSplitExecutionPlan,
 ) -> Vec<AbsSplitExecutionItem> {
-    collect_abs_split_didactic_steps(&execution.didactic)
-        .into_iter()
-        .map(|didactic| AbsSplitExecutionItem {
-            equation: didactic.equation_after.clone(),
-            description: didactic.description,
-        })
-        .collect()
+    execution.items.clone()
 }
 
 /// Build didactic payload for both absolute-value split branches.
@@ -2599,10 +2593,17 @@ where
         lhs_expr,
         render_expr,
     );
+    let items = collect_abs_split_didactic_steps(&didactic)
+        .into_iter()
+        .map(|step| AbsSplitExecutionItem {
+            equation: step.equation_after,
+            description: step.description,
+        })
+        .collect();
     AbsSplitExecutionPlan {
         positive_equation,
         negative_equation,
-        didactic,
+        items,
     }
 }
 
@@ -3073,18 +3074,19 @@ mod tests {
 
         assert_eq!(execution.positive_equation, eq_pos);
         assert_eq!(execution.negative_equation, eq_neg);
+        assert_eq!(execution.items.len(), 2);
         assert_eq!(
-            execution.didactic.positive.description,
+            execution.items[0].description,
             "Split absolute value (Case 1): x = 2"
         );
         assert_eq!(
-            execution.didactic.negative.description,
+            execution.items[1].description,
             "Split absolute value (Case 2): x = -2"
         );
     }
 
     #[test]
-    fn collect_abs_split_didactic_steps_preserves_positive_then_negative_order() {
+    fn collect_abs_split_execution_items_preserves_positive_then_negative_order() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let two = ctx.num(2);
@@ -3112,20 +3114,20 @@ mod tests {
             },
         );
 
-        let didactic = collect_abs_split_didactic_steps(&execution.didactic);
-        assert_eq!(didactic.len(), 2);
+        let items = collect_abs_split_execution_items(&execution);
+        assert_eq!(items.len(), 2);
         assert_eq!(
-            didactic[0].description,
+            items[0].description,
             "Split absolute value (Case 1): x = 2"
         );
         assert_eq!(
-            didactic[1].description,
+            items[1].description,
             "Split absolute value (Case 2): x = -2"
         );
     }
 
     #[test]
-    fn collect_abs_split_execution_items_preserves_positive_then_negative_order() {
+    fn collect_abs_split_execution_items_preserves_equation_alignment() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let two = ctx.num(2);

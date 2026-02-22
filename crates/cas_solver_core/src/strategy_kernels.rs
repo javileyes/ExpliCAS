@@ -33,14 +33,17 @@ impl StrategyExecutionItem {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CollectTermsExecutionPlan {
     pub equation: Equation,
-    pub didactic: StrategyDidacticStep,
+    pub description: String,
 }
 
 /// Collect collect-terms didactic steps in display order.
 pub fn collect_collect_terms_didactic_steps(
     execution: &CollectTermsExecutionPlan,
 ) -> Vec<StrategyDidacticStep> {
-    vec![execution.didactic.clone()]
+    vec![StrategyDidacticStep {
+        description: execution.description.clone(),
+        equation_after: execution.equation.clone(),
+    }]
 }
 
 /// Collect collect-terms execution items in execution order.
@@ -49,7 +52,7 @@ pub fn collect_collect_terms_execution_items(
 ) -> Vec<StrategyExecutionItem> {
     vec![StrategyExecutionItem {
         equation: execution.equation.clone(),
-        description: execution.didactic.description.clone(),
+        description: execution.description.clone(),
     }]
 }
 
@@ -113,8 +116,11 @@ where
         rhs: rhs_after,
         op,
     };
-    let didactic = build_collect_terms_step_with(equation.clone(), original_rhs, render_expr);
-    CollectTermsExecutionPlan { equation, didactic }
+    let step = build_collect_terms_step_with(equation.clone(), original_rhs, render_expr);
+    CollectTermsExecutionPlan {
+        equation,
+        description: step.description,
+    }
 }
 
 /// Rewrite payload for `RationalExponentStrategy`.
@@ -166,14 +172,17 @@ pub fn build_rational_exponent_step(q: i64, equation_after: Equation) -> Strateg
 #[derive(Debug, Clone, PartialEq)]
 pub struct RationalExponentExecutionPlan {
     pub equation: Equation,
-    pub didactic: StrategyDidacticStep,
+    pub description: String,
 }
 
 /// Collect rational-exponent didactic steps in display order.
 pub fn collect_rational_exponent_didactic_steps(
     execution: &RationalExponentExecutionPlan,
 ) -> Vec<StrategyDidacticStep> {
-    vec![execution.didactic.clone()]
+    vec![StrategyDidacticStep {
+        description: execution.description.clone(),
+        equation_after: execution.equation.clone(),
+    }]
 }
 
 /// Collect rational-exponent execution items in execution order.
@@ -182,7 +191,7 @@ pub fn collect_rational_exponent_execution_items(
 ) -> Vec<StrategyExecutionItem> {
     vec![StrategyExecutionItem {
         equation: execution.equation.clone(),
-        description: execution.didactic.description.clone(),
+        description: execution.description.clone(),
     }]
 }
 
@@ -197,8 +206,11 @@ pub fn build_rational_exponent_execution(
         rhs: rhs_after,
         op: RelOp::Eq,
     };
-    let didactic = build_rational_exponent_step(q, equation.clone());
-    RationalExponentExecutionPlan { equation, didactic }
+    let step = build_rational_exponent_step(q, equation.clone());
+    RationalExponentExecutionPlan {
+        equation,
+        description: step.description,
+    }
 }
 
 #[cfg(test)]
@@ -307,10 +319,9 @@ mod tests {
             }
         );
         assert_eq!(
-            execution.didactic.description,
+            execution.description,
             "Subtract rhs from both sides"
         );
-        assert_eq!(execution.didactic.equation_after, execution.equation);
     }
 
     #[test]
@@ -324,7 +335,8 @@ mod tests {
 
         let didactic = collect_collect_terms_didactic_steps(&execution);
         assert_eq!(didactic.len(), 1);
-        assert_eq!(didactic[0], execution.didactic);
+        assert_eq!(didactic[0].description, execution.description);
+        assert_eq!(didactic[0].equation_after, execution.equation);
     }
 
     #[test]
@@ -339,7 +351,7 @@ mod tests {
         let items = collect_collect_terms_execution_items(&execution);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, execution.equation);
-        assert_eq!(items[0].description, execution.didactic.description);
+        assert_eq!(items[0].description, execution.description);
     }
 
     #[test]
@@ -358,10 +370,9 @@ mod tests {
             }
         );
         assert_eq!(
-            execution.didactic.description,
+            execution.description,
             "Raise both sides to power 5 to eliminate fractional exponent"
         );
-        assert_eq!(execution.didactic.equation_after, execution.equation);
     }
 
     #[test]
@@ -373,7 +384,8 @@ mod tests {
 
         let didactic = collect_rational_exponent_didactic_steps(&execution);
         assert_eq!(didactic.len(), 1);
-        assert_eq!(didactic[0], execution.didactic);
+        assert_eq!(didactic[0].description, execution.description);
+        assert_eq!(didactic[0].equation_after, execution.equation);
     }
 
     #[test]
@@ -386,6 +398,6 @@ mod tests {
         let items = collect_rational_exponent_execution_items(&execution);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, execution.equation);
-        assert_eq!(items[0].description, execution.didactic.description);
+        assert_eq!(items[0].description, execution.description);
     }
 }
