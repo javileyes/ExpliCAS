@@ -6,7 +6,7 @@
 //!
 //! Example: `1/R = 1/R1 + 1/R2` → `R = R1·R2/(R1+R2)`
 
-use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
+use cas_ast::{ExprId, SolutionSet};
 
 use crate::engine::Simplifier;
 use crate::solver::proof_bridge::proof_to_nonzero_status;
@@ -30,47 +30,43 @@ pub(crate) fn try_reciprocal_solve(
     )?;
     let numerator = kernel.numerator;
     let denominator = kernel.denominator;
+    let plan = cas_solver_core::reciprocal::build_reciprocal_solve_plan(
+        &mut simplifier.context,
+        var,
+        numerator,
+        denominator,
+    );
 
     let mut steps = Vec::new();
 
-    // Step 1: Combine fractions on RHS
-    // 1/R = N/D
-    let combined_rhs = simplifier.context.add(Expr::Div(numerator, denominator));
-
-    // Light simplification for display (order terms)
-    let (display_rhs, _) = simplifier.simplify(combined_rhs);
+    // Step 1: Combine fractions on RHS -> 1/var = numerator/denominator.
+    // Light simplification for display (order terms).
+    let (display_rhs, _) = simplifier.simplify(plan.combined_rhs);
 
     if simplifier.collect_steps() {
-        let var_id = simplifier.context.var(var);
-        let one = simplifier.context.num(1);
-        let reciprocal_lhs = simplifier.context.add(Expr::Div(one, var_id));
+        let mut equation_after = plan.combine_equation.clone();
+        equation_after.rhs = display_rhs;
 
         steps.push(SolveStep {
-            description: "Combine fractions on RHS (common denominator)".to_string(),
-            equation_after: Equation {
-                lhs: reciprocal_lhs,
-                rhs: display_rhs,
-                op: RelOp::Eq,
-            },
+            description: cas_solver_core::reciprocal::RECIPROCAL_COMBINE_STEP_DESCRIPTION
+                .to_string(),
+            equation_after,
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });
     }
 
-    // Step 2: Take reciprocal
-    // R = D/N
-    let solution = simplifier.context.add(Expr::Div(denominator, numerator));
-    let (simplified_solution, _) = simplifier.simplify(solution);
+    // Step 2: Take reciprocal -> var = denominator/numerator.
+    let (simplified_solution, _) = simplifier.simplify(plan.solution_rhs);
 
     if simplifier.collect_steps() {
-        let var_id = simplifier.context.var(var);
+        let mut equation_after = plan.solve_equation.clone();
+        equation_after.rhs = simplified_solution;
+
         steps.push(SolveStep {
-            description: "Take reciprocal".to_string(),
-            equation_after: Equation {
-                lhs: var_id,
-                rhs: simplified_solution,
-                op: RelOp::Eq,
-            },
+            description: cas_solver_core::reciprocal::RECIPROCAL_INVERT_STEP_DESCRIPTION
+                .to_string(),
+            equation_after,
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });
@@ -95,8 +91,8 @@ pub(crate) fn try_reciprocal_solve(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use cas_ast::Context;
+    use cas_ast::Expr;
     use cas_solver_core::isolation_utils::contains_var;
 
     #[test]

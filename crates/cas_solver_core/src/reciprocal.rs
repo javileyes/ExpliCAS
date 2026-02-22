@@ -1,6 +1,8 @@
 use crate::isolation_utils::{contains_var, is_simple_reciprocal};
 use crate::linear_solution::NonZeroStatus;
-use cas_ast::{Case, ConditionPredicate, ConditionSet, Context, Expr, ExprId, SolutionSet};
+use cas_ast::{
+    Case, ConditionPredicate, ConditionSet, Context, Equation, Expr, ExprId, RelOp, SolutionSet,
+};
 use cas_math::expr_nary::add_terms_no_sign;
 use cas_math::expr_predicates::is_one_expr as is_one;
 
@@ -106,6 +108,22 @@ pub struct ReciprocalSolveKernel {
     pub denominator: ExprId,
 }
 
+/// Human-readable step description for combining RHS fractions.
+pub const RECIPROCAL_COMBINE_STEP_DESCRIPTION: &str =
+    "Combine fractions on RHS (common denominator)";
+
+/// Human-readable step description for reciprocal inversion.
+pub const RECIPROCAL_INVERT_STEP_DESCRIPTION: &str = "Take reciprocal";
+
+/// Planned equation targets for reciprocal solve `1/var = rhs`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReciprocalSolvePlan {
+    pub combine_equation: Equation,
+    pub solve_equation: Equation,
+    pub combined_rhs: ExprId,
+    pub solution_rhs: ExprId,
+}
+
 /// Derive reciprocal-solve kernel if equation matches `1/var = rhs` and
 /// the RHS is independent of `var`.
 pub fn derive_reciprocal_solve_kernel(
@@ -125,6 +143,42 @@ pub fn derive_reciprocal_solve_kernel(
         numerator,
         denominator,
     })
+}
+
+/// Build the didactic execution plan for reciprocal solve.
+///
+/// Given normalized `rhs = numerator / denominator`, this returns:
+/// 1. `1/var = numerator/denominator`
+/// 2. `var = denominator/numerator`
+pub fn build_reciprocal_solve_plan(
+    ctx: &mut Context,
+    var: &str,
+    numerator: ExprId,
+    denominator: ExprId,
+) -> ReciprocalSolvePlan {
+    let var_id = ctx.var(var);
+    let one = ctx.num(1);
+    let reciprocal_lhs = ctx.add(Expr::Div(one, var_id));
+    let combined_rhs = ctx.add(Expr::Div(numerator, denominator));
+    let solution_rhs = ctx.add(Expr::Div(denominator, numerator));
+
+    let combine_equation = Equation {
+        lhs: reciprocal_lhs,
+        rhs: combined_rhs,
+        op: RelOp::Eq,
+    };
+    let solve_equation = Equation {
+        lhs: var_id,
+        rhs: solution_rhs,
+        op: RelOp::Eq,
+    };
+
+    ReciprocalSolvePlan {
+        combine_equation,
+        solve_equation,
+        combined_rhs,
+        solution_rhs,
+    }
 }
 
 /// Build solution set for reciprocal equations `1/x = N/D` where
@@ -220,5 +274,25 @@ mod tests {
         let rhs = r;
         assert!(is_simple_reciprocal(&ctx, lhs, "R"));
         assert!(derive_reciprocal_solve_kernel(&mut ctx, lhs, rhs, "R").is_none());
+    }
+
+    #[test]
+    fn build_reciprocal_solve_plan_constructs_expected_shapes() {
+        let mut ctx = Context::new();
+        let numerator = ctx.var("n");
+        let denominator = ctx.var("d");
+        let plan = build_reciprocal_solve_plan(&mut ctx, "x", numerator, denominator);
+
+        assert_eq!(plan.combine_equation.op, RelOp::Eq);
+        assert_eq!(plan.solve_equation.op, RelOp::Eq);
+        assert!(matches!(
+            ctx.get(plan.combine_equation.lhs),
+            Expr::Div(_, _)
+        ));
+        assert!(matches!(
+            ctx.get(plan.combine_equation.rhs),
+            Expr::Div(_, _)
+        ));
+        assert!(matches!(ctx.get(plan.solve_equation.rhs), Expr::Div(_, _)));
     }
 }
