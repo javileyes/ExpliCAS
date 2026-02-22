@@ -35,6 +35,12 @@ pub struct SubstitutionIntroDidacticSteps {
     pub rewritten: SubstitutionDidacticStep,
 }
 
+/// Back-substitution execution plan (`substitution_expr = value_i` equations).
+#[derive(Debug, Clone, PartialEq)]
+pub struct BackSubstitutionPlan {
+    pub equations: Vec<Equation>,
+}
+
 /// Build didactic payload for substitution detection (`u = expr`).
 pub fn build_detected_substitution_step_with<F>(
     equation_after: Equation,
@@ -82,6 +88,39 @@ where
         description: back_substitute_message(&lhs_desc, &rhs_desc),
         equation_after,
     }
+}
+
+/// Build `substitution_expr = value` equations for each solved temporary value.
+pub fn plan_back_substitution_equations(
+    substitution_expr: ExprId,
+    values: &[ExprId],
+) -> BackSubstitutionPlan {
+    BackSubstitutionPlan {
+        equations: values
+            .iter()
+            .copied()
+            .map(|rhs| Equation {
+                lhs: substitution_expr,
+                rhs,
+                op: cas_ast::RelOp::Eq,
+            })
+            .collect(),
+    }
+}
+
+/// Build didactic payloads for a batch of back-substitution equations.
+pub fn build_back_substitute_steps_with<F>(
+    equations: &[Equation],
+    mut render_expr: F,
+) -> Vec<SubstitutionDidacticStep>
+where
+    F: FnMut(ExprId) -> String,
+{
+    equations
+        .iter()
+        .cloned()
+        .map(|eq| build_back_substitute_step_with(eq, &mut render_expr))
+        .collect()
 }
 
 /// Build didactic pair for substitution introduction:
@@ -624,5 +663,24 @@ mod tests {
         assert_eq!(steps.detected.equation_after, eq_before);
         assert_eq!(steps.rewritten.description, "Substituted equation: u = u");
         assert_eq!(steps.rewritten.equation_after, eq_after);
+    }
+
+    #[test]
+    fn back_substitution_plan_and_steps_build_expected_equations() {
+        let mut ctx = Context::new();
+        let u_expr = ctx.var("u_expr");
+        let v1 = ctx.var("v1");
+        let v2 = ctx.var("v2");
+
+        let plan = plan_back_substitution_equations(u_expr, &[v1, v2]);
+        assert_eq!(plan.equations.len(), 2);
+        assert_eq!(plan.equations[0].lhs, u_expr);
+        assert_eq!(plan.equations[0].rhs, v1);
+        assert_eq!(plan.equations[1].rhs, v2);
+
+        let didactic = build_back_substitute_steps_with(&plan.equations, |_| "u".to_string());
+        assert_eq!(didactic.len(), 2);
+        assert_eq!(didactic[0].description, "Back-substitute: u = u");
+        assert_eq!(didactic[1].description, "Back-substitute: u = u");
     }
 }

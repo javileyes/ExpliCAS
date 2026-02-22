@@ -3,10 +3,10 @@ use crate::error::CasError;
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
-use cas_ast::{Equation, RelOp, SolutionSet};
+use cas_ast::{Equation, SolutionSet};
 use cas_solver_core::substitution::{
-    build_back_substitute_step_with, build_substitution_intro_steps_with,
-    plan_exponential_substitution_rewrite,
+    build_back_substitute_steps_with, build_substitution_intro_steps_with,
+    plan_back_substitution_equations, plan_exponential_substitution_rewrite,
 };
 
 pub struct SubstitutionStrategy;
@@ -75,27 +75,26 @@ impl SolverStrategy for SubstitutionStrategy {
             match u_solutions {
                 SolutionSet::Discrete(vals) => {
                     let mut final_solutions = Vec::new();
-                    for val in vals {
-                        // Solve sub_var_expr = val
-                        let sub_eq = Equation {
-                            lhs: rewrite_plan.substitution_expr,
-                            rhs: val,
-                            op: RelOp::Eq,
-                        };
-                        if simplifier.collect_steps() {
-                            let back_sub_step =
-                                build_back_substitute_step_with(sub_eq.clone(), |id| {
-                                    format!(
-                                        "{}",
-                                        cas_formatter::DisplayExpr {
-                                            context: &simplifier.context,
-                                            id
-                                        }
-                                    )
-                                });
+                    let back_plan =
+                        plan_back_substitution_equations(rewrite_plan.substitution_expr, &vals);
+                    let back_didactic = simplifier.collect_steps().then(|| {
+                        build_back_substitute_steps_with(&back_plan.equations, |id| {
+                            format!(
+                                "{}",
+                                cas_formatter::DisplayExpr {
+                                    context: &simplifier.context,
+                                    id
+                                }
+                            )
+                        })
+                    });
+
+                    for (idx, sub_eq) in back_plan.equations.into_iter().enumerate() {
+                        if let Some(back_sub_step) = back_didactic.as_ref().and_then(|v| v.get(idx))
+                        {
                             steps.push(SolveStep {
-                                description: back_sub_step.description,
-                                equation_after: back_sub_step.equation_after,
+                                description: back_sub_step.description.clone(),
+                                equation_after: back_sub_step.equation_after.clone(),
                                 importance: crate::step::ImportanceLevel::Medium,
                                 substeps: vec![],
                             });
