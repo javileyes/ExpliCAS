@@ -13,12 +13,12 @@
 
 use cas_ast::{Context, ExprId};
 
-use crate::domain::{DomainMode, Proof};
+use crate::domain::DomainMode;
 use crate::helpers::prove_positive;
 use crate::semantics::ValueDomain;
 use crate::solver::proof_bridge::proof_to_status;
 use crate::solver::SolverOptions;
-use cas_solver_core::log_domain::{DomainModeKind, LogSolveDecision};
+use cas_solver_core::log_domain::{DomainModeKind, LogSolveDecision, ProofStatus};
 
 /// Classify whether a logarithmic solve step (for `base^x = rhs`) is valid.
 ///
@@ -53,22 +53,24 @@ pub(crate) fn classify_log_solve(
     let base_in_env = env.has_positive(base);
     let rhs_in_env = env.has_positive(rhs);
 
-    let base_proof = if base_in_env {
-        Proof::ProvenImplicit // Already in global requires
+    let base_status = if base_in_env {
+        ProofStatus::Proven
     } else {
-        prove_positive(ctx, base, vd)
+        proof_to_status(prove_positive(ctx, base, vd))
     };
 
-    let rhs_proof = if rhs_in_env {
-        Proof::ProvenImplicit // Already in global requires
+    let rhs_status = if rhs_in_env {
+        ProofStatus::Proven
     } else {
-        prove_positive(ctx, rhs, vd)
+        proof_to_status(prove_positive(ctx, rhs, vd))
     };
 
-    cas_solver_core::log_domain::classify_log_solve_by_proofs(
+    cas_solver_core::log_domain::classify_log_solve_with_env(
         to_core_domain_mode(mode),
-        proof_to_status(base_proof),
-        proof_to_status(rhs_proof),
+        base_in_env,
+        rhs_in_env,
+        base_status,
+        rhs_status,
     )
 }
 

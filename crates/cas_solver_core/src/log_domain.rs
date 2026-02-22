@@ -215,6 +215,30 @@ pub fn classify_log_solve_by_proofs(
     }
 }
 
+/// Classify with environment-proven positivity overrides.
+///
+/// When an expression is already known positive from the solver environment,
+/// we treat it as `Proven` regardless of local proof status.
+pub fn classify_log_solve_with_env(
+    mode: DomainModeKind,
+    base_in_env: bool,
+    rhs_in_env: bool,
+    base_proof: ProofStatus,
+    rhs_proof: ProofStatus,
+) -> LogSolveDecision {
+    let effective_base = if base_in_env {
+        ProofStatus::Proven
+    } else {
+        base_proof
+    };
+    let effective_rhs = if rhs_in_env {
+        ProofStatus::Proven
+    } else {
+        rhs_proof
+    };
+    classify_log_solve_by_proofs(mode, effective_base, effective_rhs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -374,5 +398,29 @@ mod tests {
             }
             _ => panic!("expected guarded route"),
         }
+    }
+
+    #[test]
+    fn classify_log_solve_with_env_overrides_unknown_rhs_to_proven() {
+        let out = classify_log_solve_with_env(
+            DomainModeKind::Generic,
+            true,
+            true,
+            ProofStatus::Unknown,
+            ProofStatus::Unknown,
+        );
+        assert_eq!(out, LogSolveDecision::Ok);
+    }
+
+    #[test]
+    fn classify_log_solve_with_env_respects_non_env_disproof() {
+        let out = classify_log_solve_with_env(
+            DomainModeKind::Generic,
+            false,
+            false,
+            ProofStatus::Disproven,
+            ProofStatus::Proven,
+        );
+        assert!(matches!(out, LogSolveDecision::NeedsComplex(_)));
     }
 }
