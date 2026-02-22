@@ -12,7 +12,7 @@ use cas_solver_core::solution_set::{
     intersect_solution_sets, open_negative_domain, open_positive_domain, union_solution_sets,
 };
 use cas_solver_core::solve_outcome::{
-    build_division_denominator_didactic_steps_with,
+    build_division_denominator_didactic_execution_with,
     build_division_denominator_sign_split_execution_with,
     build_isolated_denominator_sign_split_execution_with, plan_add_operand_isolation_step_with,
     plan_div_denominator_isolation_with_zero_rhs_guard, plan_div_numerator_isolation_step_with,
@@ -625,16 +625,9 @@ pub(super) fn isolate_div(
             );
             let (rhs_times_r_simplified, _) =
                 simplifier.simplify(didactic_plan.multiply_equation.rhs);
-            let multiply_equation_after = Equation {
-                lhs: didactic_plan.multiply_equation.lhs,
-                rhs: rhs_times_r_simplified,
-                op: didactic_plan.multiply_equation.op.clone(),
-            };
-            let didactic_steps = build_division_denominator_didactic_steps_with(
-                multiply_equation_after,
-                didactic_plan.divide_equation,
-                didactic_plan.multiply_by,
-                didactic_plan.divide_by,
+            let didactic_execution = build_division_denominator_didactic_execution_with(
+                didactic_plan,
+                rhs_times_r_simplified,
                 |id| {
                     format!(
                         "{}",
@@ -647,14 +640,14 @@ pub(super) fn isolate_div(
             );
 
             steps.push(SolveStep {
-                description: didactic_steps.multiply_step.description,
-                equation_after: didactic_steps.multiply_step.equation_after,
+                description: didactic_execution.didactic.multiply_step.description,
+                equation_after: didactic_execution.didactic.multiply_step.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
             steps.push(SolveStep {
-                description: didactic_steps.divide_step.description,
-                equation_after: didactic_steps.divide_step.equation_after,
+                description: didactic_execution.didactic.divide_step.description,
+                equation_after: didactic_execution.didactic.divide_step.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });

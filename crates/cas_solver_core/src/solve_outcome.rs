@@ -1832,6 +1832,15 @@ pub struct DivisionDenominatorDidacticSteps {
     pub divide_step: DivisionCaseDidacticStep,
 }
 
+/// Executable denominator-isolation didactic plan, with optional simplification
+/// already applied to the multiply-step RHS.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DivisionDenominatorDidacticExecutionPlan {
+    pub multiply_equation: Equation,
+    pub divide_equation: Equation,
+    pub didactic: DivisionDenominatorDidacticSteps,
+}
+
 /// Classify numeric RHS sign for `|A| = RHS`.
 pub fn abs_equality_precheck(sign: NumericSign) -> AbsEqualityPrecheck {
     match sign {
@@ -2033,6 +2042,36 @@ where
             description: divide_both_sides_message(&divide_by_desc),
             equation_after: divide_equation,
         },
+    }
+}
+
+/// Build runtime execution plan for denominator-isolation didactic steps,
+/// replacing the multiply equation RHS with a caller-provided simplified value.
+pub fn build_division_denominator_didactic_execution_with<F>(
+    didactic_plan: DivisionDenominatorDidacticPlan,
+    simplified_multiply_rhs: ExprId,
+    render_expr: F,
+) -> DivisionDenominatorDidacticExecutionPlan
+where
+    F: FnMut(ExprId) -> String,
+{
+    let multiply_equation = Equation {
+        lhs: didactic_plan.multiply_equation.lhs,
+        rhs: simplified_multiply_rhs,
+        op: didactic_plan.multiply_equation.op.clone(),
+    };
+    let divide_equation = didactic_plan.divide_equation;
+    let didactic = build_division_denominator_didactic_steps_with(
+        multiply_equation.clone(),
+        divide_equation.clone(),
+        didactic_plan.multiply_by,
+        didactic_plan.divide_by,
+        render_expr,
+    );
+    DivisionDenominatorDidacticExecutionPlan {
+        multiply_equation,
+        divide_equation,
+        didactic,
     }
 }
 
@@ -3892,6 +3931,40 @@ mod tests {
         assert_eq!(payload.multiply_step.equation_after, eq_mul);
         assert_eq!(payload.divide_step.description, "Divide both sides by r");
         assert_eq!(payload.divide_step.equation_after, eq_div);
+    }
+
+    #[test]
+    fn build_division_denominator_didactic_execution_with_rewrites_multiply_rhs() {
+        let mut ctx = Context::new();
+        let n = ctx.var("n");
+        let d = ctx.var("d");
+        let r = ctx.var("r");
+        let isolated_rhs = ctx.var("isolated");
+        let simplified_mul_rhs = ctx.var("simplified");
+        let plan = plan_division_denominator_didactic(&mut ctx, n, d, r, isolated_rhs, RelOp::Eq);
+
+        let execution =
+            build_division_denominator_didactic_execution_with(plan, simplified_mul_rhs, |id| {
+                if id == d {
+                    "d".to_string()
+                } else {
+                    "r".to_string()
+                }
+            });
+
+        assert_eq!(execution.multiply_equation.lhs, n);
+        assert_eq!(execution.multiply_equation.rhs, simplified_mul_rhs);
+        assert_eq!(execution.multiply_equation.op, RelOp::Eq);
+        assert_eq!(execution.divide_equation.lhs, d);
+        assert_eq!(execution.divide_equation.rhs, isolated_rhs);
+        assert_eq!(
+            execution.didactic.multiply_step.equation_after,
+            execution.multiply_equation
+        );
+        assert_eq!(
+            execution.didactic.divide_step.equation_after,
+            execution.divide_equation
+        );
     }
 
     #[test]
