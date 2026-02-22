@@ -1377,6 +1377,48 @@ pub fn residual_budget_exhausted_message(message: &str) -> String {
     format!("{} (residual, budget exhausted)", message)
 }
 
+/// Build didactic payload for a terminal log outcome (empty/residual).
+pub fn build_terminal_outcome_step(
+    outcome: &TerminalSolveOutcome,
+    equation_after: Equation,
+    residual_suffix: &str,
+) -> TermIsolationDidacticStep {
+    TermIsolationDidacticStep {
+        description: terminal_outcome_message(outcome, residual_suffix),
+        equation_after,
+    }
+}
+
+/// Build didactic payload for conditional-solution messaging.
+pub fn build_conditional_solution_step(
+    message: &str,
+    equation_after: Equation,
+) -> TermIsolationDidacticStep {
+    TermIsolationDidacticStep {
+        description: conditional_solution_message(message),
+        equation_after,
+    }
+}
+
+/// Build didactic payload for residual fallback messaging.
+pub fn build_residual_step(message: &str, equation_after: Equation) -> TermIsolationDidacticStep {
+    TermIsolationDidacticStep {
+        description: residual_message(message),
+        equation_after,
+    }
+}
+
+/// Build didactic payload for residual fallback when branch budget is exhausted.
+pub fn build_residual_budget_exhausted_step(
+    message: &str,
+    equation_after: Equation,
+) -> TermIsolationDidacticStep {
+    TermIsolationDidacticStep {
+        description: residual_budget_exhausted_message(message),
+        equation_after,
+    }
+}
+
 /// Build `exponent = log(base, rhs)` step payload with optional guard narration.
 pub fn build_pow_exponent_log_isolation_step_with<F>(
     ctx: &mut Context,
@@ -3660,6 +3702,57 @@ mod tests {
             "Take log base a of both sides (under guard: a > 0)"
         );
         assert_eq!(step.equation_after.lhs, exponent);
+    }
+
+    #[test]
+    fn build_terminal_outcome_step_appends_suffix_only_for_residual() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("x");
+        let rhs = ctx.var("y");
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+
+        let residual_outcome = TerminalSolveOutcome {
+            message: "needs complex",
+            solutions: residual_solution_set(&mut ctx, lhs, rhs, "x"),
+        };
+        let residual_step =
+            build_terminal_outcome_step(&residual_outcome, eq.clone(), " (residual)");
+        assert_eq!(residual_step.description, "needs complex (residual)");
+
+        let empty_outcome = TerminalSolveOutcome {
+            message: "empty",
+            solutions: SolutionSet::Empty,
+        };
+        let empty_step = build_terminal_outcome_step(&empty_outcome, eq, " (residual)");
+        assert_eq!(empty_step.description, "empty");
+    }
+
+    #[test]
+    fn build_log_status_steps_use_expected_messages() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let eq = Equation {
+            lhs: x,
+            rhs: y,
+            op: RelOp::Eq,
+        };
+
+        let conditional = build_conditional_solution_step("base > 0", eq.clone());
+        assert_eq!(conditional.description, "Conditional solution: base > 0");
+
+        let residual = build_residual_step("unsupported", eq.clone());
+        assert_eq!(residual.description, "unsupported (residual)");
+
+        let exhausted = build_residual_budget_exhausted_step("unsupported", eq);
+        assert_eq!(
+            exhausted.description,
+            "unsupported (residual, budget exhausted)"
+        );
     }
 
     #[test]

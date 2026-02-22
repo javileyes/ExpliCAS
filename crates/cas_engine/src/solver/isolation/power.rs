@@ -7,13 +7,13 @@ use cas_solver_core::isolation_utils::{
 };
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
-    build_pow_exponent_shortcut_execution_plan, conditional_solution_message,
+    build_conditional_solution_step, build_pow_exponent_shortcut_execution_plan,
+    build_residual_budget_exhausted_step, build_residual_step, build_terminal_outcome_step,
     detect_pow_exponent_shortcut_inputs, guarded_or_residual, map_pow_base_isolation_plan_with,
     map_pow_exponent_shortcut_with, plan_pow_base_isolation, plan_pow_exponent_log_isolation_step,
     plan_pow_exponent_shortcut_action_from_inputs, plan_solve_tactic_normalization_step,
-    residual_budget_exhausted_message, residual_message, resolve_log_terminal_outcome,
-    resolve_log_unsupported_outcome, resolve_power_base_one_shortcut_with,
-    terminal_outcome_message, LogUnsupportedOutcome, PowBaseIsolationEngineAction,
+    resolve_log_terminal_outcome, resolve_log_unsupported_outcome,
+    resolve_power_base_one_shortcut_with, LogUnsupportedOutcome, PowBaseIsolationEngineAction,
     PowExponentShortcutEngineAction,
 };
 
@@ -299,9 +299,18 @@ fn isolate_pow_exponent(
         var,
     ) {
         if simplifier.collect_steps() {
+            let step = build_terminal_outcome_step(
+                &outcome,
+                Equation {
+                    lhs,
+                    rhs,
+                    op: op.clone(),
+                },
+                " (residual)",
+            );
             steps.push(SolveStep {
-                description: terminal_outcome_message(&outcome, " (residual)"),
-                equation_after: Equation { lhs, rhs, op },
+                description: step.description,
+                equation_after: step.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -342,9 +351,17 @@ fn isolate_pow_exponent(
                 solutions,
             } => {
                 if simplifier.collect_steps() {
+                    let step = build_residual_budget_exhausted_step(
+                        msg,
+                        Equation {
+                            lhs,
+                            rhs,
+                            op: op.clone(),
+                        },
+                    );
                     steps.push(SolveStep {
-                        description: residual_budget_exhausted_message(msg),
-                        equation_after: Equation { lhs, rhs, op },
+                        description: step.description,
+                        equation_after: step.equation_after,
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
                     });
@@ -416,9 +433,17 @@ fn isolate_pow_exponent(
                 let guarded_solutions = match guarded_result {
                     Ok((guarded_solutions, _)) => {
                         if simplifier.collect_steps() {
+                            let step = build_conditional_solution_step(
+                                msg,
+                                Equation {
+                                    lhs,
+                                    rhs,
+                                    op: op.clone(),
+                                },
+                            );
                             steps.push(SolveStep {
-                                description: conditional_solution_message(msg),
-                                equation_after: Equation { lhs, rhs, op },
+                                description: step.description,
+                                equation_after: step.equation_after,
                                 importance: crate::step::ImportanceLevel::Medium,
                                 substeps: vec![],
                             });
@@ -427,9 +452,17 @@ fn isolate_pow_exponent(
                     }
                     Err(_) => {
                         if simplifier.collect_steps() {
+                            let step = build_residual_step(
+                                msg,
+                                Equation {
+                                    lhs,
+                                    rhs,
+                                    op: op.clone(),
+                                },
+                            );
                             steps.push(SolveStep {
-                                description: residual_message(msg),
-                                equation_after: Equation { lhs, rhs, op },
+                                description: step.description,
+                                equation_after: step.equation_after,
                                 importance: crate::step::ImportanceLevel::Medium,
                                 substeps: vec![],
                             });
