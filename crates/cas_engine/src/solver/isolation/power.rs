@@ -11,9 +11,10 @@ use cas_solver_core::log_domain::{
 };
 use cas_solver_core::solve_outcome::{
     classify_pow_base_isolation_route, classify_pow_exponent_shortcut,
-    even_power_negative_rhs_outcome, guarded_or_residual, power_base_one_outcome,
-    power_equals_base_symbolic_outcome, residual_expression, resolve_log_terminal_outcome,
-    terminal_outcome_message, PowBaseIsolationRoute, PowExponentShortcut, PowerEqualsBaseRoute,
+    classify_power_base_one_shortcut, even_power_negative_rhs_outcome, guarded_or_residual,
+    power_base_one_shortcut_solutions, power_equals_base_symbolic_outcome, residual_expression,
+    resolve_log_terminal_outcome, terminal_outcome_message, PowBaseIsolationRoute,
+    PowExponentShortcut, PowerBaseOneShortcut, PowerEqualsBaseRoute,
 };
 
 use super::{isolate, prepend_steps};
@@ -326,20 +327,24 @@ fn isolate_pow_exponent(
     // DOMAIN GUARDS for log operation (RealOnly mode)
     // ================================================================
     // GUARD 1: Handle base = 1 special case
-    if is_numeric_one(&simplifier.context, b) {
-        let rhs_is_one = is_numeric_one(&simplifier.context, rhs);
-        let result = power_base_one_outcome(rhs_is_one);
+    let base_one_shortcut = classify_power_base_one_shortcut(
+        is_numeric_one(&simplifier.context, b),
+        is_numeric_one(&simplifier.context, rhs),
+    );
+    if let Some(result) = power_base_one_shortcut_solutions(base_one_shortcut) {
         if simplifier.collect_steps() {
-            let desc = if rhs_is_one {
-                "1^x = 1 for all x → any real number is a solution".to_string()
-            } else {
-                format!(
+            let desc = match base_one_shortcut {
+                PowerBaseOneShortcut::AllReals => {
+                    "1^x = 1 for all x → any real number is a solution".to_string()
+                }
+                PowerBaseOneShortcut::Empty => format!(
                     "1^x = 1 for all x, but RHS = {} ≠ 1 → no solution",
                     cas_formatter::DisplayExpr {
                         context: &simplifier.context,
                         id: rhs
                     }
-                )
+                ),
+                PowerBaseOneShortcut::NotApplicable => unreachable!("shortcut applied above"),
             };
             steps.push(SolveStep {
                 description: desc,

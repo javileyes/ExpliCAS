@@ -63,6 +63,14 @@ pub enum PowBaseIsolationRoute {
     },
 }
 
+/// Shortcut outcomes for `1^x = rhs`-style equations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PowerBaseOneShortcut {
+    NotApplicable,
+    AllReals,
+    Empty,
+}
+
 /// Classify the simplified variable-free residual.
 pub fn classify_var_free_difference(ctx: &Context, diff: ExprId) -> VarFreeDiffKind {
     match ctx.get(diff) {
@@ -89,6 +97,30 @@ pub fn power_base_one_outcome(rhs_is_one: bool) -> SolutionSet {
         SolutionSet::AllReals
     } else {
         SolutionSet::Empty
+    }
+}
+
+/// Classify whether the base-one shortcut applies and which outcome it yields.
+pub fn classify_power_base_one_shortcut(
+    base_is_one: bool,
+    rhs_is_one: bool,
+) -> PowerBaseOneShortcut {
+    if !base_is_one {
+        return PowerBaseOneShortcut::NotApplicable;
+    }
+    if rhs_is_one {
+        PowerBaseOneShortcut::AllReals
+    } else {
+        PowerBaseOneShortcut::Empty
+    }
+}
+
+/// Convert shortcut classification to solution set, if applicable.
+pub fn power_base_one_shortcut_solutions(shortcut: PowerBaseOneShortcut) -> Option<SolutionSet> {
+    match shortcut {
+        PowerBaseOneShortcut::NotApplicable => None,
+        PowerBaseOneShortcut::AllReals => Some(SolutionSet::AllReals),
+        PowerBaseOneShortcut::Empty => Some(SolutionSet::Empty),
     }
 }
 
@@ -390,6 +422,43 @@ mod tests {
     #[test]
     fn power_base_one_outcome_empty_when_rhs_not_one() {
         assert!(matches!(power_base_one_outcome(false), SolutionSet::Empty));
+    }
+
+    #[test]
+    fn classify_power_base_one_shortcut_not_applicable_when_base_not_one() {
+        assert_eq!(
+            classify_power_base_one_shortcut(false, true),
+            PowerBaseOneShortcut::NotApplicable
+        );
+    }
+
+    #[test]
+    fn classify_power_base_one_shortcut_all_reals_when_rhs_one() {
+        assert_eq!(
+            classify_power_base_one_shortcut(true, true),
+            PowerBaseOneShortcut::AllReals
+        );
+    }
+
+    #[test]
+    fn classify_power_base_one_shortcut_empty_when_rhs_not_one() {
+        assert_eq!(
+            classify_power_base_one_shortcut(true, false),
+            PowerBaseOneShortcut::Empty
+        );
+    }
+
+    #[test]
+    fn power_base_one_shortcut_solutions_maps_correctly() {
+        assert!(matches!(
+            power_base_one_shortcut_solutions(PowerBaseOneShortcut::AllReals),
+            Some(SolutionSet::AllReals)
+        ));
+        assert!(matches!(
+            power_base_one_shortcut_solutions(PowerBaseOneShortcut::Empty),
+            Some(SolutionSet::Empty)
+        ));
+        assert!(power_base_one_shortcut_solutions(PowerBaseOneShortcut::NotApplicable).is_none());
     }
 
     #[test]
