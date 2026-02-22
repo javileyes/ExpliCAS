@@ -7,7 +7,8 @@ use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_outcome::{
-    collect_term_isolation_rewrite_didactic_steps, plan_swap_sides_step,
+    collect_term_isolation_didactic_steps, collect_term_isolation_rewrite_didactic_steps,
+    plan_swap_sides_step,
     resolve_single_side_exponential_terminal_with_step,
 };
 use cas_solver_core::strategy_kernels::{
@@ -132,7 +133,7 @@ impl SolverStrategy for UnwrapStrategy {
         let mode = crate::solver::domain_guards::to_core_domain_mode(opts.domain_mode);
         let wildcard_scope = opts.assume_scope == crate::semantics::AssumeScope::Wildcard;
 
-        if let Some((solutions, didactic_step)) = resolve_single_side_exponential_terminal_with_step(
+        if let Some((solutions, terminal_step)) = resolve_single_side_exponential_terminal_with_step(
             &mut simplifier.context,
             eq.lhs,
             eq.rhs,
@@ -149,12 +150,14 @@ impl SolverStrategy for UnwrapStrategy {
         ) {
             let mut steps = Vec::new();
             if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: didactic_step.description,
-                    equation_after: didactic_step.equation_after,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
+                for didactic_step in collect_term_isolation_didactic_steps(&terminal_step) {
+                    steps.push(SolveStep {
+                        description: didactic_step.description,
+                        equation_after: didactic_step.equation_after,
+                        importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
+                    });
+                }
             }
             return Some(Ok((solutions, steps)));
         }
