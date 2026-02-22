@@ -5,7 +5,7 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, SolutionSet};
 use cas_solver_core::substitution::{
-    build_back_substitution_execution_with, build_substitution_intro_steps_with,
+    build_back_substitution_execution_with, build_exponential_substitution_execution_with,
     plan_back_substitution_equations, plan_exponential_substitution_rewrite,
 };
 
@@ -29,33 +29,29 @@ impl SolverStrategy for SubstitutionStrategy {
         if let Some(rewrite_plan) =
             plan_exponential_substitution_rewrite(&mut simplifier.context, eq, var, SUB_VAR_NAME)
         {
+            let intro_execution =
+                build_exponential_substitution_execution_with(eq.clone(), rewrite_plan, |id| {
+                    format!(
+                        "{}",
+                        cas_formatter::DisplayExpr {
+                            context: &simplifier.context,
+                            id
+                        }
+                    )
+                });
             let mut steps = Vec::new();
-            let new_eq = rewrite_plan.equation;
+            let new_eq = intro_execution.equation.clone();
 
             if simplifier.collect_steps() {
-                let intro_steps = build_substitution_intro_steps_with(
-                    eq.clone(),
-                    rewrite_plan.substitution_expr,
-                    new_eq.clone(),
-                    |id| {
-                        format!(
-                            "{}",
-                            cas_formatter::DisplayExpr {
-                                context: &simplifier.context,
-                                id
-                            }
-                        )
-                    },
-                );
                 steps.push(SolveStep {
-                    description: intro_steps.detected.description,
-                    equation_after: intro_steps.detected.equation_after,
+                    description: intro_execution.didactic.detected.description.clone(),
+                    equation_after: intro_execution.didactic.detected.equation_after.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
                 steps.push(SolveStep {
-                    description: intro_steps.rewritten.description,
-                    equation_after: intro_steps.rewritten.equation_after,
+                    description: intro_execution.didactic.rewritten.description.clone(),
+                    equation_after: intro_execution.didactic.rewritten.equation_after.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -76,7 +72,7 @@ impl SolverStrategy for SubstitutionStrategy {
                 SolutionSet::Discrete(vals) => {
                     let mut final_solutions = Vec::new();
                     let back_plan =
-                        plan_back_substitution_equations(rewrite_plan.substitution_expr, &vals);
+                        plan_back_substitution_equations(intro_execution.substitution_expr, &vals);
                     let back_execution = simplifier.collect_steps().then(|| {
                         build_back_substitution_execution_with(back_plan.clone(), |id| {
                             format!(

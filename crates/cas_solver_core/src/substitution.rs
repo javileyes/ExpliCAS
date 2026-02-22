@@ -35,6 +35,14 @@ pub struct SubstitutionIntroDidacticSteps {
     pub rewritten: SubstitutionDidacticStep,
 }
 
+/// Executable substitution intro payload (`u = ...`) including rewrite + didactic.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExponentialSubstitutionExecutionPlan {
+    pub substitution_expr: ExprId,
+    pub equation: Equation,
+    pub didactic: SubstitutionIntroDidacticSteps,
+}
+
 /// Back-substitution execution plan (`substitution_expr = value_i` equations).
 #[derive(Debug, Clone, PartialEq)]
 pub struct BackSubstitutionPlan {
@@ -163,6 +171,30 @@ where
     SubstitutionIntroDidacticSteps {
         detected,
         rewritten,
+    }
+}
+
+/// Build full substitution intro execution payload from a rewrite plan:
+/// 1) detected substitution step
+/// 2) rewritten equation step
+pub fn build_exponential_substitution_execution_with<F>(
+    equation_before: Equation,
+    rewrite_plan: ExponentialSubstitutionRewritePlan,
+    render_expr: F,
+) -> ExponentialSubstitutionExecutionPlan
+where
+    F: FnMut(ExprId) -> String,
+{
+    let didactic = build_substitution_intro_steps_with(
+        equation_before,
+        rewrite_plan.substitution_expr,
+        rewrite_plan.equation.clone(),
+        render_expr,
+    );
+    ExponentialSubstitutionExecutionPlan {
+        substitution_expr: rewrite_plan.substitution_expr,
+        equation: rewrite_plan.equation,
+        didactic,
     }
 }
 
@@ -685,6 +717,48 @@ mod tests {
         assert_eq!(steps.detected.equation_after, eq_before);
         assert_eq!(steps.rewritten.description, "Substituted equation: u = u");
         assert_eq!(steps.rewritten.equation_after, eq_after);
+    }
+
+    #[test]
+    fn build_exponential_substitution_execution_with_preserves_rewrite_and_didactic() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let eq_before = Equation {
+            lhs: x,
+            rhs: y,
+            op: cas_ast::RelOp::Eq,
+        };
+        let eq_after = Equation {
+            lhs: y,
+            rhs: x,
+            op: cas_ast::RelOp::Eq,
+        };
+        let rewrite = ExponentialSubstitutionRewritePlan {
+            substitution_expr: x,
+            equation: eq_after.clone(),
+        };
+
+        let execution =
+            build_exponential_substitution_execution_with(eq_before.clone(), rewrite, |_| {
+                "u".to_string()
+            });
+
+        assert_eq!(execution.substitution_expr, x);
+        assert_eq!(execution.equation, eq_after);
+        assert_eq!(execution.didactic.detected.equation_after, eq_before);
+        assert_eq!(
+            execution.didactic.detected.description,
+            "Detected substitution: u = u"
+        );
+        assert_eq!(
+            execution.didactic.rewritten.description,
+            "Substituted equation: u = u"
+        );
+        assert_eq!(
+            execution.didactic.rewritten.equation_after,
+            execution.equation
+        );
     }
 
     #[test]
