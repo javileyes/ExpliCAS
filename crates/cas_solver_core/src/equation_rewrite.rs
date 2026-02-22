@@ -1,3 +1,4 @@
+use crate::isolation_utils::flip_inequality;
 use cas_ast::{Equation, Expr};
 
 /// Rewrite `lhs op rhs` by subtracting `rhs` on both sides:
@@ -13,6 +14,15 @@ pub fn subtract_rhs_from_both_sides(
         lhs,
         rhs,
         op: equation.op.clone(),
+    }
+}
+
+/// Swap equation sides and flip inequality direction when needed.
+pub fn swap_sides_with_inequality_flip(equation: &Equation) -> Equation {
+    Equation {
+        lhs: equation.rhs,
+        rhs: equation.lhs,
+        op: flip_inequality(equation.op.clone()),
     }
 }
 
@@ -58,5 +68,35 @@ mod tests {
             other => panic!("expected Add on rhs, got {:?}", other),
         };
         assert_eq!(lhs_neg, rhs_neg, "negated rhs should be shared node");
+    }
+
+    #[test]
+    fn swap_sides_flips_strict_inequality_direction() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let eq = Equation {
+            lhs: x,
+            rhs: y,
+            op: RelOp::Lt,
+        };
+        let swapped = swap_sides_with_inequality_flip(&eq);
+        assert_eq!(swapped.lhs, y);
+        assert_eq!(swapped.rhs, x);
+        assert_eq!(swapped.op, RelOp::Gt);
+    }
+
+    #[test]
+    fn swap_sides_keeps_equality_operator() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let eq = Equation {
+            lhs: x,
+            rhs: y,
+            op: RelOp::Eq,
+        };
+        let swapped = swap_sides_with_inequality_flip(&eq);
+        assert_eq!(swapped.op, RelOp::Eq);
     }
 }

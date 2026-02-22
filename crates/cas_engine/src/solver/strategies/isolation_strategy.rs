@@ -7,7 +7,7 @@ use crate::solver::{SolveCtx, SolveDomainEnv, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::function_inverse::UnaryInverseKind;
 use cas_solver_core::isolation_utils::{
-    contains_var, flip_inequality, is_numeric_one, match_exponential_var_in_exponent,
+    contains_var, is_numeric_one, match_exponential_var_in_exponent,
 };
 use cas_solver_core::log_domain::{classify_terminal_action, LogSolveDecision, LogTerminalAction};
 
@@ -48,22 +48,26 @@ impl SolverStrategy for IsolationStrategy {
 
         if !lhs_has && rhs_has {
             // Swap
-            let new_op = flip_inequality(eq.op.clone());
+            let swapped = cas_solver_core::equation_rewrite::swap_sides_with_inequality_flip(eq);
             let mut steps = Vec::new();
             if simplifier.collect_steps() {
                 steps.push(SolveStep {
                     description: "Swap sides to put variable on LHS".to_string(),
-                    equation_after: Equation {
-                        lhs: eq.rhs,
-                        rhs: eq.lhs,
-                        op: new_op.clone(),
-                    },
+                    equation_after: swapped.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
             }
             // V2.0: Pass opts through to propagate budget
-            match isolate(eq.rhs, eq.lhs, new_op, var, simplifier, *opts, ctx) {
+            match isolate(
+                swapped.lhs,
+                swapped.rhs,
+                swapped.op,
+                var,
+                simplifier,
+                *opts,
+                ctx,
+            ) {
                 Ok((set, mut iso_steps)) => {
                     steps.append(&mut iso_steps);
                     return Some(Ok((set, steps)));
