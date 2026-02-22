@@ -1,6 +1,6 @@
 use crate::isolation_utils::contains_var;
 use crate::quadratic_formula::{discriminant, roots_from_a_b_delta};
-use cas_ast::{Context, Equation, Expr, ExprId};
+use cas_ast::{Context, Equation, Expr, ExprId, RelOp};
 use num_bigint::BigInt;
 use num_integer::Integer;
 use num_rational::BigRational;
@@ -369,6 +369,22 @@ pub fn build_rational_roots_strategy_step(
     }
 }
 
+/// Plan Rational Root strategy didactic step for equation `expanded_expr = 0`.
+pub fn plan_rational_roots_strategy_step(
+    ctx: &mut Context,
+    expanded_expr: ExprId,
+    degree: usize,
+) -> RationalRootsDidacticStep {
+    build_rational_roots_strategy_step(
+        Equation {
+            lhs: expanded_expr,
+            rhs: ctx.num(0),
+            op: RelOp::Eq,
+        },
+        degree,
+    )
+}
+
 /// Solve a polynomial represented by coefficient expressions `[a0, a1, ..., an]`.
 ///
 /// Returns `None` when:
@@ -650,5 +666,20 @@ mod tests {
             "Applied Rational Root Theorem to degree-3 polynomial"
         );
         assert_eq!(step.equation_after, eq);
+    }
+
+    #[test]
+    fn plan_rational_roots_strategy_step_builds_zero_rhs_equation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let step = plan_rational_roots_strategy_step(&mut ctx, x, 5);
+
+        assert_eq!(
+            step.description,
+            "Applied Rational Root Theorem to degree-5 polynomial"
+        );
+        assert_eq!(step.equation_after.lhs, x);
+        assert!(matches!(ctx.get(step.equation_after.rhs), Expr::Number(n) if n.is_zero()));
+        assert_eq!(step.equation_after.op, cas_ast::RelOp::Eq);
     }
 }
