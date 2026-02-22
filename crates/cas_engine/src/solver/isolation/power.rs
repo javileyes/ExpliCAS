@@ -10,10 +10,10 @@ use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
     classify_pow_base_isolation_route, classify_power_base_one_shortcut,
     detect_pow_exponent_shortcut_inputs, even_power_negative_rhs_outcome, guarded_or_residual,
-    plan_pow_exponent_shortcut_action_from_inputs, power_base_one_shortcut_solutions,
-    resolve_log_terminal_outcome, resolve_log_unsupported_outcome, terminal_outcome_message,
-    LogUnsupportedOutcome, PowBaseIsolationRoute, PowExponentShortcut, PowExponentShortcutAction,
-    PowerBaseOneShortcut, PowerEqualsBaseRoute,
+    plan_pow_exponent_shortcut_action_from_inputs, power_base_one_shortcut_message,
+    power_base_one_shortcut_solutions, resolve_log_terminal_outcome,
+    resolve_log_unsupported_outcome, terminal_outcome_message, LogUnsupportedOutcome,
+    PowBaseIsolationRoute, PowExponentShortcut, PowExponentShortcutAction, PowerEqualsBaseRoute,
 };
 
 use super::{isolate, prepend_steps};
@@ -364,19 +364,15 @@ fn isolate_pow_exponent(
     );
     if let Some(result) = power_base_one_shortcut_solutions(base_one_shortcut) {
         if simplifier.collect_steps() {
-            let desc = match base_one_shortcut {
-                PowerBaseOneShortcut::AllReals => {
-                    "1^x = 1 for all x → any real number is a solution".to_string()
+            let rhs_desc = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id: rhs
                 }
-                PowerBaseOneShortcut::Empty => format!(
-                    "1^x = 1 for all x, but RHS = {} ≠ 1 → no solution",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: rhs
-                    }
-                ),
-                PowerBaseOneShortcut::NotApplicable => unreachable!("shortcut applied above"),
-            };
+            );
+            let desc = power_base_one_shortcut_message(base_one_shortcut, &rhs_desc)
+                .expect("shortcut applied above");
             steps.push(SolveStep {
                 description: desc,
                 equation_after: Equation { lhs, rhs, op },

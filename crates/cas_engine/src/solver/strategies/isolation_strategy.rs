@@ -4,7 +4,7 @@ use crate::solver::isolation::isolate;
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveDomainEnv, SolveStep, SolverOptions};
-use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
+use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_outcome::{
     resolve_single_side_exponential_terminal_outcome, terminal_outcome_message,
@@ -179,73 +179,55 @@ impl SolverStrategy for UnwrapStrategy {
             return Some(result);
         }
 
+        use crate::solver::domain_guards::classify_log_solve;
+
         // Helper to invert
         let mut invert = |target: ExprId,
                           other: ExprId,
                           op: RelOp,
                           is_lhs: bool|
          -> Option<(Equation, String)> {
-            let target_data = simplifier.context.get(target).clone();
-            match target_data {
-                Expr::Function(fn_id, args) if args.len() == 1 => {
-                    let arg = args[0];
-                    let name = simplifier.context.sym_name(fn_id).to_string();
-                    let (new_eq, description) =
-                        cas_solver_core::function_inverse::plan_unary_inverse_rewrite_for_unwrap(
-                            &mut simplifier.context,
-                            &name,
-                            arg,
-                            other,
-                            op,
-                            is_lhs,
-                        )?;
-                    Some((new_eq, description.to_string()))
-                }
-                Expr::Pow(_, _) => {
-                    use crate::solver::domain_guards::classify_log_solve;
-
-                    match cas_solver_core::rational_power::plan_pow_unwrap_rewrite(
-                        &mut simplifier.context,
-                        target,
-                        other,
-                        var,
-                        op,
-                        is_lhs,
-                        |core_ctx, base, other_side| {
-                            classify_log_solve(core_ctx, base, other_side, opts, &ctx.domain_env)
-                        },
-                    ) {
-                        Some(cas_solver_core::rational_power::PowUnwrapPlan::VariableBase {
-                            equation,
-                            exponent,
-                        }) => Some((
-                            equation,
-                            format!(
-                                "Raise both sides to 1/{:?}",
-                                simplifier.context.get(exponent)
-                            ),
-                        )),
-                        Some(cas_solver_core::rational_power::PowUnwrapPlan::LogLinear {
-                            equation,
+            match cas_solver_core::unwrap_plan::plan_unwrap_rewrite(
+                &mut simplifier.context,
+                target,
+                other,
+                var,
+                op,
+                is_lhs,
+                |core_ctx, base, other_side| {
+                    classify_log_solve(core_ctx, base, other_side, opts, &ctx.domain_env)
+                },
+            )? {
+                cas_solver_core::unwrap_plan::UnwrapRewritePlan::Unary {
+                    equation,
+                    description,
+                } => Some((equation, description)),
+                cas_solver_core::unwrap_plan::UnwrapRewritePlan::PowVariableBase {
+                    equation,
+                    exponent,
+                } => Some((
+                    equation,
+                    format!(
+                        "Raise both sides to 1/{:?}",
+                        simplifier.context.get(exponent)
+                    ),
+                )),
+                cas_solver_core::unwrap_plan::UnwrapRewritePlan::PowLogLinear {
+                    equation,
+                    base,
+                    assumptions,
+                } => {
+                    for assumption in assumptions {
+                        let event = crate::assumptions::AssumptionEvent::from_log_assumption(
+                            assumption,
+                            &simplifier.context,
                             base,
-                            assumptions,
-                        }) => {
-                            for assumption in assumptions {
-                                let event =
-                                    crate::assumptions::AssumptionEvent::from_log_assumption(
-                                        assumption,
-                                        &simplifier.context,
-                                        base,
-                                        other,
-                                    );
-                                crate::solver::note_assumption(event);
-                            }
-                            Some((equation, "Take log base e of both sides".to_string()))
-                        }
-                        None => None,
+                            other,
+                        );
+                        crate::solver::note_assumption(event);
                     }
+                    Some((equation, "Take log base e of both sides".to_string()))
                 }
-                _ => None,
             }
         };
 

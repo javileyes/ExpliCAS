@@ -163,6 +163,23 @@ pub fn power_base_one_shortcut_solutions(shortcut: PowerBaseOneShortcut) -> Opti
     }
 }
 
+/// Build didactic narration for base-one exponential shortcut (`1^x = rhs`).
+pub fn power_base_one_shortcut_message(
+    shortcut: PowerBaseOneShortcut,
+    rhs_display: &str,
+) -> Option<String> {
+    match shortcut {
+        PowerBaseOneShortcut::NotApplicable => None,
+        PowerBaseOneShortcut::AllReals => {
+            Some("1^x = 1 for all x -> any real number is a solution".to_string())
+        }
+        PowerBaseOneShortcut::Empty => Some(format!(
+            "1^x = 1 for all x, but RHS = {} != 1 -> no solution",
+            rhs_display
+        )),
+    }
+}
+
 /// Decide how to handle `base^x = base`.
 pub fn classify_power_equals_base_route(
     base_is_zero: bool,
@@ -281,6 +298,7 @@ pub fn plan_pow_exponent_shortcut_action(
 }
 
 /// Plan exponent shortcut action from already-detected RHS shortcut inputs.
+#[allow(clippy::too_many_arguments)]
 pub fn plan_pow_exponent_shortcut_action_from_inputs(
     ctx: &mut Context,
     base: ExprId,
@@ -322,7 +340,7 @@ where
 {
     let rhs_expr = ctx.get(rhs).clone();
     let (bases_equal, rhs_pow_base_equal) =
-        detect_pow_exponent_shortcut_inputs(rhs, &rhs_expr, |candidate| same_base(candidate));
+        detect_pow_exponent_shortcut_inputs(rhs, &rhs_expr, &mut same_base);
     let shortcut = classify_pow_exponent_shortcut(
         op.clone(),
         bases_equal,
@@ -720,6 +738,21 @@ mod tests {
             Some(SolutionSet::Empty)
         ));
         assert!(power_base_one_shortcut_solutions(PowerBaseOneShortcut::NotApplicable).is_none());
+    }
+
+    #[test]
+    fn power_base_one_shortcut_message_maps_correctly() {
+        assert_eq!(
+            power_base_one_shortcut_message(PowerBaseOneShortcut::AllReals, "rhs"),
+            Some("1^x = 1 for all x -> any real number is a solution".to_string())
+        );
+        assert_eq!(
+            power_base_one_shortcut_message(PowerBaseOneShortcut::Empty, "2"),
+            Some("1^x = 1 for all x, but RHS = 2 != 1 -> no solution".to_string())
+        );
+        assert!(
+            power_base_one_shortcut_message(PowerBaseOneShortcut::NotApplicable, "rhs").is_none()
+        );
     }
 
     #[test]

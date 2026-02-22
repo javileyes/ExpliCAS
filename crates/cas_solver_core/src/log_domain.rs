@@ -285,6 +285,7 @@ pub fn classify_log_solve_for_value_domain(
 }
 
 /// Classify a log-solve step by proving positivity only when env facts are missing.
+#[allow(clippy::too_many_arguments)]
 pub fn classify_log_solve_with_prover<F>(
     ctx: &Context,
     base: ExprId,
