@@ -7,8 +7,7 @@ use crate::solver::{SolveCtx, SolveDomainEnv, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::function_inverse::UnaryInverseKind;
 use cas_solver_core::isolation_utils::{
-    contains_var, flip_inequality, is_numeric_one, is_positive_integer_expr,
-    match_exponential_var_in_base, match_exponential_var_in_exponent,
+    contains_var, flip_inequality, is_numeric_one, match_exponential_var_in_exponent,
 };
 use cas_solver_core::log_domain::{classify_terminal_action, LogSolveDecision, LogTerminalAction};
 
@@ -263,36 +262,17 @@ impl SolverStrategy for UnwrapStrategy {
                 }
                 Expr::Pow(_, _) => {
                     // A^n = B -> A = B^(1/n) (if n is const)
-                    // If A contains var and n does not.
-                    if let Some(pattern) =
-                        match_exponential_var_in_base(&simplifier.context, target, var)
+                    // If A contains var and n is not a positive integer.
+                    if let Some((new_eq, e)) =
+                        cas_solver_core::rational_power::rewrite_variable_base_power_equation(
+                            &mut simplifier.context,
+                            target,
+                            other,
+                            var,
+                            op.clone(),
+                            is_lhs,
+                        )
                     {
-                        let b = pattern.base;
-                        let e = pattern.exponent;
-                        // Prevent unwrapping positive integer powers (handled by Polynomial/Quadratic)
-                        // e.g. x^2 = ... don't turn into x = sqrt(...)
-                        if is_positive_integer_expr(&simplifier.context, e) {
-                            // Don't unwrap x^2, x^4 etc.
-                            return None;
-                        }
-
-                        // A^n = B -> A = B^(1/n)
-                        let one = simplifier.context.num(1);
-                        let inv_exp = simplifier.context.add(Expr::Div(one, e));
-                        let new_other = simplifier.context.add(Expr::Pow(other, inv_exp));
-                        let new_eq = if is_lhs {
-                            Equation {
-                                lhs: b,
-                                rhs: new_other,
-                                op,
-                            }
-                        } else {
-                            Equation {
-                                lhs: new_other,
-                                rhs: b,
-                                op,
-                            }
-                        };
                         Some((
                             new_eq,
                             format!("Raise both sides to 1/{:?}", simplifier.context.get(e)),

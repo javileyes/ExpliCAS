@@ -1,4 +1,6 @@
-use crate::isolation_utils::contains_var;
+use crate::isolation_utils::{
+    contains_var, is_positive_integer_expr, match_exponential_var_in_base,
+};
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp};
 
 /// Match `Pow(base, p/q)` where `base` contains `var` and `p/q` is non-integer rational.
@@ -71,6 +73,46 @@ pub fn rewrite_rational_power_equation(
     ))
 }
 
+/// Rewrite an exponential equation with variable in the base:
+/// `A^n op B  ->  A op B^(1/n)`, but only when `n` is not a positive integer.
+///
+/// Returns the transformed equation and the original exponent expression `n`.
+pub fn rewrite_variable_base_power_equation(
+    ctx: &mut Context,
+    target: ExprId,
+    other: ExprId,
+    var: &str,
+    op: RelOp,
+    is_lhs: bool,
+) -> Option<(Equation, ExprId)> {
+    let pattern = match_exponential_var_in_base(ctx, target, var)?;
+    let base = pattern.base;
+    let exponent = pattern.exponent;
+
+    // Keep integer powers in polynomial/quadratic strategies.
+    if is_positive_integer_expr(ctx, exponent) {
+        return None;
+    }
+
+    let one = ctx.num(1);
+    let inv_exp = ctx.add(Expr::Div(one, exponent));
+    let transformed_other = ctx.add(Expr::Pow(other, inv_exp));
+    let equation = if is_lhs {
+        Equation {
+            lhs: base,
+            rhs: transformed_other,
+            op,
+        }
+    } else {
+        Equation {
+            lhs: transformed_other,
+            rhs: base,
+            op,
+        }
+    };
+    Some((equation, exponent))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,5 +170,61 @@ mod tests {
         assert!(matches!(ctx.get(eq.lhs), Expr::Pow(_, _)));
         assert!(matches!(ctx.get(eq.rhs), Expr::Pow(_, _)));
         assert_eq!(eq.op, RelOp::Eq);
+    }
+
+    #[test]
+    fn rewrite_variable_base_power_equation_rewrites_non_integer_exponent() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let half = ctx.rational(1, 2);
+        let target = ctx.add(Expr::Pow(x, half));
+
+        let (eq, exp) = rewrite_variable_base_power_equation(
+            &mut ctx,
+            target,
+            y,
+            "x",
+            RelOp::Eq,
+            true,
+        )
+        .expect("non-integer exponent should rewrite");
+        assert_eq!(exp, half);
+        assert_eq!(eq.lhs, x);
+        assert!(matches!(ctx.get(eq.rhs), Expr::Pow(base, _) if *base == y));
+    }
+
+    #[test]
+    fn rewrite_variable_base_power_equation_rejects_positive_integer_exponent() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let two = ctx.num(2);
+        let target = ctx.add(Expr::Pow(x, two));
+        assert!(
+            rewrite_variable_base_power_equation(&mut ctx, target, y, "x", RelOp::Eq, true)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn rewrite_variable_base_power_equation_handles_rhs_target_orientation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let half = ctx.rational(1, 2);
+        let target = ctx.add(Expr::Pow(x, half));
+
+        let (eq, _) = rewrite_variable_base_power_equation(
+            &mut ctx,
+            target,
+            y,
+            "x",
+            RelOp::Eq,
+            false,
+        )
+        .expect("rewrite should support RHS target");
+        assert!(matches!(ctx.get(eq.lhs), Expr::Pow(base, _) if *base == y));
+        assert_eq!(eq.rhs, x);
     }
 }
