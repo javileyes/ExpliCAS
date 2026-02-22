@@ -1046,6 +1046,13 @@ pub struct TermIsolationRewritePlan {
     pub step: TermIsolationDidacticStep,
 }
 
+/// Collect term-isolation rewrite didactic steps in display order.
+pub fn collect_term_isolation_rewrite_didactic_steps(
+    plan: &TermIsolationRewritePlan,
+) -> Vec<TermIsolationDidacticStep> {
+    vec![plan.step.clone()]
+}
+
 /// Route chosen for denominator isolation with zero-RHS guard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DivDenominatorIsolationRoute {
@@ -4018,6 +4025,20 @@ mod tests {
             neg_plan.step.description,
             "Multiply both sides by -1 (flips inequality)"
         );
+    }
+
+    #[test]
+    fn collect_term_isolation_rewrite_didactic_steps_returns_single_step() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let plan =
+            plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
+
+        let didactic = collect_term_isolation_rewrite_didactic_steps(&plan);
+        assert_eq!(didactic.len(), 1);
+        assert_eq!(didactic[0], plan.step);
     }
 
     #[test]

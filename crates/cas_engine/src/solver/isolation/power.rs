@@ -11,13 +11,13 @@ use cas_solver_core::solve_outcome::{
     build_residual_budget_exhausted_step, build_terminal_outcome_step,
     collect_pow_base_isolation_didactic_steps, collect_pow_exponent_log_isolation_didactic_steps,
     collect_pow_exponent_shortcut_didactic_steps, collect_power_base_one_shortcut_didactic_steps,
-    collect_term_isolation_didactic_steps, detect_pow_exponent_shortcut_inputs,
-    guarded_or_residual, map_pow_base_isolation_plan_with, map_pow_exponent_shortcut_with,
-    plan_pow_base_isolation, plan_pow_exponent_log_isolation_step_with,
-    plan_pow_exponent_shortcut_action_from_inputs, plan_solve_tactic_normalization_step,
-    resolve_log_terminal_outcome, resolve_log_unsupported_outcome,
-    resolve_power_base_one_shortcut_with, LogUnsupportedOutcome, PowBaseIsolationEngineAction,
-    PowExponentShortcutEngineAction,
+    collect_term_isolation_didactic_steps, collect_term_isolation_rewrite_didactic_steps,
+    detect_pow_exponent_shortcut_inputs, guarded_or_residual, map_pow_base_isolation_plan_with,
+    map_pow_exponent_shortcut_with, plan_pow_base_isolation,
+    plan_pow_exponent_log_isolation_step_with, plan_pow_exponent_shortcut_action_from_inputs,
+    plan_solve_tactic_normalization_step, resolve_log_terminal_outcome,
+    resolve_log_unsupported_outcome, resolve_power_base_one_shortcut_with, LogUnsupportedOutcome,
+    PowBaseIsolationEngineAction, PowExponentShortcutEngineAction,
 };
 
 use super::{isolate, prepend_steps};
@@ -277,12 +277,14 @@ fn isolate_pow_exponent(
                 sim_rhs,
                 op.clone(),
             );
-            steps.push(SolveStep {
-                description: normalize_plan.step.description,
-                equation_after: normalize_plan.step.equation_after,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
+            for didactic_step in collect_term_isolation_rewrite_didactic_steps(&normalize_plan) {
+                steps.push(SolveStep {
+                    description: didactic_step.description,
+                    equation_after: didactic_step.equation_after,
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
         }
 
         (sim_base, sim_rhs)
