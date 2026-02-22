@@ -139,6 +139,16 @@ pub struct ReciprocalSolveExecution {
     pub solutions: SolutionSet,
 }
 
+/// Collect reciprocal didactic steps in execution order.
+pub fn collect_reciprocal_didactic_steps(
+    execution: &ReciprocalSolveExecution,
+) -> Vec<ReciprocalDidacticStep> {
+    vec![
+        execution.combine_step.clone(),
+        execution.invert_step.clone(),
+    ]
+}
+
 /// Derive reciprocal-solve kernel if equation matches `1/var = rhs` and
 /// the RHS is independent of `var`.
 pub fn derive_reciprocal_solve_kernel(
@@ -408,5 +418,32 @@ mod tests {
         assert_eq!(execution.invert_step.description, "Take reciprocal");
         assert_eq!(execution.invert_step.equation_after.rhs, solution_rhs);
         assert!(matches!(execution.solutions, SolutionSet::Conditional(_)));
+    }
+
+    #[test]
+    fn collect_reciprocal_didactic_steps_preserves_step_order() {
+        let mut ctx = Context::new();
+        let n = ctx.var("n");
+        let d = ctx.var("d");
+        let c = ctx.var("c");
+        let s = ctx.var("s");
+        let execution =
+            build_reciprocal_execution(&mut ctx, "x", n, d, c, s, n, NonZeroStatus::Unknown);
+
+        let didactic = collect_reciprocal_didactic_steps(&execution);
+        assert_eq!(didactic.len(), 2);
+        assert_eq!(
+            didactic[0].description,
+            "Combine fractions on RHS (common denominator)"
+        );
+        assert_eq!(didactic[1].description, "Take reciprocal");
+        assert_eq!(
+            didactic[0].equation_after,
+            execution.combine_step.equation_after
+        );
+        assert_eq!(
+            didactic[1].equation_after,
+            execution.invert_step.equation_after
+        );
     }
 }

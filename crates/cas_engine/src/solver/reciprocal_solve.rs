@@ -64,18 +64,16 @@ pub(crate) fn try_reciprocal_solve(
 
     let mut steps = Vec::new();
     if simplifier.collect_steps() {
-        steps.push(SolveStep {
-            description: execution.combine_step.description,
-            equation_after: execution.combine_step.equation_after,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        });
-        steps.push(SolveStep {
-            description: execution.invert_step.description,
-            equation_after: execution.invert_step.equation_after,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        });
+        for didactic_step in
+            cas_solver_core::reciprocal::collect_reciprocal_didactic_steps(&execution)
+        {
+            steps.push(SolveStep {
+                description: didactic_step.description,
+                equation_after: didactic_step.equation_after,
+                importance: crate::step::ImportanceLevel::Medium,
+                substeps: vec![],
+            });
+        }
     }
 
     Some((execution.solutions, steps))
