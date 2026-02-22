@@ -18,20 +18,6 @@ use cas_solver_core::solve_outcome::{
 
 use super::{isolate, prepend_steps};
 
-fn are_shortcut_bases_equivalent(
-    simplifier: &mut Simplifier,
-    base: ExprId,
-    candidate: ExprId,
-) -> bool {
-    if base == candidate {
-        true
-    } else {
-        let diff = simplifier.context.add(Expr::Sub(base, candidate));
-        let (sim_diff, _) = simplifier.simplify(diff);
-        is_numeric_zero(&simplifier.context, sim_diff)
-    }
-}
-
 /// Handle isolation for `Pow(b, e)`: `B^E = RHS`
 #[allow(clippy::too_many_arguments)]
 pub(super) fn isolate_pow(
@@ -172,7 +158,15 @@ fn isolate_pow_exponent(
     let rhs_expr = simplifier.context.get(rhs).clone();
     let (bases_equal, rhs_pow_base_equal) =
         detect_pow_exponent_shortcut_inputs(rhs, &rhs_expr, |candidate| {
-            are_shortcut_bases_equivalent(simplifier, b, candidate)
+            cas_solver_core::solve_outcome::shortcut_bases_equivalent_with(
+                b,
+                candidate,
+                |left, right| {
+                    let diff = simplifier.context.add(Expr::Sub(left, right));
+                    let (sim_diff, _) = simplifier.simplify(diff);
+                    is_numeric_zero(&simplifier.context, sim_diff)
+                },
+            )
         });
     let base_is_zero = is_numeric_zero(&simplifier.context, b);
     let base_is_numeric = matches!(simplifier.context.get(b), Expr::Number(_));

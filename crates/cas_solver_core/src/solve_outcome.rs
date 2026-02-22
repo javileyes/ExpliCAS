@@ -217,6 +217,20 @@ where
     (bases_equal, rhs_pow_base_equal)
 }
 
+/// Check whether two bases are equivalent for power-exponent shortcuts.
+///
+/// `equivalent_nontrivial` is only evaluated when the bases are not identical.
+pub fn shortcut_bases_equivalent_with<F>(
+    base: ExprId,
+    candidate: ExprId,
+    mut equivalent_nontrivial: F,
+) -> bool
+where
+    F: FnMut(ExprId, ExprId) -> bool,
+{
+    base == candidate || equivalent_nontrivial(base, candidate)
+}
+
 /// Classify exponent-isolation shortcuts before generic logarithmic isolation.
 pub fn classify_pow_exponent_shortcut(
     op: RelOp,
@@ -1150,6 +1164,28 @@ mod tests {
             detect_pow_exponent_shortcut_inputs(rhs, &rhs_expr, |candidate| candidate == b);
         assert!(!bases_equal);
         assert_eq!(rhs_pow_base_equal, Some(n));
+    }
+
+    #[test]
+    fn shortcut_bases_equivalent_with_short_circuits_on_identical_ids() {
+        let mut ctx = Context::new();
+        let b = ctx.var("b");
+        let mut called = false;
+        let out = shortcut_bases_equivalent_with(b, b, |_left, _right| {
+            called = true;
+            false
+        });
+        assert!(out);
+        assert!(!called, "nontrivial comparator must not run when ids are equal");
+    }
+
+    #[test]
+    fn shortcut_bases_equivalent_with_delegates_for_distinct_ids() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let out = shortcut_bases_equivalent_with(a, b, |left, right| left == a && right == b);
+        assert!(out);
     }
 
     #[test]
