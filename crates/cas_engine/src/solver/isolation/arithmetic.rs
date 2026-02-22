@@ -4,12 +4,12 @@ use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
-    contains_var, is_inequality_relop, is_known_negative, is_numeric_zero,
-    product_zero_inequality_cases,
+    contains_var, is_known_negative, product_zero_inequality_cases,
+    should_split_division_denominator_sign_cases, should_split_isolated_denominator_variable,
+    should_split_product_zero_inequality, should_try_reciprocal_solve,
 };
 use cas_solver_core::solution_set::{
-    intersect_solution_sets, open_negative_domain, open_positive_domain, pos_inf,
-    union_solution_sets,
+    intersect_solution_sets, open_negative_domain, open_positive_domain, union_solution_sets,
 };
 
 use super::{isolate, prepend_steps};
@@ -182,11 +182,7 @@ pub(super) fn isolate_mul(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // CRITICAL: For inequalities with products, need sign analysis
-    let both_have_var =
-        contains_var(&simplifier.context, l, var) && contains_var(&simplifier.context, r, var);
-    let rhs_is_zero = is_numeric_zero(&simplifier.context, rhs);
-
-    if both_have_var && rhs_is_zero {
+    if should_split_product_zero_inequality(&simplifier.context, l, r, rhs, &op, var) {
         // Product inequality split: A * B op 0
         if let Some((case1, case2)) = product_zero_inequality_cases(op.clone()) {
             // Case 1
@@ -316,7 +312,7 @@ pub(super) fn isolate_div(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     if contains_var(&simplifier.context, l, var) {
-        if contains_var(&simplifier.context, r, var) && is_inequality_relop(&op) {
+        if should_split_division_denominator_sign_cases(&simplifier.context, l, r, &op, var) {
             // Denominator contains variable. Split into cases.
             let (split, domain_eq, domain_eq_neg) =
                 cas_solver_core::equation_rewrite::build_division_denominator_sign_split(
@@ -452,9 +448,7 @@ pub(super) fn isolate_div(
         // B = A / RHS (variable in denominator)
 
         // PEDAGOGICAL IMPROVEMENT: If LHS is 1/var, use reciprocal solve
-        if matches!(op, RelOp::Eq)
-            && cas_solver_core::isolation_utils::is_simple_reciprocal(&simplifier.context, lhs, var)
-        {
+        if should_try_reciprocal_solve(&simplifier.context, lhs, &op, var) {
             if let Some((solution_set, reciprocal_steps)) =
                 crate::solver::reciprocal_solve::try_reciprocal_solve(lhs, rhs, var, simplifier)
             {
@@ -462,20 +456,21 @@ pub(super) fn isolate_div(
             }
         }
 
-        // CRITICAL FIX: Check if RHS is zero to avoid creating undefined (1/0)
-        let is_rhs_zero = is_numeric_zero(&simplifier.context, rhs);
-
-        let sim_rhs = if is_rhs_zero {
-            pos_inf(&mut simplifier.context)
-        } else {
-            let isolated = cas_solver_core::equation_rewrite::isolate_div_denominator(
+        let (isolated_eq, isolation_kind) =
+            cas_solver_core::equation_rewrite::isolate_div_denominator_with_zero_rhs_guard(
                 &mut simplifier.context,
                 r,
                 l,
                 rhs,
                 op.clone(),
             );
-            let (simplified, _) = simplifier.simplify(isolated.rhs);
+        let sim_rhs = if matches!(
+            isolation_kind,
+            cas_solver_core::equation_rewrite::DivDenominatorIsolationKind::RhsZeroToInfinity
+        ) {
+            isolated_eq.rhs
+        } else {
+            let (simplified, _) = simplifier.simplify(isolated_eq.rhs);
             simplified
         };
 
@@ -486,103 +481,100 @@ pub(super) fn isolate_div(
         };
 
         // Check if denominator is just the variable (simple case)
-        if let Expr::Variable(sym_id) = simplifier.context.get(r) {
-            if simplifier.context.sym_name(*sym_id) == var && is_inequality_relop(&op) {
-                // Split into x > 0 and x < 0
-                let split =
-                    cas_solver_core::equation_rewrite::build_isolated_denominator_sign_split(
-                        r,
-                        sim_rhs,
-                        op.clone(),
-                    )
-                    .expect("inequality branch requires denominator sign cases");
-                let eq_pos = split.positive;
-                let eq_neg = split.negative;
+        if should_split_isolated_denominator_variable(&simplifier.context, r, &op, var) {
+            // Split into x > 0 and x < 0
+            let split = cas_solver_core::equation_rewrite::build_isolated_denominator_sign_split(
+                r,
+                sim_rhs,
+                op.clone(),
+            )
+            .expect("inequality branch requires denominator sign cases");
+            let eq_pos = split.positive;
+            let eq_neg = split.negative;
 
-                let mut steps_case1 = steps.clone();
-                if simplifier.collect_steps() {
-                    steps_case1.push(SolveStep {
-                        description: format!(
-                            "Case 1: Assume {} > 0. Multiply by {} (positive). Inequality direction preserved (flipped from isolation logic).",
-                            cas_formatter::DisplayExpr { context: &simplifier.context, id: r },
-                            cas_formatter::DisplayExpr { context: &simplifier.context, id: r }
-                        ),
-                        equation_after: eq_pos.clone(),
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    });
-                }
-
-                let results_pos = isolate(
-                    eq_pos.lhs,
-                    eq_pos.rhs,
-                    eq_pos.op.clone(),
-                    var,
-                    simplifier,
-                    opts,
-                    ctx,
-                )?;
-                let (set_pos, steps_pos) = prepend_steps(results_pos, steps_case1)?;
-
-                // Intersect with (0, inf)
-                let domain_pos = open_positive_domain(&mut simplifier.context);
-                let final_pos = intersect_solution_sets(&simplifier.context, set_pos, domain_pos);
-
-                // Case 2: x < 0. Multiply by x (negative) -> Inequality flips.
-                let mut steps_case2 = steps.clone();
-                if simplifier.collect_steps() {
-                    steps_case2.push(SolveStep {
-                        description: format!(
-                            "Case 2: Assume {} < 0. Multiply by {} (negative). Inequality flips.",
-                            cas_formatter::DisplayExpr {
-                                context: &simplifier.context,
-                                id: r
-                            },
-                            cas_formatter::DisplayExpr {
-                                context: &simplifier.context,
-                                id: r
-                            }
-                        ),
-                        equation_after: eq_neg.clone(),
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    });
-                }
-
-                let results_neg = isolate(
-                    eq_neg.lhs,
-                    eq_neg.rhs,
-                    eq_neg.op.clone(),
-                    var,
-                    simplifier,
-                    opts,
-                    ctx,
-                )?;
-                let (set_neg, steps_neg) = prepend_steps(results_neg, steps_case2)?;
-
-                // Intersect with (-inf, 0)
-                let domain_neg = open_negative_domain(&mut simplifier.context);
-                let final_neg = intersect_solution_sets(&simplifier.context, set_neg, domain_neg);
-
-                // Union
-                let final_set = union_solution_sets(&simplifier.context, final_pos, final_neg);
-
-                // Combine steps
-                let mut all_steps = steps_pos;
-                all_steps.push(SolveStep {
-                    description: "--- End of Case 1 ---".to_string(),
-                    equation_after: Equation {
-                        lhs: r,
-                        rhs: eq_neg.rhs,
-                        op,
-                    },
+            let mut steps_case1 = steps.clone();
+            if simplifier.collect_steps() {
+                steps_case1.push(SolveStep {
+                    description: format!(
+                        "Case 1: Assume {} > 0. Multiply by {} (positive). Inequality direction preserved (flipped from isolation logic).",
+                        cas_formatter::DisplayExpr { context: &simplifier.context, id: r },
+                        cas_formatter::DisplayExpr { context: &simplifier.context, id: r }
+                    ),
+                    equation_after: eq_pos.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
-                all_steps.extend(steps_neg);
-
-                return Ok((final_set, all_steps));
             }
+
+            let results_pos = isolate(
+                eq_pos.lhs,
+                eq_pos.rhs,
+                eq_pos.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )?;
+            let (set_pos, steps_pos) = prepend_steps(results_pos, steps_case1)?;
+
+            // Intersect with (0, inf)
+            let domain_pos = open_positive_domain(&mut simplifier.context);
+            let final_pos = intersect_solution_sets(&simplifier.context, set_pos, domain_pos);
+
+            // Case 2: x < 0. Multiply by x (negative) -> Inequality flips.
+            let mut steps_case2 = steps.clone();
+            if simplifier.collect_steps() {
+                steps_case2.push(SolveStep {
+                    description: format!(
+                        "Case 2: Assume {} < 0. Multiply by {} (negative). Inequality flips.",
+                        cas_formatter::DisplayExpr {
+                            context: &simplifier.context,
+                            id: r
+                        },
+                        cas_formatter::DisplayExpr {
+                            context: &simplifier.context,
+                            id: r
+                        }
+                    ),
+                    equation_after: eq_neg.clone(),
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
+
+            let results_neg = isolate(
+                eq_neg.lhs,
+                eq_neg.rhs,
+                eq_neg.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )?;
+            let (set_neg, steps_neg) = prepend_steps(results_neg, steps_case2)?;
+
+            // Intersect with (-inf, 0)
+            let domain_neg = open_negative_domain(&mut simplifier.context);
+            let final_neg = intersect_solution_sets(&simplifier.context, set_neg, domain_neg);
+
+            // Union
+            let final_set = union_solution_sets(&simplifier.context, final_pos, final_neg);
+
+            // Combine steps
+            let mut all_steps = steps_pos;
+            all_steps.push(SolveStep {
+                description: "--- End of Case 1 ---".to_string(),
+                equation_after: Equation {
+                    lhs: r,
+                    rhs: eq_neg.rhs,
+                    op,
+                },
+                importance: crate::step::ImportanceLevel::Medium,
+                substeps: vec![],
+            });
+            all_steps.extend(steps_neg);
+
+            return Ok((final_set, all_steps));
         }
 
         if simplifier.collect_steps() {

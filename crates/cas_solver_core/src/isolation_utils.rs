@@ -80,6 +80,55 @@ pub fn is_simple_reciprocal(ctx: &Context, expr: ExprId, var: &str) -> bool {
     }
 }
 
+/// True iff expression is exactly the target variable.
+pub fn is_target_variable(ctx: &Context, expr: ExprId, var: &str) -> bool {
+    matches!(ctx.get(expr), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var)
+}
+
+/// True iff `left * right op 0` should branch into product sign cases.
+pub fn should_split_product_zero_inequality(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+    rhs: ExprId,
+    op: &RelOp,
+    var: &str,
+) -> bool {
+    contains_var(ctx, left, var)
+        && contains_var(ctx, right, var)
+        && is_numeric_zero(ctx, rhs)
+        && is_inequality_relop(op)
+}
+
+/// True iff `numerator/denominator op rhs` should split by denominator sign.
+pub fn should_split_division_denominator_sign_cases(
+    ctx: &Context,
+    numerator: ExprId,
+    denominator: ExprId,
+    op: &RelOp,
+    var: &str,
+) -> bool {
+    contains_var(ctx, numerator, var)
+        && contains_var(ctx, denominator, var)
+        && is_inequality_relop(op)
+}
+
+/// True iff already-isolated denominator variable `x op rhs` should split
+/// into `x > 0` and `x < 0` branches.
+pub fn should_split_isolated_denominator_variable(
+    ctx: &Context,
+    denominator: ExprId,
+    op: &RelOp,
+    var: &str,
+) -> bool {
+    is_target_variable(ctx, denominator, var) && is_inequality_relop(op)
+}
+
+/// True iff reciprocal solve strategy should be attempted for current equation side.
+pub fn should_try_reciprocal_solve(ctx: &Context, lhs: ExprId, op: &RelOp, var: &str) -> bool {
+    matches!(op, RelOp::Eq) && is_simple_reciprocal(ctx, lhs, var)
+}
+
 /// True iff expression is the numeric literal zero.
 pub fn is_numeric_zero(ctx: &Context, expr: ExprId) -> bool {
     matches!(
@@ -363,6 +412,110 @@ mod tests {
         assert!(is_simple_reciprocal(&ctx, reciprocal, "R"));
         assert!(!is_simple_reciprocal(&ctx, reciprocal, "X"));
         assert!(!is_simple_reciprocal(&ctx, r, "R"));
+    }
+
+    #[test]
+    fn test_is_target_variable() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        assert!(is_target_variable(&ctx, x, "x"));
+        assert!(!is_target_variable(&ctx, y, "x"));
+    }
+
+    #[test]
+    fn test_should_split_product_zero_inequality() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_plus_one = ctx.add(Expr::Add(x, one));
+        let zero = ctx.num(0);
+
+        assert!(should_split_product_zero_inequality(
+            &ctx,
+            x,
+            x_plus_one,
+            zero,
+            &RelOp::Lt,
+            "x"
+        ));
+        assert!(!should_split_product_zero_inequality(
+            &ctx,
+            x,
+            x_plus_one,
+            zero,
+            &RelOp::Eq,
+            "x"
+        ));
+    }
+
+    #[test]
+    fn test_should_split_division_denominator_sign_cases() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_plus_one = ctx.add(Expr::Add(x, one));
+
+        assert!(should_split_division_denominator_sign_cases(
+            &ctx,
+            x,
+            x_plus_one,
+            &RelOp::Leq,
+            "x"
+        ));
+        assert!(!should_split_division_denominator_sign_cases(
+            &ctx,
+            x,
+            x_plus_one,
+            &RelOp::Eq,
+            "x"
+        ));
+    }
+
+    #[test]
+    fn test_should_split_isolated_denominator_variable() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        assert!(should_split_isolated_denominator_variable(
+            &ctx,
+            x,
+            &RelOp::Gt,
+            "x"
+        ));
+        assert!(!should_split_isolated_denominator_variable(
+            &ctx,
+            y,
+            &RelOp::Gt,
+            "x"
+        ));
+        assert!(!should_split_isolated_denominator_variable(
+            &ctx,
+            x,
+            &RelOp::Eq,
+            "x"
+        ));
+    }
+
+    #[test]
+    fn test_should_try_reciprocal_solve() {
+        let mut ctx = Context::new();
+        let r = ctx.var("R");
+        let one = ctx.num(1);
+        let reciprocal = ctx.add(Expr::Div(one, r));
+
+        assert!(should_try_reciprocal_solve(
+            &ctx,
+            reciprocal,
+            &RelOp::Eq,
+            "R"
+        ));
+        assert!(!should_try_reciprocal_solve(
+            &ctx,
+            reciprocal,
+            &RelOp::Leq,
+            "R"
+        ));
     }
 
     #[test]

@@ -1,7 +1,8 @@
 use crate::isolation_utils::{
-    apply_sign_flip, denominator_sign_case_ops, flip_inequality,
+    apply_sign_flip, denominator_sign_case_ops, flip_inequality, is_numeric_zero,
     isolated_denominator_variable_case_ops, SignCaseOps,
 };
+use crate::solution_set::pos_inf;
 use cas_ast::{Equation, Expr, ExprId, RelOp};
 
 /// Rewrite `lhs op rhs` by subtracting `rhs` on both sides:
@@ -144,6 +145,40 @@ pub fn isolate_div_denominator(
     }
 }
 
+/// Classification for denominator-isolation rewrite choice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DivDenominatorIsolationKind {
+    RhsZeroToInfinity,
+    DivisionRewrite,
+}
+
+/// Rewrite denominator isolation with a safety guard for `rhs = 0`:
+/// - if `rhs == 0`: `denominator op +inf`
+/// - otherwise:     `denominator op numerator/rhs`
+pub fn isolate_div_denominator_with_zero_rhs_guard(
+    ctx: &mut cas_ast::Context,
+    denominator: ExprId,
+    numerator: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+) -> (Equation, DivDenominatorIsolationKind) {
+    if is_numeric_zero(ctx, rhs) {
+        (
+            Equation {
+                lhs: denominator,
+                rhs: pos_inf(ctx),
+                op,
+            },
+            DivDenominatorIsolationKind::RhsZeroToInfinity,
+        )
+    } else {
+        (
+            isolate_div_denominator(ctx, denominator, numerator, rhs, op),
+            DivDenominatorIsolationKind::DivisionRewrite,
+        )
+    }
+}
+
 /// Build both branch equations for absolute-value isolation:
 /// `|arg| op rhs`  ->  `(arg op rhs)` and `(arg flip(op) -rhs)`.
 pub fn isolate_abs_branches(
@@ -270,7 +305,7 @@ pub fn build_sign_domain_equation(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cas_ast::{Context, Expr, RelOp};
+    use cas_ast::{Constant, Context, Expr, RelOp};
 
     #[test]
     fn subtract_rhs_from_both_sides_preserves_operator() {
@@ -432,6 +467,38 @@ mod tests {
         let b = ctx.var("b");
         let c = ctx.var("c");
         let eq = isolate_div_denominator(&mut ctx, a, b, c, RelOp::Eq);
+        assert_eq!(eq.lhs, a);
+        assert_eq!(eq.op, RelOp::Eq);
+        assert!(matches!(ctx.get(eq.rhs), Expr::Div(l, r) if *l == b && *r == c));
+    }
+
+    #[test]
+    fn isolate_div_denominator_with_zero_rhs_guard_returns_infinity() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let zero = ctx.num(0);
+
+        let (eq, kind) =
+            isolate_div_denominator_with_zero_rhs_guard(&mut ctx, a, b, zero, RelOp::Eq);
+        assert_eq!(kind, DivDenominatorIsolationKind::RhsZeroToInfinity);
+        assert_eq!(eq.lhs, a);
+        assert_eq!(eq.op, RelOp::Eq);
+        assert!(matches!(
+            ctx.get(eq.rhs),
+            Expr::Constant(c) if matches!(c, Constant::Infinity)
+        ));
+    }
+
+    #[test]
+    fn isolate_div_denominator_with_zero_rhs_guard_rewrites_nonzero_rhs() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let c = ctx.var("c");
+
+        let (eq, kind) = isolate_div_denominator_with_zero_rhs_guard(&mut ctx, a, b, c, RelOp::Eq);
+        assert_eq!(kind, DivDenominatorIsolationKind::DivisionRewrite);
         assert_eq!(eq.lhs, a);
         assert_eq!(eq.op, RelOp::Eq);
         assert!(matches!(ctx.get(eq.rhs), Expr::Div(l, r) if *l == b && *r == c));
