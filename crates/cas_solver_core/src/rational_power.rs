@@ -1,5 +1,6 @@
 use crate::isolation_utils::{
     contains_var, is_numeric_one, is_positive_integer_expr, match_exponential_var_in_base,
+    match_exponential_var_in_exponent,
 };
 use crate::log_domain::{
     classify_log_linear_rewrite_route, LogAssumption, LogLinearRewriteRoute, LogSolveDecision,
@@ -194,6 +195,62 @@ pub fn plan_log_linear_unwrap_equation<'a>(
             assumptions,
         },
         LogLinearRewriteRoute::Blocked => LogLinearUnwrapPlan::Blocked,
+    }
+}
+
+/// Unified unwrap planning for power targets used by solver strategies.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PowUnwrapPlan {
+    VariableBase {
+        equation: Equation,
+        exponent: ExprId,
+    },
+    LogLinear {
+        equation: Equation,
+        base: ExprId,
+        assumptions: Vec<LogAssumption>,
+    },
+}
+
+/// Plan a power unwrap rewrite (`Pow`) using either base-isolation or log-linear route.
+pub fn plan_pow_unwrap_rewrite<F>(
+    ctx: &mut Context,
+    target: ExprId,
+    other: ExprId,
+    var: &str,
+    op: RelOp,
+    is_lhs: bool,
+    mut classify_log_solve: F,
+) -> Option<PowUnwrapPlan>
+where
+    F: FnMut(&Context, ExprId, ExprId) -> LogSolveDecision,
+{
+    if let Some((equation, exponent)) =
+        rewrite_variable_base_power_equation(ctx, target, other, var, op.clone(), is_lhs)
+    {
+        return Some(PowUnwrapPlan::VariableBase { equation, exponent });
+    }
+
+    let pattern = match_exponential_var_in_exponent(ctx, target, var)?;
+    let decision = classify_log_solve(ctx, pattern.base, other);
+    match plan_log_linear_unwrap_equation(
+        ctx,
+        pattern.base,
+        pattern.exponent,
+        other,
+        op,
+        is_lhs,
+        &decision,
+    ) {
+        LogLinearUnwrapPlan::Proceed {
+            equation,
+            assumptions,
+        } => Some(PowUnwrapPlan::LogLinear {
+            equation,
+            base: pattern.base,
+            assumptions: assumptions.to_vec(),
+        }),
+        LogLinearUnwrapPlan::BaseOneShortcut | LogLinearUnwrapPlan::Blocked => None,
     }
 }
 
@@ -467,6 +524,70 @@ mod tests {
             }
             _ => panic!("expected proceed plan"),
         }
+    }
+
+    #[test]
+    fn plan_pow_unwrap_rewrite_prefers_variable_base_route() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let half = ctx.rational(1, 2);
+        let target = ctx.add(Expr::Pow(x, half));
+        let mut classifier_calls = 0usize;
+
+        let plan = plan_pow_unwrap_rewrite(&mut ctx, target, y, "x", RelOp::Eq, true, |_, _, _| {
+            classifier_calls += 1;
+            crate::log_domain::LogSolveDecision::Ok
+        })
+        .expect("unwrap plan should be available");
+
+        assert_eq!(classifier_calls, 0);
+        assert!(matches!(plan, PowUnwrapPlan::VariableBase { .. }));
+    }
+
+    #[test]
+    fn plan_pow_unwrap_rewrite_builds_log_linear_plan() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let target = ctx.add(Expr::Pow(a, x));
+
+        let plan = plan_pow_unwrap_rewrite(&mut ctx, target, y, "x", RelOp::Eq, true, |_, _, _| {
+            crate::log_domain::LogSolveDecision::OkWithAssumptions(vec![
+                crate::log_domain::LogAssumption::PositiveBase,
+                crate::log_domain::LogAssumption::PositiveRhs,
+            ])
+        })
+        .expect("unwrap plan should be available");
+
+        match plan {
+            PowUnwrapPlan::LogLinear {
+                equation,
+                base,
+                assumptions,
+            } => {
+                assert_eq!(base, a);
+                assert_eq!(equation.op, RelOp::Eq);
+                assert_eq!(assumptions.len(), 2);
+            }
+            _ => panic!("expected log-linear plan"),
+        }
+    }
+
+    #[test]
+    fn plan_pow_unwrap_rewrite_returns_none_for_blocked_log_route() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let target = ctx.add(Expr::Pow(a, x));
+
+        let plan = plan_pow_unwrap_rewrite(&mut ctx, target, y, "x", RelOp::Eq, true, |_, _, _| {
+            crate::log_domain::LogSolveDecision::NeedsComplex("needs complex")
+        });
+
+        assert!(plan.is_none());
     }
 
     #[test]

@@ -5,10 +5,9 @@ use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveDomainEnv, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
-use cas_solver_core::isolation_utils::{contains_var, match_exponential_var_in_exponent};
+use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_outcome::{
-    classify_single_side_exponential_log_decision, resolve_log_terminal_outcome,
-    terminal_outcome_message,
+    resolve_single_side_exponential_terminal_outcome, terminal_outcome_message,
 };
 
 pub struct IsolationStrategy;
@@ -107,24 +106,16 @@ fn check_exponential_needs_complex(
     let mode = crate::solver::domain_guards::to_core_domain_mode(opts.domain_mode);
     let wildcard_scope = opts.assume_scope == crate::semantics::AssumeScope::Wildcard;
 
-    let decision = classify_single_side_exponential_log_decision(
-        &simplifier.context,
+    if let Some(outcome) = resolve_single_side_exponential_terminal_outcome(
+        &mut simplifier.context,
         eq.lhs,
         eq.rhs,
         var,
         lhs_has,
         rhs_has,
-        |base, other_side| classify_log_solve(&simplifier.context, base, other_side, opts, env),
-    )?;
-
-    if let Some(outcome) = resolve_log_terminal_outcome(
-        &mut simplifier.context,
-        &decision,
         mode,
         wildcard_scope,
-        eq.lhs,
-        eq.rhs,
-        var,
+        |core_ctx, base, other_side| classify_log_solve(core_ctx, base, other_side, opts, env),
     ) {
         let mut steps = Vec::new();
         if simplifier.collect_steps() {
@@ -211,77 +202,47 @@ impl SolverStrategy for UnwrapStrategy {
                     Some((new_eq, description.to_string()))
                 }
                 Expr::Pow(_, _) => {
-                    // A^n = B -> A = B^(1/n) (if n is const)
-                    // If A contains var and n is not a positive integer.
-                    if let Some((new_eq, e)) =
-                        cas_solver_core::rational_power::rewrite_variable_base_power_equation(
-                            &mut simplifier.context,
-                            target,
-                            other,
-                            var,
-                            op.clone(),
-                            is_lhs,
-                        )
-                    {
-                        Some((
-                            new_eq,
-                            format!("Raise both sides to 1/{:?}", simplifier.context.get(e)),
-                        ))
-                    } else if let Some(pattern) =
-                        match_exponential_var_in_exponent(&simplifier.context, target, var)
-                    {
-                        let b = pattern.base;
-                        let e = pattern.exponent;
-                        // A^x = B -> x * ln(A) = ln(B)
-                        // Use domain classifier for semantic-aware solving
+                    use crate::solver::domain_guards::classify_log_solve;
 
-                        use crate::solver::domain_guards::classify_log_solve;
-
-                        // Use the domain classifier
-                        let decision = classify_log_solve(
-                            &simplifier.context,
-                            b,
-                            other,
-                            opts,
-                            &ctx.domain_env,
-                        );
-
-                        match cas_solver_core::rational_power::plan_log_linear_unwrap_equation(
-                            &mut simplifier.context,
-                            b,
-                            e,
-                            other,
-                            op,
-                            is_lhs,
-                            &decision,
-                        ) {
-                            cas_solver_core::rational_power::LogLinearUnwrapPlan::BaseOneShortcut => {
-                                None
+                    match cas_solver_core::rational_power::plan_pow_unwrap_rewrite(
+                        &mut simplifier.context,
+                        target,
+                        other,
+                        var,
+                        op,
+                        is_lhs,
+                        |core_ctx, base, other_side| {
+                            classify_log_solve(core_ctx, base, other_side, opts, &ctx.domain_env)
+                        },
+                    ) {
+                        Some(cas_solver_core::rational_power::PowUnwrapPlan::VariableBase {
+                            equation,
+                            exponent,
+                        }) => Some((
+                            equation,
+                            format!(
+                                "Raise both sides to 1/{:?}",
+                                simplifier.context.get(exponent)
+                            ),
+                        )),
+                        Some(cas_solver_core::rational_power::PowUnwrapPlan::LogLinear {
+                            equation,
+                            base,
+                            assumptions,
+                        }) => {
+                            for assumption in assumptions {
+                                let event =
+                                    crate::assumptions::AssumptionEvent::from_log_assumption(
+                                        assumption,
+                                        &simplifier.context,
+                                        base,
+                                        other,
+                                    );
+                                crate::solver::note_assumption(event);
                             }
-                            cas_solver_core::rational_power::LogLinearUnwrapPlan::Proceed {
-                                equation,
-                                assumptions,
-                            } => {
-                                for assumption in assumptions.iter().copied() {
-                                    let event =
-                                        crate::assumptions::AssumptionEvent::from_log_assumption(
-                                            assumption,
-                                            &simplifier.context,
-                                            b,
-                                            other,
-                                        );
-                                    crate::solver::note_assumption(event);
-                                }
-                                Some((equation, "Take log base e of both sides".to_string()))
-                            }
-                            cas_solver_core::rational_power::LogLinearUnwrapPlan::Blocked => {
-                                // Should have been caught by check_exponential_needs_complex in
-                                // terminal cases; otherwise we skip this strategy.
-                                None
-                            }
+                            Some((equation, "Take log base e of both sides".to_string()))
                         }
-                    } else {
-                        None
+                        None => None,
                     }
                 }
                 _ => None,

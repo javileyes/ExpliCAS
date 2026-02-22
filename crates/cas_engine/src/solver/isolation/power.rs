@@ -10,8 +10,8 @@ use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
     classify_pow_base_isolation_route, classify_pow_exponent_shortcut,
     classify_power_base_one_shortcut, detect_pow_exponent_shortcut_inputs,
-    even_power_negative_rhs_outcome, guarded_or_residual, power_base_one_shortcut_solutions,
-    plan_pow_exponent_shortcut_action, resolve_log_terminal_outcome,
+    even_power_negative_rhs_outcome, guarded_or_residual, plan_pow_exponent_shortcut_action,
+    power_base_one_shortcut_solutions, resolve_log_terminal_outcome,
     resolve_log_unsupported_outcome, terminal_outcome_message, LogUnsupportedOutcome,
     PowBaseIsolationRoute, PowExponentShortcut, PowExponentShortcutAction, PowerBaseOneShortcut,
     PowerEqualsBaseRoute,
@@ -190,9 +190,8 @@ fn isolate_pow_exponent(
 
     match shortcut_action {
         PowExponentShortcutAction::IsolateExponent {
-            shortcut: PowExponentShortcut::PowerEqualsBase(
-                PowerEqualsBaseRoute::ExponentGreaterThanZero,
-            ),
+            shortcut:
+                PowExponentShortcut::PowerEqualsBase(PowerEqualsBaseRoute::ExponentGreaterThanZero),
             rhs: target_rhs,
             op: target_op,
         } => {
@@ -215,9 +214,8 @@ fn isolate_pow_exponent(
             return prepend_steps(results, steps);
         }
         PowExponentShortcutAction::IsolateExponent {
-            shortcut: PowExponentShortcut::PowerEqualsBase(
-                PowerEqualsBaseRoute::ExponentEqualsOneNumericBase,
-            ),
+            shortcut:
+                PowExponentShortcut::PowerEqualsBase(PowerEqualsBaseRoute::ExponentEqualsOneNumericBase),
             rhs: target_rhs,
             op: target_op,
         } => {
@@ -249,9 +247,10 @@ fn isolate_pow_exponent(
             return prepend_steps(results, steps);
         }
         PowExponentShortcutAction::IsolateExponent {
-            shortcut: PowExponentShortcut::PowerEqualsBase(
-                PowerEqualsBaseRoute::ExponentEqualsOneNoBranchBudget,
-            ),
+            shortcut:
+                PowExponentShortcut::PowerEqualsBase(
+                    PowerEqualsBaseRoute::ExponentEqualsOneNoBranchBudget,
+                ),
             rhs: target_rhs,
             op: target_op,
         } => {
@@ -343,10 +342,7 @@ fn isolate_pow_exponent(
         }
         PowExponentShortcutAction::Continue => {}
         _ => {
-            debug_assert!(
-                false,
-                "pow exponent shortcut action mismatch"
-            );
+            debug_assert!(false, "pow exponent shortcut action mismatch");
         }
     }
 

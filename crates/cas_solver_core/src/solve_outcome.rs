@@ -272,7 +272,10 @@ pub fn plan_pow_exponent_shortcut_action(
             PowExponentShortcutAction::IsolateExponent { shortcut, rhs, op }
         }
         PowExponentShortcutResolution::ReturnSolutionSet(solutions) => {
-            PowExponentShortcutAction::ReturnSolutionSet { shortcut, solutions }
+            PowExponentShortcutAction::ReturnSolutionSet {
+                shortcut,
+                solutions,
+            }
         }
     }
 }
@@ -354,7 +357,7 @@ pub fn classify_single_side_exponential_log_decision<F>(
     mut classify_log_solve: F,
 ) -> Option<LogSolveDecision>
 where
-    F: FnMut(ExprId, ExprId) -> LogSolveDecision,
+    F: FnMut(&Context, ExprId, ExprId) -> LogSolveDecision,
 {
     let candidate = crate::isolation_utils::find_single_side_exponential_var_in_exponent(
         ctx,
@@ -364,7 +367,11 @@ where
         lhs_has_var,
         rhs_has_var,
     )?;
-    Some(classify_log_solve(candidate.base, candidate.other_side))
+    Some(classify_log_solve(
+        ctx,
+        candidate.base,
+        candidate.other_side,
+    ))
 }
 
 /// Resolve terminal outcome for equations that have exactly one exponential side
@@ -382,7 +389,7 @@ pub fn resolve_single_side_exponential_terminal_outcome<F>(
     mut classify_log_solve: F,
 ) -> Option<TerminalSolveOutcome>
 where
-    F: FnMut(ExprId, ExprId) -> LogSolveDecision,
+    F: FnMut(&Context, ExprId, ExprId) -> LogSolveDecision,
 {
     let decision = classify_single_side_exponential_log_decision(
         ctx,
@@ -818,7 +825,7 @@ mod tests {
             false,
             DomainModeKind::Generic,
             false,
-            |_base, _rhs| LogSolveDecision::EmptySet("no real solutions"),
+            |_ctx, _base, _rhs| LogSolveDecision::EmptySet("no real solutions"),
         )
         .expect("must produce terminal outcome");
 
@@ -838,7 +845,7 @@ mod tests {
             "x",
             true,
             true,
-            |_base, _rhs| LogSolveDecision::Ok,
+            |_ctx, _base, _rhs| LogSolveDecision::Ok,
         );
         assert!(out.is_none());
     }
