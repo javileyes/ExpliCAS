@@ -15,11 +15,8 @@
 //! needs to be restructured for didactic clarity.
 
 use crate::solver::SolveStep;
-use cas_ast::{Context, Equation, Expr};
-use cas_solver_core::log_linear_narration::{
-    strip_equation_mul_one, try_expand_distributive, try_extract_constant_and_var_term,
-    try_factor_variable, try_rewrite_ln_power,
-};
+use cas_ast::{Context, Equation};
+use cas_solver_core::log_linear_narration::{build_detailed_collect_steps, try_rewrite_ln_power};
 
 /// Check if a step sequence is a log-linear solve pattern.
 /// Returns true if we should rewrite the steps for better didactic display.
@@ -91,7 +88,15 @@ pub(crate) fn rewrite_log_linear_steps(
             if detailed {
                 // Decompose into atomic sub-steps with REAL intermediate equations
                 let sub_steps =
-                    generate_detailed_collect_steps_v2(ctx, log_eq.as_ref(), &step.equation_after);
+                    build_detailed_collect_steps(ctx, log_eq.as_ref(), &step.equation_after, "x")
+                        .into_iter()
+                        .map(|s| SolveStep {
+                            description: s.description,
+                            equation_after: s.equation_after,
+                            importance: crate::step::ImportanceLevel::Medium,
+                            substeps: vec![],
+                        })
+                        .collect::<Vec<_>>();
                 result.extend(sub_steps);
             } else {
                 // Compact mode: single step with cleaner description
@@ -112,111 +117,6 @@ pub(crate) fn rewrite_log_linear_steps(
     }
 
     result
-}
-
-/// Generate detailed sub-steps with REAL intermediate equations.
-///
-/// Given the equation after "Take log" (e.g., `ln(3)·(1+x) = x·ln(5)`)
-/// and the final equation (e.g., `ln(3) + x·ln(3/5) = 0`),
-/// construct intermediate states:
-///
-/// 1. Expand: `ln(3) + x·ln(3) = x·ln(5)`
-/// 2. Move x: `ln(3) = x·ln(5) - x·ln(3)`
-/// 3. Factor: `ln(3) = x·(ln(5) - ln(3))`
-/// 4. Log quotient (if applicable): `ln(3) = x·ln(5/3)`
-fn generate_detailed_collect_steps_v2(
-    ctx: &mut Context,
-    log_eq_opt: Option<&Equation>,
-    final_eq: &Equation,
-) -> Vec<SolveStep> {
-    let mut sub_steps = Vec::new();
-
-    // If we don't have the log equation, fall back to single step
-    let log_eq = match log_eq_opt {
-        Some(eq) => eq,
-        None => {
-            sub_steps.push(SolveStep {
-                description: "Collect and factor x terms".to_string(),
-                equation_after: final_eq.clone(),
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
-            return sub_steps;
-        }
-    };
-
-    // Try to detect pattern: Mul(K, Add(1, x)) = Mul(x, Ln(b))
-    // where K is ln(a) for some constant a
-
-    // Step 1: Expand distributive law
-    // If LHS is K*(1+x), expand to K + K*x
-    if let Some(expanded_lhs) = try_expand_distributive(ctx, log_eq.lhs) {
-        let expand_eq = Equation {
-            lhs: expanded_lhs,
-            rhs: log_eq.rhs,
-            op: cas_ast::RelOp::Eq,
-        };
-        let clean_expand_eq = strip_equation_mul_one(ctx, &expand_eq);
-        sub_steps.push(SolveStep {
-            description: "Expand distributive law".to_string(),
-            equation_after: clean_expand_eq,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        });
-
-        // Step 2: Move x terms to one side
-        // From: K + K*x = x*M  ->  K = x*M - K*x
-        if let Some((constant, x_coef_lhs)) =
-            try_extract_constant_and_var_term(ctx, expanded_lhs, "x")
-        {
-            let x_coef_rhs = log_eq.rhs; // This is x*ln(5) or similar
-
-            // Build: K = x*M - x*K (actually: K = RHS - x_coef_lhs)
-            let moved_rhs = ctx.add(Expr::Sub(x_coef_rhs, x_coef_lhs));
-            let move_eq = Equation {
-                lhs: constant,
-                rhs: moved_rhs,
-                op: cas_ast::RelOp::Eq,
-            };
-            let clean_move_eq = strip_equation_mul_one(ctx, &move_eq);
-            sub_steps.push(SolveStep {
-                description: "Move x terms to one side".to_string(),
-                equation_after: clean_move_eq,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
-
-            // Step 3: Factor out x
-            // From: K = x*M - x*K' -> K = x*(M - K')
-            // Extract x from both terms and combine coefficients
-            if let Some(factored_rhs) = try_factor_variable(ctx, moved_rhs, "x") {
-                let factor_eq = Equation {
-                    lhs: constant,
-                    rhs: factored_rhs,
-                    op: cas_ast::RelOp::Eq,
-                };
-                let clean_factor_eq = strip_equation_mul_one(ctx, &factor_eq);
-                sub_steps.push(SolveStep {
-                    description: "Factor out x".to_string(),
-                    equation_after: clean_factor_eq,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-        }
-    }
-
-    // If we couldn't decompose, add the final step
-    if sub_steps.is_empty() {
-        sub_steps.push(SolveStep {
-            description: "Collect and factor x terms".to_string(),
-            equation_after: final_eq.clone(),
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        });
-    }
-
-    sub_steps
 }
 
 #[cfg(test)]

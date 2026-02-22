@@ -3,6 +3,13 @@ use cas_math::expr_predicates::is_one_expr as is_one;
 
 use crate::isolation_utils::contains_var;
 
+/// Generic narration step payload (solver-core does not depend on engine step types).
+#[derive(Debug, Clone)]
+pub struct LogLinearNarrationStep {
+    pub description: String,
+    pub equation_after: Equation,
+}
+
 /// Strip identity multipliers (`1*expr`/`expr*1`) recursively for cleaner display.
 pub fn strip_mul_one(ctx: &mut Context, expr: ExprId) -> ExprId {
     let expr_data = ctx.get(expr).clone();
@@ -192,6 +199,83 @@ pub fn try_rewrite_ln_power(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     }
 }
 
+/// Build detailed didactic sub-steps for log-linear collection (`Collect terms in x`).
+///
+/// The returned steps contain only description + equation; caller decides rendering
+/// concerns such as importance/substeps wrappers.
+pub fn build_detailed_collect_steps(
+    ctx: &mut Context,
+    log_eq_opt: Option<&Equation>,
+    final_eq: &Equation,
+    var: &str,
+) -> Vec<LogLinearNarrationStep> {
+    let mut steps = Vec::new();
+
+    // If we don't have the equation right after taking logs, keep compact fallback.
+    let log_eq = match log_eq_opt {
+        Some(eq) => eq,
+        None => {
+            steps.push(LogLinearNarrationStep {
+                description: "Collect and factor x terms".to_string(),
+                equation_after: final_eq.clone(),
+            });
+            return steps;
+        }
+    };
+
+    if let Some(expanded_lhs) = try_expand_distributive(ctx, log_eq.lhs) {
+        let expand_eq = Equation {
+            lhs: expanded_lhs,
+            rhs: log_eq.rhs,
+            op: log_eq.op.clone(),
+        };
+        let clean_expand_eq = strip_equation_mul_one(ctx, &expand_eq);
+        steps.push(LogLinearNarrationStep {
+            description: "Expand distributive law".to_string(),
+            equation_after: clean_expand_eq,
+        });
+
+        if let Some((constant, var_term_lhs)) =
+            try_extract_constant_and_var_term(ctx, expanded_lhs, var)
+        {
+            let var_term_rhs = log_eq.rhs;
+            let moved_rhs = ctx.add(Expr::Sub(var_term_rhs, var_term_lhs));
+            let move_eq = Equation {
+                lhs: constant,
+                rhs: moved_rhs,
+                op: log_eq.op.clone(),
+            };
+            let clean_move_eq = strip_equation_mul_one(ctx, &move_eq);
+            steps.push(LogLinearNarrationStep {
+                description: format!("Move {} terms to one side", var),
+                equation_after: clean_move_eq,
+            });
+
+            if let Some(factored_rhs) = try_factor_variable(ctx, moved_rhs, var) {
+                let factor_eq = Equation {
+                    lhs: constant,
+                    rhs: factored_rhs,
+                    op: log_eq.op.clone(),
+                };
+                let clean_factor_eq = strip_equation_mul_one(ctx, &factor_eq);
+                steps.push(LogLinearNarrationStep {
+                    description: format!("Factor out {}", var),
+                    equation_after: clean_factor_eq,
+                });
+            }
+        }
+    }
+
+    if steps.is_empty() {
+        steps.push(LogLinearNarrationStep {
+            description: "Collect and factor x terms".to_string(),
+            equation_after: final_eq.clone(),
+        });
+    }
+
+    steps
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,5 +313,41 @@ mod tests {
         let ln_pow = ctx.call_builtin(BuiltinFn::Ln, vec![pow]);
         let out = try_rewrite_ln_power(&mut ctx, ln_pow).expect("rewrite");
         assert!(matches!(ctx.get(out), Expr::Mul(_, _)));
+    }
+
+    #[test]
+    fn build_detailed_collect_steps_falls_back_without_log_equation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let eq = Equation {
+            lhs: x,
+            rhs: x,
+            op: cas_ast::RelOp::Eq,
+        };
+
+        let out = build_detailed_collect_steps(&mut ctx, None, &eq, "x");
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].description, "Collect and factor x terms");
+    }
+
+    #[test]
+    fn build_detailed_collect_steps_emits_expand_step_for_distributive_shape() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let k = ctx.var("k");
+        let m = ctx.var("m");
+        let one_plus_x = ctx.add(Expr::Add(one, x));
+        let lhs = ctx.add(Expr::Mul(k, one_plus_x));
+        let rhs = ctx.add(Expr::Mul(x, m));
+        let log_eq = Equation {
+            lhs,
+            rhs,
+            op: cas_ast::RelOp::Eq,
+        };
+
+        let out = build_detailed_collect_steps(&mut ctx, Some(&log_eq), &log_eq, "x");
+        assert!(!out.is_empty());
+        assert_eq!(out[0].description, "Expand distributive law");
     }
 }
