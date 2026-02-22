@@ -1470,6 +1470,35 @@ pub fn plan_pow_exponent_log_isolation_step(
     }
 }
 
+/// Plan `exponent = log(base, rhs)` and build its didactic payload by rendering
+/// the base expression with a caller-provided formatter.
+pub fn plan_pow_exponent_log_isolation_step_with<F>(
+    ctx: &mut Context,
+    exponent: ExprId,
+    base: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    guard_message: Option<&str>,
+    render_expr: F,
+) -> PowExponentLogIsolationRewritePlan
+where
+    F: FnMut(ExprId) -> String,
+{
+    let step = build_pow_exponent_log_isolation_step_with(
+        ctx,
+        exponent,
+        base,
+        rhs,
+        op,
+        guard_message,
+        render_expr,
+    );
+    PowExponentLogIsolationRewritePlan {
+        equation: step.equation_after.clone(),
+        step,
+    }
+}
+
 /// Build narration for eliminating rational exponents by powering both sides.
 pub fn eliminate_fractional_exponent_message(q_display: &str) -> String {
     format!(
@@ -4118,6 +4147,32 @@ mod tests {
         assert_eq!(
             plan.step.description,
             "Take log base a of both sides (under guard: a > 0)"
+        );
+        assert_eq!(plan.equation.lhs, exponent);
+        assert_eq!(plan.equation.op, RelOp::Eq);
+    }
+
+    #[test]
+    fn plan_pow_exponent_log_isolation_step_with_uses_renderer() {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+
+        let plan = plan_pow_exponent_log_isolation_step_with(
+            &mut ctx,
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            None,
+            |_| "rendered(a)".to_string(),
+        );
+
+        assert_eq!(plan.step.equation_after, plan.equation);
+        assert_eq!(
+            plan.step.description,
+            "Take log base rendered(a) of both sides"
         );
         assert_eq!(plan.equation.lhs, exponent);
         assert_eq!(plan.equation.op, RelOp::Eq);

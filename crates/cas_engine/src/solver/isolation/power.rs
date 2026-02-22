@@ -10,11 +10,11 @@ use cas_solver_core::solve_outcome::{
     build_conditional_solution_step, build_pow_exponent_shortcut_execution_plan,
     build_residual_budget_exhausted_step, build_residual_step, build_terminal_outcome_step,
     detect_pow_exponent_shortcut_inputs, guarded_or_residual, map_pow_base_isolation_plan_with,
-    map_pow_exponent_shortcut_with, plan_pow_base_isolation, plan_pow_exponent_log_isolation_step,
-    plan_pow_exponent_shortcut_action_from_inputs, plan_solve_tactic_normalization_step,
-    resolve_log_terminal_outcome, resolve_log_unsupported_outcome,
-    resolve_power_base_one_shortcut_with, LogUnsupportedOutcome, PowBaseIsolationEngineAction,
-    PowExponentShortcutEngineAction,
+    map_pow_exponent_shortcut_with, plan_pow_base_isolation,
+    plan_pow_exponent_log_isolation_step_with, plan_pow_exponent_shortcut_action_from_inputs,
+    plan_solve_tactic_normalization_step, resolve_log_terminal_outcome,
+    resolve_log_unsupported_outcome, resolve_power_base_one_shortcut_with, LogUnsupportedOutcome,
+    PowBaseIsolationEngineAction, PowExponentShortcutEngineAction,
 };
 
 use super::{isolate, prepend_steps};
@@ -400,14 +400,14 @@ fn isolate_pow_exponent(
                         id: b
                     }
                 );
-                let log_plan = plan_pow_exponent_log_isolation_step(
+                let log_plan = plan_pow_exponent_log_isolation_step_with(
                     &mut simplifier.context,
                     e,
                     b,
                     rhs,
                     op.clone(),
                     Some(msg),
-                    &base_desc,
+                    |_| base_desc.clone(),
                 );
                 let new_eq = log_plan.equation.clone();
                 let new_rhs = new_eq.rhs;
@@ -489,14 +489,14 @@ fn isolate_pow_exponent(
             id: b
         }
     );
-    let log_plan = plan_pow_exponent_log_isolation_step(
+    let log_plan = plan_pow_exponent_log_isolation_step_with(
         &mut simplifier.context,
         e,
         b,
         rhs,
         op,
         None,
-        &base_desc,
+        |_| base_desc.clone(),
     );
     let new_eq = log_plan.equation.clone();
     if simplifier.collect_steps() {
