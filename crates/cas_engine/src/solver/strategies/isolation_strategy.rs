@@ -207,13 +207,21 @@ impl SolverStrategy for UnwrapStrategy {
                 cas_solver_core::unwrap_plan::UnwrapRewritePlan::PowVariableBase {
                     equation,
                     exponent,
-                } => Some((
-                    equation,
-                    format!(
-                        "Raise both sides to 1/{:?}",
-                        simplifier.context.get(exponent)
-                    ),
-                )),
+                } => {
+                    let exponent_desc = format!(
+                        "{}",
+                        cas_formatter::DisplayExpr {
+                            context: &simplifier.context,
+                            id: exponent
+                        }
+                    );
+                    Some((
+                        equation,
+                        cas_solver_core::unwrap_plan::pow_variable_base_unwrap_message(
+                            &exponent_desc,
+                        ),
+                    ))
+                }
                 cas_solver_core::unwrap_plan::UnwrapRewritePlan::PowLogLinear {
                     equation,
                     base,

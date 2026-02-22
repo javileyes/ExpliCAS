@@ -22,6 +22,11 @@ pub enum UnwrapRewritePlan {
     },
 }
 
+/// Build narration for variable-base power unwrap rewrites.
+pub fn pow_variable_base_unwrap_message(exponent_display: &str) -> String {
+    format!("Raise both sides to 1/{}", exponent_display)
+}
+
 /// Plan unwrap rewrite for a target expression (`Function`/`Pow`).
 pub fn plan_unwrap_rewrite<F>(
     ctx: &mut Context,
@@ -118,5 +123,13 @@ mod tests {
             UnwrapRewritePlan::PowVariableBase { .. } => {}
             other => panic!("expected variable-base plan, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn pow_variable_base_unwrap_message_formats_expected_text() {
+        assert_eq!(
+            pow_variable_base_unwrap_message("2"),
+            "Raise both sides to 1/2"
+        );
     }
 }
