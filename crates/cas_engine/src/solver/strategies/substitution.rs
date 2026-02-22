@@ -6,7 +6,8 @@ use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::substitution::{
-    back_substitute_message, detected_substitution_message, substituted_equation_message,
+    build_back_substitute_step_with, build_detected_substitution_step_with,
+    build_substituted_equation_step_with,
 };
 
 pub struct SubstitutionStrategy;
@@ -32,10 +33,22 @@ impl SolverStrategy for SubstitutionStrategy {
         ) {
             let mut steps = Vec::new();
             if simplifier.collect_steps() {
-                let sub_expr_desc = format!("{:?}", sub_var_expr);
+                let detect_step = build_detected_substitution_step_with(
+                    eq.clone(),
+                    sub_var_expr,
+                    |id| {
+                        format!(
+                            "{}",
+                            cas_formatter::DisplayExpr {
+                                context: &simplifier.context,
+                                id
+                            }
+                        )
+                    },
+                );
                 steps.push(SolveStep {
-                    description: detected_substitution_message(&sub_expr_desc),
-                    equation_after: eq.clone(),
+                    description: detect_step.description,
+                    equation_after: detect_step.equation_after,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -73,12 +86,19 @@ impl SolverStrategy for SubstitutionStrategy {
             }
 
             if simplifier.collect_steps() {
-                let lhs_desc = format!("{:?}", new_eq.lhs);
-                let rhs_desc = format!("{:?}", new_eq.rhs);
-                let op_desc = new_eq.op.to_string();
+                let substituted_step =
+                    build_substituted_equation_step_with(new_eq.clone(), |id| {
+                        format!(
+                            "{}",
+                            cas_formatter::DisplayExpr {
+                                context: &simplifier.context,
+                                id
+                            }
+                        )
+                    });
                 steps.push(SolveStep {
-                    description: substituted_equation_message(&lhs_desc, &op_desc, &rhs_desc),
-                    equation_after: new_eq.clone(),
+                    description: substituted_step.description,
+                    equation_after: substituted_step.equation_after,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -105,11 +125,19 @@ impl SolverStrategy for SubstitutionStrategy {
                             op: RelOp::Eq,
                         };
                         if simplifier.collect_steps() {
-                            let lhs_desc = format!("{:?}", sub_var_expr);
-                            let rhs_desc = format!("{:?}", val);
+                            let back_sub_step =
+                                build_back_substitute_step_with(sub_eq.clone(), |id| {
+                                    format!(
+                                        "{}",
+                                        cas_formatter::DisplayExpr {
+                                            context: &simplifier.context,
+                                            id
+                                        }
+                                    )
+                                });
                             steps.push(SolveStep {
-                                description: back_substitute_message(&lhs_desc, &rhs_desc),
-                                equation_after: sub_eq.clone(),
+                                description: back_sub_step.description,
+                                equation_after: back_sub_step.equation_after,
                                 importance: crate::step::ImportanceLevel::Medium,
                                 substeps: vec![],
                             });

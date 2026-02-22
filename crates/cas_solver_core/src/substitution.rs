@@ -1,5 +1,5 @@
 use crate::isolation_utils::contains_var;
-use cas_ast::{ordering::compare_expr, Constant, Context, Expr, ExprId};
+use cas_ast::{ordering::compare_expr, Constant, Context, Equation, Expr, ExprId};
 use cas_math::build::mul2_raw;
 use std::cmp::Ordering;
 
@@ -19,6 +19,62 @@ pub fn substituted_equation_message(lhs_debug: &str, op_display: &str, rhs_debug
 /// Build narration for back-substitution of a solved temporary variable.
 pub fn back_substitute_message(lhs_debug: &str, rhs_debug: &str) -> String {
     format!("Back-substitute: {} = {}", lhs_debug, rhs_debug)
+}
+
+/// Didactic payload for one substitution step.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SubstitutionDidacticStep {
+    pub description: String,
+    pub equation_after: Equation,
+}
+
+/// Build didactic payload for substitution detection (`u = expr`).
+pub fn build_detected_substitution_step_with<F>(
+    equation_after: Equation,
+    sub_expr: ExprId,
+    mut render_expr: F,
+) -> SubstitutionDidacticStep
+where
+    F: FnMut(ExprId) -> String,
+{
+    let sub_expr_desc = render_expr(sub_expr);
+    SubstitutionDidacticStep {
+        description: detected_substitution_message(&sub_expr_desc),
+        equation_after,
+    }
+}
+
+/// Build didactic payload for rewritten equation in `u`.
+pub fn build_substituted_equation_step_with<F>(
+    equation_after: Equation,
+    mut render_expr: F,
+) -> SubstitutionDidacticStep
+where
+    F: FnMut(ExprId) -> String,
+{
+    let lhs_desc = render_expr(equation_after.lhs);
+    let rhs_desc = render_expr(equation_after.rhs);
+    let op_desc = equation_after.op.to_string();
+    SubstitutionDidacticStep {
+        description: substituted_equation_message(&lhs_desc, &op_desc, &rhs_desc),
+        equation_after,
+    }
+}
+
+/// Build didactic payload for back-substitution `expr = value`.
+pub fn build_back_substitute_step_with<F>(
+    equation_after: Equation,
+    mut render_expr: F,
+) -> SubstitutionDidacticStep
+where
+    F: FnMut(ExprId) -> String,
+{
+    let lhs_desc = render_expr(equation_after.lhs);
+    let rhs_desc = render_expr(equation_after.rhs);
+    SubstitutionDidacticStep {
+        description: back_substitute_message(&lhs_desc, &rhs_desc),
+        equation_after,
+    }
 }
 
 /// Substitute a named variable with a value in an expression tree.
@@ -413,5 +469,26 @@ mod tests {
             back_substitute_message("ExprId(3)", "ExprId(4)"),
             "Back-substitute: ExprId(3) = ExprId(4)"
         );
+    }
+
+    #[test]
+    fn substitution_step_builders_use_rendered_payloads() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let eq = Equation {
+            lhs: x,
+            rhs: y,
+            op: cas_ast::RelOp::Eq,
+        };
+
+        let detect = build_detected_substitution_step_with(eq.clone(), x, |_| "exp".to_string());
+        assert_eq!(detect.description, "Detected substitution: u = exp");
+
+        let rewritten = build_substituted_equation_step_with(eq.clone(), |_| "u".to_string());
+        assert_eq!(rewritten.description, "Substituted equation: u = u");
+
+        let back = build_back_substitute_step_with(eq.clone(), |_| "v".to_string());
+        assert_eq!(back.description, "Back-substitute: v = v");
     }
 }
