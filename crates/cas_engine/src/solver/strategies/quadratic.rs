@@ -4,7 +4,7 @@ use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
-use cas_solver_core::isolation_utils::{contains_var, is_numeric_zero, split_zero_product_factors};
+use cas_solver_core::isolation_utils::{is_numeric_zero, split_zero_product_factors};
 use cas_solver_core::quadratic_formula::{
     discriminant, discriminant_expr, roots_from_a_b_and_sqrt, roots_from_a_b_delta, sqrt_expr,
 };
@@ -76,22 +76,20 @@ impl SolverStrategy for QuadraticStrategy {
             // For Eq, it's simple union.
             if eq.op == RelOp::Eq {
                 let mut all_solutions = Vec::new();
-                for factor in factors {
-                    // Skip factors that don't contain the variable (e.g., constant multipliers)
-                    // This fixes cases like x/10000 = 5/10000 where simplified is (x-5)/10000 = Mul(1/10000, x-5)
-                    // The 1/10000 factor has no variable, so we skip it
-                    if !contains_var(&simplifier.context, factor, var) {
-                        continue;
-                    }
+                let factor_equations =
+                    cas_solver_core::quadratic_didactic::collect_zero_product_factor_equations(
+                        &simplifier.context,
+                        &factors,
+                        var,
+                        zero,
+                    );
+                for factor_eq in factor_equations {
+                    let factor = factor_eq.lhs;
 
                     if simplifier.collect_steps() {
                         let didactic_step =
                             cas_solver_core::quadratic_didactic::build_solve_factor_step_with(
-                                Equation {
-                                    lhs: factor,
-                                    rhs: zero,
-                                    op: RelOp::Eq,
-                                },
+                                factor_eq.clone(),
                                 factor,
                                 |id| {
                                     format!(
@@ -110,11 +108,6 @@ impl SolverStrategy for QuadraticStrategy {
                             substeps: vec![],
                         });
                     }
-                    let factor_eq = Equation {
-                        lhs: factor,
-                        rhs: zero,
-                        op: RelOp::Eq,
-                    };
                     // Recursive solve
                     // We need to be careful about depth.
                     match solve_with_ctx(&factor_eq, var, simplifier, ctx) {

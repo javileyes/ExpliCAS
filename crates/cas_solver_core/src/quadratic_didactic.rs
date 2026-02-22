@@ -3,6 +3,7 @@
 //! This module builds the symbolic derivation steps (completing the square)
 //! independent of engine-specific step types/renderers.
 
+use crate::isolation_utils::contains_var;
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp};
 
 /// Main didactic narration for quadratic-strategy activation.
@@ -62,6 +63,26 @@ pub fn build_quadratic_main_step(equation_after: Equation) -> QuadraticDidacticS
         description: QUADRATIC_FORMULA_MAIN_STEP_DESCRIPTION.to_string(),
         equation_after,
     }
+}
+
+/// Collect zero-product factor equations `factor = 0` that are relevant for
+/// the target variable.
+pub fn collect_zero_product_factor_equations(
+    ctx: &Context,
+    factors: &[ExprId],
+    var: &str,
+    zero: ExprId,
+) -> Vec<Equation> {
+    factors
+        .iter()
+        .copied()
+        .filter(|factor| contains_var(ctx, *factor, var))
+        .map(|factor| Equation {
+            lhs: factor,
+            rhs: zero,
+            op: RelOp::Eq,
+        })
+        .collect()
 }
 
 /// Core didactic step payload for quadratic derivations.
@@ -410,5 +431,22 @@ mod tests {
             "Detected quadratic equation. Applying quadratic formula."
         );
         assert_eq!(main.equation_after, eq);
+    }
+
+    #[test]
+    fn collect_zero_product_factor_equations_filters_non_variable_factors() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let k = ctx.var("k");
+        let one = ctx.num(1);
+        let x_minus_one = ctx.add(Expr::Sub(x, one));
+        let factors = vec![k, x_minus_one];
+        let zero = ctx.num(0);
+
+        let eqs = collect_zero_product_factor_equations(&ctx, &factors, "x", zero);
+        assert_eq!(eqs.len(), 1);
+        assert_eq!(eqs[0].lhs, x_minus_one);
+        assert_eq!(eqs[0].rhs, zero);
+        assert_eq!(eqs[0].op, RelOp::Eq);
     }
 }
