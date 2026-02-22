@@ -141,6 +141,26 @@ pub fn classify_power_equals_base_route(
     }
 }
 
+/// Compute shortcut inputs for exponent isolation (`base^x = rhs`) from `rhs` shape.
+///
+/// The caller provides `same_base`, which decides whether the original base and
+/// a candidate expression are equivalent under its local notion of equivalence.
+pub fn detect_pow_exponent_shortcut_inputs<F>(
+    rhs: ExprId,
+    rhs_expr: &Expr,
+    mut same_base: F,
+) -> (bool, Option<ExprId>)
+where
+    F: FnMut(ExprId) -> bool,
+{
+    let bases_equal = same_base(rhs);
+    let rhs_pow_base_equal = match rhs_expr {
+        Expr::Pow(rhs_base, rhs_exp) if same_base(*rhs_base) => Some(*rhs_exp),
+        _ => None,
+    };
+    (bases_equal, rhs_pow_base_equal)
+}
+
 /// Classify exponent-isolation shortcuts before generic logarithmic isolation.
 pub fn classify_pow_exponent_shortcut(
     op: RelOp,
@@ -836,6 +856,31 @@ mod tests {
                 PowerEqualsBaseRoute::ExponentEqualsOneNumericBase
             )
         ));
+    }
+
+    #[test]
+    fn detect_pow_exponent_shortcut_inputs_detects_equal_pow_bases() {
+        let mut ctx = Context::new();
+        let b = ctx.var("b");
+        let n = ctx.var("n");
+        let rhs = ctx.add(Expr::Pow(b, n));
+        let rhs_expr = ctx.get(rhs).clone();
+        let (bases_equal, rhs_pow_base_equal) =
+            detect_pow_exponent_shortcut_inputs(rhs, &rhs_expr, |candidate| candidate == b);
+        assert!(!bases_equal);
+        assert_eq!(rhs_pow_base_equal, Some(n));
+    }
+
+    #[test]
+    fn detect_pow_exponent_shortcut_inputs_handles_non_pow_rhs() {
+        let mut ctx = Context::new();
+        let b = ctx.var("b");
+        let rhs = ctx.var("y");
+        let rhs_expr = ctx.get(rhs).clone();
+        let (bases_equal, rhs_pow_base_equal) =
+            detect_pow_exponent_shortcut_inputs(rhs, &rhs_expr, |candidate| candidate == b);
+        assert!(!bases_equal);
+        assert_eq!(rhs_pow_base_equal, None);
     }
 
     #[test]

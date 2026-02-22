@@ -13,11 +13,21 @@ use cas_solver_core::solve_outcome::{
     classify_pow_base_isolation_route, classify_pow_exponent_shortcut,
     classify_power_base_one_shortcut, even_power_negative_rhs_outcome, guarded_or_residual,
     power_base_one_shortcut_solutions, power_equals_base_symbolic_outcome, residual_expression,
-    resolve_log_terminal_outcome, terminal_outcome_message, PowBaseIsolationRoute,
-    PowExponentShortcut, PowerBaseOneShortcut, PowerEqualsBaseRoute,
+    resolve_log_terminal_outcome, terminal_outcome_message, detect_pow_exponent_shortcut_inputs,
+    PowBaseIsolationRoute, PowExponentShortcut, PowerBaseOneShortcut, PowerEqualsBaseRoute,
 };
 
 use super::{isolate, prepend_steps};
+
+fn are_shortcut_bases_equivalent(simplifier: &mut Simplifier, base: ExprId, candidate: ExprId) -> bool {
+    if base == candidate {
+        true
+    } else {
+        let diff = simplifier.context.add(Expr::Sub(base, candidate));
+        let (sim_diff, _) = simplifier.simplify(diff);
+        is_numeric_zero(&simplifier.context, sim_diff)
+    }
+}
 
 /// Handle isolation for `Pow(b, e)`: `B^E = RHS`
 #[allow(clippy::too_many_arguments)]
@@ -156,35 +166,11 @@ fn isolate_pow_exponent(
     // ================================================================
     // POWER EQUALS BASE SHORTCUT: base^x = base
     // ================================================================
-    let bases_equal = {
-        if b == rhs {
-            true
-        } else {
-            let diff = simplifier.context.add(Expr::Sub(b, rhs));
-            let (sim_diff, _) = simplifier.simplify(diff);
-            is_numeric_zero(&simplifier.context, sim_diff)
-        }
-    };
-
-    let rhs_pow_base_equal =
-        if let Expr::Pow(rhs_base, rhs_exp) = simplifier.context.get(rhs).clone() {
-            let pow_bases_equal = {
-                if b == rhs_base {
-                    true
-                } else {
-                    let diff = simplifier.context.add(Expr::Sub(b, rhs_base));
-                    let (sim_diff, _) = simplifier.simplify(diff);
-                    is_numeric_zero(&simplifier.context, sim_diff)
-                }
-            };
-            if pow_bases_equal {
-                Some(rhs_exp)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+    let rhs_expr = simplifier.context.get(rhs).clone();
+    let (bases_equal, rhs_pow_base_equal) =
+        detect_pow_exponent_shortcut_inputs(rhs, &rhs_expr, |candidate| {
+            are_shortcut_bases_equivalent(simplifier, b, candidate)
+        });
 
     let shortcut = classify_pow_exponent_shortcut(
         op.clone(),
