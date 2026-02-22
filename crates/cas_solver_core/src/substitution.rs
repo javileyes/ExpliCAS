@@ -35,6 +35,14 @@ pub struct SubstitutionIntroDidacticSteps {
     pub rewritten: SubstitutionDidacticStep,
 }
 
+/// Collect substitution-introduction didactic steps in display order:
+/// detected substitution first, rewritten equation second.
+pub fn collect_substitution_intro_didactic_steps(
+    didactic: &SubstitutionIntroDidacticSteps,
+) -> Vec<SubstitutionDidacticStep> {
+    vec![didactic.detected.clone(), didactic.rewritten.clone()]
+}
+
 /// Executable substitution intro payload (`u = ...`) including rewrite + didactic.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExponentialSubstitutionExecutionPlan {
@@ -759,6 +767,34 @@ mod tests {
             execution.didactic.rewritten.equation_after,
             execution.equation
         );
+    }
+
+    #[test]
+    fn collect_substitution_intro_didactic_steps_preserves_detected_then_rewritten_order() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let eq_before = Equation {
+            lhs: x,
+            rhs: y,
+            op: cas_ast::RelOp::Eq,
+        };
+        let eq_after = Equation {
+            lhs: y,
+            rhs: x,
+            op: cas_ast::RelOp::Eq,
+        };
+        let rewrite = ExponentialSubstitutionRewritePlan {
+            substitution_expr: x,
+            equation: eq_after,
+        };
+        let execution =
+            build_exponential_substitution_execution_with(eq_before, rewrite, |_| "u".to_string());
+
+        let didactic = collect_substitution_intro_didactic_steps(&execution.didactic);
+        assert_eq!(didactic.len(), 2);
+        assert_eq!(didactic[0].description, "Detected substitution: u = u");
+        assert_eq!(didactic[1].description, "Substituted equation: u = u");
     }
 
     #[test]

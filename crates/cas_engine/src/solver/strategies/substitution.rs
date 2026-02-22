@@ -6,7 +6,8 @@ use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, SolutionSet};
 use cas_solver_core::substitution::{
     build_back_substitution_execution_with, build_exponential_substitution_execution_with,
-    plan_back_substitution_equations, plan_exponential_substitution_rewrite,
+    collect_substitution_intro_didactic_steps, plan_back_substitution_equations,
+    plan_exponential_substitution_rewrite,
 };
 
 pub struct SubstitutionStrategy;
@@ -43,18 +44,16 @@ impl SolverStrategy for SubstitutionStrategy {
             let new_eq = intro_execution.equation.clone();
 
             if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: intro_execution.didactic.detected.description.clone(),
-                    equation_after: intro_execution.didactic.detected.equation_after.clone(),
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-                steps.push(SolveStep {
-                    description: intro_execution.didactic.rewritten.description.clone(),
-                    equation_after: intro_execution.didactic.rewritten.equation_after.clone(),
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
+                for didactic_step in
+                    collect_substitution_intro_didactic_steps(&intro_execution.didactic)
+                {
+                    steps.push(SolveStep {
+                        description: didactic_step.description,
+                        equation_after: didactic_step.equation_after,
+                        importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
+                    });
+                }
             }
 
             // Solve for u
