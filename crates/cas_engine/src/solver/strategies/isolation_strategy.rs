@@ -12,7 +12,7 @@ use cas_solver_core::solve_outcome::{
 };
 use cas_solver_core::strategy_kernels::{
     build_collect_terms_execution_with, build_rational_exponent_execution,
-    collect_collect_terms_didactic_steps, collect_rational_exponent_didactic_steps,
+    collect_collect_terms_execution_items, collect_rational_exponent_execution_items,
     derive_collect_terms_kernel, derive_rational_exponent_kernel,
 };
 
@@ -325,11 +325,13 @@ impl SolverStrategy for CollectTermsStrategy {
                 )
             });
 
+        let execution_items = collect_collect_terms_execution_items(&execution);
+
         if simplifier.collect_steps() {
-            for didactic_step in collect_collect_terms_didactic_steps(&execution) {
+            for item in &execution_items {
                 steps.push(SolveStep {
-                    description: didactic_step.description,
-                    equation_after: didactic_step.equation_after,
+                    description: item.didactic.description.clone(),
+                    equation_after: item.didactic.equation_after.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -338,7 +340,7 @@ impl SolverStrategy for CollectTermsStrategy {
 
         // Now recursively solve the simplified equation
         // This should now have variable only on one side
-        let new_eq = execution.equation.clone();
+        let new_eq = execution_items[0].equation.clone();
         match solve_with_ctx(&new_eq, var, simplifier, ctx) {
             Ok((set, mut solve_steps)) => {
                 steps.append(&mut solve_steps);
@@ -379,13 +381,14 @@ impl SolverStrategy for RationalExponentStrategy {
         let (sim_lhs, _) = simplifier.simplify(kernel.rewritten.lhs);
         let (sim_rhs, _) = simplifier.simplify(kernel.rewritten.rhs);
         let execution = build_rational_exponent_execution(kernel.q, sim_lhs, sim_rhs);
-        let new_eq = execution.equation.clone();
+        let execution_items = collect_rational_exponent_execution_items(&execution);
+        let new_eq = execution_items[0].equation.clone();
 
         if simplifier.collect_steps() {
-            for didactic_step in collect_rational_exponent_didactic_steps(&execution) {
+            for item in &execution_items {
                 steps.push(SolveStep {
-                    description: didactic_step.description,
-                    equation_after: didactic_step.equation_after,
+                    description: item.didactic.description.clone(),
+                    equation_after: item.didactic.equation_after.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });

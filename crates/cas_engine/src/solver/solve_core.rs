@@ -10,7 +10,7 @@ use cas_solver_core::solve_outcome::{
     resolve_var_eliminated_outcome_with, VarEliminatedSolveOutcome,
 };
 use cas_solver_core::strategy_kernels::{
-    build_rational_exponent_execution, collect_rational_exponent_didactic_steps,
+    build_rational_exponent_execution, collect_rational_exponent_execution_items,
     derive_rational_exponent_kernel,
 };
 
@@ -543,13 +543,14 @@ fn try_solve_rational_exponent(
     // DON'T simplify LHS yet - it might contain x^p which we want to solve
 
     let execution = build_rational_exponent_execution(kernel.q, kernel.rewritten.lhs, sim_rhs);
-    let new_eq = execution.equation.clone();
+    let execution_items = collect_rational_exponent_execution_items(&execution);
+    let new_eq = execution_items[0].equation.clone();
 
     if simplifier.collect_steps() {
-        for didactic_step in collect_rational_exponent_didactic_steps(&execution) {
+        for item in &execution_items {
             steps.push(SolveStep {
-                description: didactic_step.description,
-                equation_after: didactic_step.equation_after,
+                description: item.didactic.description.clone(),
+                equation_after: item.didactic.equation_after.clone(),
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });

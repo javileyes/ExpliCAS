@@ -15,6 +15,13 @@ pub struct StrategyDidacticStep {
     pub equation_after: Equation,
 }
 
+/// One strategy execution item with aligned equation and didactic step.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StrategyExecutionItem {
+    pub equation: Equation,
+    pub didactic: StrategyDidacticStep,
+}
+
 /// Execution payload for collect-terms strategy rewrite.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CollectTermsExecutionPlan {
@@ -27,6 +34,16 @@ pub fn collect_collect_terms_didactic_steps(
     execution: &CollectTermsExecutionPlan,
 ) -> Vec<StrategyDidacticStep> {
     vec![execution.didactic.clone()]
+}
+
+/// Collect collect-terms execution items in execution order.
+pub fn collect_collect_terms_execution_items(
+    execution: &CollectTermsExecutionPlan,
+) -> Vec<StrategyExecutionItem> {
+    vec![StrategyExecutionItem {
+        equation: execution.equation.clone(),
+        didactic: execution.didactic.clone(),
+    }]
 }
 
 /// Rewrite payload for `CollectTermsStrategy`.
@@ -150,6 +167,16 @@ pub fn collect_rational_exponent_didactic_steps(
     execution: &RationalExponentExecutionPlan,
 ) -> Vec<StrategyDidacticStep> {
     vec![execution.didactic.clone()]
+}
+
+/// Collect rational-exponent execution items in execution order.
+pub fn collect_rational_exponent_execution_items(
+    execution: &RationalExponentExecutionPlan,
+) -> Vec<StrategyExecutionItem> {
+    vec![StrategyExecutionItem {
+        equation: execution.equation.clone(),
+        didactic: execution.didactic.clone(),
+    }]
 }
 
 /// Build executable rational-exponent payload from simplified equation sides.
@@ -294,6 +321,21 @@ mod tests {
     }
 
     #[test]
+    fn collect_collect_terms_execution_items_returns_single_item() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let rhs_orig = ctx.var("rhs");
+        let execution =
+            build_collect_terms_execution_with(x, y, RelOp::Eq, rhs_orig, |_| "rhs".to_string());
+
+        let items = collect_collect_terms_execution_items(&execution);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].equation, execution.equation);
+        assert_eq!(items[0].didactic, execution.didactic);
+    }
+
+    #[test]
     fn build_rational_exponent_execution_builds_equation_and_didactic() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -325,5 +367,18 @@ mod tests {
         let didactic = collect_rational_exponent_didactic_steps(&execution);
         assert_eq!(didactic.len(), 1);
         assert_eq!(didactic[0], execution.didactic);
+    }
+
+    #[test]
+    fn collect_rational_exponent_execution_items_returns_single_item() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let execution = build_rational_exponent_execution(5, x, y);
+
+        let items = collect_rational_exponent_execution_items(&execution);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].equation, execution.equation);
+        assert_eq!(items[0].didactic, execution.didactic);
     }
 }
