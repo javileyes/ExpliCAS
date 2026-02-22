@@ -4,12 +4,13 @@ use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
     apply_sign_flip, contains_var, is_even_integer_expr, is_known_negative, is_numeric_one,
-    is_numeric_zero, mk_residual_solve,
+    is_numeric_zero,
 };
-use cas_solver_core::log_domain::{LogAssumption, LogSolveDecision};
+use cas_solver_core::log_domain::LogSolveDecision;
 use cas_solver_core::solve_outcome::{
     even_power_negative_rhs_outcome, guarded_solutions_with_residual_fallback,
-    power_base_one_outcome, power_equals_base_symbolic_outcome, resolve_log_terminal_outcome,
+    power_base_one_outcome, power_equals_base_symbolic_outcome, residual_expression,
+    residual_solution_set, resolve_log_terminal_outcome,
 };
 
 use super::{isolate, prepend_steps};
@@ -464,7 +465,7 @@ fn isolate_pow_exponent(
         }
         LogSolveDecision::Unsupported(msg, missing_conditions) => {
             if !opts.budget.can_branch() {
-                let residual = mk_residual_solve(&mut simplifier.context, lhs, rhs, var);
+                let residual = residual_solution_set(&mut simplifier.context, lhs, rhs, var);
                 if simplifier.collect_steps() {
                     steps.push(SolveStep {
                         description: format!("{} (residual, budget exhausted)", msg),
@@ -473,7 +474,7 @@ fn isolate_pow_exponent(
                         substeps: vec![],
                     });
                 }
-                return Ok((SolutionSet::Residual(residual), steps));
+                return Ok((residual, steps));
             }
 
             // Build guard set from missing conditions
@@ -491,10 +492,8 @@ fn isolate_pow_exponent(
                     b,
                     rhs,
                 );
-                let expr_id = match condition {
-                    LogAssumption::PositiveBase => b,
-                    LogAssumption::PositiveRhs => rhs,
-                };
+                let expr_id =
+                    cas_solver_core::log_domain::assumption_target_expr(*condition, b, rhs);
                 crate::domain::register_blocked_hint(crate::domain::BlockedHint {
                     key: event.key,
                     expr_id,
@@ -540,7 +539,7 @@ fn isolate_pow_exponent(
                 ctx,
             );
 
-            let residual = mk_residual_solve(&mut simplifier.context, lhs, rhs, var);
+            let residual = residual_expression(&mut simplifier.context, lhs, rhs, var);
 
             match guarded_result {
                 Ok((guarded_solutions, mut solve_steps)) => {

@@ -169,6 +169,14 @@ pub struct ExponentialPattern {
     pub exponent: ExprId,
 }
 
+/// Exponential candidate for equations where the variable appears on only
+/// one side as an exponent (`a^x = b` or `b = a^x`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SingleSideExponentialCandidate {
+    pub base: ExprId,
+    pub other_side: ExprId,
+}
+
 /// Match `base^exponent` where `base` contains `var` and exponent does not.
 pub fn match_exponential_var_in_base(
     ctx: &Context,
@@ -201,6 +209,35 @@ pub fn match_exponential_var_in_exponent(
         }
     }
     None
+}
+
+/// Find `base^(...var...)` on exactly one side of an equation.
+///
+/// `lhs_has_var` and `rhs_has_var` are provided by the caller to avoid
+/// duplicate containment scans in strategy pipelines.
+pub fn find_single_side_exponential_var_in_exponent(
+    ctx: &Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    lhs_has_var: bool,
+    rhs_has_var: bool,
+) -> Option<SingleSideExponentialCandidate> {
+    if lhs_has_var && !rhs_has_var {
+        let pattern = match_exponential_var_in_exponent(ctx, lhs, var)?;
+        Some(SingleSideExponentialCandidate {
+            base: pattern.base,
+            other_side: rhs,
+        })
+    } else if rhs_has_var && !lhs_has_var {
+        let pattern = match_exponential_var_in_exponent(ctx, rhs, var)?;
+        Some(SingleSideExponentialCandidate {
+            base: pattern.base,
+            other_side: lhs,
+        })
+    } else {
+        None
+    }
 }
 
 /// Combine the two branch solution sets generated from `|A| op B`.
@@ -533,6 +570,46 @@ mod tests {
         let m = match_exponential_var_in_exponent(&ctx, expr, "x").expect("must match");
         assert_eq!(m.base, two);
         assert_eq!(m.exponent, x);
+    }
+
+    #[test]
+    fn test_find_single_side_exponential_var_in_exponent_lhs() {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let lhs = ctx.add(Expr::Pow(two, x));
+        let rhs = y;
+        let c = find_single_side_exponential_var_in_exponent(&ctx, lhs, rhs, "x", true, false)
+            .expect("must match lhs candidate");
+        assert_eq!(c.base, two);
+        assert_eq!(c.other_side, y);
+    }
+
+    #[test]
+    fn test_find_single_side_exponential_var_in_exponent_rhs() {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let lhs = y;
+        let rhs = ctx.add(Expr::Pow(two, x));
+        let c = find_single_side_exponential_var_in_exponent(&ctx, lhs, rhs, "x", false, true)
+            .expect("must match rhs candidate");
+        assert_eq!(c.base, two);
+        assert_eq!(c.other_side, y);
+    }
+
+    #[test]
+    fn test_find_single_side_exponential_var_in_exponent_rejects_both_sides() {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let x = ctx.var("x");
+        let lhs = ctx.add(Expr::Pow(two, x));
+        let rhs = ctx.add(Expr::Pow(two, x));
+        assert!(
+            find_single_side_exponential_var_in_exponent(&ctx, lhs, rhs, "x", true, true).is_none()
+        );
     }
 
     #[test]

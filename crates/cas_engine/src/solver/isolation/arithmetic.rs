@@ -4,8 +4,8 @@ use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
-    contains_var, denominator_sign_case_ops, is_inequality_relop, is_known_negative,
-    is_numeric_zero, isolated_denominator_variable_case_ops, product_zero_inequality_cases,
+    contains_var, is_inequality_relop, is_known_negative, is_numeric_zero,
+    product_zero_inequality_cases,
 };
 use cas_solver_core::solution_set::{
     intersect_solution_sets, open_negative_domain, open_positive_domain, pos_inf,
@@ -318,11 +318,26 @@ pub(super) fn isolate_div(
     if contains_var(&simplifier.context, l, var) {
         if contains_var(&simplifier.context, r, var) && is_inequality_relop(&op) {
             // Denominator contains variable. Split into cases.
-            // Case 1: Denominator > 0
-            let (op_pos, op_neg) = denominator_sign_case_ops(op.clone())
+            let (split, domain_eq, domain_eq_neg) =
+                cas_solver_core::equation_rewrite::build_division_denominator_sign_split(
+                    &mut simplifier.context,
+                    l,
+                    r,
+                    rhs,
+                    op.clone(),
+                )
                 .expect("inequality branch requires denominator sign cases");
-            let new_rhs = simplifier.context.add(Expr::Mul(rhs, r));
-            let (sim_rhs, _) = simplifier.simplify(new_rhs);
+            let (sim_rhs, _) = simplifier.simplify(split.positive.rhs);
+            let eq_pos = Equation {
+                lhs: split.positive.lhs,
+                rhs: sim_rhs,
+                op: split.positive.op,
+            };
+            let eq_neg = Equation {
+                lhs: split.negative.lhs,
+                rhs: sim_rhs,
+                op: split.negative.op,
+            };
 
             if simplifier.collect_steps() {
                 steps.push(SolveStep {
@@ -333,32 +348,28 @@ pub(super) fn isolate_div(
                             id: r
                         }
                     ),
-                    equation_after: Equation {
-                        lhs: l,
-                        rhs: sim_rhs,
-                        op: op_pos.clone(),
-                    },
+                    equation_after: eq_pos.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
             }
 
-            let results_pos = isolate(l, sim_rhs, op_pos, var, simplifier, opts, ctx)?;
+            let results_pos = isolate(
+                eq_pos.lhs,
+                eq_pos.rhs,
+                eq_pos.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )?;
             let (set_pos, steps_pos) = prepend_steps(results_pos, steps.clone())?;
 
             // Domain: r > 0
-            let domain_eq = cas_solver_core::equation_rewrite::build_sign_domain_equation(
-                &mut simplifier.context,
-                r,
-                true,
-            );
             let (domain_pos_set, _) = solve_with_ctx(&domain_eq, var, simplifier, ctx)?;
             let final_pos = intersect_solution_sets(&simplifier.context, set_pos, domain_pos_set);
 
             // Case 2: Denominator < 0
-            let temp_rhs = simplifier.context.add(Expr::Mul(rhs, r));
-            let (sim_rhs, _) = simplifier.simplify(temp_rhs);
-
             if simplifier.collect_steps() {
                 steps.push(SolveStep {
                     description: format!(
@@ -368,25 +379,24 @@ pub(super) fn isolate_div(
                             id: r
                         }
                     ),
-                    equation_after: Equation {
-                        lhs: l,
-                        rhs: sim_rhs,
-                        op: op_neg.clone(),
-                    },
+                    equation_after: eq_neg.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
             }
 
-            let results_neg = isolate(l, sim_rhs, op_neg, var, simplifier, opts, ctx)?;
+            let results_neg = isolate(
+                eq_neg.lhs,
+                eq_neg.rhs,
+                eq_neg.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )?;
             let (set_neg, steps_neg) = prepend_steps(results_neg, steps.clone())?;
 
             // Domain: r < 0
-            let domain_eq_neg = cas_solver_core::equation_rewrite::build_sign_domain_equation(
-                &mut simplifier.context,
-                r,
-                false,
-            );
             let (domain_neg_set, _) = solve_with_ctx(&domain_eq_neg, var, simplifier, ctx)?;
             let final_neg = intersect_solution_sets(&simplifier.context, set_neg, domain_neg_set);
 
@@ -399,7 +409,7 @@ pub(super) fn isolate_div(
                 description: "--- End of Case 1 ---".to_string(),
                 equation_after: Equation {
                     lhs: l,
-                    rhs: sim_rhs,
+                    rhs: eq_neg.rhs,
                     op,
                 },
                 importance: crate::step::ImportanceLevel::Medium,
@@ -479,8 +489,15 @@ pub(super) fn isolate_div(
         if let Expr::Variable(sym_id) = simplifier.context.get(r) {
             if simplifier.context.sym_name(*sym_id) == var && is_inequality_relop(&op) {
                 // Split into x > 0 and x < 0
-                let (op_pos, op_neg) = isolated_denominator_variable_case_ops(op.clone())
+                let split =
+                    cas_solver_core::equation_rewrite::build_isolated_denominator_sign_split(
+                        r,
+                        sim_rhs,
+                        op.clone(),
+                    )
                     .expect("inequality branch requires denominator sign cases");
+                let eq_pos = split.positive;
+                let eq_neg = split.negative;
 
                 let mut steps_case1 = steps.clone();
                 if simplifier.collect_steps() {
@@ -490,17 +507,21 @@ pub(super) fn isolate_div(
                             cas_formatter::DisplayExpr { context: &simplifier.context, id: r },
                             cas_formatter::DisplayExpr { context: &simplifier.context, id: r }
                         ),
-                        equation_after: Equation {
-                            lhs: r,
-                            rhs: sim_rhs,
-                            op: op_pos.clone(),
-                        },
+                        equation_after: eq_pos.clone(),
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
                     });
                 }
 
-                let results_pos = isolate(r, sim_rhs, op_pos, var, simplifier, opts, ctx)?;
+                let results_pos = isolate(
+                    eq_pos.lhs,
+                    eq_pos.rhs,
+                    eq_pos.op.clone(),
+                    var,
+                    simplifier,
+                    opts,
+                    ctx,
+                )?;
                 let (set_pos, steps_pos) = prepend_steps(results_pos, steps_case1)?;
 
                 // Intersect with (0, inf)
@@ -522,17 +543,21 @@ pub(super) fn isolate_div(
                                 id: r
                             }
                         ),
-                        equation_after: Equation {
-                            lhs: r,
-                            rhs: sim_rhs,
-                            op: op_neg.clone(),
-                        },
+                        equation_after: eq_neg.clone(),
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
                     });
                 }
 
-                let results_neg = isolate(r, sim_rhs, op_neg, var, simplifier, opts, ctx)?;
+                let results_neg = isolate(
+                    eq_neg.lhs,
+                    eq_neg.rhs,
+                    eq_neg.op.clone(),
+                    var,
+                    simplifier,
+                    opts,
+                    ctx,
+                )?;
                 let (set_neg, steps_neg) = prepend_steps(results_neg, steps_case2)?;
 
                 // Intersect with (-inf, 0)
@@ -548,7 +573,7 @@ pub(super) fn isolate_div(
                     description: "--- End of Case 1 ---".to_string(),
                     equation_after: Equation {
                         lhs: r,
-                        rhs: sim_rhs,
+                        rhs: eq_neg.rhs,
                         op,
                     },
                     importance: crate::step::ImportanceLevel::Medium,

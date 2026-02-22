@@ -6,7 +6,8 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveDomainEnv, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
-    contains_var, is_numeric_one, match_exponential_var_in_exponent,
+    contains_var, find_single_side_exponential_var_in_exponent, is_numeric_one,
+    match_exponential_var_in_exponent,
 };
 use cas_solver_core::log_domain::LogSolveDecision;
 use cas_solver_core::solve_outcome::resolve_log_terminal_outcome;
@@ -107,68 +108,45 @@ fn check_exponential_needs_complex(
     let mode = crate::solver::domain_guards::to_core_domain_mode(opts.domain_mode);
     let wildcard_scope = opts.assume_scope == crate::semantics::AssumeScope::Wildcard;
 
-    // Check LHS for exponential a^x pattern
-    if lhs_has && !rhs_has {
-        if let Some(pattern) = match_exponential_var_in_exponent(&simplifier.context, eq.lhs, var) {
-            let decision = classify_log_solve(&simplifier.context, pattern.base, eq.rhs, opts, env);
-            if let Some(outcome) = resolve_log_terminal_outcome(
-                &mut simplifier.context,
-                &decision,
-                mode,
-                wildcard_scope,
-                eq.lhs,
-                eq.rhs,
-                var,
-            ) {
-                let mut steps = Vec::new();
-                if simplifier.collect_steps() {
-                    let description = if matches!(outcome.solutions, SolutionSet::Residual(_)) {
-                        format!("{} - use 'semantics preset complex'", outcome.message)
-                    } else {
-                        outcome.message.to_string()
-                    };
-                    steps.push(SolveStep {
-                        description,
-                        equation_after: eq.clone(),
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    });
-                }
-                return Some(Ok((outcome.solutions, steps)));
-            }
+    let candidate = find_single_side_exponential_var_in_exponent(
+        &simplifier.context,
+        eq.lhs,
+        eq.rhs,
+        var,
+        lhs_has,
+        rhs_has,
+    )?;
+    let decision = classify_log_solve(
+        &simplifier.context,
+        candidate.base,
+        candidate.other_side,
+        opts,
+        env,
+    );
+    if let Some(outcome) = resolve_log_terminal_outcome(
+        &mut simplifier.context,
+        &decision,
+        mode,
+        wildcard_scope,
+        eq.lhs,
+        eq.rhs,
+        var,
+    ) {
+        let mut steps = Vec::new();
+        if simplifier.collect_steps() {
+            let description = if matches!(outcome.solutions, SolutionSet::Residual(_)) {
+                format!("{} - use 'semantics preset complex'", outcome.message)
+            } else {
+                outcome.message.to_string()
+            };
+            steps.push(SolveStep {
+                description,
+                equation_after: eq.clone(),
+                importance: crate::step::ImportanceLevel::Medium,
+                substeps: vec![],
+            });
         }
-    }
-
-    // Check RHS for exponential pattern (symmetric case)
-    if rhs_has && !lhs_has {
-        if let Some(pattern) = match_exponential_var_in_exponent(&simplifier.context, eq.rhs, var) {
-            let decision = classify_log_solve(&simplifier.context, pattern.base, eq.lhs, opts, env);
-            if let Some(outcome) = resolve_log_terminal_outcome(
-                &mut simplifier.context,
-                &decision,
-                mode,
-                wildcard_scope,
-                eq.lhs,
-                eq.rhs,
-                var,
-            ) {
-                let mut steps = Vec::new();
-                if simplifier.collect_steps() {
-                    let description = if matches!(outcome.solutions, SolutionSet::Residual(_)) {
-                        format!("{} - use 'semantics preset complex'", outcome.message)
-                    } else {
-                        outcome.message.to_string()
-                    };
-                    steps.push(SolveStep {
-                        description,
-                        equation_after: eq.clone(),
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    });
-                }
-                return Some(Ok((outcome.solutions, steps)));
-            }
-        }
+        return Some(Ok((outcome.solutions, steps)));
     }
 
     None

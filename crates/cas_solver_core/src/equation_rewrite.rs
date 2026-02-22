@@ -1,4 +1,7 @@
-use crate::isolation_utils::{apply_sign_flip, flip_inequality, SignCaseOps};
+use crate::isolation_utils::{
+    apply_sign_flip, denominator_sign_case_ops, flip_inequality,
+    isolated_denominator_variable_case_ops, SignCaseOps,
+};
 use cas_ast::{Equation, Expr, ExprId, RelOp};
 
 /// Rewrite `lhs op rhs` by subtracting `rhs` on both sides:
@@ -161,6 +164,70 @@ pub fn isolate_abs_branches(
         op: flip_inequality(op),
     };
     (positive, negative)
+}
+
+/// Pair of equations for positive/negative sign branches.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SignSplitEquations {
+    pub positive: Equation,
+    pub negative: Equation,
+}
+
+/// Build inequality split for `numerator / denominator op rhs`:
+/// - positive branch: `numerator op (rhs * denominator)`
+/// - negative branch: `numerator flip(op) (rhs * denominator)`
+///
+/// and sign-domain equations `denominator > 0`, `denominator < 0`.
+pub fn build_division_denominator_sign_split(
+    ctx: &mut cas_ast::Context,
+    numerator: ExprId,
+    denominator: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+) -> Option<(SignSplitEquations, Equation, Equation)> {
+    let (op_pos, op_neg) = denominator_sign_case_ops(op)?;
+    let transformed_rhs = ctx.add(Expr::Mul(rhs, denominator));
+    let branches = SignSplitEquations {
+        positive: Equation {
+            lhs: numerator,
+            rhs: transformed_rhs,
+            op: op_pos,
+        },
+        negative: Equation {
+            lhs: numerator,
+            rhs: transformed_rhs,
+            op: op_neg,
+        },
+    };
+    let domain_pos = build_sign_domain_equation(ctx, denominator, true);
+    let domain_neg = build_sign_domain_equation(ctx, denominator, false);
+    Some((branches, domain_pos, domain_neg))
+}
+
+/// Build inequality split for an already isolated denominator equation:
+/// `lhs op rhs` with `lhs` being the denominator variable.
+///
+/// Returns:
+/// - positive branch with op for `lhs > 0`
+/// - negative branch with op for `lhs < 0`
+pub fn build_isolated_denominator_sign_split(
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+) -> Option<SignSplitEquations> {
+    let (op_pos, op_neg) = isolated_denominator_variable_case_ops(op)?;
+    Some(SignSplitEquations {
+        positive: Equation {
+            lhs,
+            rhs,
+            op: op_pos,
+        },
+        negative: Equation {
+            lhs,
+            rhs,
+            op: op_neg,
+        },
+    })
 }
 
 /// Build one zero-product sign case:
@@ -414,5 +481,43 @@ mod tests {
         assert_eq!(neg.op, RelOp::Lt);
         assert!(matches!(ctx.get(pos.rhs), Expr::Number(_)));
         assert!(matches!(ctx.get(neg.rhs), Expr::Number(_)));
+    }
+
+    #[test]
+    fn build_division_denominator_sign_split_builds_two_ops_and_domains() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let c = ctx.var("c");
+
+        let (branches, dpos, dneg) =
+            build_division_denominator_sign_split(&mut ctx, a, b, c, RelOp::Lt)
+                .expect("inequality split should be available");
+
+        assert_eq!(branches.positive.lhs, a);
+        assert_eq!(branches.negative.lhs, a);
+        assert_eq!(branches.positive.op, RelOp::Lt);
+        assert_eq!(branches.negative.op, RelOp::Gt);
+        assert_eq!(branches.positive.rhs, branches.negative.rhs);
+        assert_eq!(dpos.lhs, b);
+        assert_eq!(dneg.lhs, b);
+        assert_eq!(dpos.op, RelOp::Gt);
+        assert_eq!(dneg.op, RelOp::Lt);
+    }
+
+    #[test]
+    fn build_isolated_denominator_sign_split_uses_isolated_op_pair() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("x");
+        let rhs = ctx.var("r");
+        let split = build_isolated_denominator_sign_split(lhs, rhs, RelOp::Lt)
+            .expect("inequality split should be available");
+        assert_eq!(split.positive.lhs, lhs);
+        assert_eq!(split.negative.lhs, lhs);
+        assert_eq!(split.positive.rhs, rhs);
+        assert_eq!(split.negative.rhs, rhs);
+        // For isolated denominator case, pair is intentionally swapped.
+        assert_eq!(split.positive.op, RelOp::Gt);
+        assert_eq!(split.negative.op, RelOp::Lt);
     }
 }

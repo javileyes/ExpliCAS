@@ -7,6 +7,7 @@ use crate::solver::{SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
 use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solution_set::isolated_var_solution;
+use cas_solver_core::solve_outcome::residual_solution_set;
 
 use crate::error::CasError;
 
@@ -57,13 +58,10 @@ pub(crate) fn isolate(
                 }
 
                 // If linear_collect didn't work, return as Residual
-                let residual = cas_solver_core::isolation_utils::mk_residual_solve(
-                    &mut simplifier.context,
-                    lhs,
-                    rhs,
-                    var,
-                );
-                return Ok((SolutionSet::Residual(residual), steps));
+                return Ok((
+                    residual_solution_set(&mut simplifier.context, lhs, rhs, var),
+                    steps,
+                ));
             }
 
             let set = isolated_var_solution(&mut simplifier.context, sim_rhs, op);

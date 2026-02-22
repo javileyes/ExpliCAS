@@ -68,6 +68,14 @@ pub fn assumption_to_condition_predicate(
     }
 }
 
+/// Select the expression targeted by a logarithmic assumption.
+pub fn assumption_target_expr(assumption: LogAssumption, base: ExprId, rhs: ExprId) -> ExprId {
+    match assumption {
+        LogAssumption::PositiveBase => base,
+        LogAssumption::PositiveRhs => rhs,
+    }
+}
+
 /// Convert a list of assumptions into a `ConditionSet`.
 pub fn assumptions_to_condition_set(
     assumptions: &[LogAssumption],
@@ -209,5 +217,20 @@ mod tests {
         let d = LogSolveDecision::NeedsComplex("x");
         let action = classify_terminal_action(&d, DomainModeKind::Assume, false);
         assert_eq!(action, LogTerminalAction::Continue);
+    }
+
+    #[test]
+    fn assumption_target_expr_maps_base_and_rhs() {
+        let mut ctx = cas_ast::Context::new();
+        let base = ctx.var("b");
+        let rhs = ctx.var("r");
+        assert_eq!(
+            assumption_target_expr(LogAssumption::PositiveBase, base, rhs),
+            base
+        );
+        assert_eq!(
+            assumption_target_expr(LogAssumption::PositiveRhs, base, rhs),
+            rhs
+        );
     }
 }

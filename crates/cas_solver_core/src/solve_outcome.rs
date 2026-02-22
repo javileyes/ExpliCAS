@@ -54,6 +54,21 @@ pub fn power_base_one_outcome(rhs_is_one: bool) -> SolutionSet {
     }
 }
 
+/// Build a residual solution set `solve(__eq__(lhs, rhs), var)`.
+pub fn residual_solution_set(
+    ctx: &mut Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+) -> SolutionSet {
+    SolutionSet::Residual(residual_expression(ctx, lhs, rhs, var))
+}
+
+/// Build residual expression `solve(__eq__(lhs, rhs), var)`.
+pub fn residual_expression(ctx: &mut Context, lhs: ExprId, rhs: ExprId, var: &str) -> ExprId {
+    mk_residual_solve(ctx, lhs, rhs, var)
+}
+
 /// Resolve terminal log-solve actions into concrete solution sets.
 pub fn resolve_log_terminal_outcome(
     ctx: &mut Context,
@@ -78,10 +93,9 @@ pub fn resolve_log_terminal_outcome(
             let LogSolveDecision::NeedsComplex(message) = decision else {
                 return None;
             };
-            let residual = mk_residual_solve(ctx, lhs, rhs, var);
             Some(TerminalSolveOutcome {
                 message,
-                solutions: SolutionSet::Residual(residual),
+                solutions: residual_solution_set(ctx, lhs, rhs, var),
             })
         }
         LogTerminalAction::Continue => None,
@@ -366,5 +380,23 @@ mod tests {
             }
             other => panic!("expected conditional, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn residual_solution_set_wraps_residual_expression() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let out = residual_solution_set(&mut ctx, x, y, "x");
+        assert!(matches!(out, SolutionSet::Residual(_)));
+    }
+
+    #[test]
+    fn residual_expression_builds_solve_call() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let expr = residual_expression(&mut ctx, x, y, "x");
+        assert!(matches!(ctx.get(expr), Expr::Function(_, _)));
     }
 }
