@@ -11,10 +11,11 @@
 
 use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
-use cas_solver_core::linear_solution::{build_linear_solution_set, NonZeroStatus};
+use cas_solver_core::linear_solution::{build_linear_solution_set, derive_linear_nonzero_statuses};
 use cas_solver_core::linear_terms::{build_sum, split_linear_term, TermClass};
 
 use crate::engine::Simplifier;
+use crate::helpers::prove_nonzero;
 use crate::nary::{add_terms_signed, Sign};
 use crate::solver::proof_bridge::proof_to_nonzero_status;
 use crate::solver::SolveStep;
@@ -135,17 +136,12 @@ pub(crate) fn try_linear_collect(
 
     // 8. Derive proof statuses for coefficient/constant degeneracy checks.
     // Keep previous behavior: only attempt proof when coefficient is var-free.
-    let mut coef_status = NonZeroStatus::Unknown;
-    let mut constant_status = NonZeroStatus::Unknown;
-
-    if !contains_var(&simplifier.context, coeff, var) {
-        use crate::helpers::prove_nonzero;
-        coef_status = proof_to_nonzero_status(prove_nonzero(&simplifier.context, coeff));
-        if coef_status == NonZeroStatus::Zero {
-            constant_status =
-                proof_to_nonzero_status(prove_nonzero(&simplifier.context, neg_const));
-        }
-    }
+    let (coef_status, constant_status) = derive_linear_nonzero_statuses(
+        contains_var(&simplifier.context, coeff, var),
+        coeff,
+        neg_const,
+        |expr| proof_to_nonzero_status(prove_nonzero(&simplifier.context, expr)),
+    );
 
     let solution_set =
         build_linear_solution_set(coeff, neg_const, solution, coef_status, constant_status);
@@ -222,16 +218,12 @@ pub(crate) fn try_linear_collect_v2(
 
     // Derive proof statuses for coefficient/constant degeneracy checks.
     // Keep previous behavior: only attempt proof when coefficient is var-free.
-    let mut coef_status = NonZeroStatus::Unknown;
-    let mut constant_status = NonZeroStatus::Unknown;
-
-    if !contains_var(&simplifier.context, coef, var) {
-        use crate::helpers::prove_nonzero;
-        coef_status = proof_to_nonzero_status(prove_nonzero(&simplifier.context, coef));
-        if coef_status == NonZeroStatus::Zero {
-            constant_status = proof_to_nonzero_status(prove_nonzero(&simplifier.context, constant));
-        }
-    }
+    let (coef_status, constant_status) = derive_linear_nonzero_statuses(
+        contains_var(&simplifier.context, coef, var),
+        coef,
+        constant,
+        |expr| proof_to_nonzero_status(prove_nonzero(&simplifier.context, expr)),
+    );
 
     let solution_set =
         build_linear_solution_set(coef, constant, solution, coef_status, constant_status);

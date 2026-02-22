@@ -8,6 +8,34 @@ pub enum NonZeroStatus {
     Unknown,
 }
 
+/// Derive `(coef_status, constant_status)` for linear solve degeneracy checks.
+///
+/// Policy:
+/// - If the coefficient still contains solve variable, both statuses remain unknown.
+/// - Otherwise prove coefficient non-zero first.
+/// - Only when coefficient is proven zero, prove the constant term.
+pub fn derive_linear_nonzero_statuses<F>(
+    coef_contains_var: bool,
+    coef: ExprId,
+    constant: ExprId,
+    mut prove_nonzero_status: F,
+) -> (NonZeroStatus, NonZeroStatus)
+where
+    F: FnMut(ExprId) -> NonZeroStatus,
+{
+    let mut coef_status = NonZeroStatus::Unknown;
+    let mut constant_status = NonZeroStatus::Unknown;
+
+    if !coef_contains_var {
+        coef_status = prove_nonzero_status(coef);
+        if coef_status == NonZeroStatus::Zero {
+            constant_status = prove_nonzero_status(constant);
+        }
+    }
+
+    (coef_status, constant_status)
+}
+
 /// Build the canonical solution set for a linear solve kernel:
 /// `coef * var = constant`, with candidate `var = constant / coef`.
 ///
@@ -112,5 +140,45 @@ mod tests {
             NonZeroStatus::Unknown,
         );
         assert!(matches!(set, SolutionSet::Conditional(_)));
+    }
+
+    #[test]
+    fn derive_statuses_skips_proofs_when_coefficient_contains_var() {
+        let mut ctx = Context::new();
+        let coef = ctx.var("a");
+        let constant = ctx.var("b");
+        let mut calls = 0usize;
+
+        let (coef_status, constant_status) =
+            derive_linear_nonzero_statuses(true, coef, constant, |_expr| {
+                calls += 1;
+                NonZeroStatus::Unknown
+            });
+
+        assert_eq!(coef_status, NonZeroStatus::Unknown);
+        assert_eq!(constant_status, NonZeroStatus::Unknown);
+        assert_eq!(calls, 0);
+    }
+
+    #[test]
+    fn derive_statuses_only_proves_constant_when_coefficient_is_zero() {
+        let mut ctx = Context::new();
+        let coef = ctx.var("a");
+        let constant = ctx.var("b");
+        let mut seen = Vec::new();
+
+        let (coef_status, constant_status) =
+            derive_linear_nonzero_statuses(false, coef, constant, |expr| {
+                seen.push(expr);
+                if expr == coef {
+                    NonZeroStatus::Zero
+                } else {
+                    NonZeroStatus::NonZero
+                }
+            });
+
+        assert_eq!(coef_status, NonZeroStatus::Zero);
+        assert_eq!(constant_status, NonZeroStatus::NonZero);
+        assert_eq!(seen, vec![coef, constant]);
     }
 }
