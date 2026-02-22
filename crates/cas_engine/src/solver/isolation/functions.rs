@@ -203,7 +203,7 @@ fn isolate_unary_function(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let fn_name = simplifier.context.sym_name(fn_id).to_string();
-    let plan = cas_solver_core::function_inverse::plan_unary_inverse_rewrite(
+    let plan = cas_solver_core::function_inverse::plan_unary_inverse_isolation_step(
         &mut simplifier.context,
         &fn_name,
         arg,
@@ -212,13 +212,12 @@ fn isolate_unary_function(
         true,
     )
     .ok_or_else(|| CasError::UnknownFunction(fn_name.clone()))?;
-    let didactic_step = cas_solver_core::function_inverse::build_unary_inverse_step(&plan);
     let new_rhs = plan.equation.rhs;
 
     if simplifier.collect_steps() {
         steps.push(SolveStep {
-            description: didactic_step.description,
-            equation_after: didactic_step.equation_after,
+            description: plan.step.description,
+            equation_after: plan.step.equation_after,
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });

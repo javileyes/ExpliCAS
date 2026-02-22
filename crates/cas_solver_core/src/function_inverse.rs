@@ -26,6 +26,14 @@ pub struct UnaryInverseDidacticStep {
     pub equation_after: Equation,
 }
 
+/// Combined unary-inverse rewrite plus didactic step for solver orchestration.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnaryInverseIsolationStepPlan {
+    pub equation: Equation,
+    pub step: UnaryInverseDidacticStep,
+    pub needs_rhs_cleanup: bool,
+}
+
 /// Didactic payload for RHS cleanup steps emitted after inverse rewrites.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RhsSimplificationDidacticStep {
@@ -190,6 +198,24 @@ pub fn build_unary_inverse_step(plan: &UnaryInverseRewritePlan) -> UnaryInverseD
         description: plan.step_description.to_string(),
         equation_after: plan.equation.clone(),
     }
+}
+
+/// Plan unary inverse isolation with prebuilt didactic payload.
+pub fn plan_unary_inverse_isolation_step(
+    ctx: &mut Context,
+    fn_name: &str,
+    arg: ExprId,
+    other: ExprId,
+    op: RelOp,
+    is_lhs: bool,
+) -> Option<UnaryInverseIsolationStepPlan> {
+    let rewrite = plan_unary_inverse_rewrite(ctx, fn_name, arg, other, op, is_lhs)?;
+    let step = build_unary_inverse_step(&rewrite);
+    Some(UnaryInverseIsolationStepPlan {
+        equation: rewrite.equation,
+        step,
+        needs_rhs_cleanup: rewrite.needs_rhs_cleanup,
+    })
 }
 
 /// Build didactic RHS-cleanup steps from `(description, rhs_after)` tuples.
@@ -387,6 +413,20 @@ mod tests {
         let step = build_unary_inverse_step(&plan);
         assert_eq!(step.description, "Square both sides");
         assert_eq!(step.equation_after, plan.equation);
+    }
+
+    #[test]
+    fn plan_unary_inverse_isolation_step_builds_rewrite_and_step() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+
+        let plan = plan_unary_inverse_isolation_step(&mut ctx, "sin", x, y, RelOp::Eq, true)
+            .expect("sin inverse should build isolation plan");
+
+        assert_eq!(plan.step.description, "Take arcsin of both sides");
+        assert_eq!(plan.step.equation_after, plan.equation);
+        assert!(plan.needs_rhs_cleanup);
     }
 
     #[test]
