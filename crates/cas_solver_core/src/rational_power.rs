@@ -1,5 +1,8 @@
 use crate::isolation_utils::{
-    contains_var, is_positive_integer_expr, match_exponential_var_in_base,
+    contains_var, is_numeric_one, is_positive_integer_expr, match_exponential_var_in_base,
+};
+use crate::log_domain::{
+    classify_log_linear_rewrite_route, LogAssumption, LogLinearRewriteRoute, LogSolveDecision,
 };
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp};
 
@@ -159,6 +162,38 @@ pub fn build_log_linear_equation(
             rhs: lhs_linear,
             op,
         }
+    }
+}
+
+/// Route for rewriting `base^exponent op other` into a log-linear equation
+/// used by unwrap/isolation strategies.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LogLinearUnwrapPlan<'a> {
+    BaseOneShortcut,
+    Proceed {
+        equation: Equation,
+        assumptions: &'a [LogAssumption],
+    },
+    Blocked,
+}
+
+/// Build log-linear unwrap equation when domain decision allows it.
+pub fn plan_log_linear_unwrap_equation<'a>(
+    ctx: &mut Context,
+    base: ExprId,
+    exponent: ExprId,
+    other: ExprId,
+    op: RelOp,
+    is_lhs: bool,
+    decision: &'a LogSolveDecision,
+) -> LogLinearUnwrapPlan<'a> {
+    match classify_log_linear_rewrite_route(is_numeric_one(ctx, base), decision) {
+        LogLinearRewriteRoute::BaseOneShortcut => LogLinearUnwrapPlan::BaseOneShortcut,
+        LogLinearRewriteRoute::Proceed { assumptions } => LogLinearUnwrapPlan::Proceed {
+            equation: build_log_linear_equation(ctx, base, exponent, other, op, is_lhs),
+            assumptions,
+        },
+        LogLinearRewriteRoute::Blocked => LogLinearUnwrapPlan::Blocked,
     }
 }
 
@@ -385,6 +420,53 @@ mod tests {
         assert_eq!(eq.op, RelOp::Eq);
         assert!(matches!(ctx.get(eq.lhs), Expr::Function(_, _)));
         assert!(matches!(ctx.get(eq.rhs), Expr::Mul(_, _)));
+    }
+
+    #[test]
+    fn plan_log_linear_unwrap_equation_blocks_base_one_shortcut() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let decision = crate::log_domain::LogSolveDecision::Ok;
+        let plan =
+            plan_log_linear_unwrap_equation(&mut ctx, one, x, y, RelOp::Eq, true, &decision);
+        assert!(matches!(plan, LogLinearUnwrapPlan::BaseOneShortcut));
+    }
+
+    #[test]
+    fn plan_log_linear_unwrap_equation_returns_blocked_for_needs_complex() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let decision = crate::log_domain::LogSolveDecision::NeedsComplex("needs complex");
+        let plan =
+            plan_log_linear_unwrap_equation(&mut ctx, a, x, y, RelOp::Eq, true, &decision);
+        assert!(matches!(plan, LogLinearUnwrapPlan::Blocked));
+    }
+
+    #[test]
+    fn plan_log_linear_unwrap_equation_builds_equation_with_assumptions() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let decision = crate::log_domain::LogSolveDecision::OkWithAssumptions(vec![
+            crate::log_domain::LogAssumption::PositiveBase,
+        ]);
+        let plan =
+            plan_log_linear_unwrap_equation(&mut ctx, a, x, y, RelOp::Eq, true, &decision);
+        match plan {
+            LogLinearUnwrapPlan::Proceed {
+                equation,
+                assumptions,
+            } => {
+                assert_eq!(equation.op, RelOp::Eq);
+                assert_eq!(assumptions, &[crate::log_domain::LogAssumption::PositiveBase]);
+            }
+            _ => panic!("expected proceed plan"),
+        }
     }
 
     #[test]

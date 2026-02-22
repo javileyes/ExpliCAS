@@ -6,9 +6,8 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveDomainEnv, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
-    contains_var, is_numeric_one, match_exponential_var_in_exponent,
+    contains_var, match_exponential_var_in_exponent,
 };
-use cas_solver_core::log_domain::{classify_log_linear_rewrite_route, LogLinearRewriteRoute};
 use cas_solver_core::solve_outcome::{
     classify_single_side_exponential_log_decision, resolve_log_terminal_outcome,
     terminal_outcome_message,
@@ -252,15 +251,22 @@ impl SolverStrategy for UnwrapStrategy {
                             &ctx.domain_env,
                         );
 
-                        match classify_log_linear_rewrite_route(
-                            is_numeric_one(&simplifier.context, b),
+                        match cas_solver_core::rational_power::plan_log_linear_unwrap_equation(
+                            &mut simplifier.context,
+                            b,
+                            e,
+                            other,
+                            op,
+                            is_lhs,
                             &decision,
                         ) {
-                            LogLinearRewriteRoute::BaseOneShortcut => {
-                                return None;
+                            cas_solver_core::rational_power::LogLinearUnwrapPlan::BaseOneShortcut => {
+                                None
                             }
-                            LogLinearRewriteRoute::Proceed { assumptions } => {
-                                // Record each assumption via the thread-local collector.
+                            cas_solver_core::rational_power::LogLinearUnwrapPlan::Proceed {
+                                equation,
+                                assumptions,
+                            } => {
                                 for assumption in assumptions.iter().copied() {
                                     let event =
                                         crate::assumptions::AssumptionEvent::from_log_assumption(
@@ -271,25 +277,14 @@ impl SolverStrategy for UnwrapStrategy {
                                         );
                                     crate::solver::note_assumption(event);
                                 }
+                                Some((equation, "Take log base e of both sides".to_string()))
                             }
-                            LogLinearRewriteRoute::Blocked => {
+                            cas_solver_core::rational_power::LogLinearUnwrapPlan::Blocked => {
                                 // Should have been caught by check_exponential_needs_complex in
                                 // terminal cases; otherwise we skip this strategy.
-                                return None;
+                                None
                             }
                         }
-
-                        // Safe to take ln of both sides:
-                        // A^x = B -> x * ln(A) = ln(B)
-                        let new_eq = cas_solver_core::rational_power::build_log_linear_equation(
-                            &mut simplifier.context,
-                            b,
-                            e,
-                            other,
-                            op,
-                            is_lhs,
-                        );
-                        Some((new_eq, "Take log base e of both sides".to_string()))
                     } else {
                         None
                     }
