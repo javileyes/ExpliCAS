@@ -7,14 +7,12 @@ use cas_solver_core::isolation_utils::{
 };
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
-    build_pow_exponent_shortcut_execution_plan, classify_power_base_one_shortcut,
-    conditional_solution_message, detect_pow_exponent_shortcut_inputs, guarded_or_residual,
-    map_pow_exponent_shortcut_with,
+    build_pow_exponent_shortcut_execution_plan, conditional_solution_message,
+    detect_pow_exponent_shortcut_inputs, guarded_or_residual, map_pow_exponent_shortcut_with,
     plan_pow_base_isolation, plan_pow_exponent_shortcut_action_from_inputs,
     pow_base_isolation_terminal_message, pow_base_root_isolation_message,
-    power_base_one_shortcut_message,
-    power_base_one_shortcut_solutions, residual_budget_exhausted_message, residual_message,
-    resolve_log_terminal_outcome, resolve_log_unsupported_outcome, take_log_base_message,
+    residual_budget_exhausted_message, residual_message, resolve_log_terminal_outcome,
+    resolve_log_unsupported_outcome, resolve_power_base_one_shortcut_with, take_log_base_message,
     take_log_base_under_guard_message, terminal_outcome_message, LogUnsupportedOutcome,
     PowBaseIsolationPlan, PowExponentShortcutEngineAction, SOLVE_TACTIC_NORMALIZATION_MESSAGE,
 };
@@ -249,29 +247,31 @@ fn isolate_pow_exponent(
     // DOMAIN GUARDS for log operation (RealOnly mode)
     // ================================================================
     // GUARD 1: Handle base = 1 special case
-    let base_one_shortcut = classify_power_base_one_shortcut(
+    if let Some(outcome) = resolve_power_base_one_shortcut_with(
         is_numeric_one(&simplifier.context, b),
         is_numeric_one(&simplifier.context, rhs),
-    );
-    if let Some(result) = power_base_one_shortcut_solutions(base_one_shortcut) {
-        if simplifier.collect_steps() {
-            let rhs_desc = format!(
+        lhs,
+        rhs,
+        op.clone(),
+        |id| {
+            format!(
                 "{}",
                 cas_formatter::DisplayExpr {
                     context: &simplifier.context,
-                    id: rhs
+                    id
                 }
-            );
-            let desc = power_base_one_shortcut_message(base_one_shortcut, &rhs_desc)
-                .expect("shortcut applied above");
+            )
+        },
+    ) {
+        if simplifier.collect_steps() {
             steps.push(SolveStep {
-                description: desc,
-                equation_after: Equation { lhs, rhs, op },
+                description: outcome.step.description,
+                equation_after: outcome.step.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
         }
-        return Ok((result, steps));
+        return Ok((outcome.solutions, steps));
     }
 
     // ================================================================

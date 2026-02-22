@@ -135,6 +135,13 @@ pub enum PowExponentShortcutEngineAction {
     },
 }
 
+/// Solved base-one shortcut (`1^x = rhs`) with didactic payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PowerBaseOneShortcutOutcome {
+    pub solutions: SolutionSet,
+    pub step: PowExponentShortcutDidacticStep,
+}
+
 /// Structured outcome for unsupported logarithmic rewrites.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LogUnsupportedOutcome<'a> {
@@ -281,6 +288,32 @@ pub fn power_base_one_shortcut_message(
             rhs_display
         )),
     }
+}
+
+/// Resolve `1^x = rhs` shortcut and build an optional didactic step payload.
+pub fn resolve_power_base_one_shortcut_with<F>(
+    base_is_one: bool,
+    rhs_is_one: bool,
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    mut render_expr: F,
+) -> Option<PowerBaseOneShortcutOutcome>
+where
+    F: FnMut(ExprId) -> String,
+{
+    let shortcut = classify_power_base_one_shortcut(base_is_one, rhs_is_one);
+    let solutions = power_base_one_shortcut_solutions(shortcut)?;
+    let rhs_desc = render_expr(rhs);
+    let description =
+        power_base_one_shortcut_message(shortcut, &rhs_desc).expect("shortcut was applicable");
+    Some(PowerBaseOneShortcutOutcome {
+        solutions,
+        step: PowExponentShortcutDidacticStep {
+            description,
+            equation_after: Equation { lhs, rhs, op },
+        },
+    })
 }
 
 /// Decide how to handle `base^x = base`.
@@ -1516,6 +1549,39 @@ mod tests {
         assert!(
             power_base_one_shortcut_message(PowerBaseOneShortcut::NotApplicable, "rhs").is_none()
         );
+    }
+
+    #[test]
+    fn resolve_power_base_one_shortcut_with_returns_none_when_not_applicable() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rhs = ctx.var("rhs");
+        assert!(
+            resolve_power_base_one_shortcut_with(false, true, x, rhs, RelOp::Eq, |_| {
+                "rhs".to_string()
+            })
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn resolve_power_base_one_shortcut_with_builds_step_and_solution() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rhs = ctx.num(2);
+        let outcome = resolve_power_base_one_shortcut_with(
+            true,
+            false,
+            x,
+            rhs,
+            RelOp::Eq,
+            |_| "2".to_string(),
+        )
+        .expect("shortcut should apply");
+        assert!(matches!(outcome.solutions, SolutionSet::Empty));
+        assert_eq!(outcome.step.equation_after.lhs, x);
+        assert_eq!(outcome.step.equation_after.rhs, rhs);
+        assert!(outcome.step.description.contains("no solution"));
     }
 
     #[test]
