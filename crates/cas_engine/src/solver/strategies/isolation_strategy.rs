@@ -8,8 +8,7 @@ use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_outcome::{
     collect_term_isolation_didactic_steps, collect_term_isolation_rewrite_didactic_steps,
-    plan_swap_sides_step,
-    resolve_single_side_exponential_terminal_with_step,
+    plan_swap_sides_step, resolve_single_side_exponential_terminal_with_step,
 };
 use cas_solver_core::strategy_kernels::{
     build_collect_terms_execution_with, build_rational_exponent_execution,
