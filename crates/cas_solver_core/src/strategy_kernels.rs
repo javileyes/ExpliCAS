@@ -6,7 +6,14 @@
 
 use crate::isolation_utils::contains_var;
 use crate::solve_outcome::{eliminate_fractional_exponent_message, subtract_both_sides_message};
-use cas_ast::{Context, Equation, RelOp};
+use cas_ast::{Context, Equation, ExprId, RelOp};
+
+/// Didactic payload for strategy-level rewrite steps.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StrategyDidacticStep {
+    pub description: String,
+    pub equation_after: Equation,
+}
 
 /// Rewrite payload for `CollectTermsStrategy`.
 #[derive(Debug, Clone, PartialEq)]
@@ -34,6 +41,22 @@ pub fn derive_collect_terms_kernel(
 /// Build didactic narration for collect-terms subtraction.
 pub fn collect_terms_message(rhs_display: &str) -> String {
     subtract_both_sides_message(rhs_display)
+}
+
+/// Build didactic payload for collect-terms rewrite.
+pub fn build_collect_terms_step_with<F>(
+    equation_after: Equation,
+    original_rhs: ExprId,
+    mut render_expr: F,
+) -> StrategyDidacticStep
+where
+    F: FnMut(ExprId) -> String,
+{
+    let rhs_desc = render_expr(original_rhs);
+    StrategyDidacticStep {
+        description: collect_terms_message(&rhs_desc),
+        equation_after,
+    }
 }
 
 /// Rewrite payload for `RationalExponentStrategy`.
@@ -71,6 +94,14 @@ pub fn derive_rational_exponent_kernel(
 /// Build didactic narration for rational exponent elimination.
 pub fn rational_exponent_message(q: i64) -> String {
     eliminate_fractional_exponent_message(&q.to_string())
+}
+
+/// Build didactic payload for rational-exponent elimination rewrite.
+pub fn build_rational_exponent_step(q: i64, equation_after: Equation) -> StrategyDidacticStep {
+    StrategyDidacticStep {
+        description: rational_exponent_message(q),
+        equation_after,
+    }
 }
 
 #[cfg(test)]
@@ -136,5 +167,28 @@ mod tests {
             }
             other => panic!("expected rewritten lhs pow, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn strategy_step_builders_use_expected_messages() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let eq = Equation {
+            lhs: x,
+            rhs: y,
+            op: RelOp::Eq,
+        };
+
+        let collect = build_collect_terms_step_with(eq.clone(), y, |_| "rhs".to_string());
+        assert_eq!(collect.description, "Subtract rhs from both sides");
+        assert_eq!(collect.equation_after, eq);
+
+        let rational = build_rational_exponent_step(3, eq.clone());
+        assert_eq!(
+            rational.description,
+            "Raise both sides to power 3 to eliminate fractional exponent"
+        );
+        assert_eq!(rational.equation_after, eq);
     }
 }

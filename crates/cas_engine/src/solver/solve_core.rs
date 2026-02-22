@@ -10,7 +10,7 @@ use cas_solver_core::solve_outcome::{
     resolve_var_eliminated_outcome_with, VarEliminatedSolveOutcome,
 };
 use cas_solver_core::strategy_kernels::{
-    derive_rational_exponent_kernel, rational_exponent_message,
+    build_rational_exponent_step, derive_rational_exponent_kernel,
 };
 
 use crate::engine::Simplifier;
@@ -534,9 +534,10 @@ fn try_solve_rational_exponent(
     };
 
     if simplifier.collect_steps() {
+        let rational_step = build_rational_exponent_step(kernel.q, new_eq.clone());
         steps.push(SolveStep {
-            description: rational_exponent_message(kernel.q),
-            equation_after: new_eq.clone(),
+            description: rational_step.description,
+            equation_after: rational_step.equation_after,
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });

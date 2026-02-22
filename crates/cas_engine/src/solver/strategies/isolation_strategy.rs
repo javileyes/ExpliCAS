@@ -10,8 +10,8 @@ use cas_solver_core::solve_outcome::{
     build_swap_sides_step, resolve_single_side_exponential_terminal_with_message,
 };
 use cas_solver_core::strategy_kernels::{
-    collect_terms_message, derive_collect_terms_kernel, derive_rational_exponent_kernel,
-    rational_exponent_message,
+    build_collect_terms_step_with, build_rational_exponent_step, derive_collect_terms_kernel,
+    derive_rational_exponent_kernel,
 };
 
 pub struct IsolationStrategy;
@@ -297,20 +297,26 @@ impl SolverStrategy for CollectTermsStrategy {
         let (simp_rhs, _) = simplifier.simplify(rewritten.rhs);
 
         if simplifier.collect_steps() {
-            let rhs_desc = format!(
-                "{}",
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: eq.rhs
-                }
-            );
-            steps.push(SolveStep {
-                description: collect_terms_message(&rhs_desc),
-                equation_after: Equation {
+            let collect_step = build_collect_terms_step_with(
+                Equation {
                     lhs: simp_lhs,
                     rhs: simp_rhs,
                     op: eq.op.clone(),
                 },
+                eq.rhs,
+                |id| {
+                    format!(
+                        "{}",
+                        cas_formatter::DisplayExpr {
+                            context: &simplifier.context,
+                            id
+                        }
+                    )
+                },
+            );
+            steps.push(SolveStep {
+                description: collect_step.description,
+                equation_after: collect_step.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -370,9 +376,10 @@ impl SolverStrategy for RationalExponentStrategy {
         };
 
         if simplifier.collect_steps() {
+            let rational_step = build_rational_exponent_step(kernel.q, new_eq.clone());
             steps.push(SolveStep {
-                description: rational_exponent_message(kernel.q),
-                equation_after: new_eq.clone(),
+                description: rational_step.description,
+                equation_after: rational_step.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
