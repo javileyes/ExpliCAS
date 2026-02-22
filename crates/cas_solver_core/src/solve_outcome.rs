@@ -5,7 +5,8 @@ use crate::log_domain::{
 };
 use crate::solution_set::open_positive_domain;
 use cas_ast::{
-    Case, ConditionPredicate, ConditionSet, Context, Expr, ExprId, RelOp, SolutionSet, SolveResult,
+    Case, ConditionPredicate, ConditionSet, Context, Equation, Expr, ExprId, RelOp, SolutionSet,
+    SolveResult,
 };
 
 /// Classification of a variable-free equation residual `diff = lhs - rhs`.
@@ -74,6 +75,32 @@ pub enum PowExponentShortcutAction {
     },
 }
 
+/// Narrative category for exponent shortcut didactic steps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PowExponentShortcutNarrative {
+    ZeroBaseExponentPositive,
+    NumericBaseExponentOne,
+    SymbolicBaseExponentOneNoBudget,
+    SymbolicBaseCaseSplit,
+    EqualPowBases,
+}
+
+/// Normalized execution plan for exponent shortcuts.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PowExponentShortcutExecutionPlan {
+    Continue,
+    IsolateExponent {
+        rhs: ExprId,
+        op: RelOp,
+        narrative: PowExponentShortcutNarrative,
+        rhs_exponent: Option<ExprId>,
+    },
+    ReturnSolutionSet {
+        solutions: SolutionSet,
+        narrative: PowExponentShortcutNarrative,
+    },
+}
+
 /// Structured outcome for unsupported logarithmic rewrites.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LogUnsupportedOutcome<'a> {
@@ -99,6 +126,22 @@ pub enum PowBaseIsolationRoute {
     /// General root isolation, optionally flipping inequality for negative exponent.
     GeneralRoot {
         flip_inequality_for_negative_exponent: bool,
+    },
+}
+
+/// Execution plan for isolating equations of the form `B^E op RHS`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PowBaseIsolationPlan {
+    ReturnSolutionSet {
+        route: PowBaseIsolationRoute,
+        equation: Equation,
+        solutions: SolutionSet,
+    },
+    IsolateBase {
+        route: PowBaseIsolationRoute,
+        equation: Equation,
+        op: RelOp,
+        use_abs_root: bool,
     },
 }
 
@@ -311,6 +354,99 @@ pub fn plan_pow_exponent_shortcut_action(
     }
 }
 
+/// Convert shortcut action into a normalized execution plan for solver pipelines.
+pub fn build_pow_exponent_shortcut_execution_plan(
+    action: PowExponentShortcutAction,
+) -> PowExponentShortcutExecutionPlan {
+    match action {
+        PowExponentShortcutAction::Continue => PowExponentShortcutExecutionPlan::Continue,
+        PowExponentShortcutAction::IsolateExponent { shortcut, rhs, op } => match shortcut {
+            PowExponentShortcut::PowerEqualsBase(PowerEqualsBaseRoute::ExponentGreaterThanZero) => {
+                PowExponentShortcutExecutionPlan::IsolateExponent {
+                    rhs,
+                    op,
+                    narrative: PowExponentShortcutNarrative::ZeroBaseExponentPositive,
+                    rhs_exponent: None,
+                }
+            }
+            PowExponentShortcut::PowerEqualsBase(
+                PowerEqualsBaseRoute::ExponentEqualsOneNumericBase,
+            ) => PowExponentShortcutExecutionPlan::IsolateExponent {
+                rhs,
+                op,
+                narrative: PowExponentShortcutNarrative::NumericBaseExponentOne,
+                rhs_exponent: None,
+            },
+            PowExponentShortcut::PowerEqualsBase(
+                PowerEqualsBaseRoute::ExponentEqualsOneNoBranchBudget,
+            ) => PowExponentShortcutExecutionPlan::IsolateExponent {
+                rhs,
+                op,
+                narrative: PowExponentShortcutNarrative::SymbolicBaseExponentOneNoBudget,
+                rhs_exponent: None,
+            },
+            PowExponentShortcut::EqualPowBases { rhs_exp } => {
+                PowExponentShortcutExecutionPlan::IsolateExponent {
+                    rhs,
+                    op,
+                    narrative: PowExponentShortcutNarrative::EqualPowBases,
+                    rhs_exponent: Some(rhs_exp),
+                }
+            }
+            PowExponentShortcut::PowerEqualsBase(PowerEqualsBaseRoute::SymbolicCaseSplit)
+            | PowExponentShortcut::None => PowExponentShortcutExecutionPlan::Continue,
+        },
+        PowExponentShortcutAction::ReturnSolutionSet {
+            shortcut,
+            solutions,
+        } => match shortcut {
+            PowExponentShortcut::PowerEqualsBase(PowerEqualsBaseRoute::SymbolicCaseSplit) => {
+                PowExponentShortcutExecutionPlan::ReturnSolutionSet {
+                    solutions,
+                    narrative: PowExponentShortcutNarrative::SymbolicBaseCaseSplit,
+                }
+            }
+            _ => PowExponentShortcutExecutionPlan::Continue,
+        },
+    }
+}
+
+/// Build didactic narration for normalized exponent shortcut plans.
+pub fn pow_exponent_shortcut_message(
+    narrative: PowExponentShortcutNarrative,
+    var: &str,
+    base_display: &str,
+    rhs_display: &str,
+    rhs_exponent_display: Option<&str>,
+) -> String {
+    match narrative {
+        PowExponentShortcutNarrative::ZeroBaseExponentPositive => format!(
+            "Power Equals Base Shortcut: 0^{} = 0 -> {} > 0 (0^0 undefined, 0^t for t<0 undefined)",
+            var, var
+        ),
+        PowExponentShortcutNarrative::NumericBaseExponentOne => format!(
+            "Power Equals Base Shortcut: {}^{} = {} -> {} = 1 (B^1 = B always holds)",
+            base_display, var, rhs_display, var
+        ),
+        PowExponentShortcutNarrative::SymbolicBaseExponentOneNoBudget => format!(
+            "Power Equals Base: {}^{} = {} -> {} = 1 (assuming base != 0, 1)",
+            base_display, var, rhs_display, var
+        ),
+        PowExponentShortcutNarrative::SymbolicBaseCaseSplit => format!(
+            "Power Equals Base with symbolic base '{}': case split -> a=1: AllReals, a=0: x>0, otherwise: x=1",
+            base_display
+        ),
+        PowExponentShortcutNarrative::EqualPowBases => {
+            let rhs_exp_display =
+                rhs_exponent_display.expect("equal-pow-bases narrative requires rhs exponent");
+            format!(
+                "Pattern: {}^{} = {}^{} -> {} = {} (equal bases imply equal exponents when base != 0, 1)",
+                base_display, var, base_display, rhs_exp_display, var, rhs_exp_display
+            )
+        }
+    }
+}
+
 /// Plan exponent shortcut action from already-detected RHS shortcut inputs.
 #[allow(clippy::too_many_arguments)]
 pub fn plan_pow_exponent_shortcut_action_from_inputs(
@@ -380,6 +516,95 @@ pub fn classify_pow_base_isolation_route(
         PowBaseIsolationRoute::GeneralRoot {
             flip_inequality_for_negative_exponent: exponent_is_known_negative,
         }
+    }
+}
+
+/// Build executable plan for base isolation in `B^E op RHS`.
+pub fn plan_pow_base_isolation(
+    ctx: &mut Context,
+    base: ExprId,
+    exponent: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    exponent_is_even: bool,
+    rhs_is_known_negative: bool,
+    exponent_is_known_negative: bool,
+) -> PowBaseIsolationPlan {
+    let source_equation = Equation {
+        lhs: ctx.add(Expr::Pow(base, exponent)),
+        rhs,
+        op: op.clone(),
+    };
+    let route = classify_pow_base_isolation_route(
+        exponent_is_even,
+        rhs_is_known_negative,
+        exponent_is_known_negative,
+    );
+
+    match route {
+        PowBaseIsolationRoute::EvenExponentNegativeRhsImpossible => {
+            PowBaseIsolationPlan::ReturnSolutionSet {
+                route,
+                equation: source_equation,
+                solutions: even_power_negative_rhs_outcome(op),
+            }
+        }
+        PowBaseIsolationRoute::EvenExponentUseAbsRoot
+        | PowBaseIsolationRoute::GeneralRoot { .. } => {
+            let use_abs_root = matches!(route, PowBaseIsolationRoute::EvenExponentUseAbsRoot);
+            let equation = crate::rational_power::build_root_isolation_equation(
+                ctx,
+                base,
+                exponent,
+                rhs,
+                op.clone(),
+                use_abs_root,
+            );
+            let normalized_op = match route {
+                PowBaseIsolationRoute::GeneralRoot {
+                    flip_inequality_for_negative_exponent,
+                } => crate::isolation_utils::apply_sign_flip(
+                    op,
+                    flip_inequality_for_negative_exponent,
+                ),
+                _ => op,
+            };
+            PowBaseIsolationPlan::IsolateBase {
+                route,
+                equation,
+                op: normalized_op,
+                use_abs_root,
+            }
+        }
+    }
+}
+
+/// Build didactic narration for terminal base-isolation outcomes.
+pub fn pow_base_isolation_terminal_message(
+    route: PowBaseIsolationRoute,
+    base_display: &str,
+    op_display: &str,
+    rhs_display: &str,
+) -> String {
+    match route {
+        PowBaseIsolationRoute::EvenExponentNegativeRhsImpossible => format!(
+            "Even power cannot be negative ({} {} {})",
+            base_display, op_display, rhs_display
+        ),
+        PowBaseIsolationRoute::EvenExponentUseAbsRoot
+        | PowBaseIsolationRoute::GeneralRoot { .. } => "Power isolation terminated".to_string(),
+    }
+}
+
+/// Build didactic narration for root-isolation steps in `B^E op RHS`.
+pub fn pow_base_root_isolation_message(exponent_display: &str, use_abs_root: bool) -> String {
+    if use_abs_root {
+        format!(
+            "Take {}-th root of both sides (even root implies absolute value)",
+            exponent_display
+        )
+    } else {
+        format!("Take {}-th root of both sides", exponent_display)
     }
 }
 
@@ -1176,7 +1401,10 @@ mod tests {
             false
         });
         assert!(out);
-        assert!(!called, "nontrivial comparator must not run when ids are equal");
+        assert!(
+            !called,
+            "nontrivial comparator must not run when ids are equal"
+        );
     }
 
     #[test]
@@ -1395,6 +1623,57 @@ mod tests {
     }
 
     #[test]
+    fn build_pow_exponent_shortcut_execution_plan_maps_equal_pow_bases() {
+        let mut ctx = Context::new();
+        let rhs_exp = ctx.var("n");
+        let action = PowExponentShortcutAction::IsolateExponent {
+            shortcut: PowExponentShortcut::EqualPowBases { rhs_exp },
+            rhs: rhs_exp,
+            op: RelOp::Eq,
+        };
+
+        let plan = build_pow_exponent_shortcut_execution_plan(action);
+        assert!(matches!(
+            plan,
+            PowExponentShortcutExecutionPlan::IsolateExponent {
+                narrative: PowExponentShortcutNarrative::EqualPowBases,
+                rhs_exponent: Some(_),
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn build_pow_exponent_shortcut_execution_plan_maps_symbolic_case_split() {
+        let action = PowExponentShortcutAction::ReturnSolutionSet {
+            shortcut: PowExponentShortcut::PowerEqualsBase(PowerEqualsBaseRoute::SymbolicCaseSplit),
+            solutions: SolutionSet::AllReals,
+        };
+
+        let plan = build_pow_exponent_shortcut_execution_plan(action);
+        assert!(matches!(
+            plan,
+            PowExponentShortcutExecutionPlan::ReturnSolutionSet {
+                narrative: PowExponentShortcutNarrative::SymbolicBaseCaseSplit,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn pow_exponent_shortcut_message_formats_equal_pow_bases() {
+        let msg = pow_exponent_shortcut_message(
+            PowExponentShortcutNarrative::EqualPowBases,
+            "x",
+            "b",
+            "rhs",
+            Some("n"),
+        );
+        assert!(msg.contains("b^x = b^n"));
+        assert!(msg.contains("x = n"));
+    }
+
+    #[test]
     fn classify_pow_base_isolation_route_impossible_even_negative_rhs() {
         assert_eq!(
             classify_pow_base_isolation_route(true, true, false),
@@ -1417,6 +1696,78 @@ mod tests {
             PowBaseIsolationRoute::GeneralRoot {
                 flip_inequality_for_negative_exponent: true
             }
+        );
+    }
+
+    #[test]
+    fn plan_pow_base_isolation_returns_terminal_for_impossible_even_negative_rhs() {
+        let mut ctx = Context::new();
+        let b = ctx.var("b");
+        let e = ctx.num(2);
+        let rhs = ctx.num(-1);
+        let plan = plan_pow_base_isolation(&mut ctx, b, e, rhs, RelOp::Eq, true, true, false);
+        assert!(matches!(
+            plan,
+            PowBaseIsolationPlan::ReturnSolutionSet {
+                route: PowBaseIsolationRoute::EvenExponentNegativeRhsImpossible,
+                solutions: SolutionSet::Empty,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn plan_pow_base_isolation_builds_abs_root_for_even_exponent() {
+        let mut ctx = Context::new();
+        let b = ctx.var("b");
+        let e = ctx.num(2);
+        let rhs = ctx.var("r");
+        let plan = plan_pow_base_isolation(&mut ctx, b, e, rhs, RelOp::Eq, true, false, false);
+        match plan {
+            PowBaseIsolationPlan::IsolateBase {
+                route,
+                equation,
+                use_abs_root,
+                ..
+            } => {
+                assert_eq!(route, PowBaseIsolationRoute::EvenExponentUseAbsRoot);
+                assert!(use_abs_root);
+                assert!(matches!(ctx.get(equation.lhs), Expr::Function(_, _)));
+            }
+            other => panic!("expected isolate-base plan, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn plan_pow_base_isolation_flips_inequality_for_negative_exponent() {
+        let mut ctx = Context::new();
+        let b = ctx.var("b");
+        let e = ctx.num(-3);
+        let rhs = ctx.var("r");
+        let plan = plan_pow_base_isolation(&mut ctx, b, e, rhs, RelOp::Lt, false, false, true);
+        match plan {
+            PowBaseIsolationPlan::IsolateBase { op, .. } => assert_eq!(op, RelOp::Gt),
+            other => panic!("expected isolate-base plan, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pow_base_isolation_terminal_message_formats_impossible_even_case() {
+        let msg = pow_base_isolation_terminal_message(
+            PowBaseIsolationRoute::EvenExponentNegativeRhsImpossible,
+            "x",
+            "=",
+            "-1",
+        );
+        assert_eq!(msg, "Even power cannot be negative (x = -1)");
+    }
+
+    #[test]
+    fn pow_base_root_isolation_message_formats_abs_root_variant() {
+        let msg = pow_base_root_isolation_message("2", true);
+        assert_eq!(
+            msg,
+            "Take 2-th root of both sides (even root implies absolute value)"
         );
     }
 }

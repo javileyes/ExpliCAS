@@ -3,17 +3,17 @@ use crate::error::CasError;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
-    apply_sign_flip, contains_var, is_even_integer_expr, is_known_negative, is_numeric_one,
-    is_numeric_zero,
+    contains_var, is_even_integer_expr, is_known_negative, is_numeric_one, is_numeric_zero,
 };
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
-    classify_pow_base_isolation_route, classify_power_base_one_shortcut,
-    detect_pow_exponent_shortcut_inputs, even_power_negative_rhs_outcome, guarded_or_residual,
-    plan_pow_exponent_shortcut_action_from_inputs, power_base_one_shortcut_message,
-    power_base_one_shortcut_solutions, resolve_log_terminal_outcome,
-    resolve_log_unsupported_outcome, terminal_outcome_message, LogUnsupportedOutcome,
-    PowBaseIsolationRoute, PowExponentShortcut, PowExponentShortcutAction, PowerEqualsBaseRoute,
+    build_pow_exponent_shortcut_execution_plan, classify_power_base_one_shortcut,
+    detect_pow_exponent_shortcut_inputs, guarded_or_residual, plan_pow_base_isolation,
+    plan_pow_exponent_shortcut_action_from_inputs, pow_base_isolation_terminal_message,
+    pow_base_root_isolation_message, pow_exponent_shortcut_message,
+    power_base_one_shortcut_message, power_base_one_shortcut_solutions,
+    resolve_log_terminal_outcome, resolve_log_unsupported_outcome, terminal_outcome_message,
+    LogUnsupportedOutcome, PowBaseIsolationPlan, PowExponentShortcutExecutionPlan,
 };
 
 use super::{isolate, prepend_steps};
@@ -55,70 +55,71 @@ fn isolate_pow_base(
     mut steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let route = classify_pow_base_isolation_route(
-        is_even_integer_expr(&simplifier.context, e),
-        is_known_negative(&simplifier.context, rhs),
-        is_known_negative(&simplifier.context, e),
+    let exponent_is_even = is_even_integer_expr(&simplifier.context, e);
+    let rhs_is_known_negative = is_known_negative(&simplifier.context, rhs);
+    let exponent_is_known_negative = is_known_negative(&simplifier.context, e);
+    let plan = plan_pow_base_isolation(
+        &mut simplifier.context,
+        b,
+        e,
+        rhs,
+        op.clone(),
+        exponent_is_even,
+        rhs_is_known_negative,
+        exponent_is_known_negative,
     );
 
-    match route {
-        PowBaseIsolationRoute::EvenExponentNegativeRhsImpossible => {
-            let result = even_power_negative_rhs_outcome(op.clone());
+    match plan {
+        PowBaseIsolationPlan::ReturnSolutionSet {
+            route,
+            equation,
+            solutions,
+        } => {
             if simplifier.collect_steps() {
+                let base_desc = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id: b
+                    }
+                );
+                let rhs_desc = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id: rhs
+                    }
+                );
                 steps.push(SolveStep {
-                    description: format!(
-                        "Even power cannot be negative ({} {} {})",
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id: b
-                        },
-                        op,
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id: rhs
-                        }
+                    description: pow_base_isolation_terminal_message(
+                        route,
+                        &base_desc,
+                        &op.to_string(),
+                        &rhs_desc,
                     ),
-                    equation_after: Equation {
-                        lhs: simplifier.context.add(Expr::Pow(b, e)),
-                        rhs,
-                        op,
-                    },
+                    equation_after: equation,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
             }
-            Ok((result, steps))
+            Ok((solutions, steps))
         }
-        PowBaseIsolationRoute::EvenExponentUseAbsRoot
-        | PowBaseIsolationRoute::GeneralRoot { .. } => {
-            let use_abs = matches!(route, PowBaseIsolationRoute::EvenExponentUseAbsRoot);
-            let new_eq = cas_solver_core::rational_power::build_root_isolation_equation(
-                &mut simplifier.context,
-                b,
-                e,
-                rhs,
-                op.clone(),
-                use_abs,
-            );
+        PowBaseIsolationPlan::IsolateBase {
+            equation: new_eq,
+            op: normalized_op,
+            use_abs_root,
+            ..
+        } => {
             let new_rhs = new_eq.rhs;
             if simplifier.collect_steps() {
-                let description = if use_abs {
-                    format!(
-                        "Take {}-th root of both sides (even root implies absolute value)",
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id: e
-                        }
-                    )
-                } else {
-                    format!(
-                        "Take {}-th root of both sides",
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id: e
-                        }
-                    )
-                };
+                let exponent_desc = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id: e
+                    }
+                );
+                let description = pow_base_root_isolation_message(&exponent_desc, use_abs_root);
                 steps.push(SolveStep {
                     description,
                     equation_after: new_eq.clone(),
@@ -126,13 +127,15 @@ fn isolate_pow_base(
                     substeps: vec![],
                 });
             }
-            let new_op = match route {
-                PowBaseIsolationRoute::GeneralRoot {
-                    flip_inequality_for_negative_exponent,
-                } => apply_sign_flip(op, flip_inequality_for_negative_exponent),
-                _ => op,
-            };
-            let results = isolate(new_eq.lhs, new_rhs, new_op, var, simplifier, opts, ctx)?;
+            let results = isolate(
+                new_eq.lhs,
+                new_rhs,
+                normalized_op,
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )?;
             prepend_steps(results, steps)
         }
     }
@@ -181,113 +184,85 @@ fn isolate_pow_exponent(
         base_is_numeric,
         opts.budget.max_branches >= 2,
     );
+    let shortcut_plan = build_pow_exponent_shortcut_execution_plan(shortcut_action);
 
-    match shortcut_action {
-        PowExponentShortcutAction::IsolateExponent {
-            shortcut:
-                PowExponentShortcut::PowerEqualsBase(PowerEqualsBaseRoute::ExponentGreaterThanZero),
+    match shortcut_plan {
+        PowExponentShortcutExecutionPlan::Continue => {}
+        PowExponentShortcutExecutionPlan::IsolateExponent {
             rhs: target_rhs,
             op: target_op,
+            narrative,
+            rhs_exponent,
         } => {
             if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: format!(
-                        "Power Equals Base Shortcut: 0^{} = 0 ⟹ {} > 0 (0^0 undefined, 0^t for t<0 undefined)",
-                        var, var
-                    ),
-                    equation_after: Equation {
-                        lhs: e,
-                        rhs: target_rhs,
-                        op: target_op.clone(),
-                    },
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-            let results = isolate(e, target_rhs, target_op, var, simplifier, opts, ctx)?;
-            return prepend_steps(results, steps);
-        }
-        PowExponentShortcutAction::IsolateExponent {
-            shortcut:
-                PowExponentShortcut::PowerEqualsBase(PowerEqualsBaseRoute::ExponentEqualsOneNumericBase),
-            rhs: target_rhs,
-            op: target_op,
-        } => {
-            if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: format!(
-                        "Power Equals Base Shortcut: {}^{} = {} ⟹ {} = 1 (B^1 = B always holds)",
+                let base_desc = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id: b
+                    }
+                );
+                let rhs_desc = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id: rhs
+                    }
+                );
+                let rhs_exp_desc = rhs_exponent.map(|id| {
+                    format!(
+                        "{}",
                         cas_formatter::DisplayExpr {
                             context: &simplifier.context,
-                            id: b
-                        },
-                        var,
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id: rhs
-                        },
-                        var
-                    ),
-                    equation_after: Equation {
-                        lhs: e,
-                        rhs: target_rhs,
-                        op: target_op.clone(),
-                    },
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-            let results = isolate(e, target_rhs, target_op, var, simplifier, opts, ctx)?;
-            return prepend_steps(results, steps);
-        }
-        PowExponentShortcutAction::IsolateExponent {
-            shortcut:
-                PowExponentShortcut::PowerEqualsBase(
-                    PowerEqualsBaseRoute::ExponentEqualsOneNoBranchBudget,
-                ),
-            rhs: target_rhs,
-            op: target_op,
-        } => {
-            if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: format!(
-                        "Power Equals Base: {}^{} = {} ⟹ {} = 1 (assuming base ≠ 0, 1)",
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id: b
-                        },
-                        var,
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id: rhs
-                        },
-                        var
-                    ),
-                    equation_after: Equation {
-                        lhs: e,
-                        rhs: target_rhs,
-                        op: target_op.clone(),
-                    },
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-            let results = isolate(e, target_rhs, target_op, var, simplifier, opts, ctx)?;
-            return prepend_steps(results, steps);
-        }
-        PowExponentShortcutAction::ReturnSolutionSet {
-            shortcut: PowExponentShortcut::PowerEqualsBase(PowerEqualsBaseRoute::SymbolicCaseSplit),
-            solutions: conditional,
-        } => {
-            if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: format!(
-                        "Power Equals Base with symbolic base '{}': case split -> a=1: AllReals, a=0: x>0, otherwise: x=1",
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id: b
+                            id
                         }
-                    ),
+                    )
+                });
+                let description = pow_exponent_shortcut_message(
+                    narrative,
+                    var,
+                    &base_desc,
+                    &rhs_desc,
+                    rhs_exp_desc.as_deref(),
+                );
+                steps.push(SolveStep {
+                    description,
+                    equation_after: Equation {
+                        lhs: e,
+                        rhs: target_rhs,
+                        op: target_op.clone(),
+                    },
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
+
+            let results = isolate(e, target_rhs, target_op, var, simplifier, opts, ctx)?;
+            return prepend_steps(results, steps);
+        }
+        PowExponentShortcutExecutionPlan::ReturnSolutionSet {
+            solutions,
+            narrative,
+        } => {
+            if simplifier.collect_steps() {
+                let base_desc = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id: b
+                    }
+                );
+                let rhs_desc = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id: rhs
+                    }
+                );
+                let description =
+                    pow_exponent_shortcut_message(narrative, var, &base_desc, &rhs_desc, None);
+                steps.push(SolveStep {
+                    description,
                     equation_after: Equation {
                         lhs: e,
                         rhs: b,
@@ -297,46 +272,7 @@ fn isolate_pow_exponent(
                     substeps: vec![],
                 });
             }
-            return Ok((conditional, steps));
-        }
-        PowExponentShortcutAction::IsolateExponent {
-            shortcut: PowExponentShortcut::EqualPowBases { rhs_exp },
-            rhs: target_rhs,
-            op: target_op,
-        } => {
-            if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: format!(
-                        "Pattern: {}^{} = {}^{} -> {} = {} (equal bases imply equal exponents when base ≠ 0, 1)",
-                        cas_formatter::DisplayExpr { context: &simplifier.context, id: b },
-                        var,
-                        cas_formatter::DisplayExpr { context: &simplifier.context, id: b },
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id: rhs_exp
-                        },
-                        var,
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id: rhs_exp
-                        }
-                    ),
-                    equation_after: Equation {
-                        lhs: e,
-                        rhs: target_rhs,
-                        op: target_op.clone(),
-                    },
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-
-            let results = isolate(e, target_rhs, target_op, var, simplifier, opts, ctx)?;
-            return prepend_steps(results, steps);
-        }
-        PowExponentShortcutAction::Continue => {}
-        _ => {
-            debug_assert!(false, "pow exponent shortcut action mismatch");
+            return Ok((solutions, steps));
         }
     }
 
