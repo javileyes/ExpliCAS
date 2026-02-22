@@ -1,3 +1,4 @@
+use crate::sign_normalize::{cleanup_step_description, normalize_expr_signs};
 use cas_ast::{Context, Equation};
 use cas_math::expr_predicates::is_zero_expr as is_zero;
 
@@ -6,6 +7,12 @@ use cas_math::expr_predicates::is_zero_expr as is_zero;
 pub struct CleanupStep {
     pub description: String,
     pub equation_after: Equation,
+}
+
+#[derive(Clone)]
+struct CleanupEnvelope<T> {
+    step: T,
+    payload: CleanupStep,
 }
 
 /// Remove consecutive steps where extracted equations are identical.
@@ -88,6 +95,101 @@ pub fn remove_redundant_steps(ctx: &Context, steps: Vec<CleanupStep>) -> Vec<Cle
         steps,
         |s| s.description.as_str(),
         |s| &s.equation_after,
+    )
+}
+
+/// End-to-end cleanup pipeline over arbitrary step payloads.
+///
+/// This applies:
+/// 1. Redundant-step removal
+/// 2. Log-linear didactic rewrite
+/// 3. Sign normalization + description cleanup
+/// 4. Duplicate-equation removal
+///
+/// The caller controls how to extract/rebuild payloads from custom step types.
+pub fn cleanup_steps_by<T, FExtract, FRebuild>(
+    ctx: &mut Context,
+    steps: Vec<T>,
+    detailed: bool,
+    var: &str,
+    mut extract: FExtract,
+    mut rebuild: FRebuild,
+) -> Vec<T>
+where
+    T: Clone,
+    FExtract: FnMut(&T) -> CleanupStep,
+    FRebuild: FnMut(T, CleanupStep) -> T,
+{
+    if steps.is_empty() {
+        return steps;
+    }
+
+    let envelopes: Vec<CleanupEnvelope<T>> = steps
+        .into_iter()
+        .map(|step| CleanupEnvelope {
+            payload: extract(&step),
+            step,
+        })
+        .collect();
+
+    let filtered = remove_redundant_steps_by(
+        ctx,
+        envelopes,
+        |s| s.payload.description.as_str(),
+        |s| &s.payload.equation_after,
+    );
+
+    let narrated = crate::log_linear_narration::rewrite_log_linear_steps_by(
+        ctx,
+        filtered,
+        detailed,
+        var,
+        |s| s.payload.description.as_str(),
+        |s| &s.payload.equation_after,
+        |template, payload| CleanupEnvelope {
+            step: template.step.clone(),
+            payload: CleanupStep {
+                description: payload.description,
+                equation_after: payload.equation_after,
+            },
+        },
+    );
+
+    let normalized: Vec<CleanupEnvelope<T>> = narrated
+        .into_iter()
+        .map(|mut s| {
+            s.payload.equation_after = Equation {
+                lhs: normalize_expr_signs(ctx, s.payload.equation_after.lhs),
+                rhs: normalize_expr_signs(ctx, s.payload.equation_after.rhs),
+                op: s.payload.equation_after.op,
+            };
+            s.payload.description = cleanup_step_description(&s.payload.description);
+            s
+        })
+        .collect();
+
+    let deduped = remove_duplicate_equations_by(normalized, |s| &s.payload.equation_after);
+
+    deduped
+        .into_iter()
+        .map(|s| rebuild(s.step, s.payload))
+        .collect()
+}
+
+/// End-to-end cleanup for plain `CleanupStep` payloads.
+pub fn cleanup_steps(
+    ctx: &mut Context,
+    steps: Vec<CleanupStep>,
+    detailed: bool,
+    var: &str,
+) -> Vec<CleanupStep> {
+    cleanup_steps_by(
+        ctx,
+        steps,
+        detailed,
+        var,
+        |s| s.clone(),
+        |_step, payload| payload,
     )
 }
 
@@ -214,5 +316,83 @@ mod tests {
         assert_eq!(out.len(), 2);
         assert_eq!(out[0].payload, 1);
         assert_eq!(out[1].payload, 3);
+    }
+
+    #[test]
+    fn cleanup_steps_by_preserves_metadata() {
+        #[derive(Clone)]
+        struct RichStep {
+            description: String,
+            equation_after: Equation,
+            marker: usize,
+        }
+
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let eq = Equation {
+            lhs: x,
+            rhs: y,
+            op: RelOp::Eq,
+        };
+
+        let steps = vec![
+            RichStep {
+                description: crate::log_linear_narration::TAKE_LOG_BOTH_SIDES_STEP.to_string(),
+                equation_after: eq.clone(),
+                marker: 7,
+            },
+            RichStep {
+                description: "Collect terms in x".to_string(),
+                equation_after: Equation {
+                    lhs: x,
+                    rhs: z,
+                    op: RelOp::Eq,
+                },
+                marker: 9,
+            },
+        ];
+
+        let out = cleanup_steps_by(
+            &mut ctx,
+            steps,
+            false,
+            "x",
+            |s| CleanupStep {
+                description: s.description.clone(),
+                equation_after: s.equation_after.clone(),
+            },
+            |template, payload| RichStep {
+                description: payload.description,
+                equation_after: payload.equation_after,
+                marker: template.marker,
+            },
+        );
+
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].marker, 7);
+        assert_eq!(out[1].marker, 9);
+        assert_eq!(out[1].description, "Collect and factor x terms");
+    }
+
+    #[test]
+    fn cleanup_steps_normalizes_description() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let neg_x = ctx.add(Expr::Neg(x));
+        let zero = ctx.num(0);
+        let step = CleanupStep {
+            description: "Subtract -(x) from both sides".to_string(),
+            equation_after: Equation {
+                lhs: x,
+                rhs: ctx.add(Expr::Sub(zero, neg_x)),
+                op: RelOp::Eq,
+            },
+        };
+
+        let out = cleanup_steps(&mut ctx, vec![step], false, "x");
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].description, "Move terms to one side");
     }
 }

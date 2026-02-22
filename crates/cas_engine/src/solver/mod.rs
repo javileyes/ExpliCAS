@@ -2,7 +2,6 @@ pub mod check;
 pub(crate) mod domain_guards;
 pub(crate) mod isolation;
 pub(crate) mod linear_collect;
-pub(crate) mod log_linear_narrator;
 pub(crate) mod numeric_islands;
 pub(crate) mod proof_bridge;
 pub(crate) mod quadratic_steps;

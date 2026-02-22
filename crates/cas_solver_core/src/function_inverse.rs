@@ -26,6 +26,13 @@ pub struct UnaryInverseDidacticStep {
     pub equation_after: Equation,
 }
 
+/// Didactic payload for RHS cleanup steps emitted after inverse rewrites.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RhsSimplificationDidacticStep {
+    pub description: String,
+    pub equation_after: Equation,
+}
+
 impl UnaryInverseKind {
     /// Classify a unary function name into an inversion kind.
     pub fn from_name(name: &str) -> Option<Self> {
@@ -183,6 +190,28 @@ pub fn build_unary_inverse_step(plan: &UnaryInverseRewritePlan) -> UnaryInverseD
         description: plan.step_description.to_string(),
         equation_after: plan.equation.clone(),
     }
+}
+
+/// Build didactic RHS-cleanup steps from `(description, rhs_after)` tuples.
+pub fn build_rhs_simplification_steps<I>(
+    lhs: ExprId,
+    op: RelOp,
+    entries: I,
+) -> Vec<RhsSimplificationDidacticStep>
+where
+    I: IntoIterator<Item = (String, ExprId)>,
+{
+    entries
+        .into_iter()
+        .map(|(description, rhs_after)| RhsSimplificationDidacticStep {
+            description,
+            equation_after: Equation {
+                lhs,
+                rhs: rhs_after,
+                op: op.clone(),
+            },
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -380,5 +409,28 @@ mod tests {
         assert!(
             plan_unary_inverse_rewrite_for_unwrap(&mut ctx, "sin", x, y, RelOp::Eq, true).is_none()
         );
+    }
+
+    #[test]
+    fn build_rhs_simplification_steps_builds_equations_with_fixed_lhs() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+
+        let out = build_rhs_simplification_steps(
+            x,
+            RelOp::Eq,
+            vec![("step-1".to_string(), y), ("step-2".to_string(), z)],
+        );
+
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].description, "step-1");
+        assert_eq!(out[0].equation_after.lhs, x);
+        assert_eq!(out[0].equation_after.rhs, y);
+        assert_eq!(out[1].description, "step-2");
+        assert_eq!(out[1].equation_after.lhs, x);
+        assert_eq!(out[1].equation_after.rhs, z);
+        assert_eq!(out[1].equation_after.op, RelOp::Eq);
     }
 }

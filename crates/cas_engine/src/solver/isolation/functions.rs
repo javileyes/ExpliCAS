@@ -2,7 +2,7 @@ use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
-use cas_ast::{BuiltinFn, Equation, ExprId, RelOp, SolutionSet};
+use cas_ast::{BuiltinFn, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{combine_abs_branch_sets, contains_var, numeric_sign};
 use cas_solver_core::solve_outcome::{
     build_abs_split_steps_with, guard_abs_solution_with_nonnegative_rhs, plan_abs_isolation,
@@ -252,14 +252,17 @@ fn simplify_rhs(
     let mut steps = Vec::new();
 
     if simplifier.collect_steps() {
-        for step in sim_steps {
+        let didactic_steps = cas_solver_core::function_inverse::build_rhs_simplification_steps(
+            lhs,
+            op,
+            sim_steps
+                .into_iter()
+                .map(|step| (step.description, step.after)),
+        );
+        for step in didactic_steps {
             steps.push(SolveStep {
                 description: step.description,
-                equation_after: Equation {
-                    lhs,
-                    rhs: step.after,
-                    op: op.clone(),
-                },
+                equation_after: step.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });

@@ -9,7 +9,7 @@
 
 use crate::solver::SolveStep;
 use cas_ast::Context;
-use cas_solver_core::sign_normalize::{cleanup_step_description, normalize_expr_signs};
+use cas_solver_core::step_cleanup::CleanupStep;
 
 /// Clean up solve steps for better didactic display.
 ///
@@ -30,57 +30,29 @@ pub(crate) fn cleanup_solve_steps(
     steps: Vec<SolveStep>,
     detailed: bool,
 ) -> Vec<SolveStep> {
-    if steps.is_empty() {
-        return steps;
-    }
-
-    // Phase 1: Remove redundant steps (using original descriptions for detection)
-    let filtered = cas_solver_core::step_cleanup::remove_redundant_steps_by(
+    cas_solver_core::step_cleanup::cleanup_steps_by(
         ctx,
         steps,
-        |s| s.description.as_str(),
-        |s| &s.equation_after,
-    );
-
-    // Phase 2: Rewrite log-linear steps for didactic clarity
-    // detailed=true → atomic sub-steps (Expand, Move, Factor)
-    // detailed=false → compact step (Collect and factor)
-    use crate::solver::log_linear_narrator;
-    let narrated = log_linear_narrator::rewrite_log_linear_steps(ctx, filtered, detailed);
-
-    // Phase 3: Normalize signs in remaining steps
-    let normalized: Vec<SolveStep> = narrated
-        .into_iter()
-        .map(|step| normalize_step_signs(ctx, step))
-        .collect();
-
-    // Phase 4: Remove consecutive steps with identical equations
-    // Now safe for both modes since detailed generates distinct equations
-    cas_solver_core::step_cleanup::remove_duplicate_equations_by(normalized, |s| &s.equation_after)
-}
-
-/// Normalize signs in a single step's equation for cleaner display.
-///
-/// Patterns handled:
-/// - `0 - (-(t))` → `t`
-/// - `0 - t` → `-t`
-/// - `a - -b` → `a + b`
-/// - `-(-(x))` → `x`
-/// - Description: "Subtract -(..." → "Move terms to one side"
-fn normalize_step_signs(ctx: &mut Context, mut step: SolveStep) -> SolveStep {
-    step.equation_after.lhs = normalize_expr_signs(ctx, step.equation_after.lhs);
-    step.equation_after.rhs = normalize_expr_signs(ctx, step.equation_after.rhs);
-
-    // Clean up ugly descriptions
-    step.description = cleanup_step_description(&step.description);
-
-    step
+        detailed,
+        "x",
+        |s| CleanupStep {
+            description: s.description.clone(),
+            equation_after: s.equation_after.clone(),
+        },
+        |template, payload| SolveStep {
+            description: payload.description,
+            equation_after: payload.equation_after,
+            importance: template.importance,
+            substeps: template.substeps,
+        },
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use cas_ast::Expr;
+    use cas_solver_core::sign_normalize::normalize_expr_signs;
 
     #[test]
     fn test_normalize_zero_minus_neg() {
