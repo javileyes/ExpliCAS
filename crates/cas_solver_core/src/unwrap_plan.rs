@@ -32,6 +32,13 @@ pub struct UnwrapExecutionPlan {
     pub log_linear_base: Option<ExprId>,
 }
 
+/// One executable unwrap item aligned with a didactic payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnwrapExecutionItem {
+    pub equation: Equation,
+    pub didactic: TermIsolationDidacticStep,
+}
+
 /// Build narration for variable-base power unwrap rewrites.
 pub fn pow_variable_base_unwrap_message(exponent_display: &str) -> String {
     format!("Raise both sides to 1/{}", exponent_display)
@@ -85,6 +92,17 @@ pub fn collect_unwrap_execution_didactic_steps(
         description: execution.description.clone(),
         equation_after: execution.equation.clone(),
     }]
+}
+
+/// Collect unwrap execution items in display order.
+pub fn collect_unwrap_execution_items(execution: &UnwrapExecutionPlan) -> Vec<UnwrapExecutionItem> {
+    collect_unwrap_execution_didactic_steps(execution)
+        .into_iter()
+        .map(|didactic| UnwrapExecutionItem {
+            equation: didactic.equation_after.clone(),
+            didactic,
+        })
+        .collect()
 }
 
 /// Plan unwrap rewrite for a target expression (`Function`/`Pow`).
@@ -259,5 +277,28 @@ mod tests {
         assert_eq!(didactic.len(), 1);
         assert_eq!(didactic[0].description, "unwrap");
         assert_eq!(didactic[0].equation_after, execution.equation);
+    }
+
+    #[test]
+    fn collect_unwrap_execution_items_returns_single_item() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let execution = UnwrapExecutionPlan {
+            equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            description: "unwrap".to_string(),
+            assumptions: vec![],
+            log_linear_base: None,
+        };
+
+        let items = collect_unwrap_execution_items(&execution);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].equation, execution.equation);
+        assert_eq!(items[0].didactic.description, "unwrap");
+        assert_eq!(items[0].didactic.equation_after, execution.equation);
     }
 }

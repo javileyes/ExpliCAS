@@ -1046,11 +1046,31 @@ pub struct TermIsolationRewritePlan {
     pub step: TermIsolationDidacticStep,
 }
 
+/// One executable isolation rewrite item aligned with a didactic payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TermIsolationRewriteExecutionItem {
+    pub equation: Equation,
+    pub didactic: TermIsolationDidacticStep,
+}
+
 /// Collect term-isolation rewrite didactic steps in display order.
 pub fn collect_term_isolation_rewrite_didactic_steps(
     plan: &TermIsolationRewritePlan,
 ) -> Vec<TermIsolationDidacticStep> {
     vec![plan.step.clone()]
+}
+
+/// Collect isolation rewrite execution items in display order.
+pub fn collect_term_isolation_rewrite_execution_items(
+    plan: &TermIsolationRewritePlan,
+) -> Vec<TermIsolationRewriteExecutionItem> {
+    collect_term_isolation_rewrite_didactic_steps(plan)
+        .into_iter()
+        .map(|didactic| TermIsolationRewriteExecutionItem {
+            equation: didactic.equation_after.clone(),
+            didactic,
+        })
+        .collect()
 }
 
 /// Route chosen for denominator isolation with zero-RHS guard.
@@ -4039,6 +4059,21 @@ mod tests {
         let didactic = collect_term_isolation_rewrite_didactic_steps(&plan);
         assert_eq!(didactic.len(), 1);
         assert_eq!(didactic[0], plan.step);
+    }
+
+    #[test]
+    fn collect_term_isolation_rewrite_execution_items_returns_single_item() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let plan =
+            plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
+
+        let items = collect_term_isolation_rewrite_execution_items(&plan);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].equation, plan.equation);
+        assert_eq!(items[0].didactic, plan.step);
     }
 
     #[test]

@@ -14,11 +14,31 @@ pub struct LinearCollectDidacticPair {
     pub divide: LinearCollectDidacticStep,
 }
 
+/// One executable linear-collect item aligned with a didactic payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LinearCollectExecutionItem {
+    pub equation: Equation,
+    pub didactic: LinearCollectDidacticStep,
+}
+
 /// Convert linear-collect didactic pair into ordered step vector.
 pub fn collect_linear_collect_didactic_steps(
     pair: LinearCollectDidacticPair,
 ) -> Vec<LinearCollectDidacticStep> {
     vec![pair.collect, pair.divide]
+}
+
+/// Convert linear-collect didactic pair into ordered execution items.
+pub fn collect_linear_collect_execution_items(
+    pair: LinearCollectDidacticPair,
+) -> Vec<LinearCollectExecutionItem> {
+    collect_linear_collect_didactic_steps(pair)
+        .into_iter()
+        .map(|didactic| LinearCollectExecutionItem {
+            equation: didactic.equation_after.clone(),
+            didactic,
+        })
+        .collect()
 }
 
 /// Build narration for the factored linear-collect step:
@@ -303,5 +323,24 @@ mod tests {
             "Collect terms in x and factor: expr · x = expr"
         );
         assert_eq!(steps[1].description, "Divide both sides by expr");
+    }
+
+    #[test]
+    fn collect_linear_collect_execution_items_align_equations_with_didactic() {
+        let mut ctx = Context::new();
+        let coef = ctx.var("k");
+        let rhs = ctx.var("r");
+        let solution = ctx.var("s");
+        let pair =
+            build_linear_collect_factored_steps_with(&mut ctx, "x", coef, rhs, solution, |_, _| {
+                "expr".into()
+            });
+
+        let items = collect_linear_collect_execution_items(pair);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].equation, items[0].didactic.equation_after);
+        assert_eq!(items[1].equation, items[1].didactic.equation_after);
+        assert!(items[0].didactic.description.contains("Collect terms"));
+        assert!(items[1].didactic.description.contains("Divide"));
     }
 }

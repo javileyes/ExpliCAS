@@ -43,12 +43,33 @@ pub fn collect_substitution_intro_didactic_steps(
     vec![didactic.detected.clone(), didactic.rewritten.clone()]
 }
 
+/// Collect substitution-introduction execution items in display order:
+/// detected substitution first, rewritten equation second.
+pub fn collect_substitution_intro_execution_items(
+    execution: &ExponentialSubstitutionExecutionPlan,
+) -> Vec<SubstitutionExecutionItem> {
+    collect_substitution_intro_didactic_steps(&execution.didactic)
+        .into_iter()
+        .map(|didactic| SubstitutionExecutionItem {
+            equation: didactic.equation_after.clone(),
+            didactic,
+        })
+        .collect()
+}
+
 /// Executable substitution intro payload (`u = ...`) including rewrite + didactic.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExponentialSubstitutionExecutionPlan {
     pub substitution_expr: ExprId,
     pub equation: Equation,
     pub didactic: SubstitutionIntroDidacticSteps,
+}
+
+/// One executable substitution item aligned with a didactic payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SubstitutionExecutionItem {
+    pub equation: Equation,
+    pub didactic: SubstitutionDidacticStep,
 }
 
 /// Back-substitution execution plan (`substitution_expr = value_i` equations).
@@ -816,6 +837,42 @@ mod tests {
         assert_eq!(didactic.len(), 2);
         assert_eq!(didactic[0].description, "Detected substitution: u = u");
         assert_eq!(didactic[1].description, "Substituted equation: u = u");
+    }
+
+    #[test]
+    fn collect_substitution_intro_execution_items_aligns_equations_with_didactic() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let eq_before = Equation {
+            lhs: x,
+            rhs: y,
+            op: cas_ast::RelOp::Eq,
+        };
+        let eq_after = Equation {
+            lhs: y,
+            rhs: x,
+            op: cas_ast::RelOp::Eq,
+        };
+        let rewrite = ExponentialSubstitutionRewritePlan {
+            substitution_expr: x,
+            equation: eq_after,
+        };
+        let execution =
+            build_exponential_substitution_execution_with(eq_before, rewrite, |_| "u".to_string());
+
+        let items = collect_substitution_intro_execution_items(&execution);
+        assert_eq!(items.len(), 2);
+        assert_eq!(
+            items[0].equation,
+            execution.didactic.detected.equation_after
+        );
+        assert_eq!(items[0].didactic, execution.didactic.detected);
+        assert_eq!(
+            items[1].equation,
+            execution.didactic.rewritten.equation_after
+        );
+        assert_eq!(items[1].didactic, execution.didactic.rewritten);
     }
 
     #[test]

@@ -7,7 +7,7 @@ use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_outcome::{
-    collect_term_isolation_didactic_steps, collect_term_isolation_rewrite_didactic_steps,
+    collect_term_isolation_didactic_steps, collect_term_isolation_rewrite_execution_items,
     plan_swap_sides_step, resolve_single_side_exponential_terminal_with_step,
 };
 use cas_solver_core::strategy_kernels::{
@@ -54,18 +54,22 @@ impl SolverStrategy for IsolationStrategy {
         if !lhs_has && rhs_has {
             // Swap
             let plan = plan_swap_sides_step(eq);
+            let execution_items = collect_term_isolation_rewrite_execution_items(&plan);
             let mut steps = Vec::new();
             if simplifier.collect_steps() {
-                for didactic_step in collect_term_isolation_rewrite_didactic_steps(&plan) {
+                for item in &execution_items {
                     steps.push(SolveStep {
-                        description: didactic_step.description,
-                        equation_after: didactic_step.equation_after,
+                        description: item.didactic.description.clone(),
+                        equation_after: item.didactic.equation_after.clone(),
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
                     });
                 }
             }
-            let swapped = plan.equation;
+            let swapped = execution_items
+                .last()
+                .map(|item| item.equation.clone())
+                .unwrap_or(plan.equation);
             // V2.0: Pass opts through to propagate budget
             match isolate(
                 swapped.lhs,
@@ -208,22 +212,24 @@ impl SolverStrategy for UnwrapStrategy {
                         crate::solver::note_assumption(event);
                     }
                 }
+                let execution_items =
+                    cas_solver_core::unwrap_plan::collect_unwrap_execution_items(&execution);
                 let mut steps = Vec::new();
                 if simplifier.collect_steps() {
-                    for didactic_step in
-                        cas_solver_core::unwrap_plan::collect_unwrap_execution_didactic_steps(
-                            &execution,
-                        )
-                    {
+                    for item in &execution_items {
                         steps.push(SolveStep {
-                            description: didactic_step.description,
-                            equation_after: didactic_step.equation_after,
+                            description: item.didactic.description.clone(),
+                            equation_after: item.didactic.equation_after.clone(),
                             importance: crate::step::ImportanceLevel::Medium,
                             substeps: vec![],
                         });
                     }
                 }
-                match solve_with_ctx(&execution.equation, var, simplifier, ctx) {
+                let rewritten_eq = execution_items
+                    .last()
+                    .map(|item| item.equation.clone())
+                    .unwrap_or_else(|| execution.equation.clone());
+                match solve_with_ctx(&rewritten_eq, var, simplifier, ctx) {
                     Ok((set, mut sub_steps)) => {
                         steps.append(&mut sub_steps);
                         return Some(Ok((set, steps)));
@@ -247,22 +253,24 @@ impl SolverStrategy for UnwrapStrategy {
                         crate::solver::note_assumption(event);
                     }
                 }
+                let execution_items =
+                    cas_solver_core::unwrap_plan::collect_unwrap_execution_items(&execution);
                 let mut steps = Vec::new();
                 if simplifier.collect_steps() {
-                    for didactic_step in
-                        cas_solver_core::unwrap_plan::collect_unwrap_execution_didactic_steps(
-                            &execution,
-                        )
-                    {
+                    for item in &execution_items {
                         steps.push(SolveStep {
-                            description: didactic_step.description,
-                            equation_after: didactic_step.equation_after,
+                            description: item.didactic.description.clone(),
+                            equation_after: item.didactic.equation_after.clone(),
                             importance: crate::step::ImportanceLevel::Medium,
                             substeps: vec![],
                         });
                     }
                 }
-                match solve_with_ctx(&execution.equation, var, simplifier, ctx) {
+                let rewritten_eq = execution_items
+                    .last()
+                    .map(|item| item.equation.clone())
+                    .unwrap_or_else(|| execution.equation.clone());
+                match solve_with_ctx(&rewritten_eq, var, simplifier, ctx) {
                     Ok((set, mut sub_steps)) => {
                         steps.append(&mut sub_steps);
                         return Some(Ok((set, steps)));

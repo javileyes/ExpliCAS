@@ -13,7 +13,7 @@ use cas_ast::{Expr, ExprId, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::linear_didactic::{
     build_linear_collect_additive_steps_with, build_linear_collect_factored_steps_with,
-    collect_linear_collect_didactic_steps,
+    collect_linear_collect_execution_items,
 };
 use cas_solver_core::linear_solution::{build_linear_solution_set, derive_linear_nonzero_statuses};
 use cas_solver_core::linear_terms::{build_sum, decompose_linear_collect_terms};
@@ -70,10 +70,10 @@ pub(crate) fn try_linear_collect(
             solution,
             |ctx, id| format!("{}", cas_formatter::DisplayExpr { context: ctx, id }),
         );
-        for didactic_step in collect_linear_collect_didactic_steps(didactic) {
+        for item in collect_linear_collect_execution_items(didactic) {
             steps.push(SolveStep {
-                description: didactic_step.description,
-                equation_after: didactic_step.equation_after,
+                description: item.didactic.description,
+                equation_after: item.didactic.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -134,10 +134,10 @@ pub(crate) fn try_linear_collect_v2(
             solution,
             |ctx, id| format!("{}", cas_formatter::DisplayExpr { context: ctx, id }),
         );
-        for didactic_step in collect_linear_collect_didactic_steps(didactic) {
+        for item in collect_linear_collect_execution_items(didactic) {
             steps.push(SolveStep {
-                description: didactic_step.description,
-                equation_after: didactic_step.equation_after,
+                description: item.didactic.description,
+                equation_after: item.didactic.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });

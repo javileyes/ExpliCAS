@@ -8,7 +8,7 @@ use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solution_set::isolated_var_solution;
 use cas_solver_core::solve_outcome::{
-    collect_term_isolation_rewrite_didactic_steps, plan_negated_lhs_isolation_step,
+    collect_term_isolation_rewrite_execution_items, plan_negated_lhs_isolation_step,
     residual_solution_set,
 };
 
@@ -92,15 +92,19 @@ pub(crate) fn isolate(
             // -A = RHS -> A = -RHS
             // -A < RHS -> A > -RHS (flip inequality)
             let plan = plan_negated_lhs_isolation_step(&mut simplifier.context, inner, rhs, op);
-            let new_eq = plan.equation.clone();
+            let execution_items = collect_term_isolation_rewrite_execution_items(&plan);
+            let new_eq = execution_items
+                .last()
+                .map(|item| item.equation.clone())
+                .unwrap_or_else(|| plan.equation.clone());
             let new_rhs = new_eq.rhs;
             let new_op = new_eq.op.clone();
 
             if simplifier.collect_steps() {
-                for didactic_step in collect_term_isolation_rewrite_didactic_steps(&plan) {
+                for item in &execution_items {
                     steps.push(SolveStep {
-                        description: didactic_step.description,
-                        equation_after: didactic_step.equation_after,
+                        description: item.didactic.description.clone(),
+                        equation_after: item.didactic.equation_after.clone(),
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
                     });
