@@ -5,7 +5,7 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, SolutionSet};
 use cas_solver_core::substitution::{
-    build_back_substitute_steps_with, build_substitution_intro_steps_with,
+    build_back_substitution_execution_with, build_substitution_intro_steps_with,
     plan_back_substitution_equations, plan_exponential_substitution_rewrite,
 };
 
@@ -77,8 +77,8 @@ impl SolverStrategy for SubstitutionStrategy {
                     let mut final_solutions = Vec::new();
                     let back_plan =
                         plan_back_substitution_equations(rewrite_plan.substitution_expr, &vals);
-                    let back_didactic = simplifier.collect_steps().then(|| {
-                        build_back_substitute_steps_with(&back_plan.equations, |id| {
+                    let back_execution = simplifier.collect_steps().then(|| {
+                        build_back_substitution_execution_with(back_plan.clone(), |id| {
                             format!(
                                 "{}",
                                 cas_formatter::DisplayExpr {
@@ -90,7 +90,8 @@ impl SolverStrategy for SubstitutionStrategy {
                     });
 
                     for (idx, sub_eq) in back_plan.equations.into_iter().enumerate() {
-                        if let Some(back_sub_step) = back_didactic.as_ref().and_then(|v| v.get(idx))
+                        if let Some(back_sub_step) =
+                            back_execution.as_ref().and_then(|v| v.didactic.get(idx))
                         {
                             steps.push(SolveStep {
                                 description: back_sub_step.description.clone(),

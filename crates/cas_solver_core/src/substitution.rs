@@ -41,6 +41,13 @@ pub struct BackSubstitutionPlan {
     pub equations: Vec<Equation>,
 }
 
+/// Back-substitution execution payload with equations plus didactic steps.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BackSubstitutionExecutionPlan {
+    pub equations: Vec<Equation>,
+    pub didactic: Vec<SubstitutionDidacticStep>,
+}
+
 /// Build didactic payload for substitution detection (`u = expr`).
 pub fn build_detected_substitution_step_with<F>(
     equation_after: Equation,
@@ -121,6 +128,21 @@ where
         .cloned()
         .map(|eq| build_back_substitute_step_with(eq, &mut render_expr))
         .collect()
+}
+
+/// Build a full back-substitution execution payload from a precomputed plan.
+pub fn build_back_substitution_execution_with<F>(
+    plan: BackSubstitutionPlan,
+    render_expr: F,
+) -> BackSubstitutionExecutionPlan
+where
+    F: FnMut(ExprId) -> String,
+{
+    let didactic = build_back_substitute_steps_with(&plan.equations, render_expr);
+    BackSubstitutionExecutionPlan {
+        equations: plan.equations,
+        didactic,
+    }
 }
 
 /// Build didactic pair for substitution introduction:
@@ -682,5 +704,10 @@ mod tests {
         assert_eq!(didactic.len(), 2);
         assert_eq!(didactic[0].description, "Back-substitute: u = u");
         assert_eq!(didactic[1].description, "Back-substitute: u = u");
+
+        let execution = build_back_substitution_execution_with(plan, |_| "u".to_string());
+        assert_eq!(execution.equations.len(), 2);
+        assert_eq!(execution.didactic.len(), 2);
+        assert_eq!(execution.didactic[0].description, "Back-substitute: u = u");
     }
 }
