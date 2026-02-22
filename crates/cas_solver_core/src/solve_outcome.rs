@@ -1789,6 +1789,24 @@ pub struct IsolatedDenominatorSignSplitPlan {
     pub negative_equation: Equation,
 }
 
+/// Executable split plan + didactic payload for division-denominator sign cases.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DivisionDenominatorSignSplitExecutionPlan {
+    pub positive_equation: Equation,
+    pub negative_equation: Equation,
+    pub positive_domain: Equation,
+    pub negative_domain: Equation,
+    pub didactic: DivisionDenominatorSignSplitDidactic,
+}
+
+/// Executable split plan + didactic payload for isolated-denominator sign cases.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IsolatedDenominatorSignSplitExecutionPlan {
+    pub positive_equation: Equation,
+    pub negative_equation: Equation,
+    pub didactic: DivisionDenominatorSignSplitDidactic,
+}
+
 /// Pre-built didactic equations for denominator-isolation rewrite:
 /// `num / den op rhs` -> `num op rhs*den` -> `den op num/rhs`.
 #[derive(Debug, Clone, PartialEq)]
@@ -1888,6 +1906,71 @@ pub fn plan_isolated_denominator_sign_split(
         positive_equation: branches.positive,
         negative_equation: branches.negative,
     })
+}
+
+/// Build runtime execution plan for denominator-sign split using a precomputed
+/// split plan and a shared simplified RHS for both branches.
+pub fn build_division_denominator_sign_split_execution_with<F>(
+    split_plan: DivisionDenominatorSignSplitPlan,
+    denominator: ExprId,
+    case_boundary_lhs: ExprId,
+    case_boundary_op: RelOp,
+    simplified_rhs: ExprId,
+    render_expr: F,
+) -> DivisionDenominatorSignSplitExecutionPlan
+where
+    F: FnMut(ExprId) -> String,
+{
+    let positive_equation = Equation {
+        lhs: split_plan.positive_equation.lhs,
+        rhs: simplified_rhs,
+        op: split_plan.positive_equation.op.clone(),
+    };
+    let negative_equation = Equation {
+        lhs: split_plan.negative_equation.lhs,
+        rhs: simplified_rhs,
+        op: split_plan.negative_equation.op.clone(),
+    };
+    let didactic = build_division_denominator_sign_split_steps_with(
+        positive_equation.clone(),
+        negative_equation.clone(),
+        denominator,
+        case_boundary_lhs,
+        case_boundary_op,
+        render_expr,
+    );
+    DivisionDenominatorSignSplitExecutionPlan {
+        positive_equation,
+        negative_equation,
+        positive_domain: split_plan.positive_domain,
+        negative_domain: split_plan.negative_domain,
+        didactic,
+    }
+}
+
+/// Build runtime execution plan for isolated-denominator sign split.
+pub fn build_isolated_denominator_sign_split_execution_with<F>(
+    split_plan: IsolatedDenominatorSignSplitPlan,
+    denominator: ExprId,
+    case_boundary_op: RelOp,
+    render_expr: F,
+) -> IsolatedDenominatorSignSplitExecutionPlan
+where
+    F: FnMut(ExprId) -> String,
+{
+    let didactic = build_isolated_denominator_sign_split_steps_with(
+        split_plan.positive_equation.clone(),
+        split_plan.negative_equation.clone(),
+        denominator,
+        denominator,
+        case_boundary_op,
+        render_expr,
+    );
+    IsolatedDenominatorSignSplitExecutionPlan {
+        positive_equation: split_plan.positive_equation,
+        negative_equation: split_plan.negative_equation,
+        didactic,
+    }
 }
 
 /// Build didactic two-step rewrite for denominator isolation:
@@ -3917,6 +4000,36 @@ mod tests {
     }
 
     #[test]
+    fn build_division_denominator_sign_split_execution_with_uses_simplified_rhs() {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let simplified_rhs = ctx.var("s");
+        let split =
+            plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Lt).unwrap();
+
+        let exec = build_division_denominator_sign_split_execution_with(
+            split,
+            den,
+            num,
+            RelOp::Lt,
+            simplified_rhs,
+            |_| "d".to_string(),
+        );
+        assert_eq!(exec.positive_equation.rhs, simplified_rhs);
+        assert_eq!(exec.negative_equation.rhs, simplified_rhs);
+        assert_eq!(
+            exec.didactic.positive_case.equation_after,
+            exec.positive_equation
+        );
+        assert_eq!(
+            exec.didactic.negative_case.equation_after,
+            exec.negative_equation
+        );
+    }
+
+    #[test]
     fn plan_div_denominator_isolation_with_zero_rhs_guard_marks_infinity_route() {
         let mut ctx = Context::new();
         let den = ctx.var("d");
@@ -3971,6 +4084,28 @@ mod tests {
         assert_eq!(plan.negative_equation.rhs, rhs);
         assert_eq!(plan.positive_equation.op, RelOp::Geq);
         assert_eq!(plan.negative_equation.op, RelOp::Leq);
+    }
+
+    #[test]
+    fn build_isolated_denominator_sign_split_execution_with_builds_didactic_payload() {
+        let mut ctx = Context::new();
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let split = plan_isolated_denominator_sign_split(den, rhs, RelOp::Leq).unwrap();
+        let exec =
+            build_isolated_denominator_sign_split_execution_with(split, den, RelOp::Leq, |_| {
+                "x".to_string()
+            });
+        assert_eq!(exec.positive_equation.rhs, rhs);
+        assert_eq!(exec.negative_equation.rhs, rhs);
+        assert_eq!(
+            exec.didactic.positive_case.equation_after,
+            exec.positive_equation
+        );
+        assert_eq!(
+            exec.didactic.negative_case.equation_after,
+            exec.negative_equation
+        );
     }
 
     #[test]

@@ -13,8 +13,8 @@ use cas_solver_core::solution_set::{
 };
 use cas_solver_core::solve_outcome::{
     build_division_denominator_didactic_steps_with,
-    build_division_denominator_sign_split_steps_with,
-    build_isolated_denominator_sign_split_steps_with, plan_add_operand_isolation_step_with,
+    build_division_denominator_sign_split_execution_with,
+    build_isolated_denominator_sign_split_execution_with, plan_add_operand_isolation_step_with,
     plan_div_denominator_isolation_with_zero_rhs_guard, plan_div_numerator_isolation_step_with,
     plan_division_denominator_didactic, plan_division_denominator_sign_split,
     plan_isolated_denominator_sign_split, plan_mul_factor_isolation_step_with,
@@ -333,23 +333,13 @@ pub(super) fn isolate_div(
             )
             .expect("inequality branch requires denominator sign cases");
             let (sim_rhs, _) = simplifier.simplify(split_plan.positive_equation.rhs);
-            let eq_pos = Equation {
-                lhs: split_plan.positive_equation.lhs,
-                rhs: sim_rhs,
-                op: split_plan.positive_equation.op.clone(),
-            };
-            let eq_neg = Equation {
-                lhs: split_plan.negative_equation.lhs,
-                rhs: sim_rhs,
-                op: split_plan.negative_equation.op.clone(),
-            };
-            let split_steps = simplifier.collect_steps().then(|| {
-                build_division_denominator_sign_split_steps_with(
-                    eq_pos.clone(),
-                    eq_neg.clone(),
+            let split_execution = simplifier.collect_steps().then(|| {
+                build_division_denominator_sign_split_execution_with(
+                    split_plan.clone(),
                     r,
                     l,
                     op.clone(),
+                    sim_rhs,
                     |id| {
                         format!(
                             "{}",
@@ -361,11 +351,31 @@ pub(super) fn isolate_div(
                     },
                 )
             });
+            let eq_pos = split_execution.as_ref().map_or_else(
+                || Equation {
+                    lhs: split_plan.positive_equation.lhs,
+                    rhs: sim_rhs,
+                    op: split_plan.positive_equation.op.clone(),
+                },
+                |exec| exec.positive_equation.clone(),
+            );
+            let eq_neg = split_execution.as_ref().map_or_else(
+                || Equation {
+                    lhs: split_plan.negative_equation.lhs,
+                    rhs: sim_rhs,
+                    op: split_plan.negative_equation.op.clone(),
+                },
+                |exec| exec.negative_equation.clone(),
+            );
 
-            if let Some(split_steps) = split_steps.as_ref() {
+            if let Some(split_execution) = split_execution.as_ref() {
                 steps.push(SolveStep {
-                    description: split_steps.positive_case.description.clone(),
-                    equation_after: split_steps.positive_case.equation_after.clone(),
+                    description: split_execution.didactic.positive_case.description.clone(),
+                    equation_after: split_execution
+                        .didactic
+                        .positive_case
+                        .equation_after
+                        .clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -388,10 +398,14 @@ pub(super) fn isolate_div(
             let final_pos = intersect_solution_sets(&simplifier.context, set_pos, domain_pos_set);
 
             // Case 2: Denominator < 0
-            if let Some(split_steps) = split_steps.as_ref() {
+            if let Some(split_execution) = split_execution.as_ref() {
                 steps.push(SolveStep {
-                    description: split_steps.negative_case.description.clone(),
-                    equation_after: split_steps.negative_case.equation_after.clone(),
+                    description: split_execution.didactic.negative_case.description.clone(),
+                    equation_after: split_execution
+                        .didactic
+                        .negative_case
+                        .equation_after
+                        .clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -418,10 +432,10 @@ pub(super) fn isolate_div(
 
             // Combine steps
             let mut all_steps = steps_pos;
-            if let Some(split_steps) = split_steps {
+            if let Some(split_execution) = split_execution {
                 all_steps.push(SolveStep {
-                    description: split_steps.case_boundary.description,
-                    equation_after: split_steps.case_boundary.equation_after,
+                    description: split_execution.didactic.case_boundary.description,
+                    equation_after: split_execution.didactic.case_boundary.equation_after,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -497,13 +511,9 @@ pub(super) fn isolate_div(
             // Split into x > 0 and x < 0
             let split_plan = plan_isolated_denominator_sign_split(r, sim_rhs, op.clone())
                 .expect("inequality branch requires denominator sign cases");
-            let eq_pos = split_plan.positive_equation;
-            let eq_neg = split_plan.negative_equation;
-            let split_steps = simplifier.collect_steps().then(|| {
-                build_isolated_denominator_sign_split_steps_with(
-                    eq_pos.clone(),
-                    eq_neg.clone(),
-                    r,
+            let split_execution = simplifier.collect_steps().then(|| {
+                build_isolated_denominator_sign_split_execution_with(
+                    split_plan.clone(),
                     r,
                     op.clone(),
                     |id| {
@@ -517,12 +527,24 @@ pub(super) fn isolate_div(
                     },
                 )
             });
+            let eq_pos = split_execution.as_ref().map_or_else(
+                || split_plan.positive_equation.clone(),
+                |exec| exec.positive_equation.clone(),
+            );
+            let eq_neg = split_execution.as_ref().map_or_else(
+                || split_plan.negative_equation.clone(),
+                |exec| exec.negative_equation.clone(),
+            );
 
             let mut steps_case1 = steps.clone();
-            if let Some(split_steps) = split_steps.as_ref() {
+            if let Some(split_execution) = split_execution.as_ref() {
                 steps_case1.push(SolveStep {
-                    description: split_steps.positive_case.description.clone(),
-                    equation_after: split_steps.positive_case.equation_after.clone(),
+                    description: split_execution.didactic.positive_case.description.clone(),
+                    equation_after: split_execution
+                        .didactic
+                        .positive_case
+                        .equation_after
+                        .clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -545,10 +567,14 @@ pub(super) fn isolate_div(
 
             // Case 2: x < 0. Multiply by x (negative) -> Inequality flips.
             let mut steps_case2 = steps.clone();
-            if let Some(split_steps) = split_steps.as_ref() {
+            if let Some(split_execution) = split_execution.as_ref() {
                 steps_case2.push(SolveStep {
-                    description: split_steps.negative_case.description.clone(),
-                    equation_after: split_steps.negative_case.equation_after.clone(),
+                    description: split_execution.didactic.negative_case.description.clone(),
+                    equation_after: split_execution
+                        .didactic
+                        .negative_case
+                        .equation_after
+                        .clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -574,10 +600,10 @@ pub(super) fn isolate_div(
 
             // Combine steps
             let mut all_steps = steps_pos;
-            if let Some(split_steps) = split_steps {
+            if let Some(split_execution) = split_execution {
                 all_steps.push(SolveStep {
-                    description: split_steps.case_boundary.description,
-                    equation_after: split_steps.case_boundary.equation_after,
+                    description: split_execution.didactic.case_boundary.description,
+                    equation_after: split_execution.didactic.case_boundary.equation_after,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
