@@ -5,8 +5,8 @@ use cas_ast::symbol::SymbolId;
 use cas_ast::{BuiltinFn, Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{combine_abs_branch_sets, contains_var, numeric_sign};
 use cas_solver_core::solve_outcome::{
-    build_abs_split_step_with, guard_abs_solution_with_nonnegative_rhs, plan_abs_isolation,
-    AbsIsolationPlan, AbsSplitCase,
+    build_abs_split_steps_with, guard_abs_solution_with_nonnegative_rhs, plan_abs_isolation,
+    AbsIsolationPlan,
 };
 
 use super::{isolate, prepend_steps};
@@ -82,27 +82,22 @@ fn isolate_abs(
             // ── Branch 1: Positive case (A op B) ────────────────────────────────
             let eq1 = positive;
             let eq2 = negative;
+            let split_steps = simplifier.collect_steps().then(|| {
+                build_abs_split_steps_with(eq1.clone(), eq2.clone(), arg, |id| {
+                    format!(
+                        "{}",
+                        cas_formatter::DisplayExpr {
+                            context: &simplifier.context,
+                            id
+                        }
+                    )
+                })
+            });
             let mut steps1 = steps.clone();
-            if simplifier.collect_steps() {
-                let split_step = build_abs_split_step_with(
-                    AbsSplitCase::Positive,
-                    eq1.clone(),
-                    arg,
-                    rhs,
-                    op.clone(),
-                    |id| {
-                        format!(
-                            "{}",
-                            cas_formatter::DisplayExpr {
-                                context: &simplifier.context,
-                                id
-                            }
-                        )
-                    },
-                );
+            if let Some(split_steps) = split_steps.as_ref() {
                 steps1.push(SolveStep {
-                    description: split_step.description,
-                    equation_after: split_step.equation_after,
+                    description: split_steps.positive.description.clone(),
+                    equation_after: split_steps.positive.equation_after.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -111,29 +106,11 @@ fn isolate_abs(
             let (set1, steps1_out) = prepend_steps(results1, steps1)?;
 
             // ── Branch 2: Negative case ─────────────────────────────────────────
-            let neg_rhs = eq2.rhs;
-            let op2 = eq2.op.clone();
             let mut steps2 = steps.clone();
-            if simplifier.collect_steps() {
-                let split_step = build_abs_split_step_with(
-                    AbsSplitCase::Negative,
-                    eq2.clone(),
-                    arg,
-                    neg_rhs,
-                    op2.clone(),
-                    |id| {
-                        format!(
-                            "{}",
-                            cas_formatter::DisplayExpr {
-                                context: &simplifier.context,
-                                id
-                            }
-                        )
-                    },
-                );
+            if let Some(split_steps) = split_steps.as_ref() {
                 steps2.push(SolveStep {
-                    description: split_step.description,
-                    equation_after: split_step.equation_after,
+                    description: split_steps.negative.description.clone(),
+                    equation_after: split_steps.negative.equation_after.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });

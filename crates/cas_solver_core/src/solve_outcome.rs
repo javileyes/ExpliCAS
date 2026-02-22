@@ -1579,6 +1579,48 @@ where
     }
 }
 
+/// Didactic payload for both branches produced by absolute-value split.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AbsSplitDidacticPair {
+    pub positive: AbsSplitDidacticStep,
+    pub negative: AbsSplitDidacticStep,
+}
+
+/// Build didactic payload for both absolute-value split branches.
+pub fn build_abs_split_steps_with<F>(
+    positive_equation: Equation,
+    negative_equation: Equation,
+    lhs_expr: ExprId,
+    mut render_expr: F,
+) -> AbsSplitDidacticPair
+where
+    F: FnMut(ExprId) -> String,
+{
+    let lhs_display = render_expr(lhs_expr);
+    let positive_rhs_display = render_expr(positive_equation.rhs);
+    let negative_rhs_display = render_expr(negative_equation.rhs);
+    AbsSplitDidacticPair {
+        positive: AbsSplitDidacticStep {
+            description: abs_split_case_message(
+                AbsSplitCase::Positive,
+                &lhs_display,
+                &positive_equation.op.to_string(),
+                &positive_rhs_display,
+            ),
+            equation_after: positive_equation,
+        },
+        negative: AbsSplitDidacticStep {
+            description: abs_split_case_message(
+                AbsSplitCase::Negative,
+                &lhs_display,
+                &negative_equation.op.to_string(),
+                &negative_rhs_display,
+            ),
+            equation_after: negative_equation,
+        },
+    }
+}
+
 /// For `|A| = rhs`, attach the soundness guard `rhs >= 0` when
 /// `rhs` depends on the solve variable.
 pub fn guard_abs_solution_with_nonnegative_rhs(
@@ -1934,6 +1976,45 @@ mod tests {
             payload.description,
             "Split absolute value (Case 1): expr = expr"
         );
+    }
+
+    #[test]
+    fn build_abs_split_steps_with_builds_both_payloads() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let neg_two = ctx.num(-2);
+        let eq_pos = Equation {
+            lhs: x,
+            rhs: two,
+            op: RelOp::Eq,
+        };
+        let eq_neg = Equation {
+            lhs: x,
+            rhs: neg_two,
+            op: RelOp::Eq,
+        };
+
+        let payload = build_abs_split_steps_with(eq_pos.clone(), eq_neg.clone(), x, |id| {
+            if id == two {
+                "2".to_string()
+            } else if id == neg_two {
+                "-2".to_string()
+            } else {
+                "x".to_string()
+            }
+        });
+
+        assert_eq!(
+            payload.positive.description,
+            "Split absolute value (Case 1): x = 2"
+        );
+        assert_eq!(payload.positive.equation_after, eq_pos);
+        assert_eq!(
+            payload.negative.description,
+            "Split absolute value (Case 2): x = -2"
+        );
+        assert_eq!(payload.negative.equation_after, eq_neg);
     }
 
     #[test]
