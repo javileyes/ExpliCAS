@@ -72,12 +72,26 @@ pub fn plan_log_isolation_step(
     op: RelOp,
     base_display: &str,
 ) -> Option<LogIsolationRewritePlan> {
+    plan_log_isolation_step_with(ctx, base, arg, rhs, var, op, |_| base_display.to_string())
+}
+
+/// Plan logarithm isolation and build its didactic step by rendering the base
+/// expression with a caller-provided formatter.
+pub fn plan_log_isolation_step_with<F>(
+    ctx: &mut Context,
+    base: ExprId,
+    arg: ExprId,
+    rhs: ExprId,
+    var: &str,
+    op: RelOp,
+    render_expr: F,
+) -> Option<LogIsolationRewritePlan>
+where
+    F: FnMut(ExprId) -> String,
+{
     let plan = plan_log_isolation(ctx, base, arg, rhs, var)?;
-    let equation = plan.into_equation(op);
-    let step = LogIsolationStep {
-        description: plan.step_description(base_display),
-        equation_after: equation.clone(),
-    };
+    let step = build_log_isolation_step_with(plan, base, op, render_expr);
+    let equation = step.equation_after.clone();
     Some(LogIsolationRewritePlan { equation, step })
 }
 
@@ -230,6 +244,25 @@ mod tests {
             .expect("log isolation should apply");
         assert_eq!(out.equation.lhs, arg);
         assert_eq!(out.step.description, "Exponentiate both sides with base 2");
+        assert_eq!(out.step.equation_after, out.equation);
+    }
+
+    #[test]
+    fn plan_log_isolation_step_with_uses_renderer() {
+        let mut ctx = Context::new();
+        let base = ctx.var("b");
+        let arg = ctx.var("x");
+        let rhs = ctx.num(3);
+
+        let out = plan_log_isolation_step_with(&mut ctx, base, arg, rhs, "x", RelOp::Eq, |_| {
+            "rendered(b)".to_string()
+        })
+        .expect("log isolation should apply");
+
+        assert_eq!(
+            out.step.description,
+            "Exponentiate both sides with base rendered(b)"
+        );
         assert_eq!(out.step.equation_after, out.equation);
     }
 }

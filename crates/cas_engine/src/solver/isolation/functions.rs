@@ -156,14 +156,14 @@ fn isolate_log(
             id: base
         }
     );
-    let rewrite = cas_solver_core::log_isolation::plan_log_isolation_step(
+    let rewrite = cas_solver_core::log_isolation::plan_log_isolation_step_with(
         &mut simplifier.context,
         base,
         arg,
         rhs,
         var,
         op.clone(),
-        &base_desc,
+        |_| base_desc.clone(),
     )
     .ok_or_else(|| {
         CasError::IsolationError(
