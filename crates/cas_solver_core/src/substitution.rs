@@ -813,7 +813,10 @@ mod tests {
         assert_eq!(execution.equation, eq_after);
         assert_eq!(execution.items.len(), 2);
         assert_eq!(execution.items[0].equation, eq_before);
-        assert_eq!(execution.items[0].description, "Detected substitution: u = u");
+        assert_eq!(
+            execution.items[0].description,
+            "Detected substitution: u = u"
+        );
         assert_eq!(execution.items[1].equation, execution.equation);
         assert_eq!(
             execution.items[1].description,

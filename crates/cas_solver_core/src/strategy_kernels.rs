@@ -318,10 +318,7 @@ mod tests {
                 op: RelOp::Eq
             }
         );
-        assert_eq!(
-            execution.description,
-            "Subtract rhs from both sides"
-        );
+        assert_eq!(execution.description, "Subtract rhs from both sides");
     }
 
     #[test]

@@ -3116,10 +3116,7 @@ mod tests {
 
         let items = collect_abs_split_execution_items(&execution);
         assert_eq!(items.len(), 2);
-        assert_eq!(
-            items[0].description,
-            "Split absolute value (Case 1): x = 2"
-        );
+        assert_eq!(items[0].description, "Split absolute value (Case 1): x = 2");
         assert_eq!(
             items[1].description,
             "Split absolute value (Case 2): x = -2"
@@ -3158,10 +3155,7 @@ mod tests {
         let items = collect_abs_split_execution_items(&execution);
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].equation, execution.positive_equation);
-        assert_eq!(
-            items[0].description,
-            "Split absolute value (Case 1): x = 2"
-        );
+        assert_eq!(items[0].description, "Split absolute value (Case 1): x = 2");
         assert_eq!(items[1].equation, execution.negative_equation);
         assert_eq!(
             items[1].description,

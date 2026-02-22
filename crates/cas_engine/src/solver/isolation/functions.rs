@@ -256,7 +256,9 @@ fn simplify_rhs(
         let execution_items = build_rhs_simplification_execution_items(
             lhs,
             op,
-            sim_steps.into_iter().map(|step| (step.description, step.after)),
+            sim_steps
+                .into_iter()
+                .map(|step| (step.description, step.after)),
         );
         for item in execution_items {
             steps.push(SolveStep {

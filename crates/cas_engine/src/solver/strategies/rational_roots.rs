@@ -16,8 +16,7 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_solver_core::rational_roots::{
-    collect_rational_roots_execution_items, plan_rational_roots_step,
-    NumericPolynomialSolveOutcome,
+    collect_rational_roots_execution_items, plan_rational_roots_step, NumericPolynomialSolveOutcome,
 };
 use cas_solver_core::solution_set::sort_and_dedup_exprs;
 

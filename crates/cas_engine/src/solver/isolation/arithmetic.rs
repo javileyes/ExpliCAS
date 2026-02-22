@@ -623,14 +623,8 @@ pub(super) fn isolate_div(
 
         if simplifier.collect_steps() {
             // PEDAGOGICAL: Decompose denominator isolation into two explicit steps.
-            let execution_plan = plan_division_denominator(
-                &mut simplifier.context,
-                l,
-                r,
-                rhs,
-                sim_rhs,
-                op.clone(),
-            );
+            let execution_plan =
+                plan_division_denominator(&mut simplifier.context, l, r, rhs, sim_rhs, op.clone());
             let (rhs_times_r_simplified, _) =
                 simplifier.simplify(execution_plan.multiply_equation.rhs);
             let execution = build_division_denominator_execution_with(
