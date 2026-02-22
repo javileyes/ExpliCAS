@@ -1,4 +1,4 @@
-use cas_ast::{Constant, Context, Expr, ExprId};
+use cas_ast::{Constant, Context, Equation, Expr, ExprId, RelOp};
 
 /// Supported unary function inversion kinds used by equation isolation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,6 +75,53 @@ impl UnaryInverseKind {
             Self::Exp => Some("Take natural log"),
             _ => None,
         }
+    }
+}
+
+/// Rewrite a unary-function equation by applying its inverse:
+/// `f(arg) op other` -> `arg op inverse_f(other)` (when `is_lhs=true`),
+/// or symmetrically when the function is on RHS.
+pub fn rewrite_unary_inverse_equation(
+    ctx: &mut Context,
+    fn_name: &str,
+    arg: ExprId,
+    other: ExprId,
+    op: RelOp,
+    is_lhs: bool,
+) -> Option<(Equation, UnaryInverseKind)> {
+    let inverse_kind = UnaryInverseKind::from_name(fn_name)?;
+    let transformed_other = inverse_kind.build_rhs(ctx, other);
+    let equation = if is_lhs {
+        Equation {
+            lhs: arg,
+            rhs: transformed_other,
+            op,
+        }
+    } else {
+        Equation {
+            lhs: transformed_other,
+            rhs: arg,
+            op,
+        }
+    };
+    Some((equation, inverse_kind))
+}
+
+/// Same as [`rewrite_unary_inverse_equation`] but restricted to unwrap-safe inverses.
+pub fn rewrite_unary_inverse_equation_for_unwrap(
+    ctx: &mut Context,
+    fn_name: &str,
+    arg: ExprId,
+    other: ExprId,
+    op: RelOp,
+    is_lhs: bool,
+) -> Option<(Equation, UnaryInverseKind)> {
+    let (equation, inverse_kind) =
+        rewrite_unary_inverse_equation(ctx, fn_name, arg, other, op, is_lhs)?;
+    if inverse_kind.supports_unwrap_strategy() {
+        Some((equation, inverse_kind))
+    } else {
+        None
     }
 }
 
@@ -190,5 +237,42 @@ mod tests {
         assert_eq!(UnaryInverseKind::Sin.unwrap_step_description(), None);
         assert_eq!(UnaryInverseKind::Cos.unwrap_step_description(), None);
         assert_eq!(UnaryInverseKind::Tan.unwrap_step_description(), None);
+    }
+
+    #[test]
+    fn rewrite_unary_inverse_equation_lhs_orientation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let (eq, kind) = rewrite_unary_inverse_equation(&mut ctx, "sqrt", x, y, RelOp::Eq, true)
+            .expect("sqrt inverse should rewrite");
+        assert_eq!(kind, UnaryInverseKind::Sqrt);
+        assert_eq!(eq.lhs, x);
+        assert!(matches!(ctx.get(eq.rhs), Expr::Pow(base, _) if *base == y));
+    }
+
+    #[test]
+    fn rewrite_unary_inverse_equation_rhs_orientation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let (eq, kind) = rewrite_unary_inverse_equation(&mut ctx, "exp", x, y, RelOp::Eq, false)
+            .expect("exp inverse should rewrite");
+        assert_eq!(kind, UnaryInverseKind::Exp);
+        assert_eq!(eq.rhs, x);
+        assert!(
+            matches!(ctx.get(eq.lhs), Expr::Function(_, args) if args.len() == 1 && args[0] == y)
+        );
+    }
+
+    #[test]
+    fn rewrite_unary_inverse_equation_for_unwrap_rejects_trig() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        assert!(
+            rewrite_unary_inverse_equation_for_unwrap(&mut ctx, "sin", x, y, RelOp::Eq, true)
+                .is_none()
+        );
     }
 }

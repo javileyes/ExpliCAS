@@ -1,4 +1,7 @@
-use crate::isolation_utils::NumericSign;
+use crate::isolation_utils::{mk_residual_solve, NumericSign};
+use crate::log_domain::{
+    classify_terminal_action, DomainModeKind, LogSolveDecision, LogTerminalAction,
+};
 use crate::solution_set::open_positive_domain;
 use cas_ast::{
     Case, ConditionPredicate, ConditionSet, Context, Expr, ExprId, RelOp, SolutionSet, SolveResult,
@@ -13,6 +16,13 @@ pub enum VarFreeDiffKind {
     ContradictionNonZero,
     /// Non-numeric residual over other symbols: constraint on parameters
     Constraint,
+}
+
+/// Generic terminal solve outcome (message + solution set).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TerminalSolveOutcome {
+    pub message: &'static str,
+    pub solutions: SolutionSet,
 }
 
 /// Classify the simplified variable-free residual.
@@ -44,6 +54,40 @@ pub fn power_base_one_outcome(rhs_is_one: bool) -> SolutionSet {
     }
 }
 
+/// Resolve terminal log-solve actions into concrete solution sets.
+pub fn resolve_log_terminal_outcome(
+    ctx: &mut Context,
+    decision: &LogSolveDecision,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+) -> Option<TerminalSolveOutcome> {
+    match classify_terminal_action(decision, mode, wildcard_scope) {
+        LogTerminalAction::ReturnEmptySet => {
+            let LogSolveDecision::EmptySet(message) = decision else {
+                return None;
+            };
+            Some(TerminalSolveOutcome {
+                message,
+                solutions: SolutionSet::Empty,
+            })
+        }
+        LogTerminalAction::ReturnResidualInWildcard => {
+            let LogSolveDecision::NeedsComplex(message) = decision else {
+                return None;
+            };
+            let residual = mk_residual_solve(ctx, lhs, rhs, var);
+            Some(TerminalSolveOutcome {
+                message,
+                solutions: SolutionSet::Residual(residual),
+            })
+        }
+        LogTerminalAction::Continue => None,
+    }
+}
+
 /// Pre-check decision for absolute-value equalities `|A| = RHS`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AbsEqualityPrecheck {
@@ -62,6 +106,33 @@ pub fn abs_equality_precheck(sign: NumericSign) -> AbsEqualityPrecheck {
         NumericSign::Zero => AbsEqualityPrecheck::CollapseToZero,
         NumericSign::Positive => AbsEqualityPrecheck::Continue,
     }
+}
+
+/// For `|A| = rhs`, attach the soundness guard `rhs >= 0` when
+/// `rhs` depends on the solve variable.
+pub fn guard_abs_solution_with_nonnegative_rhs(
+    rhs_contains_var: bool,
+    rhs: ExprId,
+    combined: SolutionSet,
+) -> SolutionSet {
+    if rhs_contains_var {
+        let guard = ConditionSet::single(ConditionPredicate::NonNegative(rhs));
+        SolutionSet::Conditional(vec![Case::new(guard, combined)])
+    } else {
+        combined
+    }
+}
+
+/// Build `Conditional([guard -> guarded_solutions, else -> Residual(original_eq)])`.
+pub fn guarded_solutions_with_residual_fallback(
+    guard: ConditionSet,
+    guarded_solutions: SolutionSet,
+    residual_expr: ExprId,
+) -> SolutionSet {
+    SolutionSet::Conditional(vec![
+        Case::new(guard, guarded_solutions),
+        Case::new(ConditionSet::empty(), SolutionSet::Residual(residual_expr)),
+    ])
 }
 
 /// Outcome for symbolic `a^x = a` (with `a` symbolic).
@@ -187,5 +258,113 @@ mod tests {
             abs_equality_precheck(NumericSign::Positive),
             AbsEqualityPrecheck::Continue
         );
+    }
+
+    #[test]
+    fn abs_guard_wraps_solution_when_rhs_contains_var() {
+        let mut ctx = Context::new();
+        let rhs = ctx.var("x");
+        let out = guard_abs_solution_with_nonnegative_rhs(true, rhs, SolutionSet::AllReals);
+        match out {
+            SolutionSet::Conditional(cases) => {
+                assert_eq!(cases.len(), 1);
+                assert_eq!(
+                    cases[0].when,
+                    ConditionSet::single(ConditionPredicate::NonNegative(rhs))
+                );
+                assert!(matches!(cases[0].then.solutions, SolutionSet::AllReals));
+            }
+            other => panic!("expected conditional guard, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn abs_guard_leaves_solution_unchanged_for_var_free_rhs() {
+        let mut ctx = Context::new();
+        let rhs = ctx.num(2);
+        let out = guard_abs_solution_with_nonnegative_rhs(false, rhs, SolutionSet::Empty);
+        assert!(matches!(out, SolutionSet::Empty));
+    }
+
+    #[test]
+    fn resolve_log_terminal_empty_set() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let decision = LogSolveDecision::EmptySet("no real solutions");
+        let outcome = resolve_log_terminal_outcome(
+            &mut ctx,
+            &decision,
+            DomainModeKind::Generic,
+            false,
+            x,
+            y,
+            "x",
+        )
+        .expect("empty-set terminal outcome");
+        assert_eq!(outcome.message, "no real solutions");
+        assert!(matches!(outcome.solutions, SolutionSet::Empty));
+    }
+
+    #[test]
+    fn resolve_log_terminal_residual_in_wildcard() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let decision = LogSolveDecision::NeedsComplex("needs complex log");
+        let outcome = resolve_log_terminal_outcome(
+            &mut ctx,
+            &decision,
+            DomainModeKind::Assume,
+            true,
+            x,
+            y,
+            "x",
+        )
+        .expect("residual terminal outcome");
+        assert_eq!(outcome.message, "needs complex log");
+        assert!(matches!(outcome.solutions, SolutionSet::Residual(_)));
+    }
+
+    #[test]
+    fn resolve_log_terminal_continue_returns_none() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let decision = LogSolveDecision::Ok;
+        let out = resolve_log_terminal_outcome(
+            &mut ctx,
+            &decision,
+            DomainModeKind::Generic,
+            false,
+            x,
+            y,
+            "x",
+        );
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn guarded_solutions_with_residual_fallback_builds_two_cases() {
+        let mut ctx = Context::new();
+        let b = ctx.var("b");
+        let residual = ctx.var("residual");
+        let guard = ConditionSet::single(ConditionPredicate::Positive(b));
+        let out = guarded_solutions_with_residual_fallback(guard, SolutionSet::AllReals, residual);
+        match out {
+            SolutionSet::Conditional(cases) => {
+                assert_eq!(cases.len(), 2);
+                assert_eq!(
+                    cases[0].when,
+                    ConditionSet::single(ConditionPredicate::Positive(b))
+                );
+                assert!(matches!(cases[0].then.solutions, SolutionSet::AllReals));
+                assert_eq!(cases[1].when, ConditionSet::empty());
+                assert!(
+                    matches!(cases[1].then.solutions, SolutionSet::Residual(id) if id == residual)
+                );
+            }
+            other => panic!("expected conditional, got {:?}", other),
+        }
     }
 }

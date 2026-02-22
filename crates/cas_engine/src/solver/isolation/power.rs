@@ -6,11 +6,10 @@ use cas_solver_core::isolation_utils::{
     apply_sign_flip, contains_var, is_even_integer_expr, is_known_negative, is_numeric_one,
     is_numeric_zero, mk_residual_solve,
 };
-use cas_solver_core::log_domain::{
-    classify_terminal_action, LogAssumption, LogSolveDecision, LogTerminalAction,
-};
+use cas_solver_core::log_domain::{LogAssumption, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
-    even_power_negative_rhs_outcome, power_base_one_outcome, power_equals_base_symbolic_outcome,
+    even_power_negative_rhs_outcome, guarded_solutions_with_residual_fallback,
+    power_base_one_outcome, power_equals_base_symbolic_outcome, resolve_log_terminal_outcome,
 };
 
 use super::{isolate, prepend_steps};
@@ -420,37 +419,29 @@ fn isolate_pow_exponent(
     let mode = crate::solver::domain_guards::to_core_domain_mode(opts.domain_mode);
     let wildcard_scope = opts.assume_scope == crate::semantics::AssumeScope::Wildcard;
 
-    match classify_terminal_action(&decision, mode, wildcard_scope) {
-        LogTerminalAction::ReturnEmptySet => {
-            let LogSolveDecision::EmptySet(msg) = decision else {
-                unreachable!("terminal action mismatch: expected EmptySet")
+    if let Some(outcome) = resolve_log_terminal_outcome(
+        &mut simplifier.context,
+        &decision,
+        mode,
+        wildcard_scope,
+        lhs,
+        rhs,
+        var,
+    ) {
+        if simplifier.collect_steps() {
+            let description = if matches!(outcome.solutions, SolutionSet::Residual(_)) {
+                format!("{} (residual)", outcome.message)
+            } else {
+                outcome.message.to_string()
             };
-            if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: msg.to_string(),
-                    equation_after: Equation { lhs, rhs, op },
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-            return Ok((SolutionSet::Empty, steps));
+            steps.push(SolveStep {
+                description,
+                equation_after: Equation { lhs, rhs, op },
+                importance: crate::step::ImportanceLevel::Medium,
+                substeps: vec![],
+            });
         }
-        LogTerminalAction::ReturnResidualInWildcard => {
-            let LogSolveDecision::NeedsComplex(msg) = decision else {
-                unreachable!("terminal action mismatch: expected NeedsComplex")
-            };
-            let residual = mk_residual_solve(&mut simplifier.context, lhs, rhs, var);
-            if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: format!("{} (residual)", msg),
-                    equation_after: Equation { lhs, rhs, op },
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-            return Ok((SolutionSet::Residual(residual), steps));
-        }
-        LogTerminalAction::Continue => {}
+        return Ok((outcome.solutions, steps));
     }
 
     match decision {
@@ -513,12 +504,14 @@ fn isolate_pow_exponent(
             }
 
             // Execute solver under guard
-            let new_rhs = simplifier.context.call("log", vec![b, rhs]);
-            let new_eq = Equation {
-                lhs: e,
-                rhs: new_rhs,
-                op: op.clone(),
-            };
+            let new_eq = cas_solver_core::rational_power::build_exponent_log_isolation_equation(
+                &mut simplifier.context,
+                e,
+                b,
+                rhs,
+                op.clone(),
+            );
+            let new_rhs = new_eq.rhs;
 
             let mut guarded_steps = steps.clone();
             if simplifier.collect_steps() {
@@ -531,13 +524,21 @@ fn isolate_pow_exponent(
                         },
                         msg
                     ),
-                    equation_after: new_eq,
+                    equation_after: new_eq.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
             }
 
-            let guarded_result = isolate(e, new_rhs, op.clone(), var, simplifier, opts, ctx);
+            let guarded_result = isolate(
+                new_eq.lhs,
+                new_rhs,
+                new_eq.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            );
 
             let residual = mk_residual_solve(&mut simplifier.context, lhs, rhs, var);
 
@@ -545,13 +546,11 @@ fn isolate_pow_exponent(
                 Ok((guarded_solutions, mut solve_steps)) => {
                     guarded_steps.append(&mut solve_steps);
 
-                    let cases = vec![
-                        cas_ast::Case::new(guard, guarded_solutions),
-                        cas_ast::Case::new(
-                            cas_ast::ConditionSet::empty(),
-                            SolutionSet::Residual(residual),
-                        ),
-                    ];
+                    let conditional = guarded_solutions_with_residual_fallback(
+                        guard,
+                        guarded_solutions,
+                        residual,
+                    );
 
                     if simplifier.collect_steps() {
                         steps.push(SolveStep {
@@ -562,7 +561,7 @@ fn isolate_pow_exponent(
                         });
                     }
 
-                    return Ok((SolutionSet::Conditional(cases), steps));
+                    return Ok((conditional, steps));
                 }
                 Err(_) => {
                     if simplifier.collect_steps() {
@@ -583,12 +582,13 @@ fn isolate_pow_exponent(
     // End of domain guards
     // ================================================================
 
-    let new_rhs = simplifier.context.call("log", vec![b, rhs]);
-    let new_eq = Equation {
-        lhs: e,
-        rhs: new_rhs,
-        op: op.clone(),
-    };
+    let new_eq = cas_solver_core::rational_power::build_exponent_log_isolation_equation(
+        &mut simplifier.context,
+        e,
+        b,
+        rhs,
+        op,
+    );
     if simplifier.collect_steps() {
         steps.push(SolveStep {
             description: format!(
@@ -598,11 +598,13 @@ fn isolate_pow_exponent(
                     id: b
                 }
             ),
-            equation_after: new_eq,
+            equation_after: new_eq.clone(),
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });
     }
-    let results = isolate(e, new_rhs, op, var, simplifier, opts, ctx)?;
+    let results = isolate(
+        new_eq.lhs, new_eq.rhs, new_eq.op, var, simplifier, opts, ctx,
+    )?;
     prepend_steps(results, steps)
 }

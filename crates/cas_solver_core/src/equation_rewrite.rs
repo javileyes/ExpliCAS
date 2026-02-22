@@ -1,4 +1,4 @@
-use crate::isolation_utils::{apply_sign_flip, flip_inequality};
+use crate::isolation_utils::{apply_sign_flip, flip_inequality, SignCaseOps};
 use cas_ast::{Equation, Expr, ExprId, RelOp};
 
 /// Rewrite `lhs op rhs` by subtracting `rhs` on both sides:
@@ -138,6 +138,65 @@ pub fn isolate_div_denominator(
         lhs: denominator,
         rhs: new_rhs,
         op,
+    }
+}
+
+/// Build both branch equations for absolute-value isolation:
+/// `|arg| op rhs`  ->  `(arg op rhs)` and `(arg flip(op) -rhs)`.
+pub fn isolate_abs_branches(
+    ctx: &mut cas_ast::Context,
+    arg: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+) -> (Equation, Equation) {
+    let positive = Equation {
+        lhs: arg,
+        rhs,
+        op: op.clone(),
+    };
+    let neg_rhs = ctx.add(Expr::Neg(rhs));
+    let negative = Equation {
+        lhs: arg,
+        rhs: neg_rhs,
+        op: flip_inequality(op),
+    };
+    (positive, negative)
+}
+
+/// Build one zero-product sign case:
+/// `left case.left 0` and `right case.right 0`.
+pub fn build_product_zero_sign_case(
+    ctx: &mut cas_ast::Context,
+    left: ExprId,
+    right: ExprId,
+    case: &SignCaseOps,
+) -> (Equation, Equation) {
+    let zero = ctx.num(0);
+    (
+        Equation {
+            lhs: left,
+            rhs: zero,
+            op: case.left.clone(),
+        },
+        Equation {
+            lhs: right,
+            rhs: zero,
+            op: case.right.clone(),
+        },
+    )
+}
+
+/// Build a sign-domain equation: `expr > 0` when `positive` else `expr < 0`.
+pub fn build_sign_domain_equation(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    positive: bool,
+) -> Equation {
+    let zero = ctx.num(0);
+    Equation {
+        lhs: expr,
+        rhs: zero,
+        op: if positive { RelOp::Gt } else { RelOp::Lt },
     }
 }
 
@@ -309,5 +368,51 @@ mod tests {
         assert_eq!(eq.lhs, a);
         assert_eq!(eq.op, RelOp::Eq);
         assert!(matches!(ctx.get(eq.rhs), Expr::Div(l, r) if *l == b && *r == c));
+    }
+
+    #[test]
+    fn isolate_abs_branches_builds_positive_and_flipped_negative_cases() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let (pos, neg) = isolate_abs_branches(&mut ctx, a, b, RelOp::Lt);
+
+        assert_eq!(pos.lhs, a);
+        assert_eq!(pos.rhs, b);
+        assert_eq!(pos.op, RelOp::Lt);
+
+        assert_eq!(neg.lhs, a);
+        assert_eq!(neg.op, RelOp::Gt);
+        assert!(matches!(ctx.get(neg.rhs), Expr::Neg(v) if *v == b));
+    }
+
+    #[test]
+    fn build_product_zero_sign_case_uses_case_ops() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let case = SignCaseOps {
+            left: RelOp::Geq,
+            right: RelOp::Leq,
+        };
+        let (eq_a, eq_b) = build_product_zero_sign_case(&mut ctx, a, b, &case);
+        assert_eq!(eq_a.lhs, a);
+        assert_eq!(eq_b.lhs, b);
+        assert_eq!(eq_a.op, RelOp::Geq);
+        assert_eq!(eq_b.op, RelOp::Leq);
+        assert!(matches!(ctx.get(eq_a.rhs), Expr::Number(_)));
+        assert!(matches!(ctx.get(eq_b.rhs), Expr::Number(_)));
+    }
+
+    #[test]
+    fn build_sign_domain_equation_positive_and_negative() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let pos = build_sign_domain_equation(&mut ctx, x, true);
+        let neg = build_sign_domain_equation(&mut ctx, x, false);
+        assert_eq!(pos.op, RelOp::Gt);
+        assert_eq!(neg.op, RelOp::Lt);
+        assert!(matches!(ctx.get(pos.rhs), Expr::Number(_)));
+        assert!(matches!(ctx.get(neg.rhs), Expr::Number(_)));
     }
 }

@@ -5,11 +5,11 @@ use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveDomainEnv, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
-use cas_solver_core::function_inverse::UnaryInverseKind;
 use cas_solver_core::isolation_utils::{
     contains_var, is_numeric_one, match_exponential_var_in_exponent,
 };
-use cas_solver_core::log_domain::{classify_terminal_action, LogSolveDecision, LogTerminalAction};
+use cas_solver_core::log_domain::LogSolveDecision;
+use cas_solver_core::solve_outcome::resolve_log_terminal_outcome;
 
 pub struct IsolationStrategy;
 
@@ -88,57 +88,6 @@ impl SolverStrategy for IsolationStrategy {
     // Selective verification in solve() handles symbolic solutions.
 }
 
-fn terminal_exponential_decision_result(
-    decision: &LogSolveDecision,
-    eq: &Equation,
-    var: &str,
-    simplifier: &mut Simplifier,
-    opts: &SolverOptions,
-) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-    let mode = crate::solver::domain_guards::to_core_domain_mode(opts.domain_mode);
-    let wildcard_scope = opts.assume_scope == crate::semantics::AssumeScope::Wildcard;
-
-    match classify_terminal_action(decision, mode, wildcard_scope) {
-        LogTerminalAction::ReturnEmptySet => {
-            let LogSolveDecision::EmptySet(msg) = decision else {
-                return None;
-            };
-            let mut steps = Vec::new();
-            if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: msg.to_string(),
-                    equation_after: eq.clone(),
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-            Some(Ok((SolutionSet::Empty, steps)))
-        }
-        LogTerminalAction::ReturnResidualInWildcard => {
-            let LogSolveDecision::NeedsComplex(msg) = decision else {
-                return None;
-            };
-            let residual = cas_solver_core::isolation_utils::mk_residual_solve(
-                &mut simplifier.context,
-                eq.lhs,
-                eq.rhs,
-                var,
-            );
-            let mut steps = Vec::new();
-            if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: format!("{} - use 'semantics preset complex'", msg),
-                    equation_after: eq.clone(),
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-            Some(Ok((SolutionSet::Residual(residual), steps)))
-        }
-        LogTerminalAction::Continue => None,
-    }
-}
-
 /// Check if an exponential equation needs complex logarithm in Wildcard mode,
 /// or if it has no real solutions (EmptySet).
 /// Returns Some(Ok(Residual)) if Wildcard mode should return a residual.
@@ -155,15 +104,37 @@ fn check_exponential_needs_complex(
     rhs_has: bool,
 ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
     use crate::solver::domain_guards::classify_log_solve;
+    let mode = crate::solver::domain_guards::to_core_domain_mode(opts.domain_mode);
+    let wildcard_scope = opts.assume_scope == crate::semantics::AssumeScope::Wildcard;
 
     // Check LHS for exponential a^x pattern
     if lhs_has && !rhs_has {
         if let Some(pattern) = match_exponential_var_in_exponent(&simplifier.context, eq.lhs, var) {
             let decision = classify_log_solve(&simplifier.context, pattern.base, eq.rhs, opts, env);
-            if let Some(result) =
-                terminal_exponential_decision_result(&decision, eq, var, simplifier, opts)
-            {
-                return Some(result);
+            if let Some(outcome) = resolve_log_terminal_outcome(
+                &mut simplifier.context,
+                &decision,
+                mode,
+                wildcard_scope,
+                eq.lhs,
+                eq.rhs,
+                var,
+            ) {
+                let mut steps = Vec::new();
+                if simplifier.collect_steps() {
+                    let description = if matches!(outcome.solutions, SolutionSet::Residual(_)) {
+                        format!("{} - use 'semantics preset complex'", outcome.message)
+                    } else {
+                        outcome.message.to_string()
+                    };
+                    steps.push(SolveStep {
+                        description,
+                        equation_after: eq.clone(),
+                        importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
+                    });
+                }
+                return Some(Ok((outcome.solutions, steps)));
             }
         }
     }
@@ -172,10 +143,30 @@ fn check_exponential_needs_complex(
     if rhs_has && !lhs_has {
         if let Some(pattern) = match_exponential_var_in_exponent(&simplifier.context, eq.rhs, var) {
             let decision = classify_log_solve(&simplifier.context, pattern.base, eq.lhs, opts, env);
-            if let Some(result) =
-                terminal_exponential_decision_result(&decision, eq, var, simplifier, opts)
-            {
-                return Some(result);
+            if let Some(outcome) = resolve_log_terminal_outcome(
+                &mut simplifier.context,
+                &decision,
+                mode,
+                wildcard_scope,
+                eq.lhs,
+                eq.rhs,
+                var,
+            ) {
+                let mut steps = Vec::new();
+                if simplifier.collect_steps() {
+                    let description = if matches!(outcome.solutions, SolutionSet::Residual(_)) {
+                        format!("{} - use 'semantics preset complex'", outcome.message)
+                    } else {
+                        outcome.message.to_string()
+                    };
+                    steps.push(SolveStep {
+                        description,
+                        equation_after: eq.clone(),
+                        importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
+                    });
+                }
+                return Some(Ok((outcome.solutions, steps)));
             }
         }
     }
@@ -238,31 +229,19 @@ impl SolverStrategy for UnwrapStrategy {
                 Expr::Function(fn_id, args) if args.len() == 1 => {
                     let arg = args[0];
                     let name = simplifier.context.sym_name(fn_id).to_string();
-                    let inverse_kind = UnaryInverseKind::from_name(&name)?;
-                    // Unwrap strategy intentionally keeps scope narrow; inverse trig
-                    // is handled by direct isolation path.
-                    if !inverse_kind.supports_unwrap_strategy() {
-                        None
-                    } else {
-                        let new_other = inverse_kind.build_rhs(&mut simplifier.context, other);
-                        let new_eq = if is_lhs {
-                            Equation {
-                                lhs: arg,
-                                rhs: new_other,
-                                op,
-                            }
-                        } else {
-                            Equation {
-                                lhs: new_other,
-                                rhs: arg,
-                                op,
-                            }
-                        };
-                        let description = inverse_kind
-                            .unwrap_step_description()
-                            .expect("unwrap strategy filter guarantees supported inverse");
-                        Some((new_eq, description.to_string()))
-                    }
+                    let (new_eq, inverse_kind) =
+                        cas_solver_core::function_inverse::rewrite_unary_inverse_equation_for_unwrap(
+                            &mut simplifier.context,
+                            &name,
+                            arg,
+                            other,
+                            op,
+                            is_lhs,
+                        )?;
+                    let description = inverse_kind
+                        .unwrap_step_description()
+                        .expect("unwrap strategy filter guarantees supported inverse");
+                    Some((new_eq, description.to_string()))
                 }
                 Expr::Pow(_, _) => {
                     // A^n = B -> A = B^(1/n) (if n is const)

@@ -172,6 +172,23 @@ pub fn build_root_isolation_equation(
     }
 }
 
+/// Build the logarithmic isolation rewrite for `base^exponent op rhs`:
+/// `exponent op log(base, rhs)`.
+pub fn build_exponent_log_isolation_equation(
+    ctx: &mut Context,
+    exponent: ExprId,
+    base: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+) -> Equation {
+    let rhs_log = ctx.call("log", vec![base, rhs]);
+    Equation {
+        lhs: exponent,
+        rhs: rhs_log,
+        op,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -324,5 +341,19 @@ mod tests {
             matches!(ctx.get(eq.lhs), Expr::Function(_, args) if args.len() == 1 && args[0] == b)
         );
         assert!(matches!(ctx.get(eq.rhs), Expr::Pow(base, _) if *base == r));
+    }
+
+    #[test]
+    fn build_exponent_log_isolation_equation_shape() {
+        let mut ctx = Context::new();
+        let e = ctx.var("e");
+        let b = ctx.var("b");
+        let r = ctx.var("r");
+        let eq = build_exponent_log_isolation_equation(&mut ctx, e, b, r, RelOp::Leq);
+        assert_eq!(eq.lhs, e);
+        assert_eq!(eq.op, RelOp::Leq);
+        assert!(
+            matches!(ctx.get(eq.rhs), Expr::Function(_, args) if args.len() == 2 && args[0] == b && args[1] == r)
+        );
     }
 }

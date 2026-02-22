@@ -2,15 +2,12 @@ use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
-use cas_ast::{
-    BuiltinFn, Case, ConditionPredicate, ConditionSet, Equation, Expr, ExprId, RelOp, SolutionSet,
-};
-use cas_solver_core::function_inverse::UnaryInverseKind;
-use cas_solver_core::isolation_utils::{
-    combine_abs_branch_sets, contains_var, flip_inequality, numeric_sign,
-};
+use cas_ast::{BuiltinFn, Equation, ExprId, RelOp, SolutionSet};
+use cas_solver_core::isolation_utils::{combine_abs_branch_sets, contains_var, numeric_sign};
 use cas_solver_core::log_isolation::LogIsolationPlan;
-use cas_solver_core::solve_outcome::{abs_equality_precheck, AbsEqualityPrecheck};
+use cas_solver_core::solve_outcome::{
+    abs_equality_precheck, guard_abs_solution_with_nonnegative_rhs, AbsEqualityPrecheck,
+};
 
 use super::{isolate, prepend_steps};
 
@@ -88,11 +85,12 @@ fn isolate_abs(
     }
 
     // ── Branch 1: Positive case (A op B) ────────────────────────────────
-    let eq1 = Equation {
-        lhs: arg,
+    let (eq1, eq2) = cas_solver_core::equation_rewrite::isolate_abs_branches(
+        &mut simplifier.context,
+        arg,
         rhs,
-        op: op.clone(),
-    };
+        op.clone(),
+    );
     let mut steps1 = steps.clone();
     if simplifier.collect_steps() {
         steps1.push(SolveStep {
@@ -108,23 +106,17 @@ fn isolate_abs(
                     id: rhs
                 }
             ),
-            equation_after: eq1,
+            equation_after: eq1.clone(),
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });
     }
-    let results1 = isolate(arg, rhs, op.clone(), var, simplifier, opts, ctx)?;
+    let results1 = isolate(eq1.lhs, eq1.rhs, eq1.op, var, simplifier, opts, ctx)?;
     let (set1, steps1_out) = prepend_steps(results1, steps1)?;
 
     // ── Branch 2: Negative case ─────────────────────────────────────────
-    let neg_rhs = simplifier.context.add(Expr::Neg(rhs));
-    let op2 = flip_inequality(op.clone());
-
-    let eq2 = Equation {
-        lhs: arg,
-        rhs: neg_rhs,
-        op: op2.clone(),
-    };
+    let neg_rhs = eq2.rhs;
+    let op2 = eq2.op.clone();
     let mut steps2 = steps.clone();
     if simplifier.collect_steps() {
         steps2.push(SolveStep {
@@ -140,12 +132,12 @@ fn isolate_abs(
                     id: neg_rhs
                 }
             ),
-            equation_after: eq2,
+            equation_after: eq2.clone(),
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });
     }
-    let results2 = isolate(arg, neg_rhs, op2, var, simplifier, opts, ctx)?;
+    let results2 = isolate(eq2.lhs, eq2.rhs, eq2.op, var, simplifier, opts, ctx)?;
     let (set2, steps2_out) = prepend_steps(results2, steps2)?;
 
     // ── Combine branches ────────────────────────────────────────────────
@@ -158,12 +150,11 @@ fn isolate_abs(
     // When rhs contains the solve variable, the combined set may be unsound
     // (e.g., |x| = x gives AllReals from branch 1 without domain restriction).
     // Guard: wrap in Conditional with NonNegative(rhs).
-    let final_set = if contains_var(&simplifier.context, rhs, var) {
-        let guard = ConditionSet::single(ConditionPredicate::NonNegative(rhs));
-        SolutionSet::Conditional(vec![Case::new(guard, combined_set)])
-    } else {
-        combined_set
-    };
+    let final_set = guard_abs_solution_with_nonnegative_rhs(
+        contains_var(&simplifier.context, rhs, var),
+        rhs,
+        combined_set,
+    );
 
     Ok((final_set, all_steps))
 }
@@ -195,45 +186,28 @@ fn isolate_log(
         )
     })?;
 
-    let (new_lhs, new_rhs, description) = match plan {
-        LogIsolationPlan::SolveArgument {
-            lhs,
-            rhs: transformed_rhs,
-        } => (
-            lhs,
-            transformed_rhs,
-            format!(
-                "Exponentiate both sides with base {}",
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: base
-                }
-            ),
+    let description = match plan {
+        LogIsolationPlan::SolveArgument { .. } => format!(
+            "Exponentiate both sides with base {}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: base
+            }
         ),
-        LogIsolationPlan::SolveBase {
-            lhs,
-            rhs: transformed_rhs,
-        } => (
-            lhs,
-            transformed_rhs,
-            "Isolate base of logarithm".to_string(),
-        ),
+        LogIsolationPlan::SolveBase { .. } => "Isolate base of logarithm".to_string(),
     };
-
-    let new_eq = Equation {
-        lhs: new_lhs,
-        rhs: new_rhs,
-        op: op.clone(),
-    };
+    let new_eq = plan.into_equation(op.clone());
     if simplifier.collect_steps() {
         steps.push(SolveStep {
             description,
-            equation_after: new_eq,
+            equation_after: new_eq.clone(),
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });
     }
-    let results = isolate(new_lhs, new_rhs, op, var, simplifier, opts, ctx)?;
+    let results = isolate(
+        new_eq.lhs, new_eq.rhs, new_eq.op, var, simplifier, opts, ctx,
+    )?;
     prepend_steps(results, steps)
 }
 
@@ -251,19 +225,21 @@ fn isolate_unary_function(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let fn_name = simplifier.context.sym_name(fn_id).to_string();
-    let inverse_kind = UnaryInverseKind::from_name(&fn_name)
-        .ok_or_else(|| CasError::UnknownFunction(fn_name.clone()))?;
-    let new_rhs = inverse_kind.build_rhs(&mut simplifier.context, rhs);
-    let new_eq = Equation {
-        lhs: arg,
-        rhs: new_rhs,
-        op: op.clone(),
-    };
+    let (new_eq, inverse_kind) = cas_solver_core::function_inverse::rewrite_unary_inverse_equation(
+        &mut simplifier.context,
+        &fn_name,
+        arg,
+        rhs,
+        op.clone(),
+        true,
+    )
+    .ok_or_else(|| CasError::UnknownFunction(fn_name.clone()))?;
+    let new_rhs = new_eq.rhs;
 
     if simplifier.collect_steps() {
         steps.push(SolveStep {
             description: inverse_kind.step_description().to_string(),
-            equation_after: new_eq,
+            equation_after: new_eq.clone(),
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });

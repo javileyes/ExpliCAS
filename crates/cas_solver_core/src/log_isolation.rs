@@ -1,5 +1,5 @@
 use crate::isolation_utils::contains_var;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{Context, Equation, Expr, ExprId, RelOp};
 
 /// Planned transformation for isolating a logarithmic equation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -8,6 +8,17 @@ pub enum LogIsolationPlan {
     SolveArgument { lhs: ExprId, rhs: ExprId },
     /// `log(base, arg) = rhs` -> `base = arg^(1/rhs)`
     SolveBase { lhs: ExprId, rhs: ExprId },
+}
+
+impl LogIsolationPlan {
+    /// Convert a plan into the target equation preserving the incoming relation.
+    pub fn into_equation(self, op: RelOp) -> Equation {
+        match self {
+            Self::SolveArgument { lhs, rhs } | Self::SolveBase { lhs, rhs } => {
+                Equation { lhs, rhs, op }
+            }
+        }
+    }
 }
 
 /// Build the transformed equation target for `log(base, arg) = rhs`.
@@ -103,5 +114,16 @@ mod tests {
 
         assert!(plan_log_isolation(&mut ctx, x, x, three, "x").is_none());
         assert!(plan_log_isolation(&mut ctx, y, three, three, "x").is_none());
+    }
+
+    #[test]
+    fn into_equation_preserves_relation_and_sides() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("x");
+        let rhs = ctx.var("y");
+        let eq = LogIsolationPlan::SolveArgument { lhs, rhs }.into_equation(RelOp::Geq);
+        assert_eq!(eq.lhs, lhs);
+        assert_eq!(eq.rhs, rhs);
+        assert_eq!(eq.op, RelOp::Geq);
     }
 }

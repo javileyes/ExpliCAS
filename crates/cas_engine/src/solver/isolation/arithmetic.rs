@@ -189,34 +189,26 @@ pub(super) fn isolate_mul(
     if both_have_var && rhs_is_zero {
         // Product inequality split: A * B op 0
         if let Some((case1, case2)) = product_zero_inequality_cases(op.clone()) {
-            let zero = simplifier.context.num(0);
-
             // Case 1
-            let eq_a_case1 = Equation {
-                lhs: l,
-                rhs: zero,
-                op: case1.left,
-            };
-            let eq_b_case1 = Equation {
-                lhs: r,
-                rhs: zero,
-                op: case1.right,
-            };
+            let (eq_a_case1, eq_b_case1) =
+                cas_solver_core::equation_rewrite::build_product_zero_sign_case(
+                    &mut simplifier.context,
+                    l,
+                    r,
+                    &case1,
+                );
             let (set_a_case1, _) = solve_with_ctx(&eq_a_case1, var, simplifier, ctx)?;
             let (set_b_case1, _) = solve_with_ctx(&eq_b_case1, var, simplifier, ctx)?;
             let case_set1 = intersect_solution_sets(&simplifier.context, set_a_case1, set_b_case1);
 
             // Case 2
-            let eq_a_case2 = Equation {
-                lhs: l,
-                rhs: zero,
-                op: case2.left,
-            };
-            let eq_b_case2 = Equation {
-                lhs: r,
-                rhs: zero,
-                op: case2.right,
-            };
+            let (eq_a_case2, eq_b_case2) =
+                cas_solver_core::equation_rewrite::build_product_zero_sign_case(
+                    &mut simplifier.context,
+                    l,
+                    r,
+                    &case2,
+                );
             let (set_a_case2, _) = solve_with_ctx(&eq_a_case2, var, simplifier, ctx)?;
             let (set_b_case2, _) = solve_with_ctx(&eq_b_case2, var, simplifier, ctx)?;
             let case_set2 = intersect_solution_sets(&simplifier.context, set_a_case2, set_b_case2);
@@ -355,12 +347,11 @@ pub(super) fn isolate_div(
             let (set_pos, steps_pos) = prepend_steps(results_pos, steps.clone())?;
 
             // Domain: r > 0
-            let zero = simplifier.context.num(0);
-            let domain_eq = Equation {
-                lhs: r,
-                rhs: zero,
-                op: RelOp::Gt,
-            };
+            let domain_eq = cas_solver_core::equation_rewrite::build_sign_domain_equation(
+                &mut simplifier.context,
+                r,
+                true,
+            );
             let (domain_pos_set, _) = solve_with_ctx(&domain_eq, var, simplifier, ctx)?;
             let final_pos = intersect_solution_sets(&simplifier.context, set_pos, domain_pos_set);
 
@@ -391,12 +382,11 @@ pub(super) fn isolate_div(
             let (set_neg, steps_neg) = prepend_steps(results_neg, steps.clone())?;
 
             // Domain: r < 0
-            let zero = simplifier.context.num(0);
-            let domain_eq_neg = Equation {
-                lhs: r,
-                rhs: zero,
-                op: RelOp::Lt,
-            };
+            let domain_eq_neg = cas_solver_core::equation_rewrite::build_sign_domain_equation(
+                &mut simplifier.context,
+                r,
+                false,
+            );
             let (domain_neg_set, _) = solve_with_ctx(&domain_eq_neg, var, simplifier, ctx)?;
             let final_neg = intersect_solution_sets(&simplifier.context, set_neg, domain_neg_set);
 
