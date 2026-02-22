@@ -5,6 +5,10 @@
 
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp};
 
+/// Main didactic narration for quadratic-strategy activation.
+pub const QUADRATIC_FORMULA_MAIN_STEP_DESCRIPTION: &str =
+    "Detected quadratic equation. Applying quadratic formula.";
+
 /// Core didactic step payload for quadratic derivations.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DidacticSubstep {
@@ -307,5 +311,13 @@ mod tests {
         assert!(steps[0].description.contains("Factorizar"));
         assert!(steps[1].description.contains("Producto"));
         assert!(steps[2].description.contains("Resolver"));
+    }
+
+    #[test]
+    fn quadratic_main_step_description_stays_stable() {
+        assert_eq!(
+            QUADRATIC_FORMULA_MAIN_STEP_DESCRIPTION,
+            "Detected quadratic equation. Applying quadratic formula."
+        );
     }
 }

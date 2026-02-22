@@ -177,8 +177,9 @@ impl SolverStrategy for QuadraticStrategy {
 
                 // Main step with substeps attached
                 let main_step = SolveStep {
-                    description: "Detected quadratic equation. Applying quadratic formula."
-                        .to_string(),
+                    description:
+                        cas_solver_core::quadratic_didactic::QUADRATIC_FORMULA_MAIN_STEP_DESCRIPTION
+                            .to_string(),
                     equation_after: Equation {
                         lhs: sim_poly_expr,
                         rhs: simplifier.context.num(0),
