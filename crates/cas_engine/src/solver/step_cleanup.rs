@@ -9,7 +9,6 @@
 
 use crate::solver::SolveStep;
 use cas_ast::Context;
-use cas_math::expr_predicates::is_zero_expr as is_zero;
 use cas_solver_core::sign_normalize::{cleanup_step_description, normalize_expr_signs};
 
 /// Clean up solve steps for better didactic display.
@@ -36,7 +35,12 @@ pub(crate) fn cleanup_solve_steps(
     }
 
     // Phase 1: Remove redundant steps (using original descriptions for detection)
-    let filtered = remove_redundant_steps(ctx, steps);
+    let filtered = cas_solver_core::step_cleanup::remove_redundant_steps_by(
+        ctx,
+        steps,
+        |s| s.description.as_str(),
+        |s| &s.equation_after,
+    );
 
     // Phase 2: Rewrite log-linear steps for didactic clarity
     // detailed=true → atomic sub-steps (Expand, Move, Factor)
@@ -52,33 +56,7 @@ pub(crate) fn cleanup_solve_steps(
 
     // Phase 4: Remove consecutive steps with identical equations
     // Now safe for both modes since detailed generates distinct equations
-    remove_duplicate_equations(normalized)
-}
-
-/// Remove consecutive steps where the equation_after is identical.
-fn remove_duplicate_equations(steps: Vec<SolveStep>) -> Vec<SolveStep> {
-    if steps.len() < 2 {
-        return steps;
-    }
-
-    let mut result = Vec::with_capacity(steps.len());
-    result.push(steps[0].clone());
-
-    for i in 1..steps.len() {
-        let prev = &steps[i - 1];
-        let curr = &steps[i];
-
-        // Check if equations are identical (by ExprId)
-        if prev.equation_after.lhs == curr.equation_after.lhs
-            && prev.equation_after.rhs == curr.equation_after.rhs
-        {
-            continue; // Skip - shows same equation
-        }
-
-        result.push(curr.clone());
-    }
-
-    result
+    cas_solver_core::step_cleanup::remove_duplicate_equations_by(normalized, |s| &s.equation_after)
 }
 
 /// Normalize signs in a single step's equation for cleaner display.
@@ -97,79 +75,6 @@ fn normalize_step_signs(ctx: &mut Context, mut step: SolveStep) -> SolveStep {
     step.description = cleanup_step_description(&step.description);
 
     step
-}
-
-/// Remove redundant step pairs from the step list.
-///
-/// Detects patterns like:
-/// - Step i: `E = 0`
-/// - Step i+1: `E = something` (undoes step i)
-///
-/// In these cases, we remove the earlier "worse" step.
-fn remove_redundant_steps(ctx: &Context, steps: Vec<SolveStep>) -> Vec<SolveStep> {
-    if steps.len() < 2 {
-        return steps;
-    }
-
-    let mut result = Vec::with_capacity(steps.len());
-    let mut i = 0;
-
-    while i < steps.len() {
-        let current = &steps[i];
-
-        // Check if next step effectively undoes this one
-        if i + 1 < steps.len() {
-            let next = &steps[i + 1];
-
-            // Pattern: current has RHS = 0, next reintroduces RHS
-            // This is the "normalize to 0 then undo" pattern
-            if is_step_normalize_to_zero(ctx, current)
-                && is_step_undo_normalization(ctx, current, next)
-            {
-                // Skip current step (the =0 normalization), keep next
-                i += 1;
-                continue;
-            }
-        }
-
-        result.push(current.clone());
-        i += 1;
-    }
-
-    result
-}
-
-/// Check if a step normalizes to = 0 form.
-fn is_step_normalize_to_zero(ctx: &Context, step: &SolveStep) -> bool {
-    is_zero(ctx, step.equation_after.rhs)
-}
-
-/// Check if next step effectively undoes a =0 normalization.
-///
-/// This happens when:
-/// - Previous step: `LHS - something = 0`
-/// - Current step: `LHS = something` (or similar restructuring)
-fn is_step_undo_normalization(ctx: &Context, prev: &SolveStep, curr: &SolveStep) -> bool {
-    let prev_rhs_zero = is_zero(ctx, prev.equation_after.rhs);
-    let curr_rhs_zero = is_zero(ctx, curr.equation_after.rhs);
-
-    if prev_rhs_zero && !curr_rhs_zero {
-        // Pattern 1: "Subtract X" followed by step that undoes it
-        if prev.description.contains("Subtract")
-            && curr.description.contains("Subtract")
-            && (curr.description.contains("-(") || curr.description.contains("- -("))
-        {
-            return true;
-        }
-
-        // Pattern 2: Description got cleaned to "Move terms to one side"
-        // This means we detected an undo pattern
-        if curr.description == "Move terms to one side" {
-            return true;
-        }
-    }
-
-    false
 }
 
 #[cfg(test)]

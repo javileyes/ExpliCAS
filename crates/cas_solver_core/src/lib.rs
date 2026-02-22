@@ -22,6 +22,7 @@ pub mod sign_normalize;
 pub mod solution_set;
 pub mod solve_analysis;
 pub mod solve_outcome;
+pub mod step_cleanup;
 pub mod substitution;
 pub mod verification;
 pub mod verify_stats;
