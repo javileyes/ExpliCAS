@@ -46,11 +46,11 @@ pub(crate) fn try_reciprocal_solve(
     if simplifier.collect_steps() {
         let mut equation_after = plan.combine_equation.clone();
         equation_after.rhs = display_rhs;
+        let combine_step = cas_solver_core::reciprocal::build_reciprocal_combine_step(equation_after);
 
         steps.push(SolveStep {
-            description: cas_solver_core::reciprocal::RECIPROCAL_COMBINE_STEP_DESCRIPTION
-                .to_string(),
-            equation_after,
+            description: combine_step.description,
+            equation_after: combine_step.equation_after,
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });
@@ -62,11 +62,11 @@ pub(crate) fn try_reciprocal_solve(
     if simplifier.collect_steps() {
         let mut equation_after = plan.solve_equation.clone();
         equation_after.rhs = simplified_solution;
+        let invert_step = cas_solver_core::reciprocal::build_reciprocal_invert_step(equation_after);
 
         steps.push(SolveStep {
-            description: cas_solver_core::reciprocal::RECIPROCAL_INVERT_STEP_DESCRIPTION
-                .to_string(),
-            equation_after,
+            description: invert_step.description,
+            equation_after: invert_step.equation_after,
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });

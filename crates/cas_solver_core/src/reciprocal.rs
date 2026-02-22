@@ -115,6 +115,13 @@ pub const RECIPROCAL_COMBINE_STEP_DESCRIPTION: &str =
 /// Human-readable step description for reciprocal inversion.
 pub const RECIPROCAL_INVERT_STEP_DESCRIPTION: &str = "Take reciprocal";
 
+/// Didactic payload for one reciprocal-solve step.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReciprocalDidacticStep {
+    pub description: String,
+    pub equation_after: Equation,
+}
+
 /// Planned equation targets for reciprocal solve `1/var = rhs`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReciprocalSolvePlan {
@@ -178,6 +185,22 @@ pub fn build_reciprocal_solve_plan(
         solve_equation,
         combined_rhs,
         solution_rhs,
+    }
+}
+
+/// Build didactic payload for the reciprocal combine step.
+pub fn build_reciprocal_combine_step(equation_after: Equation) -> ReciprocalDidacticStep {
+    ReciprocalDidacticStep {
+        description: RECIPROCAL_COMBINE_STEP_DESCRIPTION.to_string(),
+        equation_after,
+    }
+}
+
+/// Build didactic payload for the reciprocal inversion step.
+pub fn build_reciprocal_invert_step(equation_after: Equation) -> ReciprocalDidacticStep {
+    ReciprocalDidacticStep {
+        description: RECIPROCAL_INVERT_STEP_DESCRIPTION.to_string(),
+        equation_after,
     }
 }
 
@@ -294,5 +317,27 @@ mod tests {
             Expr::Div(_, _)
         ));
         assert!(matches!(ctx.get(plan.solve_equation.rhs), Expr::Div(_, _)));
+    }
+
+    #[test]
+    fn reciprocal_step_builders_use_standard_messages() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let eq = Equation {
+            lhs: x,
+            rhs: y,
+            op: RelOp::Eq,
+        };
+        let combine = build_reciprocal_combine_step(eq.clone());
+        assert_eq!(
+            combine.description,
+            "Combine fractions on RHS (common denominator)"
+        );
+        assert_eq!(combine.equation_after, eq);
+
+        let invert = build_reciprocal_invert_step(eq.clone());
+        assert_eq!(invert.description, "Take reciprocal");
+        assert_eq!(invert.equation_after, eq);
     }
 }
