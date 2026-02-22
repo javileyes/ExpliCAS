@@ -504,18 +504,20 @@ fn try_solve_rational_exponent(
     simplifier: &mut Simplifier,
     ctx: &super::SolveCtx,
 ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-    // Check if RHS contains the variable (we only handle simple cases)
-    if contains_var(&simplifier.context, eq.rhs, var) {
-        return None;
-    }
+    let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
+    let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
 
-    // Try to rewrite x^(p/q) = rhs into x^p = rhs^q
-    let (raw_eq, _p, q) = cas_solver_core::rational_power::rewrite_rational_power_equation(
-        &mut simplifier.context,
-        eq.lhs,
-        eq.rhs,
-        var,
-    )?;
+    // Try to rewrite isolated x^(p/q) = rhs into x^p = rhs^q.
+    let (raw_eq, _p, q) =
+        cas_solver_core::rational_power::rewrite_isolated_rational_power_equation(
+            &mut simplifier.context,
+            eq.lhs,
+            eq.rhs,
+            var,
+            eq.op.clone(),
+            lhs_has,
+            rhs_has,
+        )?;
 
     let mut steps = Vec::new();
 

@@ -468,30 +468,20 @@ impl SolverStrategy for RationalExponentStrategy {
         _opts: &SolverOptions,
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-        // Only handle equality for now
-        if eq.op != RelOp::Eq {
-            return None;
-        }
-
-        // Check if LHS is Pow(base, exp) where base contains var and exp is rational p/q
         let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
         let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
 
-        // We need var only on one side in a power
-        if rhs_has {
-            return None;
-        }
-        if !lhs_has {
-            return None;
-        }
-
-        // Rewrite lhs^(p/q)=rhs into lhs^p=rhs^q via solver core helper
-        let (raw_eq, _p, q) = cas_solver_core::rational_power::rewrite_rational_power_equation(
-            &mut simplifier.context,
-            eq.lhs,
-            eq.rhs,
-            var,
-        )?;
+        // Rewrite isolated lhs^(p/q)=rhs into lhs^p=rhs^q via solver core helper.
+        let (raw_eq, _p, q) =
+            cas_solver_core::rational_power::rewrite_isolated_rational_power_equation(
+                &mut simplifier.context,
+                eq.lhs,
+                eq.rhs,
+                var,
+                eq.op.clone(),
+                lhs_has,
+                rhs_has,
+            )?;
 
         let mut steps = Vec::new();
 

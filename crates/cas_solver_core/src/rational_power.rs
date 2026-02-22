@@ -73,6 +73,24 @@ pub fn rewrite_rational_power_equation(
     ))
 }
 
+/// Rewrite helper for the common isolated pattern used by the solver:
+/// only rewrites when the equation is an equality with the variable
+/// appearing on the left side and not on the right side.
+pub fn rewrite_isolated_rational_power_equation(
+    ctx: &mut Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    op: RelOp,
+    lhs_has_var: bool,
+    rhs_has_var: bool,
+) -> Option<(Equation, i64, i64)> {
+    if op != RelOp::Eq || !lhs_has_var || rhs_has_var {
+        return None;
+    }
+    rewrite_rational_power_equation(ctx, lhs, rhs, var)
+}
+
 /// Rewrite an exponential equation with variable in the base:
 /// `A^n op B  ->  A op B^(1/n)`, but only when `n` is not a positive integer.
 ///
@@ -246,6 +264,57 @@ mod tests {
         assert!(matches!(ctx.get(eq.lhs), Expr::Pow(_, _)));
         assert!(matches!(ctx.get(eq.rhs), Expr::Pow(_, _)));
         assert_eq!(eq.op, RelOp::Eq);
+    }
+
+    #[test]
+    fn rewrite_isolated_rational_power_equation_rejects_non_equality() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let three_over_two = ctx.rational(3, 2);
+        let lhs = ctx.add(Expr::Pow(x, three_over_two));
+        assert!(rewrite_isolated_rational_power_equation(
+            &mut ctx,
+            lhs,
+            y,
+            "x",
+            RelOp::Lt,
+            true,
+            false
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn rewrite_isolated_rational_power_equation_rejects_rhs_with_var() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let three_over_two = ctx.rational(3, 2);
+        let lhs = ctx.add(Expr::Pow(x, three_over_two));
+        assert!(rewrite_isolated_rational_power_equation(
+            &mut ctx,
+            lhs,
+            x,
+            "x",
+            RelOp::Eq,
+            true,
+            true
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn rewrite_isolated_rational_power_equation_accepts_isolated_case() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let three_over_two = ctx.rational(3, 2);
+        let lhs = ctx.add(Expr::Pow(x, three_over_two));
+        let out =
+            rewrite_isolated_rational_power_equation(&mut ctx, lhs, y, "x", RelOp::Eq, true, false)
+                .expect("isolated rational power should rewrite");
+        assert_eq!(out.2, 2);
+        assert_eq!(out.0.op, RelOp::Eq);
     }
 
     #[test]
