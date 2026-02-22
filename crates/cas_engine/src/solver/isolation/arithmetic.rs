@@ -2,7 +2,7 @@ use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::{SolveStep, SolverOptions};
-use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
+use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
     contains_var, is_known_negative, should_split_division_denominator_sign_cases,
     should_split_isolated_denominator_variable, should_split_product_zero_inequality,
@@ -12,9 +12,10 @@ use cas_solver_core::solution_set::{
     intersect_solution_sets, open_negative_domain, open_positive_domain, union_solution_sets,
 };
 use cas_solver_core::solve_outcome::{
-    add_both_sides_message, denominator_negative_case_message, denominator_positive_case_message,
-    divide_both_sides_message, end_case_message, isolated_denominator_negative_case_message,
-    isolated_denominator_positive_case_message, move_and_flip_message, multiply_both_sides_message,
+    add_both_sides_message, build_case_boundary_equation, denominator_negative_case_message,
+    denominator_positive_case_message, divide_both_sides_message, end_case_message,
+    isolated_denominator_negative_case_message, isolated_denominator_positive_case_message,
+    move_and_flip_message, multiply_both_sides_message, plan_division_denominator_didactic,
     plan_division_denominator_sign_split, plan_isolated_denominator_sign_split,
     plan_product_zero_inequality_split, subtract_both_sides_message,
 };
@@ -403,11 +404,7 @@ pub(super) fn isolate_div(
             let mut all_steps = steps_pos;
             all_steps.push(SolveStep {
                 description: end_case_message(1),
-                equation_after: Equation {
-                    lhs: l,
-                    rhs: eq_neg.rhs,
-                    op,
-                },
+                equation_after: build_case_boundary_equation(l, eq_neg.rhs, op),
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -473,12 +470,6 @@ pub(super) fn isolate_div(
         } else {
             let (simplified, _) = simplifier.simplify(isolated_eq.rhs);
             simplified
-        };
-
-        let new_eq = Equation {
-            lhs: r,
-            rhs: sim_rhs,
-            op: op.clone(),
         };
 
         // Check if denominator is just the variable (simple case)
@@ -561,11 +552,7 @@ pub(super) fn isolate_div(
             let mut all_steps = steps_pos;
             all_steps.push(SolveStep {
                 description: end_case_message(1),
-                equation_after: Equation {
-                    lhs: r,
-                    rhs: eq_neg.rhs,
-                    op,
-                },
+                equation_after: build_case_boundary_equation(r, eq_neg.rhs, op),
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -575,38 +562,47 @@ pub(super) fn isolate_div(
         }
 
         if simplifier.collect_steps() {
-            // PEDAGOGICAL: Decompose into 2 steps
-            // Step 1: Multiply both sides by denominator (r)
-            let rhs_times_r = simplifier.context.add(Expr::Mul(rhs, r));
-            let (rhs_times_r_simplified, _) = simplifier.simplify(rhs_times_r);
+            // PEDAGOGICAL: Decompose denominator isolation into two explicit steps.
+            let didactic_plan = plan_division_denominator_didactic(
+                &mut simplifier.context,
+                l,
+                r,
+                rhs,
+                sim_rhs,
+                op.clone(),
+            );
+            let (rhs_times_r_simplified, _) =
+                simplifier.simplify(didactic_plan.multiply_equation.rhs);
+            let multiply_equation = Equation {
+                lhs: didactic_plan.multiply_equation.lhs,
+                rhs: rhs_times_r_simplified,
+                op: didactic_plan.multiply_equation.op.clone(),
+            };
+            let multiply_by_desc = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id: didactic_plan.multiply_by
+                }
+            );
 
             steps.push(SolveStep {
-                description: multiply_both_sides_message(&format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: r
-                    }
-                )),
-                equation_after: Equation {
-                    lhs: l,
-                    rhs: rhs_times_r_simplified,
-                    op: op.clone(),
-                },
+                description: multiply_both_sides_message(&multiply_by_desc),
+                equation_after: multiply_equation,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
 
-            // Step 2: Divide both sides by rhs
+            let divide_by_desc = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id: didactic_plan.divide_by
+                }
+            );
             steps.push(SolveStep {
-                description: divide_both_sides_message(&format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: rhs
-                    }
-                )),
-                equation_after: new_eq,
+                description: divide_both_sides_message(&divide_by_desc),
+                equation_after: didactic_plan.divide_equation,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });

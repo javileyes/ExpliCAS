@@ -924,6 +924,16 @@ pub struct IsolatedDenominatorSignSplitPlan {
     pub negative_equation: Equation,
 }
 
+/// Pre-built didactic equations for denominator-isolation rewrite:
+/// `num / den op rhs` -> `num op rhs*den` -> `den op num/rhs`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DivisionDenominatorDidacticPlan {
+    pub multiply_equation: Equation,
+    pub divide_equation: Equation,
+    pub multiply_by: ExprId,
+    pub divide_by: ExprId,
+}
+
 /// Classify numeric RHS sign for `|A| = RHS`.
 pub fn abs_equality_precheck(sign: NumericSign) -> AbsEqualityPrecheck {
     match sign {
@@ -1006,6 +1016,39 @@ pub fn plan_isolated_denominator_sign_split(
         positive_equation: branches.positive,
         negative_equation: branches.negative,
     })
+}
+
+/// Build didactic two-step rewrite for denominator isolation:
+/// 1. Multiply both sides by denominator.
+/// 2. Divide both sides by previous rhs.
+pub fn plan_division_denominator_didactic(
+    ctx: &mut Context,
+    numerator: ExprId,
+    denominator: ExprId,
+    rhs: ExprId,
+    isolated_rhs: ExprId,
+    op: RelOp,
+) -> DivisionDenominatorDidacticPlan {
+    let multiplied_rhs = ctx.add(Expr::Mul(rhs, denominator));
+    DivisionDenominatorDidacticPlan {
+        multiply_equation: Equation {
+            lhs: numerator,
+            rhs: multiplied_rhs,
+            op: op.clone(),
+        },
+        divide_equation: Equation {
+            lhs: denominator,
+            rhs: isolated_rhs,
+            op,
+        },
+        multiply_by: denominator,
+        divide_by: rhs,
+    }
+}
+
+/// Build equation payload used when stitching branch traces with a case marker.
+pub fn build_case_boundary_equation(lhs: ExprId, rhs: ExprId, op: RelOp) -> Equation {
+    Equation { lhs, rhs, op }
 }
 
 /// Build an executable isolation plan for absolute-value equations.
@@ -2170,6 +2213,43 @@ mod tests {
         assert_eq!(plan.negative_equation.rhs, rhs);
         assert_eq!(plan.positive_equation.op, RelOp::Geq);
         assert_eq!(plan.negative_equation.op, RelOp::Leq);
+    }
+
+    #[test]
+    fn plan_division_denominator_didactic_builds_two_step_equations() {
+        let mut ctx = Context::new();
+        let num = ctx.var("a");
+        let den = ctx.var("x");
+        let rhs = ctx.var("b");
+        let isolated_rhs = ctx.var("c");
+        let plan = plan_division_denominator_didactic(
+            &mut ctx,
+            num,
+            den,
+            rhs,
+            isolated_rhs,
+            RelOp::Eq,
+        );
+
+        assert_eq!(plan.multiply_equation.lhs, num);
+        assert_eq!(plan.multiply_equation.op, RelOp::Eq);
+        assert!(matches!(ctx.get(plan.multiply_equation.rhs), Expr::Mul(_, _)));
+        assert_eq!(plan.divide_equation.lhs, den);
+        assert_eq!(plan.divide_equation.rhs, isolated_rhs);
+        assert_eq!(plan.divide_equation.op, RelOp::Eq);
+        assert_eq!(plan.multiply_by, den);
+        assert_eq!(plan.divide_by, rhs);
+    }
+
+    #[test]
+    fn build_case_boundary_equation_keeps_fields() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("lhs");
+        let rhs = ctx.var("rhs");
+        let eq = build_case_boundary_equation(lhs, rhs, RelOp::Gt);
+        assert_eq!(eq.lhs, lhs);
+        assert_eq!(eq.rhs, rhs);
+        assert_eq!(eq.op, RelOp::Gt);
     }
 
     #[test]
