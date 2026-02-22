@@ -988,6 +988,43 @@ where
     }
 }
 
+/// Build didactic payload for already-isolated denominator sign-split:
+/// - Case 1 (`den > 0`)
+/// - Case 2 (`den < 0`)
+/// - Case separator marker between both branches.
+pub fn build_isolated_denominator_sign_split_steps_with<F>(
+    positive_equation: Equation,
+    negative_equation: Equation,
+    denominator: ExprId,
+    case_boundary_lhs: ExprId,
+    case_boundary_op: RelOp,
+    mut render_expr: F,
+) -> DivisionDenominatorSignSplitDidactic
+where
+    F: FnMut(ExprId) -> String,
+{
+    let den_display = render_expr(denominator);
+    let boundary_rhs = negative_equation.rhs;
+    DivisionDenominatorSignSplitDidactic {
+        positive_case: DivisionCaseDidacticStep {
+            description: isolated_denominator_positive_case_message(&den_display),
+            equation_after: positive_equation,
+        },
+        negative_case: DivisionCaseDidacticStep {
+            description: isolated_denominator_negative_case_message(&den_display),
+            equation_after: negative_equation,
+        },
+        case_boundary: DivisionCaseDidacticStep {
+            description: end_case_message(1),
+            equation_after: build_case_boundary_equation(
+                case_boundary_lhs,
+                boundary_rhs,
+                case_boundary_op,
+            ),
+        },
+    }
+}
+
 /// Build narration for taking logarithm on both sides.
 pub fn take_log_base_message(base_display: &str) -> String {
     format!("Take log base {} of both sides", base_display)
@@ -2853,6 +2890,52 @@ mod tests {
             payload.case_boundary.equation_after,
             Equation {
                 lhs: n,
+                rhs: r,
+                op: RelOp::Lt,
+            }
+        );
+    }
+
+    #[test]
+    fn build_isolated_denominator_sign_split_steps_with_builds_payload() {
+        let mut ctx = Context::new();
+        let d = ctx.var("d");
+        let r = ctx.var("r");
+        let eq_pos = Equation {
+            lhs: d,
+            rhs: r,
+            op: RelOp::Lt,
+        };
+        let eq_neg = Equation {
+            lhs: d,
+            rhs: r,
+            op: RelOp::Gt,
+        };
+
+        let payload = build_isolated_denominator_sign_split_steps_with(
+            eq_pos.clone(),
+            eq_neg.clone(),
+            d,
+            d,
+            RelOp::Lt,
+            |_| "d".to_string(),
+        );
+
+        assert_eq!(
+            payload.positive_case.description,
+            "Case 1: Assume d > 0. Multiply by d (positive). Inequality direction preserved (flipped from isolation logic)."
+        );
+        assert_eq!(payload.positive_case.equation_after, eq_pos);
+        assert_eq!(
+            payload.negative_case.description,
+            "Case 2: Assume d < 0. Multiply by d (negative). Inequality flips."
+        );
+        assert_eq!(payload.negative_case.equation_after, eq_neg);
+        assert_eq!(payload.case_boundary.description, "--- End of Case 1 ---");
+        assert_eq!(
+            payload.case_boundary.equation_after,
+            Equation {
+                lhs: d,
                 rhs: r,
                 op: RelOp::Lt,
             }

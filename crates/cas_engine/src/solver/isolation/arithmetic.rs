@@ -12,11 +12,9 @@ use cas_solver_core::solution_set::{
     intersect_solution_sets, open_negative_domain, open_positive_domain, union_solution_sets,
 };
 use cas_solver_core::solve_outcome::{
-    add_both_sides_message, build_case_boundary_equation,
-    build_division_denominator_sign_split_steps_with, divide_both_sides_message,
-    end_case_message, isolated_denominator_negative_case_message,
-    isolated_denominator_positive_case_message, move_and_flip_message,
-    multiply_both_sides_message, plan_division_denominator_didactic,
+    add_both_sides_message, build_division_denominator_sign_split_steps_with,
+    build_isolated_denominator_sign_split_steps_with, divide_both_sides_message,
+    move_and_flip_message, multiply_both_sides_message, plan_division_denominator_didactic,
     plan_division_denominator_sign_split, plan_isolated_denominator_sign_split,
     plan_product_zero_inequality_split, subtract_both_sides_message,
 };
@@ -488,19 +486,30 @@ pub(super) fn isolate_div(
                 .expect("inequality branch requires denominator sign cases");
             let eq_pos = split_plan.positive_equation;
             let eq_neg = split_plan.negative_equation;
+            let split_steps = simplifier.collect_steps().then(|| {
+                build_isolated_denominator_sign_split_steps_with(
+                    eq_pos.clone(),
+                    eq_neg.clone(),
+                    r,
+                    r,
+                    op.clone(),
+                    |id| {
+                        format!(
+                            "{}",
+                            cas_formatter::DisplayExpr {
+                                context: &simplifier.context,
+                                id
+                            }
+                        )
+                    },
+                )
+            });
 
             let mut steps_case1 = steps.clone();
-            if simplifier.collect_steps() {
-                let r_desc = format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: r
-                    }
-                );
+            if let Some(split_steps) = split_steps.as_ref() {
                 steps_case1.push(SolveStep {
-                    description: isolated_denominator_positive_case_message(&r_desc),
-                    equation_after: eq_pos.clone(),
+                    description: split_steps.positive_case.description.clone(),
+                    equation_after: split_steps.positive_case.equation_after.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -523,17 +532,10 @@ pub(super) fn isolate_div(
 
             // Case 2: x < 0. Multiply by x (negative) -> Inequality flips.
             let mut steps_case2 = steps.clone();
-            if simplifier.collect_steps() {
-                let r_desc = format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: r
-                    }
-                );
+            if let Some(split_steps) = split_steps.as_ref() {
                 steps_case2.push(SolveStep {
-                    description: isolated_denominator_negative_case_message(&r_desc),
-                    equation_after: eq_neg.clone(),
+                    description: split_steps.negative_case.description.clone(),
+                    equation_after: split_steps.negative_case.equation_after.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -559,12 +561,14 @@ pub(super) fn isolate_div(
 
             // Combine steps
             let mut all_steps = steps_pos;
-            all_steps.push(SolveStep {
-                description: end_case_message(1),
-                equation_after: build_case_boundary_equation(r, eq_neg.rhs, op),
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
+            if let Some(split_steps) = split_steps {
+                all_steps.push(SolveStep {
+                    description: split_steps.case_boundary.description,
+                    equation_after: split_steps.case_boundary.equation_after,
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
             all_steps.extend(steps_neg);
 
             return Ok((final_set, all_steps));
