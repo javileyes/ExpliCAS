@@ -196,6 +196,16 @@ pub fn resolve_log_terminal_outcome(
     }
 }
 
+/// Build a user-facing message for terminal outcomes, appending
+/// `residual_suffix` only when the outcome is residual.
+pub fn terminal_outcome_message(outcome: &TerminalSolveOutcome, residual_suffix: &str) -> String {
+    if matches!(outcome.solutions, SolutionSet::Residual(_)) {
+        format!("{}{}", outcome.message, residual_suffix)
+    } else {
+        outcome.message.to_string()
+    }
+}
+
 /// Pre-check decision for absolute-value equalities `|A| = RHS`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AbsEqualityPrecheck {
@@ -520,6 +530,32 @@ mod tests {
             "x",
         );
         assert!(out.is_none());
+    }
+
+    #[test]
+    fn terminal_outcome_message_appends_suffix_for_residual() {
+        let mut ctx = Context::new();
+        let residual = ctx.var("residual");
+        let outcome = TerminalSolveOutcome {
+            message: "needs complex log",
+            solutions: SolutionSet::Residual(residual),
+        };
+        assert_eq!(
+            terminal_outcome_message(&outcome, " (residual)"),
+            "needs complex log (residual)"
+        );
+    }
+
+    #[test]
+    fn terminal_outcome_message_keeps_message_for_non_residual() {
+        let outcome = TerminalSolveOutcome {
+            message: "no real solutions",
+            solutions: SolutionSet::Empty,
+        };
+        assert_eq!(
+            terminal_outcome_message(&outcome, " (residual)"),
+            "no real solutions"
+        );
     }
 
     #[test]

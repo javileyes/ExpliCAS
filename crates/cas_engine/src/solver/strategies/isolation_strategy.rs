@@ -10,7 +10,7 @@ use cas_solver_core::isolation_utils::{
     match_exponential_var_in_exponent,
 };
 use cas_solver_core::log_domain::{classify_log_linear_rewrite_policy, LogLinearRewritePolicy};
-use cas_solver_core::solve_outcome::resolve_log_terminal_outcome;
+use cas_solver_core::solve_outcome::{resolve_log_terminal_outcome, terminal_outcome_message};
 
 pub struct IsolationStrategy;
 
@@ -134,13 +134,11 @@ fn check_exponential_needs_complex(
     ) {
         let mut steps = Vec::new();
         if simplifier.collect_steps() {
-            let description = if matches!(outcome.solutions, SolutionSet::Residual(_)) {
-                format!("{} - use 'semantics preset complex'", outcome.message)
-            } else {
-                outcome.message.to_string()
-            };
             steps.push(SolveStep {
-                description,
+                description: terminal_outcome_message(
+                    &outcome,
+                    " - use 'semantics preset complex'",
+                ),
                 equation_after: eq.clone(),
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],

@@ -13,7 +13,7 @@ use cas_solver_core::solve_outcome::{
     classify_pow_base_isolation_route, classify_pow_exponent_shortcut,
     even_power_negative_rhs_outcome, guarded_or_residual, power_base_one_outcome,
     power_equals_base_symbolic_outcome, residual_expression, resolve_log_terminal_outcome,
-    PowBaseIsolationRoute, PowExponentShortcut, PowerEqualsBaseRoute,
+    terminal_outcome_message, PowBaseIsolationRoute, PowExponentShortcut, PowerEqualsBaseRoute,
 };
 
 use super::{isolate, prepend_steps};
@@ -412,13 +412,8 @@ fn isolate_pow_exponent(
         var,
     ) {
         if simplifier.collect_steps() {
-            let description = if matches!(outcome.solutions, SolutionSet::Residual(_)) {
-                format!("{} (residual)", outcome.message)
-            } else {
-                outcome.message.to_string()
-            };
             steps.push(SolveStep {
-                description,
+                description: terminal_outcome_message(&outcome, " (residual)"),
                 equation_after: Equation { lhs, rhs, op },
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
