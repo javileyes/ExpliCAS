@@ -135,11 +135,29 @@ pub enum PowExponentShortcutEngineAction {
     },
 }
 
+/// Collect exponent-shortcut didactic steps in display order.
+pub fn collect_pow_exponent_shortcut_didactic_steps(
+    action: &PowExponentShortcutEngineAction,
+) -> Vec<PowExponentShortcutDidacticStep> {
+    match action {
+        PowExponentShortcutEngineAction::Continue => vec![],
+        PowExponentShortcutEngineAction::IsolateExponent { step, .. }
+        | PowExponentShortcutEngineAction::ReturnSolutionSet { step, .. } => vec![step.clone()],
+    }
+}
+
 /// Solved base-one shortcut (`1^x = rhs`) with didactic payload.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowerBaseOneShortcutOutcome {
     pub solutions: SolutionSet,
     pub step: PowExponentShortcutDidacticStep,
+}
+
+/// Collect base-one shortcut didactic steps in display order.
+pub fn collect_power_base_one_shortcut_didactic_steps(
+    outcome: &PowerBaseOneShortcutOutcome,
+) -> Vec<PowExponentShortcutDidacticStep> {
+    vec![outcome.step.clone()]
 }
 
 /// Didactic payload for logarithmic isolation of exponent equations.
@@ -154,6 +172,13 @@ pub struct PowExponentLogIsolationStep {
 pub struct PowExponentLogIsolationRewritePlan {
     pub equation: Equation,
     pub step: PowExponentLogIsolationStep,
+}
+
+/// Collect logarithmic-isolation didactic steps in display order.
+pub fn collect_pow_exponent_log_isolation_didactic_steps(
+    plan: &PowExponentLogIsolationRewritePlan,
+) -> Vec<PowExponentLogIsolationStep> {
+    vec![plan.step.clone()]
 }
 
 /// Structured outcome for unsupported logarithmic rewrites.
@@ -219,6 +244,16 @@ pub enum PowBaseIsolationEngineAction {
         op: RelOp,
         step: PowBaseIsolationDidacticStep,
     },
+}
+
+/// Collect base-isolation didactic steps in display order.
+pub fn collect_pow_base_isolation_didactic_steps(
+    action: &PowBaseIsolationEngineAction,
+) -> Vec<PowBaseIsolationDidacticStep> {
+    match action {
+        PowBaseIsolationEngineAction::ReturnSolutionSet { step, .. }
+        | PowBaseIsolationEngineAction::IsolateBase { step, .. } => vec![step.clone()],
+    }
 }
 
 /// Didactic payload for one branch produced by absolute-value splitting.
@@ -2537,6 +2572,21 @@ mod tests {
     }
 
     #[test]
+    fn collect_power_base_one_shortcut_didactic_steps_returns_single_step() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rhs = ctx.num(2);
+        let outcome = resolve_power_base_one_shortcut_with(true, false, x, rhs, RelOp::Eq, |_| {
+            "2".to_string()
+        })
+        .expect("shortcut should apply");
+
+        let didactic = collect_power_base_one_shortcut_didactic_steps(&outcome);
+        assert_eq!(didactic.len(), 1);
+        assert_eq!(didactic[0], outcome.step);
+    }
+
+    #[test]
     fn abs_equality_precheck_negative_is_empty() {
         assert_eq!(
             abs_equality_precheck(NumericSign::Negative),
@@ -3675,6 +3725,57 @@ mod tests {
     }
 
     #[test]
+    fn collect_pow_base_isolation_didactic_steps_returns_single_step() {
+        let mut ctx = Context::new();
+        let base = ctx.var("x");
+        let exponent = ctx.num(2);
+        let rhs = ctx.num(-1);
+        let plan =
+            plan_pow_base_isolation(&mut ctx, base, exponent, rhs, RelOp::Eq, true, true, false);
+        let action = map_pow_base_isolation_plan_with(plan, base, exponent, rhs, RelOp::Eq, |_| {
+            "expr".to_string()
+        });
+
+        let didactic = collect_pow_base_isolation_didactic_steps(&action);
+        assert_eq!(didactic.len(), 1);
+        assert!(didactic[0]
+            .description
+            .contains("Even power cannot be negative"));
+    }
+
+    #[test]
+    fn collect_pow_exponent_shortcut_didactic_steps_handles_continue_and_isolate() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let n = ctx.var("n");
+
+        let continue_steps = collect_pow_exponent_shortcut_didactic_steps(
+            &PowExponentShortcutEngineAction::Continue,
+        );
+        assert!(continue_steps.is_empty());
+
+        let action = map_pow_exponent_shortcut_with(
+            PowExponentShortcutExecutionPlan::IsolateExponent {
+                rhs: n,
+                op: RelOp::Eq,
+                narrative: PowExponentShortcutNarrative::EqualPowBases,
+                rhs_exponent: Some(n),
+            },
+            x,
+            base,
+            rhs,
+            RelOp::Eq,
+            "x",
+            |_| "expr".to_string(),
+        );
+        let didactic = collect_pow_exponent_shortcut_didactic_steps(&action);
+        assert_eq!(didactic.len(), 1);
+        assert!(didactic[0].description.contains("expr"));
+    }
+
+    #[test]
     fn pow_base_isolation_terminal_message_formats_impossible_even_case() {
         let msg = pow_base_isolation_terminal_message(
             PowBaseIsolationRoute::EvenExponentNegativeRhsImpossible,
@@ -4305,6 +4406,27 @@ mod tests {
         );
         assert_eq!(plan.equation.lhs, exponent);
         assert_eq!(plan.equation.op, RelOp::Eq);
+    }
+
+    #[test]
+    fn collect_pow_exponent_log_isolation_didactic_steps_returns_single_step() {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let plan = plan_pow_exponent_log_isolation_step_with(
+            &mut ctx,
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            None,
+            |_| "rendered(a)".to_string(),
+        );
+
+        let didactic = collect_pow_exponent_log_isolation_didactic_steps(&plan);
+        assert_eq!(didactic.len(), 1);
+        assert_eq!(didactic[0], plan.step);
     }
 
     #[test]
