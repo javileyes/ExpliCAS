@@ -1642,6 +1642,45 @@ where
     Some((outcome.solutions, message))
 }
 
+/// Resolve single-side exponential terminal outcome and return a didactic step.
+#[allow(clippy::too_many_arguments)]
+pub fn resolve_single_side_exponential_terminal_with_step<F>(
+    ctx: &mut Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    lhs_has_var: bool,
+    rhs_has_var: bool,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+    residual_suffix: &str,
+    equation_after: Equation,
+    classify_log_solve: F,
+) -> Option<(SolutionSet, TermIsolationDidacticStep)>
+where
+    F: FnMut(&Context, ExprId, ExprId) -> LogSolveDecision,
+{
+    let (solutions, message) = resolve_single_side_exponential_terminal_with_message(
+        ctx,
+        lhs,
+        rhs,
+        var,
+        lhs_has_var,
+        rhs_has_var,
+        mode,
+        wildcard_scope,
+        residual_suffix,
+        classify_log_solve,
+    )?;
+    Some((
+        solutions,
+        TermIsolationDidacticStep {
+            description: message,
+            equation_after,
+        },
+    ))
+}
+
 /// Build a user-facing message for terminal outcomes, appending
 /// `residual_suffix` only when the outcome is residual.
 pub fn terminal_outcome_message(outcome: &TerminalSolveOutcome, residual_suffix: &str) -> String {
@@ -2614,6 +2653,39 @@ mod tests {
 
         assert_eq!(message, "no real solutions");
         assert!(matches!(solutions, SolutionSet::Empty));
+    }
+
+    #[test]
+    fn resolve_single_side_exponential_terminal_with_step_builds_didactic_payload() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let pow = ctx.add(Expr::Pow(two, x));
+        let neg_five = ctx.num(-5);
+        let equation_after = Equation {
+            lhs: pow,
+            rhs: neg_five,
+            op: RelOp::Eq,
+        };
+
+        let (solutions, step) = resolve_single_side_exponential_terminal_with_step(
+            &mut ctx,
+            pow,
+            neg_five,
+            "x",
+            true,
+            false,
+            DomainModeKind::Generic,
+            false,
+            " (residual)",
+            equation_after.clone(),
+            |_ctx, _base, _rhs| LogSolveDecision::EmptySet("no real solutions"),
+        )
+        .expect("must produce terminal didactic payload");
+
+        assert!(matches!(solutions, SolutionSet::Empty));
+        assert_eq!(step.description, "no real solutions");
+        assert_eq!(step.equation_after, equation_after);
     }
 
     #[test]
