@@ -19,6 +19,16 @@ impl LogIsolationPlan {
             }
         }
     }
+
+    /// Build didactic narration for the selected log-isolation rewrite.
+    pub fn step_description(self, base_display: &str) -> String {
+        match self {
+            Self::SolveArgument { .. } => {
+                format!("Exponentiate both sides with base {}", base_display)
+            }
+            Self::SolveBase { .. } => "Isolate base of logarithm".to_string(),
+        }
+    }
 }
 
 /// Build the transformed equation target for `log(base, arg) = rhs`.
@@ -125,5 +135,23 @@ mod tests {
         assert_eq!(eq.lhs, lhs);
         assert_eq!(eq.rhs, rhs);
         assert_eq!(eq.op, RelOp::Geq);
+    }
+
+    #[test]
+    fn step_description_for_solve_argument_uses_base_display() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("x");
+        let rhs = ctx.var("y");
+        let msg = LogIsolationPlan::SolveArgument { lhs, rhs }.step_description("2");
+        assert_eq!(msg, "Exponentiate both sides with base 2");
+    }
+
+    #[test]
+    fn step_description_for_solve_base_is_constant_text() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("x");
+        let rhs = ctx.var("y");
+        let msg = LogIsolationPlan::SolveBase { lhs, rhs }.step_description("ignored");
+        assert_eq!(msg, "Isolate base of logarithm");
     }
 }

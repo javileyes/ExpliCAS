@@ -775,6 +775,13 @@ pub enum AbsIsolationFastPath {
     Continue,
 }
 
+/// Branch labels for absolute-value split rewrites.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AbsSplitCase {
+    Positive,
+    Negative,
+}
+
 /// Classify numeric RHS sign for `|A| = RHS`.
 pub fn abs_equality_precheck(sign: NumericSign) -> AbsEqualityPrecheck {
     match sign {
@@ -797,6 +804,23 @@ pub fn classify_abs_isolation_fast_path(
         Some(AbsEqualityPrecheck::CollapseToZero) => AbsIsolationFastPath::CollapseToZero,
         _ => AbsIsolationFastPath::Continue,
     }
+}
+
+/// Build didactic narration for each absolute-value split branch.
+pub fn abs_split_case_message(
+    case: AbsSplitCase,
+    lhs_display: &str,
+    op_display: &str,
+    rhs_display: &str,
+) -> String {
+    let case_label = match case {
+        AbsSplitCase::Positive => "Case 1",
+        AbsSplitCase::Negative => "Case 2",
+    };
+    format!(
+        "Split absolute value ({}): {} {} {}",
+        case_label, lhs_display, op_display, rhs_display
+    )
 }
 
 /// For `|A| = rhs`, attach the soundness guard `rhs >= 0` when
@@ -1048,6 +1072,18 @@ mod tests {
             classify_abs_isolation_fast_path(RelOp::Eq, None),
             AbsIsolationFastPath::Continue
         );
+    }
+
+    #[test]
+    fn abs_split_case_message_formats_positive_case() {
+        let msg = abs_split_case_message(AbsSplitCase::Positive, "x", "=", "2");
+        assert_eq!(msg, "Split absolute value (Case 1): x = 2");
+    }
+
+    #[test]
+    fn abs_split_case_message_formats_negative_case() {
+        let msg = abs_split_case_message(AbsSplitCase::Negative, "x", "=", "-2");
+        assert_eq!(msg, "Split absolute value (Case 2): x = -2");
     }
 
     #[test]

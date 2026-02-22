@@ -4,9 +4,9 @@ use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
 use cas_ast::{BuiltinFn, Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{combine_abs_branch_sets, contains_var, numeric_sign};
-use cas_solver_core::log_isolation::LogIsolationPlan;
 use cas_solver_core::solve_outcome::{
-    classify_abs_isolation_fast_path, guard_abs_solution_with_nonnegative_rhs, AbsIsolationFastPath,
+    abs_split_case_message, classify_abs_isolation_fast_path,
+    guard_abs_solution_with_nonnegative_rhs, AbsIsolationFastPath, AbsSplitCase,
 };
 
 use super::{isolate, prepend_steps};
@@ -89,18 +89,26 @@ fn isolate_abs(
     );
     let mut steps1 = steps.clone();
     if simplifier.collect_steps() {
+        let arg_desc = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: arg
+            }
+        );
+        let rhs_desc = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: rhs
+            }
+        );
         steps1.push(SolveStep {
-            description: format!(
-                "Split absolute value (Case 1): {} {} {}",
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: arg
-                },
-                op,
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: rhs
-                }
+            description: abs_split_case_message(
+                AbsSplitCase::Positive,
+                &arg_desc,
+                &op.to_string(),
+                &rhs_desc,
             ),
             equation_after: eq1.clone(),
             importance: crate::step::ImportanceLevel::Medium,
@@ -115,18 +123,26 @@ fn isolate_abs(
     let op2 = eq2.op.clone();
     let mut steps2 = steps.clone();
     if simplifier.collect_steps() {
+        let arg_desc = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: arg
+            }
+        );
+        let neg_rhs_desc = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: neg_rhs
+            }
+        );
         steps2.push(SolveStep {
-            description: format!(
-                "Split absolute value (Case 2): {} {} {}",
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: arg
-                },
-                op2,
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: neg_rhs
-                }
+            description: abs_split_case_message(
+                AbsSplitCase::Negative,
+                &arg_desc,
+                &op2.to_string(),
+                &neg_rhs_desc,
             ),
             equation_after: eq2.clone(),
             importance: crate::step::ImportanceLevel::Medium,
@@ -182,16 +198,14 @@ fn isolate_log(
         )
     })?;
 
-    let description = match plan {
-        LogIsolationPlan::SolveArgument { .. } => format!(
-            "Exponentiate both sides with base {}",
-            cas_formatter::DisplayExpr {
-                context: &simplifier.context,
-                id: base
-            }
-        ),
-        LogIsolationPlan::SolveBase { .. } => "Isolate base of logarithm".to_string(),
-    };
+    let base_desc = format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: &simplifier.context,
+            id: base
+        }
+    );
+    let description = plan.step_description(&base_desc);
     let new_eq = plan.into_equation(op.clone());
     if simplifier.collect_steps() {
         steps.push(SolveStep {
