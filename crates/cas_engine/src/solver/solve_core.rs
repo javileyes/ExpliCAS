@@ -7,7 +7,7 @@ use super::SolveDiagnostics;
 use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_outcome::{
-    build_zero_constraint_equation, variable_canceled_constraint_message,
+    resolve_var_eliminated_outcome_with, VarEliminatedSolveOutcome,
 };
 use cas_solver_core::strategy_kernels::{
     derive_rational_exponent_kernel, rational_exponent_message,
@@ -380,39 +380,33 @@ fn solve_inner(
 
     // Check if the difference has NO variable
     if !contains_var(&simplifier.context, diff_simplified, var) {
-        // Variable disappeared - this is either an identity, contradiction, or parameter-dependent
-        match cas_solver_core::solve_outcome::classify_var_free_difference(
-            &simplifier.context,
+        // Variable disappeared - this is either an identity, contradiction, or parameter-dependent.
+        let reduced_outcome = resolve_var_eliminated_outcome_with(
+            &mut simplifier.context,
             diff_simplified,
-        ) {
-            cas_solver_core::solve_outcome::VarFreeDiffKind::IdentityZero => {
-                // 0 = 0: Identity, all real numbers
+            var,
+            |core_ctx, id| format!("{}", cas_formatter::DisplayExpr { context: core_ctx, id }),
+        );
+        match reduced_outcome {
+            VarEliminatedSolveOutcome::IdentityAllReals => {
                 return Ok((SolutionSet::AllReals, vec![]));
             }
-            cas_solver_core::solve_outcome::VarFreeDiffKind::ContradictionNonZero => {
-                // c = 0 where c ≠ 0: Contradiction, no solution
+            VarEliminatedSolveOutcome::ContradictionEmpty => {
                 return Ok((SolutionSet::Empty, vec![]));
             }
-            cas_solver_core::solve_outcome::VarFreeDiffKind::Constraint => {
+            VarEliminatedSolveOutcome::ConstraintAllReals {
+                description,
+                equation_after,
+            } => {
                 // Variable was eliminated during simplification (e.g., x/x = 1)
                 // The equation is now a constraint on OTHER variables.
                 // Example: (x*y)/x = 0 simplifies to y = 0
                 // Solution: x can be any value (AllReals) when the constraint holds,
                 // EXCEPT values that make denominators zero.
                 let steps = if simplifier.collect_steps() {
-                    let diff_desc = format!(
-                        "{}",
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id: diff_simplified
-                        }
-                    );
                     vec![SolveStep {
-                        description: variable_canceled_constraint_message(var, &diff_desc),
-                        equation_after: build_zero_constraint_equation(
-                            &mut simplifier.context,
-                            diff_simplified,
-                        ),
+                        description,
+                        equation_after,
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
                     }]

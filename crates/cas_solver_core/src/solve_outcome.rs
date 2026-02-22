@@ -20,6 +20,17 @@ pub enum VarFreeDiffKind {
     Constraint,
 }
 
+/// Normalized solve outcome when the target variable disappears from `lhs - rhs`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum VarEliminatedSolveOutcome {
+    IdentityAllReals,
+    ContradictionEmpty,
+    ConstraintAllReals {
+        description: String,
+        equation_after: Equation,
+    },
+}
+
 /// Generic terminal solve outcome (message + solution set).
 #[derive(Debug, Clone, PartialEq)]
 pub struct TerminalSolveOutcome {
@@ -161,6 +172,32 @@ pub fn classify_var_free_difference(ctx: &Context, diff: ExprId) -> VarFreeDiffK
         }
         Expr::Number(_) => VarFreeDiffKind::ContradictionNonZero,
         _ => VarFreeDiffKind::Constraint,
+    }
+}
+
+/// Resolve variable-eliminated residuals into terminal solve outcomes.
+///
+/// This consolidates identity/contradiction handling and, for symbolic
+/// constraints, produces the didactic step payload (`diff = 0`).
+pub fn resolve_var_eliminated_outcome_with<F>(
+    ctx: &mut Context,
+    diff: ExprId,
+    var: &str,
+    mut render_expr: F,
+) -> VarEliminatedSolveOutcome
+where
+    F: FnMut(&Context, ExprId) -> String,
+{
+    match classify_var_free_difference(ctx, diff) {
+        VarFreeDiffKind::IdentityZero => VarEliminatedSolveOutcome::IdentityAllReals,
+        VarFreeDiffKind::ContradictionNonZero => VarEliminatedSolveOutcome::ContradictionEmpty,
+        VarFreeDiffKind::Constraint => {
+            let diff_display = render_expr(ctx, diff);
+            VarEliminatedSolveOutcome::ConstraintAllReals {
+                description: variable_canceled_constraint_message(var, &diff_display),
+                equation_after: build_zero_constraint_equation(ctx, diff),
+            }
+        }
     }
 }
 
@@ -1226,6 +1263,44 @@ mod tests {
             classify_var_free_difference(&ctx, y),
             VarFreeDiffKind::Constraint
         );
+    }
+
+    #[test]
+    fn resolve_var_eliminated_identity_returns_all_reals() {
+        let mut ctx = Context::new();
+        let zero = ctx.num(0);
+        let out = resolve_var_eliminated_outcome_with(&mut ctx, zero, "x", |_, _| {
+            "unused".to_string()
+        });
+        assert_eq!(out, VarEliminatedSolveOutcome::IdentityAllReals);
+    }
+
+    #[test]
+    fn resolve_var_eliminated_contradiction_returns_empty() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let out = resolve_var_eliminated_outcome_with(&mut ctx, one, "x", |_, _| {
+            "unused".to_string()
+        });
+        assert_eq!(out, VarEliminatedSolveOutcome::ContradictionEmpty);
+    }
+
+    #[test]
+    fn resolve_var_eliminated_constraint_builds_step_payload() {
+        let mut ctx = Context::new();
+        let y = ctx.var("y");
+        let out = resolve_var_eliminated_outcome_with(&mut ctx, y, "x", |_, _| "y".to_string());
+        match out {
+            VarEliminatedSolveOutcome::ConstraintAllReals {
+                description,
+                equation_after,
+            } => {
+                assert!(description.contains("depends on constraint"));
+                assert_eq!(equation_after.lhs, y);
+                assert_eq!(equation_after.op, RelOp::Eq);
+            }
+            other => panic!("expected constraint outcome, got {:?}", other),
+        }
     }
 
     #[test]
