@@ -561,28 +561,19 @@ impl SolverStrategy for RationalExponentStrategy {
             return None;
         }
 
-        // Try to match Pow(base, p/q) on LHS
-        let (base, p, q) = cas_solver_core::rational_power::match_rational_power(
-            &simplifier.context,
+        // Rewrite lhs^(p/q)=rhs into lhs^p=rhs^q via solver core helper
+        let (raw_eq, _p, q) = cas_solver_core::rational_power::rewrite_rational_power_equation(
+            &mut simplifier.context,
             eq.lhs,
+            eq.rhs,
             var,
         )?;
 
         let mut steps = Vec::new();
 
-        // Raise both sides to power q: (base^(p/q))^q = rhs^q → base^p = rhs^q
-        let q_expr = simplifier.context.num(q);
-
-        // New LHS: base^p
-        let p_expr = simplifier.context.num(p);
-        let new_lhs = simplifier.context.add(Expr::Pow(base, p_expr));
-
-        // New RHS: rhs^q
-        let new_rhs = simplifier.context.add(Expr::Pow(eq.rhs, q_expr));
-
         // Simplify both sides
-        let (sim_lhs, _) = simplifier.simplify(new_lhs);
-        let (sim_rhs, _) = simplifier.simplify(new_rhs);
+        let (sim_lhs, _) = simplifier.simplify(raw_eq.lhs);
+        let (sim_rhs, _) = simplifier.simplify(raw_eq.rhs);
 
         let new_eq = Equation {
             lhs: sim_lhs,
