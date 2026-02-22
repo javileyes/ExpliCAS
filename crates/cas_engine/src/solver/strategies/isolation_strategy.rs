@@ -337,28 +337,16 @@ impl SolverStrategy for UnwrapStrategy {
                             }
                         }
 
-                        // Safe to take ln of both sides
-                        // ln(A^x) -> x * ln(A)
-                        // We construct x * ln(A) directly
-                        let ln_b = simplifier.context.call("ln", vec![b]);
-                        let new_lhs_part = simplifier.context.add(Expr::Mul(e, ln_b));
-
-                        // ln(B)
-                        let ln_other = simplifier.context.call("ln", vec![other]);
-
-                        let new_eq = if is_lhs {
-                            Equation {
-                                lhs: new_lhs_part,
-                                rhs: ln_other,
-                                op,
-                            }
-                        } else {
-                            Equation {
-                                lhs: ln_other,
-                                rhs: new_lhs_part,
-                                op,
-                            }
-                        };
+                        // Safe to take ln of both sides:
+                        // A^x = B -> x * ln(A) = ln(B)
+                        let new_eq = cas_solver_core::rational_power::build_log_linear_equation(
+                            &mut simplifier.context,
+                            b,
+                            e,
+                            other,
+                            op,
+                            is_lhs,
+                        );
                         Some((new_eq, "Take log base e of both sides".to_string()))
                     } else {
                         None

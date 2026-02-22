@@ -113,6 +113,37 @@ pub fn rewrite_variable_base_power_equation(
     Some((equation, exponent))
 }
 
+/// Build the log-linear rewrite of `base^exponent = other`:
+/// `exponent * ln(base) = ln(other)`.
+///
+/// `is_lhs` controls which side contained the original exponential target.
+pub fn build_log_linear_equation(
+    ctx: &mut Context,
+    base: ExprId,
+    exponent: ExprId,
+    other: ExprId,
+    op: RelOp,
+    is_lhs: bool,
+) -> Equation {
+    let ln_base = ctx.call("ln", vec![base]);
+    let lhs_linear = ctx.add(Expr::Mul(exponent, ln_base));
+    let ln_other = ctx.call("ln", vec![other]);
+
+    if is_lhs {
+        Equation {
+            lhs: lhs_linear,
+            rhs: ln_other,
+            op,
+        }
+    } else {
+        Equation {
+            lhs: ln_other,
+            rhs: lhs_linear,
+            op,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -226,5 +257,31 @@ mod tests {
         .expect("rewrite should support RHS target");
         assert!(matches!(ctx.get(eq.lhs), Expr::Pow(base, _) if *base == y));
         assert_eq!(eq.rhs, x);
+    }
+
+    #[test]
+    fn build_log_linear_equation_lhs_orientation() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let x = ctx.var("x");
+        let b = ctx.var("b");
+        let eq = build_log_linear_equation(&mut ctx, a, x, b, RelOp::Eq, true);
+
+        assert_eq!(eq.op, RelOp::Eq);
+        assert!(matches!(ctx.get(eq.lhs), Expr::Mul(_, _)));
+        assert!(matches!(ctx.get(eq.rhs), Expr::Function(_, _)));
+    }
+
+    #[test]
+    fn build_log_linear_equation_rhs_orientation() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let x = ctx.var("x");
+        let b = ctx.var("b");
+        let eq = build_log_linear_equation(&mut ctx, a, x, b, RelOp::Eq, false);
+
+        assert_eq!(eq.op, RelOp::Eq);
+        assert!(matches!(ctx.get(eq.lhs), Expr::Function(_, _)));
+        assert!(matches!(ctx.get(eq.rhs), Expr::Mul(_, _)));
     }
 }
