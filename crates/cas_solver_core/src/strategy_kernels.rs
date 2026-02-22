@@ -22,6 +22,13 @@ pub struct StrategyExecutionItem {
     pub didactic: StrategyDidacticStep,
 }
 
+impl StrategyExecutionItem {
+    /// User-facing narration for this execution item.
+    pub fn description(&self) -> &str {
+        &self.didactic.description
+    }
+}
+
 /// Execution payload for collect-terms strategy rewrite.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CollectTermsExecutionPlan {

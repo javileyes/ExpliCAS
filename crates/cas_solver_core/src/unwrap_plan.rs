@@ -39,6 +39,13 @@ pub struct UnwrapExecutionItem {
     pub didactic: TermIsolationDidacticStep,
 }
 
+impl UnwrapExecutionItem {
+    /// User-facing narration for this execution item.
+    pub fn description(&self) -> &str {
+        &self.didactic.description
+    }
+}
+
 /// Build narration for variable-base power unwrap rewrites.
 pub fn pow_variable_base_unwrap_message(exponent_display: &str) -> String {
     format!("Raise both sides to 1/{}", exponent_display)

@@ -98,7 +98,7 @@ impl SolverStrategy for RationalRootsStrategy {
             collect_rational_roots_execution_items(&step_plan)
                 .into_iter()
                 .map(|item| SolveStep {
-                    description: item.didactic.description,
+                    description: item.description().to_string(),
                     equation_after: item.equation,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],

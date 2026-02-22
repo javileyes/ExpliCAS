@@ -357,6 +357,13 @@ pub struct RationalRootsExecutionItem {
     pub didactic: RationalRootsDidacticStep,
 }
 
+impl RationalRootsExecutionItem {
+    /// User-facing narration for this execution item.
+    pub fn description(&self) -> &str {
+        &self.didactic.description
+    }
+}
+
 /// Build narration for Rational Root Theorem strategy activation.
 pub fn rational_roots_strategy_message(degree: usize) -> String {
     format!(

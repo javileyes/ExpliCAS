@@ -22,6 +22,13 @@ pub struct LogIsolationExecutionItem {
     pub didactic: LogIsolationStep,
 }
 
+impl LogIsolationExecutionItem {
+    /// User-facing narration for this execution item.
+    pub fn description(&self) -> &str {
+        &self.didactic.description
+    }
+}
+
 /// Collect log-isolation didactic steps in display order.
 pub fn collect_log_isolation_didactic_steps(
     plan: &LogIsolationRewritePlan,

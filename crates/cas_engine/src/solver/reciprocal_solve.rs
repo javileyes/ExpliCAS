@@ -66,7 +66,7 @@ pub(crate) fn try_reciprocal_solve(
     if simplifier.collect_steps() {
         for item in cas_solver_core::reciprocal::collect_reciprocal_execution_items(&execution) {
             steps.push(SolveStep {
-                description: item.didactic.description,
+                description: item.description().to_string(),
                 equation_after: item.equation,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],

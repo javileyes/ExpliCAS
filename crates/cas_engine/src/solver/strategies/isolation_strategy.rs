@@ -59,7 +59,7 @@ impl SolverStrategy for IsolationStrategy {
             if simplifier.collect_steps() {
                 for item in &execution_items {
                     steps.push(SolveStep {
-                        description: item.didactic.description.clone(),
+                        description: item.description().to_string(),
                         equation_after: item.equation.clone(),
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
@@ -155,7 +155,7 @@ impl SolverStrategy for UnwrapStrategy {
             if simplifier.collect_steps() {
                 for item in collect_term_isolation_execution_items(&terminal_step) {
                     steps.push(SolveStep {
-                        description: item.didactic.description,
+                        description: item.description().to_string(),
                         equation_after: item.equation,
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
@@ -218,7 +218,7 @@ impl SolverStrategy for UnwrapStrategy {
                 if simplifier.collect_steps() {
                     for item in &execution_items {
                         steps.push(SolveStep {
-                            description: item.didactic.description.clone(),
+                            description: item.description().to_string(),
                             equation_after: item.equation.clone(),
                             importance: crate::step::ImportanceLevel::Medium,
                             substeps: vec![],
@@ -259,7 +259,7 @@ impl SolverStrategy for UnwrapStrategy {
                 if simplifier.collect_steps() {
                     for item in &execution_items {
                         steps.push(SolveStep {
-                            description: item.didactic.description.clone(),
+                            description: item.description().to_string(),
                             equation_after: item.equation.clone(),
                             importance: crate::step::ImportanceLevel::Medium,
                             substeps: vec![],
@@ -338,7 +338,7 @@ impl SolverStrategy for CollectTermsStrategy {
         if simplifier.collect_steps() {
             for item in &execution_items {
                 steps.push(SolveStep {
-                    description: item.didactic.description.clone(),
+                    description: item.description().to_string(),
                     equation_after: item.equation.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
@@ -395,7 +395,7 @@ impl SolverStrategy for RationalExponentStrategy {
         if simplifier.collect_steps() {
             for item in &execution_items {
                 steps.push(SolveStep {
-                    description: item.didactic.description.clone(),
+                    description: item.description().to_string(),
                     equation_after: item.equation.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],

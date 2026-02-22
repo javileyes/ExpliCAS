@@ -90,7 +90,7 @@ fn isolate_pow_base(
         PowBaseIsolationEngineAction::ReturnSolutionSet { solutions, .. } => {
             if let Some(item) = execution_items.as_ref().and_then(|all| all.first()) {
                 steps.push(SolveStep {
-                    description: item.didactic.description.clone(),
+                    description: item.description().to_string(),
                     equation_after: item.equation.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
@@ -106,7 +106,7 @@ fn isolate_pow_base(
             let lhs_after = step.equation_after.lhs;
             if let Some(item) = execution_items.as_ref().and_then(|all| all.first()) {
                 steps.push(SolveStep {
-                    description: item.didactic.description.clone(),
+                    description: item.description().to_string(),
                     equation_after: item.equation.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
@@ -185,7 +185,7 @@ fn isolate_pow_exponent(
         } => {
             if let Some(item) = shortcut_items.as_ref().and_then(|all| all.first()) {
                 steps.push(SolveStep {
-                    description: item.didactic.description.clone(),
+                    description: item.description().to_string(),
                     equation_after: item.equation.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
@@ -197,7 +197,7 @@ fn isolate_pow_exponent(
         PowExponentShortcutEngineAction::ReturnSolutionSet { solutions, .. } => {
             if let Some(item) = shortcut_items.as_ref().and_then(|all| all.first()) {
                 steps.push(SolveStep {
-                    description: item.didactic.description.clone(),
+                    description: item.description().to_string(),
                     equation_after: item.equation.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
@@ -240,7 +240,7 @@ fn isolate_pow_exponent(
             .then(|| collect_power_base_one_shortcut_execution_items(&outcome));
         if let Some(item) = execution_items.as_ref().and_then(|all| all.first()) {
             steps.push(SolveStep {
-                description: item.didactic.description.clone(),
+                description: item.description().to_string(),
                 equation_after: item.equation.clone(),
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
@@ -279,7 +279,7 @@ fn isolate_pow_exponent(
             );
             for item in collect_term_isolation_rewrite_execution_items(&normalize_plan) {
                 steps.push(SolveStep {
-                    description: item.didactic.description,
+                    description: item.description().to_string(),
                     equation_after: item.equation,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
@@ -324,7 +324,7 @@ fn isolate_pow_exponent(
             );
             for item in collect_term_isolation_execution_items(&step) {
                 steps.push(SolveStep {
-                    description: item.didactic.description,
+                    description: item.description().to_string(),
                     equation_after: item.equation,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
@@ -377,7 +377,7 @@ fn isolate_pow_exponent(
                     );
                     for item in collect_term_isolation_execution_items(&step) {
                         steps.push(SolveStep {
-                            description: item.didactic.description,
+                            description: item.description().to_string(),
                             equation_after: item.equation,
                             importance: crate::step::ImportanceLevel::Medium,
                             substeps: vec![],
@@ -434,7 +434,7 @@ fn isolate_pow_exponent(
                     .then(|| collect_pow_exponent_log_isolation_execution_items(&log_plan));
                 if let Some(item) = log_items.as_ref().and_then(|all| all.first()) {
                     steps.push(SolveStep {
-                        description: item.didactic.description.clone(),
+                        description: item.description().to_string(),
                         equation_after: item.equation.clone(),
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
@@ -465,7 +465,7 @@ fn isolate_pow_exponent(
                             );
                             for item in collect_term_isolation_execution_items(&step) {
                                 steps.push(SolveStep {
-                                    description: item.didactic.description,
+                                    description: item.description().to_string(),
                                     equation_after: item.equation,
                                     importance: crate::step::ImportanceLevel::Medium,
                                     substeps: vec![],
@@ -487,7 +487,7 @@ fn isolate_pow_exponent(
                             );
                             for item in collect_term_isolation_execution_items(&step) {
                                 steps.push(SolveStep {
-                                    description: item.didactic.description,
+                                    description: item.description().to_string(),
                                     equation_after: item.equation,
                                     importance: crate::step::ImportanceLevel::Medium,
                                     substeps: vec![],
@@ -531,7 +531,7 @@ fn isolate_pow_exponent(
         .then(|| collect_pow_exponent_log_isolation_execution_items(&log_plan));
     if let Some(item) = log_items.as_ref().and_then(|all| all.first()) {
         steps.push(SolveStep {
-            description: item.didactic.description.clone(),
+            description: item.description().to_string(),
             equation_after: item.equation.clone(),
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],

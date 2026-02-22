@@ -72,7 +72,7 @@ pub(crate) fn try_linear_collect(
         );
         for item in collect_linear_collect_execution_items(didactic) {
             steps.push(SolveStep {
-                description: item.didactic.description,
+                description: item.description().to_string(),
                 equation_after: item.equation,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
@@ -136,7 +136,7 @@ pub(crate) fn try_linear_collect_v2(
         );
         for item in collect_linear_collect_execution_items(didactic) {
             steps.push(SolveStep {
-                description: item.didactic.description,
+                description: item.description().to_string(),
                 equation_after: item.equation,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],

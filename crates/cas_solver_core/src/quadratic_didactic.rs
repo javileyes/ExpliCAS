@@ -34,6 +34,13 @@ pub struct QuadraticExecutionItem {
     pub didactic: QuadraticDidacticStep,
 }
 
+impl QuadraticExecutionItem {
+    /// User-facing narration for this execution item.
+    pub fn description(&self) -> &str {
+        &self.didactic.description
+    }
+}
+
 /// Executable batch for zero-product factor solving:
 /// `factor_i = 0` equations plus matching didactic steps.
 #[derive(Debug, Clone, PartialEq)]

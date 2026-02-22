@@ -103,7 +103,7 @@ pub(crate) fn isolate(
             if simplifier.collect_steps() {
                 for item in &execution_items {
                     steps.push(SolveStep {
-                        description: item.didactic.description.clone(),
+                        description: item.description().to_string(),
                         equation_after: item.equation.clone(),
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],

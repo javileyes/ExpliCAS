@@ -72,6 +72,13 @@ pub struct SubstitutionExecutionItem {
     pub didactic: SubstitutionDidacticStep,
 }
 
+impl SubstitutionExecutionItem {
+    /// User-facing narration for this execution item.
+    pub fn description(&self) -> &str {
+        &self.didactic.description
+    }
+}
+
 /// Back-substitution execution plan (`substitution_expr = value_i` equations).
 #[derive(Debug, Clone, PartialEq)]
 pub struct BackSubstitutionPlan {
@@ -90,6 +97,13 @@ pub struct BackSubstitutionExecutionPlan {
 pub struct BackSubstitutionExecutionItem {
     pub equation: Equation,
     pub didactic: SubstitutionDidacticStep,
+}
+
+impl BackSubstitutionExecutionItem {
+    /// User-facing narration for this execution item.
+    pub fn description(&self) -> &str {
+        &self.didactic.description
+    }
 }
 
 /// Collect back-substitution execution items by zipping equations and didactic

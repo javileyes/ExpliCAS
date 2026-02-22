@@ -50,7 +50,7 @@ impl SolverStrategy for SubstitutionStrategy {
             if simplifier.collect_steps() {
                 for item in &intro_items {
                     steps.push(SolveStep {
-                        description: item.didactic.description.clone(),
+                        description: item.description().to_string(),
                         equation_after: item.equation.clone(),
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
@@ -89,7 +89,7 @@ impl SolverStrategy for SubstitutionStrategy {
                     if let Some(back_execution) = back_execution.as_ref() {
                         for item in collect_back_substitution_execution_items(back_execution) {
                             steps.push(SolveStep {
-                                description: item.didactic.description,
+                                description: item.description().to_string(),
                                 equation_after: item.equation.clone(),
                                 importance: crate::step::ImportanceLevel::Medium,
                                 substeps: vec![],

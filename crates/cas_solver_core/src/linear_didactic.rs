@@ -21,6 +21,13 @@ pub struct LinearCollectExecutionItem {
     pub didactic: LinearCollectDidacticStep,
 }
 
+impl LinearCollectExecutionItem {
+    /// User-facing narration for this execution item.
+    pub fn description(&self) -> &str {
+        &self.didactic.description
+    }
+}
+
 /// Convert linear-collect didactic pair into ordered step vector.
 pub fn collect_linear_collect_didactic_steps(
     pair: LinearCollectDidacticPair,

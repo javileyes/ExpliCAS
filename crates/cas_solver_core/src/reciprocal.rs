@@ -146,6 +146,13 @@ pub struct ReciprocalExecutionItem {
     pub didactic: ReciprocalDidacticStep,
 }
 
+impl ReciprocalExecutionItem {
+    /// User-facing narration for this execution item.
+    pub fn description(&self) -> &str {
+        &self.didactic.description
+    }
+}
+
 /// Collect reciprocal didactic steps in execution order.
 pub fn collect_reciprocal_didactic_steps(
     execution: &ReciprocalSolveExecution,

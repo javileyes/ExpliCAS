@@ -72,7 +72,7 @@ impl SolverStrategy for QuadraticStrategy {
                     collect_factorized_zero_product_entry_execution_items(&factorized_execution)
                 {
                     steps.push(SolveStep {
-                        description: item.didactic.description,
+                        description: item.description().to_string(),
                         equation_after: item.equation,
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
@@ -93,7 +93,7 @@ impl SolverStrategy for QuadraticStrategy {
                             collect_zero_product_factor_item_execution_items(&item)
                         {
                             steps.push(SolveStep {
-                                description: execution_item.didactic.description,
+                                description: execution_item.description().to_string(),
                                 equation_after: execution_item.equation,
                                 importance: crate::step::ImportanceLevel::Medium,
                                 substeps: vec![],
@@ -185,7 +185,7 @@ impl SolverStrategy for QuadraticStrategy {
                     });
                 for item in collect_quadratic_main_execution_items(&didactic_step) {
                     steps.push(SolveStep {
-                        description: item.didactic.description,
+                        description: item.description().to_string(),
                         equation_after: item.equation,
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: substeps.clone(),

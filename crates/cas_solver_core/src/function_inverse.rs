@@ -41,6 +41,13 @@ pub struct UnaryInverseExecutionItem {
     pub didactic: UnaryInverseDidacticStep,
 }
 
+impl UnaryInverseExecutionItem {
+    /// User-facing narration for this execution item.
+    pub fn description(&self) -> &str {
+        &self.didactic.description
+    }
+}
+
 /// Collect unary-inverse didactic steps in display order.
 pub fn collect_unary_inverse_didactic_steps(
     plan: &UnaryInverseIsolationStepPlan,
@@ -73,6 +80,13 @@ pub struct RhsSimplificationDidacticStep {
 pub struct RhsSimplificationExecutionItem {
     pub equation: Equation,
     pub didactic: RhsSimplificationDidacticStep,
+}
+
+impl RhsSimplificationExecutionItem {
+    /// User-facing narration for this execution item.
+    pub fn description(&self) -> &str {
+        &self.didactic.description
+    }
 }
 
 impl UnaryInverseKind {

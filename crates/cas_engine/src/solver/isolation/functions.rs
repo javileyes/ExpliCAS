@@ -103,7 +103,7 @@ fn isolate_abs(
             let mut steps1 = steps.clone();
             if let Some(item) = split_items.as_ref().and_then(|all| all.first()) {
                 steps1.push(SolveStep {
-                    description: item.didactic.description.clone(),
+                    description: item.description().to_string(),
                     equation_after: item.equation.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
@@ -116,7 +116,7 @@ fn isolate_abs(
             let mut steps2 = steps.clone();
             if let Some(item) = split_items.as_ref().and_then(|all| all.get(1)) {
                 steps2.push(SolveStep {
-                    description: item.didactic.description.clone(),
+                    description: item.description().to_string(),
                     equation_after: item.equation.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
@@ -182,7 +182,7 @@ fn isolate_log(
     if simplifier.collect_steps() {
         for item in collect_log_isolation_execution_items(&rewrite) {
             steps.push(SolveStep {
-                description: item.didactic.description,
+                description: item.description().to_string(),
                 equation_after: item.equation,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
@@ -223,7 +223,7 @@ fn isolate_unary_function(
     if simplifier.collect_steps() {
         for item in collect_unary_inverse_execution_items(&plan) {
             steps.push(SolveStep {
-                description: item.didactic.description,
+                description: item.description().to_string(),
                 equation_after: item.equation,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
@@ -260,7 +260,7 @@ fn simplify_rhs(
         );
         for item in execution_items {
             steps.push(SolveStep {
-                description: item.didactic.description,
+                description: item.description().to_string(),
                 equation_after: item.equation,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],

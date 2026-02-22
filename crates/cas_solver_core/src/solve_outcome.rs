@@ -126,6 +126,13 @@ pub struct PowExponentShortcutExecutionItem {
     pub didactic: PowExponentShortcutDidacticStep,
 }
 
+impl PowExponentShortcutExecutionItem {
+    /// User-facing narration for this execution item.
+    pub fn description(&self) -> &str {
+        &self.didactic.description
+    }
+}
+
 /// Engine-facing action for a normalized exponent shortcut, including optional
 /// didactic step payload built in solver-core.
 #[derive(Debug, Clone, PartialEq)]
@@ -180,6 +187,13 @@ pub struct PowerBaseOneShortcutExecutionItem {
     pub didactic: PowExponentShortcutDidacticStep,
 }
 
+impl PowerBaseOneShortcutExecutionItem {
+    /// User-facing narration for this execution item.
+    pub fn description(&self) -> &str {
+        &self.didactic.description
+    }
+}
+
 /// Collect base-one shortcut didactic steps in display order.
 pub fn collect_power_base_one_shortcut_didactic_steps(
     outcome: &PowerBaseOneShortcutOutcome,
@@ -219,6 +233,13 @@ pub struct PowExponentLogIsolationRewritePlan {
 pub struct PowExponentLogIsolationExecutionItem {
     pub equation: Equation,
     pub didactic: PowExponentLogIsolationStep,
+}
+
+impl PowExponentLogIsolationExecutionItem {
+    /// User-facing narration for this execution item.
+    pub fn description(&self) -> &str {
+        &self.didactic.description
+    }
 }
 
 /// Collect logarithmic-isolation didactic steps in display order.
@@ -297,6 +318,13 @@ pub struct PowBaseIsolationDidacticStep {
 pub struct PowBaseIsolationExecutionItem {
     pub equation: Equation,
     pub didactic: PowBaseIsolationDidacticStep,
+}
+
+impl PowBaseIsolationExecutionItem {
+    /// User-facing narration for this execution item.
+    pub fn description(&self) -> &str {
+        &self.didactic.description
+    }
 }
 
 /// Engine-facing action for base-isolation planning with didactic payload.
@@ -1133,6 +1161,13 @@ pub struct TermIsolationRewriteExecutionItem {
     pub didactic: TermIsolationDidacticStep,
 }
 
+impl TermIsolationRewriteExecutionItem {
+    /// User-facing narration for this execution item.
+    pub fn description(&self) -> &str {
+        &self.didactic.description
+    }
+}
+
 /// Collect term-isolation rewrite didactic steps in display order.
 pub fn collect_term_isolation_rewrite_didactic_steps(
     plan: &TermIsolationRewritePlan,
@@ -1416,6 +1451,13 @@ pub struct DivisionDidacticExecutionItem {
     pub didactic: DivisionCaseDidacticStep,
 }
 
+impl DivisionDidacticExecutionItem {
+    /// User-facing narration for this execution item.
+    pub fn description(&self) -> &str {
+        &self.didactic.description
+    }
+}
+
 /// Didactic payload for denominator-sign split traces.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DivisionDenominatorSignSplitDidactic {
@@ -1634,6 +1676,13 @@ pub fn collect_term_isolation_didactic_steps(
 pub struct TermIsolationExecutionItem {
     pub equation: Equation,
     pub didactic: TermIsolationDidacticStep,
+}
+
+impl TermIsolationExecutionItem {
+    /// User-facing narration for this execution item.
+    pub fn description(&self) -> &str {
+        &self.didactic.description
+    }
 }
 
 /// Collect generic term-isolation execution items in display order.
@@ -2476,6 +2525,13 @@ pub fn collect_abs_split_didactic_steps(
 pub struct AbsSplitExecutionItem {
     pub equation: Equation,
     pub didactic: AbsSplitDidacticStep,
+}
+
+impl AbsSplitExecutionItem {
+    /// User-facing narration for this execution item.
+    pub fn description(&self) -> &str {
+        &self.didactic.description
+    }
 }
 
 /// Collect absolute-value split execution items in execution order:
