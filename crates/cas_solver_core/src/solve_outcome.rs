@@ -280,6 +280,60 @@ pub fn plan_pow_exponent_shortcut_action(
     }
 }
 
+/// Plan exponent shortcut action from already-detected RHS shortcut inputs.
+pub fn plan_pow_exponent_shortcut_action_from_inputs(
+    ctx: &mut Context,
+    base: ExprId,
+    op: RelOp,
+    bases_equal: bool,
+    rhs_pow_base_equal: Option<ExprId>,
+    base_is_zero: bool,
+    base_is_numeric: bool,
+    can_branch: bool,
+) -> PowExponentShortcutAction {
+    let shortcut = classify_pow_exponent_shortcut(
+        op.clone(),
+        bases_equal,
+        rhs_pow_base_equal,
+        base_is_zero,
+        base_is_numeric,
+        can_branch,
+    );
+    plan_pow_exponent_shortcut_action(ctx, shortcut, base, op)
+}
+
+/// Plan exponent shortcut action directly from equation shape `base^x op rhs`.
+///
+/// This combines RHS pattern detection, shortcut classification, and operational
+/// action resolution into a single core helper.
+#[allow(clippy::too_many_arguments)]
+pub fn plan_pow_exponent_shortcut_action_for_rhs<F>(
+    ctx: &mut Context,
+    rhs: ExprId,
+    base: ExprId,
+    op: RelOp,
+    base_is_zero: bool,
+    base_is_numeric: bool,
+    can_branch: bool,
+    mut same_base: F,
+) -> PowExponentShortcutAction
+where
+    F: FnMut(ExprId) -> bool,
+{
+    let rhs_expr = ctx.get(rhs).clone();
+    let (bases_equal, rhs_pow_base_equal) =
+        detect_pow_exponent_shortcut_inputs(rhs, &rhs_expr, |candidate| same_base(candidate));
+    let shortcut = classify_pow_exponent_shortcut(
+        op.clone(),
+        bases_equal,
+        rhs_pow_base_equal,
+        base_is_zero,
+        base_is_numeric,
+        can_branch,
+    );
+    plan_pow_exponent_shortcut_action(ctx, shortcut, base, op)
+}
+
 /// Classify route for base-isolation in a power equation.
 pub fn classify_pow_base_isolation_route(
     exponent_is_even: bool,
@@ -1184,6 +1238,80 @@ mod tests {
             PowExponentShortcut::PowerEqualsBase(PowerEqualsBaseRoute::SymbolicCaseSplit),
             base,
             RelOp::Eq,
+        );
+
+        assert!(matches!(
+            out,
+            PowExponentShortcutAction::ReturnSolutionSet {
+                shortcut: PowExponentShortcut::PowerEqualsBase(
+                    PowerEqualsBaseRoute::SymbolicCaseSplit
+                ),
+                solutions: SolutionSet::Conditional(_)
+            }
+        ));
+    }
+
+    #[test]
+    fn plan_pow_exponent_shortcut_action_for_rhs_detects_equal_pow_bases() {
+        let mut ctx = Context::new();
+        let base = ctx.var("b");
+        let rhs_exp = ctx.var("n");
+        let rhs = ctx.add(Expr::Pow(base, rhs_exp));
+
+        let out = plan_pow_exponent_shortcut_action_for_rhs(
+            &mut ctx,
+            rhs,
+            base,
+            RelOp::Eq,
+            false,
+            false,
+            false,
+            |candidate| candidate == base,
+        );
+
+        assert!(matches!(
+            out,
+            PowExponentShortcutAction::IsolateExponent {
+                shortcut: PowExponentShortcut::EqualPowBases { .. },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn plan_pow_exponent_shortcut_action_for_rhs_handles_non_matching_rhs() {
+        let mut ctx = Context::new();
+        let base = ctx.var("b");
+        let rhs = ctx.var("y");
+
+        let out = plan_pow_exponent_shortcut_action_for_rhs(
+            &mut ctx,
+            rhs,
+            base,
+            RelOp::Eq,
+            false,
+            false,
+            false,
+            |candidate| candidate == base,
+        );
+
+        assert_eq!(out, PowExponentShortcutAction::Continue);
+    }
+
+    #[test]
+    fn plan_pow_exponent_shortcut_action_from_inputs_maps_to_symbolic_split() {
+        let mut ctx = Context::new();
+        let base = ctx.var("a");
+
+        let out = plan_pow_exponent_shortcut_action_from_inputs(
+            &mut ctx,
+            base,
+            RelOp::Eq,
+            true,
+            None,
+            false,
+            false,
+            true,
         );
 
         assert!(matches!(

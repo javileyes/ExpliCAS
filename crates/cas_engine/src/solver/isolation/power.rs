@@ -8,13 +8,12 @@ use cas_solver_core::isolation_utils::{
 };
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
-    classify_pow_base_isolation_route, classify_pow_exponent_shortcut,
-    classify_power_base_one_shortcut, detect_pow_exponent_shortcut_inputs,
-    even_power_negative_rhs_outcome, guarded_or_residual, plan_pow_exponent_shortcut_action,
-    power_base_one_shortcut_solutions, resolve_log_terminal_outcome,
-    resolve_log_unsupported_outcome, terminal_outcome_message, LogUnsupportedOutcome,
-    PowBaseIsolationRoute, PowExponentShortcut, PowExponentShortcutAction, PowerBaseOneShortcut,
-    PowerEqualsBaseRoute,
+    classify_pow_base_isolation_route, classify_power_base_one_shortcut,
+    detect_pow_exponent_shortcut_inputs, even_power_negative_rhs_outcome, guarded_or_residual,
+    plan_pow_exponent_shortcut_action_from_inputs, power_base_one_shortcut_solutions,
+    resolve_log_terminal_outcome, resolve_log_unsupported_outcome, terminal_outcome_message,
+    LogUnsupportedOutcome, PowBaseIsolationRoute, PowExponentShortcut, PowExponentShortcutAction,
+    PowerBaseOneShortcut, PowerEqualsBaseRoute,
 };
 
 use super::{isolate, prepend_steps};
@@ -175,18 +174,19 @@ fn isolate_pow_exponent(
         detect_pow_exponent_shortcut_inputs(rhs, &rhs_expr, |candidate| {
             are_shortcut_bases_equivalent(simplifier, b, candidate)
         });
+    let base_is_zero = is_numeric_zero(&simplifier.context, b);
+    let base_is_numeric = matches!(simplifier.context.get(b), Expr::Number(_));
 
-    let shortcut = classify_pow_exponent_shortcut(
+    let shortcut_action = plan_pow_exponent_shortcut_action_from_inputs(
+        &mut simplifier.context,
+        b,
         op.clone(),
         bases_equal,
         rhs_pow_base_equal,
-        is_numeric_zero(&simplifier.context, b),
-        matches!(simplifier.context.get(b), Expr::Number(_)),
+        base_is_zero,
+        base_is_numeric,
         opts.budget.max_branches >= 2,
     );
-
-    let shortcut_action =
-        plan_pow_exponent_shortcut_action(&mut simplifier.context, shortcut, b, op.clone());
 
     match shortcut_action {
         PowExponentShortcutAction::IsolateExponent {
