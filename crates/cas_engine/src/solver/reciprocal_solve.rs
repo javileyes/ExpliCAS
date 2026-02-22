@@ -30,48 +30,18 @@ pub(crate) fn try_reciprocal_solve(
     )?;
     let numerator = kernel.numerator;
     let denominator = kernel.denominator;
-    let plan = cas_solver_core::reciprocal::build_reciprocal_solve_plan(
+    let raw_plan = cas_solver_core::reciprocal::build_reciprocal_solve_plan(
         &mut simplifier.context,
         var,
         numerator,
         denominator,
     );
 
-    let mut steps = Vec::new();
+    // Step 1 display: simplify combined RHS for cleaner equation output.
+    let (display_rhs, _) = simplifier.simplify(raw_plan.combined_rhs);
 
-    // Step 1: Combine fractions on RHS -> 1/var = numerator/denominator.
-    // Light simplification for display (order terms).
-    let (display_rhs, _) = simplifier.simplify(plan.combined_rhs);
-
-    if simplifier.collect_steps() {
-        let mut equation_after = plan.combine_equation.clone();
-        equation_after.rhs = display_rhs;
-        let combine_step =
-            cas_solver_core::reciprocal::build_reciprocal_combine_step(equation_after);
-
-        steps.push(SolveStep {
-            description: combine_step.description,
-            equation_after: combine_step.equation_after,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        });
-    }
-
-    // Step 2: Take reciprocal -> var = denominator/numerator.
-    let (simplified_solution, _) = simplifier.simplify(plan.solution_rhs);
-
-    if simplifier.collect_steps() {
-        let mut equation_after = plan.solve_equation.clone();
-        equation_after.rhs = simplified_solution;
-        let invert_step = cas_solver_core::reciprocal::build_reciprocal_invert_step(equation_after);
-
-        steps.push(SolveStep {
-            description: invert_step.description,
-            equation_after: invert_step.equation_after,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        });
-    }
+    // Step 2 display/result: simplify candidate reciprocal solution.
+    let (simplified_solution, _) = simplifier.simplify(raw_plan.solution_rhs);
 
     // Build solution set with domain guard for numerator != 0 when needed.
     use crate::helpers::prove_nonzero;
@@ -81,13 +51,34 @@ pub(crate) fn try_reciprocal_solve(
 
     let numerator_status =
         proof_to_nonzero_status(prove_nonzero(&simplifier.context, simplified_numerator));
-    let solution_set = cas_solver_core::reciprocal::build_reciprocal_solution_set(
-        simplified_numerator,
+    let execution = cas_solver_core::reciprocal::build_reciprocal_execution(
+        &mut simplifier.context,
+        var,
+        numerator,
+        denominator,
+        display_rhs,
         simplified_solution,
+        simplified_numerator,
         numerator_status,
     );
 
-    Some((solution_set, steps))
+    let mut steps = Vec::new();
+    if simplifier.collect_steps() {
+        steps.push(SolveStep {
+            description: execution.combine_step.description,
+            equation_after: execution.combine_step.equation_after,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        });
+        steps.push(SolveStep {
+            description: execution.invert_step.description,
+            equation_after: execution.invert_step.equation_after,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        });
+    }
+
+    Some((execution.solutions, steps))
 }
 
 #[cfg(test)]

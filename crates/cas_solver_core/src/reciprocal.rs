@@ -131,6 +131,14 @@ pub struct ReciprocalSolvePlan {
     pub solution_rhs: ExprId,
 }
 
+/// Engine-facing reciprocal solve execution payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReciprocalSolveExecution {
+    pub combine_step: ReciprocalDidacticStep,
+    pub invert_step: ReciprocalDidacticStep,
+    pub solutions: SolutionSet,
+}
+
 /// Derive reciprocal-solve kernel if equation matches `1/var = rhs` and
 /// the RHS is independent of `var`.
 pub fn derive_reciprocal_solve_kernel(
@@ -218,6 +226,37 @@ pub fn build_reciprocal_solution_set(
     let guard = ConditionSet::single(ConditionPredicate::NonZero(numerator));
     let case = Case::new(guard, SolutionSet::Discrete(vec![solution]));
     SolutionSet::Conditional(vec![case])
+}
+
+/// Build full reciprocal solve execution payload from prepared display/proof data.
+pub fn build_reciprocal_execution(
+    ctx: &mut Context,
+    var: &str,
+    numerator: ExprId,
+    denominator: ExprId,
+    combined_rhs_display: ExprId,
+    solution_rhs_display: ExprId,
+    guard_numerator: ExprId,
+    numerator_status: NonZeroStatus,
+) -> ReciprocalSolveExecution {
+    let plan = build_reciprocal_solve_plan(ctx, var, numerator, denominator);
+
+    let mut combine_equation = plan.combine_equation;
+    combine_equation.rhs = combined_rhs_display;
+    let combine_step = build_reciprocal_combine_step(combine_equation);
+
+    let mut solve_equation = plan.solve_equation;
+    solve_equation.rhs = solution_rhs_display;
+    let invert_step = build_reciprocal_invert_step(solve_equation);
+
+    let solutions =
+        build_reciprocal_solution_set(guard_numerator, solution_rhs_display, numerator_status);
+
+    ReciprocalSolveExecution {
+        combine_step,
+        invert_step,
+        solutions,
+    }
 }
 
 #[cfg(test)]
@@ -339,5 +378,34 @@ mod tests {
         let invert = build_reciprocal_invert_step(eq.clone());
         assert_eq!(invert.description, "Take reciprocal");
         assert_eq!(invert.equation_after, eq);
+    }
+
+    #[test]
+    fn build_reciprocal_execution_assembles_steps_and_solution() {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let combined_rhs = ctx.var("c");
+        let solution_rhs = ctx.var("s");
+
+        let execution = build_reciprocal_execution(
+            &mut ctx,
+            "x",
+            num,
+            den,
+            combined_rhs,
+            solution_rhs,
+            num,
+            NonZeroStatus::Unknown,
+        );
+
+        assert_eq!(
+            execution.combine_step.description,
+            "Combine fractions on RHS (common denominator)"
+        );
+        assert_eq!(execution.combine_step.equation_after.rhs, combined_rhs);
+        assert_eq!(execution.invert_step.description, "Take reciprocal");
+        assert_eq!(execution.invert_step.equation_after.rhs, solution_rhs);
+        assert!(matches!(execution.solutions, SolutionSet::Conditional(_)));
     }
 }
