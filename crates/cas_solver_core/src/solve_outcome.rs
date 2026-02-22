@@ -1,6 +1,7 @@
 use crate::isolation_utils::{mk_residual_solve, NumericSign};
 use crate::log_domain::{
-    classify_terminal_action, DomainModeKind, LogSolveDecision, LogTerminalAction,
+    assumptions_to_condition_set, classify_log_unsupported_route, classify_terminal_action,
+    DomainModeKind, LogAssumption, LogSolveDecision, LogTerminalAction, LogUnsupportedRoute,
 };
 use crate::solution_set::open_positive_domain;
 use cas_ast::{
@@ -56,6 +57,21 @@ pub enum PowExponentShortcutResolution {
     Continue,
     IsolateExponent { rhs: ExprId, op: RelOp },
     ReturnSolutionSet(SolutionSet),
+}
+
+/// Structured outcome for unsupported logarithmic rewrites.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LogUnsupportedOutcome<'a> {
+    ResidualBudgetExhausted {
+        message: &'a str,
+        solutions: SolutionSet,
+    },
+    Guarded {
+        message: &'a str,
+        missing_conditions: &'a [LogAssumption],
+        guard: ConditionSet,
+        residual: ExprId,
+    },
 }
 
 /// Routing for isolation when the variable is in the power base (`B^E = RHS`).
@@ -354,6 +370,37 @@ pub fn terminal_outcome_message(outcome: &TerminalSolveOutcome, residual_suffix:
         format!("{}{}", outcome.message, residual_suffix)
     } else {
         outcome.message.to_string()
+    }
+}
+
+/// Resolve unsupported-log rewrite decisions into concrete residual/guarded outcomes.
+pub fn resolve_log_unsupported_outcome<'a>(
+    ctx: &mut Context,
+    decision: &'a LogSolveDecision,
+    can_branch: bool,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    base: ExprId,
+    rhs_expr: ExprId,
+) -> Option<LogUnsupportedOutcome<'a>> {
+    match classify_log_unsupported_route(decision, can_branch) {
+        LogUnsupportedRoute::NotUnsupported => None,
+        LogUnsupportedRoute::ResidualBudgetExhausted { message } => {
+            Some(LogUnsupportedOutcome::ResidualBudgetExhausted {
+                message,
+                solutions: residual_solution_set(ctx, lhs, rhs, var),
+            })
+        }
+        LogUnsupportedRoute::Guarded {
+            message,
+            missing_conditions,
+        } => Some(LogUnsupportedOutcome::Guarded {
+            message,
+            missing_conditions,
+            guard: assumptions_to_condition_set(missing_conditions, base, rhs_expr),
+            residual: residual_expression(ctx, lhs, rhs, var),
+        }),
     }
 }
 
@@ -786,6 +833,66 @@ mod tests {
             terminal_outcome_message(&outcome, " (residual)"),
             "no real solutions"
         );
+    }
+
+    #[test]
+    fn resolve_log_unsupported_outcome_returns_none_for_supported_decision() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let out =
+            resolve_log_unsupported_outcome(&mut ctx, &LogSolveDecision::Ok, true, x, x, "x", x, x);
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn resolve_log_unsupported_outcome_returns_residual_when_budget_exhausted() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let decision = LogSolveDecision::Unsupported(
+            "Cannot prove RHS > 0 for logarithm",
+            vec![crate::log_domain::LogAssumption::PositiveRhs],
+        );
+        let out = resolve_log_unsupported_outcome(&mut ctx, &decision, false, x, y, "x", x, y)
+            .expect("must produce residual outcome");
+        match out {
+            LogUnsupportedOutcome::ResidualBudgetExhausted { message, solutions } => {
+                assert_eq!(message, "Cannot prove RHS > 0 for logarithm");
+                assert!(matches!(solutions, SolutionSet::Residual(_)));
+            }
+            other => panic!("expected residual outcome, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn resolve_log_unsupported_outcome_returns_guarded_when_branching_allowed() {
+        let mut ctx = Context::new();
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let decision = LogSolveDecision::Unsupported(
+            "Cannot prove base > 0 and RHS > 0 for logarithm",
+            vec![
+                crate::log_domain::LogAssumption::PositiveBase,
+                crate::log_domain::LogAssumption::PositiveRhs,
+            ],
+        );
+        let out =
+            resolve_log_unsupported_outcome(&mut ctx, &decision, true, base, rhs, "x", base, rhs)
+                .expect("must produce guarded outcome");
+        match out {
+            LogUnsupportedOutcome::Guarded {
+                message,
+                missing_conditions,
+                guard,
+                residual,
+            } => {
+                assert_eq!(message, "Cannot prove base > 0 and RHS > 0 for logarithm");
+                assert_eq!(missing_conditions.len(), 2);
+                assert_eq!(guard.predicates().len(), 2);
+                assert!(matches!(ctx.get(residual), Expr::Function(_, _)));
+            }
+            other => panic!("expected guarded outcome, got {:?}", other),
+        }
     }
 
     #[test]

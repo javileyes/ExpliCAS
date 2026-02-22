@@ -6,15 +6,13 @@ use cas_solver_core::isolation_utils::{
     apply_sign_flip, contains_var, is_even_integer_expr, is_known_negative, is_numeric_one,
     is_numeric_zero,
 };
-use cas_solver_core::log_domain::{
-    classify_log_unsupported_route, decision_assumptions, LogSolveDecision, LogUnsupportedRoute,
-};
+use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
     classify_pow_base_isolation_route, classify_pow_exponent_shortcut,
     classify_power_base_one_shortcut, detect_pow_exponent_shortcut_inputs,
     even_power_negative_rhs_outcome, guarded_or_residual, power_base_one_shortcut_solutions,
-    residual_expression, resolve_log_terminal_outcome, resolve_pow_exponent_shortcut,
-    terminal_outcome_message, PowBaseIsolationRoute, PowExponentShortcut,
+    resolve_log_terminal_outcome, resolve_log_unsupported_outcome, resolve_pow_exponent_shortcut,
+    terminal_outcome_message, LogUnsupportedOutcome, PowBaseIsolationRoute, PowExponentShortcut,
     PowExponentShortcutResolution, PowerBaseOneShortcut, PowerEqualsBaseRoute,
 };
 
@@ -486,114 +484,120 @@ fn isolate_pow_exponent(
         unreachable!("handled by terminal action");
     }
 
-    match classify_log_unsupported_route(&decision, opts.budget.can_branch()) {
-        LogUnsupportedRoute::NotUnsupported => {}
-        LogUnsupportedRoute::ResidualBudgetExhausted { message: msg } => {
-            let residual = residual_expression(&mut simplifier.context, lhs, rhs, var);
-            if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: format!("{} (residual, budget exhausted)", msg),
-                    equation_after: Equation { lhs, rhs, op },
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
+    if let Some(unsupported_outcome) = resolve_log_unsupported_outcome(
+        &mut simplifier.context,
+        &decision,
+        opts.budget.can_branch(),
+        lhs,
+        rhs,
+        var,
+        b,
+        rhs,
+    ) {
+        match unsupported_outcome {
+            LogUnsupportedOutcome::ResidualBudgetExhausted {
+                message: msg,
+                solutions,
+            } => {
+                if simplifier.collect_steps() {
+                    steps.push(SolveStep {
+                        description: format!("{} (residual, budget exhausted)", msg),
+                        equation_after: Equation { lhs, rhs, op },
+                        importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
+                    });
+                }
+                return Ok((solutions, steps));
             }
-            return Ok((guarded_or_residual(None, None, residual), steps));
-        }
-        LogUnsupportedRoute::Guarded {
-            message: msg,
-            missing_conditions,
-        } => {
-            let residual = residual_expression(&mut simplifier.context, lhs, rhs, var);
-            // Build guard set from missing conditions
-            let guard = cas_solver_core::log_domain::assumptions_to_condition_set(
+            LogUnsupportedOutcome::Guarded {
+                message: msg,
                 missing_conditions,
-                b,
-                rhs,
-            );
+                guard,
+                residual,
+            } => {
+                // Register blocked hints for pedagogical feedback
+                for condition in missing_conditions {
+                    let event = crate::assumptions::AssumptionEvent::from_log_assumption(
+                        *condition,
+                        &simplifier.context,
+                        b,
+                        rhs,
+                    );
+                    let expr_id =
+                        cas_solver_core::log_domain::assumption_target_expr(*condition, b, rhs);
+                    crate::domain::register_blocked_hint(crate::domain::BlockedHint {
+                        key: event.key,
+                        expr_id,
+                        rule: "Take log of both sides".to_string(),
+                        suggestion: "use `semantics set domain assume`",
+                    });
+                }
 
-            // Register blocked hints for pedagogical feedback
-            for condition in missing_conditions {
-                let event = crate::assumptions::AssumptionEvent::from_log_assumption(
-                    *condition,
-                    &simplifier.context,
+                // Execute solver under guard
+                let new_eq = cas_solver_core::rational_power::build_exponent_log_isolation_equation(
+                    &mut simplifier.context,
+                    e,
                     b,
                     rhs,
+                    op.clone(),
                 );
-                let expr_id =
-                    cas_solver_core::log_domain::assumption_target_expr(*condition, b, rhs);
-                crate::domain::register_blocked_hint(crate::domain::BlockedHint {
-                    key: event.key,
-                    expr_id,
-                    rule: "Take log of both sides".to_string(),
-                    suggestion: "use `semantics set domain assume`",
-                });
-            }
-
-            // Execute solver under guard
-            let new_eq = cas_solver_core::rational_power::build_exponent_log_isolation_equation(
-                &mut simplifier.context,
-                e,
-                b,
-                rhs,
-                op.clone(),
-            );
-            let new_rhs = new_eq.rhs;
-            if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: format!(
-                        "Take log base {} of both sides (under guard: {})",
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id: b
-                        },
-                        msg
-                    ),
-                    equation_after: new_eq.clone(),
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-
-            let guarded_result = isolate(
-                new_eq.lhs,
-                new_rhs,
-                new_eq.op.clone(),
-                var,
-                simplifier,
-                opts,
-                ctx,
-            );
-
-            let guarded_solutions = match guarded_result {
-                Ok((guarded_solutions, _)) => {
-                    if simplifier.collect_steps() {
-                        steps.push(SolveStep {
-                            description: format!("Conditional solution: {}", msg),
-                            equation_after: Equation { lhs, rhs, op },
-                            importance: crate::step::ImportanceLevel::Medium,
-                            substeps: vec![],
-                        });
-                    }
-                    Some(guarded_solutions)
+                let new_rhs = new_eq.rhs;
+                if simplifier.collect_steps() {
+                    steps.push(SolveStep {
+                        description: format!(
+                            "Take log base {} of both sides (under guard: {})",
+                            cas_formatter::DisplayExpr {
+                                context: &simplifier.context,
+                                id: b
+                            },
+                            msg
+                        ),
+                        equation_after: new_eq.clone(),
+                        importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
+                    });
                 }
-                Err(_) => {
-                    if simplifier.collect_steps() {
-                        steps.push(SolveStep {
-                            description: format!("{} (residual)", msg),
-                            equation_after: Equation { lhs, rhs, op },
-                            importance: crate::step::ImportanceLevel::Medium,
-                            substeps: vec![],
-                        });
-                    }
-                    None
-                }
-            };
 
-            return Ok((
-                guarded_or_residual(Some(guard), guarded_solutions, residual),
-                steps,
-            ));
+                let guarded_result = isolate(
+                    new_eq.lhs,
+                    new_rhs,
+                    new_eq.op.clone(),
+                    var,
+                    simplifier,
+                    opts,
+                    ctx,
+                );
+
+                let guarded_solutions = match guarded_result {
+                    Ok((guarded_solutions, _)) => {
+                        if simplifier.collect_steps() {
+                            steps.push(SolveStep {
+                                description: format!("Conditional solution: {}", msg),
+                                equation_after: Equation { lhs, rhs, op },
+                                importance: crate::step::ImportanceLevel::Medium,
+                                substeps: vec![],
+                            });
+                        }
+                        Some(guarded_solutions)
+                    }
+                    Err(_) => {
+                        if simplifier.collect_steps() {
+                            steps.push(SolveStep {
+                                description: format!("{} (residual)", msg),
+                                equation_after: Equation { lhs, rhs, op },
+                                importance: crate::step::ImportanceLevel::Medium,
+                                substeps: vec![],
+                            });
+                        }
+                        None
+                    }
+                };
+
+                return Ok((
+                    guarded_or_residual(Some(guard), guarded_solutions, residual),
+                    steps,
+                ));
+            }
         }
     }
     // ================================================================
