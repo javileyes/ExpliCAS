@@ -15,9 +15,10 @@ use cas_solver_core::solve_outcome::{
     build_division_denominator_didactic_execution_with,
     build_division_denominator_sign_split_execution_with,
     build_isolated_denominator_sign_split_execution_with,
-    collect_division_denominator_didactic_steps,
-    collect_division_denominator_sign_split_didactic_steps,
-    collect_term_isolation_rewrite_didactic_steps, plan_add_operand_isolation_step_with,
+    collect_division_denominator_didactic_execution_items,
+    collect_division_denominator_sign_split_execution_items,
+    collect_isolated_denominator_sign_split_execution_items,
+    collect_term_isolation_rewrite_execution_items, plan_add_operand_isolation_step_with,
     plan_div_denominator_isolation_with_zero_rhs_guard, plan_div_numerator_isolation_step_with,
     plan_division_denominator_didactic, plan_division_denominator_sign_split,
     plan_isolated_denominator_sign_split, plan_mul_factor_isolation_step_with,
@@ -76,10 +77,10 @@ pub(super) fn isolate_add(
         let new_eq = plan.equation.clone();
         let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
         if simplifier.collect_steps() {
-            for didactic_step in collect_term_isolation_rewrite_didactic_steps(&plan) {
+            for item in collect_term_isolation_rewrite_execution_items(&plan) {
                 steps.push(SolveStep {
-                    description: didactic_step.description,
-                    equation_after: didactic_step.equation_after,
+                    description: item.didactic.description,
+                    equation_after: item.equation,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -107,10 +108,10 @@ pub(super) fn isolate_add(
         let new_eq = plan.equation.clone();
         let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
         if simplifier.collect_steps() {
-            for didactic_step in collect_term_isolation_rewrite_didactic_steps(&plan) {
+            for item in collect_term_isolation_rewrite_execution_items(&plan) {
                 steps.push(SolveStep {
-                    description: didactic_step.description,
-                    equation_after: didactic_step.equation_after,
+                    description: item.didactic.description,
+                    equation_after: item.equation,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -154,10 +155,10 @@ pub(super) fn isolate_sub(
         let new_eq = plan.equation.clone();
         let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
         if simplifier.collect_steps() {
-            for didactic_step in collect_term_isolation_rewrite_didactic_steps(&plan) {
+            for item in collect_term_isolation_rewrite_execution_items(&plan) {
                 steps.push(SolveStep {
-                    description: didactic_step.description,
-                    equation_after: didactic_step.equation_after,
+                    description: item.didactic.description,
+                    equation_after: item.equation,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -182,10 +183,10 @@ pub(super) fn isolate_sub(
         let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
         let new_op = new_eq.op.clone();
         if simplifier.collect_steps() {
-            for didactic_step in collect_term_isolation_rewrite_didactic_steps(&plan) {
+            for item in collect_term_isolation_rewrite_execution_items(&plan) {
                 steps.push(SolveStep {
-                    description: didactic_step.description,
-                    equation_after: didactic_step.equation_after,
+                    description: item.didactic.description,
+                    equation_after: item.equation,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -264,10 +265,10 @@ pub(super) fn isolate_mul(
         let new_rhs = new_eq.rhs;
         let new_op = new_eq.op.clone();
         if simplifier.collect_steps() {
-            for didactic_step in collect_term_isolation_rewrite_didactic_steps(&plan) {
+            for item in collect_term_isolation_rewrite_execution_items(&plan) {
                 steps.push(SolveStep {
-                    description: didactic_step.description,
-                    equation_after: didactic_step.equation_after,
+                    description: item.didactic.description,
+                    equation_after: item.equation,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -308,10 +309,10 @@ pub(super) fn isolate_mul(
         let new_rhs = new_eq.rhs;
         let new_op = new_eq.op.clone();
         if simplifier.collect_steps() {
-            for didactic_step in collect_term_isolation_rewrite_didactic_steps(&plan) {
+            for item in collect_term_isolation_rewrite_execution_items(&plan) {
                 steps.push(SolveStep {
-                    description: didactic_step.description,
-                    equation_after: didactic_step.equation_after,
+                    description: item.didactic.description,
+                    equation_after: item.equation,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -382,14 +383,14 @@ pub(super) fn isolate_div(
                 },
                 |exec| exec.negative_equation.clone(),
             );
-            let split_didactic = split_execution.as_ref().map(|execution| {
-                collect_division_denominator_sign_split_didactic_steps(&execution.didactic)
-            });
+            let split_items = split_execution
+                .as_ref()
+                .map(collect_division_denominator_sign_split_execution_items);
 
-            if let Some(didactic_step) = split_didactic.as_ref().and_then(|all| all.first()) {
+            if let Some(item) = split_items.as_ref().and_then(|all| all.first()) {
                 steps.push(SolveStep {
-                    description: didactic_step.description.clone(),
-                    equation_after: didactic_step.equation_after.clone(),
+                    description: item.didactic.description.clone(),
+                    equation_after: item.equation.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -412,10 +413,10 @@ pub(super) fn isolate_div(
             let final_pos = intersect_solution_sets(&simplifier.context, set_pos, domain_pos_set);
 
             // Case 2: Denominator < 0
-            if let Some(didactic_step) = split_didactic.as_ref().and_then(|all| all.get(1)) {
+            if let Some(item) = split_items.as_ref().and_then(|all| all.get(1)) {
                 steps.push(SolveStep {
-                    description: didactic_step.description.clone(),
-                    equation_after: didactic_step.equation_after.clone(),
+                    description: item.didactic.description.clone(),
+                    equation_after: item.equation.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -442,10 +443,10 @@ pub(super) fn isolate_div(
 
             // Combine steps
             let mut all_steps = steps_pos;
-            if let Some(didactic_step) = split_didactic.as_ref().and_then(|all| all.get(2)) {
+            if let Some(item) = split_items.as_ref().and_then(|all| all.get(2)) {
                 all_steps.push(SolveStep {
-                    description: didactic_step.description.clone(),
-                    equation_after: didactic_step.equation_after.clone(),
+                    description: item.didactic.description.clone(),
+                    equation_after: item.equation.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -476,10 +477,10 @@ pub(super) fn isolate_div(
             let new_rhs = new_eq.rhs;
             let new_op = new_eq.op.clone();
             if simplifier.collect_steps() {
-                for didactic_step in collect_term_isolation_rewrite_didactic_steps(&plan) {
+                for item in collect_term_isolation_rewrite_execution_items(&plan) {
                     steps.push(SolveStep {
-                        description: didactic_step.description,
-                        equation_after: didactic_step.equation_after,
+                        description: item.didactic.description,
+                        equation_after: item.equation,
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
                     });
@@ -547,15 +548,15 @@ pub(super) fn isolate_div(
                 || split_plan.negative_equation.clone(),
                 |exec| exec.negative_equation.clone(),
             );
-            let split_didactic = split_execution.as_ref().map(|execution| {
-                collect_division_denominator_sign_split_didactic_steps(&execution.didactic)
-            });
+            let split_items = split_execution
+                .as_ref()
+                .map(collect_isolated_denominator_sign_split_execution_items);
 
             let mut steps_case1 = steps.clone();
-            if let Some(didactic_step) = split_didactic.as_ref().and_then(|all| all.first()) {
+            if let Some(item) = split_items.as_ref().and_then(|all| all.first()) {
                 steps_case1.push(SolveStep {
-                    description: didactic_step.description.clone(),
-                    equation_after: didactic_step.equation_after.clone(),
+                    description: item.didactic.description.clone(),
+                    equation_after: item.equation.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -578,10 +579,10 @@ pub(super) fn isolate_div(
 
             // Case 2: x < 0. Multiply by x (negative) -> Inequality flips.
             let mut steps_case2 = steps.clone();
-            if let Some(didactic_step) = split_didactic.as_ref().and_then(|all| all.get(1)) {
+            if let Some(item) = split_items.as_ref().and_then(|all| all.get(1)) {
                 steps_case2.push(SolveStep {
-                    description: didactic_step.description.clone(),
-                    equation_after: didactic_step.equation_after.clone(),
+                    description: item.didactic.description.clone(),
+                    equation_after: item.equation.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -607,10 +608,10 @@ pub(super) fn isolate_div(
 
             // Combine steps
             let mut all_steps = steps_pos;
-            if let Some(didactic_step) = split_didactic.as_ref().and_then(|all| all.get(2)) {
+            if let Some(item) = split_items.as_ref().and_then(|all| all.get(2)) {
                 all_steps.push(SolveStep {
-                    description: didactic_step.description.clone(),
-                    equation_after: didactic_step.equation_after.clone(),
+                    description: item.didactic.description.clone(),
+                    equation_after: item.equation.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -646,12 +647,10 @@ pub(super) fn isolate_div(
                 },
             );
 
-            for didactic_step in
-                collect_division_denominator_didactic_steps(&didactic_execution.didactic)
-            {
+            for item in collect_division_denominator_didactic_execution_items(&didactic_execution) {
                 steps.push(SolveStep {
-                    description: didactic_step.description,
-                    equation_after: didactic_step.equation_after,
+                    description: item.didactic.description,
+                    equation_after: item.equation,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });

@@ -119,6 +119,13 @@ pub struct PowExponentShortcutDidacticStep {
     pub equation_after: Equation,
 }
 
+/// One executable exponent-shortcut item aligned with didactic payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PowExponentShortcutExecutionItem {
+    pub equation: Equation,
+    pub didactic: PowExponentShortcutDidacticStep,
+}
+
 /// Engine-facing action for a normalized exponent shortcut, including optional
 /// didactic step payload built in solver-core.
 #[derive(Debug, Clone, PartialEq)]
@@ -146,6 +153,19 @@ pub fn collect_pow_exponent_shortcut_didactic_steps(
     }
 }
 
+/// Collect exponent-shortcut execution items in display order.
+pub fn collect_pow_exponent_shortcut_execution_items(
+    action: &PowExponentShortcutEngineAction,
+) -> Vec<PowExponentShortcutExecutionItem> {
+    collect_pow_exponent_shortcut_didactic_steps(action)
+        .into_iter()
+        .map(|didactic| PowExponentShortcutExecutionItem {
+            equation: didactic.equation_after.clone(),
+            didactic,
+        })
+        .collect()
+}
+
 /// Solved base-one shortcut (`1^x = rhs`) with didactic payload.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowerBaseOneShortcutOutcome {
@@ -153,11 +173,31 @@ pub struct PowerBaseOneShortcutOutcome {
     pub step: PowExponentShortcutDidacticStep,
 }
 
+/// One executable base-one shortcut item aligned with didactic payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PowerBaseOneShortcutExecutionItem {
+    pub equation: Equation,
+    pub didactic: PowExponentShortcutDidacticStep,
+}
+
 /// Collect base-one shortcut didactic steps in display order.
 pub fn collect_power_base_one_shortcut_didactic_steps(
     outcome: &PowerBaseOneShortcutOutcome,
 ) -> Vec<PowExponentShortcutDidacticStep> {
     vec![outcome.step.clone()]
+}
+
+/// Collect base-one shortcut execution items in display order.
+pub fn collect_power_base_one_shortcut_execution_items(
+    outcome: &PowerBaseOneShortcutOutcome,
+) -> Vec<PowerBaseOneShortcutExecutionItem> {
+    collect_power_base_one_shortcut_didactic_steps(outcome)
+        .into_iter()
+        .map(|didactic| PowerBaseOneShortcutExecutionItem {
+            equation: didactic.equation_after.clone(),
+            didactic,
+        })
+        .collect()
 }
 
 /// Didactic payload for logarithmic isolation of exponent equations.
@@ -174,11 +214,31 @@ pub struct PowExponentLogIsolationRewritePlan {
     pub step: PowExponentLogIsolationStep,
 }
 
+/// One executable logarithmic-isolation item aligned with didactic payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PowExponentLogIsolationExecutionItem {
+    pub equation: Equation,
+    pub didactic: PowExponentLogIsolationStep,
+}
+
 /// Collect logarithmic-isolation didactic steps in display order.
 pub fn collect_pow_exponent_log_isolation_didactic_steps(
     plan: &PowExponentLogIsolationRewritePlan,
 ) -> Vec<PowExponentLogIsolationStep> {
     vec![plan.step.clone()]
+}
+
+/// Collect logarithmic-isolation execution items in display order.
+pub fn collect_pow_exponent_log_isolation_execution_items(
+    plan: &PowExponentLogIsolationRewritePlan,
+) -> Vec<PowExponentLogIsolationExecutionItem> {
+    collect_pow_exponent_log_isolation_didactic_steps(plan)
+        .into_iter()
+        .map(|didactic| PowExponentLogIsolationExecutionItem {
+            equation: didactic.equation_after.clone(),
+            didactic,
+        })
+        .collect()
 }
 
 /// Structured outcome for unsupported logarithmic rewrites.
@@ -232,6 +292,13 @@ pub struct PowBaseIsolationDidacticStep {
     pub equation_after: Equation,
 }
 
+/// One executable base-isolation item aligned with didactic payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PowBaseIsolationExecutionItem {
+    pub equation: Equation,
+    pub didactic: PowBaseIsolationDidacticStep,
+}
+
 /// Engine-facing action for base-isolation planning with didactic payload.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PowBaseIsolationEngineAction {
@@ -254,6 +321,19 @@ pub fn collect_pow_base_isolation_didactic_steps(
         PowBaseIsolationEngineAction::ReturnSolutionSet { step, .. }
         | PowBaseIsolationEngineAction::IsolateBase { step, .. } => vec![step.clone()],
     }
+}
+
+/// Collect base-isolation execution items in display order.
+pub fn collect_pow_base_isolation_execution_items(
+    action: &PowBaseIsolationEngineAction,
+) -> Vec<PowBaseIsolationExecutionItem> {
+    collect_pow_base_isolation_didactic_steps(action)
+        .into_iter()
+        .map(|didactic| PowBaseIsolationExecutionItem {
+            equation: didactic.equation_after.clone(),
+            didactic,
+        })
+        .collect()
 }
 
 /// Didactic payload for one branch produced by absolute-value splitting.
@@ -1329,6 +1409,13 @@ pub struct DivisionCaseDidacticStep {
     pub equation_after: Equation,
 }
 
+/// One executable division didactic item aligned with an equation payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DivisionDidacticExecutionItem {
+    pub equation: Equation,
+    pub didactic: DivisionCaseDidacticStep,
+}
+
 /// Didactic payload for denominator-sign split traces.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DivisionDenominatorSignSplitDidactic {
@@ -1347,6 +1434,34 @@ pub fn collect_division_denominator_sign_split_didactic_steps(
         didactic.negative_case.clone(),
         didactic.case_boundary.clone(),
     ]
+}
+
+/// Collect denominator sign-split execution items in display order:
+/// positive case, negative case, and boundary marker.
+pub fn collect_division_denominator_sign_split_execution_items(
+    execution: &DivisionDenominatorSignSplitExecutionPlan,
+) -> Vec<DivisionDidacticExecutionItem> {
+    collect_division_denominator_sign_split_didactic_steps(&execution.didactic)
+        .into_iter()
+        .map(|didactic| DivisionDidacticExecutionItem {
+            equation: didactic.equation_after.clone(),
+            didactic,
+        })
+        .collect()
+}
+
+/// Collect isolated-denominator sign-split execution items in display order:
+/// positive case, negative case, and boundary marker.
+pub fn collect_isolated_denominator_sign_split_execution_items(
+    execution: &IsolatedDenominatorSignSplitExecutionPlan,
+) -> Vec<DivisionDidacticExecutionItem> {
+    collect_division_denominator_sign_split_didactic_steps(&execution.didactic)
+        .into_iter()
+        .map(|didactic| DivisionDidacticExecutionItem {
+            equation: didactic.equation_after.clone(),
+            didactic,
+        })
+        .collect()
 }
 
 /// Build didactic payload for division denominator sign-split:
@@ -1512,6 +1627,26 @@ pub fn collect_term_isolation_didactic_steps(
     step: &TermIsolationDidacticStep,
 ) -> Vec<TermIsolationDidacticStep> {
     vec![step.clone()]
+}
+
+/// One executable term-isolation item aligned with didactic payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TermIsolationExecutionItem {
+    pub equation: Equation,
+    pub didactic: TermIsolationDidacticStep,
+}
+
+/// Collect generic term-isolation execution items in display order.
+pub fn collect_term_isolation_execution_items(
+    step: &TermIsolationDidacticStep,
+) -> Vec<TermIsolationExecutionItem> {
+    collect_term_isolation_didactic_steps(step)
+        .into_iter()
+        .map(|didactic| TermIsolationExecutionItem {
+            equation: didactic.equation_after.clone(),
+            didactic,
+        })
+        .collect()
 }
 
 /// Build `exponent = log(base, rhs)` step payload with optional guard narration.
@@ -1964,6 +2099,20 @@ pub fn collect_division_denominator_didactic_steps(
     vec![didactic.multiply_step.clone(), didactic.divide_step.clone()]
 }
 
+/// Collect denominator-isolation execution items in display order:
+/// multiply step first, divide step second.
+pub fn collect_division_denominator_didactic_execution_items(
+    execution: &DivisionDenominatorDidacticExecutionPlan,
+) -> Vec<DivisionDidacticExecutionItem> {
+    collect_division_denominator_didactic_steps(&execution.didactic)
+        .into_iter()
+        .map(|didactic| DivisionDidacticExecutionItem {
+            equation: didactic.equation_after.clone(),
+            didactic,
+        })
+        .collect()
+}
+
 /// Executable denominator-isolation didactic plan, with optional simplification
 /// already applied to the multiply-step RHS.
 #[derive(Debug, Clone, PartialEq)]
@@ -2284,6 +2433,27 @@ pub fn collect_abs_split_didactic_steps(
     didactic: &AbsSplitDidacticPair,
 ) -> Vec<AbsSplitDidacticStep> {
     vec![didactic.positive.clone(), didactic.negative.clone()]
+}
+
+/// One executable absolute-split item aligned with didactic payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AbsSplitExecutionItem {
+    pub equation: Equation,
+    pub didactic: AbsSplitDidacticStep,
+}
+
+/// Collect absolute-value split execution items in execution order:
+/// positive branch first, negative branch second.
+pub fn collect_abs_split_execution_items(
+    execution: &AbsSplitExecutionPlan,
+) -> Vec<AbsSplitExecutionItem> {
+    collect_abs_split_didactic_steps(&execution.didactic)
+        .into_iter()
+        .map(|didactic| AbsSplitExecutionItem {
+            equation: didactic.equation_after.clone(),
+            didactic,
+        })
+        .collect()
 }
 
 /// Build didactic payload for both absolute-value split branches.
@@ -2635,6 +2805,22 @@ mod tests {
     }
 
     #[test]
+    fn collect_power_base_one_shortcut_execution_items_returns_single_item() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rhs = ctx.num(2);
+        let outcome = resolve_power_base_one_shortcut_with(true, false, x, rhs, RelOp::Eq, |_| {
+            "2".to_string()
+        })
+        .expect("shortcut should apply");
+
+        let items = collect_power_base_one_shortcut_execution_items(&outcome);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].equation, outcome.step.equation_after);
+        assert_eq!(items[0].didactic, outcome.step);
+    }
+
+    #[test]
     fn abs_equality_precheck_negative_is_empty() {
         assert_eq!(
             abs_equality_precheck(NumericSign::Negative),
@@ -2842,6 +3028,49 @@ mod tests {
         );
         assert_eq!(
             didactic[1].description,
+            "Split absolute value (Case 2): x = -2"
+        );
+    }
+
+    #[test]
+    fn collect_abs_split_execution_items_preserves_positive_then_negative_order() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let neg_two = ctx.num(-2);
+        let execution = build_abs_split_execution_with(
+            Equation {
+                lhs: x,
+                rhs: two,
+                op: RelOp::Eq,
+            },
+            Equation {
+                lhs: x,
+                rhs: neg_two,
+                op: RelOp::Eq,
+            },
+            x,
+            |id| {
+                if id == two {
+                    "2".to_string()
+                } else if id == neg_two {
+                    "-2".to_string()
+                } else {
+                    "x".to_string()
+                }
+            },
+        );
+
+        let items = collect_abs_split_execution_items(&execution);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].equation, execution.positive_equation);
+        assert_eq!(
+            items[0].didactic.description,
+            "Split absolute value (Case 1): x = 2"
+        );
+        assert_eq!(items[1].equation, execution.negative_equation);
+        assert_eq!(
+            items[1].didactic.description,
             "Split absolute value (Case 2): x = -2"
         );
     }
@@ -3792,6 +4021,27 @@ mod tests {
     }
 
     #[test]
+    fn collect_pow_base_isolation_execution_items_returns_single_item() {
+        let mut ctx = Context::new();
+        let base = ctx.var("x");
+        let exponent = ctx.num(2);
+        let rhs = ctx.num(-1);
+        let plan =
+            plan_pow_base_isolation(&mut ctx, base, exponent, rhs, RelOp::Eq, true, true, false);
+        let action = map_pow_base_isolation_plan_with(plan, base, exponent, rhs, RelOp::Eq, |_| {
+            "expr".to_string()
+        });
+
+        let items = collect_pow_base_isolation_execution_items(&action);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].equation, items[0].didactic.equation_after);
+        assert!(items[0]
+            .didactic
+            .description
+            .contains("Even power cannot be negative"));
+    }
+
+    #[test]
     fn collect_pow_exponent_shortcut_didactic_steps_handles_continue_and_isolate() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -3821,6 +4071,39 @@ mod tests {
         let didactic = collect_pow_exponent_shortcut_didactic_steps(&action);
         assert_eq!(didactic.len(), 1);
         assert!(didactic[0].description.contains("expr"));
+    }
+
+    #[test]
+    fn collect_pow_exponent_shortcut_execution_items_handles_continue_and_isolate() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let n = ctx.var("n");
+
+        let continue_items = collect_pow_exponent_shortcut_execution_items(
+            &PowExponentShortcutEngineAction::Continue,
+        );
+        assert!(continue_items.is_empty());
+
+        let action = map_pow_exponent_shortcut_with(
+            PowExponentShortcutExecutionPlan::IsolateExponent {
+                rhs: n,
+                op: RelOp::Eq,
+                narrative: PowExponentShortcutNarrative::EqualPowBases,
+                rhs_exponent: Some(n),
+            },
+            x,
+            base,
+            rhs,
+            RelOp::Eq,
+            "x",
+            |_| "expr".to_string(),
+        );
+        let items = collect_pow_exponent_shortcut_execution_items(&action);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].equation, items[0].didactic.equation_after);
+        assert!(items[0].didactic.description.contains("expr"));
     }
 
     #[test]
@@ -4304,6 +4587,32 @@ mod tests {
     }
 
     #[test]
+    fn collect_division_denominator_didactic_execution_items_preserves_order() {
+        let mut ctx = Context::new();
+        let n = ctx.var("n");
+        let d = ctx.var("d");
+        let r = ctx.var("r");
+        let isolated_rhs = ctx.var("isolated");
+        let simplified_mul_rhs = ctx.var("simplified");
+        let plan = plan_division_denominator_didactic(&mut ctx, n, d, r, isolated_rhs, RelOp::Eq);
+        let execution =
+            build_division_denominator_didactic_execution_with(plan, simplified_mul_rhs, |id| {
+                if id == d {
+                    "d".to_string()
+                } else {
+                    "r".to_string()
+                }
+            });
+
+        let items = collect_division_denominator_didactic_execution_items(&execution);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].didactic.description, "Multiply both sides by d");
+        assert_eq!(items[0].equation, execution.multiply_equation);
+        assert_eq!(items[1].didactic.description, "Divide both sides by r");
+        assert_eq!(items[1].equation, execution.divide_equation);
+    }
+
+    #[test]
     fn log_isolation_messages_format_expected_text() {
         assert_eq!(
             take_log_base_message("10"),
@@ -4471,6 +4780,26 @@ mod tests {
     }
 
     #[test]
+    fn collect_term_isolation_execution_items_returns_single_item() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let step = build_conditional_solution_step(
+            "base > 0",
+            Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+        );
+
+        let items = collect_term_isolation_execution_items(&step);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].equation, step.equation_after);
+        assert_eq!(items[0].didactic, step);
+    }
+
+    #[test]
     fn plan_pow_exponent_log_isolation_step_builds_rewrite_and_step() {
         let mut ctx = Context::new();
         let exponent = ctx.var("x");
@@ -4544,6 +4873,28 @@ mod tests {
     }
 
     #[test]
+    fn collect_pow_exponent_log_isolation_execution_items_returns_single_item() {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let plan = plan_pow_exponent_log_isolation_step_with(
+            &mut ctx,
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            None,
+            |_| "rendered(a)".to_string(),
+        );
+
+        let items = collect_pow_exponent_log_isolation_execution_items(&plan);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].equation, plan.equation);
+        assert_eq!(items[0].didactic, plan.step);
+    }
+
+    #[test]
     fn plan_division_denominator_sign_split_builds_both_branches_and_domains() {
         let mut ctx = Context::new();
         let num = ctx.var("n");
@@ -4590,6 +4941,39 @@ mod tests {
             exec.didactic.negative_case.equation_after,
             exec.negative_equation
         );
+    }
+
+    #[test]
+    fn collect_division_denominator_sign_split_execution_items_preserves_step_order() {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let simplified_rhs = ctx.var("s");
+        let split =
+            plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Lt).unwrap();
+        let exec = build_division_denominator_sign_split_execution_with(
+            split,
+            den,
+            num,
+            RelOp::Lt,
+            simplified_rhs,
+            |_| "d".to_string(),
+        );
+
+        let items = collect_division_denominator_sign_split_execution_items(&exec);
+        assert_eq!(items.len(), 3);
+        assert_eq!(
+            items[0].didactic.description,
+            "Case 1: Assume d > 0. Multiply by positive denominator."
+        );
+        assert_eq!(items[0].equation, exec.positive_equation);
+        assert_eq!(
+            items[1].didactic.description,
+            "Case 2: Assume d < 0. Multiply by negative denominator (flips inequality)."
+        );
+        assert_eq!(items[1].equation, exec.negative_equation);
+        assert_eq!(items[2].didactic.description, "--- End of Case 1 ---");
     }
 
     #[test]
@@ -4669,6 +5053,32 @@ mod tests {
             exec.didactic.negative_case.equation_after,
             exec.negative_equation
         );
+    }
+
+    #[test]
+    fn collect_isolated_denominator_sign_split_execution_items_preserves_step_order() {
+        let mut ctx = Context::new();
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let split = plan_isolated_denominator_sign_split(den, rhs, RelOp::Leq).unwrap();
+        let exec =
+            build_isolated_denominator_sign_split_execution_with(split, den, RelOp::Leq, |_| {
+                "x".to_string()
+            });
+
+        let items = collect_isolated_denominator_sign_split_execution_items(&exec);
+        assert_eq!(items.len(), 3);
+        assert_eq!(
+            items[0].didactic.description,
+            "Case 1: Assume x > 0. Multiply by x (positive). Inequality direction preserved (flipped from isolation logic)."
+        );
+        assert_eq!(items[0].equation, exec.positive_equation);
+        assert_eq!(
+            items[1].didactic.description,
+            "Case 2: Assume x < 0. Multiply by x (negative). Inequality flips."
+        );
+        assert_eq!(items[1].equation, exec.negative_equation);
+        assert_eq!(items[2].didactic.description, "--- End of Case 1 ---");
     }
 
     #[test]

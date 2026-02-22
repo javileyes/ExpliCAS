@@ -15,11 +15,31 @@ pub struct LogIsolationRewritePlan {
     pub step: LogIsolationStep,
 }
 
+/// One executable log-isolation item aligned with didactic payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LogIsolationExecutionItem {
+    pub equation: Equation,
+    pub didactic: LogIsolationStep,
+}
+
 /// Collect log-isolation didactic steps in display order.
 pub fn collect_log_isolation_didactic_steps(
     plan: &LogIsolationRewritePlan,
 ) -> Vec<LogIsolationStep> {
     vec![plan.step.clone()]
+}
+
+/// Collect log-isolation execution items in display order.
+pub fn collect_log_isolation_execution_items(
+    plan: &LogIsolationRewritePlan,
+) -> Vec<LogIsolationExecutionItem> {
+    collect_log_isolation_didactic_steps(plan)
+        .into_iter()
+        .map(|didactic| LogIsolationExecutionItem {
+            equation: didactic.equation_after.clone(),
+            didactic,
+        })
+        .collect()
 }
 
 /// Planned transformation for isolating a logarithmic equation.
@@ -287,5 +307,22 @@ mod tests {
         let didactic = collect_log_isolation_didactic_steps(&out);
         assert_eq!(didactic.len(), 1);
         assert_eq!(didactic[0], out.step);
+    }
+
+    #[test]
+    fn collect_log_isolation_execution_items_returns_single_item() {
+        let mut ctx = Context::new();
+        let base = ctx.var("b");
+        let arg = ctx.var("x");
+        let rhs = ctx.num(3);
+        let out = plan_log_isolation_step_with(&mut ctx, base, arg, rhs, "x", RelOp::Eq, |_| {
+            "rendered(b)".to_string()
+        })
+        .expect("log isolation should apply");
+
+        let items = collect_log_isolation_execution_items(&out);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].equation, out.equation);
+        assert_eq!(items[0].didactic, out.step);
     }
 }

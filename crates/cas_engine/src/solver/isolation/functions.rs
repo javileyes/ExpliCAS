@@ -3,11 +3,11 @@ use crate::error::CasError;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
 use cas_ast::{BuiltinFn, ExprId, RelOp, SolutionSet};
-use cas_solver_core::function_inverse::collect_unary_inverse_didactic_steps;
+use cas_solver_core::function_inverse::collect_unary_inverse_execution_items;
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
-use cas_solver_core::log_isolation::collect_log_isolation_didactic_steps;
+use cas_solver_core::log_isolation::collect_log_isolation_execution_items;
 use cas_solver_core::solve_outcome::{
-    build_abs_split_execution_with, collect_abs_split_didactic_steps,
+    build_abs_split_execution_with, collect_abs_split_execution_items,
     finalize_abs_split_solution_set, plan_abs_isolation, AbsIsolationPlan,
 };
 
@@ -95,14 +95,14 @@ fn isolate_abs(
                     )
                 })
             });
-            let split_steps = split_execution
+            let split_items = split_execution
                 .as_ref()
-                .map(|execution| collect_abs_split_didactic_steps(&execution.didactic));
+                .map(collect_abs_split_execution_items);
             let mut steps1 = steps.clone();
-            if let Some(split_step) = split_steps.as_ref().and_then(|all| all.first()) {
+            if let Some(item) = split_items.as_ref().and_then(|all| all.first()) {
                 steps1.push(SolveStep {
-                    description: split_step.description.clone(),
-                    equation_after: split_step.equation_after.clone(),
+                    description: item.didactic.description.clone(),
+                    equation_after: item.equation.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -112,10 +112,10 @@ fn isolate_abs(
 
             // ── Branch 2: Negative case ─────────────────────────────────────────
             let mut steps2 = steps.clone();
-            if let Some(split_step) = split_steps.as_ref().and_then(|all| all.get(1)) {
+            if let Some(item) = split_items.as_ref().and_then(|all| all.get(1)) {
                 steps2.push(SolveStep {
-                    description: split_step.description.clone(),
-                    equation_after: split_step.equation_after.clone(),
+                    description: item.didactic.description.clone(),
+                    equation_after: item.equation.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -178,10 +178,10 @@ fn isolate_log(
     })?;
     let new_eq = rewrite.equation.clone();
     if simplifier.collect_steps() {
-        for didactic_step in collect_log_isolation_didactic_steps(&rewrite) {
+        for item in collect_log_isolation_execution_items(&rewrite) {
             steps.push(SolveStep {
-                description: didactic_step.description,
-                equation_after: didactic_step.equation_after,
+                description: item.didactic.description,
+                equation_after: item.equation,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -219,10 +219,10 @@ fn isolate_unary_function(
     let new_rhs = plan.equation.rhs;
 
     if simplifier.collect_steps() {
-        for didactic_step in collect_unary_inverse_didactic_steps(&plan) {
+        for item in collect_unary_inverse_execution_items(&plan) {
             steps.push(SolveStep {
-                description: didactic_step.description,
-                equation_after: didactic_step.equation_after,
+                description: item.didactic.description,
+                equation_after: item.equation,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });

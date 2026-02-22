@@ -34,11 +34,31 @@ pub struct UnaryInverseIsolationStepPlan {
     pub needs_rhs_cleanup: bool,
 }
 
+/// One executable unary-inverse item aligned with didactic payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnaryInverseExecutionItem {
+    pub equation: Equation,
+    pub didactic: UnaryInverseDidacticStep,
+}
+
 /// Collect unary-inverse didactic steps in display order.
 pub fn collect_unary_inverse_didactic_steps(
     plan: &UnaryInverseIsolationStepPlan,
 ) -> Vec<UnaryInverseDidacticStep> {
     vec![plan.step.clone()]
+}
+
+/// Collect unary-inverse execution items in display order.
+pub fn collect_unary_inverse_execution_items(
+    plan: &UnaryInverseIsolationStepPlan,
+) -> Vec<UnaryInverseExecutionItem> {
+    collect_unary_inverse_didactic_steps(plan)
+        .into_iter()
+        .map(|didactic| UnaryInverseExecutionItem {
+            equation: didactic.equation_after.clone(),
+            didactic,
+        })
+        .collect()
 }
 
 /// Didactic payload for RHS cleanup steps emitted after inverse rewrites.
@@ -447,6 +467,20 @@ mod tests {
         let didactic = collect_unary_inverse_didactic_steps(&plan);
         assert_eq!(didactic.len(), 1);
         assert_eq!(didactic[0], plan.step);
+    }
+
+    #[test]
+    fn collect_unary_inverse_execution_items_returns_single_item() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let plan = plan_unary_inverse_isolation_step(&mut ctx, "sin", x, y, RelOp::Eq, true)
+            .expect("sin inverse should build isolation plan");
+
+        let items = collect_unary_inverse_execution_items(&plan);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].equation, plan.equation);
+        assert_eq!(items[0].didactic, plan.step);
     }
 
     #[test]

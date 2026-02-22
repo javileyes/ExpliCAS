@@ -9,9 +9,9 @@ use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
     build_guarded_log_followup_step, build_pow_exponent_shortcut_execution_plan,
     build_residual_budget_exhausted_step, build_terminal_outcome_step,
-    collect_pow_base_isolation_didactic_steps, collect_pow_exponent_log_isolation_didactic_steps,
-    collect_pow_exponent_shortcut_didactic_steps, collect_power_base_one_shortcut_didactic_steps,
-    collect_term_isolation_didactic_steps, collect_term_isolation_rewrite_didactic_steps,
+    collect_pow_base_isolation_execution_items, collect_pow_exponent_log_isolation_execution_items,
+    collect_pow_exponent_shortcut_execution_items, collect_power_base_one_shortcut_execution_items,
+    collect_term_isolation_execution_items, collect_term_isolation_rewrite_execution_items,
     detect_pow_exponent_shortcut_inputs, guarded_or_residual, map_pow_base_isolation_plan_with,
     map_pow_exponent_shortcut_with, plan_pow_base_isolation,
     plan_pow_exponent_log_isolation_step_with, plan_pow_exponent_shortcut_action_from_inputs,
@@ -82,16 +82,16 @@ fn isolate_pow_base(
             }
         )
     });
-    let didactic_steps = simplifier
+    let execution_items = simplifier
         .collect_steps()
-        .then(|| collect_pow_base_isolation_didactic_steps(&action));
+        .then(|| collect_pow_base_isolation_execution_items(&action));
 
     match action {
         PowBaseIsolationEngineAction::ReturnSolutionSet { solutions, .. } => {
-            if let Some(didactic_step) = didactic_steps.as_ref().and_then(|all| all.first()) {
+            if let Some(item) = execution_items.as_ref().and_then(|all| all.first()) {
                 steps.push(SolveStep {
-                    description: didactic_step.description.clone(),
-                    equation_after: didactic_step.equation_after.clone(),
+                    description: item.didactic.description.clone(),
+                    equation_after: item.equation.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -104,10 +104,10 @@ fn isolate_pow_base(
             step,
         } => {
             let lhs_after = step.equation_after.lhs;
-            if let Some(didactic_step) = didactic_steps.as_ref().and_then(|all| all.first()) {
+            if let Some(item) = execution_items.as_ref().and_then(|all| all.first()) {
                 steps.push(SolveStep {
-                    description: didactic_step.description.clone(),
-                    equation_after: didactic_step.equation_after.clone(),
+                    description: item.didactic.description.clone(),
+                    equation_after: item.equation.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -172,9 +172,9 @@ fn isolate_pow_exponent(
                 }
             )
         });
-    let shortcut_didactic = simplifier
+    let shortcut_items = simplifier
         .collect_steps()
-        .then(|| collect_pow_exponent_shortcut_didactic_steps(&shortcut_engine_action));
+        .then(|| collect_pow_exponent_shortcut_execution_items(&shortcut_engine_action));
 
     match shortcut_engine_action {
         PowExponentShortcutEngineAction::Continue => {}
@@ -183,10 +183,10 @@ fn isolate_pow_exponent(
             op: target_op,
             ..
         } => {
-            if let Some(didactic_step) = shortcut_didactic.as_ref().and_then(|all| all.first()) {
+            if let Some(item) = shortcut_items.as_ref().and_then(|all| all.first()) {
                 steps.push(SolveStep {
-                    description: didactic_step.description.clone(),
-                    equation_after: didactic_step.equation_after.clone(),
+                    description: item.didactic.description.clone(),
+                    equation_after: item.equation.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -195,10 +195,10 @@ fn isolate_pow_exponent(
             return prepend_steps(results, steps);
         }
         PowExponentShortcutEngineAction::ReturnSolutionSet { solutions, .. } => {
-            if let Some(didactic_step) = shortcut_didactic.as_ref().and_then(|all| all.first()) {
+            if let Some(item) = shortcut_items.as_ref().and_then(|all| all.first()) {
                 steps.push(SolveStep {
-                    description: didactic_step.description.clone(),
-                    equation_after: didactic_step.equation_after.clone(),
+                    description: item.didactic.description.clone(),
+                    equation_after: item.equation.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -235,13 +235,13 @@ fn isolate_pow_exponent(
             )
         },
     ) {
-        let didactic_steps = simplifier
+        let execution_items = simplifier
             .collect_steps()
-            .then(|| collect_power_base_one_shortcut_didactic_steps(&outcome));
-        if let Some(didactic_step) = didactic_steps.as_ref().and_then(|all| all.first()) {
+            .then(|| collect_power_base_one_shortcut_execution_items(&outcome));
+        if let Some(item) = execution_items.as_ref().and_then(|all| all.first()) {
             steps.push(SolveStep {
-                description: didactic_step.description.clone(),
-                equation_after: didactic_step.equation_after.clone(),
+                description: item.didactic.description.clone(),
+                equation_after: item.equation.clone(),
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -277,10 +277,10 @@ fn isolate_pow_exponent(
                 sim_rhs,
                 op.clone(),
             );
-            for didactic_step in collect_term_isolation_rewrite_didactic_steps(&normalize_plan) {
+            for item in collect_term_isolation_rewrite_execution_items(&normalize_plan) {
                 steps.push(SolveStep {
-                    description: didactic_step.description,
-                    equation_after: didactic_step.equation_after,
+                    description: item.didactic.description,
+                    equation_after: item.equation,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -322,10 +322,10 @@ fn isolate_pow_exponent(
                 },
                 " (residual)",
             );
-            for didactic_step in collect_term_isolation_didactic_steps(&step) {
+            for item in collect_term_isolation_execution_items(&step) {
                 steps.push(SolveStep {
-                    description: didactic_step.description,
-                    equation_after: didactic_step.equation_after,
+                    description: item.didactic.description,
+                    equation_after: item.equation,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -375,10 +375,10 @@ fn isolate_pow_exponent(
                             op: op.clone(),
                         },
                     );
-                    for didactic_step in collect_term_isolation_didactic_steps(&step) {
+                    for item in collect_term_isolation_execution_items(&step) {
                         steps.push(SolveStep {
-                            description: didactic_step.description,
-                            equation_after: didactic_step.equation_after,
+                            description: item.didactic.description,
+                            equation_after: item.equation,
                             importance: crate::step::ImportanceLevel::Medium,
                             substeps: vec![],
                         });
@@ -429,13 +429,13 @@ fn isolate_pow_exponent(
                 );
                 let new_eq = log_plan.equation.clone();
                 let new_rhs = new_eq.rhs;
-                let log_didactic = simplifier
+                let log_items = simplifier
                     .collect_steps()
-                    .then(|| collect_pow_exponent_log_isolation_didactic_steps(&log_plan));
-                if let Some(didactic_step) = log_didactic.as_ref().and_then(|all| all.first()) {
+                    .then(|| collect_pow_exponent_log_isolation_execution_items(&log_plan));
+                if let Some(item) = log_items.as_ref().and_then(|all| all.first()) {
                     steps.push(SolveStep {
-                        description: didactic_step.description.clone(),
-                        equation_after: didactic_step.equation_after.clone(),
+                        description: item.didactic.description.clone(),
+                        equation_after: item.equation.clone(),
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
                     });
@@ -463,10 +463,10 @@ fn isolate_pow_exponent(
                                     op: op.clone(),
                                 },
                             );
-                            for didactic_step in collect_term_isolation_didactic_steps(&step) {
+                            for item in collect_term_isolation_execution_items(&step) {
                                 steps.push(SolveStep {
-                                    description: didactic_step.description,
-                                    equation_after: didactic_step.equation_after,
+                                    description: item.didactic.description,
+                                    equation_after: item.equation,
                                     importance: crate::step::ImportanceLevel::Medium,
                                     substeps: vec![],
                                 });
@@ -485,10 +485,10 @@ fn isolate_pow_exponent(
                                     op: op.clone(),
                                 },
                             );
-                            for didactic_step in collect_term_isolation_didactic_steps(&step) {
+                            for item in collect_term_isolation_execution_items(&step) {
                                 steps.push(SolveStep {
-                                    description: didactic_step.description,
-                                    equation_after: didactic_step.equation_after,
+                                    description: item.didactic.description,
+                                    equation_after: item.equation,
                                     importance: crate::step::ImportanceLevel::Medium,
                                     substeps: vec![],
                                 });
@@ -526,13 +526,13 @@ fn isolate_pow_exponent(
         |_| base_desc.clone(),
     );
     let new_eq = log_plan.equation.clone();
-    let log_didactic = simplifier
+    let log_items = simplifier
         .collect_steps()
-        .then(|| collect_pow_exponent_log_isolation_didactic_steps(&log_plan));
-    if let Some(didactic_step) = log_didactic.as_ref().and_then(|all| all.first()) {
+        .then(|| collect_pow_exponent_log_isolation_execution_items(&log_plan));
+    if let Some(item) = log_items.as_ref().and_then(|all| all.first()) {
         steps.push(SolveStep {
-            description: didactic_step.description.clone(),
-            equation_after: didactic_step.equation_after.clone(),
+            description: item.didactic.description.clone(),
+            equation_after: item.equation.clone(),
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });
