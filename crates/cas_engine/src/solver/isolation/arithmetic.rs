@@ -14,7 +14,8 @@ use cas_solver_core::solution_set::{
 use cas_solver_core::solve_outcome::{
     build_division_denominator_didactic_execution_with,
     build_division_denominator_sign_split_execution_with,
-    build_isolated_denominator_sign_split_execution_with, plan_add_operand_isolation_step_with,
+    build_isolated_denominator_sign_split_execution_with,
+    collect_division_denominator_didactic_steps, plan_add_operand_isolation_step_with,
     plan_div_denominator_isolation_with_zero_rhs_guard, plan_div_numerator_isolation_step_with,
     plan_division_denominator_didactic, plan_division_denominator_sign_split,
     plan_isolated_denominator_sign_split, plan_mul_factor_isolation_step_with,
@@ -639,18 +640,16 @@ pub(super) fn isolate_div(
                 },
             );
 
-            steps.push(SolveStep {
-                description: didactic_execution.didactic.multiply_step.description,
-                equation_after: didactic_execution.didactic.multiply_step.equation_after,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
-            steps.push(SolveStep {
-                description: didactic_execution.didactic.divide_step.description,
-                equation_after: didactic_execution.didactic.divide_step.equation_after,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
+            for didactic_step in
+                collect_division_denominator_didactic_steps(&didactic_execution.didactic)
+            {
+                steps.push(SolveStep {
+                    description: didactic_step.description,
+                    equation_after: didactic_step.equation_after,
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
         }
         let results = isolate(r, sim_rhs, op, var, simplifier, opts, ctx)?;
         prepend_steps(results, steps)

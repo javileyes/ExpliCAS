@@ -1861,6 +1861,14 @@ pub struct DivisionDenominatorDidacticSteps {
     pub divide_step: DivisionCaseDidacticStep,
 }
 
+/// Collect denominator-isolation didactic steps in display order:
+/// multiply step first, divide step second.
+pub fn collect_division_denominator_didactic_steps(
+    didactic: &DivisionDenominatorDidacticSteps,
+) -> Vec<DivisionCaseDidacticStep> {
+    vec![didactic.multiply_step.clone(), didactic.divide_step.clone()]
+}
+
 /// Executable denominator-isolation didactic plan, with optional simplification
 /// already applied to the multiply-step RHS.
 #[derive(Debug, Clone, PartialEq)]
@@ -4043,6 +4051,30 @@ mod tests {
             execution.didactic.divide_step.equation_after,
             execution.divide_equation
         );
+    }
+
+    #[test]
+    fn collect_division_denominator_didactic_steps_preserves_multiply_then_divide_order() {
+        let mut ctx = Context::new();
+        let n = ctx.var("n");
+        let d = ctx.var("d");
+        let r = ctx.var("r");
+        let isolated_rhs = ctx.var("isolated");
+        let simplified_mul_rhs = ctx.var("simplified");
+        let plan = plan_division_denominator_didactic(&mut ctx, n, d, r, isolated_rhs, RelOp::Eq);
+        let execution =
+            build_division_denominator_didactic_execution_with(plan, simplified_mul_rhs, |id| {
+                if id == d {
+                    "d".to_string()
+                } else {
+                    "r".to_string()
+                }
+            });
+
+        let didactic = collect_division_denominator_didactic_steps(&execution.didactic);
+        assert_eq!(didactic.len(), 2);
+        assert_eq!(didactic[0].description, "Multiply both sides by d");
+        assert_eq!(didactic[1].description, "Divide both sides by r");
     }
 
     #[test]
