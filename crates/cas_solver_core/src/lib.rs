@@ -21,6 +21,7 @@ pub mod reciprocal;
 pub mod sign_normalize;
 pub mod solution_set;
 pub mod solve_analysis;
+pub mod solve_budget;
 pub mod solve_outcome;
 pub mod step_cleanup;
 pub mod substitution;
