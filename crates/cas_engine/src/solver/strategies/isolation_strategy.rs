@@ -3,11 +3,11 @@ use crate::error::CasError;
 use crate::solver::isolation::isolate;
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
-use crate::solver::{SolveCtx, SolveDomainEnv, SolveStep, SolverOptions};
+use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_outcome::{
-    resolve_single_side_exponential_terminal_outcome, terminal_outcome_message,
+    resolve_single_side_exponential_terminal_with_message,
     SWAP_SIDES_TO_LHS_MESSAGE,
 };
 use cas_solver_core::strategy_kernels::{
@@ -92,54 +92,6 @@ impl SolverStrategy for IsolationStrategy {
     // Selective verification in solve() handles symbolic solutions.
 }
 
-/// Check if an exponential equation needs complex logarithm in Wildcard mode,
-/// or if it has no real solutions (EmptySet).
-/// Returns Some(Ok(Residual)) if Wildcard mode should return a residual.
-/// Returns Some(Ok(Empty)) if no real solutions exist.
-/// Returns Some(Err) if an error should be returned.
-/// Returns None if this case doesn't apply (normal processing should continue).
-fn check_exponential_needs_complex(
-    eq: &Equation,
-    var: &str,
-    simplifier: &mut Simplifier,
-    opts: &SolverOptions,
-    env: &SolveDomainEnv,
-    lhs_has: bool,
-    rhs_has: bool,
-) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-    use crate::solver::domain_guards::classify_log_solve;
-    let mode = crate::solver::domain_guards::to_core_domain_mode(opts.domain_mode);
-    let wildcard_scope = opts.assume_scope == crate::semantics::AssumeScope::Wildcard;
-
-    if let Some(outcome) = resolve_single_side_exponential_terminal_outcome(
-        &mut simplifier.context,
-        eq.lhs,
-        eq.rhs,
-        var,
-        lhs_has,
-        rhs_has,
-        mode,
-        wildcard_scope,
-        |core_ctx, base, other_side| classify_log_solve(core_ctx, base, other_side, opts, env),
-    ) {
-        let mut steps = Vec::new();
-        if simplifier.collect_steps() {
-            steps.push(SolveStep {
-                description: terminal_outcome_message(
-                    &outcome,
-                    " - use 'semantics preset complex'",
-                ),
-                equation_after: eq.clone(),
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
-        }
-        return Some(Ok((outcome.solutions, steps)));
-    }
-
-    None
-}
-
 pub struct UnwrapStrategy;
 
 impl SolverStrategy for UnwrapStrategy {
@@ -172,19 +124,35 @@ impl SolverStrategy for UnwrapStrategy {
 
         // EARLY CHECK: Handle exponential NeedsComplex + Wildcard -> Residual
         // This must be before the closure to be able to return SolutionSet::Residual
-        if let Some(result) = check_exponential_needs_complex(
-            eq,
+        use crate::solver::domain_guards::classify_log_solve;
+        let mode = crate::solver::domain_guards::to_core_domain_mode(opts.domain_mode);
+        let wildcard_scope = opts.assume_scope == crate::semantics::AssumeScope::Wildcard;
+
+        if let Some((solutions, message)) = resolve_single_side_exponential_terminal_with_message(
+            &mut simplifier.context,
+            eq.lhs,
+            eq.rhs,
             var,
-            simplifier,
-            opts,
-            &ctx.domain_env,
             lhs_has,
             rhs_has,
+            mode,
+            wildcard_scope,
+            " - use 'semantics preset complex'",
+            |core_ctx, base, other_side| {
+                classify_log_solve(core_ctx, base, other_side, opts, &ctx.domain_env)
+            },
         ) {
-            return Some(result);
+            let mut steps = Vec::new();
+            if simplifier.collect_steps() {
+                steps.push(SolveStep {
+                    description: message,
+                    equation_after: eq.clone(),
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
+            return Some(Ok((solutions, steps)));
         }
-
-        use crate::solver::domain_guards::classify_log_solve;
 
         // Helper to invert
         let mut invert = |target: ExprId,

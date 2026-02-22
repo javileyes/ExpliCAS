@@ -889,6 +889,39 @@ where
     resolve_log_terminal_outcome(ctx, &decision, mode, wildcard_scope, lhs, rhs, var)
 }
 
+/// Resolve a single-side exponential terminal outcome and return the
+/// user-facing didactic message together with the terminal solution set.
+#[allow(clippy::too_many_arguments)]
+pub fn resolve_single_side_exponential_terminal_with_message<F>(
+    ctx: &mut Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    lhs_has_var: bool,
+    rhs_has_var: bool,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+    residual_suffix: &str,
+    classify_log_solve: F,
+) -> Option<(SolutionSet, String)>
+where
+    F: FnMut(&Context, ExprId, ExprId) -> LogSolveDecision,
+{
+    let outcome = resolve_single_side_exponential_terminal_outcome(
+        ctx,
+        lhs,
+        rhs,
+        var,
+        lhs_has_var,
+        rhs_has_var,
+        mode,
+        wildcard_scope,
+        classify_log_solve,
+    )?;
+    let message = terminal_outcome_message(&outcome, residual_suffix);
+    Some((outcome.solutions, message))
+}
+
 /// Build a user-facing message for terminal outcomes, appending
 /// `residual_suffix` only when the outcome is residual.
 pub fn terminal_outcome_message(outcome: &TerminalSolveOutcome, residual_suffix: &str) -> String {
@@ -1604,6 +1637,32 @@ mod tests {
 
         assert_eq!(out.message, "no real solutions");
         assert!(matches!(out.solutions, SolutionSet::Empty));
+    }
+
+    #[test]
+    fn resolve_single_side_exponential_terminal_with_message_builds_user_text() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let pow = ctx.add(Expr::Pow(two, x));
+        let neg_five = ctx.num(-5);
+
+        let (solutions, message) = resolve_single_side_exponential_terminal_with_message(
+            &mut ctx,
+            pow,
+            neg_five,
+            "x",
+            true,
+            false,
+            DomainModeKind::Generic,
+            false,
+            " (residual)",
+            |_ctx, _base, _rhs| LogSolveDecision::EmptySet("no real solutions"),
+        )
+        .expect("must produce terminal message payload");
+
+        assert_eq!(message, "no real solutions");
+        assert!(matches!(solutions, SolutionSet::Empty));
     }
 
     #[test]
