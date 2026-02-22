@@ -50,6 +50,14 @@ pub enum PowExponentShortcut {
     },
 }
 
+/// Operational resolution for exponent shortcut routes.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PowExponentShortcutResolution {
+    Continue,
+    IsolateExponent { rhs: ExprId, op: RelOp },
+    ReturnSolutionSet(SolutionSet),
+}
+
 /// Routing for isolation when the variable is in the power base (`B^E = RHS`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PowBaseIsolationRoute {
@@ -181,6 +189,43 @@ pub fn classify_pow_exponent_shortcut(
         return PowExponentShortcut::EqualPowBases { rhs_exp };
     }
     PowExponentShortcut::None
+}
+
+/// Resolve a classified exponent shortcut into either:
+/// - an equation target for exponent isolation, or
+/// - a terminal solution set.
+pub fn resolve_pow_exponent_shortcut(
+    ctx: &mut Context,
+    shortcut: PowExponentShortcut,
+    base: ExprId,
+    op: RelOp,
+) -> PowExponentShortcutResolution {
+    match shortcut {
+        PowExponentShortcut::PowerEqualsBase(route) => match route {
+            PowerEqualsBaseRoute::ExponentGreaterThanZero => {
+                PowExponentShortcutResolution::IsolateExponent {
+                    rhs: ctx.num(0),
+                    op: RelOp::Gt,
+                }
+            }
+            PowerEqualsBaseRoute::ExponentEqualsOneNumericBase
+            | PowerEqualsBaseRoute::ExponentEqualsOneNoBranchBudget => {
+                PowExponentShortcutResolution::IsolateExponent {
+                    rhs: ctx.num(1),
+                    op,
+                }
+            }
+            PowerEqualsBaseRoute::SymbolicCaseSplit => {
+                PowExponentShortcutResolution::ReturnSolutionSet(
+                    power_equals_base_symbolic_outcome(ctx, base),
+                )
+            }
+        },
+        PowExponentShortcut::EqualPowBases { rhs_exp } => {
+            PowExponentShortcutResolution::IsolateExponent { rhs: rhs_exp, op }
+        }
+        PowExponentShortcut::None => PowExponentShortcutResolution::Continue,
+    }
 }
 
 /// Classify route for base-isolation in a power equation.
@@ -900,6 +945,64 @@ mod tests {
     fn classify_pow_exponent_shortcut_returns_none_when_no_shortcut_applies() {
         let out = classify_pow_exponent_shortcut(RelOp::Eq, false, None, false, false, false);
         assert_eq!(out, PowExponentShortcut::None);
+    }
+
+    #[test]
+    fn resolve_pow_exponent_shortcut_maps_zero_base_route_to_gt_zero() {
+        let mut ctx = Context::new();
+        let base = ctx.num(0);
+        let out = resolve_pow_exponent_shortcut(
+            &mut ctx,
+            PowExponentShortcut::PowerEqualsBase(PowerEqualsBaseRoute::ExponentGreaterThanZero),
+            base,
+            RelOp::Eq,
+        );
+        match out {
+            PowExponentShortcutResolution::IsolateExponent { rhs, op } => {
+                assert_eq!(op, RelOp::Gt);
+                assert!(matches!(
+                    ctx.get(rhs),
+                    Expr::Number(n) if *n == num_rational::BigRational::from_integer(0.into())
+                ));
+            }
+            other => panic!("expected isolate route, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn resolve_pow_exponent_shortcut_maps_equal_pow_bases_to_rhs_exponent() {
+        let mut ctx = Context::new();
+        let base = ctx.var("b");
+        let rhs_exp = ctx.var("n");
+        let out = resolve_pow_exponent_shortcut(
+            &mut ctx,
+            PowExponentShortcut::EqualPowBases { rhs_exp },
+            base,
+            RelOp::Leq,
+        );
+        match out {
+            PowExponentShortcutResolution::IsolateExponent { rhs, op } => {
+                assert_eq!(rhs, rhs_exp);
+                assert_eq!(op, RelOp::Leq);
+            }
+            other => panic!("expected isolate route, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn resolve_pow_exponent_shortcut_maps_symbolic_case_split_to_terminal_set() {
+        let mut ctx = Context::new();
+        let base = ctx.var("a");
+        let out = resolve_pow_exponent_shortcut(
+            &mut ctx,
+            PowExponentShortcut::PowerEqualsBase(PowerEqualsBaseRoute::SymbolicCaseSplit),
+            base,
+            RelOp::Eq,
+        );
+        assert!(matches!(
+            out,
+            PowExponentShortcutResolution::ReturnSolutionSet(SolutionSet::Conditional(_))
+        ));
     }
 
     #[test]

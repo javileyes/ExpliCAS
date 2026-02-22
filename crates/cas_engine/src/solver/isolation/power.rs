@@ -13,9 +13,9 @@ use cas_solver_core::solve_outcome::{
     classify_pow_base_isolation_route, classify_pow_exponent_shortcut,
     classify_power_base_one_shortcut, detect_pow_exponent_shortcut_inputs,
     even_power_negative_rhs_outcome, guarded_or_residual, power_base_one_shortcut_solutions,
-    power_equals_base_symbolic_outcome, residual_expression, resolve_log_terminal_outcome,
-    terminal_outcome_message, PowBaseIsolationRoute, PowExponentShortcut, PowerBaseOneShortcut,
-    PowerEqualsBaseRoute,
+    residual_expression, resolve_log_terminal_outcome, resolve_pow_exponent_shortcut,
+    terminal_outcome_message, PowBaseIsolationRoute, PowExponentShortcut,
+    PowExponentShortcutResolution, PowerBaseOneShortcut, PowerEqualsBaseRoute,
 };
 
 use super::{isolate, prepend_steps};
@@ -186,124 +186,175 @@ fn isolate_pow_exponent(
         opts.budget.max_branches >= 2,
     );
 
-    match shortcut {
-        PowExponentShortcut::PowerEqualsBase(route) => match route {
-            PowerEqualsBaseRoute::ExponentGreaterThanZero => {
-                let zero = simplifier.context.num(0);
-                if simplifier.collect_steps() {
-                    steps.push(SolveStep {
-                        description: format!(
-                            "Power Equals Base Shortcut: 0^{} = 0 ⟹ {} > 0 (0^0 undefined, 0^t for t<0 undefined)",
-                            var, var
-                        ),
-                        equation_after: Equation {
-                            lhs: e,
-                            rhs: zero,
-                            op: RelOp::Gt,
-                        },
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    });
-                }
-                let results = isolate(e, zero, RelOp::Gt, var, simplifier, opts, ctx)?;
-                return prepend_steps(results, steps);
-            }
-            PowerEqualsBaseRoute::ExponentEqualsOneNumericBase
-            | PowerEqualsBaseRoute::ExponentEqualsOneNoBranchBudget => {
-                let one = simplifier.context.num(1);
-                if simplifier.collect_steps() {
-                    let description = match route {
-                        PowerEqualsBaseRoute::ExponentEqualsOneNumericBase => format!(
-                            "Power Equals Base Shortcut: {}^{} = {} ⟹ {} = 1 (B^1 = B always holds)",
-                            cas_formatter::DisplayExpr {
-                                context: &simplifier.context,
-                                id: b
-                            },
-                            var,
-                            cas_formatter::DisplayExpr {
-                                context: &simplifier.context,
-                                id: rhs
-                            },
-                            var
-                        ),
-                        PowerEqualsBaseRoute::ExponentEqualsOneNoBranchBudget => format!(
-                            "Power Equals Base: {}^{} = {} ⟹ {} = 1 (assuming base ≠ 0, 1)",
-                            cas_formatter::DisplayExpr {
-                                context: &simplifier.context,
-                                id: b
-                            },
-                            var,
-                            cas_formatter::DisplayExpr {
-                                context: &simplifier.context,
-                                id: rhs
-                            },
-                            var
-                        ),
-                        _ => unreachable!("route match is exhaustive above"),
-                    };
-                    steps.push(SolveStep {
-                        description,
-                        equation_after: Equation {
-                            lhs: e,
-                            rhs: one,
-                            op: op.clone(),
-                        },
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    });
-                }
-                let results = isolate(e, one, op, var, simplifier, opts, ctx)?;
-                return prepend_steps(results, steps);
-            }
-            PowerEqualsBaseRoute::SymbolicCaseSplit => {
-                if simplifier.collect_steps() {
-                    steps.push(SolveStep {
-                        description: format!(
-                            "Power Equals Base with symbolic base '{}': case split → a=1: AllReals, a=0: x>0, otherwise: x=1",
-                            cas_formatter::DisplayExpr {
-                                context: &simplifier.context,
-                                id: b
-                            }
-                        ),
-                        equation_after: Equation {
-                            lhs: e,
-                            rhs: b,
-                            op: op.clone(),
-                        },
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    });
-                }
-                let conditional = power_equals_base_symbolic_outcome(&mut simplifier.context, b);
-                return Ok((conditional, steps));
-            }
-        },
-        PowExponentShortcut::EqualPowBases { rhs_exp } => {
+    let shortcut_resolution =
+        resolve_pow_exponent_shortcut(&mut simplifier.context, shortcut, b, op.clone());
+
+    match (shortcut, shortcut_resolution) {
+        (
+            PowExponentShortcut::PowerEqualsBase(PowerEqualsBaseRoute::ExponentGreaterThanZero),
+            PowExponentShortcutResolution::IsolateExponent {
+                rhs: target_rhs,
+                op: target_op,
+            },
+        ) => {
             if simplifier.collect_steps() {
                 steps.push(SolveStep {
                     description: format!(
-                        "Pattern: {}^{} = {}^{} → {} = {} (equal bases imply equal exponents when base ≠ 0, 1)",
-                        cas_formatter::DisplayExpr { context: &simplifier.context, id: b },
-                        var,
-                        cas_formatter::DisplayExpr { context: &simplifier.context, id: b },
-                        cas_formatter::DisplayExpr { context: &simplifier.context, id: rhs_exp },
-                        var,
-                        cas_formatter::DisplayExpr { context: &simplifier.context, id: rhs_exp }
+                        "Power Equals Base Shortcut: 0^{} = 0 ⟹ {} > 0 (0^0 undefined, 0^t for t<0 undefined)",
+                        var, var
                     ),
                     equation_after: Equation {
                         lhs: e,
-                        rhs: rhs_exp,
+                        rhs: target_rhs,
+                        op: target_op.clone(),
+                    },
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
+            let results = isolate(e, target_rhs, target_op, var, simplifier, opts, ctx)?;
+            return prepend_steps(results, steps);
+        }
+        (
+            PowExponentShortcut::PowerEqualsBase(
+                PowerEqualsBaseRoute::ExponentEqualsOneNumericBase,
+            ),
+            PowExponentShortcutResolution::IsolateExponent {
+                rhs: target_rhs,
+                op: target_op,
+            },
+        ) => {
+            if simplifier.collect_steps() {
+                steps.push(SolveStep {
+                    description: format!(
+                        "Power Equals Base Shortcut: {}^{} = {} ⟹ {} = 1 (B^1 = B always holds)",
+                        cas_formatter::DisplayExpr {
+                            context: &simplifier.context,
+                            id: b
+                        },
+                        var,
+                        cas_formatter::DisplayExpr {
+                            context: &simplifier.context,
+                            id: rhs
+                        },
+                        var
+                    ),
+                    equation_after: Equation {
+                        lhs: e,
+                        rhs: target_rhs,
+                        op: target_op.clone(),
+                    },
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
+            let results = isolate(e, target_rhs, target_op, var, simplifier, opts, ctx)?;
+            return prepend_steps(results, steps);
+        }
+        (
+            PowExponentShortcut::PowerEqualsBase(
+                PowerEqualsBaseRoute::ExponentEqualsOneNoBranchBudget,
+            ),
+            PowExponentShortcutResolution::IsolateExponent {
+                rhs: target_rhs,
+                op: target_op,
+            },
+        ) => {
+            if simplifier.collect_steps() {
+                steps.push(SolveStep {
+                    description: format!(
+                        "Power Equals Base: {}^{} = {} ⟹ {} = 1 (assuming base ≠ 0, 1)",
+                        cas_formatter::DisplayExpr {
+                            context: &simplifier.context,
+                            id: b
+                        },
+                        var,
+                        cas_formatter::DisplayExpr {
+                            context: &simplifier.context,
+                            id: rhs
+                        },
+                        var
+                    ),
+                    equation_after: Equation {
+                        lhs: e,
+                        rhs: target_rhs,
+                        op: target_op.clone(),
+                    },
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
+            let results = isolate(e, target_rhs, target_op, var, simplifier, opts, ctx)?;
+            return prepend_steps(results, steps);
+        }
+        (
+            PowExponentShortcut::PowerEqualsBase(PowerEqualsBaseRoute::SymbolicCaseSplit),
+            PowExponentShortcutResolution::ReturnSolutionSet(conditional),
+        ) => {
+            if simplifier.collect_steps() {
+                steps.push(SolveStep {
+                    description: format!(
+                        "Power Equals Base with symbolic base '{}': case split -> a=1: AllReals, a=0: x>0, otherwise: x=1",
+                        cas_formatter::DisplayExpr {
+                            context: &simplifier.context,
+                            id: b
+                        }
+                    ),
+                    equation_after: Equation {
+                        lhs: e,
+                        rhs: b,
                         op: op.clone(),
                     },
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
             }
+            return Ok((conditional, steps));
+        }
+        (
+            PowExponentShortcut::EqualPowBases { rhs_exp },
+            PowExponentShortcutResolution::IsolateExponent {
+                rhs: target_rhs,
+                op: target_op,
+            },
+        ) => {
+            if simplifier.collect_steps() {
+                steps.push(SolveStep {
+                    description: format!(
+                        "Pattern: {}^{} = {}^{} -> {} = {} (equal bases imply equal exponents when base ≠ 0, 1)",
+                        cas_formatter::DisplayExpr { context: &simplifier.context, id: b },
+                        var,
+                        cas_formatter::DisplayExpr { context: &simplifier.context, id: b },
+                        cas_formatter::DisplayExpr {
+                            context: &simplifier.context,
+                            id: rhs_exp
+                        },
+                        var,
+                        cas_formatter::DisplayExpr {
+                            context: &simplifier.context,
+                            id: rhs_exp
+                        }
+                    ),
+                    equation_after: Equation {
+                        lhs: e,
+                        rhs: target_rhs,
+                        op: target_op.clone(),
+                    },
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
 
-            let results = isolate(e, rhs_exp, op, var, simplifier, opts, ctx)?;
+            let results = isolate(e, target_rhs, target_op, var, simplifier, opts, ctx)?;
             return prepend_steps(results, steps);
         }
-        PowExponentShortcut::None => {}
+        (PowExponentShortcut::None, PowExponentShortcutResolution::Continue) => {}
+        _ => {
+            debug_assert!(
+                false,
+                "pow exponent shortcut classification/resolution mismatch"
+            );
+        }
     }
 
     // SAFETY GUARD: If RHS contains the variable, we cannot invert with log.
