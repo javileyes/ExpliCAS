@@ -19,6 +19,13 @@ pub struct UnaryInverseRewritePlan {
     pub needs_rhs_cleanup: bool,
 }
 
+/// Didactic payload for unary inverse rewrites.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnaryInverseDidacticStep {
+    pub description: String,
+    pub equation_after: Equation,
+}
+
 impl UnaryInverseKind {
     /// Classify a unary function name into an inversion kind.
     pub fn from_name(name: &str) -> Option<Self> {
@@ -168,6 +175,14 @@ pub fn plan_unary_inverse_rewrite(
         step_description: inverse_kind.step_description(),
         needs_rhs_cleanup: inverse_kind.needs_rhs_cleanup(),
     })
+}
+
+/// Build didactic payload from a unary inverse rewrite plan.
+pub fn build_unary_inverse_step(plan: &UnaryInverseRewritePlan) -> UnaryInverseDidacticStep {
+    UnaryInverseDidacticStep {
+        description: plan.step_description.to_string(),
+        equation_after: plan.equation.clone(),
+    }
 }
 
 #[cfg(test)]
@@ -331,6 +346,18 @@ mod tests {
         assert_eq!(plan.step_description, "Take natural log of both sides");
         assert!(!plan.needs_rhs_cleanup);
         assert_eq!(plan.equation.lhs, x);
+    }
+
+    #[test]
+    fn build_unary_inverse_step_uses_plan_description_and_equation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let plan = plan_unary_inverse_rewrite(&mut ctx, "sqrt", x, y, RelOp::Eq, true)
+            .expect("sqrt should build plan");
+        let step = build_unary_inverse_step(&plan);
+        assert_eq!(step.description, "Square both sides");
+        assert_eq!(step.equation_after, plan.equation);
     }
 
     #[test]
