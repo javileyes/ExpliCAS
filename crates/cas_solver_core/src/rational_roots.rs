@@ -350,6 +350,13 @@ pub struct RationalRootsDidacticStep {
     pub equation_after: Equation,
 }
 
+/// One executable rational-roots item aligned with a didactic payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RationalRootsExecutionItem {
+    pub equation: Equation,
+    pub didactic: RationalRootsDidacticStep,
+}
+
 /// Build narration for Rational Root Theorem strategy activation.
 pub fn rational_roots_strategy_message(degree: usize) -> String {
     format!(
@@ -374,6 +381,19 @@ pub fn collect_rational_roots_didactic_steps(
     step: &RationalRootsDidacticStep,
 ) -> Vec<RationalRootsDidacticStep> {
     vec![step.clone()]
+}
+
+/// Collect Rational Root strategy execution items in display order.
+pub fn collect_rational_roots_execution_items(
+    step: &RationalRootsDidacticStep,
+) -> Vec<RationalRootsExecutionItem> {
+    collect_rational_roots_didactic_steps(step)
+        .into_iter()
+        .map(|didactic| RationalRootsExecutionItem {
+            equation: didactic.equation_after.clone(),
+            didactic,
+        })
+        .collect()
 }
 
 /// Plan Rational Root strategy didactic step for equation `expanded_expr = 0`.
@@ -698,5 +718,16 @@ mod tests {
         let didactic = collect_rational_roots_didactic_steps(&step);
         assert_eq!(didactic.len(), 1);
         assert_eq!(didactic[0], step);
+    }
+
+    #[test]
+    fn collect_rational_roots_execution_items_returns_single_item() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let step = plan_rational_roots_strategy_step(&mut ctx, x, 3);
+        let items = collect_rational_roots_execution_items(&step);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].equation, step.equation_after);
+        assert_eq!(items[0].didactic, step);
     }
 }
