@@ -13,7 +13,9 @@ use cas_solver_core::solve_outcome::{
     pow_base_root_isolation_message, pow_exponent_shortcut_message,
     power_base_one_shortcut_message, power_base_one_shortcut_solutions,
     resolve_log_terminal_outcome, resolve_log_unsupported_outcome, terminal_outcome_message,
-    LogUnsupportedOutcome, PowBaseIsolationPlan, PowExponentShortcutExecutionPlan,
+    take_log_base_message, take_log_base_under_guard_message, LogUnsupportedOutcome,
+    PowBaseIsolationPlan, PowExponentShortcutExecutionPlan, SOLVE_TACTIC_NORMALIZATION_MESSAGE,
+    conditional_solution_message, residual_budget_exhausted_message, residual_message,
 };
 
 use super::{isolate, prepend_steps};
@@ -335,9 +337,7 @@ fn isolate_pow_exponent(
         // Add educational step if tactic transformed something
         if (sim_base != b || sim_rhs != rhs) && simplifier.collect_steps() {
             steps.push(SolveStep {
-                description:
-                    "Applied SolveTactic normalization (Assume mode) to enable logarithm isolation"
-                        .to_string(),
+                description: SOLVE_TACTIC_NORMALIZATION_MESSAGE.to_string(),
                 equation_after: Equation {
                     lhs: simplifier.context.add(Expr::Pow(sim_base, e)),
                     rhs: sim_rhs,
@@ -418,7 +418,7 @@ fn isolate_pow_exponent(
             } => {
                 if simplifier.collect_steps() {
                     steps.push(SolveStep {
-                        description: format!("{} (residual, budget exhausted)", msg),
+                        description: residual_budget_exhausted_message(msg),
                         equation_after: Equation { lhs, rhs, op },
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
@@ -460,15 +460,15 @@ fn isolate_pow_exponent(
                 );
                 let new_rhs = new_eq.rhs;
                 if simplifier.collect_steps() {
+                    let base_desc = format!(
+                        "{}",
+                        cas_formatter::DisplayExpr {
+                            context: &simplifier.context,
+                            id: b
+                        }
+                    );
                     steps.push(SolveStep {
-                        description: format!(
-                            "Take log base {} of both sides (under guard: {})",
-                            cas_formatter::DisplayExpr {
-                                context: &simplifier.context,
-                                id: b
-                            },
-                            msg
-                        ),
+                        description: take_log_base_under_guard_message(&base_desc, msg),
                         equation_after: new_eq.clone(),
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
@@ -489,7 +489,7 @@ fn isolate_pow_exponent(
                     Ok((guarded_solutions, _)) => {
                         if simplifier.collect_steps() {
                             steps.push(SolveStep {
-                                description: format!("Conditional solution: {}", msg),
+                                description: conditional_solution_message(msg),
                                 equation_after: Equation { lhs, rhs, op },
                                 importance: crate::step::ImportanceLevel::Medium,
                                 substeps: vec![],
@@ -500,7 +500,7 @@ fn isolate_pow_exponent(
                     Err(_) => {
                         if simplifier.collect_steps() {
                             steps.push(SolveStep {
-                                description: format!("{} (residual)", msg),
+                                description: residual_message(msg),
                                 equation_after: Equation { lhs, rhs, op },
                                 importance: crate::step::ImportanceLevel::Medium,
                                 substeps: vec![],
@@ -529,14 +529,15 @@ fn isolate_pow_exponent(
         op,
     );
     if simplifier.collect_steps() {
+        let base_desc = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: b
+            }
+        );
         steps.push(SolveStep {
-            description: format!(
-                "Take log base {} of both sides",
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: b
-                }
-            ),
+            description: take_log_base_message(&base_desc),
             equation_after: new_eq.clone(),
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],

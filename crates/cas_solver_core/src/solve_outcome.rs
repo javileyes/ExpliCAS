@@ -627,6 +627,14 @@ pub fn move_and_flip_message(term_display: &str) -> String {
     )
 }
 
+/// Standard narration for isolating a negated left-hand side.
+pub const NEGATED_LHS_ISOLATION_MESSAGE: &str = "Multiply both sides by -1 (flips inequality)";
+
+/// Standard narration when solve-tactic normalization rewrites `base^x = rhs`
+/// before logarithm isolation in Assume mode.
+pub const SOLVE_TACTIC_NORMALIZATION_MESSAGE: &str =
+    "Applied SolveTactic normalization (Assume mode) to enable logarithm isolation";
+
 /// Build didactic narration for multiplicative isolation.
 pub fn divide_both_sides_message(term_display: &str) -> String {
     format!("Divide both sides by {}", term_display)
@@ -672,6 +680,34 @@ pub fn isolated_denominator_negative_case_message(den_display: &str) -> String {
         "Case 2: Assume {} < 0. Multiply by {} (negative). Inequality flips.",
         den_display, den_display
     )
+}
+
+/// Build narration for taking logarithm on both sides.
+pub fn take_log_base_message(base_display: &str) -> String {
+    format!("Take log base {} of both sides", base_display)
+}
+
+/// Build narration for guarded logarithm isolation.
+pub fn take_log_base_under_guard_message(base_display: &str, guard_message: &str) -> String {
+    format!(
+        "Take log base {} of both sides (under guard: {})",
+        base_display, guard_message
+    )
+}
+
+/// Build narration for conditional solutions produced under assumptions.
+pub fn conditional_solution_message(message: &str) -> String {
+    format!("Conditional solution: {}", message)
+}
+
+/// Build narration for residual fallback.
+pub fn residual_message(message: &str) -> String {
+    format!("{} (residual)", message)
+}
+
+/// Build narration for residual fallback when branch budget is exhausted.
+pub fn residual_budget_exhausted_message(message: &str) -> String {
+    format!("{} (residual, budget exhausted)", message)
 }
 
 /// Build a residual solution set `solve(__eq__(lhs, rhs), var)`.
@@ -2041,6 +2077,10 @@ mod tests {
             move_and_flip_message("x"),
             "Move x and multiply by -1 (flips inequality)"
         );
+        assert_eq!(
+            NEGATED_LHS_ISOLATION_MESSAGE,
+            "Multiply both sides by -1 (flips inequality)"
+        );
         assert_eq!(end_case_message(1), "--- End of Case 1 ---");
     }
 
@@ -2061,6 +2101,28 @@ mod tests {
         assert_eq!(
             isolated_denominator_negative_case_message("x"),
             "Case 2: Assume x < 0. Multiply by x (negative). Inequality flips."
+        );
+    }
+
+    #[test]
+    fn log_isolation_messages_format_expected_text() {
+        assert_eq!(take_log_base_message("10"), "Take log base 10 of both sides");
+        assert_eq!(
+            take_log_base_under_guard_message("a", "a > 0 and rhs > 0"),
+            "Take log base a of both sides (under guard: a > 0 and rhs > 0)"
+        );
+        assert_eq!(
+            SOLVE_TACTIC_NORMALIZATION_MESSAGE,
+            "Applied SolveTactic normalization (Assume mode) to enable logarithm isolation"
+        );
+        assert_eq!(
+            conditional_solution_message("base != 1"),
+            "Conditional solution: base != 1"
+        );
+        assert_eq!(residual_message("unsupported"), "unsupported (residual)");
+        assert_eq!(
+            residual_budget_exhausted_message("unsupported"),
+            "unsupported (residual, budget exhausted)"
         );
     }
 

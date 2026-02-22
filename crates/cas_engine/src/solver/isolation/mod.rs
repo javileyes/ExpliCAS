@@ -7,7 +7,7 @@ use crate::solver::{SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
 use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solution_set::isolated_var_solution;
-use cas_solver_core::solve_outcome::residual_solution_set;
+use cas_solver_core::solve_outcome::{residual_solution_set, NEGATED_LHS_ISOLATION_MESSAGE};
 
 use crate::error::CasError;
 
@@ -99,7 +99,7 @@ pub(crate) fn isolate(
 
             if simplifier.collect_steps() {
                 steps.push(SolveStep {
-                    description: "Multiply both sides by -1 (flips inequality)".to_string(),
+                    description: NEGATED_LHS_ISOLATION_MESSAGE.to_string(),
                     equation_after: new_eq,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
