@@ -1275,6 +1275,18 @@ pub struct DivisionDenominatorSignSplitDidactic {
     pub case_boundary: DivisionCaseDidacticStep,
 }
 
+/// Collect denominator sign-split didactic steps in display order:
+/// positive case, negative case, and boundary marker.
+pub fn collect_division_denominator_sign_split_didactic_steps(
+    didactic: &DivisionDenominatorSignSplitDidactic,
+) -> Vec<DivisionCaseDidacticStep> {
+    vec![
+        didactic.positive_case.clone(),
+        didactic.negative_case.clone(),
+        didactic.case_boundary.clone(),
+    ]
+}
+
 /// Build didactic payload for division denominator sign-split:
 /// - Case 1 (`den > 0`)
 /// - Case 2 (`den < 0`)
@@ -3977,6 +3989,42 @@ mod tests {
                 op: RelOp::Lt,
             }
         );
+    }
+
+    #[test]
+    fn collect_division_denominator_sign_split_didactic_steps_preserves_expected_order() {
+        let mut ctx = Context::new();
+        let n = ctx.var("n");
+        let d = ctx.var("d");
+        let r = ctx.var("r");
+        let payload = build_division_denominator_sign_split_steps_with(
+            Equation {
+                lhs: n,
+                rhs: r,
+                op: RelOp::Lt,
+            },
+            Equation {
+                lhs: n,
+                rhs: r,
+                op: RelOp::Gt,
+            },
+            d,
+            n,
+            RelOp::Lt,
+            |_| "d".to_string(),
+        );
+
+        let didactic = collect_division_denominator_sign_split_didactic_steps(&payload);
+        assert_eq!(didactic.len(), 3);
+        assert_eq!(
+            didactic[0].description,
+            "Case 1: Assume d > 0. Multiply by positive denominator."
+        );
+        assert_eq!(
+            didactic[1].description,
+            "Case 2: Assume d < 0. Multiply by negative denominator (flips inequality)."
+        );
+        assert_eq!(didactic[2].description, "--- End of Case 1 ---");
     }
 
     #[test]
