@@ -2027,6 +2027,22 @@ pub fn guard_abs_solution_with_nonnegative_rhs(
     }
 }
 
+/// Finalize absolute-value split branches:
+/// 1) combine branch solution sets according to operator semantics
+/// 2) attach `rhs >= 0` guard when rhs depends on solve variable
+pub fn finalize_abs_split_solution_set(
+    ctx: &Context,
+    op: RelOp,
+    rhs_contains_var: bool,
+    rhs: ExprId,
+    positive_branch: SolutionSet,
+    negative_branch: SolutionSet,
+) -> SolutionSet {
+    let combined =
+        crate::isolation_utils::combine_abs_branch_sets(ctx, op, positive_branch, negative_branch);
+    guard_abs_solution_with_nonnegative_rhs(rhs_contains_var, rhs, combined)
+}
+
 /// Build `Conditional([guard -> guarded_solutions, else -> Residual(original_eq)])`.
 pub fn guarded_solutions_with_residual_fallback(
     guard: ConditionSet,
@@ -2461,6 +2477,34 @@ mod tests {
         let rhs = ctx.num(2);
         let out = guard_abs_solution_with_nonnegative_rhs(false, rhs, SolutionSet::Empty);
         assert!(matches!(out, SolutionSet::Empty));
+    }
+
+    #[test]
+    fn finalize_abs_split_solution_set_combines_and_guards() {
+        let mut ctx = Context::new();
+        let rhs = ctx.var("x");
+        let pos = ctx.num(1);
+        let neg = ctx.num(-1);
+        let out = finalize_abs_split_solution_set(
+            &ctx,
+            RelOp::Eq,
+            true,
+            rhs,
+            SolutionSet::Discrete(vec![pos]),
+            SolutionSet::Discrete(vec![neg]),
+        );
+
+        match out {
+            SolutionSet::Conditional(cases) => {
+                assert_eq!(cases.len(), 1);
+                assert_eq!(
+                    cases[0].when,
+                    ConditionSet::single(ConditionPredicate::NonNegative(rhs))
+                );
+                assert!(matches!(cases[0].then.solutions, SolutionSet::Discrete(_)));
+            }
+            other => panic!("expected guarded conditional, got {:?}", other),
+        }
     }
 
     #[test]

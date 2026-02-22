@@ -3,9 +3,9 @@ use crate::error::CasError;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
 use cas_ast::{BuiltinFn, ExprId, RelOp, SolutionSet};
-use cas_solver_core::isolation_utils::{combine_abs_branch_sets, contains_var, numeric_sign};
+use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::solve_outcome::{
-    build_abs_split_steps_with, guard_abs_solution_with_nonnegative_rhs, plan_abs_isolation,
+    build_abs_split_steps_with, finalize_abs_split_solution_set, plan_abs_isolation,
     AbsIsolationPlan,
 };
 
@@ -118,21 +118,18 @@ fn isolate_abs(
             let results2 = isolate(eq2.lhs, eq2.rhs, eq2.op, var, simplifier, opts, ctx)?;
             let (set2, steps2_out) = prepend_steps(results2, steps2)?;
 
-            // ── Combine branches ────────────────────────────────────────────────
-            let combined_set = combine_abs_branch_sets(&simplifier.context, op, set1, set2);
+            // ── Combine branches + soundness guard rhs≥0 ──────────────────────
+            let final_set = finalize_abs_split_solution_set(
+                &simplifier.context,
+                op,
+                contains_var(&simplifier.context, rhs, var),
+                rhs,
+                set1,
+                set2,
+            );
 
             let mut all_steps = steps1_out;
             all_steps.extend(steps2_out);
-
-            // ── Soundness guard: rhs ≥ 0 ───────────────────────────────────────
-            // When rhs contains the solve variable, the combined set may be unsound
-            // (e.g., |x| = x gives AllReals from branch 1 without domain restriction).
-            // Guard: wrap in Conditional with NonNegative(rhs).
-            let final_set = guard_abs_solution_with_nonnegative_rhs(
-                contains_var(&simplifier.context, rhs, var),
-                rhs,
-                combined_set,
-            );
 
             Ok((final_set, all_steps))
         }
