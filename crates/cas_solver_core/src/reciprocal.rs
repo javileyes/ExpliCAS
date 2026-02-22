@@ -229,6 +229,7 @@ pub fn build_reciprocal_solution_set(
 }
 
 /// Build full reciprocal solve execution payload from prepared display/proof data.
+#[allow(clippy::too_many_arguments)]
 pub fn build_reciprocal_execution(
     ctx: &mut Context,
     var: &str,
