@@ -38,6 +38,18 @@ pub enum PowerEqualsBaseRoute {
     SymbolicCaseSplit,
 }
 
+/// Shortcut routing for equations with variable in exponent (`base^x = rhs`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PowExponentShortcut {
+    None,
+    /// `base^x = base`
+    PowerEqualsBase(PowerEqualsBaseRoute),
+    /// `base^x = base^n`
+    EqualPowBases {
+        rhs_exp: ExprId,
+    },
+}
+
 /// Classify the simplified variable-free residual.
 pub fn classify_var_free_difference(ctx: &Context, diff: ExprId) -> VarFreeDiffKind {
     match ctx.get(diff) {
@@ -82,6 +94,28 @@ pub fn classify_power_equals_base_route(
     } else {
         PowerEqualsBaseRoute::ExponentEqualsOneNoBranchBudget
     }
+}
+
+/// Classify exponent-isolation shortcuts before generic logarithmic isolation.
+pub fn classify_pow_exponent_shortcut(
+    op: RelOp,
+    bases_equal: bool,
+    rhs_pow_base_equal: Option<ExprId>,
+    base_is_zero: bool,
+    base_is_numeric: bool,
+    can_branch: bool,
+) -> PowExponentShortcut {
+    if bases_equal && op == RelOp::Eq {
+        return PowExponentShortcut::PowerEqualsBase(classify_power_equals_base_route(
+            base_is_zero,
+            base_is_numeric,
+            can_branch,
+        ));
+    }
+    if let Some(rhs_exp) = rhs_pow_base_equal {
+        return PowExponentShortcut::EqualPowBases { rhs_exp };
+    }
+    PowExponentShortcut::None
 }
 
 /// Build a residual solution set `solve(__eq__(lhs, rhs), var)`.
@@ -558,5 +592,37 @@ mod tests {
             classify_power_equals_base_route(false, false, true),
             PowerEqualsBaseRoute::SymbolicCaseSplit
         );
+    }
+
+    #[test]
+    fn classify_pow_exponent_shortcut_prefers_power_equals_base_in_eq() {
+        let mut ctx = Context::new();
+        let rhs_exp = ctx.var("n");
+        let out =
+            classify_pow_exponent_shortcut(RelOp::Eq, true, Some(rhs_exp), false, true, false);
+        assert!(matches!(
+            out,
+            PowExponentShortcut::PowerEqualsBase(
+                PowerEqualsBaseRoute::ExponentEqualsOneNumericBase
+            )
+        ));
+    }
+
+    #[test]
+    fn classify_pow_exponent_shortcut_allows_equal_pow_bases_for_inequality() {
+        let mut ctx = Context::new();
+        let rhs_exp = ctx.var("n");
+        let out =
+            classify_pow_exponent_shortcut(RelOp::Geq, false, Some(rhs_exp), false, false, false);
+        assert!(matches!(
+            out,
+            PowExponentShortcut::EqualPowBases { rhs_exp: exp } if exp == rhs_exp
+        ));
+    }
+
+    #[test]
+    fn classify_pow_exponent_shortcut_returns_none_when_no_shortcut_applies() {
+        let out = classify_pow_exponent_shortcut(RelOp::Eq, false, None, false, false, false);
+        assert_eq!(out, PowExponentShortcut::None);
     }
 }

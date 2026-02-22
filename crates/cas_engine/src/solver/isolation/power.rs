@@ -8,9 +8,9 @@ use cas_solver_core::isolation_utils::{
 };
 use cas_solver_core::log_domain::LogSolveDecision;
 use cas_solver_core::solve_outcome::{
-    classify_power_equals_base_route, even_power_negative_rhs_outcome, guarded_or_residual,
+    classify_pow_exponent_shortcut, even_power_negative_rhs_outcome, guarded_or_residual,
     power_base_one_outcome, power_equals_base_symbolic_outcome, residual_expression,
-    resolve_log_terminal_outcome, PowerEqualsBaseRoute,
+    resolve_log_terminal_outcome, PowExponentShortcut, PowerEqualsBaseRoute,
 };
 
 use super::{isolate, prepend_steps};
@@ -174,16 +174,37 @@ fn isolate_pow_exponent(
         }
     };
 
-    if bases_equal && op == RelOp::Eq {
-        let base_is_zero = is_numeric_zero(&simplifier.context, b);
-        let base_is_numeric = matches!(simplifier.context.get(b), Expr::Number(_));
-        let route = classify_power_equals_base_route(
-            base_is_zero,
-            base_is_numeric,
-            opts.budget.max_branches >= 2,
-        );
+    let rhs_pow_base_equal =
+        if let Expr::Pow(rhs_base, rhs_exp) = simplifier.context.get(rhs).clone() {
+            let pow_bases_equal = {
+                if b == rhs_base {
+                    true
+                } else {
+                    let diff = simplifier.context.add(Expr::Sub(b, rhs_base));
+                    let (sim_diff, _) = simplifier.simplify(diff);
+                    is_numeric_zero(&simplifier.context, sim_diff)
+                }
+            };
+            if pow_bases_equal {
+                Some(rhs_exp)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
-        match route {
+    let shortcut = classify_pow_exponent_shortcut(
+        op.clone(),
+        bases_equal,
+        rhs_pow_base_equal,
+        is_numeric_zero(&simplifier.context, b),
+        matches!(simplifier.context.get(b), Expr::Number(_)),
+        opts.budget.max_branches >= 2,
+    );
+
+    match shortcut {
+        PowExponentShortcut::PowerEqualsBase(route) => match route {
             PowerEqualsBaseRoute::ExponentGreaterThanZero => {
                 let zero = simplifier.context.num(0);
                 if simplifier.collect_steps() {
@@ -273,31 +294,15 @@ fn isolate_pow_exponent(
                 let conditional = power_equals_base_symbolic_outcome(&mut simplifier.context, b);
                 return Ok((conditional, steps));
             }
-        }
-    }
-
-    // ================================================================
-    // SPECIAL CASE: base^x = base^n → x = n
-    // ================================================================
-    if let Expr::Pow(rhs_base, rhs_exp) = simplifier.context.get(rhs).clone() {
-        let pow_bases_equal = {
-            if b == rhs_base {
-                true
-            } else {
-                let diff = simplifier.context.add(Expr::Sub(b, rhs_base));
-                let (sim_diff, _) = simplifier.simplify(diff);
-                is_numeric_zero(&simplifier.context, sim_diff)
-            }
-        };
-
-        if pow_bases_equal {
+        },
+        PowExponentShortcut::EqualPowBases { rhs_exp } => {
             if simplifier.collect_steps() {
                 steps.push(SolveStep {
                     description: format!(
                         "Pattern: {}^{} = {}^{} → {} = {} (equal bases imply equal exponents when base ≠ 0, 1)",
                         cas_formatter::DisplayExpr { context: &simplifier.context, id: b },
                         var,
-                        cas_formatter::DisplayExpr { context: &simplifier.context, id: rhs_base },
+                        cas_formatter::DisplayExpr { context: &simplifier.context, id: b },
                         cas_formatter::DisplayExpr { context: &simplifier.context, id: rhs_exp },
                         var,
                         cas_formatter::DisplayExpr { context: &simplifier.context, id: rhs_exp }
@@ -315,6 +320,7 @@ fn isolate_pow_exponent(
             let results = isolate(e, rhs_exp, op, var, simplifier, opts, ctx)?;
             return prepend_steps(results, steps);
         }
+        PowExponentShortcut::None => {}
     }
 
     // SAFETY GUARD: If RHS contains the variable, we cannot invert with log.
