@@ -369,6 +369,13 @@ pub fn build_rational_roots_strategy_step(
     }
 }
 
+/// Collect Rational Root strategy didactic steps in display order.
+pub fn collect_rational_roots_didactic_steps(
+    step: &RationalRootsDidacticStep,
+) -> Vec<RationalRootsDidacticStep> {
+    vec![step.clone()]
+}
+
 /// Plan Rational Root strategy didactic step for equation `expanded_expr = 0`.
 pub fn plan_rational_roots_strategy_step(
     ctx: &mut Context,
@@ -681,5 +688,15 @@ mod tests {
         assert_eq!(step.equation_after.lhs, x);
         assert!(matches!(ctx.get(step.equation_after.rhs), Expr::Number(n) if n.is_zero()));
         assert_eq!(step.equation_after.op, cas_ast::RelOp::Eq);
+    }
+
+    #[test]
+    fn collect_rational_roots_didactic_steps_returns_single_step() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let step = plan_rational_roots_strategy_step(&mut ctx, x, 3);
+        let didactic = collect_rational_roots_didactic_steps(&step);
+        assert_eq!(didactic.len(), 1);
+        assert_eq!(didactic[0], step);
     }
 }

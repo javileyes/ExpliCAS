@@ -15,7 +15,9 @@ use crate::error::CasError;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
-use cas_solver_core::rational_roots::NumericPolynomialSolveOutcome;
+use cas_solver_core::rational_roots::{
+    collect_rational_roots_didactic_steps, NumericPolynomialSolveOutcome,
+};
 use cas_solver_core::solution_set::sort_and_dedup_exprs;
 
 /// Maximum number of candidate rational roots to try before bailing.
@@ -96,12 +98,15 @@ impl SolverStrategy for RationalRootsStrategy {
                 expanded,
                 degree,
             );
-            vec![SolveStep {
-                description: didactic_step.description,
-                equation_after: didactic_step.equation_after,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            }]
+            collect_rational_roots_didactic_steps(&didactic_step)
+                .into_iter()
+                .map(|step| SolveStep {
+                    description: step.description,
+                    equation_after: step.equation_after,
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                })
+                .collect()
         } else {
             vec![]
         };
