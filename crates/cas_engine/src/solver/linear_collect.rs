@@ -9,8 +9,13 @@
 //! 2. Factor: P*(1 + r*t) - A = 0
 //! 3. Solve: P = A / (1 + r*t)  [guard: 1 + r*t ≠ 0]
 
-use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
+use cas_ast::{Expr, ExprId, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
+use cas_solver_core::linear_didactic::{
+    build_linear_collect_additive_equation, build_linear_collect_factored_equation,
+    build_linear_collect_solution_equation, linear_collect_divide_message,
+    linear_collect_factored_message,
+};
 use cas_solver_core::linear_solution::{build_linear_solution_set, derive_linear_nonzero_statuses};
 use cas_solver_core::linear_terms::{build_sum, split_linear_term, TermClass};
 
@@ -93,42 +98,38 @@ pub(crate) fn try_linear_collect(
     // 7. Build step description
     let mut steps = Vec::new();
     if simplifier.collect_steps() {
-        let var_expr = simplifier.context.var(var);
+        let coeff_desc = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: coeff
+            }
+        );
+        let rhs_desc = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: neg_const
+            }
+        );
         steps.push(SolveStep {
-            description: format!(
-                "Collect terms in {} and factor: {} · {} = {}",
+            description: linear_collect_factored_message(var, &coeff_desc, &rhs_desc),
+            equation_after: build_linear_collect_factored_equation(
+                &mut simplifier.context,
                 var,
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: coeff
-                },
-                var,
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: neg_const
-                }
+                coeff,
+                neg_const,
             ),
-            equation_after: cas_ast::Equation {
-                lhs: simplifier.context.add(Expr::Mul(coeff, var_expr)),
-                rhs: neg_const,
-                op: RelOp::Eq,
-            },
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });
         steps.push(SolveStep {
-            description: format!(
-                "Divide both sides by {}",
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: coeff
-                }
+            description: linear_collect_divide_message(&coeff_desc, true),
+            equation_after: build_linear_collect_solution_equation(
+                &mut simplifier.context,
+                var,
+                solution,
             ),
-            equation_after: cas_ast::Equation {
-                lhs: var_expr,
-                rhs: solution,
-                op: RelOp::Eq,
-            },
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });
@@ -181,36 +182,34 @@ pub(crate) fn try_linear_collect_v2(
 
     if simplifier.collect_steps() {
         // Step 1: Show the factored form
-        let var_id = simplifier.context.var(var);
-        let coef_times_var = simplifier.context.add(Expr::Mul(coef, var_id));
-        let factored_lhs = simplifier.context.add(Expr::Add(coef_times_var, constant));
-        let zero = simplifier.context.num(0);
+        let coeff_desc = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: coef
+            }
+        );
 
         steps.push(SolveStep {
             description: format!("Collect terms in {}", var),
-            equation_after: cas_ast::Equation {
-                lhs: factored_lhs,
-                rhs: zero,
-                op: RelOp::Eq,
-            },
+            equation_after: build_linear_collect_additive_equation(
+                &mut simplifier.context,
+                var,
+                coef,
+                constant,
+            ),
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });
 
         // Step 2: Divide by coefficient
         steps.push(SolveStep {
-            description: format!(
-                "Divide by {}",
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: coef
-                }
+            description: linear_collect_divide_message(&coeff_desc, false),
+            equation_after: build_linear_collect_solution_equation(
+                &mut simplifier.context,
+                var,
+                solution,
             ),
-            equation_after: cas_ast::Equation {
-                lhs: var_id,
-                rhs: solution,
-                op: RelOp::Eq,
-            },
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });

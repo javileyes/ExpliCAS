@@ -3,6 +3,7 @@ pub mod equation_rewrite;
 pub mod fingerprint;
 pub mod function_inverse;
 pub mod isolation_utils;
+pub mod linear_didactic;
 pub mod linear_form;
 pub mod linear_kernel;
 pub mod linear_solution;
