@@ -1,4 +1,5 @@
 pub mod cycle_guard;
+pub mod equation_rewrite;
 pub mod fingerprint;
 pub mod function_inverse;
 pub mod isolation_utils;

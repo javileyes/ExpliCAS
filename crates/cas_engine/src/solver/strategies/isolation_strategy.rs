@@ -444,13 +444,12 @@ impl SolverStrategy for CollectTermsStrategy {
         // ax + b = cx + d  ->  ax + b - (cx + d) = cx + d - (cx + d)
         //                  ->  ax - cx + b - d = 0
 
-        let neg_rhs = simplifier.context.add(Expr::Neg(eq.rhs));
-        let new_lhs = simplifier.context.add(Expr::Add(eq.lhs, neg_rhs));
-        let new_rhs = simplifier.context.add(Expr::Add(eq.rhs, neg_rhs));
+        let rewritten =
+            cas_solver_core::equation_rewrite::subtract_rhs_from_both_sides(&mut simplifier.context, eq);
 
         // Simplify both sides
-        let (simp_lhs, _) = simplifier.simplify(new_lhs);
-        let (simp_rhs, _) = simplifier.simplify(new_rhs);
+        let (simp_lhs, _) = simplifier.simplify(rewritten.lhs);
+        let (simp_rhs, _) = simplifier.simplify(rewritten.rhs);
 
         if simplifier.collect_steps() {
             steps.push(SolveStep {
