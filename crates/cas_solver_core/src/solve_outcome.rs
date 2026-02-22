@@ -630,6 +630,9 @@ pub fn move_and_flip_message(term_display: &str) -> String {
 /// Standard narration for isolating a negated left-hand side.
 pub const NEGATED_LHS_ISOLATION_MESSAGE: &str = "Multiply both sides by -1 (flips inequality)";
 
+/// Standard narration for swapping equation sides to expose the solve variable.
+pub const SWAP_SIDES_TO_LHS_MESSAGE: &str = "Swap sides to put variable on LHS";
+
 /// Standard narration when solve-tactic normalization rewrites `base^x = rhs`
 /// before logarithm isolation in Assume mode.
 pub const SOLVE_TACTIC_NORMALIZATION_MESSAGE: &str =
@@ -708,6 +711,14 @@ pub fn residual_message(message: &str) -> String {
 /// Build narration for residual fallback when branch budget is exhausted.
 pub fn residual_budget_exhausted_message(message: &str) -> String {
     format!("{} (residual, budget exhausted)", message)
+}
+
+/// Build narration for eliminating rational exponents by powering both sides.
+pub fn eliminate_fractional_exponent_message(q_display: &str) -> String {
+    format!(
+        "Raise both sides to power {} to eliminate fractional exponent",
+        q_display
+    )
 }
 
 /// Build a residual solution set `solve(__eq__(lhs, rhs), var)`.
@@ -2124,6 +2135,10 @@ mod tests {
             NEGATED_LHS_ISOLATION_MESSAGE,
             "Multiply both sides by -1 (flips inequality)"
         );
+        assert_eq!(
+            SWAP_SIDES_TO_LHS_MESSAGE,
+            "Swap sides to put variable on LHS"
+        );
         assert_eq!(end_case_message(1), "--- End of Case 1 ---");
     }
 
@@ -2166,6 +2181,10 @@ mod tests {
         assert_eq!(
             residual_budget_exhausted_message("unsupported"),
             "unsupported (residual, budget exhausted)"
+        );
+        assert_eq!(
+            eliminate_fractional_exponent_message("3"),
+            "Raise both sides to power 3 to eliminate fractional exponent"
         );
     }
 

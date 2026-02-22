@@ -7,7 +7,9 @@ use crate::solver::{SolveCtx, SolveDomainEnv, SolveStep, SolverOptions};
 use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_outcome::{
-    resolve_single_side_exponential_terminal_outcome, terminal_outcome_message,
+    eliminate_fractional_exponent_message, resolve_single_side_exponential_terminal_outcome,
+    subtract_both_sides_message, take_log_base_message, terminal_outcome_message,
+    SWAP_SIDES_TO_LHS_MESSAGE,
 };
 
 pub struct IsolationStrategy;
@@ -51,7 +53,7 @@ impl SolverStrategy for IsolationStrategy {
             let mut steps = Vec::new();
             if simplifier.collect_steps() {
                 steps.push(SolveStep {
-                    description: "Swap sides to put variable on LHS".to_string(),
+                    description: SWAP_SIDES_TO_LHS_MESSAGE.to_string(),
                     equation_after: swapped.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
@@ -226,7 +228,7 @@ impl SolverStrategy for UnwrapStrategy {
                         );
                         crate::solver::note_assumption(event);
                     }
-                    Some((equation, "Take log base e of both sides".to_string()))
+                    Some((equation, take_log_base_message("e")))
                 }
             }
         };
@@ -329,14 +331,15 @@ impl SolverStrategy for CollectTermsStrategy {
         let (simp_rhs, _) = simplifier.simplify(rewritten.rhs);
 
         if simplifier.collect_steps() {
+            let rhs_desc = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id: eq.rhs
+                }
+            );
             steps.push(SolveStep {
-                description: format!(
-                    "Subtract {} from both sides",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: eq.rhs
-                    }
-                ),
+                description: subtract_both_sides_message(&rhs_desc),
                 equation_after: Equation {
                     lhs: simp_lhs,
                     rhs: simp_rhs,
@@ -410,11 +413,9 @@ impl SolverStrategy for RationalExponentStrategy {
         };
 
         if simplifier.collect_steps() {
+            let q_desc = q.to_string();
             steps.push(SolveStep {
-                description: format!(
-                    "Raise both sides to power {} to eliminate fractional exponent",
-                    q
-                ),
+                description: eliminate_fractional_exponent_message(&q_desc),
                 equation_after: new_eq.clone(),
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
