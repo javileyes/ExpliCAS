@@ -5,6 +5,9 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
+use cas_solver_core::substitution::{
+    back_substitute_message, detected_substitution_message, substituted_equation_message,
+};
 
 pub struct SubstitutionStrategy;
 
@@ -29,8 +32,9 @@ impl SolverStrategy for SubstitutionStrategy {
         ) {
             let mut steps = Vec::new();
             if simplifier.collect_steps() {
+                let sub_expr_desc = format!("{:?}", sub_var_expr);
                 steps.push(SolveStep {
-                    description: format!("Detected substitution: u = {:?}", sub_var_expr), // Debug format
+                    description: detected_substitution_message(&sub_expr_desc),
                     equation_after: eq.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
@@ -69,11 +73,11 @@ impl SolverStrategy for SubstitutionStrategy {
             }
 
             if simplifier.collect_steps() {
+                let lhs_desc = format!("{:?}", new_eq.lhs);
+                let rhs_desc = format!("{:?}", new_eq.rhs);
+                let op_desc = new_eq.op.to_string();
                 steps.push(SolveStep {
-                    description: format!(
-                        "Substituted equation: {:?} {} {:?}",
-                        new_eq.lhs, new_eq.op, new_eq.rhs
-                    ),
+                    description: substituted_equation_message(&lhs_desc, &op_desc, &rhs_desc),
                     equation_after: new_eq.clone(),
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
@@ -101,11 +105,10 @@ impl SolverStrategy for SubstitutionStrategy {
                             op: RelOp::Eq,
                         };
                         if simplifier.collect_steps() {
+                            let lhs_desc = format!("{:?}", sub_var_expr);
+                            let rhs_desc = format!("{:?}", val);
                             steps.push(SolveStep {
-                                description: format!(
-                                    "Back-substitute: {:?} = {:?}",
-                                    sub_var_expr, val
-                                ),
+                                description: back_substitute_message(&lhs_desc, &rhs_desc),
                                 equation_after: sub_eq.clone(),
                                 importance: crate::step::ImportanceLevel::Medium,
                                 substeps: vec![],

@@ -3,6 +3,24 @@ use cas_ast::{ordering::compare_expr, Constant, Context, Expr, ExprId};
 use cas_math::build::mul2_raw;
 use std::cmp::Ordering;
 
+/// Build narration when a substitution variable is introduced.
+pub fn detected_substitution_message(sub_expr_debug: &str) -> String {
+    format!("Detected substitution: u = {}", sub_expr_debug)
+}
+
+/// Build narration for the equation rewritten in substitution variable.
+pub fn substituted_equation_message(lhs_debug: &str, op_display: &str, rhs_debug: &str) -> String {
+    format!(
+        "Substituted equation: {} {} {}",
+        lhs_debug, op_display, rhs_debug
+    )
+}
+
+/// Build narration for back-substitution of a solved temporary variable.
+pub fn back_substitute_message(lhs_debug: &str, rhs_debug: &str) -> String {
+    format!("Back-substitute: {} = {}", lhs_debug, rhs_debug)
+}
+
 /// Substitute a named variable with a value in an expression tree.
 pub fn substitute_named_var(ctx: &mut Context, expr: ExprId, var: &str, value: ExprId) -> ExprId {
     let expr_data = ctx.get(expr).clone();
@@ -379,5 +397,21 @@ mod tests {
             }
             other => panic!("expected Pow(u,2), got {other:?}"),
         }
+    }
+
+    #[test]
+    fn substitution_didactic_messages_format_expected_text() {
+        assert_eq!(
+            detected_substitution_message("ExprId(42)"),
+            "Detected substitution: u = ExprId(42)"
+        );
+        assert_eq!(
+            substituted_equation_message("ExprId(1)", "=", "ExprId(2)"),
+            "Substituted equation: ExprId(1) = ExprId(2)"
+        );
+        assert_eq!(
+            back_substitute_message("ExprId(3)", "ExprId(4)"),
+            "Back-substitute: ExprId(3) = ExprId(4)"
+        );
     }
 }
