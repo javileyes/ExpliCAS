@@ -6,7 +6,9 @@ use cas_solver_core::isolation_utils::{
     apply_sign_flip, contains_var, is_even_integer_expr, is_known_negative, is_numeric_one,
     is_numeric_zero,
 };
-use cas_solver_core::log_domain::LogSolveDecision;
+use cas_solver_core::log_domain::{
+    classify_log_unsupported_route, decision_assumptions, LogSolveDecision, LogUnsupportedRoute,
+};
 use cas_solver_core::solve_outcome::{
     classify_pow_exponent_shortcut, even_power_negative_rhs_outcome, guarded_or_residual,
     power_base_one_outcome, power_equals_base_symbolic_outcome, residual_expression,
@@ -436,47 +438,51 @@ fn isolate_pow_exponent(
         return Ok((outcome.solutions, steps));
     }
 
-    match decision {
-        LogSolveDecision::Ok => {
-            // Base>0 and RHS>0 proven - safe to proceed
-        }
-        LogSolveDecision::OkWithAssumptions(assumptions) => {
-            for assumption in assumptions {
-                let event = crate::assumptions::AssumptionEvent::from_log_assumption(
-                    assumption,
-                    &simplifier.context,
-                    b,
-                    rhs,
-                );
-                crate::solver::note_assumption(event);
-            }
-        }
-        LogSolveDecision::NeedsComplex(msg) => {
-            return Err(CasError::UnsupportedInRealDomain(msg.to_string()));
-        }
-        LogSolveDecision::Unsupported(msg, missing_conditions) => {
-            let residual = residual_expression(&mut simplifier.context, lhs, rhs, var);
-            if !opts.budget.can_branch() {
-                if simplifier.collect_steps() {
-                    steps.push(SolveStep {
-                        description: format!("{} (residual, budget exhausted)", msg),
-                        equation_after: Equation { lhs, rhs, op },
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    });
-                }
-                return Ok((guarded_or_residual(None, None, residual), steps));
-            }
+    for assumption in decision_assumptions(&decision).iter().copied() {
+        let event = crate::assumptions::AssumptionEvent::from_log_assumption(
+            assumption,
+            &simplifier.context,
+            b,
+            rhs,
+        );
+        crate::solver::note_assumption(event);
+    }
 
+    if let LogSolveDecision::NeedsComplex(msg) = &decision {
+        return Err(CasError::UnsupportedInRealDomain((*msg).to_string()));
+    }
+    if matches!(decision, LogSolveDecision::EmptySet(_)) {
+        unreachable!("handled by terminal action");
+    }
+
+    match classify_log_unsupported_route(&decision, opts.budget.can_branch()) {
+        LogUnsupportedRoute::NotUnsupported => {}
+        LogUnsupportedRoute::ResidualBudgetExhausted { message: msg } => {
+            let residual = residual_expression(&mut simplifier.context, lhs, rhs, var);
+            if simplifier.collect_steps() {
+                steps.push(SolveStep {
+                    description: format!("{} (residual, budget exhausted)", msg),
+                    equation_after: Equation { lhs, rhs, op },
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
+            return Ok((guarded_or_residual(None, None, residual), steps));
+        }
+        LogUnsupportedRoute::Guarded {
+            message: msg,
+            missing_conditions,
+        } => {
+            let residual = residual_expression(&mut simplifier.context, lhs, rhs, var);
             // Build guard set from missing conditions
             let guard = cas_solver_core::log_domain::assumptions_to_condition_set(
-                &missing_conditions,
+                missing_conditions,
                 b,
                 rhs,
             );
 
             // Register blocked hints for pedagogical feedback
-            for condition in &missing_conditions {
+            for condition in missing_conditions {
                 let event = crate::assumptions::AssumptionEvent::from_log_assumption(
                     *condition,
                     &simplifier.context,
@@ -558,7 +564,6 @@ fn isolate_pow_exponent(
                 steps,
             ));
         }
-        LogSolveDecision::EmptySet(_) => unreachable!("handled by terminal action"),
     }
     // ================================================================
     // End of domain guards

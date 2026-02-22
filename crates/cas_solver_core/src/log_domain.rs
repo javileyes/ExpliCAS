@@ -50,6 +50,19 @@ pub enum LogLinearRewritePolicy<'a> {
     Blocked,
 }
 
+/// Handling route for `LogSolveDecision::Unsupported`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogUnsupportedRoute<'a> {
+    NotUnsupported,
+    ResidualBudgetExhausted {
+        message: &'a str,
+    },
+    Guarded {
+        message: &'a str,
+        missing_conditions: &'a [LogAssumption],
+    },
+}
+
 /// Map a decision to terminal solver action.
 pub fn classify_terminal_action(
     decision: &LogSolveDecision,
@@ -77,6 +90,33 @@ pub fn classify_log_linear_rewrite_policy<'a>(
         LogSolveDecision::EmptySet(_)
         | LogSolveDecision::NeedsComplex(_)
         | LogSolveDecision::Unsupported(_, _) => LogLinearRewritePolicy::Blocked,
+    }
+}
+
+/// Extract assumptions implied by a decision (empty for non-assume decisions).
+pub fn decision_assumptions(decision: &LogSolveDecision) -> &[LogAssumption] {
+    match decision {
+        LogSolveDecision::OkWithAssumptions(assumptions) => assumptions,
+        _ => &[],
+    }
+}
+
+/// Decide how to handle unsupported logarithmic rewrites.
+pub fn classify_log_unsupported_route<'a>(
+    decision: &'a LogSolveDecision,
+    can_branch: bool,
+) -> LogUnsupportedRoute<'a> {
+    match decision {
+        LogSolveDecision::Unsupported(message, missing_conditions) if can_branch => {
+            LogUnsupportedRoute::Guarded {
+                message,
+                missing_conditions,
+            }
+        }
+        LogSolveDecision::Unsupported(message, _) => {
+            LogUnsupportedRoute::ResidualBudgetExhausted { message }
+        }
+        _ => LogUnsupportedRoute::NotUnsupported,
     }
 }
 
@@ -296,5 +336,43 @@ mod tests {
             classify_log_linear_rewrite_policy(&needs_complex),
             LogLinearRewritePolicy::Blocked
         );
+    }
+
+    #[test]
+    fn decision_assumptions_returns_assumptions_only_for_ok_with_assume() {
+        let ok = LogSolveDecision::OkWithAssumptions(vec![LogAssumption::PositiveRhs]);
+        let none = LogSolveDecision::Ok;
+        assert_eq!(decision_assumptions(&ok), &[LogAssumption::PositiveRhs]);
+        assert!(decision_assumptions(&none).is_empty());
+    }
+
+    #[test]
+    fn classify_log_unsupported_route_budget_exhausted() {
+        let decision = LogSolveDecision::Unsupported("u", vec![LogAssumption::PositiveBase]);
+        assert_eq!(
+            classify_log_unsupported_route(&decision, false),
+            LogUnsupportedRoute::ResidualBudgetExhausted { message: "u" }
+        );
+    }
+
+    #[test]
+    fn classify_log_unsupported_route_guarded_when_branch_available() {
+        let decision = LogSolveDecision::Unsupported(
+            "u",
+            vec![LogAssumption::PositiveBase, LogAssumption::PositiveRhs],
+        );
+        match classify_log_unsupported_route(&decision, true) {
+            LogUnsupportedRoute::Guarded {
+                message,
+                missing_conditions,
+            } => {
+                assert_eq!(message, "u");
+                assert_eq!(
+                    missing_conditions,
+                    &[LogAssumption::PositiveBase, LogAssumption::PositiveRhs]
+                );
+            }
+            _ => panic!("expected guarded route"),
+        }
     }
 }
