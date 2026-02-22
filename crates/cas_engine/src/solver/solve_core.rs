@@ -24,8 +24,8 @@ use crate::solver::strategies::substitution::SubstitutionStrategy;
 use crate::solver::strategy::SolverStrategy;
 
 use super::{
-    step_cleanup, DepthGuard, DisplaySolveSteps, SolveDomainEnv, SolveStep, SolverOptions,
-    MAX_SOLVE_DEPTH, SOLVE_DEPTH,
+    DepthGuard, DisplaySolveSteps, SolveDomainEnv, SolveStep, SolverOptions, MAX_SOLVE_DEPTH,
+    SOLVE_DEPTH,
 };
 
 // NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)) and
@@ -110,8 +110,22 @@ pub fn solve_with_display_steps(
     let (solution_set, raw_steps) = result?;
 
     // Apply didactic cleanup using opts.detailed_steps
-    let cleaned =
-        step_cleanup::cleanup_solve_steps(&mut simplifier.context, raw_steps, opts.detailed_steps);
+    let cleaned = cas_solver_core::step_cleanup::cleanup_steps_by(
+        &mut simplifier.context,
+        raw_steps,
+        opts.detailed_steps,
+        "x",
+        |s| cas_solver_core::step_cleanup::CleanupStep {
+            description: s.description.clone(),
+            equation_after: s.equation_after.clone(),
+        },
+        |template, payload| SolveStep {
+            description: payload.description,
+            equation_after: payload.equation_after,
+            importance: template.importance,
+            substeps: template.substeps,
+        },
+    );
 
     Ok((solution_set, DisplaySolveSteps(cleaned), diagnostics))
 }

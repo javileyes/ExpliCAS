@@ -8,7 +8,6 @@ pub(crate) mod quadratic_steps;
 pub(crate) mod reciprocal_solve;
 pub(crate) mod runtime_tls;
 pub(crate) mod solve_core;
-pub(crate) mod step_cleanup;
 pub(crate) mod strategies;
 pub(crate) mod strategy;
 pub use cas_solver_core::isolation_utils::contains_var;
