@@ -429,8 +429,7 @@ mod tests {
         let x = ctx.var("x");
         let y = ctx.var("y");
         let decision = crate::log_domain::LogSolveDecision::Ok;
-        let plan =
-            plan_log_linear_unwrap_equation(&mut ctx, one, x, y, RelOp::Eq, true, &decision);
+        let plan = plan_log_linear_unwrap_equation(&mut ctx, one, x, y, RelOp::Eq, true, &decision);
         assert!(matches!(plan, LogLinearUnwrapPlan::BaseOneShortcut));
     }
 
@@ -441,8 +440,7 @@ mod tests {
         let x = ctx.var("x");
         let y = ctx.var("y");
         let decision = crate::log_domain::LogSolveDecision::NeedsComplex("needs complex");
-        let plan =
-            plan_log_linear_unwrap_equation(&mut ctx, a, x, y, RelOp::Eq, true, &decision);
+        let plan = plan_log_linear_unwrap_equation(&mut ctx, a, x, y, RelOp::Eq, true, &decision);
         assert!(matches!(plan, LogLinearUnwrapPlan::Blocked));
     }
 
@@ -455,15 +453,17 @@ mod tests {
         let decision = crate::log_domain::LogSolveDecision::OkWithAssumptions(vec![
             crate::log_domain::LogAssumption::PositiveBase,
         ]);
-        let plan =
-            plan_log_linear_unwrap_equation(&mut ctx, a, x, y, RelOp::Eq, true, &decision);
+        let plan = plan_log_linear_unwrap_equation(&mut ctx, a, x, y, RelOp::Eq, true, &decision);
         match plan {
             LogLinearUnwrapPlan::Proceed {
                 equation,
                 assumptions,
             } => {
                 assert_eq!(equation.op, RelOp::Eq);
-                assert_eq!(assumptions, &[crate::log_domain::LogAssumption::PositiveBase]);
+                assert_eq!(
+                    assumptions,
+                    &[crate::log_domain::LogAssumption::PositiveBase]
+                );
             }
             _ => panic!("expected proceed plan"),
         }

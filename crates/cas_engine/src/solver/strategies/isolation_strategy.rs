@@ -5,9 +5,7 @@ use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveDomainEnv, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
-use cas_solver_core::isolation_utils::{
-    contains_var, match_exponential_var_in_exponent,
-};
+use cas_solver_core::isolation_utils::{contains_var, match_exponential_var_in_exponent};
 use cas_solver_core::solve_outcome::{
     classify_single_side_exponential_log_decision, resolve_log_terminal_outcome,
     terminal_outcome_message,

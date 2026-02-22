@@ -51,12 +51,12 @@ where
 pub fn merge_symbolic_with_verified_numeric<F>(
     mut symbolic_solutions: Vec<ExprId>,
     numeric_solutions: Vec<ExprId>,
-    mut verify_numeric: F,
+    verify_numeric: F,
 ) -> Vec<ExprId>
 where
     F: FnMut(ExprId) -> bool,
 {
-    let verified_numeric = retain_verified_discrete(numeric_solutions, |sol| verify_numeric(sol));
+    let verified_numeric = retain_verified_discrete(numeric_solutions, verify_numeric);
     symbolic_solutions.extend(verified_numeric);
     symbolic_solutions
 }

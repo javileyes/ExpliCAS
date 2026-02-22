@@ -275,6 +275,7 @@ where
 
 /// Resolve terminal outcome for equations that have exactly one exponential side
 /// with the solve variable in exponent position.
+#[allow(clippy::too_many_arguments)]
 pub fn resolve_single_side_exponential_terminal_outcome<F>(
     ctx: &mut Context,
     lhs: ExprId,

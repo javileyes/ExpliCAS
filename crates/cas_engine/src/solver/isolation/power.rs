@@ -11,15 +11,20 @@ use cas_solver_core::log_domain::{
 };
 use cas_solver_core::solve_outcome::{
     classify_pow_base_isolation_route, classify_pow_exponent_shortcut,
-    classify_power_base_one_shortcut, even_power_negative_rhs_outcome, guarded_or_residual,
-    power_base_one_shortcut_solutions, power_equals_base_symbolic_outcome, residual_expression,
-    resolve_log_terminal_outcome, terminal_outcome_message, detect_pow_exponent_shortcut_inputs,
-    PowBaseIsolationRoute, PowExponentShortcut, PowerBaseOneShortcut, PowerEqualsBaseRoute,
+    classify_power_base_one_shortcut, detect_pow_exponent_shortcut_inputs,
+    even_power_negative_rhs_outcome, guarded_or_residual, power_base_one_shortcut_solutions,
+    power_equals_base_symbolic_outcome, residual_expression, resolve_log_terminal_outcome,
+    terminal_outcome_message, PowBaseIsolationRoute, PowExponentShortcut, PowerBaseOneShortcut,
+    PowerEqualsBaseRoute,
 };
 
 use super::{isolate, prepend_steps};
 
-fn are_shortcut_bases_equivalent(simplifier: &mut Simplifier, base: ExprId, candidate: ExprId) -> bool {
+fn are_shortcut_bases_equivalent(
+    simplifier: &mut Simplifier,
+    base: ExprId,
+    candidate: ExprId,
+) -> bool {
     if base == candidate {
         true
     } else {
