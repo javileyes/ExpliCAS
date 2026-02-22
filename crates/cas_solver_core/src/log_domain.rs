@@ -1,4 +1,4 @@
-use cas_ast::{ConditionPredicate, ConditionSet, ExprId};
+use cas_ast::{ConditionPredicate, ConditionSet, Context, ExprId};
 
 /// Domain mode used by the pure logarithmic decision table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -284,6 +284,41 @@ pub fn classify_log_solve_for_value_domain(
     classify_log_solve_with_env(mode, base_in_env, rhs_in_env, base_proof, rhs_proof)
 }
 
+/// Classify a log-solve step by proving positivity only when env facts are missing.
+pub fn classify_log_solve_with_prover<F>(
+    ctx: &Context,
+    base: ExprId,
+    rhs: ExprId,
+    value_domain_is_real_only: bool,
+    mode: DomainModeKind,
+    base_in_env: bool,
+    rhs_in_env: bool,
+    mut prove_positive_status: F,
+) -> LogSolveDecision
+where
+    F: FnMut(&Context, ExprId) -> ProofStatus,
+{
+    let base_proof = if base_in_env {
+        ProofStatus::Proven
+    } else {
+        prove_positive_status(ctx, base)
+    };
+    let rhs_proof = if rhs_in_env {
+        ProofStatus::Proven
+    } else {
+        prove_positive_status(ctx, rhs)
+    };
+
+    classify_log_solve_for_value_domain(
+        value_domain_is_real_only,
+        mode,
+        base_in_env,
+        rhs_in_env,
+        base_proof,
+        rhs_proof,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -522,5 +557,55 @@ mod tests {
             ProofStatus::Disproven,
         );
         assert!(matches!(out, LogSolveDecision::EmptySet(_)));
+    }
+
+    #[test]
+    fn classify_log_solve_with_prover_queries_only_missing_env_proofs() {
+        let mut ctx = cas_ast::Context::new();
+        let base = ctx.var("b");
+        let rhs = ctx.var("r");
+        let mut calls = 0usize;
+
+        let out = classify_log_solve_with_prover(
+            &ctx,
+            base,
+            rhs,
+            true,
+            DomainModeKind::Generic,
+            true,
+            false,
+            |_ctx, _expr| {
+                calls += 1;
+                ProofStatus::Unknown
+            },
+        );
+
+        assert_eq!(calls, 1);
+        assert!(matches!(out, LogSolveDecision::Unsupported(_, _)));
+    }
+
+    #[test]
+    fn classify_log_solve_with_prover_skips_callback_when_env_proves_both() {
+        let mut ctx = cas_ast::Context::new();
+        let base = ctx.var("b");
+        let rhs = ctx.var("r");
+        let mut calls = 0usize;
+
+        let out = classify_log_solve_with_prover(
+            &ctx,
+            base,
+            rhs,
+            true,
+            DomainModeKind::Generic,
+            true,
+            true,
+            |_ctx, _expr| {
+                calls += 1;
+                ProofStatus::Unknown
+            },
+        );
+
+        assert_eq!(calls, 0);
+        assert_eq!(out, LogSolveDecision::Ok);
     }
 }
