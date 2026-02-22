@@ -9,7 +9,7 @@ use cas_solver_core::isolation_utils::{
     contains_var, find_single_side_exponential_var_in_exponent, is_numeric_one,
     match_exponential_var_in_exponent,
 };
-use cas_solver_core::log_domain::{classify_log_linear_rewrite_policy, LogLinearRewritePolicy};
+use cas_solver_core::log_domain::{classify_log_linear_rewrite_route, LogLinearRewriteRoute};
 use cas_solver_core::solve_outcome::{resolve_log_terminal_outcome, terminal_outcome_message};
 
 pub struct IsolationStrategy;
@@ -246,12 +246,6 @@ impl SolverStrategy for UnwrapStrategy {
 
                         use crate::solver::domain_guards::classify_log_solve;
 
-                        // PRE-CHECK: Handle base = 1 before classifier.
-                        // This branch is solved by higher-level strategy handling.
-                        if is_numeric_one(&simplifier.context, b) {
-                            return None;
-                        }
-
                         // Use the domain classifier
                         let decision = classify_log_solve(
                             &simplifier.context,
@@ -261,8 +255,14 @@ impl SolverStrategy for UnwrapStrategy {
                             &ctx.domain_env,
                         );
 
-                        match classify_log_linear_rewrite_policy(&decision) {
-                            LogLinearRewritePolicy::Proceed { assumptions } => {
+                        match classify_log_linear_rewrite_route(
+                            is_numeric_one(&simplifier.context, b),
+                            &decision,
+                        ) {
+                            LogLinearRewriteRoute::BaseOneShortcut => {
+                                return None;
+                            }
+                            LogLinearRewriteRoute::Proceed { assumptions } => {
                                 // Record each assumption via the thread-local collector.
                                 for assumption in assumptions.iter().copied() {
                                     let event =
@@ -275,7 +275,7 @@ impl SolverStrategy for UnwrapStrategy {
                                     crate::solver::note_assumption(event);
                                 }
                             }
-                            LogLinearRewritePolicy::Blocked => {
+                            LogLinearRewriteRoute::Blocked => {
                                 // Should have been caught by check_exponential_needs_complex in
                                 // terminal cases; otherwise we skip this strategy.
                                 return None;

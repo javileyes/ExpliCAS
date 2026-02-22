@@ -50,6 +50,17 @@ pub enum LogLinearRewritePolicy<'a> {
     Blocked,
 }
 
+/// Full route for log-linear rewrites, including explicit base-one shortcut.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogLinearRewriteRoute<'a> {
+    /// `1^x = B` is handled by a higher-level shortcut.
+    BaseOneShortcut,
+    /// Rewrite can proceed under the listed assumptions.
+    Proceed { assumptions: &'a [LogAssumption] },
+    /// Rewrite should be skipped in current mode/decision.
+    Blocked,
+}
+
 /// Handling route for `LogSolveDecision::Unsupported`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogUnsupportedRoute<'a> {
@@ -90,6 +101,22 @@ pub fn classify_log_linear_rewrite_policy<'a>(
         LogSolveDecision::EmptySet(_)
         | LogSolveDecision::NeedsComplex(_)
         | LogSolveDecision::Unsupported(_, _) => LogLinearRewritePolicy::Blocked,
+    }
+}
+
+/// Classify log-linear rewrite route, folding in the base-one pre-check.
+pub fn classify_log_linear_rewrite_route<'a>(
+    base_is_one: bool,
+    decision: &'a LogSolveDecision,
+) -> LogLinearRewriteRoute<'a> {
+    if base_is_one {
+        return LogLinearRewriteRoute::BaseOneShortcut;
+    }
+    match classify_log_linear_rewrite_policy(decision) {
+        LogLinearRewritePolicy::Proceed { assumptions } => {
+            LogLinearRewriteRoute::Proceed { assumptions }
+        }
+        LogLinearRewritePolicy::Blocked => LogLinearRewriteRoute::Blocked,
     }
 }
 
@@ -398,6 +425,35 @@ mod tests {
             }
             _ => panic!("expected guarded route"),
         }
+    }
+
+    #[test]
+    fn log_linear_route_shortcuts_base_one() {
+        let decision = LogSolveDecision::Ok;
+        assert_eq!(
+            classify_log_linear_rewrite_route(true, &decision),
+            LogLinearRewriteRoute::BaseOneShortcut
+        );
+    }
+
+    #[test]
+    fn log_linear_route_proceeds_for_ok_with_assumptions() {
+        let decision = LogSolveDecision::OkWithAssumptions(vec![LogAssumption::PositiveBase]);
+        match classify_log_linear_rewrite_route(false, &decision) {
+            LogLinearRewriteRoute::Proceed { assumptions } => {
+                assert_eq!(assumptions, &[LogAssumption::PositiveBase]);
+            }
+            _ => panic!("expected proceed route"),
+        }
+    }
+
+    #[test]
+    fn log_linear_route_blocks_for_unsupported() {
+        let decision = LogSolveDecision::Unsupported("u", vec![LogAssumption::PositiveBase]);
+        assert_eq!(
+            classify_log_linear_rewrite_route(false, &decision),
+            LogLinearRewriteRoute::Blocked
+        );
     }
 
     #[test]
