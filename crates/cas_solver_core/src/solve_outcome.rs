@@ -1447,6 +1447,20 @@ pub fn build_conditional_solution_step(
     }
 }
 
+/// Build a follow-up didactic step after guarded logarithmic solving:
+/// `conditional` when guarded solve succeeds, `residual` otherwise.
+pub fn build_guarded_log_followup_step(
+    guarded_solve_succeeded: bool,
+    message: &str,
+    equation_after: Equation,
+) -> TermIsolationDidacticStep {
+    if guarded_solve_succeeded {
+        build_conditional_solution_step(message, equation_after)
+    } else {
+        build_residual_step(message, equation_after)
+    }
+}
+
 /// Build didactic payload for residual fallback messaging.
 pub fn build_residual_step(message: &str, equation_after: Equation) -> TermIsolationDidacticStep {
     TermIsolationDidacticStep {
@@ -1464,6 +1478,13 @@ pub fn build_residual_budget_exhausted_step(
         description: residual_budget_exhausted_message(message),
         equation_after,
     }
+}
+
+/// Collect generic term-isolation didactic steps in display order.
+pub fn collect_term_isolation_didactic_steps(
+    step: &TermIsolationDidacticStep,
+) -> Vec<TermIsolationDidacticStep> {
+    vec![step.clone()]
 }
 
 /// Build `exponent = log(base, rhs)` step payload with optional guard narration.
@@ -4354,6 +4375,43 @@ mod tests {
             exhausted.description,
             "unsupported (residual, budget exhausted)"
         );
+    }
+
+    #[test]
+    fn build_guarded_log_followup_step_selects_conditional_or_residual() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let eq = Equation {
+            lhs: x,
+            rhs: y,
+            op: RelOp::Eq,
+        };
+
+        let conditional = build_guarded_log_followup_step(true, "base > 0", eq.clone());
+        assert_eq!(conditional.description, "Conditional solution: base > 0");
+
+        let residual = build_guarded_log_followup_step(false, "unsupported", eq);
+        assert_eq!(residual.description, "unsupported (residual)");
+    }
+
+    #[test]
+    fn collect_term_isolation_didactic_steps_returns_single_step() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let step = build_conditional_solution_step(
+            "base > 0",
+            Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+        );
+
+        let didactic = collect_term_isolation_didactic_steps(&step);
+        assert_eq!(didactic.len(), 1);
+        assert_eq!(didactic[0], step);
     }
 
     #[test]
