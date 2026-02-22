@@ -17,8 +17,8 @@
 use crate::solver::SolveStep;
 use cas_ast::{Context, Equation};
 use cas_solver_core::log_linear_narration::{
-    build_detailed_collect_steps, collect_and_factor_terms_message, is_log_linear_take_log_step,
-    try_rewrite_ln_power, TAKE_LOG_BOTH_SIDES_STEP,
+    build_compact_collect_step, build_detailed_collect_steps, build_take_log_entry_step,
+    is_log_linear_take_log_step, try_rewrite_ln_power,
 };
 
 /// Check if a step sequence is a log-linear solve pattern.
@@ -72,10 +72,11 @@ pub(crate) fn rewrite_log_linear_steps(
 
             // Save for building intermediates
             log_eq = Some(eq.clone());
+            let take_log_step = build_take_log_entry_step(eq);
 
             result.push(SolveStep {
-                description: TAKE_LOG_BOTH_SIDES_STEP.to_string(),
-                equation_after: eq,
+                description: take_log_step.description,
+                equation_after: take_log_step.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -101,9 +102,10 @@ pub(crate) fn rewrite_log_linear_steps(
                 result.extend(sub_steps);
             } else {
                 // Compact mode: single step with cleaner description
+                let compact_step = build_compact_collect_step("x", step.equation_after.clone());
                 result.push(SolveStep {
-                    description: collect_and_factor_terms_message("x"),
-                    equation_after: step.equation_after.clone(),
+                    description: compact_step.description,
+                    equation_after: compact_step.equation_after,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -123,6 +125,7 @@ pub(crate) fn rewrite_log_linear_steps(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_solver_core::log_linear_narration::TAKE_LOG_BOTH_SIDES_STEP;
 
     #[test]
     fn test_is_log_linear_pattern() {

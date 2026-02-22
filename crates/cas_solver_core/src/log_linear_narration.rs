@@ -31,6 +31,25 @@ pub fn is_log_linear_pattern(steps: &[LogLinearNarrationStep]) -> bool {
         .unwrap_or(false)
 }
 
+/// Build the canonical "take log both sides" narration step.
+pub fn build_take_log_entry_step(equation_after: Equation) -> LogLinearNarrationStep {
+    LogLinearNarrationStep {
+        description: TAKE_LOG_BOTH_SIDES_STEP.to_string(),
+        equation_after,
+    }
+}
+
+/// Build compact collect/factor narration step.
+pub fn build_compact_collect_step(
+    var: &str,
+    equation_after: Equation,
+) -> LogLinearNarrationStep {
+    LogLinearNarrationStep {
+        description: collect_and_factor_terms_message(var),
+        equation_after,
+    }
+}
+
 /// Strip identity multipliers (`1*expr`/`expr*1`) recursively for cleaner display.
 pub fn strip_mul_one(ctx: &mut Context, expr: ExprId) -> ExprId {
     let expr_data = ctx.get(expr).clone();
@@ -388,5 +407,24 @@ mod tests {
             collect_and_factor_terms_message("t"),
             "Collect and factor t terms"
         );
+    }
+
+    #[test]
+    fn log_linear_step_builders_use_expected_messages() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let eq = Equation {
+            lhs: x,
+            rhs: y,
+            op: cas_ast::RelOp::Eq,
+        };
+        let take_log = build_take_log_entry_step(eq.clone());
+        assert_eq!(take_log.description, "Take log base e of both sides");
+        assert_eq!(take_log.equation_after, eq);
+
+        let compact = build_compact_collect_step("x", eq.clone());
+        assert_eq!(compact.description, "Collect and factor x terms");
+        assert_eq!(compact.equation_after, eq);
     }
 }
