@@ -10,6 +10,22 @@ pub struct LogLinearNarrationStep {
     pub equation_after: Equation,
 }
 
+/// Marker used by solver traces to indicate log-linear rewrite entrypoint.
+pub const TAKE_LOG_BOTH_SIDES_STEP: &str = "Take log base e of both sides";
+
+/// Check whether a single step description is the log-linear entry marker.
+pub fn is_log_linear_take_log_step(description: &str) -> bool {
+    description == TAKE_LOG_BOTH_SIDES_STEP
+}
+
+/// Check if a step stream starts with the log-linear marker.
+pub fn is_log_linear_pattern(steps: &[LogLinearNarrationStep]) -> bool {
+    steps
+        .first()
+        .map(|s| is_log_linear_take_log_step(&s.description))
+        .unwrap_or(false)
+}
+
 /// Strip identity multipliers (`1*expr`/`expr*1`) recursively for cleaner display.
 pub fn strip_mul_one(ctx: &mut Context, expr: ExprId) -> ExprId {
     let expr_data = ctx.get(expr).clone();
@@ -349,5 +365,11 @@ mod tests {
         let out = build_detailed_collect_steps(&mut ctx, Some(&log_eq), &log_eq, "x");
         assert!(!out.is_empty());
         assert_eq!(out[0].description, "Expand distributive law");
+    }
+
+    #[test]
+    fn log_linear_marker_detection_matches_expected_step() {
+        assert!(is_log_linear_take_log_step("Take log base e of both sides"));
+        assert!(!is_log_linear_take_log_step("Square both sides"));
     }
 }

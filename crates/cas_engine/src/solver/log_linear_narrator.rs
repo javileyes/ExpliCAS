@@ -16,17 +16,18 @@
 
 use crate::solver::SolveStep;
 use cas_ast::{Context, Equation};
-use cas_solver_core::log_linear_narration::{build_detailed_collect_steps, try_rewrite_ln_power};
+use cas_solver_core::log_linear_narration::{
+    build_detailed_collect_steps, is_log_linear_take_log_step, try_rewrite_ln_power,
+    TAKE_LOG_BOTH_SIDES_STEP,
+};
 
 /// Check if a step sequence is a log-linear solve pattern.
 /// Returns true if we should rewrite the steps for better didactic display.
 pub(crate) fn is_log_linear_pattern(steps: &[SolveStep]) -> bool {
-    if steps.is_empty() {
-        return false;
-    }
-
-    // Pattern: First step is "Take log base e of both sides"
-    steps[0].description == "Take log base e of both sides"
+    steps
+        .first()
+        .map(|s| is_log_linear_take_log_step(&s.description))
+        .unwrap_or(false)
 }
 
 /// Rewrite log-linear solve steps into a coherent didactic sequence.
@@ -59,7 +60,7 @@ pub(crate) fn rewrite_log_linear_steps(
         let step = &steps[i];
 
         // Step 1: Keep "Take log base e" but ensure RHS shows x·ln(b) not ln(b^x)
-        if step.description == "Take log base e of both sides" {
+        if is_log_linear_take_log_step(&step.description) {
             // Check if RHS is ln(something^x) and rewrite to x·ln(something)
             let improved_rhs = try_rewrite_ln_power(ctx, step.equation_after.rhs);
 
@@ -73,7 +74,7 @@ pub(crate) fn rewrite_log_linear_steps(
             log_eq = Some(eq.clone());
 
             result.push(SolveStep {
-                description: "Take log base e of both sides".to_string(),
+                description: TAKE_LOG_BOTH_SIDES_STEP.to_string(),
                 equation_after: eq,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
@@ -129,7 +130,7 @@ mod tests {
         let x = ctx.var("x");
 
         let steps = vec![SolveStep {
-            description: "Take log base e of both sides".to_string(),
+            description: TAKE_LOG_BOTH_SIDES_STEP.to_string(),
             equation_after: Equation {
                 lhs: x,
                 rhs: x,
