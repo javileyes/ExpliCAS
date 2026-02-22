@@ -343,6 +343,14 @@ pub enum NumericPolynomialSolveOutcome {
     CandidateRoots { degree: usize, roots: Vec<ExprId> },
 }
 
+/// Build narration for Rational Root Theorem strategy activation.
+pub fn rational_roots_strategy_message(degree: usize) -> String {
+    format!(
+        "Applied Rational Root Theorem to degree-{} polynomial",
+        degree
+    )
+}
+
 /// Solve a polynomial represented by coefficient expressions `[a0, a1, ..., an]`.
 ///
 /// Returns `None` when:
@@ -597,5 +605,13 @@ mod tests {
         let x = ctx.var("x");
         let coeffs = vec![ctx.num(0), x, ctx.num(0), ctx.num(1)];
         assert!(solve_numeric_coeff_polynomial(&mut ctx, &coeffs, 3, 10, 200).is_none());
+    }
+
+    #[test]
+    fn rational_roots_strategy_message_formats_expected_text() {
+        assert_eq!(
+            rational_roots_strategy_message(4),
+            "Applied Rational Root Theorem to degree-4 polynomial"
+        );
     }
 }

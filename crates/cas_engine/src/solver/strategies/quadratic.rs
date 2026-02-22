@@ -46,13 +46,16 @@ impl SolverStrategy for QuadraticStrategy {
         if let Some(factors) = split_zero_product_factors(&simplifier.context, sim_poly_expr) {
             // We found factors.
             if simplifier.collect_steps() {
+                let poly_desc = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id: sim_poly_expr
+                    }
+                );
                 steps.push(SolveStep {
-                    description: format!(
-                        "Factorized equation: {} = 0",
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id: sim_poly_expr
-                        }
+                    description: cas_solver_core::quadratic_didactic::factorized_equation_message(
+                        &poly_desc,
                     ),
                     equation_after: Equation {
                         lhs: sim_poly_expr,
@@ -77,13 +80,16 @@ impl SolverStrategy for QuadraticStrategy {
                     }
 
                     if simplifier.collect_steps() {
+                        let factor_desc = format!(
+                            "{}",
+                            cas_formatter::DisplayExpr {
+                                context: &simplifier.context,
+                                id: factor
+                            }
+                        );
                         steps.push(SolveStep {
-                            description: format!(
-                                "Solve factor: {} = 0",
-                                cas_formatter::DisplayExpr {
-                                    context: &simplifier.context,
-                                    id: factor
-                                }
+                            description: cas_solver_core::quadratic_didactic::solve_factor_message(
+                                &factor_desc,
                             ),
                             equation_after: Equation {
                                 lhs: factor,

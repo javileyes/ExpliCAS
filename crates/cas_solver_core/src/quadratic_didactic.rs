@@ -9,6 +9,16 @@ use cas_ast::{Context, Equation, Expr, ExprId, RelOp};
 pub const QUADRATIC_FORMULA_MAIN_STEP_DESCRIPTION: &str =
     "Detected quadratic equation. Applying quadratic formula.";
 
+/// Narration for factored zero-product entrypoint.
+pub fn factorized_equation_message(expr_display: &str) -> String {
+    format!("Factorized equation: {} = 0", expr_display)
+}
+
+/// Narration for solving one zero-product factor.
+pub fn solve_factor_message(factor_display: &str) -> String {
+    format!("Solve factor: {} = 0", factor_display)
+}
+
 /// Core didactic step payload for quadratic derivations.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DidacticSubstep {
@@ -319,5 +329,14 @@ mod tests {
             QUADRATIC_FORMULA_MAIN_STEP_DESCRIPTION,
             "Detected quadratic equation. Applying quadratic formula."
         );
+    }
+
+    #[test]
+    fn zero_product_messages_format_expected_text() {
+        assert_eq!(
+            factorized_equation_message("x*(x-1)"),
+            "Factorized equation: x*(x-1) = 0"
+        );
+        assert_eq!(solve_factor_message("x-1"), "Solve factor: x-1 = 0");
     }
 }

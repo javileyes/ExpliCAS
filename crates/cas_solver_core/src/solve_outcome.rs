@@ -729,6 +729,23 @@ pub fn eliminate_rational_exponent_message(q_display: &str) -> String {
     )
 }
 
+/// Build narration when the solve variable cancels and leaves a parameter constraint.
+pub fn variable_canceled_constraint_message(var: &str, diff_display: &str) -> String {
+    format!(
+        "Variable '{}' canceled during simplification. Solution depends on constraint: {} = 0",
+        var, diff_display
+    )
+}
+
+/// Build equation payload for `diff = 0` parameter constraints.
+pub fn build_zero_constraint_equation(ctx: &mut Context, diff: ExprId) -> Equation {
+    Equation {
+        lhs: diff,
+        rhs: ctx.num(0),
+        op: RelOp::Eq,
+    }
+}
+
 /// Build a residual solution set `solve(__eq__(lhs, rhs), var)`.
 pub fn residual_solution_set(
     ctx: &mut Context,
@@ -2201,6 +2218,10 @@ mod tests {
             eliminate_rational_exponent_message("3"),
             "Raise both sides to power 3 to eliminate rational exponent"
         );
+        assert_eq!(
+            variable_canceled_constraint_message("x", "y - 2"),
+            "Variable 'x' canceled during simplification. Solution depends on constraint: y - 2 = 0"
+        );
     }
 
     #[test]
@@ -2283,6 +2304,19 @@ mod tests {
         assert_eq!(eq.lhs, lhs);
         assert_eq!(eq.rhs, rhs);
         assert_eq!(eq.op, RelOp::Gt);
+    }
+
+    #[test]
+    fn build_zero_constraint_equation_sets_eq_zero_rhs() {
+        let mut ctx = Context::new();
+        let diff = ctx.var("d");
+        let eq = build_zero_constraint_equation(&mut ctx, diff);
+        assert_eq!(eq.lhs, diff);
+        assert_eq!(eq.op, RelOp::Eq);
+        assert!(matches!(
+            ctx.get(eq.rhs),
+            Expr::Number(n) if *n == num_rational::BigRational::from_integer(0.into())
+        ));
     }
 
     #[test]

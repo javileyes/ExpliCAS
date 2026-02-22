@@ -6,7 +6,10 @@
 use super::SolveDiagnostics;
 use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
-use cas_solver_core::solve_outcome::eliminate_rational_exponent_message;
+use cas_solver_core::solve_outcome::{
+    build_zero_constraint_equation, eliminate_rational_exponent_message,
+    variable_canceled_constraint_message,
+};
 
 use crate::engine::Simplifier;
 use crate::error::CasError;
@@ -395,19 +398,19 @@ fn solve_inner(
                 // Solution: x can be any value (AllReals) when the constraint holds,
                 // EXCEPT values that make denominators zero.
                 let steps = if simplifier.collect_steps() {
+                    let diff_desc = format!(
+                        "{}",
+                        cas_formatter::DisplayExpr {
+                            context: &simplifier.context,
+                            id: diff_simplified
+                        }
+                    );
                     vec![SolveStep {
-                        description: format!(
-                            "Variable '{}' canceled during simplification. Solution depends on constraint: {} = 0",
-                            var,
-                            cas_formatter::DisplayExpr { context: &simplifier.context, id: diff_simplified }
+                        description: variable_canceled_constraint_message(var, &diff_desc),
+                        equation_after: build_zero_constraint_equation(
+                            &mut simplifier.context,
+                            diff_simplified,
                         ),
-                        equation_after: cas_ast::Equation {
-                            lhs: diff_simplified,
-                            rhs: simplifier.context.add(cas_ast::Expr::Number(
-                                num_rational::BigRational::from_integer(0.into()),
-                            )),
-                            op: cas_ast::RelOp::Eq,
-                        },
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
                     }]

@@ -92,9 +92,8 @@ impl SolverStrategy for RationalRootsStrategy {
 
         let steps = if simplifier.collect_steps() {
             vec![SolveStep {
-                description: format!(
-                    "Applied Rational Root Theorem to degree-{} polynomial",
-                    degree
+                description: cas_solver_core::rational_roots::rational_roots_strategy_message(
+                    degree,
                 ),
                 equation_after: Equation {
                     lhs: expanded,
