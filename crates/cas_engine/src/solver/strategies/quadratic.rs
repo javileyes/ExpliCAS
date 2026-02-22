@@ -5,6 +5,7 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{is_numeric_zero, split_zero_product_factors};
+use cas_solver_core::quadratic_didactic::collect_zero_product_factor_execution_items;
 use cas_solver_core::quadratic_formula::{
     discriminant, discriminant_expr, roots_from_a_b_and_sqrt, roots_from_a_b_delta, sqrt_expr,
 };
@@ -76,28 +77,25 @@ impl SolverStrategy for QuadraticStrategy {
             // For Eq, it's simple union.
             if eq.op == RelOp::Eq {
                 let mut all_solutions = Vec::new();
-                let factor_steps = simplifier
-                    .collect_steps()
-                    .then_some(factorized_execution.factors.didactic);
+                let factor_items =
+                    collect_zero_product_factor_execution_items(&factorized_execution.factors);
 
-                for (idx, factor_eq) in factorized_execution
-                    .factors
-                    .equations
-                    .into_iter()
-                    .enumerate()
-                {
-                    if let Some(didactic_step) = factor_steps.as_ref().and_then(|all| all.get(idx))
+                for item in factor_items {
+                    if let Some(didactic_step) = simplifier
+                        .collect_steps()
+                        .then_some(item.didactic)
+                        .flatten()
                     {
                         steps.push(SolveStep {
-                            description: didactic_step.description.clone(),
-                            equation_after: didactic_step.equation_after.clone(),
+                            description: didactic_step.description,
+                            equation_after: didactic_step.equation_after,
                             importance: crate::step::ImportanceLevel::Medium,
                             substeps: vec![],
                         });
                     }
                     // Recursive solve
                     // We need to be careful about depth.
-                    match solve_with_ctx(&factor_eq, var, simplifier, ctx) {
+                    match solve_with_ctx(&item.equation, var, simplifier, ctx) {
                         Ok((sol_set, mut sub_steps)) => {
                             steps.append(&mut sub_steps);
                             match sol_set {

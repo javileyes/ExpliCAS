@@ -35,6 +35,13 @@ pub struct ZeroProductFactorExecutionPlan {
     pub didactic: Vec<QuadraticDidacticStep>,
 }
 
+/// One factor-solving execution item with an optional didactic step.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ZeroProductFactorExecutionItem {
+    pub equation: Equation,
+    pub didactic: Option<QuadraticDidacticStep>,
+}
+
 /// Executable payload for factorized zero-product solving:
 /// top factorized entry step + per-factor equations and didactic steps.
 #[derive(Debug, Clone, PartialEq)]
@@ -107,6 +114,22 @@ where
         equations,
         didactic,
     }
+}
+
+/// Collect zero-product factor execution items (`factor = 0`) in execution order.
+pub fn collect_zero_product_factor_execution_items(
+    execution: &ZeroProductFactorExecutionPlan,
+) -> Vec<ZeroProductFactorExecutionItem> {
+    execution
+        .equations
+        .iter()
+        .cloned()
+        .enumerate()
+        .map(|(idx, equation)| ZeroProductFactorExecutionItem {
+            equation,
+            didactic: execution.didactic.get(idx).cloned(),
+        })
+        .collect()
 }
 
 /// Build full execution payload for factorized zero-product solving:
@@ -616,5 +639,26 @@ mod tests {
             execution.factors.didactic[0].description,
             "Solve factor: f = 0"
         );
+    }
+
+    #[test]
+    fn collect_zero_product_factor_execution_items_aligns_steps_with_equations() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_minus_one = ctx.add(Expr::Sub(x, one));
+        let factors = vec![x, x_minus_one];
+        let zero = ctx.num(0);
+
+        let execution = build_zero_product_factor_execution_with(&ctx, &factors, "x", zero, |_| {
+            "f".to_string()
+        });
+        let items = collect_zero_product_factor_execution_items(&execution);
+
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].equation, execution.equations[0]);
+        assert_eq!(items[1].equation, execution.equations[1]);
+        assert!(items[0].didactic.is_some());
+        assert!(items[1].didactic.is_some());
     }
 }
