@@ -905,6 +905,16 @@ pub fn build_swap_sides_step(equation_after: Equation) -> TermIsolationDidacticS
 pub const SOLVE_TACTIC_NORMALIZATION_MESSAGE: &str =
     "Applied SolveTactic normalization (Assume mode) to enable logarithm isolation";
 
+/// Build didactic payload for solve-tactic normalization in exponent isolation.
+pub fn build_solve_tactic_normalization_step(
+    equation_after: Equation,
+) -> TermIsolationDidacticStep {
+    TermIsolationDidacticStep {
+        description: SOLVE_TACTIC_NORMALIZATION_MESSAGE.to_string(),
+        equation_after,
+    }
+}
+
 /// Build didactic narration for multiplicative isolation.
 pub fn divide_both_sides_message(term_display: &str) -> String {
     format!("Divide both sides by {}", term_display)
@@ -3084,6 +3094,24 @@ mod tests {
         let swap_step = build_swap_sides_step(eq.clone());
         assert_eq!(swap_step.description, "Swap sides to put variable on LHS");
         assert_eq!(swap_step.equation_after, eq);
+    }
+
+    #[test]
+    fn build_solve_tactic_normalization_step_uses_standard_message() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let eq = Equation {
+            lhs: x,
+            rhs: y,
+            op: RelOp::Eq,
+        };
+        let step = build_solve_tactic_normalization_step(eq.clone());
+        assert_eq!(
+            step.description,
+            "Applied SolveTactic normalization (Assume mode) to enable logarithm isolation"
+        );
+        assert_eq!(step.equation_after, eq);
     }
 
     #[test]

@@ -13,9 +13,10 @@ use cas_solver_core::solve_outcome::{
     map_pow_base_isolation_plan_with,
     plan_pow_base_isolation, plan_pow_exponent_shortcut_action_from_inputs,
     residual_budget_exhausted_message, residual_message, resolve_log_terminal_outcome,
+    build_solve_tactic_normalization_step,
     resolve_log_unsupported_outcome, resolve_power_base_one_shortcut_with,
     terminal_outcome_message, LogUnsupportedOutcome,
-    PowBaseIsolationEngineAction, PowExponentShortcutEngineAction, SOLVE_TACTIC_NORMALIZATION_MESSAGE,
+    PowBaseIsolationEngineAction, PowExponentShortcutEngineAction,
 };
 
 use super::{isolate, prepend_steps};
@@ -268,13 +269,14 @@ fn isolate_pow_exponent(
 
         // Add educational step if tactic transformed something
         if (sim_base != b || sim_rhs != rhs) && simplifier.collect_steps() {
+            let normalize_step = build_solve_tactic_normalization_step(Equation {
+                lhs: simplifier.context.add(Expr::Pow(sim_base, e)),
+                rhs: sim_rhs,
+                op: op.clone(),
+            });
             steps.push(SolveStep {
-                description: SOLVE_TACTIC_NORMALIZATION_MESSAGE.to_string(),
-                equation_after: Equation {
-                    lhs: simplifier.context.add(Expr::Pow(sim_base, e)),
-                    rhs: sim_rhs,
-                    op: op.clone(),
-                },
+                description: normalize_step.description,
+                equation_after: normalize_step.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
