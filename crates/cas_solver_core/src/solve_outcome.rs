@@ -901,6 +901,16 @@ pub fn build_swap_sides_step(equation_after: Equation) -> TermIsolationDidacticS
     }
 }
 
+/// Plan side swap rewrite and corresponding didactic step.
+pub fn plan_swap_sides_step(equation: &Equation) -> TermIsolationRewritePlan {
+    let swapped = crate::equation_rewrite::swap_sides_with_inequality_flip(equation);
+    let step = build_swap_sides_step(swapped.clone());
+    TermIsolationRewritePlan {
+        equation: swapped,
+        step,
+    }
+}
+
 /// Standard narration when solve-tactic normalization rewrites `base^x = rhs`
 /// before logarithm isolation in Assume mode.
 pub const SOLVE_TACTIC_NORMALIZATION_MESSAGE: &str =
@@ -968,6 +978,13 @@ pub fn isolated_denominator_negative_case_message(den_display: &str) -> String {
 pub struct TermIsolationDidacticStep {
     pub description: String,
     pub equation_after: Equation,
+}
+
+/// Planned isolation rewrite plus its didactic step payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TermIsolationRewritePlan {
+    pub equation: Equation,
+    pub step: TermIsolationDidacticStep,
 }
 
 fn build_term_isolation_step_with<F>(
@@ -1069,6 +1086,114 @@ where
         render_expr,
         multiply_both_sides_message,
     )
+}
+
+/// Plan negated-LHS isolation and corresponding didactic step.
+pub fn plan_negated_lhs_isolation_step(
+    ctx: &mut Context,
+    inner: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+) -> TermIsolationRewritePlan {
+    let equation = crate::equation_rewrite::isolate_negated_lhs(ctx, inner, rhs, op);
+    let step = build_negated_lhs_isolation_step(equation.clone());
+    TermIsolationRewritePlan { equation, step }
+}
+
+/// Plan add-operand isolation and corresponding didactic step.
+pub fn plan_add_operand_isolation_step_with<F>(
+    ctx: &mut Context,
+    kept: ExprId,
+    moved: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    render_expr: F,
+) -> TermIsolationRewritePlan
+where
+    F: FnMut(ExprId) -> String,
+{
+    let equation = crate::equation_rewrite::isolate_add_operand(ctx, kept, moved, rhs, op);
+    let step = build_add_operand_isolation_step_with(equation.clone(), moved, render_expr);
+    TermIsolationRewritePlan { equation, step }
+}
+
+/// Plan sub-minuend isolation and corresponding didactic step.
+pub fn plan_sub_minuend_isolation_step_with<F>(
+    ctx: &mut Context,
+    minuend: ExprId,
+    subtrahend: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    render_expr: F,
+) -> TermIsolationRewritePlan
+where
+    F: FnMut(ExprId) -> String,
+{
+    let equation = crate::equation_rewrite::isolate_sub_minuend(ctx, minuend, subtrahend, rhs, op);
+    let step = build_sub_minuend_isolation_step_with(equation.clone(), subtrahend, render_expr);
+    TermIsolationRewritePlan { equation, step }
+}
+
+/// Plan sub-subtrahend isolation and corresponding didactic step.
+pub fn plan_sub_subtrahend_isolation_step_with<F>(
+    ctx: &mut Context,
+    minuend: ExprId,
+    subtrahend: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    render_expr: F,
+) -> TermIsolationRewritePlan
+where
+    F: FnMut(ExprId) -> String,
+{
+    let equation =
+        crate::equation_rewrite::isolate_sub_subtrahend(ctx, minuend, subtrahend, rhs, op);
+    let step = build_sub_subtrahend_isolation_step_with(equation.clone(), minuend, render_expr);
+    TermIsolationRewritePlan { equation, step }
+}
+
+/// Plan multiplicative-factor isolation and corresponding didactic step.
+pub fn plan_mul_factor_isolation_step_with<F>(
+    ctx: &mut Context,
+    kept: ExprId,
+    moved: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    moved_is_negative: bool,
+    render_expr: F,
+) -> TermIsolationRewritePlan
+where
+    F: FnMut(ExprId) -> String,
+{
+    let equation =
+        crate::equation_rewrite::isolate_mul_factor(ctx, kept, moved, rhs, op, moved_is_negative);
+    let step = build_mul_factor_isolation_step_with(equation.clone(), moved, render_expr);
+    TermIsolationRewritePlan { equation, step }
+}
+
+/// Plan division-numerator isolation and corresponding didactic step.
+pub fn plan_div_numerator_isolation_step_with<F>(
+    ctx: &mut Context,
+    numerator: ExprId,
+    denominator: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    denominator_is_negative: bool,
+    render_expr: F,
+) -> TermIsolationRewritePlan
+where
+    F: FnMut(ExprId) -> String,
+{
+    let equation = crate::equation_rewrite::isolate_div_numerator(
+        ctx,
+        numerator,
+        denominator,
+        rhs,
+        op,
+        denominator_is_negative,
+    );
+    let step = build_div_numerator_isolation_step_with(equation.clone(), denominator, render_expr);
+    TermIsolationRewritePlan { equation, step }
 }
 
 /// Didactic payload for one equation step.
@@ -3080,6 +3205,25 @@ mod tests {
     }
 
     #[test]
+    fn plan_swap_sides_step_flips_inequality_and_attaches_step() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let eq = Equation {
+            lhs: x,
+            rhs: y,
+            op: RelOp::Lt,
+        };
+
+        let plan = plan_swap_sides_step(&eq);
+        assert_eq!(plan.equation.lhs, y);
+        assert_eq!(plan.equation.rhs, x);
+        assert_eq!(plan.equation.op, RelOp::Gt);
+        assert_eq!(plan.step.description, "Swap sides to put variable on LHS");
+        assert_eq!(plan.step.equation_after, plan.equation);
+    }
+
+    #[test]
     fn build_solve_tactic_normalization_step_uses_standard_message() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -3146,6 +3290,57 @@ mod tests {
 
         let div_step = build_div_numerator_isolation_step_with(eq.clone(), t, |_| "t".to_string());
         assert_eq!(div_step.description, "Multiply both sides by t");
+    }
+
+    #[test]
+    fn term_isolation_rewrite_plan_helpers_build_equation_and_step() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+
+        let add_plan =
+            plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
+        assert_eq!(add_plan.equation.lhs, x);
+        assert_eq!(add_plan.step.description, "Subtract y from both sides");
+
+        let sub_plan =
+            plan_sub_minuend_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
+        assert_eq!(sub_plan.equation.lhs, x);
+        assert_eq!(sub_plan.step.description, "Add y to both sides");
+
+        let subtrahend_plan =
+            plan_sub_subtrahend_isolation_step_with(&mut ctx, x, y, z, RelOp::Lt, |_| {
+                "x".to_string()
+            });
+        assert_eq!(subtrahend_plan.equation.lhs, y);
+        assert_eq!(subtrahend_plan.equation.op, RelOp::Gt);
+        assert_eq!(
+            subtrahend_plan.step.description,
+            "Move x and multiply by -1 (flips inequality)"
+        );
+
+        let mul_plan =
+            plan_mul_factor_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, false, |_| {
+                "y".to_string()
+            });
+        assert_eq!(mul_plan.equation.lhs, x);
+        assert_eq!(mul_plan.step.description, "Divide both sides by y");
+
+        let div_plan =
+            plan_div_numerator_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, false, |_| {
+                "y".to_string()
+            });
+        assert_eq!(div_plan.equation.lhs, x);
+        assert_eq!(div_plan.step.description, "Multiply both sides by y");
+
+        let neg_plan = plan_negated_lhs_isolation_step(&mut ctx, x, z, RelOp::Lt);
+        assert_eq!(neg_plan.equation.lhs, x);
+        assert_eq!(neg_plan.equation.op, RelOp::Gt);
+        assert_eq!(
+            neg_plan.step.description,
+            "Multiply both sides by -1 (flips inequality)"
+        );
     }
 
     #[test]

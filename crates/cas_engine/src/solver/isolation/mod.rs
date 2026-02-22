@@ -7,7 +7,7 @@ use crate::solver::{SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
 use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solution_set::isolated_var_solution;
-use cas_solver_core::solve_outcome::{build_negated_lhs_isolation_step, residual_solution_set};
+use cas_solver_core::solve_outcome::{plan_negated_lhs_isolation_step, residual_solution_set};
 
 use crate::error::CasError;
 
@@ -88,20 +88,15 @@ pub(crate) fn isolate(
         Expr::Neg(inner) => {
             // -A = RHS -> A = -RHS
             // -A < RHS -> A > -RHS (flip inequality)
-            let new_eq = cas_solver_core::equation_rewrite::isolate_negated_lhs(
-                &mut simplifier.context,
-                inner,
-                rhs,
-                op,
-            );
+            let plan = plan_negated_lhs_isolation_step(&mut simplifier.context, inner, rhs, op);
+            let new_eq = plan.equation.clone();
             let new_rhs = new_eq.rhs;
             let new_op = new_eq.op.clone();
 
             if simplifier.collect_steps() {
-                let didactic_step = build_negated_lhs_isolation_step(new_eq);
                 steps.push(SolveStep {
-                    description: didactic_step.description,
-                    equation_after: didactic_step.equation_after,
+                    description: plan.step.description,
+                    equation_after: plan.step.equation_after,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });

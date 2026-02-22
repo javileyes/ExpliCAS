@@ -12,13 +12,13 @@ use cas_solver_core::solution_set::{
     intersect_solution_sets, open_negative_domain, open_positive_domain, union_solution_sets,
 };
 use cas_solver_core::solve_outcome::{
-    build_add_operand_isolation_step_with, build_div_numerator_isolation_step_with,
     build_division_denominator_didactic_steps_with,
     build_division_denominator_sign_split_steps_with,
-    build_isolated_denominator_sign_split_steps_with, build_mul_factor_isolation_step_with,
-    build_sub_minuend_isolation_step_with, build_sub_subtrahend_isolation_step_with,
-    plan_division_denominator_didactic, plan_division_denominator_sign_split,
-    plan_isolated_denominator_sign_split, plan_product_zero_inequality_split,
+    build_isolated_denominator_sign_split_steps_with, plan_add_operand_isolation_step_with,
+    plan_div_numerator_isolation_step_with, plan_division_denominator_didactic,
+    plan_division_denominator_sign_split, plan_isolated_denominator_sign_split,
+    plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split,
+    plan_sub_minuend_isolation_step_with, plan_sub_subtrahend_isolation_step_with,
 };
 
 use super::{isolate, prepend_steps};
@@ -54,27 +54,27 @@ pub(super) fn isolate_add(
 
     if l_has {
         // A + B = RHS -> A = RHS - B
-        let new_eq = cas_solver_core::equation_rewrite::isolate_add_operand(
+        let moved_desc = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: r
+            }
+        );
+        let plan = plan_add_operand_isolation_step_with(
             &mut simplifier.context,
             l,
             r,
             rhs,
             op.clone(),
+            |_| moved_desc.clone(),
         );
+        let new_eq = plan.equation.clone();
         let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
         if simplifier.collect_steps() {
-            let step_payload = build_add_operand_isolation_step_with(new_eq.clone(), r, |id| {
-                format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id
-                    }
-                )
-            });
             steps.push(SolveStep {
-                description: step_payload.description,
-                equation_after: step_payload.equation_after,
+                description: plan.step.description,
+                equation_after: plan.step.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -83,27 +83,27 @@ pub(super) fn isolate_add(
         prepend_steps(results, steps)
     } else {
         // A + B = RHS -> B = RHS - A
-        let new_eq = cas_solver_core::equation_rewrite::isolate_add_operand(
+        let moved_desc = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: l
+            }
+        );
+        let plan = plan_add_operand_isolation_step_with(
             &mut simplifier.context,
             r,
             l,
             rhs,
             op.clone(),
+            |_| moved_desc.clone(),
         );
+        let new_eq = plan.equation.clone();
         let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
         if simplifier.collect_steps() {
-            let step_payload = build_add_operand_isolation_step_with(new_eq.clone(), l, |id| {
-                format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id
-                    }
-                )
-            });
             steps.push(SolveStep {
-                description: step_payload.description,
-                equation_after: step_payload.equation_after,
+                description: plan.step.description,
+                equation_after: plan.step.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -128,27 +128,27 @@ pub(super) fn isolate_sub(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     if contains_var(&simplifier.context, l, var) {
         // A - B = RHS -> A = RHS + B
-        let new_eq = cas_solver_core::equation_rewrite::isolate_sub_minuend(
+        let moved_desc = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: r
+            }
+        );
+        let plan = plan_sub_minuend_isolation_step_with(
             &mut simplifier.context,
             l,
             r,
             rhs,
             op.clone(),
+            |_| moved_desc.clone(),
         );
+        let new_eq = plan.equation.clone();
         let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
         if simplifier.collect_steps() {
-            let step_payload = build_sub_minuend_isolation_step_with(new_eq.clone(), r, |id| {
-                format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id
-                    }
-                )
-            });
             steps.push(SolveStep {
-                description: step_payload.description,
-                equation_after: step_payload.equation_after,
+                description: plan.step.description,
+                equation_after: plan.step.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -157,28 +157,24 @@ pub(super) fn isolate_sub(
         prepend_steps(results, steps)
     } else {
         // A - B = RHS -> B = A - RHS (multiply by -1 flips inequality)
-        let new_eq = cas_solver_core::equation_rewrite::isolate_sub_subtrahend(
-            &mut simplifier.context,
-            l,
-            r,
-            rhs,
-            op,
+        let moved_desc = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: l
+            }
         );
+        let plan =
+            plan_sub_subtrahend_isolation_step_with(&mut simplifier.context, l, r, rhs, op, |_| {
+                moved_desc.clone()
+            });
+        let new_eq = plan.equation.clone();
         let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
         let new_op = new_eq.op.clone();
         if simplifier.collect_steps() {
-            let step_payload = build_sub_subtrahend_isolation_step_with(new_eq.clone(), l, |id| {
-                format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id
-                    }
-                )
-            });
             steps.push(SolveStep {
-                description: step_payload.description,
-                equation_after: step_payload.equation_after,
+                description: plan.step.description,
+                equation_after: plan.step.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -236,29 +232,29 @@ pub(super) fn isolate_mul(
 
         // A = RHS / B
         let moved_is_negative = is_known_negative(&simplifier.context, r);
-        let new_eq = cas_solver_core::equation_rewrite::isolate_mul_factor(
+        let moved_desc = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: r
+            }
+        );
+        let plan = plan_mul_factor_isolation_step_with(
             &mut simplifier.context,
             l,
             r,
             rhs,
             op,
             moved_is_negative,
+            |_| moved_desc.clone(),
         );
+        let new_eq = plan.equation.clone();
         let new_rhs = new_eq.rhs;
         let new_op = new_eq.op.clone();
         if simplifier.collect_steps() {
-            let step_payload = build_mul_factor_isolation_step_with(new_eq.clone(), r, |id| {
-                format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id
-                    }
-                )
-            });
             steps.push(SolveStep {
-                description: step_payload.description,
-                equation_after: step_payload.equation_after,
+                description: plan.step.description,
+                equation_after: plan.step.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -278,29 +274,29 @@ pub(super) fn isolate_mul(
         }
 
         let moved_is_negative = is_known_negative(&simplifier.context, l);
-        let new_eq = cas_solver_core::equation_rewrite::isolate_mul_factor(
+        let moved_desc = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: l
+            }
+        );
+        let plan = plan_mul_factor_isolation_step_with(
             &mut simplifier.context,
             r,
             l,
             rhs,
             op,
             moved_is_negative,
+            |_| moved_desc.clone(),
         );
+        let new_eq = plan.equation.clone();
         let new_rhs = new_eq.rhs;
         let new_op = new_eq.op.clone();
         if simplifier.collect_steps() {
-            let step_payload = build_mul_factor_isolation_step_with(new_eq.clone(), l, |id| {
-                format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id
-                    }
-                )
-            });
             steps.push(SolveStep {
-                description: step_payload.description,
-                equation_after: step_payload.equation_after,
+                description: plan.step.description,
+                equation_after: plan.step.equation_after,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -435,30 +431,29 @@ pub(super) fn isolate_div(
         } else {
             // A = RHS * B
             let denominator_is_negative = is_known_negative(&simplifier.context, r);
-            let new_eq = cas_solver_core::equation_rewrite::isolate_div_numerator(
+            let moved_desc = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id: r
+                }
+            );
+            let plan = plan_div_numerator_isolation_step_with(
                 &mut simplifier.context,
                 l,
                 r,
                 rhs,
                 op,
                 denominator_is_negative,
+                |_| moved_desc.clone(),
             );
+            let new_eq = plan.equation.clone();
             let new_rhs = new_eq.rhs;
             let new_op = new_eq.op.clone();
             if simplifier.collect_steps() {
-                let step_payload =
-                    build_div_numerator_isolation_step_with(new_eq.clone(), r, |id| {
-                        format!(
-                            "{}",
-                            cas_formatter::DisplayExpr {
-                                context: &simplifier.context,
-                                id
-                            }
-                        )
-                    });
                 steps.push(SolveStep {
-                    description: step_payload.description,
-                    equation_after: step_payload.equation_after,
+                    description: plan.step.description,
+                    equation_after: plan.step.equation_after,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });

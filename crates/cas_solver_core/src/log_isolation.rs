@@ -8,6 +8,13 @@ pub struct LogIsolationStep {
     pub equation_after: Equation,
 }
 
+/// Planned log-isolation rewrite with equation + didactic payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LogIsolationRewritePlan {
+    pub equation: Equation,
+    pub step: LogIsolationStep,
+}
+
 /// Planned transformation for isolating a logarithmic equation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogIsolationPlan {
@@ -53,6 +60,25 @@ where
         description: plan.step_description(&base_desc),
         equation_after: plan.into_equation(op),
     }
+}
+
+/// Plan logarithm isolation and build its didactic step in one call.
+pub fn plan_log_isolation_step(
+    ctx: &mut Context,
+    base: ExprId,
+    arg: ExprId,
+    rhs: ExprId,
+    var: &str,
+    op: RelOp,
+    base_display: &str,
+) -> Option<LogIsolationRewritePlan> {
+    let plan = plan_log_isolation(ctx, base, arg, rhs, var)?;
+    let equation = plan.into_equation(op);
+    let step = LogIsolationStep {
+        description: plan.step_description(base_display),
+        equation_after: equation.clone(),
+    };
+    Some(LogIsolationRewritePlan { equation, step })
 }
 
 /// Build the transformed equation target for `log(base, arg) = rhs`.
@@ -191,5 +217,19 @@ mod tests {
         assert_eq!(step.equation_after.lhs, lhs);
         assert_eq!(step.equation_after.rhs, rhs);
         assert_eq!(step.equation_after.op, RelOp::Eq);
+    }
+
+    #[test]
+    fn plan_log_isolation_step_builds_rewrite_and_step() {
+        let mut ctx = Context::new();
+        let base = ctx.num(2);
+        let arg = ctx.var("x");
+        let rhs = ctx.num(3);
+
+        let out = plan_log_isolation_step(&mut ctx, base, arg, rhs, "x", RelOp::Eq, "2")
+            .expect("log isolation should apply");
+        assert_eq!(out.equation.lhs, arg);
+        assert_eq!(out.step.description, "Exponentiate both sides with base 2");
+        assert_eq!(out.step.equation_after, out.equation);
     }
 }

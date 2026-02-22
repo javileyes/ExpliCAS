@@ -152,12 +152,21 @@ fn isolate_log(
     mut steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let plan = cas_solver_core::log_isolation::plan_log_isolation(
+    let base_desc = format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: &simplifier.context,
+            id: base
+        }
+    );
+    let rewrite = cas_solver_core::log_isolation::plan_log_isolation_step(
         &mut simplifier.context,
         base,
         arg,
         rhs,
         var,
+        op.clone(),
+        &base_desc,
     )
     .ok_or_else(|| {
         CasError::IsolationError(
@@ -165,26 +174,11 @@ fn isolate_log(
             "Cannot isolate from log function".to_string(),
         )
     })?;
-
-    let log_step = cas_solver_core::log_isolation::build_log_isolation_step_with(
-        plan,
-        base,
-        op.clone(),
-        |id| {
-            format!(
-                "{}",
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id
-                }
-            )
-        },
-    );
-    let new_eq = log_step.equation_after.clone();
+    let new_eq = rewrite.equation.clone();
     if simplifier.collect_steps() {
         steps.push(SolveStep {
-            description: log_step.description,
-            equation_after: log_step.equation_after,
+            description: rewrite.step.description,
+            equation_after: rewrite.step.equation_after,
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });
