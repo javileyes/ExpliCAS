@@ -8,14 +8,14 @@ use cas_solver_core::isolation_utils::{
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
     build_pow_exponent_shortcut_execution_plan, classify_power_base_one_shortcut,
-    detect_pow_exponent_shortcut_inputs, guarded_or_residual, plan_pow_base_isolation,
-    plan_pow_exponent_shortcut_action_from_inputs, pow_base_isolation_terminal_message,
-    pow_base_root_isolation_message, pow_exponent_shortcut_message,
-    power_base_one_shortcut_message, power_base_one_shortcut_solutions,
-    resolve_log_terminal_outcome, resolve_log_unsupported_outcome, terminal_outcome_message,
-    take_log_base_message, take_log_base_under_guard_message, LogUnsupportedOutcome,
+    conditional_solution_message, detect_pow_exponent_shortcut_inputs, guarded_or_residual,
+    plan_pow_base_isolation, plan_pow_exponent_shortcut_action_from_inputs,
+    pow_base_isolation_terminal_message, pow_base_root_isolation_message,
+    pow_exponent_shortcut_message, power_base_one_shortcut_message,
+    power_base_one_shortcut_solutions, residual_budget_exhausted_message, residual_message,
+    resolve_log_terminal_outcome, resolve_log_unsupported_outcome, take_log_base_message,
+    take_log_base_under_guard_message, terminal_outcome_message, LogUnsupportedOutcome,
     PowBaseIsolationPlan, PowExponentShortcutExecutionPlan, SOLVE_TACTIC_NORMALIZATION_MESSAGE,
-    conditional_solution_message, residual_budget_exhausted_message, residual_message,
 };
 
 use super::{isolate, prepend_steps};

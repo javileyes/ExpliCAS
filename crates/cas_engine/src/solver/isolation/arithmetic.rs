@@ -321,7 +321,7 @@ pub(super) fn isolate_div(
                 rhs,
                 op.clone(),
             )
-                .expect("inequality branch requires denominator sign cases");
+            .expect("inequality branch requires denominator sign cases");
             let (sim_rhs, _) = simplifier.simplify(split_plan.positive_equation.rhs);
             let eq_pos = Equation {
                 lhs: split_plan.positive_equation.lhs,
@@ -362,7 +362,8 @@ pub(super) fn isolate_div(
             let (set_pos, steps_pos) = prepend_steps(results_pos, steps.clone())?;
 
             // Domain: r > 0
-            let (domain_pos_set, _) = solve_with_ctx(&split_plan.positive_domain, var, simplifier, ctx)?;
+            let (domain_pos_set, _) =
+                solve_with_ctx(&split_plan.positive_domain, var, simplifier, ctx)?;
             let final_pos = intersect_solution_sets(&simplifier.context, set_pos, domain_pos_set);
 
             // Case 2: Denominator < 0
@@ -394,7 +395,8 @@ pub(super) fn isolate_div(
             let (set_neg, steps_neg) = prepend_steps(results_neg, steps.clone())?;
 
             // Domain: r < 0
-            let (domain_neg_set, _) = solve_with_ctx(&split_plan.negative_domain, var, simplifier, ctx)?;
+            let (domain_neg_set, _) =
+                solve_with_ctx(&split_plan.negative_domain, var, simplifier, ctx)?;
             let final_neg = intersect_solution_sets(&simplifier.context, set_neg, domain_neg_set);
 
             // Combine

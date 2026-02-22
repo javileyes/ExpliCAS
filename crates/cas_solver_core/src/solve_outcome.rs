@@ -2164,7 +2164,10 @@ mod tests {
 
     #[test]
     fn log_isolation_messages_format_expected_text() {
-        assert_eq!(take_log_base_message("10"), "Take log base 10 of both sides");
+        assert_eq!(
+            take_log_base_message("10"),
+            "Take log base 10 of both sides"
+        );
         assert_eq!(
             take_log_base_under_guard_message("a", "a > 0 and rhs > 0"),
             "Take log base a of both sides (under guard: a > 0 and rhs > 0)"
@@ -2215,7 +2218,9 @@ mod tests {
         let rhs = ctx.var("r");
 
         assert!(plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Eq).is_none());
-        assert!(plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Neq).is_none());
+        assert!(
+            plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Neq).is_none()
+        );
     }
 
     #[test]
@@ -2241,18 +2246,15 @@ mod tests {
         let den = ctx.var("x");
         let rhs = ctx.var("b");
         let isolated_rhs = ctx.var("c");
-        let plan = plan_division_denominator_didactic(
-            &mut ctx,
-            num,
-            den,
-            rhs,
-            isolated_rhs,
-            RelOp::Eq,
-        );
+        let plan =
+            plan_division_denominator_didactic(&mut ctx, num, den, rhs, isolated_rhs, RelOp::Eq);
 
         assert_eq!(plan.multiply_equation.lhs, num);
         assert_eq!(plan.multiply_equation.op, RelOp::Eq);
-        assert!(matches!(ctx.get(plan.multiply_equation.rhs), Expr::Mul(_, _)));
+        assert!(matches!(
+            ctx.get(plan.multiply_equation.rhs),
+            Expr::Mul(_, _)
+        ));
         assert_eq!(plan.divide_equation.lhs, den);
         assert_eq!(plan.divide_equation.rhs, isolated_rhs);
         assert_eq!(plan.divide_equation.op, RelOp::Eq);
