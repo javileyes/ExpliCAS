@@ -25,6 +25,19 @@ pub struct TerminalSolveOutcome {
     pub solutions: SolutionSet,
 }
 
+/// Route for handling `base^x = base` shortcuts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PowerEqualsBaseRoute {
+    /// `0^x = 0` -> `x > 0`.
+    ExponentGreaterThanZero,
+    /// Numeric base (non-zero): `x = 1`.
+    ExponentEqualsOneNumericBase,
+    /// Symbolic base with no branch budget: fallback `x = 1`.
+    ExponentEqualsOneNoBranchBudget,
+    /// Symbolic base with branching budget: produce conditional case split.
+    SymbolicCaseSplit,
+}
+
 /// Classify the simplified variable-free residual.
 pub fn classify_var_free_difference(ctx: &Context, diff: ExprId) -> VarFreeDiffKind {
     match ctx.get(diff) {
@@ -51,6 +64,23 @@ pub fn power_base_one_outcome(rhs_is_one: bool) -> SolutionSet {
         SolutionSet::AllReals
     } else {
         SolutionSet::Empty
+    }
+}
+
+/// Decide how to handle `base^x = base`.
+pub fn classify_power_equals_base_route(
+    base_is_zero: bool,
+    base_is_numeric: bool,
+    can_branch: bool,
+) -> PowerEqualsBaseRoute {
+    if base_is_zero {
+        PowerEqualsBaseRoute::ExponentGreaterThanZero
+    } else if base_is_numeric {
+        PowerEqualsBaseRoute::ExponentEqualsOneNumericBase
+    } else if can_branch {
+        PowerEqualsBaseRoute::SymbolicCaseSplit
+    } else {
+        PowerEqualsBaseRoute::ExponentEqualsOneNoBranchBudget
     }
 }
 
@@ -398,5 +428,37 @@ mod tests {
         let y = ctx.var("y");
         let expr = residual_expression(&mut ctx, x, y, "x");
         assert!(matches!(ctx.get(expr), Expr::Function(_, _)));
+    }
+
+    #[test]
+    fn classify_power_equals_base_route_zero_base() {
+        assert_eq!(
+            classify_power_equals_base_route(true, false, true),
+            PowerEqualsBaseRoute::ExponentGreaterThanZero
+        );
+    }
+
+    #[test]
+    fn classify_power_equals_base_route_numeric_base() {
+        assert_eq!(
+            classify_power_equals_base_route(false, true, false),
+            PowerEqualsBaseRoute::ExponentEqualsOneNumericBase
+        );
+    }
+
+    #[test]
+    fn classify_power_equals_base_route_symbolic_no_budget() {
+        assert_eq!(
+            classify_power_equals_base_route(false, false, false),
+            PowerEqualsBaseRoute::ExponentEqualsOneNoBranchBudget
+        );
+    }
+
+    #[test]
+    fn classify_power_equals_base_route_symbolic_with_budget() {
+        assert_eq!(
+            classify_power_equals_base_route(false, false, true),
+            PowerEqualsBaseRoute::SymbolicCaseSplit
+        );
     }
 }
