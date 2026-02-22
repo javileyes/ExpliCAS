@@ -221,7 +221,7 @@ fn isolate_unary_function(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let fn_name = simplifier.context.sym_name(fn_id).to_string();
-    let (new_eq, inverse_kind) = cas_solver_core::function_inverse::rewrite_unary_inverse_equation(
+    let plan = cas_solver_core::function_inverse::plan_unary_inverse_rewrite(
         &mut simplifier.context,
         &fn_name,
         arg,
@@ -230,18 +230,18 @@ fn isolate_unary_function(
         true,
     )
     .ok_or_else(|| CasError::UnknownFunction(fn_name.clone()))?;
-    let new_rhs = new_eq.rhs;
+    let new_rhs = plan.equation.rhs;
 
     if simplifier.collect_steps() {
         steps.push(SolveStep {
-            description: inverse_kind.step_description().to_string(),
-            equation_after: new_eq.clone(),
+            description: plan.step_description.to_string(),
+            equation_after: plan.equation.clone(),
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });
     }
 
-    let target_rhs = if inverse_kind.needs_rhs_cleanup() {
+    let target_rhs = if plan.needs_rhs_cleanup {
         let (simplified_rhs, sim_steps) = simplify_rhs(new_rhs, arg, op.clone(), simplifier);
         steps.extend(sim_steps);
         simplified_rhs

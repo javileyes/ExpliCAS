@@ -11,6 +11,14 @@ pub enum UnaryInverseKind {
     Tan,
 }
 
+/// Concrete rewrite plan for unary inverse isolation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnaryInverseRewritePlan {
+    pub equation: Equation,
+    pub step_description: &'static str,
+    pub needs_rhs_cleanup: bool,
+}
+
 impl UnaryInverseKind {
     /// Classify a unary function name into an inversion kind.
     pub fn from_name(name: &str) -> Option<Self> {
@@ -123,6 +131,24 @@ pub fn rewrite_unary_inverse_equation_for_unwrap(
     } else {
         None
     }
+}
+
+/// Build a full unary inverse rewrite plan with narration metadata.
+pub fn plan_unary_inverse_rewrite(
+    ctx: &mut Context,
+    fn_name: &str,
+    arg: ExprId,
+    other: ExprId,
+    op: RelOp,
+    is_lhs: bool,
+) -> Option<UnaryInverseRewritePlan> {
+    let (equation, inverse_kind) =
+        rewrite_unary_inverse_equation(ctx, fn_name, arg, other, op, is_lhs)?;
+    Some(UnaryInverseRewritePlan {
+        equation,
+        step_description: inverse_kind.step_description(),
+        needs_rhs_cleanup: inverse_kind.needs_rhs_cleanup(),
+    })
 }
 
 #[cfg(test)]
@@ -274,5 +300,17 @@ mod tests {
             rewrite_unary_inverse_equation_for_unwrap(&mut ctx, "sin", x, y, RelOp::Eq, true)
                 .is_none()
         );
+    }
+
+    #[test]
+    fn plan_unary_inverse_rewrite_carries_step_metadata() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let plan = plan_unary_inverse_rewrite(&mut ctx, "exp", x, y, RelOp::Eq, true)
+            .expect("exp inverse should build plan");
+        assert_eq!(plan.step_description, "Take natural log of both sides");
+        assert!(!plan.needs_rhs_cleanup);
+        assert_eq!(plan.equation.lhs, x);
     }
 }
