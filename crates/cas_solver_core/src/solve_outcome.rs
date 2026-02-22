@@ -112,6 +112,29 @@ pub enum PowExponentShortcutExecutionPlan {
     },
 }
 
+/// Didactic payload for a planned exponent-shortcut step.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PowExponentShortcutDidacticStep {
+    pub description: String,
+    pub equation_after: Equation,
+}
+
+/// Engine-facing action for a normalized exponent shortcut, including optional
+/// didactic step payload built in solver-core.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PowExponentShortcutEngineAction {
+    Continue,
+    IsolateExponent {
+        rhs: ExprId,
+        op: RelOp,
+        step: PowExponentShortcutDidacticStep,
+    },
+    ReturnSolutionSet {
+        solutions: SolutionSet,
+        step: PowExponentShortcutDidacticStep,
+    },
+}
+
 /// Structured outcome for unsupported logarithmic rewrites.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LogUnsupportedOutcome<'a> {
@@ -445,6 +468,75 @@ pub fn build_pow_exponent_shortcut_execution_plan(
             }
             _ => PowExponentShortcutExecutionPlan::Continue,
         },
+    }
+}
+
+/// Map a normalized shortcut plan to an engine action with didactic payload.
+///
+/// This keeps the `base^x` shortcut narration/equation wiring centralized in
+/// solver-core while allowing caller-controlled expression rendering.
+pub fn map_pow_exponent_shortcut_with<F>(
+    plan: PowExponentShortcutExecutionPlan,
+    exponent_lhs: ExprId,
+    base: ExprId,
+    rhs: ExprId,
+    original_op: RelOp,
+    var: &str,
+    mut render_expr: F,
+) -> PowExponentShortcutEngineAction
+where
+    F: FnMut(ExprId) -> String,
+{
+    match plan {
+        PowExponentShortcutExecutionPlan::Continue => PowExponentShortcutEngineAction::Continue,
+        PowExponentShortcutExecutionPlan::IsolateExponent {
+            rhs: target_rhs,
+            op: target_op,
+            narrative,
+            rhs_exponent,
+        } => {
+            let base_desc = render_expr(base);
+            let rhs_desc = render_expr(rhs);
+            let rhs_exp_desc = rhs_exponent.map(render_expr);
+            let description = pow_exponent_shortcut_message(
+                narrative,
+                var,
+                &base_desc,
+                &rhs_desc,
+                rhs_exp_desc.as_deref(),
+            );
+            PowExponentShortcutEngineAction::IsolateExponent {
+                rhs: target_rhs,
+                op: target_op.clone(),
+                step: PowExponentShortcutDidacticStep {
+                    description,
+                    equation_after: Equation {
+                        lhs: exponent_lhs,
+                        rhs: target_rhs,
+                        op: target_op,
+                    },
+                },
+            }
+        }
+        PowExponentShortcutExecutionPlan::ReturnSolutionSet {
+            solutions,
+            narrative,
+        } => {
+            let base_desc = render_expr(base);
+            let rhs_desc = render_expr(rhs);
+            let description = pow_exponent_shortcut_message(narrative, var, &base_desc, &rhs_desc, None);
+            PowExponentShortcutEngineAction::ReturnSolutionSet {
+                solutions,
+                step: PowExponentShortcutDidacticStep {
+                    description,
+                    equation_after: Equation {
+                        lhs: exponent_lhs,
+                        rhs: base,
+                        op: original_op,
+                    },
+                },
+            }
+        }
     }
 }
 
@@ -2162,6 +2254,69 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn map_pow_exponent_shortcut_with_builds_isolate_step_payload() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let n = ctx.var("n");
+        let out = map_pow_exponent_shortcut_with(
+            PowExponentShortcutExecutionPlan::IsolateExponent {
+                rhs: n,
+                op: RelOp::Eq,
+                narrative: PowExponentShortcutNarrative::EqualPowBases,
+                rhs_exponent: Some(n),
+            },
+            x,
+            base,
+            rhs,
+            RelOp::Eq,
+            "x",
+            |_| "expr".to_string(),
+        );
+
+        match out {
+            PowExponentShortcutEngineAction::IsolateExponent { rhs, op, step } => {
+                assert_eq!(rhs, n);
+                assert_eq!(op, RelOp::Eq);
+                assert_eq!(step.equation_after.lhs, x);
+                assert_eq!(step.equation_after.rhs, n);
+                assert!(step.description.contains("expr"));
+            }
+            other => panic!("expected isolate action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn map_pow_exponent_shortcut_with_builds_terminal_solution_step() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let out = map_pow_exponent_shortcut_with(
+            PowExponentShortcutExecutionPlan::ReturnSolutionSet {
+                solutions: SolutionSet::Discrete(vec![x]),
+                narrative: PowExponentShortcutNarrative::NumericBaseExponentOne,
+            },
+            x,
+            base,
+            rhs,
+            RelOp::Eq,
+            "x",
+            |_| "expr".to_string(),
+        );
+        match out {
+            PowExponentShortcutEngineAction::ReturnSolutionSet { step, .. } => {
+                assert_eq!(step.equation_after.lhs, x);
+                assert_eq!(step.equation_after.rhs, base);
+                assert_eq!(step.equation_after.op, RelOp::Eq);
+                assert!(step.description.contains("expr"));
+            }
+            other => panic!("expected terminal action, got {:?}", other),
+        }
     }
 
     #[test]

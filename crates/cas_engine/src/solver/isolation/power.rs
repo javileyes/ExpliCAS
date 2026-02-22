@@ -9,13 +9,14 @@ use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
     build_pow_exponent_shortcut_execution_plan, classify_power_base_one_shortcut,
     conditional_solution_message, detect_pow_exponent_shortcut_inputs, guarded_or_residual,
+    map_pow_exponent_shortcut_with,
     plan_pow_base_isolation, plan_pow_exponent_shortcut_action_from_inputs,
     pow_base_isolation_terminal_message, pow_base_root_isolation_message,
-    pow_exponent_shortcut_message, power_base_one_shortcut_message,
+    power_base_one_shortcut_message,
     power_base_one_shortcut_solutions, residual_budget_exhausted_message, residual_message,
     resolve_log_terminal_outcome, resolve_log_unsupported_outcome, take_log_base_message,
     take_log_base_under_guard_message, terminal_outcome_message, LogUnsupportedOutcome,
-    PowBaseIsolationPlan, PowExponentShortcutExecutionPlan, SOLVE_TACTIC_NORMALIZATION_MESSAGE,
+    PowBaseIsolationPlan, PowExponentShortcutEngineAction, SOLVE_TACTIC_NORMALIZATION_MESSAGE,
 };
 
 use super::{isolate, prepend_steps};
@@ -187,89 +188,47 @@ fn isolate_pow_exponent(
         opts.budget.max_branches >= 2,
     );
     let shortcut_plan = build_pow_exponent_shortcut_execution_plan(shortcut_action);
+    let shortcut_engine_action = map_pow_exponent_shortcut_with(
+        shortcut_plan,
+        e,
+        b,
+        rhs,
+        op.clone(),
+        var,
+        |id| {
+            format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id
+                }
+            )
+        },
+    );
 
-    match shortcut_plan {
-        PowExponentShortcutExecutionPlan::Continue => {}
-        PowExponentShortcutExecutionPlan::IsolateExponent {
+    match shortcut_engine_action {
+        PowExponentShortcutEngineAction::Continue => {}
+        PowExponentShortcutEngineAction::IsolateExponent {
             rhs: target_rhs,
             op: target_op,
-            narrative,
-            rhs_exponent,
+            step,
         } => {
             if simplifier.collect_steps() {
-                let base_desc = format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: b
-                    }
-                );
-                let rhs_desc = format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: rhs
-                    }
-                );
-                let rhs_exp_desc = rhs_exponent.map(|id| {
-                    format!(
-                        "{}",
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id
-                        }
-                    )
-                });
-                let description = pow_exponent_shortcut_message(
-                    narrative,
-                    var,
-                    &base_desc,
-                    &rhs_desc,
-                    rhs_exp_desc.as_deref(),
-                );
                 steps.push(SolveStep {
-                    description,
-                    equation_after: Equation {
-                        lhs: e,
-                        rhs: target_rhs,
-                        op: target_op.clone(),
-                    },
+                    description: step.description,
+                    equation_after: step.equation_after,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
             }
-
             let results = isolate(e, target_rhs, target_op, var, simplifier, opts, ctx)?;
             return prepend_steps(results, steps);
         }
-        PowExponentShortcutExecutionPlan::ReturnSolutionSet {
-            solutions,
-            narrative,
-        } => {
+        PowExponentShortcutEngineAction::ReturnSolutionSet { solutions, step } => {
             if simplifier.collect_steps() {
-                let base_desc = format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: b
-                    }
-                );
-                let rhs_desc = format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: rhs
-                    }
-                );
-                let description =
-                    pow_exponent_shortcut_message(narrative, var, &base_desc, &rhs_desc, None);
                 steps.push(SolveStep {
-                    description,
-                    equation_after: Equation {
-                        lhs: e,
-                        rhs: b,
-                        op: op.clone(),
-                    },
+                    description: step.description,
+                    equation_after: step.equation_after,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
