@@ -16,7 +16,8 @@ use cas_solver_core::solve_outcome::{
     build_division_denominator_sign_split_execution_with,
     build_isolated_denominator_sign_split_execution_with,
     collect_division_denominator_didactic_steps,
-    collect_division_denominator_sign_split_didactic_steps, plan_add_operand_isolation_step_with,
+    collect_division_denominator_sign_split_didactic_steps,
+    collect_term_isolation_rewrite_didactic_steps, plan_add_operand_isolation_step_with,
     plan_div_denominator_isolation_with_zero_rhs_guard, plan_div_numerator_isolation_step_with,
     plan_division_denominator_didactic, plan_division_denominator_sign_split,
     plan_isolated_denominator_sign_split, plan_mul_factor_isolation_step_with,
@@ -75,12 +76,14 @@ pub(super) fn isolate_add(
         let new_eq = plan.equation.clone();
         let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
         if simplifier.collect_steps() {
-            steps.push(SolveStep {
-                description: plan.step.description,
-                equation_after: plan.step.equation_after,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
+            for didactic_step in collect_term_isolation_rewrite_didactic_steps(&plan) {
+                steps.push(SolveStep {
+                    description: didactic_step.description,
+                    equation_after: didactic_step.equation_after,
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
         }
         let results = isolate(new_eq.lhs, sim_rhs, new_eq.op, var, simplifier, opts, ctx)?;
         prepend_steps(results, steps)
@@ -104,12 +107,14 @@ pub(super) fn isolate_add(
         let new_eq = plan.equation.clone();
         let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
         if simplifier.collect_steps() {
-            steps.push(SolveStep {
-                description: plan.step.description,
-                equation_after: plan.step.equation_after,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
+            for didactic_step in collect_term_isolation_rewrite_didactic_steps(&plan) {
+                steps.push(SolveStep {
+                    description: didactic_step.description,
+                    equation_after: didactic_step.equation_after,
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
         }
         let results = isolate(new_eq.lhs, sim_rhs, new_eq.op, var, simplifier, opts, ctx)?;
         prepend_steps(results, steps)
@@ -149,12 +154,14 @@ pub(super) fn isolate_sub(
         let new_eq = plan.equation.clone();
         let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
         if simplifier.collect_steps() {
-            steps.push(SolveStep {
-                description: plan.step.description,
-                equation_after: plan.step.equation_after,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
+            for didactic_step in collect_term_isolation_rewrite_didactic_steps(&plan) {
+                steps.push(SolveStep {
+                    description: didactic_step.description,
+                    equation_after: didactic_step.equation_after,
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
         }
         let results = isolate(new_eq.lhs, sim_rhs, new_eq.op, var, simplifier, opts, ctx)?;
         prepend_steps(results, steps)
@@ -175,12 +182,14 @@ pub(super) fn isolate_sub(
         let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
         let new_op = new_eq.op.clone();
         if simplifier.collect_steps() {
-            steps.push(SolveStep {
-                description: plan.step.description,
-                equation_after: plan.step.equation_after,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
+            for didactic_step in collect_term_isolation_rewrite_didactic_steps(&plan) {
+                steps.push(SolveStep {
+                    description: didactic_step.description,
+                    equation_after: didactic_step.equation_after,
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
         }
         let results = isolate(new_eq.lhs, sim_rhs, new_op, var, simplifier, opts, ctx)?;
         prepend_steps(results, steps)
@@ -255,12 +264,14 @@ pub(super) fn isolate_mul(
         let new_rhs = new_eq.rhs;
         let new_op = new_eq.op.clone();
         if simplifier.collect_steps() {
-            steps.push(SolveStep {
-                description: plan.step.description,
-                equation_after: plan.step.equation_after,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
+            for didactic_step in collect_term_isolation_rewrite_didactic_steps(&plan) {
+                steps.push(SolveStep {
+                    description: didactic_step.description,
+                    equation_after: didactic_step.equation_after,
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
         }
         let results = isolate(new_eq.lhs, new_rhs, new_op, var, simplifier, opts, ctx)?;
         prepend_steps(results, steps)
@@ -297,12 +308,14 @@ pub(super) fn isolate_mul(
         let new_rhs = new_eq.rhs;
         let new_op = new_eq.op.clone();
         if simplifier.collect_steps() {
-            steps.push(SolveStep {
-                description: plan.step.description,
-                equation_after: plan.step.equation_after,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
+            for didactic_step in collect_term_isolation_rewrite_didactic_steps(&plan) {
+                steps.push(SolveStep {
+                    description: didactic_step.description,
+                    equation_after: didactic_step.equation_after,
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
         }
         let results = isolate(new_eq.lhs, new_rhs, new_op, var, simplifier, opts, ctx)?;
         prepend_steps(results, steps)
@@ -463,12 +476,14 @@ pub(super) fn isolate_div(
             let new_rhs = new_eq.rhs;
             let new_op = new_eq.op.clone();
             if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: plan.step.description,
-                    equation_after: plan.step.equation_after,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
+                for didactic_step in collect_term_isolation_rewrite_didactic_steps(&plan) {
+                    steps.push(SolveStep {
+                        description: didactic_step.description,
+                        equation_after: didactic_step.equation_after,
+                        importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
+                    });
+                }
             }
             let results = isolate(new_eq.lhs, new_rhs, new_op, var, simplifier, opts, ctx)?;
             prepend_steps(results, steps)

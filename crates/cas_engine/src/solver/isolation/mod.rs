@@ -7,7 +7,10 @@ use crate::solver::{SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
 use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solution_set::isolated_var_solution;
-use cas_solver_core::solve_outcome::{plan_negated_lhs_isolation_step, residual_solution_set};
+use cas_solver_core::solve_outcome::{
+    collect_term_isolation_rewrite_didactic_steps, plan_negated_lhs_isolation_step,
+    residual_solution_set,
+};
 
 use crate::error::CasError;
 
@@ -94,12 +97,14 @@ pub(crate) fn isolate(
             let new_op = new_eq.op.clone();
 
             if simplifier.collect_steps() {
-                steps.push(SolveStep {
-                    description: plan.step.description,
-                    equation_after: plan.step.equation_after,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
+                for didactic_step in collect_term_isolation_rewrite_didactic_steps(&plan) {
+                    steps.push(SolveStep {
+                        description: didactic_step.description,
+                        equation_after: didactic_step.equation_after,
+                        importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
+                    });
+                }
             }
 
             let results = isolate(inner, new_rhs, new_op, var, simplifier, opts, ctx)?;
