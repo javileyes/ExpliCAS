@@ -385,7 +385,15 @@ fn solve_inner(
             &mut simplifier.context,
             diff_simplified,
             var,
-            |core_ctx, id| format!("{}", cas_formatter::DisplayExpr { context: core_ctx, id }),
+            |core_ctx, id| {
+                format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: core_ctx,
+                        id
+                    }
+                )
+            },
         );
         match reduced_outcome {
             VarEliminatedSolveOutcome::IdentityAllReals => {

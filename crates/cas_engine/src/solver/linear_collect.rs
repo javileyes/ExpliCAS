@@ -14,8 +14,7 @@ use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::linear_didactic::{
     build_linear_collect_additive_equation, build_linear_collect_factored_equation,
     build_linear_collect_solution_equation, linear_collect_collect_message,
-    linear_collect_divide_message,
-    linear_collect_factored_message,
+    linear_collect_divide_message, linear_collect_factored_message,
 };
 use cas_solver_core::linear_solution::{build_linear_solution_set, derive_linear_nonzero_statuses};
 use cas_solver_core::linear_terms::{build_sum, split_linear_term, TermClass};

@@ -1302,9 +1302,8 @@ mod tests {
     fn resolve_var_eliminated_identity_returns_all_reals() {
         let mut ctx = Context::new();
         let zero = ctx.num(0);
-        let out = resolve_var_eliminated_outcome_with(&mut ctx, zero, "x", |_, _| {
-            "unused".to_string()
-        });
+        let out =
+            resolve_var_eliminated_outcome_with(&mut ctx, zero, "x", |_, _| "unused".to_string());
         assert_eq!(out, VarEliminatedSolveOutcome::IdentityAllReals);
     }
 
@@ -1312,9 +1311,8 @@ mod tests {
     fn resolve_var_eliminated_contradiction_returns_empty() {
         let mut ctx = Context::new();
         let one = ctx.num(1);
-        let out = resolve_var_eliminated_outcome_with(&mut ctx, one, "x", |_, _| {
-            "unused".to_string()
-        });
+        let out =
+            resolve_var_eliminated_outcome_with(&mut ctx, one, "x", |_, _| "unused".to_string());
         assert_eq!(out, VarEliminatedSolveOutcome::ContradictionEmpty);
     }
 

@@ -7,8 +7,7 @@ use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_outcome::{
-    resolve_single_side_exponential_terminal_with_message,
-    SWAP_SIDES_TO_LHS_MESSAGE,
+    resolve_single_side_exponential_terminal_with_message, SWAP_SIDES_TO_LHS_MESSAGE,
 };
 use cas_solver_core::strategy_kernels::{
     collect_terms_message, derive_collect_terms_kernel, derive_rational_exponent_kernel,
@@ -155,34 +154,37 @@ impl SolverStrategy for UnwrapStrategy {
         }
 
         // Helper to invert
-        let mut invert = |target: ExprId,
-                          other: ExprId,
-                          op: RelOp,
-                          is_lhs: bool|
-         -> Option<(cas_solver_core::unwrap_plan::UnwrapExecutionPlan, ExprId)> {
-            let rewrite_plan = cas_solver_core::unwrap_plan::plan_unwrap_rewrite(
-                &mut simplifier.context,
-                target,
-                other,
-                var,
-                op,
-                is_lhs,
-                |core_ctx, base, other_side| {
-                    classify_log_solve(core_ctx, base, other_side, opts, &ctx.domain_env)
-                },
-            )?;
-            let execution =
-                cas_solver_core::unwrap_plan::build_unwrap_execution_plan_with(rewrite_plan, |id| {
-                    format!(
-                        "{}",
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id
-                        }
-                    )
-                });
-            Some((execution, other))
-        };
+        let mut invert =
+            |target: ExprId,
+             other: ExprId,
+             op: RelOp,
+             is_lhs: bool|
+             -> Option<(cas_solver_core::unwrap_plan::UnwrapExecutionPlan, ExprId)> {
+                let rewrite_plan = cas_solver_core::unwrap_plan::plan_unwrap_rewrite(
+                    &mut simplifier.context,
+                    target,
+                    other,
+                    var,
+                    op,
+                    is_lhs,
+                    |core_ctx, base, other_side| {
+                        classify_log_solve(core_ctx, base, other_side, opts, &ctx.domain_env)
+                    },
+                )?;
+                let execution = cas_solver_core::unwrap_plan::build_unwrap_execution_plan_with(
+                    rewrite_plan,
+                    |id| {
+                        format!(
+                            "{}",
+                            cas_formatter::DisplayExpr {
+                                context: &simplifier.context,
+                                id
+                            }
+                        )
+                    },
+                );
+                Some((execution, other))
+            };
 
         // Try LHS
         if lhs_has {
@@ -351,13 +353,8 @@ impl SolverStrategy for RationalExponentStrategy {
         let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
         let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
 
-        let kernel = derive_rational_exponent_kernel(
-            &mut simplifier.context,
-            eq,
-            var,
-            lhs_has,
-            rhs_has,
-        )?;
+        let kernel =
+            derive_rational_exponent_kernel(&mut simplifier.context, eq, var, lhs_has, rhs_has)?;
 
         let mut steps = Vec::new();
 

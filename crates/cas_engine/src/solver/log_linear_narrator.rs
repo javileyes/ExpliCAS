@@ -18,8 +18,7 @@ use crate::solver::SolveStep;
 use cas_ast::{Context, Equation};
 use cas_solver_core::log_linear_narration::{
     build_detailed_collect_steps, collect_and_factor_terms_message, is_log_linear_take_log_step,
-    try_rewrite_ln_power,
-    TAKE_LOG_BOTH_SIDES_STEP,
+    try_rewrite_ln_power, TAKE_LOG_BOTH_SIDES_STEP,
 };
 
 /// Check if a step sequence is a log-linear solve pattern.
