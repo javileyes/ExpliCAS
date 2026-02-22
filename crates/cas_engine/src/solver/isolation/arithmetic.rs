@@ -15,6 +15,7 @@ use cas_solver_core::solve_outcome::{
     add_both_sides_message, denominator_negative_case_message, denominator_positive_case_message,
     divide_both_sides_message, end_case_message, isolated_denominator_negative_case_message,
     isolated_denominator_positive_case_message, move_and_flip_message, multiply_both_sides_message,
+    plan_division_denominator_sign_split, plan_isolated_denominator_sign_split,
     plan_product_zero_inequality_split, subtract_both_sides_message,
 };
 
@@ -312,19 +313,25 @@ pub(super) fn isolate_div(
     if contains_var(&simplifier.context, l, var) {
         if should_split_division_denominator_sign_cases(&simplifier.context, l, r, &op, var) {
             // Denominator contains variable. Split into cases.
-            let (split, domain_eq, domain_eq_neg) =
-                cas_solver_core::equation_rewrite::build_division_denominator_sign_split(
-                    &mut simplifier.context,
-                    l,
-                    r,
-                    rhs,
-                    op.clone(),
-                )
+            let split_plan = plan_division_denominator_sign_split(
+                &mut simplifier.context,
+                l,
+                r,
+                rhs,
+                op.clone(),
+            )
                 .expect("inequality branch requires denominator sign cases");
-            let (sim_rhs, _) = simplifier.simplify(split.positive.rhs);
-            let split = cas_solver_core::equation_rewrite::with_shared_rhs(&split, sim_rhs);
-            let eq_pos = split.positive;
-            let eq_neg = split.negative;
+            let (sim_rhs, _) = simplifier.simplify(split_plan.positive_equation.rhs);
+            let eq_pos = Equation {
+                lhs: split_plan.positive_equation.lhs,
+                rhs: sim_rhs,
+                op: split_plan.positive_equation.op.clone(),
+            };
+            let eq_neg = Equation {
+                lhs: split_plan.negative_equation.lhs,
+                rhs: sim_rhs,
+                op: split_plan.negative_equation.op.clone(),
+            };
 
             if simplifier.collect_steps() {
                 let r_desc = format!(
@@ -354,7 +361,7 @@ pub(super) fn isolate_div(
             let (set_pos, steps_pos) = prepend_steps(results_pos, steps.clone())?;
 
             // Domain: r > 0
-            let (domain_pos_set, _) = solve_with_ctx(&domain_eq, var, simplifier, ctx)?;
+            let (domain_pos_set, _) = solve_with_ctx(&split_plan.positive_domain, var, simplifier, ctx)?;
             let final_pos = intersect_solution_sets(&simplifier.context, set_pos, domain_pos_set);
 
             // Case 2: Denominator < 0
@@ -386,7 +393,7 @@ pub(super) fn isolate_div(
             let (set_neg, steps_neg) = prepend_steps(results_neg, steps.clone())?;
 
             // Domain: r < 0
-            let (domain_neg_set, _) = solve_with_ctx(&domain_eq_neg, var, simplifier, ctx)?;
+            let (domain_neg_set, _) = solve_with_ctx(&split_plan.negative_domain, var, simplifier, ctx)?;
             let final_neg = intersect_solution_sets(&simplifier.context, set_neg, domain_neg_set);
 
             // Combine
@@ -477,14 +484,10 @@ pub(super) fn isolate_div(
         // Check if denominator is just the variable (simple case)
         if should_split_isolated_denominator_variable(&simplifier.context, r, &op, var) {
             // Split into x > 0 and x < 0
-            let split = cas_solver_core::equation_rewrite::build_isolated_denominator_sign_split(
-                r,
-                sim_rhs,
-                op.clone(),
-            )
-            .expect("inequality branch requires denominator sign cases");
-            let eq_pos = split.positive;
-            let eq_neg = split.negative;
+            let split_plan = plan_isolated_denominator_sign_split(r, sim_rhs, op.clone())
+                .expect("inequality branch requires denominator sign cases");
+            let eq_pos = split_plan.positive_equation;
+            let eq_neg = split_plan.negative_equation;
 
             let mut steps_case1 = steps.clone();
             if simplifier.collect_steps() {

@@ -870,6 +870,24 @@ pub struct ProductZeroInequalityPlan {
     pub case2_right: Equation,
 }
 
+/// Pre-built split plan for inequalities with variable denominator:
+/// `(num / den) op rhs` under `den > 0` and `den < 0`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DivisionDenominatorSignSplitPlan {
+    pub positive_equation: Equation,
+    pub negative_equation: Equation,
+    pub positive_domain: Equation,
+    pub negative_domain: Equation,
+}
+
+/// Pre-built split plan for isolated denominator inequalities:
+/// `den op rhs` under `den > 0` and `den < 0`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IsolatedDenominatorSignSplitPlan {
+    pub positive_equation: Equation,
+    pub negative_equation: Equation,
+}
+
 /// Classify numeric RHS sign for `|A| = RHS`.
 pub fn abs_equality_precheck(sign: NumericSign) -> AbsEqualityPrecheck {
     match sign {
@@ -913,6 +931,44 @@ pub fn plan_product_zero_inequality_split(
         case1_right,
         case2_left,
         case2_right,
+    })
+}
+
+/// Build executable split plan for division inequalities where denominator sign
+/// determines whether inequality direction flips.
+pub fn plan_division_denominator_sign_split(
+    ctx: &mut Context,
+    numerator: ExprId,
+    denominator: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+) -> Option<DivisionDenominatorSignSplitPlan> {
+    let (branches, domain_pos, domain_neg) =
+        crate::equation_rewrite::build_division_denominator_sign_split(
+            ctx,
+            numerator,
+            denominator,
+            rhs,
+            op,
+        )?;
+    Some(DivisionDenominatorSignSplitPlan {
+        positive_equation: branches.positive,
+        negative_equation: branches.negative,
+        positive_domain: domain_pos,
+        negative_domain: domain_neg,
+    })
+}
+
+/// Build executable split plan for already-isolated denominator inequalities.
+pub fn plan_isolated_denominator_sign_split(
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+) -> Option<IsolatedDenominatorSignSplitPlan> {
+    let branches = crate::equation_rewrite::build_isolated_denominator_sign_split(lhs, rhs, op)?;
+    Some(IsolatedDenominatorSignSplitPlan {
+        positive_equation: branches.positive,
+        negative_equation: branches.negative,
     })
 }
 
@@ -2006,6 +2062,52 @@ mod tests {
             isolated_denominator_negative_case_message("x"),
             "Case 2: Assume x < 0. Multiply by x (negative). Inequality flips."
         );
+    }
+
+    #[test]
+    fn plan_division_denominator_sign_split_builds_both_branches_and_domains() {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let plan = plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Lt)
+            .expect("division sign split");
+
+        assert_eq!(plan.positive_equation.lhs, num);
+        assert_eq!(plan.negative_equation.lhs, num);
+        assert_eq!(plan.positive_equation.op, RelOp::Lt);
+        assert_eq!(plan.negative_equation.op, RelOp::Gt);
+        assert_eq!(plan.positive_domain.lhs, den);
+        assert_eq!(plan.negative_domain.lhs, den);
+        assert_eq!(plan.positive_domain.op, RelOp::Gt);
+        assert_eq!(plan.negative_domain.op, RelOp::Lt);
+    }
+
+    #[test]
+    fn plan_division_denominator_sign_split_rejects_eq_and_neq() {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+
+        assert!(plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Eq).is_none());
+        assert!(plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Neq).is_none());
+    }
+
+    #[test]
+    fn plan_isolated_denominator_sign_split_builds_flipped_negative_branch() {
+        let mut ctx = Context::new();
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let plan = plan_isolated_denominator_sign_split(den, rhs, RelOp::Leq)
+            .expect("isolated denominator split");
+
+        assert_eq!(plan.positive_equation.lhs, den);
+        assert_eq!(plan.negative_equation.lhs, den);
+        assert_eq!(plan.positive_equation.rhs, rhs);
+        assert_eq!(plan.negative_equation.rhs, rhs);
+        assert_eq!(plan.positive_equation.op, RelOp::Geq);
+        assert_eq!(plan.negative_equation.op, RelOp::Leq);
     }
 
     #[test]
