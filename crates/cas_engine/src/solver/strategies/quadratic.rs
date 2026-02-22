@@ -44,29 +44,29 @@ impl SolverStrategy for QuadraticStrategy {
         let zero = simplifier.context.num(0);
 
         if let Some(factors) = split_zero_product_factors(&simplifier.context, sim_poly_expr) {
+            let factorized_execution =
+                cas_solver_core::quadratic_didactic::build_factorized_zero_product_execution_with(
+                    &simplifier.context,
+                    sim_poly_expr,
+                    &factors,
+                    var,
+                    zero,
+                    |id| {
+                        format!(
+                            "{}",
+                            cas_formatter::DisplayExpr {
+                                context: &simplifier.context,
+                                id
+                            }
+                        )
+                    },
+                );
+
             // We found factors.
             if simplifier.collect_steps() {
-                let didactic_step =
-                    cas_solver_core::quadratic_didactic::build_factorized_equation_step_with(
-                        Equation {
-                            lhs: sim_poly_expr,
-                            rhs: zero,
-                            op: RelOp::Eq,
-                        },
-                        sim_poly_expr,
-                        |id| {
-                            format!(
-                                "{}",
-                                cas_formatter::DisplayExpr {
-                                    context: &simplifier.context,
-                                    id
-                                }
-                            )
-                        },
-                    );
                 steps.push(SolveStep {
-                    description: didactic_step.description,
-                    equation_after: didactic_step.equation_after,
+                    description: factorized_execution.entry.description,
+                    equation_after: factorized_execution.entry.equation_after,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -76,27 +76,16 @@ impl SolverStrategy for QuadraticStrategy {
             // For Eq, it's simple union.
             if eq.op == RelOp::Eq {
                 let mut all_solutions = Vec::new();
-                let factor_execution =
-                    cas_solver_core::quadratic_didactic::build_zero_product_factor_execution_with(
-                        &simplifier.context,
-                        &factors,
-                        var,
-                        zero,
-                        |id| {
-                            format!(
-                                "{}",
-                                cas_formatter::DisplayExpr {
-                                    context: &simplifier.context,
-                                    id
-                                }
-                            )
-                        },
-                    );
                 let factor_steps = simplifier
                     .collect_steps()
-                    .then_some(factor_execution.didactic);
+                    .then_some(factorized_execution.factors.didactic);
 
-                for (idx, factor_eq) in factor_execution.equations.into_iter().enumerate() {
+                for (idx, factor_eq) in factorized_execution
+                    .factors
+                    .equations
+                    .into_iter()
+                    .enumerate()
+                {
                     if let Some(didactic_step) = factor_steps.as_ref().and_then(|all| all.get(idx))
                     {
                         steps.push(SolveStep {

@@ -35,6 +35,14 @@ pub struct ZeroProductFactorExecutionPlan {
     pub didactic: Vec<QuadraticDidacticStep>,
 }
 
+/// Executable payload for factorized zero-product solving:
+/// top factorized entry step + per-factor equations and didactic steps.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FactorizedZeroProductExecutionPlan {
+    pub entry: QuadraticDidacticStep,
+    pub factors: ZeroProductFactorExecutionPlan,
+}
+
 /// Build didactic step for a factorized equation entrypoint.
 pub fn build_factorized_equation_step_with<F>(
     equation_after: Equation,
@@ -99,6 +107,33 @@ where
         equations,
         didactic,
     }
+}
+
+/// Build full execution payload for factorized zero-product solving:
+/// 1) "factorized equation" entry step
+/// 2) per-factor `factor = 0` equations + didactic steps
+pub fn build_factorized_zero_product_execution_with<F>(
+    ctx: &Context,
+    factorized_expr: ExprId,
+    factors: &[ExprId],
+    var: &str,
+    zero: ExprId,
+    mut render_expr: F,
+) -> FactorizedZeroProductExecutionPlan
+where
+    F: FnMut(ExprId) -> String,
+{
+    let entry = build_factorized_equation_step_with(
+        Equation {
+            lhs: factorized_expr,
+            rhs: zero,
+            op: RelOp::Eq,
+        },
+        factorized_expr,
+        &mut render_expr,
+    );
+    let factors = build_zero_product_factor_execution_with(ctx, factors, var, zero, render_expr);
+    FactorizedZeroProductExecutionPlan { entry, factors }
 }
 
 /// Build the top-level "quadratic formula" strategy step payload.
@@ -545,5 +580,41 @@ mod tests {
             "Solve factor: factor = 0"
         );
         assert_eq!(execution.didactic[0].equation_after, execution.equations[0]);
+    }
+
+    #[test]
+    fn build_factorized_zero_product_execution_with_builds_entry_and_factors() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_minus_one = ctx.add(Expr::Sub(x, one));
+        let factored_expr = ctx.add(Expr::Mul(x, x_minus_one));
+        let zero = ctx.num(0);
+        let factors = vec![x, x_minus_one];
+
+        let execution = build_factorized_zero_product_execution_with(
+            &ctx,
+            factored_expr,
+            &factors,
+            "x",
+            zero,
+            |_| "f".to_string(),
+        );
+
+        assert_eq!(execution.entry.description, "Factorized equation: f = 0");
+        assert_eq!(
+            execution.entry.equation_after,
+            Equation {
+                lhs: factored_expr,
+                rhs: zero,
+                op: RelOp::Eq
+            }
+        );
+        assert_eq!(execution.factors.equations.len(), 2);
+        assert_eq!(execution.factors.didactic.len(), 2);
+        assert_eq!(
+            execution.factors.didactic[0].description,
+            "Solve factor: f = 0"
+        );
     }
 }
