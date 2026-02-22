@@ -933,6 +933,23 @@ pub fn build_solve_tactic_normalization_step(
     }
 }
 
+/// Plan solve-tactic normalization rewrite (`base^exponent = rhs`) and step.
+pub fn plan_solve_tactic_normalization_step(
+    ctx: &mut Context,
+    base: ExprId,
+    exponent: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+) -> TermIsolationRewritePlan {
+    let equation = Equation {
+        lhs: ctx.add(Expr::Pow(base, exponent)),
+        rhs,
+        op,
+    };
+    let step = build_solve_tactic_normalization_step(equation.clone());
+    TermIsolationRewritePlan { equation, step }
+}
+
 /// Build didactic narration for multiplicative isolation.
 pub fn divide_both_sides_message(term_display: &str) -> String {
     format!("Divide both sides by {}", term_display)
@@ -3311,6 +3328,24 @@ mod tests {
             "Applied SolveTactic normalization (Assume mode) to enable logarithm isolation"
         );
         assert_eq!(step.equation_after, eq);
+    }
+
+    #[test]
+    fn plan_solve_tactic_normalization_step_builds_pow_equation_and_step() {
+        let mut ctx = Context::new();
+        let base = ctx.var("a");
+        let exponent = ctx.var("x");
+        let rhs = ctx.var("b");
+
+        let plan = plan_solve_tactic_normalization_step(&mut ctx, base, exponent, rhs, RelOp::Eq);
+
+        assert_eq!(plan.step.equation_after, plan.equation);
+        assert_eq!(
+            plan.step.description,
+            "Applied SolveTactic normalization (Assume mode) to enable logarithm isolation"
+        );
+        assert_eq!(plan.equation.rhs, rhs);
+        assert_eq!(plan.equation.op, RelOp::Eq);
     }
 
     #[test]
