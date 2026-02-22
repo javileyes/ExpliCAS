@@ -466,13 +466,14 @@ fn solve_inner(
                         if !strategy.should_verify() {
                             return Ok((SolutionSet::Discrete(sols), steps));
                         }
-                        let (mut symbolic_solutions, numeric_solutions) =
+                        let (symbolic_solutions, numeric_solutions) =
                             cas_solver_core::solve_analysis::partition_discrete_symbolic(
                                 &simplifier.context,
                                 &sols,
                             );
-                        let verified_numeric =
-                            cas_solver_core::solve_analysis::retain_verified_discrete(
+                        let valid_sols =
+                            cas_solver_core::solve_analysis::merge_symbolic_with_verified_numeric(
+                                symbolic_solutions,
                                 numeric_solutions,
                                 |sol| {
                                     // CRITICAL: Verify against ORIGINAL equation, not simplified
@@ -481,8 +482,6 @@ fn solve_inner(
                                     verify_solution(eq, var, sol, simplifier)
                                 },
                             );
-                        symbolic_solutions.extend(verified_numeric);
-                        let valid_sols = symbolic_solutions;
                         return Ok((SolutionSet::Discrete(valid_sols), steps));
                     }
                     return Ok((result, steps));

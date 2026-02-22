@@ -45,6 +45,22 @@ where
     out
 }
 
+/// Merge symbolic roots with verified numeric roots.
+///
+/// Returns `symbolic ++ verified_numeric` preserving solver behavior.
+pub fn merge_symbolic_with_verified_numeric<F>(
+    mut symbolic_solutions: Vec<ExprId>,
+    numeric_solutions: Vec<ExprId>,
+    mut verify_numeric: F,
+) -> Vec<ExprId>
+where
+    F: FnMut(ExprId) -> bool,
+{
+    let verified_numeric = retain_verified_discrete(numeric_solutions, |sol| verify_numeric(sol));
+    symbolic_solutions.extend(verified_numeric);
+    symbolic_solutions
+}
+
 /// Decide whether a rewritten residual should replace the current one.
 ///
 /// Accept when:
@@ -216,5 +232,17 @@ mod tests {
     #[test]
     fn reject_rewritten_residual_on_cosmetic_change() {
         assert!(!should_accept_rewritten_residual(false, 20, 19));
+    }
+
+    #[test]
+    fn merge_symbolic_with_verified_numeric_preserves_order_and_filters_numeric() {
+        let x = cas_ast::ExprId::from_raw(11);
+        let y = cas_ast::ExprId::from_raw(12);
+        let two = cas_ast::ExprId::from_raw(2);
+        let three = cas_ast::ExprId::from_raw(3);
+
+        let out =
+            merge_symbolic_with_verified_numeric(vec![x, y], vec![two, three], |id| id == three);
+        assert_eq!(out, vec![x, y, three]);
     }
 }
