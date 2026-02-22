@@ -15,6 +15,13 @@ pub struct LogIsolationRewritePlan {
     pub step: LogIsolationStep,
 }
 
+/// Collect log-isolation didactic steps in display order.
+pub fn collect_log_isolation_didactic_steps(
+    plan: &LogIsolationRewritePlan,
+) -> Vec<LogIsolationStep> {
+    vec![plan.step.clone()]
+}
+
 /// Planned transformation for isolating a logarithmic equation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogIsolationPlan {
@@ -264,5 +271,21 @@ mod tests {
             "Exponentiate both sides with base rendered(b)"
         );
         assert_eq!(out.step.equation_after, out.equation);
+    }
+
+    #[test]
+    fn collect_log_isolation_didactic_steps_returns_single_step() {
+        let mut ctx = Context::new();
+        let base = ctx.var("b");
+        let arg = ctx.var("x");
+        let rhs = ctx.num(3);
+        let out = plan_log_isolation_step_with(&mut ctx, base, arg, rhs, "x", RelOp::Eq, |_| {
+            "rendered(b)".to_string()
+        })
+        .expect("log isolation should apply");
+
+        let didactic = collect_log_isolation_didactic_steps(&out);
+        assert_eq!(didactic.len(), 1);
+        assert_eq!(didactic[0], out.step);
     }
 }

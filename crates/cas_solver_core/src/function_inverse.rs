@@ -34,6 +34,13 @@ pub struct UnaryInverseIsolationStepPlan {
     pub needs_rhs_cleanup: bool,
 }
 
+/// Collect unary-inverse didactic steps in display order.
+pub fn collect_unary_inverse_didactic_steps(
+    plan: &UnaryInverseIsolationStepPlan,
+) -> Vec<UnaryInverseDidacticStep> {
+    vec![plan.step.clone()]
+}
+
 /// Didactic payload for RHS cleanup steps emitted after inverse rewrites.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RhsSimplificationDidacticStep {
@@ -427,6 +434,19 @@ mod tests {
         assert_eq!(plan.step.description, "Take arcsin of both sides");
         assert_eq!(plan.step.equation_after, plan.equation);
         assert!(plan.needs_rhs_cleanup);
+    }
+
+    #[test]
+    fn collect_unary_inverse_didactic_steps_returns_single_step() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let plan = plan_unary_inverse_isolation_step(&mut ctx, "sin", x, y, RelOp::Eq, true)
+            .expect("sin inverse should build isolation plan");
+
+        let didactic = collect_unary_inverse_didactic_steps(&plan);
+        assert_eq!(didactic.len(), 1);
+        assert_eq!(didactic[0], plan.step);
     }
 
     #[test]

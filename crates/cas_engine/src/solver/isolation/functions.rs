@@ -3,7 +3,9 @@ use crate::error::CasError;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
 use cas_ast::{BuiltinFn, ExprId, RelOp, SolutionSet};
+use cas_solver_core::function_inverse::collect_unary_inverse_didactic_steps;
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
+use cas_solver_core::log_isolation::collect_log_isolation_didactic_steps;
 use cas_solver_core::solve_outcome::{
     build_abs_split_execution_with, collect_abs_split_didactic_steps,
     finalize_abs_split_solution_set, plan_abs_isolation, AbsIsolationPlan,
@@ -176,12 +178,14 @@ fn isolate_log(
     })?;
     let new_eq = rewrite.equation.clone();
     if simplifier.collect_steps() {
-        steps.push(SolveStep {
-            description: rewrite.step.description,
-            equation_after: rewrite.step.equation_after,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        });
+        for didactic_step in collect_log_isolation_didactic_steps(&rewrite) {
+            steps.push(SolveStep {
+                description: didactic_step.description,
+                equation_after: didactic_step.equation_after,
+                importance: crate::step::ImportanceLevel::Medium,
+                substeps: vec![],
+            });
+        }
     }
     let results = isolate(
         new_eq.lhs, new_eq.rhs, new_eq.op, var, simplifier, opts, ctx,
@@ -215,12 +219,14 @@ fn isolate_unary_function(
     let new_rhs = plan.equation.rhs;
 
     if simplifier.collect_steps() {
-        steps.push(SolveStep {
-            description: plan.step.description,
-            equation_after: plan.step.equation_after,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        });
+        for didactic_step in collect_unary_inverse_didactic_steps(&plan) {
+            steps.push(SolveStep {
+                description: didactic_step.description,
+                equation_after: didactic_step.equation_after,
+                importance: crate::step::ImportanceLevel::Medium,
+                substeps: vec![],
+            });
+        }
     }
 
     let target_rhs = if plan.needs_rhs_cleanup {
