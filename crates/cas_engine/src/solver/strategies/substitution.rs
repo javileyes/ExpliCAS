@@ -4,10 +4,9 @@ use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, RelOp, SolutionSet};
-use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::substitution::{
     build_back_substitute_step_with, build_detected_substitution_step_with,
-    build_substituted_equation_step_with,
+    build_substituted_equation_step_with, plan_exponential_substitution_rewrite,
 };
 
 pub struct SubstitutionStrategy;
@@ -25,16 +24,17 @@ impl SolverStrategy for SubstitutionStrategy {
         _opts: &SolverOptions,
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-        if let Some(sub_var_expr) = cas_solver_core::substitution::detect_exponential_substitution(
-            &mut simplifier.context,
-            eq.lhs,
-            eq.rhs,
-            var,
-        ) {
+        const SUB_VAR_NAME: &str = "u";
+
+        if let Some(rewrite_plan) =
+            plan_exponential_substitution_rewrite(&mut simplifier.context, eq, var, SUB_VAR_NAME)
+        {
             let mut steps = Vec::new();
             if simplifier.collect_steps() {
-                let detect_step =
-                    build_detected_substitution_step_with(eq.clone(), sub_var_expr, |id| {
+                let detect_step = build_detected_substitution_step_with(
+                    eq.clone(),
+                    rewrite_plan.substitution_expr,
+                    |id| {
                         format!(
                             "{}",
                             cas_formatter::DisplayExpr {
@@ -42,7 +42,8 @@ impl SolverStrategy for SubstitutionStrategy {
                                 id
                             }
                         )
-                    });
+                    },
+                );
                 steps.push(SolveStep {
                     description: detect_step.description,
                     equation_after: detect_step.equation_after,
@@ -51,36 +52,7 @@ impl SolverStrategy for SubstitutionStrategy {
                 });
             }
 
-            // Rewrite equation in terms of u
-            let u_sym = "u";
-            let u_var = simplifier.context.var(u_sym);
-            let new_lhs = cas_solver_core::substitution::substitute_expr_pattern(
-                &mut simplifier.context,
-                eq.lhs,
-                sub_var_expr,
-                u_var,
-            );
-            let new_rhs = cas_solver_core::substitution::substitute_expr_pattern(
-                &mut simplifier.context,
-                eq.rhs,
-                sub_var_expr,
-                u_var,
-            );
-
-            let new_eq = Equation {
-                lhs: new_lhs,
-                rhs: new_rhs,
-                op: eq.op.clone(),
-            };
-
-            // Safety net: if the substituted equation still contains the original variable,
-            // the substitution was incomplete (mixed polynomial+exponential that slipped past
-            // the detect_exponential_substitution guard). Bail out instead of invalid solve path.
-            if contains_var(&simplifier.context, new_lhs, var)
-                || contains_var(&simplifier.context, new_rhs, var)
-            {
-                return None;
-            }
+            let new_eq = rewrite_plan.equation;
 
             if simplifier.collect_steps() {
                 let substituted_step = build_substituted_equation_step_with(new_eq.clone(), |id| {
@@ -101,10 +73,11 @@ impl SolverStrategy for SubstitutionStrategy {
             }
 
             // Solve for u
-            let (u_solutions, mut u_steps) = match solve_with_ctx(&new_eq, u_sym, simplifier, ctx) {
-                Ok(res) => res,
-                Err(e) => return Some(Err(e)),
-            };
+            let (u_solutions, mut u_steps) =
+                match solve_with_ctx(&new_eq, SUB_VAR_NAME, simplifier, ctx) {
+                    Ok(res) => res,
+                    Err(e) => return Some(Err(e)),
+                };
             steps.append(&mut u_steps);
 
             // eprintln!("Substitution u_solutions: {:?}", u_solutions);
@@ -116,7 +89,7 @@ impl SolverStrategy for SubstitutionStrategy {
                     for val in vals {
                         // Solve sub_var_expr = val
                         let sub_eq = Equation {
-                            lhs: sub_var_expr,
+                            lhs: rewrite_plan.substitution_expr,
                             rhs: val,
                             op: RelOp::Eq,
                         };

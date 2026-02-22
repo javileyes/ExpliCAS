@@ -77,6 +77,13 @@ where
     }
 }
 
+/// Exponential substitution rewrite extracted from strategy orchestration.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExponentialSubstitutionRewritePlan {
+    pub substitution_expr: ExprId,
+    pub equation: Equation,
+}
+
 /// Substitute a named variable with a value in an expression tree.
 pub fn substitute_named_var(ctx: &mut Context, expr: ExprId, var: &str, value: ExprId) -> ExprId {
     let expr_data = ctx.get(expr).clone();
@@ -381,6 +388,37 @@ pub fn substitute_expr_pattern(
     expr
 }
 
+/// Plan exponential substitution rewrite (`u = target`) for a solver equation.
+///
+/// Returns `None` when no safe substitution candidate is detected or when the
+/// rewritten equation still contains the original variable.
+pub fn plan_exponential_substitution_rewrite(
+    ctx: &mut Context,
+    equation: &Equation,
+    var: &str,
+    substitution_symbol: &str,
+) -> Option<ExponentialSubstitutionRewritePlan> {
+    let substitution_expr = detect_exponential_substitution(ctx, equation.lhs, equation.rhs, var)?;
+    let substitution_var = ctx.var(substitution_symbol);
+    let rewritten_lhs =
+        substitute_expr_pattern(ctx, equation.lhs, substitution_expr, substitution_var);
+    let rewritten_rhs =
+        substitute_expr_pattern(ctx, equation.rhs, substitution_expr, substitution_var);
+
+    if contains_var(ctx, rewritten_lhs, var) || contains_var(ctx, rewritten_rhs, var) {
+        return None;
+    }
+
+    Some(ExponentialSubstitutionRewritePlan {
+        substitution_expr,
+        equation: Equation {
+            lhs: rewritten_lhs,
+            rhs: rewritten_rhs,
+            op: equation.op.clone(),
+        },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -453,6 +491,47 @@ mod tests {
             }
             other => panic!("expected Pow(u,2), got {other:?}"),
         }
+    }
+
+    #[test]
+    fn plan_exponential_substitution_rewrite_builds_safe_u_equation() {
+        let mut ctx = Context::new();
+        let e = ctx.add(Expr::Constant(Constant::E));
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let one = ctx.num(1);
+        let e_pow_x = ctx.add(Expr::Pow(e, x));
+        let two_x = ctx.add(Expr::Mul(two, x));
+        let e_pow_2x = ctx.add(Expr::Pow(e, two_x));
+        let lhs = ctx.add(Expr::Add(e_pow_2x, e_pow_x));
+        let eq = Equation {
+            lhs,
+            rhs: one,
+            op: cas_ast::RelOp::Eq,
+        };
+
+        let plan = plan_exponential_substitution_rewrite(&mut ctx, &eq, "x", "u")
+            .expect("should build substitution rewrite");
+        assert_eq!(plan.substitution_expr, e_pow_x);
+        assert!(!contains_var(&ctx, plan.equation.lhs, "x"));
+        assert!(!contains_var(&ctx, plan.equation.rhs, "x"));
+    }
+
+    #[test]
+    fn plan_exponential_substitution_rewrite_rejects_mixed_variable_positions() {
+        let mut ctx = Context::new();
+        let e = ctx.add(Expr::Constant(Constant::E));
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let e_pow_x = ctx.add(Expr::Pow(e, x));
+        let lhs = ctx.add(Expr::Add(x, e_pow_x));
+        let eq = Equation {
+            lhs,
+            rhs: one,
+            op: cas_ast::RelOp::Eq,
+        };
+
+        assert!(plan_exponential_substitution_rewrite(&mut ctx, &eq, "x", "u").is_none());
     }
 
     #[test]
