@@ -335,12 +335,12 @@ fn solve_inner(
         let re_simplified = simplifier.simplify_for_solve(expanded_diff);
         let old_nodes = cas_ast::traversal::count_all_nodes(&simplifier.context, diff_simplified);
         let new_nodes = cas_ast::traversal::count_all_nodes(&simplifier.context, re_simplified);
-        // Use re-simplified form if:
-        // 1. Variable was eliminated (identity/contradiction), OR
-        // 2. Significant (>25%) node reduction (real simplification, not cosmetic)
         let var_eliminated = !contains_var(&simplifier.context, re_simplified, var);
-        let significant_reduction = old_nodes > 4 && new_nodes * 4 < old_nodes * 3;
-        if var_eliminated || significant_reduction {
+        if cas_solver_core::solve_analysis::should_accept_rewritten_residual(
+            var_eliminated,
+            old_nodes,
+            new_nodes,
+        ) {
             diff_simplified = re_simplified;
             let zero = simplifier.context.num(0);
             simplified_eq.lhs = diff_simplified;
@@ -360,8 +360,11 @@ fn solve_inner(
         let old_nodes = cas_ast::traversal::count_all_nodes(&simplifier.context, diff_simplified);
         let new_nodes = cas_ast::traversal::count_all_nodes(&simplifier.context, trig_expanded);
         let var_eliminated = !contains_var(&simplifier.context, trig_expanded, var);
-        let significant_reduction = old_nodes > 4 && new_nodes * 4 < old_nodes * 3;
-        if var_eliminated || significant_reduction {
+        if cas_solver_core::solve_analysis::should_accept_rewritten_residual(
+            var_eliminated,
+            old_nodes,
+            new_nodes,
+        ) {
             diff_simplified = trig_expanded;
             let zero = simplifier.context.num(0);
             simplified_eq.lhs = diff_simplified;

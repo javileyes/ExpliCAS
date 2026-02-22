@@ -45,6 +45,19 @@ where
     out
 }
 
+/// Decide whether a rewritten residual should replace the current one.
+///
+/// Accept when:
+/// - The target variable was eliminated, or
+/// - Tree size was reduced by more than 25% (avoids cosmetic rewrites).
+pub fn should_accept_rewritten_residual(
+    var_eliminated: bool,
+    old_nodes: usize,
+    new_nodes: usize,
+) -> bool {
+    var_eliminated || (old_nodes > 4 && new_nodes * 4 < old_nodes * 3)
+}
+
 /// Extract all denominators that contain the target variable.
 pub fn extract_denominators_with_var(ctx: &Context, expr: ExprId, var: &str) -> Vec<ExprId> {
     let mut denoms_set: HashSet<ExprId> = HashSet::new();
@@ -188,5 +201,20 @@ mod tests {
             kept,
             vec![cas_ast::ExprId::from_raw(1), cas_ast::ExprId::from_raw(3)]
         );
+    }
+
+    #[test]
+    fn accept_rewritten_residual_when_variable_eliminated() {
+        assert!(should_accept_rewritten_residual(true, 100, 99));
+    }
+
+    #[test]
+    fn accept_rewritten_residual_on_significant_reduction() {
+        assert!(should_accept_rewritten_residual(false, 20, 14));
+    }
+
+    #[test]
+    fn reject_rewritten_residual_on_cosmetic_change() {
+        assert!(!should_accept_rewritten_residual(false, 20, 19));
     }
 }
