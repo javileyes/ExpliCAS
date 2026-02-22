@@ -143,12 +143,35 @@ pub enum AbsEqualityPrecheck {
     Continue,
 }
 
+/// Fast-path routing for absolute-value isolation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AbsIsolationFastPath {
+    ReturnEmptySet,
+    CollapseToZero,
+    Continue,
+}
+
 /// Classify numeric RHS sign for `|A| = RHS`.
 pub fn abs_equality_precheck(sign: NumericSign) -> AbsEqualityPrecheck {
     match sign {
         NumericSign::Negative => AbsEqualityPrecheck::ReturnEmptySet,
         NumericSign::Zero => AbsEqualityPrecheck::CollapseToZero,
         NumericSign::Positive => AbsEqualityPrecheck::Continue,
+    }
+}
+
+/// Decide fast-path behavior for absolute-value isolation from operator and RHS sign.
+pub fn classify_abs_isolation_fast_path(
+    op: RelOp,
+    rhs_sign: Option<NumericSign>,
+) -> AbsIsolationFastPath {
+    if op != RelOp::Eq {
+        return AbsIsolationFastPath::Continue;
+    }
+    match rhs_sign.map(abs_equality_precheck) {
+        Some(AbsEqualityPrecheck::ReturnEmptySet) => AbsIsolationFastPath::ReturnEmptySet,
+        Some(AbsEqualityPrecheck::CollapseToZero) => AbsIsolationFastPath::CollapseToZero,
+        _ => AbsIsolationFastPath::Continue,
     }
 }
 
@@ -316,6 +339,38 @@ mod tests {
         assert_eq!(
             abs_equality_precheck(NumericSign::Positive),
             AbsEqualityPrecheck::Continue
+        );
+    }
+
+    #[test]
+    fn abs_fast_path_non_equality_continues() {
+        assert_eq!(
+            classify_abs_isolation_fast_path(RelOp::Geq, Some(NumericSign::Negative)),
+            AbsIsolationFastPath::Continue
+        );
+    }
+
+    #[test]
+    fn abs_fast_path_negative_rhs_returns_empty() {
+        assert_eq!(
+            classify_abs_isolation_fast_path(RelOp::Eq, Some(NumericSign::Negative)),
+            AbsIsolationFastPath::ReturnEmptySet
+        );
+    }
+
+    #[test]
+    fn abs_fast_path_zero_rhs_collapses_to_zero() {
+        assert_eq!(
+            classify_abs_isolation_fast_path(RelOp::Eq, Some(NumericSign::Zero)),
+            AbsIsolationFastPath::CollapseToZero
+        );
+    }
+
+    #[test]
+    fn abs_fast_path_missing_sign_continues() {
+        assert_eq!(
+            classify_abs_isolation_fast_path(RelOp::Eq, None),
+            AbsIsolationFastPath::Continue
         );
     }
 

@@ -6,7 +6,7 @@ use cas_ast::{BuiltinFn, Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{combine_abs_branch_sets, contains_var, numeric_sign};
 use cas_solver_core::log_isolation::LogIsolationPlan;
 use cas_solver_core::solve_outcome::{
-    abs_equality_precheck, guard_abs_solution_with_nonnegative_rhs, AbsEqualityPrecheck,
+    classify_abs_isolation_fast_path, guard_abs_solution_with_nonnegative_rhs, AbsIsolationFastPath,
 };
 
 use super::{isolate, prepend_steps};
@@ -66,21 +66,17 @@ fn isolate_abs(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // ── Pre-check: numeric RHS ──────────────────────────────────────────
     // |A| is always ≥ 0, so |A| = negative is impossible.
-    if matches!(op, RelOp::Eq) {
-        if let Some(sign) = numeric_sign(&simplifier.context, rhs) {
-            match abs_equality_precheck(sign) {
-                AbsEqualityPrecheck::ReturnEmptySet => {
-                    // |A| = (negative) → no solution
-                    return Ok((SolutionSet::Empty, steps));
-                }
-                AbsEqualityPrecheck::CollapseToZero => {
-                    // |A| = 0  →  A = 0  (only one branch needed)
-                    return isolate(arg, rhs, op, var, simplifier, opts, ctx);
-                }
-                AbsEqualityPrecheck::Continue => {
-                    // n > 0: fall through to normal branch split
-                }
-            }
+    match classify_abs_isolation_fast_path(op.clone(), numeric_sign(&simplifier.context, rhs)) {
+        AbsIsolationFastPath::ReturnEmptySet => {
+            // |A| = (negative) → no solution
+            return Ok((SolutionSet::Empty, steps));
+        }
+        AbsIsolationFastPath::CollapseToZero => {
+            // |A| = 0  →  A = 0  (only one branch needed)
+            return isolate(arg, rhs, op, var, simplifier, opts, ctx);
+        }
+        AbsIsolationFastPath::Continue => {
+            // n > 0 or non-numeric: fall through to normal branch split
         }
     }
 
