@@ -374,6 +374,7 @@ pub fn terminal_outcome_message(outcome: &TerminalSolveOutcome, residual_suffix:
 }
 
 /// Resolve unsupported-log rewrite decisions into concrete residual/guarded outcomes.
+#[allow(clippy::too_many_arguments)]
 pub fn resolve_log_unsupported_outcome<'a>(
     ctx: &mut Context,
     decision: &'a LogSolveDecision,
