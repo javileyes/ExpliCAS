@@ -314,23 +314,15 @@ impl SolverStrategy for CollectTermsStrategy {
         _opts: &SolverOptions,
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-        let mut rewrite_item = None;
+        let mut steps = Vec::new();
         let solved = {
             let rewrite = {
                 let mut runtime = EngineStrategyKernelRuntime { simplifier };
                 execute_collect_terms_rewrite_with_runtime(&mut runtime, eq, var)?
             };
             solve_collect_terms_rewrite_with_item(rewrite, |item, new_eq| {
-                rewrite_item = item;
-                solve_with_ctx(new_eq, var, simplifier, ctx)
-            })
-        };
-
-        match solved {
-            Ok(solved) => {
-                let mut steps = Vec::new();
                 if simplifier.collect_steps() {
-                    if let Some(item) = rewrite_item {
+                    if let Some(item) = item {
                         steps.push(SolveStep {
                             description: item.description().to_string(),
                             equation_after: item.equation,
@@ -339,7 +331,12 @@ impl SolverStrategy for CollectTermsStrategy {
                         });
                     }
                 }
+                solve_with_ctx(new_eq, var, simplifier, ctx)
+            })
+        };
 
+        match solved {
+            Ok(solved) => {
                 let (set, mut solve_steps) = solved.solved;
                 steps.append(&mut solve_steps);
                 Some(Ok((set, steps)))
@@ -369,7 +366,7 @@ impl SolverStrategy for RationalExponentStrategy {
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
         let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
-        let mut rewrite_item = None;
+        let mut steps = Vec::new();
         let solved = {
             let rewrite = {
                 let mut runtime = EngineStrategyKernelRuntime { simplifier };
@@ -382,16 +379,8 @@ impl SolverStrategy for RationalExponentStrategy {
                 )?
             };
             solve_rational_exponent_rewrite_with_item(rewrite, |item, new_eq| {
-                rewrite_item = item;
-                solve_with_ctx(new_eq, var, simplifier, ctx)
-            })
-        };
-
-        match solved {
-            Ok(solved) => {
-                let mut steps = Vec::new();
                 if simplifier.collect_steps() {
-                    if let Some(item) = rewrite_item {
+                    if let Some(item) = item {
                         steps.push(SolveStep {
                             description: item.description().to_string(),
                             equation_after: item.equation,
@@ -400,7 +389,12 @@ impl SolverStrategy for RationalExponentStrategy {
                         });
                     }
                 }
+                solve_with_ctx(new_eq, var, simplifier, ctx)
+            })
+        };
 
+        match solved {
+            Ok(solved) => {
                 let (set, mut sub_steps) = solved.solved;
                 steps.append(&mut sub_steps);
 
