@@ -12,7 +12,7 @@ use cas_solver_core::solve_outcome::{
     build_division_denominator_execution_with,
     build_division_denominator_sign_split_execution_with,
     build_isolated_denominator_sign_split_execution_with, derive_add_isolation_route,
-    derive_div_isolation_route, derive_mul_isolation_route, derive_sub_isolation_route,
+    derive_div_isolation_route, derive_mul_isolation_operands, derive_sub_isolation_route,
     division_denominator_sign_split_boundary_item,
     finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
@@ -30,8 +30,7 @@ use cas_solver_core::solve_outcome::{
     solve_isolated_denominator_sign_split_cases_with_items,
     solve_product_zero_inequality_cases_with, solve_term_isolation_rewrite_with, AddIsolationRoute,
     DivDenominatorIsolationRoute, DivIsolationRoute, DivisionDenominatorSignSplitSolvedCases,
-    IsolatedDenominatorSignSplitSolvedCases, MulIsolationRoute, SubIsolationRoute,
-    TermIsolationRewritePlan,
+    IsolatedDenominatorSignSplitSolvedCases, SubIsolationRoute, TermIsolationRewritePlan,
 };
 
 use super::{isolate, prepend_steps};
@@ -273,101 +272,51 @@ pub(super) fn isolate_mul(
     }
 
     // Default behavior: divide by one factor
-    let mul_route = derive_mul_isolation_route(&simplifier.context, l, var);
-    if matches!(mul_route, MulIsolationRoute::LeftFactor) {
-        // If RHS also contains var, try linear_collect
-        if mul_rhs_contains_variable(&simplifier.context, rhs, var) {
-            if let Some((solution_set, linear_steps)) =
-                crate::solver::linear_collect::try_linear_collect_v2(lhs, rhs, var, simplifier)
-            {
-                let mut all_steps = steps;
-                all_steps.extend(linear_steps);
-                return Ok((solution_set, all_steps));
-            }
+    if mul_rhs_contains_variable(&simplifier.context, rhs, var) {
+        if let Some((solution_set, linear_steps)) =
+            crate::solver::linear_collect::try_linear_collect_v2(lhs, rhs, var, simplifier)
+        {
+            let mut all_steps = steps;
+            all_steps.extend(linear_steps);
+            return Ok((solution_set, all_steps));
         }
-
-        // A = RHS / B
-        let moved_is_negative = is_known_negative(&simplifier.context, r);
-        let moved_desc = format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: &simplifier.context,
-                id: r
-            }
-        );
-        let plan = plan_mul_factor_isolation_step_with(
-            &mut simplifier.context,
-            l,
-            r,
-            rhs,
-            op,
-            moved_is_negative,
-            |_| moved_desc.clone(),
-        );
-        let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
-            isolate(
-                equation.lhs,
-                equation.rhs,
-                equation.op.clone(),
-                var,
-                simplifier,
-                opts,
-                ctx,
-            )
-        })?;
-        append_term_isolation_rewrite_steps(
-            &mut steps,
-            simplifier.collect_steps(),
-            &solved_rewrite.rewrite,
-        );
-        prepend_steps(solved_rewrite.solved, steps)
-    } else {
-        // B = RHS / A (r contains var, l doesn't)
-        if mul_rhs_contains_variable(&simplifier.context, rhs, var) {
-            if let Some((solution_set, linear_steps)) =
-                crate::solver::linear_collect::try_linear_collect_v2(lhs, rhs, var, simplifier)
-            {
-                let mut all_steps = steps;
-                all_steps.extend(linear_steps);
-                return Ok((solution_set, all_steps));
-            }
-        }
-
-        let moved_is_negative = is_known_negative(&simplifier.context, l);
-        let moved_desc = format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: &simplifier.context,
-                id: l
-            }
-        );
-        let plan = plan_mul_factor_isolation_step_with(
-            &mut simplifier.context,
-            r,
-            l,
-            rhs,
-            op,
-            moved_is_negative,
-            |_| moved_desc.clone(),
-        );
-        let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
-            isolate(
-                equation.lhs,
-                equation.rhs,
-                equation.op.clone(),
-                var,
-                simplifier,
-                opts,
-                ctx,
-            )
-        })?;
-        append_term_isolation_rewrite_steps(
-            &mut steps,
-            simplifier.collect_steps(),
-            &solved_rewrite.rewrite,
-        );
-        prepend_steps(solved_rewrite.solved, steps)
     }
+
+    let mul_operands = derive_mul_isolation_operands(&simplifier.context, l, r, var);
+    let moved_is_negative = is_known_negative(&simplifier.context, mul_operands.moved_factor);
+    let moved_desc = format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: &simplifier.context,
+            id: mul_operands.moved_factor
+        }
+    );
+    let plan = plan_mul_factor_isolation_step_with(
+        &mut simplifier.context,
+        mul_operands.isolated_factor,
+        mul_operands.moved_factor,
+        rhs,
+        op,
+        moved_is_negative,
+        |_| moved_desc.clone(),
+    );
+    let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
+        isolate(
+            equation.lhs,
+            equation.rhs,
+            equation.op.clone(),
+            var,
+            simplifier,
+            opts,
+            ctx,
+        )
+    })?;
+    append_term_isolation_rewrite_steps(
+        &mut steps,
+        simplifier.collect_steps(),
+        &solved_rewrite.rewrite,
+    );
+    prepend_steps(solved_rewrite.solved, steps)
 }
 
 /// Handle isolation for `Div(l, r)`: `A / B = RHS`

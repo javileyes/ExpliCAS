@@ -105,12 +105,42 @@ pub enum MulIsolationRoute {
     RightFactor,
 }
 
+/// Selected operands for multiplicative isolation `(l * r) = rhs`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MulIsolationOperands {
+    pub route: MulIsolationRoute,
+    pub isolated_factor: ExprId,
+    pub moved_factor: ExprId,
+}
+
 /// Derive which factor of `(l * r)` is isolated first.
 pub fn derive_mul_isolation_route(ctx: &Context, left: ExprId, var: &str) -> MulIsolationRoute {
     if contains_var(ctx, left, var) {
         MulIsolationRoute::LeftFactor
     } else {
         MulIsolationRoute::RightFactor
+    }
+}
+
+/// Derive the isolated factor and moved factor for `(l * r) = rhs`.
+pub fn derive_mul_isolation_operands(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+    var: &str,
+) -> MulIsolationOperands {
+    let route = derive_mul_isolation_route(ctx, left, var);
+    match route {
+        MulIsolationRoute::LeftFactor => MulIsolationOperands {
+            route,
+            isolated_factor: left,
+            moved_factor: right,
+        },
+        MulIsolationRoute::RightFactor => MulIsolationOperands {
+            route,
+            isolated_factor: right,
+            moved_factor: left,
+        },
     }
 }
 
@@ -8243,6 +8273,28 @@ mod tests {
             derive_mul_isolation_route(&ctx, two, "x"),
             MulIsolationRoute::RightFactor
         );
+    }
+
+    #[test]
+    fn derive_mul_isolation_operands_maps_left_factor_route() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let operands = derive_mul_isolation_operands(&ctx, x, two, "x");
+        assert_eq!(operands.route, MulIsolationRoute::LeftFactor);
+        assert_eq!(operands.isolated_factor, x);
+        assert_eq!(operands.moved_factor, two);
+    }
+
+    #[test]
+    fn derive_mul_isolation_operands_maps_right_factor_route() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let operands = derive_mul_isolation_operands(&ctx, two, x, "x");
+        assert_eq!(operands.route, MulIsolationRoute::RightFactor);
+        assert_eq!(operands.isolated_factor, x);
+        assert_eq!(operands.moved_factor, two);
     }
 
     #[test]
