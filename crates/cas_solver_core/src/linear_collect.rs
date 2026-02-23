@@ -312,6 +312,27 @@ where
     LinearCollectSolvedExecution { execution, solved }
 }
 
+/// Solve linear-collect execution while optionally mapping execution items
+/// into caller-owned step payloads.
+pub fn solve_linear_collect_execution_pipeline_with_items<S, FStep>(
+    execution: LinearCollectSolveExecution,
+    include_items: bool,
+    mut map_item_to_step: FStep,
+) -> LinearCollectSolvedExecution<(SolutionSet, Vec<S>)>
+where
+    FStep: FnMut(LinearCollectExecutionItem) -> S,
+{
+    solve_linear_collect_execution_with_items(execution, |items, solutions| {
+        let mut steps = Vec::new();
+        if include_items {
+            for item in items {
+                steps.push(map_item_to_step(item));
+            }
+        }
+        (solutions, steps)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -511,6 +532,57 @@ mod tests {
 
         assert_eq!(solved_exec.execution, expected);
         assert!(matches!(solved_exec.solved, SolutionSet::Discrete(_)));
+    }
+
+    #[test]
+    fn solve_linear_collect_execution_pipeline_with_items_maps_steps_when_enabled() {
+        let mut ctx = Context::new();
+        let coeff = ctx.var("k");
+        let rhs_term = ctx.var("rhs");
+        let solution = ctx.var("s");
+
+        let execution = build_linear_collect_factored_execution_with(
+            &mut ctx,
+            "x",
+            coeff,
+            rhs_term,
+            solution,
+            NonZeroStatus::NonZero,
+            NonZeroStatus::Unknown,
+            |_, _| "k".into(),
+        );
+        let expected = execution.clone();
+
+        let solved = solve_linear_collect_execution_pipeline_with_items(execution, true, |item| {
+            item.description
+        });
+
+        assert_eq!(solved.execution, expected);
+        assert!(matches!(solved.solved.0, SolutionSet::Discrete(_)));
+        assert_eq!(solved.solved.1.len(), expected.items.len());
+    }
+
+    #[test]
+    fn solve_linear_collect_execution_pipeline_with_items_omits_steps_when_disabled() {
+        let mut ctx = Context::new();
+        let coeff = ctx.var("k");
+        let rhs_term = ctx.var("rhs");
+        let solution = ctx.var("s");
+
+        let execution = build_linear_collect_factored_execution_with(
+            &mut ctx,
+            "x",
+            coeff,
+            rhs_term,
+            solution,
+            NonZeroStatus::NonZero,
+            NonZeroStatus::Unknown,
+            |_, _| "k".into(),
+        );
+
+        let solved =
+            solve_linear_collect_execution_pipeline_with_items(execution, false, |_item| 1u8);
+        assert!(solved.solved.1.is_empty());
     }
 
     #[test]

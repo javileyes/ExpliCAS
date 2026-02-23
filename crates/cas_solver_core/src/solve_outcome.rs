@@ -4035,6 +4035,66 @@ where
     })
 }
 
+/// Solve denominator-sign split branches while prepending shared branch steps
+/// and optionally mapping per-branch didactic items.
+pub fn solve_division_denominator_sign_split_execution_pipeline_with_items<
+    E,
+    S,
+    FSolveBranch,
+    FSolveDomain,
+    FStep,
+>(
+    execution: &DivisionDenominatorSignSplitExecutionPlan,
+    include_items: bool,
+    branch_prefix_steps: &[S],
+    mut solve_branch: FSolveBranch,
+    mut solve_domain: FSolveDomain,
+    mut map_item_to_step: FStep,
+) -> Result<DivisionDenominatorSignSplitExecutionSolved<S>, E>
+where
+    S: Clone,
+    FSolveBranch: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FSolveDomain: FnMut(&Equation) -> Result<SolutionSet, E>,
+    FStep: FnMut(DivisionDidacticExecutionItem) -> S,
+{
+    let solved = solve_division_denominator_sign_split_cases_with_items(
+        execution,
+        |item, equation| {
+            let mut case_steps = branch_prefix_steps.to_vec();
+            if include_items {
+                if let Some(item) = item {
+                    case_steps.push(map_item_to_step(item));
+                }
+            }
+            let (solution_set, sub_steps) = solve_branch(equation)?;
+            case_steps.extend(sub_steps);
+            Ok((solution_set, case_steps))
+        },
+        |domain_equation| solve_domain(domain_equation),
+    )?;
+    let DivisionDenominatorSignSplitSolvedCases {
+        positive_branch: (positive_set, mut positive_steps),
+        negative_branch: (negative_set, negative_steps),
+        positive_domain: positive_domain_set,
+        negative_domain: negative_domain_set,
+    } = solved;
+
+    if include_items {
+        if let Some(item) = division_denominator_sign_split_boundary_item(execution) {
+            positive_steps.push(map_item_to_step(item));
+        }
+    }
+    positive_steps.extend(negative_steps);
+
+    Ok(DivisionDenominatorSignSplitExecutionSolved {
+        positive_set,
+        negative_set,
+        positive_domain_set,
+        negative_domain_set,
+        steps: positive_steps,
+    })
+}
+
 /// Return the boundary didactic item (`--- End of Case 1 ---`) when available.
 pub fn division_denominator_sign_split_boundary_item(
     execution: &DivisionDenominatorSignSplitExecutionPlan,
@@ -4127,6 +4187,56 @@ where
 
     if let Some(item) = isolated_denominator_sign_split_boundary_item(execution) {
         positive_steps.push(map_boundary_item(item));
+    }
+    positive_steps.extend(negative_steps);
+
+    Ok(IsolatedDenominatorSignSplitExecutionSolved {
+        positive_set,
+        negative_set,
+        steps: positive_steps,
+    })
+}
+
+/// Solve isolated-denominator sign split branches while prepending shared
+/// branch steps and optionally mapping per-branch didactic items.
+pub fn solve_isolated_denominator_sign_split_execution_pipeline_with_items<
+    E,
+    S,
+    FSolveBranch,
+    FStep,
+>(
+    execution: &IsolatedDenominatorSignSplitExecutionPlan,
+    include_items: bool,
+    branch_prefix_steps: &[S],
+    mut solve_branch: FSolveBranch,
+    mut map_item_to_step: FStep,
+) -> Result<IsolatedDenominatorSignSplitExecutionSolved<S>, E>
+where
+    S: Clone,
+    FSolveBranch: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(DivisionDidacticExecutionItem) -> S,
+{
+    let solved =
+        solve_isolated_denominator_sign_split_cases_with_items(execution, |item, equation| {
+            let mut case_steps = branch_prefix_steps.to_vec();
+            if include_items {
+                if let Some(item) = item {
+                    case_steps.push(map_item_to_step(item));
+                }
+            }
+            let (solution_set, sub_steps) = solve_branch(equation)?;
+            case_steps.extend(sub_steps);
+            Ok((solution_set, case_steps))
+        })?;
+    let IsolatedDenominatorSignSplitSolvedCases {
+        positive_branch: (positive_set, mut positive_steps),
+        negative_branch: (negative_set, negative_steps),
+    } = solved;
+
+    if include_items {
+        if let Some(item) = isolated_denominator_sign_split_boundary_item(execution) {
+            positive_steps.push(map_item_to_step(item));
+        }
     }
     positive_steps.extend(negative_steps);
 
@@ -9214,6 +9324,85 @@ mod tests {
     }
 
     #[test]
+    fn solve_division_denominator_sign_split_execution_pipeline_with_items_prepends_prefix_and_items(
+    ) {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let simplified_rhs = ctx.var("s");
+        let split =
+            plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Lt).unwrap();
+        let execution = build_division_denominator_sign_split_execution_with(
+            split,
+            den,
+            num,
+            RelOp::Lt,
+            simplified_rhs,
+            |_| "d".to_string(),
+        );
+
+        let solved = solve_division_denominator_sign_split_execution_pipeline_with_items(
+            &execution,
+            true,
+            &["prefix".to_string()],
+            |equation| {
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![equation.rhs]),
+                    vec!["branch".to_string()],
+                ))
+            },
+            |_domain_equation| Ok::<_, ()>(SolutionSet::AllReals),
+            |item| item.description,
+        )
+        .expect("pipeline should solve");
+
+        assert!(matches!(solved.positive_set, SolutionSet::Discrete(_)));
+        assert!(matches!(solved.negative_set, SolutionSet::Discrete(_)));
+        assert!(matches!(solved.positive_domain_set, SolutionSet::AllReals));
+        assert!(matches!(solved.negative_domain_set, SolutionSet::AllReals));
+        assert_eq!(solved.steps[0], "prefix");
+        assert!(solved.steps[1].starts_with("Case 1: Assume d > 0"));
+        assert_eq!(solved.steps[2], "branch");
+        assert_eq!(solved.steps[3], "--- End of Case 1 ---");
+        assert_eq!(solved.steps[4], "prefix");
+        assert!(solved.steps[5].starts_with("Case 2: Assume d < 0"));
+        assert_eq!(solved.steps[6], "branch");
+    }
+
+    #[test]
+    fn solve_division_denominator_sign_split_execution_pipeline_with_items_omits_items_when_disabled(
+    ) {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let simplified_rhs = ctx.var("s");
+        let split =
+            plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Lt).unwrap();
+        let execution = build_division_denominator_sign_split_execution_with(
+            split,
+            den,
+            num,
+            RelOp::Lt,
+            simplified_rhs,
+            |_| "d".to_string(),
+        );
+
+        let solved = solve_division_denominator_sign_split_execution_pipeline_with_items(
+            &execution,
+            false,
+            &[0u8],
+            |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![rhs]), vec![1u8])),
+            |_domain_equation| Ok::<_, ()>(SolutionSet::AllReals),
+            |_item| 9u8,
+        )
+        .expect("pipeline should solve");
+
+        assert_eq!(solved.steps, vec![0u8, 1u8, 0u8, 1u8]);
+    }
+
+    #[test]
     fn division_denominator_sign_split_boundary_item_returns_case_separator() {
         let mut ctx = Context::new();
         let num = ctx.var("n");
@@ -9457,6 +9646,67 @@ mod tests {
         assert_eq!(solved.steps[3], "branch-2");
         assert!(matches!(solved.positive_set, SolutionSet::Discrete(_)));
         assert!(matches!(solved.negative_set, SolutionSet::Discrete(_)));
+    }
+
+    #[test]
+    fn solve_isolated_denominator_sign_split_execution_pipeline_with_items_prepends_prefix_and_items(
+    ) {
+        let mut ctx = Context::new();
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let split = plan_isolated_denominator_sign_split(den, rhs, RelOp::Leq).unwrap();
+        let execution =
+            build_isolated_denominator_sign_split_execution_with(split, den, RelOp::Leq, |_| {
+                "x".to_string()
+            });
+
+        let solved = solve_isolated_denominator_sign_split_execution_pipeline_with_items(
+            &execution,
+            true,
+            &["prefix".to_string()],
+            |equation| {
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![equation.rhs]),
+                    vec!["branch".to_string()],
+                ))
+            },
+            |item| item.description,
+        )
+        .expect("pipeline should solve");
+
+        assert!(matches!(solved.positive_set, SolutionSet::Discrete(_)));
+        assert!(matches!(solved.negative_set, SolutionSet::Discrete(_)));
+        assert_eq!(solved.steps[0], "prefix");
+        assert!(solved.steps[1].starts_with("Case 1: Assume x > 0"));
+        assert_eq!(solved.steps[2], "branch");
+        assert_eq!(solved.steps[3], "--- End of Case 1 ---");
+        assert_eq!(solved.steps[4], "prefix");
+        assert!(solved.steps[5].starts_with("Case 2: Assume x < 0"));
+        assert_eq!(solved.steps[6], "branch");
+    }
+
+    #[test]
+    fn solve_isolated_denominator_sign_split_execution_pipeline_with_items_omits_items_when_disabled(
+    ) {
+        let mut ctx = Context::new();
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let split = plan_isolated_denominator_sign_split(den, rhs, RelOp::Leq).unwrap();
+        let execution =
+            build_isolated_denominator_sign_split_execution_with(split, den, RelOp::Leq, |_| {
+                "x".to_string()
+            });
+
+        let solved = solve_isolated_denominator_sign_split_execution_pipeline_with_items(
+            &execution,
+            false,
+            &[0u8],
+            |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![rhs]), vec![1u8])),
+            |_item| 9u8,
+        )
+        .expect("pipeline should solve");
+
+        assert_eq!(solved.steps, vec![0u8, 1u8, 0u8, 1u8]);
     }
 
     #[test]

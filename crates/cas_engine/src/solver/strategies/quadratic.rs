@@ -7,9 +7,9 @@ use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{is_numeric_zero, split_zero_product_factors};
 use cas_solver_core::quadratic_didactic::{
     aggregate_zero_product_factor_solution_sets, build_quadratic_main_with_substeps_execution_with,
-    finalize_zero_product_factor_solution_set, first_factorized_zero_product_entry_execution_item,
-    simplify_quadratic_substep_execution_items_with,
-    solve_zero_product_factor_execution_with_items, ZeroProductFactorSolutionAggregate,
+    finalize_zero_product_factor_solution_set, simplify_quadratic_substep_execution_items_with,
+    solve_factorized_zero_product_execution_pipeline_with_items,
+    ZeroProductFactorSolutionAggregate,
 };
 use cas_solver_core::quadratic_formula::{
     discriminant, discriminant_expr, roots_from_a_b_and_sqrt, roots_from_a_b_delta, sqrt_expr,
@@ -66,46 +66,37 @@ impl SolverStrategy for QuadraticStrategy {
                     },
                 );
 
-            // We found factors.
-            if simplifier.collect_steps() {
-                if let Some(item) =
-                    first_factorized_zero_product_entry_execution_item(&factorized_execution)
-                {
-                    steps.push(SolveStep {
+            // For inequalities, splitting is complex (sign analysis).
+            // For Eq, it's simple union.
+            if eq.op == RelOp::Eq {
+                let include_items = simplifier.collect_steps();
+                let solved = match solve_factorized_zero_product_execution_pipeline_with_items(
+                    &factorized_execution,
+                    include_items,
+                    |factor_equation| {
+                        // Recursive solve
+                        // We need to be careful about depth.
+                        solve_with_ctx(factor_equation, var, simplifier, ctx)
+                    },
+                    |item| SolveStep {
                         description: item.description().to_string(),
                         equation_after: item.equation,
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
-                    });
-                }
-            }
-
-            // For inequalities, splitting is complex (sign analysis).
-            // For Eq, it's simple union.
-            if eq.op == RelOp::Eq {
-                let solved_factors = match solve_zero_product_factor_execution_with_items(
-                    &factorized_execution.factors,
-                    |item, factor_equation| {
-                        if simplifier.collect_steps() {
-                            if let Some(item) = item {
-                                steps.push(SolveStep {
-                                    description: item.description,
-                                    equation_after: item.equation,
-                                    importance: crate::step::ImportanceLevel::Medium,
-                                    substeps: vec![],
-                                });
-                            }
-                        }
-                        // Recursive solve
-                        // We need to be careful about depth.
-                        solve_with_ctx(factor_equation, var, simplifier, ctx)
+                    },
+                    |item| SolveStep {
+                        description: item.description,
+                        equation_after: item.equation,
+                        importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
                     },
                 ) {
                     Ok(solved) => solved,
                     Err(e) => return Some(Err(e)),
                 };
+                steps.extend(solved.steps);
                 let mut factor_solution_sets = Vec::new();
-                for (sol_set, mut sub_steps) in solved_factors {
+                for (sol_set, mut sub_steps) in solved.solved_factors {
                     steps.append(&mut sub_steps);
                     factor_solution_sets.push(sol_set);
                 }

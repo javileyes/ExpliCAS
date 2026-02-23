@@ -23,8 +23,8 @@ use cas_solver_core::solve_outcome::{
     plan_division_denominator_sign_split, plan_isolated_denominator_sign_split,
     plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split,
     plan_sub_isolation_step_with, solve_division_denominator_execution_pipeline_with_items,
-    solve_division_denominator_sign_split_execution_with_items,
-    solve_isolated_denominator_sign_split_execution_with_items,
+    solve_division_denominator_sign_split_execution_pipeline_with_items,
+    solve_isolated_denominator_sign_split_execution_pipeline_with_items,
     solve_product_zero_inequality_split_execution_with,
     solve_term_isolation_rewrite_pipeline_with_item, AddIsolationRoute,
     DivDenominatorIsolationRoute, DivIsolationRoute, DivisionDenominatorSignSplitSolvedCases,
@@ -269,7 +269,8 @@ pub(super) fn isolate_div(
             )
             .expect("inequality branch requires denominator sign cases");
             let (sim_rhs, _) = simplifier.simplify(split_plan.positive_equation.rhs);
-            let split_execution = if simplifier.collect_steps() {
+            let include_items = simplifier.collect_steps();
+            let split_execution = if include_items {
                 build_division_denominator_sign_split_execution_with(
                     split_plan,
                     r,
@@ -296,19 +297,12 @@ pub(super) fn isolate_div(
                     solve_with_ctx(&split_execution.negative_domain, var, simplifier, ctx)?;
                 vec![domain_pos_set, domain_neg_set].into_iter()
             };
-            let solved = solve_division_denominator_sign_split_execution_with_items(
+            let solved = solve_division_denominator_sign_split_execution_pipeline_with_items(
                 &split_execution,
-                |item, equation| {
-                    let mut case_steps = steps.clone();
-                    if let Some(item) = item {
-                        case_steps.push(SolveStep {
-                            description: item.description().to_string(),
-                            equation_after: item.equation,
-                            importance: crate::step::ImportanceLevel::Medium,
-                            substeps: vec![],
-                        });
-                    }
-                    let results = isolate(
+                include_items,
+                &steps,
+                |equation| {
+                    isolate(
                         equation.lhs,
                         equation.rhs,
                         equation.op.clone(),
@@ -316,8 +310,7 @@ pub(super) fn isolate_div(
                         simplifier,
                         opts,
                         ctx,
-                    )?;
-                    prepend_steps(results, case_steps)
+                    )
                 },
                 |_domain_equation| {
                     Ok::<_, CasError>(
@@ -422,7 +415,8 @@ pub(super) fn isolate_div(
             // Split into x > 0 and x < 0
             let split_plan = plan_isolated_denominator_sign_split(r, sim_rhs, op.clone())
                 .expect("inequality branch requires denominator sign cases");
-            let split_execution = if simplifier.collect_steps() {
+            let include_items = simplifier.collect_steps();
+            let split_execution = if include_items {
                 build_isolated_denominator_sign_split_execution_with(
                     split_plan,
                     r,
@@ -440,19 +434,12 @@ pub(super) fn isolate_div(
             } else {
                 materialize_isolated_denominator_sign_split_execution(split_plan)
             };
-            let solved = solve_isolated_denominator_sign_split_execution_with_items(
+            let solved = solve_isolated_denominator_sign_split_execution_pipeline_with_items(
                 &split_execution,
-                |item, equation| {
-                    let mut case_steps = steps.clone();
-                    if let Some(item) = item {
-                        case_steps.push(SolveStep {
-                            description: item.description().to_string(),
-                            equation_after: item.equation,
-                            importance: crate::step::ImportanceLevel::Medium,
-                            substeps: vec![],
-                        });
-                    }
-                    let results = isolate(
+                include_items,
+                &steps,
+                |equation| {
+                    isolate(
                         equation.lhs,
                         equation.rhs,
                         equation.op.clone(),
@@ -460,8 +447,7 @@ pub(super) fn isolate_div(
                         simplifier,
                         opts,
                         ctx,
-                    )?;
-                    prepend_steps(results, case_steps)
+                    )
                 },
                 |item| SolveStep {
                     description: item.description().to_string(),

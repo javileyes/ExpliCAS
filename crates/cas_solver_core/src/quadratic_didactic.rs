@@ -280,6 +280,57 @@ pub fn first_factorized_zero_product_entry_execution_item(
         .next()
 }
 
+/// Solved payload for factorized zero-product execution:
+/// per-factor callback outputs plus concatenated didactic steps.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FactorizedZeroProductExecutionSolved<TFactor, TStep> {
+    pub solved_factors: Vec<TFactor>,
+    pub steps: Vec<TStep>,
+}
+
+/// Solve factorized zero-product execution while optionally mapping:
+/// 1) the factorized-entry item
+/// 2) each per-factor execution item.
+pub fn solve_factorized_zero_product_execution_pipeline_with_items<
+    E,
+    TFactor,
+    TStep,
+    FSolveFactor,
+    FEntryStep,
+    FFactorStep,
+>(
+    execution: &FactorizedZeroProductExecutionPlan,
+    include_items: bool,
+    mut solve_factor: FSolveFactor,
+    mut map_entry_item_to_step: FEntryStep,
+    mut map_factor_item_to_step: FFactorStep,
+) -> Result<FactorizedZeroProductExecutionSolved<TFactor, TStep>, E>
+where
+    FSolveFactor: FnMut(&Equation) -> Result<TFactor, E>,
+    FEntryStep: FnMut(QuadraticExecutionItem) -> TStep,
+    FFactorStep: FnMut(ZeroProductFactorExecutionItem) -> TStep,
+{
+    let mut steps = Vec::new();
+    if include_items {
+        if let Some(item) = first_factorized_zero_product_entry_execution_item(execution) {
+            steps.push(map_entry_item_to_step(item));
+        }
+    }
+    let solved_factors =
+        solve_zero_product_factor_execution_with_items(&execution.factors, |item, equation| {
+            if include_items {
+                if let Some(item) = item {
+                    steps.push(map_factor_item_to_step(item));
+                }
+            }
+            solve_factor(equation)
+        })?;
+    Ok(FactorizedZeroProductExecutionSolved {
+        solved_factors,
+        steps,
+    })
+}
+
 /// Build the top-level "quadratic formula" strategy step payload.
 pub fn build_quadratic_main_step(equation_after: Equation) -> QuadraticDidacticStep {
     QuadraticDidacticStep {
@@ -1147,6 +1198,70 @@ mod tests {
             .expect("expected one factorized-entry item");
         assert_eq!(item.equation, execution.entry.equation_after);
         assert_eq!(item.description, execution.entry.description);
+    }
+
+    #[test]
+    fn solve_factorized_zero_product_execution_pipeline_with_items_prepends_entry_and_factor_items()
+    {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_minus_one = ctx.add(Expr::Sub(x, one));
+        let factored_expr = ctx.add(Expr::Mul(x, x_minus_one));
+        let zero = ctx.num(0);
+        let execution = build_factorized_zero_product_execution_with(
+            &ctx,
+            factored_expr,
+            &[x, x_minus_one],
+            "x",
+            zero,
+            |_| "f".to_string(),
+        );
+
+        let solved = solve_factorized_zero_product_execution_pipeline_with_items(
+            &execution,
+            true,
+            |factor_equation| Ok::<_, ()>(factor_equation.lhs),
+            |item| item.description,
+            |item| item.description,
+        )
+        .expect("pipeline should solve");
+
+        assert_eq!(solved.solved_factors.len(), 2);
+        assert_eq!(solved.steps.len(), 3);
+        assert_eq!(solved.steps[0], "Factorized equation: f = 0");
+        assert_eq!(solved.steps[1], "Solve factor: f = 0");
+        assert_eq!(solved.steps[2], "Solve factor: f = 0");
+    }
+
+    #[test]
+    fn solve_factorized_zero_product_execution_pipeline_with_items_omits_items_when_disabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_minus_one = ctx.add(Expr::Sub(x, one));
+        let factored_expr = ctx.add(Expr::Mul(x, x_minus_one));
+        let zero = ctx.num(0);
+        let execution = build_factorized_zero_product_execution_with(
+            &ctx,
+            factored_expr,
+            &[x, x_minus_one],
+            "x",
+            zero,
+            |_| "f".to_string(),
+        );
+
+        let solved = solve_factorized_zero_product_execution_pipeline_with_items(
+            &execution,
+            false,
+            |factor_equation| Ok::<_, ()>(factor_equation.lhs),
+            |_item| 7u8,
+            |_item| 9u8,
+        )
+        .expect("pipeline should solve");
+
+        assert_eq!(solved.solved_factors.len(), 2);
+        assert!(solved.steps.is_empty());
     }
 
     #[test]
