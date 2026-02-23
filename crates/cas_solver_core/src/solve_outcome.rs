@@ -3487,6 +3487,44 @@ pub struct DivisionDenominatorDidacticSolved<T> {
     pub solved: T,
 }
 
+/// Solved payload for denominator-isolation execution pipeline:
+/// final solution set plus concatenated didactic and recursive steps.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DivisionDenominatorExecutionPipelineSolved<TStep> {
+    pub solution_set: SolutionSet,
+    pub steps: Vec<TStep>,
+}
+
+/// Execute denominator-isolation didactic pipeline while mapping didactic items
+/// to caller step payloads and concatenating them in front of recursive sub-steps.
+pub fn solve_division_denominator_execution_pipeline_with_items<
+    E,
+    TStep,
+    FSolveRewritten,
+    FMapStep,
+>(
+    execution: DivisionDenominatorDidacticExecutionPlan,
+    mut solve_rewritten: FSolveRewritten,
+    mut map_step: FMapStep,
+) -> Result<DivisionDenominatorExecutionPipelineSolved<TStep>, E>
+where
+    FSolveRewritten: FnMut(&Equation) -> Result<(SolutionSet, Vec<TStep>), E>,
+    FMapStep: FnMut(DivisionDidacticExecutionItem) -> TStep,
+{
+    let solved_execution =
+        solve_division_denominator_execution_with_items(execution, |items, equation| {
+            let (solution_set, sub_steps) = solve_rewritten(equation)?;
+            let mut steps = items.into_iter().map(&mut map_step).collect::<Vec<_>>();
+            steps.extend(sub_steps);
+            Ok::<_, E>((solution_set, steps))
+        })?;
+    let (solution_set, steps) = solved_execution.solved;
+    Ok(DivisionDenominatorExecutionPipelineSolved {
+        solution_set,
+        steps,
+    })
+}
+
 /// Classify numeric RHS sign for `|A| = RHS`.
 pub fn abs_equality_precheck(sign: NumericSign) -> AbsEqualityPrecheck {
     match sign {
@@ -7484,6 +7522,42 @@ mod tests {
             })
             .expect("solve should succeed");
         assert_eq!(solved.solved, "ok");
+    }
+
+    #[test]
+    fn solve_division_denominator_execution_pipeline_with_items_prepends_didactic_steps() {
+        let mut ctx = Context::new();
+        let n = ctx.var("n");
+        let d = ctx.var("d");
+        let r = ctx.var("r");
+        let isolated_rhs = ctx.var("isolated");
+        let simplified_mul_rhs = ctx.var("simplified");
+        let plan = plan_division_denominator_didactic(&mut ctx, n, d, r, isolated_rhs, RelOp::Eq);
+        let execution =
+            build_division_denominator_didactic_execution_with(plan, simplified_mul_rhs, |id| {
+                if id == d {
+                    "d".to_string()
+                } else {
+                    "r".to_string()
+                }
+            });
+
+        let solved = solve_division_denominator_execution_pipeline_with_items(
+            execution,
+            |_equation| Ok::<_, ()>((SolutionSet::AllReals, vec!["solve".to_string()])),
+            |item| item.description,
+        )
+        .expect("pipeline should solve");
+
+        assert!(matches!(solved.solution_set, SolutionSet::AllReals));
+        assert_eq!(
+            solved.steps,
+            vec![
+                "Multiply both sides by d".to_string(),
+                "Divide both sides by r".to_string(),
+                "solve".to_string(),
+            ]
+        );
     }
 
     #[test]

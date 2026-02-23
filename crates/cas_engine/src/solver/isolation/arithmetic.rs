@@ -22,7 +22,7 @@ use cas_solver_core::solve_outcome::{
     plan_div_numerator_isolation_step_with, plan_division_denominator,
     plan_division_denominator_sign_split, plan_isolated_denominator_sign_split,
     plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split,
-    plan_sub_isolation_step_with, solve_division_denominator_execution_with_items,
+    plan_sub_isolation_step_with, solve_division_denominator_execution_pipeline_with_items,
     solve_division_denominator_sign_split_execution_with_items,
     solve_isolated_denominator_sign_split_execution_with_items,
     solve_product_zero_inequality_cases_with, solve_term_isolation_rewrite_with, AddIsolationRoute,
@@ -493,16 +493,9 @@ pub(super) fn isolate_div(
                     )
                 },
             );
-            let solved_execution =
-                solve_division_denominator_execution_with_items(execution, |items, equation| {
-                    for item in items {
-                        steps.push(SolveStep {
-                            description: item.description().to_string(),
-                            equation_after: item.equation,
-                            importance: crate::step::ImportanceLevel::Medium,
-                            substeps: vec![],
-                        });
-                    }
+            let solved_execution = solve_division_denominator_execution_pipeline_with_items(
+                execution,
+                |equation| {
                     isolate(
                         equation.lhs,
                         equation.rhs,
@@ -512,8 +505,18 @@ pub(super) fn isolate_div(
                         opts,
                         ctx,
                     )
-                })?;
-            return prepend_steps(solved_execution.solved, steps);
+                },
+                |item| SolveStep {
+                    description: item.description().to_string(),
+                    equation_after: item.equation,
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                },
+            )?;
+            return prepend_steps(
+                (solved_execution.solution_set, solved_execution.steps),
+                steps,
+            );
         }
         let results = isolate(r, sim_rhs, op, var, simplifier, opts, ctx)?;
         prepend_steps(results, steps)
