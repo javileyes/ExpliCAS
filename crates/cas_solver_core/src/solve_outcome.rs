@@ -1993,6 +1993,23 @@ pub fn plan_solve_tactic_normalization_step(
     build_term_isolation_rewrite_plan_from_item(equation, item)
 }
 
+/// Build and optionally map the first solve-tactic normalization step.
+pub fn solve_solve_tactic_normalization_pipeline_with_item<S, FStep>(
+    ctx: &mut Context,
+    base: ExprId,
+    exponent: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    include_item: bool,
+    map_item_to_step: FStep,
+) -> Vec<S>
+where
+    FStep: FnMut(TermIsolationRewriteExecutionItem) -> S,
+{
+    let rewrite = plan_solve_tactic_normalization_step(ctx, base, exponent, rhs, op);
+    collect_term_isolation_rewrite_first_step_with_item(&rewrite, include_item, map_item_to_step)
+}
+
 /// Build didactic narration for multiplicative isolation.
 pub fn divide_both_sides_message(term_display: &str) -> String {
     format!("Divide both sides by {}", term_display)
@@ -3833,6 +3850,54 @@ where
             Ok::<_, E>((solution_set, steps))
         })?;
     let (solution_set, steps) = solved_execution.solved;
+    Ok(DivisionDenominatorExecutionPipelineSolved {
+        solution_set,
+        steps,
+    })
+}
+
+/// Solve denominator-isolation plan with optional didactic items.
+///
+/// When `include_items` is enabled:
+/// 1) simplify multiply-step RHS,
+/// 2) build didactic execution payload,
+/// 3) prepend mapped didactic steps before recursive substeps.
+///
+/// When disabled:
+/// - solve only the rewritten `divide_equation` directly.
+pub fn solve_division_denominator_pipeline_with_optional_items<
+    E,
+    TStep,
+    FRenderExpr,
+    FSolveRewritten,
+    FMapStep,
+>(
+    didactic_plan: DivisionDenominatorDidacticPlan,
+    include_items: bool,
+    simplified_multiply_rhs: ExprId,
+    render_expr: FRenderExpr,
+    mut solve_rewritten: FSolveRewritten,
+    map_step: FMapStep,
+) -> Result<DivisionDenominatorExecutionPipelineSolved<TStep>, E>
+where
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveRewritten: FnMut(&Equation) -> Result<(SolutionSet, Vec<TStep>), E>,
+    FMapStep: FnMut(DivisionDidacticExecutionItem) -> TStep,
+{
+    if include_items {
+        let execution = build_division_denominator_execution_with(
+            didactic_plan,
+            simplified_multiply_rhs,
+            render_expr,
+        );
+        return solve_division_denominator_execution_pipeline_with_items(
+            execution,
+            solve_rewritten,
+            map_step,
+        );
+    }
+
+    let (solution_set, steps) = solve_rewritten(&didactic_plan.divide_equation)?;
     Ok(DivisionDenominatorExecutionPipelineSolved {
         solution_set,
         steps,
@@ -7968,6 +8033,47 @@ mod tests {
     }
 
     #[test]
+    fn solve_solve_tactic_normalization_pipeline_with_item_maps_step_when_enabled() {
+        let mut ctx = Context::new();
+        let base = ctx.var("a");
+        let exponent = ctx.var("x");
+        let rhs = ctx.var("b");
+
+        let steps = solve_solve_tactic_normalization_pipeline_with_item(
+            &mut ctx,
+            base,
+            exponent,
+            rhs,
+            RelOp::Eq,
+            true,
+            |item| item.description,
+        );
+
+        assert_eq!(steps.len(), 1);
+        assert_eq!(steps[0], SOLVE_TACTIC_NORMALIZATION_MESSAGE.to_string());
+    }
+
+    #[test]
+    fn solve_solve_tactic_normalization_pipeline_with_item_omits_step_when_disabled() {
+        let mut ctx = Context::new();
+        let base = ctx.var("a");
+        let exponent = ctx.var("x");
+        let rhs = ctx.var("b");
+
+        let steps = solve_solve_tactic_normalization_pipeline_with_item(
+            &mut ctx,
+            base,
+            exponent,
+            rhs,
+            RelOp::Eq,
+            false,
+            |_item| -> String { panic!("mapper must not run when items disabled") },
+        );
+
+        assert!(steps.is_empty());
+    }
+
+    #[test]
     fn denominator_case_messages_include_sign_context() {
         assert_eq!(
             denominator_positive_case_message("d"),
@@ -8552,6 +8658,75 @@ mod tests {
                 "solve".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn solve_division_denominator_pipeline_with_optional_items_includes_didactic_when_enabled() {
+        let mut ctx = Context::new();
+        let n = ctx.var("n");
+        let d = ctx.var("d");
+        let r = ctx.var("r");
+        let isolated_rhs = ctx.var("isolated");
+        let plan = plan_division_denominator_didactic(&mut ctx, n, d, r, isolated_rhs, RelOp::Eq);
+        let expected_divide = plan.divide_equation.clone();
+        let simplified_mul_rhs = plan.multiply_equation.rhs;
+
+        let solved = solve_division_denominator_pipeline_with_optional_items(
+            plan,
+            true,
+            simplified_mul_rhs,
+            |id| {
+                if id == d {
+                    "d".to_string()
+                } else {
+                    "r".to_string()
+                }
+            },
+            |equation| {
+                assert_eq!(equation, &expected_divide);
+                Ok::<_, ()>((SolutionSet::AllReals, vec!["solve".to_string()]))
+            },
+            |item| item.description,
+        )
+        .expect("pipeline should solve");
+
+        assert!(matches!(solved.solution_set, SolutionSet::AllReals));
+        assert_eq!(
+            solved.steps,
+            vec![
+                "Multiply both sides by d".to_string(),
+                "Divide both sides by r".to_string(),
+                "solve".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn solve_division_denominator_pipeline_with_optional_items_skips_didactic_when_disabled() {
+        let mut ctx = Context::new();
+        let n = ctx.var("n");
+        let d = ctx.var("d");
+        let r = ctx.var("r");
+        let isolated_rhs = ctx.var("isolated");
+        let plan = plan_division_denominator_didactic(&mut ctx, n, d, r, isolated_rhs, RelOp::Eq);
+        let expected_divide = plan.divide_equation.clone();
+        let simplified_mul_rhs = plan.multiply_equation.rhs;
+
+        let solved = solve_division_denominator_pipeline_with_optional_items(
+            plan,
+            false,
+            simplified_mul_rhs,
+            |_expr| -> String { panic!("renderer must not run when items are disabled") },
+            |equation| {
+                assert_eq!(equation, &expected_divide);
+                Ok::<_, ()>((SolutionSet::Empty, vec!["direct".to_string()]))
+            },
+            |_item| -> String { panic!("mapper must not run when items are disabled") },
+        )
+        .expect("pipeline should solve");
+
+        assert!(matches!(solved.solution_set, SolutionSet::Empty));
+        assert_eq!(solved.steps, vec!["direct".to_string()]);
     }
 
     #[test]

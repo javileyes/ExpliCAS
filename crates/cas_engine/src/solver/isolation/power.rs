@@ -5,17 +5,16 @@ use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::is_numeric_zero;
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
-    build_pow_base_isolation_action_with, collect_term_isolation_rewrite_first_step_with_item,
-    derive_pow_isolation_route, execute_pow_exponent_shortcut_with_runtime,
-    plan_pow_exponent_log_isolation_step_with,
+    build_pow_base_isolation_action_with, derive_pow_isolation_route,
+    execute_pow_exponent_shortcut_with_runtime, plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
-    plan_solve_tactic_normalization_step, pow_exponent_rhs_contains_variable,
-    resolve_log_terminal_outcome, resolve_power_base_one_shortcut_for_pow_with,
-    solve_pow_base_isolation_pipeline_with_item,
+    pow_exponent_rhs_contains_variable, resolve_log_terminal_outcome,
+    resolve_power_base_one_shortcut_for_pow_with, solve_pow_base_isolation_pipeline_with_item,
     solve_pow_exponent_log_isolation_rewrite_pipeline_with_item,
     solve_pow_exponent_log_unsupported_pipeline_with_items,
     solve_pow_exponent_shortcut_pipeline_with_item,
-    solve_power_base_one_shortcut_pipeline_with_item, solve_terminal_outcome_pipeline_with_item,
+    solve_power_base_one_shortcut_pipeline_with_item,
+    solve_solve_tactic_normalization_pipeline_with_item, solve_terminal_outcome_pipeline_with_item,
     PowBaseIsolationPipelineSolved, PowExponentShortcutPipelineSolved, PowExponentShortcutRuntime,
     PowIsolationRoute,
 };
@@ -219,9 +218,7 @@ fn isolate_pow_exponent(
                 substeps: vec![],
             },
         );
-        for step in solved_shortcut.steps {
-            steps.push(step);
-        }
+        steps.extend(solved_shortcut.steps);
         return Ok((solved_shortcut.solution_set, steps));
     }
 
@@ -244,27 +241,23 @@ fn isolate_pow_exponent(
 
         crate::domain::clear_blocked_hints();
 
-        // Add educational step if tactic transformed something
-        if (sim_base != b || sim_rhs != rhs) && simplifier.collect_steps() {
-            let normalize_plan = plan_solve_tactic_normalization_step(
+        // Add educational step if tactic transformed something.
+        if sim_base != b || sim_rhs != rhs {
+            let include_item = simplifier.collect_steps();
+            steps.extend(solve_solve_tactic_normalization_pipeline_with_item(
                 &mut simplifier.context,
                 sim_base,
                 e,
                 sim_rhs,
                 op.clone(),
-            );
-            for step in
-                collect_term_isolation_rewrite_first_step_with_item(&normalize_plan, true, |item| {
-                    SolveStep {
-                        description: item.description().to_string(),
-                        equation_after: item.equation,
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    }
-                })
-            {
-                steps.push(step);
-            }
+                include_item,
+                |item| SolveStep {
+                    description: item.description().to_string(),
+                    equation_after: item.equation,
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                },
+            ));
         }
 
         (sim_base, sim_rhs)
@@ -308,9 +301,7 @@ fn isolate_pow_exponent(
                 substeps: vec![],
             },
         );
-        for step in solved_terminal.steps {
-            steps.push(step);
-        }
+        steps.extend(solved_terminal.steps);
         return Ok((solved_terminal.solution_set, steps));
     }
 
@@ -400,9 +391,7 @@ fn isolate_pow_exponent(
             });
         }
 
-        for step in unsupported_solved.steps {
-            steps.push(step);
-        }
+        steps.extend(unsupported_solved.steps);
         return Ok((unsupported_solved.solution_set, steps));
     }
     // ================================================================

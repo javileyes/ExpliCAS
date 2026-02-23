@@ -9,7 +9,6 @@ use cas_solver_core::isolation_utils::{
     should_try_reciprocal_solve,
 };
 use cas_solver_core::solve_outcome::{
-    build_division_denominator_execution_with,
     build_division_denominator_sign_split_execution_with,
     build_isolated_denominator_sign_split_execution_with, derive_add_isolation_operands,
     derive_div_isolation_route, derive_mul_isolation_operands, derive_sub_isolation_route,
@@ -22,7 +21,7 @@ use cas_solver_core::solve_outcome::{
     plan_div_numerator_isolation_step_with, plan_division_denominator,
     plan_division_denominator_sign_split, plan_isolated_denominator_sign_split,
     plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split,
-    plan_sub_isolation_step_with, solve_division_denominator_execution_pipeline_with_items,
+    plan_sub_isolation_step_with, solve_division_denominator_pipeline_with_optional_items,
     solve_division_denominator_sign_split_execution_pipeline_with_items,
     solve_isolated_denominator_sign_split_execution_pipeline_with_items,
     solve_product_zero_inequality_split_execution_with,
@@ -467,51 +466,67 @@ pub(super) fn isolate_div(
             return Ok((final_set, solved.steps));
         }
 
-        if simplifier.collect_steps() {
-            // PEDAGOGICAL: Decompose denominator isolation into two explicit steps.
-            let execution_plan =
-                plan_division_denominator(&mut simplifier.context, l, r, rhs, sim_rhs, op.clone());
-            let (rhs_times_r_simplified, _) =
-                simplifier.simplify(execution_plan.multiply_equation.rhs);
-            let execution = build_division_denominator_execution_with(
-                execution_plan,
-                rhs_times_r_simplified,
-                |id| {
-                    format!(
-                        "{}",
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id
-                        }
-                    )
-                },
-            );
-            let solved_execution = solve_division_denominator_execution_pipeline_with_items(
-                execution,
-                |equation| {
-                    isolate(
-                        equation.lhs,
-                        equation.rhs,
-                        equation.op.clone(),
-                        var,
-                        simplifier,
-                        opts,
-                        ctx,
-                    )
-                },
-                |item| SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                },
-            )?;
-            return prepend_steps(
-                (solved_execution.solution_set, solved_execution.steps),
-                steps,
-            );
-        }
-        let results = isolate(r, sim_rhs, op, var, simplifier, opts, ctx)?;
-        prepend_steps(results, steps)
+        // PEDAGOGICAL: Decompose denominator isolation into two explicit steps
+        // only when step collection is enabled.
+        let include_items = simplifier.collect_steps();
+        let didactic_plan =
+            plan_division_denominator(&mut simplifier.context, l, r, rhs, sim_rhs, op.clone());
+        let simplified_multiply_rhs = if include_items {
+            let (simplified, _) = simplifier.simplify(didactic_plan.multiply_equation.rhs);
+            simplified
+        } else {
+            didactic_plan.multiply_equation.rhs
+        };
+        let multiply_by = didactic_plan.multiply_by;
+        let divide_by = didactic_plan.divide_by;
+        let multiply_by_display = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: multiply_by
+            }
+        );
+        let divide_by_display = format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &simplifier.context,
+                id: divide_by
+            }
+        );
+        let solved_execution = solve_division_denominator_pipeline_with_optional_items(
+            didactic_plan,
+            include_items,
+            simplified_multiply_rhs,
+            move |id| {
+                if id == multiply_by {
+                    multiply_by_display.clone()
+                } else if id == divide_by {
+                    divide_by_display.clone()
+                } else {
+                    id.to_string()
+                }
+            },
+            |equation| {
+                isolate(
+                    equation.lhs,
+                    equation.rhs,
+                    equation.op.clone(),
+                    var,
+                    simplifier,
+                    opts,
+                    ctx,
+                )
+            },
+            |item| SolveStep {
+                description: item.description().to_string(),
+                equation_after: item.equation,
+                importance: crate::step::ImportanceLevel::Medium,
+                substeps: vec![],
+            },
+        )?;
+        prepend_steps(
+            (solved_execution.solution_set, solved_execution.steps),
+            steps,
+        )
     }
 }
