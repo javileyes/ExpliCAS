@@ -12,7 +12,7 @@ use cas_solver_core::solve_outcome::{
     build_division_denominator_execution_with,
     build_division_denominator_sign_split_execution_with,
     build_isolated_denominator_sign_split_execution_with,
-    collect_division_denominator_execution_items, collect_term_isolation_rewrite_execution_items,
+    collect_division_denominator_execution_items, first_term_isolation_rewrite_execution_item,
     division_denominator_sign_split_boundary_item,
     finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
@@ -41,7 +41,7 @@ fn append_term_isolation_rewrite_steps(
     if !collect_steps {
         return;
     }
-    for item in collect_term_isolation_rewrite_execution_items(plan) {
+    if let Some(item) = first_term_isolation_rewrite_execution_item(plan) {
         steps.push(SolveStep {
             description: item.description().to_string(),
             equation_after: item.equation,
