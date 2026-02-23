@@ -2099,6 +2099,24 @@ pub fn first_term_isolation_rewrite_execution_item(
         .next()
 }
 
+/// Collect at most one mapped rewrite step from term-isolation plan.
+pub fn collect_term_isolation_rewrite_first_step_with_item<S, FStep>(
+    rewrite: &TermIsolationRewritePlan,
+    include_item: bool,
+    mut map_item_to_step: FStep,
+) -> Vec<S>
+where
+    FStep: FnMut(TermIsolationRewriteExecutionItem) -> S,
+{
+    let mut steps = Vec::new();
+    if include_item {
+        if let Some(item) = first_term_isolation_rewrite_execution_item(rewrite) {
+            steps.push(map_item_to_step(item));
+        }
+    }
+    steps
+}
+
 /// Execute one term-isolation rewrite with caller-provided solve callback.
 pub fn solve_term_isolation_rewrite_with<E, T, FSolve>(
     rewrite: TermIsolationRewritePlan,
@@ -7837,6 +7855,36 @@ mod tests {
             .expect("expected one rewrite execution item");
         assert_eq!(item.equation, plan.equation);
         assert_eq!(item.description, plan.items[0].description);
+    }
+
+    #[test]
+    fn collect_term_isolation_rewrite_first_step_with_item_returns_single_mapped_step() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let plan =
+            plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
+
+        let steps = collect_term_isolation_rewrite_first_step_with_item(&plan, true, |item| {
+            item.description
+        });
+        assert_eq!(steps, vec![plan.items[0].description.clone()]);
+    }
+
+    #[test]
+    fn collect_term_isolation_rewrite_first_step_with_item_omits_step_when_disabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let plan =
+            plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
+
+        let steps = collect_term_isolation_rewrite_first_step_with_item(&plan, false, |item| {
+            item.description
+        });
+        assert!(steps.is_empty());
     }
 
     #[test]

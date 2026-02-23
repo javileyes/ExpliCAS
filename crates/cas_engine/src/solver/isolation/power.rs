@@ -5,8 +5,8 @@ use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::is_numeric_zero;
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
-    build_pow_base_isolation_action_with, derive_pow_isolation_route,
-    execute_pow_exponent_shortcut_with_runtime, first_term_isolation_rewrite_execution_item,
+    build_pow_base_isolation_action_with, collect_term_isolation_rewrite_first_step_with_item,
+    derive_pow_isolation_route, execute_pow_exponent_shortcut_with_runtime,
     plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
     plan_solve_tactic_normalization_step, pow_exponent_rhs_contains_variable,
@@ -253,13 +253,17 @@ fn isolate_pow_exponent(
                 sim_rhs,
                 op.clone(),
             );
-            if let Some(item) = first_term_isolation_rewrite_execution_item(&normalize_plan) {
-                steps.push(SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
+            for step in
+                collect_term_isolation_rewrite_first_step_with_item(&normalize_plan, true, |item| {
+                    SolveStep {
+                        description: item.description().to_string(),
+                        equation_after: item.equation,
+                        importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
+                    }
+                })
+            {
+                steps.push(step);
             }
         }
 
