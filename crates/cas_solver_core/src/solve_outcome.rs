@@ -3602,6 +3602,32 @@ pub fn finalize_product_zero_inequality_solved_sets(
     )
 }
 
+/// Solved payload for product-zero inequality execution:
+/// solved branch sets plus concatenated branch steps.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProductZeroInequalityExecutionSolved<TStep> {
+    pub solved_sets: ProductZeroInequalitySolvedSets,
+    pub steps: Vec<TStep>,
+}
+
+/// Execute product-zero inequality split by solving the four branch equations
+/// and concatenating their steps in branch-evaluation order.
+pub fn solve_product_zero_inequality_split_execution_with<E, TStep, FSolveCase>(
+    plan: &ProductZeroInequalityPlan,
+    mut solve_case: FSolveCase,
+) -> Result<ProductZeroInequalityExecutionSolved<TStep>, E>
+where
+    FSolveCase: FnMut(&Equation) -> Result<(SolutionSet, Vec<TStep>), E>,
+{
+    let mut steps = Vec::new();
+    let solved_sets = solve_product_zero_inequality_cases_with(plan, |equation| {
+        let (solution_set, mut case_steps) = solve_case(equation)?;
+        steps.append(&mut case_steps);
+        Ok::<_, E>(solution_set)
+    })?;
+    Ok(ProductZeroInequalityExecutionSolved { solved_sets, steps })
+}
+
 /// Solve branch equations + sign-domain constraints for division denominator
 /// sign split execution.
 pub fn solve_division_denominator_sign_split_cases_with<
@@ -8708,6 +8734,41 @@ mod tests {
         };
         let out = finalize_product_zero_inequality_solved_sets(&ctx, solved);
         assert!(matches!(out, SolutionSet::AllReals));
+    }
+
+    #[test]
+    fn solve_product_zero_inequality_split_execution_with_merges_steps_and_finalizes_set() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let plan =
+            plan_product_zero_inequality_split(&mut ctx, a, b, RelOp::Gt).expect("split plan");
+        let mut call_index = 0usize;
+        let solved = solve_product_zero_inequality_split_execution_with(&plan, |_eq| {
+            call_index += 1;
+            Ok::<_, ()>((
+                if call_index == 2 {
+                    SolutionSet::Empty
+                } else {
+                    SolutionSet::AllReals
+                },
+                vec![format!("case-{call_index}")],
+            ))
+        })
+        .expect("execution should solve");
+
+        assert_eq!(call_index, 4);
+        assert_eq!(
+            solved.steps,
+            vec![
+                "case-1".to_string(),
+                "case-2".to_string(),
+                "case-3".to_string(),
+                "case-4".to_string(),
+            ]
+        );
+        let final_set = finalize_product_zero_inequality_solved_sets(&ctx, solved.solved_sets);
+        assert!(matches!(final_set, SolutionSet::AllReals));
     }
 
     #[test]

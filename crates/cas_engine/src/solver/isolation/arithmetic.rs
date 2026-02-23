@@ -15,7 +15,7 @@ use cas_solver_core::solve_outcome::{
     derive_div_isolation_route, derive_mul_isolation_operands, derive_sub_isolation_route,
     finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
-    finalize_product_zero_inequality_solved_sets, first_term_isolation_rewrite_execution_item,
+    finalize_product_zero_inequality_solved_sets,
     materialize_division_denominator_sign_split_execution,
     materialize_isolated_denominator_sign_split_execution, mul_rhs_contains_variable,
     plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
@@ -25,30 +25,13 @@ use cas_solver_core::solve_outcome::{
     plan_sub_isolation_step_with, solve_division_denominator_execution_pipeline_with_items,
     solve_division_denominator_sign_split_execution_with_items,
     solve_isolated_denominator_sign_split_execution_with_items,
-    solve_product_zero_inequality_cases_with, solve_term_isolation_rewrite_with, AddIsolationRoute,
+    solve_product_zero_inequality_split_execution_with,
+    solve_term_isolation_rewrite_pipeline_with_item, AddIsolationRoute,
     DivDenominatorIsolationRoute, DivIsolationRoute, DivisionDenominatorSignSplitSolvedCases,
-    IsolatedDenominatorSignSplitSolvedCases, SubIsolationRoute, TermIsolationRewritePlan,
+    IsolatedDenominatorSignSplitSolvedCases, SubIsolationRoute,
 };
 
 use super::{isolate, prepend_steps};
-
-fn append_term_isolation_rewrite_steps(
-    steps: &mut Vec<SolveStep>,
-    collect_steps: bool,
-    plan: &TermIsolationRewritePlan,
-) {
-    if !collect_steps {
-        return;
-    }
-    if let Some(item) = first_term_isolation_rewrite_execution_item(plan) {
-        steps.push(SolveStep {
-            description: item.description().to_string(),
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        });
-    }
-}
 
 /// Handle isolation for `Add(l, r)`: `(A + B) = RHS`
 #[allow(clippy::too_many_arguments)]
@@ -61,7 +44,7 @@ pub(super) fn isolate_add(
     var: &str,
     simplifier: &mut Simplifier,
     opts: SolverOptions,
-    mut steps: Vec<SolveStep>,
+    steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // PEDAGOGICAL IMPROVEMENT: If BOTH addends contain the variable,
@@ -93,24 +76,30 @@ pub(super) fn isolate_add(
         op.clone(),
         |_| moved_desc.clone(),
     );
-    let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
-        let (sim_rhs, _) = simplifier.simplify(equation.rhs);
-        isolate(
-            equation.lhs,
-            sim_rhs,
-            equation.op.clone(),
-            var,
-            simplifier,
-            opts,
-            ctx,
-        )
-    })?;
-    append_term_isolation_rewrite_steps(
-        &mut steps,
-        simplifier.collect_steps(),
-        &solved_rewrite.rewrite,
-    );
-    prepend_steps(solved_rewrite.solved, steps)
+    let include_item = simplifier.collect_steps();
+    let solved = solve_term_isolation_rewrite_pipeline_with_item(
+        plan,
+        include_item,
+        |equation| {
+            let (sim_rhs, _) = simplifier.simplify(equation.rhs);
+            isolate(
+                equation.lhs,
+                sim_rhs,
+                equation.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )
+        },
+        |item| SolveStep {
+            description: item.description,
+            equation_after: item.equation,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        },
+    )?;
+    prepend_steps((solved.solution_set, solved.steps), steps)
 }
 
 /// Handle isolation for `Sub(l, r)`: `(A - B) = RHS`
@@ -123,7 +112,7 @@ pub(super) fn isolate_sub(
     var: &str,
     simplifier: &mut Simplifier,
     opts: SolverOptions,
-    mut steps: Vec<SolveStep>,
+    steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let sub_route = derive_sub_isolation_route(&simplifier.context, l, var);
@@ -142,24 +131,30 @@ pub(super) fn isolate_sub(
     let plan = plan_sub_isolation_step_with(&mut simplifier.context, l, r, rhs, op, var, |_| {
         moved_desc.clone()
     });
-    let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
-        let (sim_rhs, _) = simplifier.simplify(equation.rhs);
-        isolate(
-            equation.lhs,
-            sim_rhs,
-            equation.op.clone(),
-            var,
-            simplifier,
-            opts,
-            ctx,
-        )
-    })?;
-    append_term_isolation_rewrite_steps(
-        &mut steps,
-        simplifier.collect_steps(),
-        &solved_rewrite.rewrite,
-    );
-    prepend_steps(solved_rewrite.solved, steps)
+    let include_item = simplifier.collect_steps();
+    let solved = solve_term_isolation_rewrite_pipeline_with_item(
+        plan,
+        include_item,
+        |equation| {
+            let (sim_rhs, _) = simplifier.simplify(equation.rhs);
+            isolate(
+                equation.lhs,
+                sim_rhs,
+                equation.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )
+        },
+        |item| SolveStep {
+            description: item.description,
+            equation_after: item.equation,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        },
+    )?;
+    prepend_steps((solved.solution_set, solved.steps), steps)
 }
 
 /// Handle isolation for `Mul(l, r)`: `A * B = RHS`
@@ -173,7 +168,7 @@ pub(super) fn isolate_mul(
     var: &str,
     simplifier: &mut Simplifier,
     opts: SolverOptions,
-    mut steps: Vec<SolveStep>,
+    steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // CRITICAL: For inequalities with products, need sign analysis
@@ -182,14 +177,14 @@ pub(super) fn isolate_mul(
         if let Some(plan) =
             plan_product_zero_inequality_split(&mut simplifier.context, l, r, op.clone())
         {
-            let solved_sets = solve_product_zero_inequality_cases_with(&plan, |equation| {
-                let (solution_set, mut sub_steps) = solve_with_ctx(equation, var, simplifier, ctx)?;
-                steps.append(&mut sub_steps);
-                Ok::<_, CasError>(solution_set)
+            let solved = solve_product_zero_inequality_split_execution_with(&plan, |equation| {
+                solve_with_ctx(equation, var, simplifier, ctx)
             })?;
-            let final_set =
-                finalize_product_zero_inequality_solved_sets(&simplifier.context, solved_sets);
-            return Ok((final_set, steps));
+            let final_set = finalize_product_zero_inequality_solved_sets(
+                &simplifier.context,
+                solved.solved_sets,
+            );
+            return prepend_steps((final_set, solved.steps), steps);
         }
     }
 
@@ -222,23 +217,29 @@ pub(super) fn isolate_mul(
         moved_is_negative,
         |_| moved_desc.clone(),
     );
-    let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
-        isolate(
-            equation.lhs,
-            equation.rhs,
-            equation.op.clone(),
-            var,
-            simplifier,
-            opts,
-            ctx,
-        )
-    })?;
-    append_term_isolation_rewrite_steps(
-        &mut steps,
-        simplifier.collect_steps(),
-        &solved_rewrite.rewrite,
-    );
-    prepend_steps(solved_rewrite.solved, steps)
+    let include_item = simplifier.collect_steps();
+    let solved = solve_term_isolation_rewrite_pipeline_with_item(
+        plan,
+        include_item,
+        |equation| {
+            isolate(
+                equation.lhs,
+                equation.rhs,
+                equation.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )
+        },
+        |item| SolveStep {
+            description: item.description,
+            equation_after: item.equation,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        },
+    )?;
+    prepend_steps((solved.solution_set, solved.steps), steps)
 }
 
 /// Handle isolation for `Div(l, r)`: `A / B = RHS`
@@ -252,7 +253,7 @@ pub(super) fn isolate_div(
     var: &str,
     simplifier: &mut Simplifier,
     opts: SolverOptions,
-    mut steps: Vec<SolveStep>,
+    steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let div_route = derive_div_isolation_route(&simplifier.context, l, var);
@@ -362,23 +363,29 @@ pub(super) fn isolate_div(
                 denominator_is_negative,
                 |_| moved_desc.clone(),
             );
-            let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
-                isolate(
-                    equation.lhs,
-                    equation.rhs,
-                    equation.op.clone(),
-                    var,
-                    simplifier,
-                    opts,
-                    ctx,
-                )
-            })?;
-            append_term_isolation_rewrite_steps(
-                &mut steps,
-                simplifier.collect_steps(),
-                &solved_rewrite.rewrite,
-            );
-            prepend_steps(solved_rewrite.solved, steps)
+            let include_item = simplifier.collect_steps();
+            let solved = solve_term_isolation_rewrite_pipeline_with_item(
+                plan,
+                include_item,
+                |equation| {
+                    isolate(
+                        equation.lhs,
+                        equation.rhs,
+                        equation.op.clone(),
+                        var,
+                        simplifier,
+                        opts,
+                        ctx,
+                    )
+                },
+                |item| SolveStep {
+                    description: item.description,
+                    equation_after: item.equation,
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                },
+            )?;
+            prepend_steps((solved.solution_set, solved.steps), steps)
         }
     } else {
         // B = A / RHS (variable in denominator)
