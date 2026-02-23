@@ -5,8 +5,8 @@ use cas_ast::symbol::SymbolId;
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::function_inverse::{
     derive_function_isolation_route, execute_unary_inverse_with_runtime,
-    solve_unary_inverse_execution_with_items, FunctionIsolationRoute, FunctionIsolationRouteError,
-    UnaryInverseRuntime,
+    solve_unary_inverse_execution_pipeline_with_items, FunctionIsolationRoute,
+    FunctionIsolationRouteError, UnaryInverseRuntime,
 };
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::log_isolation::{
@@ -253,7 +253,7 @@ fn isolate_unary_function(
     var: &str,
     simplifier: &mut Simplifier,
     opts: SolverOptions,
-    mut steps: Vec<SolveStep>,
+    steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let fn_name = simplifier.context.sym_name(fn_id).to_string();
@@ -262,21 +262,21 @@ fn isolate_unary_function(
         execute_unary_inverse_with_runtime(&mut runtime, &fn_name, arg, rhs, op.clone(), true)
             .ok_or_else(|| CasError::UnknownFunction(fn_name.clone()))?
     };
-    let solved_execution = solve_unary_inverse_execution_with_items(
+    let solved_execution = solve_unary_inverse_execution_pipeline_with_items(
         execution,
-        |items, lhs, target_rhs, target_op| {
-            if simplifier.collect_steps() {
-                for item in items {
-                    steps.push(SolveStep {
-                        description: item.description().to_string(),
-                        equation_after: item.equation,
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    });
-                }
-            }
+        simplifier.collect_steps(),
+        |lhs, target_rhs, target_op| {
             isolate(lhs, target_rhs, target_op, var, simplifier, opts, ctx)
         },
+        |item| SolveStep {
+            description: item.description().to_string(),
+            equation_after: item.equation,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        },
     )?;
-    prepend_steps(solved_execution.solved, steps)
+    prepend_steps(
+        (solved_execution.solution_set, solved_execution.steps),
+        steps,
+    )
 }
