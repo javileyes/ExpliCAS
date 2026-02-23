@@ -862,6 +862,51 @@ where
     }
 }
 
+/// Materialize empty quadratic didactic execution.
+///
+/// This is used when caller is not collecting user-facing steps.
+pub fn materialize_quadratic_main_with_substeps_execution() -> QuadraticMainWithSubstepsExecution {
+    QuadraticMainWithSubstepsExecution {
+        main_items: vec![],
+        substep_items: vec![],
+    }
+}
+
+/// Build quadratic main/substep execution with optional didactic payload.
+///
+/// When `include_items` is false, this does not invoke `render_expr`.
+#[allow(clippy::too_many_arguments)]
+pub fn build_quadratic_main_with_substeps_execution_with_optional_items<FR>(
+    ctx: &mut Context,
+    var: &str,
+    a: ExprId,
+    b: ExprId,
+    c: ExprId,
+    is_real_only: bool,
+    main_equation_after: Equation,
+    include_items: bool,
+    render_expr: FR,
+) -> QuadraticMainWithSubstepsExecution
+where
+    FR: FnMut(&Context, ExprId) -> String,
+{
+    if include_items {
+        build_quadratic_main_with_substeps_execution_with(
+            ctx,
+            var,
+            a,
+            b,
+            c,
+            is_real_only,
+            main_equation_after,
+            render_expr,
+            |id| id,
+        )
+    } else {
+        materialize_quadratic_main_with_substeps_execution()
+    }
+}
+
 /// Map quadratic main/substep execution items into caller-owned step payloads.
 ///
 /// When `include_items` is `false`, no mapper callbacks are invoked and this
@@ -892,6 +937,41 @@ where
     }
 
     mapped_steps
+}
+
+/// Solve quadratic main/substep execution with optional item collection and
+/// optional substep simplification callback.
+///
+/// When `include_items` is false, this does not invoke callbacks.
+pub fn solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification<
+    S,
+    SS,
+    FSimplify,
+    FMain,
+    FSub,
+>(
+    execution: &mut QuadraticMainWithSubstepsExecution,
+    include_items: bool,
+    simplify_expr: FSimplify,
+    map_main_item_to_step: FMain,
+    map_substep_item_to_step: FSub,
+) -> Vec<S>
+where
+    SS: Clone,
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FMain: FnMut(QuadraticExecutionItem, Vec<SS>) -> S,
+    FSub: FnMut(QuadraticSubstepExecutionItem) -> SS,
+{
+    if !include_items {
+        return Vec::new();
+    }
+    simplify_quadratic_substep_execution_items_with(&mut execution.substep_items, simplify_expr);
+    solve_quadratic_main_with_substeps_execution_pipeline_with_items(
+        execution,
+        true,
+        map_main_item_to_step,
+        map_substep_item_to_step,
+    )
 }
 
 #[cfg(test)]
@@ -1004,6 +1084,62 @@ mod tests {
     }
 
     #[test]
+    fn build_quadratic_main_with_substeps_execution_with_optional_items_includes_items_when_enabled(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let eq = Equation {
+            lhs: x,
+            rhs: ctx.num(0),
+            op: RelOp::Eq,
+        };
+
+        let execution = build_quadratic_main_with_substeps_execution_with_optional_items(
+            &mut ctx,
+            "x",
+            one,
+            one,
+            one,
+            true,
+            eq,
+            true,
+            |_, id| format!("{:?}", id),
+        );
+
+        assert_eq!(execution.main_items.len(), 1);
+        assert!(!execution.substep_items.is_empty());
+    }
+
+    #[test]
+    fn build_quadratic_main_with_substeps_execution_with_optional_items_skips_render_when_disabled()
+    {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let eq = Equation {
+            lhs: x,
+            rhs: ctx.num(0),
+            op: RelOp::Eq,
+        };
+
+        let execution = build_quadratic_main_with_substeps_execution_with_optional_items(
+            &mut ctx,
+            "x",
+            one,
+            one,
+            one,
+            true,
+            eq,
+            false,
+            |_ctx, _id| -> String { panic!("renderer must not run when disabled") },
+        );
+
+        assert!(execution.main_items.is_empty());
+        assert!(execution.substep_items.is_empty());
+    }
+
+    #[test]
     fn build_quadratic_substeps_numeric_c_zero_factoring_path() {
         let mut ctx = Context::new();
         let a = ctx.num(1);
@@ -1083,6 +1219,59 @@ mod tests {
             |_main, _substeps: Vec<()>| -> () { panic!("must not map when disabled") },
             |_substep| -> () { panic!("must not map when disabled") },
         );
+
+        assert!(mapped.is_empty());
+    }
+
+    #[test]
+    fn solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification_maps_when_enabled(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let eq = Equation {
+            lhs: x,
+            rhs: ctx.num(0),
+            op: RelOp::Eq,
+        };
+        let mut execution = build_quadratic_main_with_substeps_execution_with_optional_items(
+            &mut ctx,
+            "x",
+            one,
+            one,
+            one,
+            true,
+            eq,
+            true,
+            |_, id| format!("{:?}", id),
+        );
+
+        let mapped =
+            solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification(
+                &mut execution,
+                true,
+                |id| id,
+                |main, substeps: Vec<String>| (main.description, substeps.len()),
+                |substep| substep.description,
+            );
+
+        assert_eq!(mapped.len(), 1);
+        assert_eq!(mapped[0].0, QUADRATIC_FORMULA_MAIN_STEP_DESCRIPTION);
+        assert!(mapped[0].1 > 0);
+    }
+
+    #[test]
+    fn solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification_omits_when_disabled(
+    ) {
+        let mut execution = materialize_quadratic_main_with_substeps_execution();
+        let mapped =
+            solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification(
+                &mut execution,
+                false,
+                |_id| -> ExprId { panic!("simplifier must not run when disabled") },
+                |_main, _substeps: Vec<()>| -> () { panic!("main mapper must not run when disabled") },
+                |_substep| -> () { panic!("sub mapper must not run when disabled") },
+            );
 
         assert!(mapped.is_empty());
     }

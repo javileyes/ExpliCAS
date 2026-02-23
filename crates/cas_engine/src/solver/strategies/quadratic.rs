@@ -8,10 +8,10 @@ use cas_solver_core::isolation_utils::{is_numeric_zero, split_zero_product_facto
 use cas_solver_core::quadratic_didactic::{
     aggregate_zero_product_factor_solution_sets,
     build_factorized_zero_product_execution_with_optional_items,
-    build_quadratic_main_with_substeps_execution_with, finalize_zero_product_factor_solution_set,
-    simplify_quadratic_substep_execution_items_with,
+    build_quadratic_main_with_substeps_execution_with_optional_items,
+    finalize_zero_product_factor_solution_set,
     solve_factorized_zero_product_execution_pipeline_with_items,
-    solve_quadratic_main_with_substeps_execution_pipeline_with_items,
+    solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification,
     ZeroProductFactorSolutionAggregate,
 };
 use cas_solver_core::quadratic_formula::{
@@ -170,65 +170,62 @@ impl SolverStrategy for QuadraticStrategy {
                 return None;
             }
 
-            if simplifier.collect_steps() {
-                let is_real_only =
-                    matches!(_opts.value_domain, crate::semantics::ValueDomain::RealOnly);
-
-                let main_equation = Equation {
-                    lhs: sim_poly_expr,
-                    rhs: simplifier.context.num(0),
-                    op: RelOp::Eq,
-                };
-                let mut execution = build_quadratic_main_with_substeps_execution_with(
-                    &mut simplifier.context,
-                    var,
-                    sim_a,
-                    sim_b,
-                    sim_c,
-                    is_real_only,
-                    main_equation,
-                    |core_ctx, id| {
-                        format!(
-                            "{}",
-                            cas_formatter::DisplayExpr {
-                                context: core_ctx,
-                                id
-                            }
-                        )
-                    },
-                    |id| id,
-                );
-
+            let include_items = simplifier.collect_steps();
+            let is_real_only =
+                matches!(_opts.value_domain, crate::semantics::ValueDomain::RealOnly);
+            let main_equation = Equation {
+                lhs: sim_poly_expr,
+                rhs: simplifier.context.num(0),
+                op: RelOp::Eq,
+            };
+            let mut execution = build_quadratic_main_with_substeps_execution_with_optional_items(
+                &mut simplifier.context,
+                var,
+                sim_a,
+                sim_b,
+                sim_c,
+                is_real_only,
+                main_equation,
+                include_items,
+                |core_ctx, id| {
+                    format!(
+                        "{}",
+                        cas_formatter::DisplayExpr {
+                            context: core_ctx,
+                            id
+                        }
+                    )
+                },
+            );
+            let was_collecting = simplifier.collect_steps();
+            if include_items {
                 // Simplify substep equations with step collection disabled to avoid polluting timeline.
-                let was_collecting = simplifier.collect_steps();
                 simplifier.set_collect_steps(false);
-                simplify_quadratic_substep_execution_items_with(
-                    &mut execution.substep_items,
+            }
+            let didactic_steps =
+                solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification(
+                    &mut execution,
+                    include_items,
                     |id| {
                         let (simplified, _) = simplifier.simplify(id);
                         simplified
                     },
+                    |item, substeps| SolveStep {
+                        description: item.description().to_string(),
+                        equation_after: item.equation,
+                        importance: crate::step::ImportanceLevel::Medium,
+                        substeps,
+                    },
+                    |item| crate::solver::SolveSubStep {
+                        description: item.description,
+                        equation_after: item.equation,
+                        importance: crate::step::ImportanceLevel::Low,
+                    },
                 );
+            if include_items {
                 simplifier.set_collect_steps(was_collecting);
-
-                steps.extend(
-                    solve_quadratic_main_with_substeps_execution_pipeline_with_items(
-                        &execution,
-                        true,
-                        |item, substeps| SolveStep {
-                            description: item.description().to_string(),
-                            equation_after: item.equation,
-                            importance: crate::step::ImportanceLevel::Medium,
-                            substeps,
-                        },
-                        |item| crate::solver::SolveSubStep {
-                            description: item.description,
-                            equation_after: item.equation,
-                            importance: crate::step::ImportanceLevel::Low,
-                        },
-                    ),
-                );
             }
+            steps.extend(didactic_steps);
 
             // Check if coefficients are all numeric to support inequalities
             let a_num = get_number(&simplifier.context, sim_a);
