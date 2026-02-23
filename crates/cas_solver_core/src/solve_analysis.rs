@@ -1,4 +1,6 @@
-use cas_ast::{Case, ConditionPredicate, ConditionSet, Context, Expr, ExprId, SolutionSet};
+use cas_ast::{
+    Case, ConditionPredicate, ConditionSet, Context, Equation, Expr, ExprId, SolutionSet,
+};
 use std::collections::HashSet;
 
 /// Check if an expression is symbolic (contains variables/functions/constants).
@@ -72,6 +74,124 @@ pub fn should_accept_rewritten_residual(
     new_nodes: usize,
 ) -> bool {
     var_eliminated || (old_nodes > 4 && new_nodes * 4 < old_nodes * 3)
+}
+
+/// Runtime contract for pre-solve equation-side simplification.
+pub trait SolvePreprocessRuntime {
+    fn context(&mut self) -> &mut Context;
+    fn simplify_for_solve(&mut self, expr: ExprId) -> ExprId;
+}
+
+/// Simplify only equation sides that contain `var` and recompose `a^x / b^x` when possible.
+pub fn simplify_equation_sides_for_var_with_runtime<R>(
+    runtime: &mut R,
+    eq: &Equation,
+    var: &str,
+) -> Equation
+where
+    R: SolvePreprocessRuntime,
+{
+    let mut simplified_eq = eq.clone();
+
+    let lhs_has_var = {
+        let ctx = runtime.context();
+        super::isolation_utils::contains_var(ctx, eq.lhs, var)
+    };
+    if lhs_has_var {
+        let sim_lhs = runtime.simplify_for_solve(eq.lhs);
+        simplified_eq.lhs = sim_lhs;
+        if let Some(recomposed) =
+            super::isolation_utils::try_recompose_pow_quotient(runtime.context(), sim_lhs)
+        {
+            simplified_eq.lhs = recomposed;
+        }
+    }
+
+    let rhs_has_var = {
+        let ctx = runtime.context();
+        super::isolation_utils::contains_var(ctx, eq.rhs, var)
+    };
+    if rhs_has_var {
+        let sim_rhs = runtime.simplify_for_solve(eq.rhs);
+        simplified_eq.rhs = sim_rhs;
+        if let Some(recomposed) =
+            super::isolation_utils::try_recompose_pow_quotient(runtime.context(), sim_rhs)
+        {
+            simplified_eq.rhs = recomposed;
+        }
+    }
+
+    simplified_eq
+}
+
+/// Return the candidate residual when the rewrite is meaningfully better.
+pub fn accept_residual_rewrite_candidate(
+    ctx: &Context,
+    current: ExprId,
+    candidate: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let old_nodes = cas_ast::traversal::count_all_nodes(ctx, current);
+    let new_nodes = cas_ast::traversal::count_all_nodes(ctx, candidate);
+    let var_eliminated = !super::isolation_utils::contains_var(ctx, candidate, var);
+    if should_accept_rewritten_residual(var_eliminated, old_nodes, new_nodes) {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+/// Runtime contract for residual rewrite normalization.
+pub trait ResidualRewriteRuntime {
+    fn context(&mut self) -> &mut Context;
+    fn expand_algebraic(&mut self, expr: ExprId) -> ExprId;
+    fn simplify_for_solve(&mut self, expr: ExprId) -> ExprId;
+    fn expand_trig(&mut self, expr: ExprId) -> ExprId;
+}
+
+/// Normalize a residual expression by applying the two engine-level fallback rewrites:
+/// 1) algebraic expand + simplify
+/// 2) trig expand mode
+///
+/// A rewrite is accepted only if it eliminates `var` or reduces tree size significantly.
+pub fn normalize_variable_residual_with_runtime<R>(
+    runtime: &mut R,
+    residual: ExprId,
+    var: &str,
+) -> ExprId
+where
+    R: ResidualRewriteRuntime,
+{
+    let mut current = residual;
+
+    let current_has_var = {
+        let ctx = runtime.context();
+        super::isolation_utils::contains_var(ctx, current, var)
+    };
+    if current_has_var {
+        let expanded = runtime.expand_algebraic(current);
+        let re_simplified = runtime.simplify_for_solve(expanded);
+        if let Some(accepted) =
+            accept_residual_rewrite_candidate(runtime.context(), current, re_simplified, var)
+        {
+            current = accepted;
+        }
+    }
+
+    let current_has_var = {
+        let ctx = runtime.context();
+        super::isolation_utils::contains_var(ctx, current, var)
+    };
+    if current_has_var {
+        let trig_expanded = runtime.expand_trig(current);
+        if let Some(accepted) =
+            accept_residual_rewrite_candidate(runtime.context(), current, trig_expanded, var)
+        {
+            current = accepted;
+        }
+    }
+
+    current
 }
 
 /// Extract all denominators that contain the target variable.
@@ -153,6 +273,53 @@ pub fn apply_nonzero_exclusion_guards(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_ast::RelOp;
+
+    struct TrackingPreprocessRuntime {
+        ctx: Context,
+        simplified_calls: Vec<ExprId>,
+    }
+
+    impl SolvePreprocessRuntime for TrackingPreprocessRuntime {
+        fn context(&mut self) -> &mut Context {
+            &mut self.ctx
+        }
+
+        fn simplify_for_solve(&mut self, expr: ExprId) -> ExprId {
+            self.simplified_calls.push(expr);
+            expr
+        }
+    }
+
+    struct MockResidualRuntime {
+        ctx: Context,
+        algebraic_out: ExprId,
+        trig_out: ExprId,
+        algebraic_calls: usize,
+        simplify_calls: usize,
+        trig_calls: usize,
+    }
+
+    impl ResidualRewriteRuntime for MockResidualRuntime {
+        fn context(&mut self) -> &mut Context {
+            &mut self.ctx
+        }
+
+        fn expand_algebraic(&mut self, _expr: ExprId) -> ExprId {
+            self.algebraic_calls += 1;
+            self.algebraic_out
+        }
+
+        fn simplify_for_solve(&mut self, expr: ExprId) -> ExprId {
+            self.simplify_calls += 1;
+            expr
+        }
+
+        fn expand_trig(&mut self, _expr: ExprId) -> ExprId {
+            self.trig_calls += 1;
+            self.trig_out
+        }
+    }
 
     #[test]
     fn symbolic_number_vs_variable() {
@@ -244,5 +411,99 @@ mod tests {
         let out =
             merge_symbolic_with_verified_numeric(vec![x, y], vec![two, three], |id| id == three);
         assert_eq!(out, vec![x, y, three]);
+    }
+
+    #[test]
+    fn simplify_equation_sides_for_var_only_simplifies_sides_with_variable() {
+        let mut runtime = TrackingPreprocessRuntime {
+            ctx: Context::new(),
+            simplified_calls: vec![],
+        };
+        let x = runtime.ctx.var("x");
+        let one = runtime.ctx.num(1);
+        let two = runtime.ctx.num(2);
+        let lhs = runtime.ctx.add(Expr::Add(x, one));
+        let eq = Equation {
+            lhs,
+            rhs: two,
+            op: RelOp::Eq,
+        };
+
+        let simplified = simplify_equation_sides_for_var_with_runtime(&mut runtime, &eq, "x");
+        assert_eq!(simplified.lhs, lhs);
+        assert_eq!(simplified.rhs, two);
+        assert_eq!(runtime.simplified_calls, vec![lhs]);
+    }
+
+    #[test]
+    fn accept_residual_candidate_accepts_variable_elimination() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let current = ctx.add(Expr::Add(x, one));
+        let candidate = one;
+
+        let accepted = accept_residual_rewrite_candidate(&ctx, current, candidate, "x");
+        assert_eq!(accepted, Some(candidate));
+    }
+
+    #[test]
+    fn accept_residual_candidate_rejects_cosmetic_rewrite() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let current = ctx.add(Expr::Add(x, one));
+        let candidate = current;
+
+        let accepted = accept_residual_rewrite_candidate(&ctx, current, candidate, "x");
+        assert_eq!(accepted, None);
+    }
+
+    #[test]
+    fn normalize_variable_residual_stops_after_algebraic_eliminates_variable() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let residual = ctx.add(Expr::Add(x, one));
+
+        let mut runtime = MockResidualRuntime {
+            ctx,
+            algebraic_out: one,
+            trig_out: residual,
+            algebraic_calls: 0,
+            simplify_calls: 0,
+            trig_calls: 0,
+        };
+
+        let normalized = normalize_variable_residual_with_runtime(&mut runtime, residual, "x");
+        assert_eq!(normalized, one);
+        assert_eq!(runtime.algebraic_calls, 1);
+        assert_eq!(runtime.simplify_calls, 1);
+        assert_eq!(runtime.trig_calls, 0);
+    }
+
+    #[test]
+    fn normalize_variable_residual_uses_trig_fallback_when_algebraic_is_not_better() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let residual = ctx.add(Expr::Add(x, one));
+        let algebraic_cosmetic = residual;
+        let trig_eliminated = one;
+
+        let mut runtime = MockResidualRuntime {
+            ctx,
+            algebraic_out: algebraic_cosmetic,
+            trig_out: trig_eliminated,
+            algebraic_calls: 0,
+            simplify_calls: 0,
+            trig_calls: 0,
+        };
+
+        let normalized = normalize_variable_residual_with_runtime(&mut runtime, residual, "x");
+        assert_eq!(normalized, trig_eliminated);
+        assert_eq!(runtime.algebraic_calls, 1);
+        assert_eq!(runtime.simplify_calls, 1);
+        assert_eq!(runtime.trig_calls, 1);
     }
 }

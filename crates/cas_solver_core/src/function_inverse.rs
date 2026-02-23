@@ -1,4 +1,4 @@
-use cas_ast::{Constant, Context, Equation, Expr, ExprId, RelOp};
+use cas_ast::{symbol::SymbolId, BuiltinFn, Constant, Context, Equation, Expr, ExprId, RelOp};
 
 /// Supported unary function inversion kinds used by equation isolation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -9,6 +9,51 @@ pub enum UnaryInverseKind {
     Sin,
     Cos,
     Tan,
+}
+
+/// Routing decision for function isolation entry points.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FunctionIsolationRoute {
+    AbsUnary { arg: ExprId },
+    LogBinary { base: ExprId, arg: ExprId },
+    UnaryInvertible { arg: ExprId },
+}
+
+/// Routing errors for function isolation entry points.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FunctionIsolationRouteError {
+    VariableNotFoundInUnaryArg,
+    UnsupportedArity,
+}
+
+/// Derive entry routing for function isolation.
+pub fn derive_function_isolation_route(
+    ctx: &Context,
+    fn_id: SymbolId,
+    args: &[ExprId],
+    var: &str,
+) -> Result<FunctionIsolationRoute, FunctionIsolationRouteError> {
+    if ctx.is_builtin(fn_id, BuiltinFn::Abs) && args.len() == 1 {
+        return Ok(FunctionIsolationRoute::AbsUnary { arg: args[0] });
+    }
+
+    if ctx.is_builtin(fn_id, BuiltinFn::Log) && args.len() == 2 {
+        return Ok(FunctionIsolationRoute::LogBinary {
+            base: args[0],
+            arg: args[1],
+        });
+    }
+
+    if args.len() == 1 {
+        let arg = args[0];
+        if super::isolation_utils::contains_var(ctx, arg, var) {
+            Ok(FunctionIsolationRoute::UnaryInvertible { arg })
+        } else {
+            Err(FunctionIsolationRouteError::VariableNotFoundInUnaryArg)
+        }
+    } else {
+        Err(FunctionIsolationRouteError::UnsupportedArity)
+    }
 }
 
 /// Concrete rewrite plan for unary inverse isolation.
@@ -501,6 +546,85 @@ mod tests {
             Some(UnaryInverseKind::Tan)
         );
         assert_eq!(UnaryInverseKind::from_name("unknown"), None);
+    }
+
+    #[test]
+    fn derive_function_isolation_route_abs_unary() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let abs = ctx.call("abs", vec![x]);
+        let (fn_id, args) = match ctx.get(abs) {
+            Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+            other => panic!("expected function node, got {:?}", other),
+        };
+
+        let route = derive_function_isolation_route(&ctx, fn_id, &args, "x")
+            .expect("abs unary route should be supported");
+        assert_eq!(route, FunctionIsolationRoute::AbsUnary { arg: x });
+    }
+
+    #[test]
+    fn derive_function_isolation_route_log_binary() {
+        let mut ctx = Context::new();
+        let b = ctx.var("b");
+        let x = ctx.var("x");
+        let log = ctx.call("log", vec![b, x]);
+        let (fn_id, args) = match ctx.get(log) {
+            Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+            other => panic!("expected function node, got {:?}", other),
+        };
+
+        let route = derive_function_isolation_route(&ctx, fn_id, &args, "x")
+            .expect("log binary route should be supported");
+        assert_eq!(route, FunctionIsolationRoute::LogBinary { base: b, arg: x });
+    }
+
+    #[test]
+    fn derive_function_isolation_route_unary_invertible_when_arg_has_variable() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let sin = ctx.call("sin", vec![x]);
+        let (fn_id, args) = match ctx.get(sin) {
+            Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+            other => panic!("expected function node, got {:?}", other),
+        };
+
+        let route = derive_function_isolation_route(&ctx, fn_id, &args, "x")
+            .expect("unary invertible route should be selected");
+        assert_eq!(route, FunctionIsolationRoute::UnaryInvertible { arg: x });
+    }
+
+    #[test]
+    fn derive_function_isolation_route_errors_when_unary_arg_lacks_variable() {
+        let mut ctx = Context::new();
+        let y = ctx.var("y");
+        let sin = ctx.call("sin", vec![y]);
+        let (fn_id, args) = match ctx.get(sin) {
+            Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+            other => panic!("expected function node, got {:?}", other),
+        };
+
+        let route = derive_function_isolation_route(&ctx, fn_id, &args, "x");
+        assert_eq!(
+            route,
+            Err(FunctionIsolationRouteError::VariableNotFoundInUnaryArg)
+        );
+    }
+
+    #[test]
+    fn derive_function_isolation_route_errors_on_unsupported_arity() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let f = ctx.call("f", vec![x, y, z]);
+        let (fn_id, args) = match ctx.get(f) {
+            Expr::Function(fn_id, args) => (*fn_id, args.clone()),
+            other => panic!("expected function node, got {:?}", other),
+        };
+
+        let route = derive_function_isolation_route(&ctx, fn_id, &args, "x");
+        assert_eq!(route, Err(FunctionIsolationRouteError::UnsupportedArity));
     }
 
     #[test]

@@ -6,11 +6,15 @@
 use super::SolveDiagnostics;
 use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
+use cas_solver_core::solve_analysis::{
+    normalize_variable_residual_with_runtime, simplify_equation_sides_for_var_with_runtime,
+    ResidualRewriteRuntime, SolvePreprocessRuntime,
+};
 use cas_solver_core::solve_outcome::{
     resolve_var_eliminated_outcome_with, VarEliminatedSolveOutcome,
 };
 use cas_solver_core::strategy_kernels::{
-    execute_rational_exponent_rewrite_with_runtime,
+    execute_rational_exponent_rewrite_with_runtime_for_var,
     solve_rational_exponent_rewrite_pipeline_with_item, RationalExponentRewriteRuntime,
     StrategyKernelRuntime,
 };
@@ -52,6 +56,14 @@ struct EngineRationalExponentRuntime<'a> {
     simplifier: &'a mut Simplifier,
 }
 
+struct EngineSolvePreprocessRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+}
+
+struct EngineResidualRewriteRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+}
+
 struct EngineRationalExponentRewriteRuntime<'a> {
     simplifier: &'a mut Simplifier,
     original_equation: &'a cas_ast::Equation,
@@ -78,6 +90,16 @@ impl VerifySolutionRuntime for EngineVerifySolutionRuntime<'_> {
     }
 }
 
+impl SolvePreprocessRuntime for EngineSolvePreprocessRuntime<'_> {
+    fn context(&mut self) -> &mut cas_ast::Context {
+        &mut self.simplifier.context
+    }
+
+    fn simplify_for_solve(&mut self, expr: ExprId) -> ExprId {
+        self.simplifier.simplify_for_solve(expr)
+    }
+}
+
 impl StrategyKernelRuntime for EngineRationalExponentRuntime<'_> {
     fn context(&mut self) -> &mut cas_ast::Context {
         &mut self.simplifier.context
@@ -96,6 +118,25 @@ impl StrategyKernelRuntime for EngineRationalExponentRuntime<'_> {
                 id: expr
             }
         )
+    }
+}
+
+impl ResidualRewriteRuntime for EngineResidualRewriteRuntime<'_> {
+    fn context(&mut self) -> &mut cas_ast::Context {
+        &mut self.simplifier.context
+    }
+
+    fn expand_algebraic(&mut self, expr: ExprId) -> ExprId {
+        crate::expand::expand(&mut self.simplifier.context, expr)
+    }
+
+    fn simplify_for_solve(&mut self, expr: ExprId) -> ExprId {
+        self.simplifier.simplify_for_solve(expr)
+    }
+
+    fn expand_trig(&mut self, expr: ExprId) -> ExprId {
+        let (expanded, _) = self.simplifier.expand(expr);
+        expanded
     }
 }
 
@@ -326,39 +367,10 @@ fn solve_inner(
     // 2. Simplify both sides BEFORE applying strategies
     // This is crucial for equations like "1/3*x + 1/2*x = 5"
     // which need to be simplified to "5/6*x = 5" before isolation
-    let mut simplified_eq = eq.clone();
-
-    // Simplify LHS if it contains the variable
-    if contains_var(&simplifier.context, eq.lhs, var) {
-        // SolveSafety: use prepass to avoid conditional rules corrupting solution set
-        let sim_lhs = simplifier.simplify_for_solve(eq.lhs);
-        simplified_eq.lhs = sim_lhs;
-
-        // After simplification, try to recompose a^x/b^x -> (a/b)^x
-        // This fixes cases where (a/b)^x was expanded to a^x/b^x during simplify,
-        // which would leave 'x' on both sides after isolation attempts.
-        if let Some(recomposed) = cas_solver_core::isolation_utils::try_recompose_pow_quotient(
-            &mut simplifier.context,
-            sim_lhs,
-        ) {
-            simplified_eq.lhs = recomposed;
-        }
-    }
-
-    // Simplify RHS if it contains the variable
-    if contains_var(&simplifier.context, eq.rhs, var) {
-        // SolveSafety: use prepass to avoid conditional rules corrupting solution set
-        let sim_rhs = simplifier.simplify_for_solve(eq.rhs);
-        simplified_eq.rhs = sim_rhs;
-
-        // Also try recomposition on RHS
-        if let Some(recomposed) = cas_solver_core::isolation_utils::try_recompose_pow_quotient(
-            &mut simplifier.context,
-            sim_rhs,
-        ) {
-            simplified_eq.rhs = recomposed;
-        }
-    }
+    let mut simplified_eq = {
+        let mut runtime = EngineSolvePreprocessRuntime { simplifier };
+        simplify_equation_sides_for_var_with_runtime(&mut runtime, eq, var)
+    };
 
     // NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)) and
     // nested-pow folding are handled by global simplifier rules:
@@ -421,55 +433,18 @@ fn solve_inner(
     let mut diff_simplified = simplifier.simplify_for_solve(difference);
 
     // PRE-SOLVE CANCELLATION: if diff still contains the variable, try
-    // expand + simplify to cancel identity noise. This handles cases like
-    // exp(x) + (x+1)(x+2) - (x² + 3x + 2) - 1 → exp(x) - 1
-    // where the simplifier couldn't cancel poly(x) across the subtraction
-    // boundary due to different AST shapes.
-    // Also handles radical identity noise like x^(5/6) + x^2 + 1 - x^(5/6)
-    // where expand() is a no-op but a second simplification pass catches
-    // the cancellation.
-    // Guard: only rebuild the equation when expansion achieves a significant
-    // (>25%) node reduction OR eliminates the variable entirely.
-    if contains_var(&simplifier.context, diff_simplified, var) {
-        let expanded_diff = crate::expand::expand(&mut simplifier.context, diff_simplified);
-        let re_simplified = simplifier.simplify_for_solve(expanded_diff);
-        let old_nodes = cas_ast::traversal::count_all_nodes(&simplifier.context, diff_simplified);
-        let new_nodes = cas_ast::traversal::count_all_nodes(&simplifier.context, re_simplified);
-        let var_eliminated = !contains_var(&simplifier.context, re_simplified, var);
-        if cas_solver_core::solve_analysis::should_accept_rewritten_residual(
-            var_eliminated,
-            old_nodes,
-            new_nodes,
-        ) {
-            diff_simplified = re_simplified;
-            let zero = simplifier.context.num(0);
-            simplified_eq.lhs = diff_simplified;
-            simplified_eq.rhs = zero;
-        }
-    }
-
-    // PRE-SOLVE TRIG CANCELLATION (Ticket 6c fallback):
-    // If diff still contains the variable after algebraic expand, try
-    // simplifier.expand() which enables expand_mode (AngleIdentityRule etc.)
-    // to bridge trig identity noise like sin(x)*cos(y)+cos(x)*sin(y) → sin(x+y).
-    // The algebraic expand above only distributes multiplication; it cannot
-    // collapse trig product-to-sum forms.
-    // Same guard: only accept if variable eliminated or >25% node reduction.
-    if contains_var(&simplifier.context, diff_simplified, var) {
-        let (trig_expanded, _) = simplifier.expand(diff_simplified);
-        let old_nodes = cas_ast::traversal::count_all_nodes(&simplifier.context, diff_simplified);
-        let new_nodes = cas_ast::traversal::count_all_nodes(&simplifier.context, trig_expanded);
-        let var_eliminated = !contains_var(&simplifier.context, trig_expanded, var);
-        if cas_solver_core::solve_analysis::should_accept_rewritten_residual(
-            var_eliminated,
-            old_nodes,
-            new_nodes,
-        ) {
-            diff_simplified = trig_expanded;
-            let zero = simplifier.context.num(0);
-            simplified_eq.lhs = diff_simplified;
-            simplified_eq.rhs = zero;
-        }
+    // expand + simplify and a trig expand fallback (Ticket 6c). Accept
+    // rewrites only when they eliminate the variable or significantly
+    // reduce expression size.
+    let normalized_diff = {
+        let mut runtime = EngineResidualRewriteRuntime { simplifier };
+        normalize_variable_residual_with_runtime(&mut runtime, diff_simplified, var)
+    };
+    if normalized_diff != diff_simplified {
+        diff_simplified = normalized_diff;
+        let zero = simplifier.context.num(0);
+        simplified_eq.lhs = diff_simplified;
+        simplified_eq.rhs = zero;
     }
 
     // Check if the difference has NO variable
@@ -608,12 +583,9 @@ fn try_solve_rational_exponent(
     simplifier: &mut Simplifier,
     ctx: &super::SolveCtx,
 ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-    let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
-    let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
-
     let rewrite = {
         let mut runtime = EngineRationalExponentRuntime { simplifier };
-        execute_rational_exponent_rewrite_with_runtime(&mut runtime, eq, var, lhs_has, rhs_has)?
+        execute_rational_exponent_rewrite_with_runtime_for_var(&mut runtime, eq, var)?
     };
 
     let include_item = simplifier.collect_steps();

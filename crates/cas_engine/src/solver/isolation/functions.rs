@@ -2,9 +2,10 @@ use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
-use cas_ast::{BuiltinFn, ExprId, RelOp, SolutionSet};
+use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::function_inverse::{
-    execute_unary_inverse_with_runtime, solve_unary_inverse_execution_with_items,
+    derive_function_isolation_route, execute_unary_inverse_with_runtime,
+    solve_unary_inverse_execution_with_items, FunctionIsolationRoute, FunctionIsolationRouteError,
     UnaryInverseRuntime,
 };
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
@@ -51,26 +52,27 @@ pub(super) fn isolate_function(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    if simplifier.context.is_builtin(fn_id, BuiltinFn::Abs) && args.len() == 1 {
-        isolate_abs(args[0], rhs, op, var, simplifier, opts, steps, ctx)
-    } else if simplifier.context.is_builtin(fn_id, BuiltinFn::Log) && args.len() == 2 {
-        isolate_log(args[0], args[1], rhs, op, var, simplifier, opts, steps, ctx)
-    } else if args.len() == 1 {
-        let arg = args[0];
-        if contains_var(&simplifier.context, arg, var) {
-            isolate_unary_function(fn_id, args[0], rhs, op, var, simplifier, opts, steps, ctx)
-        } else {
+    match derive_function_isolation_route(&simplifier.context, fn_id, &args, var) {
+        Ok(FunctionIsolationRoute::AbsUnary { arg }) => {
+            isolate_abs(arg, rhs, op, var, simplifier, opts, steps, ctx)
+        }
+        Ok(FunctionIsolationRoute::LogBinary { base, arg }) => {
+            isolate_log(base, arg, rhs, op, var, simplifier, opts, steps, ctx)
+        }
+        Ok(FunctionIsolationRoute::UnaryInvertible { arg }) => {
+            isolate_unary_function(fn_id, arg, rhs, op, var, simplifier, opts, steps, ctx)
+        }
+        Err(FunctionIsolationRouteError::VariableNotFoundInUnaryArg) => {
             Err(CasError::VariableNotFound(var.to_string()))
         }
-    } else {
-        Err(CasError::IsolationError(
+        Err(FunctionIsolationRouteError::UnsupportedArity) => Err(CasError::IsolationError(
             var.to_string(),
             format!(
                 "Cannot invert function '{}' with {} arguments",
                 simplifier.context.sym_name(fn_id),
                 args.len()
             ),
-        ))
+        )),
     }
 }
 

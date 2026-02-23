@@ -5,7 +5,10 @@
 //! orchestration and context-aware simplification.
 
 use crate::isolation_utils::contains_var;
-use crate::solve_outcome::{eliminate_fractional_exponent_message, subtract_both_sides_message};
+use crate::solve_outcome::{
+    eliminate_fractional_exponent_message, plan_swap_sides_step, subtract_both_sides_message,
+    TermIsolationRewritePlan,
+};
 use cas_ast::{Context, Equation, ExprId, RelOp, SolutionSet};
 
 /// Didactic payload for strategy-level rewrite steps.
@@ -37,6 +40,33 @@ pub trait StrategyKernelRuntime {
     fn simplify_expr(&mut self, expr: ExprId) -> ExprId;
     /// Render an expression for didactic narration.
     fn render_expr(&mut self, expr: ExprId) -> String;
+}
+
+/// Side-routing plan for isolation strategy applicability.
+#[derive(Debug, Clone, PartialEq)]
+pub enum IsolationStrategyRouting {
+    VariableNotFound,
+    VariableOnBothSides,
+    SwapSides { rewrite: TermIsolationRewritePlan },
+    DirectIsolation,
+}
+
+/// Derive side-routing for isolation strategy from variable presence.
+pub fn derive_isolation_strategy_routing(
+    ctx: &Context,
+    eq: &Equation,
+    var: &str,
+) -> IsolationStrategyRouting {
+    let lhs_has = contains_var(ctx, eq.lhs, var);
+    let rhs_has = contains_var(ctx, eq.rhs, var);
+    match (lhs_has, rhs_has) {
+        (false, false) => IsolationStrategyRouting::VariableNotFound,
+        (true, true) => IsolationStrategyRouting::VariableOnBothSides,
+        (false, true) => IsolationStrategyRouting::SwapSides {
+            rewrite: plan_swap_sides_step(eq),
+        },
+        (true, false) => IsolationStrategyRouting::DirectIsolation,
+    }
 }
 
 /// Fully materialized collect-terms rewrite ready for recursive solve.
@@ -310,6 +340,18 @@ pub fn derive_rational_exponent_kernel(
     Some(RationalExponentKernel { rewritten, q })
 }
 
+/// Rewrite an isolated rational exponent equation while deriving side presence
+/// from `eq` for `var`.
+pub fn derive_rational_exponent_kernel_for_var(
+    ctx: &mut Context,
+    eq: &Equation,
+    var: &str,
+) -> Option<RationalExponentKernel> {
+    let lhs_has_var = contains_var(ctx, eq.lhs, var);
+    let rhs_has_var = contains_var(ctx, eq.rhs, var);
+    derive_rational_exponent_kernel(ctx, eq, var, lhs_has_var, rhs_has_var)
+}
+
 /// Build didactic narration for rational exponent elimination.
 pub fn rational_exponent_message(q: i64) -> String {
     eliminate_fractional_exponent_message(&q.to_string())
@@ -394,6 +436,22 @@ where
     })
 }
 
+/// Derive, simplify, and materialize rational-exponent rewrite in one pipeline
+/// deriving side presence from `eq` for `var`.
+pub fn execute_rational_exponent_rewrite_with_for_var<FSimplify>(
+    ctx: &mut Context,
+    eq: &Equation,
+    var: &str,
+    simplify_expr: FSimplify,
+) -> Option<RationalExponentSolvedRewrite>
+where
+    FSimplify: FnMut(ExprId) -> ExprId,
+{
+    let lhs_has_var = contains_var(ctx, eq.lhs, var);
+    let rhs_has_var = contains_var(ctx, eq.rhs, var);
+    execute_rational_exponent_rewrite_with(ctx, eq, var, lhs_has_var, rhs_has_var, simplify_expr)
+}
+
 /// Derive, simplify, and materialize rational-exponent rewrite via runtime.
 pub fn execute_rational_exponent_rewrite_with_runtime<R>(
     runtime: &mut R,
@@ -417,6 +475,26 @@ where
         equation: execution.equation,
         items,
     })
+}
+
+/// Derive, simplify, and materialize rational-exponent rewrite via runtime,
+/// deriving side presence from `eq` for `var`.
+pub fn execute_rational_exponent_rewrite_with_runtime_for_var<R>(
+    runtime: &mut R,
+    eq: &Equation,
+    var: &str,
+) -> Option<RationalExponentSolvedRewrite>
+where
+    R: StrategyKernelRuntime,
+{
+    let (lhs_has_var, rhs_has_var) = {
+        let ctx = runtime.context();
+        (
+            contains_var(ctx, eq.lhs, var),
+            contains_var(ctx, eq.rhs, var),
+        )
+    };
+    execute_rational_exponent_rewrite_with_runtime(runtime, eq, var, lhs_has_var, rhs_has_var)
 }
 
 /// Execute recursive solve for a materialized rational-exponent rewrite.
@@ -542,6 +620,76 @@ mod tests {
     }
 
     #[test]
+    fn derive_isolation_strategy_routing_reports_variable_not_found() {
+        let mut ctx = Context::new();
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let eq = Equation {
+            lhs: y,
+            rhs: z,
+            op: RelOp::Eq,
+        };
+
+        let routing = derive_isolation_strategy_routing(&ctx, &eq, "x");
+        assert_eq!(routing, IsolationStrategyRouting::VariableNotFound);
+    }
+
+    #[test]
+    fn derive_isolation_strategy_routing_reports_variable_on_both_sides() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let lhs = ctx.add(Expr::Add(x, one));
+        let rhs = ctx.add(Expr::Add(x, two));
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+
+        let routing = derive_isolation_strategy_routing(&ctx, &eq, "x");
+        assert_eq!(routing, IsolationStrategyRouting::VariableOnBothSides);
+    }
+
+    #[test]
+    fn derive_isolation_strategy_routing_reports_swap_sides_when_variable_is_rhs_only() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let eq = Equation {
+            lhs: y,
+            rhs: x,
+            op: RelOp::Lt,
+        };
+
+        let routing = derive_isolation_strategy_routing(&ctx, &eq, "x");
+        match routing {
+            IsolationStrategyRouting::SwapSides { rewrite } => {
+                assert_eq!(rewrite.equation.lhs, eq.rhs);
+                assert_eq!(rewrite.equation.rhs, eq.lhs);
+                assert_eq!(rewrite.equation.op, RelOp::Gt);
+            }
+            other => panic!("expected swap routing, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn derive_isolation_strategy_routing_reports_direct_when_variable_is_lhs_only() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let eq = Equation {
+            lhs: x,
+            rhs: y,
+            op: RelOp::Eq,
+        };
+
+        let routing = derive_isolation_strategy_routing(&ctx, &eq, "x");
+        assert_eq!(routing, IsolationStrategyRouting::DirectIsolation);
+    }
+
+    #[test]
     fn rational_exponent_kernel_rewrites_isolated_power() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -567,6 +715,26 @@ mod tests {
             }
             other => panic!("expected rewritten lhs pow, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn derive_rational_exponent_kernel_for_var_derives_side_presence() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let exponent = ctx.add(Expr::Div(three, two));
+        let lhs = ctx.add(Expr::Pow(x, exponent));
+        let rhs = ctx.num(8);
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+
+        let kernel = derive_rational_exponent_kernel_for_var(&mut ctx, &eq, "x")
+            .expect("kernel should exist");
+        assert_eq!(kernel.q, 2);
     }
 
     #[test]

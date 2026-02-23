@@ -5,19 +5,16 @@ use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, ExprId, SolutionSet};
-use cas_solver_core::isolation_utils::contains_var;
-use cas_solver_core::solve_outcome::{
-    plan_swap_sides_step, resolve_single_side_exponential_terminal_pipeline_with_item,
-    solve_term_isolation_rewrite_pipeline_with_item,
-};
+use cas_solver_core::solve_outcome::solve_term_isolation_rewrite_pipeline_with_item;
 use cas_solver_core::strategy_kernels::{
-    execute_collect_terms_rewrite_with_runtime, execute_rational_exponent_rewrite_with_runtime,
+    derive_isolation_strategy_routing, execute_collect_terms_rewrite_with_runtime,
+    execute_rational_exponent_rewrite_with_runtime_for_var,
     solve_collect_terms_rewrite_pipeline_with_item,
-    solve_rational_exponent_rewrite_pipeline_with_item, RationalExponentRewriteRuntime,
-    StrategyExecutionItem, StrategyKernelRuntime,
+    solve_rational_exponent_rewrite_pipeline_with_item, IsolationStrategyRouting,
+    RationalExponentRewriteRuntime, StrategyExecutionItem, StrategyKernelRuntime,
 };
 use cas_solver_core::unwrap_plan::{
-    plan_first_unwrap_equation_execution_with, solve_unwrap_execution_pipeline_with_item,
+    route_unwrap_entry_with_item, solve_unwrap_execution_pipeline_with_item, UnwrapEntryRouting,
     UnwrapExecutionPlan, UnwrapExecutionRuntime,
 };
 
@@ -61,62 +58,46 @@ impl SolverStrategy for IsolationStrategy {
         opts: &SolverOptions,
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-        // Isolation strategy expects variable on LHS.
-        // The main solve loop handles swapping, but we should check here or just assume?
-        // Let's check and swap if needed, or just rely on isolate to handle it?
-        // isolate() assumes we are isolating FROM lhs.
-
-        // If var is on RHS and not LHS, we should swap.
-        // If var is on both, isolation might fail or we need to collect first.
-
-        let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
-        let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
-
-        if !lhs_has && !rhs_has {
-            return Some(Err(CasError::VariableNotFound(var.to_string())));
-        }
-
-        if lhs_has && rhs_has {
-            // Isolation cannot handle var on both sides directly without collection
-            return None; // Or error? Strategy doesn't apply if not isolated.
-        }
-
-        if !lhs_has && rhs_has {
-            // Swap
-            let plan = plan_swap_sides_step(eq);
-            let include_item = simplifier.collect_steps();
-            let solved_swap = solve_term_isolation_rewrite_pipeline_with_item(
-                plan,
-                include_item,
-                |equation| {
-                    isolate(
-                        equation.lhs,
-                        equation.rhs,
-                        equation.op.clone(),
-                        var,
-                        simplifier,
-                        *opts,
-                        ctx,
-                    )
-                },
-                |item| SolveStep {
-                    description: item.description,
-                    equation_after: item.equation,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                },
-            );
-            return Some(match solved_swap {
-                Ok(solved) => Ok((solved.solution_set, solved.steps)),
-                Err(e) => Err(e),
-            });
-        }
-
-        // LHS has var
-        // V2.0: Pass opts through to propagate budget
-        match isolate(eq.lhs, eq.rhs, eq.op.clone(), var, simplifier, *opts, ctx) {
-            Ok((set, steps)) => Some(Ok((set, steps))),
-            Err(e) => Some(Err(e)),
+        match derive_isolation_strategy_routing(&simplifier.context, eq, var) {
+            IsolationStrategyRouting::VariableNotFound => {
+                Some(Err(CasError::VariableNotFound(var.to_string())))
+            }
+            IsolationStrategyRouting::VariableOnBothSides => None,
+            IsolationStrategyRouting::SwapSides { rewrite } => {
+                let include_item = simplifier.collect_steps();
+                let solved_swap = solve_term_isolation_rewrite_pipeline_with_item(
+                    rewrite,
+                    include_item,
+                    |equation| {
+                        isolate(
+                            equation.lhs,
+                            equation.rhs,
+                            equation.op.clone(),
+                            var,
+                            simplifier,
+                            *opts,
+                            ctx,
+                        )
+                    },
+                    |item| SolveStep {
+                        description: item.description,
+                        equation_after: item.equation,
+                        importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
+                    },
+                );
+                Some(match solved_swap {
+                    Ok(solved) => Ok((solved.solution_set, solved.steps)),
+                    Err(e) => Err(e),
+                })
+            }
+            IsolationStrategyRouting::DirectIsolation => {
+                // V2.0: Pass opts through to propagate budget
+                match isolate(eq.lhs, eq.rhs, eq.op.clone(), var, simplifier, *opts, ctx) {
+                    Ok((set, steps)) => Some(Ok((set, steps))),
+                    Err(e) => Some(Err(e)),
+                }
+            }
         }
     }
 
@@ -195,59 +176,21 @@ impl SolverStrategy for UnwrapStrategy {
         opts: &SolverOptions,
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-        // Try to unwrap functions on LHS or RHS to expose the variable or transform the equation.
-        // This is useful when var is on both sides, e.g. sqrt(2x+3) = x.
-
-        let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
-        let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
-
-        // Only apply if var is on both sides?
-        // If var is only on one side, IsolationStrategy handles it.
-        // But IsolationStrategy might be later in the list.
-        // Let's apply if top-level is a function/pow that we can invert.
-
-        if !lhs_has && !rhs_has {
-            return None;
-        }
-
-        // EARLY CHECK: Handle exponential NeedsComplex + Wildcard -> Residual
-        // This must be before the closure to be able to return SolutionSet::Residual
+        // EARLY CHECK + routing lives in solver-core to keep strategy entry flow
+        // declarative in engine.
         use crate::solver::domain_guards::classify_log_solve;
         let mode = crate::solver::domain_guards::to_core_domain_mode(opts.domain_mode);
         let wildcard_scope = opts.assume_scope == crate::semantics::AssumeScope::Wildcard;
 
         let include_item = simplifier.collect_steps();
-        if let Some(solved_terminal) = resolve_single_side_exponential_terminal_pipeline_with_item(
-            &mut simplifier.context,
-            eq.lhs,
-            eq.rhs,
-            var,
-            lhs_has,
-            rhs_has,
-            mode,
-            wildcard_scope,
-            " - use 'semantics preset complex'",
-            eq.clone(),
-            include_item,
-            |core_ctx, base, other_side| {
-                classify_log_solve(core_ctx, base, other_side, opts, &ctx.domain_env)
-            },
-            |item| SolveStep {
-                description: item.description,
-                equation_after: item.equation,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            },
-        ) {
-            return Some(Ok((solved_terminal.solution_set, solved_terminal.steps)));
-        }
-
-        if let Some(selected) = plan_first_unwrap_equation_execution_with(
+        let routed = route_unwrap_entry_with_item(
             &mut simplifier.context,
             eq,
             var,
-            lhs_has,
-            rhs_has,
+            mode,
+            wildcard_scope,
+            " - use 'semantics preset complex'",
+            include_item,
             |core_ctx, base, other_side| {
                 classify_log_solve(core_ctx, base, other_side, opts, &ctx.domain_env)
             },
@@ -260,17 +203,26 @@ impl SolverStrategy for UnwrapStrategy {
                     }
                 )
             },
-        ) {
-            return Some(run_unwrap_execution(
+            |item| SolveStep {
+                description: item.description,
+                equation_after: item.equation,
+                importance: crate::step::ImportanceLevel::Medium,
+                substeps: vec![],
+            },
+        );
+        let routed = routed?;
+        Some(match routed {
+            UnwrapEntryRouting::Terminal(solved_terminal) => {
+                Ok((solved_terminal.solution_set, solved_terminal.steps))
+            }
+            UnwrapEntryRouting::Execution(selected) => run_unwrap_execution(
                 selected.execution,
                 selected.other_side,
                 var,
                 simplifier,
                 ctx,
-            ));
-        }
-
-        None
+            ),
+        })
     }
 
     // Note: We use the default should_verify() = true here.
@@ -375,11 +327,9 @@ impl SolverStrategy for RationalExponentStrategy {
         _opts: &SolverOptions,
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-        let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
-        let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
         let rewrite = {
             let mut runtime = EngineStrategyKernelRuntime { simplifier };
-            execute_rational_exponent_rewrite_with_runtime(&mut runtime, eq, var, lhs_has, rhs_has)?
+            execute_rational_exponent_rewrite_with_runtime_for_var(&mut runtime, eq, var)?
         };
         let include_item = simplifier.collect_steps();
         let mut runtime = EngineRationalExponentStrategyRuntime { simplifier, ctx };

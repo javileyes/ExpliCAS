@@ -1,8 +1,12 @@
 //! Unified unwrap rewrite planning for solver strategies.
 
-use crate::log_domain::{LogAssumption, LogSolveDecision};
+use crate::isolation_utils::contains_var;
+use crate::log_domain::{DomainModeKind, LogAssumption, LogSolveDecision};
 use crate::rational_power::PowUnwrapPlan;
-use crate::solve_outcome::take_log_base_message;
+use crate::solve_outcome::{
+    resolve_single_side_exponential_terminal_pipeline_with_item, take_log_base_message,
+    SingleSideExponentialTerminalSolved, TermIsolationExecutionItem,
+};
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
 
 /// Planned unwrap rewrite from a target expression.
@@ -175,6 +179,13 @@ pub struct UnwrapEquationExecution {
     pub other_side: ExprId,
 }
 
+/// Entry routing for `UnwrapStrategy`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum UnwrapEntryRouting<S> {
+    Terminal(SingleSideExponentialTerminalSolved<S>),
+    Execution(UnwrapEquationExecution),
+}
+
 /// Plan the first applicable unwrap execution for an equation.
 ///
 /// Selection order is deterministic: LHS is attempted first, then RHS.
@@ -230,6 +241,64 @@ where
         }
     }
     None
+}
+
+/// Route unwrap strategy entry:
+/// 1) variable presence gate,
+/// 2) single-side exponential terminal fast-path,
+/// 3) LHS->RHS unwrap execution planning.
+#[allow(clippy::too_many_arguments)]
+pub fn route_unwrap_entry_with_item<FClassify, FRender, FStep, S>(
+    ctx: &mut Context,
+    equation: &Equation,
+    var: &str,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+    residual_suffix: &str,
+    include_item: bool,
+    mut classify_log_solve: FClassify,
+    mut render_expr: FRender,
+    map_terminal_item_to_step: FStep,
+) -> Option<UnwrapEntryRouting<S>>
+where
+    FClassify: FnMut(&Context, ExprId, ExprId) -> LogSolveDecision,
+    FRender: FnMut(&Context, ExprId) -> String,
+    FStep: FnMut(TermIsolationExecutionItem) -> S,
+{
+    let lhs_has = contains_var(ctx, equation.lhs, var);
+    let rhs_has = contains_var(ctx, equation.rhs, var);
+    if !lhs_has && !rhs_has {
+        return None;
+    }
+
+    if let Some(solved_terminal) = resolve_single_side_exponential_terminal_pipeline_with_item(
+        ctx,
+        equation.lhs,
+        equation.rhs,
+        var,
+        lhs_has,
+        rhs_has,
+        mode,
+        wildcard_scope,
+        residual_suffix,
+        equation.clone(),
+        include_item,
+        |core_ctx, base, other_side| classify_log_solve(core_ctx, base, other_side),
+        map_terminal_item_to_step,
+    ) {
+        return Some(UnwrapEntryRouting::Terminal(solved_terminal));
+    }
+
+    let selected = plan_first_unwrap_equation_execution_with(
+        ctx,
+        equation,
+        var,
+        lhs_has,
+        rhs_has,
+        |core_ctx, base, other_side| classify_log_solve(core_ctx, base, other_side),
+        |core_ctx, id| render_expr(core_ctx, id),
+    )?;
+    Some(UnwrapEntryRouting::Execution(selected))
 }
 
 /// Collect didactic steps emitted by an unwrap execution in display order.
@@ -709,6 +778,117 @@ mod tests {
         );
 
         assert!(selected.is_none());
+    }
+
+    #[test]
+    fn route_unwrap_entry_with_item_returns_none_without_variable_presence() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let equation = Equation {
+            lhs: x,
+            rhs: y,
+            op: RelOp::Eq,
+        };
+
+        let routed = route_unwrap_entry_with_item(
+            &mut ctx,
+            &equation,
+            "z",
+            DomainModeKind::Generic,
+            false,
+            " (residual)",
+            true,
+            |_, _, _| LogSolveDecision::Ok,
+            |_, _| "render".to_string(),
+            |item| item.description,
+        );
+        assert!(routed.is_none());
+    }
+
+    #[test]
+    fn route_unwrap_entry_with_item_returns_terminal_when_exponential_is_blocked() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let neg_five = ctx.num(-5);
+        let lhs = ctx.add(Expr::Pow(two, x));
+        let equation = Equation {
+            lhs,
+            rhs: neg_five,
+            op: RelOp::Eq,
+        };
+
+        let routed = route_unwrap_entry_with_item(
+            &mut ctx,
+            &equation,
+            "x",
+            DomainModeKind::Generic,
+            false,
+            " (residual)",
+            true,
+            |_ctx, _base, _other| LogSolveDecision::EmptySet("no real solutions"),
+            |_, _| "render".to_string(),
+            |item| item.description,
+        )
+        .expect("expected unwrap route");
+
+        match routed {
+            UnwrapEntryRouting::Terminal(solved) => {
+                assert!(matches!(solved.solution_set, SolutionSet::Empty));
+                assert_eq!(solved.steps, vec!["no real solutions".to_string()]);
+            }
+            other => panic!("expected terminal route, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn route_unwrap_entry_with_item_returns_execution_when_terminal_not_applicable() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let lhs = ctx.call("ln", vec![x]);
+        let equation = Equation {
+            lhs,
+            rhs: y,
+            op: RelOp::Eq,
+        };
+
+        let expected_execution = plan_unwrap_execution_with(
+            &mut ctx,
+            UnwrapExecutionRequest {
+                target: lhs,
+                other: y,
+                var: "x",
+                op: RelOp::Eq,
+                is_lhs: true,
+            },
+            |_, _, _| LogSolveDecision::Ok,
+            |_, _| "render".to_string(),
+        )
+        .expect("expected unwrap execution");
+
+        let routed = route_unwrap_entry_with_item(
+            &mut ctx,
+            &equation,
+            "x",
+            DomainModeKind::Generic,
+            false,
+            " (residual)",
+            true,
+            |_, _, _| LogSolveDecision::Ok,
+            |_, _| "render".to_string(),
+            |item| item.description,
+        )
+        .expect("expected unwrap route");
+
+        match routed {
+            UnwrapEntryRouting::Execution(selected) => {
+                assert_eq!(selected.other_side, y);
+                assert_eq!(selected.execution, expected_execution);
+            }
+            other => panic!("expected execution route, got {:?}", other),
+        }
     }
 
     #[test]
