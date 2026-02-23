@@ -9,7 +9,7 @@
 use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::linear_solution::NonZeroStatus;
 use cas_solver_core::reciprocal::{
-    execute_reciprocal_solve_with_runtime, solve_reciprocal_execution_with_items,
+    execute_reciprocal_solve_with_runtime, solve_reciprocal_execution_pipeline_with_items,
     ReciprocalSolveRuntime,
 };
 
@@ -51,23 +51,18 @@ pub(crate) fn try_reciprocal_solve(
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
     let mut runtime = EngineReciprocalRuntime { simplifier };
     let execution = execute_reciprocal_solve_with_runtime(&mut runtime, lhs, rhs, var)?;
-
-    let mut steps = Vec::new();
-    let solved_execution = solve_reciprocal_execution_with_items(execution, |items, solutions| {
-        if runtime.simplifier.collect_steps() {
-            for item in items {
-                steps.push(SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
+    let include_items = runtime.simplifier.collect_steps();
+    let solved_execution =
+        solve_reciprocal_execution_pipeline_with_items(execution, include_items, |item| {
+            SolveStep {
+                description: item.description().to_string(),
+                equation_after: item.equation,
+                importance: crate::step::ImportanceLevel::Medium,
+                substeps: vec![],
             }
-        }
-        solutions
-    });
-
-    Some((solved_execution.solved, steps))
+        });
+    let (solution_set, steps) = solved_execution.solved;
+    Some((solution_set, steps))
 }
 
 #[cfg(test)]

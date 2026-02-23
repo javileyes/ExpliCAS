@@ -218,6 +218,27 @@ where
     ReciprocalSolvedExecution { execution, solved }
 }
 
+/// Solve reciprocal execution while optionally mapping execution items
+/// into caller-owned step payloads.
+pub fn solve_reciprocal_execution_pipeline_with_items<S, FStep>(
+    execution: ReciprocalSolveExecution,
+    include_items: bool,
+    mut map_item_to_step: FStep,
+) -> ReciprocalSolvedExecution<(SolutionSet, Vec<S>)>
+where
+    FStep: FnMut(ReciprocalExecutionItem) -> S,
+{
+    solve_reciprocal_execution_with_items(execution, |items, solutions| {
+        let mut steps = Vec::new();
+        if include_items {
+            for item in items {
+                steps.push(map_item_to_step(item));
+            }
+        }
+        (solutions, steps)
+    })
+}
+
 /// Derive reciprocal-solve kernel if equation matches `1/var = rhs` and
 /// the RHS is independent of `var`.
 pub fn derive_reciprocal_solve_kernel(
@@ -779,5 +800,39 @@ mod tests {
 
         assert_eq!(solved.execution, expected);
         assert!(matches!(solved.solved, SolutionSet::Conditional(_)));
+    }
+
+    #[test]
+    fn solve_reciprocal_execution_pipeline_with_items_maps_steps_when_enabled() {
+        let mut ctx = Context::new();
+        let n = ctx.var("n");
+        let d = ctx.var("d");
+        let c = ctx.var("c");
+        let s = ctx.var("s");
+        let execution =
+            build_reciprocal_execution(&mut ctx, "x", n, d, c, s, n, NonZeroStatus::Unknown);
+        let expected = execution.clone();
+
+        let solved = solve_reciprocal_execution_pipeline_with_items(execution, true, |item| {
+            item.description
+        });
+
+        assert_eq!(solved.execution, expected);
+        assert!(matches!(solved.solved.0, SolutionSet::Conditional(_)));
+        assert_eq!(solved.solved.1.len(), expected.items.len());
+    }
+
+    #[test]
+    fn solve_reciprocal_execution_pipeline_with_items_omits_steps_when_disabled() {
+        let mut ctx = Context::new();
+        let n = ctx.var("n");
+        let d = ctx.var("d");
+        let c = ctx.var("c");
+        let s = ctx.var("s");
+        let execution =
+            build_reciprocal_execution(&mut ctx, "x", n, d, c, s, n, NonZeroStatus::Unknown);
+
+        let solved = solve_reciprocal_execution_pipeline_with_items(execution, false, |_item| 1u8);
+        assert!(solved.solved.1.is_empty());
     }
 }
