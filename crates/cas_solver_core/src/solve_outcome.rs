@@ -3,7 +3,7 @@ use crate::log_domain::{
     assumptions_to_condition_set, classify_log_unsupported_route, classify_terminal_action,
     DomainModeKind, LogAssumption, LogSolveDecision, LogTerminalAction, LogUnsupportedRoute,
 };
-use crate::solution_set::open_positive_domain;
+use crate::solution_set::{isolated_var_solution, open_positive_domain};
 use cas_ast::{
     Case, ConditionPredicate, ConditionSet, Context, Equation, Expr, ExprId, RelOp, SolutionSet,
     SolveResult,
@@ -36,6 +36,28 @@ pub enum VarEliminatedSolveOutcome {
 pub struct TerminalSolveOutcome {
     pub message: &'static str,
     pub solutions: SolutionSet,
+}
+
+/// Outcome for a direct isolated-variable equation `x op rhs`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum IsolatedVariableOutcome {
+    Solved(SolutionSet),
+    ContainsTargetVariable,
+}
+
+/// Resolve the final outcome for `x op rhs` once the variable is syntactically
+/// isolated on the left-hand side.
+pub fn resolve_isolated_variable_outcome(
+    ctx: &mut Context,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+) -> IsolatedVariableOutcome {
+    if contains_var(ctx, rhs, var) {
+        IsolatedVariableOutcome::ContainsTargetVariable
+    } else {
+        IsolatedVariableOutcome::Solved(isolated_var_solution(ctx, rhs, op))
+    }
 }
 
 /// Route for handling `base^x = base` shortcuts.
@@ -8233,6 +8255,31 @@ mod tests {
             derive_add_isolation_route(&ctx, one, one, "x"),
             AddIsolationRoute::RightOperand
         );
+    }
+
+    #[test]
+    fn resolve_isolated_variable_outcome_reports_circular_rhs() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let rhs = ctx.add(Expr::Add(x, one));
+        assert!(matches!(
+            resolve_isolated_variable_outcome(&mut ctx, rhs, RelOp::Eq, "x"),
+            IsolatedVariableOutcome::ContainsTargetVariable
+        ));
+    }
+
+    #[test]
+    fn resolve_isolated_variable_outcome_builds_solution_set_when_rhs_is_var_free() {
+        let mut ctx = Context::new();
+        let three = ctx.num(3);
+        let out = resolve_isolated_variable_outcome(&mut ctx, three, RelOp::Eq, "x");
+        match out {
+            IsolatedVariableOutcome::Solved(SolutionSet::Discrete(values)) => {
+                assert_eq!(values, vec![three]);
+            }
+            other => panic!("unexpected isolated outcome: {:?}", other),
+        }
     }
 
     #[test]

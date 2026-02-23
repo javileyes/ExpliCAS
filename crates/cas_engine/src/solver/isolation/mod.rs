@@ -5,11 +5,9 @@ mod power;
 use crate::engine::Simplifier;
 use crate::solver::{SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
 use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
-use cas_solver_core::isolation_utils::contains_var;
-use cas_solver_core::solution_set::isolated_var_solution;
 use cas_solver_core::solve_outcome::{
-    plan_negated_lhs_isolation_step, residual_solution_set,
-    solve_term_isolation_rewrite_pipeline_with_item,
+    plan_negated_lhs_isolation_step, residual_solution_set, resolve_isolated_variable_outcome,
+    solve_term_isolation_rewrite_pipeline_with_item, IsolatedVariableOutcome,
 };
 
 use crate::error::CasError;
@@ -40,35 +38,36 @@ pub(crate) fn isolate(
             // Simplify RHS before returning
             let (sim_rhs, _) = simplifier.simplify(rhs);
 
-            // GUARDRAIL: Reject if solution still contains target variable (circular)
-            if contains_var(&simplifier.context, sim_rhs, var) {
-                // Phase 2: Try linear_collect strategy before giving up
-                if let Some((solution_set, linear_steps)) =
-                    crate::solver::linear_collect::try_linear_collect(lhs, rhs, var, simplifier)
-                {
-                    let mut all_steps = steps;
-                    all_steps.extend(linear_steps);
-                    return Ok((solution_set, all_steps));
-                }
+            match resolve_isolated_variable_outcome(&mut simplifier.context, sim_rhs, op, var) {
+                IsolatedVariableOutcome::Solved(set) => Ok((set, steps)),
+                IsolatedVariableOutcome::ContainsTargetVariable => {
+                    // Phase 2: Try linear_collect strategy before giving up
+                    if let Some((solution_set, linear_steps)) =
+                        crate::solver::linear_collect::try_linear_collect(lhs, rhs, var, simplifier)
+                    {
+                        let mut all_steps = steps;
+                        all_steps.extend(linear_steps);
+                        return Ok((solution_set, all_steps));
+                    }
 
-                // Phase 2.1: Try structural linear form extractor
-                if let Some((solution_set, linear_steps)) =
-                    crate::solver::linear_collect::try_linear_collect_v2(lhs, rhs, var, simplifier)
-                {
-                    let mut all_steps = steps;
-                    all_steps.extend(linear_steps);
-                    return Ok((solution_set, all_steps));
-                }
+                    // Phase 2.1: Try structural linear form extractor
+                    if let Some((solution_set, linear_steps)) =
+                        crate::solver::linear_collect::try_linear_collect_v2(
+                            lhs, rhs, var, simplifier,
+                        )
+                    {
+                        let mut all_steps = steps;
+                        all_steps.extend(linear_steps);
+                        return Ok((solution_set, all_steps));
+                    }
 
-                // If linear_collect didn't work, return as Residual
-                return Ok((
-                    residual_solution_set(&mut simplifier.context, lhs, rhs, var),
-                    steps,
-                ));
+                    // If linear_collect didn't work, return as Residual
+                    Ok((
+                        residual_solution_set(&mut simplifier.context, lhs, rhs, var),
+                        steps,
+                    ))
+                }
             }
-
-            let set = isolated_var_solution(&mut simplifier.context, sim_rhs, op);
-            Ok((set, steps))
         }
         Expr::Add(l, r) => {
             arithmetic::isolate_add(lhs, l, r, rhs, op, var, simplifier, opts, steps, ctx)
