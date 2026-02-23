@@ -226,6 +226,20 @@ where
     Ok(CollectTermsSolved { rewrite, solved })
 }
 
+/// Execute recursive solve for a materialized collect-terms rewrite while
+/// passing the aligned optional didactic item to the solve callback.
+pub fn solve_collect_terms_rewrite_with_item<E, T, FSolve>(
+    rewrite: CollectTermsSolvedRewrite,
+    mut solve_rewritten: FSolve,
+) -> Result<CollectTermsSolved<T>, E>
+where
+    FSolve: FnMut(Option<StrategyExecutionItem>, &Equation) -> Result<T, E>,
+{
+    let item = rewrite.items.first().cloned();
+    let solved = solve_rewritten(item, &rewrite.equation)?;
+    Ok(CollectTermsSolved { rewrite, solved })
+}
+
 /// Rewrite payload for `RationalExponentStrategy`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RationalExponentKernel {
@@ -376,6 +390,20 @@ where
     FSolve: FnMut(&Equation) -> Result<T, E>,
 {
     let solved = solve_rewritten(&rewrite.equation)?;
+    Ok(RationalExponentSolved { rewrite, solved })
+}
+
+/// Execute recursive solve for a materialized rational-exponent rewrite while
+/// passing the aligned optional didactic item to the solve callback.
+pub fn solve_rational_exponent_rewrite_with_item<E, T, FSolve>(
+    rewrite: RationalExponentSolvedRewrite,
+    mut solve_rewritten: FSolve,
+) -> Result<RationalExponentSolved<T>, E>
+where
+    FSolve: FnMut(Option<StrategyExecutionItem>, &Equation) -> Result<T, E>,
+{
+    let item = rewrite.items.first().cloned();
+    let solved = solve_rewritten(item, &rewrite.equation)?;
     Ok(RationalExponentSolved { rewrite, solved })
 }
 
@@ -639,6 +667,40 @@ mod tests {
     }
 
     #[test]
+    fn solve_collect_terms_rewrite_with_item_passes_item_to_solver() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("lhs");
+        let rhs = ctx.var("rhs");
+        let rewrite = CollectTermsSolvedRewrite {
+            equation: Equation {
+                lhs,
+                rhs,
+                op: RelOp::Eq,
+            },
+            items: vec![StrategyExecutionItem {
+                equation: Equation {
+                    lhs,
+                    rhs,
+                    op: RelOp::Eq,
+                },
+                description: "Subtract rhs from both sides".to_string(),
+            }],
+        };
+
+        let mut seen_desc = None;
+        let solved = solve_collect_terms_rewrite_with_item(rewrite, |item, equation| {
+            seen_desc = item.map(|entry| entry.description);
+            assert_eq!(equation.lhs, lhs);
+            assert_eq!(equation.rhs, rhs);
+            Ok::<_, ()>("ok")
+        })
+        .expect("must solve rewrite");
+
+        assert_eq!(solved.solved, "ok");
+        assert_eq!(seen_desc, Some("Subtract rhs from both sides".to_string()));
+    }
+
+    #[test]
     fn solve_rational_exponent_rewrite_with_runs_solver_on_rewritten_equation() {
         let mut ctx = Context::new();
         let lhs = ctx.var("lhs");
@@ -660,5 +722,43 @@ mod tests {
         .expect("must solve rewrite");
 
         assert_eq!(solved.solved, "ok");
+    }
+
+    #[test]
+    fn solve_rational_exponent_rewrite_with_item_passes_item_to_solver() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("lhs");
+        let rhs = ctx.var("rhs");
+        let rewrite = RationalExponentSolvedRewrite {
+            equation: Equation {
+                lhs,
+                rhs,
+                op: RelOp::Eq,
+            },
+            items: vec![StrategyExecutionItem {
+                equation: Equation {
+                    lhs,
+                    rhs,
+                    op: RelOp::Eq,
+                },
+                description: "Raise both sides to power 2 to eliminate fractional exponent"
+                    .to_string(),
+            }],
+        };
+
+        let mut seen_desc = None;
+        let solved = solve_rational_exponent_rewrite_with_item(rewrite, |item, equation| {
+            seen_desc = item.map(|entry| entry.description);
+            assert_eq!(equation.lhs, lhs);
+            assert_eq!(equation.rhs, rhs);
+            Ok::<_, ()>("ok")
+        })
+        .expect("must solve rewrite");
+
+        assert_eq!(solved.solved, "ok");
+        assert_eq!(
+            seen_desc,
+            Some("Raise both sides to power 2 to eliminate fractional exponent".to_string())
+        );
     }
 }
