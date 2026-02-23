@@ -12,7 +12,8 @@ use cas_solver_core::solve_outcome::{
 };
 use cas_solver_core::strategy_kernels::{
     execute_collect_terms_rewrite_with_runtime, execute_rational_exponent_rewrite_with_runtime,
-    solve_collect_terms_rewrite_pipeline_with_item, solve_rational_exponent_rewrite_with_item,
+    solve_collect_terms_rewrite_pipeline_with_item,
+    solve_rational_exponent_rewrite_pipeline_with_item, RationalExponentRewriteRuntime,
     StrategyExecutionItem, StrategyKernelRuntime,
 };
 use cas_solver_core::unwrap_plan::{
@@ -329,6 +330,38 @@ impl SolverStrategy for CollectTermsStrategy {
 
 pub struct RationalExponentStrategy;
 
+struct EngineRationalExponentStrategyRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+    ctx: &'a SolveCtx,
+}
+
+impl RationalExponentRewriteRuntime<CasError, SolveStep>
+    for EngineRationalExponentStrategyRuntime<'_>
+{
+    fn solve_rewritten(
+        &mut self,
+        equation: &Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        solve_with_ctx(equation, var, self.simplifier, self.ctx)
+    }
+
+    fn map_item_to_step(&mut self, item: StrategyExecutionItem) -> SolveStep {
+        SolveStep {
+            description: item.description,
+            equation_after: item.equation,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        }
+    }
+
+    fn verify_discrete_solution(&mut self, _solution: ExprId) -> bool {
+        // Keep strategy-local behavior unchanged: final verification still runs
+        // in the top-level solve pipeline against the original equation.
+        true
+    }
+}
+
 impl SolverStrategy for RationalExponentStrategy {
     fn name(&self) -> &str {
         "Rational Exponent"
@@ -344,43 +377,22 @@ impl SolverStrategy for RationalExponentStrategy {
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
         let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
-        let mut steps = Vec::new();
-        let solved = {
-            let rewrite = {
-                let mut runtime = EngineStrategyKernelRuntime { simplifier };
-                execute_rational_exponent_rewrite_with_runtime(
-                    &mut runtime,
-                    eq,
-                    var,
-                    lhs_has,
-                    rhs_has,
-                )?
-            };
-            solve_rational_exponent_rewrite_with_item(rewrite, |item, new_eq| {
-                if simplifier.collect_steps() {
-                    if let Some(item) = item {
-                        steps.push(SolveStep {
-                            description: item.description().to_string(),
-                            equation_after: item.equation,
-                            importance: crate::step::ImportanceLevel::Medium,
-                            substeps: vec![],
-                        });
-                    }
-                }
-                solve_with_ctx(new_eq, var, simplifier, ctx)
-            })
+        let rewrite = {
+            let mut runtime = EngineStrategyKernelRuntime { simplifier };
+            execute_rational_exponent_rewrite_with_runtime(&mut runtime, eq, var, lhs_has, rhs_has)?
         };
+        let include_item = simplifier.collect_steps();
+        let mut runtime = EngineRationalExponentStrategyRuntime { simplifier, ctx };
+        let solved = solve_rational_exponent_rewrite_pipeline_with_item(
+            rewrite,
+            var,
+            include_item,
+            &mut runtime,
+        );
 
-        match solved {
-            Ok(solved) => {
-                let (set, mut sub_steps) = solved.solved;
-                steps.append(&mut sub_steps);
-
-                // For even q, we need to verify solutions (could introduce extraneous)
-                // The main solve() already verifies against original equation
-                Some(Ok((set, steps)))
-            }
-            Err(e) => Some(Err(e)),
-        }
+        Some(match solved {
+            Ok(solved) => Ok((solved.solution_set, solved.steps)),
+            Err(e) => Err(e),
+        })
     }
 }
