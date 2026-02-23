@@ -745,6 +745,38 @@ where
     }
 }
 
+/// Map quadratic main/substep execution items into caller-owned step payloads.
+///
+/// When `include_items` is `false`, no mapper callbacks are invoked and this
+/// returns an empty vector.
+pub fn solve_quadratic_main_with_substeps_execution_pipeline_with_items<S, SS, FMain, FSub>(
+    execution: &QuadraticMainWithSubstepsExecution,
+    include_items: bool,
+    mut map_main_item_to_step: FMain,
+    mut map_substep_item_to_step: FSub,
+) -> Vec<S>
+where
+    SS: Clone,
+    FMain: FnMut(QuadraticExecutionItem, Vec<SS>) -> S,
+    FSub: FnMut(QuadraticSubstepExecutionItem) -> SS,
+{
+    if !include_items {
+        return Vec::new();
+    }
+
+    let mut mapped_substeps = Vec::with_capacity(execution.substep_items.len());
+    for substep in execution.substep_items.iter().cloned() {
+        mapped_substeps.push(map_substep_item_to_step(substep));
+    }
+
+    let mut mapped_steps = Vec::with_capacity(execution.main_items.len());
+    for main in execution.main_items.iter().cloned() {
+        mapped_steps.push(map_main_item_to_step(main, mapped_substeps.clone()));
+    }
+
+    mapped_steps
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -869,6 +901,73 @@ mod tests {
         assert!(steps[0].description.contains("Factorizar"));
         assert!(steps[1].description.contains("Producto"));
         assert!(steps[2].description.contains("Resolver"));
+    }
+
+    #[test]
+    fn solve_quadratic_main_with_substeps_execution_pipeline_with_items_maps_when_enabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let eq = Equation {
+            lhs: x,
+            rhs: ctx.num(0),
+            op: RelOp::Eq,
+        };
+        let execution = build_quadratic_main_with_substeps_execution_with(
+            &mut ctx,
+            "x",
+            one,
+            one,
+            one,
+            true,
+            eq,
+            |_, id| format!("{:?}", id),
+            |id| id,
+        );
+
+        let mapped = solve_quadratic_main_with_substeps_execution_pipeline_with_items(
+            &execution,
+            true,
+            |main, substeps: Vec<String>| (main.description, substeps.len()),
+            |substep| substep.description,
+        );
+
+        assert_eq!(mapped.len(), execution.main_items.len());
+        assert_eq!(mapped[0].0, QUADRATIC_FORMULA_MAIN_STEP_DESCRIPTION);
+        assert!(!execution.substep_items.is_empty());
+        assert_eq!(mapped[0].1, execution.substep_items.len());
+    }
+
+    #[test]
+    fn solve_quadratic_main_with_substeps_execution_pipeline_with_items_omits_when_disabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let eq = Equation {
+            lhs: x,
+            rhs: ctx.num(0),
+            op: RelOp::Eq,
+        };
+        let execution = build_quadratic_main_with_substeps_execution_with(
+            &mut ctx,
+            "x",
+            one,
+            one,
+            one,
+            true,
+            eq,
+            |_, id| format!("{:?}", id),
+            |id| id,
+        );
+
+        let mapped = solve_quadratic_main_with_substeps_execution_pipeline_with_items(
+            &execution,
+            false,
+            |_main, _substeps: Vec<()>| -> () { panic!("must not map when disabled") },
+            |_substep| -> () { panic!("must not map when disabled") },
+        );
+
+        assert!(mapped.is_empty());
     }
 
     #[test]

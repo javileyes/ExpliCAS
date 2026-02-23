@@ -333,6 +333,102 @@ where
     })
 }
 
+/// Solve factored linear-collect with runtime and optionally map didactic
+/// execution items into caller-owned step payloads.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_linear_collect_factored_pipeline_with_runtime_and_items<R, S, FRender, FStep>(
+    runtime: &mut R,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    include_items: bool,
+    render_expr: FRender,
+    map_item_to_step: FStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    R: LinearCollectRuntime,
+    FRender: FnMut(&Context, ExprId) -> String,
+    FStep: FnMut(LinearCollectExecutionItem) -> S,
+{
+    let solved = solve_linear_collect_factored_with_runtime(runtime, lhs, rhs, var)?;
+
+    if include_items {
+        let execution = {
+            let ctx = runtime.context();
+            build_linear_collect_factored_execution_with(
+                ctx,
+                var,
+                solved.coeff,
+                solved.rhs_term,
+                solved.solution,
+                solved.coeff_status,
+                solved.rhs_status,
+                render_expr,
+            )
+        };
+        let solved_execution =
+            solve_linear_collect_execution_pipeline_with_items(execution, true, map_item_to_step);
+        return Some(solved_execution.solved);
+    }
+
+    let solution_set = build_linear_solution_set(
+        solved.coeff,
+        solved.rhs_term,
+        solved.solution,
+        solved.coeff_status,
+        solved.rhs_status,
+    );
+    Some((solution_set, Vec::new()))
+}
+
+/// Solve additive linear-collect with runtime and optionally map didactic
+/// execution items into caller-owned step payloads.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_linear_collect_additive_pipeline_with_runtime_and_items<R, S, FRender, FStep>(
+    runtime: &mut R,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    include_items: bool,
+    render_expr: FRender,
+    map_item_to_step: FStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    R: LinearCollectRuntime,
+    FRender: FnMut(&Context, ExprId) -> String,
+    FStep: FnMut(LinearCollectExecutionItem) -> S,
+{
+    let solved = solve_linear_collect_additive_with_runtime(runtime, lhs, rhs, var)?;
+
+    if include_items {
+        let execution = {
+            let ctx = runtime.context();
+            build_linear_collect_additive_execution_with(
+                ctx,
+                var,
+                solved.coeff,
+                solved.constant,
+                solved.solution,
+                solved.coeff_status,
+                solved.constant_status,
+                render_expr,
+            )
+        };
+        let solved_execution =
+            solve_linear_collect_execution_pipeline_with_items(execution, true, map_item_to_step);
+        return Some(solved_execution.solved);
+    }
+
+    let solution_set = build_linear_solution_set(
+        solved.coeff,
+        solved.constant,
+        solved.solution,
+        solved.coeff_status,
+        solved.constant_status,
+    );
+    Some((solution_set, Vec::new()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -583,6 +679,71 @@ mod tests {
         let solved =
             solve_linear_collect_execution_pipeline_with_items(execution, false, |_item| 1u8);
         assert!(solved.solved.1.is_empty());
+    }
+
+    #[test]
+    fn solve_linear_collect_factored_pipeline_with_runtime_and_items_maps_steps_when_enabled() {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let a = context.var("a");
+        let b = context.var("b");
+        let lhs = context.add(Expr::Mul(a, x));
+        let rhs = b;
+        let mut runtime = MockLinearCollectRuntime {
+            context,
+            simplify_calls: 0,
+            prove_calls: 0,
+            prove_result: NonZeroStatus::NonZero,
+        };
+
+        let (solution_set, steps) = solve_linear_collect_factored_pipeline_with_runtime_and_items(
+            &mut runtime,
+            lhs,
+            rhs,
+            "x",
+            true,
+            |_, _| "k".to_string(),
+            |item| item.description,
+        )
+        .expect("pipeline should solve");
+
+        assert!(matches!(solution_set, SolutionSet::Discrete(_)));
+        assert_eq!(steps.len(), 2);
+        assert_eq!(runtime.simplify_calls, 4);
+        assert_eq!(runtime.prove_calls, 1);
+    }
+
+    #[test]
+    fn solve_linear_collect_additive_pipeline_with_runtime_and_items_omits_steps_when_disabled() {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let a = context.var("a");
+        let b = context.var("b");
+        let ax = context.add(Expr::Mul(a, x));
+        let lhs = context.add(Expr::Add(ax, b));
+        let rhs = context.num(0);
+        let mut runtime = MockLinearCollectRuntime {
+            context,
+            simplify_calls: 0,
+            prove_calls: 0,
+            prove_result: NonZeroStatus::NonZero,
+        };
+
+        let (solution_set, steps) = solve_linear_collect_additive_pipeline_with_runtime_and_items(
+            &mut runtime,
+            lhs,
+            rhs,
+            "x",
+            false,
+            |_, _| -> String { panic!("renderer must not run when items are disabled") },
+            |_item| -> () { panic!("step mapper must not run when items are disabled") },
+        )
+        .expect("pipeline should solve");
+
+        assert!(matches!(solution_set, SolutionSet::Discrete(_)));
+        assert!(steps.is_empty());
+        assert_eq!(runtime.simplify_calls, 3);
+        assert_eq!(runtime.prove_calls, 1);
     }
 
     #[test]

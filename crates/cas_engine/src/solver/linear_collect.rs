@@ -11,11 +11,9 @@
 
 use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::linear_collect::{
-    build_linear_collect_additive_execution_with, build_linear_collect_factored_execution_with,
-    solve_linear_collect_additive_with_runtime, solve_linear_collect_execution_pipeline_with_items,
-    solve_linear_collect_factored_with_runtime, LinearCollectRuntime,
+    solve_linear_collect_additive_pipeline_with_runtime_and_items,
+    solve_linear_collect_factored_pipeline_with_runtime_and_items, LinearCollectRuntime,
 };
-use cas_solver_core::linear_solution::build_linear_solution_set;
 
 use crate::engine::Simplifier;
 use crate::solver::SolveStep;
@@ -56,44 +54,22 @@ pub(crate) fn try_linear_collect(
     var: &str,
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
-    let solved = {
-        let mut runtime = EngineLinearCollectRuntime { simplifier };
-        solve_linear_collect_factored_with_runtime(&mut runtime, lhs, rhs, var)?
-    };
-
-    let mut steps = Vec::new();
-    let solution_set = if simplifier.collect_steps() {
-        let execution = build_linear_collect_factored_execution_with(
-            &mut simplifier.context,
-            var,
-            solved.coeff,
-            solved.rhs_term,
-            solved.solution,
-            solved.coeff_status,
-            solved.rhs_status,
-            |ctx, id| format!("{}", cas_formatter::DisplayExpr { context: ctx, id }),
-        );
-        let solved_execution =
-            solve_linear_collect_execution_pipeline_with_items(execution, true, |item| SolveStep {
-                description: item.description().to_string(),
-                equation_after: item.equation,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
-        let (solution_set, mut execution_steps) = solved_execution.solved;
-        steps.append(&mut execution_steps);
-        solution_set
-    } else {
-        build_linear_solution_set(
-            solved.coeff,
-            solved.rhs_term,
-            solved.solution,
-            solved.coeff_status,
-            solved.rhs_status,
-        )
-    };
-
-    Some((solution_set, steps))
+    let include_items = simplifier.collect_steps();
+    let mut runtime = EngineLinearCollectRuntime { simplifier };
+    solve_linear_collect_factored_pipeline_with_runtime_and_items(
+        &mut runtime,
+        lhs,
+        rhs,
+        var,
+        include_items,
+        |ctx, id| format!("{}", cas_formatter::DisplayExpr { context: ctx, id }),
+        |item| SolveStep {
+            description: item.description().to_string(),
+            equation_after: item.equation,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        },
+    )
 }
 
 /// Try to solve using the structural linear form extractor.
@@ -107,44 +83,22 @@ pub(crate) fn try_linear_collect_v2(
     var: &str,
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
-    let solved = {
-        let mut runtime = EngineLinearCollectRuntime { simplifier };
-        solve_linear_collect_additive_with_runtime(&mut runtime, lhs, rhs, var)?
-    };
-
-    let mut steps = Vec::new();
-    let solution_set = if simplifier.collect_steps() {
-        let execution = build_linear_collect_additive_execution_with(
-            &mut simplifier.context,
-            var,
-            solved.coeff,
-            solved.constant,
-            solved.solution,
-            solved.coeff_status,
-            solved.constant_status,
-            |ctx, id| format!("{}", cas_formatter::DisplayExpr { context: ctx, id }),
-        );
-        let solved_execution =
-            solve_linear_collect_execution_pipeline_with_items(execution, true, |item| SolveStep {
-                description: item.description().to_string(),
-                equation_after: item.equation,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
-        let (solution_set, mut execution_steps) = solved_execution.solved;
-        steps.append(&mut execution_steps);
-        solution_set
-    } else {
-        build_linear_solution_set(
-            solved.coeff,
-            solved.constant,
-            solved.solution,
-            solved.coeff_status,
-            solved.constant_status,
-        )
-    };
-
-    Some((solution_set, steps))
+    let include_items = simplifier.collect_steps();
+    let mut runtime = EngineLinearCollectRuntime { simplifier };
+    solve_linear_collect_additive_pipeline_with_runtime_and_items(
+        &mut runtime,
+        lhs,
+        rhs,
+        var,
+        include_items,
+        |ctx, id| format!("{}", cas_formatter::DisplayExpr { context: ctx, id }),
+        |item| SolveStep {
+            description: item.description().to_string(),
+            equation_after: item.equation,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        },
+    )
 }
 
 #[cfg(test)]

@@ -9,6 +9,7 @@ use cas_solver_core::quadratic_didactic::{
     aggregate_zero_product_factor_solution_sets, build_quadratic_main_with_substeps_execution_with,
     finalize_zero_product_factor_solution_set, simplify_quadratic_substep_execution_items_with,
     solve_factorized_zero_product_execution_pipeline_with_items,
+    solve_quadratic_main_with_substeps_execution_pipeline_with_items,
     ZeroProductFactorSolutionAggregate,
 };
 use cas_solver_core::quadratic_formula::{
@@ -183,24 +184,23 @@ impl SolverStrategy for QuadraticStrategy {
                 );
                 simplifier.set_collect_steps(was_collecting);
 
-                let substeps = execution
-                    .substep_items
-                    .into_iter()
-                    .map(|item| crate::solver::SolveSubStep {
-                        description: item.description,
-                        equation_after: item.equation,
-                        importance: crate::step::ImportanceLevel::Low,
-                    })
-                    .collect::<Vec<_>>();
-
-                for item in execution.main_items {
-                    steps.push(SolveStep {
-                        description: item.description().to_string(),
-                        equation_after: item.equation,
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: substeps.clone(),
-                    });
-                }
+                steps.extend(
+                    solve_quadratic_main_with_substeps_execution_pipeline_with_items(
+                        &execution,
+                        true,
+                        |item, substeps| SolveStep {
+                            description: item.description().to_string(),
+                            equation_after: item.equation,
+                            importance: crate::step::ImportanceLevel::Medium,
+                            substeps,
+                        },
+                        |item| crate::solver::SolveSubStep {
+                            description: item.description,
+                            equation_after: item.equation,
+                            importance: crate::step::ImportanceLevel::Low,
+                        },
+                    ),
+                );
             }
 
             // Check if coefficients are all numeric to support inequalities
