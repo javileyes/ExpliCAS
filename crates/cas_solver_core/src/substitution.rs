@@ -59,6 +59,13 @@ pub struct ExponentialSubstitutionExecutionPlan {
     pub items: Vec<SubstitutionExecutionItem>,
 }
 
+/// Solved payload for one exponential substitution execution.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExponentialSubstitutionSolved<T> {
+    pub execution: ExponentialSubstitutionExecutionPlan,
+    pub solved: T,
+}
+
 /// One executable substitution item aligned with a didactic payload.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SubstitutionExecutionItem {
@@ -86,6 +93,20 @@ pub struct BackSubstitutionExecutionPlan {
     pub items: Vec<BackSubstitutionExecutionItem>,
 }
 
+/// Back-substitution solve plan ready for optional didactic rendering + solving.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BackSubstitutionSolvePlan {
+    pub equations: Vec<Equation>,
+    pub items: Vec<BackSubstitutionExecutionItem>,
+}
+
+/// Solved payload for one back-substitution solve plan.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BackSubstitutionSolved<T> {
+    pub plan: BackSubstitutionSolvePlan,
+    pub solved: Vec<T>,
+}
+
 /// One executable back-substitution item: equation plus aligned didactic step.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BackSubstitutionExecutionItem {
@@ -106,6 +127,18 @@ pub fn collect_back_substitution_execution_items(
     execution: &BackSubstitutionExecutionPlan,
 ) -> Vec<BackSubstitutionExecutionItem> {
     execution.items.clone()
+}
+
+/// Execute solving for a rewritten substitution equation.
+pub fn solve_exponential_substitution_with<E, T, FSolve>(
+    execution: ExponentialSubstitutionExecutionPlan,
+    mut solve_rewritten: FSolve,
+) -> Result<ExponentialSubstitutionSolved<T>, E>
+where
+    FSolve: FnMut(&Equation) -> Result<T, E>,
+{
+    let solved = solve_rewritten(&execution.equation)?;
+    Ok(ExponentialSubstitutionSolved { execution, solved })
 }
 
 /// Build didactic payload for substitution detection (`u = expr`).
@@ -212,6 +245,46 @@ where
         })
         .collect();
     BackSubstitutionExecutionPlan { equations, items }
+}
+
+/// Build a back-substitution solve plan, with optional didactic execution items.
+pub fn build_back_substitution_solve_plan_with<F>(
+    substitution_expr: ExprId,
+    values: &[ExprId],
+    with_didactic_items: bool,
+    render_expr: F,
+) -> BackSubstitutionSolvePlan
+where
+    F: FnMut(ExprId) -> String,
+{
+    let plan = plan_back_substitution_equations(substitution_expr, values);
+    if with_didactic_items {
+        let execution = build_back_substitution_execution_with(plan, render_expr);
+        BackSubstitutionSolvePlan {
+            equations: execution.equations,
+            items: execution.items,
+        }
+    } else {
+        BackSubstitutionSolvePlan {
+            equations: plan.equations,
+            items: vec![],
+        }
+    }
+}
+
+/// Solve all equations in a back-substitution solve plan in stable order.
+pub fn solve_back_substitution_plan_with<E, T, FSolve>(
+    plan: BackSubstitutionSolvePlan,
+    mut solve_equation: FSolve,
+) -> Result<BackSubstitutionSolved<T>, E>
+where
+    FSolve: FnMut(&Equation) -> Result<T, E>,
+{
+    let mut solved = Vec::with_capacity(plan.equations.len());
+    for equation in &plan.equations {
+        solved.push(solve_equation(equation)?);
+    }
+    Ok(BackSubstitutionSolved { plan, solved })
 }
 
 /// Build didactic pair for substitution introduction:
@@ -933,5 +1006,63 @@ mod tests {
         assert_eq!(items[0].description, execution.items[0].description);
         assert_eq!(items[1].equation, execution.equations[1]);
         assert_eq!(items[1].description, execution.items[1].description);
+    }
+
+    #[test]
+    fn solve_exponential_substitution_with_runs_solver_on_rewritten_equation() {
+        let mut ctx = Context::new();
+        let u = ctx.var("u");
+        let one = ctx.num(1);
+        let execution = ExponentialSubstitutionExecutionPlan {
+            substitution_expr: u,
+            equation: Equation {
+                lhs: u,
+                rhs: one,
+                op: cas_ast::RelOp::Eq,
+            },
+            items: vec![],
+        };
+
+        let solved = solve_exponential_substitution_with(execution, |equation| {
+            assert_eq!(equation.lhs, u);
+            assert_eq!(equation.rhs, one);
+            Ok::<_, ()>("ok")
+        })
+        .expect("substitution solve should succeed");
+        assert_eq!(solved.solved, "ok");
+    }
+
+    #[test]
+    fn build_back_substitution_solve_plan_with_omits_items_when_disabled() {
+        let mut ctx = Context::new();
+        let u_expr = ctx.var("u_expr");
+        let v1 = ctx.var("v1");
+        let v2 = ctx.var("v2");
+
+        let plan =
+            build_back_substitution_solve_plan_with(u_expr, &[v1, v2], false, |_| "u".to_string());
+        assert_eq!(plan.equations.len(), 2);
+        assert!(plan.items.is_empty());
+    }
+
+    #[test]
+    fn solve_back_substitution_plan_with_solves_equations_in_order() {
+        let mut ctx = Context::new();
+        let u_expr = ctx.var("u_expr");
+        let v1 = ctx.var("v1");
+        let v2 = ctx.var("v2");
+        let plan =
+            build_back_substitution_solve_plan_with(u_expr, &[v1, v2], true, |_| "u".to_string());
+
+        let mut seen = Vec::new();
+        let solved = solve_back_substitution_plan_with(plan, |equation| {
+            seen.push(equation.rhs);
+            Ok::<_, ()>(equation.rhs)
+        })
+        .expect("back-substitution solve should succeed");
+
+        assert_eq!(seen, vec![v1, v2]);
+        assert_eq!(solved.solved, vec![v1, v2]);
+        assert_eq!(solved.plan.items.len(), 2);
     }
 }
