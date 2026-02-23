@@ -2877,6 +2877,35 @@ pub enum AbsIsolationPlan {
     },
 }
 
+/// Solved outcome for absolute-value isolation planning.
+#[derive(Debug, Clone, PartialEq)]
+pub enum AbsIsolationSolved<TSingle, TSplit> {
+    ReturnedEmptySet,
+    IsolatedSingle(TSingle),
+    Split(TSplit),
+}
+
+/// Execute absolute-value isolation plan with caller-provided callbacks.
+pub fn solve_abs_isolation_plan_with<E, TSingle, TSplit, FSingle, FSplit>(
+    plan: AbsIsolationPlan,
+    mut solve_single: FSingle,
+    mut solve_split: FSplit,
+) -> Result<AbsIsolationSolved<TSingle, TSplit>, E>
+where
+    FSingle: FnMut(Equation) -> Result<TSingle, E>,
+    FSplit: FnMut(Equation, Equation) -> Result<TSplit, E>,
+{
+    match plan {
+        AbsIsolationPlan::ReturnEmptySet => Ok(AbsIsolationSolved::ReturnedEmptySet),
+        AbsIsolationPlan::IsolateSingleEquation { equation } => {
+            Ok(AbsIsolationSolved::IsolatedSingle(solve_single(equation)?))
+        }
+        AbsIsolationPlan::SplitBranches { positive, negative } => {
+            Ok(AbsIsolationSolved::Split(solve_split(positive, negative)?))
+        }
+    }
+}
+
 /// Pre-built sign-split equations for inequalities of the form `A*B op 0`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProductZeroInequalityPlan {
@@ -4323,6 +4352,90 @@ mod tests {
         let rhs = ctx.num(3);
         let plan = plan_abs_isolation(&mut ctx, arg, rhs, RelOp::Eq, Some(NumericSign::Positive));
         assert!(matches!(plan, AbsIsolationPlan::SplitBranches { .. }));
+    }
+
+    #[test]
+    fn solve_abs_isolation_plan_with_handles_return_empty_set() {
+        let solved = solve_abs_isolation_plan_with(
+            AbsIsolationPlan::ReturnEmptySet,
+            |_eq| Ok::<_, ()>(()),
+            |_pos, _neg| Ok::<_, ()>(()),
+        )
+        .expect("solve should succeed");
+
+        assert!(matches!(solved, AbsIsolationSolved::ReturnedEmptySet));
+    }
+
+    #[test]
+    fn solve_abs_isolation_plan_with_executes_single_equation_callback() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rhs = ctx.num(0);
+        let equation = Equation {
+            lhs: x,
+            rhs,
+            op: RelOp::Eq,
+        };
+
+        let mut single_calls = 0usize;
+        let solved = solve_abs_isolation_plan_with(
+            AbsIsolationPlan::IsolateSingleEquation {
+                equation: equation.clone(),
+            },
+            |eq| {
+                single_calls += 1;
+                Ok::<_, ()>(eq)
+            },
+            |_pos, _neg| Ok::<_, ()>(()),
+        )
+        .expect("solve should succeed");
+
+        assert_eq!(single_calls, 1);
+        match solved {
+            AbsIsolationSolved::IsolatedSingle(eq) => assert_eq!(eq, equation),
+            other => panic!("expected single solved variant, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn solve_abs_isolation_plan_with_executes_split_callback() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let neg_two = ctx.num(-2);
+        let positive = Equation {
+            lhs: x,
+            rhs: two,
+            op: RelOp::Eq,
+        };
+        let negative = Equation {
+            lhs: x,
+            rhs: neg_two,
+            op: RelOp::Eq,
+        };
+
+        let mut split_calls = 0usize;
+        let solved = solve_abs_isolation_plan_with(
+            AbsIsolationPlan::SplitBranches {
+                positive: positive.clone(),
+                negative: negative.clone(),
+            },
+            |_eq| Ok::<_, ()>(()),
+            |pos, neg| {
+                split_calls += 1;
+                Ok::<_, ()>((pos, neg))
+            },
+        )
+        .expect("solve should succeed");
+
+        assert_eq!(split_calls, 1);
+        match solved {
+            AbsIsolationSolved::Split((pos, neg)) => {
+                assert_eq!(pos, positive);
+                assert_eq!(neg, negative);
+            }
+            other => panic!("expected split solved variant, got {:?}", other),
+        }
     }
 
     #[test]

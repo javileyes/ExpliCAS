@@ -298,12 +298,23 @@ pub(super) fn isolate_mul(
             moved_is_negative,
             |_| moved_desc.clone(),
         );
-        let new_eq = plan.equation.clone();
-        let new_rhs = new_eq.rhs;
-        let new_op = new_eq.op.clone();
-        append_term_isolation_rewrite_steps(&mut steps, simplifier.collect_steps(), &plan);
-        let results = isolate(new_eq.lhs, new_rhs, new_op, var, simplifier, opts, ctx)?;
-        prepend_steps(results, steps)
+        let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
+            isolate(
+                equation.lhs,
+                equation.rhs,
+                equation.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )
+        })?;
+        append_term_isolation_rewrite_steps(
+            &mut steps,
+            simplifier.collect_steps(),
+            &solved_rewrite.rewrite,
+        );
+        prepend_steps(solved_rewrite.solved, steps)
     } else {
         // B = RHS / A (r contains var, l doesn't)
         if contains_var(&simplifier.context, rhs, var) {
@@ -333,12 +344,23 @@ pub(super) fn isolate_mul(
             moved_is_negative,
             |_| moved_desc.clone(),
         );
-        let new_eq = plan.equation.clone();
-        let new_rhs = new_eq.rhs;
-        let new_op = new_eq.op.clone();
-        append_term_isolation_rewrite_steps(&mut steps, simplifier.collect_steps(), &plan);
-        let results = isolate(new_eq.lhs, new_rhs, new_op, var, simplifier, opts, ctx)?;
-        prepend_steps(results, steps)
+        let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
+            isolate(
+                equation.lhs,
+                equation.rhs,
+                equation.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )
+        })?;
+        append_term_isolation_rewrite_steps(
+            &mut steps,
+            simplifier.collect_steps(),
+            &solved_rewrite.rewrite,
+        );
+        prepend_steps(solved_rewrite.solved, steps)
     }
 }
 
@@ -480,12 +502,23 @@ pub(super) fn isolate_div(
                 denominator_is_negative,
                 |_| moved_desc.clone(),
             );
-            let new_eq = plan.equation.clone();
-            let new_rhs = new_eq.rhs;
-            let new_op = new_eq.op.clone();
-            append_term_isolation_rewrite_steps(&mut steps, simplifier.collect_steps(), &plan);
-            let results = isolate(new_eq.lhs, new_rhs, new_op, var, simplifier, opts, ctx)?;
-            prepend_steps(results, steps)
+            let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
+                isolate(
+                    equation.lhs,
+                    equation.rhs,
+                    equation.op.clone(),
+                    var,
+                    simplifier,
+                    opts,
+                    ctx,
+                )
+            })?;
+            append_term_isolation_rewrite_steps(
+                &mut steps,
+                simplifier.collect_steps(),
+                &solved_rewrite.rewrite,
+            );
+            prepend_steps(solved_rewrite.solved, steps)
         }
     } else {
         // B = A / RHS (variable in denominator)

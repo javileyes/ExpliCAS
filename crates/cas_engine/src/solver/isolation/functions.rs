@@ -3,7 +3,9 @@ use crate::error::CasError;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
 use cas_ast::{BuiltinFn, ExprId, RelOp, SolutionSet};
-use cas_solver_core::function_inverse::{execute_unary_inverse_with_runtime, UnaryInverseRuntime};
+use cas_solver_core::function_inverse::{
+    execute_unary_inverse_with_runtime, solve_unary_inverse_execution_with, UnaryInverseRuntime,
+};
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::log_isolation::{
     collect_log_isolation_execution_items, plan_log_isolation_step_with,
@@ -12,7 +14,8 @@ use cas_solver_core::log_isolation::{
 use cas_solver_core::solve_outcome::{
     build_abs_split_execution_with, collect_abs_split_execution_items,
     finalize_abs_split_solution_set, materialize_abs_split_execution, plan_abs_isolation,
-    solve_abs_split_cases_with, AbsIsolationPlan, AbsSplitSolvedCases,
+    solve_abs_isolation_plan_with, solve_abs_split_cases_with, AbsIsolationSolved,
+    AbsSplitSolvedCases,
 };
 
 use super::{isolate, prepend_steps};
@@ -91,10 +94,15 @@ fn isolate_abs(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let rhs_sign = numeric_sign(&simplifier.context, rhs);
     let abs_plan = plan_abs_isolation(&mut simplifier.context, arg, rhs, op.clone(), rhs_sign);
+    let dispatched_abs = solve_abs_isolation_plan_with(
+        abs_plan,
+        |equation| Ok::<_, CasError>(equation),
+        |positive, negative| Ok::<_, CasError>((positive, negative)),
+    )?;
 
-    match abs_plan {
-        AbsIsolationPlan::ReturnEmptySet => Ok((SolutionSet::Empty, steps)),
-        AbsIsolationPlan::IsolateSingleEquation { equation } => isolate(
+    match dispatched_abs {
+        AbsIsolationSolved::ReturnedEmptySet => Ok((SolutionSet::Empty, steps)),
+        AbsIsolationSolved::IsolatedSingle(equation) => isolate(
             equation.lhs,
             equation.rhs,
             equation.op,
@@ -103,7 +111,7 @@ fn isolate_abs(
             opts,
             ctx,
         ),
-        AbsIsolationPlan::SplitBranches { positive, negative } => {
+        AbsIsolationSolved::Split((positive, negative)) => {
             let split_execution = if simplifier.collect_steps() {
                 build_abs_split_execution_with(positive, negative, arg, |id| {
                     format!(
@@ -244,9 +252,13 @@ fn isolate_unary_function(
         execute_unary_inverse_with_runtime(&mut runtime, &fn_name, arg, rhs, op.clone(), true)
             .ok_or_else(|| CasError::UnknownFunction(fn_name.clone()))?
     };
+    let solved_execution =
+        solve_unary_inverse_execution_with(execution, |lhs, target_rhs, target_op| {
+            isolate(lhs, target_rhs, target_op, var, simplifier, opts, ctx)
+        })?;
 
     if simplifier.collect_steps() {
-        for item in execution.rewrite_items {
+        for item in solved_execution.execution.rewrite_items {
             steps.push(SolveStep {
                 description: item.description().to_string(),
                 equation_after: item.equation,
@@ -254,7 +266,7 @@ fn isolate_unary_function(
                 substeps: vec![],
             });
         }
-        for item in execution.rhs_cleanup_items {
+        for item in solved_execution.execution.rhs_cleanup_items {
             steps.push(SolveStep {
                 description: item.description().to_string(),
                 equation_after: item.equation,
@@ -263,15 +275,5 @@ fn isolate_unary_function(
             });
         }
     }
-
-    let results = isolate(
-        execution.rewritten_equation.lhs,
-        execution.target_rhs,
-        execution.rewritten_equation.op,
-        var,
-        simplifier,
-        opts,
-        ctx,
-    )?;
-    prepend_steps(results, steps)
+    prepend_steps(solved_execution.solved, steps)
 }

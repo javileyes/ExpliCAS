@@ -109,6 +109,13 @@ pub struct UnaryInverseSolveExecution {
     pub target_rhs: ExprId,
 }
 
+/// Solved payload for one unary-inverse execution.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnaryInverseSolvedExecution<T> {
+    pub execution: UnaryInverseSolveExecution,
+    pub solved: T,
+}
+
 impl UnaryInverseKind {
     /// Classify a unary function name into an inversion kind.
     pub fn from_name(name: &str) -> Option<Self> {
@@ -330,6 +337,22 @@ where
     })
 }
 
+/// Execute recursive solve for unary-inverse rewrite output.
+pub fn solve_unary_inverse_execution_with<E, T, FSolve>(
+    execution: UnaryInverseSolveExecution,
+    mut solve: FSolve,
+) -> Result<UnaryInverseSolvedExecution<T>, E>
+where
+    FSolve: FnMut(ExprId, ExprId, RelOp) -> Result<T, E>,
+{
+    let solved = solve(
+        execution.rewritten_equation.lhs,
+        execution.target_rhs,
+        execution.rewritten_equation.op.clone(),
+    )?;
+    Ok(UnaryInverseSolvedExecution { execution, solved })
+}
+
 /// Build didactic RHS-cleanup steps from `(description, rhs_after)` tuples.
 pub fn build_rhs_simplification_steps<I>(
     lhs: ExprId,
@@ -392,6 +415,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_ast::SolutionSet;
 
     #[test]
     fn classify_supported_names() {
@@ -755,5 +779,74 @@ mod tests {
         assert_eq!(runtime.simplify_calls, 0);
         assert_eq!(execution.rewrite_items.len(), 1);
         assert!(execution.rhs_cleanup_items.is_empty());
+    }
+
+    #[test]
+    fn solve_unary_inverse_execution_with_invokes_solver_once() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let execution = UnaryInverseSolveExecution {
+            rewrite_items: vec![],
+            rhs_cleanup_items: vec![],
+            rewritten_equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            target_rhs: y,
+        };
+
+        let mut calls = 0usize;
+        let solved = solve_unary_inverse_execution_with(execution, |lhs, rhs, op| {
+            calls += 1;
+            Ok::<_, ()>((lhs, rhs, op))
+        })
+        .expect("solve should succeed");
+
+        assert_eq!(calls, 1);
+        assert_eq!(solved.solved.0, x);
+        assert_eq!(solved.solved.1, y);
+        assert_eq!(solved.solved.2, RelOp::Eq);
+    }
+
+    #[test]
+    fn solve_unary_inverse_execution_with_preserves_execution_payload() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let execution = UnaryInverseSolveExecution {
+            rewrite_items: vec![UnaryInverseExecutionItem {
+                equation: Equation {
+                    lhs: x,
+                    rhs: y,
+                    op: RelOp::Eq,
+                },
+                description: "rewrite".to_string(),
+            }],
+            rhs_cleanup_items: vec![RhsSimplificationExecutionItem {
+                equation: Equation {
+                    lhs: x,
+                    rhs: y,
+                    op: RelOp::Eq,
+                },
+                description: "cleanup".to_string(),
+            }],
+            rewritten_equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            target_rhs: y,
+        };
+        let expected = execution.clone();
+
+        let solved = solve_unary_inverse_execution_with(execution, |_lhs, _rhs, _op| {
+            Ok::<_, ()>(SolutionSet::AllReals)
+        })
+        .expect("solve should succeed");
+
+        assert_eq!(solved.execution, expected);
+        assert!(matches!(solved.solved, SolutionSet::AllReals));
     }
 }
