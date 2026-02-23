@@ -13,6 +13,7 @@ use cas_solver_core::strategy_kernels::{
     execute_rational_exponent_rewrite_with_runtime, solve_rational_exponent_rewrite_with_item,
     StrategyKernelRuntime,
 };
+use cas_solver_core::verify_substitution::{verify_solution_with_runtime, VerifySolutionRuntime};
 
 use crate::engine::Simplifier;
 use crate::error::CasError;
@@ -42,19 +43,31 @@ fn verify_solution(
     sol: ExprId,
     simplifier: &mut Simplifier,
 ) -> bool {
-    let (lhs_sub, rhs_sub) = cas_solver_core::verify_substitution::substitute_equation_sides(
-        &mut simplifier.context,
-        eq,
-        var,
-        sol,
-    );
-    let (lhs_sim, _) = simplifier.simplify(lhs_sub);
-    let (rhs_sim, _) = simplifier.simplify(rhs_sub);
-    simplifier.are_equivalent(lhs_sim, rhs_sim)
+    let mut runtime = EngineVerifySolutionRuntime { simplifier };
+    verify_solution_with_runtime(&mut runtime, eq, var, sol)
 }
 
 struct EngineRationalExponentRuntime<'a> {
     simplifier: &'a mut Simplifier,
+}
+
+struct EngineVerifySolutionRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+}
+
+impl VerifySolutionRuntime for EngineVerifySolutionRuntime<'_> {
+    fn context(&mut self) -> &mut cas_ast::Context {
+        &mut self.simplifier.context
+    }
+
+    fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
+        let (simplified, _) = self.simplifier.simplify(expr);
+        simplified
+    }
+
+    fn are_equivalent(&mut self, lhs: ExprId, rhs: ExprId) -> bool {
+        self.simplifier.are_equivalent(lhs, rhs)
+    }
 }
 
 impl StrategyKernelRuntime for EngineRationalExponentRuntime<'_> {
