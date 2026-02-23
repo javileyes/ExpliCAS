@@ -8,7 +8,7 @@ use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solution_set::isolated_var_solution;
 use cas_solver_core::solve_outcome::{
-    collect_term_isolation_rewrite_execution_items, plan_negated_lhs_isolation_step,
+    first_term_isolation_rewrite_execution_item, plan_negated_lhs_isolation_step,
     residual_solution_set, solve_term_isolation_rewrite_with,
 };
 
@@ -103,14 +103,14 @@ pub(crate) fn isolate(
                     ctx,
                 )
             })?;
-            let execution_items =
-                collect_term_isolation_rewrite_execution_items(&solved_rewrite.rewrite);
 
             if simplifier.collect_steps() {
-                for item in &execution_items {
+                if let Some(item) =
+                    first_term_isolation_rewrite_execution_item(&solved_rewrite.rewrite)
+                {
                     steps.push(SolveStep {
                         description: item.description().to_string(),
-                        equation_after: item.equation.clone(),
+                        equation_after: item.equation,
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
                     });

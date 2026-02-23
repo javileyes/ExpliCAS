@@ -7,7 +7,7 @@ use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_outcome::{
-    collect_term_isolation_rewrite_execution_items, plan_swap_sides_step,
+    first_term_isolation_rewrite_execution_item, plan_swap_sides_step,
     resolve_single_side_exponential_terminal_with_item, solve_term_isolation_rewrite_with,
 };
 use cas_solver_core::strategy_kernels::{
@@ -95,14 +95,14 @@ impl SolverStrategy for IsolationStrategy {
             });
             match solved_swap {
                 Ok(solved_swap) => {
-                    let execution_items =
-                        collect_term_isolation_rewrite_execution_items(&solved_swap.rewrite);
                     let mut steps = Vec::new();
                     if simplifier.collect_steps() {
-                        for item in &execution_items {
+                        if let Some(item) =
+                            first_term_isolation_rewrite_execution_item(&solved_swap.rewrite)
+                        {
                             steps.push(SolveStep {
                                 description: item.description().to_string(),
-                                equation_after: item.equation.clone(),
+                                equation_after: item.equation,
                                 importance: crate::step::ImportanceLevel::Medium,
                                 substeps: vec![],
                             });

@@ -1661,6 +1661,15 @@ pub fn collect_term_isolation_rewrite_execution_items(
     plan.items.clone()
 }
 
+/// Return the first isolation-rewrite execution item, if any.
+pub fn first_term_isolation_rewrite_execution_item(
+    plan: &TermIsolationRewritePlan,
+) -> Option<TermIsolationRewriteExecutionItem> {
+    collect_term_isolation_rewrite_execution_items(plan)
+        .into_iter()
+        .next()
+}
+
 /// Execute one term-isolation rewrite with caller-provided solve callback.
 pub fn solve_term_isolation_rewrite_with<E, T, FSolve>(
     rewrite: TermIsolationRewritePlan,
@@ -6401,6 +6410,21 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, plan.equation);
         assert_eq!(items[0].description, plan.items[0].description);
+    }
+
+    #[test]
+    fn first_term_isolation_rewrite_execution_item_returns_single_item() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let plan =
+            plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
+
+        let item = first_term_isolation_rewrite_execution_item(&plan)
+            .expect("expected one rewrite execution item");
+        assert_eq!(item.equation, plan.equation);
+        assert_eq!(item.description, plan.items[0].description);
     }
 
     #[test]
