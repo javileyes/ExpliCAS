@@ -58,6 +58,30 @@ pub enum PowIsolationRoute {
     VariableInExponent,
 }
 
+/// Initial dispatch for isolating additive equations `(l + r) = rhs`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AddIsolationRoute {
+    LeftOperand,
+    RightOperand,
+    BothOperands,
+}
+
+/// Derive which addends of `(l + r)` contain the solve variable.
+pub fn derive_add_isolation_route(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+    var: &str,
+) -> AddIsolationRoute {
+    let left_has = contains_var(ctx, left, var);
+    let right_has = contains_var(ctx, right, var);
+    match (left_has, right_has) {
+        (true, true) => AddIsolationRoute::BothOperands,
+        (true, false) => AddIsolationRoute::LeftOperand,
+        (false, true) | (false, false) => AddIsolationRoute::RightOperand,
+    }
+}
+
 /// Derive which side of `Pow(base, exponent)` contains the solve variable.
 pub fn derive_pow_isolation_route(ctx: &Context, base: ExprId, var: &str) -> PowIsolationRoute {
     if contains_var(ctx, base, var) {
@@ -8082,5 +8106,44 @@ mod tests {
         let rhs = ctx.add(Expr::Add(x, one));
         assert!(pow_exponent_rhs_contains_variable(&ctx, rhs, "x"));
         assert!(!pow_exponent_rhs_contains_variable(&ctx, one, "x"));
+    }
+
+    #[test]
+    fn derive_add_isolation_route_detects_both_operands() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let left = ctx.add(Expr::Add(x, one));
+        let right = ctx.add(Expr::Sub(x, one));
+        assert_eq!(
+            derive_add_isolation_route(&ctx, left, right, "x"),
+            AddIsolationRoute::BothOperands
+        );
+    }
+
+    #[test]
+    fn derive_add_isolation_route_detects_left_operand() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        assert_eq!(
+            derive_add_isolation_route(&ctx, x, one, "x"),
+            AddIsolationRoute::LeftOperand
+        );
+    }
+
+    #[test]
+    fn derive_add_isolation_route_defaults_to_right_operand() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        assert_eq!(
+            derive_add_isolation_route(&ctx, one, x, "x"),
+            AddIsolationRoute::RightOperand
+        );
+        assert_eq!(
+            derive_add_isolation_route(&ctx, one, one, "x"),
+            AddIsolationRoute::RightOperand
+        );
     }
 }

@@ -11,7 +11,7 @@ use cas_solver_core::isolation_utils::{
 use cas_solver_core::solve_outcome::{
     build_division_denominator_execution_with,
     build_division_denominator_sign_split_execution_with,
-    build_isolated_denominator_sign_split_execution_with,
+    build_isolated_denominator_sign_split_execution_with, derive_add_isolation_route,
     division_denominator_sign_split_boundary_item,
     finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
@@ -26,7 +26,7 @@ use cas_solver_core::solve_outcome::{
     plan_sub_subtrahend_isolation_step_with, solve_division_denominator_execution_with_items,
     solve_division_denominator_sign_split_cases_with_items,
     solve_isolated_denominator_sign_split_cases_with_items,
-    solve_product_zero_inequality_cases_with, solve_term_isolation_rewrite_with,
+    solve_product_zero_inequality_cases_with, solve_term_isolation_rewrite_with, AddIsolationRoute,
     DivDenominatorIsolationRoute, DivisionDenominatorSignSplitSolvedCases,
     IsolatedDenominatorSignSplitSolvedCases, TermIsolationRewritePlan,
 };
@@ -67,10 +67,9 @@ pub(super) fn isolate_add(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // PEDAGOGICAL IMPROVEMENT: If BOTH addends contain the variable,
     // try linear_collect directly to avoid circular "subtract" steps.
-    let l_has = contains_var(&simplifier.context, l, var);
-    let r_has = contains_var(&simplifier.context, r, var);
+    let add_route = derive_add_isolation_route(&simplifier.context, l, r, var);
 
-    if l_has && r_has {
+    if matches!(add_route, AddIsolationRoute::BothOperands) {
         if let Some((solution_set, linear_steps)) =
             crate::solver::linear_collect::try_linear_collect(lhs, rhs, var, simplifier)
         {
@@ -80,7 +79,10 @@ pub(super) fn isolate_add(
         }
     }
 
-    if l_has {
+    if matches!(
+        add_route,
+        AddIsolationRoute::LeftOperand | AddIsolationRoute::BothOperands
+    ) {
         // A + B = RHS -> A = RHS - B
         let moved_desc = format!(
             "{}",
