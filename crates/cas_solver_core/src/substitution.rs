@@ -141,6 +141,20 @@ where
     Ok(ExponentialSubstitutionSolved { execution, solved })
 }
 
+/// Execute solving for a rewritten substitution equation while passing
+/// aligned introduction execution items to the solve callback.
+pub fn solve_exponential_substitution_with_items<E, T, FSolve>(
+    execution: ExponentialSubstitutionExecutionPlan,
+    mut solve_rewritten: FSolve,
+) -> Result<ExponentialSubstitutionSolved<T>, E>
+where
+    FSolve: FnMut(Vec<SubstitutionExecutionItem>, &Equation) -> Result<T, E>,
+{
+    let items = collect_substitution_intro_execution_items(&execution);
+    let solved = solve_rewritten(items, &execution.equation)?;
+    Ok(ExponentialSubstitutionSolved { execution, solved })
+}
+
 /// Build didactic payload for substitution detection (`u = expr`).
 pub fn build_detected_substitution_step_with<F>(
     equation_after: Equation,
@@ -1043,6 +1057,37 @@ mod tests {
         let solved = solve_exponential_substitution_with(execution, |equation| {
             assert_eq!(equation.lhs, u);
             assert_eq!(equation.rhs, one);
+            Ok::<_, ()>("ok")
+        })
+        .expect("substitution solve should succeed");
+        assert_eq!(solved.solved, "ok");
+    }
+
+    #[test]
+    fn solve_exponential_substitution_with_items_passes_intro_items_to_solver() {
+        let mut ctx = Context::new();
+        let u = ctx.var("u");
+        let two = ctx.num(2);
+        let eq = Equation {
+            lhs: u,
+            rhs: two,
+            op: cas_ast::RelOp::Eq,
+        };
+        let execution = ExponentialSubstitutionExecutionPlan {
+            substitution_expr: u,
+            equation: eq.clone(),
+            items: vec![SubstitutionExecutionItem {
+                equation: eq.clone(),
+                description: "Detected substitution: u = t".to_string(),
+            }],
+        };
+
+        let solved = solve_exponential_substitution_with_items(execution, |items, equation| {
+            assert_eq!(items.len(), 1);
+            assert_eq!(items[0].equation, eq);
+            assert_eq!(items[0].description, "Detected substitution: u = t");
+            assert_eq!(equation.lhs, u);
+            assert_eq!(equation.rhs, two);
             Ok::<_, ()>("ok")
         })
         .expect("substitution solve should succeed");

@@ -6,8 +6,8 @@ use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, SolutionSet};
 use cas_solver_core::substitution::{
     build_back_substitution_solve_plan_with, build_exponential_substitution_execution_with,
-    collect_substitution_intro_execution_items, plan_exponential_substitution_rewrite,
-    solve_back_substitution_plan_with_items, solve_exponential_substitution_with,
+    plan_exponential_substitution_rewrite, solve_back_substitution_plan_with_items,
+    solve_exponential_substitution_with_items,
 };
 
 pub struct SubstitutionStrategy;
@@ -40,25 +40,26 @@ impl SolverStrategy for SubstitutionStrategy {
                         }
                     )
                 });
-            let solved_intro =
-                match solve_exponential_substitution_with(intro_execution, |new_eq| {
-                    solve_with_ctx(new_eq, SUB_VAR_NAME, simplifier, ctx)
-                }) {
-                    Ok(solved) => solved,
-                    Err(e) => return Some(Err(e)),
-                };
-            let intro_items = collect_substitution_intro_execution_items(&solved_intro.execution);
             let mut steps = Vec::new();
-            if simplifier.collect_steps() {
-                for item in &intro_items {
-                    steps.push(SolveStep {
-                        description: item.description().to_string(),
-                        equation_after: item.equation.clone(),
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    });
-                }
-            }
+            let solved_intro = match solve_exponential_substitution_with_items(
+                intro_execution,
+                |intro_items, new_eq| {
+                    if simplifier.collect_steps() {
+                        for item in intro_items {
+                            steps.push(SolveStep {
+                                description: item.description().to_string(),
+                                equation_after: item.equation,
+                                importance: crate::step::ImportanceLevel::Medium,
+                                substeps: vec![],
+                            });
+                        }
+                    }
+                    solve_with_ctx(new_eq, SUB_VAR_NAME, simplifier, ctx)
+                },
+            ) {
+                Ok(solved) => solved,
+                Err(e) => return Some(Err(e)),
+            };
 
             // Solve for u
             let (u_solutions, mut u_steps) = solved_intro.solved;
