@@ -8,8 +8,8 @@ use cas_solver_core::isolation_utils::{is_numeric_zero, split_zero_product_facto
 use cas_solver_core::quadratic_didactic::{
     aggregate_zero_product_factor_solution_sets, build_quadratic_main_with_substeps_execution_with,
     finalize_zero_product_factor_solution_set, first_factorized_zero_product_entry_execution_item,
-    solve_zero_product_factor_execution_with_items,
-    simplify_quadratic_substep_execution_items_with, ZeroProductFactorSolutionAggregate,
+    simplify_quadratic_substep_execution_items_with,
+    solve_zero_product_factor_execution_with_items, ZeroProductFactorSolutionAggregate,
 };
 use cas_solver_core::quadratic_formula::{
     discriminant, discriminant_expr, roots_from_a_b_and_sqrt, roots_from_a_b_delta, sqrt_expr,

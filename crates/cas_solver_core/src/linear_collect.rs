@@ -503,10 +503,11 @@ mod tests {
         );
         let expected = execution.clone();
 
-        let solved_exec = solve_linear_collect_execution_with_items(execution, |items, solutions| {
-            assert_eq!(items, expected.items);
-            solutions
-        });
+        let solved_exec =
+            solve_linear_collect_execution_with_items(execution, |items, solutions| {
+                assert_eq!(items, expected.items);
+                solutions
+            });
 
         assert_eq!(solved_exec.execution, expected);
         assert!(matches!(solved_exec.solved, SolutionSet::Discrete(_)));

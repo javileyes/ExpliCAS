@@ -73,17 +73,18 @@ pub(crate) fn try_linear_collect(
             solved.rhs_status,
             |ctx, id| format!("{}", cas_formatter::DisplayExpr { context: ctx, id }),
         );
-        let solved_execution = solve_linear_collect_execution_with_items(execution, |items, set| {
-            for item in items {
-                steps.push(SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-            set
-        });
+        let solved_execution =
+            solve_linear_collect_execution_with_items(execution, |items, set| {
+                for item in items {
+                    steps.push(SolveStep {
+                        description: item.description().to_string(),
+                        equation_after: item.equation,
+                        importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
+                    });
+                }
+                set
+            });
         solved_execution.solved
     } else {
         build_linear_solution_set(
@@ -126,17 +127,18 @@ pub(crate) fn try_linear_collect_v2(
             solved.constant_status,
             |ctx, id| format!("{}", cas_formatter::DisplayExpr { context: ctx, id }),
         );
-        let solved_execution = solve_linear_collect_execution_with_items(execution, |items, set| {
-            for item in items {
-                steps.push(SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-            set
-        });
+        let solved_execution =
+            solve_linear_collect_execution_with_items(execution, |items, set| {
+                for item in items {
+                    steps.push(SolveStep {
+                        description: item.description().to_string(),
+                        equation_after: item.equation,
+                        importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
+                    });
+                }
+                set
+            });
         solved_execution.solved
     } else {
         build_linear_solution_set(

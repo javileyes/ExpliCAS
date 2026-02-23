@@ -1001,11 +1001,12 @@ mod tests {
             "f".to_string()
         });
         let mut seen = Vec::new();
-        let solved = solve_zero_product_factor_execution_with_items(&execution, |item, equation| {
-            seen.push(item.expect("expected aligned item").description);
-            Ok::<_, ()>(equation.clone())
-        })
-        .expect("solve should succeed");
+        let solved =
+            solve_zero_product_factor_execution_with_items(&execution, |item, equation| {
+                seen.push(item.expect("expected aligned item").description);
+                Ok::<_, ()>(equation.clone())
+            })
+            .expect("solve should succeed");
 
         assert_eq!(
             seen,
@@ -1033,11 +1034,12 @@ mod tests {
             items: vec![],
         };
 
-        let solved = solve_zero_product_factor_execution_with_items(&execution, |item, equation| {
-            assert!(item.is_none());
-            Ok::<_, ()>(equation.clone())
-        })
-        .expect("solve should succeed");
+        let solved =
+            solve_zero_product_factor_execution_with_items(&execution, |item, equation| {
+                assert!(item.is_none());
+                Ok::<_, ()>(equation.clone())
+            })
+            .expect("solve should succeed");
 
         assert_eq!(solved.len(), 1);
         assert_eq!(solved[0], execution.equations[0]);

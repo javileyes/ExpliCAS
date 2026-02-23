@@ -6734,16 +6734,17 @@ mod tests {
                 }
             });
 
-        let solved = solve_division_denominator_execution_with_items(execution, |items, equation| {
-            assert_eq!(items.len(), 2);
-            assert_eq!(items[0].description, "Multiply both sides by d");
-            assert_eq!(items[1].description, "Divide both sides by r");
-            assert_eq!(equation.lhs, d);
-            assert_eq!(equation.rhs, isolated_rhs);
-            assert_eq!(equation.op, RelOp::Eq);
-            Ok::<_, ()>("ok")
-        })
-        .expect("solve should succeed");
+        let solved =
+            solve_division_denominator_execution_with_items(execution, |items, equation| {
+                assert_eq!(items.len(), 2);
+                assert_eq!(items[0].description, "Multiply both sides by d");
+                assert_eq!(items[1].description, "Divide both sides by r");
+                assert_eq!(equation.lhs, d);
+                assert_eq!(equation.rhs, isolated_rhs);
+                assert_eq!(equation.op, RelOp::Eq);
+                Ok::<_, ()>("ok")
+            })
+            .expect("solve should succeed");
         assert_eq!(solved.solved, "ok");
     }
 
