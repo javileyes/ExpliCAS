@@ -11,7 +11,7 @@ use cas_solver_core::isolation_utils::{
 use cas_solver_core::solve_outcome::{
     build_division_denominator_execution_with,
     build_division_denominator_sign_split_execution_with,
-    build_isolated_denominator_sign_split_execution_with, derive_add_isolation_route,
+    build_isolated_denominator_sign_split_execution_with, derive_add_isolation_operands,
     derive_div_isolation_route, derive_mul_isolation_operands, derive_sub_isolation_route,
     division_denominator_sign_split_boundary_item,
     finalize_division_denominator_sign_split_solved_sets,
@@ -68,9 +68,9 @@ pub(super) fn isolate_add(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // PEDAGOGICAL IMPROVEMENT: If BOTH addends contain the variable,
     // try linear_collect directly to avoid circular "subtract" steps.
-    let add_route = derive_add_isolation_route(&simplifier.context, l, r, var);
+    let add_operands = derive_add_isolation_operands(&simplifier.context, l, r, var);
 
-    if matches!(add_route, AddIsolationRoute::BothOperands) {
+    if matches!(add_operands.route, AddIsolationRoute::BothOperands) {
         if let Some((solution_set, linear_steps)) =
             crate::solver::linear_collect::try_linear_collect(lhs, rhs, var, simplifier)
         {
@@ -80,80 +80,39 @@ pub(super) fn isolate_add(
         }
     }
 
-    if matches!(
-        add_route,
-        AddIsolationRoute::LeftOperand | AddIsolationRoute::BothOperands
-    ) {
-        // A + B = RHS -> A = RHS - B
-        let moved_desc = format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: &simplifier.context,
-                id: r
-            }
-        );
-        let plan = plan_add_operand_isolation_step_with(
-            &mut simplifier.context,
-            l,
-            r,
-            rhs,
-            op.clone(),
-            |_| moved_desc.clone(),
-        );
-        let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
-            let (sim_rhs, _) = simplifier.simplify(equation.rhs);
-            isolate(
-                equation.lhs,
-                sim_rhs,
-                equation.op.clone(),
-                var,
-                simplifier,
-                opts,
-                ctx,
-            )
-        })?;
-        append_term_isolation_rewrite_steps(
-            &mut steps,
-            simplifier.collect_steps(),
-            &solved_rewrite.rewrite,
-        );
-        prepend_steps(solved_rewrite.solved, steps)
-    } else {
-        // A + B = RHS -> B = RHS - A
-        let moved_desc = format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: &simplifier.context,
-                id: l
-            }
-        );
-        let plan = plan_add_operand_isolation_step_with(
-            &mut simplifier.context,
-            r,
-            l,
-            rhs,
-            op.clone(),
-            |_| moved_desc.clone(),
-        );
-        let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
-            let (sim_rhs, _) = simplifier.simplify(equation.rhs);
-            isolate(
-                equation.lhs,
-                sim_rhs,
-                equation.op.clone(),
-                var,
-                simplifier,
-                opts,
-                ctx,
-            )
-        })?;
-        append_term_isolation_rewrite_steps(
-            &mut steps,
-            simplifier.collect_steps(),
-            &solved_rewrite.rewrite,
-        );
-        prepend_steps(solved_rewrite.solved, steps)
-    }
+    let moved_desc = format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: &simplifier.context,
+            id: add_operands.moved_addend
+        }
+    );
+    let plan = plan_add_operand_isolation_step_with(
+        &mut simplifier.context,
+        add_operands.isolated_addend,
+        add_operands.moved_addend,
+        rhs,
+        op.clone(),
+        |_| moved_desc.clone(),
+    );
+    let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
+        let (sim_rhs, _) = simplifier.simplify(equation.rhs);
+        isolate(
+            equation.lhs,
+            sim_rhs,
+            equation.op.clone(),
+            var,
+            simplifier,
+            opts,
+            ctx,
+        )
+    })?;
+    append_term_isolation_rewrite_steps(
+        &mut steps,
+        simplifier.collect_steps(),
+        &solved_rewrite.rewrite,
+    );
+    prepend_steps(solved_rewrite.solved, steps)
 }
 
 /// Handle isolation for `Sub(l, r)`: `(A - B) = RHS`

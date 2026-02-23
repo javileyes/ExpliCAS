@@ -174,6 +174,14 @@ pub enum AddIsolationRoute {
     BothOperands,
 }
 
+/// Selected operands for additive isolation `(l + r) = rhs`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AddIsolationOperands {
+    pub route: AddIsolationRoute,
+    pub isolated_addend: ExprId,
+    pub moved_addend: ExprId,
+}
+
 /// Derive which addends of `(l + r)` contain the solve variable.
 pub fn derive_add_isolation_route(
     ctx: &Context,
@@ -187,6 +195,28 @@ pub fn derive_add_isolation_route(
         (true, true) => AddIsolationRoute::BothOperands,
         (true, false) => AddIsolationRoute::LeftOperand,
         (false, true) | (false, false) => AddIsolationRoute::RightOperand,
+    }
+}
+
+/// Derive the isolated and moved addends for `(l + r) = rhs`.
+pub fn derive_add_isolation_operands(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+    var: &str,
+) -> AddIsolationOperands {
+    let route = derive_add_isolation_route(ctx, left, right, var);
+    match route {
+        AddIsolationRoute::LeftOperand | AddIsolationRoute::BothOperands => AddIsolationOperands {
+            route,
+            isolated_addend: left,
+            moved_addend: right,
+        },
+        AddIsolationRoute::RightOperand => AddIsolationOperands {
+            route,
+            isolated_addend: right,
+            moved_addend: left,
+        },
     }
 }
 
@@ -8378,6 +8408,41 @@ mod tests {
             derive_add_isolation_route(&ctx, one, one, "x"),
             AddIsolationRoute::RightOperand
         );
+    }
+
+    #[test]
+    fn derive_add_isolation_operands_maps_left_route() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let operands = derive_add_isolation_operands(&ctx, x, one, "x");
+        assert_eq!(operands.route, AddIsolationRoute::LeftOperand);
+        assert_eq!(operands.isolated_addend, x);
+        assert_eq!(operands.moved_addend, one);
+    }
+
+    #[test]
+    fn derive_add_isolation_operands_maps_right_route() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let operands = derive_add_isolation_operands(&ctx, one, x, "x");
+        assert_eq!(operands.route, AddIsolationRoute::RightOperand);
+        assert_eq!(operands.isolated_addend, x);
+        assert_eq!(operands.moved_addend, one);
+    }
+
+    #[test]
+    fn derive_add_isolation_operands_maps_both_route_to_left_as_isolated() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let left = ctx.add(Expr::Add(x, one));
+        let right = ctx.add(Expr::Sub(x, one));
+        let operands = derive_add_isolation_operands(&ctx, left, right, "x");
+        assert_eq!(operands.route, AddIsolationRoute::BothOperands);
+        assert_eq!(operands.isolated_addend, left);
+        assert_eq!(operands.moved_addend, right);
     }
 
     #[test]
