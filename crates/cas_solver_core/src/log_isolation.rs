@@ -92,6 +92,42 @@ where
     Ok(LogIsolationSolved { rewrite, solved })
 }
 
+/// Runtime contract for executing log-isolation pipelines with optional didactic items.
+pub trait LogIsolationRewriteRuntime<E, S> {
+    fn solve_rewritten(&mut self, equation: &Equation)
+        -> Result<(cas_ast::SolutionSet, Vec<S>), E>;
+    fn map_item_to_step(&mut self, item: LogIsolationExecutionItem) -> S;
+}
+
+/// Solve one planned logarithm-isolation rewrite end-to-end while optionally
+/// collecting the first didactic execution item.
+pub fn solve_log_isolation_rewrite_pipeline_with_item<E, S, R>(
+    rewrite: LogIsolationRewritePlan,
+    include_item: bool,
+    runtime: &mut R,
+) -> Result<LogIsolationSolved<(cas_ast::SolutionSet, Vec<S>)>, E>
+where
+    R: LogIsolationRewriteRuntime<E, S>,
+{
+    let mut first_item = None;
+    let solved_rewrite = solve_log_isolation_rewrite_with_item(rewrite, |item, equation| {
+        first_item = item;
+        runtime.solve_rewritten(equation)
+    })?;
+    let (solution_set, mut substeps) = solved_rewrite.solved;
+    let mut steps = Vec::with_capacity(substeps.len() + usize::from(include_item));
+    if include_item {
+        if let Some(item) = first_item {
+            steps.push(runtime.map_item_to_step(item));
+        }
+    }
+    steps.append(&mut substeps);
+    Ok(LogIsolationSolved {
+        rewrite: solved_rewrite.rewrite,
+        solved: (solution_set, steps),
+    })
+}
+
 /// Planned transformation for isolating a logarithmic equation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogIsolationPlan {
@@ -218,6 +254,7 @@ pub fn plan_log_isolation(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_ast::SolutionSet;
 
     #[test]
     fn plan_log_isolation_solves_argument_when_var_in_arg_only() {
@@ -465,5 +502,86 @@ mod tests {
             Some("Exponentiate both sides with base rendered(b)".to_string())
         );
         assert_eq!(solved.solved, expected_equation);
+    }
+
+    struct MockLogIsolationRuntime {
+        expected_equation: Equation,
+        solution_set: SolutionSet,
+        substeps: Vec<String>,
+        solve_calls: usize,
+    }
+
+    impl LogIsolationRewriteRuntime<(), String> for MockLogIsolationRuntime {
+        fn solve_rewritten(
+            &mut self,
+            equation: &Equation,
+        ) -> Result<(SolutionSet, Vec<String>), ()> {
+            self.solve_calls += 1;
+            assert_eq!(equation, &self.expected_equation);
+            Ok((self.solution_set.clone(), self.substeps.clone()))
+        }
+
+        fn map_item_to_step(&mut self, item: LogIsolationExecutionItem) -> String {
+            format!("ITEM: {}", item.description)
+        }
+    }
+
+    #[test]
+    fn solve_log_isolation_rewrite_pipeline_with_item_includes_item_then_substeps() {
+        let mut ctx = Context::new();
+        let base = ctx.var("b");
+        let arg = ctx.var("x");
+        let rhs = ctx.num(3);
+        let rewrite =
+            plan_log_isolation_step_with(&mut ctx, base, arg, rhs, "x", RelOp::Eq, |_, _| {
+                "rendered(b)".to_string()
+            })
+            .expect("log isolation should apply");
+
+        let expected_equation = rewrite.equation.clone();
+        let mut runtime = MockLogIsolationRuntime {
+            expected_equation,
+            solution_set: SolutionSet::AllReals,
+            substeps: vec!["sub-1".to_string(), "sub-2".to_string()],
+            solve_calls: 0,
+        };
+
+        let solved = solve_log_isolation_rewrite_pipeline_with_item(rewrite, true, &mut runtime)
+            .expect("pipeline solve should succeed");
+
+        assert_eq!(runtime.solve_calls, 1);
+        assert_eq!(solved.solved.0, SolutionSet::AllReals);
+        assert_eq!(solved.solved.1.len(), 3);
+        assert!(solved.solved.1[0].starts_with("ITEM: "));
+        assert_eq!(solved.solved.1[1], "sub-1");
+        assert_eq!(solved.solved.1[2], "sub-2");
+    }
+
+    #[test]
+    fn solve_log_isolation_rewrite_pipeline_with_item_omits_item_when_disabled() {
+        let mut ctx = Context::new();
+        let base = ctx.var("b");
+        let arg = ctx.var("x");
+        let rhs = ctx.num(3);
+        let rewrite =
+            plan_log_isolation_step_with(&mut ctx, base, arg, rhs, "x", RelOp::Eq, |_, _| {
+                "rendered(b)".to_string()
+            })
+            .expect("log isolation should apply");
+
+        let expected_equation = rewrite.equation.clone();
+        let mut runtime = MockLogIsolationRuntime {
+            expected_equation,
+            solution_set: SolutionSet::Discrete(vec![rhs]),
+            substeps: vec!["sub-only".to_string()],
+            solve_calls: 0,
+        };
+
+        let solved = solve_log_isolation_rewrite_pipeline_with_item(rewrite, false, &mut runtime)
+            .expect("pipeline solve should succeed");
+
+        assert_eq!(runtime.solve_calls, 1);
+        assert_eq!(solved.solved.0, SolutionSet::Discrete(vec![rhs]));
+        assert_eq!(solved.solved.1, vec!["sub-only".to_string()]);
     }
 }

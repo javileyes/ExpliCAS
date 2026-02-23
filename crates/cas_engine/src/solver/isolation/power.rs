@@ -2,20 +2,21 @@ use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
-use cas_solver_core::isolation_utils::{contains_var, is_numeric_zero};
+use cas_solver_core::isolation_utils::is_numeric_zero;
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
-    build_pow_base_isolation_action_with, build_terminal_outcome_item,
+    build_pow_base_isolation_action_with, build_terminal_outcome_item, derive_pow_isolation_route,
     execute_pow_exponent_log_unsupported_with, execute_pow_exponent_shortcut_with_runtime,
     first_pow_base_isolation_execution_item, first_pow_exponent_log_isolation_execution_item,
     first_pow_exponent_shortcut_execution_item, first_power_base_one_shortcut_execution_item,
     first_term_isolation_rewrite_execution_item, plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
-    plan_solve_tactic_normalization_step, resolve_log_terminal_outcome,
-    resolve_power_base_one_shortcut_for_pow_with, solve_pow_base_isolation_action_with,
-    solve_pow_exponent_log_isolation_rewrite_with, solve_pow_exponent_shortcut_action_with,
-    PowBaseIsolationSolved, PowExponentLogUnsupportedSolvedExecution, PowExponentShortcutRuntime,
-    PowExponentShortcutSolved,
+    plan_solve_tactic_normalization_step, pow_exponent_rhs_contains_variable,
+    resolve_log_terminal_outcome, resolve_power_base_one_shortcut_for_pow_with,
+    solve_pow_base_isolation_action_with, solve_pow_exponent_log_isolation_rewrite_with,
+    solve_pow_exponent_shortcut_action_with, PowBaseIsolationSolved,
+    PowExponentLogUnsupportedSolvedExecution, PowExponentShortcutRuntime,
+    PowExponentShortcutSolved, PowIsolationRoute,
 };
 
 use super::{isolate, prepend_steps};
@@ -66,12 +67,15 @@ pub(super) fn isolate_pow(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    if contains_var(&simplifier.context, b, var) {
-        // Variable in base: B^E = RHS
-        isolate_pow_base(lhs, b, e, rhs, op, var, simplifier, opts, steps, ctx)
-    } else {
-        // Variable in exponent: B^E = RHS → E = log_B(RHS)
-        isolate_pow_exponent(lhs, b, e, rhs, op, var, simplifier, opts, steps, ctx)
+    match derive_pow_isolation_route(&simplifier.context, b, var) {
+        PowIsolationRoute::VariableInBase => {
+            // Variable in base: B^E = RHS
+            isolate_pow_base(lhs, b, e, rhs, op, var, simplifier, opts, steps, ctx)
+        }
+        PowIsolationRoute::VariableInExponent => {
+            // Variable in exponent: B^E = RHS → E = log_B(RHS)
+            isolate_pow_exponent(lhs, b, e, rhs, op, var, simplifier, opts, steps, ctx)
+        }
     }
 }
 
@@ -186,7 +190,7 @@ fn isolate_pow_exponent(
     }
 
     // SAFETY GUARD: If RHS contains the variable, we cannot invert with log.
-    if contains_var(&simplifier.context, rhs, var) {
+    if pow_exponent_rhs_contains_variable(&simplifier.context, rhs, var) {
         return Err(CasError::IsolationError(
             var.to_string(),
             "Cannot isolate exponential: variable appears on both sides".to_string(),

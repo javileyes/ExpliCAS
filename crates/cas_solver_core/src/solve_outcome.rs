@@ -1,4 +1,4 @@
-use crate::isolation_utils::{mk_residual_solve, NumericSign};
+use crate::isolation_utils::{contains_var, mk_residual_solve, NumericSign};
 use crate::log_domain::{
     assumptions_to_condition_set, classify_log_unsupported_route, classify_terminal_action,
     DomainModeKind, LogAssumption, LogSolveDecision, LogTerminalAction, LogUnsupportedRoute,
@@ -49,6 +49,28 @@ pub enum PowerEqualsBaseRoute {
     ExponentEqualsOneNoBranchBudget,
     /// Symbolic base with branching budget: produce conditional case split.
     SymbolicCaseSplit,
+}
+
+/// Initial dispatch for isolating power equations `b^e = rhs`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PowIsolationRoute {
+    VariableInBase,
+    VariableInExponent,
+}
+
+/// Derive which side of `Pow(base, exponent)` contains the solve variable.
+pub fn derive_pow_isolation_route(ctx: &Context, base: ExprId, var: &str) -> PowIsolationRoute {
+    if contains_var(ctx, base, var) {
+        PowIsolationRoute::VariableInBase
+    } else {
+        PowIsolationRoute::VariableInExponent
+    }
+}
+
+/// Safety gate for exponent-isolation: logarithmic inversion requires
+/// the solve variable to be absent from RHS.
+pub fn pow_exponent_rhs_contains_variable(ctx: &Context, rhs: ExprId, var: &str) -> bool {
+    contains_var(ctx, rhs, var)
 }
 
 /// Shortcut routing for equations with variable in exponent (`base^x = rhs`).
@@ -8030,5 +8052,35 @@ mod tests {
         };
         let out = finalize_product_zero_inequality_solved_sets(&ctx, solved);
         assert!(matches!(out, SolutionSet::AllReals));
+    }
+
+    #[test]
+    fn derive_pow_isolation_route_detects_variable_in_base() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        assert_eq!(
+            derive_pow_isolation_route(&ctx, x, "x"),
+            PowIsolationRoute::VariableInBase
+        );
+    }
+
+    #[test]
+    fn derive_pow_isolation_route_detects_variable_in_exponent() {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        assert_eq!(
+            derive_pow_isolation_route(&ctx, two, "x"),
+            PowIsolationRoute::VariableInExponent
+        );
+    }
+
+    #[test]
+    fn pow_exponent_rhs_contains_variable_reports_presence() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let rhs = ctx.add(Expr::Add(x, one));
+        assert!(pow_exponent_rhs_contains_variable(&ctx, rhs, "x"));
+        assert!(!pow_exponent_rhs_contains_variable(&ctx, one, "x"));
     }
 }

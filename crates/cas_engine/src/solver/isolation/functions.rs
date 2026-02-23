@@ -10,7 +10,8 @@ use cas_solver_core::function_inverse::{
 };
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::log_isolation::{
-    plan_log_isolation_step_with, solve_log_isolation_rewrite_with_item,
+    plan_log_isolation_step_with, solve_log_isolation_rewrite_pipeline_with_item,
+    LogIsolationExecutionItem, LogIsolationRewriteRuntime,
 };
 use cas_solver_core::solve_outcome::{
     build_abs_split_execution_with, finalize_abs_split_solution_set,
@@ -36,6 +37,39 @@ impl UnaryInverseRuntime for EngineUnaryInverseRuntime<'_> {
             .map(|step| (step.description, step.after))
             .collect::<Vec<_>>();
         (simplified_rhs, entries)
+    }
+}
+
+struct EngineLogIsolationRuntime<'a, 'b> {
+    simplifier: &'a mut Simplifier,
+    var: &'b str,
+    opts: SolverOptions,
+    ctx: &'a super::super::SolveCtx,
+}
+
+impl LogIsolationRewriteRuntime<CasError, SolveStep> for EngineLogIsolationRuntime<'_, '_> {
+    fn solve_rewritten(
+        &mut self,
+        equation: &cas_ast::Equation,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        isolate(
+            equation.lhs,
+            equation.rhs,
+            equation.op.clone(),
+            self.var,
+            self.simplifier,
+            self.opts,
+            self.ctx,
+        )
+    }
+
+    fn map_item_to_step(&mut self, item: LogIsolationExecutionItem) -> SolveStep {
+        SolveStep {
+            description: item.description,
+            equation_after: item.equation,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        }
     }
 }
 
@@ -180,7 +214,7 @@ fn isolate_log(
     var: &str,
     simplifier: &mut Simplifier,
     opts: SolverOptions,
-    mut steps: Vec<SolveStep>,
+    steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let rewrite = plan_log_isolation_step_with(
@@ -206,29 +240,15 @@ fn isolate_log(
             "Cannot isolate from log function".to_string(),
         )
     })?;
-    let mut step_item = None;
-    let solved = solve_log_isolation_rewrite_with_item(rewrite, |item, equation| {
-        step_item = item;
-        isolate(
-            equation.lhs,
-            equation.rhs,
-            equation.op.clone(),
-            var,
-            simplifier,
-            opts,
-            ctx,
-        )
-    })?;
-    if simplifier.collect_steps() {
-        if let Some(item) = step_item {
-            steps.push(SolveStep {
-                description: item.description().to_string(),
-                equation_after: item.equation,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
-        }
-    }
+    let include_item = simplifier.collect_steps();
+    let mut runtime = EngineLogIsolationRuntime {
+        simplifier,
+        var,
+        opts,
+        ctx,
+    };
+    let solved =
+        solve_log_isolation_rewrite_pipeline_with_item(rewrite, include_item, &mut runtime)?;
     prepend_steps(solved.solved, steps)
 }
 

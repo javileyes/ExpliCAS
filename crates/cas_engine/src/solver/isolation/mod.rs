@@ -8,8 +8,8 @@ use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solution_set::isolated_var_solution;
 use cas_solver_core::solve_outcome::{
-    first_term_isolation_rewrite_execution_item, plan_negated_lhs_isolation_step,
-    residual_solution_set, solve_term_isolation_rewrite_with,
+    plan_negated_lhs_isolation_step, residual_solution_set,
+    solve_term_isolation_rewrite_pipeline_with_item,
 };
 
 use crate::error::CasError;
@@ -31,7 +31,7 @@ pub(crate) fn isolate(
         ));
     }
 
-    let mut steps = Vec::new();
+    let steps = Vec::new();
 
     let lhs_expr = simplifier.context.get(lhs).clone();
 
@@ -92,32 +92,29 @@ pub(crate) fn isolate(
             // -A = RHS -> A = -RHS
             // -A < RHS -> A > -RHS (flip inequality)
             let plan = plan_negated_lhs_isolation_step(&mut simplifier.context, inner, rhs, op);
-            let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
-                isolate(
-                    equation.lhs,
-                    equation.rhs,
-                    equation.op.clone(),
-                    var,
-                    simplifier,
-                    opts,
-                    ctx,
-                )
-            })?;
-
-            if simplifier.collect_steps() {
-                if let Some(item) =
-                    first_term_isolation_rewrite_execution_item(&solved_rewrite.rewrite)
-                {
-                    steps.push(SolveStep {
-                        description: item.description().to_string(),
-                        equation_after: item.equation,
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    });
-                }
-            }
-
-            prepend_steps(solved_rewrite.solved, steps)
+            let include_item = simplifier.collect_steps();
+            let solved = solve_term_isolation_rewrite_pipeline_with_item(
+                plan,
+                include_item,
+                |equation| {
+                    isolate(
+                        equation.lhs,
+                        equation.rhs,
+                        equation.op.clone(),
+                        var,
+                        simplifier,
+                        opts,
+                        ctx,
+                    )
+                },
+                |item| SolveStep {
+                    description: item.description,
+                    equation_after: item.equation,
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                },
+            )?;
+            prepend_steps((solved.solution_set, solved.steps), steps)
         }
         _ => Err(CasError::IsolationError(
             var.to_string(),
