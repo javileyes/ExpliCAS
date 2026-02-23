@@ -12,8 +12,8 @@
 use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::linear_collect::{
     build_linear_collect_additive_execution_with, build_linear_collect_factored_execution_with,
-    solve_linear_collect_additive_with_runtime, solve_linear_collect_factored_with_runtime,
-    LinearCollectRuntime,
+    solve_linear_collect_additive_with_runtime, solve_linear_collect_execution_with_items,
+    solve_linear_collect_factored_with_runtime, LinearCollectRuntime,
 };
 use cas_solver_core::linear_solution::build_linear_solution_set;
 
@@ -73,15 +73,18 @@ pub(crate) fn try_linear_collect(
             solved.rhs_status,
             |ctx, id| format!("{}", cas_formatter::DisplayExpr { context: ctx, id }),
         );
-        for item in execution.items {
-            steps.push(SolveStep {
-                description: item.description().to_string(),
-                equation_after: item.equation,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
-        }
-        execution.solutions
+        let solved_execution = solve_linear_collect_execution_with_items(execution, |items, set| {
+            for item in items {
+                steps.push(SolveStep {
+                    description: item.description().to_string(),
+                    equation_after: item.equation,
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
+            set
+        });
+        solved_execution.solved
     } else {
         build_linear_solution_set(
             solved.coeff,
@@ -123,15 +126,18 @@ pub(crate) fn try_linear_collect_v2(
             solved.constant_status,
             |ctx, id| format!("{}", cas_formatter::DisplayExpr { context: ctx, id }),
         );
-        for item in execution.items {
-            steps.push(SolveStep {
-                description: item.description().to_string(),
-                equation_after: item.equation,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
-        }
-        execution.solutions
+        let solved_execution = solve_linear_collect_execution_with_items(execution, |items, set| {
+            for item in items {
+                steps.push(SolveStep {
+                    description: item.description().to_string(),
+                    equation_after: item.equation,
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
+            }
+            set
+        });
+        solved_execution.solved
     } else {
         build_linear_solution_set(
             solved.coeff,

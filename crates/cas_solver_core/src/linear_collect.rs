@@ -33,6 +33,13 @@ pub struct LinearCollectSolveExecution {
     pub solutions: SolutionSet,
 }
 
+/// Solved payload for linear-collect execution dispatch.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LinearCollectSolvedExecution<T> {
+    pub execution: LinearCollectSolveExecution,
+    pub solved: T,
+}
+
 /// Runtime contract for linear-collect orchestration.
 ///
 /// This allows solver-core to own linear collection logic while callers inject
@@ -290,6 +297,21 @@ where
     LinearCollectSolveExecution { items, solutions }
 }
 
+/// Dispatch linear-collect execution items plus solved solution set to a caller
+/// callback, preserving execution payload in the returned solved wrapper.
+pub fn solve_linear_collect_execution_with_items<T, FSolve>(
+    execution: LinearCollectSolveExecution,
+    mut solve: FSolve,
+) -> LinearCollectSolvedExecution<T>
+where
+    FSolve: FnMut(Vec<LinearCollectExecutionItem>, SolutionSet) -> T,
+{
+    let items = execution.items.clone();
+    let solutions = execution.solutions.clone();
+    let solved = solve(items, solutions);
+    LinearCollectSolvedExecution { execution, solved }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -460,6 +482,34 @@ mod tests {
 
         assert_eq!(execution.items.len(), 2);
         assert!(matches!(execution.solutions, SolutionSet::Conditional(_)));
+    }
+
+    #[test]
+    fn solve_linear_collect_execution_with_items_passes_items_and_solution_set() {
+        let mut ctx = Context::new();
+        let coeff = ctx.var("k");
+        let rhs_term = ctx.var("rhs");
+        let solution = ctx.var("s");
+
+        let execution = build_linear_collect_factored_execution_with(
+            &mut ctx,
+            "x",
+            coeff,
+            rhs_term,
+            solution,
+            NonZeroStatus::NonZero,
+            NonZeroStatus::Unknown,
+            |_, _| "k".into(),
+        );
+        let expected = execution.clone();
+
+        let solved_exec = solve_linear_collect_execution_with_items(execution, |items, solutions| {
+            assert_eq!(items, expected.items);
+            solutions
+        });
+
+        assert_eq!(solved_exec.execution, expected);
+        assert!(matches!(solved_exec.solved, SolutionSet::Discrete(_)));
     }
 
     #[test]
