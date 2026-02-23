@@ -10,8 +10,7 @@ use cas_solver_core::solve_outcome::{
     resolve_var_eliminated_outcome_with, VarEliminatedSolveOutcome,
 };
 use cas_solver_core::strategy_kernels::{
-    build_rational_exponent_execution, collect_rational_exponent_execution_items,
-    derive_rational_exponent_kernel,
+    execute_rational_exponent_rewrite_with_runtime, StrategyKernelRuntime,
 };
 
 use crate::engine::Simplifier;
@@ -51,6 +50,31 @@ fn verify_solution(
     let (lhs_sim, _) = simplifier.simplify(lhs_sub);
     let (rhs_sim, _) = simplifier.simplify(rhs_sub);
     simplifier.are_equivalent(lhs_sim, rhs_sim)
+}
+
+struct EngineRationalExponentRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+}
+
+impl StrategyKernelRuntime for EngineRationalExponentRuntime<'_> {
+    fn context(&mut self) -> &mut cas_ast::Context {
+        &mut self.simplifier.context
+    }
+
+    fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
+        let (simplified, _) = self.simplifier.simplify(expr);
+        simplified
+    }
+
+    fn render_expr(&mut self, expr: ExprId) -> String {
+        format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &self.simplifier.context,
+                id: expr
+            }
+        )
+    }
 }
 
 /// Solve with default options (for backward compatibility with tests).
@@ -532,22 +556,16 @@ fn try_solve_rational_exponent(
     let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
     let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
 
-    let kernel =
-        derive_rational_exponent_kernel(&mut simplifier.context, eq, var, lhs_has, rhs_has)?;
+    let rewrite = {
+        let mut runtime = EngineRationalExponentRuntime { simplifier };
+        execute_rational_exponent_rewrite_with_runtime(&mut runtime, eq, var, lhs_has, rhs_has)?
+    };
 
     let mut steps = Vec::new();
-
-    // Simplify RHS (no variable, safe to simplify)
-    let (sim_rhs, _) = simplifier.simplify(kernel.rewritten.rhs);
-
-    // DON'T simplify LHS yet - it might contain x^p which we want to solve
-
-    let execution = build_rational_exponent_execution(kernel.q, kernel.rewritten.lhs, sim_rhs);
-    let execution_items = collect_rational_exponent_execution_items(&execution);
-    let new_eq = execution_items[0].equation.clone();
+    let new_eq = rewrite.equation;
 
     if simplifier.collect_steps() {
-        for item in &execution_items {
+        for item in &rewrite.items {
             steps.push(SolveStep {
                 description: item.description().to_string(),
                 equation_after: item.equation.clone(),
