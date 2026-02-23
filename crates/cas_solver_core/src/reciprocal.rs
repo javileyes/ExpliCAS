@@ -138,6 +138,13 @@ pub struct ReciprocalSolveExecution {
     pub solutions: SolutionSet,
 }
 
+/// Solved payload for reciprocal execution dispatch.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReciprocalSolvedExecution<T> {
+    pub execution: ReciprocalSolveExecution,
+    pub solved: T,
+}
+
 /// Prepared data for building reciprocal execution from a normalized kernel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReciprocalPreparedExecution {
@@ -194,6 +201,21 @@ pub fn collect_reciprocal_execution_items(
     execution: &ReciprocalSolveExecution,
 ) -> Vec<ReciprocalExecutionItem> {
     execution.items.clone()
+}
+
+/// Dispatch reciprocal execution items plus solved solution set to a caller
+/// callback, preserving execution payload in the returned solved wrapper.
+pub fn solve_reciprocal_execution_with_items<T, FSolve>(
+    execution: ReciprocalSolveExecution,
+    mut solve: FSolve,
+) -> ReciprocalSolvedExecution<T>
+where
+    FSolve: FnMut(Vec<ReciprocalExecutionItem>, SolutionSet) -> T,
+{
+    let items = collect_reciprocal_execution_items(&execution);
+    let solutions = execution.solutions.clone();
+    let solved = solve(items, solutions);
+    ReciprocalSolvedExecution { execution, solved }
 }
 
 /// Derive reciprocal-solve kernel if equation matches `1/var = rhs` and
@@ -735,5 +757,27 @@ mod tests {
         assert_eq!(items.len(), 2);
         assert_eq!(items[0], execution.items[0]);
         assert_eq!(items[1], execution.items[1]);
+    }
+
+    #[test]
+    fn solve_reciprocal_execution_with_items_passes_items_and_solution_set() {
+        let mut ctx = Context::new();
+        let n = ctx.var("n");
+        let d = ctx.var("d");
+        let c = ctx.var("c");
+        let s = ctx.var("s");
+        let execution =
+            build_reciprocal_execution(&mut ctx, "x", n, d, c, s, n, NonZeroStatus::Unknown);
+        let expected = execution.clone();
+
+        let solved = solve_reciprocal_execution_with_items(execution, |items, solutions| {
+            assert_eq!(items.len(), 2);
+            assert_eq!(items[0].equation, expected.items[0].equation);
+            assert_eq!(items[1].equation, expected.items[1].equation);
+            solutions
+        });
+
+        assert_eq!(solved.execution, expected);
+        assert!(matches!(solved.solved, SolutionSet::Conditional(_)));
     }
 }
