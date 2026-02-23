@@ -26,6 +26,9 @@ use cas_ast::{Equation, ExprId, SolutionSet};
 use cas_formatter::DisplayExpr;
 use cas_math::expr_predicates::contains_variable;
 use cas_solver_core::isolation_utils::is_numeric_zero;
+use cas_solver_core::solution_check::{
+    verify_solution_with_runtime as verify_solution_with_runtime_core, SolutionCheckRuntime,
+};
 
 use crate::engine::Simplifier;
 pub use cas_solver_core::verification::{VerifyResult, VerifyStatus, VerifySummary};
@@ -48,82 +51,8 @@ pub fn verify_solution(
     var: &str,
     solution: ExprId,
 ) -> VerifyStatus {
-    // Step 1: Substitute solution and build residual diff = lhs_sub - rhs_sub
-    let diff = cas_solver_core::verify_substitution::substitute_equation_diff(
-        &mut simplifier.context,
-        equation,
-        var,
-        solution,
-    );
-
-    // Phase 1: Strict mode — domain-honest, won't erase conditions
-    let strict_opts = crate::SimplifyOptions {
-        shared: crate::phase::SharedSemanticConfig {
-            semantics: crate::semantics::EvalConfig {
-                domain_mode: crate::domain::DomainMode::Strict,
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    let (strict_result, _, _) = simplifier.simplify_with_stats(diff, strict_opts.clone());
-
-    // Check if Strict already gives us 0
-    if is_numeric_zero(&simplifier.context, strict_result) {
-        return VerifyStatus::Verified;
-    }
-
-    // Phase 1.5: Numeric island folding — fold constant subtrees to numbers,
-    // then re-simplify with Strict.  This lets expressions like `sqrt(2)/sqrt(2)`
-    // reduce without leaving Strict mode.
-    if contains_variable(&simplifier.context, strict_result) {
-        cas_solver_core::verify_stats::record_attempted();
-        let folded =
-            super::numeric_islands::fold_numeric_islands(&mut simplifier.context, strict_result);
-        if folded != strict_result {
-            cas_solver_core::verify_stats::record_changed();
-            let (folded_result, _, _) = simplifier.simplify_with_stats(folded, strict_opts);
-            if is_numeric_zero(&simplifier.context, folded_result) {
-                cas_solver_core::verify_stats::record_verified();
-                return VerifyStatus::Verified;
-            }
-        }
-    }
-
-    // Phase 2: Generic fallback — ONLY when residual is variable-free.
-    // If no variables remain, this is a ground check (concrete values only),
-    // so Generic mode can't erase parametric domain conditions — there are none.
-    // This handles cases where Strict blocks cancellation of constants like
-    // sqrt(2)/sqrt(2) because prove_nonzero doesn't fully evaluate them.
-    if !contains_variable(&simplifier.context, strict_result) {
-        let generic_opts = crate::SimplifyOptions {
-            shared: crate::phase::SharedSemanticConfig {
-                semantics: crate::semantics::EvalConfig {
-                    domain_mode: crate::domain::DomainMode::Generic,
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        let (generic_result, _, _) = simplifier.simplify_with_stats(diff, generic_opts);
-
-        if is_numeric_zero(&simplifier.context, generic_result) {
-            return VerifyStatus::Verified;
-        }
-    }
-
-    // Neither phase verified — report the Strict residual
-    let residual_str = DisplayExpr {
-        context: &simplifier.context,
-        id: strict_result,
-    }
-    .to_string();
-    VerifyStatus::Unverifiable {
-        residual: strict_result,
-        reason: format!("residual: {}", residual_str),
-    }
+    let mut runtime = EngineSolutionCheckRuntime { simplifier };
+    verify_solution_with_runtime_core(&mut runtime, equation, var, solution)
 }
 
 /// Verify a solution set, handling all SolutionSet variants.
@@ -135,6 +64,68 @@ pub fn verify_solution_set(
 ) -> VerifyResult {
     let mut verify_one = |sol: ExprId| verify_solution(simplifier, equation, var, sol);
     cas_solver_core::verification::verify_solution_set_with(solutions, &mut verify_one)
+}
+
+struct EngineSolutionCheckRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+}
+
+impl SolutionCheckRuntime for EngineSolutionCheckRuntime<'_> {
+    fn context(&mut self) -> &mut cas_ast::Context {
+        &mut self.simplifier.context
+    }
+
+    fn simplify_strict(&mut self, expr: ExprId) -> ExprId {
+        let strict_opts = crate::SimplifyOptions {
+            shared: crate::phase::SharedSemanticConfig {
+                semantics: crate::semantics::EvalConfig {
+                    domain_mode: crate::domain::DomainMode::Strict,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let (result, _, _) = self.simplifier.simplify_with_stats(expr, strict_opts);
+        result
+    }
+
+    fn simplify_generic(&mut self, expr: ExprId) -> ExprId {
+        let generic_opts = crate::SimplifyOptions {
+            shared: crate::phase::SharedSemanticConfig {
+                semantics: crate::semantics::EvalConfig {
+                    domain_mode: crate::domain::DomainMode::Generic,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let (result, _, _) = self.simplifier.simplify_with_stats(expr, generic_opts);
+        result
+    }
+
+    fn fold_numeric_islands(&mut self, expr: ExprId) -> ExprId {
+        super::numeric_islands::fold_numeric_islands(&mut self.simplifier.context, expr)
+    }
+
+    fn is_zero(&mut self, expr: ExprId) -> bool {
+        is_numeric_zero(&self.simplifier.context, expr)
+    }
+
+    fn contains_variable(&mut self, expr: ExprId) -> bool {
+        contains_variable(&self.simplifier.context, expr)
+    }
+
+    fn render_expr(&mut self, expr: ExprId) -> String {
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &self.simplifier.context,
+                id: expr
+            }
+        )
+    }
 }
 
 #[cfg(test)]
