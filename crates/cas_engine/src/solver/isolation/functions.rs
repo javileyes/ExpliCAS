@@ -4,8 +4,8 @@ use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
 use cas_ast::{BuiltinFn, ExprId, RelOp, SolutionSet};
 use cas_solver_core::function_inverse::{
-    collect_unary_inverse_solve_execution_items, execute_unary_inverse_with_runtime,
-    solve_unary_inverse_execution_with, UnaryInverseRuntime,
+    execute_unary_inverse_with_runtime, solve_unary_inverse_execution_with_items,
+    UnaryInverseRuntime,
 };
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::log_isolation::{
@@ -249,20 +249,21 @@ fn isolate_unary_function(
         execute_unary_inverse_with_runtime(&mut runtime, &fn_name, arg, rhs, op.clone(), true)
             .ok_or_else(|| CasError::UnknownFunction(fn_name.clone()))?
     };
-    let solved_execution =
-        solve_unary_inverse_execution_with(execution, |lhs, target_rhs, target_op| {
+    let solved_execution = solve_unary_inverse_execution_with_items(
+        execution,
+        |items, lhs, target_rhs, target_op| {
+            if simplifier.collect_steps() {
+                for item in items {
+                    steps.push(SolveStep {
+                        description: item.description().to_string(),
+                        equation_after: item.equation,
+                        importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
+                    });
+                }
+            }
             isolate(lhs, target_rhs, target_op, var, simplifier, opts, ctx)
-        })?;
-
-    if simplifier.collect_steps() {
-        for item in collect_unary_inverse_solve_execution_items(&solved_execution.execution) {
-            steps.push(SolveStep {
-                description: item.description().to_string(),
-                equation_after: item.equation,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
-        }
-    }
+        },
+    )?;
     prepend_steps(solved_execution.solved, steps)
 }

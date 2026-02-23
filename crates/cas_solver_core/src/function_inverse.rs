@@ -391,6 +391,25 @@ where
     Ok(UnaryInverseSolvedExecution { execution, solved })
 }
 
+/// Execute recursive solve for unary-inverse rewrite output while passing
+/// aligned solve execution items to the solve callback.
+pub fn solve_unary_inverse_execution_with_items<E, T, FSolve>(
+    execution: UnaryInverseSolveExecution,
+    mut solve: FSolve,
+) -> Result<UnaryInverseSolvedExecution<T>, E>
+where
+    FSolve: FnMut(Vec<UnaryInverseSolveExecutionItem>, ExprId, ExprId, RelOp) -> Result<T, E>,
+{
+    let items = collect_unary_inverse_solve_execution_items(&execution);
+    let solved = solve(
+        items,
+        execution.rewritten_equation.lhs,
+        execution.target_rhs,
+        execution.rewritten_equation.op.clone(),
+    )?;
+    Ok(UnaryInverseSolvedExecution { execution, solved })
+}
+
 /// Build didactic RHS-cleanup steps from `(description, rhs_after)` tuples.
 pub fn build_rhs_simplification_steps<I>(
     lhs: ExprId,
@@ -886,6 +905,54 @@ mod tests {
 
         assert_eq!(solved.execution, expected);
         assert!(matches!(solved.solved, SolutionSet::AllReals));
+    }
+
+    #[test]
+    fn solve_unary_inverse_execution_with_items_passes_items_and_equation_parts() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let execution = UnaryInverseSolveExecution {
+            rewrite_items: vec![UnaryInverseExecutionItem {
+                equation: Equation {
+                    lhs: x,
+                    rhs: y,
+                    op: RelOp::Eq,
+                },
+                description: "rewrite".to_string(),
+            }],
+            rhs_cleanup_items: vec![RhsSimplificationExecutionItem {
+                equation: Equation {
+                    lhs: x,
+                    rhs: z,
+                    op: RelOp::Eq,
+                },
+                description: "cleanup".to_string(),
+            }],
+            rewritten_equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            target_rhs: z,
+        };
+
+        let solved = solve_unary_inverse_execution_with_items(
+            execution,
+            |items, lhs, rhs, op| {
+                assert_eq!(items.len(), 2);
+                assert_eq!(items[0].description(), "rewrite");
+                assert_eq!(items[1].description(), "cleanup");
+                assert_eq!(lhs, x);
+                assert_eq!(rhs, z);
+                assert_eq!(op, RelOp::Eq);
+                Ok::<_, ()>("ok")
+            },
+        )
+        .expect("solve should succeed");
+
+        assert_eq!(solved.solved, "ok");
     }
 
     #[test]
