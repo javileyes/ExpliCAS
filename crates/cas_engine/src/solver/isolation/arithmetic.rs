@@ -13,11 +13,9 @@ use cas_solver_core::solve_outcome::{
     build_division_denominator_sign_split_execution_with,
     build_isolated_denominator_sign_split_execution_with, derive_add_isolation_operands,
     derive_div_isolation_route, derive_mul_isolation_operands, derive_sub_isolation_route,
-    division_denominator_sign_split_boundary_item,
     finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
     finalize_product_zero_inequality_solved_sets, first_term_isolation_rewrite_execution_item,
-    isolated_denominator_sign_split_boundary_item,
     materialize_division_denominator_sign_split_execution,
     materialize_isolated_denominator_sign_split_execution, mul_rhs_contains_variable,
     plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
@@ -25,8 +23,8 @@ use cas_solver_core::solve_outcome::{
     plan_division_denominator_sign_split, plan_isolated_denominator_sign_split,
     plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split,
     plan_sub_isolation_step_with, solve_division_denominator_execution_with_items,
-    solve_division_denominator_sign_split_cases_with_items,
-    solve_isolated_denominator_sign_split_cases_with_items,
+    solve_division_denominator_sign_split_execution_with_items,
+    solve_isolated_denominator_sign_split_execution_with_items,
     solve_product_zero_inequality_cases_with, solve_term_isolation_rewrite_with, AddIsolationRoute,
     DivDenominatorIsolationRoute, DivIsolationRoute, DivisionDenominatorSignSplitSolvedCases,
     IsolatedDenominatorSignSplitSolvedCases, SubIsolationRoute, TermIsolationRewritePlan,
@@ -297,7 +295,7 @@ pub(super) fn isolate_div(
                     solve_with_ctx(&split_execution.negative_domain, var, simplifier, ctx)?;
                 vec![domain_pos_set, domain_neg_set].into_iter()
             };
-            let solved = solve_division_denominator_sign_split_cases_with_items(
+            let solved = solve_division_denominator_sign_split_execution_with_items(
                 &split_execution,
                 |item, equation| {
                     let mut case_steps = steps.clone();
@@ -327,37 +325,24 @@ pub(super) fn isolate_div(
                             .expect("precomputed domain sets for both sign branches"),
                     )
                 },
-            )?;
-
-            let DivisionDenominatorSignSplitSolvedCases {
-                positive_branch: (set_pos, steps_pos),
-                negative_branch: (set_neg, steps_neg),
-                positive_domain: domain_pos_set,
-                negative_domain: domain_neg_set,
-            } = solved;
-            let final_set = finalize_division_denominator_sign_split_solved_sets(
-                &simplifier.context,
-                DivisionDenominatorSignSplitSolvedCases {
-                    positive_branch: set_pos,
-                    negative_branch: set_neg,
-                    positive_domain: domain_pos_set,
-                    negative_domain: domain_neg_set,
-                },
-            );
-
-            // Combine steps
-            let mut all_steps = steps_pos;
-            if let Some(item) = division_denominator_sign_split_boundary_item(&split_execution) {
-                all_steps.push(SolveStep {
+                |item| SolveStep {
                     description: item.description().to_string(),
                     equation_after: item.equation,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
-                });
-            }
-            all_steps.extend(steps_neg);
+                },
+            )?;
 
-            Ok((final_set, all_steps))
+            let final_set = finalize_division_denominator_sign_split_solved_sets(
+                &simplifier.context,
+                DivisionDenominatorSignSplitSolvedCases {
+                    positive_branch: solved.positive_set,
+                    negative_branch: solved.negative_set,
+                    positive_domain: solved.positive_domain_set,
+                    negative_domain: solved.negative_domain_set,
+                },
+            );
+            Ok((final_set, solved.steps))
         } else {
             // A = RHS * B
             let denominator_is_negative = is_known_negative(&simplifier.context, r);
@@ -448,7 +433,7 @@ pub(super) fn isolate_div(
             } else {
                 materialize_isolated_denominator_sign_split_execution(split_plan)
             };
-            let solved = solve_isolated_denominator_sign_split_cases_with_items(
+            let solved = solve_isolated_denominator_sign_split_execution_with_items(
                 &split_execution,
                 |item, equation| {
                     let mut case_steps = steps.clone();
@@ -471,33 +456,22 @@ pub(super) fn isolate_div(
                     )?;
                     prepend_steps(results, case_steps)
                 },
-            )?;
-
-            let IsolatedDenominatorSignSplitSolvedCases {
-                positive_branch: (set_pos, steps_pos),
-                negative_branch: (set_neg, steps_neg),
-            } = solved;
-            let final_set = finalize_isolated_denominator_sign_split_solved_sets(
-                &mut simplifier.context,
-                IsolatedDenominatorSignSplitSolvedCases {
-                    positive_branch: set_pos,
-                    negative_branch: set_neg,
-                },
-            );
-
-            // Combine steps
-            let mut all_steps = steps_pos;
-            if let Some(item) = isolated_denominator_sign_split_boundary_item(&split_execution) {
-                all_steps.push(SolveStep {
+                |item| SolveStep {
                     description: item.description().to_string(),
                     equation_after: item.equation,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
-                });
-            }
-            all_steps.extend(steps_neg);
+                },
+            )?;
 
-            return Ok((final_set, all_steps));
+            let final_set = finalize_isolated_denominator_sign_split_solved_sets(
+                &mut simplifier.context,
+                IsolatedDenominatorSignSplitSolvedCases {
+                    positive_branch: solved.positive_set,
+                    negative_branch: solved.negative_set,
+                },
+            );
+            return Ok((final_set, solved.steps));
         }
 
         if simplifier.collect_steps() {

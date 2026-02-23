@@ -3614,6 +3614,66 @@ where
     )
 }
 
+/// Solved payload for denominator-sign split execution:
+/// solved branch/domain sets plus concatenated steps from both branches.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DivisionDenominatorSignSplitExecutionSolved<TStep> {
+    pub positive_set: SolutionSet,
+    pub negative_set: SolutionSet,
+    pub positive_domain_set: SolutionSet,
+    pub negative_domain_set: SolutionSet,
+    pub steps: Vec<TStep>,
+}
+
+/// Solve denominator-sign split execution with aligned optional didactic items,
+/// keeping branch/domain solution sets separate and concatenating branch steps
+/// with the case boundary marker between them when present.
+pub fn solve_division_denominator_sign_split_execution_with_items<
+    E,
+    TStep,
+    FSolveBranch,
+    FSolveDomain,
+    FMapBoundary,
+>(
+    execution: &DivisionDenominatorSignSplitExecutionPlan,
+    mut solve_branch: FSolveBranch,
+    mut solve_domain: FSolveDomain,
+    mut map_boundary_item: FMapBoundary,
+) -> Result<DivisionDenominatorSignSplitExecutionSolved<TStep>, E>
+where
+    FSolveBranch: FnMut(
+        Option<DivisionDidacticExecutionItem>,
+        &Equation,
+    ) -> Result<(SolutionSet, Vec<TStep>), E>,
+    FSolveDomain: FnMut(&Equation) -> Result<SolutionSet, E>,
+    FMapBoundary: FnMut(DivisionDidacticExecutionItem) -> TStep,
+{
+    let solved = solve_division_denominator_sign_split_cases_with_items(
+        execution,
+        |item, equation| solve_branch(item, equation),
+        |domain_equation| solve_domain(domain_equation),
+    )?;
+    let DivisionDenominatorSignSplitSolvedCases {
+        positive_branch: (positive_set, mut positive_steps),
+        negative_branch: (negative_set, negative_steps),
+        positive_domain: positive_domain_set,
+        negative_domain: negative_domain_set,
+    } = solved;
+
+    if let Some(item) = division_denominator_sign_split_boundary_item(execution) {
+        positive_steps.push(map_boundary_item(item));
+    }
+    positive_steps.extend(negative_steps);
+
+    Ok(DivisionDenominatorSignSplitExecutionSolved {
+        positive_set,
+        negative_set,
+        positive_domain_set,
+        negative_domain_set,
+        steps: positive_steps,
+    })
+}
+
 /// Return the boundary didactic item (`--- End of Case 1 ---`) when available.
 pub fn division_denominator_sign_split_boundary_item(
     execution: &DivisionDenominatorSignSplitExecutionPlan,
@@ -3663,6 +3723,56 @@ where
     let mut items = collect_isolated_denominator_sign_split_execution_items(execution).into_iter();
     solve_isolated_denominator_sign_split_cases_with(execution, |equation| {
         solve_branch(items.next(), equation)
+    })
+}
+
+/// Solved payload for isolated-denominator sign split execution:
+/// solved branch sets plus concatenated branch steps.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IsolatedDenominatorSignSplitExecutionSolved<TStep> {
+    pub positive_set: SolutionSet,
+    pub negative_set: SolutionSet,
+    pub steps: Vec<TStep>,
+}
+
+/// Solve isolated-denominator sign split execution with aligned optional items,
+/// keeping branch solution sets separate and concatenating branch steps with
+/// the case boundary marker between them when present.
+pub fn solve_isolated_denominator_sign_split_execution_with_items<
+    E,
+    TStep,
+    FSolveBranch,
+    FMapBoundary,
+>(
+    execution: &IsolatedDenominatorSignSplitExecutionPlan,
+    mut solve_branch: FSolveBranch,
+    mut map_boundary_item: FMapBoundary,
+) -> Result<IsolatedDenominatorSignSplitExecutionSolved<TStep>, E>
+where
+    FSolveBranch: FnMut(
+        Option<DivisionDidacticExecutionItem>,
+        &Equation,
+    ) -> Result<(SolutionSet, Vec<TStep>), E>,
+    FMapBoundary: FnMut(DivisionDidacticExecutionItem) -> TStep,
+{
+    let solved =
+        solve_isolated_denominator_sign_split_cases_with_items(execution, |item, equation| {
+            solve_branch(item, equation)
+        })?;
+    let IsolatedDenominatorSignSplitSolvedCases {
+        positive_branch: (positive_set, mut positive_steps),
+        negative_branch: (negative_set, negative_steps),
+    } = solved;
+
+    if let Some(item) = isolated_denominator_sign_split_boundary_item(execution) {
+        positive_steps.push(map_boundary_item(item));
+    }
+    positive_steps.extend(negative_steps);
+
+    Ok(IsolatedDenominatorSignSplitExecutionSolved {
+        positive_set,
+        negative_set,
+        steps: positive_steps,
     })
 }
 
@@ -4201,6 +4311,41 @@ where
         let item = items.get(item_idx).cloned();
         item_idx += 1;
         solve_branch(item, equation)
+    })
+}
+
+/// Solved payload for full absolute-value split execution:
+/// branch solution sets plus concatenated branch steps.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AbsSplitExecutionSolved<TStep> {
+    pub positive_set: SolutionSet,
+    pub negative_set: SolutionSet,
+    pub steps: Vec<TStep>,
+}
+
+/// Solve an absolute-value split execution with branch callbacks and return
+/// both branch solution sets plus concatenated branch steps
+/// (positive branch first, then negative branch).
+pub fn solve_abs_split_execution_with_items<E, TStep, FSolveBranch>(
+    execution: &AbsSplitExecutionPlan,
+    mut solve_branch: FSolveBranch,
+) -> Result<AbsSplitExecutionSolved<TStep>, E>
+where
+    FSolveBranch:
+        FnMut(Option<AbsSplitExecutionItem>, &Equation) -> Result<(SolutionSet, Vec<TStep>), E>,
+{
+    let solved =
+        solve_abs_split_cases_with_items(execution, |item, equation| solve_branch(item, equation))?;
+    let AbsSplitSolvedCases {
+        positive_branch: (positive_set, mut positive_steps),
+        negative_branch: (negative_set, negative_steps),
+    } = solved;
+
+    positive_steps.extend(negative_steps);
+    Ok(AbsSplitExecutionSolved {
+        positive_set,
+        negative_set,
+        steps: positive_steps,
     })
 }
 
@@ -4895,6 +5040,78 @@ mod tests {
         assert_eq!(seen[1].1, neg_two);
         assert_eq!(solved.positive_branch, two);
         assert_eq!(solved.negative_branch, neg_two);
+    }
+
+    #[test]
+    fn solve_abs_split_execution_with_items_returns_branch_sets_and_concatenates_steps() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let neg_two = ctx.num(-2);
+        let execution = build_abs_split_execution_with(
+            Equation {
+                lhs: x,
+                rhs: two,
+                op: RelOp::Eq,
+            },
+            Equation {
+                lhs: x,
+                rhs: neg_two,
+                op: RelOp::Eq,
+            },
+            x,
+            |_| "x".to_string(),
+        );
+
+        let mut branch_calls = 0usize;
+        let solved = solve_abs_split_execution_with_items(&execution, |item, equation| {
+            branch_calls += 1;
+            let mut steps = vec![format!("branch-{branch_calls}")];
+            if let Some(item) = item {
+                steps.push(item.description);
+            }
+            let set = SolutionSet::Discrete(vec![equation.rhs]);
+            Ok::<_, ()>((set, steps))
+        })
+        .expect("split execution should solve");
+
+        assert_eq!(branch_calls, 2);
+        assert_eq!(solved.steps[0], "branch-1");
+        assert_eq!(solved.steps[2], "branch-2");
+        match solved.positive_set {
+            SolutionSet::Discrete(ref solutions) => assert_eq!(solutions.as_slice(), &[two]),
+            ref other => panic!("expected positive branch discrete set, got {:?}", other),
+        }
+        match solved.negative_set {
+            SolutionSet::Discrete(ref solutions) => assert_eq!(solutions.as_slice(), &[neg_two]),
+            ref other => panic!("expected negative branch discrete set, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn solve_abs_split_execution_with_items_handles_execution_without_items() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let execution = materialize_abs_split_execution(
+            Equation {
+                lhs: x,
+                rhs: two,
+                op: RelOp::Eq,
+            },
+            Equation {
+                lhs: x,
+                rhs: two,
+                op: RelOp::Eq,
+            },
+        );
+        let solved = solve_abs_split_execution_with_items(&execution, |_item, equation| {
+            Ok::<_, ()>((SolutionSet::Discrete(vec![equation.rhs]), vec![1u8]))
+        })
+        .expect("split execution should solve");
+        assert_eq!(solved.steps, vec![1u8, 1u8]);
+        assert!(matches!(solved.positive_set, SolutionSet::Discrete(_)));
+        assert!(matches!(solved.negative_set, SolutionSet::Discrete(_)));
     }
 
     #[test]
@@ -7984,6 +8201,50 @@ mod tests {
     }
 
     #[test]
+    fn solve_division_denominator_sign_split_execution_with_items_merges_steps_and_keeps_sets() {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let simplified_rhs = ctx.var("s");
+        let split =
+            plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Lt).unwrap();
+        let execution = build_division_denominator_sign_split_execution_with(
+            split,
+            den,
+            num,
+            RelOp::Lt,
+            simplified_rhs,
+            |_| "d".to_string(),
+        );
+
+        let mut branch_calls = 0usize;
+        let solved = solve_division_denominator_sign_split_execution_with_items(
+            &execution,
+            |item, equation| {
+                branch_calls += 1;
+                let mut steps = vec![format!("branch-{branch_calls}")];
+                if let Some(item) = item {
+                    steps.push(item.description);
+                }
+                Ok::<_, ()>((SolutionSet::Discrete(vec![equation.rhs]), steps))
+            },
+            |_domain| Ok::<_, ()>(SolutionSet::AllReals),
+            |item| item.description,
+        )
+        .expect("execution helper should solve");
+
+        assert_eq!(branch_calls, 2);
+        assert_eq!(solved.steps[0], "branch-1");
+        assert_eq!(solved.steps[2], "--- End of Case 1 ---");
+        assert_eq!(solved.steps[3], "branch-2");
+        assert!(matches!(solved.positive_set, SolutionSet::Discrete(_)));
+        assert!(matches!(solved.negative_set, SolutionSet::Discrete(_)));
+        assert!(matches!(solved.positive_domain_set, SolutionSet::AllReals));
+        assert!(matches!(solved.negative_domain_set, SolutionSet::AllReals));
+    }
+
+    #[test]
     fn division_denominator_sign_split_boundary_item_returns_case_separator() {
         let mut ctx = Context::new();
         let num = ctx.var("n");
@@ -8193,6 +8454,40 @@ mod tests {
         );
         assert_eq!(solved.positive_branch, rhs);
         assert_eq!(solved.negative_branch, rhs);
+    }
+
+    #[test]
+    fn solve_isolated_denominator_sign_split_execution_with_items_merges_steps_and_keeps_sets() {
+        let mut ctx = Context::new();
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let split = plan_isolated_denominator_sign_split(den, rhs, RelOp::Leq).unwrap();
+        let execution =
+            build_isolated_denominator_sign_split_execution_with(split, den, RelOp::Leq, |_| {
+                "x".to_string()
+            });
+
+        let mut branch_calls = 0usize;
+        let solved = solve_isolated_denominator_sign_split_execution_with_items(
+            &execution,
+            |item, equation| {
+                branch_calls += 1;
+                let mut steps = vec![format!("branch-{branch_calls}")];
+                if let Some(item) = item {
+                    steps.push(item.description);
+                }
+                Ok::<_, ()>((SolutionSet::Discrete(vec![equation.rhs]), steps))
+            },
+            |item| item.description,
+        )
+        .expect("execution helper should solve");
+
+        assert_eq!(branch_calls, 2);
+        assert_eq!(solved.steps[0], "branch-1");
+        assert_eq!(solved.steps[2], "--- End of Case 1 ---");
+        assert_eq!(solved.steps[3], "branch-2");
+        assert!(matches!(solved.positive_set, SolutionSet::Discrete(_)));
+        assert!(matches!(solved.negative_set, SolutionSet::Discrete(_)));
     }
 
     #[test]

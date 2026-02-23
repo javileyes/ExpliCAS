@@ -16,7 +16,7 @@ use cas_solver_core::log_isolation::{
 use cas_solver_core::solve_outcome::{
     build_abs_split_execution_with, finalize_abs_split_solution_set,
     materialize_abs_split_execution, plan_abs_isolation, solve_abs_isolation_plan_with,
-    solve_abs_split_cases_with_items, AbsIsolationSolved, AbsSplitSolvedCases,
+    solve_abs_split_execution_with_items, AbsIsolationSolved,
 };
 
 use super::{isolate, prepend_steps};
@@ -159,47 +159,38 @@ fn isolate_abs(
             } else {
                 materialize_abs_split_execution(positive, negative)
             };
-            let solved = solve_abs_split_cases_with_items(&split_execution, |item, equation| {
-                let mut case_steps = steps.clone();
-                if let Some(item) = item {
-                    case_steps.push(SolveStep {
-                        description: item.description().to_string(),
-                        equation_after: item.equation,
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    });
-                }
-                let results = isolate(
-                    equation.lhs,
-                    equation.rhs,
-                    equation.op.clone(),
-                    var,
-                    simplifier,
-                    opts,
-                    ctx,
-                )?;
-                prepend_steps(results, case_steps)
-            })?;
+            let solved =
+                solve_abs_split_execution_with_items(&split_execution, |item, equation| {
+                    let mut case_steps = steps.clone();
+                    if let Some(item) = item {
+                        case_steps.push(SolveStep {
+                            description: item.description().to_string(),
+                            equation_after: item.equation,
+                            importance: crate::step::ImportanceLevel::Medium,
+                            substeps: vec![],
+                        });
+                    }
+                    let results = isolate(
+                        equation.lhs,
+                        equation.rhs,
+                        equation.op.clone(),
+                        var,
+                        simplifier,
+                        opts,
+                        ctx,
+                    )?;
+                    prepend_steps(results, case_steps)
+                })?;
 
-            let AbsSplitSolvedCases {
-                positive_branch: (set1, steps1_out),
-                negative_branch: (set2, steps2_out),
-            } = solved;
-
-            // ── Combine branches + soundness guard rhs≥0 ──────────────────────
             let final_set = finalize_abs_split_solution_set(
                 &simplifier.context,
                 op,
                 contains_var(&simplifier.context, rhs, var),
                 rhs,
-                set1,
-                set2,
+                solved.positive_set,
+                solved.negative_set,
             );
-
-            let mut all_steps = steps1_out;
-            all_steps.extend(steps2_out);
-
-            Ok((final_set, all_steps))
+            Ok((final_set, solved.steps))
         }
     }
 }
