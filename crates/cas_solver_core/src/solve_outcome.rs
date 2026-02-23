@@ -486,6 +486,64 @@ where
     }
 }
 
+/// Solved result for an exponent-shortcut execution pipeline.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PowExponentShortcutPipelineSolved<S> {
+    Continue,
+    Isolated {
+        solution_set: SolutionSet,
+        steps: Vec<S>,
+    },
+    ReturnedSolutionSet {
+        solution_set: SolutionSet,
+        steps: Vec<S>,
+    },
+}
+
+/// Execute exponent-shortcut solve + optional first-item dispatch.
+pub fn solve_pow_exponent_shortcut_pipeline_with_item<E, S, FSolve, FStep>(
+    action: PowExponentShortcutEngineAction,
+    include_item: bool,
+    mut solve_isolate: FSolve,
+    mut map_item_to_step: FStep,
+) -> Result<PowExponentShortcutPipelineSolved<S>, E>
+where
+    FSolve: FnMut(ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(PowExponentShortcutExecutionItem) -> S,
+{
+    match action {
+        PowExponentShortcutEngineAction::Continue => {
+            Ok(PowExponentShortcutPipelineSolved::Continue)
+        }
+        PowExponentShortcutEngineAction::IsolateExponent { rhs, op, items } => {
+            let mut steps = Vec::new();
+            if include_item {
+                if let Some(item) = items.into_iter().next() {
+                    steps.push(map_item_to_step(item));
+                }
+            }
+            let (solution_set, mut sub_steps) = solve_isolate(rhs, op)?;
+            steps.append(&mut sub_steps);
+            Ok(PowExponentShortcutPipelineSolved::Isolated {
+                solution_set,
+                steps,
+            })
+        }
+        PowExponentShortcutEngineAction::ReturnSolutionSet { solutions, items } => {
+            let mut steps = Vec::new();
+            if include_item {
+                if let Some(item) = items.into_iter().next() {
+                    steps.push(map_item_to_step(item));
+                }
+            }
+            Ok(PowExponentShortcutPipelineSolved::ReturnedSolutionSet {
+                solution_set: solutions,
+                steps,
+            })
+        }
+    }
+}
+
 /// Solved base-one shortcut (`1^x = rhs`) with didactic payload.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowerBaseOneShortcutOutcome {
@@ -913,6 +971,65 @@ where
         PowBaseIsolationEngineAction::IsolateBase { lhs, rhs, op, .. } => Ok(
             PowBaseIsolationSolved::Isolated(solve_isolate(lhs, rhs, op)?),
         ),
+    }
+}
+
+/// Solved result for a base-isolation execution pipeline.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PowBaseIsolationPipelineSolved<S> {
+    ReturnedSolutionSet {
+        solution_set: SolutionSet,
+        steps: Vec<S>,
+    },
+    Isolated {
+        solution_set: SolutionSet,
+        steps: Vec<S>,
+    },
+}
+
+/// Execute base-isolation solve + optional first-item dispatch.
+pub fn solve_pow_base_isolation_pipeline_with_item<E, S, FSolve, FStep>(
+    action: PowBaseIsolationEngineAction,
+    include_item: bool,
+    mut solve_isolate: FSolve,
+    mut map_item_to_step: FStep,
+) -> Result<PowBaseIsolationPipelineSolved<S>, E>
+where
+    FSolve: FnMut(ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(PowBaseIsolationExecutionItem) -> S,
+{
+    match action {
+        PowBaseIsolationEngineAction::ReturnSolutionSet { solutions, items } => {
+            let mut steps = Vec::new();
+            if include_item {
+                if let Some(item) = items.into_iter().next() {
+                    steps.push(map_item_to_step(item));
+                }
+            }
+            Ok(PowBaseIsolationPipelineSolved::ReturnedSolutionSet {
+                solution_set: solutions,
+                steps,
+            })
+        }
+        PowBaseIsolationEngineAction::IsolateBase {
+            lhs,
+            rhs,
+            op,
+            items,
+        } => {
+            let mut steps = Vec::new();
+            if include_item {
+                if let Some(item) = items.into_iter().next() {
+                    steps.push(map_item_to_step(item));
+                }
+            }
+            let (solution_set, mut sub_steps) = solve_isolate(lhs, rhs, op)?;
+            steps.append(&mut sub_steps);
+            Ok(PowBaseIsolationPipelineSolved::Isolated {
+                solution_set,
+                steps,
+            })
+        }
     }
 }
 
@@ -2881,6 +2998,40 @@ where
 {
     let solved = solve_rewrite(&rewrite.equation)?;
     Ok(PowExponentLogIsolationSolved { rewrite, solved })
+}
+
+/// Solved result for one exponent-log rewrite pipeline.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PowExponentLogIsolationRewritePipelineSolved<S> {
+    pub solution_set: SolutionSet,
+    pub steps: Vec<S>,
+}
+
+/// Execute exponent-log rewrite solve + optional first-item dispatch.
+pub fn solve_pow_exponent_log_isolation_rewrite_pipeline_with_item<E, S, FSolve, FStep>(
+    rewrite: PowExponentLogIsolationRewritePlan,
+    include_item: bool,
+    solve_rewrite: FSolve,
+    mut map_item_to_step: FStep,
+) -> Result<PowExponentLogIsolationRewritePipelineSolved<S>, E>
+where
+    FSolve: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(PowExponentLogIsolationExecutionItem) -> S,
+{
+    let solved_rewrite = solve_pow_exponent_log_isolation_rewrite_with(rewrite, solve_rewrite)?;
+    let mut steps = Vec::new();
+    if include_item {
+        if let Some(item) = first_pow_exponent_log_isolation_execution_item(&solved_rewrite.rewrite)
+        {
+            steps.push(map_item_to_step(item));
+        }
+    }
+    let (solution_set, mut sub_steps) = solved_rewrite.solved;
+    steps.append(&mut sub_steps);
+    Ok(PowExponentLogIsolationRewritePipelineSolved {
+        solution_set,
+        steps,
+    })
 }
 
 /// Execute a planned unsupported logarithmic route (residual or guarded).
@@ -6701,6 +6852,103 @@ mod tests {
     }
 
     #[test]
+    fn solve_pow_exponent_shortcut_pipeline_with_item_prepends_item_for_isolated_branch() {
+        let mut ctx = Context::new();
+        let rhs = ctx.var("n");
+        let x = ctx.var("x");
+        let action = PowExponentShortcutEngineAction::IsolateExponent {
+            rhs,
+            op: RelOp::Eq,
+            items: vec![PowExponentShortcutExecutionItem {
+                equation: Equation {
+                    lhs: x,
+                    rhs,
+                    op: RelOp::Eq,
+                },
+                description: "shortcut-step".to_string(),
+            }],
+        };
+
+        let mut calls = 0usize;
+        let solved = solve_pow_exponent_shortcut_pipeline_with_item(
+            action,
+            true,
+            |target_rhs, _op| {
+                calls += 1;
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![target_rhs]),
+                    vec!["substep".to_string()],
+                ))
+            },
+            |item| item.description,
+        )
+        .expect("pipeline should solve");
+
+        assert_eq!(calls, 1);
+        match solved {
+            PowExponentShortcutPipelineSolved::Isolated {
+                solution_set,
+                steps,
+            } => {
+                assert!(matches!(solution_set, SolutionSet::Discrete(_)));
+                assert_eq!(
+                    steps,
+                    vec!["shortcut-step".to_string(), "substep".to_string()]
+                );
+            }
+            other => panic!(
+                "expected isolated shortcut pipeline result, got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
+    fn solve_pow_exponent_shortcut_pipeline_with_item_omits_item_for_terminal_branch_when_disabled()
+    {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let action = PowExponentShortcutEngineAction::ReturnSolutionSet {
+            solutions: SolutionSet::Empty,
+            items: vec![PowExponentShortcutExecutionItem {
+                equation: Equation {
+                    lhs: x,
+                    rhs: x,
+                    op: RelOp::Eq,
+                },
+                description: "terminal".to_string(),
+            }],
+        };
+
+        let mut calls = 0usize;
+        let solved = solve_pow_exponent_shortcut_pipeline_with_item(
+            action,
+            false,
+            |_rhs, _op| {
+                calls += 1;
+                Ok::<_, ()>((SolutionSet::AllReals, vec!["unexpected".to_string()]))
+            },
+            |item| item.description,
+        )
+        .expect("pipeline should solve");
+
+        assert_eq!(calls, 0);
+        match solved {
+            PowExponentShortcutPipelineSolved::ReturnedSolutionSet {
+                solution_set,
+                steps,
+            } => {
+                assert!(matches!(solution_set, SolutionSet::Empty));
+                assert!(steps.is_empty());
+            }
+            other => panic!(
+                "expected terminal shortcut pipeline result, got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
     fn solve_pow_base_isolation_action_with_invokes_isolate_once() {
         let mut ctx = Context::new();
         let lhs = ctx.var("x");
@@ -6749,6 +6997,95 @@ mod tests {
             solved,
             PowBaseIsolationSolved::ReturnedSolutionSet(SolutionSet::Empty)
         ));
+    }
+
+    #[test]
+    fn solve_pow_base_isolation_pipeline_with_item_prepends_item_for_isolate_branch() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("x");
+        let rhs = ctx.var("r");
+        let item_equation = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+        let action = PowBaseIsolationEngineAction::IsolateBase {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+            items: vec![PowBaseIsolationExecutionItem {
+                equation: item_equation,
+                description: "Take root".to_string(),
+            }],
+        };
+
+        let mut calls = 0usize;
+        let solved = solve_pow_base_isolation_pipeline_with_item(
+            action,
+            true,
+            |_lhs, rhs_after, _op| {
+                calls += 1;
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![rhs_after]),
+                    vec!["substep".to_string()],
+                ))
+            },
+            |item| item.description,
+        )
+        .expect("pipeline should solve");
+
+        assert_eq!(calls, 1);
+        match solved {
+            PowBaseIsolationPipelineSolved::Isolated {
+                solution_set,
+                steps,
+            } => {
+                assert!(matches!(solution_set, SolutionSet::Discrete(_)));
+                assert_eq!(steps, vec!["Take root".to_string(), "substep".to_string()]);
+            }
+            other => panic!("expected isolated pipeline result, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn solve_pow_base_isolation_pipeline_with_item_omits_item_for_terminal_branch_when_disabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let action = PowBaseIsolationEngineAction::ReturnSolutionSet {
+            solutions: SolutionSet::Empty,
+            items: vec![PowBaseIsolationExecutionItem {
+                equation: Equation {
+                    lhs: x,
+                    rhs: x,
+                    op: RelOp::Eq,
+                },
+                description: "terminal".to_string(),
+            }],
+        };
+
+        let mut calls = 0usize;
+        let solved = solve_pow_base_isolation_pipeline_with_item(
+            action,
+            false,
+            |_lhs, _rhs, _op| {
+                calls += 1;
+                Ok::<_, ()>((SolutionSet::AllReals, vec!["unexpected".to_string()]))
+            },
+            |item| item.description,
+        )
+        .expect("pipeline should solve");
+
+        assert_eq!(calls, 0);
+        match solved {
+            PowBaseIsolationPipelineSolved::ReturnedSolutionSet {
+                solution_set,
+                steps,
+            } => {
+                assert!(matches!(solution_set, SolutionSet::Empty));
+                assert!(steps.is_empty());
+            }
+            other => panic!("expected terminal pipeline result, got {:?}", other),
+        }
     }
 
     #[test]
@@ -7954,6 +8291,74 @@ mod tests {
         assert_eq!(calls, 1);
         assert_eq!(solved.rewrite.equation, expected_equation);
         assert!(matches!(solved.solved, SolutionSet::AllReals));
+    }
+
+    #[test]
+    fn solve_pow_exponent_log_isolation_rewrite_pipeline_with_item_prepends_item() {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let rewrite = plan_pow_exponent_log_isolation_step_with(
+            &mut ctx,
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            None,
+            |_, _| "a".to_string(),
+        );
+        let expected_item = first_pow_exponent_log_isolation_execution_item(&rewrite)
+            .expect("expected one execution item")
+            .description
+            .clone();
+
+        let mut calls = 0usize;
+        let solved = solve_pow_exponent_log_isolation_rewrite_pipeline_with_item(
+            rewrite,
+            true,
+            |_equation| {
+                calls += 1;
+                Ok::<_, ()>((SolutionSet::AllReals, vec!["recursive-step".to_string()]))
+            },
+            |item| item.description,
+        )
+        .expect("pipeline solve should succeed");
+
+        assert_eq!(calls, 1);
+        assert!(matches!(solved.solution_set, SolutionSet::AllReals));
+        assert_eq!(
+            solved.steps,
+            vec![expected_item, "recursive-step".to_string()]
+        );
+    }
+
+    #[test]
+    fn solve_pow_exponent_log_isolation_rewrite_pipeline_with_item_omits_item_when_disabled() {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let rewrite = plan_pow_exponent_log_isolation_step_with(
+            &mut ctx,
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            None,
+            |_, _| "a".to_string(),
+        );
+
+        let solved = solve_pow_exponent_log_isolation_rewrite_pipeline_with_item(
+            rewrite,
+            false,
+            |_equation| Ok::<_, ()>((SolutionSet::Empty, vec!["only-substep".to_string()])),
+            |item| item.description,
+        )
+        .expect("pipeline solve should succeed");
+
+        assert!(matches!(solved.solution_set, SolutionSet::Empty));
+        assert_eq!(solved.steps, vec!["only-substep".to_string()]);
     }
 
     #[test]
