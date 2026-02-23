@@ -193,22 +193,25 @@ where
 /// Build a full back-substitution execution payload from a precomputed plan.
 pub fn build_back_substitution_execution_with<F>(
     plan: BackSubstitutionPlan,
-    render_expr: F,
+    mut render_expr: F,
 ) -> BackSubstitutionExecutionPlan
 where
     F: FnMut(ExprId) -> String,
 {
-    let items = build_back_substitute_steps_with(&plan.equations, render_expr)
-        .into_iter()
-        .map(|step| BackSubstitutionExecutionItem {
-            equation: step.equation_after,
-            description: step.description,
+    let BackSubstitutionPlan { equations } = plan;
+    let items = equations
+        .iter()
+        .cloned()
+        .map(|equation| {
+            let lhs_desc = render_expr(equation.lhs);
+            let rhs_desc = render_expr(equation.rhs);
+            BackSubstitutionExecutionItem {
+                equation,
+                description: back_substitute_message(&lhs_desc, &rhs_desc),
+            }
         })
         .collect();
-    BackSubstitutionExecutionPlan {
-        equations: plan.equations,
-        items,
-    }
+    BackSubstitutionExecutionPlan { equations, items }
 }
 
 /// Build didactic pair for substitution introduction:
@@ -238,24 +241,29 @@ where
 pub fn build_exponential_substitution_execution_with<F>(
     equation_before: Equation,
     rewrite_plan: ExponentialSubstitutionRewritePlan,
-    render_expr: F,
+    mut render_expr: F,
 ) -> ExponentialSubstitutionExecutionPlan
 where
     F: FnMut(ExprId) -> String,
 {
-    let didactic = build_substitution_intro_steps_with(
-        equation_before,
-        rewrite_plan.substitution_expr,
-        rewrite_plan.equation.clone(),
-        render_expr,
-    );
-    let items = collect_substitution_intro_didactic_steps(&didactic)
-        .into_iter()
-        .map(|step| SubstitutionExecutionItem {
-            equation: step.equation_after,
-            description: step.description,
-        })
-        .collect();
+    let substitution_expr_desc = render_expr(rewrite_plan.substitution_expr);
+    let rewritten_lhs_desc = render_expr(rewrite_plan.equation.lhs);
+    let rewritten_rhs_desc = render_expr(rewrite_plan.equation.rhs);
+    let rewritten_op_desc = rewrite_plan.equation.op.to_string();
+    let items = vec![
+        SubstitutionExecutionItem {
+            equation: equation_before,
+            description: detected_substitution_message(&substitution_expr_desc),
+        },
+        SubstitutionExecutionItem {
+            equation: rewrite_plan.equation.clone(),
+            description: substituted_equation_message(
+                &rewritten_lhs_desc,
+                &rewritten_op_desc,
+                &rewritten_rhs_desc,
+            ),
+        },
+    ];
     ExponentialSubstitutionExecutionPlan {
         substitution_expr: rewrite_plan.substitution_expr,
         equation: rewrite_plan.equation,

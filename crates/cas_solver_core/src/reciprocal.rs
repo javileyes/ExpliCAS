@@ -134,9 +134,30 @@ pub struct ReciprocalSolvePlan {
 /// Engine-facing reciprocal solve execution payload.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReciprocalSolveExecution {
-    pub combine_step: ReciprocalDidacticStep,
-    pub invert_step: ReciprocalDidacticStep,
+    pub items: Vec<ReciprocalExecutionItem>,
     pub solutions: SolutionSet,
+}
+
+/// Prepared data for building reciprocal execution from a normalized kernel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReciprocalPreparedExecution {
+    pub combined_rhs_display: ExprId,
+    pub solution_rhs_display: ExprId,
+    pub guard_numerator: ExprId,
+    pub numerator_status: NonZeroStatus,
+}
+
+/// Runtime contract for reciprocal solve orchestration.
+///
+/// This lets `cas_solver_core` host the reciprocal algorithm while callers
+/// inject their own simplification/proof engines.
+pub trait ReciprocalSolveRuntime {
+    /// Mutable access to the expression context.
+    fn context(&mut self) -> &mut Context;
+    /// Simplify one expression and return the rewritten root.
+    fn simplify_expr(&mut self, expr: ExprId) -> ExprId;
+    /// Prove whether an expression is non-zero.
+    fn prove_nonzero_status(&mut self, expr: ExprId) -> NonZeroStatus;
 }
 
 /// One reciprocal execution item with aligned equation and didactic step.
@@ -157,26 +178,22 @@ impl ReciprocalExecutionItem {
 pub fn collect_reciprocal_didactic_steps(
     execution: &ReciprocalSolveExecution,
 ) -> Vec<ReciprocalDidacticStep> {
-    vec![
-        execution.combine_step.clone(),
-        execution.invert_step.clone(),
-    ]
+    execution
+        .items
+        .iter()
+        .cloned()
+        .map(|item| ReciprocalDidacticStep {
+            description: item.description,
+            equation_after: item.equation,
+        })
+        .collect()
 }
 
 /// Collect reciprocal execution items in execution order.
 pub fn collect_reciprocal_execution_items(
     execution: &ReciprocalSolveExecution,
 ) -> Vec<ReciprocalExecutionItem> {
-    vec![
-        ReciprocalExecutionItem {
-            equation: execution.combine_step.equation_after.clone(),
-            description: execution.combine_step.description.clone(),
-        },
-        ReciprocalExecutionItem {
-            equation: execution.invert_step.equation_after.clone(),
-            description: execution.invert_step.description.clone(),
-        },
-    ]
+    execution.items.clone()
 }
 
 /// Derive reciprocal-solve kernel if equation matches `1/var = rhs` and
@@ -284,20 +301,117 @@ pub fn build_reciprocal_execution(
 
     let mut combine_equation = plan.combine_equation;
     combine_equation.rhs = combined_rhs_display;
-    let combine_step = build_reciprocal_combine_step(combine_equation);
 
     let mut solve_equation = plan.solve_equation;
     solve_equation.rhs = solution_rhs_display;
-    let invert_step = build_reciprocal_invert_step(solve_equation);
+    let items = vec![
+        ReciprocalExecutionItem {
+            equation: combine_equation,
+            description: RECIPROCAL_COMBINE_STEP_DESCRIPTION.to_string(),
+        },
+        ReciprocalExecutionItem {
+            equation: solve_equation,
+            description: RECIPROCAL_INVERT_STEP_DESCRIPTION.to_string(),
+        },
+    ];
 
     let solutions =
         build_reciprocal_solution_set(guard_numerator, solution_rhs_display, numerator_status);
 
-    ReciprocalSolveExecution {
-        combine_step,
-        invert_step,
-        solutions,
-    }
+    ReciprocalSolveExecution { items, solutions }
+}
+
+/// Build reciprocal execution from a normalized kernel and prepared display/proof inputs.
+pub fn build_reciprocal_execution_from_kernel_prepared(
+    ctx: &mut Context,
+    var: &str,
+    kernel: ReciprocalSolveKernel,
+    prepared: ReciprocalPreparedExecution,
+) -> ReciprocalSolveExecution {
+    build_reciprocal_execution(
+        ctx,
+        var,
+        kernel.numerator,
+        kernel.denominator,
+        prepared.combined_rhs_display,
+        prepared.solution_rhs_display,
+        prepared.guard_numerator,
+        prepared.numerator_status,
+    )
+}
+
+/// Build reciprocal execution directly from a normalized kernel, while callers
+/// inject simplification and proof strategies.
+pub fn build_reciprocal_execution_from_kernel_with<FS, FP>(
+    ctx: &mut Context,
+    var: &str,
+    kernel: ReciprocalSolveKernel,
+    mut simplify_expr: FS,
+    mut prove_nonzero_status: FP,
+) -> ReciprocalSolveExecution
+where
+    FS: FnMut(ExprId) -> ExprId,
+    FP: FnMut(&Context, ExprId) -> NonZeroStatus,
+{
+    let raw_plan = build_reciprocal_solve_plan(ctx, var, kernel.numerator, kernel.denominator);
+    let combined_rhs_display = simplify_expr(raw_plan.combined_rhs);
+    let solution_rhs_display = simplify_expr(raw_plan.solution_rhs);
+    let guard_numerator = simplify_expr(kernel.numerator);
+    let numerator_status = prove_nonzero_status(ctx, guard_numerator);
+
+    build_reciprocal_execution(
+        ctx,
+        var,
+        kernel.numerator,
+        kernel.denominator,
+        combined_rhs_display,
+        solution_rhs_display,
+        guard_numerator,
+        numerator_status,
+    )
+}
+
+/// High-level reciprocal solve execution using an injected runtime.
+///
+/// Returns `None` when equation shape is not reciprocal-isolable.
+pub fn execute_reciprocal_solve_with_runtime<R>(
+    runtime: &mut R,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+) -> Option<ReciprocalSolveExecution>
+where
+    R: ReciprocalSolveRuntime,
+{
+    let kernel = {
+        let ctx = runtime.context();
+        derive_reciprocal_solve_kernel(ctx, lhs, rhs, var)?
+    };
+
+    let raw_plan = {
+        let ctx = runtime.context();
+        build_reciprocal_solve_plan(ctx, var, kernel.numerator, kernel.denominator)
+    };
+
+    let combined_rhs_display = runtime.simplify_expr(raw_plan.combined_rhs);
+    let solution_rhs_display = runtime.simplify_expr(raw_plan.solution_rhs);
+    let guard_numerator = runtime.simplify_expr(kernel.numerator);
+    let numerator_status = runtime.prove_nonzero_status(guard_numerator);
+
+    Some({
+        let ctx = runtime.context();
+        build_reciprocal_execution_from_kernel_prepared(
+            ctx,
+            var,
+            kernel,
+            ReciprocalPreparedExecution {
+                combined_rhs_display,
+                solution_rhs_display,
+                guard_numerator,
+                numerator_status,
+            },
+        )
+    })
 }
 
 #[cfg(test)]
@@ -440,13 +554,149 @@ mod tests {
             NonZeroStatus::Unknown,
         );
 
+        assert_eq!(execution.items.len(), 2);
         assert_eq!(
-            execution.combine_step.description,
+            execution.items[0].description,
             "Combine fractions on RHS (common denominator)"
         );
-        assert_eq!(execution.combine_step.equation_after.rhs, combined_rhs);
-        assert_eq!(execution.invert_step.description, "Take reciprocal");
-        assert_eq!(execution.invert_step.equation_after.rhs, solution_rhs);
+        assert_eq!(execution.items[0].equation.rhs, combined_rhs);
+        assert_eq!(execution.items[1].description, "Take reciprocal");
+        assert_eq!(execution.items[1].equation.rhs, solution_rhs);
+        assert!(matches!(execution.solutions, SolutionSet::Conditional(_)));
+    }
+
+    #[test]
+    fn build_reciprocal_execution_from_kernel_with_uses_callbacks() {
+        let mut ctx = Context::new();
+        let numerator = ctx.var("n");
+        let denominator = ctx.var("d");
+        let kernel = ReciprocalSolveKernel {
+            numerator,
+            denominator,
+        };
+        let one = ctx.num(1);
+        let mut simplify_calls = 0usize;
+        let mut prove_calls = 0usize;
+
+        let execution = build_reciprocal_execution_from_kernel_with(
+            &mut ctx,
+            "x",
+            kernel,
+            |_| {
+                simplify_calls += 1;
+                one
+            },
+            |_, _| {
+                prove_calls += 1;
+                NonZeroStatus::Unknown
+            },
+        );
+
+        assert_eq!(simplify_calls, 3);
+        assert_eq!(prove_calls, 1);
+        assert_eq!(execution.items.len(), 2);
+        assert_eq!(execution.items[0].equation.rhs, one);
+        assert_eq!(execution.items[1].equation.rhs, one);
+        assert!(matches!(execution.solutions, SolutionSet::Conditional(_)));
+    }
+
+    struct MockReciprocalRuntime {
+        context: Context,
+        simplify_value: ExprId,
+        simplify_calls: usize,
+        prove_calls: usize,
+        prove_result: NonZeroStatus,
+    }
+
+    impl ReciprocalSolveRuntime for MockReciprocalRuntime {
+        fn context(&mut self) -> &mut Context {
+            &mut self.context
+        }
+
+        fn simplify_expr(&mut self, _expr: ExprId) -> ExprId {
+            self.simplify_calls += 1;
+            self.simplify_value
+        }
+
+        fn prove_nonzero_status(&mut self, _expr: ExprId) -> NonZeroStatus {
+            self.prove_calls += 1;
+            self.prove_result
+        }
+    }
+
+    #[test]
+    fn execute_reciprocal_solve_with_runtime_uses_runtime_hooks() {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let r1 = context.var("r1");
+        let one = context.num(1);
+        let lhs = context.add(Expr::Div(one, x));
+        let rhs = context.add(Expr::Div(one, r1));
+        let simplified = context.var("s");
+
+        let mut runtime = MockReciprocalRuntime {
+            context,
+            simplify_value: simplified,
+            simplify_calls: 0,
+            prove_calls: 0,
+            prove_result: NonZeroStatus::Unknown,
+        };
+
+        let execution = execute_reciprocal_solve_with_runtime(&mut runtime, lhs, rhs, "x")
+            .expect("reciprocal equation should be solvable");
+        assert_eq!(runtime.simplify_calls, 3);
+        assert_eq!(runtime.prove_calls, 1);
+        assert_eq!(execution.items.len(), 2);
+        assert_eq!(execution.items[0].equation.rhs, simplified);
+        assert_eq!(execution.items[1].equation.rhs, simplified);
+        assert!(matches!(execution.solutions, SolutionSet::Conditional(_)));
+    }
+
+    #[test]
+    fn execute_reciprocal_solve_with_runtime_rejects_non_reciprocal_shape() {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let rhs = context.var("r");
+        let simplified = context.var("s");
+        let mut runtime = MockReciprocalRuntime {
+            context,
+            simplify_value: simplified,
+            simplify_calls: 0,
+            prove_calls: 0,
+            prove_result: NonZeroStatus::Unknown,
+        };
+
+        let execution = execute_reciprocal_solve_with_runtime(&mut runtime, x, rhs, "x");
+        assert!(execution.is_none());
+        assert_eq!(runtime.simplify_calls, 0);
+        assert_eq!(runtime.prove_calls, 0);
+    }
+
+    #[test]
+    fn build_reciprocal_execution_from_kernel_prepared_uses_kernel_fields() {
+        let mut ctx = Context::new();
+        let numerator = ctx.var("n");
+        let denominator = ctx.var("d");
+        let display = ctx.var("display");
+        let solution = ctx.var("solution");
+        let execution = build_reciprocal_execution_from_kernel_prepared(
+            &mut ctx,
+            "x",
+            ReciprocalSolveKernel {
+                numerator,
+                denominator,
+            },
+            ReciprocalPreparedExecution {
+                combined_rhs_display: display,
+                solution_rhs_display: solution,
+                guard_numerator: numerator,
+                numerator_status: NonZeroStatus::Unknown,
+            },
+        );
+
+        assert_eq!(execution.items.len(), 2);
+        assert_eq!(execution.items[0].equation.rhs, display);
+        assert_eq!(execution.items[1].equation.rhs, solution);
         assert!(matches!(execution.solutions, SolutionSet::Conditional(_)));
     }
 
@@ -467,14 +717,8 @@ mod tests {
             "Combine fractions on RHS (common denominator)"
         );
         assert_eq!(didactic[1].description, "Take reciprocal");
-        assert_eq!(
-            didactic[0].equation_after,
-            execution.combine_step.equation_after
-        );
-        assert_eq!(
-            didactic[1].equation_after,
-            execution.invert_step.equation_after
-        );
+        assert_eq!(didactic[0].equation_after, execution.items[0].equation);
+        assert_eq!(didactic[1].equation_after, execution.items[1].equation);
     }
 
     #[test]
@@ -489,9 +733,7 @@ mod tests {
 
         let items = collect_reciprocal_execution_items(&execution);
         assert_eq!(items.len(), 2);
-        assert_eq!(items[0].equation, execution.combine_step.equation_after);
-        assert_eq!(items[1].equation, execution.invert_step.equation_after);
-        assert_eq!(items[0].description, execution.combine_step.description);
-        assert_eq!(items[1].description, execution.invert_step.description);
+        assert_eq!(items[0], execution.items[0]);
+        assert_eq!(items[1], execution.items[1]);
     }
 }

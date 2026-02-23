@@ -4,7 +4,8 @@
 //! independent of engine-specific step types/renderers.
 
 use crate::isolation_utils::contains_var;
-use cas_ast::{Context, Equation, Expr, ExprId, RelOp};
+use crate::solution_set::sort_and_dedup_exprs;
+use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
 
 /// Main didactic narration for quadratic-strategy activation.
 pub const QUADRATIC_FORMULA_MAIN_STEP_DESCRIPTION: &str =
@@ -46,21 +47,24 @@ impl QuadraticExecutionItem {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ZeroProductFactorExecutionPlan {
     pub equations: Vec<Equation>,
-    pub didactic: Vec<QuadraticDidacticStep>,
+    pub items: Vec<ZeroProductFactorExecutionItem>,
 }
 
-/// One factor-solving execution item with an optional didactic step.
+/// One factor-solving execution item.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ZeroProductFactorExecutionItem {
     pub equation: Equation,
-    pub didactic: Option<QuadraticDidacticStep>,
+    pub description: String,
 }
 
 /// Collect didactic steps for one zero-product factor execution item.
 pub fn collect_zero_product_factor_item_didactic_steps(
     item: &ZeroProductFactorExecutionItem,
 ) -> Vec<QuadraticDidacticStep> {
-    item.didactic.iter().cloned().collect()
+    vec![QuadraticDidacticStep {
+        description: item.description.clone(),
+        equation_after: item.equation.clone(),
+    }]
 }
 
 /// Collect execution items for one zero-product factor item.
@@ -144,26 +148,63 @@ where
 {
     let equations = collect_zero_product_factor_equations(ctx, factors, var, zero);
     let didactic = build_solve_factor_steps_with(&equations, render_expr);
-    ZeroProductFactorExecutionPlan {
-        equations,
-        didactic,
-    }
+    let items = didactic
+        .into_iter()
+        .map(|step| ZeroProductFactorExecutionItem {
+            equation: step.equation_after,
+            description: step.description,
+        })
+        .collect();
+    ZeroProductFactorExecutionPlan { equations, items }
 }
 
 /// Collect zero-product factor execution items (`factor = 0`) in execution order.
 pub fn collect_zero_product_factor_execution_items(
     execution: &ZeroProductFactorExecutionPlan,
 ) -> Vec<ZeroProductFactorExecutionItem> {
-    execution
-        .equations
-        .iter()
-        .cloned()
-        .enumerate()
-        .map(|(idx, equation)| ZeroProductFactorExecutionItem {
-            equation,
-            didactic: execution.didactic.get(idx).cloned(),
-        })
-        .collect()
+    execution.items.clone()
+}
+
+/// Aggregate solution sets obtained from solving each `factor = 0` branch.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ZeroProductFactorSolutionAggregate {
+    /// Every factor branch yielded discrete roots (or empty), merged and deduplicated.
+    Discrete(Vec<ExprId>),
+    /// One factor branch is identically zero (`0 = 0`) so whole equation is true.
+    AllReals,
+    /// At least one branch returned non-discrete data (residual/conditional/interval).
+    NonDiscrete,
+}
+
+/// Merge per-factor solution sets from zero-product solving.
+pub fn aggregate_zero_product_factor_solution_sets(
+    ctx: &Context,
+    factor_solution_sets: impl IntoIterator<Item = SolutionSet>,
+) -> ZeroProductFactorSolutionAggregate {
+    let mut all_solutions = Vec::new();
+    for set in factor_solution_sets {
+        match set {
+            SolutionSet::Discrete(sols) => all_solutions.extend(sols),
+            SolutionSet::Empty => {}
+            SolutionSet::AllReals => return ZeroProductFactorSolutionAggregate::AllReals,
+            _ => return ZeroProductFactorSolutionAggregate::NonDiscrete,
+        }
+    }
+    sort_and_dedup_exprs(ctx, &mut all_solutions);
+    ZeroProductFactorSolutionAggregate::Discrete(all_solutions)
+}
+
+/// Convert zero-product aggregate outcome into a `SolutionSet`, using
+/// `residual_expr` when at least one branch returned non-discrete data.
+pub fn finalize_zero_product_factor_solution_set(
+    aggregate: ZeroProductFactorSolutionAggregate,
+    residual_expr: ExprId,
+) -> SolutionSet {
+    match aggregate {
+        ZeroProductFactorSolutionAggregate::Discrete(solutions) => SolutionSet::Discrete(solutions),
+        ZeroProductFactorSolutionAggregate::AllReals => SolutionSet::AllReals,
+        ZeroProductFactorSolutionAggregate::NonDiscrete => SolutionSet::Residual(residual_expr),
+    }
 }
 
 /// Build full execution payload for factorized zero-product solving:
@@ -241,6 +282,13 @@ pub fn collect_quadratic_main_execution_items(
         .collect()
 }
 
+/// Build top-level quadratic execution items directly from the resulting equation.
+pub fn build_quadratic_main_execution_items(
+    equation_after: Equation,
+) -> Vec<QuadraticExecutionItem> {
+    collect_quadratic_main_execution_items(&build_quadratic_main_step(equation_after))
+}
+
 /// Collect zero-product factor equations `factor = 0` that are relevant for
 /// the target variable.
 pub fn collect_zero_product_factor_equations(
@@ -266,6 +314,29 @@ pub fn collect_zero_product_factor_equations(
 pub struct DidacticSubstep {
     pub description: String,
     pub equation_after: Equation,
+}
+
+/// One executable quadratic-substep item aligned with didactic payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct QuadraticSubstepExecutionItem {
+    pub equation: Equation,
+    pub description: String,
+}
+
+impl QuadraticSubstepExecutionItem {
+    /// User-facing narration for this execution item.
+    pub fn description(&self) -> &str {
+        &self.description
+    }
+}
+
+fn quadratic_substep_execution_item_from_didactic_step(
+    step: DidacticSubstep,
+) -> QuadraticSubstepExecutionItem {
+    QuadraticSubstepExecutionItem {
+        equation: step.equation_after,
+        description: step.description,
+    }
 }
 
 /// Check if an expression is a literal zero (Number(0)).
@@ -523,6 +594,80 @@ where
     steps
 }
 
+/// Build quadratic derivation execution items directly.
+///
+/// This mirrors `build_quadratic_substeps_with` but returns execution payloads
+/// for engine consumers that should not depend on didactic step structs.
+pub fn build_quadratic_substep_execution_items_with<F>(
+    ctx: &mut Context,
+    var: &str,
+    a: ExprId,
+    b: ExprId,
+    c: ExprId,
+    is_real_only: bool,
+    render_expr: F,
+) -> Vec<QuadraticSubstepExecutionItem>
+where
+    F: FnMut(&Context, ExprId) -> String,
+{
+    build_quadratic_substeps_with(ctx, var, a, b, c, is_real_only, render_expr)
+        .into_iter()
+        .map(quadratic_substep_execution_item_from_didactic_step)
+        .collect()
+}
+
+/// Simplify every equation side in quadratic execution items with a caller-provided callback.
+pub fn simplify_quadratic_substep_execution_items_with<F>(
+    items: &mut [QuadraticSubstepExecutionItem],
+    mut simplify_expr: F,
+) where
+    F: FnMut(ExprId) -> ExprId,
+{
+    for item in items.iter_mut() {
+        item.equation.lhs = simplify_expr(item.equation.lhs);
+        item.equation.rhs = simplify_expr(item.equation.rhs);
+    }
+}
+
+/// Combined execution payload for quadratic strategy didactic output:
+/// one main step plus simplified substeps.
+#[derive(Debug, Clone, PartialEq)]
+pub struct QuadraticMainWithSubstepsExecution {
+    pub main_items: Vec<QuadraticExecutionItem>,
+    pub substep_items: Vec<QuadraticSubstepExecutionItem>,
+}
+
+/// Build quadratic main-step execution and its substeps in one call.
+///
+/// Callers provide:
+/// - a renderer for textual descriptions,
+/// - a simplifier callback for equation sides in substeps.
+#[allow(clippy::too_many_arguments)]
+pub fn build_quadratic_main_with_substeps_execution_with<FR, FS>(
+    ctx: &mut Context,
+    var: &str,
+    a: ExprId,
+    b: ExprId,
+    c: ExprId,
+    is_real_only: bool,
+    main_equation_after: Equation,
+    render_expr: FR,
+    simplify_expr: FS,
+) -> QuadraticMainWithSubstepsExecution
+where
+    FR: FnMut(&Context, ExprId) -> String,
+    FS: FnMut(ExprId) -> ExprId,
+{
+    let mut substep_items =
+        build_quadratic_substep_execution_items_with(ctx, var, a, b, c, is_real_only, render_expr);
+    simplify_quadratic_substep_execution_items_with(&mut substep_items, simplify_expr);
+    let main_items = build_quadratic_main_execution_items(main_equation_after);
+    QuadraticMainWithSubstepsExecution {
+        main_items,
+        substep_items,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -546,6 +691,90 @@ mod tests {
         assert!(steps[4].description.contains("cuadrado perfecto"));
         assert!(steps[5].description.contains("raíz cuadrada"));
         assert!(steps[6].description.contains("descompone"));
+    }
+
+    #[test]
+    fn build_quadratic_substep_execution_items_align_with_didactic_steps() {
+        let mut ctx = Context::new();
+        let a = ctx.num(1);
+        let b = ctx.num(2);
+        let c = ctx.num(1);
+
+        let didactic = build_quadratic_substeps_with(&mut ctx, "x", a, b, c, true, |_ctx, id| {
+            format!("{:?}", id)
+        });
+        let items = build_quadratic_substep_execution_items_with(
+            &mut ctx,
+            "x",
+            a,
+            b,
+            c,
+            true,
+            |_ctx, id| format!("{:?}", id),
+        );
+
+        assert_eq!(items.len(), didactic.len());
+        assert_eq!(items[0].equation, didactic[0].equation_after);
+        assert_eq!(items[0].description, didactic[0].description);
+    }
+
+    #[test]
+    fn simplify_quadratic_substep_execution_items_with_rewrites_both_sides() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let lhs = ctx.add(Expr::Add(x, one));
+        let rhs = ctx.add(Expr::Mul(one, x));
+        let zero = ctx.num(0);
+
+        let mut items = vec![QuadraticSubstepExecutionItem {
+            equation: Equation {
+                lhs,
+                rhs,
+                op: RelOp::Eq,
+            },
+            description: "step".to_string(),
+        }];
+
+        simplify_quadratic_substep_execution_items_with(&mut items, |id| match ctx.get(id) {
+            Expr::Add(_, _) => zero,
+            Expr::Mul(_, _) => x,
+            _ => id,
+        });
+
+        assert_eq!(items[0].equation.lhs, zero);
+        assert_eq!(items[0].equation.rhs, x);
+    }
+
+    #[test]
+    fn build_quadratic_main_with_substeps_execution_with_combines_main_and_substeps() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let a = one;
+        let b = one;
+        let c = one;
+        let eq = Equation {
+            lhs: x,
+            rhs: ctx.num(0),
+            op: RelOp::Eq,
+        };
+
+        let execution = build_quadratic_main_with_substeps_execution_with(
+            &mut ctx,
+            "x",
+            a,
+            b,
+            c,
+            true,
+            eq.clone(),
+            |_, id| format!("{:?}", id),
+            |id| id,
+        );
+
+        assert_eq!(execution.main_items.len(), 1);
+        assert_eq!(execution.main_items[0].equation, eq);
+        assert!(!execution.substep_items.is_empty());
     }
 
     #[test]
@@ -671,12 +900,9 @@ mod tests {
         assert_eq!(execution.equations[0].lhs, x_minus_one);
         assert_eq!(execution.equations[0].rhs, zero);
         assert_eq!(execution.equations[0].op, RelOp::Eq);
-        assert_eq!(execution.didactic.len(), 1);
-        assert_eq!(
-            execution.didactic[0].description,
-            "Solve factor: factor = 0"
-        );
-        assert_eq!(execution.didactic[0].equation_after, execution.equations[0]);
+        assert_eq!(execution.items.len(), 1);
+        assert_eq!(execution.items[0].description, "Solve factor: factor = 0");
+        assert_eq!(execution.items[0].equation, execution.equations[0]);
     }
 
     #[test]
@@ -708,9 +934,9 @@ mod tests {
             }
         );
         assert_eq!(execution.factors.equations.len(), 2);
-        assert_eq!(execution.factors.didactic.len(), 2);
+        assert_eq!(execution.factors.items.len(), 2);
         assert_eq!(
-            execution.factors.didactic[0].description,
+            execution.factors.items[0].description,
             "Solve factor: f = 0"
         );
     }
@@ -732,8 +958,8 @@ mod tests {
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].equation, execution.equations[0]);
         assert_eq!(items[1].equation, execution.equations[1]);
-        assert!(items[0].didactic.is_some());
-        assert!(items[1].didactic.is_some());
+        assert_eq!(items[0].description, "Solve factor: f = 0");
+        assert_eq!(items[1].description, "Solve factor: f = 0");
     }
 
     #[test]
@@ -747,14 +973,7 @@ mod tests {
                 rhs: zero,
                 op: RelOp::Eq,
             },
-            didactic: Some(QuadraticDidacticStep {
-                description: "Solve factor: f = 0".to_string(),
-                equation_after: Equation {
-                    lhs: x,
-                    rhs: zero,
-                    op: RelOp::Eq,
-                },
-            }),
+            description: "Solve factor: f = 0".to_string(),
         };
         let didactic = collect_zero_product_factor_item_didactic_steps(&item);
         assert_eq!(didactic.len(), 1);
@@ -772,14 +991,7 @@ mod tests {
                 rhs: zero,
                 op: RelOp::Eq,
             },
-            didactic: Some(QuadraticDidacticStep {
-                description: "Solve factor: f = 0".to_string(),
-                equation_after: Equation {
-                    lhs: x,
-                    rhs: zero,
-                    op: RelOp::Eq,
-                },
-            }),
+            description: "Solve factor: f = 0".to_string(),
         };
         let items = collect_zero_product_factor_item_execution_items(&item);
         assert_eq!(items.len(), 1);
@@ -859,5 +1071,95 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, step.equation_after);
         assert_eq!(items[0].description, step.description);
+    }
+
+    #[test]
+    fn build_quadratic_main_execution_items_returns_single_item() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let equation = Equation {
+            lhs: x,
+            rhs: ctx.num(0),
+            op: RelOp::Eq,
+        };
+
+        let items = build_quadratic_main_execution_items(equation.clone());
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].equation, equation);
+        assert_eq!(
+            items[0].description,
+            QUADRATIC_FORMULA_MAIN_STEP_DESCRIPTION
+        );
+    }
+
+    #[test]
+    fn aggregate_zero_product_factor_solution_sets_merges_discrete_and_empty() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let sets = vec![SolutionSet::Empty, SolutionSet::Discrete(vec![x, one, x])];
+
+        let out = aggregate_zero_product_factor_solution_sets(&ctx, sets);
+        match out {
+            ZeroProductFactorSolutionAggregate::Discrete(solutions) => {
+                assert_eq!(solutions.len(), 2);
+            }
+            other => panic!("expected discrete aggregate, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn aggregate_zero_product_factor_solution_sets_short_circuits_to_all_reals() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let sets = vec![SolutionSet::Discrete(vec![x]), SolutionSet::AllReals];
+
+        let out = aggregate_zero_product_factor_solution_sets(&ctx, sets);
+        assert!(matches!(out, ZeroProductFactorSolutionAggregate::AllReals));
+    }
+
+    #[test]
+    fn aggregate_zero_product_factor_solution_sets_flags_non_discrete_inputs() {
+        let mut ctx = Context::new();
+        let residual = ctx.var("r");
+        let sets = vec![SolutionSet::Residual(residual)];
+
+        let out = aggregate_zero_product_factor_solution_sets(&ctx, sets);
+        assert!(matches!(
+            out,
+            ZeroProductFactorSolutionAggregate::NonDiscrete
+        ));
+    }
+
+    #[test]
+    fn finalize_zero_product_factor_solution_set_maps_discrete() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let out = finalize_zero_product_factor_solution_set(
+            ZeroProductFactorSolutionAggregate::Discrete(vec![x]),
+            ctx.num(0),
+        );
+        assert!(matches!(out, SolutionSet::Discrete(solutions) if solutions == vec![x]));
+    }
+
+    #[test]
+    fn finalize_zero_product_factor_solution_set_maps_all_reals() {
+        let mut ctx = Context::new();
+        let out = finalize_zero_product_factor_solution_set(
+            ZeroProductFactorSolutionAggregate::AllReals,
+            ctx.num(0),
+        );
+        assert!(matches!(out, SolutionSet::AllReals));
+    }
+
+    #[test]
+    fn finalize_zero_product_factor_solution_set_maps_non_discrete_to_residual() {
+        let mut ctx = Context::new();
+        let residual = ctx.var("r");
+        let out = finalize_zero_product_factor_solution_set(
+            ZeroProductFactorSolutionAggregate::NonDiscrete,
+            residual,
+        );
+        assert!(matches!(out, SolutionSet::Residual(id) if id == residual));
     }
 }

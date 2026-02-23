@@ -29,6 +29,30 @@ impl StrategyExecutionItem {
     }
 }
 
+/// Runtime contract for executing strategy rewrite kernels.
+pub trait StrategyKernelRuntime {
+    /// Mutable access to expression context.
+    fn context(&mut self) -> &mut Context;
+    /// Simplify an expression according to caller policy.
+    fn simplify_expr(&mut self, expr: ExprId) -> ExprId;
+    /// Render an expression for didactic narration.
+    fn render_expr(&mut self, expr: ExprId) -> String;
+}
+
+/// Fully materialized collect-terms rewrite ready for recursive solve.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CollectTermsSolvedRewrite {
+    pub equation: Equation,
+    pub items: Vec<StrategyExecutionItem>,
+}
+
+/// Fully materialized rational-exponent rewrite ready for recursive solve.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RationalExponentSolvedRewrite {
+    pub equation: Equation,
+    pub items: Vec<StrategyExecutionItem>,
+}
+
 /// Execution payload for collect-terms strategy rewrite.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CollectTermsExecutionPlan {
@@ -123,6 +147,59 @@ where
     }
 }
 
+/// Derive, simplify, and materialize collect-terms rewrite in one pipeline.
+///
+/// This centralizes strategy-kernel orchestration while caller controls
+/// simplification and rendering.
+pub fn execute_collect_terms_rewrite_with<FSimplify, FRender>(
+    ctx: &mut Context,
+    eq: &Equation,
+    var: &str,
+    mut simplify_expr: FSimplify,
+    render_expr: FRender,
+) -> Option<CollectTermsSolvedRewrite>
+where
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FRender: FnMut(ExprId) -> String,
+{
+    let kernel = derive_collect_terms_kernel(ctx, eq, var)?;
+    let simp_lhs = simplify_expr(kernel.rewritten.lhs);
+    let simp_rhs = simplify_expr(kernel.rewritten.rhs);
+    let execution =
+        build_collect_terms_execution_with(simp_lhs, simp_rhs, eq.op.clone(), eq.rhs, render_expr);
+    let items = collect_collect_terms_execution_items(&execution);
+    Some(CollectTermsSolvedRewrite {
+        equation: execution.equation,
+        items,
+    })
+}
+
+/// Derive, simplify, and materialize collect-terms rewrite via runtime.
+pub fn execute_collect_terms_rewrite_with_runtime<R>(
+    runtime: &mut R,
+    eq: &Equation,
+    var: &str,
+) -> Option<CollectTermsSolvedRewrite>
+where
+    R: StrategyKernelRuntime,
+{
+    let kernel = {
+        let ctx = runtime.context();
+        derive_collect_terms_kernel(ctx, eq, var)?
+    };
+    let simp_lhs = runtime.simplify_expr(kernel.rewritten.lhs);
+    let simp_rhs = runtime.simplify_expr(kernel.rewritten.rhs);
+    let execution =
+        build_collect_terms_execution_with(simp_lhs, simp_rhs, eq.op.clone(), eq.rhs, |id| {
+            runtime.render_expr(id)
+        });
+    let items = collect_collect_terms_execution_items(&execution);
+    Some(CollectTermsSolvedRewrite {
+        equation: execution.equation,
+        items,
+    })
+}
+
 /// Rewrite payload for `RationalExponentStrategy`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RationalExponentKernel {
@@ -211,6 +288,57 @@ pub fn build_rational_exponent_execution(
         equation,
         description: step.description,
     }
+}
+
+/// Derive, simplify, and materialize rational-exponent rewrite in one pipeline.
+///
+/// This centralizes strategy-kernel orchestration while caller controls
+/// simplification.
+pub fn execute_rational_exponent_rewrite_with<FSimplify>(
+    ctx: &mut Context,
+    eq: &Equation,
+    var: &str,
+    lhs_has_var: bool,
+    rhs_has_var: bool,
+    mut simplify_expr: FSimplify,
+) -> Option<RationalExponentSolvedRewrite>
+where
+    FSimplify: FnMut(ExprId) -> ExprId,
+{
+    let kernel = derive_rational_exponent_kernel(ctx, eq, var, lhs_has_var, rhs_has_var)?;
+    let sim_lhs = simplify_expr(kernel.rewritten.lhs);
+    let sim_rhs = simplify_expr(kernel.rewritten.rhs);
+    let execution = build_rational_exponent_execution(kernel.q, sim_lhs, sim_rhs);
+    let items = collect_rational_exponent_execution_items(&execution);
+    Some(RationalExponentSolvedRewrite {
+        equation: execution.equation,
+        items,
+    })
+}
+
+/// Derive, simplify, and materialize rational-exponent rewrite via runtime.
+pub fn execute_rational_exponent_rewrite_with_runtime<R>(
+    runtime: &mut R,
+    eq: &Equation,
+    var: &str,
+    lhs_has_var: bool,
+    rhs_has_var: bool,
+) -> Option<RationalExponentSolvedRewrite>
+where
+    R: StrategyKernelRuntime,
+{
+    let kernel = {
+        let ctx = runtime.context();
+        derive_rational_exponent_kernel(ctx, eq, var, lhs_has_var, rhs_has_var)?
+    };
+    let sim_lhs = runtime.simplify_expr(kernel.rewritten.lhs);
+    let sim_rhs = runtime.simplify_expr(kernel.rewritten.rhs);
+    let execution = build_rational_exponent_execution(kernel.q, sim_lhs, sim_rhs);
+    let items = collect_rational_exponent_execution_items(&execution);
+    Some(RationalExponentSolvedRewrite {
+        equation: execution.equation,
+        items,
+    })
 }
 
 #[cfg(test)]
@@ -396,5 +524,55 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, execution.equation);
         assert_eq!(items[0].description, execution.description);
+    }
+
+    #[test]
+    fn execute_collect_terms_rewrite_with_materializes_items_and_equation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let lhs = ctx.add(Expr::Add(x, one));
+        let rhs = ctx.add(Expr::Add(x, two));
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+
+        let solved =
+            execute_collect_terms_rewrite_with(&mut ctx, &eq, "x", |id| id, |_| "rhs".to_string())
+                .expect("collect-terms rewrite should apply");
+
+        assert_eq!(solved.items.len(), 1);
+        assert_eq!(solved.items[0].equation, solved.equation);
+        assert_eq!(solved.items[0].description, "Subtract rhs from both sides");
+    }
+
+    #[test]
+    fn execute_rational_exponent_rewrite_with_materializes_items_and_equation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let exponent = ctx.add(Expr::Div(three, two));
+        let lhs = ctx.add(Expr::Pow(x, exponent));
+        let rhs = ctx.num(8);
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+
+        let solved =
+            execute_rational_exponent_rewrite_with(&mut ctx, &eq, "x", true, false, |id| id)
+                .expect("rational-exponent rewrite should apply");
+
+        assert_eq!(solved.items.len(), 1);
+        assert_eq!(solved.items[0].equation, solved.equation);
+        assert_eq!(
+            solved.items[0].description,
+            "Raise both sides to power 2 to eliminate fractional exponent"
+        );
     }
 }

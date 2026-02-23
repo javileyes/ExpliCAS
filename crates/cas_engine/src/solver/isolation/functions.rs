@@ -3,17 +3,38 @@ use crate::error::CasError;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
 use cas_ast::{BuiltinFn, ExprId, RelOp, SolutionSet};
-use cas_solver_core::function_inverse::{
-    build_rhs_simplification_execution_items, collect_unary_inverse_execution_items,
-};
+use cas_solver_core::function_inverse::{execute_unary_inverse_with_runtime, UnaryInverseRuntime};
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
-use cas_solver_core::log_isolation::collect_log_isolation_execution_items;
+use cas_solver_core::log_isolation::{
+    collect_log_isolation_execution_items, plan_log_isolation_step_with,
+    solve_log_isolation_rewrite_with,
+};
 use cas_solver_core::solve_outcome::{
     build_abs_split_execution_with, collect_abs_split_execution_items,
-    finalize_abs_split_solution_set, plan_abs_isolation, AbsIsolationPlan,
+    finalize_abs_split_solution_set, materialize_abs_split_execution, plan_abs_isolation,
+    solve_abs_split_cases_with, AbsIsolationPlan, AbsSplitSolvedCases,
 };
 
 use super::{isolate, prepend_steps};
+
+struct EngineUnaryInverseRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+}
+
+impl UnaryInverseRuntime for EngineUnaryInverseRuntime<'_> {
+    fn context(&mut self) -> &mut cas_ast::Context {
+        &mut self.simplifier.context
+    }
+
+    fn simplify_rhs_with_entries(&mut self, rhs: ExprId) -> (ExprId, Vec<(String, ExprId)>) {
+        let (simplified_rhs, sim_steps) = self.simplifier.simplify(rhs);
+        let entries = sim_steps
+            .into_iter()
+            .map(|step| (step.description, step.after))
+            .collect::<Vec<_>>();
+        (simplified_rhs, entries)
+    }
+}
 
 /// Handle isolation for `Function(fn_id, args)`: abs, log, ln, exp, sqrt, trig
 #[allow(clippy::too_many_arguments)]
@@ -83,11 +104,8 @@ fn isolate_abs(
             ctx,
         ),
         AbsIsolationPlan::SplitBranches { positive, negative } => {
-            // ── Branch 1: Positive case (A op B) ────────────────────────────────
-            let eq1 = positive;
-            let eq2 = negative;
-            let split_execution = simplifier.collect_steps().then(|| {
-                build_abs_split_execution_with(eq1.clone(), eq2.clone(), arg, |id| {
+            let split_execution = if simplifier.collect_steps() {
+                build_abs_split_execution_with(positive, negative, arg, |id| {
                     format!(
                         "{}",
                         cas_formatter::DisplayExpr {
@@ -96,34 +114,38 @@ fn isolate_abs(
                         }
                     )
                 })
-            });
-            let split_items = split_execution
-                .as_ref()
-                .map(collect_abs_split_execution_items);
-            let mut steps1 = steps.clone();
-            if let Some(item) = split_items.as_ref().and_then(|all| all.first()) {
-                steps1.push(SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation.clone(),
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-            let results1 = isolate(eq1.lhs, eq1.rhs, eq1.op, var, simplifier, opts, ctx)?;
-            let (set1, steps1_out) = prepend_steps(results1, steps1)?;
+            } else {
+                materialize_abs_split_execution(positive, negative)
+            };
+            let split_items = collect_abs_split_execution_items(&split_execution);
+            let mut branch_case_idx = 0usize;
+            let solved = solve_abs_split_cases_with(&split_execution, |equation| {
+                let mut case_steps = steps.clone();
+                if let Some(item) = split_items.get(branch_case_idx) {
+                    case_steps.push(SolveStep {
+                        description: item.description().to_string(),
+                        equation_after: item.equation.clone(),
+                        importance: crate::step::ImportanceLevel::Medium,
+                        substeps: vec![],
+                    });
+                }
+                branch_case_idx += 1;
+                let results = isolate(
+                    equation.lhs,
+                    equation.rhs,
+                    equation.op.clone(),
+                    var,
+                    simplifier,
+                    opts,
+                    ctx,
+                )?;
+                prepend_steps(results, case_steps)
+            })?;
 
-            // ── Branch 2: Negative case ─────────────────────────────────────────
-            let mut steps2 = steps.clone();
-            if let Some(item) = split_items.as_ref().and_then(|all| all.get(1)) {
-                steps2.push(SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation.clone(),
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-            let results2 = isolate(eq2.lhs, eq2.rhs, eq2.op, var, simplifier, opts, ctx)?;
-            let (set2, steps2_out) = prepend_steps(results2, steps2)?;
+            let AbsSplitSolvedCases {
+                positive_branch: (set1, steps1_out),
+                negative_branch: (set2, steps2_out),
+            } = solved;
 
             // ── Combine branches + soundness guard rhs≥0 ──────────────────────
             let final_set = finalize_abs_split_solution_set(
@@ -156,21 +178,22 @@ fn isolate_log(
     mut steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let base_desc = format!(
-        "{}",
-        cas_formatter::DisplayExpr {
-            context: &simplifier.context,
-            id: base
-        }
-    );
-    let rewrite = cas_solver_core::log_isolation::plan_log_isolation_step_with(
+    let rewrite = plan_log_isolation_step_with(
         &mut simplifier.context,
         base,
         arg,
         rhs,
         var,
         op.clone(),
-        |_| base_desc.clone(),
+        |core_ctx, id| {
+            format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: core_ctx,
+                    id
+                }
+            )
+        },
     )
     .ok_or_else(|| {
         CasError::IsolationError(
@@ -178,9 +201,19 @@ fn isolate_log(
             "Cannot isolate from log function".to_string(),
         )
     })?;
-    let new_eq = rewrite.equation.clone();
+    let solved = solve_log_isolation_rewrite_with(rewrite, |equation| {
+        isolate(
+            equation.lhs,
+            equation.rhs,
+            equation.op.clone(),
+            var,
+            simplifier,
+            opts,
+            ctx,
+        )
+    })?;
     if simplifier.collect_steps() {
-        for item in collect_log_isolation_execution_items(&rewrite) {
+        for item in collect_log_isolation_execution_items(&solved.rewrite) {
             steps.push(SolveStep {
                 description: item.description().to_string(),
                 equation_after: item.equation,
@@ -189,10 +222,7 @@ fn isolate_log(
             });
         }
     }
-    let results = isolate(
-        new_eq.lhs, new_eq.rhs, new_eq.op, var, simplifier, opts, ctx,
-    )?;
-    prepend_steps(results, steps)
+    prepend_steps(solved.solved, steps)
 }
 
 /// Handle single-argument functions: ln, exp, sqrt, sin, cos, tan
@@ -209,58 +239,22 @@ fn isolate_unary_function(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let fn_name = simplifier.context.sym_name(fn_id).to_string();
-    let plan = cas_solver_core::function_inverse::plan_unary_inverse_isolation_step(
-        &mut simplifier.context,
-        &fn_name,
-        arg,
-        rhs,
-        op.clone(),
-        true,
-    )
-    .ok_or_else(|| CasError::UnknownFunction(fn_name.clone()))?;
-    let new_rhs = plan.equation.rhs;
-
-    if simplifier.collect_steps() {
-        for item in collect_unary_inverse_execution_items(&plan) {
-            steps.push(SolveStep {
-                description: item.description().to_string(),
-                equation_after: item.equation,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
-        }
-    }
-
-    let target_rhs = if plan.needs_rhs_cleanup {
-        let (simplified_rhs, sim_steps) = simplify_rhs(new_rhs, arg, op.clone(), simplifier);
-        steps.extend(sim_steps);
-        simplified_rhs
-    } else {
-        new_rhs
+    let execution = {
+        let mut runtime = EngineUnaryInverseRuntime { simplifier };
+        execute_unary_inverse_with_runtime(&mut runtime, &fn_name, arg, rhs, op.clone(), true)
+            .ok_or_else(|| CasError::UnknownFunction(fn_name.clone()))?
     };
 
-    let results = isolate(arg, target_rhs, op, var, simplifier, opts, ctx)?;
-    prepend_steps(results, steps)
-}
-
-fn simplify_rhs(
-    rhs: ExprId,
-    lhs: ExprId,
-    op: RelOp,
-    simplifier: &mut Simplifier,
-) -> (ExprId, Vec<SolveStep>) {
-    let (simplified_rhs, sim_steps) = simplifier.simplify(rhs);
-    let mut steps = Vec::new();
-
     if simplifier.collect_steps() {
-        let execution_items = build_rhs_simplification_execution_items(
-            lhs,
-            op,
-            sim_steps
-                .into_iter()
-                .map(|step| (step.description, step.after)),
-        );
-        for item in execution_items {
+        for item in execution.rewrite_items {
+            steps.push(SolveStep {
+                description: item.description().to_string(),
+                equation_after: item.equation,
+                importance: crate::step::ImportanceLevel::Medium,
+                substeps: vec![],
+            });
+        }
+        for item in execution.rhs_cleanup_items {
             steps.push(SolveStep {
                 description: item.description().to_string(),
                 equation_after: item.equation,
@@ -269,5 +263,15 @@ fn simplify_rhs(
             });
         }
     }
-    (simplified_rhs, steps)
+
+    let results = isolate(
+        execution.rewritten_equation.lhs,
+        execution.target_rhs,
+        execution.rewritten_equation.op,
+        var,
+        simplifier,
+        opts,
+        ctx,
+    )?;
+    prepend_steps(results, steps)
 }

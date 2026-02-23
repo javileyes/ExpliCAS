@@ -2,7 +2,7 @@
 
 use crate::log_domain::{LogAssumption, LogSolveDecision};
 use crate::rational_power::PowUnwrapPlan;
-use crate::solve_outcome::{take_log_base_message, TermIsolationDidacticStep};
+use crate::solve_outcome::take_log_base_message;
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp};
 
 /// Planned unwrap rewrite from a target expression.
@@ -23,6 +23,16 @@ pub enum UnwrapRewritePlan {
     },
 }
 
+/// Input bundle for planning/executing one unwrap rewrite.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnwrapExecutionRequest<'a> {
+    pub target: ExprId,
+    pub other: ExprId,
+    pub var: &'a str,
+    pub op: RelOp,
+    pub is_lhs: bool,
+}
+
 /// Solver-ready unwrap step derived from a rewrite plan.
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnwrapExecutionPlan {
@@ -30,6 +40,15 @@ pub struct UnwrapExecutionPlan {
     pub description: String,
     pub assumptions: Vec<LogAssumption>,
     pub log_linear_base: Option<ExprId>,
+    pub items: Vec<UnwrapExecutionItem>,
+}
+
+/// One concrete log-domain assumption emitted by an unwrap execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogLinearAssumptionRecord {
+    pub assumption: LogAssumption,
+    pub base: ExprId,
+    pub other_side: ExprId,
 }
 
 /// One executable unwrap item aligned with a didactic payload.
@@ -44,6 +63,13 @@ impl UnwrapExecutionItem {
     pub fn description(&self) -> &str {
         &self.description
     }
+}
+
+/// Didactic payload for a planned unwrap rewrite step.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnwrapDidacticStep {
+    pub description: String,
+    pub equation_after: Equation,
 }
 
 /// Build narration for variable-base power unwrap rewrites.
@@ -66,50 +92,132 @@ where
         UnwrapRewritePlan::Unary {
             equation,
             description,
-        } => UnwrapExecutionPlan {
-            equation,
-            description,
-            assumptions: vec![],
-            log_linear_base: None,
-        },
-        UnwrapRewritePlan::PowVariableBase { equation, exponent } => UnwrapExecutionPlan {
-            equation,
-            description: pow_variable_base_unwrap_message(&render_expr(exponent)),
-            assumptions: vec![],
-            log_linear_base: None,
-        },
+        } => {
+            let items = vec![UnwrapExecutionItem {
+                equation: equation.clone(),
+                description: description.clone(),
+            }];
+            UnwrapExecutionPlan {
+                equation,
+                description,
+                assumptions: vec![],
+                log_linear_base: None,
+                items,
+            }
+        }
+        UnwrapRewritePlan::PowVariableBase { equation, exponent } => {
+            let description = pow_variable_base_unwrap_message(&render_expr(exponent));
+            let items = vec![UnwrapExecutionItem {
+                equation: equation.clone(),
+                description: description.clone(),
+            }];
+            UnwrapExecutionPlan {
+                equation,
+                description,
+                assumptions: vec![],
+                log_linear_base: None,
+                items,
+            }
+        }
         UnwrapRewritePlan::PowLogLinear {
             equation,
             base,
             assumptions,
-        } => UnwrapExecutionPlan {
-            equation,
-            description: take_log_base_message("e"),
-            assumptions,
-            log_linear_base: Some(base),
-        },
+        } => {
+            let description = take_log_base_message("e");
+            let items = vec![UnwrapExecutionItem {
+                equation: equation.clone(),
+                description: description.clone(),
+            }];
+            UnwrapExecutionPlan {
+                equation,
+                description,
+                assumptions,
+                log_linear_base: Some(base),
+                items,
+            }
+        }
     }
+}
+
+/// Plan and build an unwrap execution in one step.
+///
+/// Returns `None` when no unwrap rewrite is applicable for `request.target`.
+pub fn plan_unwrap_execution_with<FClassify, FRender>(
+    ctx: &mut Context,
+    request: UnwrapExecutionRequest<'_>,
+    classify_log_solve: FClassify,
+    mut render_expr: FRender,
+) -> Option<UnwrapExecutionPlan>
+where
+    FClassify: FnMut(&Context, ExprId, ExprId) -> LogSolveDecision,
+    FRender: FnMut(&Context, ExprId) -> String,
+{
+    let rewrite = plan_unwrap_rewrite(
+        ctx,
+        request.target,
+        request.other,
+        request.var,
+        request.op,
+        request.is_lhs,
+        classify_log_solve,
+    )?;
+    let view_ctx: &Context = ctx;
+    Some(build_unwrap_execution_plan_with(rewrite, |id| {
+        render_expr(view_ctx, id)
+    }))
 }
 
 /// Collect didactic steps emitted by an unwrap execution in display order.
 pub fn collect_unwrap_execution_didactic_steps(
     execution: &UnwrapExecutionPlan,
-) -> Vec<TermIsolationDidacticStep> {
-    vec![TermIsolationDidacticStep {
-        description: execution.description.clone(),
-        equation_after: execution.equation.clone(),
-    }]
+) -> Vec<UnwrapDidacticStep> {
+    execution
+        .items
+        .iter()
+        .cloned()
+        .map(|item| UnwrapDidacticStep {
+            description: item.description,
+            equation_after: item.equation,
+        })
+        .collect()
 }
 
 /// Collect unwrap execution items in display order.
 pub fn collect_unwrap_execution_items(execution: &UnwrapExecutionPlan) -> Vec<UnwrapExecutionItem> {
-    collect_unwrap_execution_didactic_steps(execution)
-        .into_iter()
-        .map(|didactic| UnwrapExecutionItem {
-            equation: didactic.equation_after.clone(),
-            description: didactic.description,
+    execution.items.clone()
+}
+
+/// Collect log-linear assumption records for engine-side reporting.
+pub fn collect_log_linear_assumption_records(
+    execution: &UnwrapExecutionPlan,
+    other_side: ExprId,
+) -> Vec<LogLinearAssumptionRecord> {
+    let Some(base) = execution.log_linear_base else {
+        return vec![];
+    };
+    execution
+        .assumptions
+        .iter()
+        .copied()
+        .map(|assumption| LogLinearAssumptionRecord {
+            assumption,
+            base,
+            other_side,
         })
         .collect()
+}
+
+/// Resolve the equation to continue solving after unwrap execution.
+///
+/// Prefer the last emitted execution item equation (most concrete rewrite),
+/// and fall back to `execution.equation` when item payload is absent.
+pub fn unwrap_rewritten_equation(execution: &UnwrapExecutionPlan) -> Equation {
+    execution
+        .items
+        .last()
+        .map(|item| item.equation.clone())
+        .unwrap_or_else(|| execution.equation.clone())
 }
 
 /// Plan unwrap rewrite for a target expression (`Function`/`Pow`).
@@ -265,6 +373,57 @@ mod tests {
     }
 
     #[test]
+    fn plan_unwrap_execution_with_builds_variable_base_execution() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let exponent = ctx.add(Expr::Div(one, two));
+        let target = ctx.add(Expr::Pow(x, exponent));
+
+        let execution = plan_unwrap_execution_with(
+            &mut ctx,
+            UnwrapExecutionRequest {
+                target,
+                other: y,
+                var: "x",
+                op: RelOp::Eq,
+                is_lhs: true,
+            },
+            |_, _, _| LogSolveDecision::Ok,
+            |_, _| "half".to_string(),
+        )
+        .expect("expected unwrap execution");
+
+        assert_eq!(execution.description, "Raise both sides to 1/half");
+        assert_eq!(execution.items.len(), 1);
+        assert_eq!(execution.items[0].equation, execution.equation);
+    }
+
+    #[test]
+    fn plan_unwrap_execution_with_returns_none_for_non_wrappable_target() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+
+        let execution = plan_unwrap_execution_with(
+            &mut ctx,
+            UnwrapExecutionRequest {
+                target: x,
+                other: y,
+                var: "x",
+                op: RelOp::Eq,
+                is_lhs: true,
+            },
+            |_, _, _| LogSolveDecision::Ok,
+            |_, _| "unused".to_string(),
+        );
+
+        assert!(execution.is_none());
+    }
+
+    #[test]
     fn collect_unwrap_execution_didactic_steps_returns_single_step() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -278,6 +437,14 @@ mod tests {
             description: "unwrap".to_string(),
             assumptions: vec![],
             log_linear_base: None,
+            items: vec![UnwrapExecutionItem {
+                equation: Equation {
+                    lhs: x,
+                    rhs: y,
+                    op: RelOp::Eq,
+                },
+                description: "unwrap".to_string(),
+            }],
         };
 
         let didactic = collect_unwrap_execution_didactic_steps(&execution);
@@ -300,11 +467,126 @@ mod tests {
             description: "unwrap".to_string(),
             assumptions: vec![],
             log_linear_base: None,
+            items: vec![UnwrapExecutionItem {
+                equation: Equation {
+                    lhs: x,
+                    rhs: y,
+                    op: RelOp::Eq,
+                },
+                description: "unwrap".to_string(),
+            }],
         };
 
         let items = collect_unwrap_execution_items(&execution);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, execution.equation);
         assert_eq!(items[0].description, "unwrap");
+    }
+
+    #[test]
+    fn collect_log_linear_assumption_records_returns_records_when_present() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let execution = UnwrapExecutionPlan {
+            equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            description: "unwrap".to_string(),
+            assumptions: vec![LogAssumption::PositiveBase, LogAssumption::PositiveRhs],
+            log_linear_base: Some(x),
+            items: vec![],
+        };
+
+        let records = collect_log_linear_assumption_records(&execution, y);
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].assumption, LogAssumption::PositiveBase);
+        assert_eq!(records[0].base, x);
+        assert_eq!(records[0].other_side, y);
+        assert_eq!(records[1].assumption, LogAssumption::PositiveRhs);
+    }
+
+    #[test]
+    fn collect_log_linear_assumption_records_is_empty_without_log_linear_base() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let execution = UnwrapExecutionPlan {
+            equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            description: "unwrap".to_string(),
+            assumptions: vec![LogAssumption::PositiveBase],
+            log_linear_base: None,
+            items: vec![],
+        };
+
+        let records = collect_log_linear_assumption_records(&execution, y);
+        assert!(records.is_empty());
+    }
+
+    #[test]
+    fn unwrap_rewritten_equation_prefers_last_execution_item() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let execution = UnwrapExecutionPlan {
+            equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            description: "unwrap".to_string(),
+            assumptions: vec![],
+            log_linear_base: None,
+            items: vec![
+                UnwrapExecutionItem {
+                    equation: Equation {
+                        lhs: y,
+                        rhs: z,
+                        op: RelOp::Eq,
+                    },
+                    description: "first".to_string(),
+                },
+                UnwrapExecutionItem {
+                    equation: Equation {
+                        lhs: z,
+                        rhs: x,
+                        op: RelOp::Eq,
+                    },
+                    description: "last".to_string(),
+                },
+            ],
+        };
+
+        let rewritten = unwrap_rewritten_equation(&execution);
+        assert_eq!(rewritten.lhs, z);
+        assert_eq!(rewritten.rhs, x);
+    }
+
+    #[test]
+    fn unwrap_rewritten_equation_falls_back_to_execution_equation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let execution = UnwrapExecutionPlan {
+            equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            description: "unwrap".to_string(),
+            assumptions: vec![],
+            log_linear_base: None,
+            items: vec![],
+        };
+
+        let rewritten = unwrap_rewritten_equation(&execution);
+        assert_eq!(rewritten, execution.equation);
     }
 }

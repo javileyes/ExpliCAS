@@ -2,14 +2,11 @@ use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::{SolveStep, SolverOptions};
-use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
+use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
     contains_var, is_known_negative, should_split_division_denominator_sign_cases,
     should_split_isolated_denominator_variable, should_split_product_zero_inequality,
     should_try_reciprocal_solve,
-};
-use cas_solver_core::solution_set::{
-    intersect_solution_sets, open_negative_domain, open_positive_domain, union_solution_sets,
 };
 use cas_solver_core::solve_outcome::{
     build_division_denominator_execution_with,
@@ -18,15 +15,42 @@ use cas_solver_core::solve_outcome::{
     collect_division_denominator_execution_items,
     collect_division_denominator_sign_split_execution_items,
     collect_isolated_denominator_sign_split_execution_items,
-    collect_term_isolation_rewrite_execution_items, plan_add_operand_isolation_step_with,
+    collect_term_isolation_rewrite_execution_items,
+    finalize_division_denominator_sign_split_solved_sets,
+    finalize_isolated_denominator_sign_split_solved_sets,
+    finalize_product_zero_inequality_solved_sets,
+    materialize_division_denominator_sign_split_execution,
+    materialize_isolated_denominator_sign_split_execution, plan_add_operand_isolation_step_with,
     plan_div_denominator_isolation_with_zero_rhs_guard, plan_div_numerator_isolation_step_with,
     plan_division_denominator, plan_division_denominator_sign_split,
     plan_isolated_denominator_sign_split, plan_mul_factor_isolation_step_with,
     plan_product_zero_inequality_split, plan_sub_minuend_isolation_step_with,
-    plan_sub_subtrahend_isolation_step_with, DivDenominatorIsolationRoute,
+    plan_sub_subtrahend_isolation_step_with, solve_division_denominator_sign_split_cases_with,
+    solve_isolated_denominator_sign_split_cases_with, solve_product_zero_inequality_cases_with,
+    solve_term_isolation_rewrite_with, DivDenominatorIsolationRoute,
+    DivisionDenominatorSignSplitSolvedCases, IsolatedDenominatorSignSplitSolvedCases,
+    TermIsolationRewritePlan,
 };
 
 use super::{isolate, prepend_steps};
+
+fn append_term_isolation_rewrite_steps(
+    steps: &mut Vec<SolveStep>,
+    collect_steps: bool,
+    plan: &TermIsolationRewritePlan,
+) {
+    if !collect_steps {
+        return;
+    }
+    for item in collect_term_isolation_rewrite_execution_items(plan) {
+        steps.push(SolveStep {
+            description: item.description().to_string(),
+            equation_after: item.equation,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        });
+    }
+}
 
 /// Handle isolation for `Add(l, r)`: `(A + B) = RHS`
 #[allow(clippy::too_many_arguments)]
@@ -74,20 +98,24 @@ pub(super) fn isolate_add(
             op.clone(),
             |_| moved_desc.clone(),
         );
-        let new_eq = plan.equation.clone();
-        let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
-        if simplifier.collect_steps() {
-            for item in collect_term_isolation_rewrite_execution_items(&plan) {
-                steps.push(SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-        }
-        let results = isolate(new_eq.lhs, sim_rhs, new_eq.op, var, simplifier, opts, ctx)?;
-        prepend_steps(results, steps)
+        let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
+            let (sim_rhs, _) = simplifier.simplify(equation.rhs);
+            isolate(
+                equation.lhs,
+                sim_rhs,
+                equation.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )
+        })?;
+        append_term_isolation_rewrite_steps(
+            &mut steps,
+            simplifier.collect_steps(),
+            &solved_rewrite.rewrite,
+        );
+        prepend_steps(solved_rewrite.solved, steps)
     } else {
         // A + B = RHS -> B = RHS - A
         let moved_desc = format!(
@@ -105,20 +133,24 @@ pub(super) fn isolate_add(
             op.clone(),
             |_| moved_desc.clone(),
         );
-        let new_eq = plan.equation.clone();
-        let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
-        if simplifier.collect_steps() {
-            for item in collect_term_isolation_rewrite_execution_items(&plan) {
-                steps.push(SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-        }
-        let results = isolate(new_eq.lhs, sim_rhs, new_eq.op, var, simplifier, opts, ctx)?;
-        prepend_steps(results, steps)
+        let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
+            let (sim_rhs, _) = simplifier.simplify(equation.rhs);
+            isolate(
+                equation.lhs,
+                sim_rhs,
+                equation.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )
+        })?;
+        append_term_isolation_rewrite_steps(
+            &mut steps,
+            simplifier.collect_steps(),
+            &solved_rewrite.rewrite,
+        );
+        prepend_steps(solved_rewrite.solved, steps)
     }
 }
 
@@ -152,20 +184,24 @@ pub(super) fn isolate_sub(
             op.clone(),
             |_| moved_desc.clone(),
         );
-        let new_eq = plan.equation.clone();
-        let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
-        if simplifier.collect_steps() {
-            for item in collect_term_isolation_rewrite_execution_items(&plan) {
-                steps.push(SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-        }
-        let results = isolate(new_eq.lhs, sim_rhs, new_eq.op, var, simplifier, opts, ctx)?;
-        prepend_steps(results, steps)
+        let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
+            let (sim_rhs, _) = simplifier.simplify(equation.rhs);
+            isolate(
+                equation.lhs,
+                sim_rhs,
+                equation.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )
+        })?;
+        append_term_isolation_rewrite_steps(
+            &mut steps,
+            simplifier.collect_steps(),
+            &solved_rewrite.rewrite,
+        );
+        prepend_steps(solved_rewrite.solved, steps)
     } else {
         // A - B = RHS -> B = A - RHS (multiply by -1 flips inequality)
         let moved_desc = format!(
@@ -179,21 +215,24 @@ pub(super) fn isolate_sub(
             plan_sub_subtrahend_isolation_step_with(&mut simplifier.context, l, r, rhs, op, |_| {
                 moved_desc.clone()
             });
-        let new_eq = plan.equation.clone();
-        let (sim_rhs, _) = simplifier.simplify(new_eq.rhs);
-        let new_op = new_eq.op.clone();
-        if simplifier.collect_steps() {
-            for item in collect_term_isolation_rewrite_execution_items(&plan) {
-                steps.push(SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-        }
-        let results = isolate(new_eq.lhs, sim_rhs, new_op, var, simplifier, opts, ctx)?;
-        prepend_steps(results, steps)
+        let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
+            let (sim_rhs, _) = simplifier.simplify(equation.rhs);
+            isolate(
+                equation.lhs,
+                sim_rhs,
+                equation.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )
+        })?;
+        append_term_isolation_rewrite_steps(
+            &mut steps,
+            simplifier.collect_steps(),
+            &solved_rewrite.rewrite,
+        );
+        prepend_steps(solved_rewrite.solved, steps)
     }
 }
 
@@ -217,15 +256,13 @@ pub(super) fn isolate_mul(
         if let Some(plan) =
             plan_product_zero_inequality_split(&mut simplifier.context, l, r, op.clone())
         {
-            let (set_a_case1, _) = solve_with_ctx(&plan.case1_left, var, simplifier, ctx)?;
-            let (set_b_case1, _) = solve_with_ctx(&plan.case1_right, var, simplifier, ctx)?;
-            let case_set1 = intersect_solution_sets(&simplifier.context, set_a_case1, set_b_case1);
-
-            let (set_a_case2, _) = solve_with_ctx(&plan.case2_left, var, simplifier, ctx)?;
-            let (set_b_case2, _) = solve_with_ctx(&plan.case2_right, var, simplifier, ctx)?;
-            let case_set2 = intersect_solution_sets(&simplifier.context, set_a_case2, set_b_case2);
-
-            let final_set = union_solution_sets(&simplifier.context, case_set1, case_set2);
+            let solved_sets = solve_product_zero_inequality_cases_with(&plan, |equation| {
+                let (solution_set, mut sub_steps) = solve_with_ctx(equation, var, simplifier, ctx)?;
+                steps.append(&mut sub_steps);
+                Ok::<_, CasError>(solution_set)
+            })?;
+            let final_set =
+                finalize_product_zero_inequality_solved_sets(&simplifier.context, solved_sets);
             return Ok((final_set, steps));
         }
     }
@@ -264,16 +301,7 @@ pub(super) fn isolate_mul(
         let new_eq = plan.equation.clone();
         let new_rhs = new_eq.rhs;
         let new_op = new_eq.op.clone();
-        if simplifier.collect_steps() {
-            for item in collect_term_isolation_rewrite_execution_items(&plan) {
-                steps.push(SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-        }
+        append_term_isolation_rewrite_steps(&mut steps, simplifier.collect_steps(), &plan);
         let results = isolate(new_eq.lhs, new_rhs, new_op, var, simplifier, opts, ctx)?;
         prepend_steps(results, steps)
     } else {
@@ -308,16 +336,7 @@ pub(super) fn isolate_mul(
         let new_eq = plan.equation.clone();
         let new_rhs = new_eq.rhs;
         let new_op = new_eq.op.clone();
-        if simplifier.collect_steps() {
-            for item in collect_term_isolation_rewrite_execution_items(&plan) {
-                steps.push(SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-        }
+        append_term_isolation_rewrite_steps(&mut steps, simplifier.collect_steps(), &plan);
         let results = isolate(new_eq.lhs, new_rhs, new_op, var, simplifier, opts, ctx)?;
         prepend_steps(results, steps)
     }
@@ -349,9 +368,9 @@ pub(super) fn isolate_div(
             )
             .expect("inequality branch requires denominator sign cases");
             let (sim_rhs, _) = simplifier.simplify(split_plan.positive_equation.rhs);
-            let split_execution = simplifier.collect_steps().then(|| {
+            let split_execution = if simplifier.collect_steps() {
                 build_division_denominator_sign_split_execution_with(
-                    split_plan.clone(),
+                    split_plan,
                     r,
                     l,
                     op.clone(),
@@ -366,84 +385,72 @@ pub(super) fn isolate_div(
                         )
                     },
                 )
-            });
-            let eq_pos = split_execution.as_ref().map_or_else(
-                || Equation {
-                    lhs: split_plan.positive_equation.lhs,
-                    rhs: sim_rhs,
-                    op: split_plan.positive_equation.op.clone(),
+            } else {
+                materialize_division_denominator_sign_split_execution(split_plan, sim_rhs)
+            };
+            let split_items =
+                collect_division_denominator_sign_split_execution_items(&split_execution);
+
+            let mut branch_case_idx = 0usize;
+            let mut precomputed_domains = {
+                let (domain_pos_set, _) =
+                    solve_with_ctx(&split_execution.positive_domain, var, simplifier, ctx)?;
+                let (domain_neg_set, _) =
+                    solve_with_ctx(&split_execution.negative_domain, var, simplifier, ctx)?;
+                vec![domain_pos_set, domain_neg_set].into_iter()
+            };
+            let solved = solve_division_denominator_sign_split_cases_with(
+                &split_execution,
+                |equation| {
+                    let mut case_steps = steps.clone();
+                    if let Some(item) = split_items.get(branch_case_idx) {
+                        case_steps.push(SolveStep {
+                            description: item.description().to_string(),
+                            equation_after: item.equation.clone(),
+                            importance: crate::step::ImportanceLevel::Medium,
+                            substeps: vec![],
+                        });
+                    }
+                    branch_case_idx += 1;
+                    let results = isolate(
+                        equation.lhs,
+                        equation.rhs,
+                        equation.op.clone(),
+                        var,
+                        simplifier,
+                        opts,
+                        ctx,
+                    )?;
+                    prepend_steps(results, case_steps)
                 },
-                |exec| exec.positive_equation.clone(),
-            );
-            let eq_neg = split_execution.as_ref().map_or_else(
-                || Equation {
-                    lhs: split_plan.negative_equation.lhs,
-                    rhs: sim_rhs,
-                    op: split_plan.negative_equation.op.clone(),
+                |_domain_equation| {
+                    Ok::<_, CasError>(
+                        precomputed_domains
+                            .next()
+                            .expect("precomputed domain sets for both sign branches"),
+                    )
                 },
-                |exec| exec.negative_equation.clone(),
+            )?;
+
+            let DivisionDenominatorSignSplitSolvedCases {
+                positive_branch: (set_pos, steps_pos),
+                negative_branch: (set_neg, steps_neg),
+                positive_domain: domain_pos_set,
+                negative_domain: domain_neg_set,
+            } = solved;
+            let final_set = finalize_division_denominator_sign_split_solved_sets(
+                &simplifier.context,
+                DivisionDenominatorSignSplitSolvedCases {
+                    positive_branch: set_pos,
+                    negative_branch: set_neg,
+                    positive_domain: domain_pos_set,
+                    negative_domain: domain_neg_set,
+                },
             );
-            let split_items = split_execution
-                .as_ref()
-                .map(collect_division_denominator_sign_split_execution_items);
-
-            if let Some(item) = split_items.as_ref().and_then(|all| all.first()) {
-                steps.push(SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation.clone(),
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-
-            let results_pos = isolate(
-                eq_pos.lhs,
-                eq_pos.rhs,
-                eq_pos.op.clone(),
-                var,
-                simplifier,
-                opts,
-                ctx,
-            )?;
-            let (set_pos, steps_pos) = prepend_steps(results_pos, steps.clone())?;
-
-            // Domain: r > 0
-            let (domain_pos_set, _) =
-                solve_with_ctx(&split_plan.positive_domain, var, simplifier, ctx)?;
-            let final_pos = intersect_solution_sets(&simplifier.context, set_pos, domain_pos_set);
-
-            // Case 2: Denominator < 0
-            if let Some(item) = split_items.as_ref().and_then(|all| all.get(1)) {
-                steps.push(SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation.clone(),
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-
-            let results_neg = isolate(
-                eq_neg.lhs,
-                eq_neg.rhs,
-                eq_neg.op.clone(),
-                var,
-                simplifier,
-                opts,
-                ctx,
-            )?;
-            let (set_neg, steps_neg) = prepend_steps(results_neg, steps.clone())?;
-
-            // Domain: r < 0
-            let (domain_neg_set, _) =
-                solve_with_ctx(&split_plan.negative_domain, var, simplifier, ctx)?;
-            let final_neg = intersect_solution_sets(&simplifier.context, set_neg, domain_neg_set);
-
-            // Combine
-            let final_set = union_solution_sets(&simplifier.context, final_pos, final_neg);
 
             // Combine steps
             let mut all_steps = steps_pos;
-            if let Some(item) = split_items.as_ref().and_then(|all| all.get(2)) {
+            if let Some(item) = split_items.get(2) {
                 all_steps.push(SolveStep {
                     description: item.description().to_string(),
                     equation_after: item.equation.clone(),
@@ -476,16 +483,7 @@ pub(super) fn isolate_div(
             let new_eq = plan.equation.clone();
             let new_rhs = new_eq.rhs;
             let new_op = new_eq.op.clone();
-            if simplifier.collect_steps() {
-                for item in collect_term_isolation_rewrite_execution_items(&plan) {
-                    steps.push(SolveStep {
-                        description: item.description().to_string(),
-                        equation_after: item.equation,
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    });
-                }
-            }
+            append_term_isolation_rewrite_steps(&mut steps, simplifier.collect_steps(), &plan);
             let results = isolate(new_eq.lhs, new_rhs, new_op, var, simplifier, opts, ctx)?;
             prepend_steps(results, steps)
         }
@@ -524,9 +522,9 @@ pub(super) fn isolate_div(
             // Split into x > 0 and x < 0
             let split_plan = plan_isolated_denominator_sign_split(r, sim_rhs, op.clone())
                 .expect("inequality branch requires denominator sign cases");
-            let split_execution = simplifier.collect_steps().then(|| {
+            let split_execution = if simplifier.collect_steps() {
                 build_isolated_denominator_sign_split_execution_with(
-                    split_plan.clone(),
+                    split_plan,
                     r,
                     op.clone(),
                     |id| {
@@ -539,76 +537,52 @@ pub(super) fn isolate_div(
                         )
                     },
                 )
-            });
-            let eq_pos = split_execution.as_ref().map_or_else(
-                || split_plan.positive_equation.clone(),
-                |exec| exec.positive_equation.clone(),
+            } else {
+                materialize_isolated_denominator_sign_split_execution(split_plan)
+            };
+            let split_items =
+                collect_isolated_denominator_sign_split_execution_items(&split_execution);
+
+            let mut branch_case_idx = 0usize;
+            let solved =
+                solve_isolated_denominator_sign_split_cases_with(&split_execution, |equation| {
+                    let mut case_steps = steps.clone();
+                    if let Some(item) = split_items.get(branch_case_idx) {
+                        case_steps.push(SolveStep {
+                            description: item.description().to_string(),
+                            equation_after: item.equation.clone(),
+                            importance: crate::step::ImportanceLevel::Medium,
+                            substeps: vec![],
+                        });
+                    }
+                    branch_case_idx += 1;
+                    let results = isolate(
+                        equation.lhs,
+                        equation.rhs,
+                        equation.op.clone(),
+                        var,
+                        simplifier,
+                        opts,
+                        ctx,
+                    )?;
+                    prepend_steps(results, case_steps)
+                })?;
+
+            let IsolatedDenominatorSignSplitSolvedCases {
+                positive_branch: (set_pos, steps_pos),
+                negative_branch: (set_neg, steps_neg),
+            } = solved;
+            let final_set = finalize_isolated_denominator_sign_split_solved_sets(
+                &mut simplifier.context,
+                IsolatedDenominatorSignSplitSolvedCases {
+                    positive_branch: set_pos,
+                    negative_branch: set_neg,
+                },
             );
-            let eq_neg = split_execution.as_ref().map_or_else(
-                || split_plan.negative_equation.clone(),
-                |exec| exec.negative_equation.clone(),
-            );
-            let split_items = split_execution
-                .as_ref()
-                .map(collect_isolated_denominator_sign_split_execution_items);
-
-            let mut steps_case1 = steps.clone();
-            if let Some(item) = split_items.as_ref().and_then(|all| all.first()) {
-                steps_case1.push(SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation.clone(),
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-
-            let results_pos = isolate(
-                eq_pos.lhs,
-                eq_pos.rhs,
-                eq_pos.op.clone(),
-                var,
-                simplifier,
-                opts,
-                ctx,
-            )?;
-            let (set_pos, steps_pos) = prepend_steps(results_pos, steps_case1)?;
-
-            // Intersect with (0, inf)
-            let domain_pos = open_positive_domain(&mut simplifier.context);
-            let final_pos = intersect_solution_sets(&simplifier.context, set_pos, domain_pos);
-
-            // Case 2: x < 0. Multiply by x (negative) -> Inequality flips.
-            let mut steps_case2 = steps.clone();
-            if let Some(item) = split_items.as_ref().and_then(|all| all.get(1)) {
-                steps_case2.push(SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation.clone(),
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-
-            let results_neg = isolate(
-                eq_neg.lhs,
-                eq_neg.rhs,
-                eq_neg.op.clone(),
-                var,
-                simplifier,
-                opts,
-                ctx,
-            )?;
-            let (set_neg, steps_neg) = prepend_steps(results_neg, steps_case2)?;
-
-            // Intersect with (-inf, 0)
-            let domain_neg = open_negative_domain(&mut simplifier.context);
-            let final_neg = intersect_solution_sets(&simplifier.context, set_neg, domain_neg);
-
-            // Union
-            let final_set = union_solution_sets(&simplifier.context, final_pos, final_neg);
 
             // Combine steps
             let mut all_steps = steps_pos;
-            if let Some(item) = split_items.as_ref().and_then(|all| all.get(2)) {
+            if let Some(item) = split_items.get(2) {
                 all_steps.push(SolveStep {
                     description: item.description().to_string(),
                     equation_after: item.equation.clone(),

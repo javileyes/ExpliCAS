@@ -4,7 +4,6 @@ pub(crate) mod isolation;
 pub(crate) mod linear_collect;
 pub(crate) mod numeric_islands;
 pub(crate) mod proof_bridge;
-pub(crate) mod quadratic_steps;
 pub(crate) mod reciprocal_solve;
 pub(crate) mod runtime_tls;
 pub(crate) mod solve_core;

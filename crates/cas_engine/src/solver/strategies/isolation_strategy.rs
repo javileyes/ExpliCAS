@@ -7,16 +7,45 @@ use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_outcome::{
-    collect_term_isolation_execution_items, collect_term_isolation_rewrite_execution_items,
-    plan_swap_sides_step, resolve_single_side_exponential_terminal_with_step,
+    collect_term_isolation_rewrite_execution_items, plan_swap_sides_step,
+    resolve_single_side_exponential_terminal_with_item, solve_term_isolation_rewrite_with,
 };
 use cas_solver_core::strategy_kernels::{
-    build_collect_terms_execution_with, build_rational_exponent_execution,
-    collect_collect_terms_execution_items, collect_rational_exponent_execution_items,
-    derive_collect_terms_kernel, derive_rational_exponent_kernel,
+    execute_collect_terms_rewrite_with_runtime, execute_rational_exponent_rewrite_with_runtime,
+    StrategyKernelRuntime,
+};
+use cas_solver_core::unwrap_plan::{
+    collect_log_linear_assumption_records, collect_unwrap_execution_items,
+    plan_unwrap_execution_with, unwrap_rewritten_equation, UnwrapExecutionPlan,
+    UnwrapExecutionRequest,
 };
 
 pub struct IsolationStrategy;
+
+struct EngineStrategyKernelRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+}
+
+impl StrategyKernelRuntime for EngineStrategyKernelRuntime<'_> {
+    fn context(&mut self) -> &mut cas_ast::Context {
+        &mut self.simplifier.context
+    }
+
+    fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
+        let (simplified, _) = self.simplifier.simplify(expr);
+        simplified
+    }
+
+    fn render_expr(&mut self, expr: ExprId) -> String {
+        format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &self.simplifier.context,
+                id: expr
+            }
+        )
+    }
+}
 
 impl SolverStrategy for IsolationStrategy {
     fn name(&self) -> &str {
@@ -54,33 +83,33 @@ impl SolverStrategy for IsolationStrategy {
         if !lhs_has && rhs_has {
             // Swap
             let plan = plan_swap_sides_step(eq);
-            let execution_items = collect_term_isolation_rewrite_execution_items(&plan);
-            let mut steps = Vec::new();
-            if simplifier.collect_steps() {
-                for item in &execution_items {
-                    steps.push(SolveStep {
-                        description: item.description().to_string(),
-                        equation_after: item.equation.clone(),
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    });
-                }
-            }
-            let swapped = execution_items
-                .last()
-                .map(|item| item.equation.clone())
-                .unwrap_or(plan.equation);
-            // V2.0: Pass opts through to propagate budget
-            match isolate(
-                swapped.lhs,
-                swapped.rhs,
-                swapped.op,
-                var,
-                simplifier,
-                *opts,
-                ctx,
-            ) {
-                Ok((set, mut iso_steps)) => {
+            let solved_swap = solve_term_isolation_rewrite_with(plan, |equation| {
+                isolate(
+                    equation.lhs,
+                    equation.rhs,
+                    equation.op.clone(),
+                    var,
+                    simplifier,
+                    *opts,
+                    ctx,
+                )
+            });
+            match solved_swap {
+                Ok(solved_swap) => {
+                    let execution_items =
+                        collect_term_isolation_rewrite_execution_items(&solved_swap.rewrite);
+                    let mut steps = Vec::new();
+                    if simplifier.collect_steps() {
+                        for item in &execution_items {
+                            steps.push(SolveStep {
+                                description: item.description().to_string(),
+                                equation_after: item.equation.clone(),
+                                importance: crate::step::ImportanceLevel::Medium,
+                                substeps: vec![],
+                            });
+                        }
+                    }
+                    let (set, mut iso_steps) = solved_swap.solved;
                     steps.append(&mut iso_steps);
                     return Some(Ok((set, steps)));
                 }
@@ -101,6 +130,46 @@ impl SolverStrategy for IsolationStrategy {
 }
 
 pub struct UnwrapStrategy;
+
+fn run_unwrap_execution(
+    execution: UnwrapExecutionPlan,
+    other_side: ExprId,
+    var: &str,
+    simplifier: &mut Simplifier,
+    ctx: &SolveCtx,
+) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+    for record in collect_log_linear_assumption_records(&execution, other_side) {
+        let event = crate::assumptions::AssumptionEvent::from_log_assumption(
+            record.assumption,
+            &simplifier.context,
+            record.base,
+            record.other_side,
+        );
+        crate::solver::note_assumption(event);
+    }
+
+    let execution_items = collect_unwrap_execution_items(&execution);
+    let mut steps = Vec::new();
+    if simplifier.collect_steps() {
+        for item in &execution_items {
+            steps.push(SolveStep {
+                description: item.description().to_string(),
+                equation_after: item.equation.clone(),
+                importance: crate::step::ImportanceLevel::Medium,
+                substeps: vec![],
+            });
+        }
+    }
+
+    let rewritten_eq = unwrap_rewritten_equation(&execution);
+    match solve_with_ctx(&rewritten_eq, var, simplifier, ctx) {
+        Ok((set, mut sub_steps)) => {
+            steps.append(&mut sub_steps);
+            Ok((set, steps))
+        }
+        Err(e) => Err(e),
+    }
+}
 
 impl SolverStrategy for UnwrapStrategy {
     fn name(&self) -> &str {
@@ -136,7 +205,7 @@ impl SolverStrategy for UnwrapStrategy {
         let mode = crate::solver::domain_guards::to_core_domain_mode(opts.domain_mode);
         let wildcard_scope = opts.assume_scope == crate::semantics::AssumeScope::Wildcard;
 
-        if let Some((solutions, terminal_step)) = resolve_single_side_exponential_terminal_with_step(
+        if let Some((solutions, terminal_item)) = resolve_single_side_exponential_terminal_with_item(
             &mut simplifier.context,
             eq.lhs,
             eq.rhs,
@@ -153,130 +222,57 @@ impl SolverStrategy for UnwrapStrategy {
         ) {
             let mut steps = Vec::new();
             if simplifier.collect_steps() {
-                for item in collect_term_isolation_execution_items(&terminal_step) {
-                    steps.push(SolveStep {
-                        description: item.description().to_string(),
-                        equation_after: item.equation,
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    });
-                }
+                steps.push(SolveStep {
+                    description: terminal_item.description().to_string(),
+                    equation_after: terminal_item.equation,
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
             }
             return Some(Ok((solutions, steps)));
         }
 
         // Helper to invert
-        let mut invert =
-            |target: ExprId,
-             other: ExprId,
-             op: RelOp,
-             is_lhs: bool|
-             -> Option<(cas_solver_core::unwrap_plan::UnwrapExecutionPlan, ExprId)> {
-                let rewrite_plan = cas_solver_core::unwrap_plan::plan_unwrap_rewrite(
-                    &mut simplifier.context,
+        let mut invert = |target: ExprId, other: ExprId, op: RelOp, is_lhs: bool| {
+            plan_unwrap_execution_with(
+                &mut simplifier.context,
+                UnwrapExecutionRequest {
                     target,
                     other,
                     var,
                     op,
                     is_lhs,
-                    |core_ctx, base, other_side| {
-                        classify_log_solve(core_ctx, base, other_side, opts, &ctx.domain_env)
-                    },
-                )?;
-                let execution = cas_solver_core::unwrap_plan::build_unwrap_execution_plan_with(
-                    rewrite_plan,
-                    |id| {
-                        format!(
-                            "{}",
-                            cas_formatter::DisplayExpr {
-                                context: &simplifier.context,
-                                id
-                            }
-                        )
-                    },
-                );
-                Some((execution, other))
-            };
+                },
+                |core_ctx, base, other_side| {
+                    classify_log_solve(core_ctx, base, other_side, opts, &ctx.domain_env)
+                },
+                |core_ctx, id| {
+                    format!(
+                        "{}",
+                        cas_formatter::DisplayExpr {
+                            context: core_ctx,
+                            id
+                        }
+                    )
+                },
+            )
+        };
 
         // Try LHS
         if lhs_has {
-            if let Some((execution, other_side)) = invert(eq.lhs, eq.rhs, eq.op.clone(), true) {
-                if let Some(base) = execution.log_linear_base {
-                    for assumption in execution.assumptions.iter().copied() {
-                        let event = crate::assumptions::AssumptionEvent::from_log_assumption(
-                            assumption,
-                            &simplifier.context,
-                            base,
-                            other_side,
-                        );
-                        crate::solver::note_assumption(event);
-                    }
-                }
-                let execution_items =
-                    cas_solver_core::unwrap_plan::collect_unwrap_execution_items(&execution);
-                let mut steps = Vec::new();
-                if simplifier.collect_steps() {
-                    for item in &execution_items {
-                        steps.push(SolveStep {
-                            description: item.description().to_string(),
-                            equation_after: item.equation.clone(),
-                            importance: crate::step::ImportanceLevel::Medium,
-                            substeps: vec![],
-                        });
-                    }
-                }
-                let rewritten_eq = execution_items
-                    .last()
-                    .map(|item| item.equation.clone())
-                    .unwrap_or_else(|| execution.equation.clone());
-                match solve_with_ctx(&rewritten_eq, var, simplifier, ctx) {
-                    Ok((set, mut sub_steps)) => {
-                        steps.append(&mut sub_steps);
-                        return Some(Ok((set, steps)));
-                    }
-                    Err(e) => return Some(Err(e)),
-                }
+            if let Some(execution) = invert(eq.lhs, eq.rhs, eq.op.clone(), true) {
+                return Some(run_unwrap_execution(
+                    execution, eq.rhs, var, simplifier, ctx,
+                ));
             }
         }
 
         // Try RHS
         if rhs_has {
-            if let Some((execution, other_side)) = invert(eq.rhs, eq.lhs, eq.op.clone(), false) {
-                if let Some(base) = execution.log_linear_base {
-                    for assumption in execution.assumptions.iter().copied() {
-                        let event = crate::assumptions::AssumptionEvent::from_log_assumption(
-                            assumption,
-                            &simplifier.context,
-                            base,
-                            other_side,
-                        );
-                        crate::solver::note_assumption(event);
-                    }
-                }
-                let execution_items =
-                    cas_solver_core::unwrap_plan::collect_unwrap_execution_items(&execution);
-                let mut steps = Vec::new();
-                if simplifier.collect_steps() {
-                    for item in &execution_items {
-                        steps.push(SolveStep {
-                            description: item.description().to_string(),
-                            equation_after: item.equation.clone(),
-                            importance: crate::step::ImportanceLevel::Medium,
-                            substeps: vec![],
-                        });
-                    }
-                }
-                let rewritten_eq = execution_items
-                    .last()
-                    .map(|item| item.equation.clone())
-                    .unwrap_or_else(|| execution.equation.clone());
-                match solve_with_ctx(&rewritten_eq, var, simplifier, ctx) {
-                    Ok((set, mut sub_steps)) => {
-                        steps.append(&mut sub_steps);
-                        return Some(Ok((set, steps)));
-                    }
-                    Err(e) => return Some(Err(e)),
-                }
+            if let Some(execution) = invert(eq.rhs, eq.lhs, eq.op.clone(), false) {
+                return Some(run_unwrap_execution(
+                    execution, eq.lhs, var, simplifier, ctx,
+                ));
             }
         }
 
@@ -310,33 +306,14 @@ impl SolverStrategy for CollectTermsStrategy {
         _opts: &SolverOptions,
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-        let kernel = derive_collect_terms_kernel(&mut simplifier.context, eq, var)?;
+        let solved = {
+            let mut runtime = EngineStrategyKernelRuntime { simplifier };
+            execute_collect_terms_rewrite_with_runtime(&mut runtime, eq, var)?
+        };
         let mut steps = Vec::new();
 
-        // Strategy: Subtract RHS from both sides to move everything to LHS
-        // ax + b = cx + d  ->  ax + b - (cx + d) = cx + d - (cx + d)
-        //                  ->  ax - cx + b - d = 0
-
-        let rewritten = kernel.rewritten;
-
-        // Simplify both sides
-        let (simp_lhs, _) = simplifier.simplify(rewritten.lhs);
-        let (simp_rhs, _) = simplifier.simplify(rewritten.rhs);
-        let execution =
-            build_collect_terms_execution_with(simp_lhs, simp_rhs, eq.op.clone(), eq.rhs, |id| {
-                format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id
-                    }
-                )
-            });
-
-        let execution_items = collect_collect_terms_execution_items(&execution);
-
         if simplifier.collect_steps() {
-            for item in &execution_items {
+            for item in &solved.items {
                 steps.push(SolveStep {
                     description: item.description().to_string(),
                     equation_after: item.equation.clone(),
@@ -348,7 +325,7 @@ impl SolverStrategy for CollectTermsStrategy {
 
         // Now recursively solve the simplified equation
         // This should now have variable only on one side
-        let new_eq = execution_items[0].equation.clone();
+        let new_eq = solved.equation;
         match solve_with_ctx(&new_eq, var, simplifier, ctx) {
             Ok((set, mut solve_steps)) => {
                 steps.append(&mut solve_steps);
@@ -379,21 +356,15 @@ impl SolverStrategy for RationalExponentStrategy {
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
         let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
-
-        let kernel =
-            derive_rational_exponent_kernel(&mut simplifier.context, eq, var, lhs_has, rhs_has)?;
-
+        let solved = {
+            let mut runtime = EngineStrategyKernelRuntime { simplifier };
+            execute_rational_exponent_rewrite_with_runtime(&mut runtime, eq, var, lhs_has, rhs_has)?
+        };
         let mut steps = Vec::new();
-
-        // Simplify both sides
-        let (sim_lhs, _) = simplifier.simplify(kernel.rewritten.lhs);
-        let (sim_rhs, _) = simplifier.simplify(kernel.rewritten.rhs);
-        let execution = build_rational_exponent_execution(kernel.q, sim_lhs, sim_rhs);
-        let execution_items = collect_rational_exponent_execution_items(&execution);
-        let new_eq = execution_items[0].equation.clone();
+        let new_eq = solved.equation;
 
         if simplifier.collect_steps() {
-            for item in &execution_items {
+            for item in &solved.items {
                 steps.push(SolveStep {
                     description: item.description().to_string(),
                     equation_after: item.equation.clone(),

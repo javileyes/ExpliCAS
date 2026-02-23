@@ -12,7 +12,14 @@ pub struct LogIsolationStep {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LogIsolationRewritePlan {
     pub equation: Equation,
-    pub step: LogIsolationStep,
+    pub items: Vec<LogIsolationExecutionItem>,
+}
+
+/// Solved payload for one logarithm-isolation rewrite.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LogIsolationSolved<T> {
+    pub rewrite: LogIsolationRewritePlan,
+    pub solved: T,
 }
 
 /// One executable log-isolation item aligned with didactic payload.
@@ -33,20 +40,33 @@ impl LogIsolationExecutionItem {
 pub fn collect_log_isolation_didactic_steps(
     plan: &LogIsolationRewritePlan,
 ) -> Vec<LogIsolationStep> {
-    vec![plan.step.clone()]
+    plan.items
+        .iter()
+        .cloned()
+        .map(|item| LogIsolationStep {
+            description: item.description,
+            equation_after: item.equation,
+        })
+        .collect()
 }
 
 /// Collect log-isolation execution items in display order.
 pub fn collect_log_isolation_execution_items(
     plan: &LogIsolationRewritePlan,
 ) -> Vec<LogIsolationExecutionItem> {
-    collect_log_isolation_didactic_steps(plan)
-        .into_iter()
-        .map(|didactic| LogIsolationExecutionItem {
-            equation: didactic.equation_after.clone(),
-            description: didactic.description,
-        })
-        .collect()
+    plan.items.clone()
+}
+
+/// Solve one planned logarithm-isolation rewrite with a caller-provided solver.
+pub fn solve_log_isolation_rewrite_with<E, T, FSolve>(
+    rewrite: LogIsolationRewritePlan,
+    mut solve_rewrite: FSolve,
+) -> Result<LogIsolationSolved<T>, E>
+where
+    FSolve: FnMut(&Equation) -> Result<T, E>,
+{
+    let solved = solve_rewrite(&rewrite.equation)?;
+    Ok(LogIsolationSolved { rewrite, solved })
 }
 
 /// Planned transformation for isolating a logarithmic equation.
@@ -82,14 +102,15 @@ impl LogIsolationPlan {
 /// Build display-ready step payload for a logarithm isolation plan.
 pub fn build_log_isolation_step_with<F>(
     plan: LogIsolationPlan,
+    ctx: &Context,
     base: ExprId,
     op: RelOp,
     mut render_expr: F,
 ) -> LogIsolationStep
 where
-    F: FnMut(ExprId) -> String,
+    F: FnMut(&Context, ExprId) -> String,
 {
-    let base_desc = render_expr(base);
+    let base_desc = render_expr(ctx, base);
     LogIsolationStep {
         description: plan.step_description(&base_desc),
         equation_after: plan.into_equation(op),
@@ -106,7 +127,9 @@ pub fn plan_log_isolation_step(
     op: RelOp,
     base_display: &str,
 ) -> Option<LogIsolationRewritePlan> {
-    plan_log_isolation_step_with(ctx, base, arg, rhs, var, op, |_| base_display.to_string())
+    plan_log_isolation_step_with(ctx, base, arg, rhs, var, op, |_, _| {
+        base_display.to_string()
+    })
 }
 
 /// Plan logarithm isolation and build its didactic step by rendering the base
@@ -121,12 +144,16 @@ pub fn plan_log_isolation_step_with<F>(
     render_expr: F,
 ) -> Option<LogIsolationRewritePlan>
 where
-    F: FnMut(ExprId) -> String,
+    F: FnMut(&Context, ExprId) -> String,
 {
     let plan = plan_log_isolation(ctx, base, arg, rhs, var)?;
-    let step = build_log_isolation_step_with(plan, base, op, render_expr);
-    let equation = step.equation_after.clone();
-    Some(LogIsolationRewritePlan { equation, step })
+    let step = build_log_isolation_step_with(plan, ctx, base, op, render_expr);
+    let equation = step.equation_after;
+    let items = vec![LogIsolationExecutionItem {
+        equation: equation.clone(),
+        description: step.description,
+    }];
+    Some(LogIsolationRewritePlan { equation, items })
 }
 
 /// Build the transformed equation target for `log(base, arg) = rhs`.
@@ -260,7 +287,8 @@ mod tests {
         let rhs = ctx.var("y");
         let base = ctx.var("b");
         let plan = LogIsolationPlan::SolveArgument { lhs, rhs };
-        let step = build_log_isolation_step_with(plan, base, RelOp::Eq, |_| "b".to_string());
+        let step =
+            build_log_isolation_step_with(plan, &ctx, base, RelOp::Eq, |_, _| "b".to_string());
         assert_eq!(step.description, "Exponentiate both sides with base b");
         assert_eq!(step.equation_after.lhs, lhs);
         assert_eq!(step.equation_after.rhs, rhs);
@@ -277,8 +305,12 @@ mod tests {
         let out = plan_log_isolation_step(&mut ctx, base, arg, rhs, "x", RelOp::Eq, "2")
             .expect("log isolation should apply");
         assert_eq!(out.equation.lhs, arg);
-        assert_eq!(out.step.description, "Exponentiate both sides with base 2");
-        assert_eq!(out.step.equation_after, out.equation);
+        assert_eq!(out.items.len(), 1);
+        assert_eq!(
+            out.items[0].description,
+            "Exponentiate both sides with base 2"
+        );
+        assert_eq!(out.items[0].equation, out.equation);
     }
 
     #[test]
@@ -288,16 +320,16 @@ mod tests {
         let arg = ctx.var("x");
         let rhs = ctx.num(3);
 
-        let out = plan_log_isolation_step_with(&mut ctx, base, arg, rhs, "x", RelOp::Eq, |_| {
+        let out = plan_log_isolation_step_with(&mut ctx, base, arg, rhs, "x", RelOp::Eq, |_, _| {
             "rendered(b)".to_string()
         })
         .expect("log isolation should apply");
 
         assert_eq!(
-            out.step.description,
+            out.items[0].description,
             "Exponentiate both sides with base rendered(b)"
         );
-        assert_eq!(out.step.equation_after, out.equation);
+        assert_eq!(out.items[0].equation, out.equation);
     }
 
     #[test]
@@ -306,14 +338,15 @@ mod tests {
         let base = ctx.var("b");
         let arg = ctx.var("x");
         let rhs = ctx.num(3);
-        let out = plan_log_isolation_step_with(&mut ctx, base, arg, rhs, "x", RelOp::Eq, |_| {
+        let out = plan_log_isolation_step_with(&mut ctx, base, arg, rhs, "x", RelOp::Eq, |_, _| {
             "rendered(b)".to_string()
         })
         .expect("log isolation should apply");
 
         let didactic = collect_log_isolation_didactic_steps(&out);
         assert_eq!(didactic.len(), 1);
-        assert_eq!(didactic[0], out.step);
+        assert_eq!(didactic[0].description, out.items[0].description);
+        assert_eq!(didactic[0].equation_after, out.items[0].equation);
     }
 
     #[test]
@@ -322,7 +355,7 @@ mod tests {
         let base = ctx.var("b");
         let arg = ctx.var("x");
         let rhs = ctx.num(3);
-        let out = plan_log_isolation_step_with(&mut ctx, base, arg, rhs, "x", RelOp::Eq, |_| {
+        let out = plan_log_isolation_step_with(&mut ctx, base, arg, rhs, "x", RelOp::Eq, |_, _| {
             "rendered(b)".to_string()
         })
         .expect("log isolation should apply");
@@ -330,6 +363,41 @@ mod tests {
         let items = collect_log_isolation_execution_items(&out);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, out.equation);
-        assert_eq!(items[0].description, out.step.description);
+        assert_eq!(items[0].description, out.items[0].description);
+    }
+
+    #[test]
+    fn solve_log_isolation_rewrite_with_runs_solver_once_and_preserves_rewrite() {
+        let mut ctx = Context::new();
+        let base = ctx.var("b");
+        let arg = ctx.var("x");
+        let rhs = ctx.num(3);
+        let rewrite =
+            plan_log_isolation_step_with(&mut ctx, base, arg, rhs, "x", RelOp::Eq, |_, _| {
+                "rendered(b)".to_string()
+            })
+            .expect("log isolation should apply");
+        let expected_equation = rewrite.equation.clone();
+        let mut calls = 0usize;
+        let solved = solve_log_isolation_rewrite_with(rewrite, |_eq| {
+            calls += 1;
+            Ok::<_, ()>(Equation {
+                lhs: arg,
+                rhs,
+                op: RelOp::Eq,
+            })
+        })
+        .expect("solver callback should succeed");
+
+        assert_eq!(calls, 1);
+        assert_eq!(solved.rewrite.equation, expected_equation);
+        assert_eq!(
+            solved.solved,
+            Equation {
+                lhs: arg,
+                rhs,
+                op: RelOp::Eq
+            }
+        );
     }
 }

@@ -151,6 +151,52 @@ pub fn open_negative_domain(ctx: &mut Context) -> SolutionSet {
     })
 }
 
+/// Finalize a 2-branch sign split by intersecting each branch with its domain
+/// condition and then unioning both branch results.
+pub fn finalize_sign_split_solution_set(
+    ctx: &Context,
+    positive_branch: SolutionSet,
+    positive_domain: SolutionSet,
+    negative_branch: SolutionSet,
+    negative_domain: SolutionSet,
+) -> SolutionSet {
+    let final_pos = intersect_solution_sets(ctx, positive_branch, positive_domain);
+    let final_neg = intersect_solution_sets(ctx, negative_branch, negative_domain);
+    union_solution_sets(ctx, final_pos, final_neg)
+}
+
+/// Finalize product-zero inequality split from four solved branch equations:
+/// `(A_case1 ∩ B_case1) ∪ (A_case2 ∩ B_case2)`.
+pub fn finalize_product_zero_inequality_solution_set(
+    ctx: &Context,
+    case1_left: SolutionSet,
+    case1_right: SolutionSet,
+    case2_left: SolutionSet,
+    case2_right: SolutionSet,
+) -> SolutionSet {
+    let case_set1 = intersect_solution_sets(ctx, case1_left, case1_right);
+    let case_set2 = intersect_solution_sets(ctx, case2_left, case2_right);
+    union_solution_sets(ctx, case_set1, case_set2)
+}
+
+/// Finalize isolated-denominator sign split by applying `x > 0` and `x < 0`
+/// open-domain guards to positive/negative branches.
+pub fn finalize_isolated_denominator_sign_split_solution_set(
+    ctx: &mut Context,
+    positive_branch: SolutionSet,
+    negative_branch: SolutionSet,
+) -> SolutionSet {
+    let domain_pos = open_positive_domain(ctx);
+    let domain_neg = open_negative_domain(ctx);
+    finalize_sign_split_solution_set(
+        ctx,
+        positive_branch,
+        domain_pos,
+        negative_branch,
+        domain_neg,
+    )
+}
+
 fn interval(min: ExprId, min_type: BoundType, max: ExprId, max_type: BoundType) -> Interval {
     Interval {
         min,
@@ -615,6 +661,97 @@ mod tests {
                 assert_eq!(i.max_type, BoundType::Open);
             }
             other => panic!("Expected continuous interval, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_finalize_sign_split_solution_set_applies_domains() {
+        let mut ctx = Context::new();
+        let positive_branch = SolutionSet::Continuous(Interval {
+            min: ctx.num(1),
+            min_type: BoundType::Open,
+            max: ctx.num(10),
+            max_type: BoundType::Open,
+        });
+        let positive_domain = open_positive_domain(&mut ctx);
+        let negative_branch = SolutionSet::Continuous(Interval {
+            min: ctx.num(-10),
+            min_type: BoundType::Open,
+            max: ctx.num(-1),
+            max_type: BoundType::Open,
+        });
+        let negative_domain = open_negative_domain(&mut ctx);
+
+        let out = finalize_sign_split_solution_set(
+            &ctx,
+            positive_branch,
+            positive_domain,
+            negative_branch,
+            negative_domain,
+        );
+        assert!(matches!(out, SolutionSet::Union(intervals) if intervals.len() == 2));
+    }
+
+    #[test]
+    fn test_finalize_product_zero_inequality_solution_set_combines_cases() {
+        let mut ctx = Context::new();
+        let case1_left = SolutionSet::Continuous(Interval {
+            min: ctx.num(0),
+            min_type: BoundType::Open,
+            max: pos_inf(&mut ctx),
+            max_type: BoundType::Open,
+        });
+        let case1_right = SolutionSet::Continuous(Interval {
+            min: neg_inf(&mut ctx),
+            min_type: BoundType::Open,
+            max: ctx.num(5),
+            max_type: BoundType::Open,
+        });
+        let case2_left = SolutionSet::Continuous(Interval {
+            min: ctx.num(3),
+            min_type: BoundType::Open,
+            max: pos_inf(&mut ctx),
+            max_type: BoundType::Open,
+        });
+        let case2_right = SolutionSet::Continuous(Interval {
+            min: neg_inf(&mut ctx),
+            min_type: BoundType::Open,
+            max: ctx.num(10),
+            max_type: BoundType::Open,
+        });
+
+        let out = finalize_product_zero_inequality_solution_set(
+            &ctx,
+            case1_left,
+            case1_right,
+            case2_left,
+            case2_right,
+        );
+        match out {
+            SolutionSet::Continuous(i) => {
+                assert_eq!(get_number(&ctx, i.min).unwrap().to_integer(), 0.into());
+                assert_eq!(get_number(&ctx, i.max).unwrap().to_integer(), 10.into());
+            }
+            other => panic!("Expected merged interval, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_finalize_isolated_denominator_sign_split_solution_set_applies_open_domains() {
+        let mut ctx = Context::new();
+        let out = finalize_isolated_denominator_sign_split_solution_set(
+            &mut ctx,
+            SolutionSet::AllReals,
+            SolutionSet::Empty,
+        );
+        match out {
+            SolutionSet::Continuous(i) => {
+                assert_eq!(get_number(&ctx, i.min).unwrap().to_integer(), 0.into());
+                assert!(is_infinity(&ctx, i.max));
+                assert_eq!(i.min_type, BoundType::Open);
+                assert_eq!(i.max_type, BoundType::Open);
+            }
+            other => panic!("Expected open positive interval, got {:?}", other),
         }
     }
 

@@ -7,10 +7,37 @@
 //! Example: `1/R = 1/R1 + 1/R2` → `R = R1·R2/(R1+R2)`
 
 use cas_ast::{ExprId, SolutionSet};
+use cas_solver_core::linear_solution::NonZeroStatus;
+use cas_solver_core::reciprocal::{
+    collect_reciprocal_execution_items, execute_reciprocal_solve_with_runtime,
+    ReciprocalSolveRuntime,
+};
 
 use crate::engine::Simplifier;
 use crate::solver::proof_bridge::proof_to_nonzero_status;
 use crate::solver::SolveStep;
+
+struct EngineReciprocalRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+}
+
+impl ReciprocalSolveRuntime for EngineReciprocalRuntime<'_> {
+    fn context(&mut self) -> &mut cas_ast::Context {
+        &mut self.simplifier.context
+    }
+
+    fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
+        let (simplified, _) = self.simplifier.simplify(expr);
+        simplified
+    }
+
+    fn prove_nonzero_status(&mut self, expr: ExprId) -> NonZeroStatus {
+        proof_to_nonzero_status(crate::helpers::prove_nonzero(
+            &self.simplifier.context,
+            expr,
+        ))
+    }
+}
 
 /// Try to solve `1/var = expr` using pedagogical steps.
 ///
@@ -22,49 +49,12 @@ pub(crate) fn try_reciprocal_solve(
     var: &str,
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
-    let kernel = cas_solver_core::reciprocal::derive_reciprocal_solve_kernel(
-        &mut simplifier.context,
-        lhs,
-        rhs,
-        var,
-    )?;
-    let numerator = kernel.numerator;
-    let denominator = kernel.denominator;
-    let raw_plan = cas_solver_core::reciprocal::build_reciprocal_solve_plan(
-        &mut simplifier.context,
-        var,
-        numerator,
-        denominator,
-    );
-
-    // Step 1 display: simplify combined RHS for cleaner equation output.
-    let (display_rhs, _) = simplifier.simplify(raw_plan.combined_rhs);
-
-    // Step 2 display/result: simplify candidate reciprocal solution.
-    let (simplified_solution, _) = simplifier.simplify(raw_plan.solution_rhs);
-
-    // Build solution set with domain guard for numerator != 0 when needed.
-    use crate::helpers::prove_nonzero;
-
-    // Simplify the numerator for cleaner display and proof checking
-    let (simplified_numerator, _) = simplifier.simplify(numerator);
-
-    let numerator_status =
-        proof_to_nonzero_status(prove_nonzero(&simplifier.context, simplified_numerator));
-    let execution = cas_solver_core::reciprocal::build_reciprocal_execution(
-        &mut simplifier.context,
-        var,
-        numerator,
-        denominator,
-        display_rhs,
-        simplified_solution,
-        simplified_numerator,
-        numerator_status,
-    );
+    let mut runtime = EngineReciprocalRuntime { simplifier };
+    let execution = execute_reciprocal_solve_with_runtime(&mut runtime, lhs, rhs, var)?;
 
     let mut steps = Vec::new();
-    if simplifier.collect_steps() {
-        for item in cas_solver_core::reciprocal::collect_reciprocal_execution_items(&execution) {
+    if runtime.simplifier.collect_steps() {
+        for item in collect_reciprocal_execution_items(&execution) {
             steps.push(SolveStep {
                 description: item.description().to_string(),
                 equation_after: item.equation,

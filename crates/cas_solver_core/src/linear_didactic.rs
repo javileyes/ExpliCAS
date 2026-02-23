@@ -28,6 +28,15 @@ impl LinearCollectExecutionItem {
     }
 }
 
+fn linear_collect_execution_item_from_didactic_step(
+    didactic: LinearCollectDidacticStep,
+) -> LinearCollectExecutionItem {
+    LinearCollectExecutionItem {
+        equation: didactic.equation_after,
+        description: didactic.description,
+    }
+}
+
 /// Convert linear-collect didactic pair into ordered step vector.
 pub fn collect_linear_collect_didactic_steps(
     pair: LinearCollectDidacticPair,
@@ -41,10 +50,7 @@ pub fn collect_linear_collect_execution_items(
 ) -> Vec<LinearCollectExecutionItem> {
     collect_linear_collect_didactic_steps(pair)
         .into_iter()
-        .map(|didactic| LinearCollectExecutionItem {
-            equation: didactic.equation_after.clone(),
-            description: didactic.description,
-        })
+        .map(linear_collect_execution_item_from_didactic_step)
         .collect()
 }
 
@@ -170,6 +176,60 @@ where
     }
 }
 
+/// Build execution payload for the factored collect step (`coef*var = rhs`).
+pub fn build_linear_collect_factored_execution_item_with<F>(
+    ctx: &mut Context,
+    var: &str,
+    coef: ExprId,
+    rhs: ExprId,
+    render_expr: F,
+) -> LinearCollectExecutionItem
+where
+    F: FnMut(&Context, ExprId) -> String,
+{
+    linear_collect_execution_item_from_didactic_step(build_linear_collect_factored_step_with(
+        ctx,
+        var,
+        coef,
+        rhs,
+        render_expr,
+    ))
+}
+
+/// Build execution payload for the additive collect step (`coef*var + c = 0`).
+pub fn build_linear_collect_additive_execution_item(
+    ctx: &mut Context,
+    var: &str,
+    coef: ExprId,
+    constant: ExprId,
+) -> LinearCollectExecutionItem {
+    linear_collect_execution_item_from_didactic_step(build_linear_collect_additive_step(
+        ctx, var, coef, constant,
+    ))
+}
+
+/// Build execution payload for the divide step (`var = solution`).
+pub fn build_linear_collect_divide_execution_item_with<F>(
+    ctx: &mut Context,
+    var: &str,
+    solution: ExprId,
+    coef: ExprId,
+    mention_both_sides: bool,
+    render_expr: F,
+) -> LinearCollectExecutionItem
+where
+    F: FnMut(&Context, ExprId) -> String,
+{
+    linear_collect_execution_item_from_didactic_step(build_linear_collect_divide_step_with(
+        ctx,
+        var,
+        solution,
+        coef,
+        mention_both_sides,
+        render_expr,
+    ))
+}
+
 /// Build factored + divide didactic steps for linear-collect flow:
 /// `coef*var = rhs` then `var = solution`.
 pub fn build_linear_collect_factored_steps_with<F>(
@@ -205,6 +265,57 @@ where
     let divide =
         build_linear_collect_divide_step_with(ctx, var, solution, coef, false, render_expr);
     LinearCollectDidacticPair { collect, divide }
+}
+
+/// Build factored + divide execution items for linear-collect flow:
+/// `coef*var = rhs` then `var = solution`.
+pub fn build_linear_collect_factored_execution_items_with<F>(
+    ctx: &mut Context,
+    var: &str,
+    coef: ExprId,
+    rhs: ExprId,
+    solution: ExprId,
+    mut render_expr: F,
+) -> Vec<LinearCollectExecutionItem>
+where
+    F: FnMut(&Context, ExprId) -> String,
+{
+    let collect =
+        build_linear_collect_factored_execution_item_with(ctx, var, coef, rhs, &mut render_expr);
+    let divide = build_linear_collect_divide_execution_item_with(
+        ctx,
+        var,
+        solution,
+        coef,
+        true,
+        render_expr,
+    );
+    vec![collect, divide]
+}
+
+/// Build additive + divide execution items for linear-collect flow:
+/// `coef*var + constant = 0` then `var = solution`.
+pub fn build_linear_collect_additive_execution_items_with<F>(
+    ctx: &mut Context,
+    var: &str,
+    coef: ExprId,
+    constant: ExprId,
+    solution: ExprId,
+    render_expr: F,
+) -> Vec<LinearCollectExecutionItem>
+where
+    F: FnMut(&Context, ExprId) -> String,
+{
+    let collect = build_linear_collect_additive_execution_item(ctx, var, coef, constant);
+    let divide = build_linear_collect_divide_execution_item_with(
+        ctx,
+        var,
+        solution,
+        coef,
+        false,
+        render_expr,
+    );
+    vec![collect, divide]
 }
 
 #[cfg(test)]
@@ -350,5 +461,48 @@ mod tests {
         assert_eq!(items[1].equation, didactic[1].equation_after);
         assert_eq!(items[0].description, didactic[0].description);
         assert_eq!(items[1].description, didactic[1].description);
+    }
+
+    #[test]
+    fn build_linear_collect_factored_execution_items_with_builds_ordered_items() {
+        let mut ctx = Context::new();
+        let coef = ctx.var("k");
+        let rhs = ctx.var("r");
+        let solution = ctx.var("s");
+        let items = build_linear_collect_factored_execution_items_with(
+            &mut ctx,
+            "x",
+            coef,
+            rhs,
+            solution,
+            |_, _| "expr".into(),
+        );
+
+        assert_eq!(items.len(), 2);
+        assert_eq!(
+            items[0].description,
+            "Collect terms in x and factor: expr · x = expr"
+        );
+        assert_eq!(items[1].description, "Divide both sides by expr");
+    }
+
+    #[test]
+    fn build_linear_collect_additive_execution_items_with_builds_ordered_items() {
+        let mut ctx = Context::new();
+        let coef = ctx.var("k");
+        let constant = ctx.var("c");
+        let solution = ctx.var("s");
+        let items = build_linear_collect_additive_execution_items_with(
+            &mut ctx,
+            "x",
+            coef,
+            constant,
+            solution,
+            |_, _| "k".into(),
+        );
+
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].description, "Collect terms in x");
+        assert_eq!(items[1].description, "Divide by k");
     }
 }

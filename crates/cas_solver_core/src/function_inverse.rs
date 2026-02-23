@@ -30,7 +30,7 @@ pub struct UnaryInverseDidacticStep {
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnaryInverseIsolationStepPlan {
     pub equation: Equation,
-    pub step: UnaryInverseDidacticStep,
+    pub items: Vec<UnaryInverseExecutionItem>,
     pub needs_rhs_cleanup: bool,
 }
 
@@ -52,20 +52,21 @@ impl UnaryInverseExecutionItem {
 pub fn collect_unary_inverse_didactic_steps(
     plan: &UnaryInverseIsolationStepPlan,
 ) -> Vec<UnaryInverseDidacticStep> {
-    vec![plan.step.clone()]
+    plan.items
+        .iter()
+        .cloned()
+        .map(|item| UnaryInverseDidacticStep {
+            description: item.description,
+            equation_after: item.equation,
+        })
+        .collect()
 }
 
 /// Collect unary-inverse execution items in display order.
 pub fn collect_unary_inverse_execution_items(
     plan: &UnaryInverseIsolationStepPlan,
 ) -> Vec<UnaryInverseExecutionItem> {
-    collect_unary_inverse_didactic_steps(plan)
-        .into_iter()
-        .map(|didactic| UnaryInverseExecutionItem {
-            equation: didactic.equation_after.clone(),
-            description: didactic.description,
-        })
-        .collect()
+    plan.items.clone()
 }
 
 /// Didactic payload for RHS cleanup steps emitted after inverse rewrites.
@@ -87,6 +88,25 @@ impl RhsSimplificationExecutionItem {
     pub fn description(&self) -> &str {
         &self.description
     }
+}
+
+/// Runtime contract for unary-inverse execution that requires optional RHS cleanup.
+pub trait UnaryInverseRuntime {
+    /// Mutable access to context for rewrite planning.
+    fn context(&mut self) -> &mut Context;
+    /// Simplify RHS expression and return simplified root plus simplification entries.
+    ///
+    /// Returned entries must be `(description, rhs_after)` tuples in display order.
+    fn simplify_rhs_with_entries(&mut self, rhs: ExprId) -> (ExprId, Vec<(String, ExprId)>);
+}
+
+/// Engine-facing unary-inverse execution payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnaryInverseSolveExecution {
+    pub rewrite_items: Vec<UnaryInverseExecutionItem>,
+    pub rhs_cleanup_items: Vec<RhsSimplificationExecutionItem>,
+    pub rewritten_equation: Equation,
+    pub target_rhs: ExprId,
 }
 
 impl UnaryInverseKind {
@@ -258,11 +278,55 @@ pub fn plan_unary_inverse_isolation_step(
     is_lhs: bool,
 ) -> Option<UnaryInverseIsolationStepPlan> {
     let rewrite = plan_unary_inverse_rewrite(ctx, fn_name, arg, other, op, is_lhs)?;
-    let step = build_unary_inverse_step(&rewrite);
+    let items = vec![UnaryInverseExecutionItem {
+        equation: rewrite.equation.clone(),
+        description: rewrite.step_description.to_string(),
+    }];
     Some(UnaryInverseIsolationStepPlan {
         equation: rewrite.equation,
-        step,
+        items,
         needs_rhs_cleanup: rewrite.needs_rhs_cleanup,
+    })
+}
+
+/// Execute unary-inverse isolation with optional RHS cleanup via runtime hooks.
+///
+/// Returns `None` when function inversion is unsupported.
+pub fn execute_unary_inverse_with_runtime<R>(
+    runtime: &mut R,
+    fn_name: &str,
+    arg: ExprId,
+    other: ExprId,
+    op: RelOp,
+    is_lhs: bool,
+) -> Option<UnaryInverseSolveExecution>
+where
+    R: UnaryInverseRuntime,
+{
+    let plan = {
+        let ctx = runtime.context();
+        plan_unary_inverse_isolation_step(ctx, fn_name, arg, other, op, is_lhs)?
+    };
+
+    let rewritten_equation = plan.equation.clone();
+    let mut rhs_cleanup_items = Vec::new();
+    let mut target_rhs = rewritten_equation.rhs;
+
+    if plan.needs_rhs_cleanup {
+        let (simplified_rhs, entries) = runtime.simplify_rhs_with_entries(target_rhs);
+        target_rhs = simplified_rhs;
+        rhs_cleanup_items = build_rhs_simplification_execution_items(
+            rewritten_equation.lhs,
+            rewritten_equation.op.clone(),
+            entries,
+        );
+    }
+
+    Some(UnaryInverseSolveExecution {
+        rewrite_items: plan.items,
+        rhs_cleanup_items,
+        rewritten_equation,
+        target_rhs,
     })
 }
 
@@ -312,8 +376,17 @@ pub fn build_rhs_simplification_execution_items<I>(
 where
     I: IntoIterator<Item = (String, ExprId)>,
 {
-    let steps = build_rhs_simplification_steps(lhs, op, entries);
-    collect_rhs_simplification_execution_items(&steps)
+    entries
+        .into_iter()
+        .map(|(description, rhs_after)| RhsSimplificationExecutionItem {
+            equation: Equation {
+                lhs,
+                rhs: rhs_after,
+                op: op.clone(),
+            },
+            description,
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -500,8 +573,9 @@ mod tests {
         let plan = plan_unary_inverse_isolation_step(&mut ctx, "sin", x, y, RelOp::Eq, true)
             .expect("sin inverse should build isolation plan");
 
-        assert_eq!(plan.step.description, "Take arcsin of both sides");
-        assert_eq!(plan.step.equation_after, plan.equation);
+        assert_eq!(plan.items.len(), 1);
+        assert_eq!(plan.items[0].description, "Take arcsin of both sides");
+        assert_eq!(plan.items[0].equation, plan.equation);
         assert!(plan.needs_rhs_cleanup);
     }
 
@@ -515,7 +589,8 @@ mod tests {
 
         let didactic = collect_unary_inverse_didactic_steps(&plan);
         assert_eq!(didactic.len(), 1);
-        assert_eq!(didactic[0], plan.step);
+        assert_eq!(didactic[0].description, plan.items[0].description);
+        assert_eq!(didactic[0].equation_after, plan.items[0].equation);
     }
 
     #[test]
@@ -529,7 +604,7 @@ mod tests {
         let items = collect_unary_inverse_execution_items(&plan);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, plan.equation);
-        assert_eq!(items[0].description, plan.step.description);
+        assert_eq!(items[0].description, plan.items[0].description);
     }
 
     #[test]
@@ -618,5 +693,67 @@ mod tests {
         assert_eq!(items[1].description, "step-2");
         assert_eq!(items[1].equation.lhs, x);
         assert_eq!(items[1].equation.rhs, z);
+    }
+
+    struct MockUnaryRuntime {
+        context: Context,
+        simplify_target: ExprId,
+        simplify_calls: usize,
+    }
+
+    impl UnaryInverseRuntime for MockUnaryRuntime {
+        fn context(&mut self) -> &mut Context {
+            &mut self.context
+        }
+
+        fn simplify_rhs_with_entries(&mut self, _rhs: ExprId) -> (ExprId, Vec<(String, ExprId)>) {
+            self.simplify_calls += 1;
+            (
+                self.simplify_target,
+                vec![("Simplify RHS".to_string(), self.simplify_target)],
+            )
+        }
+    }
+
+    #[test]
+    fn execute_unary_inverse_with_runtime_applies_rhs_cleanup_when_needed() {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let y = context.var("y");
+        let cleaned = context.var("cleaned");
+        let mut runtime = MockUnaryRuntime {
+            context,
+            simplify_target: cleaned,
+            simplify_calls: 0,
+        };
+
+        let execution =
+            execute_unary_inverse_with_runtime(&mut runtime, "sin", x, y, RelOp::Eq, true)
+                .expect("sin inverse should execute");
+        assert_eq!(runtime.simplify_calls, 1);
+        assert_eq!(execution.rewrite_items.len(), 1);
+        assert_eq!(execution.rhs_cleanup_items.len(), 1);
+        assert_eq!(execution.rhs_cleanup_items[0].description, "Simplify RHS");
+        assert_eq!(execution.target_rhs, cleaned);
+    }
+
+    #[test]
+    fn execute_unary_inverse_with_runtime_skips_cleanup_when_not_needed() {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let y = context.var("y");
+        let cleaned = context.var("cleaned");
+        let mut runtime = MockUnaryRuntime {
+            context,
+            simplify_target: cleaned,
+            simplify_calls: 0,
+        };
+
+        let execution =
+            execute_unary_inverse_with_runtime(&mut runtime, "ln", x, y, RelOp::Eq, true)
+                .expect("ln inverse should execute");
+        assert_eq!(runtime.simplify_calls, 0);
+        assert_eq!(execution.rewrite_items.len(), 1);
+        assert!(execution.rhs_cleanup_items.is_empty());
     }
 }

@@ -6,15 +6,15 @@ use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{is_numeric_zero, split_zero_product_factors};
 use cas_solver_core::quadratic_didactic::{
-    collect_factorized_zero_product_entry_execution_items, collect_quadratic_main_execution_items,
-    collect_zero_product_factor_execution_items, collect_zero_product_factor_item_execution_items,
+    aggregate_zero_product_factor_solution_sets, build_quadratic_main_with_substeps_execution_with,
+    collect_factorized_zero_product_entry_execution_items,
+    collect_zero_product_factor_execution_items, finalize_zero_product_factor_solution_set,
+    simplify_quadratic_substep_execution_items_with, ZeroProductFactorSolutionAggregate,
 };
 use cas_solver_core::quadratic_formula::{
     discriminant, discriminant_expr, roots_from_a_b_and_sqrt, roots_from_a_b_delta, sqrt_expr,
 };
-use cas_solver_core::solution_set::{
-    get_number, order_pair_by_value, quadratic_numeric_solution, sort_and_dedup_exprs,
-};
+use cas_solver_core::solution_set::{get_number, order_pair_by_value, quadratic_numeric_solution};
 use num_rational::BigRational;
 use num_traits::Zero;
 
@@ -83,55 +83,47 @@ impl SolverStrategy for QuadraticStrategy {
             // For inequalities, splitting is complex (sign analysis).
             // For Eq, it's simple union.
             if eq.op == RelOp::Eq {
-                let mut all_solutions = Vec::new();
+                let mut factor_solution_sets = Vec::new();
                 let factor_items =
                     collect_zero_product_factor_execution_items(&factorized_execution.factors);
 
                 for item in factor_items {
+                    let factor_equation = item.equation.clone();
                     if simplifier.collect_steps() {
-                        for execution_item in
-                            collect_zero_product_factor_item_execution_items(&item)
-                        {
-                            steps.push(SolveStep {
-                                description: execution_item.description().to_string(),
-                                equation_after: execution_item.equation,
-                                importance: crate::step::ImportanceLevel::Medium,
-                                substeps: vec![],
-                            });
-                        }
+                        steps.push(SolveStep {
+                            description: item.description.clone(),
+                            equation_after: factor_equation.clone(),
+                            importance: crate::step::ImportanceLevel::Medium,
+                            substeps: vec![],
+                        });
                     }
                     // Recursive solve
                     // We need to be careful about depth.
-                    match solve_with_ctx(&item.equation, var, simplifier, ctx) {
+                    match solve_with_ctx(&factor_equation, var, simplifier, ctx) {
                         Ok((sol_set, mut sub_steps)) => {
                             steps.append(&mut sub_steps);
-                            match sol_set {
-                                SolutionSet::Discrete(sols) => all_solutions.extend(sols),
-                                SolutionSet::Empty => {
-                                    // No solutions from this factor — skip
-                                }
-                                SolutionSet::AllReals => {
-                                    // Factor is identically zero → entire equation AllReals
-                                    return Some(Ok((SolutionSet::AllReals, steps)));
-                                }
-                                _ => {
-                                    // Residual/Conditional/Interval: can't extract discrete
-                                    // roots. Return Residual for the whole equation rather
-                                    // than crashing with SolverError.
-                                    let residual =
-                                        simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
-                                    let (sim, _) = simplifier.simplify(residual);
-                                    return Some(Ok((SolutionSet::Residual(sim), steps)));
-                                }
-                            }
+                            factor_solution_sets.push(sol_set);
                         }
                         Err(e) => return Some(Err(e)),
                     }
                 }
-                // Remove duplicates
-                sort_and_dedup_exprs(&simplifier.context, &mut all_solutions);
-
-                return Some(Ok((SolutionSet::Discrete(all_solutions), steps)));
+                let aggregate = aggregate_zero_product_factor_solution_sets(
+                    &simplifier.context,
+                    factor_solution_sets,
+                );
+                let residual_expr =
+                    if matches!(aggregate, ZeroProductFactorSolutionAggregate::NonDiscrete) {
+                        // Residual/Conditional/Interval: can't extract discrete roots.
+                        // Keep whole equation as residual solve target.
+                        let residual = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+                        let (sim, _) = simplifier.simplify(residual);
+                        sim
+                    } else {
+                        // Unused for discrete/all-reals aggregates.
+                        simplifier.context.num(0)
+                    };
+                let final_set = finalize_zero_product_factor_solution_set(aggregate, residual_expr);
+                return Some(Ok((final_set, steps)));
             }
         }
 
@@ -158,32 +150,57 @@ impl SolverStrategy for QuadraticStrategy {
             }
 
             if simplifier.collect_steps() {
-                // Build didactic substeps showing completing-the-square derivation
                 let is_real_only =
                     matches!(_opts.value_domain, crate::semantics::ValueDomain::RealOnly);
-                let mut substeps = crate::solver::quadratic_steps::build_quadratic_substeps(
-                    simplifier,
+
+                let main_equation = Equation {
+                    lhs: sim_poly_expr,
+                    rhs: simplifier.context.num(0),
+                    op: RelOp::Eq,
+                };
+                let mut execution = build_quadratic_main_with_substeps_execution_with(
+                    &mut simplifier.context,
                     var,
                     sim_a,
                     sim_b,
                     sim_c,
                     is_real_only,
+                    main_equation,
+                    |core_ctx, id| {
+                        format!(
+                            "{}",
+                            cas_formatter::DisplayExpr {
+                                context: core_ctx,
+                                id
+                            }
+                        )
+                    },
+                    |id| id,
                 );
 
-                // Post-pass: apply didactic simplification to clean up expressions
-                crate::solver::quadratic_steps::didactic_simplify_substeps(
-                    simplifier,
-                    &mut substeps,
+                // Simplify substep equations with step collection disabled to avoid polluting timeline.
+                let was_collecting = simplifier.collect_steps();
+                simplifier.set_collect_steps(false);
+                simplify_quadratic_substep_execution_items_with(
+                    &mut execution.substep_items,
+                    |id| {
+                        let (simplified, _) = simplifier.simplify(id);
+                        simplified
+                    },
                 );
+                simplifier.set_collect_steps(was_collecting);
 
-                // Main step with substeps attached
-                let didactic_step =
-                    cas_solver_core::quadratic_didactic::build_quadratic_main_step(Equation {
-                        lhs: sim_poly_expr,
-                        rhs: simplifier.context.num(0),
-                        op: RelOp::Eq,
-                    });
-                for item in collect_quadratic_main_execution_items(&didactic_step) {
+                let substeps = execution
+                    .substep_items
+                    .into_iter()
+                    .map(|item| crate::solver::SolveSubStep {
+                        description: item.description,
+                        equation_after: item.equation,
+                        importance: crate::step::ImportanceLevel::Low,
+                    })
+                    .collect::<Vec<_>>();
+
+                for item in execution.main_items {
                     steps.push(SolveStep {
                         description: item.description().to_string(),
                         equation_after: item.equation,

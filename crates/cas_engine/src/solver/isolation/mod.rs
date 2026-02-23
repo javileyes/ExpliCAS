@@ -9,7 +9,7 @@ use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solution_set::isolated_var_solution;
 use cas_solver_core::solve_outcome::{
     collect_term_isolation_rewrite_execution_items, plan_negated_lhs_isolation_step,
-    residual_solution_set,
+    residual_solution_set, solve_term_isolation_rewrite_with,
 };
 
 use crate::error::CasError;
@@ -92,13 +92,19 @@ pub(crate) fn isolate(
             // -A = RHS -> A = -RHS
             // -A < RHS -> A > -RHS (flip inequality)
             let plan = plan_negated_lhs_isolation_step(&mut simplifier.context, inner, rhs, op);
-            let execution_items = collect_term_isolation_rewrite_execution_items(&plan);
-            let new_eq = execution_items
-                .last()
-                .map(|item| item.equation.clone())
-                .unwrap_or_else(|| plan.equation.clone());
-            let new_rhs = new_eq.rhs;
-            let new_op = new_eq.op.clone();
+            let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
+                isolate(
+                    equation.lhs,
+                    equation.rhs,
+                    equation.op.clone(),
+                    var,
+                    simplifier,
+                    opts,
+                    ctx,
+                )
+            })?;
+            let execution_items =
+                collect_term_isolation_rewrite_execution_items(&solved_rewrite.rewrite);
 
             if simplifier.collect_steps() {
                 for item in &execution_items {
@@ -111,8 +117,7 @@ pub(crate) fn isolate(
                 }
             }
 
-            let results = isolate(inner, new_rhs, new_op, var, simplifier, opts, ctx)?;
-            prepend_steps(results, steps)
+            prepend_steps(solved_rewrite.solved, steps)
         }
         _ => Err(CasError::IsolationError(
             var.to_string(),

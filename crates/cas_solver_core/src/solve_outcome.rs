@@ -141,11 +141,11 @@ pub enum PowExponentShortcutEngineAction {
     IsolateExponent {
         rhs: ExprId,
         op: RelOp,
-        step: PowExponentShortcutDidacticStep,
+        items: Vec<PowExponentShortcutExecutionItem>,
     },
     ReturnSolutionSet {
         solutions: SolutionSet,
-        step: PowExponentShortcutDidacticStep,
+        items: Vec<PowExponentShortcutExecutionItem>,
     },
 }
 
@@ -155,8 +155,15 @@ pub fn collect_pow_exponent_shortcut_didactic_steps(
 ) -> Vec<PowExponentShortcutDidacticStep> {
     match action {
         PowExponentShortcutEngineAction::Continue => vec![],
-        PowExponentShortcutEngineAction::IsolateExponent { step, .. }
-        | PowExponentShortcutEngineAction::ReturnSolutionSet { step, .. } => vec![step.clone()],
+        PowExponentShortcutEngineAction::IsolateExponent { items, .. }
+        | PowExponentShortcutEngineAction::ReturnSolutionSet { items, .. } => items
+            .iter()
+            .cloned()
+            .map(|item| PowExponentShortcutDidacticStep {
+                description: item.description,
+                equation_after: item.equation,
+            })
+            .collect(),
     }
 }
 
@@ -164,20 +171,45 @@ pub fn collect_pow_exponent_shortcut_didactic_steps(
 pub fn collect_pow_exponent_shortcut_execution_items(
     action: &PowExponentShortcutEngineAction,
 ) -> Vec<PowExponentShortcutExecutionItem> {
-    collect_pow_exponent_shortcut_didactic_steps(action)
-        .into_iter()
-        .map(|didactic| PowExponentShortcutExecutionItem {
-            equation: didactic.equation_after.clone(),
-            description: didactic.description,
-        })
-        .collect()
+    match action {
+        PowExponentShortcutEngineAction::Continue => vec![],
+        PowExponentShortcutEngineAction::IsolateExponent { items, .. }
+        | PowExponentShortcutEngineAction::ReturnSolutionSet { items, .. } => items.clone(),
+    }
+}
+
+/// Solved outcome for exponent-shortcut action execution.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PowExponentShortcutSolved<T> {
+    Continue,
+    Isolated(T),
+    ReturnedSolutionSet(SolutionSet),
+}
+
+/// Execute exponent-shortcut action with caller-provided isolate callback.
+pub fn solve_pow_exponent_shortcut_action_with<E, T, FSolve>(
+    action: PowExponentShortcutEngineAction,
+    mut solve_isolate: FSolve,
+) -> Result<PowExponentShortcutSolved<T>, E>
+where
+    FSolve: FnMut(ExprId, RelOp) -> Result<T, E>,
+{
+    match action {
+        PowExponentShortcutEngineAction::Continue => Ok(PowExponentShortcutSolved::Continue),
+        PowExponentShortcutEngineAction::IsolateExponent { rhs, op, .. } => {
+            Ok(PowExponentShortcutSolved::Isolated(solve_isolate(rhs, op)?))
+        }
+        PowExponentShortcutEngineAction::ReturnSolutionSet { solutions, .. } => {
+            Ok(PowExponentShortcutSolved::ReturnedSolutionSet(solutions))
+        }
+    }
 }
 
 /// Solved base-one shortcut (`1^x = rhs`) with didactic payload.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowerBaseOneShortcutOutcome {
     pub solutions: SolutionSet,
-    pub step: PowExponentShortcutDidacticStep,
+    pub items: Vec<PowerBaseOneShortcutExecutionItem>,
 }
 
 /// One executable base-one shortcut item aligned with didactic payload.
@@ -198,20 +230,22 @@ impl PowerBaseOneShortcutExecutionItem {
 pub fn collect_power_base_one_shortcut_didactic_steps(
     outcome: &PowerBaseOneShortcutOutcome,
 ) -> Vec<PowExponentShortcutDidacticStep> {
-    vec![outcome.step.clone()]
+    outcome
+        .items
+        .iter()
+        .cloned()
+        .map(|item| PowExponentShortcutDidacticStep {
+            description: item.description,
+            equation_after: item.equation,
+        })
+        .collect()
 }
 
 /// Collect base-one shortcut execution items in display order.
 pub fn collect_power_base_one_shortcut_execution_items(
     outcome: &PowerBaseOneShortcutOutcome,
 ) -> Vec<PowerBaseOneShortcutExecutionItem> {
-    collect_power_base_one_shortcut_didactic_steps(outcome)
-        .into_iter()
-        .map(|didactic| PowerBaseOneShortcutExecutionItem {
-            equation: didactic.equation_after.clone(),
-            description: didactic.description,
-        })
-        .collect()
+    outcome.items.clone()
 }
 
 /// Didactic payload for logarithmic isolation of exponent equations.
@@ -225,7 +259,7 @@ pub struct PowExponentLogIsolationStep {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowExponentLogIsolationRewritePlan {
     pub equation: Equation,
-    pub step: PowExponentLogIsolationStep,
+    pub items: Vec<PowExponentLogIsolationExecutionItem>,
 }
 
 /// One executable logarithmic-isolation item aligned with didactic payload.
@@ -246,20 +280,56 @@ impl PowExponentLogIsolationExecutionItem {
 pub fn collect_pow_exponent_log_isolation_didactic_steps(
     plan: &PowExponentLogIsolationRewritePlan,
 ) -> Vec<PowExponentLogIsolationStep> {
-    vec![plan.step.clone()]
+    plan.items
+        .iter()
+        .cloned()
+        .map(|item| PowExponentLogIsolationStep {
+            description: item.description,
+            equation_after: item.equation,
+        })
+        .collect()
 }
 
 /// Collect logarithmic-isolation execution items in display order.
 pub fn collect_pow_exponent_log_isolation_execution_items(
     plan: &PowExponentLogIsolationRewritePlan,
 ) -> Vec<PowExponentLogIsolationExecutionItem> {
-    collect_pow_exponent_log_isolation_didactic_steps(plan)
-        .into_iter()
-        .map(|didactic| PowExponentLogIsolationExecutionItem {
-            equation: didactic.equation_after.clone(),
-            description: didactic.description,
-        })
-        .collect()
+    plan.items.clone()
+}
+
+/// Execution plan for guarded logarithmic isolation in exponent equations.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GuardedPowExponentLogExecutionPlan {
+    pub rewrite: PowExponentLogIsolationRewritePlan,
+    pub followup_success: TermIsolationExecutionItem,
+    pub followup_residual: TermIsolationExecutionItem,
+}
+
+impl GuardedPowExponentLogExecutionPlan {
+    /// Follow-up item after guarded solve attempt.
+    pub fn followup_item(&self, guarded_solve_succeeded: bool) -> TermIsolationExecutionItem {
+        if guarded_solve_succeeded {
+            self.followup_success.clone()
+        } else {
+            self.followup_residual.clone()
+        }
+    }
+}
+
+/// Executed guarded logarithmic-isolation branch with follow-up and optional
+/// guarded-solve solution set.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GuardedPowExponentLogExecution {
+    pub rewrite: PowExponentLogIsolationRewritePlan,
+    pub followup: TermIsolationExecutionItem,
+    pub guarded_solutions: Option<SolutionSet>,
+}
+
+/// Solved payload for one logarithmic exponent-isolation rewrite.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PowExponentLogIsolationSolved<T> {
+    pub rewrite: PowExponentLogIsolationRewritePlan,
+    pub solved: T,
 }
 
 /// Structured outcome for unsupported logarithmic rewrites.
@@ -275,6 +345,150 @@ pub enum LogUnsupportedOutcome<'a> {
         guard: ConditionSet,
         residual: ExprId,
     },
+}
+
+/// Blocked-hint payload for guarded log isolation requirements.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogBlockedHintRecord {
+    pub assumption: LogAssumption,
+    pub expr_id: ExprId,
+    pub rule: &'static str,
+    pub suggestion: &'static str,
+}
+
+/// Build blocked-hint records for missing log assumptions in guarded mode.
+pub fn collect_guarded_log_blocked_hints(
+    missing_conditions: &[LogAssumption],
+    base: ExprId,
+    rhs: ExprId,
+) -> Vec<LogBlockedHintRecord> {
+    missing_conditions
+        .iter()
+        .copied()
+        .map(|assumption| LogBlockedHintRecord {
+            assumption,
+            expr_id: crate::log_domain::assumption_target_expr(assumption, base, rhs),
+            rule: "Take log of both sides",
+            suggestion: "use `semantics set domain assume`",
+        })
+        .collect()
+}
+
+/// Planned execution for unsupported logarithmic isolation outcomes.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PowExponentLogUnsupportedExecution {
+    Residual {
+        item: TermIsolationExecutionItem,
+        solutions: SolutionSet,
+    },
+    Guarded {
+        blocked_hints: Vec<LogBlockedHintRecord>,
+        plan: GuardedPowExponentLogExecutionPlan,
+        guard: ConditionSet,
+        residual: ExprId,
+    },
+}
+
+/// Executed unsupported logarithmic isolation route.
+///
+/// - `Residual` forwards a prebuilt residual item + solution set.
+/// - `Guarded` executes the guarded rewrite plan and materializes final
+///   conditional-or-residual solution set, plus didactic payload.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PowExponentLogUnsupportedSolvedExecution {
+    Residual {
+        item: TermIsolationExecutionItem,
+        solutions: SolutionSet,
+    },
+    Guarded {
+        blocked_hints: Vec<LogBlockedHintRecord>,
+        rewrite_items: Vec<PowExponentLogIsolationExecutionItem>,
+        followup_item: TermIsolationExecutionItem,
+        solutions: SolutionSet,
+    },
+}
+
+/// Plan unsupported logarithmic isolation execution for exponent equations.
+///
+/// This maps the low-level unsupported outcome to engine-facing execution data:
+/// either a residual-budget terminal item or a guarded-log branch plan with
+/// blocked-hint payload.
+#[allow(clippy::too_many_arguments)]
+pub fn plan_pow_exponent_log_unsupported_execution_with<'a, F>(
+    ctx: &mut Context,
+    outcome: LogUnsupportedOutcome<'a>,
+    exponent: ExprId,
+    base: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    source_equation: Equation,
+    render_expr: F,
+) -> PowExponentLogUnsupportedExecution
+where
+    F: FnMut(&Context, ExprId) -> String,
+{
+    match outcome {
+        LogUnsupportedOutcome::ResidualBudgetExhausted { message, solutions } => {
+            PowExponentLogUnsupportedExecution::Residual {
+                item: build_residual_budget_exhausted_item(message, source_equation),
+                solutions,
+            }
+        }
+        LogUnsupportedOutcome::Guarded {
+            message,
+            missing_conditions,
+            guard,
+            residual,
+        } => PowExponentLogUnsupportedExecution::Guarded {
+            blocked_hints: collect_guarded_log_blocked_hints(missing_conditions, base, rhs),
+            plan: plan_guarded_pow_exponent_log_execution_with(
+                ctx,
+                exponent,
+                base,
+                rhs,
+                op,
+                message,
+                source_equation,
+                render_expr,
+            ),
+            guard,
+            residual,
+        },
+    }
+}
+
+/// Resolve unsupported log decision and materialize engine execution payload
+/// for exponent isolation in one step.
+#[allow(clippy::too_many_arguments)]
+pub fn plan_pow_exponent_log_unsupported_execution_from_decision_with<F>(
+    ctx: &mut Context,
+    decision: &LogSolveDecision,
+    can_branch: bool,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    exponent: ExprId,
+    base: ExprId,
+    rhs_expr: ExprId,
+    op: RelOp,
+    source_equation: Equation,
+    render_expr: F,
+) -> Option<PowExponentLogUnsupportedExecution>
+where
+    F: FnMut(&Context, ExprId) -> String,
+{
+    let outcome =
+        resolve_log_unsupported_outcome(ctx, decision, can_branch, lhs, rhs, var, base, rhs_expr)?;
+    Some(plan_pow_exponent_log_unsupported_execution_with(
+        ctx,
+        outcome,
+        exponent,
+        base,
+        rhs_expr,
+        op,
+        source_equation,
+        render_expr,
+    ))
 }
 
 /// Routing for isolation when the variable is in the power base (`B^E = RHS`).
@@ -332,12 +546,13 @@ impl PowBaseIsolationExecutionItem {
 pub enum PowBaseIsolationEngineAction {
     ReturnSolutionSet {
         solutions: SolutionSet,
-        step: PowBaseIsolationDidacticStep,
+        items: Vec<PowBaseIsolationExecutionItem>,
     },
     IsolateBase {
+        lhs: ExprId,
         rhs: ExprId,
         op: RelOp,
-        step: PowBaseIsolationDidacticStep,
+        items: Vec<PowBaseIsolationExecutionItem>,
     },
 }
 
@@ -346,8 +561,15 @@ pub fn collect_pow_base_isolation_didactic_steps(
     action: &PowBaseIsolationEngineAction,
 ) -> Vec<PowBaseIsolationDidacticStep> {
     match action {
-        PowBaseIsolationEngineAction::ReturnSolutionSet { step, .. }
-        | PowBaseIsolationEngineAction::IsolateBase { step, .. } => vec![step.clone()],
+        PowBaseIsolationEngineAction::ReturnSolutionSet { items, .. }
+        | PowBaseIsolationEngineAction::IsolateBase { items, .. } => items
+            .iter()
+            .cloned()
+            .map(|item| PowBaseIsolationDidacticStep {
+                description: item.description,
+                equation_after: item.equation,
+            })
+            .collect(),
     }
 }
 
@@ -355,13 +577,35 @@ pub fn collect_pow_base_isolation_didactic_steps(
 pub fn collect_pow_base_isolation_execution_items(
     action: &PowBaseIsolationEngineAction,
 ) -> Vec<PowBaseIsolationExecutionItem> {
-    collect_pow_base_isolation_didactic_steps(action)
-        .into_iter()
-        .map(|didactic| PowBaseIsolationExecutionItem {
-            equation: didactic.equation_after.clone(),
-            description: didactic.description,
-        })
-        .collect()
+    match action {
+        PowBaseIsolationEngineAction::ReturnSolutionSet { items, .. }
+        | PowBaseIsolationEngineAction::IsolateBase { items, .. } => items.clone(),
+    }
+}
+
+/// Solved outcome for base-isolation action execution.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PowBaseIsolationSolved<T> {
+    ReturnedSolutionSet(SolutionSet),
+    Isolated(T),
+}
+
+/// Execute base-isolation action with caller-provided isolate callback.
+pub fn solve_pow_base_isolation_action_with<E, T, FSolve>(
+    action: PowBaseIsolationEngineAction,
+    mut solve_isolate: FSolve,
+) -> Result<PowBaseIsolationSolved<T>, E>
+where
+    FSolve: FnMut(ExprId, ExprId, RelOp) -> Result<T, E>,
+{
+    match action {
+        PowBaseIsolationEngineAction::ReturnSolutionSet { solutions, .. } => {
+            Ok(PowBaseIsolationSolved::ReturnedSolutionSet(solutions))
+        }
+        PowBaseIsolationEngineAction::IsolateBase { lhs, rhs, op, .. } => Ok(
+            PowBaseIsolationSolved::Isolated(solve_isolate(lhs, rhs, op)?),
+        ),
+    }
 }
 
 /// Didactic payload for one branch produced by absolute-value splitting.
@@ -492,13 +736,36 @@ where
     let rhs_desc = render_expr(rhs);
     let description =
         power_base_one_shortcut_message(shortcut, &rhs_desc).expect("shortcut was applicable");
-    Some(PowerBaseOneShortcutOutcome {
-        solutions,
-        step: PowExponentShortcutDidacticStep {
-            description,
-            equation_after: Equation { lhs, rhs, op },
-        },
-    })
+    let items = vec![PowerBaseOneShortcutExecutionItem {
+        equation: Equation { lhs, rhs, op },
+        description,
+    }];
+    Some(PowerBaseOneShortcutOutcome { solutions, items })
+}
+
+/// Resolve `base^x = rhs` base-one shortcut directly from equation inputs.
+///
+/// This helper computes `base == 1` and `rhs == 1` internally, then delegates
+/// to [`resolve_power_base_one_shortcut_with`].
+pub fn resolve_power_base_one_shortcut_for_pow_with<F>(
+    ctx: &Context,
+    base: ExprId,
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    mut render_expr: F,
+) -> Option<PowerBaseOneShortcutOutcome>
+where
+    F: FnMut(&Context, ExprId) -> String,
+{
+    resolve_power_base_one_shortcut_with(
+        crate::isolation_utils::is_numeric_one(ctx, base),
+        crate::isolation_utils::is_numeric_one(ctx, rhs),
+        lhs,
+        rhs,
+        op,
+        |id| render_expr(ctx, id),
+    )
 }
 
 /// Decide how to handle `base^x = base`.
@@ -723,17 +990,19 @@ where
                 &rhs_desc,
                 rhs_exp_desc.as_deref(),
             );
-            PowExponentShortcutEngineAction::IsolateExponent {
+            let equation = Equation {
+                lhs: exponent_lhs,
                 rhs: target_rhs,
                 op: target_op.clone(),
-                step: PowExponentShortcutDidacticStep {
-                    description,
-                    equation_after: Equation {
-                        lhs: exponent_lhs,
-                        rhs: target_rhs,
-                        op: target_op,
-                    },
-                },
+            };
+            let items = vec![PowExponentShortcutExecutionItem {
+                equation,
+                description,
+            }];
+            PowExponentShortcutEngineAction::IsolateExponent {
+                rhs: target_rhs,
+                op: target_op,
+                items,
             }
         }
         PowExponentShortcutExecutionPlan::ReturnSolutionSet {
@@ -744,17 +1013,15 @@ where
             let rhs_desc = render_expr(rhs);
             let description =
                 pow_exponent_shortcut_message(narrative, var, &base_desc, &rhs_desc, None);
-            PowExponentShortcutEngineAction::ReturnSolutionSet {
-                solutions,
-                step: PowExponentShortcutDidacticStep {
-                    description,
-                    equation_after: Equation {
-                        lhs: exponent_lhs,
-                        rhs: base,
-                        op: original_op,
-                    },
+            let items = vec![PowExponentShortcutExecutionItem {
+                equation: Equation {
+                    lhs: exponent_lhs,
+                    rhs: base,
+                    op: original_op,
                 },
-            }
+                description,
+            }];
+            PowExponentShortcutEngineAction::ReturnSolutionSet { solutions, items }
         }
     }
 }
@@ -818,6 +1085,40 @@ pub fn plan_pow_exponent_shortcut_action_from_inputs(
     plan_pow_exponent_shortcut_action(ctx, shortcut, base, op)
 }
 
+/// Plan exponent shortcut action from a pre-read RHS expression and
+/// caller-provided base-equivalence check.
+///
+/// This helper centralizes the common engine flow:
+/// detect shortcut inputs from RHS shape, classify route, and build action.
+#[allow(clippy::too_many_arguments)]
+pub fn plan_pow_exponent_shortcut_action_detecting_with<F>(
+    ctx: &mut Context,
+    rhs: ExprId,
+    rhs_expr: &Expr,
+    base: ExprId,
+    op: RelOp,
+    base_is_zero: bool,
+    base_is_numeric: bool,
+    can_branch: bool,
+    same_base: F,
+) -> PowExponentShortcutAction
+where
+    F: FnMut(ExprId) -> bool,
+{
+    let (bases_equal, rhs_pow_base_equal) =
+        detect_pow_exponent_shortcut_inputs(rhs, rhs_expr, same_base);
+    plan_pow_exponent_shortcut_action_from_inputs(
+        ctx,
+        base,
+        op,
+        bases_equal,
+        rhs_pow_base_equal,
+        base_is_zero,
+        base_is_numeric,
+        can_branch,
+    )
+}
+
 /// Plan exponent shortcut action directly from equation shape `base^x op rhs`.
 ///
 /// This combines RHS pattern detection, shortcut classification, and operational
@@ -848,6 +1149,71 @@ where
         can_branch,
     );
     plan_pow_exponent_shortcut_action(ctx, shortcut, base, op)
+}
+
+/// Runtime contract for exponent-shortcut execution (`base^x = rhs`).
+///
+/// Callers inject equivalence checks and expression rendering while solver-core
+/// keeps shortcut routing centralized.
+pub trait PowExponentShortcutRuntime {
+    /// Mutable access to expression context.
+    fn context(&mut self) -> &mut Context;
+    /// Decide whether two bases should be treated as equivalent for shortcut routing.
+    fn bases_equivalent(&mut self, base: ExprId, candidate: ExprId) -> bool;
+    /// Render an expression for didactic messages.
+    fn render_expr(&mut self, expr: ExprId) -> String;
+}
+
+/// Execute the full exponent-shortcut pipeline for `base^x op rhs`.
+///
+/// This performs:
+/// 1. RHS shortcut-shape detection
+/// 2. Shortcut action planning
+/// 3. Didactic/executable action mapping
+#[allow(clippy::too_many_arguments)]
+pub fn execute_pow_exponent_shortcut_with_runtime<R>(
+    runtime: &mut R,
+    exponent_lhs: ExprId,
+    base: ExprId,
+    rhs: ExprId,
+    original_op: RelOp,
+    var: &str,
+    base_is_zero: bool,
+    base_is_numeric: bool,
+    can_branch: bool,
+) -> PowExponentShortcutEngineAction
+where
+    R: PowExponentShortcutRuntime,
+{
+    let rhs_expr = {
+        let ctx = runtime.context();
+        ctx.get(rhs).clone()
+    };
+
+    let bases_equal = runtime.bases_equivalent(base, rhs);
+    let rhs_pow_base_equal = match rhs_expr {
+        Expr::Pow(rhs_base, rhs_exp) if runtime.bases_equivalent(base, rhs_base) => Some(rhs_exp),
+        _ => None,
+    };
+
+    let action = {
+        let ctx = runtime.context();
+        plan_pow_exponent_shortcut_action_from_inputs(
+            ctx,
+            base,
+            original_op.clone(),
+            bases_equal,
+            rhs_pow_base_equal,
+            base_is_zero,
+            base_is_numeric,
+            can_branch,
+        )
+    };
+    let plan = build_pow_exponent_shortcut_execution_plan(action);
+
+    map_pow_exponent_shortcut_with(plan, exponent_lhs, base, rhs, original_op, var, |id| {
+        runtime.render_expr(id)
+    })
 }
 
 /// Classify route for base-isolation in a power equation.
@@ -954,13 +1320,11 @@ where
                 &original_op.to_string(),
                 &rhs_display,
             );
-            PowBaseIsolationEngineAction::ReturnSolutionSet {
-                solutions,
-                step: PowBaseIsolationDidacticStep {
-                    description,
-                    equation_after: equation,
-                },
-            }
+            let items = vec![PowBaseIsolationExecutionItem {
+                equation,
+                description,
+            }];
+            PowBaseIsolationEngineAction::ReturnSolutionSet { solutions, items }
         }
         PowBaseIsolationPlan::IsolateBase {
             equation,
@@ -970,16 +1334,52 @@ where
         } => {
             let exponent_display = render_expr(exponent);
             let description = pow_base_root_isolation_message(&exponent_display, use_abs_root);
+            let lhs = equation.lhs;
+            let rhs = equation.rhs;
+            let items = vec![PowBaseIsolationExecutionItem {
+                equation,
+                description,
+            }];
             PowBaseIsolationEngineAction::IsolateBase {
-                rhs: equation.rhs,
-                op: op.clone(),
-                step: PowBaseIsolationDidacticStep {
-                    description,
-                    equation_after: equation,
-                },
+                lhs,
+                rhs,
+                op,
+                items,
             }
         }
     }
+}
+
+/// Build and map base-isolation action for `base^exponent op rhs` in one call.
+///
+/// This helper centralizes:
+/// - route classification predicates (`even exponent`, `negative rhs`, `negative exponent`)
+/// - plan construction
+/// - didactic execution mapping
+#[allow(clippy::too_many_arguments)]
+pub fn build_pow_base_isolation_action_with<F>(
+    ctx: &mut Context,
+    base: ExprId,
+    exponent: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    mut render_expr: F,
+) -> PowBaseIsolationEngineAction
+where
+    F: FnMut(&Context, ExprId) -> String,
+{
+    let plan = plan_pow_base_isolation(
+        ctx,
+        base,
+        exponent,
+        rhs,
+        op.clone(),
+        crate::isolation_utils::is_even_integer_expr(ctx, exponent),
+        crate::isolation_utils::is_known_negative(ctx, rhs),
+        crate::isolation_utils::is_known_negative(ctx, exponent),
+    );
+
+    map_pow_base_isolation_plan_with(plan, base, exponent, rhs, op, |id| render_expr(ctx, id))
 }
 
 /// Build didactic narration for terminal base-isolation outcomes.
@@ -1035,30 +1435,39 @@ pub const NEGATED_LHS_ISOLATION_MESSAGE: &str = "Multiply both sides by -1 (flip
 /// Standard narration for swapping equation sides to expose the solve variable.
 pub const SWAP_SIDES_TO_LHS_MESSAGE: &str = "Swap sides to put variable on LHS";
 
+/// Build execution payload for isolating a negated left-hand side.
+pub fn build_negated_lhs_isolation_item(equation_after: Equation) -> TermIsolationExecutionItem {
+    TermIsolationExecutionItem {
+        description: NEGATED_LHS_ISOLATION_MESSAGE.to_string(),
+        equation: equation_after,
+    }
+}
+
 /// Build didactic payload for isolating a negated left-hand side.
 pub fn build_negated_lhs_isolation_step(equation_after: Equation) -> TermIsolationDidacticStep {
-    TermIsolationDidacticStep {
-        description: NEGATED_LHS_ISOLATION_MESSAGE.to_string(),
+    term_isolation_didactic_step_from_execution_item(build_negated_lhs_isolation_item(
         equation_after,
+    ))
+}
+
+/// Build execution payload for side swap (`rhs op lhs`) to place variable on LHS.
+pub fn build_swap_sides_item(equation_after: Equation) -> TermIsolationExecutionItem {
+    TermIsolationExecutionItem {
+        description: SWAP_SIDES_TO_LHS_MESSAGE.to_string(),
+        equation: equation_after,
     }
 }
 
 /// Build didactic payload for side swap (`rhs op lhs`) to place variable on LHS.
 pub fn build_swap_sides_step(equation_after: Equation) -> TermIsolationDidacticStep {
-    TermIsolationDidacticStep {
-        description: SWAP_SIDES_TO_LHS_MESSAGE.to_string(),
-        equation_after,
-    }
+    term_isolation_didactic_step_from_execution_item(build_swap_sides_item(equation_after))
 }
 
 /// Plan side swap rewrite and corresponding didactic step.
 pub fn plan_swap_sides_step(equation: &Equation) -> TermIsolationRewritePlan {
     let swapped = crate::equation_rewrite::swap_sides_with_inequality_flip(equation);
-    let step = build_swap_sides_step(swapped.clone());
-    TermIsolationRewritePlan {
-        equation: swapped,
-        step,
-    }
+    let item = build_swap_sides_item(swapped.clone());
+    build_term_isolation_rewrite_plan_from_item(swapped, item)
 }
 
 /// Standard narration when solve-tactic normalization rewrites `base^x = rhs`
@@ -1066,14 +1475,23 @@ pub fn plan_swap_sides_step(equation: &Equation) -> TermIsolationRewritePlan {
 pub const SOLVE_TACTIC_NORMALIZATION_MESSAGE: &str =
     "Applied SolveTactic normalization (Assume mode) to enable logarithm isolation";
 
+/// Build execution payload for solve-tactic normalization in exponent isolation.
+pub fn build_solve_tactic_normalization_item(
+    equation_after: Equation,
+) -> TermIsolationExecutionItem {
+    TermIsolationExecutionItem {
+        description: SOLVE_TACTIC_NORMALIZATION_MESSAGE.to_string(),
+        equation: equation_after,
+    }
+}
+
 /// Build didactic payload for solve-tactic normalization in exponent isolation.
 pub fn build_solve_tactic_normalization_step(
     equation_after: Equation,
 ) -> TermIsolationDidacticStep {
-    TermIsolationDidacticStep {
-        description: SOLVE_TACTIC_NORMALIZATION_MESSAGE.to_string(),
+    term_isolation_didactic_step_from_execution_item(build_solve_tactic_normalization_item(
         equation_after,
-    }
+    ))
 }
 
 /// Plan solve-tactic normalization rewrite (`base^exponent = rhs`) and step.
@@ -1089,8 +1507,8 @@ pub fn plan_solve_tactic_normalization_step(
         rhs,
         op,
     };
-    let step = build_solve_tactic_normalization_step(equation.clone());
-    TermIsolationRewritePlan { equation, step }
+    let item = build_solve_tactic_normalization_item(equation.clone());
+    build_term_isolation_rewrite_plan_from_item(equation, item)
 }
 
 /// Build didactic narration for multiplicative isolation.
@@ -1151,7 +1569,14 @@ pub struct TermIsolationDidacticStep {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TermIsolationRewritePlan {
     pub equation: Equation,
-    pub step: TermIsolationDidacticStep,
+    pub items: Vec<TermIsolationRewriteExecutionItem>,
+}
+
+/// Solved payload for one term-isolation rewrite.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TermIsolationRewriteSolved<T> {
+    pub rewrite: TermIsolationRewritePlan,
+    pub solved: T,
 }
 
 /// One executable isolation rewrite item aligned with a didactic payload.
@@ -1168,24 +1593,48 @@ impl TermIsolationRewriteExecutionItem {
     }
 }
 
+fn build_term_isolation_rewrite_plan_from_item(
+    equation: Equation,
+    item: TermIsolationExecutionItem,
+) -> TermIsolationRewritePlan {
+    let items = vec![TermIsolationRewriteExecutionItem {
+        equation: item.equation,
+        description: item.description,
+    }];
+    TermIsolationRewritePlan { equation, items }
+}
+
 /// Collect term-isolation rewrite didactic steps in display order.
 pub fn collect_term_isolation_rewrite_didactic_steps(
     plan: &TermIsolationRewritePlan,
 ) -> Vec<TermIsolationDidacticStep> {
-    vec![plan.step.clone()]
+    plan.items
+        .iter()
+        .cloned()
+        .map(|item| TermIsolationDidacticStep {
+            description: item.description,
+            equation_after: item.equation,
+        })
+        .collect()
 }
 
 /// Collect isolation rewrite execution items in display order.
 pub fn collect_term_isolation_rewrite_execution_items(
     plan: &TermIsolationRewritePlan,
 ) -> Vec<TermIsolationRewriteExecutionItem> {
-    collect_term_isolation_rewrite_didactic_steps(plan)
-        .into_iter()
-        .map(|didactic| TermIsolationRewriteExecutionItem {
-            equation: didactic.equation_after.clone(),
-            description: didactic.description,
-        })
-        .collect()
+    plan.items.clone()
+}
+
+/// Execute one term-isolation rewrite with caller-provided solve callback.
+pub fn solve_term_isolation_rewrite_with<E, T, FSolve>(
+    rewrite: TermIsolationRewritePlan,
+    mut solve: FSolve,
+) -> Result<TermIsolationRewriteSolved<T>, E>
+where
+    FSolve: FnMut(Equation) -> Result<T, E>,
+{
+    let solved = solve(rewrite.equation.clone())?;
+    Ok(TermIsolationRewriteSolved { rewrite, solved })
 }
 
 /// Route chosen for denominator isolation with zero-RHS guard.
@@ -1202,20 +1651,37 @@ pub struct DivDenominatorIsolationRewritePlan {
     pub route: DivDenominatorIsolationRoute,
 }
 
-fn build_term_isolation_step_with<F>(
+fn build_term_isolation_item_with<F>(
     equation_after: Equation,
     moved_term: ExprId,
     mut render_expr: F,
     message_builder: fn(&str) -> String,
-) -> TermIsolationDidacticStep
+) -> TermIsolationExecutionItem
 where
     F: FnMut(ExprId) -> String,
 {
     let moved_desc = render_expr(moved_term);
-    TermIsolationDidacticStep {
+    TermIsolationExecutionItem {
         description: message_builder(&moved_desc),
-        equation_after,
+        equation: equation_after,
     }
+}
+
+/// Build execution payload for `A + B = RHS -> A = RHS - B` (or symmetric case).
+pub fn build_add_operand_isolation_item_with<F>(
+    equation_after: Equation,
+    moved_term: ExprId,
+    render_expr: F,
+) -> TermIsolationExecutionItem
+where
+    F: FnMut(ExprId) -> String,
+{
+    build_term_isolation_item_with(
+        equation_after,
+        moved_term,
+        render_expr,
+        subtract_both_sides_message,
+    )
 }
 
 /// Build didactic payload for `A + B = RHS -> A = RHS - B` (or symmetric case).
@@ -1227,11 +1693,27 @@ pub fn build_add_operand_isolation_step_with<F>(
 where
     F: FnMut(ExprId) -> String,
 {
-    build_term_isolation_step_with(
+    term_isolation_didactic_step_from_execution_item(build_add_operand_isolation_item_with(
         equation_after,
         moved_term,
         render_expr,
-        subtract_both_sides_message,
+    ))
+}
+
+/// Build execution payload for `A - B = RHS -> A = RHS + B`.
+pub fn build_sub_minuend_isolation_item_with<F>(
+    equation_after: Equation,
+    moved_term: ExprId,
+    render_expr: F,
+) -> TermIsolationExecutionItem
+where
+    F: FnMut(ExprId) -> String,
+{
+    build_term_isolation_item_with(
+        equation_after,
+        moved_term,
+        render_expr,
+        add_both_sides_message,
     )
 }
 
@@ -1244,11 +1726,27 @@ pub fn build_sub_minuend_isolation_step_with<F>(
 where
     F: FnMut(ExprId) -> String,
 {
-    build_term_isolation_step_with(
+    term_isolation_didactic_step_from_execution_item(build_sub_minuend_isolation_item_with(
         equation_after,
         moved_term,
         render_expr,
-        add_both_sides_message,
+    ))
+}
+
+/// Build execution payload for `A - B = RHS -> B = A - RHS`.
+pub fn build_sub_subtrahend_isolation_item_with<F>(
+    equation_after: Equation,
+    moved_term: ExprId,
+    render_expr: F,
+) -> TermIsolationExecutionItem
+where
+    F: FnMut(ExprId) -> String,
+{
+    build_term_isolation_item_with(
+        equation_after,
+        moved_term,
+        render_expr,
+        move_and_flip_message,
     )
 }
 
@@ -1261,11 +1759,27 @@ pub fn build_sub_subtrahend_isolation_step_with<F>(
 where
     F: FnMut(ExprId) -> String,
 {
-    build_term_isolation_step_with(
+    term_isolation_didactic_step_from_execution_item(build_sub_subtrahend_isolation_item_with(
         equation_after,
         moved_term,
         render_expr,
-        move_and_flip_message,
+    ))
+}
+
+/// Build execution payload for `A * B = RHS -> A = RHS / B` (or symmetric case).
+pub fn build_mul_factor_isolation_item_with<F>(
+    equation_after: Equation,
+    moved_term: ExprId,
+    render_expr: F,
+) -> TermIsolationExecutionItem
+where
+    F: FnMut(ExprId) -> String,
+{
+    build_term_isolation_item_with(
+        equation_after,
+        moved_term,
+        render_expr,
+        divide_both_sides_message,
     )
 }
 
@@ -1278,11 +1792,27 @@ pub fn build_mul_factor_isolation_step_with<F>(
 where
     F: FnMut(ExprId) -> String,
 {
-    build_term_isolation_step_with(
+    term_isolation_didactic_step_from_execution_item(build_mul_factor_isolation_item_with(
         equation_after,
         moved_term,
         render_expr,
-        divide_both_sides_message,
+    ))
+}
+
+/// Build execution payload for `A / B = RHS -> A = RHS * B`.
+pub fn build_div_numerator_isolation_item_with<F>(
+    equation_after: Equation,
+    moved_term: ExprId,
+    render_expr: F,
+) -> TermIsolationExecutionItem
+where
+    F: FnMut(ExprId) -> String,
+{
+    build_term_isolation_item_with(
+        equation_after,
+        moved_term,
+        render_expr,
+        multiply_both_sides_message,
     )
 }
 
@@ -1295,12 +1825,11 @@ pub fn build_div_numerator_isolation_step_with<F>(
 where
     F: FnMut(ExprId) -> String,
 {
-    build_term_isolation_step_with(
+    term_isolation_didactic_step_from_execution_item(build_div_numerator_isolation_item_with(
         equation_after,
         moved_term,
         render_expr,
-        multiply_both_sides_message,
-    )
+    ))
 }
 
 /// Plan negated-LHS isolation and corresponding didactic step.
@@ -1311,8 +1840,8 @@ pub fn plan_negated_lhs_isolation_step(
     op: RelOp,
 ) -> TermIsolationRewritePlan {
     let equation = crate::equation_rewrite::isolate_negated_lhs(ctx, inner, rhs, op);
-    let step = build_negated_lhs_isolation_step(equation.clone());
-    TermIsolationRewritePlan { equation, step }
+    let item = build_negated_lhs_isolation_item(equation.clone());
+    build_term_isolation_rewrite_plan_from_item(equation, item)
 }
 
 /// Plan add-operand isolation and corresponding didactic step.
@@ -1328,8 +1857,8 @@ where
     F: FnMut(ExprId) -> String,
 {
     let equation = crate::equation_rewrite::isolate_add_operand(ctx, kept, moved, rhs, op);
-    let step = build_add_operand_isolation_step_with(equation.clone(), moved, render_expr);
-    TermIsolationRewritePlan { equation, step }
+    let item = build_add_operand_isolation_item_with(equation.clone(), moved, render_expr);
+    build_term_isolation_rewrite_plan_from_item(equation, item)
 }
 
 /// Plan sub-minuend isolation and corresponding didactic step.
@@ -1345,8 +1874,8 @@ where
     F: FnMut(ExprId) -> String,
 {
     let equation = crate::equation_rewrite::isolate_sub_minuend(ctx, minuend, subtrahend, rhs, op);
-    let step = build_sub_minuend_isolation_step_with(equation.clone(), subtrahend, render_expr);
-    TermIsolationRewritePlan { equation, step }
+    let item = build_sub_minuend_isolation_item_with(equation.clone(), subtrahend, render_expr);
+    build_term_isolation_rewrite_plan_from_item(equation, item)
 }
 
 /// Plan sub-subtrahend isolation and corresponding didactic step.
@@ -1363,8 +1892,8 @@ where
 {
     let equation =
         crate::equation_rewrite::isolate_sub_subtrahend(ctx, minuend, subtrahend, rhs, op);
-    let step = build_sub_subtrahend_isolation_step_with(equation.clone(), minuend, render_expr);
-    TermIsolationRewritePlan { equation, step }
+    let item = build_sub_subtrahend_isolation_item_with(equation.clone(), minuend, render_expr);
+    build_term_isolation_rewrite_plan_from_item(equation, item)
 }
 
 /// Plan multiplicative-factor isolation and corresponding didactic step.
@@ -1382,8 +1911,8 @@ where
 {
     let equation =
         crate::equation_rewrite::isolate_mul_factor(ctx, kept, moved, rhs, op, moved_is_negative);
-    let step = build_mul_factor_isolation_step_with(equation.clone(), moved, render_expr);
-    TermIsolationRewritePlan { equation, step }
+    let item = build_mul_factor_isolation_item_with(equation.clone(), moved, render_expr);
+    build_term_isolation_rewrite_plan_from_item(equation, item)
 }
 
 /// Plan division-numerator isolation and corresponding didactic step.
@@ -1407,8 +1936,8 @@ where
         op,
         denominator_is_negative,
     );
-    let step = build_div_numerator_isolation_step_with(equation.clone(), denominator, render_expr);
-    TermIsolationRewritePlan { equation, step }
+    let item = build_div_numerator_isolation_item_with(equation.clone(), denominator, render_expr);
+    build_term_isolation_rewrite_plan_from_item(equation, item)
 }
 
 /// Plan denominator isolation with `rhs == 0` safety guard.
@@ -1483,13 +2012,7 @@ pub fn collect_division_denominator_sign_split_didactic_steps(
 pub fn collect_division_denominator_sign_split_execution_items(
     execution: &DivisionDenominatorSignSplitExecutionPlan,
 ) -> Vec<DivisionDidacticExecutionItem> {
-    collect_division_denominator_sign_split_didactic_steps(&execution.didactic)
-        .into_iter()
-        .map(|didactic| DivisionDidacticExecutionItem {
-            equation: didactic.equation_after.clone(),
-            description: didactic.description,
-        })
-        .collect()
+    execution.items.clone()
 }
 
 /// Collect isolated-denominator sign-split execution items in display order:
@@ -1497,13 +2020,7 @@ pub fn collect_division_denominator_sign_split_execution_items(
 pub fn collect_isolated_denominator_sign_split_execution_items(
     execution: &IsolatedDenominatorSignSplitExecutionPlan,
 ) -> Vec<DivisionDidacticExecutionItem> {
-    collect_division_denominator_sign_split_didactic_steps(&execution.didactic)
-        .into_iter()
-        .map(|didactic| DivisionDidacticExecutionItem {
-            equation: didactic.equation_after.clone(),
-            description: didactic.description,
-        })
-        .collect()
+    execution.items.clone()
 }
 
 /// Build didactic payload for division denominator sign-split:
@@ -1609,14 +2126,38 @@ pub fn residual_budget_exhausted_message(message: &str) -> String {
 }
 
 /// Build didactic payload for a terminal log outcome (empty/residual).
+pub fn build_terminal_outcome_item(
+    outcome: &TerminalSolveOutcome,
+    equation_after: Equation,
+    residual_suffix: &str,
+) -> TermIsolationExecutionItem {
+    TermIsolationExecutionItem {
+        description: terminal_outcome_message(outcome, residual_suffix),
+        equation: equation_after,
+    }
+}
+
+/// Build didactic payload for a terminal log outcome (empty/residual).
 pub fn build_terminal_outcome_step(
     outcome: &TerminalSolveOutcome,
     equation_after: Equation,
     residual_suffix: &str,
 ) -> TermIsolationDidacticStep {
-    TermIsolationDidacticStep {
-        description: terminal_outcome_message(outcome, residual_suffix),
+    term_isolation_didactic_step_from_execution_item(build_terminal_outcome_item(
+        outcome,
         equation_after,
+        residual_suffix,
+    ))
+}
+
+/// Build didactic payload for conditional-solution messaging.
+pub fn build_conditional_solution_item(
+    message: &str,
+    equation_after: Equation,
+) -> TermIsolationExecutionItem {
+    TermIsolationExecutionItem {
+        description: conditional_solution_message(message),
+        equation: equation_after,
     }
 }
 
@@ -1625,9 +2166,23 @@ pub fn build_conditional_solution_step(
     message: &str,
     equation_after: Equation,
 ) -> TermIsolationDidacticStep {
-    TermIsolationDidacticStep {
-        description: conditional_solution_message(message),
+    term_isolation_didactic_step_from_execution_item(build_conditional_solution_item(
+        message,
         equation_after,
+    ))
+}
+
+/// Build a follow-up didactic step after guarded logarithmic solving:
+/// `conditional` when guarded solve succeeds, `residual` otherwise.
+pub fn build_guarded_log_followup_item(
+    guarded_solve_succeeded: bool,
+    message: &str,
+    equation_after: Equation,
+) -> TermIsolationExecutionItem {
+    if guarded_solve_succeeded {
+        build_conditional_solution_item(message, equation_after)
+    } else {
+        build_residual_item(message, equation_after)
     }
 }
 
@@ -1638,18 +2193,67 @@ pub fn build_guarded_log_followup_step(
     message: &str,
     equation_after: Equation,
 ) -> TermIsolationDidacticStep {
-    if guarded_solve_succeeded {
-        build_conditional_solution_step(message, equation_after)
-    } else {
-        build_residual_step(message, equation_after)
+    term_isolation_didactic_step_from_execution_item(build_guarded_log_followup_item(
+        guarded_solve_succeeded,
+        message,
+        equation_after,
+    ))
+}
+
+/// Plan guarded logarithmic isolation (`x = log_b(rhs)`) including:
+/// 1) the guarded rewrite equation/item and
+/// 2) follow-up narration for success vs residual fallback.
+#[allow(clippy::too_many_arguments)]
+pub fn plan_guarded_pow_exponent_log_execution(
+    ctx: &mut Context,
+    exponent: ExprId,
+    base: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    message: &str,
+    base_display: &str,
+    original_equation: Equation,
+) -> GuardedPowExponentLogExecutionPlan {
+    let rewrite = plan_pow_exponent_log_isolation_step(
+        ctx,
+        exponent,
+        base,
+        rhs,
+        op,
+        Some(message),
+        base_display,
+    );
+    let followup_success =
+        build_guarded_log_followup_item(true, message, original_equation.clone());
+    let followup_residual = build_guarded_log_followup_item(false, message, original_equation);
+    GuardedPowExponentLogExecutionPlan {
+        rewrite,
+        followup_success,
+        followup_residual,
+    }
+}
+
+/// Build didactic payload for residual fallback messaging.
+pub fn build_residual_item(message: &str, equation_after: Equation) -> TermIsolationExecutionItem {
+    TermIsolationExecutionItem {
+        description: residual_message(message),
+        equation: equation_after,
     }
 }
 
 /// Build didactic payload for residual fallback messaging.
 pub fn build_residual_step(message: &str, equation_after: Equation) -> TermIsolationDidacticStep {
-    TermIsolationDidacticStep {
-        description: residual_message(message),
-        equation_after,
+    term_isolation_didactic_step_from_execution_item(build_residual_item(message, equation_after))
+}
+
+/// Build didactic payload for residual fallback when branch budget is exhausted.
+pub fn build_residual_budget_exhausted_item(
+    message: &str,
+    equation_after: Equation,
+) -> TermIsolationExecutionItem {
+    TermIsolationExecutionItem {
+        description: residual_budget_exhausted_message(message),
+        equation: equation_after,
     }
 }
 
@@ -1658,10 +2262,10 @@ pub fn build_residual_budget_exhausted_step(
     message: &str,
     equation_after: Equation,
 ) -> TermIsolationDidacticStep {
-    TermIsolationDidacticStep {
-        description: residual_budget_exhausted_message(message),
+    term_isolation_didactic_step_from_execution_item(build_residual_budget_exhausted_item(
+        message,
         equation_after,
-    }
+    ))
 }
 
 /// Collect generic term-isolation didactic steps in display order.
@@ -1685,16 +2289,33 @@ impl TermIsolationExecutionItem {
     }
 }
 
+/// Convert one didactic term-isolation step into its execution representation.
+pub fn term_isolation_execution_item_from_didactic_step(
+    step: TermIsolationDidacticStep,
+) -> TermIsolationExecutionItem {
+    TermIsolationExecutionItem {
+        equation: step.equation_after,
+        description: step.description,
+    }
+}
+
+/// Convert one executable term-isolation item into its didactic representation.
+pub fn term_isolation_didactic_step_from_execution_item(
+    item: TermIsolationExecutionItem,
+) -> TermIsolationDidacticStep {
+    TermIsolationDidacticStep {
+        description: item.description,
+        equation_after: item.equation,
+    }
+}
+
 /// Collect generic term-isolation execution items in display order.
 pub fn collect_term_isolation_execution_items(
     step: &TermIsolationDidacticStep,
 ) -> Vec<TermIsolationExecutionItem> {
     collect_term_isolation_didactic_steps(step)
         .into_iter()
-        .map(|didactic| TermIsolationExecutionItem {
-            equation: didactic.equation_after.clone(),
-            description: didactic.description,
-        })
+        .map(term_isolation_execution_item_from_didactic_step)
         .collect()
 }
 
@@ -1709,11 +2330,11 @@ pub fn build_pow_exponent_log_isolation_step_with<F>(
     mut render_expr: F,
 ) -> PowExponentLogIsolationStep
 where
-    F: FnMut(ExprId) -> String,
+    F: FnMut(&Context, ExprId) -> String,
 {
     let equation_after =
         crate::rational_power::build_exponent_log_isolation_equation(ctx, exponent, base, rhs, op);
-    let base_desc = render_expr(base);
+    let base_desc = render_expr(ctx, base);
     let description = match guard_message {
         Some(msg) => take_log_base_under_guard_message(&base_desc, msg),
         None => take_log_base_message(&base_desc),
@@ -1741,11 +2362,15 @@ pub fn plan_pow_exponent_log_isolation_step(
         rhs,
         op,
         guard_message,
-        |_| base_display.to_string(),
+        |_, _| base_display.to_string(),
     );
+    let items = vec![PowExponentLogIsolationExecutionItem {
+        equation: step.equation_after.clone(),
+        description: step.description.clone(),
+    }];
     PowExponentLogIsolationRewritePlan {
         equation: step.equation_after.clone(),
-        step,
+        items,
     }
 }
 
@@ -1761,7 +2386,7 @@ pub fn plan_pow_exponent_log_isolation_step_with<F>(
     render_expr: F,
 ) -> PowExponentLogIsolationRewritePlan
 where
-    F: FnMut(ExprId) -> String,
+    F: FnMut(&Context, ExprId) -> String,
 {
     let step = build_pow_exponent_log_isolation_step_with(
         ctx,
@@ -1772,9 +2397,154 @@ where
         guard_message,
         render_expr,
     );
+    let items = vec![PowExponentLogIsolationExecutionItem {
+        equation: step.equation_after.clone(),
+        description: step.description.clone(),
+    }];
     PowExponentLogIsolationRewritePlan {
         equation: step.equation_after.clone(),
-        step,
+        items,
+    }
+}
+
+/// Plan guarded logarithmic isolation (`x = log_b(rhs)`) and render base display
+/// with a caller-provided formatter.
+#[allow(clippy::too_many_arguments)]
+pub fn plan_guarded_pow_exponent_log_execution_with<F>(
+    ctx: &mut Context,
+    exponent: ExprId,
+    base: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    message: &str,
+    original_equation: Equation,
+    render_expr: F,
+) -> GuardedPowExponentLogExecutionPlan
+where
+    F: FnMut(&Context, ExprId) -> String,
+{
+    let rewrite = plan_pow_exponent_log_isolation_step_with(
+        ctx,
+        exponent,
+        base,
+        rhs,
+        op,
+        Some(message),
+        render_expr,
+    );
+    let followup_success =
+        build_guarded_log_followup_item(true, message, original_equation.clone());
+    let followup_residual = build_guarded_log_followup_item(false, message, original_equation);
+    GuardedPowExponentLogExecutionPlan {
+        rewrite,
+        followup_success,
+        followup_residual,
+    }
+}
+
+/// Execute guarded logarithmic isolation with caller-provided guarded-solve callback.
+///
+/// The callback receives the rewritten equation `x = log_base(rhs)` and may
+/// return solved solutions under guard or `None` to indicate residual fallback.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_guarded_pow_exponent_log_with<F, FG>(
+    ctx: &mut Context,
+    exponent: ExprId,
+    base: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    message: &str,
+    original_equation: Equation,
+    render_expr: F,
+    mut try_guarded_solve: FG,
+) -> GuardedPowExponentLogExecution
+where
+    F: FnMut(&Context, ExprId) -> String,
+    FG: FnMut(&Equation) -> Option<SolutionSet>,
+{
+    let plan = plan_guarded_pow_exponent_log_execution_with(
+        ctx,
+        exponent,
+        base,
+        rhs,
+        op,
+        message,
+        original_equation,
+        render_expr,
+    );
+    let guarded_solutions = try_guarded_solve(&plan.rewrite.equation);
+    let followup = plan.followup_item(guarded_solutions.is_some());
+    GuardedPowExponentLogExecution {
+        rewrite: plan.rewrite,
+        followup,
+        guarded_solutions,
+    }
+}
+
+/// Execute a preplanned guarded logarithmic isolation branch.
+pub fn execute_guarded_pow_exponent_log_plan_with<FG>(
+    plan: GuardedPowExponentLogExecutionPlan,
+    mut try_guarded_solve: FG,
+) -> GuardedPowExponentLogExecution
+where
+    FG: FnMut(&Equation) -> Option<SolutionSet>,
+{
+    let guarded_solutions = try_guarded_solve(&plan.rewrite.equation);
+    let followup = plan.followup_item(guarded_solutions.is_some());
+    GuardedPowExponentLogExecution {
+        rewrite: plan.rewrite,
+        followup,
+        guarded_solutions,
+    }
+}
+
+/// Solve one planned exponent-log rewrite equation with caller-provided solver.
+pub fn solve_pow_exponent_log_isolation_rewrite_with<E, T, FSolve>(
+    rewrite: PowExponentLogIsolationRewritePlan,
+    mut solve_rewrite: FSolve,
+) -> Result<PowExponentLogIsolationSolved<T>, E>
+where
+    FSolve: FnMut(&Equation) -> Result<T, E>,
+{
+    let solved = solve_rewrite(&rewrite.equation)?;
+    Ok(PowExponentLogIsolationSolved { rewrite, solved })
+}
+
+/// Execute a planned unsupported logarithmic route (residual or guarded).
+///
+/// For guarded routes, this runs the guarded rewrite solve callback and
+/// materializes final solution-set semantics (`guarded` or residual fallback).
+pub fn execute_pow_exponent_log_unsupported_with<FG>(
+    execution: PowExponentLogUnsupportedExecution,
+    mut try_guarded_solve: FG,
+) -> PowExponentLogUnsupportedSolvedExecution
+where
+    FG: FnMut(&Equation) -> Option<SolutionSet>,
+{
+    match execution {
+        PowExponentLogUnsupportedExecution::Residual { item, solutions } => {
+            PowExponentLogUnsupportedSolvedExecution::Residual { item, solutions }
+        }
+        PowExponentLogUnsupportedExecution::Guarded {
+            blocked_hints,
+            plan,
+            guard,
+            residual,
+        } => {
+            let guarded_execution = execute_guarded_pow_exponent_log_plan_with(plan, |equation| {
+                try_guarded_solve(equation)
+            });
+            let solutions =
+                guarded_or_residual(Some(guard), guarded_execution.guarded_solutions, residual);
+            PowExponentLogUnsupportedSolvedExecution::Guarded {
+                blocked_hints,
+                rewrite_items: collect_pow_exponent_log_isolation_execution_items(
+                    &guarded_execution.rewrite,
+                ),
+                followup_item: guarded_execution.followup,
+                solutions,
+            }
+        }
     }
 }
 
@@ -1952,7 +2722,7 @@ where
 
 /// Resolve single-side exponential terminal outcome and return a didactic step.
 #[allow(clippy::too_many_arguments)]
-pub fn resolve_single_side_exponential_terminal_with_step<F>(
+pub fn resolve_single_side_exponential_terminal_with_item<F>(
     ctx: &mut Context,
     lhs: ExprId,
     rhs: ExprId,
@@ -1964,7 +2734,7 @@ pub fn resolve_single_side_exponential_terminal_with_step<F>(
     residual_suffix: &str,
     equation_after: Equation,
     classify_log_solve: F,
-) -> Option<(SolutionSet, TermIsolationDidacticStep)>
+) -> Option<(SolutionSet, TermIsolationExecutionItem)>
 where
     F: FnMut(&Context, ExprId, ExprId) -> LogSolveDecision,
 {
@@ -1982,10 +2752,47 @@ where
     )?;
     Some((
         solutions,
-        TermIsolationDidacticStep {
+        TermIsolationExecutionItem {
             description: message,
-            equation_after,
+            equation: equation_after,
         },
+    ))
+}
+
+/// Resolve single-side exponential terminal outcome and return a didactic step.
+#[allow(clippy::too_many_arguments)]
+pub fn resolve_single_side_exponential_terminal_with_step<F>(
+    ctx: &mut Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    lhs_has_var: bool,
+    rhs_has_var: bool,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+    residual_suffix: &str,
+    equation_after: Equation,
+    classify_log_solve: F,
+) -> Option<(SolutionSet, TermIsolationDidacticStep)>
+where
+    F: FnMut(&Context, ExprId, ExprId) -> LogSolveDecision,
+{
+    let (solutions, item) = resolve_single_side_exponential_terminal_with_item(
+        ctx,
+        lhs,
+        rhs,
+        var,
+        lhs_has_var,
+        rhs_has_var,
+        mode,
+        wildcard_scope,
+        residual_suffix,
+        equation_after,
+        classify_log_solve,
+    )?;
+    Some((
+        solutions,
+        term_isolation_didactic_step_from_execution_item(item),
     ))
 }
 
@@ -2079,6 +2886,33 @@ pub struct ProductZeroInequalityPlan {
     pub case2_right: Equation,
 }
 
+/// Solved solution-set payload for product-zero inequality branch equations.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProductZeroInequalitySolvedSets {
+    pub case1_left: SolutionSet,
+    pub case1_right: SolutionSet,
+    pub case2_left: SolutionSet,
+    pub case2_right: SolutionSet,
+}
+
+/// Solved payload for denominator-sign split:
+/// `(num/den) op rhs` under `den > 0` and `den < 0`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DivisionDenominatorSignSplitSolvedCases<TBranch, TDomain> {
+    pub positive_branch: TBranch,
+    pub negative_branch: TBranch,
+    pub positive_domain: TDomain,
+    pub negative_domain: TDomain,
+}
+
+/// Solved payload for already-isolated denominator sign split:
+/// `den op rhs` under `den > 0` and `den < 0`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IsolatedDenominatorSignSplitSolvedCases<TBranch> {
+    pub positive_branch: TBranch,
+    pub negative_branch: TBranch,
+}
+
 /// Pre-built split plan for inequalities with variable denominator:
 /// `(num / den) op rhs` under `den > 0` and `den < 0`.
 #[derive(Debug, Clone, PartialEq)]
@@ -2104,7 +2938,7 @@ pub struct DivisionDenominatorSignSplitExecutionPlan {
     pub negative_equation: Equation,
     pub positive_domain: Equation,
     pub negative_domain: Equation,
-    pub didactic: DivisionDenominatorSignSplitDidactic,
+    pub items: Vec<DivisionDidacticExecutionItem>,
 }
 
 /// Executable split plan + didactic payload for isolated-denominator sign cases.
@@ -2112,7 +2946,7 @@ pub struct DivisionDenominatorSignSplitExecutionPlan {
 pub struct IsolatedDenominatorSignSplitExecutionPlan {
     pub positive_equation: Equation,
     pub negative_equation: Equation,
-    pub didactic: DivisionDenominatorSignSplitDidactic,
+    pub items: Vec<DivisionDidacticExecutionItem>,
 }
 
 /// Executable split plan + didactic payload for absolute-value branch splits.
@@ -2136,8 +2970,7 @@ pub struct DivisionDenominatorDidacticPlan {
 /// Didactic payload for the two explicit denominator-isolation steps.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DivisionDenominatorDidacticSteps {
-    pub multiply_step: DivisionCaseDidacticStep,
-    pub divide_step: DivisionCaseDidacticStep,
+    pub items: Vec<DivisionDidacticExecutionItem>,
 }
 
 /// Collect denominator-isolation didactic steps in display order:
@@ -2145,7 +2978,15 @@ pub struct DivisionDenominatorDidacticSteps {
 pub fn collect_division_denominator_didactic_steps(
     didactic: &DivisionDenominatorDidacticSteps,
 ) -> Vec<DivisionCaseDidacticStep> {
-    vec![didactic.multiply_step.clone(), didactic.divide_step.clone()]
+    didactic
+        .items
+        .iter()
+        .cloned()
+        .map(|item| DivisionCaseDidacticStep {
+            description: item.description,
+            equation_after: item.equation,
+        })
+        .collect()
 }
 
 /// Collect denominator-isolation execution items in display order:
@@ -2153,13 +2994,7 @@ pub fn collect_division_denominator_didactic_steps(
 pub fn collect_division_denominator_execution_items(
     execution: &DivisionDenominatorDidacticExecutionPlan,
 ) -> Vec<DivisionDidacticExecutionItem> {
-    collect_division_denominator_didactic_steps(&execution.didactic)
-        .into_iter()
-        .map(|didactic| DivisionDidacticExecutionItem {
-            equation: didactic.equation_after.clone(),
-            description: didactic.description,
-        })
-        .collect()
+    execution.items.clone()
 }
 
 /// Backward-compatible alias for denominator-isolation execution item collection.
@@ -2175,7 +3010,7 @@ pub fn collect_division_denominator_didactic_execution_items(
 pub struct DivisionDenominatorDidacticExecutionPlan {
     pub multiply_equation: Equation,
     pub divide_equation: Equation,
-    pub didactic: DivisionDenominatorDidacticSteps,
+    pub items: Vec<DivisionDidacticExecutionItem>,
 }
 
 /// Classify numeric RHS sign for `|A| = RHS`.
@@ -2224,6 +3059,102 @@ pub fn plan_product_zero_inequality_split(
     })
 }
 
+/// Solve each equation of a product-zero inequality split with caller-provided
+/// equation solver callback.
+pub fn solve_product_zero_inequality_cases_with<E, FSolve>(
+    plan: &ProductZeroInequalityPlan,
+    mut solve_equation: FSolve,
+) -> Result<ProductZeroInequalitySolvedSets, E>
+where
+    FSolve: FnMut(&Equation) -> Result<SolutionSet, E>,
+{
+    Ok(ProductZeroInequalitySolvedSets {
+        case1_left: solve_equation(&plan.case1_left)?,
+        case1_right: solve_equation(&plan.case1_right)?,
+        case2_left: solve_equation(&plan.case2_left)?,
+        case2_right: solve_equation(&plan.case2_right)?,
+    })
+}
+
+/// Finalize solved product-zero branch sets into one solution set.
+pub fn finalize_product_zero_inequality_solved_sets(
+    ctx: &Context,
+    solved_sets: ProductZeroInequalitySolvedSets,
+) -> SolutionSet {
+    crate::solution_set::finalize_product_zero_inequality_solution_set(
+        ctx,
+        solved_sets.case1_left,
+        solved_sets.case1_right,
+        solved_sets.case2_left,
+        solved_sets.case2_right,
+    )
+}
+
+/// Solve branch equations + sign-domain constraints for division denominator
+/// sign split execution.
+pub fn solve_division_denominator_sign_split_cases_with<
+    E,
+    TBranch,
+    TDomain,
+    FSolveBranch,
+    FSolveDomain,
+>(
+    execution: &DivisionDenominatorSignSplitExecutionPlan,
+    mut solve_branch: FSolveBranch,
+    mut solve_domain: FSolveDomain,
+) -> Result<DivisionDenominatorSignSplitSolvedCases<TBranch, TDomain>, E>
+where
+    FSolveBranch: FnMut(&Equation) -> Result<TBranch, E>,
+    FSolveDomain: FnMut(&Equation) -> Result<TDomain, E>,
+{
+    Ok(DivisionDenominatorSignSplitSolvedCases {
+        positive_branch: solve_branch(&execution.positive_equation)?,
+        positive_domain: solve_domain(&execution.positive_domain)?,
+        negative_branch: solve_branch(&execution.negative_equation)?,
+        negative_domain: solve_domain(&execution.negative_domain)?,
+    })
+}
+
+/// Finalize solved denominator-sign split branch/domain sets into one set.
+pub fn finalize_division_denominator_sign_split_solved_sets(
+    ctx: &Context,
+    solved: DivisionDenominatorSignSplitSolvedCases<SolutionSet, SolutionSet>,
+) -> SolutionSet {
+    crate::solution_set::finalize_sign_split_solution_set(
+        ctx,
+        solved.positive_branch,
+        solved.positive_domain,
+        solved.negative_branch,
+        solved.negative_domain,
+    )
+}
+
+/// Solve both branch equations for already-isolated denominator sign split.
+pub fn solve_isolated_denominator_sign_split_cases_with<E, TBranch, FSolveBranch>(
+    execution: &IsolatedDenominatorSignSplitExecutionPlan,
+    mut solve_branch: FSolveBranch,
+) -> Result<IsolatedDenominatorSignSplitSolvedCases<TBranch>, E>
+where
+    FSolveBranch: FnMut(&Equation) -> Result<TBranch, E>,
+{
+    Ok(IsolatedDenominatorSignSplitSolvedCases {
+        positive_branch: solve_branch(&execution.positive_equation)?,
+        negative_branch: solve_branch(&execution.negative_equation)?,
+    })
+}
+
+/// Finalize solved already-isolated denominator sign split branch sets.
+pub fn finalize_isolated_denominator_sign_split_solved_sets(
+    ctx: &mut Context,
+    solved: IsolatedDenominatorSignSplitSolvedCases<SolutionSet>,
+) -> SolutionSet {
+    crate::solution_set::finalize_isolated_denominator_sign_split_solution_set(
+        ctx,
+        solved.positive_branch,
+        solved.negative_branch,
+    )
+}
+
 /// Build executable split plan for division inequalities where denominator sign
 /// determines whether inequality direction flips.
 pub fn plan_division_denominator_sign_split(
@@ -2270,7 +3201,7 @@ pub fn build_division_denominator_sign_split_execution_with<F>(
     case_boundary_lhs: ExprId,
     case_boundary_op: RelOp,
     simplified_rhs: ExprId,
-    render_expr: F,
+    mut render_expr: F,
 ) -> DivisionDenominatorSignSplitExecutionPlan
 where
     F: FnMut(ExprId) -> String,
@@ -2285,20 +3216,56 @@ where
         rhs: simplified_rhs,
         op: split_plan.negative_equation.op.clone(),
     };
-    let didactic = build_division_denominator_sign_split_steps_with(
-        positive_equation.clone(),
-        negative_equation.clone(),
-        denominator,
-        case_boundary_lhs,
-        case_boundary_op,
-        render_expr,
-    );
+    let den_display = render_expr(denominator);
+    let case_boundary_equation =
+        build_case_boundary_equation(case_boundary_lhs, negative_equation.rhs, case_boundary_op);
+    let items = vec![
+        DivisionDidacticExecutionItem {
+            equation: positive_equation.clone(),
+            description: denominator_positive_case_message(&den_display),
+        },
+        DivisionDidacticExecutionItem {
+            equation: negative_equation.clone(),
+            description: denominator_negative_case_message(&den_display),
+        },
+        DivisionDidacticExecutionItem {
+            equation: case_boundary_equation,
+            description: end_case_message(1),
+        },
+    ];
     DivisionDenominatorSignSplitExecutionPlan {
         positive_equation,
         negative_equation,
         positive_domain: split_plan.positive_domain,
         negative_domain: split_plan.negative_domain,
-        didactic,
+        items,
+    }
+}
+
+/// Materialize denominator-sign split equations without didactic payload.
+///
+/// This is useful when the caller needs executable branch equations/domains
+/// but is not collecting user-facing steps.
+pub fn materialize_division_denominator_sign_split_execution(
+    split_plan: DivisionDenominatorSignSplitPlan,
+    simplified_rhs: ExprId,
+) -> DivisionDenominatorSignSplitExecutionPlan {
+    let positive_equation = Equation {
+        lhs: split_plan.positive_equation.lhs,
+        rhs: simplified_rhs,
+        op: split_plan.positive_equation.op,
+    };
+    let negative_equation = Equation {
+        lhs: split_plan.negative_equation.lhs,
+        rhs: simplified_rhs,
+        op: split_plan.negative_equation.op,
+    };
+    DivisionDenominatorSignSplitExecutionPlan {
+        positive_equation,
+        negative_equation,
+        positive_domain: split_plan.positive_domain,
+        negative_domain: split_plan.negative_domain,
+        items: vec![],
     }
 }
 
@@ -2307,23 +3274,49 @@ pub fn build_isolated_denominator_sign_split_execution_with<F>(
     split_plan: IsolatedDenominatorSignSplitPlan,
     denominator: ExprId,
     case_boundary_op: RelOp,
-    render_expr: F,
+    mut render_expr: F,
 ) -> IsolatedDenominatorSignSplitExecutionPlan
 where
     F: FnMut(ExprId) -> String,
 {
-    let didactic = build_isolated_denominator_sign_split_steps_with(
-        split_plan.positive_equation.clone(),
-        split_plan.negative_equation.clone(),
+    let den_display = render_expr(denominator);
+    let case_boundary_equation = build_case_boundary_equation(
         denominator,
-        denominator,
+        split_plan.negative_equation.rhs,
         case_boundary_op,
-        render_expr,
     );
+    let items = vec![
+        DivisionDidacticExecutionItem {
+            equation: split_plan.positive_equation.clone(),
+            description: isolated_denominator_positive_case_message(&den_display),
+        },
+        DivisionDidacticExecutionItem {
+            equation: split_plan.negative_equation.clone(),
+            description: isolated_denominator_negative_case_message(&den_display),
+        },
+        DivisionDidacticExecutionItem {
+            equation: case_boundary_equation,
+            description: end_case_message(1),
+        },
+    ];
     IsolatedDenominatorSignSplitExecutionPlan {
         positive_equation: split_plan.positive_equation,
         negative_equation: split_plan.negative_equation,
-        didactic,
+        items,
+    }
+}
+
+/// Materialize isolated-denominator sign split equations without didactic payload.
+///
+/// This is useful when the caller needs executable branch equations
+/// but is not collecting user-facing steps.
+pub fn materialize_isolated_denominator_sign_split_execution(
+    split_plan: IsolatedDenominatorSignSplitPlan,
+) -> IsolatedDenominatorSignSplitExecutionPlan {
+    IsolatedDenominatorSignSplitExecutionPlan {
+        positive_equation: split_plan.positive_equation,
+        negative_equation: split_plan.negative_equation,
+        items: vec![],
     }
 }
 
@@ -2383,16 +3376,17 @@ where
 {
     let multiply_by_desc = render_expr(multiply_by);
     let divide_by_desc = render_expr(divide_by);
-    DivisionDenominatorDidacticSteps {
-        multiply_step: DivisionCaseDidacticStep {
+    let items = vec![
+        DivisionDidacticExecutionItem {
+            equation: multiply_equation,
             description: multiply_both_sides_message(&multiply_by_desc),
-            equation_after: multiply_equation,
         },
-        divide_step: DivisionCaseDidacticStep {
+        DivisionDidacticExecutionItem {
+            equation: divide_equation,
             description: divide_both_sides_message(&divide_by_desc),
-            equation_after: divide_equation,
         },
-    }
+    ];
+    DivisionDenominatorDidacticSteps { items }
 }
 
 /// Build runtime execution plan for denominator-isolation didactic steps,
@@ -2400,7 +3394,7 @@ where
 pub fn build_division_denominator_didactic_execution_with<F>(
     didactic_plan: DivisionDenominatorDidacticPlan,
     simplified_multiply_rhs: ExprId,
-    render_expr: F,
+    mut render_expr: F,
 ) -> DivisionDenominatorDidacticExecutionPlan
 where
     F: FnMut(ExprId) -> String,
@@ -2411,17 +3405,22 @@ where
         op: didactic_plan.multiply_equation.op.clone(),
     };
     let divide_equation = didactic_plan.divide_equation;
-    let didactic = build_division_denominator_didactic_steps_with(
-        multiply_equation.clone(),
-        divide_equation.clone(),
-        didactic_plan.multiply_by,
-        didactic_plan.divide_by,
-        render_expr,
-    );
+    let multiply_by_desc = render_expr(didactic_plan.multiply_by);
+    let divide_by_desc = render_expr(didactic_plan.divide_by);
+    let items = vec![
+        DivisionDidacticExecutionItem {
+            equation: multiply_equation.clone(),
+            description: multiply_both_sides_message(&multiply_by_desc),
+        },
+        DivisionDidacticExecutionItem {
+            equation: divide_equation.clone(),
+            description: divide_both_sides_message(&divide_by_desc),
+        },
+    ];
     DivisionDenominatorDidacticExecutionPlan {
         multiply_equation,
         divide_equation,
-        didactic,
+        items,
     }
 }
 
@@ -2582,29 +3581,77 @@ pub fn build_abs_split_execution_with<F>(
     positive_equation: Equation,
     negative_equation: Equation,
     lhs_expr: ExprId,
-    render_expr: F,
+    mut render_expr: F,
 ) -> AbsSplitExecutionPlan
 where
     F: FnMut(ExprId) -> String,
 {
-    let didactic = build_abs_split_steps_with(
-        positive_equation.clone(),
-        negative_equation.clone(),
-        lhs_expr,
-        render_expr,
-    );
-    let items = collect_abs_split_didactic_steps(&didactic)
-        .into_iter()
-        .map(|step| AbsSplitExecutionItem {
-            equation: step.equation_after,
-            description: step.description,
-        })
-        .collect();
+    let lhs_display = render_expr(lhs_expr);
+    let positive_rhs_display = render_expr(positive_equation.rhs);
+    let negative_rhs_display = render_expr(negative_equation.rhs);
+    let items = vec![
+        AbsSplitExecutionItem {
+            equation: positive_equation.clone(),
+            description: abs_split_case_message(
+                AbsSplitCase::Positive,
+                &lhs_display,
+                &positive_equation.op.to_string(),
+                &positive_rhs_display,
+            ),
+        },
+        AbsSplitExecutionItem {
+            equation: negative_equation.clone(),
+            description: abs_split_case_message(
+                AbsSplitCase::Negative,
+                &lhs_display,
+                &negative_equation.op.to_string(),
+                &negative_rhs_display,
+            ),
+        },
+    ];
     AbsSplitExecutionPlan {
         positive_equation,
         negative_equation,
         items,
     }
+}
+
+/// Materialize absolute-value split equations without didactic payload.
+///
+/// This is useful when the caller needs executable branch equations
+/// but is not collecting user-facing steps.
+pub fn materialize_abs_split_execution(
+    positive_equation: Equation,
+    negative_equation: Equation,
+) -> AbsSplitExecutionPlan {
+    AbsSplitExecutionPlan {
+        positive_equation,
+        negative_equation,
+        items: vec![],
+    }
+}
+
+/// Solved payload for absolute-value branch split:
+/// `|A| op rhs` under positive and negative branch equations.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AbsSplitSolvedCases<TBranch> {
+    pub positive_branch: TBranch,
+    pub negative_branch: TBranch,
+}
+
+/// Solve both branch equations of an absolute-value split execution plan with
+/// a caller-provided branch solver callback.
+pub fn solve_abs_split_cases_with<E, TBranch, FSolveBranch>(
+    execution: &AbsSplitExecutionPlan,
+    mut solve_branch: FSolveBranch,
+) -> Result<AbsSplitSolvedCases<TBranch>, E>
+where
+    FSolveBranch: FnMut(&Equation) -> Result<TBranch, E>,
+{
+    Ok(AbsSplitSolvedCases {
+        positive_branch: solve_branch(&execution.positive_equation)?,
+        negative_branch: solve_branch(&execution.negative_equation)?,
+    })
 }
 
 /// For `|A| = rhs`, attach the soundness guard `rhs >= 0` when
@@ -2877,9 +3924,28 @@ mod tests {
         })
         .expect("shortcut should apply");
         assert!(matches!(outcome.solutions, SolutionSet::Empty));
-        assert_eq!(outcome.step.equation_after.lhs, x);
-        assert_eq!(outcome.step.equation_after.rhs, rhs);
-        assert!(outcome.step.description.contains("no solution"));
+        assert_eq!(outcome.items[0].equation.lhs, x);
+        assert_eq!(outcome.items[0].equation.rhs, rhs);
+        assert!(outcome.items[0].description.contains("no solution"));
+    }
+
+    #[test]
+    fn resolve_power_base_one_shortcut_for_pow_with_detects_base_and_rhs() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let x = ctx.var("x");
+        let lhs = ctx.add(Expr::Pow(one, x));
+        let rhs = ctx.num(2);
+
+        let outcome =
+            resolve_power_base_one_shortcut_for_pow_with(&ctx, one, lhs, rhs, RelOp::Eq, |_, _| {
+                "2".to_string()
+            })
+            .expect("shortcut should apply");
+        assert!(matches!(outcome.solutions, SolutionSet::Empty));
+        assert_eq!(outcome.items.len(), 1);
+        assert_eq!(outcome.items[0].equation.lhs, lhs);
+        assert_eq!(outcome.items[0].equation.rhs, rhs);
     }
 
     #[test]
@@ -2894,7 +3960,8 @@ mod tests {
 
         let didactic = collect_power_base_one_shortcut_didactic_steps(&outcome);
         assert_eq!(didactic.len(), 1);
-        assert_eq!(didactic[0], outcome.step);
+        assert_eq!(didactic[0].description, outcome.items[0].description);
+        assert_eq!(didactic[0].equation_after, outcome.items[0].equation);
     }
 
     #[test]
@@ -2909,8 +3976,8 @@ mod tests {
 
         let items = collect_power_base_one_shortcut_execution_items(&outcome);
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].equation, outcome.step.equation_after);
-        assert_eq!(items[0].description, outcome.step.description);
+        assert_eq!(items[0].equation, outcome.items[0].equation);
+        assert_eq!(items[0].description, outcome.items[0].description);
     }
 
     #[test]
@@ -3086,6 +4153,29 @@ mod tests {
     }
 
     #[test]
+    fn materialize_abs_split_execution_omits_items() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let neg_two = ctx.num(-2);
+        let eq_pos = Equation {
+            lhs: x,
+            rhs: two,
+            op: RelOp::Eq,
+        };
+        let eq_neg = Equation {
+            lhs: x,
+            rhs: neg_two,
+            op: RelOp::Eq,
+        };
+
+        let execution = materialize_abs_split_execution(eq_pos.clone(), eq_neg.clone());
+        assert_eq!(execution.positive_equation, eq_pos);
+        assert_eq!(execution.negative_equation, eq_neg);
+        assert!(execution.items.is_empty());
+    }
+
+    #[test]
     fn collect_abs_split_execution_items_preserves_positive_then_negative_order() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -3161,6 +4251,44 @@ mod tests {
             items[1].description,
             "Split absolute value (Case 2): x = -2"
         );
+    }
+
+    #[test]
+    fn solve_abs_split_cases_with_solves_positive_then_negative() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let neg_two = ctx.num(-2);
+        let residual = ctx.var("residual");
+        let execution = materialize_abs_split_execution(
+            Equation {
+                lhs: x,
+                rhs: two,
+                op: RelOp::Eq,
+            },
+            Equation {
+                lhs: x,
+                rhs: neg_two,
+                op: RelOp::Eq,
+            },
+        );
+        let mut call_idx = 0usize;
+        let solved = solve_abs_split_cases_with(&execution, |_eq| {
+            call_idx += 1;
+            Ok::<_, ()>(match call_idx {
+                1 => SolutionSet::AllReals,
+                2 => SolutionSet::Residual(residual),
+                _ => unreachable!("only two abs split branches"),
+            })
+        })
+        .expect("callback should succeed");
+
+        assert_eq!(call_idx, 2);
+        assert!(matches!(solved.positive_branch, SolutionSet::AllReals));
+        assert!(matches!(
+            solved.negative_branch,
+            SolutionSet::Residual(id) if id == residual
+        ));
     }
 
     #[test]
@@ -3494,6 +4622,266 @@ mod tests {
             }
             other => panic!("expected guarded outcome, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn collect_guarded_log_blocked_hints_maps_assumptions_to_targets() {
+        let mut ctx = Context::new();
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let hints = collect_guarded_log_blocked_hints(
+            &[
+                crate::log_domain::LogAssumption::PositiveBase,
+                crate::log_domain::LogAssumption::PositiveRhs,
+            ],
+            base,
+            rhs,
+        );
+
+        assert_eq!(hints.len(), 2);
+        assert_eq!(
+            hints[0].assumption,
+            crate::log_domain::LogAssumption::PositiveBase
+        );
+        assert_eq!(hints[0].expr_id, base);
+        assert_eq!(hints[0].rule, "Take log of both sides");
+        assert_eq!(hints[0].suggestion, "use `semantics set domain assume`");
+        assert_eq!(
+            hints[1].assumption,
+            crate::log_domain::LogAssumption::PositiveRhs
+        );
+        assert_eq!(hints[1].expr_id, rhs);
+    }
+
+    #[test]
+    fn plan_pow_exponent_log_unsupported_execution_with_builds_residual_variant() {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let decision = LogSolveDecision::Unsupported(
+            "Cannot prove RHS > 0 for logarithm",
+            vec![crate::log_domain::LogAssumption::PositiveRhs],
+        );
+        let outcome = resolve_log_unsupported_outcome(
+            &mut ctx, &decision, false, exponent, rhs, "x", base, rhs,
+        )
+        .expect("must produce unsupported outcome");
+        let execution = plan_pow_exponent_log_unsupported_execution_with(
+            &mut ctx,
+            outcome,
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            Equation {
+                lhs: exponent,
+                rhs,
+                op: RelOp::Eq,
+            },
+            |_, _| "a".to_string(),
+        );
+        match execution {
+            PowExponentLogUnsupportedExecution::Residual { item, solutions } => {
+                assert_eq!(
+                    item.description(),
+                    "Cannot prove RHS > 0 for logarithm (residual, budget exhausted)"
+                );
+                assert!(matches!(solutions, SolutionSet::Residual(_)));
+            }
+            other => panic!("expected residual variant, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn plan_pow_exponent_log_unsupported_execution_with_builds_guarded_variant() {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let decision = LogSolveDecision::Unsupported(
+            "Cannot prove base > 0 and RHS > 0 for logarithm",
+            vec![
+                crate::log_domain::LogAssumption::PositiveBase,
+                crate::log_domain::LogAssumption::PositiveRhs,
+            ],
+        );
+        let outcome = resolve_log_unsupported_outcome(
+            &mut ctx, &decision, true, exponent, rhs, "x", base, rhs,
+        )
+        .expect("must produce unsupported outcome");
+        let execution = plan_pow_exponent_log_unsupported_execution_with(
+            &mut ctx,
+            outcome,
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            Equation {
+                lhs: exponent,
+                rhs,
+                op: RelOp::Eq,
+            },
+            |_, _| "a".to_string(),
+        );
+        match execution {
+            PowExponentLogUnsupportedExecution::Guarded {
+                blocked_hints,
+                plan,
+                guard,
+                residual,
+            } => {
+                assert_eq!(blocked_hints.len(), 2);
+                assert_eq!(plan.rewrite.items.len(), 1);
+                assert_eq!(guard.predicates().len(), 2);
+                assert!(matches!(ctx.get(residual), Expr::Function(_, _)));
+            }
+            other => panic!("expected guarded variant, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn execute_pow_exponent_log_unsupported_with_passes_residual_through() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let item = build_residual_budget_exhausted_item(
+            "budget exhausted",
+            Equation {
+                lhs: x,
+                rhs: x,
+                op: RelOp::Eq,
+            },
+        );
+        let out = execute_pow_exponent_log_unsupported_with(
+            PowExponentLogUnsupportedExecution::Residual {
+                item: item.clone(),
+                solutions: SolutionSet::Residual(x),
+            },
+            |_eq| Some(SolutionSet::AllReals),
+        );
+
+        match out {
+            PowExponentLogUnsupportedSolvedExecution::Residual {
+                item: out_item,
+                solutions,
+            } => {
+                assert_eq!(out_item, item);
+                assert!(matches!(solutions, SolutionSet::Residual(id) if id == x));
+            }
+            other => panic!("expected residual solved execution, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn execute_pow_exponent_log_unsupported_with_executes_guarded_and_materializes_solution() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let residual = ctx.var("residual");
+        let source = Equation {
+            lhs: x,
+            rhs: b,
+            op: RelOp::Eq,
+        };
+        let plan = plan_guarded_pow_exponent_log_execution(
+            &mut ctx,
+            x,
+            a,
+            b,
+            RelOp::Eq,
+            "a > 0",
+            "a",
+            source,
+        );
+        let guard = ConditionSet::single(ConditionPredicate::Positive(a));
+        let out = execute_pow_exponent_log_unsupported_with(
+            PowExponentLogUnsupportedExecution::Guarded {
+                blocked_hints: vec![],
+                plan,
+                guard,
+                residual,
+            },
+            |_eq| Some(SolutionSet::Discrete(vec![x])),
+        );
+
+        match out {
+            PowExponentLogUnsupportedSolvedExecution::Guarded {
+                blocked_hints,
+                rewrite_items,
+                followup_item,
+                solutions,
+            } => {
+                assert!(blocked_hints.is_empty());
+                assert_eq!(rewrite_items.len(), 1);
+                assert_eq!(followup_item.description(), "Conditional solution: a > 0");
+                assert!(matches!(solutions, SolutionSet::Conditional(_)));
+            }
+            other => panic!("expected guarded solved execution, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn plan_pow_exponent_log_unsupported_execution_from_decision_with_returns_none_for_supported() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let out = plan_pow_exponent_log_unsupported_execution_from_decision_with(
+            &mut ctx,
+            &LogSolveDecision::Ok,
+            true,
+            x,
+            x,
+            "x",
+            x,
+            x,
+            x,
+            RelOp::Eq,
+            Equation {
+                lhs: x,
+                rhs: x,
+                op: RelOp::Eq,
+            },
+            |_, _| "x".to_string(),
+        );
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn plan_pow_exponent_log_unsupported_execution_from_decision_with_maps_guarded_variant() {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let decision = LogSolveDecision::Unsupported(
+            "Cannot prove base > 0 and RHS > 0 for logarithm",
+            vec![
+                crate::log_domain::LogAssumption::PositiveBase,
+                crate::log_domain::LogAssumption::PositiveRhs,
+            ],
+        );
+        let out = plan_pow_exponent_log_unsupported_execution_from_decision_with(
+            &mut ctx,
+            &decision,
+            true,
+            exponent,
+            rhs,
+            "x",
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            Equation {
+                lhs: exponent,
+                rhs,
+                op: RelOp::Eq,
+            },
+            |_, _| "a".to_string(),
+        )
+        .expect("must map unsupported decision");
+        assert!(matches!(
+            out,
+            PowExponentLogUnsupportedExecution::Guarded { .. }
+        ));
     }
 
     #[test]
@@ -3857,6 +5245,109 @@ mod tests {
     }
 
     #[test]
+    fn plan_pow_exponent_shortcut_action_detecting_with_maps_equal_pow_bases() {
+        let mut ctx = Context::new();
+        let base = ctx.var("b");
+        let rhs_exp = ctx.var("n");
+        let rhs = ctx.add(Expr::Pow(base, rhs_exp));
+        let rhs_expr = ctx.get(rhs).clone();
+
+        let out = plan_pow_exponent_shortcut_action_detecting_with(
+            &mut ctx,
+            rhs,
+            &rhs_expr,
+            base,
+            RelOp::Eq,
+            false,
+            false,
+            false,
+            |candidate| candidate == base,
+        );
+
+        assert!(matches!(
+            out,
+            PowExponentShortcutAction::IsolateExponent {
+                shortcut: PowExponentShortcut::EqualPowBases { .. },
+                rhs,
+                op: RelOp::Eq
+            } if rhs == rhs_exp
+        ));
+    }
+
+    struct MockPowShortcutRuntime {
+        context: Context,
+    }
+
+    impl PowExponentShortcutRuntime for MockPowShortcutRuntime {
+        fn context(&mut self) -> &mut Context {
+            &mut self.context
+        }
+
+        fn bases_equivalent(&mut self, base: ExprId, candidate: ExprId) -> bool {
+            base == candidate
+        }
+
+        fn render_expr(&mut self, expr: ExprId) -> String {
+            format!("{}", expr)
+        }
+    }
+
+    #[test]
+    fn execute_pow_exponent_shortcut_with_runtime_maps_equal_pow_bases() {
+        let mut context = Context::new();
+        let base = context.var("b");
+        let exponent = context.var("x");
+        let rhs_exp = context.var("n");
+        let rhs = context.add(Expr::Pow(base, rhs_exp));
+        let mut runtime = MockPowShortcutRuntime { context };
+
+        let action = execute_pow_exponent_shortcut_with_runtime(
+            &mut runtime,
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            "x",
+            false,
+            false,
+            false,
+        );
+
+        match action {
+            PowExponentShortcutEngineAction::IsolateExponent { rhs, op, items } => {
+                assert_eq!(rhs, rhs_exp);
+                assert_eq!(op, RelOp::Eq);
+                assert_eq!(items.len(), 1);
+                assert!(items[0].description.contains("equal exponents"));
+            }
+            other => panic!("expected isolate-exponent shortcut, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn execute_pow_exponent_shortcut_with_runtime_returns_continue_when_no_shortcut() {
+        let mut context = Context::new();
+        let base = context.var("b");
+        let exponent = context.var("x");
+        let rhs = context.var("y");
+        let mut runtime = MockPowShortcutRuntime { context };
+
+        let action = execute_pow_exponent_shortcut_with_runtime(
+            &mut runtime,
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            "x",
+            false,
+            false,
+            false,
+        );
+
+        assert_eq!(action, PowExponentShortcutEngineAction::Continue);
+    }
+
+    #[test]
     fn build_pow_exponent_shortcut_execution_plan_maps_equal_pow_bases() {
         let mut ctx = Context::new();
         let rhs_exp = ctx.var("n");
@@ -3917,12 +5408,13 @@ mod tests {
         );
 
         match out {
-            PowExponentShortcutEngineAction::IsolateExponent { rhs, op, step } => {
+            PowExponentShortcutEngineAction::IsolateExponent { rhs, op, items } => {
                 assert_eq!(rhs, n);
                 assert_eq!(op, RelOp::Eq);
-                assert_eq!(step.equation_after.lhs, x);
-                assert_eq!(step.equation_after.rhs, n);
-                assert!(step.description.contains("expr"));
+                assert_eq!(items.len(), 1);
+                assert_eq!(items[0].equation.lhs, x);
+                assert_eq!(items[0].equation.rhs, n);
+                assert!(items[0].description.contains("expr"));
             }
             other => panic!("expected isolate action, got {:?}", other),
         }
@@ -3947,11 +5439,12 @@ mod tests {
             |_| "expr".to_string(),
         );
         match out {
-            PowExponentShortcutEngineAction::ReturnSolutionSet { step, .. } => {
-                assert_eq!(step.equation_after.lhs, x);
-                assert_eq!(step.equation_after.rhs, base);
-                assert_eq!(step.equation_after.op, RelOp::Eq);
-                assert!(step.description.contains("expr"));
+            PowExponentShortcutEngineAction::ReturnSolutionSet { items, .. } => {
+                assert_eq!(items.len(), 1);
+                assert_eq!(items[0].equation.lhs, x);
+                assert_eq!(items[0].equation.rhs, base);
+                assert_eq!(items[0].equation.op, RelOp::Eq);
+                assert!(items[0].description.contains("expr"));
             }
             other => panic!("expected terminal action, got {:?}", other),
         }
@@ -4060,8 +5553,11 @@ mod tests {
             "expr".to_string()
         });
         match action {
-            PowBaseIsolationEngineAction::ReturnSolutionSet { step, .. } => {
-                assert!(step.description.contains("Even power cannot be negative"));
+            PowBaseIsolationEngineAction::ReturnSolutionSet { items, .. } => {
+                assert_eq!(items.len(), 1);
+                assert!(items[0]
+                    .description
+                    .contains("Even power cannot be negative"));
             }
             other => panic!("expected terminal action, got {:?}", other),
         }
@@ -4079,14 +5575,141 @@ mod tests {
             "2".to_string()
         });
         match action {
-            PowBaseIsolationEngineAction::IsolateBase { step, .. } => {
+            PowBaseIsolationEngineAction::IsolateBase { items, .. } => {
+                assert_eq!(items.len(), 1);
                 assert_eq!(
-                    step.description,
+                    items[0].description,
                     "Take 2-th root of both sides (even root implies absolute value)"
                 );
             }
             other => panic!("expected isolate action, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn build_pow_base_isolation_action_with_computes_predicates_and_maps_payload() {
+        let mut ctx = Context::new();
+        let base = ctx.var("x");
+        let exponent = ctx.num(2);
+        let rhs = ctx.num(-1);
+        let action = build_pow_base_isolation_action_with(
+            &mut ctx,
+            base,
+            exponent,
+            rhs,
+            RelOp::Eq,
+            |_, _| "expr".to_string(),
+        );
+
+        match action {
+            PowBaseIsolationEngineAction::ReturnSolutionSet { items, solutions } => {
+                assert_eq!(items.len(), 1);
+                assert!(items[0]
+                    .description
+                    .contains("Even power cannot be negative"));
+                assert!(matches!(solutions, SolutionSet::Empty));
+            }
+            other => panic!("expected terminal action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn solve_pow_exponent_shortcut_action_with_invokes_isolate_once() {
+        let mut ctx = Context::new();
+        let rhs = ctx.var("n");
+        let action = PowExponentShortcutEngineAction::IsolateExponent {
+            rhs,
+            op: RelOp::Eq,
+            items: vec![],
+        };
+
+        let mut calls = 0usize;
+        let solved = solve_pow_exponent_shortcut_action_with(action, |target_rhs, target_op| {
+            calls += 1;
+            Ok::<_, ()>((target_rhs, target_op))
+        })
+        .expect("solve should succeed");
+
+        assert_eq!(calls, 1);
+        match solved {
+            PowExponentShortcutSolved::Isolated((target_rhs, target_op)) => {
+                assert_eq!(target_rhs, rhs);
+                assert_eq!(target_op, RelOp::Eq);
+            }
+            other => panic!("expected isolated shortcut solve, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn solve_pow_exponent_shortcut_action_with_returns_solution_set_without_isolate() {
+        let action = PowExponentShortcutEngineAction::ReturnSolutionSet {
+            solutions: SolutionSet::AllReals,
+            items: vec![],
+        };
+
+        let mut calls = 0usize;
+        let solved = solve_pow_exponent_shortcut_action_with(action, |_rhs, _op| {
+            calls += 1;
+            Ok::<_, ()>(())
+        })
+        .expect("solve should succeed");
+
+        assert_eq!(calls, 0);
+        assert!(matches!(
+            solved,
+            PowExponentShortcutSolved::ReturnedSolutionSet(SolutionSet::AllReals)
+        ));
+    }
+
+    #[test]
+    fn solve_pow_base_isolation_action_with_invokes_isolate_once() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("x");
+        let rhs = ctx.var("r");
+        let action = PowBaseIsolationEngineAction::IsolateBase {
+            lhs,
+            rhs,
+            op: RelOp::Lt,
+            items: vec![],
+        };
+
+        let mut calls = 0usize;
+        let solved = solve_pow_base_isolation_action_with(action, |target_lhs, target_rhs, op| {
+            calls += 1;
+            Ok::<_, ()>((target_lhs, target_rhs, op))
+        })
+        .expect("solve should succeed");
+
+        assert_eq!(calls, 1);
+        match solved {
+            PowBaseIsolationSolved::Isolated((target_lhs, target_rhs, target_op)) => {
+                assert_eq!(target_lhs, lhs);
+                assert_eq!(target_rhs, rhs);
+                assert_eq!(target_op, RelOp::Lt);
+            }
+            other => panic!("expected isolated base solve, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn solve_pow_base_isolation_action_with_returns_solution_set_without_isolate() {
+        let action = PowBaseIsolationEngineAction::ReturnSolutionSet {
+            solutions: SolutionSet::Empty,
+            items: vec![],
+        };
+
+        let mut calls = 0usize;
+        let solved = solve_pow_base_isolation_action_with(action, |_lhs, _rhs, _op| {
+            calls += 1;
+            Ok::<_, ()>(())
+        })
+        .expect("solve should succeed");
+
+        assert_eq!(calls, 0);
+        assert!(matches!(
+            solved,
+            PowBaseIsolationSolved::ReturnedSolutionSet(SolutionSet::Empty)
+        ));
     }
 
     #[test]
@@ -4275,8 +5898,11 @@ mod tests {
         assert_eq!(plan.equation.lhs, y);
         assert_eq!(plan.equation.rhs, x);
         assert_eq!(plan.equation.op, RelOp::Gt);
-        assert_eq!(plan.step.description, "Swap sides to put variable on LHS");
-        assert_eq!(plan.step.equation_after, plan.equation);
+        assert_eq!(
+            plan.items[0].description,
+            "Swap sides to put variable on LHS"
+        );
+        assert_eq!(plan.items[0].equation, plan.equation);
     }
 
     #[test]
@@ -4306,9 +5932,9 @@ mod tests {
 
         let plan = plan_solve_tactic_normalization_step(&mut ctx, base, exponent, rhs, RelOp::Eq);
 
-        assert_eq!(plan.step.equation_after, plan.equation);
+        assert_eq!(plan.items[0].equation, plan.equation);
         assert_eq!(
-            plan.step.description,
+            plan.items[0].description,
             "Applied SolveTactic normalization (Assume mode) to enable logarithm isolation"
         );
         assert_eq!(plan.equation.rhs, rhs);
@@ -4376,12 +6002,12 @@ mod tests {
         let add_plan =
             plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
         assert_eq!(add_plan.equation.lhs, x);
-        assert_eq!(add_plan.step.description, "Subtract y from both sides");
+        assert_eq!(add_plan.items[0].description, "Subtract y from both sides");
 
         let sub_plan =
             plan_sub_minuend_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
         assert_eq!(sub_plan.equation.lhs, x);
-        assert_eq!(sub_plan.step.description, "Add y to both sides");
+        assert_eq!(sub_plan.items[0].description, "Add y to both sides");
 
         let subtrahend_plan =
             plan_sub_subtrahend_isolation_step_with(&mut ctx, x, y, z, RelOp::Lt, |_| {
@@ -4390,7 +6016,7 @@ mod tests {
         assert_eq!(subtrahend_plan.equation.lhs, y);
         assert_eq!(subtrahend_plan.equation.op, RelOp::Gt);
         assert_eq!(
-            subtrahend_plan.step.description,
+            subtrahend_plan.items[0].description,
             "Move x and multiply by -1 (flips inequality)"
         );
 
@@ -4399,20 +6025,20 @@ mod tests {
                 "y".to_string()
             });
         assert_eq!(mul_plan.equation.lhs, x);
-        assert_eq!(mul_plan.step.description, "Divide both sides by y");
+        assert_eq!(mul_plan.items[0].description, "Divide both sides by y");
 
         let div_plan =
             plan_div_numerator_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, false, |_| {
                 "y".to_string()
             });
         assert_eq!(div_plan.equation.lhs, x);
-        assert_eq!(div_plan.step.description, "Multiply both sides by y");
+        assert_eq!(div_plan.items[0].description, "Multiply both sides by y");
 
         let neg_plan = plan_negated_lhs_isolation_step(&mut ctx, x, z, RelOp::Lt);
         assert_eq!(neg_plan.equation.lhs, x);
         assert_eq!(neg_plan.equation.op, RelOp::Gt);
         assert_eq!(
-            neg_plan.step.description,
+            neg_plan.items[0].description,
             "Multiply both sides by -1 (flips inequality)"
         );
     }
@@ -4428,7 +6054,8 @@ mod tests {
 
         let didactic = collect_term_isolation_rewrite_didactic_steps(&plan);
         assert_eq!(didactic.len(), 1);
-        assert_eq!(didactic[0], plan.step);
+        assert_eq!(didactic[0].description, plan.items[0].description);
+        assert_eq!(didactic[0].equation_after, plan.items[0].equation);
     }
 
     #[test]
@@ -4443,7 +6070,29 @@ mod tests {
         let items = collect_term_isolation_rewrite_execution_items(&plan);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, plan.equation);
-        assert_eq!(items[0].description, plan.step.description);
+        assert_eq!(items[0].description, plan.items[0].description);
+    }
+
+    #[test]
+    fn solve_term_isolation_rewrite_with_runs_solver_once_and_preserves_rewrite() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let plan =
+            plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
+        let expected = plan.clone();
+
+        let mut calls = 0usize;
+        let solved = solve_term_isolation_rewrite_with(plan, |equation| {
+            calls += 1;
+            Ok::<_, ()>(equation)
+        })
+        .expect("rewrite solve should succeed");
+
+        assert_eq!(calls, 1);
+        assert_eq!(solved.rewrite, expected);
+        assert_eq!(solved.solved, expected.equation);
     }
 
     #[test]
@@ -4606,13 +6255,11 @@ mod tests {
             },
         );
 
-        assert_eq!(
-            payload.multiply_step.description,
-            "Multiply both sides by d"
-        );
-        assert_eq!(payload.multiply_step.equation_after, eq_mul);
-        assert_eq!(payload.divide_step.description, "Divide both sides by r");
-        assert_eq!(payload.divide_step.equation_after, eq_div);
+        assert_eq!(payload.items.len(), 2);
+        assert_eq!(payload.items[0].description, "Multiply both sides by d");
+        assert_eq!(payload.items[0].equation, eq_mul);
+        assert_eq!(payload.items[1].description, "Divide both sides by r");
+        assert_eq!(payload.items[1].equation, eq_div);
     }
 
     #[test]
@@ -4639,18 +6286,13 @@ mod tests {
         assert_eq!(execution.multiply_equation.op, RelOp::Eq);
         assert_eq!(execution.divide_equation.lhs, d);
         assert_eq!(execution.divide_equation.rhs, isolated_rhs);
-        assert_eq!(
-            execution.didactic.multiply_step.equation_after,
-            execution.multiply_equation
-        );
-        assert_eq!(
-            execution.didactic.divide_step.equation_after,
-            execution.divide_equation
-        );
+        assert_eq!(execution.items.len(), 2);
+        assert_eq!(execution.items[0].equation, execution.multiply_equation);
+        assert_eq!(execution.items[1].equation, execution.divide_equation);
     }
 
     #[test]
-    fn collect_division_denominator_didactic_steps_preserves_multiply_then_divide_order() {
+    fn collect_division_denominator_execution_items_preserves_multiply_then_divide_order() {
         let mut ctx = Context::new();
         let n = ctx.var("n");
         let d = ctx.var("d");
@@ -4667,10 +6309,10 @@ mod tests {
                 }
             });
 
-        let didactic = collect_division_denominator_didactic_steps(&execution.didactic);
-        assert_eq!(didactic.len(), 2);
-        assert_eq!(didactic[0].description, "Multiply both sides by d");
-        assert_eq!(didactic[1].description, "Divide both sides by r");
+        let items = collect_division_denominator_execution_items(&execution);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].description, "Multiply both sides by d");
+        assert_eq!(items[1].description, "Divide both sides by r");
     }
 
     #[test]
@@ -4749,7 +6391,7 @@ mod tests {
             rhs,
             RelOp::Eq,
             None,
-            |_| "a".to_string(),
+            |_, _| "a".to_string(),
         );
         assert_eq!(step.description, "Take log base a of both sides");
         assert_eq!(step.equation_after.lhs, exponent);
@@ -4769,7 +6411,7 @@ mod tests {
             rhs,
             RelOp::Eq,
             Some("a > 0"),
-            |_| "a".to_string(),
+            |_, _| "a".to_string(),
         );
         assert_eq!(
             step.description,
@@ -4848,6 +6490,228 @@ mod tests {
     }
 
     #[test]
+    fn plan_guarded_pow_exponent_log_execution_builds_rewrite_and_followups() {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let source = Equation {
+            lhs: ctx.add(Expr::Pow(base, exponent)),
+            rhs,
+            op: RelOp::Eq,
+        };
+
+        let plan = plan_guarded_pow_exponent_log_execution(
+            &mut ctx,
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            "a > 0 and b > 0",
+            "a",
+            source,
+        );
+
+        assert_eq!(
+            plan.rewrite.items[0].description,
+            "Take log base a of both sides (under guard: a > 0 and b > 0)"
+        );
+        assert_eq!(
+            plan.followup_success.description,
+            "Conditional solution: a > 0 and b > 0"
+        );
+        assert_eq!(
+            plan.followup_residual.description,
+            "a > 0 and b > 0 (residual)"
+        );
+    }
+
+    #[test]
+    fn plan_guarded_pow_exponent_log_execution_with_uses_renderer() {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let source = Equation {
+            lhs: ctx.add(Expr::Pow(base, exponent)),
+            rhs,
+            op: RelOp::Eq,
+        };
+
+        let plan = plan_guarded_pow_exponent_log_execution_with(
+            &mut ctx,
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            "a > 0",
+            source,
+            |_, _| "rendered(a)".to_string(),
+        );
+
+        assert_eq!(
+            plan.rewrite.items[0].description,
+            "Take log base rendered(a) of both sides (under guard: a > 0)"
+        );
+        assert_eq!(
+            plan.followup_success.description,
+            "Conditional solution: a > 0"
+        );
+        assert_eq!(plan.followup_residual.description, "a > 0 (residual)");
+    }
+
+    #[test]
+    fn guarded_pow_exponent_log_plan_followup_item_selects_success_or_residual() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let source = Equation {
+            lhs: x,
+            rhs: b,
+            op: RelOp::Eq,
+        };
+        let plan = plan_guarded_pow_exponent_log_execution(
+            &mut ctx,
+            x,
+            a,
+            b,
+            RelOp::Eq,
+            "a > 0",
+            "a",
+            source,
+        );
+
+        assert_eq!(
+            plan.followup_item(true).description,
+            "Conditional solution: a > 0"
+        );
+        assert_eq!(plan.followup_item(false).description, "a > 0 (residual)");
+    }
+
+    #[test]
+    fn execute_guarded_pow_exponent_log_with_returns_followup_for_success() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let source = Equation {
+            lhs: x,
+            rhs: b,
+            op: RelOp::Eq,
+        };
+        let solved = SolutionSet::Discrete(vec![x]);
+
+        let execution = execute_guarded_pow_exponent_log_with(
+            &mut ctx,
+            x,
+            a,
+            b,
+            RelOp::Eq,
+            "a > 0",
+            source,
+            |_, _| "a".to_string(),
+            |_eq| Some(solved.clone()),
+        );
+
+        assert_eq!(execution.rewrite.items.len(), 1);
+        assert_eq!(
+            execution.followup.description,
+            "Conditional solution: a > 0"
+        );
+        assert_eq!(execution.guarded_solutions, Some(solved));
+    }
+
+    #[test]
+    fn execute_guarded_pow_exponent_log_with_returns_followup_for_residual() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let source = Equation {
+            lhs: x,
+            rhs: b,
+            op: RelOp::Eq,
+        };
+
+        let execution = execute_guarded_pow_exponent_log_with(
+            &mut ctx,
+            x,
+            a,
+            b,
+            RelOp::Eq,
+            "a > 0",
+            source,
+            |_, _| "a".to_string(),
+            |_eq| None,
+        );
+
+        assert_eq!(execution.rewrite.items.len(), 1);
+        assert_eq!(execution.followup.description, "a > 0 (residual)");
+        assert_eq!(execution.guarded_solutions, None);
+    }
+
+    #[test]
+    fn execute_guarded_pow_exponent_log_plan_with_selects_followup_from_callback() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let source = Equation {
+            lhs: x,
+            rhs: b,
+            op: RelOp::Eq,
+        };
+        let plan = plan_guarded_pow_exponent_log_execution(
+            &mut ctx,
+            x,
+            a,
+            b,
+            RelOp::Eq,
+            "a > 0",
+            "a",
+            source,
+        );
+        let solved = SolutionSet::Discrete(vec![x]);
+
+        let execution =
+            execute_guarded_pow_exponent_log_plan_with(plan, |_eq| Some(solved.clone()));
+        assert_eq!(
+            execution.followup.description,
+            "Conditional solution: a > 0"
+        );
+        assert_eq!(execution.guarded_solutions, Some(solved));
+    }
+
+    #[test]
+    fn solve_pow_exponent_log_isolation_rewrite_with_runs_solver_once_and_preserves_rewrite() {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let rewrite = plan_pow_exponent_log_isolation_step_with(
+            &mut ctx,
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            None,
+            |_, _| "a".to_string(),
+        );
+        let expected_equation = rewrite.equation.clone();
+        let mut calls = 0usize;
+        let solved = solve_pow_exponent_log_isolation_rewrite_with(rewrite, |_eq| {
+            calls += 1;
+            Ok::<_, ()>(SolutionSet::AllReals)
+        })
+        .expect("solve callback should succeed");
+
+        assert_eq!(calls, 1);
+        assert_eq!(solved.rewrite.equation, expected_equation);
+        assert!(matches!(solved.solved, SolutionSet::AllReals));
+    }
+
+    #[test]
     fn collect_term_isolation_didactic_steps_returns_single_step() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -4903,9 +6767,9 @@ mod tests {
             "a",
         );
 
-        assert_eq!(plan.step.equation_after, plan.equation);
+        assert_eq!(plan.items[0].equation, plan.equation);
         assert_eq!(
-            plan.step.description,
+            plan.items[0].description,
             "Take log base a of both sides (under guard: a > 0)"
         );
         assert_eq!(plan.equation.lhs, exponent);
@@ -4926,12 +6790,12 @@ mod tests {
             rhs,
             RelOp::Eq,
             None,
-            |_| "rendered(a)".to_string(),
+            |_, _| "rendered(a)".to_string(),
         );
 
-        assert_eq!(plan.step.equation_after, plan.equation);
+        assert_eq!(plan.items[0].equation, plan.equation);
         assert_eq!(
-            plan.step.description,
+            plan.items[0].description,
             "Take log base rendered(a) of both sides"
         );
         assert_eq!(plan.equation.lhs, exponent);
@@ -4951,12 +6815,13 @@ mod tests {
             rhs,
             RelOp::Eq,
             None,
-            |_| "rendered(a)".to_string(),
+            |_, _| "rendered(a)".to_string(),
         );
 
         let didactic = collect_pow_exponent_log_isolation_didactic_steps(&plan);
         assert_eq!(didactic.len(), 1);
-        assert_eq!(didactic[0], plan.step);
+        assert_eq!(didactic[0].description, plan.items[0].description);
+        assert_eq!(didactic[0].equation_after, plan.items[0].equation);
     }
 
     #[test]
@@ -4972,13 +6837,13 @@ mod tests {
             rhs,
             RelOp::Eq,
             None,
-            |_| "rendered(a)".to_string(),
+            |_, _| "rendered(a)".to_string(),
         );
 
         let items = collect_pow_exponent_log_isolation_execution_items(&plan);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, plan.equation);
-        assert_eq!(items[0].description, plan.step.description);
+        assert_eq!(items[0].description, plan.items[0].description);
     }
 
     #[test]
@@ -5020,14 +6885,27 @@ mod tests {
         );
         assert_eq!(exec.positive_equation.rhs, simplified_rhs);
         assert_eq!(exec.negative_equation.rhs, simplified_rhs);
-        assert_eq!(
-            exec.didactic.positive_case.equation_after,
-            exec.positive_equation
-        );
-        assert_eq!(
-            exec.didactic.negative_case.equation_after,
-            exec.negative_equation
-        );
+        assert_eq!(exec.items.len(), 3);
+        assert_eq!(exec.items[0].equation, exec.positive_equation);
+        assert_eq!(exec.items[1].equation, exec.negative_equation);
+    }
+
+    #[test]
+    fn materialize_division_denominator_sign_split_execution_omits_items() {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let simplified_rhs = ctx.var("s");
+        let split =
+            plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Lt).unwrap();
+
+        let exec = materialize_division_denominator_sign_split_execution(split, simplified_rhs);
+        assert_eq!(exec.positive_equation.rhs, simplified_rhs);
+        assert_eq!(exec.negative_equation.rhs, simplified_rhs);
+        assert_eq!(exec.positive_equation.lhs, num);
+        assert_eq!(exec.negative_equation.lhs, num);
+        assert!(exec.items.is_empty());
     }
 
     #[test]
@@ -5061,6 +6939,71 @@ mod tests {
         );
         assert_eq!(items[1].equation, exec.negative_equation);
         assert_eq!(items[2].description, "--- End of Case 1 ---");
+    }
+
+    #[test]
+    fn solve_division_denominator_sign_split_cases_with_solves_branches_and_domains() {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let simplified_rhs = ctx.var("s");
+        let residual_branch = ctx.var("residual_branch");
+        let residual_domain = ctx.var("residual_domain");
+        let split =
+            plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Lt).unwrap();
+        let execution =
+            materialize_division_denominator_sign_split_execution(split, simplified_rhs);
+        let mut branch_calls = 0usize;
+        let mut domain_calls = 0usize;
+        let solved = solve_division_denominator_sign_split_cases_with(
+            &execution,
+            |_eq| {
+                branch_calls += 1;
+                Ok::<_, ()>(match branch_calls {
+                    1 => SolutionSet::AllReals,
+                    2 => SolutionSet::Residual(residual_branch),
+                    _ => unreachable!("only two branch equations"),
+                })
+            },
+            |_eq| {
+                domain_calls += 1;
+                Ok::<_, ()>(match domain_calls {
+                    1 => SolutionSet::Residual(residual_domain),
+                    2 => SolutionSet::Empty,
+                    _ => unreachable!("only two domain equations"),
+                })
+            },
+        )
+        .expect("callbacks should succeed");
+
+        assert_eq!(branch_calls, 2);
+        assert_eq!(domain_calls, 2);
+        assert!(matches!(solved.positive_branch, SolutionSet::AllReals));
+        assert!(matches!(
+            solved.negative_branch,
+            SolutionSet::Residual(id) if id == residual_branch
+        ));
+        assert!(matches!(
+            solved.positive_domain,
+            SolutionSet::Residual(id) if id == residual_domain
+        ));
+        assert!(matches!(solved.negative_domain, SolutionSet::Empty));
+    }
+
+    #[test]
+    fn finalize_division_denominator_sign_split_solved_sets_uses_solution_set_combiner() {
+        let ctx = Context::new();
+        let out = finalize_division_denominator_sign_split_solved_sets(
+            &ctx,
+            DivisionDenominatorSignSplitSolvedCases {
+                positive_branch: SolutionSet::AllReals,
+                negative_branch: SolutionSet::Empty,
+                positive_domain: SolutionSet::AllReals,
+                negative_domain: SolutionSet::AllReals,
+            },
+        );
+        assert!(matches!(out, SolutionSet::AllReals));
     }
 
     #[test]
@@ -5132,14 +7075,24 @@ mod tests {
             });
         assert_eq!(exec.positive_equation.rhs, rhs);
         assert_eq!(exec.negative_equation.rhs, rhs);
-        assert_eq!(
-            exec.didactic.positive_case.equation_after,
-            exec.positive_equation
-        );
-        assert_eq!(
-            exec.didactic.negative_case.equation_after,
-            exec.negative_equation
-        );
+        assert_eq!(exec.items.len(), 3);
+        assert_eq!(exec.items[0].equation, exec.positive_equation);
+        assert_eq!(exec.items[1].equation, exec.negative_equation);
+    }
+
+    #[test]
+    fn materialize_isolated_denominator_sign_split_execution_omits_items() {
+        let mut ctx = Context::new();
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let split = plan_isolated_denominator_sign_split(den, rhs, RelOp::Leq).unwrap();
+
+        let exec = materialize_isolated_denominator_sign_split_execution(split);
+        assert_eq!(exec.positive_equation.lhs, den);
+        assert_eq!(exec.negative_equation.lhs, den);
+        assert_eq!(exec.positive_equation.rhs, rhs);
+        assert_eq!(exec.negative_equation.rhs, rhs);
+        assert!(exec.items.is_empty());
     }
 
     #[test]
@@ -5166,6 +7119,46 @@ mod tests {
         );
         assert_eq!(items[1].equation, exec.negative_equation);
         assert_eq!(items[2].description, "--- End of Case 1 ---");
+    }
+
+    #[test]
+    fn solve_isolated_denominator_sign_split_cases_with_solves_two_branches() {
+        let mut ctx = Context::new();
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let residual = ctx.var("residual");
+        let split = plan_isolated_denominator_sign_split(den, rhs, RelOp::Leq).unwrap();
+        let execution = materialize_isolated_denominator_sign_split_execution(split);
+        let mut branch_calls = 0usize;
+        let solved = solve_isolated_denominator_sign_split_cases_with(&execution, |_eq| {
+            branch_calls += 1;
+            Ok::<_, ()>(match branch_calls {
+                1 => SolutionSet::AllReals,
+                2 => SolutionSet::Residual(residual),
+                _ => unreachable!("only two branch equations"),
+            })
+        })
+        .expect("callback should succeed");
+
+        assert_eq!(branch_calls, 2);
+        assert!(matches!(solved.positive_branch, SolutionSet::AllReals));
+        assert!(matches!(
+            solved.negative_branch,
+            SolutionSet::Residual(id) if id == residual
+        ));
+    }
+
+    #[test]
+    fn finalize_isolated_denominator_sign_split_solved_sets_returns_empty_for_empty_branches() {
+        let mut ctx = Context::new();
+        let out = finalize_isolated_denominator_sign_split_solved_sets(
+            &mut ctx,
+            IsolatedDenominatorSignSplitSolvedCases {
+                positive_branch: SolutionSet::Empty,
+                negative_branch: SolutionSet::Empty,
+            },
+        );
+        assert!(matches!(out, SolutionSet::Empty));
     }
 
     #[test]
@@ -5235,5 +7228,53 @@ mod tests {
         let b = ctx.var("b");
         assert!(plan_product_zero_inequality_split(&mut ctx, a, b, RelOp::Eq).is_none());
         assert!(plan_product_zero_inequality_split(&mut ctx, a, b, RelOp::Neq).is_none());
+    }
+
+    #[test]
+    fn solve_product_zero_inequality_cases_with_solves_all_four_equations_in_order() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let residual_1 = ctx.var("residual_1");
+        let residual_2 = ctx.var("residual_2");
+        let plan =
+            plan_product_zero_inequality_split(&mut ctx, a, b, RelOp::Gt).expect("split plan");
+        let mut call_index = 0usize;
+        let solved = solve_product_zero_inequality_cases_with(&plan, |_eq| {
+            call_index += 1;
+            Ok::<_, ()>(match call_index {
+                1 => SolutionSet::AllReals,
+                2 => SolutionSet::Empty,
+                3 => SolutionSet::Residual(residual_1),
+                4 => SolutionSet::Residual(residual_2),
+                _ => unreachable!("only four branch equations"),
+            })
+        })
+        .expect("solver callback should succeed");
+
+        assert_eq!(call_index, 4);
+        assert!(matches!(solved.case1_left, SolutionSet::AllReals));
+        assert!(matches!(solved.case1_right, SolutionSet::Empty));
+        assert!(matches!(
+            solved.case2_left,
+            SolutionSet::Residual(id) if id == residual_1
+        ));
+        assert!(matches!(
+            solved.case2_right,
+            SolutionSet::Residual(id) if id == residual_2
+        ));
+    }
+
+    #[test]
+    fn finalize_product_zero_inequality_solved_sets_uses_solution_set_combiner() {
+        let ctx = Context::new();
+        let solved = ProductZeroInequalitySolvedSets {
+            case1_left: SolutionSet::AllReals,
+            case1_right: SolutionSet::Empty,
+            case2_left: SolutionSet::AllReals,
+            case2_right: SolutionSet::AllReals,
+        };
+        let out = finalize_product_zero_inequality_solved_sets(&ctx, solved);
+        assert!(matches!(out, SolutionSet::AllReals));
     }
 }

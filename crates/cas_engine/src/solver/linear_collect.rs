@@ -9,19 +9,41 @@
 //! 2. Factor: P*(1 + r*t) - A = 0
 //! 3. Solve: P = A / (1 + r*t)  [guard: 1 + r*t ≠ 0]
 
-use cas_ast::{Expr, ExprId, SolutionSet};
-use cas_solver_core::isolation_utils::contains_var;
-use cas_solver_core::linear_didactic::{
-    build_linear_collect_additive_steps_with, build_linear_collect_factored_steps_with,
-    collect_linear_collect_execution_items,
+use cas_ast::{ExprId, SolutionSet};
+use cas_solver_core::linear_collect::{
+    build_linear_collect_additive_execution_with, build_linear_collect_factored_execution_with,
+    solve_linear_collect_additive_with_runtime, solve_linear_collect_factored_with_runtime,
+    LinearCollectRuntime,
 };
-use cas_solver_core::linear_solution::{build_linear_solution_set, derive_linear_nonzero_statuses};
-use cas_solver_core::linear_terms::{build_sum, decompose_linear_collect_terms};
+use cas_solver_core::linear_solution::build_linear_solution_set;
 
 use crate::engine::Simplifier;
-use crate::helpers::prove_nonzero;
-use crate::solver::proof_bridge::proof_to_nonzero_status;
 use crate::solver::SolveStep;
+
+struct EngineLinearCollectRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+}
+
+impl LinearCollectRuntime for EngineLinearCollectRuntime<'_> {
+    fn context(&mut self) -> &mut cas_ast::Context {
+        &mut self.simplifier.context
+    }
+
+    fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
+        let (simplified, _) = self.simplifier.simplify(expr);
+        simplified
+    }
+
+    fn prove_nonzero_status(
+        &mut self,
+        expr: ExprId,
+    ) -> cas_solver_core::linear_solution::NonZeroStatus {
+        crate::solver::proof_bridge::proof_to_nonzero_status(crate::helpers::prove_nonzero(
+            &self.simplifier.context,
+            expr,
+        ))
+    }
+}
 
 /// Try to solve a linear equation where variable appears in multiple additive terms.
 ///
@@ -34,43 +56,24 @@ pub(crate) fn try_linear_collect(
     var: &str,
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
-    let ctx = &mut simplifier.context;
+    let solved = {
+        let mut runtime = EngineLinearCollectRuntime { simplifier };
+        solve_linear_collect_factored_with_runtime(&mut runtime, lhs, rhs, var)?
+    };
 
-    // 1. Build expr = lhs - rhs (move everything to LHS, so expr = 0)
-    let expr = ctx.add(Expr::Sub(lhs, rhs));
-    let (expr, _) = simplifier.simplify(expr);
-
-    // 2. Decompose signed terms into linear and constant parts.
-    let decomposition = decompose_linear_collect_terms(&mut simplifier.context, expr, var)?;
-    let coeff_parts = decomposition.coeff_parts;
-    let const_parts = decomposition.const_parts;
-
-    // 4. Build coeff = sum of linear coefficients
-    let coeff = build_sum(&mut simplifier.context, &coeff_parts);
-    let (coeff, _) = simplifier.simplify(coeff);
-
-    // 5. Build const = sum of constant parts (with sign flipped for solution)
-    // coeff*var + const = 0 → var = -const / coeff
-    let const_sum = build_sum(&mut simplifier.context, &const_parts);
-    let neg_const = simplifier.context.add(Expr::Neg(const_sum));
-    let (neg_const, _) = simplifier.simplify(neg_const);
-
-    // 6. Build solution: var = -const / coeff
-    let solution = simplifier.context.add(Expr::Div(neg_const, coeff));
-    let (solution, _) = simplifier.simplify(solution);
-
-    // 7. Build step description
     let mut steps = Vec::new();
-    if simplifier.collect_steps() {
-        let didactic = build_linear_collect_factored_steps_with(
+    let solution_set = if simplifier.collect_steps() {
+        let execution = build_linear_collect_factored_execution_with(
             &mut simplifier.context,
             var,
-            coeff,
-            neg_const,
-            solution,
+            solved.coeff,
+            solved.rhs_term,
+            solved.solution,
+            solved.coeff_status,
+            solved.rhs_status,
             |ctx, id| format!("{}", cas_formatter::DisplayExpr { context: ctx, id }),
         );
-        for item in collect_linear_collect_execution_items(didactic) {
+        for item in execution.items {
             steps.push(SolveStep {
                 description: item.description().to_string(),
                 equation_after: item.equation,
@@ -78,19 +81,16 @@ pub(crate) fn try_linear_collect(
                 substeps: vec![],
             });
         }
-    }
-
-    // 8. Derive proof statuses for coefficient/constant degeneracy checks.
-    // Keep previous behavior: only attempt proof when coefficient is var-free.
-    let (coef_status, constant_status) = derive_linear_nonzero_statuses(
-        contains_var(&simplifier.context, coeff, var),
-        coeff,
-        neg_const,
-        |expr| proof_to_nonzero_status(prove_nonzero(&simplifier.context, expr)),
-    );
-
-    let solution_set =
-        build_linear_solution_set(coeff, neg_const, solution, coef_status, constant_status);
+        execution.solutions
+    } else {
+        build_linear_solution_set(
+            solved.coeff,
+            solved.rhs_term,
+            solved.solution,
+            solved.coeff_status,
+            solved.rhs_status,
+        )
+    };
 
     Some((solution_set, steps))
 }
@@ -106,35 +106,24 @@ pub(crate) fn try_linear_collect_v2(
     var: &str,
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
-    let kernel = cas_solver_core::linear_kernel::derive_linear_solve_kernel(
-        &mut simplifier.context,
-        lhs,
-        rhs,
-        var,
-    )?;
+    let solved = {
+        let mut runtime = EngineLinearCollectRuntime { simplifier };
+        solve_linear_collect_additive_with_runtime(&mut runtime, lhs, rhs, var)?
+    };
 
-    // Simplify for cleaner display
-    let (coef, _) = simplifier.simplify(kernel.coef);
-    let (constant, _) = simplifier.simplify(kernel.constant);
-
-    // Solution: var = -constant / coef  (from coef*var + constant = 0)
-    let neg_constant = simplifier.context.add(Expr::Neg(constant));
-    let solution = simplifier.context.add(Expr::Div(neg_constant, coef));
-    let (solution, _) = simplifier.simplify(solution);
-
-    // Build steps
     let mut steps = Vec::new();
-
-    if simplifier.collect_steps() {
-        let didactic = build_linear_collect_additive_steps_with(
+    let solution_set = if simplifier.collect_steps() {
+        let execution = build_linear_collect_additive_execution_with(
             &mut simplifier.context,
             var,
-            coef,
-            constant,
-            solution,
+            solved.coeff,
+            solved.constant,
+            solved.solution,
+            solved.coeff_status,
+            solved.constant_status,
             |ctx, id| format!("{}", cas_formatter::DisplayExpr { context: ctx, id }),
         );
-        for item in collect_linear_collect_execution_items(didactic) {
+        for item in execution.items {
             steps.push(SolveStep {
                 description: item.description().to_string(),
                 equation_after: item.equation,
@@ -142,27 +131,24 @@ pub(crate) fn try_linear_collect_v2(
                 substeps: vec![],
             });
         }
-    }
-
-    // Derive proof statuses for coefficient/constant degeneracy checks.
-    // Keep previous behavior: only attempt proof when coefficient is var-free.
-    let (coef_status, constant_status) = derive_linear_nonzero_statuses(
-        contains_var(&simplifier.context, coef, var),
-        coef,
-        constant,
-        |expr| proof_to_nonzero_status(prove_nonzero(&simplifier.context, expr)),
-    );
-
-    let solution_set =
-        build_linear_solution_set(coef, constant, solution, coef_status, constant_status);
+        execution.solutions
+    } else {
+        build_linear_solution_set(
+            solved.coeff,
+            solved.constant,
+            solved.solution,
+            solved.coeff_status,
+            solved.constant_status,
+        )
+    };
 
     Some((solution_set, steps))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use cas_ast::Context;
+    use cas_ast::{Context, Expr};
+    use cas_solver_core::linear_terms::decompose_linear_collect_terms;
     use cas_solver_core::linear_terms::{split_linear_term, TermClass};
 
     #[test]
