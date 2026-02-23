@@ -76,6 +76,31 @@ pub fn should_accept_rewritten_residual(
     var_eliminated || (old_nodes > 4 && new_nodes * 4 < old_nodes * 3)
 }
 
+/// Variable presence classification across equation sides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EquationVarPresence {
+    None,
+    LhsOnly,
+    RhsOnly,
+    BothSides,
+}
+
+/// Classify where `var` appears in an equation.
+pub fn classify_equation_var_presence(
+    ctx: &Context,
+    equation: &Equation,
+    var: &str,
+) -> EquationVarPresence {
+    let lhs_has = super::isolation_utils::contains_var(ctx, equation.lhs, var);
+    let rhs_has = super::isolation_utils::contains_var(ctx, equation.rhs, var);
+    match (lhs_has, rhs_has) {
+        (false, false) => EquationVarPresence::None,
+        (true, false) => EquationVarPresence::LhsOnly,
+        (false, true) => EquationVarPresence::RhsOnly,
+        (true, true) => EquationVarPresence::BothSides,
+    }
+}
+
 /// Runtime contract for pre-solve equation-side simplification.
 pub trait SolvePreprocessRuntime {
     fn context(&mut self) -> &mut Context;
@@ -411,6 +436,72 @@ mod tests {
         let out =
             merge_symbolic_with_verified_numeric(vec![x, y], vec![two, three], |id| id == three);
         assert_eq!(out, vec![x, y, three]);
+    }
+
+    #[test]
+    fn classify_equation_var_presence_none() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let eq = Equation {
+            lhs: one,
+            rhs: two,
+            op: RelOp::Eq,
+        };
+        assert_eq!(
+            classify_equation_var_presence(&ctx, &eq, "x"),
+            EquationVarPresence::None
+        );
+    }
+
+    #[test]
+    fn classify_equation_var_presence_lhs_only() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let eq = Equation {
+            lhs: x,
+            rhs: one,
+            op: RelOp::Eq,
+        };
+        assert_eq!(
+            classify_equation_var_presence(&ctx, &eq, "x"),
+            EquationVarPresence::LhsOnly
+        );
+    }
+
+    #[test]
+    fn classify_equation_var_presence_rhs_only() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let eq = Equation {
+            lhs: one,
+            rhs: x,
+            op: RelOp::Eq,
+        };
+        assert_eq!(
+            classify_equation_var_presence(&ctx, &eq, "x"),
+            EquationVarPresence::RhsOnly
+        );
+    }
+
+    #[test]
+    fn classify_equation_var_presence_both_sides() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let lhs = ctx.add(Expr::Add(x, one));
+        let rhs = ctx.add(Expr::Sub(x, one));
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+        assert_eq!(
+            classify_equation_var_presence(&ctx, &eq, "x"),
+            EquationVarPresence::BothSides
+        );
     }
 
     #[test]

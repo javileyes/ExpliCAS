@@ -7,8 +7,9 @@ use super::SolveDiagnostics;
 use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_analysis::{
-    normalize_variable_residual_with_runtime, simplify_equation_sides_for_var_with_runtime,
-    ResidualRewriteRuntime, SolvePreprocessRuntime,
+    classify_equation_var_presence, normalize_variable_residual_with_runtime,
+    simplify_equation_sides_for_var_with_runtime, EquationVarPresence, ResidualRewriteRuntime,
+    SolvePreprocessRuntime,
 };
 use cas_solver_core::solve_outcome::{
     resolve_var_eliminated_outcome_with, VarEliminatedSolveOutcome,
@@ -295,9 +296,10 @@ fn solve_inner(
     }
 
     // 1. Check if variable exists in equation
-    if !contains_var(&simplifier.context, eq.lhs, var)
-        && !contains_var(&simplifier.context, eq.rhs, var)
-    {
+    if matches!(
+        classify_equation_var_presence(&simplifier.context, eq, var),
+        EquationVarPresence::None
+    ) {
         return Err(CasError::VariableNotFound(var.to_string()));
     }
 

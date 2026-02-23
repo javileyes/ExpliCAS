@@ -5,6 +5,7 @@
 //! orchestration and context-aware simplification.
 
 use crate::isolation_utils::contains_var;
+use crate::solve_analysis::{classify_equation_var_presence, EquationVarPresence};
 use crate::solve_outcome::{
     eliminate_fractional_exponent_message, plan_swap_sides_step, subtract_both_sides_message,
     TermIsolationRewritePlan,
@@ -57,15 +58,13 @@ pub fn derive_isolation_strategy_routing(
     eq: &Equation,
     var: &str,
 ) -> IsolationStrategyRouting {
-    let lhs_has = contains_var(ctx, eq.lhs, var);
-    let rhs_has = contains_var(ctx, eq.rhs, var);
-    match (lhs_has, rhs_has) {
-        (false, false) => IsolationStrategyRouting::VariableNotFound,
-        (true, true) => IsolationStrategyRouting::VariableOnBothSides,
-        (false, true) => IsolationStrategyRouting::SwapSides {
+    match classify_equation_var_presence(ctx, eq, var) {
+        EquationVarPresence::None => IsolationStrategyRouting::VariableNotFound,
+        EquationVarPresence::BothSides => IsolationStrategyRouting::VariableOnBothSides,
+        EquationVarPresence::RhsOnly => IsolationStrategyRouting::SwapSides {
             rewrite: plan_swap_sides_step(eq),
         },
-        (true, false) => IsolationStrategyRouting::DirectIsolation,
+        EquationVarPresence::LhsOnly => IsolationStrategyRouting::DirectIsolation,
     }
 }
 
