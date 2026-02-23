@@ -82,6 +82,64 @@ pub fn derive_add_isolation_route(
     }
 }
 
+/// Initial dispatch for isolating subtractive equations `(l - r) = rhs`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubIsolationRoute {
+    Minuend,
+    Subtrahend,
+}
+
+/// Derive which term of `(l - r)` contains the solve variable.
+pub fn derive_sub_isolation_route(ctx: &Context, minuend: ExprId, var: &str) -> SubIsolationRoute {
+    if contains_var(ctx, minuend, var) {
+        SubIsolationRoute::Minuend
+    } else {
+        SubIsolationRoute::Subtrahend
+    }
+}
+
+/// Initial dispatch for isolating multiplicative equations `(l * r) = rhs`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MulIsolationRoute {
+    LeftFactor,
+    RightFactor,
+}
+
+/// Derive which factor of `(l * r)` is isolated first.
+pub fn derive_mul_isolation_route(ctx: &Context, left: ExprId, var: &str) -> MulIsolationRoute {
+    if contains_var(ctx, left, var) {
+        MulIsolationRoute::LeftFactor
+    } else {
+        MulIsolationRoute::RightFactor
+    }
+}
+
+/// Safety gate for multiplicative isolation: linear-collect fallback is only
+/// attempted when RHS also contains the solve variable.
+pub fn mul_rhs_contains_variable(ctx: &Context, rhs: ExprId, var: &str) -> bool {
+    contains_var(ctx, rhs, var)
+}
+
+/// Initial dispatch for isolating division equations `(l / r) = rhs`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DivIsolationRoute {
+    VariableInNumerator,
+    VariableInDenominator,
+}
+
+/// Derive where the solve variable appears in `(numerator / denominator)`.
+pub fn derive_div_isolation_route(
+    ctx: &Context,
+    numerator: ExprId,
+    var: &str,
+) -> DivIsolationRoute {
+    if contains_var(ctx, numerator, var) {
+        DivIsolationRoute::VariableInNumerator
+    } else {
+        DivIsolationRoute::VariableInDenominator
+    }
+}
+
 /// Derive which side of `Pow(base, exponent)` contains the solve variable.
 pub fn derive_pow_isolation_route(ctx: &Context, base: ExprId, var: &str) -> PowIsolationRoute {
     if contains_var(ctx, base, var) {
@@ -8144,6 +8202,76 @@ mod tests {
         assert_eq!(
             derive_add_isolation_route(&ctx, one, one, "x"),
             AddIsolationRoute::RightOperand
+        );
+    }
+
+    #[test]
+    fn derive_sub_isolation_route_detects_minuend_variable() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        assert_eq!(
+            derive_sub_isolation_route(&ctx, x, "x"),
+            SubIsolationRoute::Minuend
+        );
+    }
+
+    #[test]
+    fn derive_sub_isolation_route_defaults_to_subtrahend() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        assert_eq!(
+            derive_sub_isolation_route(&ctx, one, "x"),
+            SubIsolationRoute::Subtrahend
+        );
+    }
+
+    #[test]
+    fn derive_mul_isolation_route_detects_left_factor_variable() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        assert_eq!(
+            derive_mul_isolation_route(&ctx, x, "x"),
+            MulIsolationRoute::LeftFactor
+        );
+    }
+
+    #[test]
+    fn derive_mul_isolation_route_defaults_to_right_factor() {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        assert_eq!(
+            derive_mul_isolation_route(&ctx, two, "x"),
+            MulIsolationRoute::RightFactor
+        );
+    }
+
+    #[test]
+    fn mul_rhs_contains_variable_reports_presence() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let rhs = ctx.add(Expr::Add(x, one));
+        assert!(mul_rhs_contains_variable(&ctx, rhs, "x"));
+        assert!(!mul_rhs_contains_variable(&ctx, one, "x"));
+    }
+
+    #[test]
+    fn derive_div_isolation_route_detects_variable_in_numerator() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        assert_eq!(
+            derive_div_isolation_route(&ctx, x, "x"),
+            DivIsolationRoute::VariableInNumerator
+        );
+    }
+
+    #[test]
+    fn derive_div_isolation_route_defaults_to_variable_in_denominator() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        assert_eq!(
+            derive_div_isolation_route(&ctx, one, "x"),
+            DivIsolationRoute::VariableInDenominator
         );
     }
 }

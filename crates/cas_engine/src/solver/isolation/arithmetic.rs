@@ -4,7 +4,7 @@ use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
-    contains_var, is_known_negative, should_split_division_denominator_sign_cases,
+    is_known_negative, should_split_division_denominator_sign_cases,
     should_split_isolated_denominator_variable, should_split_product_zero_inequality,
     should_try_reciprocal_solve,
 };
@@ -12,23 +12,26 @@ use cas_solver_core::solve_outcome::{
     build_division_denominator_execution_with,
     build_division_denominator_sign_split_execution_with,
     build_isolated_denominator_sign_split_execution_with, derive_add_isolation_route,
+    derive_div_isolation_route, derive_mul_isolation_route, derive_sub_isolation_route,
     division_denominator_sign_split_boundary_item,
     finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
     finalize_product_zero_inequality_solved_sets, first_term_isolation_rewrite_execution_item,
     isolated_denominator_sign_split_boundary_item,
     materialize_division_denominator_sign_split_execution,
-    materialize_isolated_denominator_sign_split_execution, plan_add_operand_isolation_step_with,
-    plan_div_denominator_isolation_with_zero_rhs_guard, plan_div_numerator_isolation_step_with,
-    plan_division_denominator, plan_division_denominator_sign_split,
-    plan_isolated_denominator_sign_split, plan_mul_factor_isolation_step_with,
-    plan_product_zero_inequality_split, plan_sub_minuend_isolation_step_with,
-    plan_sub_subtrahend_isolation_step_with, solve_division_denominator_execution_with_items,
+    materialize_isolated_denominator_sign_split_execution, mul_rhs_contains_variable,
+    plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
+    plan_div_numerator_isolation_step_with, plan_division_denominator,
+    plan_division_denominator_sign_split, plan_isolated_denominator_sign_split,
+    plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split,
+    plan_sub_minuend_isolation_step_with, plan_sub_subtrahend_isolation_step_with,
+    solve_division_denominator_execution_with_items,
     solve_division_denominator_sign_split_cases_with_items,
     solve_isolated_denominator_sign_split_cases_with_items,
     solve_product_zero_inequality_cases_with, solve_term_isolation_rewrite_with, AddIsolationRoute,
-    DivDenominatorIsolationRoute, DivisionDenominatorSignSplitSolvedCases,
-    IsolatedDenominatorSignSplitSolvedCases, TermIsolationRewritePlan,
+    DivDenominatorIsolationRoute, DivIsolationRoute, DivisionDenominatorSignSplitSolvedCases,
+    IsolatedDenominatorSignSplitSolvedCases, MulIsolationRoute, SubIsolationRoute,
+    TermIsolationRewritePlan,
 };
 
 use super::{isolate, prepend_steps};
@@ -168,7 +171,8 @@ pub(super) fn isolate_sub(
     mut steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    if contains_var(&simplifier.context, l, var) {
+    let sub_route = derive_sub_isolation_route(&simplifier.context, l, var);
+    if matches!(sub_route, SubIsolationRoute::Minuend) {
         // A - B = RHS -> A = RHS + B
         let moved_desc = format!(
             "{}",
@@ -269,9 +273,10 @@ pub(super) fn isolate_mul(
     }
 
     // Default behavior: divide by one factor
-    if contains_var(&simplifier.context, l, var) {
+    let mul_route = derive_mul_isolation_route(&simplifier.context, l, var);
+    if matches!(mul_route, MulIsolationRoute::LeftFactor) {
         // If RHS also contains var, try linear_collect
-        if contains_var(&simplifier.context, rhs, var) {
+        if mul_rhs_contains_variable(&simplifier.context, rhs, var) {
             if let Some((solution_set, linear_steps)) =
                 crate::solver::linear_collect::try_linear_collect_v2(lhs, rhs, var, simplifier)
             {
@@ -318,7 +323,7 @@ pub(super) fn isolate_mul(
         prepend_steps(solved_rewrite.solved, steps)
     } else {
         // B = RHS / A (r contains var, l doesn't)
-        if contains_var(&simplifier.context, rhs, var) {
+        if mul_rhs_contains_variable(&simplifier.context, rhs, var) {
             if let Some((solution_set, linear_steps)) =
                 crate::solver::linear_collect::try_linear_collect_v2(lhs, rhs, var, simplifier)
             {
@@ -379,7 +384,8 @@ pub(super) fn isolate_div(
     mut steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    if contains_var(&simplifier.context, l, var) {
+    let div_route = derive_div_isolation_route(&simplifier.context, l, var);
+    if matches!(div_route, DivIsolationRoute::VariableInNumerator) {
         if should_split_division_denominator_sign_cases(&simplifier.context, l, r, &op, var) {
             // Denominator contains variable. Split into cases.
             let split_plan = plan_division_denominator_sign_split(
