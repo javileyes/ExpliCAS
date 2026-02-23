@@ -2680,6 +2680,37 @@ pub fn build_terminal_outcome_step(
     ))
 }
 
+/// Solved result for terminal-outcome pipeline.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TerminalOutcomePipelineSolved<S> {
+    pub solution_set: SolutionSet,
+    pub steps: Vec<S>,
+}
+
+/// Execute terminal-outcome item dispatch, optionally mapping the terminal
+/// didactic item to caller step payload.
+pub fn solve_terminal_outcome_pipeline_with_item<S, FStep>(
+    outcome: TerminalSolveOutcome,
+    equation_after: Equation,
+    residual_suffix: &str,
+    include_item: bool,
+    mut map_item_to_step: FStep,
+) -> TerminalOutcomePipelineSolved<S>
+where
+    FStep: FnMut(TermIsolationExecutionItem) -> S,
+{
+    let solution_set = outcome.solutions.clone();
+    let mut steps = Vec::new();
+    if include_item {
+        let item = build_terminal_outcome_item(&outcome, equation_after, residual_suffix);
+        steps.push(map_item_to_step(item));
+    }
+    TerminalOutcomePipelineSolved {
+        solution_set,
+        steps,
+    }
+}
+
 /// Build didactic payload for conditional-solution messaging.
 pub fn build_conditional_solution_item(
     message: &str,
@@ -5886,6 +5917,57 @@ mod tests {
             terminal_outcome_message(&outcome, " (residual)"),
             "no real solutions"
         );
+    }
+
+    #[test]
+    fn solve_terminal_outcome_pipeline_with_item_emits_step_when_enabled() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("x");
+        let rhs = ctx.var("y");
+        let outcome = TerminalSolveOutcome {
+            message: "no real solutions",
+            solutions: SolutionSet::Empty,
+        };
+        let solved = solve_terminal_outcome_pipeline_with_item(
+            outcome,
+            Equation {
+                lhs,
+                rhs,
+                op: RelOp::Eq,
+            },
+            " (residual)",
+            true,
+            |item| item.description,
+        );
+
+        assert!(matches!(solved.solution_set, SolutionSet::Empty));
+        assert_eq!(solved.steps, vec!["no real solutions".to_string()]);
+    }
+
+    #[test]
+    fn solve_terminal_outcome_pipeline_with_item_omits_step_when_disabled() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("x");
+        let rhs = ctx.var("y");
+        let residual = ctx.var("residual");
+        let outcome = TerminalSolveOutcome {
+            message: "needs complex log",
+            solutions: SolutionSet::Residual(residual),
+        };
+        let solved = solve_terminal_outcome_pipeline_with_item(
+            outcome,
+            Equation {
+                lhs,
+                rhs,
+                op: RelOp::Eq,
+            },
+            " (residual)",
+            false,
+            |item| item.description,
+        );
+
+        assert!(matches!(solved.solution_set, SolutionSet::Residual(id) if id == residual));
+        assert!(solved.steps.is_empty());
     }
 
     #[test]

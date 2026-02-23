@@ -5,7 +5,7 @@ use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::is_numeric_zero;
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
-    build_pow_base_isolation_action_with, build_terminal_outcome_item, derive_pow_isolation_route,
+    build_pow_base_isolation_action_with, derive_pow_isolation_route,
     execute_pow_exponent_shortcut_with_runtime, first_term_isolation_rewrite_execution_item,
     plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
@@ -15,8 +15,9 @@ use cas_solver_core::solve_outcome::{
     solve_pow_exponent_log_isolation_rewrite_pipeline_with_item,
     solve_pow_exponent_log_unsupported_pipeline_with_items,
     solve_pow_exponent_shortcut_pipeline_with_item,
-    solve_power_base_one_shortcut_pipeline_with_item, PowBaseIsolationPipelineSolved,
-    PowExponentShortcutPipelineSolved, PowExponentShortcutRuntime, PowIsolationRoute,
+    solve_power_base_one_shortcut_pipeline_with_item, solve_terminal_outcome_pipeline_with_item,
+    PowBaseIsolationPipelineSolved, PowExponentShortcutPipelineSolved, PowExponentShortcutRuntime,
+    PowIsolationRoute,
 };
 
 use super::{isolate, prepend_steps};
@@ -287,24 +288,26 @@ fn isolate_pow_exponent(
         rhs,
         var,
     ) {
-        if simplifier.collect_steps() {
-            let item = build_terminal_outcome_item(
-                &outcome,
-                Equation {
-                    lhs,
-                    rhs,
-                    op: op.clone(),
-                },
-                " (residual)",
-            );
-            steps.push(SolveStep {
+        let solved_terminal = solve_terminal_outcome_pipeline_with_item(
+            outcome,
+            Equation {
+                lhs,
+                rhs,
+                op: op.clone(),
+            },
+            " (residual)",
+            simplifier.collect_steps(),
+            |item| SolveStep {
                 description: item.description().to_string(),
                 equation_after: item.equation,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
-            });
+            },
+        );
+        for step in solved_terminal.steps {
+            steps.push(step);
         }
-        return Ok((outcome.solutions, steps));
+        return Ok((solved_terminal.solution_set, steps));
     }
 
     for assumption in decision_assumptions(&decision).iter().copied() {
