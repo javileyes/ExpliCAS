@@ -13,7 +13,8 @@ use cas_solver_core::solve_analysis::{
     SolvePreprocessRuntime,
 };
 use cas_solver_core::solve_outcome::{
-    resolve_var_eliminated_outcome_with, VarEliminatedSolveOutcome,
+    resolve_var_eliminated_outcome_with, solve_var_eliminated_constraint_pipeline_with_item,
+    VarEliminatedSolveOutcome,
 };
 use cas_solver_core::strategy_kernels::{
     execute_rational_exponent_rewrite_with_runtime_for_var,
@@ -474,16 +475,17 @@ fn solve_inner(
                 // Example: (x*y)/x = 0 simplifies to y = 0
                 // Solution: x can be any value (AllReals) when the constraint holds,
                 // EXCEPT values that make denominators zero.
-                let steps = if simplifier.collect_steps() {
-                    vec![SolveStep {
+                let steps = solve_var_eliminated_constraint_pipeline_with_item(
+                    description,
+                    equation_after,
+                    simplifier.collect_steps(),
+                    |description, equation_after| SolveStep {
                         description,
                         equation_after,
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
-                    }]
-                } else {
-                    vec![]
-                };
+                    },
+                );
 
                 // V2.1 Issue #10: Apply domain guards if denominators contained the variable
                 let guarded = apply_nonzero_exclusion_guards_if_any(

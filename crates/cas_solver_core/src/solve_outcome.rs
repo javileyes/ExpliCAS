@@ -1125,6 +1125,23 @@ where
     }
 }
 
+/// Map variable-eliminated constraint payload into optional caller-owned steps.
+pub fn solve_var_eliminated_constraint_pipeline_with_item<S, FStep>(
+    description: String,
+    equation_after: Equation,
+    include_item: bool,
+    mut map_item_to_step: FStep,
+) -> Vec<S>
+where
+    FStep: FnMut(String, Equation) -> S,
+{
+    if include_item {
+        vec![map_item_to_step(description, equation_after)]
+    } else {
+        vec![]
+    }
+}
+
 /// Solve outcome for `B^E op RHS` when `E` is even and `RHS` is proven negative.
 pub fn even_power_negative_rhs_outcome(op: RelOp) -> SolutionSet {
     match op {
@@ -5000,6 +5017,46 @@ mod tests {
             }
             other => panic!("expected constraint outcome, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn solve_var_eliminated_constraint_pipeline_with_item_maps_step_when_enabled() {
+        let mut ctx = Context::new();
+        let y = ctx.var("y");
+        let eq = Equation {
+            lhs: y,
+            rhs: ctx.num(0),
+            op: RelOp::Eq,
+        };
+
+        let steps = solve_var_eliminated_constraint_pipeline_with_item(
+            "constraint".to_string(),
+            eq.clone(),
+            true,
+            |description, equation_after| (description, equation_after),
+        );
+        assert_eq!(steps.len(), 1);
+        assert_eq!(steps[0].0, "constraint");
+        assert_eq!(steps[0].1, eq);
+    }
+
+    #[test]
+    fn solve_var_eliminated_constraint_pipeline_with_item_omits_step_when_disabled() {
+        let mut ctx = Context::new();
+        let y = ctx.var("y");
+        let eq = Equation {
+            lhs: y,
+            rhs: ctx.num(0),
+            op: RelOp::Eq,
+        };
+
+        let steps = solve_var_eliminated_constraint_pipeline_with_item(
+            "constraint".to_string(),
+            eq,
+            false,
+            |_, _| 1u8,
+        );
+        assert!(steps.is_empty());
     }
 
     #[test]

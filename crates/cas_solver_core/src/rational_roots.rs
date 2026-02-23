@@ -420,6 +420,24 @@ pub fn first_rational_roots_execution_item(
         .next()
 }
 
+/// Solve rational-roots strategy step while optionally mapping the execution
+/// item into caller-owned step payloads.
+pub fn solve_rational_roots_step_pipeline_with_item<S, FStep>(
+    step: RationalRootsDidacticStep,
+    include_item: bool,
+    mut map_item_to_step: FStep,
+) -> Vec<S>
+where
+    FStep: FnMut(RationalRootsExecutionItem) -> S,
+{
+    if include_item {
+        if let Some(item) = first_rational_roots_execution_item(&step) {
+            return vec![map_item_to_step(item)];
+        }
+    }
+    vec![]
+}
+
 /// Plan Rational Root strategy didactic step for equation `expanded_expr = 0`.
 pub fn plan_rational_roots_strategy_step(
     ctx: &mut Context,
@@ -807,5 +825,30 @@ mod tests {
             first_rational_roots_execution_item(&step).expect("expected one rational-roots item");
         assert_eq!(item.equation, step.equation_after);
         assert_eq!(item.description, step.description);
+    }
+
+    #[test]
+    fn solve_rational_roots_step_pipeline_with_item_maps_item_when_enabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let step = plan_rational_roots_strategy_step(&mut ctx, x, 4);
+
+        let steps =
+            solve_rational_roots_step_pipeline_with_item(step, true, |item| item.description);
+        assert_eq!(steps.len(), 1);
+        assert_eq!(
+            steps[0],
+            "Applied Rational Root Theorem to degree-4 polynomial"
+        );
+    }
+
+    #[test]
+    fn solve_rational_roots_step_pipeline_with_item_omits_item_when_disabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let step = plan_rational_roots_strategy_step(&mut ctx, x, 4);
+
+        let steps = solve_rational_roots_step_pipeline_with_item(step, false, |_item| 1u8);
+        assert!(steps.is_empty());
     }
 }

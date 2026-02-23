@@ -16,7 +16,8 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_solver_core::rational_roots::{
-    first_rational_roots_execution_item, plan_rational_roots_step, NumericPolynomialSolveOutcome,
+    plan_rational_roots_step, solve_rational_roots_step_pipeline_with_item,
+    NumericPolynomialSolveOutcome,
 };
 use cas_solver_core::solution_set::sort_and_dedup_exprs;
 
@@ -92,20 +93,16 @@ impl SolverStrategy for RationalRootsStrategy {
         // Dedup roots
         sort_and_dedup_exprs(&simplifier.context, &mut roots);
 
-        let steps = if simplifier.collect_steps() {
-            let step_plan = plan_rational_roots_step(&mut simplifier.context, expanded, degree);
-            match first_rational_roots_execution_item(&step_plan) {
-                Some(item) => vec![SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                }],
-                None => vec![],
+        let include_item = simplifier.collect_steps();
+        let step_plan = plan_rational_roots_step(&mut simplifier.context, expanded, degree);
+        let steps = solve_rational_roots_step_pipeline_with_item(step_plan, include_item, |item| {
+            SolveStep {
+                description: item.description().to_string(),
+                equation_after: item.equation,
+                importance: crate::step::ImportanceLevel::Medium,
+                substeps: vec![],
             }
-        } else {
-            vec![]
-        };
+        });
 
         Some(Ok((SolutionSet::Discrete(roots), steps)))
     }
