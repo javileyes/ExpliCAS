@@ -57,6 +57,15 @@ pub fn collect_log_isolation_execution_items(
     plan.items.clone()
 }
 
+/// Return the first log-isolation execution item, if any.
+pub fn first_log_isolation_execution_item(
+    plan: &LogIsolationRewritePlan,
+) -> Option<LogIsolationExecutionItem> {
+    collect_log_isolation_execution_items(plan)
+        .into_iter()
+        .next()
+}
+
 /// Solve one planned logarithm-isolation rewrite with a caller-provided solver.
 pub fn solve_log_isolation_rewrite_with<E, T, FSolve>(
     rewrite: LogIsolationRewritePlan,
@@ -66,6 +75,20 @@ where
     FSolve: FnMut(&Equation) -> Result<T, E>,
 {
     let solved = solve_rewrite(&rewrite.equation)?;
+    Ok(LogIsolationSolved { rewrite, solved })
+}
+
+/// Solve one planned logarithm-isolation rewrite while passing the aligned
+/// optional execution item to the solver callback.
+pub fn solve_log_isolation_rewrite_with_item<E, T, FSolve>(
+    rewrite: LogIsolationRewritePlan,
+    mut solve_rewrite: FSolve,
+) -> Result<LogIsolationSolved<T>, E>
+where
+    FSolve: FnMut(Option<LogIsolationExecutionItem>, &Equation) -> Result<T, E>,
+{
+    let item = first_log_isolation_execution_item(&rewrite);
+    let solved = solve_rewrite(item, &rewrite.equation)?;
     Ok(LogIsolationSolved { rewrite, solved })
 }
 
@@ -367,6 +390,22 @@ mod tests {
     }
 
     #[test]
+    fn first_log_isolation_execution_item_returns_single_item() {
+        let mut ctx = Context::new();
+        let base = ctx.var("b");
+        let arg = ctx.var("x");
+        let rhs = ctx.num(3);
+        let out = plan_log_isolation_step_with(&mut ctx, base, arg, rhs, "x", RelOp::Eq, |_, _| {
+            "rendered(b)".to_string()
+        })
+        .expect("log isolation should apply");
+
+        let item = first_log_isolation_execution_item(&out).expect("expected one execution item");
+        assert_eq!(item.equation, out.equation);
+        assert_eq!(item.description, out.items[0].description);
+    }
+
+    #[test]
     fn solve_log_isolation_rewrite_with_runs_solver_once_and_preserves_rewrite() {
         let mut ctx = Context::new();
         let base = ctx.var("b");
@@ -399,5 +438,32 @@ mod tests {
                 op: RelOp::Eq
             }
         );
+    }
+
+    #[test]
+    fn solve_log_isolation_rewrite_with_item_passes_item_to_solver() {
+        let mut ctx = Context::new();
+        let base = ctx.var("b");
+        let arg = ctx.var("x");
+        let rhs = ctx.num(3);
+        let rewrite =
+            plan_log_isolation_step_with(&mut ctx, base, arg, rhs, "x", RelOp::Eq, |_, _| {
+                "rendered(b)".to_string()
+            })
+            .expect("log isolation should apply");
+        let expected_equation = rewrite.equation.clone();
+
+        let mut seen_item_desc = None;
+        let solved = solve_log_isolation_rewrite_with_item(rewrite, |item, equation| {
+            seen_item_desc = item.map(|entry| entry.description);
+            Ok::<_, ()>(equation.clone())
+        })
+        .expect("solver callback should succeed");
+
+        assert_eq!(
+            seen_item_desc,
+            Some("Exponentiate both sides with base rendered(b)".to_string())
+        );
+        assert_eq!(solved.solved, expected_equation);
     }
 }

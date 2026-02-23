@@ -9,8 +9,7 @@ use cas_solver_core::function_inverse::{
 };
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::log_isolation::{
-    collect_log_isolation_execution_items, plan_log_isolation_step_with,
-    solve_log_isolation_rewrite_with,
+    plan_log_isolation_step_with, solve_log_isolation_rewrite_with_item,
 };
 use cas_solver_core::solve_outcome::{
     build_abs_split_execution_with, finalize_abs_split_solution_set,
@@ -205,7 +204,9 @@ fn isolate_log(
             "Cannot isolate from log function".to_string(),
         )
     })?;
-    let solved = solve_log_isolation_rewrite_with(rewrite, |equation| {
+    let mut step_item = None;
+    let solved = solve_log_isolation_rewrite_with_item(rewrite, |item, equation| {
+        step_item = item;
         isolate(
             equation.lhs,
             equation.rhs,
@@ -217,7 +218,7 @@ fn isolate_log(
         )
     })?;
     if simplifier.collect_steps() {
-        for item in collect_log_isolation_execution_items(&solved.rewrite) {
+        if let Some(item) = step_item {
             steps.push(SolveStep {
                 description: item.description().to_string(),
                 equation_after: item.equation,
