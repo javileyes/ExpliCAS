@@ -13,10 +13,9 @@ use cas_solver_core::log_isolation::{
     solve_log_isolation_rewrite_with,
 };
 use cas_solver_core::solve_outcome::{
-    build_abs_split_execution_with, collect_abs_split_execution_items,
-    finalize_abs_split_solution_set, materialize_abs_split_execution, plan_abs_isolation,
-    solve_abs_isolation_plan_with, solve_abs_split_cases_with, AbsIsolationSolved,
-    AbsSplitSolvedCases,
+    build_abs_split_execution_with, finalize_abs_split_solution_set,
+    materialize_abs_split_execution, plan_abs_isolation, solve_abs_isolation_plan_with,
+    solve_abs_split_cases_with_items, AbsIsolationSolved, AbsSplitSolvedCases,
 };
 
 use super::{isolate, prepend_steps};
@@ -125,19 +124,16 @@ fn isolate_abs(
             } else {
                 materialize_abs_split_execution(positive, negative)
             };
-            let split_items = collect_abs_split_execution_items(&split_execution);
-            let mut branch_case_idx = 0usize;
-            let solved = solve_abs_split_cases_with(&split_execution, |equation| {
+            let solved = solve_abs_split_cases_with_items(&split_execution, |item, equation| {
                 let mut case_steps = steps.clone();
-                if let Some(item) = split_items.get(branch_case_idx) {
+                if let Some(item) = item {
                     case_steps.push(SolveStep {
                         description: item.description().to_string(),
-                        equation_after: item.equation.clone(),
+                        equation_after: item.equation,
                         importance: crate::step::ImportanceLevel::Medium,
                         substeps: vec![],
                     });
                 }
-                branch_case_idx += 1;
                 let results = isolate(
                     equation.lhs,
                     equation.rhs,

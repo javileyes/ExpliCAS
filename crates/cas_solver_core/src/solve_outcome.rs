@@ -3683,6 +3683,24 @@ where
     })
 }
 
+/// Solve both branch equations of an absolute-value split execution plan, while
+/// providing aligned optional didactic items for each branch callback.
+pub fn solve_abs_split_cases_with_items<E, TBranch, FSolveBranch>(
+    execution: &AbsSplitExecutionPlan,
+    mut solve_branch: FSolveBranch,
+) -> Result<AbsSplitSolvedCases<TBranch>, E>
+where
+    FSolveBranch: FnMut(Option<AbsSplitExecutionItem>, &Equation) -> Result<TBranch, E>,
+{
+    let items = collect_abs_split_execution_items(execution);
+    let mut item_idx = 0usize;
+    solve_abs_split_cases_with(execution, |equation| {
+        let item = items.get(item_idx).cloned();
+        item_idx += 1;
+        solve_branch(item, equation)
+    })
+}
+
 /// For `|A| = rhs`, attach the soundness guard `rhs >= 0` when
 /// `rhs` depends on the solve variable.
 pub fn guard_abs_solution_with_nonnegative_rhs(
@@ -4318,6 +4336,46 @@ mod tests {
             solved.negative_branch,
             SolutionSet::Residual(id) if id == residual
         ));
+    }
+
+    #[test]
+    fn solve_abs_split_cases_with_items_passes_aligned_items_in_order() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let neg_two = ctx.num(-2);
+        let execution = build_abs_split_execution_with(
+            Equation {
+                lhs: x,
+                rhs: two,
+                op: RelOp::Eq,
+            },
+            Equation {
+                lhs: x,
+                rhs: neg_two,
+                op: RelOp::Eq,
+            },
+            x,
+            |_| "x".to_string(),
+        );
+        let mut seen = Vec::new();
+        let solved = solve_abs_split_cases_with_items(&execution, |item, equation| {
+            if let Some(item) = item {
+                seen.push((item.description, equation.rhs));
+            } else {
+                seen.push(("missing".to_string(), equation.rhs));
+            }
+            Ok::<_, ()>(equation.rhs)
+        })
+        .expect("callback should succeed");
+
+        assert_eq!(seen.len(), 2);
+        assert_eq!(seen[0].0, "Split absolute value (Case 1): x = x");
+        assert_eq!(seen[0].1, two);
+        assert_eq!(seen[1].0, "Split absolute value (Case 2): x = x");
+        assert_eq!(seen[1].1, neg_two);
+        assert_eq!(solved.positive_branch, two);
+        assert_eq!(solved.negative_branch, neg_two);
     }
 
     #[test]
