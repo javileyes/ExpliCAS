@@ -411,6 +411,13 @@ pub fn collect_rational_roots_execution_items(
         .collect()
 }
 
+/// Return the first Rational Root strategy execution item, if present.
+pub fn first_rational_roots_execution_item(
+    step: &RationalRootsDidacticStep,
+) -> Option<RationalRootsExecutionItem> {
+    collect_rational_roots_execution_items(step).into_iter().next()
+}
+
 /// Plan Rational Root strategy didactic step for equation `expanded_expr = 0`.
 pub fn plan_rational_roots_strategy_step(
     ctx: &mut Context,
@@ -787,5 +794,16 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, step.equation_after);
         assert_eq!(items[0].description, step.description);
+    }
+
+    #[test]
+    fn first_rational_roots_execution_item_returns_single_item() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let step = plan_rational_roots_strategy_step(&mut ctx, x, 3);
+        let item =
+            first_rational_roots_execution_item(&step).expect("expected one rational-roots item");
+        assert_eq!(item.equation, step.equation_after);
+        assert_eq!(item.description, step.description);
     }
 }
