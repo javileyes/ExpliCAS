@@ -7,7 +7,8 @@ use super::SolveDiagnostics;
 use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_analysis::{
-    classify_equation_var_presence, normalize_variable_residual_with_runtime,
+    apply_nonzero_exclusion_guards_if_any, classify_equation_var_presence,
+    guard_solved_result_with_exclusions, normalize_variable_residual_with_runtime,
     simplify_equation_sides_for_var_with_runtime, EquationVarPresence, ResidualRewriteRuntime,
     SolvePreprocessRuntime,
 };
@@ -353,16 +354,7 @@ fn solve_inner(
     // This prevents x^(3/2) from being simplified to |x|*sqrt(x) which causes loops
     if eq.op == cas_ast::RelOp::Eq {
         if let Some(result) = try_solve_rational_exponent(eq, var, simplifier, &ctx) {
-            // Wrap result with domain guards if needed
-            if domain_exclusions.is_empty() {
-                return result;
-            }
-            let (solution_set, steps) = result?;
-            let guarded = cas_solver_core::solve_analysis::apply_nonzero_exclusion_guards(
-                solution_set,
-                &domain_exclusions,
-            );
-            return Ok((guarded, steps));
+            return guard_solved_result_with_exclusions(result, &domain_exclusions);
         }
     }
 
@@ -493,11 +485,8 @@ fn solve_inner(
                     vec![]
                 };
 
-                // V2.1 Issue #10: Apply domain guards if any denominators contained the variable
-                if domain_exclusions.is_empty() {
-                    return Ok((SolutionSet::AllReals, steps));
-                }
-                let guarded = cas_solver_core::solve_analysis::apply_nonzero_exclusion_guards(
+                // V2.1 Issue #10: Apply domain guards if denominators contained the variable
+                let guarded = apply_nonzero_exclusion_guards_if_any(
                     SolutionSet::AllReals,
                     &domain_exclusions,
                 );

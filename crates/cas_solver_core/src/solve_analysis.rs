@@ -295,6 +295,31 @@ pub fn apply_nonzero_exclusion_guards(
     SolutionSet::Conditional(cases).simplify()
 }
 
+/// Apply non-zero exclusion guards only when exclusions exist.
+pub fn apply_nonzero_exclusion_guards_if_any(
+    solution_set: SolutionSet,
+    exclusions: &[ExprId],
+) -> SolutionSet {
+    if exclusions.is_empty() {
+        solution_set
+    } else {
+        apply_nonzero_exclusion_guards(solution_set, exclusions)
+    }
+}
+
+/// Lift guard application over solved `(SolutionSet, payload)` results.
+pub fn guard_solved_result_with_exclusions<T, E>(
+    result: Result<(SolutionSet, T), E>,
+    exclusions: &[ExprId],
+) -> Result<(SolutionSet, T), E> {
+    result.map(|(solution_set, payload)| {
+        (
+            apply_nonzero_exclusion_guards_if_any(solution_set, exclusions),
+            payload,
+        )
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -373,6 +398,27 @@ mod tests {
         let sol = SolutionSet::Discrete(vec![ctx.num(1)]);
         let guarded = apply_nonzero_exclusion_guards(sol, &[x]);
         assert!(matches!(guarded, SolutionSet::Conditional(_)));
+    }
+
+    #[test]
+    fn apply_guards_if_any_keeps_solution_unchanged_for_empty_exclusions() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let sol = SolutionSet::Discrete(vec![one]);
+        let guarded = apply_nonzero_exclusion_guards_if_any(sol.clone(), &[]);
+        assert_eq!(guarded, sol);
+    }
+
+    #[test]
+    fn guard_solved_result_with_exclusions_wraps_solution_set() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let result: Result<(SolutionSet, usize), ()> =
+            Ok((SolutionSet::Discrete(vec![ctx.num(2)]), 7));
+        let guarded = guard_solved_result_with_exclusions(result, &[x])
+            .expect("guarding should preserve successful result");
+        assert!(matches!(guarded.0, SolutionSet::Conditional(_)));
+        assert_eq!(guarded.1, 7);
     }
 
     #[test]
