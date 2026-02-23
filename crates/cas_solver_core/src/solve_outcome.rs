@@ -45,6 +45,33 @@ pub enum IsolatedVariableOutcome {
     ContainsTargetVariable,
 }
 
+/// Fallback outcome when an isolated-variable RHS still contains the target.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CircularIsolatedOutcome<S> {
+    Solved {
+        solution_set: SolutionSet,
+        steps: Vec<S>,
+    },
+    Residual(SolutionSet),
+}
+
+/// Runtime adapter for circular-isolation fallback.
+pub trait CircularIsolatedRuntime<S> {
+    fn try_linear_collect(
+        &mut self,
+        lhs: ExprId,
+        rhs: ExprId,
+        var: &str,
+    ) -> Option<(SolutionSet, Vec<S>)>;
+    fn try_linear_collect_v2(
+        &mut self,
+        lhs: ExprId,
+        rhs: ExprId,
+        var: &str,
+    ) -> Option<(SolutionSet, Vec<S>)>;
+    fn residual_solution(&mut self, lhs: ExprId, rhs: ExprId, var: &str) -> SolutionSet;
+}
+
 /// Resolve the final outcome for `x op rhs` once the variable is syntactically
 /// isolated on the left-hand side.
 pub fn resolve_isolated_variable_outcome(
@@ -58,6 +85,65 @@ pub fn resolve_isolated_variable_outcome(
     } else {
         IsolatedVariableOutcome::Solved(isolated_var_solution(ctx, rhs, op))
     }
+}
+
+/// Execute circular-isolation fallback in canonical order:
+/// `linear_collect` -> `linear_collect_v2` -> residual.
+pub fn resolve_circular_isolated_outcome_with<S, FTry1, FTry2, FResidual>(
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    mut try_linear_collect: FTry1,
+    mut try_linear_collect_v2: FTry2,
+    mut residual_solution: FResidual,
+) -> CircularIsolatedOutcome<S>
+where
+    FTry1: FnMut(ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<S>)>,
+    FTry2: FnMut(ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<S>)>,
+    FResidual: FnMut(ExprId, ExprId, &str) -> SolutionSet,
+{
+    if let Some((solution_set, steps)) = try_linear_collect(lhs, rhs, var) {
+        return CircularIsolatedOutcome::Solved {
+            solution_set,
+            steps,
+        };
+    }
+
+    if let Some((solution_set, steps)) = try_linear_collect_v2(lhs, rhs, var) {
+        return CircularIsolatedOutcome::Solved {
+            solution_set,
+            steps,
+        };
+    }
+
+    CircularIsolatedOutcome::Residual(residual_solution(lhs, rhs, var))
+}
+
+/// Runtime-based circular-isolation fallback dispatcher.
+pub fn resolve_circular_isolated_outcome_with_runtime<S, R>(
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    runtime: &mut R,
+) -> CircularIsolatedOutcome<S>
+where
+    R: CircularIsolatedRuntime<S>,
+{
+    if let Some((solution_set, steps)) = runtime.try_linear_collect(lhs, rhs, var) {
+        return CircularIsolatedOutcome::Solved {
+            solution_set,
+            steps,
+        };
+    }
+
+    if let Some((solution_set, steps)) = runtime.try_linear_collect_v2(lhs, rhs, var) {
+        return CircularIsolatedOutcome::Solved {
+            solution_set,
+            steps,
+        };
+    }
+
+    CircularIsolatedOutcome::Residual(runtime.residual_solution(lhs, rhs, var))
 }
 
 /// Route for handling `base^x = base` shortcuts.
@@ -8280,6 +8366,85 @@ mod tests {
             }
             other => panic!("unexpected isolated outcome: {:?}", other),
         }
+    }
+
+    #[test]
+    fn resolve_circular_isolated_outcome_prefers_first_strategy() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let out = resolve_circular_isolated_outcome_with(
+            one,
+            two,
+            "x",
+            |_, _, _| Some((SolutionSet::Discrete(vec![one]), vec!["s1"])),
+            |_, _, _| Some((SolutionSet::Discrete(vec![two]), vec!["s2"])),
+            |_, _, _| SolutionSet::Empty,
+        );
+        match out {
+            CircularIsolatedOutcome::Solved {
+                solution_set: SolutionSet::Discrete(values),
+                steps,
+            } => {
+                assert_eq!(values, vec![one]);
+                assert_eq!(steps, vec!["s1"]);
+            }
+            other => panic!("unexpected circular isolated outcome: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn resolve_circular_isolated_outcome_uses_second_strategy_when_first_misses() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let mut first_calls = 0usize;
+        let mut second_calls = 0usize;
+        let out = resolve_circular_isolated_outcome_with(
+            one,
+            two,
+            "x",
+            |_, _, _| {
+                first_calls += 1;
+                None
+            },
+            |_, _, _| {
+                second_calls += 1;
+                Some((SolutionSet::Discrete(vec![two]), vec!["s2"]))
+            },
+            |_, _, _| SolutionSet::Empty,
+        );
+        assert_eq!(first_calls, 1);
+        assert_eq!(second_calls, 1);
+        match out {
+            CircularIsolatedOutcome::Solved {
+                solution_set: SolutionSet::Discrete(values),
+                steps,
+            } => {
+                assert_eq!(values, vec![two]);
+                assert_eq!(steps, vec!["s2"]);
+            }
+            other => panic!("unexpected circular isolated outcome: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn resolve_circular_isolated_outcome_falls_back_to_residual() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let out = resolve_circular_isolated_outcome_with(
+            one,
+            two,
+            "x",
+            |_, _, _| None::<(SolutionSet, Vec<()>)>,
+            |_, _, _| None::<(SolutionSet, Vec<()>)>,
+            |_, _, _| SolutionSet::Residual(two),
+        );
+        assert!(matches!(
+            out,
+            CircularIsolatedOutcome::Residual(SolutionSet::Residual(id)) if id == two
+        ));
     }
 
     #[test]
