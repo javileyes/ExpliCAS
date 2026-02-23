@@ -109,7 +109,7 @@ impl SolutionCheckRuntime for EngineSolutionCheckRuntime<'_> {
         super::numeric_islands::fold_numeric_islands(&mut self.simplifier.context, expr)
     }
 
-    fn is_zero(&mut self, expr: ExprId) -> bool {
+    fn is_numeric_zero(&mut self, expr: ExprId) -> bool {
         is_numeric_zero(&self.simplifier.context, expr)
     }
 

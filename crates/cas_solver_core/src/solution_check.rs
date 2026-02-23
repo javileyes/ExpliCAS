@@ -16,7 +16,7 @@ pub trait SolutionCheckRuntime {
     /// Fold numeric islands inside one residual expression.
     fn fold_numeric_islands(&mut self, expr: ExprId) -> ExprId;
     /// Whether expression is numerically zero.
-    fn is_zero(&mut self, expr: ExprId) -> bool;
+    fn is_numeric_zero(&mut self, expr: ExprId) -> bool;
     /// Whether expression still contains symbolic variables.
     fn contains_variable(&mut self, expr: ExprId) -> bool;
     /// Render expression for diagnostic messages.
@@ -46,7 +46,7 @@ where
     };
 
     let strict_result = runtime.simplify_strict(diff);
-    if runtime.is_zero(strict_result) {
+    if runtime.is_numeric_zero(strict_result) {
         return VerifyStatus::Verified;
     }
 
@@ -56,7 +56,7 @@ where
         if folded != strict_result {
             crate::verify_stats::record_changed();
             let folded_result = runtime.simplify_strict(folded);
-            if runtime.is_zero(folded_result) {
+            if runtime.is_numeric_zero(folded_result) {
                 crate::verify_stats::record_verified();
                 return VerifyStatus::Verified;
             }
@@ -65,7 +65,7 @@ where
 
     if !runtime.contains_variable(strict_result) {
         let generic_result = runtime.simplify_generic(diff);
-        if runtime.is_zero(generic_result) {
+        if runtime.is_numeric_zero(generic_result) {
             return VerifyStatus::Verified;
         }
     }
@@ -113,7 +113,7 @@ mod tests {
             self.fold_result
         }
 
-        fn is_zero(&mut self, expr: ExprId) -> bool {
+        fn is_numeric_zero(&mut self, expr: ExprId) -> bool {
             expr == self.zero_expr
         }
 
