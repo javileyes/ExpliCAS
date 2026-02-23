@@ -7,8 +7,8 @@ use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{is_numeric_zero, split_zero_product_factors};
 use cas_solver_core::quadratic_didactic::{
     aggregate_zero_product_factor_solution_sets, build_quadratic_main_with_substeps_execution_with,
-    collect_zero_product_factor_execution_items, finalize_zero_product_factor_solution_set,
-    first_factorized_zero_product_entry_execution_item,
+    finalize_zero_product_factor_solution_set, first_factorized_zero_product_entry_execution_item,
+    solve_zero_product_factor_execution_with_items,
     simplify_quadratic_substep_execution_items_with, ZeroProductFactorSolutionAggregate,
 };
 use cas_solver_core::quadratic_formula::{
@@ -83,29 +83,31 @@ impl SolverStrategy for QuadraticStrategy {
             // For inequalities, splitting is complex (sign analysis).
             // For Eq, it's simple union.
             if eq.op == RelOp::Eq {
-                let mut factor_solution_sets = Vec::new();
-                let factor_items =
-                    collect_zero_product_factor_execution_items(&factorized_execution.factors);
-
-                for item in factor_items {
-                    let factor_equation = item.equation.clone();
-                    if simplifier.collect_steps() {
-                        steps.push(SolveStep {
-                            description: item.description.clone(),
-                            equation_after: factor_equation.clone(),
-                            importance: crate::step::ImportanceLevel::Medium,
-                            substeps: vec![],
-                        });
-                    }
-                    // Recursive solve
-                    // We need to be careful about depth.
-                    match solve_with_ctx(&factor_equation, var, simplifier, ctx) {
-                        Ok((sol_set, mut sub_steps)) => {
-                            steps.append(&mut sub_steps);
-                            factor_solution_sets.push(sol_set);
+                let solved_factors = match solve_zero_product_factor_execution_with_items(
+                    &factorized_execution.factors,
+                    |item, factor_equation| {
+                        if simplifier.collect_steps() {
+                            if let Some(item) = item {
+                                steps.push(SolveStep {
+                                    description: item.description,
+                                    equation_after: item.equation,
+                                    importance: crate::step::ImportanceLevel::Medium,
+                                    substeps: vec![],
+                                });
+                            }
                         }
-                        Err(e) => return Some(Err(e)),
-                    }
+                        // Recursive solve
+                        // We need to be careful about depth.
+                        solve_with_ctx(factor_equation, var, simplifier, ctx)
+                    },
+                ) {
+                    Ok(solved) => solved,
+                    Err(e) => return Some(Err(e)),
+                };
+                let mut factor_solution_sets = Vec::new();
+                for (sol_set, mut sub_steps) in solved_factors {
+                    steps.append(&mut sub_steps);
+                    factor_solution_sets.push(sol_set);
                 }
                 let aggregate = aggregate_zero_product_factor_solution_sets(
                     &simplifier.context,

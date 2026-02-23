@@ -165,6 +165,23 @@ pub fn collect_zero_product_factor_execution_items(
     execution.items.clone()
 }
 
+/// Solve each zero-product factor equation while passing optional aligned
+/// didactic execution item to the caller-provided callback.
+pub fn solve_zero_product_factor_execution_with_items<E, T, FSolve>(
+    execution: &ZeroProductFactorExecutionPlan,
+    mut solve_factor: FSolve,
+) -> Result<Vec<T>, E>
+where
+    FSolve: FnMut(Option<ZeroProductFactorExecutionItem>, &Equation) -> Result<T, E>,
+{
+    let mut solved = Vec::with_capacity(execution.equations.len());
+    for (idx, equation) in execution.equations.iter().enumerate() {
+        let item = execution.items.get(idx).cloned();
+        solved.push(solve_factor(item, equation)?);
+    }
+    Ok(solved)
+}
+
 /// Aggregate solution sets obtained from solving each `factor = 0` branch.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ZeroProductFactorSolutionAggregate {
@@ -969,6 +986,61 @@ mod tests {
         assert_eq!(items[1].equation, execution.equations[1]);
         assert_eq!(items[0].description, "Solve factor: f = 0");
         assert_eq!(items[1].description, "Solve factor: f = 0");
+    }
+
+    #[test]
+    fn solve_zero_product_factor_execution_with_items_aligns_items_in_order() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_minus_one = ctx.add(Expr::Sub(x, one));
+        let factors = vec![x, x_minus_one];
+        let zero = ctx.num(0);
+
+        let execution = build_zero_product_factor_execution_with(&ctx, &factors, "x", zero, |_| {
+            "f".to_string()
+        });
+        let mut seen = Vec::new();
+        let solved = solve_zero_product_factor_execution_with_items(&execution, |item, equation| {
+            seen.push(item.expect("expected aligned item").description);
+            Ok::<_, ()>(equation.clone())
+        })
+        .expect("solve should succeed");
+
+        assert_eq!(
+            seen,
+            vec![
+                "Solve factor: f = 0".to_string(),
+                "Solve factor: f = 0".to_string()
+            ]
+        );
+        assert_eq!(solved.len(), 2);
+        assert_eq!(solved[0], execution.equations[0]);
+        assert_eq!(solved[1], execution.equations[1]);
+    }
+
+    #[test]
+    fn solve_zero_product_factor_execution_with_items_passes_none_when_items_missing() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let zero = ctx.num(0);
+        let execution = ZeroProductFactorExecutionPlan {
+            equations: vec![Equation {
+                lhs: x,
+                rhs: zero,
+                op: RelOp::Eq,
+            }],
+            items: vec![],
+        };
+
+        let solved = solve_zero_product_factor_execution_with_items(&execution, |item, equation| {
+            assert!(item.is_none());
+            Ok::<_, ()>(equation.clone())
+        })
+        .expect("solve should succeed");
+
+        assert_eq!(solved.len(), 1);
+        assert_eq!(solved[0], execution.equations[0]);
     }
 
     #[test]
