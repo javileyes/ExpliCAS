@@ -158,6 +158,22 @@ where
     ZeroProductFactorExecutionPlan { equations, items }
 }
 
+/// Materialize zero-product factor equations without didactic payload.
+///
+/// This is useful when caller does not collect user-facing steps.
+pub fn materialize_zero_product_factor_execution(
+    ctx: &Context,
+    factors: &[ExprId],
+    var: &str,
+    zero: ExprId,
+) -> ZeroProductFactorExecutionPlan {
+    let equations = collect_zero_product_factor_equations(ctx, factors, var, zero);
+    ZeroProductFactorExecutionPlan {
+        equations,
+        items: vec![],
+    }
+}
+
 /// Collect zero-product factor execution items (`factor = 0`) in execution order.
 pub fn collect_zero_product_factor_execution_items(
     execution: &ZeroProductFactorExecutionPlan,
@@ -251,6 +267,57 @@ where
     FactorizedZeroProductExecutionPlan { entry, factors }
 }
 
+/// Materialize factorized zero-product execution without didactic payload.
+///
+/// Entry description is intentionally empty because it is only consumed when
+/// didactic item collection is enabled.
+pub fn materialize_factorized_zero_product_execution(
+    ctx: &Context,
+    factorized_expr: ExprId,
+    factors: &[ExprId],
+    var: &str,
+    zero: ExprId,
+) -> FactorizedZeroProductExecutionPlan {
+    FactorizedZeroProductExecutionPlan {
+        entry: QuadraticDidacticStep {
+            description: String::new(),
+            equation_after: Equation {
+                lhs: factorized_expr,
+                rhs: zero,
+                op: RelOp::Eq,
+            },
+        },
+        factors: materialize_zero_product_factor_execution(ctx, factors, var, zero),
+    }
+}
+
+/// Build factorized zero-product execution, optionally including didactic items.
+pub fn build_factorized_zero_product_execution_with_optional_items<F>(
+    ctx: &Context,
+    factorized_expr: ExprId,
+    factors: &[ExprId],
+    var: &str,
+    zero: ExprId,
+    include_items: bool,
+    render_expr: F,
+) -> FactorizedZeroProductExecutionPlan
+where
+    F: FnMut(ExprId) -> String,
+{
+    if include_items {
+        build_factorized_zero_product_execution_with(
+            ctx,
+            factorized_expr,
+            factors,
+            var,
+            zero,
+            render_expr,
+        )
+    } else {
+        materialize_factorized_zero_product_execution(ctx, factorized_expr, factors, var, zero)
+    }
+}
+
 /// Collect factorized entry didactic step in display order.
 pub fn collect_factorized_zero_product_entry_didactic_steps(
     execution: &FactorizedZeroProductExecutionPlan,
@@ -329,6 +396,56 @@ where
         solved_factors,
         steps,
     })
+}
+
+/// Build and solve factorized zero-product execution with optional didactic
+/// payload enabled by `include_items`.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_factorized_zero_product_pipeline_with_optional_items<
+    E,
+    TFactor,
+    TStep,
+    FRenderExpr,
+    FSolveFactor,
+    FEntryStep,
+    FFactorStep,
+>(
+    ctx: &Context,
+    factorized_expr: ExprId,
+    factors: &[ExprId],
+    var: &str,
+    zero: ExprId,
+    include_items: bool,
+    render_expr: FRenderExpr,
+    solve_factor: FSolveFactor,
+    map_entry_item_to_step: FEntryStep,
+    map_factor_item_to_step: FFactorStep,
+) -> Result<FactorizedZeroProductExecutionSolved<TFactor, TStep>, E>
+where
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveFactor: FnMut(&Equation) -> Result<TFactor, E>,
+    FEntryStep: FnMut(QuadraticExecutionItem) -> TStep,
+    FFactorStep: FnMut(ZeroProductFactorExecutionItem) -> TStep,
+{
+    let execution = if include_items {
+        build_factorized_zero_product_execution_with(
+            ctx,
+            factorized_expr,
+            factors,
+            var,
+            zero,
+            render_expr,
+        )
+    } else {
+        materialize_factorized_zero_product_execution(ctx, factorized_expr, factors, var, zero)
+    };
+    solve_factorized_zero_product_execution_pipeline_with_items(
+        &execution,
+        include_items,
+        solve_factor,
+        map_entry_item_to_step,
+        map_factor_item_to_step,
+    )
 }
 
 /// Build the top-level "quadratic formula" strategy step payload.
@@ -1082,6 +1199,23 @@ mod tests {
     }
 
     #[test]
+    fn materialize_zero_product_factor_execution_omits_items() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let one = ctx.num(1);
+        let x_minus_one = ctx.add(Expr::Sub(x, one));
+        let factors = vec![x_minus_one, y];
+        let zero = ctx.num(0);
+
+        let execution = materialize_zero_product_factor_execution(&ctx, &factors, "x", zero);
+
+        assert_eq!(execution.equations.len(), 1);
+        assert_eq!(execution.equations[0].lhs, x_minus_one);
+        assert!(execution.items.is_empty());
+    }
+
+    #[test]
     fn build_factorized_zero_product_execution_with_builds_entry_and_factors() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -1115,6 +1249,77 @@ mod tests {
             execution.factors.items[0].description,
             "Solve factor: f = 0"
         );
+    }
+
+    #[test]
+    fn materialize_factorized_zero_product_execution_omits_items() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_minus_one = ctx.add(Expr::Sub(x, one));
+        let factored_expr = ctx.add(Expr::Mul(x, x_minus_one));
+        let zero = ctx.num(0);
+        let factors = vec![x, x_minus_one];
+
+        let execution =
+            materialize_factorized_zero_product_execution(&ctx, factored_expr, &factors, "x", zero);
+
+        assert_eq!(execution.entry.equation_after.lhs, factored_expr);
+        assert_eq!(execution.entry.equation_after.rhs, zero);
+        assert_eq!(execution.entry.equation_after.op, RelOp::Eq);
+        assert!(execution.entry.description.is_empty());
+        assert_eq!(execution.factors.equations.len(), 2);
+        assert!(execution.factors.items.is_empty());
+    }
+
+    #[test]
+    fn build_factorized_zero_product_execution_with_optional_items_includes_didactic_when_enabled()
+    {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_minus_one = ctx.add(Expr::Sub(x, one));
+        let factored_expr = ctx.add(Expr::Mul(x, x_minus_one));
+        let zero = ctx.num(0);
+        let factors = vec![x, x_minus_one];
+
+        let execution = build_factorized_zero_product_execution_with_optional_items(
+            &ctx,
+            factored_expr,
+            &factors,
+            "x",
+            zero,
+            true,
+            |_| "f".to_string(),
+        );
+
+        assert_eq!(execution.entry.description, "Factorized equation: f = 0");
+        assert_eq!(execution.factors.items.len(), 2);
+    }
+
+    #[test]
+    fn build_factorized_zero_product_execution_with_optional_items_skips_render_when_disabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_minus_one = ctx.add(Expr::Sub(x, one));
+        let factored_expr = ctx.add(Expr::Mul(x, x_minus_one));
+        let zero = ctx.num(0);
+        let factors = vec![x, x_minus_one];
+
+        let execution = build_factorized_zero_product_execution_with_optional_items(
+            &ctx,
+            factored_expr,
+            &factors,
+            "x",
+            zero,
+            false,
+            |_id| -> String { panic!("renderer must not run when items are disabled") },
+        );
+
+        assert!(execution.entry.description.is_empty());
+        assert!(execution.factors.items.is_empty());
+        assert_eq!(execution.factors.equations.len(), 2);
     }
 
     #[test]
@@ -1356,6 +1561,63 @@ mod tests {
             |factor_equation| Ok::<_, ()>(factor_equation.lhs),
             |_item| 7u8,
             |_item| 9u8,
+        )
+        .expect("pipeline should solve");
+
+        assert_eq!(solved.solved_factors.len(), 2);
+        assert!(solved.steps.is_empty());
+    }
+
+    #[test]
+    fn solve_factorized_zero_product_pipeline_with_optional_items_includes_items_when_enabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_minus_one = ctx.add(Expr::Sub(x, one));
+        let factored_expr = ctx.add(Expr::Mul(x, x_minus_one));
+        let zero = ctx.num(0);
+
+        let solved = solve_factorized_zero_product_pipeline_with_optional_items(
+            &ctx,
+            factored_expr,
+            &[x, x_minus_one],
+            "x",
+            zero,
+            true,
+            |_| "f".to_string(),
+            |factor_equation| Ok::<_, ()>(factor_equation.lhs),
+            |item| item.description,
+            |item| item.description,
+        )
+        .expect("pipeline should solve");
+
+        assert_eq!(solved.solved_factors.len(), 2);
+        assert_eq!(solved.steps.len(), 3);
+        assert_eq!(solved.steps[0], "Factorized equation: f = 0");
+        assert_eq!(solved.steps[1], "Solve factor: f = 0");
+        assert_eq!(solved.steps[2], "Solve factor: f = 0");
+    }
+
+    #[test]
+    fn solve_factorized_zero_product_pipeline_with_optional_items_skips_render_when_disabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_minus_one = ctx.add(Expr::Sub(x, one));
+        let factored_expr = ctx.add(Expr::Mul(x, x_minus_one));
+        let zero = ctx.num(0);
+
+        let solved = solve_factorized_zero_product_pipeline_with_optional_items(
+            &ctx,
+            factored_expr,
+            &[x, x_minus_one],
+            "x",
+            zero,
+            false,
+            |_id| -> String { panic!("renderer must not run when items are disabled") },
+            |factor_equation| Ok::<_, ()>(factor_equation.lhs),
+            |_item| -> u8 { panic!("entry mapper must not run when items are disabled") },
+            |_item| -> u8 { panic!("factor mapper must not run when items are disabled") },
         )
         .expect("pipeline should solve");
 

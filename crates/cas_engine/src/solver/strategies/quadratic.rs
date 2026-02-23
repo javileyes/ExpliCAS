@@ -6,8 +6,10 @@ use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{is_numeric_zero, split_zero_product_factors};
 use cas_solver_core::quadratic_didactic::{
-    aggregate_zero_product_factor_solution_sets, build_quadratic_main_with_substeps_execution_with,
-    finalize_zero_product_factor_solution_set, simplify_quadratic_substep_execution_items_with,
+    aggregate_zero_product_factor_solution_sets,
+    build_factorized_zero_product_execution_with_optional_items,
+    build_quadratic_main_with_substeps_execution_with, finalize_zero_product_factor_solution_set,
+    simplify_quadratic_substep_execution_items_with,
     solve_factorized_zero_product_execution_pipeline_with_items,
     solve_quadratic_main_with_substeps_execution_pipeline_with_items,
     ZeroProductFactorSolutionAggregate,
@@ -49,28 +51,53 @@ impl SolverStrategy for QuadraticStrategy {
         let zero = simplifier.context.num(0);
 
         if let Some(factors) = split_zero_product_factors(&simplifier.context, sim_poly_expr) {
-            let factorized_execution =
-                cas_solver_core::quadratic_didactic::build_factorized_zero_product_execution_with(
-                    &simplifier.context,
-                    sim_poly_expr,
-                    &factors,
-                    var,
-                    zero,
-                    |id| {
-                        format!(
-                            "{}",
-                            cas_formatter::DisplayExpr {
-                                context: &simplifier.context,
-                                id
-                            }
-                        )
-                    },
-                );
-
             // For inequalities, splitting is complex (sign analysis).
             // For Eq, it's simple union.
             if eq.op == RelOp::Eq {
                 let include_items = simplifier.collect_steps();
+                let factorized_display = format!(
+                    "{}",
+                    cas_formatter::DisplayExpr {
+                        context: &simplifier.context,
+                        id: sim_poly_expr
+                    }
+                );
+                let factor_displays = factors
+                    .iter()
+                    .copied()
+                    .map(|id| {
+                        (
+                            id,
+                            format!(
+                                "{}",
+                                cas_formatter::DisplayExpr {
+                                    context: &simplifier.context,
+                                    id
+                                }
+                            ),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                let factorized_execution =
+                    build_factorized_zero_product_execution_with_optional_items(
+                        &simplifier.context,
+                        sim_poly_expr,
+                        &factors,
+                        var,
+                        zero,
+                        include_items,
+                        move |id| {
+                            if id == sim_poly_expr {
+                                factorized_display.clone()
+                            } else {
+                                factor_displays
+                                    .iter()
+                                    .find(|(candidate, _)| *candidate == id)
+                                    .map(|(_, display)| display.clone())
+                                    .unwrap_or_else(|| id.to_string())
+                            }
+                        },
+                    );
                 let solved = match solve_factorized_zero_product_execution_pipeline_with_items(
                     &factorized_execution,
                     include_items,

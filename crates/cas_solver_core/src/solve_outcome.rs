@@ -4177,6 +4177,61 @@ where
     })
 }
 
+/// Solve denominator-sign split with optional didactic items.
+///
+/// When `include_items` is enabled, this builds didactic execution items and
+/// prepends them to per-branch solve steps. When disabled, branch equations and
+/// domain guards are solved without rendering didactic payload.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_division_denominator_sign_split_pipeline_with_optional_items<
+    E,
+    S,
+    FRenderExpr,
+    FSolveBranch,
+    FSolveDomain,
+    FMapStep,
+>(
+    split_plan: DivisionDenominatorSignSplitPlan,
+    denominator: ExprId,
+    case_boundary_lhs: ExprId,
+    case_boundary_op: RelOp,
+    simplified_rhs: ExprId,
+    include_items: bool,
+    branch_prefix_steps: &[S],
+    render_expr: FRenderExpr,
+    solve_branch: FSolveBranch,
+    solve_domain: FSolveDomain,
+    map_item_to_step: FMapStep,
+) -> Result<DivisionDenominatorSignSplitExecutionSolved<S>, E>
+where
+    S: Clone,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveBranch: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FSolveDomain: FnMut(&Equation) -> Result<SolutionSet, E>,
+    FMapStep: FnMut(DivisionDidacticExecutionItem) -> S,
+{
+    let execution = if include_items {
+        build_division_denominator_sign_split_execution_with(
+            split_plan,
+            denominator,
+            case_boundary_lhs,
+            case_boundary_op,
+            simplified_rhs,
+            render_expr,
+        )
+    } else {
+        materialize_division_denominator_sign_split_execution(split_plan, simplified_rhs)
+    };
+    solve_division_denominator_sign_split_execution_pipeline_with_items(
+        &execution,
+        include_items,
+        branch_prefix_steps,
+        solve_branch,
+        solve_domain,
+        map_item_to_step,
+    )
+}
+
 /// Return the boundary didactic item (`--- End of Case 1 ---`) when available.
 pub fn division_denominator_sign_split_boundary_item(
     execution: &DivisionDenominatorSignSplitExecutionPlan,
@@ -4327,6 +4382,53 @@ where
         negative_set,
         steps: positive_steps,
     })
+}
+
+/// Solve isolated-denominator sign split with optional didactic items.
+///
+/// When `include_items` is enabled, this builds didactic execution items and
+/// prepends them to per-branch solve steps. When disabled, branch equations are
+/// solved directly without rendering didactic payload.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_isolated_denominator_sign_split_pipeline_with_optional_items<
+    E,
+    S,
+    FRenderExpr,
+    FSolveBranch,
+    FMapStep,
+>(
+    split_plan: IsolatedDenominatorSignSplitPlan,
+    denominator: ExprId,
+    case_boundary_op: RelOp,
+    include_items: bool,
+    branch_prefix_steps: &[S],
+    render_expr: FRenderExpr,
+    solve_branch: FSolveBranch,
+    map_item_to_step: FMapStep,
+) -> Result<IsolatedDenominatorSignSplitExecutionSolved<S>, E>
+where
+    S: Clone,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveBranch: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(DivisionDidacticExecutionItem) -> S,
+{
+    let execution = if include_items {
+        build_isolated_denominator_sign_split_execution_with(
+            split_plan,
+            denominator,
+            case_boundary_op,
+            render_expr,
+        )
+    } else {
+        materialize_isolated_denominator_sign_split_execution(split_plan)
+    };
+    solve_isolated_denominator_sign_split_execution_pipeline_with_items(
+        &execution,
+        include_items,
+        branch_prefix_steps,
+        solve_branch,
+        map_item_to_step,
+    )
 }
 
 /// Return the boundary didactic item (`--- End of Case 1 ---`) when available.
@@ -4927,6 +5029,42 @@ where
         case_steps.extend(sub_steps);
         Ok((solution_set, case_steps))
     })
+}
+
+/// Solve absolute-value split with optional didactic items.
+///
+/// When `include_items` is enabled, this builds didactic execution items from
+/// `lhs_expr` and prepends them to per-branch solve steps.
+/// When disabled, branch equations are solved directly without rendering items.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_abs_split_pipeline_with_optional_items<E, S, FRenderExpr, FSolveBranch, FMapStep>(
+    positive_equation: Equation,
+    negative_equation: Equation,
+    lhs_expr: ExprId,
+    include_items: bool,
+    branch_prefix_steps: &[S],
+    render_expr: FRenderExpr,
+    solve_branch: FSolveBranch,
+    map_item_to_step: FMapStep,
+) -> Result<AbsSplitExecutionSolved<S>, E>
+where
+    S: Clone,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveBranch: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(AbsSplitExecutionItem) -> S,
+{
+    let execution = if include_items {
+        build_abs_split_execution_with(positive_equation, negative_equation, lhs_expr, render_expr)
+    } else {
+        materialize_abs_split_execution(positive_equation, negative_equation)
+    };
+    solve_abs_split_execution_pipeline_with_items(
+        &execution,
+        include_items,
+        branch_prefix_steps,
+        solve_branch,
+        map_item_to_step,
+    )
 }
 
 /// For `|A| = rhs`, attach the soundness guard `rhs >= 0` when
@@ -5842,6 +5980,73 @@ mod tests {
             &[0u8],
             |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![two]), vec![1u8])),
             |_item| 9u8,
+        )
+        .expect("pipeline should solve");
+
+        assert_eq!(solved.steps, vec![0u8, 1u8, 0u8, 1u8]);
+    }
+
+    #[test]
+    fn solve_abs_split_pipeline_with_optional_items_includes_didactic_when_enabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let neg_two = ctx.num(-2);
+        let solved = solve_abs_split_pipeline_with_optional_items(
+            Equation {
+                lhs: x,
+                rhs: two,
+                op: RelOp::Eq,
+            },
+            Equation {
+                lhs: x,
+                rhs: neg_two,
+                op: RelOp::Eq,
+            },
+            x,
+            true,
+            &["prefix".to_string()],
+            |_| "x".to_string(),
+            |equation| {
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![equation.rhs]),
+                    vec!["branch".to_string()],
+                ))
+            },
+            |item| item.description,
+        )
+        .expect("pipeline should solve");
+
+        assert_eq!(solved.steps[0], "prefix");
+        assert!(solved.steps[1].starts_with("Split absolute value (Case 1)"));
+        assert_eq!(solved.steps[2], "branch");
+        assert_eq!(solved.steps[3], "prefix");
+        assert!(solved.steps[4].starts_with("Split absolute value (Case 2)"));
+        assert_eq!(solved.steps[5], "branch");
+    }
+
+    #[test]
+    fn solve_abs_split_pipeline_with_optional_items_skips_render_and_items_when_disabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let solved = solve_abs_split_pipeline_with_optional_items(
+            Equation {
+                lhs: x,
+                rhs: two,
+                op: RelOp::Eq,
+            },
+            Equation {
+                lhs: x,
+                rhs: two,
+                op: RelOp::Eq,
+            },
+            x,
+            false,
+            &[0u8],
+            |_id| -> String { panic!("renderer must not run when items are disabled") },
+            |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![two]), vec![1u8])),
+            |_item| -> u8 { panic!("mapper must not run when items are disabled") },
         )
         .expect("pipeline should solve");
 
@@ -9635,6 +9840,75 @@ mod tests {
     }
 
     #[test]
+    fn solve_division_denominator_sign_split_pipeline_with_optional_items_includes_didactic_when_enabled(
+    ) {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let simplified_rhs = ctx.var("s");
+        let split =
+            plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Lt).unwrap();
+
+        let solved = solve_division_denominator_sign_split_pipeline_with_optional_items(
+            split,
+            den,
+            num,
+            RelOp::Lt,
+            simplified_rhs,
+            true,
+            &["prefix".to_string()],
+            |_| "d".to_string(),
+            |equation| {
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![equation.rhs]),
+                    vec!["branch".to_string()],
+                ))
+            },
+            |_domain_equation| Ok::<_, ()>(SolutionSet::AllReals),
+            |item| item.description,
+        )
+        .expect("pipeline should solve");
+
+        assert_eq!(solved.steps[0], "prefix");
+        assert!(solved.steps[1].starts_with("Case 1: Assume d > 0"));
+        assert_eq!(solved.steps[2], "branch");
+        assert_eq!(solved.steps[3], "--- End of Case 1 ---");
+        assert_eq!(solved.steps[4], "prefix");
+        assert!(solved.steps[5].starts_with("Case 2: Assume d < 0"));
+        assert_eq!(solved.steps[6], "branch");
+    }
+
+    #[test]
+    fn solve_division_denominator_sign_split_pipeline_with_optional_items_skips_render_when_disabled(
+    ) {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let simplified_rhs = ctx.var("s");
+        let split =
+            plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Lt).unwrap();
+
+        let solved = solve_division_denominator_sign_split_pipeline_with_optional_items(
+            split,
+            den,
+            num,
+            RelOp::Lt,
+            simplified_rhs,
+            false,
+            &[0u8],
+            |_id| -> String { panic!("renderer must not run when items are disabled") },
+            |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![rhs]), vec![1u8])),
+            |_domain_equation| Ok::<_, ()>(SolutionSet::AllReals),
+            |_item| -> u8 { panic!("mapper must not run when items are disabled") },
+        )
+        .expect("pipeline should solve");
+
+        assert_eq!(solved.steps, vec![0u8, 1u8, 0u8, 1u8]);
+    }
+
+    #[test]
     fn division_denominator_sign_split_boundary_item_returns_case_separator() {
         let mut ctx = Context::new();
         let num = ctx.var("n");
@@ -9935,6 +10209,63 @@ mod tests {
             &[0u8],
             |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![rhs]), vec![1u8])),
             |_item| 9u8,
+        )
+        .expect("pipeline should solve");
+
+        assert_eq!(solved.steps, vec![0u8, 1u8, 0u8, 1u8]);
+    }
+
+    #[test]
+    fn solve_isolated_denominator_sign_split_pipeline_with_optional_items_includes_didactic_when_enabled(
+    ) {
+        let mut ctx = Context::new();
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let split = plan_isolated_denominator_sign_split(den, rhs, RelOp::Leq).unwrap();
+
+        let solved = solve_isolated_denominator_sign_split_pipeline_with_optional_items(
+            split,
+            den,
+            RelOp::Leq,
+            true,
+            &["prefix".to_string()],
+            |_| "x".to_string(),
+            |equation| {
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![equation.rhs]),
+                    vec!["branch".to_string()],
+                ))
+            },
+            |item| item.description,
+        )
+        .expect("pipeline should solve");
+
+        assert_eq!(solved.steps[0], "prefix");
+        assert!(solved.steps[1].starts_with("Case 1: Assume x > 0"));
+        assert_eq!(solved.steps[2], "branch");
+        assert_eq!(solved.steps[3], "--- End of Case 1 ---");
+        assert_eq!(solved.steps[4], "prefix");
+        assert!(solved.steps[5].starts_with("Case 2: Assume x < 0"));
+        assert_eq!(solved.steps[6], "branch");
+    }
+
+    #[test]
+    fn solve_isolated_denominator_sign_split_pipeline_with_optional_items_skips_render_when_disabled(
+    ) {
+        let mut ctx = Context::new();
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let split = plan_isolated_denominator_sign_split(den, rhs, RelOp::Leq).unwrap();
+
+        let solved = solve_isolated_denominator_sign_split_pipeline_with_optional_items(
+            split,
+            den,
+            RelOp::Leq,
+            false,
+            &[0u8],
+            |_id| -> String { panic!("renderer must not run when items are disabled") },
+            |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![rhs]), vec![1u8])),
+            |_item| -> u8 { panic!("mapper must not run when items are disabled") },
         )
         .expect("pipeline should solve");
 

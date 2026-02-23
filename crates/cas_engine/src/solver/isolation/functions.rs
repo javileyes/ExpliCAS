@@ -14,9 +14,8 @@ use cas_solver_core::log_isolation::{
     LogIsolationExecutionItem, LogIsolationRewriteRuntime,
 };
 use cas_solver_core::solve_outcome::{
-    build_abs_split_execution_with, finalize_abs_split_solution_set,
-    materialize_abs_split_execution, plan_abs_isolation, solve_abs_isolation_plan_with,
-    solve_abs_split_execution_pipeline_with_items, AbsIsolationSolved,
+    finalize_abs_split_solution_set, plan_abs_isolation, solve_abs_isolation_plan_with,
+    solve_abs_split_pipeline_with_optional_items, AbsIsolationSolved,
 };
 
 use super::{isolate, prepend_steps};
@@ -146,24 +145,46 @@ fn isolate_abs(
             ctx,
         ),
         AbsIsolationSolved::Split((positive, negative)) => {
-            let include_items = simplifier.collect_steps();
-            let split_execution = if include_items {
-                build_abs_split_execution_with(positive, negative, arg, |id| {
-                    format!(
-                        "{}",
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id
-                        }
-                    )
-                })
-            } else {
-                materialize_abs_split_execution(positive, negative)
-            };
-            let solved = solve_abs_split_execution_pipeline_with_items(
-                &split_execution,
-                include_items,
+            let positive_rhs = positive.rhs;
+            let negative_rhs = negative.rhs;
+            let arg_display = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id: arg
+                }
+            );
+            let positive_rhs_display = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id: positive_rhs
+                }
+            );
+            let negative_rhs_display = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id: negative_rhs
+                }
+            );
+            let solved = solve_abs_split_pipeline_with_optional_items(
+                positive,
+                negative,
+                arg,
+                simplifier.collect_steps(),
                 &steps,
+                move |id| {
+                    if id == arg {
+                        arg_display.clone()
+                    } else if id == positive_rhs {
+                        positive_rhs_display.clone()
+                    } else if id == negative_rhs {
+                        negative_rhs_display.clone()
+                    } else {
+                        id.to_string()
+                    }
+                },
                 |equation| {
                     isolate(
                         equation.lhs,

@@ -9,21 +9,17 @@ use cas_solver_core::isolation_utils::{
     should_try_reciprocal_solve,
 };
 use cas_solver_core::solve_outcome::{
-    build_division_denominator_sign_split_execution_with,
-    build_isolated_denominator_sign_split_execution_with, derive_add_isolation_operands,
-    derive_div_isolation_route, derive_mul_isolation_operands, derive_sub_isolation_route,
-    finalize_division_denominator_sign_split_solved_sets,
+    derive_add_isolation_operands, derive_div_isolation_route, derive_mul_isolation_operands,
+    derive_sub_isolation_route, finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
-    finalize_product_zero_inequality_solved_sets,
-    materialize_division_denominator_sign_split_execution,
-    materialize_isolated_denominator_sign_split_execution, mul_rhs_contains_variable,
+    finalize_product_zero_inequality_solved_sets, mul_rhs_contains_variable,
     plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
     plan_div_numerator_isolation_step_with, plan_division_denominator,
     plan_division_denominator_sign_split, plan_isolated_denominator_sign_split,
     plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split,
     plan_sub_isolation_step_with, solve_division_denominator_pipeline_with_optional_items,
-    solve_division_denominator_sign_split_execution_pipeline_with_items,
-    solve_isolated_denominator_sign_split_execution_pipeline_with_items,
+    solve_division_denominator_sign_split_pipeline_with_optional_items,
+    solve_isolated_denominator_sign_split_pipeline_with_optional_items,
     solve_product_zero_inequality_split_execution_with,
     solve_term_isolation_rewrite_pipeline_with_item, AddIsolationRoute,
     DivDenominatorIsolationRoute, DivIsolationRoute, DivisionDenominatorSignSplitSolvedCases,
@@ -268,38 +264,35 @@ pub(super) fn isolate_div(
             )
             .expect("inequality branch requires denominator sign cases");
             let (sim_rhs, _) = simplifier.simplify(split_plan.positive_equation.rhs);
-            let include_items = simplifier.collect_steps();
-            let split_execution = if include_items {
-                build_division_denominator_sign_split_execution_with(
-                    split_plan,
-                    r,
-                    l,
-                    op.clone(),
-                    sim_rhs,
-                    |id| {
-                        format!(
-                            "{}",
-                            cas_formatter::DisplayExpr {
-                                context: &simplifier.context,
-                                id
-                            }
-                        )
-                    },
-                )
-            } else {
-                materialize_division_denominator_sign_split_execution(split_plan, sim_rhs)
-            };
+            let positive_domain = split_plan.positive_domain.clone();
+            let negative_domain = split_plan.negative_domain.clone();
             let mut precomputed_domains = {
-                let (domain_pos_set, _) =
-                    solve_with_ctx(&split_execution.positive_domain, var, simplifier, ctx)?;
-                let (domain_neg_set, _) =
-                    solve_with_ctx(&split_execution.negative_domain, var, simplifier, ctx)?;
+                let (domain_pos_set, _) = solve_with_ctx(&positive_domain, var, simplifier, ctx)?;
+                let (domain_neg_set, _) = solve_with_ctx(&negative_domain, var, simplifier, ctx)?;
                 vec![domain_pos_set, domain_neg_set].into_iter()
             };
-            let solved = solve_division_denominator_sign_split_execution_pipeline_with_items(
-                &split_execution,
-                include_items,
+            let denominator_display = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id: r
+                }
+            );
+            let solved = solve_division_denominator_sign_split_pipeline_with_optional_items(
+                split_plan,
+                r,
+                l,
+                op.clone(),
+                sim_rhs,
+                simplifier.collect_steps(),
                 &steps,
+                move |id| {
+                    if id == r {
+                        denominator_display.clone()
+                    } else {
+                        id.to_string()
+                    }
+                },
                 |equation| {
                     isolate(
                         equation.lhs,
@@ -414,29 +407,26 @@ pub(super) fn isolate_div(
             // Split into x > 0 and x < 0
             let split_plan = plan_isolated_denominator_sign_split(r, sim_rhs, op.clone())
                 .expect("inequality branch requires denominator sign cases");
-            let include_items = simplifier.collect_steps();
-            let split_execution = if include_items {
-                build_isolated_denominator_sign_split_execution_with(
-                    split_plan,
-                    r,
-                    op.clone(),
-                    |id| {
-                        format!(
-                            "{}",
-                            cas_formatter::DisplayExpr {
-                                context: &simplifier.context,
-                                id
-                            }
-                        )
-                    },
-                )
-            } else {
-                materialize_isolated_denominator_sign_split_execution(split_plan)
-            };
-            let solved = solve_isolated_denominator_sign_split_execution_pipeline_with_items(
-                &split_execution,
-                include_items,
+            let denominator_display = format!(
+                "{}",
+                cas_formatter::DisplayExpr {
+                    context: &simplifier.context,
+                    id: r
+                }
+            );
+            let solved = solve_isolated_denominator_sign_split_pipeline_with_optional_items(
+                split_plan,
+                r,
+                op.clone(),
+                simplifier.collect_steps(),
                 &steps,
+                move |id| {
+                    if id == r {
+                        denominator_display.clone()
+                    } else {
+                        id.to_string()
+                    }
+                },
                 |equation| {
                     isolate(
                         equation.lhs,
