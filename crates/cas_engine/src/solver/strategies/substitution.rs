@@ -5,12 +5,45 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, SolutionSet};
 use cas_solver_core::substitution::{
-    build_back_substitution_solve_plan_with, build_exponential_substitution_execution_with,
-    plan_exponential_substitution_rewrite, solve_back_substitution_plan_with_items,
-    solve_exponential_substitution_with_items,
+    plan_exponential_substitution_rewrite, solve_exponential_substitution_strategy_with_items,
+    SubstitutionStrategyRuntime, SubstitutionStrategySolved,
 };
 
 pub struct SubstitutionStrategy;
+
+struct EngineSubstitutionRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+    ctx: &'a SolveCtx,
+}
+
+impl SubstitutionStrategyRuntime<CasError, SolveStep> for EngineSubstitutionRuntime<'_> {
+    fn render_expr(&mut self, expr: cas_ast::ExprId) -> String {
+        format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &self.simplifier.context,
+                id: expr
+            }
+        )
+    }
+
+    fn solve_equation(
+        &mut self,
+        equation: &Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        solve_with_ctx(equation, var, self.simplifier, self.ctx)
+    }
+
+    fn map_step(&mut self, description: String, equation_after: Equation) -> SolveStep {
+        SolveStep {
+            description,
+            equation_after,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        }
+    }
+}
 
 impl SolverStrategy for SubstitutionStrategy {
     fn name(&self) -> &str {
@@ -30,93 +63,29 @@ impl SolverStrategy for SubstitutionStrategy {
         if let Some(rewrite_plan) =
             plan_exponential_substitution_rewrite(&mut simplifier.context, eq, var, SUB_VAR_NAME)
         {
-            let intro_execution =
-                build_exponential_substitution_execution_with(eq.clone(), rewrite_plan, |id| {
-                    format!(
-                        "{}",
-                        cas_formatter::DisplayExpr {
-                            context: &simplifier.context,
-                            id
-                        }
-                    )
-                });
-            let mut steps = Vec::new();
-            let solved_intro = match solve_exponential_substitution_with_items(
-                intro_execution,
-                |intro_items, new_eq| {
-                    if simplifier.collect_steps() {
-                        for item in intro_items {
-                            steps.push(SolveStep {
-                                description: item.description().to_string(),
-                                equation_after: item.equation,
-                                importance: crate::step::ImportanceLevel::Medium,
-                                substeps: vec![],
-                            });
-                        }
-                    }
-                    solve_with_ctx(new_eq, SUB_VAR_NAME, simplifier, ctx)
-                },
-            ) {
-                Ok(solved) => solved,
-                Err(e) => return Some(Err(e)),
-            };
+            let include_didactic_items = simplifier.collect_steps();
+            let mut runtime = EngineSubstitutionRuntime { simplifier, ctx };
+            let solved = solve_exponential_substitution_strategy_with_items(
+                &mut runtime,
+                eq.clone(),
+                rewrite_plan,
+                var,
+                SUB_VAR_NAME,
+                include_didactic_items,
+            );
 
-            // Solve for u
-            let (u_solutions, mut u_steps) = solved_intro.solved;
-            steps.append(&mut u_steps);
-
-            // eprintln!("Substitution u_solutions: {:?}", u_solutions);
-
-            // Now solve u = val for each solution
-            match u_solutions {
-                SolutionSet::Discrete(vals) => {
-                    let mut final_solutions = Vec::new();
-                    let back_plan = build_back_substitution_solve_plan_with(
-                        solved_intro.execution.substitution_expr,
-                        &vals,
-                        simplifier.collect_steps(),
-                        |id| {
-                            format!(
-                                "{}",
-                                cas_formatter::DisplayExpr {
-                                    context: &simplifier.context,
-                                    id
-                                }
-                            )
-                        },
-                    );
-                    let solved_back =
-                        match solve_back_substitution_plan_with_items(back_plan, |item, sub_eq| {
-                            if let Some(item) = item {
-                                steps.push(SolveStep {
-                                    description: item.description().to_string(),
-                                    equation_after: item.equation,
-                                    importance: crate::step::ImportanceLevel::Medium,
-                                    substeps: vec![],
-                                });
-                            }
-                            solve_with_ctx(sub_eq, var, simplifier, ctx)
-                        }) {
-                            Ok(solved) => solved,
-                            Err(e) => return Some(Err(e)),
-                        };
-
-                    for (x_sol, mut x_steps) in solved_back.solved {
-                        steps.append(&mut x_steps);
-                        if let SolutionSet::Discrete(xs) = x_sol {
-                            final_solutions.extend(xs);
-                        }
-                    }
-                    return Some(Ok((SolutionSet::Discrete(final_solutions), steps)));
+            return match solved {
+                Ok(SubstitutionStrategySolved::SolvedDiscrete { solutions, steps }) => {
+                    Some(Ok((SolutionSet::Discrete(solutions), steps)))
                 }
-                _ => {
-                    // Handle intervals? Too complex for now.
-                    return Some(Err(CasError::SolverError(
+                Ok(SubstitutionStrategySolved::UnsupportedSolutionSet { .. }) => {
+                    Some(Err(CasError::SolverError(
                         "Substitution strategy currently only supports discrete solutions"
                             .to_string(),
-                    )));
+                    )))
                 }
-            }
+                Err(e) => Some(Err(e)),
+            };
         }
         None
     }

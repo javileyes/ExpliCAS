@@ -1,5 +1,5 @@
 use crate::isolation_utils::contains_var;
-use cas_ast::{ordering::compare_expr, Constant, Context, Equation, Expr, ExprId};
+use cas_ast::{ordering::compare_expr, Constant, Context, Equation, Expr, ExprId, SolutionSet};
 use cas_math::build::mul2_raw;
 use std::cmp::Ordering;
 
@@ -316,6 +316,111 @@ where
         solved.push(solve_equation(items.next(), equation)?);
     }
     Ok(BackSubstitutionSolved { plan, solved })
+}
+
+/// High-level solved outcome for exponential substitution strategy orchestration.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SubstitutionStrategySolved<S> {
+    /// Solved successfully with discrete final solutions.
+    SolvedDiscrete {
+        solutions: Vec<ExprId>,
+        steps: Vec<S>,
+    },
+    /// Intermediate substitution solve returned a non-discrete set.
+    UnsupportedSolutionSet {
+        solution_set: SolutionSet,
+        steps: Vec<S>,
+    },
+}
+
+/// Runtime contract for high-level exponential substitution strategy orchestration.
+pub trait SubstitutionStrategyRuntime<E, S> {
+    /// Render one expression for didactic descriptions.
+    fn render_expr(&mut self, expr: ExprId) -> String;
+    /// Solve one equation for the requested variable.
+    fn solve_equation(&mut self, equation: &Equation, var: &str) -> Result<(SolutionSet, Vec<S>), E>;
+    /// Materialize one engine-specific step payload from description + equation.
+    fn map_step(&mut self, description: String, equation_after: Equation) -> S;
+}
+
+/// Solve exponential substitution strategy end-to-end with optional didactic items.
+///
+/// This orchestrates:
+/// 1) substitution introduction (`u = ...`, rewritten equation),
+/// 2) solving in temporary variable,
+/// 3) back-substitution `sub_expr = value_i`,
+/// 4) aggregation of final discrete solutions.
+pub fn solve_exponential_substitution_strategy_with_items<E, S, R>(
+    runtime: &mut R,
+    equation_before: Equation,
+    rewrite_plan: ExponentialSubstitutionRewritePlan,
+    target_var: &str,
+    substitution_var: &str,
+    include_didactic_items: bool,
+) -> Result<SubstitutionStrategySolved<S>, E>
+where
+    R: SubstitutionStrategyRuntime<E, S>,
+{
+    let intro_execution = build_exponential_substitution_execution_with(
+        equation_before,
+        rewrite_plan,
+        |id| runtime.render_expr(id),
+    );
+
+    let solved_intro = solve_exponential_substitution_with_items(intro_execution, |items, new_eq| {
+        let mut steps = Vec::new();
+        if include_didactic_items {
+            steps.extend(
+                items
+                    .into_iter()
+                    .map(|item| runtime.map_step(item.description, item.equation)),
+            );
+        }
+        let (u_solutions, mut u_steps) = runtime.solve_equation(new_eq, substitution_var)?;
+        steps.append(&mut u_steps);
+        Ok((u_solutions, steps))
+    })?;
+
+    let (u_solutions, mut steps) = solved_intro.solved;
+
+    match u_solutions {
+        SolutionSet::Discrete(vals) => {
+            let back_plan = build_back_substitution_solve_plan_with(
+                solved_intro.execution.substitution_expr,
+                &vals,
+                include_didactic_items,
+                |id| runtime.render_expr(id),
+            );
+            let solved_back = solve_back_substitution_plan_with_items(back_plan, |item, sub_eq| {
+                let mut local_steps = Vec::new();
+                if include_didactic_items {
+                    if let Some(item) = item {
+                        local_steps.push(runtime.map_step(item.description, item.equation));
+                    }
+                }
+                let (x_solution_set, mut x_steps) = runtime.solve_equation(sub_eq, target_var)?;
+                local_steps.append(&mut x_steps);
+                Ok((x_solution_set, local_steps))
+            })?;
+
+            let mut final_solutions = Vec::new();
+            for (x_sol, mut x_steps) in solved_back.solved {
+                steps.append(&mut x_steps);
+                if let SolutionSet::Discrete(xs) = x_sol {
+                    final_solutions.extend(xs);
+                }
+            }
+
+            Ok(SubstitutionStrategySolved::SolvedDiscrete {
+                solutions: final_solutions,
+                steps,
+            })
+        }
+        solution_set => Ok(SubstitutionStrategySolved::UnsupportedSolutionSet {
+            solution_set,
+            steps,
+        }),
+    }
 }
 
 /// Build didactic pair for substitution introduction:
@@ -1171,5 +1276,136 @@ mod tests {
 
         assert_eq!(seen_some, 0);
         assert_eq!(solved.solved, vec![v1, v2]);
+    }
+
+    struct MockSubstitutionStrategyRuntime {
+        u_solution: SolutionSet,
+        back_solutions: Vec<SolutionSet>,
+        solve_calls: Vec<String>,
+    }
+
+    impl SubstitutionStrategyRuntime<(), String> for MockSubstitutionStrategyRuntime {
+        fn render_expr(&mut self, _expr: ExprId) -> String {
+            "u".to_string()
+        }
+
+        fn solve_equation(
+            &mut self,
+            _equation: &Equation,
+            var: &str,
+        ) -> Result<(SolutionSet, Vec<String>), ()> {
+            self.solve_calls.push(var.to_string());
+            if var == "u" {
+                return Ok((self.u_solution.clone(), vec!["solve-u".to_string()]));
+            }
+            let next = self.back_solutions.remove(0);
+            Ok((next, vec![format!("solve-{var}")]))
+        }
+
+        fn map_step(&mut self, description: String, _equation_after: Equation) -> String {
+            description
+        }
+    }
+
+    #[test]
+    fn solve_exponential_substitution_strategy_with_items_returns_discrete_solutions() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let u = ctx.var("u");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let four = ctx.num(4);
+        let equation_before = Equation {
+            lhs: x,
+            rhs: one,
+            op: cas_ast::RelOp::Eq,
+        };
+        let rewrite_plan = ExponentialSubstitutionRewritePlan {
+            substitution_expr: x,
+            equation: Equation {
+                lhs: u,
+                rhs: two,
+                op: cas_ast::RelOp::Eq,
+            },
+        };
+        let mut runtime = MockSubstitutionStrategyRuntime {
+            u_solution: SolutionSet::Discrete(vec![two, three]),
+            back_solutions: vec![
+                SolutionSet::Discrete(vec![four]),
+                SolutionSet::Discrete(vec![one, two]),
+            ],
+            solve_calls: vec![],
+        };
+
+        let solved = solve_exponential_substitution_strategy_with_items(
+            &mut runtime,
+            equation_before,
+            rewrite_plan,
+            "x",
+            "u",
+            true,
+        )
+        .expect("substitution strategy should succeed");
+
+        match solved {
+            SubstitutionStrategySolved::SolvedDiscrete { solutions, steps } => {
+                assert_eq!(solutions, vec![four, one, two]);
+                assert_eq!(runtime.solve_calls, vec!["u", "x", "x"]);
+                assert_eq!(steps.len(), 7);
+                assert!(steps[0].starts_with("Detected substitution"));
+                assert!(steps[1].starts_with("Substituted equation"));
+                assert_eq!(steps[2], "solve-u");
+            }
+            other => panic!("expected discrete solved outcome, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn solve_exponential_substitution_strategy_with_items_reports_non_discrete_u_solution_set() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let u = ctx.var("u");
+        let one = ctx.num(1);
+        let equation_before = Equation {
+            lhs: x,
+            rhs: one,
+            op: cas_ast::RelOp::Eq,
+        };
+        let rewrite_plan = ExponentialSubstitutionRewritePlan {
+            substitution_expr: x,
+            equation: Equation {
+                lhs: u,
+                rhs: one,
+                op: cas_ast::RelOp::Eq,
+            },
+        };
+        let mut runtime = MockSubstitutionStrategyRuntime {
+            u_solution: SolutionSet::AllReals,
+            back_solutions: vec![],
+            solve_calls: vec![],
+        };
+
+        let solved = solve_exponential_substitution_strategy_with_items(
+            &mut runtime,
+            equation_before,
+            rewrite_plan,
+            "x",
+            "u",
+            true,
+        )
+        .expect("substitution strategy should succeed");
+
+        match solved {
+            SubstitutionStrategySolved::UnsupportedSolutionSet {
+                solution_set,
+                steps,
+            } => {
+                assert!(matches!(solution_set, SolutionSet::AllReals));
+                assert_eq!(runtime.solve_calls, vec!["u"]);
+                assert_eq!(steps.len(), 3);
+            }
+            other => panic!("expected non-discrete outcome, got {:?}", other),
+        }
     }
 }
