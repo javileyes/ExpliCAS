@@ -10,7 +10,8 @@ use cas_solver_core::solve_outcome::{
     resolve_var_eliminated_outcome_with, VarEliminatedSolveOutcome,
 };
 use cas_solver_core::strategy_kernels::{
-    execute_rational_exponent_rewrite_with_runtime, solve_rational_exponent_rewrite_with_item,
+    execute_rational_exponent_rewrite_with_runtime,
+    solve_rational_exponent_rewrite_pipeline_with_item, RationalExponentRewriteRuntime,
     StrategyKernelRuntime,
 };
 use cas_solver_core::verify_substitution::{verify_solution_with_runtime, VerifySolutionRuntime};
@@ -51,6 +52,13 @@ struct EngineRationalExponentRuntime<'a> {
     simplifier: &'a mut Simplifier,
 }
 
+struct EngineRationalExponentRewriteRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+    original_equation: &'a cas_ast::Equation,
+    original_var: &'a str,
+    solve_ctx: &'a super::SolveCtx,
+}
+
 struct EngineVerifySolutionRuntime<'a> {
     simplifier: &'a mut Simplifier,
 }
@@ -87,6 +95,39 @@ impl StrategyKernelRuntime for EngineRationalExponentRuntime<'_> {
                 context: &self.simplifier.context,
                 id: expr
             }
+        )
+    }
+}
+
+impl RationalExponentRewriteRuntime<CasError, SolveStep>
+    for EngineRationalExponentRewriteRuntime<'_>
+{
+    fn solve_rewritten(
+        &mut self,
+        equation: &cas_ast::Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        solve_with_ctx(equation, var, self.simplifier, self.solve_ctx)
+    }
+
+    fn map_item_to_step(
+        &mut self,
+        item: cas_solver_core::strategy_kernels::StrategyExecutionItem,
+    ) -> SolveStep {
+        SolveStep {
+            description: item.description,
+            equation_after: item.equation,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        }
+    }
+
+    fn verify_discrete_solution(&mut self, solution: ExprId) -> bool {
+        verify_solution(
+            self.original_equation,
+            self.original_var,
+            solution,
+            self.simplifier,
         )
     }
 }
@@ -575,35 +616,21 @@ fn try_solve_rational_exponent(
         execute_rational_exponent_rewrite_with_runtime(&mut runtime, eq, var, lhs_has, rhs_has)?
     };
 
-    let mut steps = Vec::new();
-    let solved_rewrite = match solve_rational_exponent_rewrite_with_item(rewrite, |item, new_eq| {
-        if simplifier.collect_steps() {
-            if let Some(item) = item {
-                steps.push(SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-        }
-        solve_with_ctx(new_eq, var, simplifier, ctx)
-    }) {
+    let include_item = simplifier.collect_steps();
+    let mut runtime = EngineRationalExponentRewriteRuntime {
+        simplifier,
+        original_equation: eq,
+        original_var: var,
+        solve_ctx: ctx,
+    };
+    let solved = match solve_rational_exponent_rewrite_pipeline_with_item(
+        rewrite,
+        var,
+        include_item,
+        &mut runtime,
+    ) {
         Ok(solved) => solved,
         Err(e) => return Some(Err(e)),
     };
-
-    // Recursively solve result (this goes through full solve pipeline)
-    let (set, mut sub_steps) = solved_rewrite.solved;
-    steps.append(&mut sub_steps);
-
-    // Verify solutions against original equation (handles extraneous roots)
-    if let SolutionSet::Discrete(sols) = set {
-        let valid_sols = cas_solver_core::solve_analysis::retain_verified_discrete(sols, |sol| {
-            verify_solution(eq, var, sol, simplifier)
-        });
-        Some(Ok((SolutionSet::Discrete(valid_sols), steps)))
-    } else {
-        Some(Ok((set, steps)))
-    }
+    Some(Ok((solved.solution_set, solved.steps)))
 }

@@ -6,7 +6,7 @@
 
 use crate::isolation_utils::contains_var;
 use crate::solve_outcome::{eliminate_fractional_exponent_message, subtract_both_sides_message};
-use cas_ast::{Context, Equation, ExprId, RelOp};
+use cas_ast::{Context, Equation, ExprId, RelOp, SolutionSet};
 
 /// Didactic payload for strategy-level rewrite steps.
 #[derive(Debug, Clone, PartialEq)]
@@ -405,6 +405,65 @@ where
     let item = rewrite.items.first().cloned();
     let solved = solve_rewritten(item, &rewrite.equation)?;
     Ok(RationalExponentSolved { rewrite, solved })
+}
+
+/// Runtime contract for rational-exponent rewrite solve orchestration.
+pub trait RationalExponentRewriteRuntime<E, S> {
+    /// Solve rewritten equation recursively for `var`.
+    fn solve_rewritten(
+        &mut self,
+        equation: &Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<S>), E>;
+    /// Convert one optional rewrite item into a caller step payload.
+    fn map_item_to_step(&mut self, item: StrategyExecutionItem) -> S;
+    /// Verify one discrete candidate against caller policy.
+    fn verify_discrete_solution(&mut self, solution: ExprId) -> bool;
+}
+
+/// Solved result for a rational-exponent rewrite pipeline.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RationalExponentRewriteSolved<S> {
+    pub solution_set: SolutionSet,
+    pub steps: Vec<S>,
+}
+
+/// Execute rational-exponent rewrite solving + optional item dispatch + discrete verification.
+pub fn solve_rational_exponent_rewrite_pipeline_with_item<E, S, R>(
+    rewrite: RationalExponentSolvedRewrite,
+    var: &str,
+    include_item: bool,
+    runtime: &mut R,
+) -> Result<RationalExponentRewriteSolved<S>, E>
+where
+    R: RationalExponentRewriteRuntime<E, S>,
+{
+    let solved_rewrite = solve_rational_exponent_rewrite_with_item(rewrite, |item, new_eq| {
+        let mut steps = Vec::new();
+        if include_item {
+            if let Some(item) = item {
+                steps.push(runtime.map_item_to_step(item));
+            }
+        }
+        let (set, mut sub_steps) = runtime.solve_rewritten(new_eq, var)?;
+        steps.append(&mut sub_steps);
+        Ok((set, steps))
+    })?;
+
+    let (set, steps) = solved_rewrite.solved;
+    let solution_set = if let SolutionSet::Discrete(sols) = set {
+        SolutionSet::Discrete(crate::solve_analysis::retain_verified_discrete(
+            sols,
+            |sol| runtime.verify_discrete_solution(sol),
+        ))
+    } else {
+        set
+    };
+
+    Ok(RationalExponentRewriteSolved {
+        solution_set,
+        steps,
+    })
 }
 
 #[cfg(test)]

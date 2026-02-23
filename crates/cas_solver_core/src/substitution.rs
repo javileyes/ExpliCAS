@@ -338,7 +338,11 @@ pub trait SubstitutionStrategyRuntime<E, S> {
     /// Render one expression for didactic descriptions.
     fn render_expr(&mut self, expr: ExprId) -> String;
     /// Solve one equation for the requested variable.
-    fn solve_equation(&mut self, equation: &Equation, var: &str) -> Result<(SolutionSet, Vec<S>), E>;
+    fn solve_equation(
+        &mut self,
+        equation: &Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<S>), E>;
     /// Materialize one engine-specific step payload from description + equation.
     fn map_step(&mut self, description: String, equation_after: Equation) -> S;
 }
@@ -361,25 +365,25 @@ pub fn solve_exponential_substitution_strategy_with_items<E, S, R>(
 where
     R: SubstitutionStrategyRuntime<E, S>,
 {
-    let intro_execution = build_exponential_substitution_execution_with(
-        equation_before,
-        rewrite_plan,
-        |id| runtime.render_expr(id),
-    );
+    let intro_execution =
+        build_exponential_substitution_execution_with(equation_before, rewrite_plan, |id| {
+            runtime.render_expr(id)
+        });
 
-    let solved_intro = solve_exponential_substitution_with_items(intro_execution, |items, new_eq| {
-        let mut steps = Vec::new();
-        if include_didactic_items {
-            steps.extend(
-                items
-                    .into_iter()
-                    .map(|item| runtime.map_step(item.description, item.equation)),
-            );
-        }
-        let (u_solutions, mut u_steps) = runtime.solve_equation(new_eq, substitution_var)?;
-        steps.append(&mut u_steps);
-        Ok((u_solutions, steps))
-    })?;
+    let solved_intro =
+        solve_exponential_substitution_with_items(intro_execution, |items, new_eq| {
+            let mut steps = Vec::new();
+            if include_didactic_items {
+                steps.extend(
+                    items
+                        .into_iter()
+                        .map(|item| runtime.map_step(item.description, item.equation)),
+                );
+            }
+            let (u_solutions, mut u_steps) = runtime.solve_equation(new_eq, substitution_var)?;
+            steps.append(&mut u_steps);
+            Ok((u_solutions, steps))
+        })?;
 
     let (u_solutions, mut steps) = solved_intro.solved;
 
@@ -391,17 +395,19 @@ where
                 include_didactic_items,
                 |id| runtime.render_expr(id),
             );
-            let solved_back = solve_back_substitution_plan_with_items(back_plan, |item, sub_eq| {
-                let mut local_steps = Vec::new();
-                if include_didactic_items {
-                    if let Some(item) = item {
-                        local_steps.push(runtime.map_step(item.description, item.equation));
+            let solved_back =
+                solve_back_substitution_plan_with_items(back_plan, |item, sub_eq| {
+                    let mut local_steps = Vec::new();
+                    if include_didactic_items {
+                        if let Some(item) = item {
+                            local_steps.push(runtime.map_step(item.description, item.equation));
+                        }
                     }
-                }
-                let (x_solution_set, mut x_steps) = runtime.solve_equation(sub_eq, target_var)?;
-                local_steps.append(&mut x_steps);
-                Ok((x_solution_set, local_steps))
-            })?;
+                    let (x_solution_set, mut x_steps) =
+                        runtime.solve_equation(sub_eq, target_var)?;
+                    local_steps.append(&mut x_steps);
+                    Ok((x_solution_set, local_steps))
+                })?;
 
             let mut final_solutions = Vec::new();
             for (x_sol, mut x_steps) in solved_back.solved {
