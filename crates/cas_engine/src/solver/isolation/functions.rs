@@ -16,7 +16,7 @@ use cas_solver_core::log_isolation::{
 use cas_solver_core::solve_outcome::{
     build_abs_split_execution_with, finalize_abs_split_solution_set,
     materialize_abs_split_execution, plan_abs_isolation, solve_abs_isolation_plan_with,
-    solve_abs_split_execution_with_items, AbsIsolationSolved,
+    solve_abs_split_execution_pipeline_with_items, AbsIsolationSolved,
 };
 
 use super::{isolate, prepend_steps};
@@ -146,7 +146,8 @@ fn isolate_abs(
             ctx,
         ),
         AbsIsolationSolved::Split((positive, negative)) => {
-            let split_execution = if simplifier.collect_steps() {
+            let include_items = simplifier.collect_steps();
+            let split_execution = if include_items {
                 build_abs_split_execution_with(positive, negative, arg, |id| {
                     format!(
                         "{}",
@@ -159,18 +160,12 @@ fn isolate_abs(
             } else {
                 materialize_abs_split_execution(positive, negative)
             };
-            let solved =
-                solve_abs_split_execution_with_items(&split_execution, |item, equation| {
-                    let mut case_steps = steps.clone();
-                    if let Some(item) = item {
-                        case_steps.push(SolveStep {
-                            description: item.description().to_string(),
-                            equation_after: item.equation,
-                            importance: crate::step::ImportanceLevel::Medium,
-                            substeps: vec![],
-                        });
-                    }
-                    let results = isolate(
+            let solved = solve_abs_split_execution_pipeline_with_items(
+                &split_execution,
+                include_items,
+                &steps,
+                |equation| {
+                    isolate(
                         equation.lhs,
                         equation.rhs,
                         equation.op.clone(),
@@ -178,9 +173,15 @@ fn isolate_abs(
                         simplifier,
                         opts,
                         ctx,
-                    )?;
-                    prepend_steps(results, case_steps)
-                })?;
+                    )
+                },
+                |item| SolveStep {
+                    description: item.description().to_string(),
+                    equation_after: item.equation,
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                },
+            )?;
 
             let final_set = finalize_abs_split_solution_set(
                 &simplifier.context,

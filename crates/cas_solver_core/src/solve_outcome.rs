@@ -4710,6 +4710,33 @@ where
     })
 }
 
+/// Solve absolute-value split branches while prepending shared branch steps and
+/// optionally mapping per-branch didactic items.
+pub fn solve_abs_split_execution_pipeline_with_items<E, S, FSolveBranch, FStep>(
+    execution: &AbsSplitExecutionPlan,
+    include_items: bool,
+    branch_prefix_steps: &[S],
+    mut solve_branch: FSolveBranch,
+    mut map_item_to_step: FStep,
+) -> Result<AbsSplitExecutionSolved<S>, E>
+where
+    S: Clone,
+    FSolveBranch: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(AbsSplitExecutionItem) -> S,
+{
+    solve_abs_split_execution_with_items(execution, |item, equation| {
+        let mut case_steps = branch_prefix_steps.to_vec();
+        if include_items {
+            if let Some(item) = item {
+                case_steps.push(map_item_to_step(item));
+            }
+        }
+        let (solution_set, sub_steps) = solve_branch(equation)?;
+        case_steps.extend(sub_steps);
+        Ok((solution_set, case_steps))
+    })
+}
+
 /// For `|A| = rhs`, attach the soundness guard `rhs >= 0` when
 /// `rhs` depends on the solve variable.
 pub fn guard_abs_solution_with_nonnegative_rhs(
@@ -5510,6 +5537,83 @@ mod tests {
         assert_eq!(solved.steps, vec![1u8, 1u8]);
         assert!(matches!(solved.positive_set, SolutionSet::Discrete(_)));
         assert!(matches!(solved.negative_set, SolutionSet::Discrete(_)));
+    }
+
+    #[test]
+    fn solve_abs_split_execution_pipeline_with_items_prepends_prefix_and_item_steps() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let neg_two = ctx.num(-2);
+        let execution = build_abs_split_execution_with(
+            Equation {
+                lhs: x,
+                rhs: two,
+                op: RelOp::Eq,
+            },
+            Equation {
+                lhs: x,
+                rhs: neg_two,
+                op: RelOp::Eq,
+            },
+            x,
+            |_| "x".to_string(),
+        );
+
+        let solved = solve_abs_split_execution_pipeline_with_items(
+            &execution,
+            true,
+            &["prefix".to_string()],
+            |equation| {
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![equation.rhs]),
+                    vec!["branch".to_string()],
+                ))
+            },
+            |item| item.description,
+        )
+        .expect("pipeline should solve");
+
+        assert!(matches!(solved.positive_set, SolutionSet::Discrete(_)));
+        assert!(matches!(solved.negative_set, SolutionSet::Discrete(_)));
+        assert_eq!(solved.steps[0], "prefix");
+        assert!(solved.steps[1].starts_with("Split absolute value (Case 1)"));
+        assert_eq!(solved.steps[2], "branch");
+        assert_eq!(solved.steps[3], "prefix");
+        assert!(solved.steps[4].starts_with("Split absolute value (Case 2)"));
+        assert_eq!(solved.steps[5], "branch");
+    }
+
+    #[test]
+    fn solve_abs_split_execution_pipeline_with_items_omits_item_steps_when_disabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let execution = build_abs_split_execution_with(
+            Equation {
+                lhs: x,
+                rhs: two,
+                op: RelOp::Eq,
+            },
+            Equation {
+                lhs: x,
+                rhs: two,
+                op: RelOp::Eq,
+            },
+            x,
+            |_| "x".to_string(),
+        );
+
+        let solved = solve_abs_split_execution_pipeline_with_items(
+            &execution,
+            false,
+            &[0u8],
+            |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![two]), vec![1u8])),
+            |_item| 9u8,
+        )
+        .expect("pipeline should solve");
+
+        assert_eq!(solved.steps, vec![0u8, 1u8, 0u8, 1u8]);
     }
 
     #[test]
