@@ -178,6 +178,15 @@ pub fn collect_pow_exponent_shortcut_execution_items(
     }
 }
 
+/// Return the first exponent-shortcut execution item, if any.
+pub fn first_pow_exponent_shortcut_execution_item(
+    action: &PowExponentShortcutEngineAction,
+) -> Option<PowExponentShortcutExecutionItem> {
+    collect_pow_exponent_shortcut_execution_items(action)
+        .into_iter()
+        .next()
+}
+
 /// Solved outcome for exponent-shortcut action execution.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PowExponentShortcutSolved<T> {
@@ -248,6 +257,15 @@ pub fn collect_power_base_one_shortcut_execution_items(
     outcome.items.clone()
 }
 
+/// Return the first base-one shortcut execution item, if any.
+pub fn first_power_base_one_shortcut_execution_item(
+    outcome: &PowerBaseOneShortcutOutcome,
+) -> Option<PowerBaseOneShortcutExecutionItem> {
+    collect_power_base_one_shortcut_execution_items(outcome)
+        .into_iter()
+        .next()
+}
+
 /// Didactic payload for logarithmic isolation of exponent equations.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowExponentLogIsolationStep {
@@ -295,6 +313,15 @@ pub fn collect_pow_exponent_log_isolation_execution_items(
     plan: &PowExponentLogIsolationRewritePlan,
 ) -> Vec<PowExponentLogIsolationExecutionItem> {
     plan.items.clone()
+}
+
+/// Return the first logarithmic-isolation execution item, if any.
+pub fn first_pow_exponent_log_isolation_execution_item(
+    plan: &PowExponentLogIsolationRewritePlan,
+) -> Option<PowExponentLogIsolationExecutionItem> {
+    collect_pow_exponent_log_isolation_execution_items(plan)
+        .into_iter()
+        .next()
 }
 
 /// Execution plan for guarded logarithmic isolation in exponent equations.
@@ -581,6 +608,15 @@ pub fn collect_pow_base_isolation_execution_items(
         PowBaseIsolationEngineAction::ReturnSolutionSet { items, .. }
         | PowBaseIsolationEngineAction::IsolateBase { items, .. } => items.clone(),
     }
+}
+
+/// Return the first base-isolation execution item, if any.
+pub fn first_pow_base_isolation_execution_item(
+    action: &PowBaseIsolationEngineAction,
+) -> Option<PowBaseIsolationExecutionItem> {
+    collect_pow_base_isolation_execution_items(action)
+        .into_iter()
+        .next()
 }
 
 /// Solved outcome for base-isolation action execution.
@@ -4086,6 +4122,22 @@ mod tests {
     }
 
     #[test]
+    fn first_power_base_one_shortcut_execution_item_returns_single_item() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rhs = ctx.num(2);
+        let outcome = resolve_power_base_one_shortcut_with(true, false, x, rhs, RelOp::Eq, |_| {
+            "2".to_string()
+        })
+        .expect("shortcut should apply");
+
+        let item = first_power_base_one_shortcut_execution_item(&outcome)
+            .expect("expected one shortcut item");
+        assert_eq!(item.equation, outcome.items[0].equation);
+        assert_eq!(item.description, outcome.items[0].description);
+    }
+
+    #[test]
     fn abs_equality_precheck_negative_is_empty() {
         assert_eq!(
             abs_equality_precheck(NumericSign::Negative),
@@ -5981,6 +6033,23 @@ mod tests {
     }
 
     #[test]
+    fn first_pow_base_isolation_execution_item_returns_single_item() {
+        let mut ctx = Context::new();
+        let base = ctx.var("x");
+        let exponent = ctx.num(2);
+        let rhs = ctx.num(-1);
+        let plan =
+            plan_pow_base_isolation(&mut ctx, base, exponent, rhs, RelOp::Eq, true, true, false);
+        let action = map_pow_base_isolation_plan_with(plan, base, exponent, rhs, RelOp::Eq, |_| {
+            "expr".to_string()
+        });
+
+        let item = first_pow_base_isolation_execution_item(&action)
+            .expect("expected one base isolation item");
+        assert!(item.description.contains("Even power cannot be negative"));
+    }
+
+    #[test]
     fn collect_pow_exponent_shortcut_didactic_steps_handles_continue_and_isolate() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -6043,6 +6112,38 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, items[0].equation);
         assert!(items[0].description.contains("expr"));
+    }
+
+    #[test]
+    fn first_pow_exponent_shortcut_execution_item_handles_continue_and_isolate() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let n = ctx.var("n");
+
+        assert!(first_pow_exponent_shortcut_execution_item(
+            &PowExponentShortcutEngineAction::Continue
+        )
+        .is_none());
+
+        let action = map_pow_exponent_shortcut_with(
+            PowExponentShortcutExecutionPlan::IsolateExponent {
+                rhs: n,
+                op: RelOp::Eq,
+                narrative: PowExponentShortcutNarrative::EqualPowBases,
+                rhs_exponent: Some(n),
+            },
+            x,
+            base,
+            rhs,
+            RelOp::Eq,
+            "x",
+            |_| "expr".to_string(),
+        );
+        let item = first_pow_exponent_shortcut_execution_item(&action)
+            .expect("expected one exponent shortcut item");
+        assert!(item.description.contains("expr"));
     }
 
     #[test]
@@ -7073,6 +7174,28 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, plan.equation);
         assert_eq!(items[0].description, plan.items[0].description);
+    }
+
+    #[test]
+    fn first_pow_exponent_log_isolation_execution_item_returns_single_item() {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let plan = plan_pow_exponent_log_isolation_step_with(
+            &mut ctx,
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            None,
+            |_, _| "rendered(a)".to_string(),
+        );
+
+        let item = first_pow_exponent_log_isolation_execution_item(&plan)
+            .expect("expected one log isolation item");
+        assert_eq!(item.equation, plan.equation);
+        assert_eq!(item.description, plan.items[0].description);
     }
 
     #[test]

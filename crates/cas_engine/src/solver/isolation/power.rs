@@ -6,10 +6,10 @@ use cas_solver_core::isolation_utils::{contains_var, is_numeric_zero};
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
     build_pow_base_isolation_action_with, build_terminal_outcome_item,
-    collect_pow_base_isolation_execution_items, collect_pow_exponent_log_isolation_execution_items,
-    collect_pow_exponent_shortcut_execution_items, collect_power_base_one_shortcut_execution_items,
     collect_term_isolation_rewrite_execution_items, execute_pow_exponent_log_unsupported_with,
-    execute_pow_exponent_shortcut_with_runtime, plan_pow_exponent_log_isolation_step_with,
+    execute_pow_exponent_shortcut_with_runtime, first_pow_base_isolation_execution_item,
+    first_pow_exponent_log_isolation_execution_item, first_pow_exponent_shortcut_execution_item,
+    first_power_base_one_shortcut_execution_item, plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
     plan_solve_tactic_normalization_step, resolve_log_terminal_outcome,
     resolve_power_base_one_shortcut_for_pow_with, solve_pow_base_isolation_action_with,
@@ -93,18 +93,19 @@ fn isolate_pow_base(
         build_pow_base_isolation_action_with(&mut simplifier.context, b, e, rhs, op, |ctx, id| {
             format!("{}", cas_formatter::DisplayExpr { context: ctx, id })
         });
-    let execution_items = simplifier
+    let execution_item = simplifier
         .collect_steps()
-        .then(|| collect_pow_base_isolation_execution_items(&action));
+        .then(|| first_pow_base_isolation_execution_item(&action))
+        .flatten();
     let solved_base =
         solve_pow_base_isolation_action_with(action, |lhs_after, target_rhs, target_op| {
             isolate(lhs_after, target_rhs, target_op, var, simplifier, opts, ctx)
         })?;
 
-    if let Some(item) = execution_items.as_ref().and_then(|all| all.first()) {
+    if let Some(item) = execution_item {
         steps.push(SolveStep {
             description: item.description().to_string(),
-            equation_after: item.equation.clone(),
+            equation_after: item.equation,
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });
@@ -149,9 +150,10 @@ fn isolate_pow_exponent(
             opts.budget.max_branches >= 2,
         )
     };
-    let shortcut_items = simplifier
+    let shortcut_item = simplifier
         .collect_steps()
-        .then(|| collect_pow_exponent_shortcut_execution_items(&shortcut_engine_action));
+        .then(|| first_pow_exponent_shortcut_execution_item(&shortcut_engine_action))
+        .flatten();
     let shortcut_solved = solve_pow_exponent_shortcut_action_with(
         shortcut_engine_action,
         |target_rhs, target_op| isolate(e, target_rhs, target_op, var, simplifier, opts, ctx),
@@ -160,7 +162,7 @@ fn isolate_pow_exponent(
     match shortcut_solved {
         PowExponentShortcutSolved::Continue => {}
         PowExponentShortcutSolved::Isolated(results) => {
-            if let Some(item) = shortcut_items.as_ref().and_then(|all| all.first()) {
+            if let Some(item) = shortcut_item.as_ref() {
                 steps.push(SolveStep {
                     description: item.description().to_string(),
                     equation_after: item.equation.clone(),
@@ -171,7 +173,7 @@ fn isolate_pow_exponent(
             return prepend_steps(results, steps);
         }
         PowExponentShortcutSolved::ReturnedSolutionSet(solutions) => {
-            if let Some(item) = shortcut_items.as_ref().and_then(|all| all.first()) {
+            if let Some(item) = shortcut_item.as_ref() {
                 steps.push(SolveStep {
                     description: item.description().to_string(),
                     equation_after: item.equation.clone(),
@@ -203,13 +205,14 @@ fn isolate_pow_exponent(
         op.clone(),
         |ctx, id| format!("{}", cas_formatter::DisplayExpr { context: ctx, id }),
     ) {
-        let execution_items = simplifier
+        let execution_item = simplifier
             .collect_steps()
-            .then(|| collect_power_base_one_shortcut_execution_items(&outcome));
-        if let Some(item) = execution_items.as_ref().and_then(|all| all.first()) {
+            .then(|| first_power_base_one_shortcut_execution_item(&outcome))
+            .flatten();
+        if let Some(item) = execution_item {
             steps.push(SolveStep {
                 description: item.description().to_string(),
-                equation_after: item.equation.clone(),
+                equation_after: item.equation,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
@@ -447,13 +450,14 @@ fn isolate_pow_exponent(
             ctx,
         )
     })?;
-    let log_items = simplifier
+    let log_item = simplifier
         .collect_steps()
-        .then(|| collect_pow_exponent_log_isolation_execution_items(&solved_log.rewrite));
-    if let Some(item) = log_items.as_ref().and_then(|all| all.first()) {
+        .then(|| first_pow_exponent_log_isolation_execution_item(&solved_log.rewrite))
+        .flatten();
+    if let Some(item) = log_item {
         steps.push(SolveStep {
             description: item.description().to_string(),
-            equation_after: item.equation.clone(),
+            equation_after: item.equation,
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
         });
