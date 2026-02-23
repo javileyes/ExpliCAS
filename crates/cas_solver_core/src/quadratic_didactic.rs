@@ -254,6 +254,15 @@ pub fn collect_factorized_zero_product_entry_execution_items(
         .collect()
 }
 
+/// Return the first factorized-entry execution item, if present.
+pub fn first_factorized_zero_product_entry_execution_item(
+    execution: &FactorizedZeroProductExecutionPlan,
+) -> Option<QuadraticExecutionItem> {
+    collect_factorized_zero_product_entry_execution_items(execution)
+        .into_iter()
+        .next()
+}
+
 /// Build the top-level "quadratic formula" strategy step payload.
 pub fn build_quadratic_main_step(equation_after: Equation) -> QuadraticDidacticStep {
     QuadraticDidacticStep {
@@ -1041,6 +1050,29 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].equation, execution.entry.equation_after);
         assert_eq!(items[0].description, execution.entry.description);
+    }
+
+    #[test]
+    fn first_factorized_zero_product_entry_execution_item_returns_single_item() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_minus_one = ctx.add(Expr::Sub(x, one));
+        let factored_expr = ctx.add(Expr::Mul(x, x_minus_one));
+        let zero = ctx.num(0);
+        let execution = build_factorized_zero_product_execution_with(
+            &ctx,
+            factored_expr,
+            &[x, x_minus_one],
+            "x",
+            zero,
+            |_| "f".to_string(),
+        );
+
+        let item = first_factorized_zero_product_entry_execution_item(&execution)
+            .expect("expected one factorized-entry item");
+        assert_eq!(item.equation, execution.entry.equation_after);
+        assert_eq!(item.description, execution.entry.description);
     }
 
     #[test]

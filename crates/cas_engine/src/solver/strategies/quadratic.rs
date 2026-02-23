@@ -7,9 +7,9 @@ use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{is_numeric_zero, split_zero_product_factors};
 use cas_solver_core::quadratic_didactic::{
     aggregate_zero_product_factor_solution_sets, build_quadratic_main_with_substeps_execution_with,
-    collect_factorized_zero_product_entry_execution_items,
     collect_zero_product_factor_execution_items, finalize_zero_product_factor_solution_set,
-    simplify_quadratic_substep_execution_items_with, ZeroProductFactorSolutionAggregate,
+    first_factorized_zero_product_entry_execution_item, simplify_quadratic_substep_execution_items_with,
+    ZeroProductFactorSolutionAggregate,
 };
 use cas_solver_core::quadratic_formula::{
     discriminant, discriminant_expr, roots_from_a_b_and_sqrt, roots_from_a_b_delta, sqrt_expr,
@@ -68,8 +68,8 @@ impl SolverStrategy for QuadraticStrategy {
 
             // We found factors.
             if simplifier.collect_steps() {
-                for item in
-                    collect_factorized_zero_product_entry_execution_items(&factorized_execution)
+                if let Some(item) =
+                    first_factorized_zero_product_entry_execution_item(&factorized_execution)
                 {
                     steps.push(SolveStep {
                         description: item.description().to_string(),
