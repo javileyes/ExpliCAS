@@ -188,6 +188,11 @@ pub fn collect_unwrap_execution_items(execution: &UnwrapExecutionPlan) -> Vec<Un
     execution.items.clone()
 }
 
+/// Return the first unwrap execution item, if any.
+pub fn first_unwrap_execution_item(execution: &UnwrapExecutionPlan) -> Option<UnwrapExecutionItem> {
+    collect_unwrap_execution_items(execution).into_iter().next()
+}
+
 /// Collect log-linear assumption records for engine-side reporting.
 pub fn collect_log_linear_assumption_records(
     execution: &UnwrapExecutionPlan,
@@ -247,6 +252,33 @@ where
     }
     let rewritten_equation = unwrap_rewritten_equation(&execution);
     let solved = solve_equation(&rewritten_equation)?;
+    Ok(UnwrapSolvedExecution {
+        execution,
+        assumption_records,
+        rewritten_equation,
+        solved,
+    })
+}
+
+/// Execute a planned unwrap rewrite while passing the aligned optional
+/// execution item to the solve callback.
+pub fn solve_unwrap_execution_with_item<E, T, FAssumption, FSolve>(
+    execution: UnwrapExecutionPlan,
+    other_side: ExprId,
+    mut on_assumption: FAssumption,
+    mut solve_equation: FSolve,
+) -> Result<UnwrapSolvedExecution<T>, E>
+where
+    FAssumption: FnMut(LogLinearAssumptionRecord),
+    FSolve: FnMut(Option<UnwrapExecutionItem>, &Equation) -> Result<T, E>,
+{
+    let assumption_records = collect_log_linear_assumption_records(&execution, other_side);
+    for record in assumption_records.iter().copied() {
+        on_assumption(record);
+    }
+    let rewritten_equation = unwrap_rewritten_equation(&execution);
+    let item = first_unwrap_execution_item(&execution);
+    let solved = solve_equation(item, &rewritten_equation)?;
     Ok(UnwrapSolvedExecution {
         execution,
         assumption_records,
@@ -519,6 +551,35 @@ mod tests {
     }
 
     #[test]
+    fn first_unwrap_execution_item_returns_single_item() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let execution = UnwrapExecutionPlan {
+            equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            description: "unwrap".to_string(),
+            assumptions: vec![],
+            log_linear_base: None,
+            items: vec![UnwrapExecutionItem {
+                equation: Equation {
+                    lhs: x,
+                    rhs: y,
+                    op: RelOp::Eq,
+                },
+                description: "unwrap".to_string(),
+            }],
+        };
+
+        let item = first_unwrap_execution_item(&execution).expect("expected one unwrap item");
+        assert_eq!(item.equation, execution.equation);
+        assert_eq!(item.description, "unwrap");
+    }
+
+    #[test]
     fn collect_log_linear_assumption_records_returns_records_when_present() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -679,6 +740,59 @@ mod tests {
         assert_eq!(seen[0].other_side, y);
         assert_eq!(solved.solved, "ok");
         assert_eq!(solved.assumption_records, seen);
+    }
+
+    #[test]
+    fn solve_unwrap_execution_with_item_passes_first_item_and_solves_last_equation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let execution = UnwrapExecutionPlan {
+            equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            description: "unwrap".to_string(),
+            assumptions: vec![LogAssumption::PositiveBase],
+            log_linear_base: Some(x),
+            items: vec![
+                UnwrapExecutionItem {
+                    equation: Equation {
+                        lhs: y,
+                        rhs: z,
+                        op: RelOp::Eq,
+                    },
+                    description: "first".to_string(),
+                },
+                UnwrapExecutionItem {
+                    equation: Equation {
+                        lhs: z,
+                        rhs: x,
+                        op: RelOp::Eq,
+                    },
+                    description: "last".to_string(),
+                },
+            ],
+        };
+
+        let mut seen_item = None;
+        let solved = solve_unwrap_execution_with_item(
+            execution,
+            y,
+            |_record| {},
+            |item, equation| {
+                seen_item = item.map(|entry| entry.description);
+                assert_eq!(equation.lhs, z);
+                assert_eq!(equation.rhs, x);
+                Ok::<_, ()>("ok")
+            },
+        )
+        .expect("solve should succeed");
+
+        assert_eq!(seen_item, Some("first".to_string()));
+        assert_eq!(solved.solved, "ok");
     }
 
     #[test]

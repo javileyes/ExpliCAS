@@ -16,8 +16,8 @@ use cas_solver_core::strategy_kernels::{
     StrategyKernelRuntime,
 };
 use cas_solver_core::unwrap_plan::{
-    collect_unwrap_execution_items, plan_unwrap_execution_with, solve_unwrap_execution_with,
-    UnwrapExecutionPlan, UnwrapExecutionRequest,
+    plan_unwrap_execution_with, solve_unwrap_execution_with_item, UnwrapExecutionPlan,
+    UnwrapExecutionRequest,
 };
 
 pub struct IsolationStrategy;
@@ -139,13 +139,17 @@ fn run_unwrap_execution(
     ctx: &SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let mut assumption_records = Vec::new();
-    let solved = solve_unwrap_execution_with(
+    let mut step_item = None;
+    let solved = solve_unwrap_execution_with_item(
         execution,
         other_side,
         |record| {
             assumption_records.push(record);
         },
-        |rewritten_eq| solve_with_ctx(rewritten_eq, var, simplifier, ctx),
+        |item, rewritten_eq| {
+            step_item = item;
+            solve_with_ctx(rewritten_eq, var, simplifier, ctx)
+        },
     )?;
 
     for record in assumption_records {
@@ -160,7 +164,7 @@ fn run_unwrap_execution(
 
     let mut steps = Vec::new();
     if simplifier.collect_steps() {
-        for item in collect_unwrap_execution_items(&solved.execution) {
+        if let Some(item) = step_item {
             steps.push(SolveStep {
                 description: item.description().to_string(),
                 equation_after: item.equation,
