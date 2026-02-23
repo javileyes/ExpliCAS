@@ -24,8 +24,7 @@ use cas_solver_core::solve_outcome::{
     plan_div_numerator_isolation_step_with, plan_division_denominator,
     plan_division_denominator_sign_split, plan_isolated_denominator_sign_split,
     plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split,
-    plan_sub_minuend_isolation_step_with, plan_sub_subtrahend_isolation_step_with,
-    solve_division_denominator_execution_with_items,
+    plan_sub_isolation_step_with, solve_division_denominator_execution_with_items,
     solve_division_denominator_sign_split_cases_with_items,
     solve_isolated_denominator_sign_split_cases_with_items,
     solve_product_zero_inequality_cases_with, solve_term_isolation_rewrite_with, AddIsolationRoute,
@@ -171,73 +170,39 @@ pub(super) fn isolate_sub(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let sub_route = derive_sub_isolation_route(&simplifier.context, l, var);
-    if matches!(sub_route, SubIsolationRoute::Minuend) {
-        // A - B = RHS -> A = RHS + B
-        let moved_desc = format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: &simplifier.context,
-                id: r
-            }
-        );
-        let plan = plan_sub_minuend_isolation_step_with(
-            &mut simplifier.context,
-            l,
-            r,
-            rhs,
-            op.clone(),
-            |_| moved_desc.clone(),
-        );
-        let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
-            let (sim_rhs, _) = simplifier.simplify(equation.rhs);
-            isolate(
-                equation.lhs,
-                sim_rhs,
-                equation.op.clone(),
-                var,
-                simplifier,
-                opts,
-                ctx,
-            )
-        })?;
-        append_term_isolation_rewrite_steps(
-            &mut steps,
-            simplifier.collect_steps(),
-            &solved_rewrite.rewrite,
-        );
-        prepend_steps(solved_rewrite.solved, steps)
+    let moved = if matches!(sub_route, SubIsolationRoute::Minuend) {
+        r
     } else {
-        // A - B = RHS -> B = A - RHS (multiply by -1 flips inequality)
-        let moved_desc = format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: &simplifier.context,
-                id: l
-            }
-        );
-        let plan =
-            plan_sub_subtrahend_isolation_step_with(&mut simplifier.context, l, r, rhs, op, |_| {
-                moved_desc.clone()
-            });
-        let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
-            let (sim_rhs, _) = simplifier.simplify(equation.rhs);
-            isolate(
-                equation.lhs,
-                sim_rhs,
-                equation.op.clone(),
-                var,
-                simplifier,
-                opts,
-                ctx,
-            )
-        })?;
-        append_term_isolation_rewrite_steps(
-            &mut steps,
-            simplifier.collect_steps(),
-            &solved_rewrite.rewrite,
-        );
-        prepend_steps(solved_rewrite.solved, steps)
-    }
+        l
+    };
+    let moved_desc = format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: &simplifier.context,
+            id: moved
+        }
+    );
+    let plan = plan_sub_isolation_step_with(&mut simplifier.context, l, r, rhs, op, var, |_| {
+        moved_desc.clone()
+    });
+    let solved_rewrite = solve_term_isolation_rewrite_with(plan, |equation| {
+        let (sim_rhs, _) = simplifier.simplify(equation.rhs);
+        isolate(
+            equation.lhs,
+            sim_rhs,
+            equation.op.clone(),
+            var,
+            simplifier,
+            opts,
+            ctx,
+        )
+    })?;
+    append_term_isolation_rewrite_steps(
+        &mut steps,
+        simplifier.collect_steps(),
+        &solved_rewrite.rewrite,
+    );
+    prepend_steps(solved_rewrite.solved, steps)
 }
 
 /// Handle isolation for `Mul(l, r)`: `A * B = RHS`

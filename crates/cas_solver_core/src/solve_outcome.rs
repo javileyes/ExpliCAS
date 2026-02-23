@@ -2216,6 +2216,29 @@ where
     build_term_isolation_rewrite_plan_from_item(equation, item)
 }
 
+/// Plan subtraction isolation `(l - r) = rhs` using variable-position routing.
+pub fn plan_sub_isolation_step_with<F>(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    render_expr: F,
+) -> TermIsolationRewritePlan
+where
+    F: FnMut(ExprId) -> String,
+{
+    match derive_sub_isolation_route(ctx, left, var) {
+        SubIsolationRoute::Minuend => {
+            plan_sub_minuend_isolation_step_with(ctx, left, right, rhs, op, render_expr)
+        }
+        SubIsolationRoute::Subtrahend => {
+            plan_sub_subtrahend_isolation_step_with(ctx, left, right, rhs, op, render_expr)
+        }
+    }
+}
+
 /// Plan multiplicative-factor isolation and corresponding didactic step.
 pub fn plan_mul_factor_isolation_step_with<F>(
     ctx: &mut Context,
@@ -6771,6 +6794,20 @@ mod tests {
         assert_eq!(subtrahend_plan.equation.op, RelOp::Gt);
         assert_eq!(
             subtrahend_plan.items[0].description,
+            "Move x and multiply by -1 (flips inequality)"
+        );
+
+        let routed_sub_plan =
+            plan_sub_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, "x", |_| "y".to_string());
+        assert_eq!(routed_sub_plan.equation.lhs, x);
+        assert_eq!(routed_sub_plan.items[0].description, "Add y to both sides");
+
+        let routed_subtrahend_plan =
+            plan_sub_isolation_step_with(&mut ctx, x, y, z, RelOp::Lt, "y", |_| "x".to_string());
+        assert_eq!(routed_subtrahend_plan.equation.lhs, y);
+        assert_eq!(routed_subtrahend_plan.equation.op, RelOp::Gt);
+        assert_eq!(
+            routed_subtrahend_plan.items[0].description,
             "Move x and multiply by -1 (flips inequality)"
         );
 
