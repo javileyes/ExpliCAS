@@ -377,7 +377,7 @@ fn isolate_pow_exponent(
             }
             PowExponentLogUnsupportedSolvedExecution::Guarded {
                 blocked_hints,
-                rewrite_items,
+                rewrite_item,
                 followup_item,
                 solutions,
             } => {
@@ -398,10 +398,10 @@ fn isolate_pow_exponent(
                 }
 
                 if simplifier.collect_steps() {
-                    if let Some(item) = rewrite_items.first() {
+                    if let Some(item) = rewrite_item {
                         steps.push(SolveStep {
                             description: item.description().to_string(),
-                            equation_after: item.equation.clone(),
+                            equation_after: item.equation,
                             importance: crate::step::ImportanceLevel::Medium,
                             substeps: vec![],
                         });

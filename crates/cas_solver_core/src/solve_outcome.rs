@@ -429,7 +429,7 @@ pub enum PowExponentLogUnsupportedSolvedExecution {
     },
     Guarded {
         blocked_hints: Vec<LogBlockedHintRecord>,
-        rewrite_items: Vec<PowExponentLogIsolationExecutionItem>,
+        rewrite_item: Option<PowExponentLogIsolationExecutionItem>,
         followup_item: TermIsolationExecutionItem,
         solutions: SolutionSet,
     },
@@ -2583,7 +2583,7 @@ where
                 guarded_or_residual(Some(guard), guarded_execution.guarded_solutions, residual);
             PowExponentLogUnsupportedSolvedExecution::Guarded {
                 blocked_hints,
-                rewrite_items: collect_pow_exponent_log_isolation_execution_items(
+                rewrite_item: first_pow_exponent_log_isolation_execution_item(
                     &guarded_execution.rewrite,
                 ),
                 followup_item: guarded_execution.followup,
@@ -5098,12 +5098,12 @@ mod tests {
         match out {
             PowExponentLogUnsupportedSolvedExecution::Guarded {
                 blocked_hints,
-                rewrite_items,
+                rewrite_item,
                 followup_item,
                 solutions,
             } => {
                 assert!(blocked_hints.is_empty());
-                assert_eq!(rewrite_items.len(), 1);
+                assert!(rewrite_item.is_some());
                 assert_eq!(followup_item.description(), "Conditional solution: a > 0");
                 assert!(matches!(solutions, SolutionSet::Conditional(_)));
             }
