@@ -14,12 +14,10 @@ use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
-use cas_ast::{Equation, Expr, RelOp, SolutionSet};
+use cas_ast::{Equation, ExprId, SolutionSet};
 use cas_solver_core::rational_roots::{
-    plan_rational_roots_step, solve_rational_roots_step_pipeline_with_item,
-    NumericPolynomialSolveOutcome,
+    solve_rational_roots_strategy_with_runtime_and_item, RationalRootsStrategyRuntime,
 };
-use cas_solver_core::solution_set::sort_and_dedup_exprs;
 
 /// Maximum number of candidate rational roots to try before bailing.
 /// Prevents combinatorial blowup on polynomials with large leading/constant coefficients.
@@ -29,6 +27,25 @@ const MAX_CANDIDATES: usize = 200;
 const MAX_DEGREE: usize = 10;
 
 pub struct RationalRootsStrategy;
+
+struct EngineRationalRootsRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+}
+
+impl RationalRootsStrategyRuntime for EngineRationalRootsRuntime<'_> {
+    fn context(&mut self) -> &mut cas_ast::Context {
+        &mut self.simplifier.context
+    }
+
+    fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
+        let (simplified, _) = self.simplifier.simplify(expr);
+        simplified
+    }
+
+    fn expand_expr(&mut self, expr: ExprId) -> ExprId {
+        crate::expand::expand(&mut self.simplifier.context, expr)
+    }
+}
 
 impl SolverStrategy for RationalRootsStrategy {
     fn name(&self) -> &str {
@@ -43,68 +60,26 @@ impl SolverStrategy for RationalRootsStrategy {
         _opts: &SolverOptions,
         _ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-        // Only handle equality
-        if eq.op != RelOp::Eq {
-            return None;
-        }
-
-        // Move everything to LHS: lhs - rhs = 0
-        let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
-        let (sim_diff, _) = simplifier.simplify(diff);
-
-        // Expand to canonical polynomial form
-        let expanded = crate::expand::expand(&mut simplifier.context, sim_diff);
-
-        // Extract polynomial coefficients: [a0, a1, ..., an] where poly = a0 + a1*x + ... + an*x^n
-        let coeffs = cas_solver_core::rational_roots::extract_poly_coefficients(
-            &mut simplifier.context,
-            expanded,
+        let include_item = simplifier.collect_steps();
+        let mut runtime = EngineRationalRootsRuntime { simplifier };
+        let solved = solve_rational_roots_strategy_with_runtime_and_item(
+            &mut runtime,
+            eq.lhs,
+            eq.rhs,
+            eq.op.clone(),
             var,
-            MAX_DEGREE,
-        )?;
-        let outcome = cas_solver_core::rational_roots::solve_numeric_coeff_polynomial(
-            &mut simplifier.context,
-            &coeffs,
             3,
             MAX_DEGREE,
             MAX_CANDIDATES,
-        )?;
-
-        let (degree, mut roots) = match outcome {
-            NumericPolynomialSolveOutcome::AllReals => {
-                return Some(Ok((SolutionSet::AllReals, vec![])))
-            }
-            NumericPolynomialSolveOutcome::CandidateRoots { degree, roots } => (
-                degree,
-                roots
-                    .into_iter()
-                    .map(|root_expr| {
-                        let (sim_root, _) = simplifier.simplify(root_expr);
-                        sim_root
-                    })
-                    .collect::<Vec<_>>(),
-            ),
-        };
-
-        if roots.is_empty() {
-            return None; // No roots found, let other strategies try
-        }
-
-        // Dedup roots
-        sort_and_dedup_exprs(&simplifier.context, &mut roots);
-
-        let include_item = simplifier.collect_steps();
-        let step_plan = plan_rational_roots_step(&mut simplifier.context, expanded, degree);
-        let steps = solve_rational_roots_step_pipeline_with_item(step_plan, include_item, |item| {
-            SolveStep {
+            include_item,
+            |item| SolveStep {
                 description: item.description().to_string(),
                 equation_after: item.equation,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
-            }
-        });
-
-        Some(Ok((SolutionSet::Discrete(roots), steps)))
+            },
+        )?;
+        Some(Ok((solved.solution_set, solved.steps)))
     }
 
     fn should_verify(&self) -> bool {

@@ -456,6 +456,36 @@ pub struct FactorizedZeroProductStrategySolved<TStep> {
     pub steps: Vec<TStep>,
 }
 
+/// Finalize a solved factorized zero-product execution into a single
+/// `SolutionSet` plus flattened step list.
+pub fn finalize_factorized_zero_product_strategy_solved<TStep>(
+    ctx: &Context,
+    solved: FactorizedZeroProductExecutionSolved<(SolutionSet, Vec<TStep>), TStep>,
+    residual_expr_for_non_discrete: ExprId,
+    zero: ExprId,
+) -> FactorizedZeroProductStrategySolved<TStep> {
+    let mut steps = solved.steps;
+    let mut factor_solution_sets = Vec::new();
+    for (solution_set, mut factor_steps) in solved.solved_factors {
+        steps.append(&mut factor_steps);
+        factor_solution_sets.push(solution_set);
+    }
+
+    let aggregate = aggregate_zero_product_factor_solution_sets(ctx, factor_solution_sets);
+    let needs_residual = matches!(aggregate, ZeroProductFactorSolutionAggregate::NonDiscrete);
+    let residual = if needs_residual {
+        residual_expr_for_non_discrete
+    } else {
+        zero
+    };
+    let solution_set = finalize_zero_product_factor_solution_set(aggregate, residual);
+
+    FactorizedZeroProductStrategySolved {
+        solution_set,
+        steps,
+    }
+}
+
 /// Solve factorized zero-product strategy end-to-end:
 /// 1) Build/solve factor equations with optional didactic items
 /// 2) Aggregate per-factor solution sets
@@ -499,27 +529,12 @@ where
         map_entry_item_to_step,
         map_factor_item_to_step,
     )?;
-
-    let mut steps = solved.steps;
-    let mut factor_solution_sets = Vec::new();
-    for (solution_set, mut factor_steps) in solved.solved_factors {
-        steps.append(&mut factor_steps);
-        factor_solution_sets.push(solution_set);
-    }
-
-    let aggregate = aggregate_zero_product_factor_solution_sets(ctx, factor_solution_sets);
-    let needs_residual = matches!(aggregate, ZeroProductFactorSolutionAggregate::NonDiscrete);
-    let residual = if needs_residual {
-        residual_expr_for_non_discrete
-    } else {
-        zero
-    };
-    let solution_set = finalize_zero_product_factor_solution_set(aggregate, residual);
-
-    Ok(FactorizedZeroProductStrategySolved {
-        solution_set,
-        steps,
-    })
+    Ok(finalize_factorized_zero_product_strategy_solved(
+        ctx,
+        solved,
+        residual_expr_for_non_discrete,
+        zero,
+    ))
 }
 
 /// Build the top-level "quadratic formula" strategy step payload.

@@ -1,6 +1,6 @@
 use crate::isolation_utils::contains_var;
 use crate::quadratic_formula::{discriminant, roots_from_a_b_delta};
-use cas_ast::{Context, Equation, Expr, ExprId, RelOp};
+use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
 use num_bigint::BigInt;
 use num_integer::Integer;
 use num_rational::BigRational;
@@ -438,6 +438,100 @@ where
     vec![]
 }
 
+/// Runtime contract for rational-roots strategy orchestration.
+///
+/// This lets solver-core host the control flow while callers inject their own
+/// simplify/expand behavior.
+pub trait RationalRootsStrategyRuntime {
+    /// Mutable access to context for expression construction.
+    fn context(&mut self) -> &mut Context;
+    /// Simplify one expression and return rewritten root.
+    fn simplify_expr(&mut self, expr: ExprId) -> ExprId;
+    /// Expand one expression and return rewritten root.
+    fn expand_expr(&mut self, expr: ExprId) -> ExprId;
+}
+
+/// Solved payload for rational-roots strategy execution.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RationalRootsStrategySolved<TStep> {
+    pub solution_set: SolutionSet,
+    pub steps: Vec<TStep>,
+}
+
+/// Solve rational-roots strategy with runtime hooks and optional didactic step mapping.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_rational_roots_strategy_with_runtime_and_item<R, S, FStep>(
+    runtime: &mut R,
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    min_degree: usize,
+    max_degree: usize,
+    max_candidates: usize,
+    include_item: bool,
+    map_item_to_step: FStep,
+) -> Option<RationalRootsStrategySolved<S>>
+where
+    R: RationalRootsStrategyRuntime,
+    FStep: FnMut(RationalRootsExecutionItem) -> S,
+{
+    if op != RelOp::Eq {
+        return None;
+    }
+
+    let diff = {
+        let ctx = runtime.context();
+        ctx.add(Expr::Sub(lhs, rhs))
+    };
+    let diff = runtime.simplify_expr(diff);
+    let expanded = runtime.expand_expr(diff);
+
+    let coeffs = {
+        let ctx = runtime.context();
+        extract_poly_coefficients(ctx, expanded, var, max_degree)?
+    };
+    let outcome = {
+        let ctx = runtime.context();
+        solve_numeric_coeff_polynomial(ctx, &coeffs, min_degree, max_degree, max_candidates)?
+    };
+
+    let (degree, mut roots) = match outcome {
+        NumericPolynomialSolveOutcome::AllReals => {
+            return Some(RationalRootsStrategySolved {
+                solution_set: SolutionSet::AllReals,
+                steps: vec![],
+            });
+        }
+        NumericPolynomialSolveOutcome::CandidateRoots { degree, roots } => (
+            degree,
+            roots
+                .into_iter()
+                .map(|root| runtime.simplify_expr(root))
+                .collect::<Vec<_>>(),
+        ),
+    };
+
+    if roots.is_empty() {
+        return None;
+    }
+    {
+        let ctx = runtime.context();
+        crate::solution_set::sort_and_dedup_exprs(ctx, &mut roots);
+    }
+
+    let step = {
+        let ctx = runtime.context();
+        plan_rational_roots_step(ctx, expanded, degree)
+    };
+    let steps = solve_rational_roots_step_pipeline_with_item(step, include_item, map_item_to_step);
+
+    Some(RationalRootsStrategySolved {
+        solution_set: SolutionSet::Discrete(roots),
+        steps,
+    })
+}
+
 /// Plan Rational Root strategy didactic step for equation `expanded_expr = 0`.
 pub fn plan_rational_roots_strategy_step(
     ctx: &mut Context,
@@ -574,6 +668,119 @@ pub fn solve_residual_degree_leq_two(ctx: &mut Context, coeffs: &[BigRational]) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct MockRationalRootsRuntime {
+        ctx: Context,
+    }
+
+    impl MockRationalRootsRuntime {
+        fn new() -> Self {
+            Self {
+                ctx: Context::new(),
+            }
+        }
+    }
+
+    impl RationalRootsStrategyRuntime for MockRationalRootsRuntime {
+        fn context(&mut self) -> &mut Context {
+            &mut self.ctx
+        }
+
+        fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
+            expr
+        }
+
+        fn expand_expr(&mut self, expr: ExprId) -> ExprId {
+            expr
+        }
+    }
+
+    #[test]
+    fn solve_rational_roots_strategy_with_runtime_and_item_rejects_non_equality() {
+        let mut runtime = MockRationalRootsRuntime::new();
+        let x = runtime.ctx.var("x");
+        let zero = runtime.ctx.num(0);
+
+        let solved = solve_rational_roots_strategy_with_runtime_and_item(
+            &mut runtime,
+            x,
+            zero,
+            RelOp::Gt,
+            "x",
+            3,
+            10,
+            200,
+            true,
+            |item| item.description,
+        );
+        assert!(solved.is_none());
+    }
+
+    #[test]
+    fn solve_rational_roots_strategy_with_runtime_and_item_returns_all_reals_for_zero_poly() {
+        let mut runtime = MockRationalRootsRuntime::new();
+        let x = runtime.ctx.var("x");
+        let zero = runtime.ctx.num(0);
+        let two = runtime.ctx.num(2);
+        let x2 = runtime.ctx.add(Expr::Pow(x, two));
+        let x3 = runtime.ctx.add(Expr::Mul(x2, x));
+        let t3 = runtime.ctx.add(Expr::Mul(zero, x3));
+        let t2 = runtime.ctx.add(Expr::Mul(zero, x2));
+        let t1 = runtime.ctx.add(Expr::Mul(zero, x));
+        let sum1 = runtime.ctx.add(Expr::Add(t3, t2));
+        let sum2 = runtime.ctx.add(Expr::Add(t1, zero));
+        let lhs = runtime.ctx.add(Expr::Add(sum1, sum2));
+        let zero = runtime.ctx.num(0);
+
+        let solved = solve_rational_roots_strategy_with_runtime_and_item(
+            &mut runtime,
+            lhs,
+            zero,
+            RelOp::Eq,
+            "x",
+            3,
+            10,
+            200,
+            true,
+            |item| item.description,
+        )
+        .expect("strategy should match 0 = 0");
+
+        assert!(matches!(solved.solution_set, SolutionSet::AllReals));
+        assert!(solved.steps.is_empty());
+    }
+
+    #[test]
+    fn solve_rational_roots_strategy_with_runtime_and_item_solves_cubic_and_emits_step() {
+        let mut runtime = MockRationalRootsRuntime::new();
+        let x = runtime.ctx.var("x");
+        let two = runtime.ctx.num(2);
+        let x2 = runtime.ctx.add(Expr::Pow(x, two));
+        let x3 = runtime.ctx.add(Expr::Mul(x2, x));
+        let lhs = runtime.ctx.add(Expr::Sub(x3, x)); // x^3 - x
+        let zero = runtime.ctx.num(0);
+
+        let solved = solve_rational_roots_strategy_with_runtime_and_item(
+            &mut runtime,
+            lhs,
+            zero,
+            RelOp::Eq,
+            "x",
+            3,
+            10,
+            200,
+            true,
+            |item| item.description,
+        )
+        .expect("strategy should solve cubic");
+
+        match solved.solution_set {
+            SolutionSet::Discrete(roots) => assert_eq!(roots.len(), 3),
+            other => panic!("expected discrete roots, got {:?}", other),
+        }
+        assert_eq!(solved.steps.len(), 1);
+        assert!(solved.steps[0].contains("degree-3"));
+    }
 
     #[test]
     fn horner_eval_works() {

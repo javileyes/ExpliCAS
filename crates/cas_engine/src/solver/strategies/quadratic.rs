@@ -6,8 +6,10 @@ use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{is_numeric_zero, split_zero_product_factors};
 use cas_solver_core::quadratic_didactic::{
+    build_factorized_zero_product_execution_with_optional_items,
     build_quadratic_main_with_substeps_execution_with_optional_items,
-    solve_factorized_zero_product_strategy_pipeline_with_optional_items,
+    finalize_factorized_zero_product_strategy_solved,
+    solve_factorized_zero_product_execution_pipeline_with_items,
     solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification,
 };
 use cas_solver_core::quadratic_formula::{
@@ -52,7 +54,6 @@ impl SolverStrategy for QuadraticStrategy {
             if eq.op == RelOp::Eq {
                 let include_items = simplifier.collect_steps();
                 let residual_expr = sim_poly_expr;
-                let strategy_ctx = simplifier.context.clone();
                 let factorized_display = format!(
                     "{}",
                     cas_formatter::DisplayExpr {
@@ -76,15 +77,14 @@ impl SolverStrategy for QuadraticStrategy {
                         )
                     })
                     .collect::<Vec<_>>();
-                let solved =
-                    match solve_factorized_zero_product_strategy_pipeline_with_optional_items(
-                        &strategy_ctx,
+                let factorized_execution =
+                    build_factorized_zero_product_execution_with_optional_items(
+                        &simplifier.context,
                         sim_poly_expr,
                         &factors,
                         var,
                         zero,
                         include_items,
-                        residual_expr,
                         move |id| {
                             if id == sim_poly_expr {
                                 factorized_display.clone()
@@ -96,6 +96,11 @@ impl SolverStrategy for QuadraticStrategy {
                                     .unwrap_or_else(|| id.to_string())
                             }
                         },
+                    );
+                let solved_factorized =
+                    match solve_factorized_zero_product_execution_pipeline_with_items(
+                        &factorized_execution,
+                        include_items,
                         |factor_equation| {
                             // Recursive solve. We need to be careful about depth.
                             solve_with_ctx(factor_equation, var, simplifier, ctx)
@@ -116,8 +121,14 @@ impl SolverStrategy for QuadraticStrategy {
                         Ok(solved) => solved,
                         Err(e) => return Some(Err(e)),
                     };
-                steps.extend(solved.steps);
-                return Some(Ok((solved.solution_set, steps)));
+                let finalized = finalize_factorized_zero_product_strategy_solved(
+                    &simplifier.context,
+                    solved_factorized,
+                    residual_expr,
+                    zero,
+                );
+                steps.extend(finalized.steps);
+                return Some(Ok((finalized.solution_set, steps)));
             }
         }
 
