@@ -287,6 +287,23 @@ where
     Ok(BackSubstitutionSolved { plan, solved })
 }
 
+/// Solve all equations in a back-substitution solve plan while passing aligned
+/// optional didactic execution items to the solver callback.
+pub fn solve_back_substitution_plan_with_items<E, T, FSolve>(
+    plan: BackSubstitutionSolvePlan,
+    mut solve_equation: FSolve,
+) -> Result<BackSubstitutionSolved<T>, E>
+where
+    FSolve: FnMut(Option<BackSubstitutionExecutionItem>, &Equation) -> Result<T, E>,
+{
+    let mut solved = Vec::with_capacity(plan.equations.len());
+    let mut items = plan.items.iter().cloned();
+    for equation in &plan.equations {
+        solved.push(solve_equation(items.next(), equation)?);
+    }
+    Ok(BackSubstitutionSolved { plan, solved })
+}
+
 /// Build didactic pair for substitution introduction:
 /// 1) detected substitution `u = expr`
 /// 2) equation rewritten in terms of `u`
@@ -1064,5 +1081,50 @@ mod tests {
         assert_eq!(seen, vec![v1, v2]);
         assert_eq!(solved.solved, vec![v1, v2]);
         assert_eq!(solved.plan.items.len(), 2);
+    }
+
+    #[test]
+    fn solve_back_substitution_plan_with_items_aligns_items_in_order() {
+        let mut ctx = Context::new();
+        let u_expr = ctx.var("u_expr");
+        let v1 = ctx.var("v1");
+        let v2 = ctx.var("v2");
+        let plan =
+            build_back_substitution_solve_plan_with(u_expr, &[v1, v2], true, |_| "u".to_string());
+
+        let mut seen = Vec::new();
+        let solved = solve_back_substitution_plan_with_items(plan, |item, equation| {
+            seen.push(item.map(|entry| entry.description).unwrap_or_default());
+            Ok::<_, ()>(equation.rhs)
+        })
+        .expect("back-substitution solve should succeed");
+
+        assert_eq!(seen.len(), 2);
+        assert_eq!(seen[0], "Back-substitute: u = u");
+        assert_eq!(seen[1], "Back-substitute: u = u");
+        assert_eq!(solved.solved, vec![v1, v2]);
+    }
+
+    #[test]
+    fn solve_back_substitution_plan_with_items_passes_none_when_items_missing() {
+        let mut ctx = Context::new();
+        let u_expr = ctx.var("u_expr");
+        let v1 = ctx.var("v1");
+        let v2 = ctx.var("v2");
+        let plan = build_back_substitution_solve_plan_with(u_expr, &[v1, v2], false, |_| {
+            "unused".to_string()
+        });
+
+        let mut seen_some = 0usize;
+        let solved = solve_back_substitution_plan_with_items(plan, |item, equation| {
+            if item.is_some() {
+                seen_some += 1;
+            }
+            Ok::<_, ()>(equation.rhs)
+        })
+        .expect("back-substitution solve should succeed");
+
+        assert_eq!(seen_some, 0);
+        assert_eq!(solved.solved, vec![v1, v2]);
     }
 }

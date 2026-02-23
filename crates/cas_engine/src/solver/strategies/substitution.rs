@@ -7,7 +7,7 @@ use cas_ast::{Equation, SolutionSet};
 use cas_solver_core::substitution::{
     build_back_substitution_solve_plan_with, build_exponential_substitution_execution_with,
     collect_substitution_intro_execution_items, plan_exponential_substitution_rewrite,
-    solve_back_substitution_plan_with, solve_exponential_substitution_with,
+    solve_back_substitution_plan_with_items, solve_exponential_substitution_with,
 };
 
 pub struct SubstitutionStrategy;
@@ -84,23 +84,21 @@ impl SolverStrategy for SubstitutionStrategy {
                             )
                         },
                     );
-                    let back_items = back_plan.items.clone();
-                    let mut back_item_idx = 0usize;
-                    let solved_back = match solve_back_substitution_plan_with(back_plan, |sub_eq| {
-                        if let Some(item) = back_items.get(back_item_idx) {
-                            steps.push(SolveStep {
-                                description: item.description().to_string(),
-                                equation_after: item.equation.clone(),
-                                importance: crate::step::ImportanceLevel::Medium,
-                                substeps: vec![],
-                            });
-                        }
-                        back_item_idx += 1;
-                        solve_with_ctx(sub_eq, var, simplifier, ctx)
-                    }) {
-                        Ok(solved) => solved,
-                        Err(e) => return Some(Err(e)),
-                    };
+                    let solved_back =
+                        match solve_back_substitution_plan_with_items(back_plan, |item, sub_eq| {
+                            if let Some(item) = item {
+                                steps.push(SolveStep {
+                                    description: item.description().to_string(),
+                                    equation_after: item.equation,
+                                    importance: crate::step::ImportanceLevel::Medium,
+                                    substeps: vec![],
+                                });
+                            }
+                            solve_with_ctx(sub_eq, var, simplifier, ctx)
+                        }) {
+                            Ok(solved) => solved,
+                            Err(e) => return Some(Err(e)),
+                        };
 
                     for (x_sol, mut x_steps) in solved_back.solved {
                         steps.append(&mut x_steps);

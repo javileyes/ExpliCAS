@@ -3144,6 +3144,40 @@ where
     })
 }
 
+/// Solve denominator-sign split branch equations while passing aligned optional
+/// didactic execution items for each branch callback.
+pub fn solve_division_denominator_sign_split_cases_with_items<
+    E,
+    TBranch,
+    TDomain,
+    FSolveBranch,
+    FSolveDomain,
+>(
+    execution: &DivisionDenominatorSignSplitExecutionPlan,
+    mut solve_branch: FSolveBranch,
+    mut solve_domain: FSolveDomain,
+) -> Result<DivisionDenominatorSignSplitSolvedCases<TBranch, TDomain>, E>
+where
+    FSolveBranch: FnMut(Option<DivisionDidacticExecutionItem>, &Equation) -> Result<TBranch, E>,
+    FSolveDomain: FnMut(&Equation) -> Result<TDomain, E>,
+{
+    let mut items = collect_division_denominator_sign_split_execution_items(execution).into_iter();
+    solve_division_denominator_sign_split_cases_with(
+        execution,
+        |equation| solve_branch(items.next(), equation),
+        |domain_equation| solve_domain(domain_equation),
+    )
+}
+
+/// Return the boundary didactic item (`--- End of Case 1 ---`) when available.
+pub fn division_denominator_sign_split_boundary_item(
+    execution: &DivisionDenominatorSignSplitExecutionPlan,
+) -> Option<DivisionDidacticExecutionItem> {
+    collect_division_denominator_sign_split_execution_items(execution)
+        .into_iter()
+        .nth(2)
+}
+
 /// Finalize solved denominator-sign split branch/domain sets into one set.
 pub fn finalize_division_denominator_sign_split_solved_sets(
     ctx: &Context,
@@ -3170,6 +3204,30 @@ where
         positive_branch: solve_branch(&execution.positive_equation)?,
         negative_branch: solve_branch(&execution.negative_equation)?,
     })
+}
+
+/// Solve isolated-denominator sign-split branch equations while passing aligned
+/// optional didactic execution items for each branch callback.
+pub fn solve_isolated_denominator_sign_split_cases_with_items<E, TBranch, FSolveBranch>(
+    execution: &IsolatedDenominatorSignSplitExecutionPlan,
+    mut solve_branch: FSolveBranch,
+) -> Result<IsolatedDenominatorSignSplitSolvedCases<TBranch>, E>
+where
+    FSolveBranch: FnMut(Option<DivisionDidacticExecutionItem>, &Equation) -> Result<TBranch, E>,
+{
+    let mut items = collect_isolated_denominator_sign_split_execution_items(execution).into_iter();
+    solve_isolated_denominator_sign_split_cases_with(execution, |equation| {
+        solve_branch(items.next(), equation)
+    })
+}
+
+/// Return the boundary didactic item (`--- End of Case 1 ---`) when available.
+pub fn isolated_denominator_sign_split_boundary_item(
+    execution: &IsolatedDenominatorSignSplitExecutionPlan,
+) -> Option<DivisionDidacticExecutionItem> {
+    collect_isolated_denominator_sign_split_execution_items(execution)
+        .into_iter()
+        .nth(2)
 }
 
 /// Finalize solved already-isolated denominator sign split branch sets.
@@ -7163,6 +7221,71 @@ mod tests {
     }
 
     #[test]
+    fn solve_division_denominator_sign_split_cases_with_items_aligns_items_in_order() {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let simplified_rhs = ctx.var("s");
+        let split =
+            plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Lt).unwrap();
+        let execution = build_division_denominator_sign_split_execution_with(
+            split,
+            den,
+            num,
+            RelOp::Lt,
+            simplified_rhs,
+            |_| "d".to_string(),
+        );
+
+        let mut seen = Vec::new();
+        let solved = solve_division_denominator_sign_split_cases_with_items(
+            &execution,
+            |item, equation| {
+                seen.push(item.map(|entry| entry.description).unwrap_or_default());
+                Ok::<_, ()>(equation.rhs)
+            },
+            |_domain| Ok::<_, ()>(SolutionSet::AllReals),
+        )
+        .expect("callbacks should succeed");
+
+        assert_eq!(seen.len(), 2);
+        assert_eq!(
+            seen[0],
+            "Case 1: Assume d > 0. Multiply by positive denominator."
+        );
+        assert_eq!(
+            seen[1],
+            "Case 2: Assume d < 0. Multiply by negative denominator (flips inequality)."
+        );
+        assert_eq!(solved.positive_branch, simplified_rhs);
+        assert_eq!(solved.negative_branch, simplified_rhs);
+    }
+
+    #[test]
+    fn division_denominator_sign_split_boundary_item_returns_case_separator() {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let simplified_rhs = ctx.var("s");
+        let split =
+            plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Lt).unwrap();
+        let execution = build_division_denominator_sign_split_execution_with(
+            split,
+            den,
+            num,
+            RelOp::Lt,
+            simplified_rhs,
+            |_| "d".to_string(),
+        );
+
+        let boundary =
+            division_denominator_sign_split_boundary_item(&execution).expect("boundary item");
+        assert_eq!(boundary.description, "--- End of Case 1 ---");
+    }
+
+    #[test]
     fn finalize_division_denominator_sign_split_solved_sets_uses_solution_set_combiner() {
         let ctx = Context::new();
         let out = finalize_division_denominator_sign_split_solved_sets(
@@ -7317,6 +7440,54 @@ mod tests {
             solved.negative_branch,
             SolutionSet::Residual(id) if id == residual
         ));
+    }
+
+    #[test]
+    fn solve_isolated_denominator_sign_split_cases_with_items_aligns_items_in_order() {
+        let mut ctx = Context::new();
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let split = plan_isolated_denominator_sign_split(den, rhs, RelOp::Leq).unwrap();
+        let execution =
+            build_isolated_denominator_sign_split_execution_with(split, den, RelOp::Leq, |_| {
+                "x".to_string()
+            });
+
+        let mut seen = Vec::new();
+        let solved =
+            solve_isolated_denominator_sign_split_cases_with_items(&execution, |item, equation| {
+                seen.push(item.map(|entry| entry.description).unwrap_or_default());
+                Ok::<_, ()>(equation.rhs)
+            })
+            .expect("callback should succeed");
+
+        assert_eq!(seen.len(), 2);
+        assert_eq!(
+            seen[0],
+            "Case 1: Assume x > 0. Multiply by x (positive). Inequality direction preserved (flipped from isolation logic)."
+        );
+        assert_eq!(
+            seen[1],
+            "Case 2: Assume x < 0. Multiply by x (negative). Inequality flips."
+        );
+        assert_eq!(solved.positive_branch, rhs);
+        assert_eq!(solved.negative_branch, rhs);
+    }
+
+    #[test]
+    fn isolated_denominator_sign_split_boundary_item_returns_case_separator() {
+        let mut ctx = Context::new();
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let split = plan_isolated_denominator_sign_split(den, rhs, RelOp::Leq).unwrap();
+        let execution =
+            build_isolated_denominator_sign_split_execution_with(split, den, RelOp::Leq, |_| {
+                "x".to_string()
+            });
+
+        let boundary =
+            isolated_denominator_sign_split_boundary_item(&execution).expect("boundary item");
+        assert_eq!(boundary.description, "--- End of Case 1 ---");
     }
 
     #[test]

@@ -12,24 +12,23 @@ use cas_solver_core::solve_outcome::{
     build_division_denominator_execution_with,
     build_division_denominator_sign_split_execution_with,
     build_isolated_denominator_sign_split_execution_with,
-    collect_division_denominator_execution_items,
-    collect_division_denominator_sign_split_execution_items,
-    collect_isolated_denominator_sign_split_execution_items,
-    collect_term_isolation_rewrite_execution_items,
+    collect_division_denominator_execution_items, collect_term_isolation_rewrite_execution_items,
+    division_denominator_sign_split_boundary_item,
     finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
-    finalize_product_zero_inequality_solved_sets,
+    finalize_product_zero_inequality_solved_sets, isolated_denominator_sign_split_boundary_item,
     materialize_division_denominator_sign_split_execution,
     materialize_isolated_denominator_sign_split_execution, plan_add_operand_isolation_step_with,
     plan_div_denominator_isolation_with_zero_rhs_guard, plan_div_numerator_isolation_step_with,
     plan_division_denominator, plan_division_denominator_sign_split,
     plan_isolated_denominator_sign_split, plan_mul_factor_isolation_step_with,
     plan_product_zero_inequality_split, plan_sub_minuend_isolation_step_with,
-    plan_sub_subtrahend_isolation_step_with, solve_division_denominator_sign_split_cases_with,
-    solve_isolated_denominator_sign_split_cases_with, solve_product_zero_inequality_cases_with,
-    solve_term_isolation_rewrite_with, DivDenominatorIsolationRoute,
-    DivisionDenominatorSignSplitSolvedCases, IsolatedDenominatorSignSplitSolvedCases,
-    TermIsolationRewritePlan,
+    plan_sub_subtrahend_isolation_step_with,
+    solve_division_denominator_sign_split_cases_with_items,
+    solve_isolated_denominator_sign_split_cases_with_items,
+    solve_product_zero_inequality_cases_with, solve_term_isolation_rewrite_with,
+    DivDenominatorIsolationRoute, DivisionDenominatorSignSplitSolvedCases,
+    IsolatedDenominatorSignSplitSolvedCases, TermIsolationRewritePlan,
 };
 
 use super::{isolate, prepend_steps};
@@ -410,10 +409,6 @@ pub(super) fn isolate_div(
             } else {
                 materialize_division_denominator_sign_split_execution(split_plan, sim_rhs)
             };
-            let split_items =
-                collect_division_denominator_sign_split_execution_items(&split_execution);
-
-            let mut branch_case_idx = 0usize;
             let mut precomputed_domains = {
                 let (domain_pos_set, _) =
                     solve_with_ctx(&split_execution.positive_domain, var, simplifier, ctx)?;
@@ -421,19 +416,18 @@ pub(super) fn isolate_div(
                     solve_with_ctx(&split_execution.negative_domain, var, simplifier, ctx)?;
                 vec![domain_pos_set, domain_neg_set].into_iter()
             };
-            let solved = solve_division_denominator_sign_split_cases_with(
+            let solved = solve_division_denominator_sign_split_cases_with_items(
                 &split_execution,
-                |equation| {
+                |item, equation| {
                     let mut case_steps = steps.clone();
-                    if let Some(item) = split_items.get(branch_case_idx) {
+                    if let Some(item) = item {
                         case_steps.push(SolveStep {
                             description: item.description().to_string(),
-                            equation_after: item.equation.clone(),
+                            equation_after: item.equation,
                             importance: crate::step::ImportanceLevel::Medium,
                             substeps: vec![],
                         });
                     }
-                    branch_case_idx += 1;
                     let results = isolate(
                         equation.lhs,
                         equation.rhs,
@@ -472,10 +466,10 @@ pub(super) fn isolate_div(
 
             // Combine steps
             let mut all_steps = steps_pos;
-            if let Some(item) = split_items.get(2) {
+            if let Some(item) = division_denominator_sign_split_boundary_item(&split_execution) {
                 all_steps.push(SolveStep {
                     description: item.description().to_string(),
-                    equation_after: item.equation.clone(),
+                    equation_after: item.equation,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
@@ -573,22 +567,18 @@ pub(super) fn isolate_div(
             } else {
                 materialize_isolated_denominator_sign_split_execution(split_plan)
             };
-            let split_items =
-                collect_isolated_denominator_sign_split_execution_items(&split_execution);
-
-            let mut branch_case_idx = 0usize;
-            let solved =
-                solve_isolated_denominator_sign_split_cases_with(&split_execution, |equation| {
+            let solved = solve_isolated_denominator_sign_split_cases_with_items(
+                &split_execution,
+                |item, equation| {
                     let mut case_steps = steps.clone();
-                    if let Some(item) = split_items.get(branch_case_idx) {
+                    if let Some(item) = item {
                         case_steps.push(SolveStep {
                             description: item.description().to_string(),
-                            equation_after: item.equation.clone(),
+                            equation_after: item.equation,
                             importance: crate::step::ImportanceLevel::Medium,
                             substeps: vec![],
                         });
                     }
-                    branch_case_idx += 1;
                     let results = isolate(
                         equation.lhs,
                         equation.rhs,
@@ -599,7 +589,8 @@ pub(super) fn isolate_div(
                         ctx,
                     )?;
                     prepend_steps(results, case_steps)
-                })?;
+                },
+            )?;
 
             let IsolatedDenominatorSignSplitSolvedCases {
                 positive_branch: (set_pos, steps_pos),
@@ -615,10 +606,10 @@ pub(super) fn isolate_div(
 
             // Combine steps
             let mut all_steps = steps_pos;
-            if let Some(item) = split_items.get(2) {
+            if let Some(item) = isolated_denominator_sign_split_boundary_item(&split_execution) {
                 all_steps.push(SolveStep {
                     description: item.description().to_string(),
-                    equation_after: item.equation.clone(),
+                    equation_after: item.equation,
                     importance: crate::step::ImportanceLevel::Medium,
                     substeps: vec![],
                 });
