@@ -12,8 +12,7 @@ use cas_solver_core::solve_outcome::{
     build_division_denominator_execution_with,
     build_division_denominator_sign_split_execution_with,
     build_isolated_denominator_sign_split_execution_with,
-    collect_division_denominator_execution_items, division_denominator_sign_split_boundary_item,
-    finalize_division_denominator_sign_split_solved_sets,
+    division_denominator_sign_split_boundary_item, finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
     finalize_product_zero_inequality_solved_sets, first_term_isolation_rewrite_execution_item,
     isolated_denominator_sign_split_boundary_item,
@@ -24,6 +23,7 @@ use cas_solver_core::solve_outcome::{
     plan_isolated_denominator_sign_split, plan_mul_factor_isolation_step_with,
     plan_product_zero_inequality_split, plan_sub_minuend_isolation_step_with,
     plan_sub_subtrahend_isolation_step_with,
+    solve_division_denominator_execution_with_items,
     solve_division_denominator_sign_split_cases_with_items,
     solve_isolated_denominator_sign_split_cases_with_items,
     solve_product_zero_inequality_cases_with, solve_term_isolation_rewrite_with,
@@ -638,15 +638,27 @@ pub(super) fn isolate_div(
                     )
                 },
             );
-
-            for item in collect_division_denominator_execution_items(&execution) {
-                steps.push(SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
+            let solved_execution =
+                solve_division_denominator_execution_with_items(execution, |items, equation| {
+                    for item in items {
+                        steps.push(SolveStep {
+                            description: item.description().to_string(),
+                            equation_after: item.equation,
+                            importance: crate::step::ImportanceLevel::Medium,
+                            substeps: vec![],
+                        });
+                    }
+                    isolate(
+                        equation.lhs,
+                        equation.rhs,
+                        equation.op.clone(),
+                        var,
+                        simplifier,
+                        opts,
+                        ctx,
+                    )
+                })?;
+            return prepend_steps(solved_execution.solved, steps);
         }
         let results = isolate(r, sim_rhs, op, var, simplifier, opts, ctx)?;
         prepend_steps(results, steps)

@@ -3078,6 +3078,20 @@ pub fn collect_division_denominator_didactic_execution_items(
     collect_division_denominator_execution_items(execution)
 }
 
+/// Execute denominator-isolation didactic plan while passing aligned execution
+/// items and the rewritten equation (`divide_equation`) to the solve callback.
+pub fn solve_division_denominator_execution_with_items<E, T, FSolve>(
+    execution: DivisionDenominatorDidacticExecutionPlan,
+    mut solve_rewritten: FSolve,
+) -> Result<DivisionDenominatorDidacticSolved<T>, E>
+where
+    FSolve: FnMut(Vec<DivisionDidacticExecutionItem>, &Equation) -> Result<T, E>,
+{
+    let items = collect_division_denominator_execution_items(&execution);
+    let solved = solve_rewritten(items, &execution.divide_equation)?;
+    Ok(DivisionDenominatorDidacticSolved { execution, solved })
+}
+
 /// Executable denominator-isolation didactic plan, with optional simplification
 /// already applied to the multiply-step RHS.
 #[derive(Debug, Clone, PartialEq)]
@@ -3085,6 +3099,13 @@ pub struct DivisionDenominatorDidacticExecutionPlan {
     pub multiply_equation: Equation,
     pub divide_equation: Equation,
     pub items: Vec<DivisionDidacticExecutionItem>,
+}
+
+/// Solved payload for denominator-isolation didactic execution.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DivisionDenominatorDidacticSolved<T> {
+    pub execution: DivisionDenominatorDidacticExecutionPlan,
+    pub solved: T,
 }
 
 /// Classify numeric RHS sign for `|A| = RHS`.
@@ -6693,6 +6714,37 @@ mod tests {
         assert_eq!(items[0].equation, execution.multiply_equation);
         assert_eq!(items[1].description, "Divide both sides by r");
         assert_eq!(items[1].equation, execution.divide_equation);
+    }
+
+    #[test]
+    fn solve_division_denominator_execution_with_items_passes_items_and_divide_equation() {
+        let mut ctx = Context::new();
+        let n = ctx.var("n");
+        let d = ctx.var("d");
+        let r = ctx.var("r");
+        let isolated_rhs = ctx.var("isolated");
+        let simplified_mul_rhs = ctx.var("simplified");
+        let plan = plan_division_denominator_didactic(&mut ctx, n, d, r, isolated_rhs, RelOp::Eq);
+        let execution =
+            build_division_denominator_didactic_execution_with(plan, simplified_mul_rhs, |id| {
+                if id == d {
+                    "d".to_string()
+                } else {
+                    "r".to_string()
+                }
+            });
+
+        let solved = solve_division_denominator_execution_with_items(execution, |items, equation| {
+            assert_eq!(items.len(), 2);
+            assert_eq!(items[0].description, "Multiply both sides by d");
+            assert_eq!(items[1].description, "Divide both sides by r");
+            assert_eq!(equation.lhs, d);
+            assert_eq!(equation.rhs, isolated_rhs);
+            assert_eq!(equation.op, RelOp::Eq);
+            Ok::<_, ()>("ok")
+        })
+        .expect("solve should succeed");
+        assert_eq!(solved.solved, "ok");
     }
 
     #[test]
