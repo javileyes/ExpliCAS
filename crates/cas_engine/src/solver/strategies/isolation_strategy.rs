@@ -12,12 +12,11 @@ use cas_solver_core::solve_outcome::{
 };
 use cas_solver_core::strategy_kernels::{
     execute_collect_terms_rewrite_with_runtime, execute_rational_exponent_rewrite_with_runtime,
-    StrategyKernelRuntime,
+    solve_collect_terms_rewrite_with, solve_rational_exponent_rewrite_with, StrategyKernelRuntime,
 };
 use cas_solver_core::unwrap_plan::{
-    collect_log_linear_assumption_records, collect_unwrap_execution_items,
-    plan_unwrap_execution_with, unwrap_rewritten_equation, UnwrapExecutionPlan,
-    UnwrapExecutionRequest,
+    collect_unwrap_execution_items, plan_unwrap_execution_with, solve_unwrap_execution_with,
+    UnwrapExecutionPlan, UnwrapExecutionRequest,
 };
 
 pub struct IsolationStrategy;
@@ -138,7 +137,17 @@ fn run_unwrap_execution(
     simplifier: &mut Simplifier,
     ctx: &SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    for record in collect_log_linear_assumption_records(&execution, other_side) {
+    let mut assumption_records = Vec::new();
+    let solved = solve_unwrap_execution_with(
+        execution,
+        other_side,
+        |record| {
+            assumption_records.push(record);
+        },
+        |rewritten_eq| solve_with_ctx(rewritten_eq, var, simplifier, ctx),
+    )?;
+
+    for record in assumption_records {
         let event = crate::assumptions::AssumptionEvent::from_log_assumption(
             record.assumption,
             &simplifier.context,
@@ -148,27 +157,21 @@ fn run_unwrap_execution(
         crate::solver::note_assumption(event);
     }
 
-    let execution_items = collect_unwrap_execution_items(&execution);
     let mut steps = Vec::new();
     if simplifier.collect_steps() {
-        for item in &execution_items {
+        for item in collect_unwrap_execution_items(&solved.execution) {
             steps.push(SolveStep {
                 description: item.description().to_string(),
-                equation_after: item.equation.clone(),
+                equation_after: item.equation,
                 importance: crate::step::ImportanceLevel::Medium,
                 substeps: vec![],
             });
         }
     }
 
-    let rewritten_eq = unwrap_rewritten_equation(&execution);
-    match solve_with_ctx(&rewritten_eq, var, simplifier, ctx) {
-        Ok((set, mut sub_steps)) => {
-            steps.append(&mut sub_steps);
-            Ok((set, steps))
-        }
-        Err(e) => Err(e),
-    }
+    let (set, mut sub_steps) = solved.solved;
+    steps.append(&mut sub_steps);
+    Ok((set, steps))
 }
 
 impl SolverStrategy for UnwrapStrategy {
@@ -307,27 +310,30 @@ impl SolverStrategy for CollectTermsStrategy {
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let solved = {
-            let mut runtime = EngineStrategyKernelRuntime { simplifier };
-            execute_collect_terms_rewrite_with_runtime(&mut runtime, eq, var)?
+            let rewrite = {
+                let mut runtime = EngineStrategyKernelRuntime { simplifier };
+                execute_collect_terms_rewrite_with_runtime(&mut runtime, eq, var)?
+            };
+            solve_collect_terms_rewrite_with(rewrite, |new_eq| {
+                solve_with_ctx(new_eq, var, simplifier, ctx)
+            })
         };
-        let mut steps = Vec::new();
 
-        if simplifier.collect_steps() {
-            for item in &solved.items {
-                steps.push(SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation.clone(),
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-        }
+        match solved {
+            Ok(solved) => {
+                let mut steps = Vec::new();
+                if simplifier.collect_steps() {
+                    for item in &solved.rewrite.items {
+                        steps.push(SolveStep {
+                            description: item.description().to_string(),
+                            equation_after: item.equation.clone(),
+                            importance: crate::step::ImportanceLevel::Medium,
+                            substeps: vec![],
+                        });
+                    }
+                }
 
-        // Now recursively solve the simplified equation
-        // This should now have variable only on one side
-        let new_eq = solved.equation;
-        match solve_with_ctx(&new_eq, var, simplifier, ctx) {
-            Ok((set, mut solve_steps)) => {
+                let (set, mut solve_steps) = solved.solved;
                 steps.append(&mut solve_steps);
                 Some(Ok((set, steps)))
             }
@@ -357,26 +363,36 @@ impl SolverStrategy for RationalExponentStrategy {
         let lhs_has = contains_var(&simplifier.context, eq.lhs, var);
         let rhs_has = contains_var(&simplifier.context, eq.rhs, var);
         let solved = {
-            let mut runtime = EngineStrategyKernelRuntime { simplifier };
-            execute_rational_exponent_rewrite_with_runtime(&mut runtime, eq, var, lhs_has, rhs_has)?
+            let rewrite = {
+                let mut runtime = EngineStrategyKernelRuntime { simplifier };
+                execute_rational_exponent_rewrite_with_runtime(
+                    &mut runtime,
+                    eq,
+                    var,
+                    lhs_has,
+                    rhs_has,
+                )?
+            };
+            solve_rational_exponent_rewrite_with(rewrite, |new_eq| {
+                solve_with_ctx(new_eq, var, simplifier, ctx)
+            })
         };
-        let mut steps = Vec::new();
-        let new_eq = solved.equation;
 
-        if simplifier.collect_steps() {
-            for item in &solved.items {
-                steps.push(SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation.clone(),
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                });
-            }
-        }
+        match solved {
+            Ok(solved) => {
+                let mut steps = Vec::new();
+                if simplifier.collect_steps() {
+                    for item in &solved.rewrite.items {
+                        steps.push(SolveStep {
+                            description: item.description().to_string(),
+                            equation_after: item.equation.clone(),
+                            importance: crate::step::ImportanceLevel::Medium,
+                            substeps: vec![],
+                        });
+                    }
+                }
 
-        // Recursively solve the new equation
-        match solve_with_ctx(&new_eq, var, simplifier, ctx) {
-            Ok((set, mut sub_steps)) => {
+                let (set, mut sub_steps) = solved.solved;
                 steps.append(&mut sub_steps);
 
                 // For even q, we need to verify solutions (could introduce extraneous)

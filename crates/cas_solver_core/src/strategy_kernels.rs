@@ -46,11 +46,25 @@ pub struct CollectTermsSolvedRewrite {
     pub items: Vec<StrategyExecutionItem>,
 }
 
+/// Solved payload for one collect-terms rewrite execution.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CollectTermsSolved<T> {
+    pub rewrite: CollectTermsSolvedRewrite,
+    pub solved: T,
+}
+
 /// Fully materialized rational-exponent rewrite ready for recursive solve.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RationalExponentSolvedRewrite {
     pub equation: Equation,
     pub items: Vec<StrategyExecutionItem>,
+}
+
+/// Solved payload for one rational-exponent rewrite execution.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RationalExponentSolved<T> {
+    pub rewrite: RationalExponentSolvedRewrite,
+    pub solved: T,
 }
 
 /// Execution payload for collect-terms strategy rewrite.
@@ -200,6 +214,18 @@ where
     })
 }
 
+/// Execute recursive solve for a materialized collect-terms rewrite.
+pub fn solve_collect_terms_rewrite_with<E, T, FSolve>(
+    rewrite: CollectTermsSolvedRewrite,
+    mut solve_rewritten: FSolve,
+) -> Result<CollectTermsSolved<T>, E>
+where
+    FSolve: FnMut(&Equation) -> Result<T, E>,
+{
+    let solved = solve_rewritten(&rewrite.equation)?;
+    Ok(CollectTermsSolved { rewrite, solved })
+}
+
 /// Rewrite payload for `RationalExponentStrategy`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RationalExponentKernel {
@@ -339,6 +365,18 @@ where
         equation: execution.equation,
         items,
     })
+}
+
+/// Execute recursive solve for a materialized rational-exponent rewrite.
+pub fn solve_rational_exponent_rewrite_with<E, T, FSolve>(
+    rewrite: RationalExponentSolvedRewrite,
+    mut solve_rewritten: FSolve,
+) -> Result<RationalExponentSolved<T>, E>
+where
+    FSolve: FnMut(&Equation) -> Result<T, E>,
+{
+    let solved = solve_rewritten(&rewrite.equation)?;
+    Ok(RationalExponentSolved { rewrite, solved })
 }
 
 #[cfg(test)]
@@ -574,5 +612,53 @@ mod tests {
             solved.items[0].description,
             "Raise both sides to power 2 to eliminate fractional exponent"
         );
+    }
+
+    #[test]
+    fn solve_collect_terms_rewrite_with_runs_solver_on_rewritten_equation() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("lhs");
+        let rhs = ctx.var("rhs");
+        let rewrite = CollectTermsSolvedRewrite {
+            equation: Equation {
+                lhs,
+                rhs,
+                op: RelOp::Eq,
+            },
+            items: vec![],
+        };
+
+        let solved = solve_collect_terms_rewrite_with(rewrite, |equation| {
+            assert_eq!(equation.lhs, lhs);
+            assert_eq!(equation.rhs, rhs);
+            Ok::<_, ()>("ok")
+        })
+        .expect("must solve rewrite");
+
+        assert_eq!(solved.solved, "ok");
+    }
+
+    #[test]
+    fn solve_rational_exponent_rewrite_with_runs_solver_on_rewritten_equation() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("lhs");
+        let rhs = ctx.var("rhs");
+        let rewrite = RationalExponentSolvedRewrite {
+            equation: Equation {
+                lhs,
+                rhs,
+                op: RelOp::Eq,
+            },
+            items: vec![],
+        };
+
+        let solved = solve_rational_exponent_rewrite_with(rewrite, |equation| {
+            assert_eq!(equation.lhs, lhs);
+            assert_eq!(equation.rhs, rhs);
+            Ok::<_, ()>("ok")
+        })
+        .expect("must solve rewrite");
+
+        assert_eq!(solved.solved, "ok");
     }
 }

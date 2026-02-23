@@ -109,11 +109,49 @@ pub struct UnaryInverseSolveExecution {
     pub target_rhs: ExprId,
 }
 
+/// One executable unary-inverse solve item (rewrite or RHS cleanup).
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnaryInverseSolveExecutionItem {
+    pub equation: Equation,
+    pub description: String,
+}
+
+impl UnaryInverseSolveExecutionItem {
+    /// User-facing narration for this execution item.
+    pub fn description(&self) -> &str {
+        &self.description
+    }
+}
+
 /// Solved payload for one unary-inverse execution.
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnaryInverseSolvedExecution<T> {
     pub execution: UnaryInverseSolveExecution,
     pub solved: T,
+}
+
+/// Collect unary-inverse solve execution items in display order:
+/// rewrite items first, RHS-cleanup items second.
+pub fn collect_unary_inverse_solve_execution_items(
+    execution: &UnaryInverseSolveExecution,
+) -> Vec<UnaryInverseSolveExecutionItem> {
+    execution
+        .rewrite_items
+        .iter()
+        .map(|item| UnaryInverseSolveExecutionItem {
+            equation: item.equation.clone(),
+            description: item.description.clone(),
+        })
+        .chain(
+            execution
+                .rhs_cleanup_items
+                .iter()
+                .map(|item| UnaryInverseSolveExecutionItem {
+                    equation: item.equation.clone(),
+                    description: item.description.clone(),
+                }),
+        )
+        .collect()
 }
 
 impl UnaryInverseKind {
@@ -848,5 +886,44 @@ mod tests {
 
         assert_eq!(solved.execution, expected);
         assert!(matches!(solved.solved, SolutionSet::AllReals));
+    }
+
+    #[test]
+    fn collect_unary_inverse_solve_execution_items_preserves_order() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let execution = UnaryInverseSolveExecution {
+            rewrite_items: vec![UnaryInverseExecutionItem {
+                equation: Equation {
+                    lhs: x,
+                    rhs: y,
+                    op: RelOp::Eq,
+                },
+                description: "rewrite".to_string(),
+            }],
+            rhs_cleanup_items: vec![RhsSimplificationExecutionItem {
+                equation: Equation {
+                    lhs: x,
+                    rhs: z,
+                    op: RelOp::Eq,
+                },
+                description: "cleanup".to_string(),
+            }],
+            rewritten_equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            target_rhs: z,
+        };
+
+        let items = collect_unary_inverse_solve_execution_items(&execution);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].description(), "rewrite");
+        assert_eq!(items[1].description(), "cleanup");
+        assert_eq!(items[0].equation.rhs, y);
+        assert_eq!(items[1].equation.rhs, z);
     }
 }

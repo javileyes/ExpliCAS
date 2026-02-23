@@ -208,6 +208,15 @@ pub fn collect_log_linear_assumption_records(
         .collect()
 }
 
+/// Solved payload for one unwrap execution.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnwrapSolvedExecution<T> {
+    pub execution: UnwrapExecutionPlan,
+    pub assumption_records: Vec<LogLinearAssumptionRecord>,
+    pub rewritten_equation: Equation,
+    pub solved: T,
+}
+
 /// Resolve the equation to continue solving after unwrap execution.
 ///
 /// Prefer the last emitted execution item equation (most concrete rewrite),
@@ -218,6 +227,32 @@ pub fn unwrap_rewritten_equation(execution: &UnwrapExecutionPlan) -> Equation {
         .last()
         .map(|item| item.equation.clone())
         .unwrap_or_else(|| execution.equation.clone())
+}
+
+/// Execute a planned unwrap rewrite with caller-provided assumption handling
+/// and recursive solve callback.
+pub fn solve_unwrap_execution_with<E, T, FAssumption, FSolve>(
+    execution: UnwrapExecutionPlan,
+    other_side: ExprId,
+    mut on_assumption: FAssumption,
+    mut solve_equation: FSolve,
+) -> Result<UnwrapSolvedExecution<T>, E>
+where
+    FAssumption: FnMut(LogLinearAssumptionRecord),
+    FSolve: FnMut(&Equation) -> Result<T, E>,
+{
+    let assumption_records = collect_log_linear_assumption_records(&execution, other_side);
+    for record in assumption_records.iter().copied() {
+        on_assumption(record);
+    }
+    let rewritten_equation = unwrap_rewritten_equation(&execution);
+    let solved = solve_equation(&rewritten_equation)?;
+    Ok(UnwrapSolvedExecution {
+        execution,
+        assumption_records,
+        rewritten_equation,
+        solved,
+    })
 }
 
 /// Plan unwrap rewrite for a target expression (`Function`/`Pow`).
@@ -588,5 +623,88 @@ mod tests {
 
         let rewritten = unwrap_rewritten_equation(&execution);
         assert_eq!(rewritten, execution.equation);
+    }
+
+    #[test]
+    fn solve_unwrap_execution_with_emits_assumptions_and_solves_last_equation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let execution = UnwrapExecutionPlan {
+            equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            description: "unwrap".to_string(),
+            assumptions: vec![LogAssumption::PositiveBase],
+            log_linear_base: Some(x),
+            items: vec![
+                UnwrapExecutionItem {
+                    equation: Equation {
+                        lhs: y,
+                        rhs: z,
+                        op: RelOp::Eq,
+                    },
+                    description: "first".to_string(),
+                },
+                UnwrapExecutionItem {
+                    equation: Equation {
+                        lhs: z,
+                        rhs: x,
+                        op: RelOp::Eq,
+                    },
+                    description: "last".to_string(),
+                },
+            ],
+        };
+
+        let mut seen = Vec::new();
+        let solved = solve_unwrap_execution_with(
+            execution,
+            y,
+            |record| seen.push(record),
+            |equation| {
+                assert_eq!(equation.lhs, z);
+                assert_eq!(equation.rhs, x);
+                Ok::<_, ()>("ok")
+            },
+        )
+        .expect("solve should succeed");
+
+        assert_eq!(seen.len(), 1);
+        assert_eq!(seen[0].assumption, LogAssumption::PositiveBase);
+        assert_eq!(seen[0].base, x);
+        assert_eq!(seen[0].other_side, y);
+        assert_eq!(solved.solved, "ok");
+        assert_eq!(solved.assumption_records, seen);
+    }
+
+    #[test]
+    fn solve_unwrap_execution_with_propagates_solver_error() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let execution = UnwrapExecutionPlan {
+            equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            description: "unwrap".to_string(),
+            assumptions: vec![],
+            log_linear_base: None,
+            items: vec![],
+        };
+
+        let err = solve_unwrap_execution_with(
+            execution,
+            y,
+            |_| {},
+            |_equation| Err::<(), _>("solver error"),
+        )
+        .expect_err("expected solver error");
+        assert_eq!(err, "solver error");
     }
 }

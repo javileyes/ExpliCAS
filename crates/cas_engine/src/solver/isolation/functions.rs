@@ -4,7 +4,8 @@ use crate::solver::{SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
 use cas_ast::{BuiltinFn, ExprId, RelOp, SolutionSet};
 use cas_solver_core::function_inverse::{
-    execute_unary_inverse_with_runtime, solve_unary_inverse_execution_with, UnaryInverseRuntime,
+    collect_unary_inverse_solve_execution_items, execute_unary_inverse_with_runtime,
+    solve_unary_inverse_execution_with, UnaryInverseRuntime,
 };
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::log_isolation::{
@@ -94,11 +95,10 @@ fn isolate_abs(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let rhs_sign = numeric_sign(&simplifier.context, rhs);
     let abs_plan = plan_abs_isolation(&mut simplifier.context, arg, rhs, op.clone(), rhs_sign);
-    let dispatched_abs = solve_abs_isolation_plan_with(
-        abs_plan,
-        |equation| Ok::<_, CasError>(equation),
-        |positive, negative| Ok::<_, CasError>((positive, negative)),
-    )?;
+    let dispatched_abs =
+        solve_abs_isolation_plan_with(abs_plan, Ok::<_, CasError>, |positive, negative| {
+            Ok::<_, CasError>((positive, negative))
+        })?;
 
     match dispatched_abs {
         AbsIsolationSolved::ReturnedEmptySet => Ok((SolutionSet::Empty, steps)),
@@ -258,15 +258,7 @@ fn isolate_unary_function(
         })?;
 
     if simplifier.collect_steps() {
-        for item in solved_execution.execution.rewrite_items {
-            steps.push(SolveStep {
-                description: item.description().to_string(),
-                equation_after: item.equation,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
-        }
-        for item in solved_execution.execution.rhs_cleanup_items {
+        for item in collect_unary_inverse_solve_execution_items(&solved_execution.execution) {
             steps.push(SolveStep {
                 description: item.description().to_string(),
                 equation_after: item.equation,
