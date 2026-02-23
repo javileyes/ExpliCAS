@@ -10,7 +10,8 @@ use cas_solver_core::solve_outcome::{
     resolve_var_eliminated_outcome_with, VarEliminatedSolveOutcome,
 };
 use cas_solver_core::strategy_kernels::{
-    execute_rational_exponent_rewrite_with_runtime, StrategyKernelRuntime,
+    execute_rational_exponent_rewrite_with_runtime, solve_rational_exponent_rewrite_with_item,
+    StrategyKernelRuntime,
 };
 
 use crate::engine::Simplifier;
@@ -562,35 +563,34 @@ fn try_solve_rational_exponent(
     };
 
     let mut steps = Vec::new();
-    let new_eq = rewrite.equation;
-
-    if simplifier.collect_steps() {
-        for item in &rewrite.items {
-            steps.push(SolveStep {
-                description: item.description().to_string(),
-                equation_after: item.equation.clone(),
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            });
-        }
-    }
-
-    // Recursively solve (this will go through the full solve pipeline)
-    match solve_with_ctx(&new_eq, var, simplifier, ctx) {
-        Ok((set, mut sub_steps)) => {
-            steps.append(&mut sub_steps);
-
-            // Verify solutions against original equation (handles extraneous roots)
-            if let SolutionSet::Discrete(sols) = set {
-                let valid_sols =
-                    cas_solver_core::solve_analysis::retain_verified_discrete(sols, |sol| {
-                        verify_solution(eq, var, sol, simplifier)
-                    });
-                Some(Ok((SolutionSet::Discrete(valid_sols), steps)))
-            } else {
-                Some(Ok((set, steps)))
+    let solved_rewrite = match solve_rational_exponent_rewrite_with_item(rewrite, |item, new_eq| {
+        if simplifier.collect_steps() {
+            if let Some(item) = item {
+                steps.push(SolveStep {
+                    description: item.description().to_string(),
+                    equation_after: item.equation,
+                    importance: crate::step::ImportanceLevel::Medium,
+                    substeps: vec![],
+                });
             }
         }
-        Err(e) => Some(Err(e)),
+        solve_with_ctx(new_eq, var, simplifier, ctx)
+    }) {
+        Ok(solved) => solved,
+        Err(e) => return Some(Err(e)),
+    };
+
+    // Recursively solve result (this goes through full solve pipeline)
+    let (set, mut sub_steps) = solved_rewrite.solved;
+    steps.append(&mut sub_steps);
+
+    // Verify solutions against original equation (handles extraneous roots)
+    if let SolutionSet::Discrete(sols) = set {
+        let valid_sols = cas_solver_core::solve_analysis::retain_verified_discrete(sols, |sol| {
+            verify_solution(eq, var, sol, simplifier)
+        });
+        Some(Ok((SolutionSet::Discrete(valid_sols), steps)))
+    } else {
+        Some(Ok((set, steps)))
     }
 }
