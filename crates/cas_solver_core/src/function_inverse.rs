@@ -938,18 +938,15 @@ mod tests {
             target_rhs: z,
         };
 
-        let solved = solve_unary_inverse_execution_with_items(
-            execution,
-            |items, lhs, rhs, op| {
-                assert_eq!(items.len(), 2);
-                assert_eq!(items[0].description(), "rewrite");
-                assert_eq!(items[1].description(), "cleanup");
-                assert_eq!(lhs, x);
-                assert_eq!(rhs, z);
-                assert_eq!(op, RelOp::Eq);
-                Ok::<_, ()>("ok")
-            },
-        )
+        let solved = solve_unary_inverse_execution_with_items(execution, |items, lhs, rhs, op| {
+            assert_eq!(items.len(), 2);
+            assert_eq!(items[0].description(), "rewrite");
+            assert_eq!(items[1].description(), "cleanup");
+            assert_eq!(lhs, x);
+            assert_eq!(rhs, z);
+            assert_eq!(op, RelOp::Eq);
+            Ok::<_, ()>("ok")
+        })
         .expect("solve should succeed");
 
         assert_eq!(solved.solved, "ok");

@@ -415,7 +415,9 @@ pub fn collect_rational_roots_execution_items(
 pub fn first_rational_roots_execution_item(
     step: &RationalRootsDidacticStep,
 ) -> Option<RationalRootsExecutionItem> {
-    collect_rational_roots_execution_items(step).into_iter().next()
+    collect_rational_roots_execution_items(step)
+        .into_iter()
+        .next()
 }
 
 /// Plan Rational Root strategy didactic step for equation `expanded_expr = 0`.
