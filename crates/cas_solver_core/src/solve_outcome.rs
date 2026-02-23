@@ -596,6 +596,36 @@ pub fn first_power_base_one_shortcut_execution_item(
         .next()
 }
 
+/// Solved result for a base-one shortcut pipeline.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PowerBaseOneShortcutPipelineSolved<S> {
+    pub solution_set: SolutionSet,
+    pub steps: Vec<S>,
+}
+
+/// Execute base-one shortcut item dispatch, optionally mapping first didactic
+/// item to caller step payload.
+pub fn solve_power_base_one_shortcut_pipeline_with_item<S, FStep>(
+    outcome: PowerBaseOneShortcutOutcome,
+    include_item: bool,
+    mut map_item_to_step: FStep,
+) -> PowerBaseOneShortcutPipelineSolved<S>
+where
+    FStep: FnMut(PowerBaseOneShortcutExecutionItem) -> S,
+{
+    let PowerBaseOneShortcutOutcome { solutions, items } = outcome;
+    let mut steps = Vec::new();
+    if include_item {
+        if let Some(item) = items.into_iter().next() {
+            steps.push(map_item_to_step(item));
+        }
+    }
+    PowerBaseOneShortcutPipelineSolved {
+        solution_set: solutions,
+        steps,
+    }
+}
+
 /// Didactic payload for logarithmic isolation of exponent equations.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowExponentLogIsolationStep {
@@ -4971,6 +5001,43 @@ mod tests {
             .expect("expected one shortcut item");
         assert_eq!(item.equation, outcome.items[0].equation);
         assert_eq!(item.description, outcome.items[0].description);
+    }
+
+    #[test]
+    fn solve_power_base_one_shortcut_pipeline_with_item_emits_step_when_enabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rhs = ctx.num(2);
+        let outcome = resolve_power_base_one_shortcut_with(true, false, x, rhs, RelOp::Eq, |_| {
+            "2".to_string()
+        })
+        .expect("shortcut should apply");
+
+        let solved = solve_power_base_one_shortcut_pipeline_with_item(outcome, true, |item| {
+            item.description
+        });
+
+        assert!(matches!(solved.solution_set, SolutionSet::Empty));
+        assert_eq!(solved.steps.len(), 1);
+        assert!(solved.steps[0].contains("no solution"));
+    }
+
+    #[test]
+    fn solve_power_base_one_shortcut_pipeline_with_item_omits_step_when_disabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rhs = ctx.num(1);
+        let outcome = resolve_power_base_one_shortcut_with(true, true, x, rhs, RelOp::Eq, |_| {
+            "1".to_string()
+        })
+        .expect("shortcut should apply");
+
+        let solved = solve_power_base_one_shortcut_pipeline_with_item(outcome, false, |item| {
+            item.description
+        });
+
+        assert!(matches!(solved.solution_set, SolutionSet::AllReals));
+        assert!(solved.steps.is_empty());
     }
 
     #[test]
