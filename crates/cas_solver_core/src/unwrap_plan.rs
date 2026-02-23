@@ -3,7 +3,7 @@
 use crate::log_domain::{LogAssumption, LogSolveDecision};
 use crate::rational_power::PowUnwrapPlan;
 use crate::solve_outcome::take_log_base_message;
-use cas_ast::{Context, Equation, Expr, ExprId, RelOp};
+use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
 
 /// Planned unwrap rewrite from a target expression.
 #[derive(Debug, Clone, PartialEq)]
@@ -168,6 +168,70 @@ where
     }))
 }
 
+/// One selected unwrap execution candidate for an equation side.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnwrapEquationExecution {
+    pub execution: UnwrapExecutionPlan,
+    pub other_side: ExprId,
+}
+
+/// Plan the first applicable unwrap execution for an equation.
+///
+/// Selection order is deterministic: LHS is attempted first, then RHS.
+pub fn plan_first_unwrap_equation_execution_with<FClassify, FRender>(
+    ctx: &mut Context,
+    equation: &Equation,
+    var: &str,
+    lhs_has: bool,
+    rhs_has: bool,
+    mut classify_log_solve: FClassify,
+    mut render_expr: FRender,
+) -> Option<UnwrapEquationExecution>
+where
+    FClassify: FnMut(&Context, ExprId, ExprId) -> LogSolveDecision,
+    FRender: FnMut(&Context, ExprId) -> String,
+{
+    if lhs_has {
+        if let Some(execution) = plan_unwrap_execution_with(
+            ctx,
+            UnwrapExecutionRequest {
+                target: equation.lhs,
+                other: equation.rhs,
+                var,
+                op: equation.op.clone(),
+                is_lhs: true,
+            },
+            |core_ctx, base, other_side| classify_log_solve(core_ctx, base, other_side),
+            |core_ctx, id| render_expr(core_ctx, id),
+        ) {
+            return Some(UnwrapEquationExecution {
+                execution,
+                other_side: equation.rhs,
+            });
+        }
+    }
+    if rhs_has {
+        if let Some(execution) = plan_unwrap_execution_with(
+            ctx,
+            UnwrapExecutionRequest {
+                target: equation.rhs,
+                other: equation.lhs,
+                var,
+                op: equation.op.clone(),
+                is_lhs: false,
+            },
+            |core_ctx, base, other_side| classify_log_solve(core_ctx, base, other_side),
+            |core_ctx, id| render_expr(core_ctx, id),
+        ) {
+            return Some(UnwrapEquationExecution {
+                execution,
+                other_side: equation.lhs,
+            });
+        }
+    }
+    None
+}
+
 /// Collect didactic steps emitted by an unwrap execution in display order.
 pub fn collect_unwrap_execution_didactic_steps(
     execution: &UnwrapExecutionPlan,
@@ -284,6 +348,57 @@ where
         assumption_records,
         rewritten_equation,
         solved,
+    })
+}
+
+/// Runtime contract for unwrap execution orchestration used by engine adapters.
+pub trait UnwrapExecutionRuntime<E, S> {
+    /// Handle one assumption record emitted by log-linear unwrap planning.
+    fn note_assumption(&mut self, record: LogLinearAssumptionRecord);
+    /// Solve one rewritten equation for the requested variable.
+    fn solve_equation(
+        &mut self,
+        equation: &Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<S>), E>;
+    /// Materialize one caller step payload from unwrap execution item.
+    fn map_item_to_step(&mut self, item: UnwrapExecutionItem) -> S;
+}
+
+/// Solved output for unwrap execution pipeline.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnwrapExecutionPipelineSolved<S> {
+    pub solution_set: SolutionSet,
+    pub steps: Vec<S>,
+}
+
+/// Execute unwrap pipeline with optional first-item step dispatch and recursive solve.
+pub fn solve_unwrap_execution_pipeline_with_item<E, S, R>(
+    execution: UnwrapExecutionPlan,
+    other_side: ExprId,
+    var: &str,
+    include_item: bool,
+    runtime: &mut R,
+) -> Result<UnwrapExecutionPipelineSolved<S>, E>
+where
+    R: UnwrapExecutionRuntime<E, S>,
+{
+    let assumption_records = collect_log_linear_assumption_records(&execution, other_side);
+    for record in assumption_records.iter().copied() {
+        runtime.note_assumption(record);
+    }
+    let rewritten_equation = unwrap_rewritten_equation(&execution);
+    let mut steps = Vec::new();
+    if include_item {
+        if let Some(item) = first_unwrap_execution_item(&execution) {
+            steps.push(runtime.map_item_to_step(item));
+        }
+    }
+    let (solution_set, mut sub_steps) = runtime.solve_equation(&rewritten_equation, var)?;
+    steps.append(&mut sub_steps);
+    Ok(UnwrapExecutionPipelineSolved {
+        solution_set,
+        steps,
     })
 }
 
@@ -488,6 +603,112 @@ mod tests {
         );
 
         assert!(execution.is_none());
+    }
+
+    #[test]
+    fn plan_first_unwrap_equation_execution_with_prefers_lhs_candidate() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let lhs_target = ctx.call("ln", vec![x]);
+        let rhs_target = ctx.call("sqrt", vec![x]);
+        let equation = Equation {
+            lhs: lhs_target,
+            rhs: rhs_target,
+            op: RelOp::Eq,
+        };
+
+        let lhs_execution = plan_unwrap_execution_with(
+            &mut ctx,
+            UnwrapExecutionRequest {
+                target: lhs_target,
+                other: rhs_target,
+                var: "x",
+                op: RelOp::Eq,
+                is_lhs: true,
+            },
+            |_, _, _| LogSolveDecision::Ok,
+            |_, _| "render".to_string(),
+        )
+        .expect("expected lhs unwrap execution");
+
+        let selected = plan_first_unwrap_equation_execution_with(
+            &mut ctx,
+            &equation,
+            "x",
+            true,
+            true,
+            |_, _, _| LogSolveDecision::Ok,
+            |_, _| "render".to_string(),
+        )
+        .expect("expected selected unwrap execution");
+
+        assert_eq!(selected.other_side, rhs_target);
+        assert_eq!(selected.execution, lhs_execution);
+    }
+
+    #[test]
+    fn plan_first_unwrap_equation_execution_with_falls_back_to_rhs_candidate() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let rhs_target = ctx.call("ln", vec![x]);
+        let equation = Equation {
+            lhs: y,
+            rhs: rhs_target,
+            op: RelOp::Eq,
+        };
+
+        let rhs_execution = plan_unwrap_execution_with(
+            &mut ctx,
+            UnwrapExecutionRequest {
+                target: rhs_target,
+                other: y,
+                var: "x",
+                op: RelOp::Eq,
+                is_lhs: false,
+            },
+            |_, _, _| LogSolveDecision::Ok,
+            |_, _| "render".to_string(),
+        )
+        .expect("expected rhs unwrap execution");
+
+        let selected = plan_first_unwrap_equation_execution_with(
+            &mut ctx,
+            &equation,
+            "x",
+            true,
+            true,
+            |_, _, _| LogSolveDecision::Ok,
+            |_, _| "render".to_string(),
+        )
+        .expect("expected selected unwrap execution");
+
+        assert_eq!(selected.other_side, y);
+        assert_eq!(selected.execution, rhs_execution);
+    }
+
+    #[test]
+    fn plan_first_unwrap_equation_execution_with_returns_none_without_candidates() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let equation = Equation {
+            lhs: x,
+            rhs: y,
+            op: RelOp::Eq,
+        };
+
+        let selected = plan_first_unwrap_equation_execution_with(
+            &mut ctx,
+            &equation,
+            "x",
+            true,
+            false,
+            |_, _, _| LogSolveDecision::Ok,
+            |_, _| "render".to_string(),
+        );
+
+        assert!(selected.is_none());
     }
 
     #[test]
@@ -793,6 +1014,133 @@ mod tests {
 
         assert_eq!(seen_item, Some("first".to_string()));
         assert_eq!(solved.solved, "ok");
+    }
+
+    struct MockUnwrapPipelineRuntime {
+        assumptions: Vec<LogLinearAssumptionRecord>,
+        solve_calls: Vec<String>,
+        solve_set: SolutionSet,
+        solve_steps: Vec<String>,
+    }
+
+    impl UnwrapExecutionRuntime<(), String> for MockUnwrapPipelineRuntime {
+        fn note_assumption(&mut self, record: LogLinearAssumptionRecord) {
+            self.assumptions.push(record);
+        }
+
+        fn solve_equation(
+            &mut self,
+            _equation: &Equation,
+            var: &str,
+        ) -> Result<(SolutionSet, Vec<String>), ()> {
+            self.solve_calls.push(var.to_string());
+            Ok((self.solve_set.clone(), self.solve_steps.clone()))
+        }
+
+        fn map_item_to_step(&mut self, item: UnwrapExecutionItem) -> String {
+            item.description
+        }
+    }
+
+    #[test]
+    fn solve_unwrap_execution_pipeline_with_item_forwards_assumptions_item_and_substeps() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let execution = UnwrapExecutionPlan {
+            equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            description: "unwrap".to_string(),
+            assumptions: vec![LogAssumption::PositiveBase],
+            log_linear_base: Some(x),
+            items: vec![
+                UnwrapExecutionItem {
+                    equation: Equation {
+                        lhs: y,
+                        rhs: z,
+                        op: RelOp::Eq,
+                    },
+                    description: "first".to_string(),
+                },
+                UnwrapExecutionItem {
+                    equation: Equation {
+                        lhs: z,
+                        rhs: x,
+                        op: RelOp::Eq,
+                    },
+                    description: "last".to_string(),
+                },
+            ],
+        };
+
+        let mut runtime = MockUnwrapPipelineRuntime {
+            assumptions: vec![],
+            solve_calls: vec![],
+            solve_set: SolutionSet::Discrete(vec![z]),
+            solve_steps: vec!["sub-step".to_string()],
+        };
+
+        let solved =
+            solve_unwrap_execution_pipeline_with_item(execution, y, "x", true, &mut runtime)
+                .expect("pipeline should succeed");
+
+        assert_eq!(runtime.assumptions.len(), 1);
+        assert_eq!(
+            runtime.assumptions[0].assumption,
+            LogAssumption::PositiveBase
+        );
+        assert_eq!(runtime.assumptions[0].base, x);
+        assert_eq!(runtime.assumptions[0].other_side, y);
+        assert_eq!(runtime.solve_calls, vec!["x"]);
+        assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![z]));
+        assert_eq!(
+            solved.steps,
+            vec!["first".to_string(), "sub-step".to_string()]
+        );
+    }
+
+    #[test]
+    fn solve_unwrap_execution_pipeline_with_item_omits_item_when_disabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let execution = UnwrapExecutionPlan {
+            equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            description: "unwrap".to_string(),
+            assumptions: vec![],
+            log_linear_base: None,
+            items: vec![UnwrapExecutionItem {
+                equation: Equation {
+                    lhs: x,
+                    rhs: y,
+                    op: RelOp::Eq,
+                },
+                description: "first".to_string(),
+            }],
+        };
+
+        let mut runtime = MockUnwrapPipelineRuntime {
+            assumptions: vec![],
+            solve_calls: vec![],
+            solve_set: SolutionSet::Discrete(vec![x]),
+            solve_steps: vec!["sub-step".to_string()],
+        };
+
+        let solved =
+            solve_unwrap_execution_pipeline_with_item(execution, y, "x", false, &mut runtime)
+                .expect("pipeline should succeed");
+
+        assert_eq!(runtime.assumptions.len(), 0);
+        assert_eq!(runtime.solve_calls, vec!["x"]);
+        assert_eq!(solved.steps, vec!["sub-step".to_string()]);
     }
 
     #[test]

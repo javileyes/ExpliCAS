@@ -1682,6 +1682,39 @@ where
     Ok(TermIsolationRewriteSolved { rewrite, solved })
 }
 
+/// Solved result for a term-isolation rewrite pipeline.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TermIsolationRewritePipelineSolved<S> {
+    pub solution_set: SolutionSet,
+    pub steps: Vec<S>,
+}
+
+/// Execute term-isolation rewrite solving + optional item dispatch.
+pub fn solve_term_isolation_rewrite_pipeline_with_item<E, S, FSolve, FStep>(
+    rewrite: TermIsolationRewritePlan,
+    include_item: bool,
+    solve_rewritten: FSolve,
+    mut map_item_to_step: FStep,
+) -> Result<TermIsolationRewritePipelineSolved<S>, E>
+where
+    FSolve: FnMut(Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(TermIsolationRewriteExecutionItem) -> S,
+{
+    let solved_rewrite = solve_term_isolation_rewrite_with(rewrite, solve_rewritten)?;
+    let mut steps = Vec::new();
+    if include_item {
+        if let Some(item) = first_term_isolation_rewrite_execution_item(&solved_rewrite.rewrite) {
+            steps.push(map_item_to_step(item));
+        }
+    }
+    let (solution_set, mut sub_steps) = solved_rewrite.solved;
+    steps.append(&mut sub_steps);
+    Ok(TermIsolationRewritePipelineSolved {
+        solution_set,
+        steps,
+    })
+}
+
 /// Route chosen for denominator isolation with zero-RHS guard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DivDenominatorIsolationRoute {
@@ -2802,6 +2835,57 @@ where
             equation: equation_after,
         },
     ))
+}
+
+/// Solved payload for single-side exponential terminal pipeline.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SingleSideExponentialTerminalSolved<S> {
+    pub solution_set: SolutionSet,
+    pub steps: Vec<S>,
+}
+
+/// Resolve single-side exponential terminal outcome with optional item dispatch.
+#[allow(clippy::too_many_arguments)]
+pub fn resolve_single_side_exponential_terminal_pipeline_with_item<FClassify, FStep, S>(
+    ctx: &mut Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    lhs_has_var: bool,
+    rhs_has_var: bool,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+    residual_suffix: &str,
+    equation_after: Equation,
+    include_item: bool,
+    classify_log_solve: FClassify,
+    mut map_item_to_step: FStep,
+) -> Option<SingleSideExponentialTerminalSolved<S>>
+where
+    FClassify: FnMut(&Context, ExprId, ExprId) -> LogSolveDecision,
+    FStep: FnMut(TermIsolationExecutionItem) -> S,
+{
+    let (solution_set, item) = resolve_single_side_exponential_terminal_with_item(
+        ctx,
+        lhs,
+        rhs,
+        var,
+        lhs_has_var,
+        rhs_has_var,
+        mode,
+        wildcard_scope,
+        residual_suffix,
+        equation_after,
+        classify_log_solve,
+    )?;
+    let mut steps = Vec::new();
+    if include_item {
+        steps.push(map_item_to_step(item));
+    }
+    Some(SingleSideExponentialTerminalSolved {
+        solution_set,
+        steps,
+    })
 }
 
 /// Resolve single-side exponential terminal outcome and return a didactic step.
@@ -4833,6 +4917,74 @@ mod tests {
     }
 
     #[test]
+    fn resolve_single_side_exponential_terminal_pipeline_with_item_forwards_step_when_enabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let pow = ctx.add(Expr::Pow(two, x));
+        let neg_five = ctx.num(-5);
+        let equation_after = Equation {
+            lhs: pow,
+            rhs: neg_five,
+            op: RelOp::Eq,
+        };
+
+        let solved = resolve_single_side_exponential_terminal_pipeline_with_item(
+            &mut ctx,
+            pow,
+            neg_five,
+            "x",
+            true,
+            false,
+            DomainModeKind::Generic,
+            false,
+            " (residual)",
+            equation_after.clone(),
+            true,
+            |_ctx, _base, _rhs| LogSolveDecision::EmptySet("no real solutions"),
+            |item| item.description,
+        )
+        .expect("must produce terminal pipeline payload");
+
+        assert!(matches!(solved.solution_set, SolutionSet::Empty));
+        assert_eq!(solved.steps, vec!["no real solutions".to_string()]);
+    }
+
+    #[test]
+    fn resolve_single_side_exponential_terminal_pipeline_with_item_omits_step_when_disabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let pow = ctx.add(Expr::Pow(two, x));
+        let neg_five = ctx.num(-5);
+        let equation_after = Equation {
+            lhs: pow,
+            rhs: neg_five,
+            op: RelOp::Eq,
+        };
+
+        let solved = resolve_single_side_exponential_terminal_pipeline_with_item(
+            &mut ctx,
+            pow,
+            neg_five,
+            "x",
+            true,
+            false,
+            DomainModeKind::Generic,
+            false,
+            " (residual)",
+            equation_after,
+            false,
+            |_ctx, _base, _rhs| LogSolveDecision::EmptySet("no real solutions"),
+            |item| item.description,
+        )
+        .expect("must produce terminal pipeline payload");
+
+        assert!(matches!(solved.solution_set, SolutionSet::Empty));
+        assert!(solved.steps.is_empty());
+    }
+
+    #[test]
     fn classify_single_side_exponential_log_decision_returns_none_without_single_side_candidate() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -6468,6 +6620,66 @@ mod tests {
         assert_eq!(calls, 1);
         assert_eq!(solved.rewrite, expected);
         assert_eq!(solved.solved, expected.equation);
+    }
+
+    #[test]
+    fn solve_term_isolation_rewrite_pipeline_with_item_forwards_item_and_substeps() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let plan =
+            plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
+        let expected_item = plan.items[0].clone();
+
+        let solved = solve_term_isolation_rewrite_pipeline_with_item(
+            plan,
+            true,
+            |equation| {
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![equation.lhs]),
+                    vec!["substep".to_string()],
+                ))
+            },
+            |item| item.description,
+        )
+        .expect("pipeline solve should succeed");
+
+        assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![x]));
+        assert_eq!(
+            solved.steps,
+            vec![expected_item.description, "substep".to_string()]
+        );
+    }
+
+    #[test]
+    fn solve_term_isolation_rewrite_pipeline_with_item_omits_item_when_disabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let plan =
+            plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
+
+        let solved = solve_term_isolation_rewrite_pipeline_with_item(
+            plan,
+            false,
+            |equation| {
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![equation.rhs]),
+                    vec!["only-substep".to_string()],
+                ))
+            },
+            |item| item.description,
+        )
+        .expect("pipeline solve should succeed");
+
+        let expected_rhs = ctx.add(Expr::Sub(z, y));
+        assert_eq!(
+            solved.solution_set,
+            SolutionSet::Discrete(vec![expected_rhs])
+        );
+        assert_eq!(solved.steps, vec!["only-substep".to_string()]);
     }
 
     #[test]

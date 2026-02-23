@@ -240,6 +240,44 @@ where
     Ok(CollectTermsSolved { rewrite, solved })
 }
 
+/// Solved result for a collect-terms rewrite pipeline.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CollectTermsRewriteSolved<S> {
+    pub solution_set: SolutionSet,
+    pub steps: Vec<S>,
+}
+
+/// Execute collect-terms rewrite solving + optional item dispatch.
+pub fn solve_collect_terms_rewrite_pipeline_with_item<E, S, FSolve, FStep>(
+    rewrite: CollectTermsSolvedRewrite,
+    var: &str,
+    include_item: bool,
+    mut solve_rewritten: FSolve,
+    mut map_item_to_step: FStep,
+) -> Result<CollectTermsRewriteSolved<S>, E>
+where
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(StrategyExecutionItem) -> S,
+{
+    let solved_rewrite = solve_collect_terms_rewrite_with_item(rewrite, |item, new_eq| {
+        let mut steps = Vec::new();
+        if include_item {
+            if let Some(item) = item {
+                steps.push(map_item_to_step(item));
+            }
+        }
+        let (set, mut sub_steps) = solve_rewritten(new_eq, var)?;
+        steps.append(&mut sub_steps);
+        Ok((set, steps))
+    })?;
+
+    let (solution_set, steps) = solved_rewrite.solved;
+    Ok(CollectTermsRewriteSolved {
+        solution_set,
+        steps,
+    })
+}
+
 /// Rewrite payload for `RationalExponentStrategy`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RationalExponentKernel {
@@ -757,6 +795,93 @@ mod tests {
 
         assert_eq!(solved.solved, "ok");
         assert_eq!(seen_desc, Some("Subtract rhs from both sides".to_string()));
+    }
+
+    #[test]
+    fn solve_collect_terms_rewrite_pipeline_with_item_forwards_item_and_substeps() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("lhs");
+        let rhs = ctx.var("rhs");
+        let rewrite = CollectTermsSolvedRewrite {
+            equation: Equation {
+                lhs,
+                rhs,
+                op: RelOp::Eq,
+            },
+            items: vec![StrategyExecutionItem {
+                equation: Equation {
+                    lhs,
+                    rhs,
+                    op: RelOp::Eq,
+                },
+                description: "Subtract rhs from both sides".to_string(),
+            }],
+        };
+
+        let solved = solve_collect_terms_rewrite_pipeline_with_item(
+            rewrite,
+            "x",
+            true,
+            |equation, var| {
+                assert_eq!(equation.lhs, lhs);
+                assert_eq!(equation.rhs, rhs);
+                assert_eq!(var, "x");
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![lhs]),
+                    vec!["sub-step".to_string()],
+                ))
+            },
+            |item| item.description,
+        )
+        .expect("collect pipeline should succeed");
+
+        assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![lhs]));
+        assert_eq!(
+            solved.steps,
+            vec![
+                "Subtract rhs from both sides".to_string(),
+                "sub-step".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn solve_collect_terms_rewrite_pipeline_with_item_omits_item_when_disabled() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("lhs");
+        let rhs = ctx.var("rhs");
+        let rewrite = CollectTermsSolvedRewrite {
+            equation: Equation {
+                lhs,
+                rhs,
+                op: RelOp::Eq,
+            },
+            items: vec![StrategyExecutionItem {
+                equation: Equation {
+                    lhs,
+                    rhs,
+                    op: RelOp::Eq,
+                },
+                description: "Subtract rhs from both sides".to_string(),
+            }],
+        };
+
+        let solved = solve_collect_terms_rewrite_pipeline_with_item(
+            rewrite,
+            "x",
+            false,
+            |_equation, _var| {
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![rhs]),
+                    vec!["sub-step".to_string()],
+                ))
+            },
+            |item| item.description,
+        )
+        .expect("collect pipeline should succeed");
+
+        assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![rhs]));
+        assert_eq!(solved.steps, vec!["sub-step".to_string()]);
     }
 
     #[test]
