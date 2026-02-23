@@ -6,17 +6,16 @@ use cas_solver_core::isolation_utils::is_numeric_zero;
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
     build_pow_base_isolation_action_with, build_terminal_outcome_item, derive_pow_isolation_route,
-    execute_pow_exponent_log_unsupported_with, execute_pow_exponent_shortcut_with_runtime,
-    first_power_base_one_shortcut_execution_item, first_term_isolation_rewrite_execution_item,
-    plan_pow_exponent_log_isolation_step_with,
+    execute_pow_exponent_shortcut_with_runtime, first_power_base_one_shortcut_execution_item,
+    first_term_isolation_rewrite_execution_item, plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
     plan_solve_tactic_normalization_step, pow_exponent_rhs_contains_variable,
     resolve_log_terminal_outcome, resolve_power_base_one_shortcut_for_pow_with,
     solve_pow_base_isolation_pipeline_with_item,
     solve_pow_exponent_log_isolation_rewrite_pipeline_with_item,
+    solve_pow_exponent_log_unsupported_pipeline_with_items,
     solve_pow_exponent_shortcut_pipeline_with_item, PowBaseIsolationPipelineSolved,
-    PowExponentLogUnsupportedSolvedExecution, PowExponentShortcutPipelineSolved,
-    PowExponentShortcutRuntime, PowIsolationRoute,
+    PowExponentShortcutPipelineSolved, PowExponentShortcutRuntime, PowIsolationRoute,
 };
 
 use super::{isolate, prepend_steps};
@@ -352,8 +351,10 @@ fn isolate_pow_exponent(
             },
         )
     {
-        let unsupported_solved =
-            execute_pow_exponent_log_unsupported_with(unsupported_execution, |equation| {
+        let unsupported_solved = solve_pow_exponent_log_unsupported_pipeline_with_items(
+            unsupported_execution,
+            simplifier.collect_steps(),
+            |equation| {
                 isolate(
                     equation.lhs,
                     equation.rhs,
@@ -365,61 +366,35 @@ fn isolate_pow_exponent(
                 )
                 .ok()
                 .map(|(solutions, _)| solutions)
+            },
+            |item| SolveStep {
+                description: item.description().to_string(),
+                equation_after: item.equation,
+                importance: crate::step::ImportanceLevel::Medium,
+                substeps: vec![],
+            },
+        );
+
+        // Register blocked hints for pedagogical feedback
+        for hint in unsupported_solved.blocked_hints {
+            let event = crate::assumptions::AssumptionEvent::from_log_assumption(
+                hint.assumption,
+                &simplifier.context,
+                b,
+                rhs,
+            );
+            crate::domain::register_blocked_hint(crate::domain::BlockedHint {
+                key: event.key,
+                expr_id: hint.expr_id,
+                rule: hint.rule.to_string(),
+                suggestion: hint.suggestion,
             });
-        match unsupported_solved {
-            PowExponentLogUnsupportedSolvedExecution::Residual { item, solutions } => {
-                if simplifier.collect_steps() {
-                    steps.push(SolveStep {
-                        description: item.description().to_string(),
-                        equation_after: item.equation,
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    });
-                }
-                return Ok((solutions, steps));
-            }
-            PowExponentLogUnsupportedSolvedExecution::Guarded {
-                blocked_hints,
-                rewrite_item,
-                followup_item,
-                solutions,
-            } => {
-                // Register blocked hints for pedagogical feedback
-                for hint in blocked_hints {
-                    let event = crate::assumptions::AssumptionEvent::from_log_assumption(
-                        hint.assumption,
-                        &simplifier.context,
-                        b,
-                        rhs,
-                    );
-                    crate::domain::register_blocked_hint(crate::domain::BlockedHint {
-                        key: event.key,
-                        expr_id: hint.expr_id,
-                        rule: hint.rule.to_string(),
-                        suggestion: hint.suggestion,
-                    });
-                }
-
-                if simplifier.collect_steps() {
-                    if let Some(item) = rewrite_item {
-                        steps.push(SolveStep {
-                            description: item.description().to_string(),
-                            equation_after: item.equation,
-                            importance: crate::step::ImportanceLevel::Medium,
-                            substeps: vec![],
-                        });
-                    }
-                    steps.push(SolveStep {
-                        description: followup_item.description().to_string(),
-                        equation_after: followup_item.equation,
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    });
-                }
-
-                return Ok((solutions, steps));
-            }
         }
+
+        for step in unsupported_solved.steps {
+            steps.push(step);
+        }
+        return Ok((unsupported_solved.solution_set, steps));
     }
     // ================================================================
     // End of domain guards

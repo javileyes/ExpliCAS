@@ -765,6 +765,16 @@ pub enum PowExponentLogUnsupportedSolvedExecution {
     },
 }
 
+/// Convert one logarithmic-isolation rewrite execution item to term-isolation shape.
+pub fn pow_exponent_log_execution_item_as_term_item(
+    item: PowExponentLogIsolationExecutionItem,
+) -> TermIsolationExecutionItem {
+    TermIsolationExecutionItem {
+        description: item.description,
+        equation: item.equation,
+    }
+}
+
 /// Plan unsupported logarithmic isolation execution for exponent equations.
 ///
 /// This maps the low-level unsupported outcome to engine-facing execution data:
@@ -3067,6 +3077,63 @@ where
                 ),
                 followup_item: guarded_execution.followup,
                 solutions,
+            }
+        }
+    }
+}
+
+/// Solved result for unsupported-log execution pipeline.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PowExponentLogUnsupportedPipelineSolved<S> {
+    pub blocked_hints: Vec<LogBlockedHintRecord>,
+    pub solution_set: SolutionSet,
+    pub steps: Vec<S>,
+}
+
+/// Execute unsupported-log route, optionally map didactic items to steps, and
+/// return blocked-hint payload for caller-side registration.
+pub fn solve_pow_exponent_log_unsupported_pipeline_with_items<FG, FStep, S>(
+    execution: PowExponentLogUnsupportedExecution,
+    include_items: bool,
+    try_guarded_solve: FG,
+    mut map_item_to_step: FStep,
+) -> PowExponentLogUnsupportedPipelineSolved<S>
+where
+    FG: FnMut(&Equation) -> Option<SolutionSet>,
+    FStep: FnMut(TermIsolationExecutionItem) -> S,
+{
+    let solved = execute_pow_exponent_log_unsupported_with(execution, try_guarded_solve);
+    match solved {
+        PowExponentLogUnsupportedSolvedExecution::Residual { item, solutions } => {
+            let mut steps = Vec::new();
+            if include_items {
+                steps.push(map_item_to_step(item));
+            }
+            PowExponentLogUnsupportedPipelineSolved {
+                blocked_hints: vec![],
+                solution_set: solutions,
+                steps,
+            }
+        }
+        PowExponentLogUnsupportedSolvedExecution::Guarded {
+            blocked_hints,
+            rewrite_item,
+            followup_item,
+            solutions,
+        } => {
+            let mut steps = Vec::new();
+            if include_items {
+                if let Some(item) = rewrite_item {
+                    steps.push(map_item_to_step(
+                        pow_exponent_log_execution_item_as_term_item(item),
+                    ));
+                }
+                steps.push(map_item_to_step(followup_item));
+            }
+            PowExponentLogUnsupportedPipelineSolved {
+                blocked_hints,
+                solution_set: solutions,
+                steps,
             }
         }
     }
@@ -6009,6 +6076,102 @@ mod tests {
             }
             other => panic!("expected guarded solved execution, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn pow_exponent_log_execution_item_as_term_item_copies_fields() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let item = PowExponentLogIsolationExecutionItem {
+            equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            description: "rewrite".to_string(),
+        };
+
+        let term_item = pow_exponent_log_execution_item_as_term_item(item.clone());
+        assert_eq!(term_item.equation, item.equation);
+        assert_eq!(term_item.description, item.description);
+    }
+
+    #[test]
+    fn solve_pow_exponent_log_unsupported_pipeline_with_items_maps_residual_item() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let item = build_residual_budget_exhausted_item(
+            "budget exhausted",
+            Equation {
+                lhs: x,
+                rhs: x,
+                op: RelOp::Eq,
+            },
+        );
+
+        let solved = solve_pow_exponent_log_unsupported_pipeline_with_items(
+            PowExponentLogUnsupportedExecution::Residual {
+                item: item.clone(),
+                solutions: SolutionSet::Residual(x),
+            },
+            true,
+            |_eq| Some(SolutionSet::AllReals),
+            |mapped| mapped.description,
+        );
+
+        assert!(solved.blocked_hints.is_empty());
+        assert!(matches!(solved.solution_set, SolutionSet::Residual(id) if id == x));
+        assert_eq!(solved.steps, vec![item.description]);
+    }
+
+    #[test]
+    fn solve_pow_exponent_log_unsupported_pipeline_with_items_preserves_guarded_hints() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let residual = ctx.var("residual");
+        let source = Equation {
+            lhs: x,
+            rhs: b,
+            op: RelOp::Eq,
+        };
+        let plan = plan_guarded_pow_exponent_log_execution(
+            &mut ctx,
+            x,
+            a,
+            b,
+            RelOp::Eq,
+            "a > 0",
+            "a",
+            source,
+        );
+        let guard = ConditionSet::single(ConditionPredicate::Positive(a));
+        let solved = solve_pow_exponent_log_unsupported_pipeline_with_items(
+            PowExponentLogUnsupportedExecution::Guarded {
+                blocked_hints: vec![LogBlockedHintRecord {
+                    assumption: crate::log_domain::LogAssumption::PositiveBase,
+                    expr_id: a,
+                    rule: "Take log of both sides",
+                    suggestion: "use `semantics set domain assume`",
+                }],
+                plan,
+                guard,
+                residual,
+            },
+            false,
+            |_eq| Some(SolutionSet::Discrete(vec![x])),
+            |_mapped| "unused".to_string(),
+        );
+
+        assert_eq!(solved.blocked_hints.len(), 1);
+        assert_eq!(
+            solved.blocked_hints[0].assumption,
+            crate::log_domain::LogAssumption::PositiveBase
+        );
+        assert!(solved.steps.is_empty());
+        assert!(matches!(solved.solution_set, SolutionSet::Conditional(_)));
     }
 
     #[test]
