@@ -448,6 +448,80 @@ where
     )
 }
 
+/// Solved payload for factorized zero-product strategy:
+/// final `SolutionSet` plus flattened didactic steps.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FactorizedZeroProductStrategySolved<TStep> {
+    pub solution_set: SolutionSet,
+    pub steps: Vec<TStep>,
+}
+
+/// Solve factorized zero-product strategy end-to-end:
+/// 1) Build/solve factor equations with optional didactic items
+/// 2) Aggregate per-factor solution sets
+/// 3) Finalize residual fallback for non-discrete outcomes.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_factorized_zero_product_strategy_pipeline_with_optional_items<
+    E,
+    TStep,
+    FRenderExpr,
+    FSolveFactor,
+    FEntryStep,
+    FFactorStep,
+>(
+    ctx: &Context,
+    factorized_expr: ExprId,
+    factors: &[ExprId],
+    var: &str,
+    zero: ExprId,
+    include_items: bool,
+    residual_expr_for_non_discrete: ExprId,
+    render_expr: FRenderExpr,
+    solve_factor: FSolveFactor,
+    map_entry_item_to_step: FEntryStep,
+    map_factor_item_to_step: FFactorStep,
+) -> Result<FactorizedZeroProductStrategySolved<TStep>, E>
+where
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveFactor: FnMut(&Equation) -> Result<(SolutionSet, Vec<TStep>), E>,
+    FEntryStep: FnMut(QuadraticExecutionItem) -> TStep,
+    FFactorStep: FnMut(ZeroProductFactorExecutionItem) -> TStep,
+{
+    let solved = solve_factorized_zero_product_pipeline_with_optional_items(
+        ctx,
+        factorized_expr,
+        factors,
+        var,
+        zero,
+        include_items,
+        render_expr,
+        solve_factor,
+        map_entry_item_to_step,
+        map_factor_item_to_step,
+    )?;
+
+    let mut steps = solved.steps;
+    let mut factor_solution_sets = Vec::new();
+    for (solution_set, mut factor_steps) in solved.solved_factors {
+        steps.append(&mut factor_steps);
+        factor_solution_sets.push(solution_set);
+    }
+
+    let aggregate = aggregate_zero_product_factor_solution_sets(ctx, factor_solution_sets);
+    let needs_residual = matches!(aggregate, ZeroProductFactorSolutionAggregate::NonDiscrete);
+    let residual = if needs_residual {
+        residual_expr_for_non_discrete
+    } else {
+        zero
+    };
+    let solution_set = finalize_zero_product_factor_solution_set(aggregate, residual);
+
+    Ok(FactorizedZeroProductStrategySolved {
+        solution_set,
+        steps,
+    })
+}
+
 /// Build the top-level "quadratic formula" strategy step payload.
 pub fn build_quadratic_main_step(equation_after: Equation) -> QuadraticDidacticStep {
     QuadraticDidacticStep {
@@ -1811,6 +1885,102 @@ mod tests {
         .expect("pipeline should solve");
 
         assert_eq!(solved.solved_factors.len(), 2);
+        assert!(solved.steps.is_empty());
+    }
+
+    #[test]
+    fn solve_factorized_zero_product_strategy_pipeline_with_optional_items_flattens_steps() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_minus_one = ctx.add(Expr::Sub(x, one));
+        let factored_expr = ctx.add(Expr::Mul(x, x_minus_one));
+        let zero = ctx.num(0);
+
+        let solved = solve_factorized_zero_product_strategy_pipeline_with_optional_items(
+            &ctx,
+            factored_expr,
+            &[x, x_minus_one],
+            "x",
+            zero,
+            true,
+            factored_expr,
+            |_| "f".to_string(),
+            |factor_equation| {
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![factor_equation.lhs]),
+                    vec![format!("substep {}", factor_equation.lhs)],
+                ))
+            },
+            |item| item.description,
+            |item| item.description,
+        )
+        .expect("strategy pipeline should solve");
+
+        assert!(matches!(solved.solution_set, SolutionSet::Discrete(_)));
+        assert_eq!(solved.steps.len(), 5);
+        assert_eq!(solved.steps[0], "Factorized equation: f = 0");
+        assert_eq!(solved.steps[1], "Solve factor: f = 0");
+        assert_eq!(solved.steps[2], "Solve factor: f = 0");
+        assert!(solved.steps[3].starts_with("substep "));
+        assert!(solved.steps[4].starts_with("substep "));
+    }
+
+    #[test]
+    fn solve_factorized_zero_product_strategy_pipeline_with_optional_items_uses_residual_for_non_discrete(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let factored_expr = x;
+        let simplified_residual = ctx.var("simplified_residual");
+        let zero = ctx.num(0);
+
+        let solved = solve_factorized_zero_product_strategy_pipeline_with_optional_items(
+            &ctx,
+            factored_expr,
+            &[x],
+            "x",
+            zero,
+            false,
+            simplified_residual,
+            |_id| -> String { panic!("renderer must not run when items are disabled") },
+            |_factor_equation| Ok::<_, ()>((SolutionSet::Conditional(vec![]), vec![])),
+            |_item| -> u8 { panic!("entry mapper must not run when items are disabled") },
+            |_item| -> u8 { panic!("factor mapper must not run when items are disabled") },
+        )
+        .expect("strategy pipeline should solve");
+
+        assert!(
+            matches!(solved.solution_set, SolutionSet::Residual(id) if id == simplified_residual)
+        );
+        assert!(solved.steps.is_empty());
+    }
+
+    #[test]
+    fn solve_factorized_zero_product_strategy_pipeline_with_optional_items_skips_residual_for_all_reals(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let factored_expr = x;
+        let residual = ctx.var("residual");
+        let zero = ctx.num(0);
+
+        let solved = solve_factorized_zero_product_strategy_pipeline_with_optional_items(
+            &ctx,
+            factored_expr,
+            &[x],
+            "x",
+            zero,
+            false,
+            residual,
+            |_id| -> String { panic!("renderer must not run when items are disabled") },
+            |_factor_equation| Ok::<_, ()>((SolutionSet::AllReals, vec![])),
+            |_item| -> u8 { panic!("entry mapper must not run when items are disabled") },
+            |_item| -> u8 { panic!("factor mapper must not run when items are disabled") },
+        )
+        .expect("strategy pipeline should solve");
+
+        assert!(matches!(solved.solution_set, SolutionSet::AllReals));
         assert!(solved.steps.is_empty());
     }
 

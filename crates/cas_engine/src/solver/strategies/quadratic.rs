@@ -6,13 +6,9 @@ use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{is_numeric_zero, split_zero_product_factors};
 use cas_solver_core::quadratic_didactic::{
-    aggregate_zero_product_factor_solution_sets,
-    build_factorized_zero_product_execution_with_optional_items,
     build_quadratic_main_with_substeps_execution_with_optional_items,
-    finalize_zero_product_factor_solution_set,
-    solve_factorized_zero_product_execution_pipeline_with_items,
+    solve_factorized_zero_product_strategy_pipeline_with_optional_items,
     solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification,
-    ZeroProductFactorSolutionAggregate,
 };
 use cas_solver_core::quadratic_formula::{
     discriminant, discriminant_expr, roots_from_a_b_and_sqrt, roots_from_a_b_delta, sqrt_expr,
@@ -55,6 +51,8 @@ impl SolverStrategy for QuadraticStrategy {
             // For Eq, it's simple union.
             if eq.op == RelOp::Eq {
                 let include_items = simplifier.collect_steps();
+                let residual_expr = sim_poly_expr;
+                let strategy_ctx = simplifier.context.clone();
                 let factorized_display = format!(
                     "{}",
                     cas_formatter::DisplayExpr {
@@ -78,14 +76,15 @@ impl SolverStrategy for QuadraticStrategy {
                         )
                     })
                     .collect::<Vec<_>>();
-                let factorized_execution =
-                    build_factorized_zero_product_execution_with_optional_items(
-                        &simplifier.context,
+                let solved =
+                    match solve_factorized_zero_product_strategy_pipeline_with_optional_items(
+                        &strategy_ctx,
                         sim_poly_expr,
                         &factors,
                         var,
                         zero,
                         include_items,
+                        residual_expr,
                         move |id| {
                             if id == sim_poly_expr {
                                 factorized_display.clone()
@@ -97,54 +96,28 @@ impl SolverStrategy for QuadraticStrategy {
                                     .unwrap_or_else(|| id.to_string())
                             }
                         },
-                    );
-                let solved = match solve_factorized_zero_product_execution_pipeline_with_items(
-                    &factorized_execution,
-                    include_items,
-                    |factor_equation| {
-                        // Recursive solve
-                        // We need to be careful about depth.
-                        solve_with_ctx(factor_equation, var, simplifier, ctx)
-                    },
-                    |item| SolveStep {
-                        description: item.description().to_string(),
-                        equation_after: item.equation,
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    },
-                    |item| SolveStep {
-                        description: item.description,
-                        equation_after: item.equation,
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    },
-                ) {
-                    Ok(solved) => solved,
-                    Err(e) => return Some(Err(e)),
-                };
-                steps.extend(solved.steps);
-                let mut factor_solution_sets = Vec::new();
-                for (sol_set, mut sub_steps) in solved.solved_factors {
-                    steps.append(&mut sub_steps);
-                    factor_solution_sets.push(sol_set);
-                }
-                let aggregate = aggregate_zero_product_factor_solution_sets(
-                    &simplifier.context,
-                    factor_solution_sets,
-                );
-                let residual_expr =
-                    if matches!(aggregate, ZeroProductFactorSolutionAggregate::NonDiscrete) {
-                        // Residual/Conditional/Interval: can't extract discrete roots.
-                        // Keep whole equation as residual solve target.
-                        let residual = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
-                        let (sim, _) = simplifier.simplify(residual);
-                        sim
-                    } else {
-                        // Unused for discrete/all-reals aggregates.
-                        simplifier.context.num(0)
+                        |factor_equation| {
+                            // Recursive solve. We need to be careful about depth.
+                            solve_with_ctx(factor_equation, var, simplifier, ctx)
+                        },
+                        |item| SolveStep {
+                            description: item.description().to_string(),
+                            equation_after: item.equation,
+                            importance: crate::step::ImportanceLevel::Medium,
+                            substeps: vec![],
+                        },
+                        |item| SolveStep {
+                            description: item.description,
+                            equation_after: item.equation,
+                            importance: crate::step::ImportanceLevel::Medium,
+                            substeps: vec![],
+                        },
+                    ) {
+                        Ok(solved) => solved,
+                        Err(e) => return Some(Err(e)),
                     };
-                let final_set = finalize_zero_product_factor_solution_set(aggregate, residual_expr);
-                return Some(Ok((final_set, steps)));
+                steps.extend(solved.steps);
+                return Some(Ok((solved.solution_set, steps)));
             }
         }
 
