@@ -398,6 +398,46 @@ where
     })
 }
 
+/// Runtime adapter for solving and mapping factorized zero-product execution.
+pub trait FactorizedZeroProductExecutionRuntime<E, TFactor, TStep> {
+    fn solve_factor(&mut self, equation: &Equation) -> Result<TFactor, E>;
+    fn map_entry_item_to_step(&mut self, item: QuadraticExecutionItem) -> TStep;
+    fn map_factor_item_to_step(&mut self, item: ZeroProductFactorExecutionItem) -> TStep;
+}
+
+/// Runtime-based variant of
+/// `solve_factorized_zero_product_execution_pipeline_with_items`.
+pub fn solve_factorized_zero_product_execution_pipeline_with_items_runtime<E, TFactor, TStep, R>(
+    execution: &FactorizedZeroProductExecutionPlan,
+    include_items: bool,
+    runtime: &mut R,
+) -> Result<FactorizedZeroProductExecutionSolved<TFactor, TStep>, E>
+where
+    R: FactorizedZeroProductExecutionRuntime<E, TFactor, TStep>,
+{
+    let mut steps = Vec::new();
+    if include_items {
+        if let Some(item) = first_factorized_zero_product_entry_execution_item(execution) {
+            steps.push(runtime.map_entry_item_to_step(item));
+        }
+    }
+
+    let solved_factors =
+        solve_zero_product_factor_execution_with_items(&execution.factors, |item, equation| {
+            if include_items {
+                if let Some(item) = item {
+                    steps.push(runtime.map_factor_item_to_step(item));
+                }
+            }
+            runtime.solve_factor(equation)
+        })?;
+
+    Ok(FactorizedZeroProductExecutionSolved {
+        solved_factors,
+        steps,
+    })
+}
+
 /// Build and solve factorized zero-product execution with optional didactic
 /// payload enabled by `include_items`.
 #[allow(clippy::too_many_arguments)]
@@ -1063,6 +1103,51 @@ where
     )
 }
 
+/// Runtime adapter for quadratic-main didactic execution pipelines.
+pub trait QuadraticMainWithSubstepsRuntime<S, SS> {
+    fn simplify_expr(&mut self, expr: ExprId) -> ExprId;
+    fn map_main_item_to_step(&mut self, item: QuadraticExecutionItem, substeps: Vec<SS>) -> S;
+    fn map_substep_item_to_step(&mut self, item: QuadraticSubstepExecutionItem) -> SS;
+}
+
+/// Runtime-based variant of
+/// `solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification`.
+///
+/// When `include_items` is false, this does not invoke runtime callbacks.
+pub fn solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification_runtime<
+    S,
+    SS,
+    R,
+>(
+    execution: &mut QuadraticMainWithSubstepsExecution,
+    include_items: bool,
+    runtime: &mut R,
+) -> Vec<S>
+where
+    SS: Clone,
+    R: QuadraticMainWithSubstepsRuntime<S, SS>,
+{
+    if !include_items {
+        return Vec::new();
+    }
+
+    simplify_quadratic_substep_execution_items_with(&mut execution.substep_items, |id| {
+        runtime.simplify_expr(id)
+    });
+
+    let mut mapped_substeps = Vec::with_capacity(execution.substep_items.len());
+    for substep in execution.substep_items.iter().cloned() {
+        mapped_substeps.push(runtime.map_substep_item_to_step(substep));
+    }
+
+    let mut mapped_steps = Vec::with_capacity(execution.main_items.len());
+    for main in execution.main_items.iter().cloned() {
+        mapped_steps.push(runtime.map_main_item_to_step(main, mapped_substeps.clone()));
+    }
+
+    mapped_steps
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1363,6 +1448,114 @@ mod tests {
             );
 
         assert!(mapped.is_empty());
+    }
+
+    #[derive(Default)]
+    struct TestQuadraticMainWithSubstepsRuntime {
+        simplify_calls: usize,
+        main_map_calls: usize,
+        sub_map_calls: usize,
+    }
+
+    impl QuadraticMainWithSubstepsRuntime<(String, usize), String>
+        for TestQuadraticMainWithSubstepsRuntime
+    {
+        fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
+            self.simplify_calls += 1;
+            expr
+        }
+
+        fn map_main_item_to_step(
+            &mut self,
+            item: QuadraticExecutionItem,
+            substeps: Vec<String>,
+        ) -> (String, usize) {
+            self.main_map_calls += 1;
+            (item.description, substeps.len())
+        }
+
+        fn map_substep_item_to_step(&mut self, item: QuadraticSubstepExecutionItem) -> String {
+            self.sub_map_calls += 1;
+            item.description
+        }
+    }
+
+    #[test]
+    fn solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification_runtime_maps_when_enabled(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let eq = Equation {
+            lhs: x,
+            rhs: ctx.num(0),
+            op: RelOp::Eq,
+        };
+        let mut execution = build_quadratic_main_with_substeps_execution_with_optional_items(
+            &mut ctx,
+            "x",
+            one,
+            one,
+            one,
+            true,
+            eq,
+            true,
+            |_, id| format!("{:?}", id),
+        );
+        let expected_substeps = execution.substep_items.len();
+        let expected_main = execution.main_items.len();
+        let mut runtime = TestQuadraticMainWithSubstepsRuntime::default();
+
+        let mapped =
+            solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification_runtime(
+                &mut execution,
+                true,
+                &mut runtime,
+            );
+
+        assert_eq!(mapped.len(), expected_main);
+        assert_eq!(mapped[0].0, QUADRATIC_FORMULA_MAIN_STEP_DESCRIPTION);
+        assert_eq!(mapped[0].1, expected_substeps);
+        assert_eq!(runtime.simplify_calls, expected_substeps * 2);
+        assert_eq!(runtime.main_map_calls, expected_main);
+        assert_eq!(runtime.sub_map_calls, expected_substeps);
+    }
+
+    #[test]
+    fn solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification_runtime_omits_when_disabled(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let eq = Equation {
+            lhs: x,
+            rhs: ctx.num(0),
+            op: RelOp::Eq,
+        };
+        let mut execution = build_quadratic_main_with_substeps_execution_with_optional_items(
+            &mut ctx,
+            "x",
+            one,
+            one,
+            one,
+            true,
+            eq,
+            true,
+            |_, id| format!("{:?}", id),
+        );
+        let mut runtime = TestQuadraticMainWithSubstepsRuntime::default();
+
+        let mapped =
+            solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification_runtime(
+                &mut execution,
+                false,
+                &mut runtime,
+            );
+
+        assert!(mapped.is_empty());
+        assert_eq!(runtime.simplify_calls, 0);
+        assert_eq!(runtime.main_map_calls, 0);
+        assert_eq!(runtime.sub_map_calls, 0);
     }
 
     #[test]
@@ -1843,6 +2036,105 @@ mod tests {
         .expect("pipeline should solve");
 
         assert_eq!(solved.solved_factors.len(), 2);
+        assert!(solved.steps.is_empty());
+    }
+
+    #[derive(Default)]
+    struct TestFactorizedZeroProductExecutionRuntime {
+        solved_lhs: Vec<ExprId>,
+        entry_map_calls: usize,
+        factor_map_calls: usize,
+    }
+
+    impl FactorizedZeroProductExecutionRuntime<(), ExprId, String>
+        for TestFactorizedZeroProductExecutionRuntime
+    {
+        fn solve_factor(&mut self, equation: &Equation) -> Result<ExprId, ()> {
+            self.solved_lhs.push(equation.lhs);
+            Ok(equation.lhs)
+        }
+
+        fn map_entry_item_to_step(&mut self, item: QuadraticExecutionItem) -> String {
+            self.entry_map_calls += 1;
+            item.description
+        }
+
+        fn map_factor_item_to_step(&mut self, item: ZeroProductFactorExecutionItem) -> String {
+            self.factor_map_calls += 1;
+            item.description
+        }
+    }
+
+    #[test]
+    fn solve_factorized_zero_product_execution_pipeline_with_items_runtime_forwards_calls_and_steps(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_minus_one = ctx.add(Expr::Sub(x, one));
+        let factored_expr = ctx.add(Expr::Mul(x, x_minus_one));
+        let zero = ctx.num(0);
+        let execution = build_factorized_zero_product_execution_with(
+            &ctx,
+            factored_expr,
+            &[x, x_minus_one],
+            "x",
+            zero,
+            |_| "f".to_string(),
+        );
+        let mut runtime = TestFactorizedZeroProductExecutionRuntime::default();
+
+        let solved = solve_factorized_zero_product_execution_pipeline_with_items_runtime(
+            &execution,
+            true,
+            &mut runtime,
+        )
+        .expect("runtime pipeline should solve");
+
+        assert_eq!(solved.solved_factors, vec![x, x_minus_one]);
+        assert_eq!(runtime.solved_lhs, vec![x, x_minus_one]);
+        assert_eq!(runtime.entry_map_calls, 1);
+        assert_eq!(runtime.factor_map_calls, 2);
+        assert_eq!(
+            solved.steps,
+            vec![
+                "Factorized equation: f = 0".to_string(),
+                "Solve factor: f = 0".to_string(),
+                "Solve factor: f = 0".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn solve_factorized_zero_product_execution_pipeline_with_items_runtime_omits_item_mapping_when_disabled(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_minus_one = ctx.add(Expr::Sub(x, one));
+        let factored_expr = ctx.add(Expr::Mul(x, x_minus_one));
+        let zero = ctx.num(0);
+        let execution = build_factorized_zero_product_execution_with(
+            &ctx,
+            factored_expr,
+            &[x, x_minus_one],
+            "x",
+            zero,
+            |_| "f".to_string(),
+        );
+        let mut runtime = TestFactorizedZeroProductExecutionRuntime::default();
+
+        let solved = solve_factorized_zero_product_execution_pipeline_with_items_runtime(
+            &execution,
+            false,
+            &mut runtime,
+        )
+        .expect("runtime pipeline should solve");
+
+        assert_eq!(solved.solved_factors, vec![x, x_minus_one]);
+        assert_eq!(runtime.solved_lhs, vec![x, x_minus_one]);
+        assert_eq!(runtime.entry_map_calls, 0);
+        assert_eq!(runtime.factor_map_calls, 0);
         assert!(solved.steps.is_empty());
     }
 

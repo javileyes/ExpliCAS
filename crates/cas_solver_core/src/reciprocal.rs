@@ -239,6 +239,31 @@ where
     })
 }
 
+/// Runtime adapter for reciprocal execution didactic mapping.
+pub trait ReciprocalExecutionRuntime<S> {
+    fn map_item_to_step(&mut self, item: ReciprocalExecutionItem) -> S;
+}
+
+/// Runtime-based reciprocal execution pipeline with optional item mapping.
+pub fn solve_reciprocal_execution_pipeline_with_items_runtime<S, R>(
+    execution: ReciprocalSolveExecution,
+    include_items: bool,
+    runtime: &mut R,
+) -> ReciprocalSolvedExecution<(SolutionSet, Vec<S>)>
+where
+    R: ReciprocalExecutionRuntime<S>,
+{
+    solve_reciprocal_execution_with_items(execution, |items, solutions| {
+        let mut steps = Vec::new();
+        if include_items {
+            for item in items {
+                steps.push(runtime.map_item_to_step(item));
+            }
+        }
+        (solutions, steps)
+    })
+}
+
 /// Derive reciprocal-solve kernel if equation matches `1/var = rhs` and
 /// the RHS is independent of `var`.
 pub fn derive_reciprocal_solve_kernel(
@@ -834,5 +859,55 @@ mod tests {
 
         let solved = solve_reciprocal_execution_pipeline_with_items(execution, false, |_item| 1u8);
         assert!(solved.solved.1.is_empty());
+    }
+
+    #[derive(Default)]
+    struct TestReciprocalExecutionRuntime {
+        map_calls: usize,
+    }
+
+    impl ReciprocalExecutionRuntime<String> for TestReciprocalExecutionRuntime {
+        fn map_item_to_step(&mut self, item: ReciprocalExecutionItem) -> String {
+            self.map_calls += 1;
+            item.description
+        }
+    }
+
+    #[test]
+    fn solve_reciprocal_execution_pipeline_with_items_runtime_maps_steps_when_enabled() {
+        let mut ctx = Context::new();
+        let n = ctx.var("n");
+        let d = ctx.var("d");
+        let c = ctx.var("c");
+        let s = ctx.var("s");
+        let execution =
+            build_reciprocal_execution(&mut ctx, "x", n, d, c, s, n, NonZeroStatus::Unknown);
+        let expected = execution.clone();
+        let mut runtime = TestReciprocalExecutionRuntime::default();
+
+        let solved =
+            solve_reciprocal_execution_pipeline_with_items_runtime(execution, true, &mut runtime);
+
+        assert_eq!(solved.execution, expected);
+        assert!(matches!(solved.solved.0, SolutionSet::Conditional(_)));
+        assert_eq!(solved.solved.1.len(), expected.items.len());
+        assert_eq!(runtime.map_calls, expected.items.len());
+    }
+
+    #[test]
+    fn solve_reciprocal_execution_pipeline_with_items_runtime_omits_steps_when_disabled() {
+        let mut ctx = Context::new();
+        let n = ctx.var("n");
+        let d = ctx.var("d");
+        let c = ctx.var("c");
+        let s = ctx.var("s");
+        let execution =
+            build_reciprocal_execution(&mut ctx, "x", n, d, c, s, n, NonZeroStatus::Unknown);
+        let mut runtime = TestReciprocalExecutionRuntime::default();
+
+        let solved =
+            solve_reciprocal_execution_pipeline_with_items_runtime(execution, false, &mut runtime);
+        assert!(solved.solved.1.is_empty());
+        assert_eq!(runtime.map_calls, 0);
     }
 }
