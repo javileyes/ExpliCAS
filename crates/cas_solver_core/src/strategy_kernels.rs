@@ -125,6 +125,51 @@ where
     }
 }
 
+/// Execute isolation strategy for a pre-derived routing decision using
+/// caller-provided callbacks.
+///
+/// Returns `None` only when variable appears on both sides (let other
+/// strategies rewrite first). Otherwise returns either solved result or error.
+pub fn solve_isolation_strategy_routing_with<E, S, FSolve, FMap, FError>(
+    routing: IsolationStrategyRouting,
+    eq: &Equation,
+    var: &str,
+    include_item: bool,
+    mut solve_equation: FSolve,
+    mut map_swap_item_to_step: FMap,
+    mut variable_not_found_error: FError,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FMap: FnMut(TermIsolationRewriteExecutionItem) -> S,
+    FError: FnMut(&str) -> E,
+{
+    match routing {
+        IsolationStrategyRouting::VariableNotFound => Some(Err(variable_not_found_error(var))),
+        IsolationStrategyRouting::VariableOnBothSides => None,
+        IsolationStrategyRouting::SwapSides { rewrite } => {
+            let first_item = if include_item {
+                first_term_isolation_rewrite_execution_item(&rewrite)
+            } else {
+                None
+            };
+            let solved_swap = solve_equation(&rewrite.equation, var);
+            Some(match solved_swap {
+                Ok((solution_set, mut substeps)) => {
+                    let mut steps = Vec::new();
+                    if let Some(item) = first_item {
+                        steps.push(map_swap_item_to_step(item));
+                    }
+                    steps.append(&mut substeps);
+                    Ok((solution_set, steps))
+                }
+                Err(e) => Err(e),
+            })
+        }
+        IsolationStrategyRouting::DirectIsolation => Some(solve_equation(eq, var)),
+    }
+}
+
 /// Fully materialized collect-terms rewrite ready for recursive solve.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CollectTermsSolvedRewrite {

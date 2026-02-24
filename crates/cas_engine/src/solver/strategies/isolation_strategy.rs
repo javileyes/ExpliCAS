@@ -12,9 +12,9 @@ use cas_solver_core::strategy_kernels::{
     collect_collect_terms_execution_items, collect_rational_exponent_execution_items,
     derive_collect_terms_kernel, derive_isolation_strategy_routing,
     derive_rational_exponent_kernel_for_var, solve_collect_terms_rewrite_pipeline_with_item,
-    solve_isolation_strategy_routing_with_runtime,
+    solve_isolation_strategy_routing_with,
     solve_rational_exponent_rewrite_pipeline_with_item_with, CollectTermsSolvedRewrite,
-    IsolationStrategyRuntime, RationalExponentSolvedRewrite,
+    RationalExponentSolvedRewrite,
 };
 use cas_solver_core::unwrap_plan::{
     route_unwrap_entry_with_item, solve_unwrap_execution_pipeline_with_item, UnwrapEntryRouting,
@@ -22,41 +22,6 @@ use cas_solver_core::unwrap_plan::{
 };
 
 pub struct IsolationStrategy;
-
-struct EngineIsolationRuntime<'a> {
-    simplifier: &'a mut Simplifier,
-    opts: SolverOptions,
-    ctx: &'a SolveCtx,
-}
-
-impl IsolationStrategyRuntime<CasError, SolveStep> for EngineIsolationRuntime<'_> {
-    fn solve_equation(
-        &mut self,
-        equation: &Equation,
-        var: &str,
-    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        isolate(
-            equation.lhs,
-            equation.rhs,
-            equation.op.clone(),
-            var,
-            self.simplifier,
-            self.opts,
-            self.ctx,
-        )
-    }
-
-    fn map_swap_item_to_step(
-        &mut self,
-        item: cas_solver_core::solve_outcome::TermIsolationRewriteExecutionItem,
-    ) -> SolveStep {
-        medium_step(item.description, item.equation)
-    }
-
-    fn variable_not_found_error(&mut self, var: &str) -> CasError {
-        CasError::VariableNotFound(var.to_string())
-    }
-}
 
 impl SolverStrategy for IsolationStrategy {
     fn name(&self) -> &str {
@@ -73,12 +38,25 @@ impl SolverStrategy for IsolationStrategy {
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let routing = derive_isolation_strategy_routing(&simplifier.context, eq, var);
         let include_item = simplifier.collect_steps();
-        let mut runtime = EngineIsolationRuntime {
-            simplifier,
-            opts: *opts,
-            ctx,
-        };
-        solve_isolation_strategy_routing_with_runtime(routing, eq, var, include_item, &mut runtime)
+        solve_isolation_strategy_routing_with(
+            routing,
+            eq,
+            var,
+            include_item,
+            |equation, var| {
+                isolate(
+                    equation.lhs,
+                    equation.rhs,
+                    equation.op.clone(),
+                    var,
+                    simplifier,
+                    *opts,
+                    ctx,
+                )
+            },
+            |item| medium_step(item.description, item.equation),
+            |var| CasError::VariableNotFound(var.to_string()),
+        )
     }
 
     // Note: We use the default should_verify() = true here.
