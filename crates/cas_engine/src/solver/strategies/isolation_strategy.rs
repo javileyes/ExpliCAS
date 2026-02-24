@@ -12,9 +12,8 @@ use cas_solver_core::strategy_kernels::{
     execute_rational_exponent_rewrite_with_runtime_for_var,
     solve_collect_terms_rewrite_pipeline_with_item_runtime,
     solve_isolation_strategy_routing_with_runtime,
-    solve_rational_exponent_rewrite_pipeline_with_item, CollectTermsRewriteRuntime,
-    IsolationStrategyRuntime, RationalExponentRewriteRuntime, StrategyExecutionItem,
-    StrategyKernelRuntime,
+    solve_rational_exponent_rewrite_pipeline_with_item_with, CollectTermsRewriteRuntime,
+    IsolationStrategyRuntime, StrategyExecutionItem, StrategyKernelRuntime,
 };
 use cas_solver_core::unwrap_plan::{
     route_unwrap_entry_with_item, solve_unwrap_execution_pipeline_with_item, UnwrapEntryRouting,
@@ -280,33 +279,6 @@ impl SolverStrategy for CollectTermsStrategy {
 
 pub struct RationalExponentStrategy;
 
-struct EngineRationalExponentStrategyRuntime<'a> {
-    simplifier: &'a mut Simplifier,
-    ctx: &'a SolveCtx,
-}
-
-impl RationalExponentRewriteRuntime<CasError, SolveStep>
-    for EngineRationalExponentStrategyRuntime<'_>
-{
-    fn solve_rewritten(
-        &mut self,
-        equation: &Equation,
-        var: &str,
-    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        solve_with_ctx(equation, var, self.simplifier, self.ctx)
-    }
-
-    fn map_item_to_step(&mut self, item: StrategyExecutionItem) -> SolveStep {
-        medium_step(item.description, item.equation)
-    }
-
-    fn verify_discrete_solution(&mut self, _solution: ExprId) -> bool {
-        // Keep strategy-local behavior unchanged: final verification still runs
-        // in the top-level solve pipeline against the original equation.
-        true
-    }
-}
-
 impl SolverStrategy for RationalExponentStrategy {
     fn name(&self) -> &str {
         "Rational Exponent"
@@ -325,12 +297,13 @@ impl SolverStrategy for RationalExponentStrategy {
             execute_rational_exponent_rewrite_with_runtime_for_var(&mut runtime, eq, var)?
         };
         let include_item = simplifier.collect_steps();
-        let mut runtime = EngineRationalExponentStrategyRuntime { simplifier, ctx };
-        let solved = solve_rational_exponent_rewrite_pipeline_with_item(
+        let solved = solve_rational_exponent_rewrite_pipeline_with_item_with(
             rewrite,
             var,
             include_item,
-            &mut runtime,
+            |equation, var| solve_with_ctx(equation, var, simplifier, ctx),
+            |item| medium_step(item.description, item.equation),
+            |_| true,
         );
 
         Some(match solved {

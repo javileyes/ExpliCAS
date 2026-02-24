@@ -8,7 +8,7 @@ use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_analysis::{
     apply_nonzero_exclusion_guards_if_any, classify_equation_var_presence,
-    guard_solved_result_with_exclusions, merge_symbolic_with_verified_numeric_with_runtime,
+    guard_solved_result_with_exclusions, merge_symbolic_with_verified_numeric,
     normalize_variable_residual_with_runtime, simplify_equation_sides_for_var_with_runtime,
     EquationVarPresence, ResidualRewriteRuntime, SolvePreprocessRuntime,
 };
@@ -18,8 +18,8 @@ use cas_solver_core::solve_outcome::{
 };
 use cas_solver_core::strategy_kernels::{
     build_rational_exponent_execution, collect_rational_exponent_execution_items,
-    derive_rational_exponent_kernel_for_var, solve_rational_exponent_rewrite_pipeline_with_item,
-    RationalExponentRewriteRuntime, RationalExponentSolvedRewrite,
+    derive_rational_exponent_kernel_for_var,
+    solve_rational_exponent_rewrite_pipeline_with_item_with, RationalExponentSolvedRewrite,
 };
 use cas_solver_core::verify_substitution::{verify_solution_with_runtime, VerifySolutionRuntime};
 
@@ -61,13 +61,6 @@ struct EngineSolvePreprocessRuntime<'a> {
 
 struct EngineResidualRewriteRuntime<'a> {
     simplifier: &'a mut Simplifier,
-}
-
-struct EngineRationalExponentRewriteRuntime<'a> {
-    simplifier: &'a mut Simplifier,
-    original_equation: &'a cas_ast::Equation,
-    original_var: &'a str,
-    solve_ctx: &'a super::SolveCtx,
 }
 
 struct EngineVerifySolutionRuntime<'a> {
@@ -115,34 +108,6 @@ impl ResidualRewriteRuntime for EngineResidualRewriteRuntime<'_> {
     fn expand_trig(&mut self, expr: ExprId) -> ExprId {
         let (expanded, _) = self.simplifier.expand(expr);
         expanded
-    }
-}
-
-impl RationalExponentRewriteRuntime<CasError, SolveStep>
-    for EngineRationalExponentRewriteRuntime<'_>
-{
-    fn solve_rewritten(
-        &mut self,
-        equation: &cas_ast::Equation,
-        var: &str,
-    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        solve_with_ctx(equation, var, self.simplifier, self.solve_ctx)
-    }
-
-    fn map_item_to_step(
-        &mut self,
-        item: cas_solver_core::strategy_kernels::StrategyExecutionItem,
-    ) -> SolveStep {
-        medium_step(item.description, item.equation)
-    }
-
-    fn verify_discrete_solution(&mut self, solution: ExprId) -> bool {
-        verify_solution(
-            self.original_equation,
-            self.original_var,
-            solution,
-            self.simplifier,
-        )
     }
 }
 
@@ -500,15 +465,15 @@ fn solve_inner(
                                 &simplifier.context,
                                 &sols,
                             );
-                        let mut verify_runtime = |solution: ExprId| {
+                        let verify_runtime = |solution: ExprId| {
                             // Verify against ORIGINAL equation, not simplified form, so
                             // domain-invalid roots (e.g. division by zero) are rejected.
                             verify_solution(eq, var, solution, simplifier)
                         };
-                        let valid_sols = merge_symbolic_with_verified_numeric_with_runtime(
+                        let valid_sols = merge_symbolic_with_verified_numeric(
                             symbolic_solutions,
                             numeric_solutions,
-                            &mut verify_runtime,
+                            verify_runtime,
                         );
                         return Ok((SolutionSet::Discrete(valid_sols), steps));
                     }
@@ -545,20 +510,24 @@ fn try_solve_rational_exponent(
     };
 
     let include_item = simplifier.collect_steps();
-    let mut runtime = EngineRationalExponentRewriteRuntime {
-        simplifier,
-        original_equation: eq,
-        original_var: var,
-        solve_ctx: ctx,
-    };
-    let solved = match solve_rational_exponent_rewrite_pipeline_with_item(
+    let solved = match solve_rational_exponent_rewrite_pipeline_with_item_with(
         rewrite,
         var,
         include_item,
-        &mut runtime,
+        |equation, var| solve_with_ctx(equation, var, simplifier, ctx),
+        |item| medium_step(item.description, item.equation),
+        |_| true,
     ) {
         Ok(solved) => solved,
         Err(e) => return Some(Err(e)),
     };
-    Some(Ok((solved.solution_set, solved.steps)))
+    let solution_set = if let SolutionSet::Discrete(sols) = solved.solution_set {
+        SolutionSet::Discrete(cas_solver_core::solve_analysis::retain_verified_discrete(
+            sols,
+            |solution| verify_solution(eq, var, solution, simplifier),
+        ))
+    } else {
+        solved.solution_set
+    };
+    Some(Ok((solution_set, solved.steps)))
 }

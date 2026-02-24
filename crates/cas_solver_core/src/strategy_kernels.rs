@@ -634,6 +634,43 @@ pub struct RationalExponentRewriteSolved<S> {
 }
 
 /// Execute rational-exponent rewrite solving + optional item dispatch + discrete verification.
+pub fn solve_rational_exponent_rewrite_pipeline_with_item_with<E, S, FSolve, FStep, FVerify>(
+    rewrite: RationalExponentSolvedRewrite,
+    var: &str,
+    include_item: bool,
+    mut solve_rewritten: FSolve,
+    mut map_item_to_step: FStep,
+    verify_discrete_solution: FVerify,
+) -> Result<RationalExponentRewriteSolved<S>, E>
+where
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(StrategyExecutionItem) -> S,
+    FVerify: FnMut(ExprId) -> bool,
+{
+    let mut steps = Vec::new();
+    if include_item {
+        if let Some(item) = rewrite.items.first().cloned() {
+            steps.push(map_item_to_step(item));
+        }
+    }
+    let (set, mut sub_steps) = solve_rewritten(&rewrite.equation, var)?;
+    steps.append(&mut sub_steps);
+    let solution_set = if let SolutionSet::Discrete(sols) = set {
+        SolutionSet::Discrete(crate::solve_analysis::retain_verified_discrete(
+            sols,
+            verify_discrete_solution,
+        ))
+    } else {
+        set
+    };
+
+    Ok(RationalExponentRewriteSolved {
+        solution_set,
+        steps,
+    })
+}
+
+/// Execute rational-exponent rewrite solving + optional item dispatch + discrete verification.
 pub fn solve_rational_exponent_rewrite_pipeline_with_item<E, S, R>(
     rewrite: RationalExponentSolvedRewrite,
     var: &str,
