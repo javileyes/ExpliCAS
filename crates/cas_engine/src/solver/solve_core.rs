@@ -13,8 +13,8 @@ use cas_solver_core::solve_analysis::{
     SolvePreprocessRuntime,
 };
 use cas_solver_core::solve_outcome::{
-    resolve_var_eliminated_outcome_with, solve_var_eliminated_constraint_pipeline_with_item,
-    VarEliminatedSolveOutcome,
+    solve_var_eliminated_outcome_pipeline_with_runtime, VarEliminatedOutcomePipelineSolved,
+    VarEliminatedOutcomeRuntime,
 };
 use cas_solver_core::strategy_kernels::{
     execute_rational_exponent_rewrite_with_runtime_for_var,
@@ -64,6 +64,10 @@ struct EngineSolvePreprocessRuntime<'a> {
 }
 
 struct EngineResidualRewriteRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+}
+
+struct EngineVarEliminatedRuntime<'a> {
     simplifier: &'a mut Simplifier,
 }
 
@@ -140,6 +144,35 @@ impl ResidualRewriteRuntime for EngineResidualRewriteRuntime<'_> {
     fn expand_trig(&mut self, expr: ExprId) -> ExprId {
         let (expanded, _) = self.simplifier.expand(expr);
         expanded
+    }
+}
+
+impl VarEliminatedOutcomeRuntime<SolveStep> for EngineVarEliminatedRuntime<'_> {
+    fn context(&mut self) -> &mut cas_ast::Context {
+        &mut self.simplifier.context
+    }
+
+    fn render_expr(&mut self, expr: ExprId) -> String {
+        format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &self.simplifier.context,
+                id: expr
+            }
+        )
+    }
+
+    fn map_constraint_step(
+        &mut self,
+        description: String,
+        equation_after: cas_ast::Equation,
+    ) -> SolveStep {
+        SolveStep {
+            description,
+            equation_after,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        }
     }
 }
 
@@ -444,49 +477,27 @@ fn solve_inner(
 
     // Check if the difference has NO variable
     if !contains_var(&simplifier.context, diff_simplified, var) {
-        // Variable disappeared - this is either an identity, contradiction, or parameter-dependent.
-        let reduced_outcome = resolve_var_eliminated_outcome_with(
-            &mut simplifier.context,
+        let include_item = simplifier.collect_steps();
+        let mut runtime = EngineVarEliminatedRuntime { simplifier };
+        let reduced_outcome = solve_var_eliminated_outcome_pipeline_with_runtime(
             diff_simplified,
             var,
-            |core_ctx, id| {
-                format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: core_ctx,
-                        id
-                    }
-                )
-            },
+            include_item,
+            &mut runtime,
         );
         match reduced_outcome {
-            VarEliminatedSolveOutcome::IdentityAllReals => {
+            VarEliminatedOutcomePipelineSolved::IdentityAllReals => {
                 return Ok((SolutionSet::AllReals, vec![]));
             }
-            VarEliminatedSolveOutcome::ContradictionEmpty => {
+            VarEliminatedOutcomePipelineSolved::ContradictionEmpty => {
                 return Ok((SolutionSet::Empty, vec![]));
             }
-            VarEliminatedSolveOutcome::ConstraintAllReals {
-                description,
-                equation_after,
-            } => {
+            VarEliminatedOutcomePipelineSolved::ConstraintAllReals { steps } => {
                 // Variable was eliminated during simplification (e.g., x/x = 1)
                 // The equation is now a constraint on OTHER variables.
                 // Example: (x*y)/x = 0 simplifies to y = 0
                 // Solution: x can be any value (AllReals) when the constraint holds,
                 // EXCEPT values that make denominators zero.
-                let steps = solve_var_eliminated_constraint_pipeline_with_item(
-                    description,
-                    equation_after,
-                    simplifier.collect_steps(),
-                    |description, equation_after| SolveStep {
-                        description,
-                        equation_after,
-                        importance: crate::step::ImportanceLevel::Medium,
-                        substeps: vec![],
-                    },
-                );
-
                 // V2.1 Issue #10: Apply domain guards if denominators contained the variable
                 let guarded = apply_nonzero_exclusion_guards_if_any(
                     SolutionSet::AllReals,

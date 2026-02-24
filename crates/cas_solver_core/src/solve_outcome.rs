@@ -1181,6 +1181,54 @@ where
     }
 }
 
+/// Runtime contract for variable-eliminated outcome resolution.
+pub trait VarEliminatedOutcomeRuntime<S> {
+    /// Mutable access to expression context.
+    fn context(&mut self) -> &mut Context;
+    /// Render expression IDs for constraint narration.
+    fn render_expr(&mut self, expr: ExprId) -> String;
+    /// Map constraint payload to caller-owned step payload.
+    fn map_constraint_step(&mut self, description: String, equation_after: Equation) -> S;
+}
+
+/// Solved payload for variable-eliminated outcome pipeline.
+#[derive(Debug, Clone, PartialEq)]
+pub enum VarEliminatedOutcomePipelineSolved<S> {
+    IdentityAllReals,
+    ContradictionEmpty,
+    ConstraintAllReals { steps: Vec<S> },
+}
+
+/// Resolve variable-eliminated residuals and optionally materialize one
+/// constraint step via runtime.
+pub fn solve_var_eliminated_outcome_pipeline_with_runtime<R, S>(
+    diff: ExprId,
+    var: &str,
+    include_item: bool,
+    runtime: &mut R,
+) -> VarEliminatedOutcomePipelineSolved<S>
+where
+    R: VarEliminatedOutcomeRuntime<S>,
+{
+    match classify_var_free_difference(runtime.context(), diff) {
+        VarFreeDiffKind::IdentityZero => VarEliminatedOutcomePipelineSolved::IdentityAllReals,
+        VarFreeDiffKind::ContradictionNonZero => {
+            VarEliminatedOutcomePipelineSolved::ContradictionEmpty
+        }
+        VarFreeDiffKind::Constraint => {
+            let diff_display = runtime.render_expr(diff);
+            let description = variable_canceled_constraint_message(var, &diff_display);
+            let equation_after = build_zero_constraint_equation(runtime.context(), diff);
+            let steps = if include_item {
+                vec![runtime.map_constraint_step(description, equation_after)]
+            } else {
+                vec![]
+            };
+            VarEliminatedOutcomePipelineSolved::ConstraintAllReals { steps }
+        }
+    }
+}
+
 /// Solve outcome for `B^E op RHS` when `E` is even and `RHS` is proven negative.
 pub fn even_power_negative_rhs_outcome(op: RelOp) -> SolutionSet {
     match op {
@@ -5584,6 +5632,64 @@ mod tests {
             |_, _| 1u8,
         );
         assert!(steps.is_empty());
+    }
+
+    struct TestVarEliminatedRuntime {
+        ctx: Context,
+    }
+
+    impl VarEliminatedOutcomeRuntime<String> for TestVarEliminatedRuntime {
+        fn context(&mut self) -> &mut Context {
+            &mut self.ctx
+        }
+
+        fn render_expr(&mut self, expr: ExprId) -> String {
+            expr.to_string()
+        }
+
+        fn map_constraint_step(
+            &mut self,
+            description: String,
+            _equation_after: Equation,
+        ) -> String {
+            description
+        }
+    }
+
+    #[test]
+    fn solve_var_eliminated_outcome_pipeline_with_runtime_returns_identity_for_zero_diff() {
+        let mut runtime = TestVarEliminatedRuntime {
+            ctx: Context::new(),
+        };
+        let zero = runtime.ctx.num(0);
+        let out = solve_var_eliminated_outcome_pipeline_with_runtime(zero, "x", true, &mut runtime);
+        assert_eq!(out, VarEliminatedOutcomePipelineSolved::IdentityAllReals);
+    }
+
+    #[test]
+    fn solve_var_eliminated_outcome_pipeline_with_runtime_returns_contradiction_for_nonzero_diff() {
+        let mut runtime = TestVarEliminatedRuntime {
+            ctx: Context::new(),
+        };
+        let one = runtime.ctx.num(1);
+        let out = solve_var_eliminated_outcome_pipeline_with_runtime(one, "x", true, &mut runtime);
+        assert_eq!(out, VarEliminatedOutcomePipelineSolved::ContradictionEmpty);
+    }
+
+    #[test]
+    fn solve_var_eliminated_outcome_pipeline_with_runtime_maps_constraint_step_when_enabled() {
+        let mut runtime = TestVarEliminatedRuntime {
+            ctx: Context::new(),
+        };
+        let y = runtime.ctx.var("y");
+        let out = solve_var_eliminated_outcome_pipeline_with_runtime(y, "x", true, &mut runtime);
+        match out {
+            VarEliminatedOutcomePipelineSolved::ConstraintAllReals { steps } => {
+                assert_eq!(steps.len(), 1);
+                assert!(steps[0].contains("depends on constraint"));
+            }
+            other => panic!("expected constraint outcome, got {:?}", other),
+        }
     }
 
     #[test]
