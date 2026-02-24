@@ -4,7 +4,8 @@ use crate::isolation_utils::contains_var;
 use crate::log_domain::{DomainModeKind, LogAssumption, LogSolveDecision};
 use crate::rational_power::PowUnwrapPlan;
 use crate::solve_outcome::{
-    resolve_single_side_exponential_terminal_pipeline_with_item, take_log_base_message,
+    resolve_single_side_exponential_terminal_pipeline_with_item,
+    resolve_single_side_exponential_terminal_with_item, take_log_base_message,
     SingleSideExponentialTerminalSolved, TermIsolationExecutionItem,
 };
 use cas_ast::{Context, Equation, Expr, ExprId, RelOp, SolutionSet};
@@ -172,6 +173,51 @@ where
     }))
 }
 
+/// Runtime contract for unwrap planning (classification + rendering).
+pub trait UnwrapPlanRuntime {
+    /// Classify whether log-based isolation can proceed for `(base, other_side)`.
+    fn classify_log_solve(
+        &mut self,
+        ctx: &Context,
+        base: ExprId,
+        other_side: ExprId,
+    ) -> LogSolveDecision;
+    /// Render expression IDs for didactic narration.
+    fn render_expr(&mut self, ctx: &Context, expr: ExprId) -> String;
+}
+
+/// Runtime contract for unwrap entry routing (planning + terminal step mapping).
+pub trait UnwrapEntryRuntime<S>: UnwrapPlanRuntime {
+    /// Convert one terminal execution item into caller-owned step payload.
+    fn map_terminal_item_to_step(&mut self, item: TermIsolationExecutionItem) -> S;
+}
+
+/// Runtime-based unwrap planning helper.
+///
+/// Returns `None` when no unwrap rewrite is applicable for `request.target`.
+pub fn plan_unwrap_execution_with_runtime<R>(
+    ctx: &mut Context,
+    request: UnwrapExecutionRequest<'_>,
+    runtime: &mut R,
+) -> Option<UnwrapExecutionPlan>
+where
+    R: UnwrapPlanRuntime,
+{
+    let rewrite = plan_unwrap_rewrite(
+        ctx,
+        request.target,
+        request.other,
+        request.var,
+        request.op,
+        request.is_lhs,
+        |core_ctx, base, other_side| runtime.classify_log_solve(core_ctx, base, other_side),
+    )?;
+    let view_ctx: &Context = ctx;
+    Some(build_unwrap_execution_plan_with(rewrite, |id| {
+        runtime.render_expr(view_ctx, id)
+    }))
+}
+
 /// One selected unwrap execution candidate for an equation side.
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnwrapEquationExecution {
@@ -243,6 +289,59 @@ where
     None
 }
 
+/// Runtime-based variant of unwrap candidate selection.
+///
+/// Selection order is deterministic: LHS is attempted first, then RHS.
+pub fn plan_first_unwrap_equation_execution_with_runtime<R>(
+    ctx: &mut Context,
+    equation: &Equation,
+    var: &str,
+    lhs_has: bool,
+    rhs_has: bool,
+    runtime: &mut R,
+) -> Option<UnwrapEquationExecution>
+where
+    R: UnwrapPlanRuntime,
+{
+    if lhs_has {
+        if let Some(execution) = plan_unwrap_execution_with_runtime(
+            ctx,
+            UnwrapExecutionRequest {
+                target: equation.lhs,
+                other: equation.rhs,
+                var,
+                op: equation.op.clone(),
+                is_lhs: true,
+            },
+            runtime,
+        ) {
+            return Some(UnwrapEquationExecution {
+                execution,
+                other_side: equation.rhs,
+            });
+        }
+    }
+    if rhs_has {
+        if let Some(execution) = plan_unwrap_execution_with_runtime(
+            ctx,
+            UnwrapExecutionRequest {
+                target: equation.rhs,
+                other: equation.lhs,
+                var,
+                op: equation.op.clone(),
+                is_lhs: false,
+            },
+            runtime,
+        ) {
+            return Some(UnwrapEquationExecution {
+                execution,
+                other_side: equation.lhs,
+            });
+        }
+    }
+    None
+}
+
 /// Route unwrap strategy entry:
 /// 1) variable presence gate,
 /// 2) single-side exponential terminal fast-path,
@@ -297,6 +396,61 @@ where
         rhs_has,
         |core_ctx, base, other_side| classify_log_solve(core_ctx, base, other_side),
         |core_ctx, id| render_expr(core_ctx, id),
+    )?;
+    Some(UnwrapEntryRouting::Execution(selected))
+}
+
+/// Runtime-based entry routing for `UnwrapStrategy`.
+///
+/// This variant avoids closure wiring at call sites and delegates
+/// classification/rendering/mapping to a runtime adapter.
+#[allow(clippy::too_many_arguments)]
+pub fn route_unwrap_entry_with_item_runtime<R, S>(
+    ctx: &mut Context,
+    equation: &Equation,
+    var: &str,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+    residual_suffix: &str,
+    include_item: bool,
+    runtime: &mut R,
+) -> Option<UnwrapEntryRouting<S>>
+where
+    R: UnwrapEntryRuntime<S>,
+{
+    let lhs_has = contains_var(ctx, equation.lhs, var);
+    let rhs_has = contains_var(ctx, equation.rhs, var);
+    if !lhs_has && !rhs_has {
+        return None;
+    }
+
+    if let Some((solution_set, item)) = resolve_single_side_exponential_terminal_with_item(
+        ctx,
+        equation.lhs,
+        equation.rhs,
+        var,
+        lhs_has,
+        rhs_has,
+        mode,
+        wildcard_scope,
+        residual_suffix,
+        equation.clone(),
+        |core_ctx, base, other_side| runtime.classify_log_solve(core_ctx, base, other_side),
+    ) {
+        let mut steps = Vec::new();
+        if include_item {
+            steps.push(runtime.map_terminal_item_to_step(item));
+        }
+        return Some(UnwrapEntryRouting::Terminal(
+            SingleSideExponentialTerminalSolved {
+                solution_set,
+                steps,
+            },
+        ));
+    }
+
+    let selected = plan_first_unwrap_equation_execution_with_runtime(
+        ctx, equation, var, lhs_has, rhs_has, runtime,
     )?;
     Some(UnwrapEntryRouting::Execution(selected))
 }
@@ -780,6 +934,29 @@ mod tests {
         assert!(selected.is_none());
     }
 
+    struct MockUnwrapEntryRuntime;
+
+    impl UnwrapPlanRuntime for MockUnwrapEntryRuntime {
+        fn classify_log_solve(
+            &mut self,
+            _ctx: &Context,
+            _base: ExprId,
+            _other_side: ExprId,
+        ) -> LogSolveDecision {
+            LogSolveDecision::Ok
+        }
+
+        fn render_expr(&mut self, _ctx: &Context, _expr: ExprId) -> String {
+            "render".to_string()
+        }
+    }
+
+    impl UnwrapEntryRuntime<String> for MockUnwrapEntryRuntime {
+        fn map_terminal_item_to_step(&mut self, item: TermIsolationExecutionItem) -> String {
+            item.description
+        }
+    }
+
     #[test]
     fn route_unwrap_entry_with_item_returns_none_without_variable_presence() {
         let mut ctx = Context::new();
@@ -886,6 +1063,40 @@ mod tests {
             UnwrapEntryRouting::Execution(selected) => {
                 assert_eq!(selected.other_side, y);
                 assert_eq!(selected.execution, expected_execution);
+            }
+            other => panic!("expected execution route, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn route_unwrap_entry_with_item_runtime_returns_execution_when_terminal_not_applicable() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let lhs = ctx.call("ln", vec![x]);
+        let equation = Equation {
+            lhs,
+            rhs: y,
+            op: RelOp::Eq,
+        };
+
+        let mut runtime = MockUnwrapEntryRuntime;
+        let routed = route_unwrap_entry_with_item_runtime(
+            &mut ctx,
+            &equation,
+            "x",
+            DomainModeKind::Generic,
+            false,
+            " (residual)",
+            true,
+            &mut runtime,
+        )
+        .expect("expected unwrap route");
+
+        match routed {
+            UnwrapEntryRouting::Execution(selected) => {
+                assert_eq!(selected.other_side, y);
+                assert_eq!(selected.execution.items.len(), 1);
             }
             other => panic!("expected execution route, got {:?}", other),
         }

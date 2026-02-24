@@ -15,8 +15,9 @@ use cas_solver_core::strategy_kernels::{
     StrategyKernelRuntime,
 };
 use cas_solver_core::unwrap_plan::{
-    route_unwrap_entry_with_item, solve_unwrap_execution_pipeline_with_item, UnwrapEntryRouting,
-    UnwrapExecutionPlan, UnwrapExecutionRuntime,
+    route_unwrap_entry_with_item_runtime, solve_unwrap_execution_pipeline_with_item,
+    UnwrapEntryRouting, UnwrapEntryRuntime, UnwrapExecutionPlan, UnwrapExecutionRuntime,
+    UnwrapPlanRuntime,
 };
 
 pub struct IsolationStrategy;
@@ -120,6 +121,52 @@ struct EngineUnwrapRuntime<'a> {
     ctx: &'a SolveCtx,
 }
 
+struct EngineUnwrapEntryRuntime<'a> {
+    opts: SolverOptions,
+    ctx: &'a SolveCtx,
+}
+
+impl UnwrapPlanRuntime for EngineUnwrapEntryRuntime<'_> {
+    fn classify_log_solve(
+        &mut self,
+        core_ctx: &cas_ast::Context,
+        base: ExprId,
+        other_side: ExprId,
+    ) -> cas_solver_core::log_domain::LogSolveDecision {
+        crate::solver::domain_guards::classify_log_solve(
+            core_ctx,
+            base,
+            other_side,
+            &self.opts,
+            &self.ctx.domain_env,
+        )
+    }
+
+    fn render_expr(&mut self, core_ctx: &cas_ast::Context, expr: ExprId) -> String {
+        format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: core_ctx,
+                id: expr
+            }
+        )
+    }
+}
+
+impl UnwrapEntryRuntime<SolveStep> for EngineUnwrapEntryRuntime<'_> {
+    fn map_terminal_item_to_step(
+        &mut self,
+        item: cas_solver_core::solve_outcome::TermIsolationExecutionItem,
+    ) -> SolveStep {
+        SolveStep {
+            description: item.description,
+            equation_after: item.equation,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        }
+    }
+}
+
 impl UnwrapExecutionRuntime<CasError, SolveStep> for EngineUnwrapRuntime<'_> {
     fn note_assumption(&mut self, record: cas_solver_core::unwrap_plan::LogLinearAssumptionRecord) {
         let event = crate::assumptions::AssumptionEvent::from_log_assumption(
@@ -184,14 +231,12 @@ impl SolverStrategy for UnwrapStrategy {
         opts: &SolverOptions,
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-        // EARLY CHECK + routing lives in solver-core to keep strategy entry flow
-        // declarative in engine.
-        use crate::solver::domain_guards::classify_log_solve;
         let mode = crate::solver::domain_guards::to_core_domain_mode(opts.domain_mode);
         let wildcard_scope = opts.assume_scope == crate::semantics::AssumeScope::Wildcard;
 
         let include_item = simplifier.collect_steps();
-        let routed = route_unwrap_entry_with_item(
+        let mut entry_runtime = EngineUnwrapEntryRuntime { opts: *opts, ctx };
+        let routed = route_unwrap_entry_with_item_runtime(
             &mut simplifier.context,
             eq,
             var,
@@ -199,24 +244,7 @@ impl SolverStrategy for UnwrapStrategy {
             wildcard_scope,
             " - use 'semantics preset complex'",
             include_item,
-            |core_ctx, base, other_side| {
-                classify_log_solve(core_ctx, base, other_side, opts, &ctx.domain_env)
-            },
-            |core_ctx, id| {
-                format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: core_ctx,
-                        id
-                    }
-                )
-            },
-            |item| SolveStep {
-                description: item.description,
-                equation_after: item.equation,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            },
+            &mut entry_runtime,
         );
         let routed = routed?;
         Some(match routed {
