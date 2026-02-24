@@ -11,8 +11,8 @@ use cas_solver_core::function_inverse::{
 };
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::log_isolation::{
-    plan_log_isolation_step_with, solve_log_isolation_rewrite_pipeline_with_item,
-    LogIsolationExecutionItem, LogIsolationRewriteRuntime,
+    plan_log_isolation_step_with_runtime, solve_log_isolation_rewrite_pipeline_with_item,
+    LogIsolationExecutionItem, LogIsolationPlanRuntime, LogIsolationRewriteRuntime,
 };
 use cas_solver_core::solve_outcome::{
     finalize_abs_split_solution_set, plan_abs_isolation, solve_abs_isolation_plan_with,
@@ -46,6 +46,20 @@ struct EngineLogIsolationRuntime<'a, 'b> {
     var: &'b str,
     opts: SolverOptions,
     ctx: &'a super::super::SolveCtx,
+}
+
+struct EngineLogIsolationPlanRuntime;
+
+impl LogIsolationPlanRuntime for EngineLogIsolationPlanRuntime {
+    fn render_expr(&mut self, core_ctx: &cas_ast::Context, expr: ExprId) -> String {
+        format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: core_ctx,
+                id: expr
+            }
+        )
+    }
 }
 
 impl LogIsolationRewriteRuntime<CasError, SolveStep> for EngineLogIsolationRuntime<'_, '_> {
@@ -261,22 +275,15 @@ fn isolate_log(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let rewrite = plan_log_isolation_step_with(
+    let mut plan_runtime = EngineLogIsolationPlanRuntime;
+    let rewrite = plan_log_isolation_step_with_runtime(
         &mut simplifier.context,
         base,
         arg,
         rhs,
         var,
         op.clone(),
-        |core_ctx, id| {
-            format!(
-                "{}",
-                cas_formatter::DisplayExpr {
-                    context: core_ctx,
-                    id
-                }
-            )
-        },
+        &mut plan_runtime,
     )
     .ok_or_else(|| {
         CasError::IsolationError(

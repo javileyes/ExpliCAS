@@ -215,6 +215,30 @@ where
     Some(LogIsolationRewritePlan { equation, items })
 }
 
+/// Runtime contract for log-isolation rewrite planning display rendering.
+pub trait LogIsolationPlanRuntime {
+    /// Render expression IDs for didactic narration.
+    fn render_expr(&mut self, ctx: &Context, expr: ExprId) -> String;
+}
+
+/// Runtime-based log-isolation planning helper.
+pub fn plan_log_isolation_step_with_runtime<R>(
+    ctx: &mut Context,
+    base: ExprId,
+    arg: ExprId,
+    rhs: ExprId,
+    var: &str,
+    op: RelOp,
+    runtime: &mut R,
+) -> Option<LogIsolationRewritePlan>
+where
+    R: LogIsolationPlanRuntime,
+{
+    plan_log_isolation_step_with(ctx, base, arg, rhs, var, op, |core_ctx, id| {
+        runtime.render_expr(core_ctx, id)
+    })
+}
+
 /// Build the transformed equation target for `log(base, arg) = rhs`.
 ///
 /// Returns `None` when:
@@ -388,6 +412,40 @@ mod tests {
         assert_eq!(
             out.items[0].description,
             "Exponentiate both sides with base rendered(b)"
+        );
+        assert_eq!(out.items[0].equation, out.equation);
+    }
+
+    struct MockLogIsolationPlanRuntime;
+
+    impl LogIsolationPlanRuntime for MockLogIsolationPlanRuntime {
+        fn render_expr(&mut self, _ctx: &Context, _expr: ExprId) -> String {
+            "runtime(b)".to_string()
+        }
+    }
+
+    #[test]
+    fn plan_log_isolation_step_with_runtime_uses_runtime_renderer() {
+        let mut ctx = Context::new();
+        let base = ctx.var("b");
+        let arg = ctx.var("x");
+        let rhs = ctx.num(3);
+        let mut runtime = MockLogIsolationPlanRuntime;
+
+        let out = plan_log_isolation_step_with_runtime(
+            &mut ctx,
+            base,
+            arg,
+            rhs,
+            "x",
+            RelOp::Eq,
+            &mut runtime,
+        )
+        .expect("log isolation should apply");
+
+        assert_eq!(
+            out.items[0].description,
+            "Exponentiate both sides with base runtime(b)"
         );
         assert_eq!(out.items[0].equation, out.equation);
     }
