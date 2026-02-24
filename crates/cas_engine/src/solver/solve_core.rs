@@ -51,62 +51,49 @@ fn verify_solution(
     sol: ExprId,
     simplifier: &mut Simplifier,
 ) -> bool {
-    let mut runtime = EngineVerifySolutionRuntime { simplifier };
-    verify_solution_with_runtime(&mut runtime, eq, var, sol)
+    verify_solution_with_runtime(simplifier, eq, var, sol)
 }
 
-struct EngineSolvePreprocessRuntime<'a> {
-    simplifier: &'a mut Simplifier,
-}
-
-struct EngineResidualRewriteRuntime<'a> {
-    simplifier: &'a mut Simplifier,
-}
-
-struct EngineVerifySolutionRuntime<'a> {
-    simplifier: &'a mut Simplifier,
-}
-
-impl VerifySolutionRuntime for EngineVerifySolutionRuntime<'_> {
+impl VerifySolutionRuntime for Simplifier {
     fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.simplifier.context
+        &mut self.context
     }
 
     fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
-        let (simplified, _) = self.simplifier.simplify(expr);
+        let (simplified, _) = self.simplify(expr);
         simplified
     }
 
     fn are_equivalent(&mut self, lhs: ExprId, rhs: ExprId) -> bool {
-        self.simplifier.are_equivalent(lhs, rhs)
+        self.are_equivalent(lhs, rhs)
     }
 }
 
-impl SolvePreprocessRuntime for EngineSolvePreprocessRuntime<'_> {
+impl SolvePreprocessRuntime for Simplifier {
     fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.simplifier.context
+        &mut self.context
     }
 
     fn simplify_for_solve(&mut self, expr: ExprId) -> ExprId {
-        self.simplifier.simplify_for_solve(expr)
+        self.simplify_for_solve(expr)
     }
 }
 
-impl ResidualRewriteRuntime for EngineResidualRewriteRuntime<'_> {
+impl ResidualRewriteRuntime for Simplifier {
     fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.simplifier.context
+        &mut self.context
     }
 
     fn expand_algebraic(&mut self, expr: ExprId) -> ExprId {
-        crate::expand::expand(&mut self.simplifier.context, expr)
+        crate::expand::expand(&mut self.context, expr)
     }
 
     fn simplify_for_solve(&mut self, expr: ExprId) -> ExprId {
-        self.simplifier.simplify_for_solve(expr)
+        self.simplify_for_solve(expr)
     }
 
     fn expand_trig(&mut self, expr: ExprId) -> ExprId {
-        let (expanded, _) = self.simplifier.expand(expr);
+        let (expanded, _) = self.expand(expr);
         expanded
     }
 }
@@ -300,10 +287,7 @@ fn solve_inner(
     // 2. Simplify both sides BEFORE applying strategies
     // This is crucial for equations like "1/3*x + 1/2*x = 5"
     // which need to be simplified to "5/6*x = 5" before isolation
-    let mut simplified_eq = {
-        let mut runtime = EngineSolvePreprocessRuntime { simplifier };
-        simplify_equation_sides_for_var_with_runtime(&mut runtime, eq, var)
-    };
+    let mut simplified_eq = simplify_equation_sides_for_var_with_runtime(simplifier, eq, var);
 
     // NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)) and
     // nested-pow folding are handled by global simplifier rules:
@@ -369,10 +353,7 @@ fn solve_inner(
     // expand + simplify and a trig expand fallback (Ticket 6c). Accept
     // rewrites only when they eliminate the variable or significantly
     // reduce expression size.
-    let normalized_diff = {
-        let mut runtime = EngineResidualRewriteRuntime { simplifier };
-        normalize_variable_residual_with_runtime(&mut runtime, diff_simplified, var)
-    };
+    let normalized_diff = normalize_variable_residual_with_runtime(simplifier, diff_simplified, var);
     if normalized_diff != diff_simplified {
         diff_simplified = normalized_diff;
         let zero = simplifier.context.num(0);
