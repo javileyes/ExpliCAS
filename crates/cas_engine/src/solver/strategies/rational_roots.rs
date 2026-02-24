@@ -16,7 +16,8 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, ExprId, SolutionSet};
 use cas_solver_core::rational_roots::{
-    solve_rational_roots_strategy_with_runtime_and_item, RationalRootsStrategyRuntime,
+    solve_rational_roots_strategy_with_runtime_and_item_runtime, RationalRootsDidacticRuntime,
+    RationalRootsExecutionItem, RationalRootsStrategyRuntime,
 };
 
 /// Maximum number of candidate rational roots to try before bailing.
@@ -47,6 +48,19 @@ impl RationalRootsStrategyRuntime for EngineRationalRootsRuntime<'_> {
     }
 }
 
+struct EngineRationalRootsDidacticRuntime;
+
+impl RationalRootsDidacticRuntime<SolveStep> for EngineRationalRootsDidacticRuntime {
+    fn map_item_to_step(&mut self, item: RationalRootsExecutionItem) -> SolveStep {
+        SolveStep {
+            description: item.description().to_string(),
+            equation_after: item.equation,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        }
+    }
+}
+
 impl SolverStrategy for RationalRootsStrategy {
     fn name(&self) -> &str {
         "Rational Roots"
@@ -62,7 +76,8 @@ impl SolverStrategy for RationalRootsStrategy {
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let include_item = simplifier.collect_steps();
         let mut runtime = EngineRationalRootsRuntime { simplifier };
-        let solved = solve_rational_roots_strategy_with_runtime_and_item(
+        let mut didactic_runtime = EngineRationalRootsDidacticRuntime;
+        let solved = solve_rational_roots_strategy_with_runtime_and_item_runtime(
             &mut runtime,
             eq.lhs,
             eq.rhs,
@@ -72,12 +87,7 @@ impl SolverStrategy for RationalRootsStrategy {
             MAX_DEGREE,
             MAX_CANDIDATES,
             include_item,
-            |item| SolveStep {
-                description: item.description().to_string(),
-                equation_after: item.equation,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            },
+            &mut didactic_runtime,
         )?;
         Some(Ok((solved.solution_set, solved.steps)))
     }

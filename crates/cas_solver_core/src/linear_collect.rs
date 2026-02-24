@@ -1,7 +1,8 @@
 use crate::isolation_utils::contains_var;
+pub use crate::linear_didactic::LinearCollectExecutionItem;
 use crate::linear_didactic::{
     build_linear_collect_additive_execution_items_with,
-    build_linear_collect_factored_execution_items_with, LinearCollectExecutionItem,
+    build_linear_collect_factored_execution_items_with,
 };
 use crate::linear_kernel::derive_linear_solve_kernel;
 use crate::linear_solution::{
@@ -333,6 +334,34 @@ where
     })
 }
 
+/// Runtime adapter for linear-collect didactic rendering and item mapping.
+pub trait LinearCollectDidacticRuntime<S> {
+    /// Render one expression in the provided context for narration.
+    fn render_expr(&mut self, ctx: &Context, expr: ExprId) -> String;
+    /// Map one execution item into caller-owned step payload.
+    fn map_item_to_step(&mut self, item: LinearCollectExecutionItem) -> S;
+}
+
+/// Runtime-based linear-collect execution pipeline with optional item mapping.
+pub fn solve_linear_collect_execution_pipeline_with_items_runtime<S, R>(
+    execution: LinearCollectSolveExecution,
+    include_items: bool,
+    runtime: &mut R,
+) -> LinearCollectSolvedExecution<(SolutionSet, Vec<S>)>
+where
+    R: LinearCollectDidacticRuntime<S>,
+{
+    solve_linear_collect_execution_with_items(execution, |items, solutions| {
+        let mut steps = Vec::new();
+        if include_items {
+            for item in items {
+                steps.push(runtime.map_item_to_step(item));
+            }
+        }
+        (solutions, steps)
+    })
+}
+
 /// Solve factored linear-collect with runtime and optionally map didactic
 /// execution items into caller-owned step payloads.
 #[allow(clippy::too_many_arguments)]
@@ -429,6 +458,102 @@ where
     Some((solution_set, Vec::new()))
 }
 
+/// Solve factored linear-collect with runtime and optional didactic mapping
+/// through a dedicated didactic runtime adapter.
+pub fn solve_linear_collect_factored_pipeline_with_runtime_and_items_runtime<R, D, S>(
+    runtime: &mut R,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    include_items: bool,
+    didactic_runtime: &mut D,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    R: LinearCollectRuntime,
+    D: LinearCollectDidacticRuntime<S>,
+{
+    let solved = solve_linear_collect_factored_with_runtime(runtime, lhs, rhs, var)?;
+
+    if include_items {
+        let execution = {
+            let ctx = runtime.context();
+            build_linear_collect_factored_execution_with(
+                ctx,
+                var,
+                solved.coeff,
+                solved.rhs_term,
+                solved.solution,
+                solved.coeff_status,
+                solved.rhs_status,
+                |ctx, id| didactic_runtime.render_expr(ctx, id),
+            )
+        };
+        let solved_execution = solve_linear_collect_execution_pipeline_with_items_runtime(
+            execution,
+            true,
+            didactic_runtime,
+        );
+        return Some(solved_execution.solved);
+    }
+
+    let solution_set = build_linear_solution_set(
+        solved.coeff,
+        solved.rhs_term,
+        solved.solution,
+        solved.coeff_status,
+        solved.rhs_status,
+    );
+    Some((solution_set, Vec::new()))
+}
+
+/// Solve additive linear-collect with runtime and optional didactic mapping
+/// through a dedicated didactic runtime adapter.
+pub fn solve_linear_collect_additive_pipeline_with_runtime_and_items_runtime<R, D, S>(
+    runtime: &mut R,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    include_items: bool,
+    didactic_runtime: &mut D,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    R: LinearCollectRuntime,
+    D: LinearCollectDidacticRuntime<S>,
+{
+    let solved = solve_linear_collect_additive_with_runtime(runtime, lhs, rhs, var)?;
+
+    if include_items {
+        let execution = {
+            let ctx = runtime.context();
+            build_linear_collect_additive_execution_with(
+                ctx,
+                var,
+                solved.coeff,
+                solved.constant,
+                solved.solution,
+                solved.coeff_status,
+                solved.constant_status,
+                |ctx, id| didactic_runtime.render_expr(ctx, id),
+            )
+        };
+        let solved_execution = solve_linear_collect_execution_pipeline_with_items_runtime(
+            execution,
+            true,
+            didactic_runtime,
+        );
+        return Some(solved_execution.solved);
+    }
+
+    let solution_set = build_linear_solution_set(
+        solved.coeff,
+        solved.constant,
+        solved.solution,
+        solved.coeff_status,
+        solved.constant_status,
+    );
+    Some((solution_set, Vec::new()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -455,6 +580,18 @@ mod tests {
         fn prove_nonzero_status(&mut self, _expr: ExprId) -> NonZeroStatus {
             self.prove_calls += 1;
             self.prove_result
+        }
+    }
+
+    struct MockLinearCollectDidacticRuntime;
+
+    impl LinearCollectDidacticRuntime<String> for MockLinearCollectDidacticRuntime {
+        fn render_expr(&mut self, _ctx: &Context, _expr: ExprId) -> String {
+            "k".to_string()
+        }
+
+        fn map_item_to_step(&mut self, item: LinearCollectExecutionItem) -> String {
+            item.description
         }
     }
 
@@ -682,6 +819,33 @@ mod tests {
     }
 
     #[test]
+    fn solve_linear_collect_execution_pipeline_with_items_runtime_maps_steps_when_enabled() {
+        let mut ctx = Context::new();
+        let coeff = ctx.var("k");
+        let rhs_term = ctx.var("rhs");
+        let solution = ctx.var("s");
+
+        let execution = build_linear_collect_factored_execution_with(
+            &mut ctx,
+            "x",
+            coeff,
+            rhs_term,
+            solution,
+            NonZeroStatus::NonZero,
+            NonZeroStatus::Unknown,
+            |_, _| "k".into(),
+        );
+        let mut runtime = MockLinearCollectDidacticRuntime;
+        let solved = solve_linear_collect_execution_pipeline_with_items_runtime(
+            execution,
+            true,
+            &mut runtime,
+        );
+        assert!(matches!(solved.solved.0, SolutionSet::Discrete(_)));
+        assert_eq!(solved.solved.1.len(), 2);
+    }
+
+    #[test]
     fn solve_linear_collect_factored_pipeline_with_runtime_and_items_maps_steps_when_enabled() {
         let mut context = Context::new();
         let x = context.var("x");
@@ -744,6 +908,37 @@ mod tests {
         assert!(steps.is_empty());
         assert_eq!(runtime.simplify_calls, 3);
         assert_eq!(runtime.prove_calls, 1);
+    }
+
+    #[test]
+    fn solve_linear_collect_factored_pipeline_with_runtime_and_items_runtime_maps_steps() {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let a = context.var("a");
+        let b = context.var("b");
+        let lhs = context.add(Expr::Mul(a, x));
+        let rhs = b;
+        let mut runtime = MockLinearCollectRuntime {
+            context,
+            simplify_calls: 0,
+            prove_calls: 0,
+            prove_result: NonZeroStatus::NonZero,
+        };
+        let mut didactic_runtime = MockLinearCollectDidacticRuntime;
+
+        let (solution_set, steps) =
+            solve_linear_collect_factored_pipeline_with_runtime_and_items_runtime(
+                &mut runtime,
+                lhs,
+                rhs,
+                "x",
+                true,
+                &mut didactic_runtime,
+            )
+            .expect("pipeline should solve");
+
+        assert!(matches!(solution_set, SolutionSet::Discrete(_)));
+        assert_eq!(steps.len(), 2);
     }
 
     #[test]

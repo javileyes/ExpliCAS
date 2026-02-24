@@ -438,6 +438,28 @@ where
     vec![]
 }
 
+/// Runtime adapter for Rational Roots didactic item mapping.
+pub trait RationalRootsDidacticRuntime<S> {
+    fn map_item_to_step(&mut self, item: RationalRootsExecutionItem) -> S;
+}
+
+/// Runtime-based Rational Roots didactic pipeline with optional item mapping.
+pub fn solve_rational_roots_step_pipeline_with_item_runtime<S, R>(
+    step: RationalRootsDidacticStep,
+    include_item: bool,
+    runtime: &mut R,
+) -> Vec<S>
+where
+    R: RationalRootsDidacticRuntime<S>,
+{
+    if include_item {
+        if let Some(item) = first_rational_roots_execution_item(&step) {
+            return vec![runtime.map_item_to_step(item)];
+        }
+    }
+    vec![]
+}
+
 /// Runtime contract for rational-roots strategy orchestration.
 ///
 /// This lets solver-core host the control flow while callers inject their own
@@ -525,6 +547,82 @@ where
         plan_rational_roots_step(ctx, expanded, degree)
     };
     let steps = solve_rational_roots_step_pipeline_with_item(step, include_item, map_item_to_step);
+
+    Some(RationalRootsStrategySolved {
+        solution_set: SolutionSet::Discrete(roots),
+        steps,
+    })
+}
+
+/// Solve rational-roots strategy with runtime hooks and optional didactic
+/// step mapping through a dedicated didactic runtime adapter.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_rational_roots_strategy_with_runtime_and_item_runtime<R, D, S>(
+    runtime: &mut R,
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    min_degree: usize,
+    max_degree: usize,
+    max_candidates: usize,
+    include_item: bool,
+    didactic_runtime: &mut D,
+) -> Option<RationalRootsStrategySolved<S>>
+where
+    R: RationalRootsStrategyRuntime,
+    D: RationalRootsDidacticRuntime<S>,
+{
+    if op != RelOp::Eq {
+        return None;
+    }
+
+    let diff = {
+        let ctx = runtime.context();
+        ctx.add(Expr::Sub(lhs, rhs))
+    };
+    let diff = runtime.simplify_expr(diff);
+    let expanded = runtime.expand_expr(diff);
+
+    let coeffs = {
+        let ctx = runtime.context();
+        extract_poly_coefficients(ctx, expanded, var, max_degree)?
+    };
+    let outcome = {
+        let ctx = runtime.context();
+        solve_numeric_coeff_polynomial(ctx, &coeffs, min_degree, max_degree, max_candidates)?
+    };
+
+    let (degree, mut roots) = match outcome {
+        NumericPolynomialSolveOutcome::AllReals => {
+            return Some(RationalRootsStrategySolved {
+                solution_set: SolutionSet::AllReals,
+                steps: vec![],
+            });
+        }
+        NumericPolynomialSolveOutcome::CandidateRoots { degree, roots } => (
+            degree,
+            roots
+                .into_iter()
+                .map(|root| runtime.simplify_expr(root))
+                .collect::<Vec<_>>(),
+        ),
+    };
+
+    if roots.is_empty() {
+        return None;
+    }
+    {
+        let ctx = runtime.context();
+        crate::solution_set::sort_and_dedup_exprs(ctx, &mut roots);
+    }
+
+    let step = {
+        let ctx = runtime.context();
+        plan_rational_roots_step(ctx, expanded, degree)
+    };
+    let steps =
+        solve_rational_roots_step_pipeline_with_item_runtime(step, include_item, didactic_runtime);
 
     Some(RationalRootsStrategySolved {
         solution_set: SolutionSet::Discrete(roots),
@@ -695,6 +793,14 @@ mod tests {
         }
     }
 
+    struct MockRationalRootsDidacticRuntime;
+
+    impl RationalRootsDidacticRuntime<String> for MockRationalRootsDidacticRuntime {
+        fn map_item_to_step(&mut self, item: RationalRootsExecutionItem) -> String {
+            item.description
+        }
+    }
+
     #[test]
     fn solve_rational_roots_strategy_with_runtime_and_item_rejects_non_equality() {
         let mut runtime = MockRationalRootsRuntime::new();
@@ -771,6 +877,39 @@ mod tests {
             200,
             true,
             |item| item.description,
+        )
+        .expect("strategy should solve cubic");
+
+        match solved.solution_set {
+            SolutionSet::Discrete(roots) => assert_eq!(roots.len(), 3),
+            other => panic!("expected discrete roots, got {:?}", other),
+        }
+        assert_eq!(solved.steps.len(), 1);
+        assert!(solved.steps[0].contains("degree-3"));
+    }
+
+    #[test]
+    fn solve_rational_roots_strategy_with_runtime_and_item_runtime_solves_cubic_and_emits_step() {
+        let mut runtime = MockRationalRootsRuntime::new();
+        let x = runtime.ctx.var("x");
+        let two = runtime.ctx.num(2);
+        let x2 = runtime.ctx.add(Expr::Pow(x, two));
+        let x3 = runtime.ctx.add(Expr::Mul(x2, x));
+        let lhs = runtime.ctx.add(Expr::Sub(x3, x)); // x^3 - x
+        let zero = runtime.ctx.num(0);
+        let mut didactic_runtime = MockRationalRootsDidacticRuntime;
+
+        let solved = solve_rational_roots_strategy_with_runtime_and_item_runtime(
+            &mut runtime,
+            lhs,
+            zero,
+            RelOp::Eq,
+            "x",
+            3,
+            10,
+            200,
+            true,
+            &mut didactic_runtime,
         )
         .expect("strategy should solve cubic");
 
@@ -1057,5 +1196,20 @@ mod tests {
 
         let steps = solve_rational_roots_step_pipeline_with_item(step, false, |_item| 1u8);
         assert!(steps.is_empty());
+    }
+
+    #[test]
+    fn solve_rational_roots_step_pipeline_with_item_runtime_maps_item_when_enabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let step = plan_rational_roots_strategy_step(&mut ctx, x, 4);
+        let mut runtime = MockRationalRootsDidacticRuntime;
+
+        let steps = solve_rational_roots_step_pipeline_with_item_runtime(step, true, &mut runtime);
+        assert_eq!(steps.len(), 1);
+        assert_eq!(
+            steps[0],
+            "Applied Rational Root Theorem to degree-4 polynomial"
+        );
     }
 }
