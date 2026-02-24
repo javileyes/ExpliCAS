@@ -3329,6 +3329,43 @@ where
     })
 }
 
+/// Runtime contract for logarithmic exponent-isolation rewrite execution.
+pub trait PowExponentLogIsolationRewriteRuntime<E, S> {
+    /// Solve rewritten logarithmic equation recursively.
+    fn solve_rewrite(&mut self, equation: &Equation, var: &str)
+        -> Result<(SolutionSet, Vec<S>), E>;
+    /// Map optional rewrite item to caller-owned step payload.
+    fn map_log_item_to_step(&mut self, item: PowExponentLogIsolationExecutionItem) -> S;
+}
+
+/// Execute exponent-log rewrite solve + optional first-item dispatch via runtime.
+pub fn solve_pow_exponent_log_isolation_rewrite_pipeline_with_item_runtime<R, E, S>(
+    rewrite: PowExponentLogIsolationRewritePlan,
+    include_item: bool,
+    var: &str,
+    runtime: &mut R,
+) -> Result<PowExponentLogIsolationRewritePipelineSolved<S>, E>
+where
+    R: PowExponentLogIsolationRewriteRuntime<E, S>,
+{
+    let solved_rewrite = solve_pow_exponent_log_isolation_rewrite_with(rewrite, |equation| {
+        runtime.solve_rewrite(equation, var)
+    })?;
+    let mut steps = Vec::new();
+    if include_item {
+        if let Some(item) = first_pow_exponent_log_isolation_execution_item(&solved_rewrite.rewrite)
+        {
+            steps.push(runtime.map_log_item_to_step(item));
+        }
+    }
+    let (solution_set, mut sub_steps) = solved_rewrite.solved;
+    steps.append(&mut sub_steps);
+    Ok(PowExponentLogIsolationRewritePipelineSolved {
+        solution_set,
+        steps,
+    })
+}
+
 /// Execute a planned unsupported logarithmic route (residual or guarded).
 ///
 /// For guarded routes, this runs the guarded rewrite solve callback and
@@ -3414,6 +3451,65 @@ where
                     ));
                 }
                 steps.push(map_item_to_step(followup_item));
+            }
+            PowExponentLogUnsupportedPipelineSolved {
+                blocked_hints,
+                solution_set: solutions,
+                steps,
+            }
+        }
+    }
+}
+
+/// Runtime contract for unsupported logarithmic isolation routes.
+pub trait PowExponentLogUnsupportedRuntime<S> {
+    /// Attempt guarded solve for logarithmic rewritten equation.
+    fn try_guarded_solve(&mut self, equation: &Equation, var: &str) -> Option<SolutionSet>;
+    /// Map didactic term-isolation item to caller-owned step payload.
+    fn map_term_item_to_step(&mut self, item: TermIsolationExecutionItem) -> S;
+}
+
+/// Execute unsupported-log route with optional didactic items via runtime.
+pub fn solve_pow_exponent_log_unsupported_pipeline_with_items_runtime<R, S>(
+    execution: PowExponentLogUnsupportedExecution,
+    include_items: bool,
+    var: &str,
+    runtime: &mut R,
+) -> PowExponentLogUnsupportedPipelineSolved<S>
+where
+    R: PowExponentLogUnsupportedRuntime<S>,
+{
+    let solved = execute_pow_exponent_log_unsupported_with(execution, |equation| {
+        runtime.try_guarded_solve(equation, var)
+    });
+    match solved {
+        PowExponentLogUnsupportedSolvedExecution::Residual { item, solutions } => {
+            let mut steps = Vec::new();
+            if include_items {
+                steps.push(runtime.map_term_item_to_step(item));
+            }
+            PowExponentLogUnsupportedPipelineSolved {
+                blocked_hints: vec![],
+                solution_set: solutions,
+                steps,
+            }
+        }
+        PowExponentLogUnsupportedSolvedExecution::Guarded {
+            blocked_hints,
+            rewrite_item,
+            followup_item,
+            solutions,
+        } => {
+            let mut steps = Vec::new();
+            if include_items {
+                if let Some(item) = rewrite_item {
+                    steps.push(
+                        runtime.map_term_item_to_step(
+                            pow_exponent_log_execution_item_as_term_item(item),
+                        ),
+                    );
+                }
+                steps.push(runtime.map_term_item_to_step(followup_item));
             }
             PowExponentLogUnsupportedPipelineSolved {
                 blocked_hints,
@@ -7474,6 +7570,109 @@ mod tests {
         assert!(matches!(solved.solution_set, SolutionSet::Conditional(_)));
     }
 
+    struct TestPowExponentLogUnsupportedRuntime {
+        guarded_solution: Option<SolutionSet>,
+        last_var: Option<String>,
+    }
+
+    impl PowExponentLogUnsupportedRuntime<String> for TestPowExponentLogUnsupportedRuntime {
+        fn try_guarded_solve(&mut self, _: &Equation, var: &str) -> Option<SolutionSet> {
+            self.last_var = Some(var.to_string());
+            self.guarded_solution.clone()
+        }
+
+        fn map_term_item_to_step(&mut self, item: TermIsolationExecutionItem) -> String {
+            item.description
+        }
+    }
+
+    #[test]
+    fn solve_pow_exponent_log_unsupported_pipeline_with_items_runtime_maps_residual_item() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let item = build_residual_budget_exhausted_item(
+            "budget exhausted",
+            Equation {
+                lhs: x,
+                rhs: x,
+                op: RelOp::Eq,
+            },
+        );
+        let mut runtime = TestPowExponentLogUnsupportedRuntime {
+            guarded_solution: Some(SolutionSet::AllReals),
+            last_var: None,
+        };
+
+        let solved = solve_pow_exponent_log_unsupported_pipeline_with_items_runtime(
+            PowExponentLogUnsupportedExecution::Residual {
+                item: item.clone(),
+                solutions: SolutionSet::Residual(x),
+            },
+            true,
+            "x",
+            &mut runtime,
+        );
+
+        assert_eq!(runtime.last_var, None);
+        assert!(solved.blocked_hints.is_empty());
+        assert!(matches!(solved.solution_set, SolutionSet::Residual(id) if id == x));
+        assert_eq!(solved.steps, vec![item.description]);
+    }
+
+    #[test]
+    fn solve_pow_exponent_log_unsupported_pipeline_with_items_runtime_includes_guarded_items() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let residual = ctx.var("residual");
+        let source = Equation {
+            lhs: x,
+            rhs: b,
+            op: RelOp::Eq,
+        };
+        let plan = plan_guarded_pow_exponent_log_execution(
+            &mut ctx,
+            x,
+            a,
+            b,
+            RelOp::Eq,
+            "a > 0",
+            "a",
+            source,
+        );
+        let expected_rewrite_item = first_pow_exponent_log_isolation_execution_item(&plan.rewrite)
+            .expect("expected rewrite item")
+            .description
+            .clone();
+        let mut runtime = TestPowExponentLogUnsupportedRuntime {
+            guarded_solution: Some(SolutionSet::Discrete(vec![x])),
+            last_var: None,
+        };
+
+        let solved = solve_pow_exponent_log_unsupported_pipeline_with_items_runtime(
+            PowExponentLogUnsupportedExecution::Guarded {
+                blocked_hints: vec![],
+                plan,
+                guard: ConditionSet::single(ConditionPredicate::Positive(a)),
+                residual,
+            },
+            true,
+            "x",
+            &mut runtime,
+        );
+
+        assert_eq!(runtime.last_var.as_deref(), Some("x"));
+        assert!(matches!(solved.solution_set, SolutionSet::Conditional(_)));
+        assert_eq!(
+            solved.steps,
+            vec![
+                expected_rewrite_item,
+                "Conditional solution: a > 0".to_string()
+            ]
+        );
+    }
+
     #[test]
     fn plan_pow_exponent_log_unsupported_execution_from_decision_with_returns_none_for_supported() {
         let mut ctx = Context::new();
@@ -10181,6 +10380,106 @@ mod tests {
 
         assert!(matches!(solved.solution_set, SolutionSet::Empty));
         assert_eq!(solved.steps, vec!["only-substep".to_string()]);
+    }
+
+    struct TestPowExponentLogRewriteRuntime {
+        solve_result: (SolutionSet, Vec<String>),
+        last_var: Option<String>,
+    }
+
+    impl PowExponentLogIsolationRewriteRuntime<&'static str, String>
+        for TestPowExponentLogRewriteRuntime
+    {
+        fn solve_rewrite(
+            &mut self,
+            _: &Equation,
+            var: &str,
+        ) -> Result<(SolutionSet, Vec<String>), &'static str> {
+            self.last_var = Some(var.to_string());
+            Ok(self.solve_result.clone())
+        }
+
+        fn map_log_item_to_step(&mut self, item: PowExponentLogIsolationExecutionItem) -> String {
+            item.description
+        }
+    }
+
+    #[test]
+    fn solve_pow_exponent_log_isolation_rewrite_pipeline_with_item_runtime_forwards_item_and_substeps(
+    ) {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let rewrite = plan_pow_exponent_log_isolation_step_with(
+            &mut ctx,
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            None,
+            |_, _| "a".to_string(),
+        );
+        let expected_item = first_pow_exponent_log_isolation_execution_item(&rewrite)
+            .expect("expected rewrite item")
+            .description
+            .clone();
+        let mut runtime = TestPowExponentLogRewriteRuntime {
+            solve_result: (
+                SolutionSet::Discrete(vec![exponent]),
+                vec!["runtime-substep".to_string()],
+            ),
+            last_var: None,
+        };
+
+        let solved = solve_pow_exponent_log_isolation_rewrite_pipeline_with_item_runtime(
+            rewrite,
+            true,
+            "x",
+            &mut runtime,
+        )
+        .expect("runtime pipeline solve should succeed");
+
+        assert_eq!(runtime.last_var.as_deref(), Some("x"));
+        assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![exponent]));
+        assert_eq!(
+            solved.steps,
+            vec![expected_item, "runtime-substep".to_string()]
+        );
+    }
+
+    #[test]
+    fn solve_pow_exponent_log_isolation_rewrite_pipeline_with_item_runtime_omits_item_when_disabled(
+    ) {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let rewrite = plan_pow_exponent_log_isolation_step_with(
+            &mut ctx,
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            None,
+            |_, _| "a".to_string(),
+        );
+        let mut runtime = TestPowExponentLogRewriteRuntime {
+            solve_result: (SolutionSet::Empty, vec!["runtime-only-substep".to_string()]),
+            last_var: None,
+        };
+
+        let solved = solve_pow_exponent_log_isolation_rewrite_pipeline_with_item_runtime(
+            rewrite,
+            false,
+            "x",
+            &mut runtime,
+        )
+        .expect("runtime pipeline solve should succeed");
+
+        assert_eq!(runtime.last_var.as_deref(), Some("x"));
+        assert!(matches!(solved.solution_set, SolutionSet::Empty));
+        assert_eq!(solved.steps, vec!["runtime-only-substep".to_string()]);
     }
 
     #[test]
