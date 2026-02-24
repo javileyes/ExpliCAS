@@ -492,6 +492,47 @@ where
     })
 }
 
+/// Runtime contract for unary-inverse execution pipeline orchestration.
+pub trait UnaryInverseSolveRuntime<E, S> {
+    /// Solve rewritten unary-inverse equation.
+    fn solve_rewritten(
+        &mut self,
+        lhs: ExprId,
+        rhs: ExprId,
+        op: RelOp,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<S>), E>;
+    /// Map one execution item into caller-owned step payload.
+    fn map_item_to_step(&mut self, item: UnaryInverseSolveExecutionItem) -> S;
+}
+
+/// Execute unary-inverse pipeline with optional didactic items via runtime.
+pub fn solve_unary_inverse_execution_pipeline_with_items_runtime<R, E, S>(
+    execution: UnaryInverseSolveExecution,
+    include_items: bool,
+    var: &str,
+    runtime: &mut R,
+) -> Result<UnaryInverseExecutionPipelineSolved<S>, E>
+where
+    R: UnaryInverseSolveRuntime<E, S>,
+{
+    let lhs = execution.rewritten_equation.lhs;
+    let rhs = execution.target_rhs;
+    let op = execution.rewritten_equation.op.clone();
+    let mut steps = Vec::new();
+    if include_items {
+        for item in collect_unary_inverse_solve_execution_items(&execution) {
+            steps.push(runtime.map_item_to_step(item));
+        }
+    }
+    let (solution_set, mut sub_steps) = runtime.solve_rewritten(lhs, rhs, op, var)?;
+    steps.append(&mut sub_steps);
+    Ok(UnaryInverseExecutionPipelineSolved {
+        solution_set,
+        steps,
+    })
+}
+
 /// Build didactic RHS-cleanup steps from `(description, rhs_after)` tuples.
 pub fn build_rhs_simplification_steps<I>(
     lhs: ExprId,
@@ -1209,6 +1250,105 @@ mod tests {
 
         assert!(matches!(solved.solution_set, SolutionSet::Discrete(_)));
         assert_eq!(solved.steps, vec!["only".to_string()]);
+    }
+
+    struct TestUnaryInverseSolveRuntime {
+        last_var: Option<String>,
+    }
+
+    impl UnaryInverseSolveRuntime<&'static str, String> for TestUnaryInverseSolveRuntime {
+        fn solve_rewritten(
+            &mut self,
+            _lhs: ExprId,
+            rhs: ExprId,
+            _op: RelOp,
+            var: &str,
+        ) -> Result<(SolutionSet, Vec<String>), &'static str> {
+            self.last_var = Some(var.to_string());
+            Ok((
+                SolutionSet::Discrete(vec![rhs]),
+                vec!["substep".to_string()],
+            ))
+        }
+
+        fn map_item_to_step(&mut self, item: UnaryInverseSolveExecutionItem) -> String {
+            item.description
+        }
+    }
+
+    #[test]
+    fn solve_unary_inverse_execution_pipeline_with_items_runtime_prepends_items() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let execution = UnaryInverseSolveExecution {
+            rewrite_items: vec![UnaryInverseExecutionItem {
+                equation: Equation {
+                    lhs: x,
+                    rhs: y,
+                    op: RelOp::Eq,
+                },
+                description: "rewrite".to_string(),
+            }],
+            rhs_cleanup_items: vec![],
+            rewritten_equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            target_rhs: y,
+        };
+        let mut runtime = TestUnaryInverseSolveRuntime { last_var: None };
+
+        let solved = solve_unary_inverse_execution_pipeline_with_items_runtime(
+            execution,
+            true,
+            "x",
+            &mut runtime,
+        )
+        .expect("runtime pipeline should solve");
+
+        assert_eq!(runtime.last_var.as_deref(), Some("x"));
+        assert_eq!(
+            solved.steps,
+            vec!["rewrite".to_string(), "substep".to_string()]
+        );
+    }
+
+    #[test]
+    fn solve_unary_inverse_execution_pipeline_with_items_runtime_omits_items_when_disabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let execution = UnaryInverseSolveExecution {
+            rewrite_items: vec![UnaryInverseExecutionItem {
+                equation: Equation {
+                    lhs: x,
+                    rhs: y,
+                    op: RelOp::Eq,
+                },
+                description: "rewrite".to_string(),
+            }],
+            rhs_cleanup_items: vec![],
+            rewritten_equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            target_rhs: y,
+        };
+        let mut runtime = TestUnaryInverseSolveRuntime { last_var: None };
+
+        let solved = solve_unary_inverse_execution_pipeline_with_items_runtime(
+            execution,
+            false,
+            "x",
+            &mut runtime,
+        )
+        .expect("runtime pipeline should solve");
+
+        assert_eq!(runtime.last_var.as_deref(), Some("x"));
+        assert_eq!(solved.steps, vec!["substep".to_string()]);
     }
 
     #[test]

@@ -5,8 +5,9 @@ use cas_ast::symbol::SymbolId;
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::function_inverse::{
     derive_function_isolation_route, execute_unary_inverse_with_runtime,
-    solve_unary_inverse_execution_pipeline_with_items, FunctionIsolationRoute,
-    FunctionIsolationRouteError, UnaryInverseRuntime,
+    solve_unary_inverse_execution_pipeline_with_items_runtime, FunctionIsolationRoute,
+    FunctionIsolationRouteError, UnaryInverseRuntime, UnaryInverseSolveExecutionItem,
+    UnaryInverseSolveRuntime,
 };
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::log_isolation::{
@@ -15,7 +16,8 @@ use cas_solver_core::log_isolation::{
 };
 use cas_solver_core::solve_outcome::{
     finalize_abs_split_solution_set, plan_abs_isolation, solve_abs_isolation_plan_with,
-    solve_abs_split_pipeline_with_optional_items, AbsIsolationSolved,
+    solve_abs_split_pipeline_with_optional_items_runtime, AbsIsolationSolved,
+    AbsSplitExecutionItem, AbsSplitRuntime,
 };
 
 use super::{isolate, prepend_steps};
@@ -65,6 +67,78 @@ impl LogIsolationRewriteRuntime<CasError, SolveStep> for EngineLogIsolationRunti
     fn map_item_to_step(&mut self, item: LogIsolationExecutionItem) -> SolveStep {
         SolveStep {
             description: item.description,
+            equation_after: item.equation,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        }
+    }
+}
+
+struct EngineFunctionIsolationRuntime<'a, 'b> {
+    simplifier: &'a mut Simplifier,
+    opts: SolverOptions,
+    solve_ctx: &'b super::super::SolveCtx,
+}
+
+impl AbsSplitRuntime<CasError, SolveStep> for EngineFunctionIsolationRuntime<'_, '_> {
+    fn render_expr(&mut self, expr: ExprId) -> String {
+        format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &self.simplifier.context,
+                id: expr
+            }
+        )
+    }
+
+    fn solve_branch(
+        &mut self,
+        equation: &cas_ast::Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        isolate(
+            equation.lhs,
+            equation.rhs,
+            equation.op.clone(),
+            var,
+            self.simplifier,
+            self.opts,
+            self.solve_ctx,
+        )
+    }
+
+    fn map_item_to_step(&mut self, item: AbsSplitExecutionItem) -> SolveStep {
+        SolveStep {
+            description: item.description().to_string(),
+            equation_after: item.equation,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        }
+    }
+}
+
+impl UnaryInverseSolveRuntime<CasError, SolveStep> for EngineFunctionIsolationRuntime<'_, '_> {
+    fn solve_rewritten(
+        &mut self,
+        lhs: ExprId,
+        rhs: ExprId,
+        op: RelOp,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        isolate(
+            lhs,
+            rhs,
+            op,
+            var,
+            self.simplifier,
+            self.opts,
+            self.solve_ctx,
+        )
+    }
+
+    fn map_item_to_step(&mut self, item: UnaryInverseSolveExecutionItem) -> SolveStep {
+        SolveStep {
+            description: item.description().to_string(),
             equation_after: item.equation,
             importance: crate::step::ImportanceLevel::Medium,
             substeps: vec![],
@@ -145,69 +219,26 @@ fn isolate_abs(
             ctx,
         ),
         AbsIsolationSolved::Split((positive, negative)) => {
-            let positive_rhs = positive.rhs;
-            let negative_rhs = negative.rhs;
-            let arg_display = format!(
-                "{}",
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: arg
-                }
-            );
-            let positive_rhs_display = format!(
-                "{}",
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: positive_rhs
-                }
-            );
-            let negative_rhs_display = format!(
-                "{}",
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: negative_rhs
-                }
-            );
-            let solved = solve_abs_split_pipeline_with_optional_items(
+            let include_items = simplifier.collect_steps();
+            let mut runtime = EngineFunctionIsolationRuntime {
+                simplifier,
+                opts,
+                solve_ctx: ctx,
+            };
+            let solved = solve_abs_split_pipeline_with_optional_items_runtime(
                 positive,
                 negative,
                 arg,
-                simplifier.collect_steps(),
+                include_items,
                 &steps,
-                move |id| {
-                    if id == arg {
-                        arg_display.clone()
-                    } else if id == positive_rhs {
-                        positive_rhs_display.clone()
-                    } else if id == negative_rhs {
-                        negative_rhs_display.clone()
-                    } else {
-                        id.to_string()
-                    }
-                },
-                |equation| {
-                    isolate(
-                        equation.lhs,
-                        equation.rhs,
-                        equation.op.clone(),
-                        var,
-                        simplifier,
-                        opts,
-                        ctx,
-                    )
-                },
-                |item| SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                },
+                var,
+                &mut runtime,
             )?;
 
             let final_set = finalize_abs_split_solution_set(
-                &simplifier.context,
+                &runtime.simplifier.context,
                 op,
-                contains_var(&simplifier.context, rhs, var),
+                contains_var(&runtime.simplifier.context, rhs, var),
                 rhs,
                 solved.positive_set,
                 solved.negative_set,
@@ -284,18 +315,17 @@ fn isolate_unary_function(
         execute_unary_inverse_with_runtime(&mut runtime, &fn_name, arg, rhs, op.clone(), true)
             .ok_or_else(|| CasError::UnknownFunction(fn_name.clone()))?
     };
-    let solved_execution = solve_unary_inverse_execution_pipeline_with_items(
+    let include_items = simplifier.collect_steps();
+    let mut runtime = EngineFunctionIsolationRuntime {
+        simplifier,
+        opts,
+        solve_ctx: ctx,
+    };
+    let solved_execution = solve_unary_inverse_execution_pipeline_with_items_runtime(
         execution,
-        simplifier.collect_steps(),
-        |lhs, target_rhs, target_op| {
-            isolate(lhs, target_rhs, target_op, var, simplifier, opts, ctx)
-        },
-        |item| SolveStep {
-            description: item.description().to_string(),
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        },
+        include_items,
+        var,
+        &mut runtime,
     )?;
     prepend_steps(
         (solved_execution.solution_set, solved_execution.steps),

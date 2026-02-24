@@ -5439,6 +5439,68 @@ where
     )
 }
 
+/// Runtime contract for absolute-value split pipeline execution.
+pub trait AbsSplitRuntime<E, S> {
+    /// Render expression IDs for didactic narration.
+    fn render_expr(&mut self, expr: ExprId) -> String;
+    /// Solve one split branch equation recursively.
+    fn solve_branch(&mut self, equation: &Equation, var: &str) -> Result<(SolutionSet, Vec<S>), E>;
+    /// Map didactic branch item to caller-owned step payload.
+    fn map_item_to_step(&mut self, item: AbsSplitExecutionItem) -> S;
+}
+
+/// Solve absolute-value split with optional didactic items via runtime.
+pub fn solve_abs_split_pipeline_with_optional_items_runtime<R, E, S>(
+    positive_equation: Equation,
+    negative_equation: Equation,
+    lhs_expr: ExprId,
+    include_items: bool,
+    branch_prefix_steps: &[S],
+    var: &str,
+    runtime: &mut R,
+) -> Result<AbsSplitExecutionSolved<S>, E>
+where
+    S: Clone,
+    R: AbsSplitRuntime<E, S>,
+{
+    let execution = if include_items {
+        build_abs_split_execution_with(positive_equation, negative_equation, lhs_expr, |id| {
+            runtime.render_expr(id)
+        })
+    } else {
+        materialize_abs_split_execution(positive_equation, negative_equation)
+    };
+
+    let mut items = if include_items {
+        Some(collect_abs_split_execution_items(&execution).into_iter())
+    } else {
+        None
+    };
+
+    let mut positive_steps = branch_prefix_steps.to_vec();
+    if let Some(item) = items.as_mut().and_then(|it| it.next()) {
+        positive_steps.push(runtime.map_item_to_step(item));
+    }
+    let (positive_set, mut positive_sub_steps) =
+        runtime.solve_branch(&execution.positive_equation, var)?;
+    positive_steps.append(&mut positive_sub_steps);
+
+    let mut negative_steps = branch_prefix_steps.to_vec();
+    if let Some(item) = items.as_mut().and_then(|it| it.next()) {
+        negative_steps.push(runtime.map_item_to_step(item));
+    }
+    let (negative_set, mut negative_sub_steps) =
+        runtime.solve_branch(&execution.negative_equation, var)?;
+    negative_steps.append(&mut negative_sub_steps);
+
+    positive_steps.extend(negative_steps);
+    Ok(AbsSplitExecutionSolved {
+        positive_set,
+        negative_set,
+        steps: positive_steps,
+    })
+}
+
 /// For `|A| = rhs`, attach the soundness guard `rhs >= 0` when
 /// `rhs` depends on the solve variable.
 pub fn guard_abs_solution_with_nonnegative_rhs(
@@ -6481,6 +6543,106 @@ mod tests {
         .expect("pipeline should solve");
 
         assert_eq!(solved.steps, vec![0u8, 1u8, 0u8, 1u8]);
+    }
+
+    struct TestAbsSplitRuntime {
+        last_var: Option<String>,
+    }
+
+    impl AbsSplitRuntime<&'static str, String> for TestAbsSplitRuntime {
+        fn render_expr(&mut self, expr: ExprId) -> String {
+            expr.to_string()
+        }
+
+        fn solve_branch(
+            &mut self,
+            equation: &Equation,
+            var: &str,
+        ) -> Result<(SolutionSet, Vec<String>), &'static str> {
+            self.last_var = Some(var.to_string());
+            Ok((
+                SolutionSet::Discrete(vec![equation.rhs]),
+                vec!["branch".to_string()],
+            ))
+        }
+
+        fn map_item_to_step(&mut self, item: AbsSplitExecutionItem) -> String {
+            item.description
+        }
+    }
+
+    #[test]
+    fn solve_abs_split_pipeline_with_optional_items_runtime_includes_didactic_when_enabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let neg_two = ctx.num(-2);
+        let mut runtime = TestAbsSplitRuntime { last_var: None };
+
+        let solved = solve_abs_split_pipeline_with_optional_items_runtime(
+            Equation {
+                lhs: x,
+                rhs: two,
+                op: RelOp::Eq,
+            },
+            Equation {
+                lhs: x,
+                rhs: neg_two,
+                op: RelOp::Eq,
+            },
+            x,
+            true,
+            &["prefix".to_string()],
+            "x",
+            &mut runtime,
+        )
+        .expect("runtime pipeline should solve");
+
+        assert_eq!(runtime.last_var.as_deref(), Some("x"));
+        assert_eq!(solved.steps[0], "prefix");
+        assert!(solved.steps[1].starts_with("Split absolute value (Case 1)"));
+        assert_eq!(solved.steps[2], "branch");
+        assert_eq!(solved.steps[3], "prefix");
+        assert!(solved.steps[4].starts_with("Split absolute value (Case 2)"));
+        assert_eq!(solved.steps[5], "branch");
+    }
+
+    #[test]
+    fn solve_abs_split_pipeline_with_optional_items_runtime_omits_didactic_when_disabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let mut runtime = TestAbsSplitRuntime { last_var: None };
+
+        let solved = solve_abs_split_pipeline_with_optional_items_runtime(
+            Equation {
+                lhs: x,
+                rhs: two,
+                op: RelOp::Eq,
+            },
+            Equation {
+                lhs: x,
+                rhs: two,
+                op: RelOp::Eq,
+            },
+            x,
+            false,
+            &["prefix".to_string()],
+            "x",
+            &mut runtime,
+        )
+        .expect("runtime pipeline should solve");
+
+        assert_eq!(runtime.last_var.as_deref(), Some("x"));
+        assert_eq!(
+            solved.steps,
+            vec![
+                "prefix".to_string(),
+                "branch".to_string(),
+                "prefix".to_string(),
+                "branch".to_string()
+            ]
+        );
     }
 
     #[test]
