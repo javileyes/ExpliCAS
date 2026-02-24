@@ -366,6 +366,47 @@ where
     })
 }
 
+/// Runtime contract for collect-terms rewrite solve orchestration.
+pub trait CollectTermsRewriteRuntime<E, S> {
+    /// Solve rewritten equation recursively for `var`.
+    fn solve_rewritten(
+        &mut self,
+        equation: &Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<S>), E>;
+    /// Convert one optional rewrite item into a caller step payload.
+    fn map_item_to_step(&mut self, item: StrategyExecutionItem) -> S;
+}
+
+/// Execute collect-terms rewrite solving + optional item dispatch via runtime.
+pub fn solve_collect_terms_rewrite_pipeline_with_item_runtime<E, S, R>(
+    rewrite: CollectTermsSolvedRewrite,
+    var: &str,
+    include_item: bool,
+    runtime: &mut R,
+) -> Result<CollectTermsRewriteSolved<S>, E>
+where
+    R: CollectTermsRewriteRuntime<E, S>,
+{
+    let solved_rewrite = solve_collect_terms_rewrite_with_item(rewrite, |item, new_eq| {
+        let mut steps = Vec::new();
+        if include_item {
+            if let Some(item) = item {
+                steps.push(runtime.map_item_to_step(item));
+            }
+        }
+        let (set, mut sub_steps) = runtime.solve_rewritten(new_eq, var)?;
+        steps.append(&mut sub_steps);
+        Ok((set, steps))
+    })?;
+
+    let (solution_set, steps) = solved_rewrite.solved;
+    Ok(CollectTermsRewriteSolved {
+        solution_set,
+        steps,
+    })
+}
+
 /// Rewrite payload for `RationalExponentStrategy`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RationalExponentKernel {
@@ -1271,6 +1312,114 @@ mod tests {
 
         assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![rhs]));
         assert_eq!(solved.steps, vec!["sub-step".to_string()]);
+    }
+
+    struct TestCollectTermsRuntime {
+        solve_result: (SolutionSet, Vec<String>),
+        last_var: Option<String>,
+    }
+
+    impl CollectTermsRewriteRuntime<&'static str, String> for TestCollectTermsRuntime {
+        fn solve_rewritten(
+            &mut self,
+            _: &Equation,
+            var: &str,
+        ) -> Result<(SolutionSet, Vec<String>), &'static str> {
+            self.last_var = Some(var.to_string());
+            Ok(self.solve_result.clone())
+        }
+
+        fn map_item_to_step(&mut self, item: StrategyExecutionItem) -> String {
+            item.description
+        }
+    }
+
+    #[test]
+    fn solve_collect_terms_rewrite_pipeline_with_item_runtime_forwards_item_and_substeps() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("lhs");
+        let rhs = ctx.var("rhs");
+        let rewrite = CollectTermsSolvedRewrite {
+            equation: Equation {
+                lhs,
+                rhs,
+                op: RelOp::Eq,
+            },
+            items: vec![StrategyExecutionItem {
+                equation: Equation {
+                    lhs,
+                    rhs,
+                    op: RelOp::Eq,
+                },
+                description: "Subtract rhs from both sides".to_string(),
+            }],
+        };
+        let mut runtime = TestCollectTermsRuntime {
+            solve_result: (
+                SolutionSet::Discrete(vec![lhs]),
+                vec!["runtime-sub-step".to_string()],
+            ),
+            last_var: None,
+        };
+
+        let solved = solve_collect_terms_rewrite_pipeline_with_item_runtime(
+            rewrite,
+            "x",
+            true,
+            &mut runtime,
+        )
+        .expect("runtime collect pipeline should succeed");
+
+        assert_eq!(runtime.last_var.as_deref(), Some("x"));
+        assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![lhs]));
+        assert_eq!(
+            solved.steps,
+            vec![
+                "Subtract rhs from both sides".to_string(),
+                "runtime-sub-step".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn solve_collect_terms_rewrite_pipeline_with_item_runtime_omits_item_when_disabled() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("lhs");
+        let rhs = ctx.var("rhs");
+        let rewrite = CollectTermsSolvedRewrite {
+            equation: Equation {
+                lhs,
+                rhs,
+                op: RelOp::Eq,
+            },
+            items: vec![StrategyExecutionItem {
+                equation: Equation {
+                    lhs,
+                    rhs,
+                    op: RelOp::Eq,
+                },
+                description: "Subtract rhs from both sides".to_string(),
+            }],
+        };
+        let mut runtime = TestCollectTermsRuntime {
+            solve_result: (
+                SolutionSet::Discrete(vec![rhs]),
+                vec!["runtime-only-sub-step".to_string()],
+            ),
+            last_var: None,
+        };
+
+        let solved = solve_collect_terms_rewrite_pipeline_with_item_runtime(
+            rewrite,
+            "x",
+            false,
+            &mut runtime,
+        )
+        .expect("runtime collect pipeline should succeed");
+
+        assert_eq!(runtime.last_var.as_deref(), Some("x"));
+        assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![rhs]));
+        assert_eq!(solved.steps, vec!["runtime-only-sub-step".to_string()]);
     }
 
     #[test]

@@ -8,9 +8,11 @@ use cas_ast::{Equation, ExprId, SolutionSet};
 use cas_solver_core::strategy_kernels::{
     derive_isolation_strategy_routing, execute_collect_terms_rewrite_with_runtime,
     execute_rational_exponent_rewrite_with_runtime_for_var,
-    solve_collect_terms_rewrite_pipeline_with_item, solve_isolation_strategy_routing_with_runtime,
-    solve_rational_exponent_rewrite_pipeline_with_item, IsolationStrategyRuntime,
-    RationalExponentRewriteRuntime, StrategyExecutionItem, StrategyKernelRuntime,
+    solve_collect_terms_rewrite_pipeline_with_item_runtime,
+    solve_isolation_strategy_routing_with_runtime,
+    solve_rational_exponent_rewrite_pipeline_with_item, CollectTermsRewriteRuntime,
+    IsolationStrategyRuntime, RationalExponentRewriteRuntime, StrategyExecutionItem,
+    StrategyKernelRuntime,
 };
 use cas_solver_core::unwrap_plan::{
     route_unwrap_entry_with_item, solve_unwrap_execution_pipeline_with_item, UnwrapEntryRouting,
@@ -245,6 +247,30 @@ impl SolverStrategy for UnwrapStrategy {
 
 pub struct CollectTermsStrategy;
 
+struct EngineCollectTermsStrategyRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+    ctx: &'a SolveCtx,
+}
+
+impl CollectTermsRewriteRuntime<CasError, SolveStep> for EngineCollectTermsStrategyRuntime<'_> {
+    fn solve_rewritten(
+        &mut self,
+        equation: &Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        solve_with_ctx(equation, var, self.simplifier, self.ctx)
+    }
+
+    fn map_item_to_step(&mut self, item: StrategyExecutionItem) -> SolveStep {
+        SolveStep {
+            description: item.description,
+            equation_after: item.equation,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        }
+    }
+}
+
 impl SolverStrategy for CollectTermsStrategy {
     fn name(&self) -> &str {
         "Collect Terms"
@@ -263,17 +289,12 @@ impl SolverStrategy for CollectTermsStrategy {
             execute_collect_terms_rewrite_with_runtime(&mut runtime, eq, var)?
         };
         let include_item = simplifier.collect_steps();
-        let solved = solve_collect_terms_rewrite_pipeline_with_item(
+        let mut runtime = EngineCollectTermsStrategyRuntime { simplifier, ctx };
+        let solved = solve_collect_terms_rewrite_pipeline_with_item_runtime(
             rewrite,
             var,
             include_item,
-            |new_eq, solve_var| solve_with_ctx(new_eq, solve_var, simplifier, ctx),
-            |item: StrategyExecutionItem| SolveStep {
-                description: item.description,
-                equation_after: item.equation,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            },
+            &mut runtime,
         );
 
         match solved {
