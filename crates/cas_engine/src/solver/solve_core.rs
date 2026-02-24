@@ -156,7 +156,11 @@ pub fn solve_with_display_steps(
     let (solution_set, raw_steps) = result?;
 
     // Apply didactic cleanup using opts.detailed_steps
-    let mut cleanup_runtime = (
+    let cleaned = cas_solver_core::step_cleanup::cleanup_steps_by(
+        &mut simplifier.context,
+        raw_steps,
+        opts.detailed_steps,
+        "x",
         |step: &SolveStep| cas_solver_core::step_cleanup::CleanupStep {
             description: step.description.clone(),
             equation_after: step.equation_after.clone(),
@@ -167,13 +171,6 @@ pub fn solve_with_display_steps(
             importance: template.importance,
             substeps: template.substeps,
         },
-    );
-    let cleaned = cas_solver_core::step_cleanup::cleanup_steps_by_runtime(
-        &mut simplifier.context,
-        raw_steps,
-        opts.detailed_steps,
-        "x",
-        &mut cleanup_runtime,
     );
 
     Ok((solution_set, DisplaySolveSteps(cleaned), diagnostics))
@@ -353,7 +350,8 @@ fn solve_inner(
     // expand + simplify and a trig expand fallback (Ticket 6c). Accept
     // rewrites only when they eliminate the variable or significantly
     // reduce expression size.
-    let normalized_diff = normalize_variable_residual_with_runtime(simplifier, diff_simplified, var);
+    let normalized_diff =
+        normalize_variable_residual_with_runtime(simplifier, diff_simplified, var);
     if normalized_diff != diff_simplified {
         diff_simplified = normalized_diff;
         let zero = simplifier.context.num(0);
