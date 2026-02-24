@@ -318,6 +318,47 @@ where
     }
 }
 
+/// Runtime adapter for building factorized zero-product execution payloads.
+pub trait FactorizedZeroProductPlanRuntime {
+    fn render_expr(&mut self, expr: ExprId) -> String;
+}
+
+impl<F> FactorizedZeroProductPlanRuntime for F
+where
+    F: FnMut(ExprId) -> String,
+{
+    fn render_expr(&mut self, expr: ExprId) -> String {
+        self(expr)
+    }
+}
+
+/// Runtime-based variant of `build_factorized_zero_product_execution_with_optional_items`.
+pub fn build_factorized_zero_product_execution_with_optional_items_runtime<R>(
+    ctx: &Context,
+    factorized_expr: ExprId,
+    factors: &[ExprId],
+    var: &str,
+    zero: ExprId,
+    include_items: bool,
+    runtime: &mut R,
+) -> FactorizedZeroProductExecutionPlan
+where
+    R: FactorizedZeroProductPlanRuntime,
+{
+    if include_items {
+        build_factorized_zero_product_execution_with(
+            ctx,
+            factorized_expr,
+            factors,
+            var,
+            zero,
+            |id| runtime.render_expr(id),
+        )
+    } else {
+        materialize_factorized_zero_product_execution(ctx, factorized_expr, factors, var, zero)
+    }
+}
+
 /// Collect factorized entry didactic step in display order.
 pub fn collect_factorized_zero_product_entry_didactic_steps(
     execution: &FactorizedZeroProductExecutionPlan,
@@ -1036,6 +1077,54 @@ where
     }
 }
 
+/// Runtime adapter for building quadratic-main and substep execution payloads.
+pub trait QuadraticMainWithSubstepsPlanRuntime {
+    fn render_expr(&mut self, ctx: &Context, expr: ExprId) -> String;
+}
+
+impl<F> QuadraticMainWithSubstepsPlanRuntime for F
+where
+    F: FnMut(&Context, ExprId) -> String,
+{
+    fn render_expr(&mut self, ctx: &Context, expr: ExprId) -> String {
+        self(ctx, expr)
+    }
+}
+
+/// Runtime-based variant of
+/// `build_quadratic_main_with_substeps_execution_with_optional_items`.
+#[allow(clippy::too_many_arguments)]
+pub fn build_quadratic_main_with_substeps_execution_with_optional_items_runtime<R>(
+    ctx: &mut Context,
+    var: &str,
+    a: ExprId,
+    b: ExprId,
+    c: ExprId,
+    is_real_only: bool,
+    main_equation_after: Equation,
+    include_items: bool,
+    runtime: &mut R,
+) -> QuadraticMainWithSubstepsExecution
+where
+    R: QuadraticMainWithSubstepsPlanRuntime,
+{
+    if include_items {
+        build_quadratic_main_with_substeps_execution_with(
+            ctx,
+            var,
+            a,
+            b,
+            c,
+            is_real_only,
+            main_equation_after,
+            |core_ctx, id| runtime.render_expr(core_ctx, id),
+            |id| id,
+        )
+    } else {
+        materialize_quadratic_main_with_substeps_execution()
+    }
+}
+
 /// Map quadratic main/substep execution items into caller-owned step payloads.
 ///
 /// When `include_items` is `false`, no mapper callbacks are invoked and this
@@ -1311,6 +1400,78 @@ mod tests {
 
         assert!(execution.main_items.is_empty());
         assert!(execution.substep_items.is_empty());
+    }
+
+    #[derive(Default)]
+    struct TestQuadraticMainWithSubstepsPlanRuntime {
+        render_calls: usize,
+    }
+
+    impl QuadraticMainWithSubstepsPlanRuntime for TestQuadraticMainWithSubstepsPlanRuntime {
+        fn render_expr(&mut self, _ctx: &Context, expr: ExprId) -> String {
+            self.render_calls += 1;
+            format!("{:?}", expr)
+        }
+    }
+
+    #[test]
+    fn build_quadratic_main_with_substeps_execution_with_optional_items_runtime_includes_items_when_enabled(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let eq = Equation {
+            lhs: x,
+            rhs: ctx.num(0),
+            op: RelOp::Eq,
+        };
+        let mut runtime = TestQuadraticMainWithSubstepsPlanRuntime::default();
+
+        let execution = build_quadratic_main_with_substeps_execution_with_optional_items_runtime(
+            &mut ctx,
+            "x",
+            one,
+            one,
+            one,
+            true,
+            eq,
+            true,
+            &mut runtime,
+        );
+
+        assert_eq!(execution.main_items.len(), 1);
+        assert!(!execution.substep_items.is_empty());
+        assert!(runtime.render_calls > 0);
+    }
+
+    #[test]
+    fn build_quadratic_main_with_substeps_execution_with_optional_items_runtime_skips_render_when_disabled(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let eq = Equation {
+            lhs: x,
+            rhs: ctx.num(0),
+            op: RelOp::Eq,
+        };
+        let mut runtime = TestQuadraticMainWithSubstepsPlanRuntime::default();
+
+        let execution = build_quadratic_main_with_substeps_execution_with_optional_items_runtime(
+            &mut ctx,
+            "x",
+            one,
+            one,
+            one,
+            true,
+            eq,
+            false,
+            &mut runtime,
+        );
+
+        assert!(execution.main_items.is_empty());
+        assert!(execution.substep_items.is_empty());
+        assert_eq!(runtime.render_calls, 0);
     }
 
     #[test]
@@ -1791,6 +1952,73 @@ mod tests {
         assert!(execution.entry.description.is_empty());
         assert!(execution.factors.items.is_empty());
         assert_eq!(execution.factors.equations.len(), 2);
+    }
+
+    #[derive(Default)]
+    struct TestFactorizedZeroProductPlanRuntime {
+        render_calls: usize,
+    }
+
+    impl FactorizedZeroProductPlanRuntime for TestFactorizedZeroProductPlanRuntime {
+        fn render_expr(&mut self, _expr: ExprId) -> String {
+            self.render_calls += 1;
+            "f".to_string()
+        }
+    }
+
+    #[test]
+    fn build_factorized_zero_product_execution_with_optional_items_runtime_includes_didactic_when_enabled(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_minus_one = ctx.add(Expr::Sub(x, one));
+        let factored_expr = ctx.add(Expr::Mul(x, x_minus_one));
+        let zero = ctx.num(0);
+        let factors = vec![x, x_minus_one];
+        let mut runtime = TestFactorizedZeroProductPlanRuntime::default();
+
+        let execution = build_factorized_zero_product_execution_with_optional_items_runtime(
+            &ctx,
+            factored_expr,
+            &factors,
+            "x",
+            zero,
+            true,
+            &mut runtime,
+        );
+
+        assert_eq!(execution.entry.description, "Factorized equation: f = 0");
+        assert_eq!(execution.factors.items.len(), 2);
+        assert!(runtime.render_calls > 0);
+    }
+
+    #[test]
+    fn build_factorized_zero_product_execution_with_optional_items_runtime_skips_render_when_disabled(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let x_minus_one = ctx.add(Expr::Sub(x, one));
+        let factored_expr = ctx.add(Expr::Mul(x, x_minus_one));
+        let zero = ctx.num(0);
+        let factors = vec![x, x_minus_one];
+        let mut runtime = TestFactorizedZeroProductPlanRuntime::default();
+
+        let execution = build_factorized_zero_product_execution_with_optional_items_runtime(
+            &ctx,
+            factored_expr,
+            &factors,
+            "x",
+            zero,
+            false,
+            &mut runtime,
+        );
+
+        assert!(execution.entry.description.is_empty());
+        assert!(execution.factors.items.is_empty());
+        assert_eq!(execution.factors.equations.len(), 2);
+        assert_eq!(runtime.render_calls, 0);
     }
 
     #[test]

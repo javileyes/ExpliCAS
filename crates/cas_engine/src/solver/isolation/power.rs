@@ -1,6 +1,6 @@
 use crate::engine::Simplifier;
 use crate::error::CasError;
-use crate::solver::{SolveStep, SolverOptions};
+use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::is_numeric_zero;
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
@@ -22,7 +22,7 @@ use cas_solver_core::solve_outcome::{
     PowExponentShortcutExecutionItem, PowExponentShortcutPipelineRuntime,
     PowExponentShortcutPipelineSolved, PowExponentShortcutRuntime, PowIsolationRoute,
     PowerBaseOneShortcutExecutionItem, PowerBaseOneShortcutPipelineRuntime,
-    SolveTacticNormalizationRuntime, TermIsolationExecutionItem, TermIsolationPlanRuntime,
+    ShortcutBasesEquivalentRuntime, SolveTacticNormalizationRuntime, TermIsolationExecutionItem,
     TermIsolationRewriteExecutionItem, TerminalOutcomePipelineRuntime,
 };
 
@@ -32,31 +32,27 @@ struct EnginePowShortcutRuntime<'a> {
     simplifier: &'a mut Simplifier,
 }
 
+impl ShortcutBasesEquivalentRuntime for EnginePowShortcutRuntime<'_> {
+    fn equivalent_nontrivial(&mut self, left: ExprId, right: ExprId) -> bool {
+        let diff = self.simplifier.context.add(Expr::Sub(left, right));
+        let (sim_diff, _) = self.simplifier.simplify(diff);
+        is_numeric_zero(&self.simplifier.context, sim_diff)
+    }
+}
+
 impl PowExponentShortcutRuntime for EnginePowShortcutRuntime<'_> {
     fn context(&mut self) -> &mut cas_ast::Context {
         &mut self.simplifier.context
     }
 
     fn bases_equivalent(&mut self, base: ExprId, candidate: ExprId) -> bool {
-        cas_solver_core::solve_outcome::shortcut_bases_equivalent_with(
-            base,
-            candidate,
-            |left, right| {
-                let diff = self.simplifier.context.add(Expr::Sub(left, right));
-                let (sim_diff, _) = self.simplifier.simplify(diff);
-                is_numeric_zero(&self.simplifier.context, sim_diff)
-            },
+        cas_solver_core::solve_outcome::shortcut_bases_equivalent_with_runtime(
+            base, candidate, self,
         )
     }
 
     fn render_expr(&mut self, expr: ExprId) -> String {
-        format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: &self.simplifier.context,
-                id: expr
-            }
-        )
+        solver_render_expr(&self.simplifier.context, expr)
     }
 }
 
@@ -66,22 +62,8 @@ struct EnginePowSolveRuntime<'a, 'b> {
     solve_ctx: &'b super::super::SolveCtx,
 }
 
-struct EnginePowPlanRuntime;
-
-impl TermIsolationPlanRuntime for EnginePowPlanRuntime {
-    fn render_expr(&mut self, core_ctx: &cas_ast::Context, expr: ExprId) -> String {
-        format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: core_ctx,
-                id: expr
-            }
-        )
-    }
-}
-
-impl PowBaseIsolationRuntime<CasError, SolveStep> for EnginePowSolveRuntime<'_, '_> {
-    fn solve_isolated_base(
+impl EnginePowSolveRuntime<'_, '_> {
+    fn isolate_exprs(
         &mut self,
         lhs: ExprId,
         rhs: ExprId,
@@ -99,13 +81,28 @@ impl PowBaseIsolationRuntime<CasError, SolveStep> for EnginePowSolveRuntime<'_, 
         )
     }
 
+    fn isolate_equation(
+        &mut self,
+        equation: &Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        self.isolate_exprs(equation.lhs, equation.rhs, equation.op.clone(), var)
+    }
+}
+
+impl PowBaseIsolationRuntime<CasError, SolveStep> for EnginePowSolveRuntime<'_, '_> {
+    fn solve_isolated_base(
+        &mut self,
+        lhs: ExprId,
+        rhs: ExprId,
+        op: RelOp,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        self.isolate_exprs(lhs, rhs, op, var)
+    }
+
     fn map_base_item_to_step(&mut self, item: PowBaseIsolationExecutionItem) -> SolveStep {
-        SolveStep {
-            description: item.description().to_string(),
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
+        medium_step(item.description().to_string(), item.equation)
     }
 }
 
@@ -117,49 +114,23 @@ impl PowExponentShortcutPipelineRuntime<CasError, SolveStep> for EnginePowSolveR
         op: RelOp,
         var: &str,
     ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        isolate(
-            lhs_exponent,
-            rhs,
-            op,
-            var,
-            self.simplifier,
-            self.opts,
-            self.solve_ctx,
-        )
+        self.isolate_exprs(lhs_exponent, rhs, op, var)
     }
 
     fn map_shortcut_item_to_step(&mut self, item: PowExponentShortcutExecutionItem) -> SolveStep {
-        SolveStep {
-            description: item.description().to_string(),
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
+        medium_step(item.description().to_string(), item.equation)
     }
 }
 
 impl PowExponentLogUnsupportedRuntime<SolveStep> for EnginePowSolveRuntime<'_, '_> {
     fn try_guarded_solve(&mut self, equation: &Equation, var: &str) -> Option<SolutionSet> {
-        isolate(
-            equation.lhs,
-            equation.rhs,
-            equation.op.clone(),
-            var,
-            self.simplifier,
-            self.opts,
-            self.solve_ctx,
-        )
-        .ok()
-        .map(|(solutions, _)| solutions)
+        self.isolate_equation(equation, var)
+            .ok()
+            .map(|(solutions, _)| solutions)
     }
 
     fn map_term_item_to_step(&mut self, item: TermIsolationExecutionItem) -> SolveStep {
-        SolveStep {
-            description: item.description().to_string(),
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
+        medium_step(item.description().to_string(), item.equation)
     }
 }
 
@@ -169,24 +140,11 @@ impl PowExponentLogIsolationRewriteRuntime<CasError, SolveStep> for EnginePowSol
         equation: &Equation,
         var: &str,
     ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        isolate(
-            equation.lhs,
-            equation.rhs,
-            equation.op.clone(),
-            var,
-            self.simplifier,
-            self.opts,
-            self.solve_ctx,
-        )
+        self.isolate_equation(equation, var)
     }
 
     fn map_log_item_to_step(&mut self, item: PowExponentLogIsolationExecutionItem) -> SolveStep {
-        SolveStep {
-            description: item.description().to_string(),
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
+        medium_step(item.description().to_string(), item.equation)
     }
 }
 
@@ -195,12 +153,7 @@ impl PowerBaseOneShortcutPipelineRuntime<SolveStep> for EnginePowSolveRuntime<'_
         &mut self,
         item: PowerBaseOneShortcutExecutionItem,
     ) -> SolveStep {
-        SolveStep {
-            description: item.description().to_string(),
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
+        medium_step(item.description().to_string(), item.equation)
     }
 }
 
@@ -213,23 +166,13 @@ impl SolveTacticNormalizationRuntime<SolveStep> for EnginePowSolveRuntime<'_, '_
         &mut self,
         item: TermIsolationRewriteExecutionItem,
     ) -> SolveStep {
-        SolveStep {
-            description: item.description().to_string(),
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
+        medium_step(item.description().to_string(), item.equation)
     }
 }
 
 impl TerminalOutcomePipelineRuntime<SolveStep> for EnginePowSolveRuntime<'_, '_> {
     fn map_terminal_outcome_item_to_step(&mut self, item: TermIsolationExecutionItem) -> SolveStep {
-        SolveStep {
-            description: item.description().to_string(),
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
+        medium_step(item.description().to_string(), item.equation)
     }
 }
 
@@ -273,7 +216,7 @@ fn isolate_pow_base(
     mut steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let mut plan_runtime = EnginePowPlanRuntime;
+    let mut plan_runtime = solver_render_expr as fn(&cas_ast::Context, ExprId) -> String;
     let action = build_pow_base_isolation_action_with_runtime(
         &mut simplifier.context,
         b,
@@ -390,7 +333,7 @@ fn isolate_pow_exponent(
     // DOMAIN GUARDS for log operation (RealOnly mode)
     // ================================================================
     // GUARD 1: Handle base = 1 special case
-    let mut plan_runtime = EnginePowPlanRuntime;
+    let mut plan_runtime = solver_render_expr as fn(&cas_ast::Context, ExprId) -> String;
     if let Some(outcome) = resolve_power_base_one_shortcut_for_pow_with_runtime(
         &simplifier.context,
         b,
@@ -526,7 +469,7 @@ fn isolate_pow_exponent(
         rhs,
         op: op.clone(),
     };
-    let mut plan_runtime = EnginePowPlanRuntime;
+    let mut plan_runtime = solver_render_expr as fn(&cas_ast::Context, ExprId) -> String;
     if let Some(unsupported_execution) =
         plan_pow_exponent_log_unsupported_execution_from_decision_with_runtime(
             &mut simplifier.context,
@@ -581,7 +524,7 @@ fn isolate_pow_exponent(
     // End of domain guards
     // ================================================================
 
-    let mut plan_runtime = EnginePowPlanRuntime;
+    let mut plan_runtime = solver_render_expr as fn(&cas_ast::Context, ExprId) -> String;
     let log_plan = plan_pow_exponent_log_isolation_step_with_runtime(
         &mut simplifier.context,
         e,

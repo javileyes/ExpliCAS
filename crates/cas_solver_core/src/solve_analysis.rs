@@ -38,9 +38,31 @@ pub fn retain_verified_discrete<F>(sols: Vec<ExprId>, mut verify: F) -> Vec<Expr
 where
     F: FnMut(ExprId) -> bool,
 {
+    retain_verified_discrete_with_runtime(sols, &mut verify)
+}
+
+/// Runtime adapter for filtering verified discrete solutions.
+pub trait DiscreteVerificationRuntime {
+    fn verify_discrete(&mut self, solution: ExprId) -> bool;
+}
+
+impl<F> DiscreteVerificationRuntime for F
+where
+    F: FnMut(ExprId) -> bool,
+{
+    fn verify_discrete(&mut self, solution: ExprId) -> bool {
+        self(solution)
+    }
+}
+
+/// Runtime-based variant of [`retain_verified_discrete`].
+pub fn retain_verified_discrete_with_runtime<R>(sols: Vec<ExprId>, runtime: &mut R) -> Vec<ExprId>
+where
+    R: DiscreteVerificationRuntime,
+{
     let mut out = Vec::new();
     for sol in sols {
-        if verify(sol) {
+        if runtime.verify_discrete(sol) {
             out.push(sol);
         }
     }
@@ -53,12 +75,27 @@ where
 pub fn merge_symbolic_with_verified_numeric<F>(
     mut symbolic_solutions: Vec<ExprId>,
     numeric_solutions: Vec<ExprId>,
-    verify_numeric: F,
+    mut verify_numeric: F,
 ) -> Vec<ExprId>
 where
     F: FnMut(ExprId) -> bool,
 {
-    let verified_numeric = retain_verified_discrete(numeric_solutions, verify_numeric);
+    let verified_numeric =
+        retain_verified_discrete_with_runtime(numeric_solutions, &mut verify_numeric);
+    symbolic_solutions.extend(verified_numeric);
+    symbolic_solutions
+}
+
+/// Runtime-based variant of [`merge_symbolic_with_verified_numeric`].
+pub fn merge_symbolic_with_verified_numeric_with_runtime<R>(
+    mut symbolic_solutions: Vec<ExprId>,
+    numeric_solutions: Vec<ExprId>,
+    runtime: &mut R,
+) -> Vec<ExprId>
+where
+    R: DiscreteVerificationRuntime,
+{
+    let verified_numeric = retain_verified_discrete_with_runtime(numeric_solutions, runtime);
     symbolic_solutions.extend(verified_numeric);
     symbolic_solutions
 }
@@ -457,6 +494,34 @@ mod tests {
         );
     }
 
+    #[derive(Default)]
+    struct TestDiscreteVerificationRuntime {
+        calls: usize,
+    }
+
+    impl DiscreteVerificationRuntime for TestDiscreteVerificationRuntime {
+        fn verify_discrete(&mut self, solution: ExprId) -> bool {
+            self.calls += 1;
+            solution.index() % 2 == 1
+        }
+    }
+
+    #[test]
+    fn retain_verified_discrete_with_runtime_keeps_only_verified() {
+        let sols = vec![
+            cas_ast::ExprId::from_raw(1),
+            cas_ast::ExprId::from_raw(2),
+            cas_ast::ExprId::from_raw(3),
+        ];
+        let mut runtime = TestDiscreteVerificationRuntime::default();
+        let kept = retain_verified_discrete_with_runtime(sols, &mut runtime);
+        assert_eq!(
+            kept,
+            vec![cas_ast::ExprId::from_raw(1), cas_ast::ExprId::from_raw(3)]
+        );
+        assert_eq!(runtime.calls, 3);
+    }
+
     #[test]
     fn accept_rewritten_residual_when_variable_eliminated() {
         assert!(should_accept_rewritten_residual(true, 100, 99));
@@ -482,6 +547,23 @@ mod tests {
         let out =
             merge_symbolic_with_verified_numeric(vec![x, y], vec![two, three], |id| id == three);
         assert_eq!(out, vec![x, y, three]);
+    }
+
+    #[test]
+    fn merge_symbolic_with_verified_numeric_with_runtime_preserves_order_and_filters_numeric() {
+        let x = cas_ast::ExprId::from_raw(11);
+        let y = cas_ast::ExprId::from_raw(12);
+        let two = cas_ast::ExprId::from_raw(2);
+        let three = cas_ast::ExprId::from_raw(3);
+        let mut runtime = TestDiscreteVerificationRuntime::default();
+
+        let out = merge_symbolic_with_verified_numeric_with_runtime(
+            vec![x, y],
+            vec![two, three],
+            &mut runtime,
+        );
+        assert_eq!(out, vec![x, y, three]);
+        assert_eq!(runtime.calls, 2);
     }
 
     #[test]

@@ -2,12 +2,12 @@ use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
-use crate::solver::{SolveCtx, SolveStep, SolverOptions};
+use crate::solver::{medium_step, render_expr, SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{is_numeric_zero, split_zero_product_factors};
 use cas_solver_core::quadratic_didactic::{
-    build_factorized_zero_product_execution_with_optional_items,
-    build_quadratic_main_with_substeps_execution_with_optional_items,
+    build_factorized_zero_product_execution_with_optional_items_runtime,
+    build_quadratic_main_with_substeps_execution_with_optional_items_runtime,
     finalize_factorized_zero_product_strategy_solved,
     solve_factorized_zero_product_execution_pipeline_with_items_runtime,
     solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification_runtime,
@@ -41,21 +41,11 @@ impl FactorizedZeroProductExecutionRuntime<CasError, (SolutionSet, Vec<SolveStep
     }
 
     fn map_entry_item_to_step(&mut self, item: QuadraticExecutionItem) -> SolveStep {
-        SolveStep {
-            description: item.description().to_string(),
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
+        medium_step(item.description().to_string(), item.equation)
     }
 
     fn map_factor_item_to_step(&mut self, item: ZeroProductFactorExecutionItem) -> SolveStep {
-        SolveStep {
-            description: item.description,
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
+        medium_step(item.description, item.equation)
     }
 }
 
@@ -76,12 +66,7 @@ impl QuadraticMainWithSubstepsRuntime<SolveStep, crate::solver::SolveSubStep>
         item: QuadraticExecutionItem,
         substeps: Vec<crate::solver::SolveSubStep>,
     ) -> SolveStep {
-        SolveStep {
-            description: item.description().to_string(),
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps,
-        }
+        medium_step(item.description().to_string(), item.equation).with_substeps(substeps)
     }
 
     fn map_substep_item_to_step(
@@ -129,48 +114,17 @@ impl SolverStrategy for QuadraticStrategy {
             if eq.op == RelOp::Eq {
                 let include_items = simplifier.collect_steps();
                 let residual_expr = sim_poly_expr;
-                let factorized_display = format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: &simplifier.context,
-                        id: sim_poly_expr
-                    }
-                );
-                let factor_displays = factors
-                    .iter()
-                    .copied()
-                    .map(|id| {
-                        (
-                            id,
-                            format!(
-                                "{}",
-                                cas_formatter::DisplayExpr {
-                                    context: &simplifier.context,
-                                    id
-                                }
-                            ),
-                        )
-                    })
-                    .collect::<Vec<_>>();
+                let context = &simplifier.context;
+                let mut factorized_plan_runtime = |id| render_expr(context, id);
                 let factorized_execution =
-                    build_factorized_zero_product_execution_with_optional_items(
+                    build_factorized_zero_product_execution_with_optional_items_runtime(
                         &simplifier.context,
                         sim_poly_expr,
                         &factors,
                         var,
                         zero,
                         include_items,
-                        move |id| {
-                            if id == sim_poly_expr {
-                                factorized_display.clone()
-                            } else {
-                                factor_displays
-                                    .iter()
-                                    .find(|(candidate, _)| *candidate == id)
-                                    .map(|(_, display)| display.clone())
-                                    .unwrap_or_else(|| id.to_string())
-                            }
-                        },
+                        &mut factorized_plan_runtime,
                     );
                 let solved_factorized = {
                     let mut runtime = EngineQuadraticFactorizedRuntime {
@@ -228,25 +182,20 @@ impl SolverStrategy for QuadraticStrategy {
                 rhs: simplifier.context.num(0),
                 op: RelOp::Eq,
             };
-            let mut execution = build_quadratic_main_with_substeps_execution_with_optional_items(
-                &mut simplifier.context,
-                var,
-                sim_a,
-                sim_b,
-                sim_c,
-                is_real_only,
-                main_equation,
-                include_items,
-                |core_ctx, id| {
-                    format!(
-                        "{}",
-                        cas_formatter::DisplayExpr {
-                            context: core_ctx,
-                            id
-                        }
-                    )
-                },
-            );
+            let mut main_plan_runtime =
+                render_expr as fn(&cas_ast::Context, cas_ast::ExprId) -> String;
+            let mut execution =
+                build_quadratic_main_with_substeps_execution_with_optional_items_runtime(
+                    &mut simplifier.context,
+                    var,
+                    sim_a,
+                    sim_b,
+                    sim_c,
+                    is_real_only,
+                    main_equation,
+                    include_items,
+                    &mut main_plan_runtime,
+                );
             let was_collecting = simplifier.collect_steps();
             if include_items {
                 // Simplify substep equations with step collection disabled to avoid polluting timeline.

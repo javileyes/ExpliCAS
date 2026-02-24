@@ -11,13 +11,13 @@
 
 use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::linear_collect::{
-    solve_linear_collect_additive_pipeline_with_runtime_and_items_runtime,
-    solve_linear_collect_factored_pipeline_with_runtime_and_items_runtime,
-    LinearCollectDidacticRuntime, LinearCollectExecutionItem, LinearCollectRuntime,
+    solve_linear_collect_additive_pipeline_with_runtime_and_items,
+    solve_linear_collect_factored_pipeline_with_runtime_and_items, LinearCollectExecutionItem,
+    LinearCollectRuntime,
 };
 
 use crate::engine::Simplifier;
-use crate::solver::SolveStep;
+use crate::solver::{medium_step, render_expr, SolveStep};
 
 struct EngineLinearCollectRuntime<'a> {
     simplifier: &'a mut Simplifier,
@@ -44,29 +44,6 @@ impl LinearCollectRuntime for EngineLinearCollectRuntime<'_> {
     }
 }
 
-struct EngineLinearCollectDidacticRuntime;
-
-impl LinearCollectDidacticRuntime<SolveStep> for EngineLinearCollectDidacticRuntime {
-    fn render_expr(&mut self, ctx: &cas_ast::Context, expr: ExprId) -> String {
-        format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: ctx,
-                id: expr
-            }
-        )
-    }
-
-    fn map_item_to_step(&mut self, item: LinearCollectExecutionItem) -> SolveStep {
-        SolveStep {
-            description: item.description().to_string(),
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
-    }
-}
-
 /// Try to solve a linear equation where variable appears in multiple additive terms.
 ///
 /// Returns Some((SolutionSet, steps)) if successful, None if not applicable.
@@ -80,14 +57,16 @@ pub(crate) fn try_linear_collect(
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
     let include_items = simplifier.collect_steps();
     let mut runtime = EngineLinearCollectRuntime { simplifier };
-    let mut didactic_runtime = EngineLinearCollectDidacticRuntime;
-    solve_linear_collect_factored_pipeline_with_runtime_and_items_runtime(
+    solve_linear_collect_factored_pipeline_with_runtime_and_items(
         &mut runtime,
         lhs,
         rhs,
         var,
         include_items,
-        &mut didactic_runtime,
+        render_expr,
+        |item: LinearCollectExecutionItem| {
+            medium_step(item.description().to_string(), item.equation)
+        },
     )
 }
 
@@ -104,14 +83,16 @@ pub(crate) fn try_linear_collect_v2(
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
     let include_items = simplifier.collect_steps();
     let mut runtime = EngineLinearCollectRuntime { simplifier };
-    let mut didactic_runtime = EngineLinearCollectDidacticRuntime;
-    solve_linear_collect_additive_pipeline_with_runtime_and_items_runtime(
+    solve_linear_collect_additive_pipeline_with_runtime_and_items(
         &mut runtime,
         lhs,
         rhs,
         var,
         include_items,
-        &mut didactic_runtime,
+        render_expr,
+        |item: LinearCollectExecutionItem| {
+            medium_step(item.description().to_string(), item.equation)
+        },
     )
 }
 

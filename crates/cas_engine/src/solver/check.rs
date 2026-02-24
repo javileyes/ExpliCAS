@@ -23,14 +23,15 @@
 //! ```
 
 use cas_ast::{Equation, ExprId, SolutionSet};
-use cas_formatter::DisplayExpr;
 use cas_math::expr_predicates::contains_variable;
 use cas_solver_core::isolation_utils::is_numeric_zero;
 use cas_solver_core::solution_check::{
     verify_solution_with_runtime as verify_solution_with_runtime_core, SolutionCheckRuntime,
 };
+use cas_solver_core::verification::verify_solution_set_with_runtime;
 
 use crate::engine::Simplifier;
+use crate::solver::render_expr as solver_render_expr;
 pub use cas_solver_core::verification::{VerifyResult, VerifyStatus, VerifySummary};
 
 /// Verify a single solution by substituting into the equation.
@@ -62,8 +63,9 @@ pub fn verify_solution_set(
     var: &str,
     solutions: &SolutionSet,
 ) -> VerifyResult {
-    let mut verify_one = |sol: ExprId| verify_solution(simplifier, equation, var, sol);
-    cas_solver_core::verification::verify_solution_set_with(solutions, &mut verify_one)
+    let mut verify_discrete =
+        |solution: ExprId| verify_solution(simplifier, equation, var, solution);
+    verify_solution_set_with_runtime(solutions, &mut verify_discrete)
 }
 
 struct EngineSolutionCheckRuntime<'a> {
@@ -118,13 +120,7 @@ impl SolutionCheckRuntime for EngineSolutionCheckRuntime<'_> {
     }
 
     fn render_expr(&mut self, expr: ExprId) -> String {
-        format!(
-            "{}",
-            DisplayExpr {
-                context: &self.simplifier.context,
-                id: expr
-            }
-        )
+        solver_render_expr(&self.simplifier.context, expr)
     }
 }
 

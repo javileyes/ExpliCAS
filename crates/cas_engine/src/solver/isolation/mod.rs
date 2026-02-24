@@ -3,90 +3,14 @@ mod functions;
 mod power;
 
 use crate::engine::Simplifier;
-use crate::solver::{SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
+use crate::solver::{medium_step, SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
 use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::solve_outcome::{
-    residual_solution_set, solve_isolated_variable_lhs_with_runtime,
-    solve_negated_lhs_isolation_with_runtime, CircularIsolatedRuntime, IsolatedVariableRuntime,
-    NegatedLhsIsolationRuntime, TermIsolationRewriteExecutionItem,
+    plan_negated_lhs_isolation_step, residual_solution_set, resolve_isolated_variable_outcome,
+    solve_term_isolation_rewrite_pipeline_with_item, IsolatedVariableOutcome,
 };
 
 use crate::error::CasError;
-
-struct EngineIsolatedVariableRuntime<'a> {
-    simplifier: &'a mut Simplifier,
-}
-
-impl CircularIsolatedRuntime<SolveStep> for EngineIsolatedVariableRuntime<'_> {
-    fn try_linear_collect(
-        &mut self,
-        lhs: ExprId,
-        rhs: ExprId,
-        var: &str,
-    ) -> Option<(SolutionSet, Vec<SolveStep>)> {
-        crate::solver::linear_collect::try_linear_collect(lhs, rhs, var, self.simplifier)
-    }
-
-    fn try_linear_collect_v2(
-        &mut self,
-        lhs: ExprId,
-        rhs: ExprId,
-        var: &str,
-    ) -> Option<(SolutionSet, Vec<SolveStep>)> {
-        crate::solver::linear_collect::try_linear_collect_v2(lhs, rhs, var, self.simplifier)
-    }
-
-    fn residual_solution(&mut self, lhs: ExprId, rhs: ExprId, var: &str) -> SolutionSet {
-        residual_solution_set(&mut self.simplifier.context, lhs, rhs, var)
-    }
-}
-
-impl IsolatedVariableRuntime<SolveStep> for EngineIsolatedVariableRuntime<'_> {
-    fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.simplifier.context
-    }
-
-    fn simplify_rhs(&mut self, rhs: ExprId) -> ExprId {
-        self.simplifier.simplify(rhs).0
-    }
-}
-
-struct EngineNegatedLhsRuntime<'a, 'b> {
-    simplifier: &'a mut Simplifier,
-    opts: SolverOptions,
-    solve_ctx: &'b super::SolveCtx,
-}
-
-impl NegatedLhsIsolationRuntime<CasError, SolveStep> for EngineNegatedLhsRuntime<'_, '_> {
-    fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.simplifier.context
-    }
-
-    fn solve_rewritten(
-        &mut self,
-        equation: cas_ast::Equation,
-        var: &str,
-    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        isolate(
-            equation.lhs,
-            equation.rhs,
-            equation.op,
-            var,
-            self.simplifier,
-            self.opts,
-            self.solve_ctx,
-        )
-    }
-
-    fn map_item_to_step(&mut self, item: TermIsolationRewriteExecutionItem) -> SolveStep {
-        SolveStep {
-            description: item.description,
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
-    }
-}
 
 pub(crate) fn isolate(
     lhs: ExprId,
@@ -111,8 +35,33 @@ pub(crate) fn isolate(
 
     match lhs_expr {
         Expr::Variable(sym_id) if simplifier.context.sym_name(sym_id) == var => {
-            let mut runtime = EngineIsolatedVariableRuntime { simplifier };
-            let solved = solve_isolated_variable_lhs_with_runtime(lhs, rhs, op, var, &mut runtime);
+            let sim_rhs = simplifier.simplify(rhs).0;
+            let solved = match resolve_isolated_variable_outcome(
+                &mut simplifier.context,
+                sim_rhs,
+                op,
+                var,
+            ) {
+                IsolatedVariableOutcome::Solved(set) => (set, Vec::new()),
+                IsolatedVariableOutcome::ContainsTargetVariable => {
+                    if let Some((solution_set, steps)) =
+                        crate::solver::linear_collect::try_linear_collect(lhs, rhs, var, simplifier)
+                    {
+                        (solution_set, steps)
+                    } else if let Some((solution_set, steps)) =
+                        crate::solver::linear_collect::try_linear_collect_v2(
+                            lhs, rhs, var, simplifier,
+                        )
+                    {
+                        (solution_set, steps)
+                    } else {
+                        (
+                            residual_solution_set(&mut simplifier.context, lhs, rhs, var),
+                            Vec::new(),
+                        )
+                    }
+                }
+            };
             prepend_steps(solved, steps)
         }
         Expr::Add(l, r) => {
@@ -135,20 +84,24 @@ pub(crate) fn isolate(
         }
         Expr::Neg(inner) => {
             let include_item = simplifier.collect_steps();
-            let mut runtime = EngineNegatedLhsRuntime {
-                simplifier,
-                opts,
-                solve_ctx: ctx,
-            };
-            let solved = solve_negated_lhs_isolation_with_runtime(
-                inner,
-                rhs,
-                op,
-                var,
+            let rewrite = plan_negated_lhs_isolation_step(&mut simplifier.context, inner, rhs, op);
+            let solved = solve_term_isolation_rewrite_pipeline_with_item(
+                rewrite,
                 include_item,
-                &mut runtime,
+                |equation| {
+                    isolate(
+                        equation.lhs,
+                        equation.rhs,
+                        equation.op,
+                        var,
+                        simplifier,
+                        opts,
+                        ctx,
+                    )
+                },
+                |item| medium_step(item.description, item.equation),
             )?;
-            prepend_steps(solved, steps)
+            prepend_steps((solved.solution_set, solved.steps), steps)
         }
         _ => Err(CasError::IsolationError(
             var.to_string(),

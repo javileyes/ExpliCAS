@@ -9,13 +9,13 @@
 use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::linear_solution::NonZeroStatus;
 use cas_solver_core::reciprocal::{
-    execute_reciprocal_solve_with_runtime, solve_reciprocal_execution_pipeline_with_items_runtime,
-    ReciprocalExecutionItem, ReciprocalExecutionRuntime, ReciprocalSolveRuntime,
+    execute_reciprocal_solve_with_runtime, solve_reciprocal_execution_pipeline_with_items,
+    ReciprocalExecutionItem, ReciprocalSolveRuntime,
 };
 
 use crate::engine::Simplifier;
 use crate::solver::proof_bridge::proof_to_nonzero_status;
-use crate::solver::SolveStep;
+use crate::solver::{medium_step, SolveStep};
 
 struct EngineReciprocalRuntime<'a> {
     simplifier: &'a mut Simplifier,
@@ -39,17 +39,6 @@ impl ReciprocalSolveRuntime for EngineReciprocalRuntime<'_> {
     }
 }
 
-impl ReciprocalExecutionRuntime<SolveStep> for EngineReciprocalRuntime<'_> {
-    fn map_item_to_step(&mut self, item: ReciprocalExecutionItem) -> SolveStep {
-        SolveStep {
-            description: item.description().to_string(),
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
-    }
-}
-
 /// Try to solve `1/var = expr` using pedagogical steps.
 ///
 /// Returns `Some((SolutionSet, steps))` if pattern matches,
@@ -63,10 +52,10 @@ pub(crate) fn try_reciprocal_solve(
     let mut runtime = EngineReciprocalRuntime { simplifier };
     let execution = execute_reciprocal_solve_with_runtime(&mut runtime, lhs, rhs, var)?;
     let include_items = runtime.simplifier.collect_steps();
-    let solved_execution = solve_reciprocal_execution_pipeline_with_items_runtime(
+    let solved_execution = solve_reciprocal_execution_pipeline_with_items(
         execution,
         include_items,
-        &mut runtime,
+        |item: ReciprocalExecutionItem| medium_step(item.description().to_string(), item.equation),
     );
     let (solution_set, steps) = solved_execution.solved;
     Some((solution_set, steps))

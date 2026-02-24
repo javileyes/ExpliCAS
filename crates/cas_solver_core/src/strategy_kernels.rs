@@ -8,8 +8,8 @@ use crate::isolation_utils::contains_var;
 use crate::solve_analysis::{classify_equation_var_presence, EquationVarPresence};
 use crate::solve_outcome::{
     eliminate_fractional_exponent_message, first_term_isolation_rewrite_execution_item,
-    plan_swap_sides_step, solve_term_isolation_rewrite_with, subtract_both_sides_message,
-    TermIsolationRewriteExecutionItem, TermIsolationRewritePlan,
+    plan_swap_sides_step, subtract_both_sides_message, TermIsolationRewriteExecutionItem,
+    TermIsolationRewritePlan,
 };
 use cas_ast::{Context, Equation, ExprId, RelOp, SolutionSet};
 
@@ -103,20 +103,18 @@ where
         }
         IsolationStrategyRouting::VariableOnBothSides => None,
         IsolationStrategyRouting::SwapSides { rewrite } => {
-            let solved_swap = solve_term_isolation_rewrite_with(rewrite, |equation| {
-                runtime.solve_equation(&equation, var)
-            });
+            let first_item = if include_item {
+                first_term_isolation_rewrite_execution_item(&rewrite)
+            } else {
+                None
+            };
+            let solved_swap = runtime.solve_equation(&rewrite.equation, var);
             Some(match solved_swap {
-                Ok(solved) => {
+                Ok((solution_set, mut substeps)) => {
                     let mut steps = Vec::new();
-                    if include_item {
-                        if let Some(item) =
-                            first_term_isolation_rewrite_execution_item(&solved.rewrite)
-                        {
-                            steps.push(runtime.map_swap_item_to_step(item));
-                        }
+                    if let Some(item) = first_item {
+                        steps.push(runtime.map_swap_item_to_step(item));
                     }
-                    let (solution_set, mut substeps) = solved.solved;
                     steps.append(&mut substeps);
                     Ok((solution_set, steps))
                 }
@@ -258,7 +256,7 @@ pub fn execute_collect_terms_rewrite_with<FSimplify, FRender>(
     eq: &Equation,
     var: &str,
     mut simplify_expr: FSimplify,
-    render_expr: FRender,
+    mut render_expr: FRender,
 ) -> Option<CollectTermsSolvedRewrite>
 where
     FSimplify: FnMut(ExprId) -> ExprId,
@@ -268,7 +266,9 @@ where
     let simp_lhs = simplify_expr(kernel.rewritten.lhs);
     let simp_rhs = simplify_expr(kernel.rewritten.rhs);
     let execution =
-        build_collect_terms_execution_with(simp_lhs, simp_rhs, eq.op.clone(), eq.rhs, render_expr);
+        build_collect_terms_execution_with(simp_lhs, simp_rhs, eq.op.clone(), eq.rhs, |id| {
+            render_expr(id)
+        });
     let items = collect_collect_terms_execution_items(&execution);
     Some(CollectTermsSolvedRewrite {
         equation: execution.equation,
@@ -347,19 +347,14 @@ where
     FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
     FStep: FnMut(StrategyExecutionItem) -> S,
 {
-    let solved_rewrite = solve_collect_terms_rewrite_with_item(rewrite, |item, new_eq| {
-        let mut steps = Vec::new();
-        if include_item {
-            if let Some(item) = item {
-                steps.push(map_item_to_step(item));
-            }
+    let mut steps = Vec::new();
+    if include_item {
+        if let Some(item) = rewrite.items.first().cloned() {
+            steps.push(map_item_to_step(item));
         }
-        let (set, mut sub_steps) = solve_rewritten(new_eq, var)?;
-        steps.append(&mut sub_steps);
-        Ok((set, steps))
-    })?;
-
-    let (solution_set, steps) = solved_rewrite.solved;
+    }
+    let (solution_set, mut sub_steps) = solve_rewritten(&rewrite.equation, var)?;
+    steps.append(&mut sub_steps);
     Ok(CollectTermsRewriteSolved {
         solution_set,
         steps,
@@ -388,19 +383,14 @@ pub fn solve_collect_terms_rewrite_pipeline_with_item_runtime<E, S, R>(
 where
     R: CollectTermsRewriteRuntime<E, S>,
 {
-    let solved_rewrite = solve_collect_terms_rewrite_with_item(rewrite, |item, new_eq| {
-        let mut steps = Vec::new();
-        if include_item {
-            if let Some(item) = item {
-                steps.push(runtime.map_item_to_step(item));
-            }
+    let mut steps = Vec::new();
+    if include_item {
+        if let Some(item) = rewrite.items.first().cloned() {
+            steps.push(runtime.map_item_to_step(item));
         }
-        let (set, mut sub_steps) = runtime.solve_rewritten(new_eq, var)?;
-        steps.append(&mut sub_steps);
-        Ok((set, steps))
-    })?;
-
-    let (solution_set, steps) = solved_rewrite.solved;
+    }
+    let (solution_set, mut sub_steps) = runtime.solve_rewritten(&rewrite.equation, var)?;
+    steps.append(&mut sub_steps);
     Ok(CollectTermsRewriteSolved {
         solution_set,
         steps,
@@ -653,19 +643,14 @@ pub fn solve_rational_exponent_rewrite_pipeline_with_item<E, S, R>(
 where
     R: RationalExponentRewriteRuntime<E, S>,
 {
-    let solved_rewrite = solve_rational_exponent_rewrite_with_item(rewrite, |item, new_eq| {
-        let mut steps = Vec::new();
-        if include_item {
-            if let Some(item) = item {
-                steps.push(runtime.map_item_to_step(item));
-            }
+    let mut steps = Vec::new();
+    if include_item {
+        if let Some(item) = rewrite.items.first().cloned() {
+            steps.push(runtime.map_item_to_step(item));
         }
-        let (set, mut sub_steps) = runtime.solve_rewritten(new_eq, var)?;
-        steps.append(&mut sub_steps);
-        Ok((set, steps))
-    })?;
-
-    let (set, steps) = solved_rewrite.solved;
+    }
+    let (set, mut sub_steps) = runtime.solve_rewritten(&rewrite.equation, var)?;
+    steps.append(&mut sub_steps);
     let solution_set = if let SolutionSet::Discrete(sols) = set {
         SolutionSet::Discrete(crate::solve_analysis::retain_verified_discrete(
             sols,

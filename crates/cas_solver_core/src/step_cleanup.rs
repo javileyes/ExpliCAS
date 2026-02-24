@@ -112,13 +112,49 @@ pub fn cleanup_steps_by<T, FExtract, FRebuild>(
     steps: Vec<T>,
     detailed: bool,
     var: &str,
-    mut extract: FExtract,
-    mut rebuild: FRebuild,
+    extract: FExtract,
+    rebuild: FRebuild,
 ) -> Vec<T>
 where
     T: Clone,
     FExtract: FnMut(&T) -> CleanupStep,
     FRebuild: FnMut(T, CleanupStep) -> T,
+{
+    let mut runtime = (extract, rebuild);
+    cleanup_steps_by_runtime(ctx, steps, detailed, var, &mut runtime)
+}
+
+/// Runtime adapter for cleanup step extraction/rebuild.
+pub trait CleanupStepsRuntime<T> {
+    fn extract(&mut self, step: &T) -> CleanupStep;
+    fn rebuild(&mut self, template: T, payload: CleanupStep) -> T;
+}
+
+impl<Extract, Rebuild, T> CleanupStepsRuntime<T> for (Extract, Rebuild)
+where
+    Extract: FnMut(&T) -> CleanupStep,
+    Rebuild: FnMut(T, CleanupStep) -> T,
+{
+    fn extract(&mut self, step: &T) -> CleanupStep {
+        (self.0)(step)
+    }
+
+    fn rebuild(&mut self, template: T, payload: CleanupStep) -> T {
+        (self.1)(template, payload)
+    }
+}
+
+/// Runtime-based variant of `cleanup_steps_by`.
+pub fn cleanup_steps_by_runtime<T, R>(
+    ctx: &mut Context,
+    steps: Vec<T>,
+    detailed: bool,
+    var: &str,
+    runtime: &mut R,
+) -> Vec<T>
+where
+    T: Clone,
+    R: CleanupStepsRuntime<T>,
 {
     if steps.is_empty() {
         return steps;
@@ -127,7 +163,7 @@ where
     let envelopes: Vec<CleanupEnvelope<T>> = steps
         .into_iter()
         .map(|step| CleanupEnvelope {
-            payload: extract(&step),
+            payload: runtime.extract(&step),
             step,
         })
         .collect();
@@ -172,7 +208,7 @@ where
 
     deduped
         .into_iter()
-        .map(|s| rebuild(s.step, s.payload))
+        .map(|s| runtime.rebuild(s.step, s.payload))
         .collect()
 }
 
@@ -373,6 +409,51 @@ mod tests {
         assert_eq!(out.len(), 2);
         assert_eq!(out[0].marker, 7);
         assert_eq!(out[1].marker, 9);
+        assert_eq!(out[1].description, "Collect and factor x terms");
+    }
+
+    struct TestCleanupStepsRuntime;
+
+    impl CleanupStepsRuntime<CleanupStep> for TestCleanupStepsRuntime {
+        fn extract(&mut self, step: &CleanupStep) -> CleanupStep {
+            step.clone()
+        }
+
+        fn rebuild(&mut self, _template: CleanupStep, payload: CleanupStep) -> CleanupStep {
+            payload
+        }
+    }
+
+    #[test]
+    fn cleanup_steps_by_runtime_preserves_metadata() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let eq = Equation {
+            lhs: x,
+            rhs: y,
+            op: RelOp::Eq,
+        };
+
+        let steps = vec![
+            CleanupStep {
+                description: crate::log_linear_narration::TAKE_LOG_BOTH_SIDES_STEP.to_string(),
+                equation_after: eq.clone(),
+            },
+            CleanupStep {
+                description: "Collect terms in x".to_string(),
+                equation_after: Equation {
+                    lhs: x,
+                    rhs: z,
+                    op: RelOp::Eq,
+                },
+            },
+        ];
+        let mut runtime = TestCleanupStepsRuntime;
+
+        let out = cleanup_steps_by_runtime(&mut ctx, steps, false, "x", &mut runtime);
+        assert_eq!(out.len(), 2);
         assert_eq!(out[1].description, "Collect and factor x terms");
     }
 

@@ -1,6 +1,6 @@
 use crate::engine::Simplifier;
 use crate::error::CasError;
-use crate::solver::{SolveStep, SolverOptions};
+use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::function_inverse::{
@@ -12,15 +12,26 @@ use cas_solver_core::function_inverse::{
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::log_isolation::{
     plan_log_isolation_step_with_runtime, solve_log_isolation_rewrite_pipeline_with_item,
-    LogIsolationExecutionItem, LogIsolationPlanRuntime, LogIsolationRewriteRuntime,
+    LogIsolationExecutionItem, LogIsolationRewriteRuntime,
 };
 use cas_solver_core::solve_outcome::{
-    finalize_abs_split_solution_set, plan_abs_isolation, solve_abs_isolation_plan_with_runtime,
-    solve_abs_split_pipeline_with_optional_items_runtime, AbsIsolationPlanRuntime,
-    AbsIsolationSolved, AbsSplitExecutionItem, AbsSplitRuntime,
+    finalize_abs_split_solution_set, plan_abs_isolation, solve_abs_isolation_plan_with,
+    solve_abs_split_pipeline_with_optional_items_runtime, AbsIsolationSolved,
+    AbsSplitExecutionItem, AbsSplitRuntime,
 };
 
 use super::{isolate, prepend_steps};
+
+fn identity_equation(equation: cas_ast::Equation) -> Result<cas_ast::Equation, CasError> {
+    Ok(equation)
+}
+
+fn pair_equations(
+    positive: cas_ast::Equation,
+    negative: cas_ast::Equation,
+) -> Result<(cas_ast::Equation, cas_ast::Equation), CasError> {
+    Ok((positive, negative))
+}
 
 struct EngineUnaryInverseRuntime<'a> {
     simplifier: &'a mut Simplifier,
@@ -48,22 +59,8 @@ struct EngineLogIsolationRuntime<'a, 'b> {
     ctx: &'a super::super::SolveCtx,
 }
 
-struct EngineLogIsolationPlanRuntime;
-
-impl LogIsolationPlanRuntime for EngineLogIsolationPlanRuntime {
-    fn render_expr(&mut self, core_ctx: &cas_ast::Context, expr: ExprId) -> String {
-        format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: core_ctx,
-                id: expr
-            }
-        )
-    }
-}
-
-impl LogIsolationRewriteRuntime<CasError, SolveStep> for EngineLogIsolationRuntime<'_, '_> {
-    fn solve_rewritten(
+impl EngineLogIsolationRuntime<'_, '_> {
+    fn isolate_equation(
         &mut self,
         equation: &cas_ast::Equation,
     ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
@@ -77,14 +74,18 @@ impl LogIsolationRewriteRuntime<CasError, SolveStep> for EngineLogIsolationRunti
             self.ctx,
         )
     }
+}
+
+impl LogIsolationRewriteRuntime<CasError, SolveStep> for EngineLogIsolationRuntime<'_, '_> {
+    fn solve_rewritten(
+        &mut self,
+        equation: &cas_ast::Equation,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        self.isolate_equation(equation)
+    }
 
     fn map_item_to_step(&mut self, item: LogIsolationExecutionItem) -> SolveStep {
-        SolveStep {
-            description: item.description,
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
+        medium_step(item.description, item.equation)
     }
 }
 
@@ -94,36 +95,8 @@ struct EngineFunctionIsolationRuntime<'a, 'b> {
     solve_ctx: &'b super::super::SolveCtx,
 }
 
-struct EngineAbsIsolationPlanRuntime;
-
-impl AbsIsolationPlanRuntime<CasError, cas_ast::Equation, (cas_ast::Equation, cas_ast::Equation)>
-    for EngineAbsIsolationPlanRuntime
-{
-    fn solve_single(&mut self, equation: cas_ast::Equation) -> Result<cas_ast::Equation, CasError> {
-        Ok(equation)
-    }
-
-    fn solve_split(
-        &mut self,
-        positive: cas_ast::Equation,
-        negative: cas_ast::Equation,
-    ) -> Result<(cas_ast::Equation, cas_ast::Equation), CasError> {
-        Ok((positive, negative))
-    }
-}
-
-impl AbsSplitRuntime<CasError, SolveStep> for EngineFunctionIsolationRuntime<'_, '_> {
-    fn render_expr(&mut self, expr: ExprId) -> String {
-        format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: &self.simplifier.context,
-                id: expr
-            }
-        )
-    }
-
-    fn solve_branch(
+impl EngineFunctionIsolationRuntime<'_, '_> {
+    fn isolate_equation(
         &mut self,
         equation: &cas_ast::Equation,
         var: &str,
@@ -138,14 +111,23 @@ impl AbsSplitRuntime<CasError, SolveStep> for EngineFunctionIsolationRuntime<'_,
             self.solve_ctx,
         )
     }
+}
+
+impl AbsSplitRuntime<CasError, SolveStep> for EngineFunctionIsolationRuntime<'_, '_> {
+    fn render_expr(&mut self, expr: ExprId) -> String {
+        solver_render_expr(&self.simplifier.context, expr)
+    }
+
+    fn solve_branch(
+        &mut self,
+        equation: &cas_ast::Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        self.isolate_equation(equation, var)
+    }
 
     fn map_item_to_step(&mut self, item: AbsSplitExecutionItem) -> SolveStep {
-        SolveStep {
-            description: item.description().to_string(),
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
+        medium_step(item.description().to_string(), item.equation)
     }
 }
 
@@ -157,24 +139,11 @@ impl UnaryInverseSolveRuntime<CasError, SolveStep> for EngineFunctionIsolationRu
         op: RelOp,
         var: &str,
     ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        isolate(
-            lhs,
-            rhs,
-            op,
-            var,
-            self.simplifier,
-            self.opts,
-            self.solve_ctx,
-        )
+        self.isolate_equation(&cas_ast::Equation { lhs, rhs, op }, var)
     }
 
     fn map_item_to_step(&mut self, item: UnaryInverseSolveExecutionItem) -> SolveStep {
-        SolveStep {
-            description: item.description().to_string(),
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
+        medium_step(item.description().to_string(), item.equation)
     }
 }
 
@@ -234,8 +203,8 @@ fn isolate_abs(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let rhs_sign = numeric_sign(&simplifier.context, rhs);
     let abs_plan = plan_abs_isolation(&mut simplifier.context, arg, rhs, op.clone(), rhs_sign);
-    let mut plan_runtime = EngineAbsIsolationPlanRuntime;
-    let dispatched_abs = solve_abs_isolation_plan_with_runtime(abs_plan, &mut plan_runtime)?;
+    let dispatched_abs =
+        solve_abs_isolation_plan_with(abs_plan, identity_equation, pair_equations)?;
 
     match dispatched_abs {
         AbsIsolationSolved::ReturnedEmptySet => Ok((SolutionSet::Empty, steps)),
@@ -291,7 +260,7 @@ fn isolate_log(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let mut plan_runtime = EngineLogIsolationPlanRuntime;
+    let mut plan_runtime = solver_render_expr as fn(&cas_ast::Context, ExprId) -> String;
     let rewrite = plan_log_isolation_step_with_runtime(
         &mut simplifier.context,
         base,

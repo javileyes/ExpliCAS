@@ -2,7 +2,7 @@ use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
-use crate::solver::{SolveCtx, SolveStep, SolverOptions};
+use crate::solver::{medium_step, render_expr, SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, SolutionSet};
 use cas_solver_core::substitution::{
     plan_exponential_substitution_rewrite, solve_exponential_substitution_strategy_with_items,
@@ -18,13 +18,7 @@ struct EngineSubstitutionRuntime<'a> {
 
 impl SubstitutionStrategyRuntime<CasError, SolveStep> for EngineSubstitutionRuntime<'_> {
     fn render_expr(&mut self, expr: cas_ast::ExprId) -> String {
-        format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: &self.simplifier.context,
-                id: expr
-            }
-        )
+        render_expr(&self.simplifier.context, expr)
     }
 
     fn solve_equation(
@@ -36,12 +30,7 @@ impl SubstitutionStrategyRuntime<CasError, SolveStep> for EngineSubstitutionRunt
     }
 
     fn map_step(&mut self, description: String, equation_after: Equation) -> SolveStep {
-        SolveStep {
-            description,
-            equation_after,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
+        medium_step(description, equation_after)
     }
 }
 

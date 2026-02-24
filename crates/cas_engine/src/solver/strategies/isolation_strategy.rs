@@ -3,7 +3,9 @@ use crate::error::CasError;
 use crate::solver::isolation::isolate;
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
-use crate::solver::{SolveCtx, SolveStep, SolverOptions};
+use crate::solver::{
+    medium_step, render_expr as solver_render_expr, SolveCtx, SolveStep, SolverOptions,
+};
 use cas_ast::{Equation, ExprId, SolutionSet};
 use cas_solver_core::strategy_kernels::{
     derive_isolation_strategy_routing, execute_collect_terms_rewrite_with_runtime,
@@ -15,9 +17,8 @@ use cas_solver_core::strategy_kernels::{
     StrategyKernelRuntime,
 };
 use cas_solver_core::unwrap_plan::{
-    route_unwrap_entry_with_item_runtime, solve_unwrap_execution_pipeline_with_item,
-    UnwrapEntryRouting, UnwrapEntryRuntime, UnwrapExecutionPlan, UnwrapExecutionRuntime,
-    UnwrapPlanRuntime,
+    route_unwrap_entry_with_item, solve_unwrap_execution_pipeline_with_item, UnwrapEntryRouting,
+    UnwrapExecutionPlan, UnwrapExecutionRuntime,
 };
 
 pub struct IsolationStrategy;
@@ -37,13 +38,7 @@ impl StrategyKernelRuntime for EngineStrategyKernelRuntime<'_> {
     }
 
     fn render_expr(&mut self, expr: ExprId) -> String {
-        format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: &self.simplifier.context,
-                id: expr
-            }
-        )
+        solver_render_expr(&self.simplifier.context, expr)
     }
 }
 
@@ -74,12 +69,7 @@ impl IsolationStrategyRuntime<CasError, SolveStep> for EngineIsolationRuntime<'_
         &mut self,
         item: cas_solver_core::solve_outcome::TermIsolationRewriteExecutionItem,
     ) -> SolveStep {
-        SolveStep {
-            description: item.description,
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
+        medium_step(item.description, item.equation)
     }
 
     fn variable_not_found_error(&mut self, var: &str) -> CasError {
@@ -121,52 +111,6 @@ struct EngineUnwrapRuntime<'a> {
     ctx: &'a SolveCtx,
 }
 
-struct EngineUnwrapEntryRuntime<'a> {
-    opts: SolverOptions,
-    ctx: &'a SolveCtx,
-}
-
-impl UnwrapPlanRuntime for EngineUnwrapEntryRuntime<'_> {
-    fn classify_log_solve(
-        &mut self,
-        core_ctx: &cas_ast::Context,
-        base: ExprId,
-        other_side: ExprId,
-    ) -> cas_solver_core::log_domain::LogSolveDecision {
-        crate::solver::domain_guards::classify_log_solve(
-            core_ctx,
-            base,
-            other_side,
-            &self.opts,
-            &self.ctx.domain_env,
-        )
-    }
-
-    fn render_expr(&mut self, core_ctx: &cas_ast::Context, expr: ExprId) -> String {
-        format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: core_ctx,
-                id: expr
-            }
-        )
-    }
-}
-
-impl UnwrapEntryRuntime<SolveStep> for EngineUnwrapEntryRuntime<'_> {
-    fn map_terminal_item_to_step(
-        &mut self,
-        item: cas_solver_core::solve_outcome::TermIsolationExecutionItem,
-    ) -> SolveStep {
-        SolveStep {
-            description: item.description,
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
-    }
-}
-
 impl UnwrapExecutionRuntime<CasError, SolveStep> for EngineUnwrapRuntime<'_> {
     fn note_assumption(&mut self, record: cas_solver_core::unwrap_plan::LogLinearAssumptionRecord) {
         let event = crate::assumptions::AssumptionEvent::from_log_assumption(
@@ -190,12 +134,7 @@ impl UnwrapExecutionRuntime<CasError, SolveStep> for EngineUnwrapRuntime<'_> {
         &mut self,
         item: cas_solver_core::unwrap_plan::UnwrapExecutionItem,
     ) -> SolveStep {
-        SolveStep {
-            description: item.description,
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
+        medium_step(item.description, item.equation)
     }
 }
 
@@ -235,8 +174,7 @@ impl SolverStrategy for UnwrapStrategy {
         let wildcard_scope = opts.assume_scope == crate::semantics::AssumeScope::Wildcard;
 
         let include_item = simplifier.collect_steps();
-        let mut entry_runtime = EngineUnwrapEntryRuntime { opts: *opts, ctx };
-        let routed = route_unwrap_entry_with_item_runtime(
+        let routed = route_unwrap_entry_with_item(
             &mut simplifier.context,
             eq,
             var,
@@ -244,7 +182,17 @@ impl SolverStrategy for UnwrapStrategy {
             wildcard_scope,
             " - use 'semantics preset complex'",
             include_item,
-            &mut entry_runtime,
+            |core_ctx, base, other_side| {
+                crate::solver::domain_guards::classify_log_solve(
+                    core_ctx,
+                    base,
+                    other_side,
+                    opts,
+                    &ctx.domain_env,
+                )
+            },
+            solver_render_expr,
+            |item| medium_step(item.description, item.equation),
         );
         let routed = routed?;
         Some(match routed {
@@ -290,12 +238,7 @@ impl CollectTermsRewriteRuntime<CasError, SolveStep> for EngineCollectTermsStrat
     }
 
     fn map_item_to_step(&mut self, item: StrategyExecutionItem) -> SolveStep {
-        SolveStep {
-            description: item.description,
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
+        medium_step(item.description, item.equation)
     }
 }
 
@@ -354,12 +297,7 @@ impl RationalExponentRewriteRuntime<CasError, SolveStep>
     }
 
     fn map_item_to_step(&mut self, item: StrategyExecutionItem) -> SolveStep {
-        SolveStep {
-            description: item.description,
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
+        medium_step(item.description, item.equation)
     }
 
     fn verify_discrete_solution(&mut self, _solution: ExprId) -> bool {

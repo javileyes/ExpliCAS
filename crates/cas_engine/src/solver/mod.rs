@@ -16,9 +16,9 @@ pub(crate) use runtime_tls::{emit_scope, note_assumption, take_scopes, SolveAssu
 
 #[cfg(test)]
 use crate::engine::Simplifier;
-use cas_ast::Equation;
 #[cfg(test)]
 use cas_ast::SolutionSet;
+use cas_ast::{Equation, ExprId};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -267,6 +267,20 @@ impl SolveStep {
         self.substeps = substeps;
         self
     }
+}
+
+pub(crate) fn medium_step(description: String, equation_after: Equation) -> SolveStep {
+    SolveStep::new(description, equation_after)
+}
+
+pub(crate) fn render_expr(ctx: &cas_ast::Context, expr: ExprId) -> String {
+    format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: ctx,
+            id: expr
+        }
+    )
 }
 
 // ---------------------------------------------------------------------------

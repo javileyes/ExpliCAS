@@ -22,7 +22,7 @@
 
 use cas_ast::{Context, ExprId};
 use cas_solver_core::numeric_islands::{
-    fold_numeric_islands_with, is_benign_fold_result, transplant_expr,
+    fold_numeric_islands_with_runtime, is_benign_fold_result, transplant_expr,
 };
 
 use crate::helpers::ground_eval::GroundEvalGuard;
@@ -51,14 +51,11 @@ pub(crate) fn fold_numeric_islands(ctx: &mut Context, root: ExprId) -> ExprId {
         None => return root,
     };
 
-    fold_numeric_islands_with(
-        ctx,
-        root,
-        MAX_ISLAND_NODES,
-        MAX_ISLAND_DEPTH,
-        cas_solver_core::verify_stats::record_skipped_limits,
-        fold_one_island_candidate,
-    )
+    let mut runtime = (
+        cas_solver_core::verify_stats::record_skipped_limits as fn(),
+        fold_one_island_candidate as fn(&mut Context, ExprId, usize) -> ExprId,
+    );
+    fold_numeric_islands_with_runtime(ctx, root, MAX_ISLAND_NODES, MAX_ISLAND_DEPTH, &mut runtime)
 }
 
 /// Fold one pre-checked eligible island.

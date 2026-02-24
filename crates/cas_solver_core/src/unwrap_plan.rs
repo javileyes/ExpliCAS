@@ -4,7 +4,6 @@ use crate::isolation_utils::contains_var;
 use crate::log_domain::{DomainModeKind, LogAssumption, LogSolveDecision};
 use crate::rational_power::PowUnwrapPlan;
 use crate::solve_outcome::{
-    resolve_single_side_exponential_terminal_pipeline_with_item,
     resolve_single_side_exponential_terminal_with_item, take_log_base_message,
     SingleSideExponentialTerminalSolved, TermIsolationExecutionItem,
 };
@@ -151,7 +150,7 @@ where
 pub fn plan_unwrap_execution_with<FClassify, FRender>(
     ctx: &mut Context,
     request: UnwrapExecutionRequest<'_>,
-    classify_log_solve: FClassify,
+    mut classify_log_solve: FClassify,
     mut render_expr: FRender,
 ) -> Option<UnwrapExecutionPlan>
 where
@@ -165,7 +164,7 @@ where
         request.var,
         request.op,
         request.is_lhs,
-        classify_log_solve,
+        |core_ctx, base, other_side| classify_log_solve(core_ctx, base, other_side),
     )?;
     let view_ctx: &Context = ctx;
     Some(build_unwrap_execution_plan_with(rewrite, |id| {
@@ -259,7 +258,7 @@ where
                 is_lhs: true,
             },
             |core_ctx, base, other_side| classify_log_solve(core_ctx, base, other_side),
-            |core_ctx, id| render_expr(core_ctx, id),
+            |core_ctx, expr| render_expr(core_ctx, expr),
         ) {
             return Some(UnwrapEquationExecution {
                 execution,
@@ -278,7 +277,7 @@ where
                 is_lhs: false,
             },
             |core_ctx, base, other_side| classify_log_solve(core_ctx, base, other_side),
-            |core_ctx, id| render_expr(core_ctx, id),
+            |core_ctx, expr| render_expr(core_ctx, expr),
         ) {
             return Some(UnwrapEquationExecution {
                 execution,
@@ -357,7 +356,7 @@ pub fn route_unwrap_entry_with_item<FClassify, FRender, FStep, S>(
     include_item: bool,
     mut classify_log_solve: FClassify,
     mut render_expr: FRender,
-    map_terminal_item_to_step: FStep,
+    mut map_terminal_item_to_step: FStep,
 ) -> Option<UnwrapEntryRouting<S>>
 where
     FClassify: FnMut(&Context, ExprId, ExprId) -> LogSolveDecision,
@@ -370,7 +369,7 @@ where
         return None;
     }
 
-    if let Some(solved_terminal) = resolve_single_side_exponential_terminal_pipeline_with_item(
+    if let Some((solution_set, item)) = resolve_single_side_exponential_terminal_with_item(
         ctx,
         equation.lhs,
         equation.rhs,
@@ -381,11 +380,18 @@ where
         wildcard_scope,
         residual_suffix,
         equation.clone(),
-        include_item,
         |core_ctx, base, other_side| classify_log_solve(core_ctx, base, other_side),
-        map_terminal_item_to_step,
     ) {
-        return Some(UnwrapEntryRouting::Terminal(solved_terminal));
+        let mut steps = Vec::new();
+        if include_item {
+            steps.push(map_terminal_item_to_step(item));
+        }
+        return Some(UnwrapEntryRouting::Terminal(
+            SingleSideExponentialTerminalSolved {
+                solution_set,
+                steps,
+            },
+        ));
     }
 
     let selected = plan_first_unwrap_equation_execution_with(
@@ -395,7 +401,7 @@ where
         lhs_has,
         rhs_has,
         |core_ctx, base, other_side| classify_log_solve(core_ctx, base, other_side),
-        |core_ctx, id| render_expr(core_ctx, id),
+        |core_ctx, expr| render_expr(core_ctx, expr),
     )?;
     Some(UnwrapEntryRouting::Execution(selected))
 }

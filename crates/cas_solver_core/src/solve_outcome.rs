@@ -738,9 +738,17 @@ pub fn solve_power_base_one_shortcut_pipeline_with_item_runtime<S, R>(
 where
     R: PowerBaseOneShortcutPipelineRuntime<S>,
 {
-    solve_power_base_one_shortcut_pipeline_with_item(outcome, include_item, |item| {
-        runtime.map_power_base_one_item_to_step(item)
-    })
+    let PowerBaseOneShortcutOutcome { solutions, items } = outcome;
+    let mut steps = Vec::new();
+    if include_item {
+        if let Some(item) = items.into_iter().next() {
+            steps.push(runtime.map_power_base_one_item_to_step(item));
+        }
+    }
+    PowerBaseOneShortcutPipelineSolved {
+        solution_set: solutions,
+        steps,
+    }
 }
 
 /// Didactic payload for logarithmic isolation of exponent equations.
@@ -1573,6 +1581,21 @@ where
 /// Check whether two bases are equivalent for power-exponent shortcuts.
 ///
 /// `equivalent_nontrivial` is only evaluated when the bases are not identical.
+pub trait ShortcutBasesEquivalentRuntime {
+    fn equivalent_nontrivial(&mut self, base: ExprId, candidate: ExprId) -> bool;
+}
+
+pub fn shortcut_bases_equivalent_with_runtime<R>(
+    base: ExprId,
+    candidate: ExprId,
+    runtime: &mut R,
+) -> bool
+where
+    R: ShortcutBasesEquivalentRuntime,
+{
+    base == candidate || runtime.equivalent_nontrivial(base, candidate)
+}
+
 pub fn shortcut_bases_equivalent_with<F>(
     base: ExprId,
     candidate: ExprId,
@@ -2511,6 +2534,24 @@ where
     Ok(TermIsolationRewriteSolved { rewrite, solved })
 }
 
+/// Runtime contract for executing one term-isolation rewrite solve.
+pub trait TermIsolationRewriteSolveRuntime<E, T> {
+    /// Recursively solve one rewritten equation.
+    fn solve_rewrite_equation(&mut self, equation: Equation) -> Result<T, E>;
+}
+
+/// Execute one term-isolation rewrite with runtime-managed solve.
+pub fn solve_term_isolation_rewrite_with_runtime<R, E, T>(
+    rewrite: TermIsolationRewritePlan,
+    runtime: &mut R,
+) -> Result<TermIsolationRewriteSolved<T>, E>
+where
+    R: TermIsolationRewriteSolveRuntime<E, T>,
+{
+    let solved = runtime.solve_rewrite_equation(rewrite.equation.clone())?;
+    Ok(TermIsolationRewriteSolved { rewrite, solved })
+}
+
 /// Solved result for a term-isolation rewrite pipeline.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TermIsolationRewritePipelineSolved<S> {
@@ -2566,16 +2607,16 @@ pub fn solve_term_isolation_rewrite_pipeline_with_item_runtime<R, E, S>(
 where
     R: TermIsolationRewriteRuntime<E, S>,
 {
-    let solved_rewrite = solve_term_isolation_rewrite_with(rewrite, |equation| {
-        runtime.solve_rewritten(equation, var)
-    })?;
+    let first_item = if include_item {
+        first_term_isolation_rewrite_execution_item(&rewrite)
+    } else {
+        None
+    };
+    let (solution_set, mut sub_steps) = runtime.solve_rewritten(rewrite.equation.clone(), var)?;
     let mut steps = Vec::new();
-    if include_item {
-        if let Some(item) = first_term_isolation_rewrite_execution_item(&solved_rewrite.rewrite) {
-            steps.push(runtime.map_item_to_step(item));
-        }
+    if let Some(item) = first_item {
+        steps.push(runtime.map_item_to_step(item));
     }
-    let (solution_set, mut sub_steps) = solved_rewrite.solved;
     steps.append(&mut sub_steps);
     Ok(TermIsolationRewritePipelineSolved {
         solution_set,
@@ -2614,17 +2655,17 @@ where
         let ctx = runtime.context();
         plan_negated_lhs_isolation_step(ctx, inner, rhs, op)
     };
-    let solved = solve_term_isolation_rewrite_with(rewrite, |equation| {
-        runtime.solve_rewritten(equation, var)
-    })?;
+    let first_item = if include_item {
+        first_term_isolation_rewrite_execution_item(&rewrite)
+    } else {
+        None
+    };
+    let (solution_set, mut sub_steps) = runtime.solve_rewritten(rewrite.equation.clone(), var)?;
 
     let mut steps = Vec::new();
-    if include_item {
-        if let Some(item) = first_term_isolation_rewrite_execution_item(&solved.rewrite) {
-            steps.push(runtime.map_item_to_step(item));
-        }
+    if let Some(item) = first_item {
+        steps.push(runtime.map_item_to_step(item));
     }
-    let (solution_set, mut sub_steps) = solved.solved;
     steps.append(&mut sub_steps);
     Ok((solution_set, steps))
 }
@@ -2840,6 +2881,15 @@ pub fn plan_negated_lhs_isolation_step(
 pub trait TermIsolationPlanRuntime {
     /// Render one expression in the provided core context.
     fn render_expr(&mut self, core_ctx: &Context, expr: ExprId) -> String;
+}
+
+impl<F> TermIsolationPlanRuntime for F
+where
+    F: FnMut(&Context, ExprId) -> String,
+{
+    fn render_expr(&mut self, core_ctx: &Context, expr: ExprId) -> String {
+        self(core_ctx, expr)
+    }
 }
 
 /// Plan add-operand isolation and corresponding didactic step.
@@ -3303,13 +3353,16 @@ pub fn solve_terminal_outcome_pipeline_with_item_runtime<S, R>(
 where
     R: TerminalOutcomePipelineRuntime<S>,
 {
-    solve_terminal_outcome_pipeline_with_item(
-        outcome,
-        equation_after,
-        residual_suffix,
-        include_item,
-        |item| runtime.map_terminal_outcome_item_to_step(item),
-    )
+    let solution_set = outcome.solutions.clone();
+    let mut steps = Vec::new();
+    if include_item {
+        let item = build_terminal_outcome_item(&outcome, equation_after, residual_suffix);
+        steps.push(runtime.map_terminal_outcome_item_to_step(item));
+    }
+    TerminalOutcomePipelineSolved {
+        solution_set,
+        steps,
+    }
 }
 
 /// Build didactic payload for conditional-solution messaging.
@@ -3689,6 +3742,24 @@ where
     Ok(PowExponentLogIsolationSolved { rewrite, solved })
 }
 
+/// Runtime contract for solving one exponent-log rewritten equation.
+pub trait PowExponentLogIsolationRewriteSolveRuntime<E, T> {
+    /// Solve the rewritten logarithmic equation.
+    fn solve_rewrite(&mut self, equation: &Equation) -> Result<T, E>;
+}
+
+/// Solve one planned exponent-log rewrite equation via runtime.
+pub fn solve_pow_exponent_log_isolation_rewrite_with_runtime<R, E, T>(
+    rewrite: PowExponentLogIsolationRewritePlan,
+    runtime: &mut R,
+) -> Result<PowExponentLogIsolationSolved<T>, E>
+where
+    R: PowExponentLogIsolationRewriteSolveRuntime<E, T>,
+{
+    let solved = runtime.solve_rewrite(&rewrite.equation)?;
+    Ok(PowExponentLogIsolationSolved { rewrite, solved })
+}
+
 /// Solved result for one exponent-log rewrite pipeline.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowExponentLogIsolationRewritePipelineSolved<S> {
@@ -3742,17 +3813,16 @@ pub fn solve_pow_exponent_log_isolation_rewrite_pipeline_with_item_runtime<R, E,
 where
     R: PowExponentLogIsolationRewriteRuntime<E, S>,
 {
-    let solved_rewrite = solve_pow_exponent_log_isolation_rewrite_with(rewrite, |equation| {
-        runtime.solve_rewrite(equation, var)
-    })?;
+    let first_item = if include_item {
+        first_pow_exponent_log_isolation_execution_item(&rewrite)
+    } else {
+        None
+    };
+    let (solution_set, mut sub_steps) = runtime.solve_rewrite(&rewrite.equation, var)?;
     let mut steps = Vec::new();
-    if include_item {
-        if let Some(item) = first_pow_exponent_log_isolation_execution_item(&solved_rewrite.rewrite)
-        {
-            steps.push(runtime.map_log_item_to_step(item));
-        }
+    if let Some(item) = first_item {
+        steps.push(runtime.map_log_item_to_step(item));
     }
-    let (solution_set, mut sub_steps) = solved_rewrite.solved;
     steps.append(&mut sub_steps);
     Ok(PowExponentLogIsolationRewritePipelineSolved {
         solution_set,
@@ -3766,7 +3836,7 @@ where
 /// materializes final solution-set semantics (`guarded` or residual fallback).
 pub fn execute_pow_exponent_log_unsupported_with<FG>(
     execution: PowExponentLogUnsupportedExecution,
-    mut try_guarded_solve: FG,
+    try_guarded_solve: FG,
 ) -> PowExponentLogUnsupportedSolvedExecution
 where
     FG: FnMut(&Equation) -> Option<SolutionSet>,
@@ -3781,9 +3851,8 @@ where
             guard,
             residual,
         } => {
-            let guarded_execution = execute_guarded_pow_exponent_log_plan_with(plan, |equation| {
-                try_guarded_solve(equation)
-            });
+            let guarded_execution =
+                execute_guarded_pow_exponent_log_plan_with(plan, try_guarded_solve);
             let solutions =
                 guarded_or_residual(Some(guard), guarded_execution.guarded_solutions, residual);
             PowExponentLogUnsupportedSolvedExecution::Guarded {
@@ -3873,11 +3942,8 @@ pub fn solve_pow_exponent_log_unsupported_pipeline_with_items_runtime<R, S>(
 where
     R: PowExponentLogUnsupportedRuntime<S>,
 {
-    let solved = execute_pow_exponent_log_unsupported_with(execution, |equation| {
-        runtime.try_guarded_solve(equation, var)
-    });
-    match solved {
-        PowExponentLogUnsupportedSolvedExecution::Residual { item, solutions } => {
+    match execution {
+        PowExponentLogUnsupportedExecution::Residual { item, solutions } => {
             let mut steps = Vec::new();
             if include_items {
                 steps.push(runtime.map_term_item_to_step(item));
@@ -3888,12 +3954,16 @@ where
                 steps,
             }
         }
-        PowExponentLogUnsupportedSolvedExecution::Guarded {
+        PowExponentLogUnsupportedExecution::Guarded {
             blocked_hints,
-            rewrite_item,
-            followup_item,
-            solutions,
+            plan,
+            guard,
+            residual,
         } => {
+            let guarded_solutions = runtime.try_guarded_solve(&plan.rewrite.equation, var);
+            let followup_item = plan.followup_item(guarded_solutions.is_some());
+            let rewrite_item = first_pow_exponent_log_isolation_execution_item(&plan.rewrite);
+            let solutions = guarded_or_residual(Some(guard), guarded_solutions, residual);
             let mut steps = Vec::new();
             if include_items {
                 if let Some(item) = rewrite_item {
@@ -4531,14 +4601,10 @@ where
     FSolveRewritten: FnMut(&Equation) -> Result<(SolutionSet, Vec<TStep>), E>,
     FMapStep: FnMut(DivisionDidacticExecutionItem) -> TStep,
 {
-    let solved_execution =
-        solve_division_denominator_execution_with_items(execution, |items, equation| {
-            let (solution_set, sub_steps) = solve_rewritten(equation)?;
-            let mut steps = items.into_iter().map(&mut map_step).collect::<Vec<_>>();
-            steps.extend(sub_steps);
-            Ok::<_, E>((solution_set, steps))
-        })?;
-    let (solution_set, steps) = solved_execution.solved;
+    let items = collect_division_denominator_execution_items(&execution);
+    let (solution_set, sub_steps) = solve_rewritten(&execution.divide_equation)?;
+    let mut steps = items.into_iter().map(&mut map_step).collect::<Vec<_>>();
+    steps.extend(sub_steps);
     Ok(DivisionDenominatorExecutionPipelineSolved {
         solution_set,
         steps,
@@ -4740,11 +4806,21 @@ where
     FSolveCase: FnMut(&Equation) -> Result<(SolutionSet, Vec<TStep>), E>,
 {
     let mut steps = Vec::new();
-    let solved_sets = solve_product_zero_inequality_cases_with(plan, |equation| {
-        let (solution_set, mut case_steps) = solve_case(equation)?;
-        steps.append(&mut case_steps);
-        Ok::<_, E>(solution_set)
-    })?;
+    let (case1_left, mut case1_left_steps) = solve_case(&plan.case1_left)?;
+    steps.append(&mut case1_left_steps);
+    let (case1_right, mut case1_right_steps) = solve_case(&plan.case1_right)?;
+    steps.append(&mut case1_right_steps);
+    let (case2_left, mut case2_left_steps) = solve_case(&plan.case2_left)?;
+    steps.append(&mut case2_left_steps);
+    let (case2_right, mut case2_right_steps) = solve_case(&plan.case2_right)?;
+    steps.append(&mut case2_right_steps);
+
+    let solved_sets = ProductZeroInequalitySolvedSets {
+        case1_left,
+        case1_right,
+        case2_left,
+        case2_right,
+    };
     Ok(ProductZeroInequalityExecutionSolved { solved_sets, steps })
 }
 
@@ -4762,8 +4838,25 @@ pub fn solve_product_zero_inequality_split_execution_with_runtime<R, E, S>(
 where
     R: ProductZeroInequalityExecutionRuntime<E, S>,
 {
-    solve_product_zero_inequality_split_execution_with(plan, |equation| {
-        runtime.solve_case(equation)
+    let mut steps = Vec::new();
+
+    let (case1_left, mut case1_left_steps) = runtime.solve_case(&plan.case1_left)?;
+    steps.append(&mut case1_left_steps);
+    let (case1_right, mut case1_right_steps) = runtime.solve_case(&plan.case1_right)?;
+    steps.append(&mut case1_right_steps);
+    let (case2_left, mut case2_left_steps) = runtime.solve_case(&plan.case2_left)?;
+    steps.append(&mut case2_left_steps);
+    let (case2_right, mut case2_right_steps) = runtime.solve_case(&plan.case2_right)?;
+    steps.append(&mut case2_right_steps);
+
+    Ok(ProductZeroInequalityExecutionSolved {
+        solved_sets: ProductZeroInequalitySolvedSets {
+            case1_left,
+            case1_right,
+            case2_left,
+            case2_right,
+        },
+        steps,
     })
 }
 
@@ -4810,11 +4903,12 @@ where
     FSolveDomain: FnMut(&Equation) -> Result<TDomain, E>,
 {
     let mut items = collect_division_denominator_sign_split_execution_items(execution).into_iter();
-    solve_division_denominator_sign_split_cases_with(
-        execution,
-        |equation| solve_branch(items.next(), equation),
-        |domain_equation| solve_domain(domain_equation),
-    )
+    Ok(DivisionDenominatorSignSplitSolvedCases {
+        positive_branch: solve_branch(items.next(), &execution.positive_equation)?,
+        positive_domain: solve_domain(&execution.positive_domain)?,
+        negative_branch: solve_branch(items.next(), &execution.negative_equation)?,
+        negative_domain: solve_domain(&execution.negative_domain)?,
+    })
 }
 
 /// Solved payload for denominator-sign split execution:
@@ -4828,6 +4922,14 @@ pub struct DivisionDenominatorSignSplitExecutionSolved<TStep> {
     pub steps: Vec<TStep>,
 }
 
+/// Pop one didactic item from an optional execution-item iterator.
+fn take_optional_item<I>(items: &mut Option<I>) -> Option<I::Item>
+where
+    I: Iterator,
+{
+    items.as_mut().and_then(|iter| iter.next())
+}
+
 /// Solve denominator-sign split execution with aligned optional didactic items,
 /// keeping branch/domain solution sets separate and concatenating branch steps
 /// with the case boundary marker between them when present.
@@ -4839,8 +4941,8 @@ pub fn solve_division_denominator_sign_split_execution_with_items<
     FMapBoundary,
 >(
     execution: &DivisionDenominatorSignSplitExecutionPlan,
-    mut solve_branch: FSolveBranch,
-    mut solve_domain: FSolveDomain,
+    solve_branch: FSolveBranch,
+    solve_domain: FSolveDomain,
     mut map_boundary_item: FMapBoundary,
 ) -> Result<DivisionDenominatorSignSplitExecutionSolved<TStep>, E>
 where
@@ -4853,8 +4955,8 @@ where
 {
     let solved = solve_division_denominator_sign_split_cases_with_items(
         execution,
-        |item, equation| solve_branch(item, equation),
-        |domain_equation| solve_domain(domain_equation),
+        solve_branch,
+        solve_domain,
     )?;
     let DivisionDenominatorSignSplitSolvedCases {
         positive_branch: (positive_set, mut positive_steps),
@@ -4899,32 +5001,30 @@ where
     FSolveDomain: FnMut(&Equation) -> Result<SolutionSet, E>,
     FStep: FnMut(DivisionDidacticExecutionItem) -> S,
 {
-    let solved = solve_division_denominator_sign_split_cases_with_items(
-        execution,
-        |item, equation| {
-            let mut case_steps = branch_prefix_steps.to_vec();
-            if include_items {
-                if let Some(item) = item {
-                    case_steps.push(map_item_to_step(item));
-                }
-            }
-            let (solution_set, sub_steps) = solve_branch(equation)?;
-            case_steps.extend(sub_steps);
-            Ok((solution_set, case_steps))
-        },
-        |domain_equation| solve_domain(domain_equation),
-    )?;
-    let DivisionDenominatorSignSplitSolvedCases {
-        positive_branch: (positive_set, mut positive_steps),
-        negative_branch: (negative_set, negative_steps),
-        positive_domain: positive_domain_set,
-        negative_domain: negative_domain_set,
-    } = solved;
+    let mut items = if include_items {
+        Some(collect_division_denominator_sign_split_execution_items(execution).into_iter())
+    } else {
+        None
+    };
 
-    if include_items {
-        if let Some(item) = division_denominator_sign_split_boundary_item(execution) {
-            positive_steps.push(map_item_to_step(item));
-        }
+    let mut positive_steps = branch_prefix_steps.to_vec();
+    if let Some(item) = take_optional_item(&mut items) {
+        positive_steps.push(map_item_to_step(item));
+    }
+    let (positive_set, positive_sub_steps) = solve_branch(&execution.positive_equation)?;
+    positive_steps.extend(positive_sub_steps);
+    let positive_domain_set = solve_domain(&execution.positive_domain)?;
+
+    let mut negative_steps = branch_prefix_steps.to_vec();
+    if let Some(item) = take_optional_item(&mut items) {
+        negative_steps.push(map_item_to_step(item));
+    }
+    let (negative_set, negative_sub_steps) = solve_branch(&execution.negative_equation)?;
+    negative_steps.extend(negative_sub_steps);
+    let negative_domain_set = solve_domain(&execution.negative_domain)?;
+
+    if let Some(item) = take_optional_item(&mut items) {
+        positive_steps.push(map_item_to_step(item));
     }
     positive_steps.extend(negative_steps);
 
@@ -5040,7 +5140,7 @@ where
     };
 
     let mut positive_steps = branch_prefix_steps.to_vec();
-    if let Some(item) = items.as_mut().and_then(|it| it.next()) {
+    if let Some(item) = take_optional_item(&mut items) {
         positive_steps.push(runtime.map_item_to_step(item));
     }
     let (positive_set, mut positive_sub_steps) =
@@ -5049,7 +5149,7 @@ where
     let positive_domain_set = runtime.solve_domain(&execution.positive_domain, var)?;
 
     let mut negative_steps = branch_prefix_steps.to_vec();
-    if let Some(item) = items.as_mut().and_then(|it| it.next()) {
+    if let Some(item) = take_optional_item(&mut items) {
         negative_steps.push(runtime.map_item_to_step(item));
     }
     let (negative_set, mut negative_sub_steps) =
@@ -5057,7 +5157,7 @@ where
     negative_steps.append(&mut negative_sub_steps);
     let negative_domain_set = runtime.solve_domain(&execution.negative_domain, var)?;
 
-    if let Some(item) = items.as_mut().and_then(|it| it.next()) {
+    if let Some(item) = take_optional_item(&mut items) {
         positive_steps.push(runtime.map_item_to_step(item));
     }
     positive_steps.extend(negative_steps);
@@ -5118,8 +5218,9 @@ where
     FSolveBranch: FnMut(Option<DivisionDidacticExecutionItem>, &Equation) -> Result<TBranch, E>,
 {
     let mut items = collect_isolated_denominator_sign_split_execution_items(execution).into_iter();
-    solve_isolated_denominator_sign_split_cases_with(execution, |equation| {
-        solve_branch(items.next(), equation)
+    Ok(IsolatedDenominatorSignSplitSolvedCases {
+        positive_branch: solve_branch(items.next(), &execution.positive_equation)?,
+        negative_branch: solve_branch(items.next(), &execution.negative_equation)?,
     })
 }
 
@@ -5142,7 +5243,7 @@ pub fn solve_isolated_denominator_sign_split_execution_with_items<
     FMapBoundary,
 >(
     execution: &IsolatedDenominatorSignSplitExecutionPlan,
-    mut solve_branch: FSolveBranch,
+    solve_branch: FSolveBranch,
     mut map_boundary_item: FMapBoundary,
 ) -> Result<IsolatedDenominatorSignSplitExecutionSolved<TStep>, E>
 where
@@ -5152,10 +5253,7 @@ where
     ) -> Result<(SolutionSet, Vec<TStep>), E>,
     FMapBoundary: FnMut(DivisionDidacticExecutionItem) -> TStep,
 {
-    let solved =
-        solve_isolated_denominator_sign_split_cases_with_items(execution, |item, equation| {
-            solve_branch(item, equation)
-        })?;
+    let solved = solve_isolated_denominator_sign_split_cases_with_items(execution, solve_branch)?;
     let IsolatedDenominatorSignSplitSolvedCases {
         positive_branch: (positive_set, mut positive_steps),
         negative_branch: (negative_set, negative_steps),
@@ -5192,27 +5290,28 @@ where
     FSolveBranch: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
     FStep: FnMut(DivisionDidacticExecutionItem) -> S,
 {
-    let solved =
-        solve_isolated_denominator_sign_split_cases_with_items(execution, |item, equation| {
-            let mut case_steps = branch_prefix_steps.to_vec();
-            if include_items {
-                if let Some(item) = item {
-                    case_steps.push(map_item_to_step(item));
-                }
-            }
-            let (solution_set, sub_steps) = solve_branch(equation)?;
-            case_steps.extend(sub_steps);
-            Ok((solution_set, case_steps))
-        })?;
-    let IsolatedDenominatorSignSplitSolvedCases {
-        positive_branch: (positive_set, mut positive_steps),
-        negative_branch: (negative_set, negative_steps),
-    } = solved;
+    let mut items = if include_items {
+        Some(collect_isolated_denominator_sign_split_execution_items(execution).into_iter())
+    } else {
+        None
+    };
 
-    if include_items {
-        if let Some(item) = isolated_denominator_sign_split_boundary_item(execution) {
-            positive_steps.push(map_item_to_step(item));
-        }
+    let mut positive_steps = branch_prefix_steps.to_vec();
+    if let Some(item) = take_optional_item(&mut items) {
+        positive_steps.push(map_item_to_step(item));
+    }
+    let (positive_set, positive_sub_steps) = solve_branch(&execution.positive_equation)?;
+    positive_steps.extend(positive_sub_steps);
+
+    let mut negative_steps = branch_prefix_steps.to_vec();
+    if let Some(item) = take_optional_item(&mut items) {
+        negative_steps.push(map_item_to_step(item));
+    }
+    let (negative_set, negative_sub_steps) = solve_branch(&execution.negative_equation)?;
+    negative_steps.extend(negative_sub_steps);
+
+    if let Some(item) = take_optional_item(&mut items) {
+        positive_steps.push(map_item_to_step(item));
     }
     positive_steps.extend(negative_steps);
 
@@ -5312,7 +5411,7 @@ where
     };
 
     let mut positive_steps = branch_prefix_steps.to_vec();
-    if let Some(item) = items.as_mut().and_then(|it| it.next()) {
+    if let Some(item) = take_optional_item(&mut items) {
         positive_steps.push(runtime.map_item_to_step(item));
     }
     let (positive_set, mut positive_sub_steps) =
@@ -5320,14 +5419,14 @@ where
     positive_steps.append(&mut positive_sub_steps);
 
     let mut negative_steps = branch_prefix_steps.to_vec();
-    if let Some(item) = items.as_mut().and_then(|it| it.next()) {
+    if let Some(item) = take_optional_item(&mut items) {
         negative_steps.push(runtime.map_item_to_step(item));
     }
     let (negative_set, mut negative_sub_steps) =
         runtime.solve_branch(&execution.negative_equation, var)?;
     negative_steps.append(&mut negative_sub_steps);
 
-    if let Some(item) = items.as_mut().and_then(|it| it.next()) {
+    if let Some(item) = take_optional_item(&mut items) {
         positive_steps.push(runtime.map_item_to_step(item));
     }
     positive_steps.extend(negative_steps);
@@ -5868,12 +5967,10 @@ pub fn solve_abs_split_cases_with_items<E, TBranch, FSolveBranch>(
 where
     FSolveBranch: FnMut(Option<AbsSplitExecutionItem>, &Equation) -> Result<TBranch, E>,
 {
-    let items = collect_abs_split_execution_items(execution);
-    let mut item_idx = 0usize;
-    solve_abs_split_cases_with(execution, |equation| {
-        let item = items.get(item_idx).cloned();
-        item_idx += 1;
-        solve_branch(item, equation)
+    let mut items = collect_abs_split_execution_items(execution).into_iter();
+    Ok(AbsSplitSolvedCases {
+        positive_branch: solve_branch(items.next(), &execution.positive_equation)?,
+        negative_branch: solve_branch(items.next(), &execution.negative_equation)?,
     })
 }
 
@@ -5891,14 +5988,13 @@ pub struct AbsSplitExecutionSolved<TStep> {
 /// (positive branch first, then negative branch).
 pub fn solve_abs_split_execution_with_items<E, TStep, FSolveBranch>(
     execution: &AbsSplitExecutionPlan,
-    mut solve_branch: FSolveBranch,
+    solve_branch: FSolveBranch,
 ) -> Result<AbsSplitExecutionSolved<TStep>, E>
 where
     FSolveBranch:
         FnMut(Option<AbsSplitExecutionItem>, &Equation) -> Result<(SolutionSet, Vec<TStep>), E>,
 {
-    let solved =
-        solve_abs_split_cases_with_items(execution, |item, equation| solve_branch(item, equation))?;
+    let solved = solve_abs_split_cases_with_items(execution, solve_branch)?;
     let AbsSplitSolvedCases {
         positive_branch: (positive_set, mut positive_steps),
         negative_branch: (negative_set, negative_steps),
@@ -5926,16 +6022,31 @@ where
     FSolveBranch: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
     FStep: FnMut(AbsSplitExecutionItem) -> S,
 {
-    solve_abs_split_execution_with_items(execution, |item, equation| {
-        let mut case_steps = branch_prefix_steps.to_vec();
-        if include_items {
-            if let Some(item) = item {
-                case_steps.push(map_item_to_step(item));
-            }
-        }
-        let (solution_set, sub_steps) = solve_branch(equation)?;
-        case_steps.extend(sub_steps);
-        Ok((solution_set, case_steps))
+    let mut items = if include_items {
+        Some(collect_abs_split_execution_items(execution).into_iter())
+    } else {
+        None
+    };
+
+    let mut positive_steps = branch_prefix_steps.to_vec();
+    if let Some(item) = take_optional_item(&mut items) {
+        positive_steps.push(map_item_to_step(item));
+    }
+    let (positive_set, positive_sub_steps) = solve_branch(&execution.positive_equation)?;
+    positive_steps.extend(positive_sub_steps);
+
+    let mut negative_steps = branch_prefix_steps.to_vec();
+    if let Some(item) = take_optional_item(&mut items) {
+        negative_steps.push(map_item_to_step(item));
+    }
+    let (negative_set, negative_sub_steps) = solve_branch(&execution.negative_equation)?;
+    negative_steps.extend(negative_sub_steps);
+
+    positive_steps.extend(negative_steps);
+    Ok(AbsSplitExecutionSolved {
+        positive_set,
+        negative_set,
+        steps: positive_steps,
     })
 }
 
@@ -6014,7 +6125,7 @@ where
     };
 
     let mut positive_steps = branch_prefix_steps.to_vec();
-    if let Some(item) = items.as_mut().and_then(|it| it.next()) {
+    if let Some(item) = take_optional_item(&mut items) {
         positive_steps.push(runtime.map_item_to_step(item));
     }
     let (positive_set, mut positive_sub_steps) =
@@ -6022,7 +6133,7 @@ where
     positive_steps.append(&mut positive_sub_steps);
 
     let mut negative_steps = branch_prefix_steps.to_vec();
-    if let Some(item) = items.as_mut().and_then(|it| it.next()) {
+    if let Some(item) = take_optional_item(&mut items) {
         negative_steps.push(runtime.map_item_to_step(item));
     }
     let (negative_set, mut negative_sub_steps) =
@@ -8617,6 +8728,51 @@ mod tests {
         let a = ctx.var("a");
         let b = ctx.var("b");
         let out = shortcut_bases_equivalent_with(a, b, |left, right| left == a && right == b);
+        assert!(out);
+    }
+
+    #[test]
+    fn shortcut_bases_equivalent_with_runtime_short_circuits_on_identical_ids() {
+        struct Runtime {
+            called: bool,
+        }
+
+        impl ShortcutBasesEquivalentRuntime for Runtime {
+            fn equivalent_nontrivial(&mut self, _base: ExprId, _candidate: ExprId) -> bool {
+                self.called = true;
+                false
+            }
+        }
+
+        let mut ctx = Context::new();
+        let b = ctx.var("b");
+        let mut runtime = Runtime { called: false };
+        let out = shortcut_bases_equivalent_with_runtime(b, b, &mut runtime);
+        assert!(out);
+        assert!(
+            !runtime.called,
+            "nontrivial comparator must not run when ids are equal"
+        );
+    }
+
+    #[test]
+    fn shortcut_bases_equivalent_with_runtime_delegates_for_distinct_ids() {
+        struct Runtime {
+            a: ExprId,
+            b: ExprId,
+        }
+
+        impl ShortcutBasesEquivalentRuntime for Runtime {
+            fn equivalent_nontrivial(&mut self, left: ExprId, right: ExprId) -> bool {
+                left == self.a && right == self.b
+            }
+        }
+
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let mut runtime = Runtime { a, b };
+        let out = shortcut_bases_equivalent_with_runtime(a, b, &mut runtime);
         assert!(out);
     }
 

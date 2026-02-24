@@ -1,7 +1,7 @@
 use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::solve_core::solve_with_ctx;
-use crate::solver::{SolveStep, SolverOptions};
+use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, SolverOptions};
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
     is_known_negative, should_split_division_denominator_sign_cases,
@@ -27,8 +27,8 @@ use cas_solver_core::solve_outcome::{
     DivDenominatorIsolationRoute, DivIsolationRoute, DivisionDenominatorDidacticRuntime,
     DivisionDenominatorSignSplitRuntime, DivisionDenominatorSignSplitSolvedCases,
     IsolatedDenominatorSignSplitRuntime, IsolatedDenominatorSignSplitSolvedCases,
-    ProductZeroInequalityExecutionRuntime, TermIsolationPlanRuntime,
-    TermIsolationRewriteExecutionItem, TermIsolationRewritePlan, TermIsolationRewriteRuntime,
+    ProductZeroInequalityExecutionRuntime, TermIsolationRewriteExecutionItem,
+    TermIsolationRewritePlan, TermIsolationRewriteRuntime,
 };
 
 use super::{isolate, prepend_steps};
@@ -64,12 +64,7 @@ impl TermIsolationRewriteRuntime<CasError, SolveStep> for EngineTermIsolationRun
     }
 
     fn map_item_to_step(&mut self, item: TermIsolationRewriteExecutionItem) -> SolveStep {
-        SolveStep {
-            description: item.description,
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
+        medium_step(item.description, item.equation)
     }
 }
 
@@ -79,16 +74,24 @@ struct EngineDivisionIsolationRuntime<'a, 'b> {
     solve_ctx: &'b super::super::SolveCtx,
 }
 
-struct EngineTermIsolationPlanRuntime;
+impl EngineDivisionIsolationRuntime<'_, '_> {
+    fn render_expr_in_context(&self, expr: ExprId) -> String {
+        solver_render_expr(&self.simplifier.context, expr)
+    }
 
-impl TermIsolationPlanRuntime for EngineTermIsolationPlanRuntime {
-    fn render_expr(&mut self, core_ctx: &cas_ast::Context, expr: ExprId) -> String {
-        format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: core_ctx,
-                id: expr
-            }
+    fn isolate_equation(
+        &mut self,
+        equation: &cas_ast::Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        isolate(
+            equation.lhs,
+            equation.rhs,
+            equation.op.clone(),
+            var,
+            self.simplifier,
+            self.opts,
+            self.solve_ctx,
         )
     }
 }
@@ -114,13 +117,7 @@ impl DivisionDenominatorDidacticRuntime<CasError, SolveStep>
     for EngineDivisionIsolationRuntime<'_, '_>
 {
     fn render_expr(&mut self, expr: ExprId) -> String {
-        format!(
-            "{}",
-            cas_formatter::DisplayExpr {
-                context: &self.simplifier.context,
-                id: expr
-            }
-        )
+        self.render_expr_in_context(expr)
     }
 
     fn solve_rewritten(
@@ -128,27 +125,14 @@ impl DivisionDenominatorDidacticRuntime<CasError, SolveStep>
         equation: &cas_ast::Equation,
         var: &str,
     ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        isolate(
-            equation.lhs,
-            equation.rhs,
-            equation.op.clone(),
-            var,
-            self.simplifier,
-            self.opts,
-            self.solve_ctx,
-        )
+        self.isolate_equation(equation, var)
     }
 
     fn map_item_to_step(
         &mut self,
         item: cas_solver_core::solve_outcome::DivisionDidacticExecutionItem,
     ) -> SolveStep {
-        SolveStep {
-            description: item.description().to_string(),
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        }
+        medium_step(item.description().to_string(), item.equation)
     }
 }
 
@@ -156,7 +140,7 @@ impl DivisionDenominatorSignSplitRuntime<CasError, SolveStep>
     for EngineDivisionIsolationRuntime<'_, '_>
 {
     fn render_expr(&mut self, expr: ExprId) -> String {
-        <Self as DivisionDenominatorDidacticRuntime<CasError, SolveStep>>::render_expr(self, expr)
+        self.render_expr_in_context(expr)
     }
 
     fn solve_branch(
@@ -164,15 +148,7 @@ impl DivisionDenominatorSignSplitRuntime<CasError, SolveStep>
         equation: &cas_ast::Equation,
         var: &str,
     ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        isolate(
-            equation.lhs,
-            equation.rhs,
-            equation.op.clone(),
-            var,
-            self.simplifier,
-            self.opts,
-            self.solve_ctx,
-        )
+        self.isolate_equation(equation, var)
     }
 
     fn solve_domain(
@@ -198,7 +174,7 @@ impl IsolatedDenominatorSignSplitRuntime<CasError, SolveStep>
     for EngineDivisionIsolationRuntime<'_, '_>
 {
     fn render_expr(&mut self, expr: ExprId) -> String {
-        <Self as DivisionDenominatorDidacticRuntime<CasError, SolveStep>>::render_expr(self, expr)
+        self.render_expr_in_context(expr)
     }
 
     fn solve_branch(
@@ -206,15 +182,7 @@ impl IsolatedDenominatorSignSplitRuntime<CasError, SolveStep>
         equation: &cas_ast::Equation,
         var: &str,
     ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        isolate(
-            equation.lhs,
-            equation.rhs,
-            equation.op.clone(),
-            var,
-            self.simplifier,
-            self.opts,
-            self.solve_ctx,
-        )
+        self.isolate_equation(equation, var)
     }
 
     fn map_item_to_step(
@@ -279,7 +247,7 @@ pub(super) fn isolate_add(
         }
     }
 
-    let mut plan_runtime = EngineTermIsolationPlanRuntime;
+    let mut plan_runtime = solver_render_expr as fn(&cas_ast::Context, ExprId) -> String;
     let plan = plan_add_operand_isolation_step_with_runtime(
         &mut simplifier.context,
         add_operands.isolated_addend,
@@ -306,7 +274,7 @@ pub(super) fn isolate_sub(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let mut plan_runtime = EngineTermIsolationPlanRuntime;
+    let mut plan_runtime = solver_render_expr as fn(&cas_ast::Context, ExprId) -> String;
     let plan = plan_sub_isolation_step_with_runtime(
         &mut simplifier.context,
         l,
@@ -369,7 +337,7 @@ pub(super) fn isolate_mul(
 
     let mul_operands = derive_mul_isolation_operands(&simplifier.context, l, r, var);
     let moved_is_negative = is_known_negative(&simplifier.context, mul_operands.moved_factor);
-    let mut plan_runtime = EngineTermIsolationPlanRuntime;
+    let mut plan_runtime = solver_render_expr as fn(&cas_ast::Context, ExprId) -> String;
     let plan = plan_mul_factor_isolation_step_with_runtime(
         &mut simplifier.context,
         mul_operands.isolated_factor,
@@ -443,7 +411,7 @@ pub(super) fn isolate_div(
         } else {
             // A = RHS * B
             let denominator_is_negative = is_known_negative(&simplifier.context, r);
-            let mut plan_runtime = EngineTermIsolationPlanRuntime;
+            let mut plan_runtime = solver_render_expr as fn(&cas_ast::Context, ExprId) -> String;
             let plan = plan_div_numerator_isolation_step_with_runtime(
                 &mut simplifier.context,
                 l,

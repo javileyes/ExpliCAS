@@ -1,7 +1,7 @@
 use crate::isolation_utils::contains_var;
 use cas_ast::{ordering::compare_expr, Constant, Context, Equation, Expr, ExprId, SolutionSet};
 use cas_math::build::mul2_raw;
-use std::cmp::Ordering;
+use std::{cmp::Ordering, marker::PhantomData};
 
 /// Build narration when a substitution variable is introduced.
 pub fn detected_substitution_message(sub_expr_debug: &str) -> String {
@@ -152,6 +152,49 @@ where
 {
     let items = collect_substitution_intro_execution_items(&execution);
     let solved = solve_rewritten(items, &execution.equation)?;
+    Ok(ExponentialSubstitutionSolved { execution, solved })
+}
+
+/// Runtime contract for solving one rewritten substitution equation.
+pub trait ExponentialSubstitutionSolveRuntime<E, T> {
+    /// Solve the rewritten substitution equation.
+    fn solve_rewritten(&mut self, equation: &Equation) -> Result<T, E>;
+}
+
+/// Runtime contract for solving one rewritten substitution equation with
+/// aligned introduction execution items.
+pub trait ExponentialSubstitutionSolveItemsRuntime<E, T> {
+    /// Solve the rewritten substitution equation, receiving intro items.
+    fn solve_rewritten(
+        &mut self,
+        items: Vec<SubstitutionExecutionItem>,
+        equation: &Equation,
+    ) -> Result<T, E>;
+}
+
+/// Execute solving for a rewritten substitution equation via runtime.
+pub fn solve_exponential_substitution_with_runtime<R, E, T>(
+    execution: ExponentialSubstitutionExecutionPlan,
+    runtime: &mut R,
+) -> Result<ExponentialSubstitutionSolved<T>, E>
+where
+    R: ExponentialSubstitutionSolveRuntime<E, T>,
+{
+    let solved = runtime.solve_rewritten(&execution.equation)?;
+    Ok(ExponentialSubstitutionSolved { execution, solved })
+}
+
+/// Execute solving for a rewritten substitution equation with aligned intro
+/// execution items via runtime.
+pub fn solve_exponential_substitution_with_items_runtime<R, E, T>(
+    execution: ExponentialSubstitutionExecutionPlan,
+    runtime: &mut R,
+) -> Result<ExponentialSubstitutionSolved<T>, E>
+where
+    R: ExponentialSubstitutionSolveItemsRuntime<E, T>,
+{
+    let items = collect_substitution_intro_execution_items(&execution);
+    let solved = runtime.solve_rewritten(items, &execution.equation)?;
     Ok(ExponentialSubstitutionSolved { execution, solved })
 }
 
@@ -318,6 +361,55 @@ where
     Ok(BackSubstitutionSolved { plan, solved })
 }
 
+/// Runtime contract for solving one back-substitution equation.
+pub trait BackSubstitutionPlanSolveRuntime<E, T> {
+    /// Solve one `substitution_expr = value` equation.
+    fn solve_equation(&mut self, equation: &Equation) -> Result<T, E>;
+}
+
+/// Runtime contract for solving one back-substitution equation with optional
+/// aligned didactic execution item.
+pub trait BackSubstitutionPlanSolveItemsRuntime<E, T> {
+    /// Solve one `substitution_expr = value` equation with optional item.
+    fn solve_equation(
+        &mut self,
+        item: Option<BackSubstitutionExecutionItem>,
+        equation: &Equation,
+    ) -> Result<T, E>;
+}
+
+/// Solve all equations in a back-substitution plan in stable order via runtime.
+pub fn solve_back_substitution_plan_with_runtime<R, E, T>(
+    plan: BackSubstitutionSolvePlan,
+    runtime: &mut R,
+) -> Result<BackSubstitutionSolved<T>, E>
+where
+    R: BackSubstitutionPlanSolveRuntime<E, T>,
+{
+    let mut solved = Vec::with_capacity(plan.equations.len());
+    for equation in &plan.equations {
+        solved.push(runtime.solve_equation(equation)?);
+    }
+    Ok(BackSubstitutionSolved { plan, solved })
+}
+
+/// Solve all equations in a back-substitution plan in stable order via runtime
+/// while passing optional aligned didactic execution items.
+pub fn solve_back_substitution_plan_with_items_runtime<R, E, T>(
+    plan: BackSubstitutionSolvePlan,
+    runtime: &mut R,
+) -> Result<BackSubstitutionSolved<T>, E>
+where
+    R: BackSubstitutionPlanSolveItemsRuntime<E, T>,
+{
+    let mut solved = Vec::with_capacity(plan.equations.len());
+    let mut items = plan.items.iter().cloned();
+    for equation in &plan.equations {
+        solved.push(runtime.solve_equation(items.next(), equation)?);
+    }
+    Ok(BackSubstitutionSolved { plan, solved })
+}
+
 /// High-level solved outcome for exponential substitution strategy orchestration.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SubstitutionStrategySolved<S> {
@@ -370,20 +462,48 @@ where
             runtime.render_expr(id)
         });
 
-    let solved_intro =
-        solve_exponential_substitution_with_items(intro_execution, |items, new_eq| {
+    struct IntroRuntime<'a, R, E, S> {
+        runtime: &'a mut R,
+        include_didactic_items: bool,
+        substitution_var: &'a str,
+        _marker: PhantomData<(E, S)>,
+    }
+
+    impl<R, E, S> ExponentialSubstitutionSolveItemsRuntime<E, (SolutionSet, Vec<S>)>
+        for IntroRuntime<'_, R, E, S>
+    where
+        R: SubstitutionStrategyRuntime<E, S>,
+    {
+        fn solve_rewritten(
+            &mut self,
+            items: Vec<SubstitutionExecutionItem>,
+            equation: &Equation,
+        ) -> Result<(SolutionSet, Vec<S>), E> {
             let mut steps = Vec::new();
-            if include_didactic_items {
+            if self.include_didactic_items {
                 steps.extend(
                     items
                         .into_iter()
-                        .map(|item| runtime.map_step(item.description, item.equation)),
+                        .map(|item| self.runtime.map_step(item.description, item.equation)),
                 );
             }
-            let (u_solutions, mut u_steps) = runtime.solve_equation(new_eq, substitution_var)?;
+            let (u_solutions, mut u_steps) = self
+                .runtime
+                .solve_equation(equation, self.substitution_var)?;
             steps.append(&mut u_steps);
             Ok((u_solutions, steps))
-        })?;
+        }
+    }
+
+    let solved_intro = {
+        let mut intro_runtime = IntroRuntime {
+            runtime,
+            include_didactic_items,
+            substitution_var,
+            _marker: PhantomData,
+        };
+        solve_exponential_substitution_with_items_runtime(intro_execution, &mut intro_runtime)?
+    };
 
     let (u_solutions, mut steps) = solved_intro.solved;
 
@@ -395,19 +515,46 @@ where
                 include_didactic_items,
                 |id| runtime.render_expr(id),
             );
-            let solved_back =
-                solve_back_substitution_plan_with_items(back_plan, |item, sub_eq| {
+            struct BackRuntime<'a, R, E, S> {
+                runtime: &'a mut R,
+                include_didactic_items: bool,
+                target_var: &'a str,
+                _marker: PhantomData<(E, S)>,
+            }
+
+            impl<R, E, S> BackSubstitutionPlanSolveItemsRuntime<E, (SolutionSet, Vec<S>)>
+                for BackRuntime<'_, R, E, S>
+            where
+                R: SubstitutionStrategyRuntime<E, S>,
+            {
+                fn solve_equation(
+                    &mut self,
+                    item: Option<BackSubstitutionExecutionItem>,
+                    equation: &Equation,
+                ) -> Result<(SolutionSet, Vec<S>), E> {
                     let mut local_steps = Vec::new();
-                    if include_didactic_items {
+                    if self.include_didactic_items {
                         if let Some(item) = item {
-                            local_steps.push(runtime.map_step(item.description, item.equation));
+                            local_steps
+                                .push(self.runtime.map_step(item.description, item.equation));
                         }
                     }
                     let (x_solution_set, mut x_steps) =
-                        runtime.solve_equation(sub_eq, target_var)?;
+                        self.runtime.solve_equation(equation, self.target_var)?;
                     local_steps.append(&mut x_steps);
                     Ok((x_solution_set, local_steps))
-                })?;
+                }
+            }
+
+            let solved_back = {
+                let mut back_runtime = BackRuntime {
+                    runtime,
+                    include_didactic_items,
+                    target_var,
+                    _marker: PhantomData,
+                };
+                solve_back_substitution_plan_with_items_runtime(back_plan, &mut back_runtime)?
+            };
 
             let mut final_solutions = Vec::new();
             for (x_sol, mut x_steps) in solved_back.solved {

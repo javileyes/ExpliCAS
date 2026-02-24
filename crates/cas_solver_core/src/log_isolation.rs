@@ -109,12 +109,8 @@ pub fn solve_log_isolation_rewrite_pipeline_with_item<E, S, R>(
 where
     R: LogIsolationRewriteRuntime<E, S>,
 {
-    let mut first_item = None;
-    let solved_rewrite = solve_log_isolation_rewrite_with_item(rewrite, |item, equation| {
-        first_item = item;
-        runtime.solve_rewritten(equation)
-    })?;
-    let (solution_set, mut substeps) = solved_rewrite.solved;
+    let first_item = first_log_isolation_execution_item(&rewrite);
+    let (solution_set, mut substeps) = runtime.solve_rewritten(&rewrite.equation)?;
     let mut steps = Vec::with_capacity(substeps.len() + usize::from(include_item));
     if include_item {
         if let Some(item) = first_item {
@@ -123,7 +119,7 @@ where
     }
     steps.append(&mut substeps);
     Ok(LogIsolationSolved {
-        rewrite: solved_rewrite.rewrite,
+        rewrite,
         solved: (solution_set, steps),
     })
 }
@@ -200,13 +196,15 @@ pub fn plan_log_isolation_step_with<F>(
     rhs: ExprId,
     var: &str,
     op: RelOp,
-    render_expr: F,
+    mut render_expr: F,
 ) -> Option<LogIsolationRewritePlan>
 where
     F: FnMut(&Context, ExprId) -> String,
 {
     let plan = plan_log_isolation(ctx, base, arg, rhs, var)?;
-    let step = build_log_isolation_step_with(plan, ctx, base, op, render_expr);
+    let step = build_log_isolation_step_with(plan, ctx, base, op, |core_ctx, id| {
+        render_expr(core_ctx, id)
+    });
     let equation = step.equation_after;
     let items = vec![LogIsolationExecutionItem {
         equation: equation.clone(),
@@ -219,6 +217,15 @@ where
 pub trait LogIsolationPlanRuntime {
     /// Render expression IDs for didactic narration.
     fn render_expr(&mut self, ctx: &Context, expr: ExprId) -> String;
+}
+
+impl<F> LogIsolationPlanRuntime for F
+where
+    F: FnMut(&Context, ExprId) -> String,
+{
+    fn render_expr(&mut self, ctx: &Context, expr: ExprId) -> String {
+        self(ctx, expr)
+    }
 }
 
 /// Runtime-based log-isolation planning helper.
@@ -234,9 +241,16 @@ pub fn plan_log_isolation_step_with_runtime<R>(
 where
     R: LogIsolationPlanRuntime,
 {
-    plan_log_isolation_step_with(ctx, base, arg, rhs, var, op, |core_ctx, id| {
+    let plan = plan_log_isolation(ctx, base, arg, rhs, var)?;
+    let step = build_log_isolation_step_with(plan, ctx, base, op, |core_ctx, id| {
         runtime.render_expr(core_ctx, id)
-    })
+    });
+    let equation = step.equation_after;
+    let items = vec![LogIsolationExecutionItem {
+        equation: equation.clone(),
+        description: step.description,
+    }];
+    Some(LogIsolationRewritePlan { equation, items })
 }
 
 /// Build the transformed equation target for `log(base, arg) = rhs`.
