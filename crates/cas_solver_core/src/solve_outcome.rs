@@ -4028,6 +4028,58 @@ where
     })
 }
 
+/// Runtime contract for denominator-isolation didactic pipeline execution.
+pub trait DivisionDenominatorDidacticRuntime<E, S> {
+    /// Render expression IDs for didactic narration.
+    fn render_expr(&mut self, expr: ExprId) -> String;
+    /// Solve rewritten denominator-isolation equation recursively.
+    fn solve_rewritten(
+        &mut self,
+        equation: &Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<S>), E>;
+    /// Map didactic execution item to caller-owned step payload.
+    fn map_item_to_step(&mut self, item: DivisionDidacticExecutionItem) -> S;
+}
+
+/// Solve denominator-isolation plan with optional didactic items via runtime.
+pub fn solve_division_denominator_pipeline_with_optional_items_runtime<R, E, S>(
+    didactic_plan: DivisionDenominatorDidacticPlan,
+    include_items: bool,
+    simplified_multiply_rhs: ExprId,
+    var: &str,
+    runtime: &mut R,
+) -> Result<DivisionDenominatorExecutionPipelineSolved<S>, E>
+where
+    R: DivisionDenominatorDidacticRuntime<E, S>,
+{
+    if include_items {
+        let execution = build_division_denominator_execution_with(
+            didactic_plan,
+            simplified_multiply_rhs,
+            |id| runtime.render_expr(id),
+        );
+        let items = collect_division_denominator_execution_items(&execution);
+        let mut steps = items
+            .into_iter()
+            .map(|item| runtime.map_item_to_step(item))
+            .collect::<Vec<_>>();
+        let (solution_set, mut sub_steps) =
+            runtime.solve_rewritten(&execution.divide_equation, var)?;
+        steps.append(&mut sub_steps);
+        return Ok(DivisionDenominatorExecutionPipelineSolved {
+            solution_set,
+            steps,
+        });
+    }
+
+    let (solution_set, steps) = runtime.solve_rewritten(&didactic_plan.divide_equation, var)?;
+    Ok(DivisionDenominatorExecutionPipelineSolved {
+        solution_set,
+        steps,
+    })
+}
+
 /// Classify numeric RHS sign for `|A| = RHS`.
 pub fn abs_equality_precheck(sign: NumericSign) -> AbsEqualityPrecheck {
     match sign {
@@ -4356,6 +4408,85 @@ where
     )
 }
 
+/// Runtime contract for denominator-sign split pipeline execution.
+pub trait DivisionDenominatorSignSplitRuntime<E, S> {
+    /// Render expression IDs for didactic narration.
+    fn render_expr(&mut self, expr: ExprId) -> String;
+    /// Solve one branch equation recursively.
+    fn solve_branch(&mut self, equation: &Equation, var: &str) -> Result<(SolutionSet, Vec<S>), E>;
+    /// Solve one sign-domain equation.
+    fn solve_domain(&mut self, equation: &Equation, var: &str) -> Result<SolutionSet, E>;
+    /// Map didactic execution item to caller-owned step payload.
+    fn map_item_to_step(&mut self, item: DivisionDidacticExecutionItem) -> S;
+}
+
+/// Solve denominator-sign split with optional didactic items via runtime.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_division_denominator_sign_split_pipeline_with_optional_items_runtime<R, E, S>(
+    split_plan: DivisionDenominatorSignSplitPlan,
+    denominator: ExprId,
+    case_boundary_lhs: ExprId,
+    case_boundary_op: RelOp,
+    simplified_rhs: ExprId,
+    include_items: bool,
+    branch_prefix_steps: &[S],
+    var: &str,
+    runtime: &mut R,
+) -> Result<DivisionDenominatorSignSplitExecutionSolved<S>, E>
+where
+    S: Clone,
+    R: DivisionDenominatorSignSplitRuntime<E, S>,
+{
+    let execution = if include_items {
+        build_division_denominator_sign_split_execution_with(
+            split_plan,
+            denominator,
+            case_boundary_lhs,
+            case_boundary_op,
+            simplified_rhs,
+            |id| runtime.render_expr(id),
+        )
+    } else {
+        materialize_division_denominator_sign_split_execution(split_plan, simplified_rhs)
+    };
+    let mut items = if include_items {
+        Some(collect_division_denominator_sign_split_execution_items(&execution).into_iter())
+    } else {
+        None
+    };
+
+    let mut positive_steps = branch_prefix_steps.to_vec();
+    if let Some(item) = items.as_mut().and_then(|it| it.next()) {
+        positive_steps.push(runtime.map_item_to_step(item));
+    }
+    let (positive_set, mut positive_sub_steps) =
+        runtime.solve_branch(&execution.positive_equation, var)?;
+    positive_steps.append(&mut positive_sub_steps);
+    let positive_domain_set = runtime.solve_domain(&execution.positive_domain, var)?;
+
+    let mut negative_steps = branch_prefix_steps.to_vec();
+    if let Some(item) = items.as_mut().and_then(|it| it.next()) {
+        negative_steps.push(runtime.map_item_to_step(item));
+    }
+    let (negative_set, mut negative_sub_steps) =
+        runtime.solve_branch(&execution.negative_equation, var)?;
+    negative_steps.append(&mut negative_sub_steps);
+    let negative_domain_set = runtime.solve_domain(&execution.negative_domain, var)?;
+
+    if let Some(item) = items.as_mut().and_then(|it| it.next()) {
+        positive_steps.push(runtime.map_item_to_step(item));
+    }
+    positive_steps.extend(negative_steps);
+
+    Ok(DivisionDenominatorSignSplitExecutionSolved {
+        positive_set,
+        negative_set,
+        positive_domain_set,
+        negative_domain_set,
+        steps: positive_steps,
+    })
+}
+
 /// Return the boundary didactic item (`--- End of Case 1 ---`) when available.
 pub fn division_denominator_sign_split_boundary_item(
     execution: &DivisionDenominatorSignSplitExecutionPlan,
@@ -4553,6 +4684,75 @@ where
         solve_branch,
         map_item_to_step,
     )
+}
+
+/// Runtime contract for isolated-denominator sign split pipeline execution.
+pub trait IsolatedDenominatorSignSplitRuntime<E, S> {
+    /// Render expression IDs for didactic narration.
+    fn render_expr(&mut self, expr: ExprId) -> String;
+    /// Solve one branch equation recursively.
+    fn solve_branch(&mut self, equation: &Equation, var: &str) -> Result<(SolutionSet, Vec<S>), E>;
+    /// Map didactic execution item to caller-owned step payload.
+    fn map_item_to_step(&mut self, item: DivisionDidacticExecutionItem) -> S;
+}
+
+/// Solve isolated-denominator sign split with optional didactic items via runtime.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_isolated_denominator_sign_split_pipeline_with_optional_items_runtime<R, E, S>(
+    split_plan: IsolatedDenominatorSignSplitPlan,
+    denominator: ExprId,
+    case_boundary_op: RelOp,
+    include_items: bool,
+    branch_prefix_steps: &[S],
+    var: &str,
+    runtime: &mut R,
+) -> Result<IsolatedDenominatorSignSplitExecutionSolved<S>, E>
+where
+    S: Clone,
+    R: IsolatedDenominatorSignSplitRuntime<E, S>,
+{
+    let execution = if include_items {
+        build_isolated_denominator_sign_split_execution_with(
+            split_plan,
+            denominator,
+            case_boundary_op,
+            |id| runtime.render_expr(id),
+        )
+    } else {
+        materialize_isolated_denominator_sign_split_execution(split_plan)
+    };
+    let mut items = if include_items {
+        Some(collect_isolated_denominator_sign_split_execution_items(&execution).into_iter())
+    } else {
+        None
+    };
+
+    let mut positive_steps = branch_prefix_steps.to_vec();
+    if let Some(item) = items.as_mut().and_then(|it| it.next()) {
+        positive_steps.push(runtime.map_item_to_step(item));
+    }
+    let (positive_set, mut positive_sub_steps) =
+        runtime.solve_branch(&execution.positive_equation, var)?;
+    positive_steps.append(&mut positive_sub_steps);
+
+    let mut negative_steps = branch_prefix_steps.to_vec();
+    if let Some(item) = items.as_mut().and_then(|it| it.next()) {
+        negative_steps.push(runtime.map_item_to_step(item));
+    }
+    let (negative_set, mut negative_sub_steps) =
+        runtime.solve_branch(&execution.negative_equation, var)?;
+    negative_steps.append(&mut negative_sub_steps);
+
+    if let Some(item) = items.as_mut().and_then(|it| it.next()) {
+        positive_steps.push(runtime.map_item_to_step(item));
+    }
+    positive_steps.extend(negative_steps);
+
+    Ok(IsolatedDenominatorSignSplitExecutionSolved {
+        positive_set,
+        negative_set,
+        steps: positive_steps,
+    })
 }
 
 /// Return the boundary didactic item (`--- End of Case 1 ---`) when available.
@@ -9217,6 +9417,66 @@ mod tests {
         assert_eq!(solved.steps, vec!["direct".to_string()]);
     }
 
+    struct TestDivisionDidacticRuntime {
+        solve_result: (SolutionSet, Vec<String>),
+        last_var: Option<String>,
+    }
+
+    impl DivisionDenominatorDidacticRuntime<&'static str, String> for TestDivisionDidacticRuntime {
+        fn render_expr(&mut self, expr: ExprId) -> String {
+            expr.to_string()
+        }
+
+        fn solve_rewritten(
+            &mut self,
+            _equation: &Equation,
+            var: &str,
+        ) -> Result<(SolutionSet, Vec<String>), &'static str> {
+            self.last_var = Some(var.to_string());
+            Ok(self.solve_result.clone())
+        }
+
+        fn map_item_to_step(&mut self, item: DivisionDidacticExecutionItem) -> String {
+            item.description
+        }
+    }
+
+    #[test]
+    fn solve_division_denominator_pipeline_with_optional_items_runtime_includes_didactic_when_enabled(
+    ) {
+        let mut ctx = Context::new();
+        let n = ctx.var("n");
+        let d = ctx.var("d");
+        let r = ctx.var("r");
+        let isolated_rhs = ctx.var("isolated");
+        let plan = plan_division_denominator_didactic(&mut ctx, n, d, r, isolated_rhs, RelOp::Eq);
+        let simplified_mul_rhs = plan.multiply_equation.rhs;
+        let mut runtime = TestDivisionDidacticRuntime {
+            solve_result: (SolutionSet::AllReals, vec!["solve".to_string()]),
+            last_var: None,
+        };
+
+        let solved = solve_division_denominator_pipeline_with_optional_items_runtime(
+            plan,
+            true,
+            simplified_mul_rhs,
+            "x",
+            &mut runtime,
+        )
+        .expect("runtime pipeline should solve");
+
+        assert_eq!(runtime.last_var.as_deref(), Some("x"));
+        assert!(matches!(solved.solution_set, SolutionSet::AllReals));
+        assert_eq!(
+            solved.steps,
+            vec![
+                format!("Multiply both sides by {}", d),
+                format!("Divide both sides by {}", r),
+                "solve".to_string(),
+            ]
+        );
+    }
+
     #[test]
     fn log_isolation_messages_format_expected_text() {
         assert_eq!(
@@ -10191,6 +10451,79 @@ mod tests {
         assert_eq!(solved.steps, vec![0u8, 1u8, 0u8, 1u8]);
     }
 
+    struct TestDivisionSignSplitRuntime {
+        domain_set: SolutionSet,
+        last_var: Option<String>,
+    }
+
+    impl DivisionDenominatorSignSplitRuntime<&'static str, String> for TestDivisionSignSplitRuntime {
+        fn render_expr(&mut self, expr: ExprId) -> String {
+            expr.to_string()
+        }
+
+        fn solve_branch(
+            &mut self,
+            equation: &Equation,
+            var: &str,
+        ) -> Result<(SolutionSet, Vec<String>), &'static str> {
+            self.last_var = Some(var.to_string());
+            Ok((
+                SolutionSet::Discrete(vec![equation.rhs]),
+                vec!["branch".to_string()],
+            ))
+        }
+
+        fn solve_domain(
+            &mut self,
+            _equation: &Equation,
+            _var: &str,
+        ) -> Result<SolutionSet, &'static str> {
+            Ok(self.domain_set.clone())
+        }
+
+        fn map_item_to_step(&mut self, item: DivisionDidacticExecutionItem) -> String {
+            item.description
+        }
+    }
+
+    #[test]
+    fn solve_division_denominator_sign_split_pipeline_with_optional_items_runtime_includes_didactic_when_enabled(
+    ) {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let simplified_rhs = ctx.var("s");
+        let split =
+            plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Lt).unwrap();
+        let mut runtime = TestDivisionSignSplitRuntime {
+            domain_set: SolutionSet::AllReals,
+            last_var: None,
+        };
+
+        let solved = solve_division_denominator_sign_split_pipeline_with_optional_items_runtime(
+            split,
+            den,
+            num,
+            RelOp::Lt,
+            simplified_rhs,
+            true,
+            &["prefix".to_string()],
+            "x",
+            &mut runtime,
+        )
+        .expect("runtime pipeline should solve");
+
+        assert_eq!(runtime.last_var.as_deref(), Some("x"));
+        assert_eq!(solved.steps[0], "prefix");
+        assert!(solved.steps[1].starts_with("Case 1: Assume"));
+        assert_eq!(solved.steps[2], "branch");
+        assert_eq!(solved.steps[3], "--- End of Case 1 ---");
+        assert_eq!(solved.steps[4], "prefix");
+        assert!(solved.steps[5].starts_with("Case 2: Assume"));
+        assert_eq!(solved.steps[6], "branch");
+    }
+
     #[test]
     fn division_denominator_sign_split_boundary_item_returns_case_separator() {
         let mut ctx = Context::new();
@@ -10553,6 +10886,64 @@ mod tests {
         .expect("pipeline should solve");
 
         assert_eq!(solved.steps, vec![0u8, 1u8, 0u8, 1u8]);
+    }
+
+    struct TestIsolatedDenominatorSignSplitRuntime {
+        last_var: Option<String>,
+    }
+
+    impl IsolatedDenominatorSignSplitRuntime<&'static str, String>
+        for TestIsolatedDenominatorSignSplitRuntime
+    {
+        fn render_expr(&mut self, expr: ExprId) -> String {
+            expr.to_string()
+        }
+
+        fn solve_branch(
+            &mut self,
+            equation: &Equation,
+            var: &str,
+        ) -> Result<(SolutionSet, Vec<String>), &'static str> {
+            self.last_var = Some(var.to_string());
+            Ok((
+                SolutionSet::Discrete(vec![equation.rhs]),
+                vec!["branch".to_string()],
+            ))
+        }
+
+        fn map_item_to_step(&mut self, item: DivisionDidacticExecutionItem) -> String {
+            item.description
+        }
+    }
+
+    #[test]
+    fn solve_isolated_denominator_sign_split_pipeline_with_optional_items_runtime_includes_didactic_when_enabled(
+    ) {
+        let mut ctx = Context::new();
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let split = plan_isolated_denominator_sign_split(den, rhs, RelOp::Leq).unwrap();
+        let mut runtime = TestIsolatedDenominatorSignSplitRuntime { last_var: None };
+
+        let solved = solve_isolated_denominator_sign_split_pipeline_with_optional_items_runtime(
+            split,
+            den,
+            RelOp::Leq,
+            true,
+            &["prefix".to_string()],
+            "x",
+            &mut runtime,
+        )
+        .expect("runtime pipeline should solve");
+
+        assert_eq!(runtime.last_var.as_deref(), Some("x"));
+        assert_eq!(solved.steps[0], "prefix");
+        assert!(solved.steps[1].starts_with("Case 1: Assume"));
+        assert_eq!(solved.steps[2], "branch");
+        assert_eq!(solved.steps[3], "--- End of Case 1 ---");
+        assert_eq!(solved.steps[4], "prefix");
+        assert!(solved.steps[5].starts_with("Case 2: Assume"));
+        assert_eq!(solved.steps[6], "branch");
     }
 
     #[test]
