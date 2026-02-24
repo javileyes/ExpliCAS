@@ -28,23 +28,18 @@ const MAX_CANDIDATES: usize = 200;
 const MAX_DEGREE: usize = 10;
 
 pub struct RationalRootsStrategy;
-
-struct EngineRationalRootsRuntime<'a> {
-    simplifier: &'a mut Simplifier,
-}
-
-impl RationalRootsStrategyRuntime for EngineRationalRootsRuntime<'_> {
+impl RationalRootsStrategyRuntime for Simplifier {
     fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.simplifier.context
+        &mut self.context
     }
 
     fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
-        let (simplified, _) = self.simplifier.simplify(expr);
+        let (simplified, _) = self.simplify(expr);
         simplified
     }
 
     fn expand_expr(&mut self, expr: ExprId) -> ExprId {
-        crate::expand::expand(&mut self.simplifier.context, expr)
+        crate::expand::expand(&mut self.context, expr)
     }
 }
 
@@ -62,9 +57,8 @@ impl SolverStrategy for RationalRootsStrategy {
         _ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let include_item = simplifier.collect_steps();
-        let mut runtime = EngineRationalRootsRuntime { simplifier };
         let solved = solve_rational_roots_strategy_with_runtime_and_item(
-            &mut runtime,
+            simplifier,
             eq.lhs,
             eq.rhs,
             eq.op.clone(),
