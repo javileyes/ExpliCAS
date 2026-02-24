@@ -583,6 +583,65 @@ where
     }
 }
 
+/// Runtime contract for exponent-shortcut pipeline execution.
+pub trait PowExponentShortcutPipelineRuntime<E, S> {
+    /// Solve isolated exponent equation for `var`.
+    fn solve_isolated_exponent(
+        &mut self,
+        lhs_exponent: ExprId,
+        rhs: ExprId,
+        op: RelOp,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<S>), E>;
+    /// Map optional shortcut item to caller-owned step payload.
+    fn map_shortcut_item_to_step(&mut self, item: PowExponentShortcutExecutionItem) -> S;
+}
+
+/// Execute exponent-shortcut solve + optional first-item dispatch via runtime.
+pub fn solve_pow_exponent_shortcut_pipeline_with_item_runtime<R, E, S>(
+    action: PowExponentShortcutEngineAction,
+    lhs_exponent: ExprId,
+    include_item: bool,
+    var: &str,
+    runtime: &mut R,
+) -> Result<PowExponentShortcutPipelineSolved<S>, E>
+where
+    R: PowExponentShortcutPipelineRuntime<E, S>,
+{
+    match action {
+        PowExponentShortcutEngineAction::Continue => {
+            Ok(PowExponentShortcutPipelineSolved::Continue)
+        }
+        PowExponentShortcutEngineAction::IsolateExponent { rhs, op, items } => {
+            let mut steps = Vec::new();
+            if include_item {
+                if let Some(item) = items.into_iter().next() {
+                    steps.push(runtime.map_shortcut_item_to_step(item));
+                }
+            }
+            let (solution_set, mut sub_steps) =
+                runtime.solve_isolated_exponent(lhs_exponent, rhs, op, var)?;
+            steps.append(&mut sub_steps);
+            Ok(PowExponentShortcutPipelineSolved::Isolated {
+                solution_set,
+                steps,
+            })
+        }
+        PowExponentShortcutEngineAction::ReturnSolutionSet { solutions, items } => {
+            let mut steps = Vec::new();
+            if include_item {
+                if let Some(item) = items.into_iter().next() {
+                    steps.push(runtime.map_shortcut_item_to_step(item));
+                }
+            }
+            Ok(PowExponentShortcutPipelineSolved::ReturnedSolutionSet {
+                solution_set: solutions,
+                steps,
+            })
+        }
+    }
+}
+
 /// Solved base-one shortcut (`1^x = rhs`) with didactic payload.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowerBaseOneShortcutOutcome {
@@ -1103,6 +1162,65 @@ where
                 }
             }
             let (solution_set, mut sub_steps) = solve_isolate(lhs, rhs, op)?;
+            steps.append(&mut sub_steps);
+            Ok(PowBaseIsolationPipelineSolved::Isolated {
+                solution_set,
+                steps,
+            })
+        }
+    }
+}
+
+/// Runtime contract for base-isolation pipeline execution.
+pub trait PowBaseIsolationRuntime<E, S> {
+    /// Solve isolated base equation for `var`.
+    fn solve_isolated_base(
+        &mut self,
+        lhs: ExprId,
+        rhs: ExprId,
+        op: RelOp,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<S>), E>;
+    /// Map optional base-isolation item to caller-owned step payload.
+    fn map_base_item_to_step(&mut self, item: PowBaseIsolationExecutionItem) -> S;
+}
+
+/// Execute base-isolation solve + optional first-item dispatch via runtime.
+pub fn solve_pow_base_isolation_pipeline_with_item_runtime<R, E, S>(
+    action: PowBaseIsolationEngineAction,
+    include_item: bool,
+    var: &str,
+    runtime: &mut R,
+) -> Result<PowBaseIsolationPipelineSolved<S>, E>
+where
+    R: PowBaseIsolationRuntime<E, S>,
+{
+    match action {
+        PowBaseIsolationEngineAction::ReturnSolutionSet { solutions, items } => {
+            let mut steps = Vec::new();
+            if include_item {
+                if let Some(item) = items.into_iter().next() {
+                    steps.push(runtime.map_base_item_to_step(item));
+                }
+            }
+            Ok(PowBaseIsolationPipelineSolved::ReturnedSolutionSet {
+                solution_set: solutions,
+                steps,
+            })
+        }
+        PowBaseIsolationEngineAction::IsolateBase {
+            lhs,
+            rhs,
+            op,
+            items,
+        } => {
+            let mut steps = Vec::new();
+            if include_item {
+                if let Some(item) = items.into_iter().next() {
+                    steps.push(runtime.map_base_item_to_step(item));
+                }
+            }
+            let (solution_set, mut sub_steps) = runtime.solve_isolated_base(lhs, rhs, op, var)?;
             steps.append(&mut sub_steps);
             Ok(PowBaseIsolationPipelineSolved::Isolated {
                 solution_set,
@@ -8610,6 +8728,134 @@ mod tests {
         }
     }
 
+    struct TestPowExponentShortcutPipelineRuntime {
+        solve_result: (SolutionSet, Vec<String>),
+        last_call: Option<(ExprId, ExprId, RelOp, String)>,
+    }
+
+    impl PowExponentShortcutPipelineRuntime<&'static str, String>
+        for TestPowExponentShortcutPipelineRuntime
+    {
+        fn solve_isolated_exponent(
+            &mut self,
+            lhs_exponent: ExprId,
+            rhs: ExprId,
+            op: RelOp,
+            var: &str,
+        ) -> Result<(SolutionSet, Vec<String>), &'static str> {
+            self.last_call = Some((lhs_exponent, rhs, op, var.to_string()));
+            Ok(self.solve_result.clone())
+        }
+
+        fn map_shortcut_item_to_step(&mut self, item: PowExponentShortcutExecutionItem) -> String {
+            item.description
+        }
+    }
+
+    #[test]
+    fn solve_pow_exponent_shortcut_pipeline_with_item_runtime_forwards_call_and_steps() {
+        let mut ctx = Context::new();
+        let e = ctx.var("e");
+        let rhs = ctx.var("n");
+        let x = ctx.var("x");
+        let action = PowExponentShortcutEngineAction::IsolateExponent {
+            rhs,
+            op: RelOp::Eq,
+            items: vec![PowExponentShortcutExecutionItem {
+                equation: Equation {
+                    lhs: x,
+                    rhs,
+                    op: RelOp::Eq,
+                },
+                description: "shortcut-step".to_string(),
+            }],
+        };
+        let mut runtime = TestPowExponentShortcutPipelineRuntime {
+            solve_result: (
+                SolutionSet::Discrete(vec![rhs]),
+                vec!["runtime-substep".to_string()],
+            ),
+            last_call: None,
+        };
+
+        let solved = solve_pow_exponent_shortcut_pipeline_with_item_runtime(
+            action,
+            e,
+            true,
+            "x",
+            &mut runtime,
+        )
+        .expect("runtime pipeline should solve");
+
+        assert_eq!(
+            runtime.last_call,
+            Some((e, rhs, RelOp::Eq, "x".to_string()))
+        );
+        match solved {
+            PowExponentShortcutPipelineSolved::Isolated {
+                solution_set,
+                steps,
+            } => {
+                assert!(matches!(solution_set, SolutionSet::Discrete(_)));
+                assert_eq!(
+                    steps,
+                    vec!["shortcut-step".to_string(), "runtime-substep".to_string()]
+                );
+            }
+            other => panic!(
+                "expected isolated runtime shortcut pipeline result, got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
+    fn solve_pow_exponent_shortcut_pipeline_with_item_runtime_omits_item_for_terminal_branch_when_disabled(
+    ) {
+        let mut ctx = Context::new();
+        let e = ctx.var("e");
+        let x = ctx.var("x");
+        let action = PowExponentShortcutEngineAction::ReturnSolutionSet {
+            solutions: SolutionSet::Empty,
+            items: vec![PowExponentShortcutExecutionItem {
+                equation: Equation {
+                    lhs: x,
+                    rhs: x,
+                    op: RelOp::Eq,
+                },
+                description: "terminal".to_string(),
+            }],
+        };
+        let mut runtime = TestPowExponentShortcutPipelineRuntime {
+            solve_result: (SolutionSet::AllReals, vec!["unexpected".to_string()]),
+            last_call: None,
+        };
+
+        let solved = solve_pow_exponent_shortcut_pipeline_with_item_runtime(
+            action,
+            e,
+            false,
+            "x",
+            &mut runtime,
+        )
+        .expect("runtime pipeline should solve");
+
+        assert_eq!(runtime.last_call, None);
+        match solved {
+            PowExponentShortcutPipelineSolved::ReturnedSolutionSet {
+                solution_set,
+                steps,
+            } => {
+                assert!(matches!(solution_set, SolutionSet::Empty));
+                assert!(steps.is_empty());
+            }
+            other => panic!(
+                "expected terminal runtime shortcut pipeline result, got {:?}",
+                other
+            ),
+        }
+    }
+
     #[test]
     fn solve_pow_base_isolation_action_with_invokes_isolate_once() {
         let mut ctx = Context::new();
@@ -8747,6 +8993,115 @@ mod tests {
                 assert!(steps.is_empty());
             }
             other => panic!("expected terminal pipeline result, got {:?}", other),
+        }
+    }
+
+    struct TestPowBaseIsolationRuntime {
+        solve_result: (SolutionSet, Vec<String>),
+        last_call: Option<(ExprId, ExprId, RelOp, String)>,
+    }
+
+    impl PowBaseIsolationRuntime<&'static str, String> for TestPowBaseIsolationRuntime {
+        fn solve_isolated_base(
+            &mut self,
+            lhs: ExprId,
+            rhs: ExprId,
+            op: RelOp,
+            var: &str,
+        ) -> Result<(SolutionSet, Vec<String>), &'static str> {
+            self.last_call = Some((lhs, rhs, op, var.to_string()));
+            Ok(self.solve_result.clone())
+        }
+
+        fn map_base_item_to_step(&mut self, item: PowBaseIsolationExecutionItem) -> String {
+            item.description
+        }
+    }
+
+    #[test]
+    fn solve_pow_base_isolation_pipeline_with_item_runtime_forwards_call_and_steps() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("x");
+        let rhs = ctx.var("r");
+        let action = PowBaseIsolationEngineAction::IsolateBase {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+            items: vec![PowBaseIsolationExecutionItem {
+                equation: Equation {
+                    lhs,
+                    rhs,
+                    op: RelOp::Eq,
+                },
+                description: "Take root".to_string(),
+            }],
+        };
+        let mut runtime = TestPowBaseIsolationRuntime {
+            solve_result: (
+                SolutionSet::Discrete(vec![rhs]),
+                vec!["runtime-substep".to_string()],
+            ),
+            last_call: None,
+        };
+
+        let solved =
+            solve_pow_base_isolation_pipeline_with_item_runtime(action, true, "x", &mut runtime)
+                .expect("runtime pipeline should solve");
+
+        assert_eq!(
+            runtime.last_call,
+            Some((lhs, rhs, RelOp::Eq, "x".to_string()))
+        );
+        match solved {
+            PowBaseIsolationPipelineSolved::Isolated {
+                solution_set,
+                steps,
+            } => {
+                assert!(matches!(solution_set, SolutionSet::Discrete(_)));
+                assert_eq!(
+                    steps,
+                    vec!["Take root".to_string(), "runtime-substep".to_string()]
+                );
+            }
+            other => panic!("expected isolated runtime pipeline result, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn solve_pow_base_isolation_pipeline_with_item_runtime_omits_item_for_terminal_branch_when_disabled(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let action = PowBaseIsolationEngineAction::ReturnSolutionSet {
+            solutions: SolutionSet::Empty,
+            items: vec![PowBaseIsolationExecutionItem {
+                equation: Equation {
+                    lhs: x,
+                    rhs: x,
+                    op: RelOp::Eq,
+                },
+                description: "terminal".to_string(),
+            }],
+        };
+        let mut runtime = TestPowBaseIsolationRuntime {
+            solve_result: (SolutionSet::AllReals, vec!["unexpected".to_string()]),
+            last_call: None,
+        };
+
+        let solved =
+            solve_pow_base_isolation_pipeline_with_item_runtime(action, false, "x", &mut runtime)
+                .expect("runtime pipeline should solve");
+
+        assert_eq!(runtime.last_call, None);
+        match solved {
+            PowBaseIsolationPipelineSolved::ReturnedSolutionSet {
+                solution_set,
+                steps,
+            } => {
+                assert!(matches!(solution_set, SolutionSet::Empty));
+                assert!(steps.is_empty());
+            }
+            other => panic!("expected terminal runtime pipeline result, got {:?}", other),
         }
     }
 

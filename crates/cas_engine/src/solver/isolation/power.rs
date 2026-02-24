@@ -9,16 +9,18 @@ use cas_solver_core::solve_outcome::{
     execute_pow_exponent_shortcut_with_runtime, plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
     pow_exponent_rhs_contains_variable, resolve_log_terminal_outcome,
-    resolve_power_base_one_shortcut_for_pow_with, solve_pow_base_isolation_pipeline_with_item,
+    resolve_power_base_one_shortcut_for_pow_with,
+    solve_pow_base_isolation_pipeline_with_item_runtime,
     solve_pow_exponent_log_isolation_rewrite_pipeline_with_item_runtime,
     solve_pow_exponent_log_unsupported_pipeline_with_items_runtime,
-    solve_pow_exponent_shortcut_pipeline_with_item,
+    solve_pow_exponent_shortcut_pipeline_with_item_runtime,
     solve_power_base_one_shortcut_pipeline_with_item,
     solve_solve_tactic_normalization_pipeline_with_item, solve_terminal_outcome_pipeline_with_item,
-    PowBaseIsolationPipelineSolved, PowExponentLogIsolationExecutionItem,
-    PowExponentLogIsolationRewriteRuntime, PowExponentLogUnsupportedRuntime,
-    PowExponentShortcutPipelineSolved, PowExponentShortcutRuntime, PowIsolationRoute,
-    TermIsolationExecutionItem,
+    PowBaseIsolationExecutionItem, PowBaseIsolationPipelineSolved, PowBaseIsolationRuntime,
+    PowExponentLogIsolationExecutionItem, PowExponentLogIsolationRewriteRuntime,
+    PowExponentLogUnsupportedRuntime, PowExponentShortcutExecutionItem,
+    PowExponentShortcutPipelineRuntime, PowExponentShortcutPipelineSolved,
+    PowExponentShortcutRuntime, PowIsolationRoute, TermIsolationExecutionItem,
 };
 
 use super::{isolate, prepend_steps};
@@ -55,13 +57,71 @@ impl PowExponentShortcutRuntime for EnginePowShortcutRuntime<'_> {
     }
 }
 
-struct EnginePowLogRuntime<'a, 'b> {
+struct EnginePowSolveRuntime<'a, 'b> {
     simplifier: &'a mut Simplifier,
     opts: SolverOptions,
     solve_ctx: &'b super::super::SolveCtx,
 }
 
-impl PowExponentLogUnsupportedRuntime<SolveStep> for EnginePowLogRuntime<'_, '_> {
+impl PowBaseIsolationRuntime<CasError, SolveStep> for EnginePowSolveRuntime<'_, '_> {
+    fn solve_isolated_base(
+        &mut self,
+        lhs: ExprId,
+        rhs: ExprId,
+        op: RelOp,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        isolate(
+            lhs,
+            rhs,
+            op,
+            var,
+            self.simplifier,
+            self.opts,
+            self.solve_ctx,
+        )
+    }
+
+    fn map_base_item_to_step(&mut self, item: PowBaseIsolationExecutionItem) -> SolveStep {
+        SolveStep {
+            description: item.description().to_string(),
+            equation_after: item.equation,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        }
+    }
+}
+
+impl PowExponentShortcutPipelineRuntime<CasError, SolveStep> for EnginePowSolveRuntime<'_, '_> {
+    fn solve_isolated_exponent(
+        &mut self,
+        lhs_exponent: ExprId,
+        rhs: ExprId,
+        op: RelOp,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        isolate(
+            lhs_exponent,
+            rhs,
+            op,
+            var,
+            self.simplifier,
+            self.opts,
+            self.solve_ctx,
+        )
+    }
+
+    fn map_shortcut_item_to_step(&mut self, item: PowExponentShortcutExecutionItem) -> SolveStep {
+        SolveStep {
+            description: item.description().to_string(),
+            equation_after: item.equation,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        }
+    }
+}
+
+impl PowExponentLogUnsupportedRuntime<SolveStep> for EnginePowSolveRuntime<'_, '_> {
     fn try_guarded_solve(&mut self, equation: &Equation, var: &str) -> Option<SolutionSet> {
         isolate(
             equation.lhs,
@@ -86,7 +146,7 @@ impl PowExponentLogUnsupportedRuntime<SolveStep> for EnginePowLogRuntime<'_, '_>
     }
 }
 
-impl PowExponentLogIsolationRewriteRuntime<CasError, SolveStep> for EnginePowLogRuntime<'_, '_> {
+impl PowExponentLogIsolationRewriteRuntime<CasError, SolveStep> for EnginePowSolveRuntime<'_, '_> {
     fn solve_rewrite(
         &mut self,
         equation: &Equation,
@@ -157,19 +217,20 @@ fn isolate_pow_base(
         build_pow_base_isolation_action_with(&mut simplifier.context, b, e, rhs, op, |ctx, id| {
             format!("{}", cas_formatter::DisplayExpr { context: ctx, id })
         });
-    let solved_base = solve_pow_base_isolation_pipeline_with_item(
-        action,
-        simplifier.collect_steps(),
-        |lhs_after, target_rhs, target_op| {
-            isolate(lhs_after, target_rhs, target_op, var, simplifier, opts, ctx)
-        },
-        |item| SolveStep {
-            description: item.description().to_string(),
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        },
-    )?;
+    let solved_base = {
+        let include_item = simplifier.collect_steps();
+        let mut runtime = EnginePowSolveRuntime {
+            simplifier,
+            opts,
+            solve_ctx: ctx,
+        };
+        solve_pow_base_isolation_pipeline_with_item_runtime(
+            action,
+            include_item,
+            var,
+            &mut runtime,
+        )?
+    };
 
     match solved_base {
         PowBaseIsolationPipelineSolved::ReturnedSolutionSet {
@@ -219,17 +280,21 @@ fn isolate_pow_exponent(
             opts.budget.max_branches >= 2,
         )
     };
-    let shortcut_solved = solve_pow_exponent_shortcut_pipeline_with_item(
-        shortcut_engine_action,
-        simplifier.collect_steps(),
-        |target_rhs, target_op| isolate(e, target_rhs, target_op, var, simplifier, opts, ctx),
-        |item| SolveStep {
-            description: item.description().to_string(),
-            equation_after: item.equation,
-            importance: crate::step::ImportanceLevel::Medium,
-            substeps: vec![],
-        },
-    )?;
+    let shortcut_solved = {
+        let include_item = simplifier.collect_steps();
+        let mut runtime = EnginePowSolveRuntime {
+            simplifier,
+            opts,
+            solve_ctx: ctx,
+        };
+        solve_pow_exponent_shortcut_pipeline_with_item_runtime(
+            shortcut_engine_action,
+            e,
+            include_item,
+            var,
+            &mut runtime,
+        )?
+    };
 
     match shortcut_solved {
         PowExponentShortcutPipelineSolved::Continue => {}
@@ -413,7 +478,7 @@ fn isolate_pow_exponent(
     {
         let unsupported_solved = {
             let include_items = simplifier.collect_steps();
-            let mut runtime = EnginePowLogRuntime {
+            let mut runtime = EnginePowSolveRuntime {
                 simplifier,
                 opts,
                 solve_ctx: ctx,
@@ -468,7 +533,7 @@ fn isolate_pow_exponent(
     );
     let solved_log = {
         let include_item = simplifier.collect_steps();
-        let mut runtime = EnginePowLogRuntime {
+        let mut runtime = EnginePowSolveRuntime {
             simplifier,
             opts,
             solve_ctx: ctx,
