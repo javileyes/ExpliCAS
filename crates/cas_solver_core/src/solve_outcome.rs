@@ -4323,6 +4323,33 @@ where
     }
 }
 
+/// Runtime contract for absolute-value isolation plan dispatch.
+pub trait AbsIsolationPlanRuntime<E, TSingle, TSplit> {
+    /// Handle a single-equation absolute isolation branch.
+    fn solve_single(&mut self, equation: Equation) -> Result<TSingle, E>;
+    /// Handle split branches `(+rhs, -rhs)` for absolute isolation.
+    fn solve_split(&mut self, positive: Equation, negative: Equation) -> Result<TSplit, E>;
+}
+
+/// Runtime variant of `solve_abs_isolation_plan_with`.
+pub fn solve_abs_isolation_plan_with_runtime<R, E, TSingle, TSplit>(
+    plan: AbsIsolationPlan,
+    runtime: &mut R,
+) -> Result<AbsIsolationSolved<TSingle, TSplit>, E>
+where
+    R: AbsIsolationPlanRuntime<E, TSingle, TSplit>,
+{
+    match plan {
+        AbsIsolationPlan::ReturnEmptySet => Ok(AbsIsolationSolved::ReturnedEmptySet),
+        AbsIsolationPlan::IsolateSingleEquation { equation } => Ok(
+            AbsIsolationSolved::IsolatedSingle(runtime.solve_single(equation)?),
+        ),
+        AbsIsolationPlan::SplitBranches { positive, negative } => Ok(AbsIsolationSolved::Split(
+            runtime.solve_split(positive, negative)?,
+        )),
+    }
+}
+
 /// Pre-built sign-split equations for inequalities of the form `A*B op 0`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProductZeroInequalityPlan {
@@ -7349,6 +7376,94 @@ mod tests {
         .expect("solve should succeed");
 
         assert_eq!(split_calls, 1);
+        match solved {
+            AbsIsolationSolved::Split((pos, neg)) => {
+                assert_eq!(pos, positive);
+                assert_eq!(neg, negative);
+            }
+            other => panic!("expected split solved variant, got {:?}", other),
+        }
+    }
+
+    #[derive(Default)]
+    struct TestAbsIsolationPlanRuntime {
+        single_calls: usize,
+        split_calls: usize,
+    }
+
+    impl AbsIsolationPlanRuntime<(), Equation, (Equation, Equation)> for TestAbsIsolationPlanRuntime {
+        fn solve_single(&mut self, equation: Equation) -> Result<Equation, ()> {
+            self.single_calls += 1;
+            Ok(equation)
+        }
+
+        fn solve_split(
+            &mut self,
+            positive: Equation,
+            negative: Equation,
+        ) -> Result<(Equation, Equation), ()> {
+            self.split_calls += 1;
+            Ok((positive, negative))
+        }
+    }
+
+    #[test]
+    fn solve_abs_isolation_plan_with_runtime_executes_single_branch() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rhs = ctx.num(0);
+        let equation = Equation {
+            lhs: x,
+            rhs,
+            op: RelOp::Eq,
+        };
+        let mut runtime = TestAbsIsolationPlanRuntime::default();
+
+        let solved = solve_abs_isolation_plan_with_runtime(
+            AbsIsolationPlan::IsolateSingleEquation {
+                equation: equation.clone(),
+            },
+            &mut runtime,
+        )
+        .expect("runtime solve should succeed");
+
+        assert_eq!(runtime.single_calls, 1);
+        assert_eq!(runtime.split_calls, 0);
+        match solved {
+            AbsIsolationSolved::IsolatedSingle(eq) => assert_eq!(eq, equation),
+            other => panic!("expected single solved variant, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn solve_abs_isolation_plan_with_runtime_executes_split_branch() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let neg_two = ctx.num(-2);
+        let positive = Equation {
+            lhs: x,
+            rhs: two,
+            op: RelOp::Eq,
+        };
+        let negative = Equation {
+            lhs: x,
+            rhs: neg_two,
+            op: RelOp::Eq,
+        };
+        let mut runtime = TestAbsIsolationPlanRuntime::default();
+
+        let solved = solve_abs_isolation_plan_with_runtime(
+            AbsIsolationPlan::SplitBranches {
+                positive: positive.clone(),
+                negative: negative.clone(),
+            },
+            &mut runtime,
+        )
+        .expect("runtime solve should succeed");
+
+        assert_eq!(runtime.single_calls, 0);
+        assert_eq!(runtime.split_calls, 1);
         match solved {
             AbsIsolationSolved::Split((pos, neg)) => {
                 assert_eq!(pos, positive);

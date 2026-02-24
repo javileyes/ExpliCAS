@@ -15,9 +15,9 @@ use cas_solver_core::log_isolation::{
     LogIsolationExecutionItem, LogIsolationPlanRuntime, LogIsolationRewriteRuntime,
 };
 use cas_solver_core::solve_outcome::{
-    finalize_abs_split_solution_set, plan_abs_isolation, solve_abs_isolation_plan_with,
-    solve_abs_split_pipeline_with_optional_items_runtime, AbsIsolationSolved,
-    AbsSplitExecutionItem, AbsSplitRuntime,
+    finalize_abs_split_solution_set, plan_abs_isolation, solve_abs_isolation_plan_with_runtime,
+    solve_abs_split_pipeline_with_optional_items_runtime, AbsIsolationPlanRuntime,
+    AbsIsolationSolved, AbsSplitExecutionItem, AbsSplitRuntime,
 };
 
 use super::{isolate, prepend_steps};
@@ -92,6 +92,24 @@ struct EngineFunctionIsolationRuntime<'a, 'b> {
     simplifier: &'a mut Simplifier,
     opts: SolverOptions,
     solve_ctx: &'b super::super::SolveCtx,
+}
+
+struct EngineAbsIsolationPlanRuntime;
+
+impl AbsIsolationPlanRuntime<CasError, cas_ast::Equation, (cas_ast::Equation, cas_ast::Equation)>
+    for EngineAbsIsolationPlanRuntime
+{
+    fn solve_single(&mut self, equation: cas_ast::Equation) -> Result<cas_ast::Equation, CasError> {
+        Ok(equation)
+    }
+
+    fn solve_split(
+        &mut self,
+        positive: cas_ast::Equation,
+        negative: cas_ast::Equation,
+    ) -> Result<(cas_ast::Equation, cas_ast::Equation), CasError> {
+        Ok((positive, negative))
+    }
 }
 
 impl AbsSplitRuntime<CasError, SolveStep> for EngineFunctionIsolationRuntime<'_, '_> {
@@ -216,10 +234,8 @@ fn isolate_abs(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let rhs_sign = numeric_sign(&simplifier.context, rhs);
     let abs_plan = plan_abs_isolation(&mut simplifier.context, arg, rhs, op.clone(), rhs_sign);
-    let dispatched_abs =
-        solve_abs_isolation_plan_with(abs_plan, Ok::<_, CasError>, |positive, negative| {
-            Ok::<_, CasError>((positive, negative))
-        })?;
+    let mut plan_runtime = EngineAbsIsolationPlanRuntime;
+    let dispatched_abs = solve_abs_isolation_plan_with_runtime(abs_plan, &mut plan_runtime)?;
 
     match dispatched_abs {
         AbsIsolationSolved::ReturnedEmptySet => Ok((SolutionSet::Empty, steps)),
