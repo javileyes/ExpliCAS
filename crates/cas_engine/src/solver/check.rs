@@ -52,8 +52,7 @@ pub fn verify_solution(
     var: &str,
     solution: ExprId,
 ) -> VerifyStatus {
-    let mut runtime = EngineSolutionCheckRuntime { simplifier };
-    verify_solution_with_runtime_core(&mut runtime, equation, var, solution)
+    verify_solution_with_runtime_core(simplifier, equation, var, solution)
 }
 
 /// Verify a solution set, handling all SolutionSet variants.
@@ -68,13 +67,9 @@ pub fn verify_solution_set(
     verify_solution_set_with_runtime(solutions, &mut verify_discrete)
 }
 
-struct EngineSolutionCheckRuntime<'a> {
-    simplifier: &'a mut Simplifier,
-}
-
-impl SolutionCheckRuntime for EngineSolutionCheckRuntime<'_> {
+impl SolutionCheckRuntime for Simplifier {
     fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.simplifier.context
+        &mut self.context
     }
 
     fn simplify_strict(&mut self, expr: ExprId) -> ExprId {
@@ -88,7 +83,7 @@ impl SolutionCheckRuntime for EngineSolutionCheckRuntime<'_> {
             },
             ..Default::default()
         };
-        let (result, _, _) = self.simplifier.simplify_with_stats(expr, strict_opts);
+        let (result, _, _) = self.simplify_with_stats(expr, strict_opts);
         result
     }
 
@@ -103,24 +98,24 @@ impl SolutionCheckRuntime for EngineSolutionCheckRuntime<'_> {
             },
             ..Default::default()
         };
-        let (result, _, _) = self.simplifier.simplify_with_stats(expr, generic_opts);
+        let (result, _, _) = self.simplify_with_stats(expr, generic_opts);
         result
     }
 
     fn fold_numeric_islands(&mut self, expr: ExprId) -> ExprId {
-        super::numeric_islands::fold_numeric_islands(&mut self.simplifier.context, expr)
+        super::numeric_islands::fold_numeric_islands(&mut self.context, expr)
     }
 
     fn is_numeric_zero(&mut self, expr: ExprId) -> bool {
-        is_numeric_zero(&self.simplifier.context, expr)
+        is_numeric_zero(&self.context, expr)
     }
 
     fn contains_variable(&mut self, expr: ExprId) -> bool {
-        contains_variable(&self.simplifier.context, expr)
+        contains_variable(&self.context, expr)
     }
 
     fn render_expr(&mut self, expr: ExprId) -> String {
-        solver_render_expr(&self.simplifier.context, expr)
+        solver_render_expr(&self.context, expr)
     }
 }
 
