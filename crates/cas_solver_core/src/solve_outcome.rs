@@ -724,6 +724,25 @@ where
     }
 }
 
+/// Runtime adapter for mapping base-one shortcut didactic items.
+pub trait PowerBaseOneShortcutPipelineRuntime<S> {
+    fn map_power_base_one_item_to_step(&mut self, item: PowerBaseOneShortcutExecutionItem) -> S;
+}
+
+/// Runtime-based variant of `solve_power_base_one_shortcut_pipeline_with_item`.
+pub fn solve_power_base_one_shortcut_pipeline_with_item_runtime<S, R>(
+    outcome: PowerBaseOneShortcutOutcome,
+    include_item: bool,
+    runtime: &mut R,
+) -> PowerBaseOneShortcutPipelineSolved<S>
+where
+    R: PowerBaseOneShortcutPipelineRuntime<S>,
+{
+    solve_power_base_one_shortcut_pipeline_with_item(outcome, include_item, |item| {
+        runtime.map_power_base_one_item_to_step(item)
+    })
+}
+
 /// Didactic payload for logarithmic isolation of exponent equations.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowExponentLogIsolationStep {
@@ -2215,6 +2234,30 @@ where
     collect_term_isolation_rewrite_first_step_with_item(&rewrite, include_item, map_item_to_step)
 }
 
+/// Runtime adapter for solve-tactic normalization didactic mapping.
+pub trait SolveTacticNormalizationRuntime<S> {
+    fn context(&mut self) -> &mut Context;
+    fn map_solve_tactic_item_to_step(&mut self, item: TermIsolationRewriteExecutionItem) -> S;
+}
+
+/// Runtime-based variant of `solve_solve_tactic_normalization_pipeline_with_item`.
+pub fn solve_solve_tactic_normalization_pipeline_with_item_runtime<S, R>(
+    base: ExprId,
+    exponent: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    include_item: bool,
+    runtime: &mut R,
+) -> Vec<S>
+where
+    R: SolveTacticNormalizationRuntime<S>,
+{
+    let rewrite = plan_solve_tactic_normalization_step(runtime.context(), base, exponent, rhs, op);
+    collect_term_isolation_rewrite_first_step_with_item(&rewrite, include_item, |item| {
+        runtime.map_solve_tactic_item_to_step(item)
+    })
+}
+
 /// Build didactic narration for multiplicative isolation.
 pub fn divide_both_sides_message(term_display: &str) -> String {
     format!("Divide both sides by {}", term_display)
@@ -3051,6 +3094,31 @@ where
         solution_set,
         steps,
     }
+}
+
+/// Runtime adapter for terminal-outcome didactic mapping.
+pub trait TerminalOutcomePipelineRuntime<S> {
+    fn map_terminal_outcome_item_to_step(&mut self, item: TermIsolationExecutionItem) -> S;
+}
+
+/// Runtime-based variant of `solve_terminal_outcome_pipeline_with_item`.
+pub fn solve_terminal_outcome_pipeline_with_item_runtime<S, R>(
+    outcome: TerminalSolveOutcome,
+    equation_after: Equation,
+    residual_suffix: &str,
+    include_item: bool,
+    runtime: &mut R,
+) -> TerminalOutcomePipelineSolved<S>
+where
+    R: TerminalOutcomePipelineRuntime<S>,
+{
+    solve_terminal_outcome_pipeline_with_item(
+        outcome,
+        equation_after,
+        residual_suffix,
+        include_item,
+        |item| runtime.map_terminal_outcome_item_to_step(item),
+    )
 }
 
 /// Build didactic payload for conditional-solution messaging.
@@ -6192,6 +6260,60 @@ mod tests {
         assert!(solved.steps.is_empty());
     }
 
+    #[derive(Default)]
+    struct TestPowerBaseOneShortcutRuntime {
+        calls: usize,
+    }
+
+    impl PowerBaseOneShortcutPipelineRuntime<String> for TestPowerBaseOneShortcutRuntime {
+        fn map_power_base_one_item_to_step(
+            &mut self,
+            item: PowerBaseOneShortcutExecutionItem,
+        ) -> String {
+            self.calls += 1;
+            item.description
+        }
+    }
+
+    #[test]
+    fn solve_power_base_one_shortcut_pipeline_with_item_runtime_emits_step_when_enabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rhs = ctx.num(2);
+        let outcome = resolve_power_base_one_shortcut_with(true, false, x, rhs, RelOp::Eq, |_| {
+            "2".to_string()
+        })
+        .expect("shortcut should apply");
+        let mut runtime = TestPowerBaseOneShortcutRuntime::default();
+
+        let solved =
+            solve_power_base_one_shortcut_pipeline_with_item_runtime(outcome, true, &mut runtime);
+
+        assert!(matches!(solved.solution_set, SolutionSet::Empty));
+        assert_eq!(solved.steps.len(), 1);
+        assert!(solved.steps[0].contains("no solution"));
+        assert_eq!(runtime.calls, 1);
+    }
+
+    #[test]
+    fn solve_power_base_one_shortcut_pipeline_with_item_runtime_omits_step_when_disabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rhs = ctx.num(1);
+        let outcome = resolve_power_base_one_shortcut_with(true, true, x, rhs, RelOp::Eq, |_| {
+            "1".to_string()
+        })
+        .expect("shortcut should apply");
+        let mut runtime = TestPowerBaseOneShortcutRuntime::default();
+
+        let solved =
+            solve_power_base_one_shortcut_pipeline_with_item_runtime(outcome, false, &mut runtime);
+
+        assert!(matches!(solved.solution_set, SolutionSet::AllReals));
+        assert!(solved.steps.is_empty());
+        assert_eq!(runtime.calls, 0);
+    }
+
     #[test]
     fn abs_equality_precheck_negative_is_empty() {
         assert_eq!(
@@ -7333,6 +7455,78 @@ mod tests {
 
         assert!(matches!(solved.solution_set, SolutionSet::Residual(id) if id == residual));
         assert!(solved.steps.is_empty());
+    }
+
+    #[derive(Default)]
+    struct TestTerminalOutcomeRuntime {
+        calls: usize,
+    }
+
+    impl TerminalOutcomePipelineRuntime<String> for TestTerminalOutcomeRuntime {
+        fn map_terminal_outcome_item_to_step(
+            &mut self,
+            item: TermIsolationExecutionItem,
+        ) -> String {
+            self.calls += 1;
+            item.description
+        }
+    }
+
+    #[test]
+    fn solve_terminal_outcome_pipeline_with_item_runtime_emits_step_when_enabled() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("x");
+        let rhs = ctx.var("y");
+        let outcome = TerminalSolveOutcome {
+            message: "no real solutions",
+            solutions: SolutionSet::Empty,
+        };
+        let mut runtime = TestTerminalOutcomeRuntime::default();
+
+        let solved = solve_terminal_outcome_pipeline_with_item_runtime(
+            outcome,
+            Equation {
+                lhs,
+                rhs,
+                op: RelOp::Eq,
+            },
+            " (residual)",
+            true,
+            &mut runtime,
+        );
+
+        assert!(matches!(solved.solution_set, SolutionSet::Empty));
+        assert_eq!(solved.steps, vec!["no real solutions".to_string()]);
+        assert_eq!(runtime.calls, 1);
+    }
+
+    #[test]
+    fn solve_terminal_outcome_pipeline_with_item_runtime_omits_step_when_disabled() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("x");
+        let rhs = ctx.var("y");
+        let residual = ctx.var("residual");
+        let outcome = TerminalSolveOutcome {
+            message: "needs complex log",
+            solutions: SolutionSet::Residual(residual),
+        };
+        let mut runtime = TestTerminalOutcomeRuntime::default();
+
+        let solved = solve_terminal_outcome_pipeline_with_item_runtime(
+            outcome,
+            Equation {
+                lhs,
+                rhs,
+                op: RelOp::Eq,
+            },
+            " (residual)",
+            false,
+            &mut runtime,
+        );
+
+        assert!(matches!(solved.solution_set, SolutionSet::Residual(id) if id == residual));
+        assert!(solved.steps.is_empty());
+        assert_eq!(runtime.calls, 0);
     }
 
     #[test]
@@ -9422,6 +9616,67 @@ mod tests {
         );
 
         assert!(steps.is_empty());
+    }
+
+    #[derive(Default)]
+    struct TestSolveTacticNormalizationRuntime {
+        ctx: Context,
+        calls: usize,
+    }
+
+    impl SolveTacticNormalizationRuntime<String> for TestSolveTacticNormalizationRuntime {
+        fn context(&mut self) -> &mut Context {
+            &mut self.ctx
+        }
+
+        fn map_solve_tactic_item_to_step(
+            &mut self,
+            item: TermIsolationRewriteExecutionItem,
+        ) -> String {
+            self.calls += 1;
+            item.description
+        }
+    }
+
+    #[test]
+    fn solve_solve_tactic_normalization_pipeline_with_item_runtime_maps_step_when_enabled() {
+        let mut runtime = TestSolveTacticNormalizationRuntime::default();
+        let base = runtime.ctx.var("a");
+        let exponent = runtime.ctx.var("x");
+        let rhs = runtime.ctx.var("b");
+
+        let steps = solve_solve_tactic_normalization_pipeline_with_item_runtime(
+            base,
+            exponent,
+            rhs,
+            RelOp::Eq,
+            true,
+            &mut runtime,
+        );
+
+        assert_eq!(steps.len(), 1);
+        assert_eq!(steps[0], SOLVE_TACTIC_NORMALIZATION_MESSAGE.to_string());
+        assert_eq!(runtime.calls, 1);
+    }
+
+    #[test]
+    fn solve_solve_tactic_normalization_pipeline_with_item_runtime_omits_step_when_disabled() {
+        let mut runtime = TestSolveTacticNormalizationRuntime::default();
+        let base = runtime.ctx.var("a");
+        let exponent = runtime.ctx.var("x");
+        let rhs = runtime.ctx.var("b");
+
+        let steps = solve_solve_tactic_normalization_pipeline_with_item_runtime(
+            base,
+            exponent,
+            rhs,
+            RelOp::Eq,
+            false,
+            &mut runtime,
+        );
+
+        assert!(steps.is_empty());
+        assert_eq!(runtime.calls, 0);
     }
 
     #[test]

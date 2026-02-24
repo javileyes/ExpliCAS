@@ -14,13 +14,16 @@ use cas_solver_core::solve_outcome::{
     solve_pow_exponent_log_isolation_rewrite_pipeline_with_item_runtime,
     solve_pow_exponent_log_unsupported_pipeline_with_items_runtime,
     solve_pow_exponent_shortcut_pipeline_with_item_runtime,
-    solve_power_base_one_shortcut_pipeline_with_item,
-    solve_solve_tactic_normalization_pipeline_with_item, solve_terminal_outcome_pipeline_with_item,
-    PowBaseIsolationExecutionItem, PowBaseIsolationPipelineSolved, PowBaseIsolationRuntime,
-    PowExponentLogIsolationExecutionItem, PowExponentLogIsolationRewriteRuntime,
-    PowExponentLogUnsupportedRuntime, PowExponentShortcutExecutionItem,
-    PowExponentShortcutPipelineRuntime, PowExponentShortcutPipelineSolved,
-    PowExponentShortcutRuntime, PowIsolationRoute, TermIsolationExecutionItem,
+    solve_power_base_one_shortcut_pipeline_with_item_runtime,
+    solve_solve_tactic_normalization_pipeline_with_item_runtime,
+    solve_terminal_outcome_pipeline_with_item_runtime, PowBaseIsolationExecutionItem,
+    PowBaseIsolationPipelineSolved, PowBaseIsolationRuntime, PowExponentLogIsolationExecutionItem,
+    PowExponentLogIsolationRewriteRuntime, PowExponentLogUnsupportedRuntime,
+    PowExponentShortcutExecutionItem, PowExponentShortcutPipelineRuntime,
+    PowExponentShortcutPipelineSolved, PowExponentShortcutRuntime, PowIsolationRoute,
+    PowerBaseOneShortcutExecutionItem, PowerBaseOneShortcutPipelineRuntime,
+    SolveTacticNormalizationRuntime, TermIsolationExecutionItem, TermIsolationRewriteExecutionItem,
+    TerminalOutcomePipelineRuntime,
 };
 
 use super::{isolate, prepend_steps};
@@ -164,6 +167,49 @@ impl PowExponentLogIsolationRewriteRuntime<CasError, SolveStep> for EnginePowSol
     }
 
     fn map_log_item_to_step(&mut self, item: PowExponentLogIsolationExecutionItem) -> SolveStep {
+        SolveStep {
+            description: item.description().to_string(),
+            equation_after: item.equation,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        }
+    }
+}
+
+impl PowerBaseOneShortcutPipelineRuntime<SolveStep> for EnginePowSolveRuntime<'_, '_> {
+    fn map_power_base_one_item_to_step(
+        &mut self,
+        item: PowerBaseOneShortcutExecutionItem,
+    ) -> SolveStep {
+        SolveStep {
+            description: item.description().to_string(),
+            equation_after: item.equation,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        }
+    }
+}
+
+impl SolveTacticNormalizationRuntime<SolveStep> for EnginePowSolveRuntime<'_, '_> {
+    fn context(&mut self) -> &mut cas_ast::Context {
+        &mut self.simplifier.context
+    }
+
+    fn map_solve_tactic_item_to_step(
+        &mut self,
+        item: TermIsolationRewriteExecutionItem,
+    ) -> SolveStep {
+        SolveStep {
+            description: item.description().to_string(),
+            equation_after: item.equation,
+            importance: crate::step::ImportanceLevel::Medium,
+            substeps: vec![],
+        }
+    }
+}
+
+impl TerminalOutcomePipelineRuntime<SolveStep> for EnginePowSolveRuntime<'_, '_> {
+    fn map_terminal_outcome_item_to_step(&mut self, item: TermIsolationExecutionItem) -> SolveStep {
         SolveStep {
             description: item.description().to_string(),
             equation_after: item.equation,
@@ -333,16 +379,19 @@ fn isolate_pow_exponent(
         op.clone(),
         |ctx, id| format!("{}", cas_formatter::DisplayExpr { context: ctx, id }),
     ) {
-        let solved_shortcut = solve_power_base_one_shortcut_pipeline_with_item(
-            outcome,
-            simplifier.collect_steps(),
-            |item| SolveStep {
-                description: item.description().to_string(),
-                equation_after: item.equation,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            },
-        );
+        let solved_shortcut = {
+            let include_item = simplifier.collect_steps();
+            let mut runtime = EnginePowSolveRuntime {
+                simplifier,
+                opts,
+                solve_ctx: ctx,
+            };
+            solve_power_base_one_shortcut_pipeline_with_item_runtime(
+                outcome,
+                include_item,
+                &mut runtime,
+            )
+        };
         steps.extend(solved_shortcut.steps);
         return Ok((solved_shortcut.solution_set, steps));
     }
@@ -369,20 +418,22 @@ fn isolate_pow_exponent(
         // Add educational step if tactic transformed something.
         if sim_base != b || sim_rhs != rhs {
             let include_item = simplifier.collect_steps();
-            steps.extend(solve_solve_tactic_normalization_pipeline_with_item(
-                &mut simplifier.context,
-                sim_base,
-                e,
-                sim_rhs,
-                op.clone(),
-                include_item,
-                |item| SolveStep {
-                    description: item.description().to_string(),
-                    equation_after: item.equation,
-                    importance: crate::step::ImportanceLevel::Medium,
-                    substeps: vec![],
-                },
-            ));
+            let tactic_steps = {
+                let mut runtime = EnginePowSolveRuntime {
+                    simplifier,
+                    opts,
+                    solve_ctx: ctx,
+                };
+                solve_solve_tactic_normalization_pipeline_with_item_runtime(
+                    sim_base,
+                    e,
+                    sim_rhs,
+                    op.clone(),
+                    include_item,
+                    &mut runtime,
+                )
+            };
+            steps.extend(tactic_steps);
         }
 
         (sim_base, sim_rhs)
@@ -410,22 +461,25 @@ fn isolate_pow_exponent(
         rhs,
         var,
     ) {
-        let solved_terminal = solve_terminal_outcome_pipeline_with_item(
-            outcome,
-            Equation {
-                lhs,
-                rhs,
-                op: op.clone(),
-            },
-            " (residual)",
-            simplifier.collect_steps(),
-            |item| SolveStep {
-                description: item.description().to_string(),
-                equation_after: item.equation,
-                importance: crate::step::ImportanceLevel::Medium,
-                substeps: vec![],
-            },
-        );
+        let solved_terminal = {
+            let include_item = simplifier.collect_steps();
+            let mut runtime = EnginePowSolveRuntime {
+                simplifier,
+                opts,
+                solve_ctx: ctx,
+            };
+            solve_terminal_outcome_pipeline_with_item_runtime(
+                outcome,
+                Equation {
+                    lhs,
+                    rhs,
+                    op: op.clone(),
+                },
+                " (residual)",
+                include_item,
+                &mut runtime,
+            )
+        };
         steps.extend(solved_terminal.steps);
         return Ok((solved_terminal.solution_set, steps));
     }
