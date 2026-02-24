@@ -7,8 +7,9 @@
 use crate::isolation_utils::contains_var;
 use crate::solve_analysis::{classify_equation_var_presence, EquationVarPresence};
 use crate::solve_outcome::{
-    eliminate_fractional_exponent_message, plan_swap_sides_step, subtract_both_sides_message,
-    TermIsolationRewritePlan,
+    eliminate_fractional_exponent_message, first_term_isolation_rewrite_execution_item,
+    plan_swap_sides_step, solve_term_isolation_rewrite_with, subtract_both_sides_message,
+    TermIsolationRewriteExecutionItem, TermIsolationRewritePlan,
 };
 use cas_ast::{Context, Equation, ExprId, RelOp, SolutionSet};
 
@@ -52,6 +53,20 @@ pub enum IsolationStrategyRouting {
     DirectIsolation,
 }
 
+/// Runtime contract for isolation-strategy routing orchestration.
+pub trait IsolationStrategyRuntime<E, S> {
+    /// Solve `equation` recursively for `var`.
+    fn solve_equation(
+        &mut self,
+        equation: &Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<S>), E>;
+    /// Convert swap-side item into caller-owned step payload.
+    fn map_swap_item_to_step(&mut self, item: TermIsolationRewriteExecutionItem) -> S;
+    /// Build caller-specific error for missing variable.
+    fn variable_not_found_error(&mut self, var: &str) -> E;
+}
+
 /// Derive side-routing for isolation strategy from variable presence.
 pub fn derive_isolation_strategy_routing(
     ctx: &Context,
@@ -65,6 +80,50 @@ pub fn derive_isolation_strategy_routing(
             rewrite: plan_swap_sides_step(eq),
         },
         EquationVarPresence::LhsOnly => IsolationStrategyRouting::DirectIsolation,
+    }
+}
+
+/// Execute isolation strategy for a pre-derived routing decision.
+///
+/// Returns `None` only when variable appears on both sides (let other
+/// strategies rewrite first). Otherwise returns either solved result or error.
+pub fn solve_isolation_strategy_routing_with_runtime<R, E, S>(
+    routing: IsolationStrategyRouting,
+    eq: &Equation,
+    var: &str,
+    include_item: bool,
+    runtime: &mut R,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    R: IsolationStrategyRuntime<E, S>,
+{
+    match routing {
+        IsolationStrategyRouting::VariableNotFound => {
+            Some(Err(runtime.variable_not_found_error(var)))
+        }
+        IsolationStrategyRouting::VariableOnBothSides => None,
+        IsolationStrategyRouting::SwapSides { rewrite } => {
+            let solved_swap = solve_term_isolation_rewrite_with(rewrite, |equation| {
+                runtime.solve_equation(&equation, var)
+            });
+            Some(match solved_swap {
+                Ok(solved) => {
+                    let mut steps = Vec::new();
+                    if include_item {
+                        if let Some(item) =
+                            first_term_isolation_rewrite_execution_item(&solved.rewrite)
+                        {
+                            steps.push(runtime.map_swap_item_to_step(item));
+                        }
+                    }
+                    let (solution_set, mut substeps) = solved.solved;
+                    steps.append(&mut substeps);
+                    Ok((solution_set, steps))
+                }
+                Err(e) => Err(e),
+            })
+        }
+        IsolationStrategyRouting::DirectIsolation => Some(runtime.solve_equation(eq, var)),
     }
 }
 
@@ -586,6 +645,40 @@ mod tests {
     use super::*;
     use cas_ast::{Context, Expr};
 
+    struct MockIsolationRuntime {
+        solved_with: Vec<Equation>,
+    }
+
+    impl MockIsolationRuntime {
+        fn new() -> Self {
+            Self {
+                solved_with: Vec::new(),
+            }
+        }
+    }
+
+    impl IsolationStrategyRuntime<String, String> for MockIsolationRuntime {
+        fn solve_equation(
+            &mut self,
+            equation: &Equation,
+            _var: &str,
+        ) -> Result<(SolutionSet, Vec<String>), String> {
+            self.solved_with.push(equation.clone());
+            Ok((
+                SolutionSet::Discrete(vec![equation.lhs]),
+                vec![format!("solved {}", equation.lhs)],
+            ))
+        }
+
+        fn map_swap_item_to_step(&mut self, item: TermIsolationRewriteExecutionItem) -> String {
+            item.description
+        }
+
+        fn variable_not_found_error(&mut self, var: &str) -> String {
+            format!("var-not-found:{var}")
+        }
+    }
+
     #[test]
     fn collect_terms_kernel_requires_var_on_both_sides() {
         let mut ctx = Context::new();
@@ -686,6 +779,135 @@ mod tests {
 
         let routing = derive_isolation_strategy_routing(&ctx, &eq, "x");
         assert_eq!(routing, IsolationStrategyRouting::DirectIsolation);
+    }
+
+    #[test]
+    fn solve_isolation_strategy_routing_with_runtime_direct_calls_runtime_once() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let eq = Equation {
+            lhs: x,
+            rhs: y,
+            op: RelOp::Eq,
+        };
+        let mut runtime = MockIsolationRuntime::new();
+        let solved = solve_isolation_strategy_routing_with_runtime(
+            IsolationStrategyRouting::DirectIsolation,
+            &eq,
+            "x",
+            true,
+            &mut runtime,
+        )
+        .expect("direct isolation should be applicable")
+        .expect("runtime should solve");
+
+        assert_eq!(runtime.solved_with.len(), 1);
+        assert_eq!(runtime.solved_with[0], eq);
+        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
+        assert_eq!(solved.1, vec![format!("solved {}", eq.lhs)]);
+    }
+
+    #[test]
+    fn solve_isolation_strategy_routing_with_runtime_swap_prepends_item_when_enabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let eq = Equation {
+            lhs: y,
+            rhs: x,
+            op: RelOp::Lt,
+        };
+        let routing = derive_isolation_strategy_routing(&ctx, &eq, "x");
+        let mut runtime = MockIsolationRuntime::new();
+        let solved =
+            solve_isolation_strategy_routing_with_runtime(routing, &eq, "x", true, &mut runtime)
+                .expect("swap route should be applicable")
+                .expect("runtime should solve");
+
+        assert_eq!(runtime.solved_with.len(), 1);
+        // swap-side rewrite should call runtime with swapped equation
+        assert_eq!(runtime.solved_with[0].lhs, eq.rhs);
+        assert_eq!(runtime.solved_with[0].rhs, eq.lhs);
+        assert_eq!(runtime.solved_with[0].op, RelOp::Gt);
+        assert_eq!(solved.1.len(), 2);
+        assert_eq!(solved.1[0], "Swap sides to put variable on LHS");
+    }
+
+    #[test]
+    fn solve_isolation_strategy_routing_with_runtime_swap_omits_item_when_disabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let eq = Equation {
+            lhs: y,
+            rhs: x,
+            op: RelOp::Eq,
+        };
+        let routing = derive_isolation_strategy_routing(&ctx, &eq, "x");
+        let mut runtime = MockIsolationRuntime::new();
+        let solved =
+            solve_isolation_strategy_routing_with_runtime(routing, &eq, "x", false, &mut runtime)
+                .expect("swap route should be applicable")
+                .expect("runtime should solve");
+
+        assert_eq!(runtime.solved_with.len(), 1);
+        assert_eq!(solved.1.len(), 1);
+        assert_eq!(
+            solved.1[0],
+            format!("solved {}", runtime.solved_with[0].lhs)
+        );
+    }
+
+    #[test]
+    fn solve_isolation_strategy_routing_with_runtime_variable_not_found_returns_error() {
+        let mut ctx = Context::new();
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let eq = Equation {
+            lhs: y,
+            rhs: z,
+            op: RelOp::Eq,
+        };
+        let mut runtime = MockIsolationRuntime::new();
+        let solved = solve_isolation_strategy_routing_with_runtime(
+            IsolationStrategyRouting::VariableNotFound,
+            &eq,
+            "x",
+            true,
+            &mut runtime,
+        )
+        .expect("variable-not-found should be terminal");
+
+        assert_eq!(
+            solved.expect_err("expected variable-not-found error"),
+            "var-not-found:x"
+        );
+        assert!(runtime.solved_with.is_empty());
+    }
+
+    #[test]
+    fn solve_isolation_strategy_routing_with_runtime_both_sides_is_not_applicable() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let lhs = ctx.add(Expr::Add(x, one));
+        let rhs = ctx.add(Expr::Sub(x, one));
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+        let mut runtime = MockIsolationRuntime::new();
+        let solved = solve_isolation_strategy_routing_with_runtime(
+            IsolationStrategyRouting::VariableOnBothSides,
+            &eq,
+            "x",
+            true,
+            &mut runtime,
+        );
+        assert!(solved.is_none());
+        assert!(runtime.solved_with.is_empty());
     }
 
     #[test]

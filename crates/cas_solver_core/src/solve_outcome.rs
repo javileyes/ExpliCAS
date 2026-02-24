@@ -72,6 +72,15 @@ pub trait CircularIsolatedRuntime<S> {
     fn residual_solution(&mut self, lhs: ExprId, rhs: ExprId, var: &str) -> SolutionSet;
 }
 
+/// Runtime adapter for solving equations where the target variable is already
+/// isolated on the left-hand side.
+pub trait IsolatedVariableRuntime<S>: CircularIsolatedRuntime<S> {
+    /// Mutable access to expression context.
+    fn context(&mut self) -> &mut Context;
+    /// Simplify RHS before checking whether the target variable still appears.
+    fn simplify_rhs(&mut self, rhs: ExprId) -> ExprId;
+}
+
 /// Resolve the final outcome for `x op rhs` once the variable is syntactically
 /// isolated on the left-hand side.
 pub fn resolve_isolated_variable_outcome(
@@ -144,6 +153,36 @@ where
     }
 
     CircularIsolatedOutcome::Residual(runtime.residual_solution(lhs, rhs, var))
+}
+
+/// Solve a branch where `lhs` is already the target variable (`x op rhs`).
+///
+/// The runtime decides how RHS simplification and circular fallbacks are
+/// executed. Returned steps are non-empty only when circular fallback resolves
+/// via linear-collect routes.
+pub fn solve_isolated_variable_lhs_with_runtime<S, R>(
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    runtime: &mut R,
+) -> (SolutionSet, Vec<S>)
+where
+    R: IsolatedVariableRuntime<S>,
+{
+    let sim_rhs = runtime.simplify_rhs(rhs);
+    match resolve_isolated_variable_outcome(runtime.context(), sim_rhs, op, var) {
+        IsolatedVariableOutcome::Solved(set) => (set, Vec::new()),
+        IsolatedVariableOutcome::ContainsTargetVariable => {
+            match resolve_circular_isolated_outcome_with_runtime(lhs, rhs, var, runtime) {
+                CircularIsolatedOutcome::Solved {
+                    solution_set,
+                    steps,
+                } => (solution_set, steps),
+                CircularIsolatedOutcome::Residual(set) => (set, Vec::new()),
+            }
+        }
+    }
 }
 
 /// Route for handling `base^x = base` shortcuts.
@@ -2194,6 +2233,91 @@ where
         solution_set,
         steps,
     })
+}
+
+/// Runtime contract for executing one term-isolation rewrite pipeline.
+pub trait TermIsolationRewriteRuntime<E, S> {
+    /// Recursively solve rewritten equation.
+    fn solve_rewritten(
+        &mut self,
+        equation: Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<S>), E>;
+    /// Map optional first rewrite item to caller-owned step payload.
+    fn map_item_to_step(&mut self, item: TermIsolationRewriteExecutionItem) -> S;
+}
+
+/// Execute term-isolation rewrite solving + optional item dispatch via runtime.
+pub fn solve_term_isolation_rewrite_pipeline_with_item_runtime<R, E, S>(
+    rewrite: TermIsolationRewritePlan,
+    var: &str,
+    include_item: bool,
+    runtime: &mut R,
+) -> Result<TermIsolationRewritePipelineSolved<S>, E>
+where
+    R: TermIsolationRewriteRuntime<E, S>,
+{
+    let solved_rewrite = solve_term_isolation_rewrite_with(rewrite, |equation| {
+        runtime.solve_rewritten(equation, var)
+    })?;
+    let mut steps = Vec::new();
+    if include_item {
+        if let Some(item) = first_term_isolation_rewrite_execution_item(&solved_rewrite.rewrite) {
+            steps.push(runtime.map_item_to_step(item));
+        }
+    }
+    let (solution_set, mut sub_steps) = solved_rewrite.solved;
+    steps.append(&mut sub_steps);
+    Ok(TermIsolationRewritePipelineSolved {
+        solution_set,
+        steps,
+    })
+}
+
+/// Runtime contract for solving a negated-LHS isolation rewrite (`-A = RHS`).
+pub trait NegatedLhsIsolationRuntime<E, S> {
+    /// Mutable access to expression context.
+    fn context(&mut self) -> &mut Context;
+    /// Recursively solve a rewritten equation.
+    fn solve_rewritten(
+        &mut self,
+        equation: Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<S>), E>;
+    /// Map first rewrite item to caller-owned step payload.
+    fn map_item_to_step(&mut self, item: TermIsolationRewriteExecutionItem) -> S;
+}
+
+/// Execute negated-LHS isolation rewrite with runtime-managed recursion and
+/// optional first-item didactic projection.
+pub fn solve_negated_lhs_isolation_with_runtime<R, E, S>(
+    inner: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    include_item: bool,
+    runtime: &mut R,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    R: NegatedLhsIsolationRuntime<E, S>,
+{
+    let rewrite = {
+        let ctx = runtime.context();
+        plan_negated_lhs_isolation_step(ctx, inner, rhs, op)
+    };
+    let solved = solve_term_isolation_rewrite_with(rewrite, |equation| {
+        runtime.solve_rewritten(equation, var)
+    })?;
+
+    let mut steps = Vec::new();
+    if include_item {
+        if let Some(item) = first_term_isolation_rewrite_execution_item(&solved.rewrite) {
+            steps.push(runtime.map_item_to_step(item));
+        }
+    }
+    let (solution_set, mut sub_steps) = solved.solved;
+    steps.append(&mut sub_steps);
+    Ok((solution_set, steps))
 }
 
 /// Route chosen for denominator isolation with zero-RHS guard.
@@ -8551,6 +8675,165 @@ mod tests {
         assert_eq!(solved.steps, vec!["only-substep".to_string()]);
     }
 
+    struct TestTermIsolationRuntime {
+        solve_result: (SolutionSet, Vec<String>),
+        last_var: Option<String>,
+    }
+
+    impl TermIsolationRewriteRuntime<&'static str, String> for TestTermIsolationRuntime {
+        fn solve_rewritten(
+            &mut self,
+            _: Equation,
+            var: &str,
+        ) -> Result<(SolutionSet, Vec<String>), &'static str> {
+            self.last_var = Some(var.to_string());
+            Ok(self.solve_result.clone())
+        }
+
+        fn map_item_to_step(&mut self, item: TermIsolationRewriteExecutionItem) -> String {
+            item.description
+        }
+    }
+
+    #[test]
+    fn solve_term_isolation_rewrite_pipeline_with_item_runtime_forwards_item_and_substeps() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let plan =
+            plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
+        let expected_item = plan.items[0].description.clone();
+        let mut runtime = TestTermIsolationRuntime {
+            solve_result: (
+                SolutionSet::Discrete(vec![x]),
+                vec!["runtime-substep".to_string()],
+            ),
+            last_var: None,
+        };
+
+        let solved =
+            solve_term_isolation_rewrite_pipeline_with_item_runtime(plan, "x", true, &mut runtime)
+                .expect("runtime pipeline solve should succeed");
+
+        assert_eq!(runtime.last_var.as_deref(), Some("x"));
+        assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![x]));
+        assert_eq!(
+            solved.steps,
+            vec![expected_item, "runtime-substep".to_string()]
+        );
+    }
+
+    #[test]
+    fn solve_term_isolation_rewrite_pipeline_with_item_runtime_omits_item_when_disabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let plan =
+            plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
+        let mut runtime = TestTermIsolationRuntime {
+            solve_result: (
+                SolutionSet::Discrete(vec![z]),
+                vec!["runtime-only-substep".to_string()],
+            ),
+            last_var: None,
+        };
+
+        let solved =
+            solve_term_isolation_rewrite_pipeline_with_item_runtime(plan, "x", false, &mut runtime)
+                .expect("runtime pipeline solve should succeed");
+
+        assert_eq!(runtime.last_var.as_deref(), Some("x"));
+        assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![z]));
+        assert_eq!(solved.steps, vec!["runtime-only-substep".to_string()]);
+    }
+
+    struct TestNegatedLhsRuntime {
+        ctx: Context,
+        solve_result: (SolutionSet, Vec<String>),
+        last_solved_equation: Option<Equation>,
+    }
+
+    impl NegatedLhsIsolationRuntime<&'static str, String> for TestNegatedLhsRuntime {
+        fn context(&mut self) -> &mut Context {
+            &mut self.ctx
+        }
+
+        fn solve_rewritten(
+            &mut self,
+            equation: Equation,
+            _: &str,
+        ) -> Result<(SolutionSet, Vec<String>), &'static str> {
+            self.last_solved_equation = Some(equation);
+            Ok(self.solve_result.clone())
+        }
+
+        fn map_item_to_step(&mut self, item: TermIsolationRewriteExecutionItem) -> String {
+            item.description
+        }
+    }
+
+    #[test]
+    fn solve_negated_lhs_isolation_with_runtime_forwards_item_and_substeps() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let one = ctx.num(1);
+        let solve_result = (
+            SolutionSet::Discrete(vec![one]),
+            vec!["substep".to_string()],
+        );
+        let mut runtime = TestNegatedLhsRuntime {
+            ctx,
+            solve_result,
+            last_solved_equation: None,
+        };
+
+        let (solution_set, steps) =
+            solve_negated_lhs_isolation_with_runtime(x, y, RelOp::Lt, "x", true, &mut runtime)
+                .expect("negated-lhs runtime solve should succeed");
+
+        let rewritten = runtime
+            .last_solved_equation
+            .clone()
+            .expect("expected rewritten equation to be solved");
+        assert_eq!(rewritten.lhs, x);
+        assert_eq!(rewritten.op, RelOp::Gt);
+        assert!(matches!(runtime.ctx.get(rewritten.rhs), Expr::Neg(id) if *id == y));
+        assert_eq!(solution_set, SolutionSet::Discrete(vec![one]));
+        assert_eq!(
+            steps,
+            vec![
+                "Multiply both sides by -1 (flips inequality)".to_string(),
+                "substep".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn solve_negated_lhs_isolation_with_runtime_omits_item_when_disabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let one = ctx.num(1);
+        let mut runtime = TestNegatedLhsRuntime {
+            ctx,
+            solve_result: (
+                SolutionSet::Discrete(vec![one]),
+                vec!["substep-only".to_string()],
+            ),
+            last_solved_equation: None,
+        };
+
+        let (solution_set, steps) =
+            solve_negated_lhs_isolation_with_runtime(x, y, RelOp::Eq, "x", false, &mut runtime)
+                .expect("negated-lhs runtime solve should succeed");
+
+        assert_eq!(solution_set, SolutionSet::Discrete(vec![one]));
+        assert_eq!(steps, vec!["substep-only".to_string()]);
+    }
+
     #[test]
     fn build_division_denominator_sign_split_steps_with_builds_payload() {
         let mut ctx = Context::new();
@@ -10659,6 +10942,119 @@ mod tests {
             out,
             CircularIsolatedOutcome::Residual(SolutionSet::Residual(id)) if id == two
         ));
+    }
+
+    struct TestIsolatedVariableRuntime {
+        ctx: Context,
+        simplified_rhs: Option<ExprId>,
+        linear_collect: Option<(SolutionSet, Vec<&'static str>)>,
+        linear_collect_v2: Option<(SolutionSet, Vec<&'static str>)>,
+        residual: SolutionSet,
+        simplify_calls: usize,
+    }
+
+    impl CircularIsolatedRuntime<&'static str> for TestIsolatedVariableRuntime {
+        fn try_linear_collect(
+            &mut self,
+            _: ExprId,
+            _: ExprId,
+            _: &str,
+        ) -> Option<(SolutionSet, Vec<&'static str>)> {
+            self.linear_collect.clone()
+        }
+
+        fn try_linear_collect_v2(
+            &mut self,
+            _: ExprId,
+            _: ExprId,
+            _: &str,
+        ) -> Option<(SolutionSet, Vec<&'static str>)> {
+            self.linear_collect_v2.clone()
+        }
+
+        fn residual_solution(&mut self, _: ExprId, _: ExprId, _: &str) -> SolutionSet {
+            self.residual.clone()
+        }
+    }
+
+    impl IsolatedVariableRuntime<&'static str> for TestIsolatedVariableRuntime {
+        fn context(&mut self) -> &mut Context {
+            &mut self.ctx
+        }
+
+        fn simplify_rhs(&mut self, rhs: ExprId) -> ExprId {
+            self.simplify_calls += 1;
+            self.simplified_rhs.unwrap_or(rhs)
+        }
+    }
+
+    #[test]
+    fn solve_isolated_variable_lhs_with_runtime_returns_direct_solution_for_var_free_rhs() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let three = ctx.num(3);
+        let mut runtime = TestIsolatedVariableRuntime {
+            ctx,
+            simplified_rhs: None,
+            linear_collect: None,
+            linear_collect_v2: None,
+            residual: SolutionSet::Empty,
+            simplify_calls: 0,
+        };
+
+        let (set, steps) =
+            solve_isolated_variable_lhs_with_runtime(x, three, RelOp::Eq, "x", &mut runtime);
+
+        assert_eq!(runtime.simplify_calls, 1);
+        assert!(steps.is_empty());
+        assert_eq!(set, SolutionSet::Discrete(vec![three]));
+    }
+
+    #[test]
+    fn solve_isolated_variable_lhs_with_runtime_prefers_circular_linear_collect() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let rhs = ctx.add(Expr::Add(x, one));
+        let mut runtime = TestIsolatedVariableRuntime {
+            ctx,
+            simplified_rhs: None,
+            linear_collect: Some((SolutionSet::Discrete(vec![two]), vec!["lc1"])),
+            linear_collect_v2: Some((SolutionSet::Discrete(vec![one]), vec!["lc2"])),
+            residual: SolutionSet::Residual(one),
+            simplify_calls: 0,
+        };
+
+        let (set, steps) =
+            solve_isolated_variable_lhs_with_runtime(x, rhs, RelOp::Eq, "x", &mut runtime);
+
+        assert_eq!(runtime.simplify_calls, 1);
+        assert_eq!(set, SolutionSet::Discrete(vec![two]));
+        assert_eq!(steps, vec!["lc1"]);
+    }
+
+    #[test]
+    fn solve_isolated_variable_lhs_with_runtime_falls_back_to_residual_without_steps() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let rhs = ctx.add(Expr::Add(x, one));
+        let mut runtime = TestIsolatedVariableRuntime {
+            ctx,
+            simplified_rhs: None,
+            linear_collect: None,
+            linear_collect_v2: None,
+            residual: SolutionSet::Residual(one),
+            simplify_calls: 0,
+        };
+
+        let (set, steps) =
+            solve_isolated_variable_lhs_with_runtime(x, rhs, RelOp::Eq, "x", &mut runtime);
+
+        assert_eq!(runtime.simplify_calls, 1);
+        assert_eq!(set, SolutionSet::Residual(one));
+        assert!(steps.is_empty());
     }
 
     #[test]
