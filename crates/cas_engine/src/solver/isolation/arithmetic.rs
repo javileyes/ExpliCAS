@@ -10,23 +10,25 @@ use cas_solver_core::isolation_utils::{
 };
 use cas_solver_core::solve_outcome::{
     derive_add_isolation_operands, derive_div_isolation_route, derive_mul_isolation_operands,
-    derive_sub_isolation_route, finalize_division_denominator_sign_split_solved_sets,
+    finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
     finalize_product_zero_inequality_solved_sets, mul_rhs_contains_variable,
-    plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
-    plan_div_numerator_isolation_step_with, plan_division_denominator,
+    plan_add_operand_isolation_step_with_runtime,
+    plan_div_denominator_isolation_with_zero_rhs_guard,
+    plan_div_numerator_isolation_step_with_runtime, plan_division_denominator,
     plan_division_denominator_sign_split, plan_isolated_denominator_sign_split,
-    plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split,
-    plan_sub_isolation_step_with, solve_division_denominator_pipeline_with_optional_items_runtime,
+    plan_mul_factor_isolation_step_with_runtime, plan_product_zero_inequality_split,
+    plan_sub_isolation_step_with_runtime,
+    solve_division_denominator_pipeline_with_optional_items_runtime,
     solve_division_denominator_sign_split_pipeline_with_optional_items_runtime,
     solve_isolated_denominator_sign_split_pipeline_with_optional_items_runtime,
-    solve_product_zero_inequality_split_execution_with,
+    solve_product_zero_inequality_split_execution_with_runtime,
     solve_term_isolation_rewrite_pipeline_with_item_runtime, AddIsolationRoute,
     DivDenominatorIsolationRoute, DivIsolationRoute, DivisionDenominatorDidacticRuntime,
     DivisionDenominatorSignSplitRuntime, DivisionDenominatorSignSplitSolvedCases,
     IsolatedDenominatorSignSplitRuntime, IsolatedDenominatorSignSplitSolvedCases,
-    SubIsolationRoute, TermIsolationRewriteExecutionItem, TermIsolationRewritePlan,
-    TermIsolationRewriteRuntime,
+    ProductZeroInequalityExecutionRuntime, TermIsolationPlanRuntime,
+    TermIsolationRewriteExecutionItem, TermIsolationRewritePlan, TermIsolationRewriteRuntime,
 };
 
 use super::{isolate, prepend_steps};
@@ -75,6 +77,37 @@ struct EngineDivisionIsolationRuntime<'a, 'b> {
     simplifier: &'a mut Simplifier,
     opts: SolverOptions,
     solve_ctx: &'b super::super::SolveCtx,
+}
+
+struct EngineTermIsolationPlanRuntime;
+
+impl TermIsolationPlanRuntime for EngineTermIsolationPlanRuntime {
+    fn render_expr(&mut self, core_ctx: &cas_ast::Context, expr: ExprId) -> String {
+        format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: core_ctx,
+                id: expr
+            }
+        )
+    }
+}
+
+struct EngineProductZeroInequalityRuntime<'a, 'b, 'c> {
+    simplifier: &'a mut Simplifier,
+    var: &'b str,
+    solve_ctx: &'c super::super::SolveCtx,
+}
+
+impl ProductZeroInequalityExecutionRuntime<CasError, SolveStep>
+    for EngineProductZeroInequalityRuntime<'_, '_, '_>
+{
+    fn solve_case(
+        &mut self,
+        equation: &cas_ast::Equation,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        solve_with_ctx(equation, self.var, self.simplifier, self.solve_ctx)
+    }
 }
 
 impl DivisionDenominatorDidacticRuntime<CasError, SolveStep>
@@ -246,20 +279,14 @@ pub(super) fn isolate_add(
         }
     }
 
-    let moved_desc = format!(
-        "{}",
-        cas_formatter::DisplayExpr {
-            context: &simplifier.context,
-            id: add_operands.moved_addend
-        }
-    );
-    let plan = plan_add_operand_isolation_step_with(
+    let mut plan_runtime = EngineTermIsolationPlanRuntime;
+    let plan = plan_add_operand_isolation_step_with_runtime(
         &mut simplifier.context,
         add_operands.isolated_addend,
         add_operands.moved_addend,
         rhs,
         op.clone(),
-        |_| moved_desc.clone(),
+        &mut plan_runtime,
     );
     let include_item = simplifier.collect_steps();
     let solved = solve_term_isolation_plan(plan, var, include_item, true, simplifier, opts, ctx)?;
@@ -279,22 +306,16 @@ pub(super) fn isolate_sub(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let sub_route = derive_sub_isolation_route(&simplifier.context, l, var);
-    let moved = if matches!(sub_route, SubIsolationRoute::Minuend) {
-        r
-    } else {
-        l
-    };
-    let moved_desc = format!(
-        "{}",
-        cas_formatter::DisplayExpr {
-            context: &simplifier.context,
-            id: moved
-        }
+    let mut plan_runtime = EngineTermIsolationPlanRuntime;
+    let plan = plan_sub_isolation_step_with_runtime(
+        &mut simplifier.context,
+        l,
+        r,
+        rhs,
+        op,
+        var,
+        &mut plan_runtime,
     );
-    let plan = plan_sub_isolation_step_with(&mut simplifier.context, l, r, rhs, op, var, |_| {
-        moved_desc.clone()
-    });
     let include_item = simplifier.collect_steps();
     let solved = solve_term_isolation_plan(plan, var, include_item, true, simplifier, opts, ctx)?;
     prepend_steps(solved, steps)
@@ -320,11 +341,15 @@ pub(super) fn isolate_mul(
         if let Some(plan) =
             plan_product_zero_inequality_split(&mut simplifier.context, l, r, op.clone())
         {
-            let solved = solve_product_zero_inequality_split_execution_with(&plan, |equation| {
-                solve_with_ctx(equation, var, simplifier, ctx)
-            })?;
+            let mut runtime = EngineProductZeroInequalityRuntime {
+                simplifier,
+                var,
+                solve_ctx: ctx,
+            };
+            let solved =
+                solve_product_zero_inequality_split_execution_with_runtime(&plan, &mut runtime)?;
             let final_set = finalize_product_zero_inequality_solved_sets(
-                &simplifier.context,
+                &runtime.simplifier.context,
                 solved.solved_sets,
             );
             return prepend_steps((final_set, solved.steps), steps);
@@ -344,21 +369,15 @@ pub(super) fn isolate_mul(
 
     let mul_operands = derive_mul_isolation_operands(&simplifier.context, l, r, var);
     let moved_is_negative = is_known_negative(&simplifier.context, mul_operands.moved_factor);
-    let moved_desc = format!(
-        "{}",
-        cas_formatter::DisplayExpr {
-            context: &simplifier.context,
-            id: mul_operands.moved_factor
-        }
-    );
-    let plan = plan_mul_factor_isolation_step_with(
+    let mut plan_runtime = EngineTermIsolationPlanRuntime;
+    let plan = plan_mul_factor_isolation_step_with_runtime(
         &mut simplifier.context,
         mul_operands.isolated_factor,
         mul_operands.moved_factor,
         rhs,
         op,
         moved_is_negative,
-        |_| moved_desc.clone(),
+        &mut plan_runtime,
     );
     let include_item = simplifier.collect_steps();
     let solved = solve_term_isolation_plan(plan, var, include_item, false, simplifier, opts, ctx)?;
@@ -424,21 +443,15 @@ pub(super) fn isolate_div(
         } else {
             // A = RHS * B
             let denominator_is_negative = is_known_negative(&simplifier.context, r);
-            let moved_desc = format!(
-                "{}",
-                cas_formatter::DisplayExpr {
-                    context: &simplifier.context,
-                    id: r
-                }
-            );
-            let plan = plan_div_numerator_isolation_step_with(
+            let mut plan_runtime = EngineTermIsolationPlanRuntime;
+            let plan = plan_div_numerator_isolation_step_with_runtime(
                 &mut simplifier.context,
                 l,
                 r,
                 rhs,
                 op,
                 denominator_is_negative,
-                |_| moved_desc.clone(),
+                &mut plan_runtime,
             );
             let include_item = simplifier.collect_steps();
             let solved =

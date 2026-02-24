@@ -1005,6 +1005,42 @@ where
     ))
 }
 
+/// Runtime variant of `plan_pow_exponent_log_unsupported_execution_from_decision_with`.
+#[allow(clippy::too_many_arguments)]
+pub fn plan_pow_exponent_log_unsupported_execution_from_decision_with_runtime<R>(
+    ctx: &mut Context,
+    decision: &LogSolveDecision,
+    can_branch: bool,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    exponent: ExprId,
+    base: ExprId,
+    rhs_expr: ExprId,
+    op: RelOp,
+    source_equation: Equation,
+    runtime: &mut R,
+) -> Option<PowExponentLogUnsupportedExecution>
+where
+    R: TermIsolationPlanRuntime,
+{
+    let base_desc = runtime.render_expr(ctx, base);
+    plan_pow_exponent_log_unsupported_execution_from_decision_with(
+        ctx,
+        decision,
+        can_branch,
+        lhs,
+        rhs,
+        var,
+        exponent,
+        base,
+        rhs_expr,
+        op,
+        source_equation,
+        |_, _| base_desc.clone(),
+    )
+}
+
 /// Routing for isolation when the variable is in the power base (`B^E = RHS`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PowBaseIsolationRoute {
@@ -1471,6 +1507,29 @@ where
         rhs,
         op,
         |id| render_expr(ctx, id),
+    )
+}
+
+/// Runtime variant of `resolve_power_base_one_shortcut_for_pow_with`.
+pub fn resolve_power_base_one_shortcut_for_pow_with_runtime<R>(
+    ctx: &Context,
+    base: ExprId,
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    runtime: &mut R,
+) -> Option<PowerBaseOneShortcutOutcome>
+where
+    R: TermIsolationPlanRuntime,
+{
+    let rhs_desc = runtime.render_expr(ctx, rhs);
+    resolve_power_base_one_shortcut_with(
+        crate::isolation_utils::is_numeric_one(ctx, base),
+        crate::isolation_utils::is_numeric_one(ctx, rhs),
+        lhs,
+        rhs,
+        op,
+        |_| rhs_desc.clone(),
     )
 }
 
@@ -2086,6 +2145,47 @@ where
     );
 
     map_pow_base_isolation_plan_with(plan, base, exponent, rhs, op, |id| render_expr(ctx, id))
+}
+
+/// Runtime variant of `build_pow_base_isolation_action_with`.
+#[allow(clippy::too_many_arguments)]
+pub fn build_pow_base_isolation_action_with_runtime<R>(
+    ctx: &mut Context,
+    base: ExprId,
+    exponent: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    runtime: &mut R,
+) -> PowBaseIsolationEngineAction
+where
+    R: TermIsolationPlanRuntime,
+{
+    let base_desc = runtime.render_expr(ctx, base);
+    let exponent_desc = runtime.render_expr(ctx, exponent);
+    let rhs_desc = runtime.render_expr(ctx, rhs);
+
+    let plan = plan_pow_base_isolation(
+        ctx,
+        base,
+        exponent,
+        rhs,
+        op.clone(),
+        crate::isolation_utils::is_even_integer_expr(ctx, exponent),
+        crate::isolation_utils::is_known_negative(ctx, rhs),
+        crate::isolation_utils::is_known_negative(ctx, exponent),
+    );
+
+    map_pow_base_isolation_plan_with(plan, base, exponent, rhs, op, |id| {
+        if id == base {
+            base_desc.clone()
+        } else if id == exponent {
+            exponent_desc.clone()
+        } else if id == rhs {
+            rhs_desc.clone()
+        } else {
+            id.to_string()
+        }
+    })
 }
 
 /// Build didactic narration for terminal base-isolation outcomes.
@@ -2736,6 +2836,12 @@ pub fn plan_negated_lhs_isolation_step(
     build_term_isolation_rewrite_plan_from_item(equation, item)
 }
 
+/// Runtime contract for planning term-isolation didactic rewrites.
+pub trait TermIsolationPlanRuntime {
+    /// Render one expression in the provided core context.
+    fn render_expr(&mut self, core_ctx: &Context, expr: ExprId) -> String;
+}
+
 /// Plan add-operand isolation and corresponding didactic step.
 pub fn plan_add_operand_isolation_step_with<F>(
     ctx: &mut Context,
@@ -2751,6 +2857,22 @@ where
     let equation = crate::equation_rewrite::isolate_add_operand(ctx, kept, moved, rhs, op);
     let item = build_add_operand_isolation_item_with(equation.clone(), moved, render_expr);
     build_term_isolation_rewrite_plan_from_item(equation, item)
+}
+
+/// Plan add-operand isolation and didactic step via runtime renderer.
+pub fn plan_add_operand_isolation_step_with_runtime<R>(
+    ctx: &mut Context,
+    kept: ExprId,
+    moved: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    runtime: &mut R,
+) -> TermIsolationRewritePlan
+where
+    R: TermIsolationPlanRuntime,
+{
+    let moved_desc = runtime.render_expr(ctx, moved);
+    plan_add_operand_isolation_step_with(ctx, kept, moved, rhs, op, |_| moved_desc.clone())
 }
 
 /// Plan sub-minuend isolation and corresponding didactic step.
@@ -2811,6 +2933,31 @@ where
     }
 }
 
+/// Plan subtraction isolation `(l - r) = rhs` using runtime renderer.
+pub fn plan_sub_isolation_step_with_runtime<R>(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    runtime: &mut R,
+) -> TermIsolationRewritePlan
+where
+    R: TermIsolationPlanRuntime,
+{
+    let moved = if matches!(
+        derive_sub_isolation_route(ctx, left, var),
+        SubIsolationRoute::Minuend
+    ) {
+        right
+    } else {
+        left
+    };
+    let moved_desc = runtime.render_expr(ctx, moved);
+    plan_sub_isolation_step_with(ctx, left, right, rhs, op, var, |_| moved_desc.clone())
+}
+
 /// Plan multiplicative-factor isolation and corresponding didactic step.
 pub fn plan_mul_factor_isolation_step_with<F>(
     ctx: &mut Context,
@@ -2828,6 +2975,25 @@ where
         crate::equation_rewrite::isolate_mul_factor(ctx, kept, moved, rhs, op, moved_is_negative);
     let item = build_mul_factor_isolation_item_with(equation.clone(), moved, render_expr);
     build_term_isolation_rewrite_plan_from_item(equation, item)
+}
+
+/// Plan multiplicative-factor isolation and didactic step via runtime renderer.
+pub fn plan_mul_factor_isolation_step_with_runtime<R>(
+    ctx: &mut Context,
+    kept: ExprId,
+    moved: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    moved_is_negative: bool,
+    runtime: &mut R,
+) -> TermIsolationRewritePlan
+where
+    R: TermIsolationPlanRuntime,
+{
+    let moved_desc = runtime.render_expr(ctx, moved);
+    plan_mul_factor_isolation_step_with(ctx, kept, moved, rhs, op, moved_is_negative, |_| {
+        moved_desc.clone()
+    })
 }
 
 /// Plan division-numerator isolation and corresponding didactic step.
@@ -2853,6 +3019,31 @@ where
     );
     let item = build_div_numerator_isolation_item_with(equation.clone(), denominator, render_expr);
     build_term_isolation_rewrite_plan_from_item(equation, item)
+}
+
+/// Plan division-numerator isolation and didactic step via runtime renderer.
+pub fn plan_div_numerator_isolation_step_with_runtime<R>(
+    ctx: &mut Context,
+    numerator: ExprId,
+    denominator: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    denominator_is_negative: bool,
+    runtime: &mut R,
+) -> TermIsolationRewritePlan
+where
+    R: TermIsolationPlanRuntime,
+{
+    let denominator_desc = runtime.render_expr(ctx, denominator);
+    plan_div_numerator_isolation_step_with(
+        ctx,
+        numerator,
+        denominator,
+        rhs,
+        op,
+        denominator_is_negative,
+        |_| denominator_desc.clone(),
+    )
 }
 
 /// Plan denominator isolation with `rhs == 0` safety guard.
@@ -3376,6 +3567,23 @@ where
         equation: step.equation_after.clone(),
         items,
     }
+}
+
+/// Runtime variant of `plan_pow_exponent_log_isolation_step_with`.
+pub fn plan_pow_exponent_log_isolation_step_with_runtime<R>(
+    ctx: &mut Context,
+    exponent: ExprId,
+    base: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    guard_message: Option<&str>,
+    runtime: &mut R,
+) -> PowExponentLogIsolationRewritePlan
+where
+    R: TermIsolationPlanRuntime,
+{
+    let base_desc = runtime.render_expr(ctx, base);
+    plan_pow_exponent_log_isolation_step(ctx, exponent, base, rhs, op, guard_message, &base_desc)
 }
 
 /// Plan guarded logarithmic isolation (`x = log_b(rhs)`) and render base display
@@ -4511,6 +4719,25 @@ where
         Ok::<_, E>(solution_set)
     })?;
     Ok(ProductZeroInequalityExecutionSolved { solved_sets, steps })
+}
+
+/// Runtime contract for solving product-zero inequality split branches.
+pub trait ProductZeroInequalityExecutionRuntime<E, S> {
+    /// Solve one branch equation and return the branch solution set + steps.
+    fn solve_case(&mut self, equation: &Equation) -> Result<(SolutionSet, Vec<S>), E>;
+}
+
+/// Execute product-zero inequality split via runtime branch solver.
+pub fn solve_product_zero_inequality_split_execution_with_runtime<R, E, S>(
+    plan: &ProductZeroInequalityPlan,
+    runtime: &mut R,
+) -> Result<ProductZeroInequalityExecutionSolved<S>, E>
+where
+    R: ProductZeroInequalityExecutionRuntime<E, S>,
+{
+    solve_product_zero_inequality_split_execution_with(plan, |equation| {
+        runtime.solve_case(equation)
+    })
 }
 
 /// Solve branch equations + sign-domain constraints for division denominator
@@ -6128,6 +6355,14 @@ mod tests {
         );
     }
 
+    struct TestTermIsolationPlanRuntime;
+
+    impl TermIsolationPlanRuntime for TestTermIsolationPlanRuntime {
+        fn render_expr(&mut self, _core_ctx: &Context, expr: ExprId) -> String {
+            format!("runtime({expr})")
+        }
+    }
+
     #[test]
     fn resolve_power_base_one_shortcut_with_returns_none_when_not_applicable() {
         let mut ctx = Context::new();
@@ -6173,6 +6408,30 @@ mod tests {
         assert_eq!(outcome.items.len(), 1);
         assert_eq!(outcome.items[0].equation.lhs, lhs);
         assert_eq!(outcome.items[0].equation.rhs, rhs);
+    }
+
+    #[test]
+    fn resolve_power_base_one_shortcut_for_pow_with_runtime_detects_base_and_rhs() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let x = ctx.var("x");
+        let lhs = ctx.add(Expr::Pow(one, x));
+        let rhs = ctx.num(2);
+        let mut runtime = TestTermIsolationPlanRuntime;
+
+        let outcome = resolve_power_base_one_shortcut_for_pow_with_runtime(
+            &ctx,
+            one,
+            lhs,
+            rhs,
+            RelOp::Eq,
+            &mut runtime,
+        )
+        .expect("shortcut should apply");
+        assert!(matches!(outcome.solutions, SolutionSet::Empty));
+        assert_eq!(outcome.items.len(), 1);
+        assert!(outcome.items[0].description.contains("RHS = runtime("));
+        assert!(outcome.items[0].description.contains("no solution"));
     }
 
     #[test]
@@ -8049,6 +8308,50 @@ mod tests {
     }
 
     #[test]
+    fn plan_pow_exponent_log_unsupported_execution_from_decision_with_runtime_maps_guarded_variant()
+    {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let decision = LogSolveDecision::Unsupported(
+            "Cannot prove base > 0 and RHS > 0 for logarithm",
+            vec![
+                crate::log_domain::LogAssumption::PositiveBase,
+                crate::log_domain::LogAssumption::PositiveRhs,
+            ],
+        );
+        let mut runtime = TestTermIsolationPlanRuntime;
+        let out = plan_pow_exponent_log_unsupported_execution_from_decision_with_runtime(
+            &mut ctx,
+            &decision,
+            true,
+            exponent,
+            rhs,
+            "x",
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            Equation {
+                lhs: exponent,
+                rhs,
+                op: RelOp::Eq,
+            },
+            &mut runtime,
+        )
+        .expect("must map unsupported decision");
+        match out {
+            PowExponentLogUnsupportedExecution::Guarded { plan, .. } => {
+                assert!(plan.rewrite.items[0]
+                    .description
+                    .contains("log base runtime("));
+            }
+            other => panic!("expected guarded execution, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn guarded_solutions_with_residual_fallback_builds_two_cases() {
         let mut ctx = Context::new();
         let b = ctx.var("b");
@@ -8771,6 +9074,35 @@ mod tests {
                 assert!(items[0]
                     .description
                     .contains("Even power cannot be negative"));
+                assert!(matches!(solutions, SolutionSet::Empty));
+            }
+            other => panic!("expected terminal action, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn build_pow_base_isolation_action_with_runtime_computes_predicates_and_maps_payload() {
+        let mut ctx = Context::new();
+        let base = ctx.var("x");
+        let exponent = ctx.num(2);
+        let rhs = ctx.num(-1);
+        let mut runtime = TestTermIsolationPlanRuntime;
+        let action = build_pow_base_isolation_action_with_runtime(
+            &mut ctx,
+            base,
+            exponent,
+            rhs,
+            RelOp::Eq,
+            &mut runtime,
+        );
+
+        match action {
+            PowBaseIsolationEngineAction::ReturnSolutionSet { items, solutions } => {
+                assert_eq!(items.len(), 1);
+                assert!(items[0]
+                    .description
+                    .contains("Even power cannot be negative"));
+                assert!(items[0].description.contains("runtime("));
                 assert!(matches!(solutions, SolutionSet::Empty));
             }
             other => panic!("expected terminal action, got {:?}", other),
@@ -9792,6 +10124,75 @@ mod tests {
         assert_eq!(
             neg_plan.items[0].description,
             "Multiply both sides by -1 (flips inequality)"
+        );
+    }
+
+    struct MockTermIsolationPlanRuntime;
+
+    impl TermIsolationPlanRuntime for MockTermIsolationPlanRuntime {
+        fn render_expr(&mut self, _core_ctx: &Context, expr: ExprId) -> String {
+            format!("e{expr}")
+        }
+    }
+
+    #[test]
+    fn term_isolation_runtime_plan_helpers_build_equation_and_step() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let mut runtime = MockTermIsolationPlanRuntime;
+
+        let add_plan = plan_add_operand_isolation_step_with_runtime(
+            &mut ctx,
+            x,
+            y,
+            z,
+            RelOp::Eq,
+            &mut runtime,
+        );
+        assert_eq!(add_plan.equation.lhs, x);
+        assert_eq!(
+            add_plan.items[0].description,
+            format!("Subtract e{} from both sides", y)
+        );
+
+        let sub_plan =
+            plan_sub_isolation_step_with_runtime(&mut ctx, x, y, z, RelOp::Eq, "x", &mut runtime);
+        assert_eq!(sub_plan.equation.lhs, x);
+        assert_eq!(
+            sub_plan.items[0].description,
+            format!("Add e{} to both sides", y)
+        );
+
+        let mul_plan = plan_mul_factor_isolation_step_with_runtime(
+            &mut ctx,
+            x,
+            y,
+            z,
+            RelOp::Eq,
+            false,
+            &mut runtime,
+        );
+        assert_eq!(mul_plan.equation.lhs, x);
+        assert_eq!(
+            mul_plan.items[0].description,
+            format!("Divide both sides by e{}", y)
+        );
+
+        let div_plan = plan_div_numerator_isolation_step_with_runtime(
+            &mut ctx,
+            x,
+            y,
+            z,
+            RelOp::Eq,
+            false,
+            &mut runtime,
+        );
+        assert_eq!(div_plan.equation.lhs, x);
+        assert_eq!(
+            div_plan.items[0].description,
+            format!("Multiply both sides by e{}", y)
         );
     }
 
@@ -11184,6 +11585,30 @@ mod tests {
     }
 
     #[test]
+    fn plan_pow_exponent_log_isolation_step_with_runtime_uses_renderer() {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let mut runtime = TestTermIsolationPlanRuntime;
+
+        let plan = plan_pow_exponent_log_isolation_step_with_runtime(
+            &mut ctx,
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            None,
+            &mut runtime,
+        );
+
+        assert_eq!(plan.items[0].equation, plan.equation);
+        assert!(plan.items[0].description.contains("Take log base runtime("));
+        assert_eq!(plan.equation.lhs, exponent);
+        assert_eq!(plan.equation.op, RelOp::Eq);
+    }
+
+    #[test]
     fn collect_pow_exponent_log_isolation_didactic_steps_returns_single_step() {
         let mut ctx = Context::new();
         let exponent = ctx.var("x");
@@ -12298,6 +12723,52 @@ mod tests {
                 "case-2".to_string(),
                 "case-3".to_string(),
                 "case-4".to_string(),
+            ]
+        );
+        let final_set = finalize_product_zero_inequality_solved_sets(&ctx, solved.solved_sets);
+        assert!(matches!(final_set, SolutionSet::AllReals));
+    }
+
+    #[derive(Default)]
+    struct MockProductZeroSplitRuntime {
+        call_index: usize,
+    }
+
+    impl ProductZeroInequalityExecutionRuntime<(), String> for MockProductZeroSplitRuntime {
+        fn solve_case(&mut self, _equation: &Equation) -> Result<(SolutionSet, Vec<String>), ()> {
+            self.call_index += 1;
+            Ok((
+                if self.call_index == 2 {
+                    SolutionSet::Empty
+                } else {
+                    SolutionSet::AllReals
+                },
+                vec![format!("runtime-case-{}", self.call_index)],
+            ))
+        }
+    }
+
+    #[test]
+    fn solve_product_zero_inequality_split_execution_with_runtime_merges_steps_and_finalizes_set() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let plan =
+            plan_product_zero_inequality_split(&mut ctx, a, b, RelOp::Gt).expect("split plan");
+        let mut runtime = MockProductZeroSplitRuntime::default();
+
+        let solved =
+            solve_product_zero_inequality_split_execution_with_runtime(&plan, &mut runtime)
+                .expect("runtime execution should solve");
+
+        assert_eq!(runtime.call_index, 4);
+        assert_eq!(
+            solved.steps,
+            vec![
+                "runtime-case-1".to_string(),
+                "runtime-case-2".to_string(),
+                "runtime-case-3".to_string(),
+                "runtime-case-4".to_string(),
             ]
         );
         let final_set = finalize_product_zero_inequality_solved_sets(&ctx, solved.solved_sets);

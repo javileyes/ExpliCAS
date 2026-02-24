@@ -5,11 +5,11 @@ use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::is_numeric_zero;
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
-    build_pow_base_isolation_action_with, derive_pow_isolation_route,
-    execute_pow_exponent_shortcut_with_runtime, plan_pow_exponent_log_isolation_step_with,
-    plan_pow_exponent_log_unsupported_execution_from_decision_with,
+    build_pow_base_isolation_action_with_runtime, derive_pow_isolation_route,
+    execute_pow_exponent_shortcut_with_runtime, plan_pow_exponent_log_isolation_step_with_runtime,
+    plan_pow_exponent_log_unsupported_execution_from_decision_with_runtime,
     pow_exponent_rhs_contains_variable, resolve_log_terminal_outcome,
-    resolve_power_base_one_shortcut_for_pow_with,
+    resolve_power_base_one_shortcut_for_pow_with_runtime,
     solve_pow_base_isolation_pipeline_with_item_runtime,
     solve_pow_exponent_log_isolation_rewrite_pipeline_with_item_runtime,
     solve_pow_exponent_log_unsupported_pipeline_with_items_runtime,
@@ -22,8 +22,8 @@ use cas_solver_core::solve_outcome::{
     PowExponentShortcutExecutionItem, PowExponentShortcutPipelineRuntime,
     PowExponentShortcutPipelineSolved, PowExponentShortcutRuntime, PowIsolationRoute,
     PowerBaseOneShortcutExecutionItem, PowerBaseOneShortcutPipelineRuntime,
-    SolveTacticNormalizationRuntime, TermIsolationExecutionItem, TermIsolationRewriteExecutionItem,
-    TerminalOutcomePipelineRuntime,
+    SolveTacticNormalizationRuntime, TermIsolationExecutionItem, TermIsolationPlanRuntime,
+    TermIsolationRewriteExecutionItem, TerminalOutcomePipelineRuntime,
 };
 
 use super::{isolate, prepend_steps};
@@ -64,6 +64,20 @@ struct EnginePowSolveRuntime<'a, 'b> {
     simplifier: &'a mut Simplifier,
     opts: SolverOptions,
     solve_ctx: &'b super::super::SolveCtx,
+}
+
+struct EnginePowPlanRuntime;
+
+impl TermIsolationPlanRuntime for EnginePowPlanRuntime {
+    fn render_expr(&mut self, core_ctx: &cas_ast::Context, expr: ExprId) -> String {
+        format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: core_ctx,
+                id: expr
+            }
+        )
+    }
 }
 
 impl PowBaseIsolationRuntime<CasError, SolveStep> for EnginePowSolveRuntime<'_, '_> {
@@ -259,10 +273,15 @@ fn isolate_pow_base(
     mut steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let action =
-        build_pow_base_isolation_action_with(&mut simplifier.context, b, e, rhs, op, |ctx, id| {
-            format!("{}", cas_formatter::DisplayExpr { context: ctx, id })
-        });
+    let mut plan_runtime = EnginePowPlanRuntime;
+    let action = build_pow_base_isolation_action_with_runtime(
+        &mut simplifier.context,
+        b,
+        e,
+        rhs,
+        op,
+        &mut plan_runtime,
+    );
     let solved_base = {
         let include_item = simplifier.collect_steps();
         let mut runtime = EnginePowSolveRuntime {
@@ -371,13 +390,14 @@ fn isolate_pow_exponent(
     // DOMAIN GUARDS for log operation (RealOnly mode)
     // ================================================================
     // GUARD 1: Handle base = 1 special case
-    if let Some(outcome) = resolve_power_base_one_shortcut_for_pow_with(
+    let mut plan_runtime = EnginePowPlanRuntime;
+    if let Some(outcome) = resolve_power_base_one_shortcut_for_pow_with_runtime(
         &simplifier.context,
         b,
         lhs,
         rhs,
         op.clone(),
-        |ctx, id| format!("{}", cas_formatter::DisplayExpr { context: ctx, id }),
+        &mut plan_runtime,
     ) {
         let solved_shortcut = {
             let include_item = simplifier.collect_steps();
@@ -506,8 +526,9 @@ fn isolate_pow_exponent(
         rhs,
         op: op.clone(),
     };
+    let mut plan_runtime = EnginePowPlanRuntime;
     if let Some(unsupported_execution) =
-        plan_pow_exponent_log_unsupported_execution_from_decision_with(
+        plan_pow_exponent_log_unsupported_execution_from_decision_with_runtime(
             &mut simplifier.context,
             &decision,
             opts.budget.can_branch(),
@@ -519,15 +540,7 @@ fn isolate_pow_exponent(
             rhs,
             op.clone(),
             source_equation,
-            |core_ctx, id| {
-                format!(
-                    "{}",
-                    cas_formatter::DisplayExpr {
-                        context: core_ctx,
-                        id
-                    }
-                )
-            },
+            &mut plan_runtime,
         )
     {
         let unsupported_solved = {
@@ -568,22 +581,15 @@ fn isolate_pow_exponent(
     // End of domain guards
     // ================================================================
 
-    let log_plan = plan_pow_exponent_log_isolation_step_with(
+    let mut plan_runtime = EnginePowPlanRuntime;
+    let log_plan = plan_pow_exponent_log_isolation_step_with_runtime(
         &mut simplifier.context,
         e,
         b,
         rhs,
         op,
         None,
-        |core_ctx, id| {
-            format!(
-                "{}",
-                cas_formatter::DisplayExpr {
-                    context: core_ctx,
-                    id
-                }
-            )
-        },
+        &mut plan_runtime,
     );
     let solved_log = {
         let include_item = simplifier.collect_steps();
