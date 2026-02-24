@@ -631,6 +631,41 @@ where
     })
 }
 
+/// Execute unwrap pipeline with optional first-item step dispatch and
+/// recursive solve using caller-provided callbacks.
+pub fn solve_unwrap_execution_pipeline_with_item_with<E, S, FAssume, FSolve, FStep>(
+    execution: UnwrapExecutionPlan,
+    other_side: ExprId,
+    var: &str,
+    include_item: bool,
+    mut note_assumption: FAssume,
+    mut solve_equation: FSolve,
+    mut map_item_to_step: FStep,
+) -> Result<UnwrapExecutionPipelineSolved<S>, E>
+where
+    FAssume: FnMut(LogLinearAssumptionRecord),
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(UnwrapExecutionItem) -> S,
+{
+    let assumption_records = collect_log_linear_assumption_records(&execution, other_side);
+    for record in assumption_records.iter().copied() {
+        note_assumption(record);
+    }
+    let rewritten_equation = unwrap_rewritten_equation(&execution);
+    let mut steps = Vec::new();
+    if include_item {
+        if let Some(item) = first_unwrap_execution_item(&execution) {
+            steps.push(map_item_to_step(item));
+        }
+    }
+    let (solution_set, mut sub_steps) = solve_equation(&rewritten_equation, var)?;
+    steps.append(&mut sub_steps);
+    Ok(UnwrapExecutionPipelineSolved {
+        solution_set,
+        steps,
+    })
+}
+
 /// Plan unwrap rewrite for a target expression (`Function`/`Pow`).
 pub fn plan_unwrap_rewrite<F>(
     ctx: &mut Context,

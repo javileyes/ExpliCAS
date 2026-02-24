@@ -1,7 +1,7 @@
 use crate::isolation_utils::contains_var;
 use cas_ast::{ordering::compare_expr, Constant, Context, Equation, Expr, ExprId, SolutionSet};
 use cas_math::build::mul2_raw;
-use std::{cmp::Ordering, marker::PhantomData};
+use std::cmp::Ordering;
 
 /// Build narration when a substitution variable is introduced.
 pub fn detected_substitution_message(sub_expr_debug: &str) -> String {
@@ -439,6 +439,91 @@ pub trait SubstitutionStrategyRuntime<E, S> {
     fn map_step(&mut self, description: String, equation_after: Equation) -> S;
 }
 
+/// Solve exponential substitution strategy end-to-end with optional didactic
+/// items using caller-provided callbacks.
+///
+/// This orchestrates:
+/// 1) substitution introduction (`u = ...`, rewritten equation),
+/// 2) solving in temporary variable,
+/// 3) back-substitution `sub_expr = value_i`,
+/// 4) aggregation of final discrete solutions.
+pub fn solve_exponential_substitution_strategy_with_items_with<E, S, FRender, FSolve, FMap>(
+    equation_before: Equation,
+    rewrite_plan: ExponentialSubstitutionRewritePlan,
+    target_var: &str,
+    substitution_var: &str,
+    include_didactic_items: bool,
+    mut render_expr: FRender,
+    mut solve_equation: FSolve,
+    mut map_step: FMap,
+) -> Result<SubstitutionStrategySolved<S>, E>
+where
+    FRender: FnMut(ExprId) -> String,
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FMap: FnMut(String, Equation) -> S,
+{
+    let intro_execution =
+        build_exponential_substitution_execution_with(equation_before, rewrite_plan, |id| {
+            render_expr(id)
+        });
+
+    let solved_intro = solve_exponential_substitution_with_items(intro_execution, |items, equation| {
+        let mut steps = Vec::new();
+        if include_didactic_items {
+            steps.extend(
+                items
+                    .into_iter()
+                    .map(|item| map_step(item.description, item.equation)),
+            );
+        }
+        let (u_solutions, mut u_steps) = solve_equation(equation, substitution_var)?;
+        steps.append(&mut u_steps);
+        Ok((u_solutions, steps))
+    })?;
+
+    let (u_solutions, mut steps) = solved_intro.solved;
+
+    match u_solutions {
+        SolutionSet::Discrete(vals) => {
+            let back_plan = build_back_substitution_solve_plan_with(
+                solved_intro.execution.substitution_expr,
+                &vals,
+                include_didactic_items,
+                |id| render_expr(id),
+            );
+
+            let solved_back = solve_back_substitution_plan_with_items(back_plan, |item, equation| {
+                let mut local_steps = Vec::new();
+                if include_didactic_items {
+                    if let Some(item) = item {
+                        local_steps.push(map_step(item.description, item.equation));
+                    }
+                }
+                let (x_solution_set, mut x_steps) = solve_equation(equation, target_var)?;
+                local_steps.append(&mut x_steps);
+                Ok((x_solution_set, local_steps))
+            })?;
+
+            let mut final_solutions = Vec::new();
+            for (x_sol, mut x_steps) in solved_back.solved {
+                steps.append(&mut x_steps);
+                if let SolutionSet::Discrete(xs) = x_sol {
+                    final_solutions.extend(xs);
+                }
+            }
+
+            Ok(SubstitutionStrategySolved::SolvedDiscrete {
+                solutions: final_solutions,
+                steps,
+            })
+        }
+        solution_set => Ok(SubstitutionStrategySolved::UnsupportedSolutionSet {
+            solution_set,
+            steps,
+        }),
+    }
+}
+
 /// Solve exponential substitution strategy end-to-end with optional didactic items.
 ///
 /// This orchestrates:
@@ -462,15 +547,14 @@ where
             runtime.render_expr(id)
         });
 
-    struct IntroRuntime<'a, R, E, S> {
+    struct IntroRuntime<'a, R> {
         runtime: &'a mut R,
         include_didactic_items: bool,
         substitution_var: &'a str,
-        _marker: PhantomData<(E, S)>,
     }
 
     impl<R, E, S> ExponentialSubstitutionSolveItemsRuntime<E, (SolutionSet, Vec<S>)>
-        for IntroRuntime<'_, R, E, S>
+        for IntroRuntime<'_, R>
     where
         R: SubstitutionStrategyRuntime<E, S>,
     {
@@ -500,7 +584,6 @@ where
             runtime,
             include_didactic_items,
             substitution_var,
-            _marker: PhantomData,
         };
         solve_exponential_substitution_with_items_runtime(intro_execution, &mut intro_runtime)?
     };
@@ -515,15 +598,14 @@ where
                 include_didactic_items,
                 |id| runtime.render_expr(id),
             );
-            struct BackRuntime<'a, R, E, S> {
+            struct BackRuntime<'a, R> {
                 runtime: &'a mut R,
                 include_didactic_items: bool,
                 target_var: &'a str,
-                _marker: PhantomData<(E, S)>,
             }
 
             impl<R, E, S> BackSubstitutionPlanSolveItemsRuntime<E, (SolutionSet, Vec<S>)>
-                for BackRuntime<'_, R, E, S>
+                for BackRuntime<'_, R>
             where
                 R: SubstitutionStrategyRuntime<E, S>,
             {
@@ -551,7 +633,6 @@ where
                     runtime,
                     include_didactic_items,
                     target_var,
-                    _marker: PhantomData,
                 };
                 solve_back_substitution_plan_with_items_runtime(back_plan, &mut back_runtime)?
             };
