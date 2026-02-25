@@ -2,13 +2,13 @@
 
 use cas_engine::{Diagnostics, DomainMode, RequireOrigin, RequiredItem};
 
+mod cache;
 pub mod env;
 mod snapshot;
 mod state;
 
-pub type SimplifyCacheKey = cas_engine::SimplifyCacheKey;
-pub type SimplifiedCache = cas_engine::SimplifiedCache;
-pub type CacheHitEntryId = cas_engine::CacheHitEntryId;
+pub use cache::{SimplifiedCache, SimplifyCacheKey};
+pub type CacheHitEntryId = u64;
 
 pub type ResolvedExpr = cas_session_core::cache::ResolvedExpr<RequiredItem>;
 

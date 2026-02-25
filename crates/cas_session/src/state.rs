@@ -1,7 +1,7 @@
 use cas_ast::ExprId;
 use cas_engine::{
-    CacheHitEntryId, Diagnostics, EvalOptions, EvalResolveError, EvalSession, EvalStore,
-    ProfileCache, SimplifiedCache, StoredInputKind,
+    Diagnostics, EvalOptions, EvalResolveError, EvalSession, EvalStore, ProfileCache,
+    StoredInputKind,
 };
 
 use crate::{
@@ -63,8 +63,23 @@ impl EvalStore for SessionEvalStore {
         self.0.update_diagnostics(id, diagnostics);
     }
 
-    fn update_simplified(&mut self, id: u64, cache: SimplifiedCache) {
-        self.0.update_simplified(id, cache);
+    fn update_simplified(
+        &mut self,
+        id: u64,
+        domain: cas_engine::DomainMode,
+        expr: ExprId,
+        requires: Vec<cas_engine::RequiredItem>,
+        steps: Option<std::sync::Arc<Vec<cas_engine::Step>>>,
+    ) {
+        self.0.update_simplified(
+            id,
+            crate::SimplifiedCache {
+                key: SimplifyCacheKey::from_context(domain),
+                expr,
+                requires,
+                steps,
+            },
+        );
     }
 }
 
@@ -168,7 +183,7 @@ impl SessionState {
         &self,
         ctx: &mut cas_ast::Context,
         expr: ExprId,
-    ) -> Result<(ExprId, Diagnostics, Vec<CacheHitEntryId>), ResolveError> {
+    ) -> Result<(ExprId, Diagnostics, Vec<u64>), ResolveError> {
         crate::resolve_all_with_diagnostics(
             ctx,
             expr,
@@ -256,7 +271,7 @@ impl EvalSession for SessionState {
         &self,
         ctx: &mut cas_ast::Context,
         expr: ExprId,
-    ) -> Result<(ExprId, Diagnostics, Vec<CacheHitEntryId>), EvalResolveError> {
+    ) -> Result<(ExprId, Diagnostics, Vec<u64>), EvalResolveError> {
         self.resolve_state_refs_with_diagnostics(ctx, expr)
             .map_err(map_eval_resolve_error)
     }

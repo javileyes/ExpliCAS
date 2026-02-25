@@ -155,15 +155,13 @@ impl Engine {
                     &self.simplifier.context,
                     *simplified_expr,
                 ) {
-                    let cache_key =
-                        SimplifyCacheKey::from_context(options.shared.semantics.domain_mode);
-                    let cache = SimplifiedCache {
-                        key: cache_key,
-                        expr: *simplified_expr,
-                        requires: diagnostics.requires.clone(),
-                        steps: Some(std::sync::Arc::new(steps.clone())),
-                    };
-                    store.update_simplified(id, cache);
+                    store.update_simplified(
+                        id,
+                        options.shared.semantics.domain_mode,
+                        *simplified_expr,
+                        diagnostics.requires.clone(),
+                        Some(std::sync::Arc::new(steps.clone())),
+                    );
                 }
             }
         }

@@ -5,7 +5,6 @@
 //! (simplify, solve, expand, equiv, limit), assembles diagnostics, and
 //! returns the final `EvalOutput`.
 
-mod cache;
 mod diagnostics;
 mod dispatch;
 
@@ -24,11 +23,6 @@ pub(crate) type ActionResult = (
 
 use crate::Simplifier;
 use cas_ast::{BuiltinFn, Equation, Expr, ExprId, RelOp};
-
-pub use cache::{SimplifiedCache, SimplifyCacheKey};
-
-/// Session entry ID used for cache-hit tracing during reference resolution.
-pub type CacheHitEntryId = u64;
 
 /// Raw input kind recorded by external session stores.
 #[derive(Debug, Clone, Copy)]
@@ -86,7 +80,14 @@ pub trait EvalStore {
     fn push_raw_input(&mut self, kind: StoredInputKind, raw_input: String) -> u64;
     fn touch_cached(&mut self, entry_id: u64);
     fn update_diagnostics(&mut self, id: u64, diagnostics: crate::diagnostics::Diagnostics);
-    fn update_simplified(&mut self, id: u64, cache: SimplifiedCache);
+    fn update_simplified(
+        &mut self,
+        id: u64,
+        domain: crate::domain::DomainMode,
+        expr: ExprId,
+        requires: Vec<crate::diagnostics::RequiredItem>,
+        steps: Option<std::sync::Arc<Vec<crate::step::Step>>>,
+    );
 }
 
 pub trait EvalSession {
@@ -100,14 +101,7 @@ pub trait EvalSession {
         &self,
         ctx: &mut cas_ast::Context,
         expr: ExprId,
-    ) -> Result<
-        (
-            ExprId,
-            crate::diagnostics::Diagnostics,
-            Vec<CacheHitEntryId>,
-        ),
-        EvalResolveError,
-    >;
+    ) -> Result<(ExprId, crate::diagnostics::Diagnostics, Vec<u64>), EvalResolveError>;
 }
 
 impl Engine {
@@ -296,7 +290,7 @@ pub(crate) fn build_cache_hit_step(
     ctx: &cas_ast::Context,
     original_expr: cas_ast::ExprId,
     resolved_expr: cas_ast::ExprId,
-    cache_hits: &[CacheHitEntryId],
+    cache_hits: &[u64],
 ) -> Option<crate::Step> {
     if cache_hits.is_empty() {
         return None;
