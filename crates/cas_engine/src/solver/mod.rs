@@ -195,20 +195,6 @@ fn proof_status_from_proof(
     }
 }
 
-struct EngineLogSolveProofRuntime {
-    value_domain: crate::semantics::ValueDomain,
-}
-
-impl cas_solver_core::log_domain::LogSolveProofRuntime for EngineLogSolveProofRuntime {
-    fn prove_positive_status(
-        &mut self,
-        ctx: &cas_ast::Context,
-        expr: ExprId,
-    ) -> cas_solver_core::log_domain::ProofStatus {
-        proof_status_from_proof(crate::helpers::prove_positive(ctx, expr, self.value_domain))
-    }
-}
-
 /// Classify whether a logarithmic solve step (`base^x = rhs`) is valid.
 pub(crate) fn classify_log_solve(
     ctx: &cas_ast::Context,
@@ -217,11 +203,7 @@ pub(crate) fn classify_log_solve(
     opts: &SolverOptions,
     env: &SolveDomainEnv,
 ) -> cas_solver_core::log_domain::LogSolveDecision {
-    let mut runtime = EngineLogSolveProofRuntime {
-        value_domain: opts.value_domain,
-    };
-
-    cas_solver_core::log_domain::classify_log_solve_with_prover_runtime(
+    cas_solver_core::log_domain::classify_log_solve_with_prover(
         ctx,
         base,
         rhs,
@@ -229,7 +211,13 @@ pub(crate) fn classify_log_solve(
         opts.core_domain_mode(),
         env.has_positive(base),
         env.has_positive(rhs),
-        &mut runtime,
+        |core_ctx, expr| {
+            proof_status_from_proof(crate::helpers::prove_positive(
+                core_ctx,
+                expr,
+                opts.value_domain,
+            ))
+        },
     )
 }
 

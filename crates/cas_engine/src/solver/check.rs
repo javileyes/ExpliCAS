@@ -25,102 +25,16 @@
 use cas_ast::{Equation, ExprId, SolutionSet};
 use cas_math::expr_predicates::contains_variable;
 use cas_solver_core::isolation_utils::is_numeric_zero;
-use cas_solver_core::solution_check::{
-    verify_solution_with_runtime as verify_solution_with_core_runtime, SolutionCheckRuntime,
-};
-use cas_solver_core::verification::{verify_solution_set_with_runtime, VerifySolutionSetRuntime};
+use cas_solver_core::solution_check::verify_solution_with as verify_solution_with_core;
+use cas_solver_core::verification::verify_solution_set_with;
 use cas_solver_core::verify_substitution::{
-    verify_solution_with_runtime as verify_solution_with_equivalence_core_runtime,
-    VerifySolutionRuntime,
+    substitute_equation_diff, substitute_equation_sides,
+    verify_solution_with as verify_solution_with_equivalence_core,
 };
 
 use crate::engine::Simplifier;
 use crate::solver::render_expr as solver_render_expr;
 pub use cas_solver_core::verification::{VerifyResult, VerifyStatus, VerifySummary};
-
-struct EngineSolutionCheckRuntime<'a> {
-    simplifier: &'a mut Simplifier,
-}
-
-impl SolutionCheckRuntime for EngineSolutionCheckRuntime<'_> {
-    fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.simplifier.context
-    }
-
-    fn simplify_strict(&mut self, expr: ExprId) -> ExprId {
-        let strict_opts = crate::SimplifyOptions {
-            shared: crate::phase::SharedSemanticConfig {
-                semantics: crate::semantics::EvalConfig {
-                    domain_mode: crate::domain::DomainMode::Strict,
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        self.simplifier.simplify_with_stats(expr, strict_opts).0
-    }
-
-    fn simplify_generic(&mut self, expr: ExprId) -> ExprId {
-        let generic_opts = crate::SimplifyOptions {
-            shared: crate::phase::SharedSemanticConfig {
-                semantics: crate::semantics::EvalConfig {
-                    domain_mode: crate::domain::DomainMode::Generic,
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        self.simplifier.simplify_with_stats(expr, generic_opts).0
-    }
-
-    fn fold_numeric_islands(&mut self, expr: ExprId) -> ExprId {
-        super::numeric_islands::fold_numeric_islands(&mut self.simplifier.context, expr)
-    }
-
-    fn is_numeric_zero(&mut self, expr: ExprId) -> bool {
-        is_numeric_zero(&self.simplifier.context, expr)
-    }
-
-    fn contains_variable(&mut self, expr: ExprId) -> bool {
-        contains_variable(&self.simplifier.context, expr)
-    }
-
-    fn render_expr(&mut self, expr: ExprId) -> String {
-        solver_render_expr(&self.simplifier.context, expr)
-    }
-}
-
-struct EngineVerifyEquivalenceRuntime<'a> {
-    simplifier: &'a mut Simplifier,
-}
-
-impl VerifySolutionRuntime for EngineVerifyEquivalenceRuntime<'_> {
-    fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.simplifier.context
-    }
-
-    fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
-        self.simplifier.simplify(expr).0
-    }
-
-    fn are_equivalent(&mut self, lhs: ExprId, rhs: ExprId) -> bool {
-        self.simplifier.are_equivalent(lhs, rhs)
-    }
-}
-
-struct EngineVerifySetRuntime<'a> {
-    simplifier: &'a mut Simplifier,
-    equation: &'a Equation,
-    var: &'a str,
-}
-
-impl VerifySolutionSetRuntime for EngineVerifySetRuntime<'_> {
-    fn verify_discrete(&mut self, solution: ExprId) -> VerifyStatus {
-        verify_solution(self.simplifier, self.equation, self.var, solution)
-    }
-}
 
 /// Verify a single solution by substituting into the equation.
 ///
@@ -140,8 +54,65 @@ pub fn verify_solution(
     var: &str,
     solution: ExprId,
 ) -> VerifyStatus {
-    let mut runtime = EngineSolutionCheckRuntime { simplifier };
-    verify_solution_with_core_runtime(&mut runtime, equation, var, solution)
+    let runtime_cell = std::cell::RefCell::new(simplifier);
+    verify_solution_with_core(
+        equation,
+        var,
+        solution,
+        |inner_equation, inner_var, inner_solution| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            substitute_equation_diff(
+                &mut simplifier_ref.context,
+                inner_equation,
+                inner_var,
+                inner_solution,
+            )
+        },
+        |expr| {
+            let strict_opts = crate::SimplifyOptions {
+                shared: crate::phase::SharedSemanticConfig {
+                    semantics: crate::semantics::EvalConfig {
+                        domain_mode: crate::domain::DomainMode::Strict,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            simplifier_ref.simplify_with_stats(expr, strict_opts).0
+        },
+        |expr| {
+            let generic_opts = crate::SimplifyOptions {
+                shared: crate::phase::SharedSemanticConfig {
+                    semantics: crate::semantics::EvalConfig {
+                        domain_mode: crate::domain::DomainMode::Generic,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            simplifier_ref.simplify_with_stats(expr, generic_opts).0
+        },
+        |expr| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            super::numeric_islands::fold_numeric_islands(&mut simplifier_ref.context, expr)
+        },
+        |expr| {
+            let simplifier_ref = runtime_cell.borrow();
+            is_numeric_zero(&simplifier_ref.context, expr)
+        },
+        |expr| {
+            let simplifier_ref = runtime_cell.borrow();
+            contains_variable(&simplifier_ref.context, expr)
+        },
+        |expr| {
+            let simplifier_ref = runtime_cell.borrow();
+            solver_render_expr(&simplifier_ref.context, expr)
+        },
+    )
 }
 
 /// Fast equivalence-based verifier used by solve strategy filtering.
@@ -154,8 +125,29 @@ pub(crate) fn verify_solution_by_equivalence(
     var: &str,
     solution: ExprId,
 ) -> bool {
-    let mut runtime = EngineVerifyEquivalenceRuntime { simplifier };
-    verify_solution_with_equivalence_core_runtime(&mut runtime, equation, var, solution)
+    let runtime_cell = std::cell::RefCell::new(simplifier);
+    verify_solution_with_equivalence_core(
+        equation,
+        var,
+        solution,
+        |inner_equation, inner_var, inner_solution| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            substitute_equation_sides(
+                &mut simplifier_ref.context,
+                inner_equation,
+                inner_var,
+                inner_solution,
+            )
+        },
+        |expr| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            simplifier_ref.simplify(expr).0
+        },
+        |lhs, rhs| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            simplifier_ref.are_equivalent(lhs, rhs)
+        },
+    )
 }
 
 /// Verify a solution set, handling all SolutionSet variants.
@@ -165,12 +157,9 @@ pub fn verify_solution_set(
     var: &str,
     solutions: &SolutionSet,
 ) -> VerifyResult {
-    let mut runtime = EngineVerifySetRuntime {
-        simplifier,
-        equation,
-        var,
-    };
-    verify_solution_set_with_runtime(solutions, &mut runtime)
+    let mut verify_discrete =
+        |solution: ExprId| verify_solution(simplifier, equation, var, solution);
+    verify_solution_set_with(solutions, &mut verify_discrete)
 }
 
 #[cfg(test)]

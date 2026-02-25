@@ -13,49 +13,28 @@ use crate::solver::strategies::quadratic::QuadraticStrategy;
 use crate::solver::strategies::rational_roots::RationalRootsStrategy;
 use crate::solver::strategies::substitution::SubstitutionStrategy;
 use crate::solver::strategy::SolverStrategy;
-use cas_ast::{ExprId, SolutionSet};
+use cas_ast::SolutionSet;
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_analysis::{
     apply_nonzero_exclusion_guards_if_any, classify_equation_var_presence,
-    guard_solved_result_with_exclusions, merge_symbolic_with_verified_numeric_with_runtime,
-    normalize_variable_residual_with_runtime, simplify_equation_sides_for_var_with_runtime,
-    DiscreteVerificationRuntime, EquationVarPresence, ResidualRewriteRuntime,
-    SolvePreprocessRuntime,
+    guard_solved_result_with_exclusions, merge_symbolic_with_verified_numeric,
+    normalize_variable_residual_with, simplify_equation_sides_for_var_with, EquationVarPresence,
 };
 use cas_solver_core::solve_outcome::{
-    solve_var_eliminated_outcome_pipeline_with_runtime, VarEliminatedOutcomePipelineSolved,
-    VarEliminatedOutcomeRuntime,
+    resolve_var_eliminated_outcome_with, solve_var_eliminated_constraint_pipeline_with_item,
+    VarEliminatedSolveOutcome,
 };
-use cas_solver_core::step_cleanup::{CleanupStep, CleanupStepsRuntime};
+use cas_solver_core::step_cleanup::{cleanup_steps_by, CleanupStep};
 use cas_solver_core::strategy_kernels::{
-    solve_rational_exponent_rewrite_pipeline_with_item_runtime_for_var,
-    RationalExponentRewriteRuntime, StrategyKernelRuntime,
+    build_rational_exponent_execution, collect_rational_exponent_execution_items,
+    derive_rational_exponent_kernel, solve_rational_exponent_rewrite_pipeline_with_item_with,
+    RationalExponentSolvedRewrite,
 };
 
 use super::{
     medium_step, render_expr, DepthGuard, DisplaySolveSteps, SolveDomainEnv, SolveStep,
     SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH,
 };
-
-struct SolveStepCleanupRuntime;
-
-impl CleanupStepsRuntime<SolveStep> for SolveStepCleanupRuntime {
-    fn extract(&mut self, step: &SolveStep) -> CleanupStep {
-        CleanupStep {
-            description: step.description.clone(),
-            equation_after: step.equation_after.clone(),
-        }
-    }
-
-    fn rebuild(&mut self, template: SolveStep, payload: CleanupStep) -> SolveStep {
-        SolveStep {
-            description: payload.description,
-            equation_after: payload.equation_after,
-            importance: template.importance,
-            substeps: template.substeps,
-        }
-    }
-}
 
 // NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)) and
 // common additive term cancellation (Sub(Add(A,B), B) → A) were moved
@@ -133,12 +112,21 @@ pub fn solve_with_display_steps(
     let (solution_set, raw_steps) = result?;
 
     // Apply didactic cleanup using opts.detailed_steps
-    let cleaned = cas_solver_core::step_cleanup::cleanup_steps_by_runtime(
+    let cleaned = cleanup_steps_by(
         &mut simplifier.context,
         raw_steps,
         opts.detailed_steps,
         "x",
-        &mut SolveStepCleanupRuntime,
+        |step: &SolveStep| CleanupStep {
+            description: step.description.clone(),
+            equation_after: step.equation_after.clone(),
+        },
+        |template: SolveStep, payload: CleanupStep| SolveStep {
+            description: payload.description,
+            equation_after: payload.equation_after,
+            importance: template.importance,
+            substeps: template.substeps,
+        },
     );
 
     Ok((solution_set, DisplaySolveSteps(cleaned), diagnostics))
@@ -157,81 +145,6 @@ pub(crate) fn solve_with_options(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let ctx = super::SolveCtx::default();
     solve_inner(eq, var, simplifier, opts, &ctx)
-}
-
-struct SolveCorePreprocessRuntime<'a> {
-    simplifier: &'a mut Simplifier,
-}
-
-impl SolvePreprocessRuntime for SolveCorePreprocessRuntime<'_> {
-    fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.simplifier.context
-    }
-
-    fn simplify_for_solve(&mut self, expr: ExprId) -> ExprId {
-        self.simplifier.simplify_for_solve(expr)
-    }
-}
-
-struct SolveCoreResidualRuntime<'a> {
-    simplifier: &'a mut Simplifier,
-}
-
-impl ResidualRewriteRuntime for SolveCoreResidualRuntime<'_> {
-    fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.simplifier.context
-    }
-
-    fn expand_algebraic(&mut self, expr: ExprId) -> ExprId {
-        crate::expand::expand(&mut self.simplifier.context, expr)
-    }
-
-    fn simplify_for_solve(&mut self, expr: ExprId) -> ExprId {
-        self.simplifier.simplify_for_solve(expr)
-    }
-
-    fn expand_trig(&mut self, expr: ExprId) -> ExprId {
-        self.simplifier.expand(expr).0
-    }
-}
-
-struct SolveCoreVarEliminatedRuntime<'a> {
-    simplifier: &'a mut Simplifier,
-}
-
-impl VarEliminatedOutcomeRuntime<SolveStep> for SolveCoreVarEliminatedRuntime<'_> {
-    fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.simplifier.context
-    }
-
-    fn render_expr(&mut self, expr: ExprId) -> String {
-        render_expr(&self.simplifier.context, expr)
-    }
-
-    fn map_constraint_step(
-        &mut self,
-        description: String,
-        equation_after: cas_ast::Equation,
-    ) -> SolveStep {
-        medium_step(description, equation_after)
-    }
-}
-
-struct SolveCoreVerifyRuntime<'a> {
-    simplifier: &'a mut Simplifier,
-    equation: &'a cas_ast::Equation,
-    var: &'a str,
-}
-
-impl DiscreteVerificationRuntime for SolveCoreVerifyRuntime<'_> {
-    fn verify_discrete(&mut self, solution: ExprId) -> bool {
-        super::check::verify_solution_by_equivalence(
-            self.simplifier,
-            self.equation,
-            self.var,
-            solution,
-        )
-    }
 }
 
 /// Errors that represent a dead-end for one strategy but should not abort
@@ -340,8 +253,26 @@ fn solve_inner(
     // This is crucial for equations like "1/3*x + 1/2*x = 5"
     // which need to be simplified to "5/6*x = 5" before isolation
     let mut simplified_eq = {
-        let mut preprocess_runtime = SolveCorePreprocessRuntime { simplifier };
-        simplify_equation_sides_for_var_with_runtime(&mut preprocess_runtime, eq, var)
+        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+        simplify_equation_sides_for_var_with(
+            eq,
+            var,
+            |expr, inner_var| {
+                let simplifier_ref = runtime_cell.borrow();
+                contains_var(&simplifier_ref.context, expr, inner_var)
+            },
+            |expr| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                simplifier_ref.simplify_for_solve(expr)
+            },
+            |expr| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                cas_solver_core::isolation_utils::try_recompose_pow_quotient(
+                    &mut simplifier_ref.context,
+                    expr,
+                )
+            },
+        )
     };
 
     // NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)) and
@@ -409,8 +340,36 @@ fn solve_inner(
     // rewrites only when they eliminate the variable or significantly
     // reduce expression size.
     let normalized_diff = {
-        let mut residual_runtime = SolveCoreResidualRuntime { simplifier };
-        normalize_variable_residual_with_runtime(&mut residual_runtime, diff_simplified, var)
+        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+        normalize_variable_residual_with(
+            diff_simplified,
+            var,
+            |expr, inner_var| {
+                let simplifier_ref = runtime_cell.borrow();
+                contains_var(&simplifier_ref.context, expr, inner_var)
+            },
+            |expr| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                crate::expand::expand(&mut simplifier_ref.context, expr)
+            },
+            |expr| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                simplifier_ref.simplify_for_solve(expr)
+            },
+            |expr| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                simplifier_ref.expand(expr).0
+            },
+            |current, candidate, inner_var| {
+                let simplifier_ref = runtime_cell.borrow();
+                cas_solver_core::solve_analysis::accept_residual_rewrite_candidate(
+                    &simplifier_ref.context,
+                    current,
+                    candidate,
+                    inner_var,
+                )
+            },
+        )
     };
     if normalized_diff != diff_simplified {
         diff_simplified = normalized_diff;
@@ -422,23 +381,29 @@ fn solve_inner(
     // Check if the difference has NO variable
     if !contains_var(&simplifier.context, diff_simplified, var) {
         let include_item = simplifier.collect_steps();
-        let reduced_outcome = {
-            let mut runtime = SolveCoreVarEliminatedRuntime { simplifier };
-            solve_var_eliminated_outcome_pipeline_with_runtime(
-                diff_simplified,
-                var,
-                include_item,
-                &mut runtime,
-            )
-        };
+        let reduced_outcome = resolve_var_eliminated_outcome_with(
+            &mut simplifier.context,
+            diff_simplified,
+            var,
+            render_expr,
+        );
         match reduced_outcome {
-            VarEliminatedOutcomePipelineSolved::IdentityAllReals => {
+            VarEliminatedSolveOutcome::IdentityAllReals => {
                 return Ok((SolutionSet::AllReals, vec![]));
             }
-            VarEliminatedOutcomePipelineSolved::ContradictionEmpty => {
+            VarEliminatedSolveOutcome::ContradictionEmpty => {
                 return Ok((SolutionSet::Empty, vec![]));
             }
-            VarEliminatedOutcomePipelineSolved::ConstraintAllReals { steps } => {
+            VarEliminatedSolveOutcome::ConstraintAllReals {
+                description,
+                equation_after,
+            } => {
+                let steps = solve_var_eliminated_constraint_pipeline_with_item(
+                    description,
+                    equation_after,
+                    include_item,
+                    medium_step,
+                );
                 // Variable was eliminated during simplification (e.g., x/x = 1)
                 // The equation is now a constraint on OTHER variables.
                 // Example: (x*y)/x = 0 simplifies to y = 0
@@ -499,17 +464,16 @@ fn solve_inner(
                                 &simplifier.context,
                                 &sols,
                             );
-                        // Verify against ORIGINAL equation, not simplified form, so
-                        // domain-invalid roots (e.g. division by zero) are rejected.
-                        let mut verify_runtime = SolveCoreVerifyRuntime {
-                            simplifier,
-                            equation: eq,
-                            var,
-                        };
-                        let valid_sols = merge_symbolic_with_verified_numeric_with_runtime(
+                        let valid_sols = merge_symbolic_with_verified_numeric(
                             symbolic_solutions,
                             numeric_solutions,
-                            &mut verify_runtime,
+                            |solution| {
+                                // Verify against ORIGINAL equation, not simplified form, so
+                                // domain-invalid roots (e.g. division by zero) are rejected.
+                                super::check::verify_solution_by_equivalence(
+                                    simplifier, eq, var, solution,
+                                )
+                            },
                         );
                         return Ok((SolutionSet::Discrete(valid_sols), steps));
                     }
@@ -535,56 +499,6 @@ fn solve_inner(
     ))
 }
 
-struct SolveCoreRationalExponentRuntime<'a, 'ctx> {
-    simplifier: &'a mut Simplifier,
-    original_eq: &'a cas_ast::Equation,
-    original_var: &'a str,
-    opts: SolverOptions,
-    solve_ctx: &'ctx super::SolveCtx,
-}
-
-impl StrategyKernelRuntime for SolveCoreRationalExponentRuntime<'_, '_> {
-    fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.simplifier.context
-    }
-
-    fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
-        self.simplifier.simplify(expr).0
-    }
-
-    fn render_expr(&mut self, expr: ExprId) -> String {
-        render_expr(&self.simplifier.context, expr)
-    }
-}
-
-impl RationalExponentRewriteRuntime<CasError, SolveStep>
-    for SolveCoreRationalExponentRuntime<'_, '_>
-{
-    fn solve_rewritten(
-        &mut self,
-        equation: &cas_ast::Equation,
-        var: &str,
-    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        solve_with_ctx_and_options(equation, var, self.simplifier, self.opts, self.solve_ctx)
-    }
-
-    fn map_item_to_step(
-        &mut self,
-        item: cas_solver_core::strategy_kernels::StrategyExecutionItem,
-    ) -> SolveStep {
-        medium_step(item.description, item.equation)
-    }
-
-    fn verify_discrete_solution(&mut self, solution: ExprId) -> bool {
-        super::check::verify_solution_by_equivalence(
-            self.simplifier,
-            self.original_eq,
-            self.original_var,
-            solution,
-        )
-    }
-}
-
 /// Try to solve equations with rational exponents like x^(3/2) = 8
 /// by converting to x^3 = 64 (raising both sides to power q)
 fn try_solve_rational_exponent(
@@ -594,23 +508,44 @@ fn try_solve_rational_exponent(
     opts: SolverOptions,
     ctx: &super::SolveCtx,
 ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-    let include_item = simplifier.collect_steps();
-    let mut runtime = SolveCoreRationalExponentRuntime {
-        simplifier,
-        original_eq: eq,
-        original_var: var,
-        opts,
-        solve_ctx: ctx,
-    };
-    let solved = match solve_rational_exponent_rewrite_pipeline_with_item_runtime_for_var(
-        &mut runtime,
+    let lhs_has_var = contains_var(&simplifier.context, eq.lhs, var);
+    let rhs_has_var = contains_var(&simplifier.context, eq.rhs, var);
+    let kernel = derive_rational_exponent_kernel(
+        &mut simplifier.context,
         eq,
         var,
-        include_item,
-    ) {
-        Some(Ok(solved)) => solved,
-        Some(Err(e)) => return Some(Err(e)),
-        None => return None,
+        lhs_has_var,
+        rhs_has_var,
+    )?;
+    let sim_lhs = simplifier.simplify(kernel.rewritten.lhs).0;
+    let sim_rhs = simplifier.simplify(kernel.rewritten.rhs).0;
+    let execution = build_rational_exponent_execution(kernel.q, sim_lhs, sim_rhs);
+    let items = collect_rational_exponent_execution_items(&execution);
+    let rewrite = RationalExponentSolvedRewrite {
+        equation: execution.equation,
+        items,
+    };
+
+    let include_item = simplifier.collect_steps();
+    let solved = {
+        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+        match solve_rational_exponent_rewrite_pipeline_with_item_with(
+            rewrite,
+            var,
+            include_item,
+            |equation, solve_var| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                solve_with_ctx_and_options(equation, solve_var, *simplifier_ref, opts, ctx)
+            },
+            |item| medium_step(item.description, item.equation),
+            |solution| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                super::check::verify_solution_by_equivalence(*simplifier_ref, eq, var, solution)
+            },
+        ) {
+            Ok(solved) => solved,
+            Err(e) => return Some(Err(e)),
+        }
     };
     Some(Ok((solved.solution_set, solved.steps)))
 }
