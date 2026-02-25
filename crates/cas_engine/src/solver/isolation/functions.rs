@@ -10,8 +10,7 @@ use cas_solver_core::function_inverse::{
 };
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::log_isolation::{
-    plan_log_isolation_step_with, solve_log_isolation_rewrite_pipeline_with_item,
-    LogIsolationRewriteRuntime,
+    plan_log_isolation_step_with, solve_log_isolation_rewrite_with_item,
 };
 use cas_solver_core::solve_outcome::{
     finalize_abs_split_solution_set, plan_abs_isolation, solve_abs_isolation_plan_with,
@@ -50,37 +49,6 @@ impl AbsSplitRuntime<CasError, SolveStep> for AbsSplitRuntimeAdapter<'_, '_> {
     fn map_item_to_step(
         &mut self,
         item: cas_solver_core::solve_outcome::AbsSplitExecutionItem,
-    ) -> SolveStep {
-        medium_step(item.description().to_string(), item.equation)
-    }
-}
-
-struct LogIsolationRuntimeAdapter<'a, 'ctx> {
-    simplifier: &'a mut Simplifier,
-    opts: SolverOptions,
-    solve_ctx: &'ctx super::super::SolveCtx,
-    var: &'a str,
-}
-
-impl LogIsolationRewriteRuntime<CasError, SolveStep> for LogIsolationRuntimeAdapter<'_, '_> {
-    fn solve_rewritten(
-        &mut self,
-        equation: &Equation,
-    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        isolate(
-            equation.lhs,
-            equation.rhs,
-            equation.op.clone(),
-            self.var,
-            self.simplifier,
-            self.opts,
-            self.solve_ctx,
-        )
-    }
-
-    fn map_item_to_step(
-        &mut self,
-        item: cas_solver_core::log_isolation::LogIsolationExecutionItem,
     ) -> SolveStep {
         medium_step(item.description().to_string(), item.equation)
     }
@@ -265,15 +233,26 @@ fn isolate_log(
         )
     })?;
     let include_item = simplifier.collect_steps();
-    let solved = {
-        let mut runtime = LogIsolationRuntimeAdapter {
+    let solved = solve_log_isolation_rewrite_with_item(rewrite, |item, equation| {
+        let (solution_set, mut solved_steps) = isolate(
+            equation.lhs,
+            equation.rhs,
+            equation.op.clone(),
+            var,
             simplifier,
             opts,
-            solve_ctx: ctx,
-            var,
-        };
-        solve_log_isolation_rewrite_pipeline_with_item(rewrite, include_item, &mut runtime)?
-    };
+            ctx,
+        )?;
+
+        let mut steps = Vec::with_capacity(solved_steps.len() + usize::from(include_item));
+        if include_item {
+            if let Some(item) = item {
+                steps.push(medium_step(item.description().to_string(), item.equation));
+            }
+        }
+        steps.append(&mut solved_steps);
+        Ok::<(SolutionSet, Vec<SolveStep>), CasError>((solution_set, steps))
+    })?;
     let (solution_set, solved_steps) = solved.solved;
     prepend_steps((solution_set, solved_steps), steps)
 }
