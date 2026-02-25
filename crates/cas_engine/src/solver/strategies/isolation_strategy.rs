@@ -7,7 +7,9 @@ use crate::solver::{
     medium_step, render_expr as solver_render_expr, SolveCtx, SolveStep, SolverOptions,
 };
 use cas_ast::{Equation, ExprId, SolutionSet};
-use cas_solver_core::solve_outcome::TermIsolationRewriteExecutionItem;
+use cas_solver_core::solve_outcome::{
+    TermIsolationExecutionItem, TermIsolationRewriteExecutionItem,
+};
 use cas_solver_core::strategy_kernels::{
     derive_isolation_strategy_routing,
     solve_collect_terms_rewrite_pipeline_with_item_runtime_for_var,
@@ -17,10 +19,10 @@ use cas_solver_core::strategy_kernels::{
     StrategyKernelRuntime,
 };
 use cas_solver_core::unwrap_plan::{
-    route_unwrap_entry_with_item, solve_unwrap_execution_pipeline_with_item_with,
-    UnwrapEntryRouting, UnwrapExecutionPlan,
+    route_unwrap_entry_with_item_runtime, solve_unwrap_execution_pipeline_with_item,
+    LogLinearAssumptionRecord, UnwrapEntryRouting, UnwrapEntryRuntime, UnwrapExecutionItem,
+    UnwrapExecutionPlan, UnwrapExecutionRuntime, UnwrapPlanRuntime,
 };
-use std::cell::RefCell;
 
 pub struct IsolationStrategy;
 
@@ -85,6 +87,67 @@ impl SolverStrategy for IsolationStrategy {
 
 pub struct UnwrapStrategy;
 
+struct UnwrapEntryRuntimeAdapter<'a, 'ctx> {
+    opts: &'a SolverOptions,
+    solve_ctx: &'ctx SolveCtx,
+}
+
+impl UnwrapPlanRuntime for UnwrapEntryRuntimeAdapter<'_, '_> {
+    fn classify_log_solve(
+        &mut self,
+        ctx: &cas_ast::Context,
+        base: ExprId,
+        other_side: ExprId,
+    ) -> cas_solver_core::log_domain::LogSolveDecision {
+        crate::solver::domain_guards::classify_log_solve(
+            ctx,
+            base,
+            other_side,
+            self.opts,
+            &self.solve_ctx.domain_env,
+        )
+    }
+
+    fn render_expr(&mut self, ctx: &cas_ast::Context, expr: ExprId) -> String {
+        solver_render_expr(ctx, expr)
+    }
+}
+
+impl UnwrapEntryRuntime<SolveStep> for UnwrapEntryRuntimeAdapter<'_, '_> {
+    fn map_terminal_item_to_step(&mut self, item: TermIsolationExecutionItem) -> SolveStep {
+        medium_step(item.description, item.equation)
+    }
+}
+
+struct UnwrapExecutionRuntimeAdapter<'a, 'ctx> {
+    simplifier: &'a mut Simplifier,
+    solve_ctx: &'ctx SolveCtx,
+}
+
+impl UnwrapExecutionRuntime<CasError, SolveStep> for UnwrapExecutionRuntimeAdapter<'_, '_> {
+    fn note_assumption(&mut self, record: LogLinearAssumptionRecord) {
+        let event = crate::assumptions::AssumptionEvent::from_log_assumption(
+            record.assumption,
+            &self.simplifier.context,
+            record.base,
+            record.other_side,
+        );
+        crate::solver::note_assumption(event);
+    }
+
+    fn solve_equation(
+        &mut self,
+        equation: &Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        solve_with_ctx(equation, var, self.simplifier, self.solve_ctx)
+    }
+
+    fn map_item_to_step(&mut self, item: UnwrapExecutionItem) -> SolveStep {
+        medium_step(item.description, item.equation)
+    }
+}
+
 fn run_unwrap_execution(
     execution: UnwrapExecutionPlan,
     other_side: ExprId,
@@ -93,27 +156,16 @@ fn run_unwrap_execution(
     ctx: &SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let include_item = simplifier.collect_steps();
-    let simplifier_cell = RefCell::new(simplifier);
-    let solved = solve_unwrap_execution_pipeline_with_item_with(
+    let mut runtime = UnwrapExecutionRuntimeAdapter {
+        simplifier,
+        solve_ctx: ctx,
+    };
+    let solved = solve_unwrap_execution_pipeline_with_item(
         execution,
         other_side,
         var,
         include_item,
-        |record| {
-            let s_ref = simplifier_cell.borrow();
-            let event = crate::assumptions::AssumptionEvent::from_log_assumption(
-                record.assumption,
-                &s_ref.context,
-                record.base,
-                record.other_side,
-            );
-            crate::solver::note_assumption(event);
-        },
-        |equation, var| {
-            let mut s_ref = simplifier_cell.borrow_mut();
-            solve_with_ctx(equation, var, &mut s_ref, ctx)
-        },
-        |item| medium_step(item.description, item.equation),
+        &mut runtime,
     )?;
     Ok((solved.solution_set, solved.steps))
 }
@@ -135,7 +187,11 @@ impl SolverStrategy for UnwrapStrategy {
         let wildcard_scope = opts.assume_scope == crate::semantics::AssumeScope::Wildcard;
 
         let include_item = simplifier.collect_steps();
-        let routed = route_unwrap_entry_with_item(
+        let mut runtime = UnwrapEntryRuntimeAdapter {
+            opts,
+            solve_ctx: ctx,
+        };
+        let routed = route_unwrap_entry_with_item_runtime(
             &mut simplifier.context,
             eq,
             var,
@@ -143,17 +199,7 @@ impl SolverStrategy for UnwrapStrategy {
             wildcard_scope,
             " - use 'semantics preset complex'",
             include_item,
-            |core_ctx, base, other_side| {
-                crate::solver::domain_guards::classify_log_solve(
-                    core_ctx,
-                    base,
-                    other_side,
-                    opts,
-                    &ctx.domain_env,
-                )
-            },
-            solver_render_expr,
-            |item| medium_step(item.description, item.equation),
+            &mut runtime,
         );
         let routed = routed?;
         Some(match routed {
