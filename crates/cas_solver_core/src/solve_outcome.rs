@@ -685,33 +685,6 @@ where
     }
 }
 
-/// Runtime adapter for mapping base-one shortcut didactic items.
-pub trait PowerBaseOneShortcutPipelineRuntime<S> {
-    fn map_power_base_one_item_to_step(&mut self, item: PowerBaseOneShortcutExecutionItem) -> S;
-}
-
-/// Runtime-based variant of `solve_power_base_one_shortcut_pipeline_with_item`.
-pub fn solve_power_base_one_shortcut_pipeline_with_item_runtime<S, R>(
-    outcome: PowerBaseOneShortcutOutcome,
-    include_item: bool,
-    runtime: &mut R,
-) -> PowerBaseOneShortcutPipelineSolved<S>
-where
-    R: PowerBaseOneShortcutPipelineRuntime<S>,
-{
-    let PowerBaseOneShortcutOutcome { solutions, items } = outcome;
-    let mut steps = Vec::new();
-    if include_item {
-        if let Some(item) = items.into_iter().next() {
-            steps.push(runtime.map_power_base_one_item_to_step(item));
-        }
-    }
-    PowerBaseOneShortcutPipelineSolved {
-        solution_set: solutions,
-        steps,
-    }
-}
-
 /// Didactic payload for logarithmic isolation of exponent equations.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowExponentLogIsolationStep {
@@ -1475,29 +1448,6 @@ where
     )
 }
 
-/// Runtime variant of `resolve_power_base_one_shortcut_for_pow_with`.
-pub fn resolve_power_base_one_shortcut_for_pow_with_runtime<R>(
-    ctx: &Context,
-    base: ExprId,
-    lhs: ExprId,
-    rhs: ExprId,
-    op: RelOp,
-    runtime: &mut R,
-) -> Option<PowerBaseOneShortcutOutcome>
-where
-    R: TermIsolationPlanRuntime,
-{
-    let rhs_desc = runtime.render_expr(ctx, rhs);
-    resolve_power_base_one_shortcut_with(
-        crate::isolation_utils::is_numeric_one(ctx, base),
-        crate::isolation_utils::is_numeric_one(ctx, rhs),
-        lhs,
-        rhs,
-        op,
-        |_| rhs_desc.clone(),
-    )
-}
-
 /// Decide how to handle `base^x = base`.
 pub fn classify_power_equals_base_route(
     base_is_zero: bool,
@@ -1533,24 +1483,6 @@ where
         _ => None,
     };
     (bases_equal, rhs_pow_base_equal)
-}
-
-/// Check whether two bases are equivalent for power-exponent shortcuts.
-///
-/// `equivalent_nontrivial` is only evaluated when the bases are not identical.
-pub trait ShortcutBasesEquivalentRuntime {
-    fn equivalent_nontrivial(&mut self, base: ExprId, candidate: ExprId) -> bool;
-}
-
-pub fn shortcut_bases_equivalent_with_runtime<R>(
-    base: ExprId,
-    candidate: ExprId,
-    runtime: &mut R,
-) -> bool
-where
-    R: ShortcutBasesEquivalentRuntime,
-{
-    base == candidate || runtime.equivalent_nontrivial(base, candidate)
 }
 
 pub fn shortcut_bases_equivalent_with<F>(
@@ -2558,24 +2490,6 @@ where
     Ok(TermIsolationRewriteSolved { rewrite, solved })
 }
 
-/// Runtime contract for executing one term-isolation rewrite solve.
-pub trait TermIsolationRewriteSolveRuntime<E, T> {
-    /// Recursively solve one rewritten equation.
-    fn solve_rewrite_equation(&mut self, equation: Equation) -> Result<T, E>;
-}
-
-/// Execute one term-isolation rewrite with runtime-managed solve.
-pub fn solve_term_isolation_rewrite_with_runtime<R, E, T>(
-    rewrite: TermIsolationRewritePlan,
-    runtime: &mut R,
-) -> Result<TermIsolationRewriteSolved<T>, E>
-where
-    R: TermIsolationRewriteSolveRuntime<E, T>,
-{
-    let solved = runtime.solve_rewrite_equation(rewrite.equation.clone())?;
-    Ok(TermIsolationRewriteSolved { rewrite, solved })
-}
-
 /// Solved result for a term-isolation rewrite pipeline.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TermIsolationRewritePipelineSolved<S> {
@@ -2609,86 +2523,34 @@ where
     })
 }
 
-/// Runtime contract for executing one term-isolation rewrite pipeline.
-pub trait TermIsolationRewriteRuntime<E, S> {
-    /// Recursively solve rewritten equation.
-    fn solve_rewritten(
-        &mut self,
-        equation: Equation,
-        var: &str,
-    ) -> Result<(SolutionSet, Vec<S>), E>;
-    /// Map optional first rewrite item to caller-owned step payload.
-    fn map_item_to_step(&mut self, item: TermIsolationRewriteExecutionItem) -> S;
-}
-
-/// Execute term-isolation rewrite solving + optional item dispatch via runtime.
-pub fn solve_term_isolation_rewrite_pipeline_with_item_runtime<R, E, S>(
-    rewrite: TermIsolationRewritePlan,
-    var: &str,
-    include_item: bool,
-    runtime: &mut R,
-) -> Result<TermIsolationRewritePipelineSolved<S>, E>
-where
-    R: TermIsolationRewriteRuntime<E, S>,
-{
-    let first_item = if include_item {
-        first_term_isolation_rewrite_execution_item(&rewrite)
-    } else {
-        None
-    };
-    let (solution_set, mut sub_steps) = runtime.solve_rewritten(rewrite.equation.clone(), var)?;
-    let mut steps = Vec::new();
-    if let Some(item) = first_item {
-        steps.push(runtime.map_item_to_step(item));
-    }
-    steps.append(&mut sub_steps);
-    Ok(TermIsolationRewritePipelineSolved {
-        solution_set,
-        steps,
-    })
-}
-
-/// Runtime contract for solving a negated-LHS isolation rewrite (`-A = RHS`).
-pub trait NegatedLhsIsolationRuntime<E, S> {
-    /// Mutable access to expression context.
-    fn context(&mut self) -> &mut Context;
-    /// Recursively solve a rewritten equation.
-    fn solve_rewritten(
-        &mut self,
-        equation: Equation,
-        var: &str,
-    ) -> Result<(SolutionSet, Vec<S>), E>;
-    /// Map first rewrite item to caller-owned step payload.
-    fn map_item_to_step(&mut self, item: TermIsolationRewriteExecutionItem) -> S;
-}
-
-/// Execute negated-LHS isolation rewrite with runtime-managed recursion and
-/// optional first-item didactic projection.
-pub fn solve_negated_lhs_isolation_with_runtime<R, E, S>(
+/// Execute negated-LHS isolation rewrite and optional first-item didactic
+/// projection via caller-provided callbacks.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_negated_lhs_isolation_with<E, S, FSolve, FStep>(
+    ctx: &mut Context,
     inner: ExprId,
     rhs: ExprId,
     op: RelOp,
     var: &str,
     include_item: bool,
-    runtime: &mut R,
+    mut solve_rewritten: FSolve,
+    mut map_item_to_step: FStep,
 ) -> Result<(SolutionSet, Vec<S>), E>
 where
-    R: NegatedLhsIsolationRuntime<E, S>,
+    FSolve: FnMut(Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(TermIsolationRewriteExecutionItem) -> S,
 {
-    let rewrite = {
-        let ctx = runtime.context();
-        plan_negated_lhs_isolation_step(ctx, inner, rhs, op)
-    };
+    let rewrite = plan_negated_lhs_isolation_step(ctx, inner, rhs, op);
     let first_item = if include_item {
         first_term_isolation_rewrite_execution_item(&rewrite)
     } else {
         None
     };
-    let (solution_set, mut sub_steps) = runtime.solve_rewritten(rewrite.equation.clone(), var)?;
+    let (solution_set, mut sub_steps) = solve_rewritten(rewrite.equation.clone(), var)?;
 
     let mut steps = Vec::new();
     if let Some(item) = first_item {
-        steps.push(runtime.map_item_to_step(item));
+        steps.push(map_item_to_step(item));
     }
     steps.append(&mut sub_steps);
     Ok((solution_set, steps))
@@ -4848,42 +4710,6 @@ where
     Ok(ProductZeroInequalityExecutionSolved { solved_sets, steps })
 }
 
-/// Runtime contract for solving product-zero inequality split branches.
-pub trait ProductZeroInequalityExecutionRuntime<E, S> {
-    /// Solve one branch equation and return the branch solution set + steps.
-    fn solve_case(&mut self, equation: &Equation) -> Result<(SolutionSet, Vec<S>), E>;
-}
-
-/// Execute product-zero inequality split via runtime branch solver.
-pub fn solve_product_zero_inequality_split_execution_with_runtime<R, E, S>(
-    plan: &ProductZeroInequalityPlan,
-    runtime: &mut R,
-) -> Result<ProductZeroInequalityExecutionSolved<S>, E>
-where
-    R: ProductZeroInequalityExecutionRuntime<E, S>,
-{
-    let mut steps = Vec::new();
-
-    let (case1_left, mut case1_left_steps) = runtime.solve_case(&plan.case1_left)?;
-    steps.append(&mut case1_left_steps);
-    let (case1_right, mut case1_right_steps) = runtime.solve_case(&plan.case1_right)?;
-    steps.append(&mut case1_right_steps);
-    let (case2_left, mut case2_left_steps) = runtime.solve_case(&plan.case2_left)?;
-    steps.append(&mut case2_left_steps);
-    let (case2_right, mut case2_right_steps) = runtime.solve_case(&plan.case2_right)?;
-    steps.append(&mut case2_right_steps);
-
-    Ok(ProductZeroInequalityExecutionSolved {
-        solved_sets: ProductZeroInequalitySolvedSets {
-            case1_left,
-            case1_right,
-            case2_left,
-            case2_right,
-        },
-        steps,
-    })
-}
-
 /// Solve branch equations + sign-domain constraints for division denominator
 /// sign split execution.
 pub fn solve_division_denominator_sign_split_cases_with<
@@ -6566,30 +6392,6 @@ mod tests {
     }
 
     #[test]
-    fn resolve_power_base_one_shortcut_for_pow_with_runtime_detects_base_and_rhs() {
-        let mut ctx = Context::new();
-        let one = ctx.num(1);
-        let x = ctx.var("x");
-        let lhs = ctx.add(Expr::Pow(one, x));
-        let rhs = ctx.num(2);
-        let mut runtime = TestTermIsolationPlanRuntime;
-
-        let outcome = resolve_power_base_one_shortcut_for_pow_with_runtime(
-            &ctx,
-            one,
-            lhs,
-            rhs,
-            RelOp::Eq,
-            &mut runtime,
-        )
-        .expect("shortcut should apply");
-        assert!(matches!(outcome.solutions, SolutionSet::Empty));
-        assert_eq!(outcome.items.len(), 1);
-        assert!(outcome.items[0].description.contains("RHS = runtime("));
-        assert!(outcome.items[0].description.contains("no solution"));
-    }
-
-    #[test]
     fn collect_power_base_one_shortcut_didactic_steps_returns_single_step() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -6672,60 +6474,6 @@ mod tests {
 
         assert!(matches!(solved.solution_set, SolutionSet::AllReals));
         assert!(solved.steps.is_empty());
-    }
-
-    #[derive(Default)]
-    struct TestPowerBaseOneShortcutRuntime {
-        calls: usize,
-    }
-
-    impl PowerBaseOneShortcutPipelineRuntime<String> for TestPowerBaseOneShortcutRuntime {
-        fn map_power_base_one_item_to_step(
-            &mut self,
-            item: PowerBaseOneShortcutExecutionItem,
-        ) -> String {
-            self.calls += 1;
-            item.description
-        }
-    }
-
-    #[test]
-    fn solve_power_base_one_shortcut_pipeline_with_item_runtime_emits_step_when_enabled() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let rhs = ctx.num(2);
-        let outcome = resolve_power_base_one_shortcut_with(true, false, x, rhs, RelOp::Eq, |_| {
-            "2".to_string()
-        })
-        .expect("shortcut should apply");
-        let mut runtime = TestPowerBaseOneShortcutRuntime::default();
-
-        let solved =
-            solve_power_base_one_shortcut_pipeline_with_item_runtime(outcome, true, &mut runtime);
-
-        assert!(matches!(solved.solution_set, SolutionSet::Empty));
-        assert_eq!(solved.steps.len(), 1);
-        assert!(solved.steps[0].contains("no solution"));
-        assert_eq!(runtime.calls, 1);
-    }
-
-    #[test]
-    fn solve_power_base_one_shortcut_pipeline_with_item_runtime_omits_step_when_disabled() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let rhs = ctx.num(1);
-        let outcome = resolve_power_base_one_shortcut_with(true, true, x, rhs, RelOp::Eq, |_| {
-            "1".to_string()
-        })
-        .expect("shortcut should apply");
-        let mut runtime = TestPowerBaseOneShortcutRuntime::default();
-
-        let solved =
-            solve_power_base_one_shortcut_pipeline_with_item_runtime(outcome, false, &mut runtime);
-
-        assert!(matches!(solved.solution_set, SolutionSet::AllReals));
-        assert!(solved.steps.is_empty());
-        assert_eq!(runtime.calls, 0);
     }
 
     #[test]
@@ -8749,51 +8497,6 @@ mod tests {
     }
 
     #[test]
-    fn shortcut_bases_equivalent_with_runtime_short_circuits_on_identical_ids() {
-        struct Runtime {
-            called: bool,
-        }
-
-        impl ShortcutBasesEquivalentRuntime for Runtime {
-            fn equivalent_nontrivial(&mut self, _base: ExprId, _candidate: ExprId) -> bool {
-                self.called = true;
-                false
-            }
-        }
-
-        let mut ctx = Context::new();
-        let b = ctx.var("b");
-        let mut runtime = Runtime { called: false };
-        let out = shortcut_bases_equivalent_with_runtime(b, b, &mut runtime);
-        assert!(out);
-        assert!(
-            !runtime.called,
-            "nontrivial comparator must not run when ids are equal"
-        );
-    }
-
-    #[test]
-    fn shortcut_bases_equivalent_with_runtime_delegates_for_distinct_ids() {
-        struct Runtime {
-            a: ExprId,
-            b: ExprId,
-        }
-
-        impl ShortcutBasesEquivalentRuntime for Runtime {
-            fn equivalent_nontrivial(&mut self, left: ExprId, right: ExprId) -> bool {
-                left == self.a && right == self.b
-            }
-        }
-
-        let mut ctx = Context::new();
-        let a = ctx.var("a");
-        let b = ctx.var("b");
-        let mut runtime = Runtime { a, b };
-        let out = shortcut_bases_equivalent_with_runtime(a, b, &mut runtime);
-        assert!(out);
-    }
-
-    #[test]
     fn detect_pow_exponent_shortcut_inputs_handles_non_pow_rhs() {
         let mut ctx = Context::new();
         let b = ctx.var("b");
@@ -10697,132 +10400,38 @@ mod tests {
         assert_eq!(solved.steps, vec!["only-substep".to_string()]);
     }
 
-    struct TestTermIsolationRuntime {
-        solve_result: (SolutionSet, Vec<String>),
-        last_var: Option<String>,
-    }
-
-    impl TermIsolationRewriteRuntime<&'static str, String> for TestTermIsolationRuntime {
-        fn solve_rewritten(
-            &mut self,
-            _: Equation,
-            var: &str,
-        ) -> Result<(SolutionSet, Vec<String>), &'static str> {
-            self.last_var = Some(var.to_string());
-            Ok(self.solve_result.clone())
-        }
-
-        fn map_item_to_step(&mut self, item: TermIsolationRewriteExecutionItem) -> String {
-            item.description
-        }
-    }
-
     #[test]
-    fn solve_term_isolation_rewrite_pipeline_with_item_runtime_forwards_item_and_substeps() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let z = ctx.var("z");
-        let plan =
-            plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
-        let expected_item = plan.items[0].description.clone();
-        let mut runtime = TestTermIsolationRuntime {
-            solve_result: (
-                SolutionSet::Discrete(vec![x]),
-                vec!["runtime-substep".to_string()],
-            ),
-            last_var: None,
-        };
-
-        let solved =
-            solve_term_isolation_rewrite_pipeline_with_item_runtime(plan, "x", true, &mut runtime)
-                .expect("runtime pipeline solve should succeed");
-
-        assert_eq!(runtime.last_var.as_deref(), Some("x"));
-        assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![x]));
-        assert_eq!(
-            solved.steps,
-            vec![expected_item, "runtime-substep".to_string()]
-        );
-    }
-
-    #[test]
-    fn solve_term_isolation_rewrite_pipeline_with_item_runtime_omits_item_when_disabled() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let y = ctx.var("y");
-        let z = ctx.var("z");
-        let plan =
-            plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
-        let mut runtime = TestTermIsolationRuntime {
-            solve_result: (
-                SolutionSet::Discrete(vec![z]),
-                vec!["runtime-only-substep".to_string()],
-            ),
-            last_var: None,
-        };
-
-        let solved =
-            solve_term_isolation_rewrite_pipeline_with_item_runtime(plan, "x", false, &mut runtime)
-                .expect("runtime pipeline solve should succeed");
-
-        assert_eq!(runtime.last_var.as_deref(), Some("x"));
-        assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![z]));
-        assert_eq!(solved.steps, vec!["runtime-only-substep".to_string()]);
-    }
-
-    struct TestNegatedLhsRuntime {
-        ctx: Context,
-        solve_result: (SolutionSet, Vec<String>),
-        last_solved_equation: Option<Equation>,
-    }
-
-    impl NegatedLhsIsolationRuntime<&'static str, String> for TestNegatedLhsRuntime {
-        fn context(&mut self) -> &mut Context {
-            &mut self.ctx
-        }
-
-        fn solve_rewritten(
-            &mut self,
-            equation: Equation,
-            _: &str,
-        ) -> Result<(SolutionSet, Vec<String>), &'static str> {
-            self.last_solved_equation = Some(equation);
-            Ok(self.solve_result.clone())
-        }
-
-        fn map_item_to_step(&mut self, item: TermIsolationRewriteExecutionItem) -> String {
-            item.description
-        }
-    }
-
-    #[test]
-    fn solve_negated_lhs_isolation_with_runtime_forwards_item_and_substeps() {
+    fn solve_negated_lhs_isolation_with_forwards_item_and_substeps() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let y = ctx.var("y");
         let one = ctx.num(1);
-        let solve_result = (
-            SolutionSet::Discrete(vec![one]),
-            vec!["substep".to_string()],
-        );
-        let mut runtime = TestNegatedLhsRuntime {
-            ctx,
-            solve_result,
-            last_solved_equation: None,
-        };
+        let mut last_solved_equation = None;
 
-        let (solution_set, steps) =
-            solve_negated_lhs_isolation_with_runtime(x, y, RelOp::Lt, "x", true, &mut runtime)
-                .expect("negated-lhs runtime solve should succeed");
+        let (solution_set, steps) = solve_negated_lhs_isolation_with(
+            &mut ctx,
+            x,
+            y,
+            RelOp::Lt,
+            "x",
+            true,
+            |equation, _| {
+                last_solved_equation = Some(equation.clone());
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![one]),
+                    vec!["substep".to_string()],
+                ))
+            },
+            |item| item.description,
+        )
+        .expect("negated-lhs solve should succeed");
 
-        let rewritten = runtime
-            .last_solved_equation
+        let rewritten = last_solved_equation
             .clone()
             .expect("expected rewritten equation to be solved");
         assert_eq!(rewritten.lhs, x);
         assert_eq!(rewritten.op, RelOp::Gt);
-        assert!(matches!(runtime.ctx.get(rewritten.rhs), Expr::Neg(id) if *id == y));
+        assert!(matches!(ctx.get(rewritten.rhs), Expr::Neg(id) if *id == y));
         assert_eq!(solution_set, SolutionSet::Discrete(vec![one]));
         assert_eq!(
             steps,
@@ -10834,23 +10443,27 @@ mod tests {
     }
 
     #[test]
-    fn solve_negated_lhs_isolation_with_runtime_omits_item_when_disabled() {
+    fn solve_negated_lhs_isolation_with_omits_item_when_disabled() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let y = ctx.var("y");
         let one = ctx.num(1);
-        let mut runtime = TestNegatedLhsRuntime {
-            ctx,
-            solve_result: (
-                SolutionSet::Discrete(vec![one]),
-                vec!["substep-only".to_string()],
-            ),
-            last_solved_equation: None,
-        };
-
-        let (solution_set, steps) =
-            solve_negated_lhs_isolation_with_runtime(x, y, RelOp::Eq, "x", false, &mut runtime)
-                .expect("negated-lhs runtime solve should succeed");
+        let (solution_set, steps) = solve_negated_lhs_isolation_with(
+            &mut ctx,
+            x,
+            y,
+            RelOp::Eq,
+            "x",
+            false,
+            |_equation, _| {
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![one]),
+                    vec!["substep-only".to_string()],
+                ))
+            },
+            |item| item.description,
+        )
+        .expect("negated-lhs solve should succeed");
 
         assert_eq!(solution_set, SolutionSet::Discrete(vec![one]));
         assert_eq!(steps, vec!["substep-only".to_string()]);
@@ -13067,52 +12680,6 @@ mod tests {
                 "case-2".to_string(),
                 "case-3".to_string(),
                 "case-4".to_string(),
-            ]
-        );
-        let final_set = finalize_product_zero_inequality_solved_sets(&ctx, solved.solved_sets);
-        assert!(matches!(final_set, SolutionSet::AllReals));
-    }
-
-    #[derive(Default)]
-    struct MockProductZeroSplitRuntime {
-        call_index: usize,
-    }
-
-    impl ProductZeroInequalityExecutionRuntime<(), String> for MockProductZeroSplitRuntime {
-        fn solve_case(&mut self, _equation: &Equation) -> Result<(SolutionSet, Vec<String>), ()> {
-            self.call_index += 1;
-            Ok((
-                if self.call_index == 2 {
-                    SolutionSet::Empty
-                } else {
-                    SolutionSet::AllReals
-                },
-                vec![format!("runtime-case-{}", self.call_index)],
-            ))
-        }
-    }
-
-    #[test]
-    fn solve_product_zero_inequality_split_execution_with_runtime_merges_steps_and_finalizes_set() {
-        let mut ctx = Context::new();
-        let a = ctx.var("a");
-        let b = ctx.var("b");
-        let plan =
-            plan_product_zero_inequality_split(&mut ctx, a, b, RelOp::Gt).expect("split plan");
-        let mut runtime = MockProductZeroSplitRuntime::default();
-
-        let solved =
-            solve_product_zero_inequality_split_execution_with_runtime(&plan, &mut runtime)
-                .expect("runtime execution should solve");
-
-        assert_eq!(runtime.call_index, 4);
-        assert_eq!(
-            solved.steps,
-            vec![
-                "runtime-case-1".to_string(),
-                "runtime-case-2".to_string(),
-                "runtime-case-3".to_string(),
-                "runtime-case-4".to_string(),
             ]
         );
         let final_set = finalize_product_zero_inequality_solved_sets(&ctx, solved.solved_sets);
