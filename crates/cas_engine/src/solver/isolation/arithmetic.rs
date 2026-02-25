@@ -20,13 +20,12 @@ use cas_solver_core::solve_outcome::{
     plan_sub_isolation_step_with, solve_division_denominator_pipeline_with_optional_items_runtime,
     solve_division_denominator_sign_split_pipeline_with_optional_items_runtime,
     solve_isolated_denominator_sign_split_pipeline_with_optional_items_runtime,
-    solve_product_zero_inequality_split_execution_with_runtime,
-    solve_term_isolation_rewrite_pipeline_with_item_runtime, AddIsolationRoute,
+    solve_product_zero_inequality_split_execution_with,
+    solve_term_isolation_rewrite_pipeline_with_item, AddIsolationRoute,
     DivDenominatorIsolationRoute, DivIsolationRoute, DivisionDenominatorDidacticRuntime,
     DivisionDenominatorSignSplitRuntime, DivisionDenominatorSignSplitSolvedCases,
     IsolatedDenominatorSignSplitRuntime, IsolatedDenominatorSignSplitSolvedCases,
-    ProductZeroInequalityExecutionRuntime, SubIsolationRoute, TermIsolationRewritePlan,
-    TermIsolationRewriteRuntime,
+    SubIsolationRoute, TermIsolationRewritePlan,
 };
 
 use super::{isolate, prepend_steps};
@@ -40,54 +39,18 @@ fn solve_term_isolation_plan(
     opts: SolverOptions,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    struct TermIsolationRuntimeAdapter<'a, 'ctx> {
-        simplifier: &'a mut Simplifier,
-        opts: SolverOptions,
-        solve_ctx: &'ctx super::super::SolveCtx,
-        simplify_rhs_before_isolate: bool,
-    }
-
-    impl TermIsolationRewriteRuntime<CasError, SolveStep> for TermIsolationRuntimeAdapter<'_, '_> {
-        fn solve_rewritten(
-            &mut self,
-            equation: cas_ast::Equation,
-            var: &str,
-        ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-            let rhs = if self.simplify_rhs_before_isolate {
-                self.simplifier.simplify(equation.rhs).0
+    let solved = solve_term_isolation_rewrite_pipeline_with_item(
+        plan,
+        include_item,
+        |equation| {
+            let rhs = if simplify_rhs_before_isolate {
+                simplifier.simplify(equation.rhs).0
             } else {
                 equation.rhs
             };
-            isolate(
-                equation.lhs,
-                rhs,
-                equation.op,
-                var,
-                self.simplifier,
-                self.opts,
-                self.solve_ctx,
-            )
-        }
-
-        fn map_item_to_step(
-            &mut self,
-            item: cas_solver_core::solve_outcome::TermIsolationRewriteExecutionItem,
-        ) -> SolveStep {
-            medium_step(item.description, item.equation)
-        }
-    }
-
-    let mut runtime = TermIsolationRuntimeAdapter {
-        simplifier,
-        opts,
-        solve_ctx: ctx,
-        simplify_rhs_before_isolate,
-    };
-    let solved = solve_term_isolation_rewrite_pipeline_with_item_runtime(
-        plan,
-        var,
-        include_item,
-        &mut runtime,
+            isolate(equation.lhs, rhs, equation.op, var, simplifier, opts, ctx)
+        },
+        |item| medium_step(item.description, item.equation),
     )?;
     Ok((solved.solution_set, solved.steps))
 }
@@ -185,36 +148,9 @@ pub(super) fn isolate_mul(
         if let Some(plan) =
             plan_product_zero_inequality_split(&mut simplifier.context, l, r, op.clone())
         {
-            struct ProductZeroRuntime<'a, 'ctx> {
-                simplifier: &'a mut Simplifier,
-                opts: SolverOptions,
-                solve_ctx: &'ctx super::super::SolveCtx,
-                var: &'a str,
-            }
-
-            impl ProductZeroInequalityExecutionRuntime<CasError, SolveStep> for ProductZeroRuntime<'_, '_> {
-                fn solve_case(
-                    &mut self,
-                    equation: &cas_ast::Equation,
-                ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-                    solve_with_ctx_and_options(
-                        equation,
-                        self.var,
-                        self.simplifier,
-                        self.opts,
-                        self.solve_ctx,
-                    )
-                }
-            }
-
-            let mut runtime = ProductZeroRuntime {
-                simplifier,
-                opts,
-                solve_ctx: ctx,
-                var,
-            };
-            let solved =
-                solve_product_zero_inequality_split_execution_with_runtime(&plan, &mut runtime)?;
+            let solved = solve_product_zero_inequality_split_execution_with(&plan, |equation| {
+                solve_with_ctx_and_options(equation, var, simplifier, opts, ctx)
+            })?;
             let final_set = finalize_product_zero_inequality_solved_sets(
                 &simplifier.context,
                 solved.solved_sets,
