@@ -3,16 +3,15 @@ use cas_api_models::{
     EnvelopeEvalOptions, ExprDto, OutputEnvelope, RequestInfo, RequestOptions, TransparencyDto,
 };
 use cas_engine::{
-    DomainMode, Engine, EvalAction, EvalOutput, EvalRequest, EvalResult, ValueDomain,
+    DomainMode, Engine, EvalAction, EvalOptions, EvalOutput, EvalRequest, EvalResult, ValueDomain,
 };
 use cas_formatter::DisplayExpr;
 
 pub fn eval_str_to_output_envelope(expr: &str, opts: &EnvelopeEvalOptions) -> OutputEnvelope {
     let mut engine = Engine::new();
-    let mut session = cas_session::SessionState::new();
-
-    session.options_mut().shared.semantics.domain_mode = parse_domain_mode(&opts.domain);
-    session.options_mut().shared.semantics.value_domain = parse_value_domain(&opts.value_domain);
+    let mut eval_options = EvalOptions::default();
+    eval_options.shared.semantics.domain_mode = parse_domain_mode(&opts.domain);
+    eval_options.shared.semantics.value_domain = parse_value_domain(&opts.value_domain);
 
     let parsed = match cas_parser::parse(expr, &mut engine.simplifier.context) {
         Ok(id) => id,
@@ -31,7 +30,7 @@ pub fn eval_str_to_output_envelope(expr: &str, opts: &EnvelopeEvalOptions) -> Ou
         auto_store: false,
     };
 
-    let output = match engine.eval(&mut session, req) {
+    let output = match engine.eval_stateless(eval_options, req) {
         Ok(o) => o,
         Err(e) => return OutputEnvelope::eval_error(build_request_info(expr, opts), e.to_string()),
     };

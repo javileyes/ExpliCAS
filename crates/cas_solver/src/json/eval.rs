@@ -4,7 +4,7 @@ use super::mappers::{
 use cas_api_models::{
     BudgetJsonInfo, EngineJsonError, EngineJsonResponse, EngineJsonStep, JsonRunOptions, SpanJson,
 };
-use cas_engine::{strip_all_holds, Engine, EvalAction, EvalRequest, EvalResult};
+use cas_engine::{strip_all_holds, Engine, EvalAction, EvalOptions, EvalRequest, EvalResult};
 
 /// Evaluate an expression and return JSON response.
 ///
@@ -49,9 +49,8 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
     let strict = opts.budget.mode == "strict";
     let budget_info = BudgetJsonInfo::new(&opts.budget.preset, strict);
 
-    // Create engine and explicit eval components (stateless-friendly API)
+    // Create engine
     let mut engine = Engine::new();
-    let mut session = cas_session::SessionState::new();
 
     // Parse expression
     let parsed = match cas_parser::parse(expr, &mut engine.simplifier.context) {
@@ -82,7 +81,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
     };
 
     // Evaluate
-    let output = match engine.eval(&mut session, req) {
+    let output = match engine.eval_stateless(EvalOptions::default(), req) {
         Ok(o) => o,
         Err(e) => {
             // anyhow::Error - create generic error

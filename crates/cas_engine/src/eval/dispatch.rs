@@ -13,7 +13,87 @@ struct ResolvedEvalInput {
     resolved_equiv_other: Option<ExprId>,
 }
 
+#[derive(Default)]
+struct NoopEvalStore;
+
+impl EvalStore for NoopEvalStore {
+    fn push_raw_expr(&mut self, _expr: ExprId, _raw_input: String) -> u64 {
+        0
+    }
+
+    fn push_raw_equation(&mut self, _lhs: ExprId, _rhs: ExprId, _raw_input: String) -> u64 {
+        0
+    }
+
+    fn touch_cached(&mut self, _entry_id: u64) {}
+
+    fn update_diagnostics(&mut self, _id: u64, _diagnostics: crate::diagnostics::Diagnostics) {}
+
+    fn update_simplified(
+        &mut self,
+        _id: u64,
+        _domain: crate::domain::DomainMode,
+        _expr: ExprId,
+        _requires: Vec<crate::diagnostics::RequiredItem>,
+        _steps: Option<std::sync::Arc<Vec<crate::step::Step>>>,
+    ) {
+    }
+}
+
+struct StatelessEvalSession {
+    store: NoopEvalStore,
+    options: crate::options::EvalOptions,
+    profile_cache: crate::profile_cache::ProfileCache,
+}
+
+impl StatelessEvalSession {
+    fn new(options: crate::options::EvalOptions) -> Self {
+        Self {
+            store: NoopEvalStore,
+            options,
+            profile_cache: crate::profile_cache::ProfileCache::new(),
+        }
+    }
+}
+
+impl EvalSession for StatelessEvalSession {
+    type Store = NoopEvalStore;
+
+    fn store_mut(&mut self) -> &mut Self::Store {
+        &mut self.store
+    }
+
+    fn options(&self) -> &crate::options::EvalOptions {
+        &self.options
+    }
+
+    fn profile_cache_mut(&mut self) -> &mut crate::profile_cache::ProfileCache {
+        &mut self.profile_cache
+    }
+
+    fn resolve_all_with_diagnostics(
+        &self,
+        _ctx: &mut cas_ast::Context,
+        expr: ExprId,
+    ) -> anyhow::Result<(ExprId, crate::diagnostics::Diagnostics, Vec<u64>)> {
+        Ok((expr, crate::diagnostics::Diagnostics::new(), Vec::new()))
+    }
+}
+
 impl Engine {
+    /// Stateless eval path for APIs that do not use session refs (`#N`) or env vars.
+    ///
+    /// This keeps `cas_engine` usable without `cas_session` in outer orchestration layers.
+    pub fn eval_stateless(
+        &mut self,
+        options: crate::options::EvalOptions,
+        mut req: EvalRequest,
+    ) -> Result<EvalOutput, anyhow::Error> {
+        req.auto_store = false;
+        let mut session = StatelessEvalSession::new(options);
+        self.eval(&mut session, req)
+    }
+
     /// The main entry point for evaluating requests.
     /// Handles session storage, resolution, and action dispatch.
     pub fn eval(
