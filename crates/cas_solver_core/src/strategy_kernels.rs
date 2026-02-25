@@ -658,6 +658,46 @@ where
     )
 }
 
+/// Derive and solve one rational-exponent kernel with optional didactic
+/// item dispatch and discrete solution verification.
+///
+/// Returns `None` when no rational-exponent kernel applies.
+pub fn execute_rational_exponent_kernel_pipeline_with_item_with<
+    E,
+    S,
+    FDerive,
+    FSimplify,
+    FSolve,
+    FStep,
+    FVerify,
+>(
+    mut derive_kernel: FDerive,
+    var: &str,
+    include_item: bool,
+    simplify_expr: FSimplify,
+    solve_rewritten: FSolve,
+    map_item_to_step: FStep,
+    verify_discrete_solution: FVerify,
+) -> Option<Result<RationalExponentRewriteSolved<S>, E>>
+where
+    FDerive: FnMut() -> Option<RationalExponentKernel>,
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(StrategyExecutionItem) -> S,
+    FVerify: FnMut(ExprId) -> bool,
+{
+    let kernel = derive_kernel()?;
+    Some(solve_rational_exponent_kernel_pipeline_with_item_with(
+        kernel,
+        var,
+        include_item,
+        simplify_expr,
+        solve_rewritten,
+        map_item_to_step,
+        verify_discrete_solution,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1613,5 +1653,62 @@ mod tests {
         assert_eq!(verified, vec![x, rhs]);
         assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![x]));
         assert_eq!(solved.steps.len(), 2);
+    }
+
+    #[test]
+    fn execute_rational_exponent_kernel_pipeline_with_item_with_runs_when_kernel_exists() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let exponent = ctx.add(Expr::Div(three, two));
+        let lhs = ctx.add(Expr::Pow(x, exponent));
+        let rhs = ctx.num(8);
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+
+        let mut solve_calls = 0usize;
+        let solved = execute_rational_exponent_kernel_pipeline_with_item_with(
+            || derive_rational_exponent_kernel_for_var(&mut ctx, &eq, "x"),
+            "x",
+            true,
+            |id| id,
+            |_equation, solve_var| {
+                solve_calls += 1;
+                assert_eq!(solve_var, "x");
+                Ok::<_, ()>((SolutionSet::Discrete(vec![x]), vec!["sub".to_string()]))
+            },
+            |item| item.description,
+            |_solution| true,
+        )
+        .expect("kernel should be derived")
+        .expect("pipeline should solve");
+
+        assert_eq!(solve_calls, 1);
+        assert!(matches!(solved.solution_set, SolutionSet::Discrete(_)));
+        assert_eq!(solved.steps.len(), 2);
+    }
+
+    #[test]
+    fn execute_rational_exponent_kernel_pipeline_with_item_with_returns_none_without_kernel() {
+        let mut solve_calls = 0usize;
+        let out = execute_rational_exponent_kernel_pipeline_with_item_with(
+            || None,
+            "x",
+            true,
+            |id| id,
+            |_equation, _solve_var| {
+                solve_calls += 1;
+                Ok::<_, ()>((SolutionSet::AllReals, vec!["unexpected".to_string()]))
+            },
+            |item| item.description,
+            |_solution| true,
+        );
+
+        assert!(out.is_none());
+        assert_eq!(solve_calls, 0);
     }
 }

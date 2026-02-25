@@ -12,8 +12,8 @@ use cas_solver_core::solve_outcome::{
 };
 use cas_solver_core::strategy_kernels::{
     derive_collect_terms_kernel, derive_isolation_strategy_routing,
-    derive_rational_exponent_kernel_for_var, solve_collect_terms_kernel_pipeline_with_item,
-    solve_isolation_strategy_routing_with, solve_rational_exponent_kernel_pipeline_with_item_with,
+    execute_rational_exponent_kernel_pipeline_with_item_with,
+    solve_collect_terms_kernel_pipeline_with_item, solve_isolation_strategy_routing_with,
 };
 use cas_solver_core::unwrap_plan::{
     route_unwrap_entry_with_item, solve_unwrap_execution_pipeline_with_item,
@@ -215,10 +215,16 @@ impl SolverStrategy for RationalExponentStrategy {
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let include_item = simplifier.collect_steps();
-        let kernel = derive_rational_exponent_kernel_for_var(&mut simplifier.context, eq, var)?;
         let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        let solved = solve_rational_exponent_kernel_pipeline_with_item_with(
-            kernel,
+        let solved = execute_rational_exponent_kernel_pipeline_with_item_with(
+            || {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                cas_solver_core::strategy_kernels::derive_rational_exponent_kernel_for_var(
+                    &mut simplifier_ref.context,
+                    eq,
+                    var,
+                )
+            },
             var,
             include_item,
             |expr| {
@@ -231,7 +237,7 @@ impl SolverStrategy for RationalExponentStrategy {
             },
             |item| medium_step(item.description, item.equation),
             |_solution| true,
-        );
+        )?;
 
         Some(match solved {
             Ok(solved) => Ok((solved.solution_set, solved.steps)),

@@ -25,9 +25,7 @@ use cas_solver_core::solve_outcome::{
     VarEliminatedSolveOutcome,
 };
 use cas_solver_core::step_cleanup::{cleanup_steps_by, CleanupStep};
-use cas_solver_core::strategy_kernels::{
-    derive_rational_exponent_kernel_for_var, solve_rational_exponent_kernel_pipeline_with_item_with,
-};
+use cas_solver_core::strategy_kernels::execute_rational_exponent_kernel_pipeline_with_item_with;
 
 use super::{
     medium_step, render_expr, DepthGuard, DisplaySolveSteps, SolveDomainEnv, SolveStep,
@@ -506,31 +504,35 @@ fn try_solve_rational_exponent(
     opts: SolverOptions,
     ctx: &super::SolveCtx,
 ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-    let kernel = derive_rational_exponent_kernel_for_var(&mut simplifier.context, eq, var)?;
     let include_item = simplifier.collect_steps();
-    let solved = {
-        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        match solve_rational_exponent_kernel_pipeline_with_item_with(
-            kernel,
-            var,
-            include_item,
-            |expr| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                simplifier_ref.simplify(expr).0
-            },
-            |equation, solve_var| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                solve_with_ctx_and_options(equation, solve_var, *simplifier_ref, opts, ctx)
-            },
-            |item| medium_step(item.description, item.equation),
-            |solution| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                super::check::verify_solution_by_equivalence(*simplifier_ref, eq, var, solution)
-            },
-        ) {
-            Ok(solved) => solved,
-            Err(e) => return Some(Err(e)),
-        }
-    };
-    Some(Ok((solved.solution_set, solved.steps)))
+    let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+    let solved = execute_rational_exponent_kernel_pipeline_with_item_with(
+        || {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            cas_solver_core::strategy_kernels::derive_rational_exponent_kernel_for_var(
+                &mut simplifier_ref.context,
+                eq,
+                var,
+            )
+        },
+        var,
+        include_item,
+        |expr| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            simplifier_ref.simplify(expr).0
+        },
+        |equation, solve_var| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            solve_with_ctx_and_options(equation, solve_var, *simplifier_ref, opts, ctx)
+        },
+        |item| medium_step(item.description, item.equation),
+        |solution| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            super::check::verify_solution_by_equivalence(*simplifier_ref, eq, var, solution)
+        },
+    )?;
+    Some(match solved {
+        Ok(solved) => Ok((solved.solution_set, solved.steps)),
+        Err(e) => Err(e),
+    })
 }
