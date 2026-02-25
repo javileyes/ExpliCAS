@@ -442,6 +442,27 @@ where
     })
 }
 
+/// Derive, materialize, and solve one collect-terms rewrite via runtime.
+///
+/// Returns `None` when collect-terms is not applicable to `eq`.
+pub fn solve_collect_terms_rewrite_pipeline_with_item_runtime_for_var<E, S, R>(
+    runtime: &mut R,
+    eq: &Equation,
+    var: &str,
+    include_item: bool,
+) -> Option<Result<CollectTermsRewriteSolved<S>, E>>
+where
+    R: StrategyKernelRuntime + CollectTermsRewriteRuntime<E, S>,
+{
+    let rewrite = execute_collect_terms_rewrite_with_runtime(runtime, eq, var)?;
+    Some(solve_collect_terms_rewrite_pipeline_with_item_runtime(
+        rewrite,
+        var,
+        include_item,
+        runtime,
+    ))
+}
+
 /// Rewrite payload for `RationalExponentStrategy`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RationalExponentKernel {
@@ -746,6 +767,27 @@ where
         solution_set,
         steps,
     })
+}
+
+/// Derive, materialize, and solve one rational-exponent rewrite via runtime.
+///
+/// Returns `None` when rational-exponent rewrite is not applicable to `eq`.
+pub fn solve_rational_exponent_rewrite_pipeline_with_item_runtime_for_var<E, S, R>(
+    runtime: &mut R,
+    eq: &Equation,
+    var: &str,
+    include_item: bool,
+) -> Option<Result<RationalExponentRewriteSolved<S>, E>>
+where
+    R: StrategyKernelRuntime + RationalExponentRewriteRuntime<E, S>,
+{
+    let rewrite = execute_rational_exponent_rewrite_with_runtime_for_var(runtime, eq, var)?;
+    Some(solve_rational_exponent_rewrite_pipeline_with_item(
+        rewrite,
+        var,
+        include_item,
+        runtime,
+    ))
 }
 
 #[cfg(test)]
@@ -1382,8 +1424,23 @@ mod tests {
     }
 
     struct TestCollectTermsRuntime {
+        ctx: Context,
         solve_result: (SolutionSet, Vec<String>),
         last_var: Option<String>,
+    }
+
+    impl StrategyKernelRuntime for TestCollectTermsRuntime {
+        fn context(&mut self) -> &mut Context {
+            &mut self.ctx
+        }
+
+        fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
+            expr
+        }
+
+        fn render_expr(&mut self, expr: ExprId) -> String {
+            format!("{expr:?}")
+        }
     }
 
     impl CollectTermsRewriteRuntime<&'static str, String> for TestCollectTermsRuntime {
@@ -1422,6 +1479,7 @@ mod tests {
             }],
         };
         let mut runtime = TestCollectTermsRuntime {
+            ctx: Context::new(),
             solve_result: (
                 SolutionSet::Discrete(vec![lhs]),
                 vec!["runtime-sub-step".to_string()],
@@ -1469,6 +1527,7 @@ mod tests {
             }],
         };
         let mut runtime = TestCollectTermsRuntime {
+            ctx: Context::new(),
             solve_result: (
                 SolutionSet::Discrete(vec![rhs]),
                 vec!["runtime-only-sub-step".to_string()],
@@ -1487,6 +1546,81 @@ mod tests {
         assert_eq!(runtime.last_var.as_deref(), Some("x"));
         assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![rhs]));
         assert_eq!(solved.steps, vec!["runtime-only-sub-step".to_string()]);
+    }
+
+    #[test]
+    fn solve_collect_terms_rewrite_pipeline_with_item_runtime_for_var_materializes_and_solves() {
+        let mut runtime = TestCollectTermsRuntime {
+            ctx: Context::new(),
+            solve_result: (
+                SolutionSet::Discrete(vec![]),
+                vec!["runtime-sub-step".to_string()],
+            ),
+            last_var: None,
+        };
+        let x = runtime.ctx.var("x");
+        let one = runtime.ctx.num(1);
+        let two = runtime.ctx.num(2);
+        let lhs = runtime.ctx.add(Expr::Add(x, one));
+        let rhs = runtime.ctx.add(Expr::Add(x, two));
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+
+        let solved = solve_collect_terms_rewrite_pipeline_with_item_runtime_for_var(
+            &mut runtime,
+            &eq,
+            "x",
+            true,
+        )
+        .expect("collect rewrite should materialize")
+        .expect("collect pipeline should succeed");
+
+        assert_eq!(runtime.last_var.as_deref(), Some("x"));
+        assert_eq!(solved.steps.len(), 2);
+    }
+
+    struct TestRationalExponentRuntime {
+        ctx: Context,
+        solve_result: (SolutionSet, Vec<String>),
+        last_var: Option<String>,
+        verified: Vec<ExprId>,
+    }
+
+    impl StrategyKernelRuntime for TestRationalExponentRuntime {
+        fn context(&mut self) -> &mut Context {
+            &mut self.ctx
+        }
+
+        fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
+            expr
+        }
+
+        fn render_expr(&mut self, expr: ExprId) -> String {
+            format!("{expr:?}")
+        }
+    }
+
+    impl RationalExponentRewriteRuntime<&'static str, String> for TestRationalExponentRuntime {
+        fn solve_rewritten(
+            &mut self,
+            _: &Equation,
+            var: &str,
+        ) -> Result<(SolutionSet, Vec<String>), &'static str> {
+            self.last_var = Some(var.to_string());
+            Ok(self.solve_result.clone())
+        }
+
+        fn map_item_to_step(&mut self, item: StrategyExecutionItem) -> String {
+            item.description
+        }
+
+        fn verify_discrete_solution(&mut self, solution: ExprId) -> bool {
+            self.verified.push(solution);
+            true
+        }
     }
 
     #[test]
@@ -1549,5 +1683,43 @@ mod tests {
             seen_desc,
             Some("Raise both sides to power 2 to eliminate fractional exponent".to_string())
         );
+    }
+
+    #[test]
+    fn solve_rational_exponent_rewrite_pipeline_with_item_runtime_for_var_materializes_and_solves()
+    {
+        let mut runtime = TestRationalExponentRuntime {
+            ctx: Context::new(),
+            solve_result: (
+                SolutionSet::Discrete(vec![]),
+                vec!["runtime-sub-step".to_string()],
+            ),
+            last_var: None,
+            verified: Vec::new(),
+        };
+        let x = runtime.ctx.var("x");
+        let three = runtime.ctx.num(3);
+        let two = runtime.ctx.num(2);
+        let exponent = runtime.ctx.add(Expr::Div(three, two));
+        let lhs = runtime.ctx.add(Expr::Pow(x, exponent));
+        let rhs = runtime.ctx.num(8);
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+
+        let solved = solve_rational_exponent_rewrite_pipeline_with_item_runtime_for_var(
+            &mut runtime,
+            &eq,
+            "x",
+            true,
+        )
+        .expect("rational-exponent rewrite should materialize")
+        .expect("rational-exponent pipeline should succeed");
+
+        assert_eq!(runtime.last_var.as_deref(), Some("x"));
+        assert_eq!(runtime.verified.len(), 0);
+        assert_eq!(solved.steps.len(), 2);
     }
 }

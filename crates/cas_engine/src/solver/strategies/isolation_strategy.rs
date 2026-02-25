@@ -8,13 +8,11 @@ use crate::solver::{
 };
 use cas_ast::{Equation, ExprId, SolutionSet};
 use cas_solver_core::strategy_kernels::{
-    build_collect_terms_execution_with, build_rational_exponent_execution,
-    collect_collect_terms_execution_items, collect_rational_exponent_execution_items,
-    derive_collect_terms_kernel, derive_isolation_strategy_routing,
-    derive_rational_exponent_kernel_for_var, solve_collect_terms_rewrite_pipeline_with_item,
+    derive_isolation_strategy_routing,
+    solve_collect_terms_rewrite_pipeline_with_item_runtime_for_var,
     solve_isolation_strategy_routing_with,
-    solve_rational_exponent_rewrite_pipeline_with_item_with, CollectTermsSolvedRewrite,
-    RationalExponentSolvedRewrite,
+    solve_rational_exponent_rewrite_pipeline_with_item_runtime_for_var, CollectTermsRewriteRuntime,
+    RationalExponentRewriteRuntime, StrategyExecutionItem, StrategyKernelRuntime,
 };
 use cas_solver_core::unwrap_plan::{
     route_unwrap_entry_with_item, solve_unwrap_execution_pipeline_with_item_with,
@@ -156,48 +154,59 @@ impl SolverStrategy for UnwrapStrategy {
 }
 
 // --- Helper for CollectTermsStrategy (currently unused) ---
-
-// fn is_zero(ctx: &Context, expr: ExprId) -> bool {
-//     matches!(ctx.get(expr), Expr::Number(n) if n.is_zero())
-// }
-
 // --- CollectTermsStrategy: Handles linear equations with variables on both sides ---
 
 pub struct CollectTermsStrategy;
 
-fn build_collect_terms_rewrite(
-    eq: &Equation,
-    var: &str,
-    simplifier: &mut Simplifier,
-) -> Option<CollectTermsSolvedRewrite> {
-    let kernel = derive_collect_terms_kernel(&mut simplifier.context, eq, var)?;
-    let (lhs_after, _) = simplifier.simplify(kernel.rewritten.lhs);
-    let (rhs_after, _) = simplifier.simplify(kernel.rewritten.rhs);
-    let execution =
-        build_collect_terms_execution_with(lhs_after, rhs_after, eq.op.clone(), eq.rhs, |id| {
-            solver_render_expr(&simplifier.context, id)
-        });
-    let items = collect_collect_terms_execution_items(&execution);
-    Some(CollectTermsSolvedRewrite {
-        equation: execution.equation,
-        items,
-    })
+struct StrategyRewriteRuntime<'a, 'ctx> {
+    simplifier: &'a mut Simplifier,
+    solve_ctx: &'ctx SolveCtx,
 }
 
-fn build_rational_exponent_rewrite(
-    eq: &Equation,
-    var: &str,
-    simplifier: &mut Simplifier,
-) -> Option<RationalExponentSolvedRewrite> {
-    let kernel = derive_rational_exponent_kernel_for_var(&mut simplifier.context, eq, var)?;
-    let (lhs_after, _) = simplifier.simplify(kernel.rewritten.lhs);
-    let (rhs_after, _) = simplifier.simplify(kernel.rewritten.rhs);
-    let execution = build_rational_exponent_execution(kernel.q, lhs_after, rhs_after);
-    let items = collect_rational_exponent_execution_items(&execution);
-    Some(RationalExponentSolvedRewrite {
-        equation: execution.equation,
-        items,
-    })
+impl StrategyKernelRuntime for StrategyRewriteRuntime<'_, '_> {
+    fn context(&mut self) -> &mut cas_ast::Context {
+        &mut self.simplifier.context
+    }
+
+    fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
+        self.simplifier.simplify(expr).0
+    }
+
+    fn render_expr(&mut self, expr: ExprId) -> String {
+        solver_render_expr(&self.simplifier.context, expr)
+    }
+}
+
+impl CollectTermsRewriteRuntime<CasError, SolveStep> for StrategyRewriteRuntime<'_, '_> {
+    fn solve_rewritten(
+        &mut self,
+        equation: &Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        solve_with_ctx(equation, var, self.simplifier, self.solve_ctx)
+    }
+
+    fn map_item_to_step(&mut self, item: StrategyExecutionItem) -> SolveStep {
+        medium_step(item.description, item.equation)
+    }
+}
+
+impl RationalExponentRewriteRuntime<CasError, SolveStep> for StrategyRewriteRuntime<'_, '_> {
+    fn solve_rewritten(
+        &mut self,
+        equation: &Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        solve_with_ctx(equation, var, self.simplifier, self.solve_ctx)
+    }
+
+    fn map_item_to_step(&mut self, item: StrategyExecutionItem) -> SolveStep {
+        medium_step(item.description, item.equation)
+    }
+
+    fn verify_discrete_solution(&mut self, _solution: ExprId) -> bool {
+        true
+    }
 }
 
 impl SolverStrategy for CollectTermsStrategy {
@@ -213,15 +222,17 @@ impl SolverStrategy for CollectTermsStrategy {
         _opts: &SolverOptions,
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-        let rewrite = build_collect_terms_rewrite(eq, var, simplifier)?;
         let include_item = simplifier.collect_steps();
-        let solved = solve_collect_terms_rewrite_pipeline_with_item(
-            rewrite,
+        let mut runtime = StrategyRewriteRuntime {
+            simplifier,
+            solve_ctx: ctx,
+        };
+        let solved = solve_collect_terms_rewrite_pipeline_with_item_runtime_for_var(
+            &mut runtime,
+            eq,
             var,
             include_item,
-            |equation, var| solve_with_ctx(equation, var, simplifier, ctx),
-            |item| medium_step(item.description, item.equation),
-        );
+        )?;
 
         match solved {
             Ok(solved) => Some(Ok((solved.solution_set, solved.steps))),
@@ -248,16 +259,17 @@ impl SolverStrategy for RationalExponentStrategy {
         _opts: &SolverOptions,
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-        let rewrite = build_rational_exponent_rewrite(eq, var, simplifier)?;
         let include_item = simplifier.collect_steps();
-        let solved = solve_rational_exponent_rewrite_pipeline_with_item_with(
-            rewrite,
+        let mut runtime = StrategyRewriteRuntime {
+            simplifier,
+            solve_ctx: ctx,
+        };
+        let solved = solve_rational_exponent_rewrite_pipeline_with_item_runtime_for_var(
+            &mut runtime,
+            eq,
             var,
             include_item,
-            |equation, var| solve_with_ctx(equation, var, simplifier, ctx),
-            |item| medium_step(item.description, item.equation),
-            |_| true,
-        );
+        )?;
 
         Some(match solved {
             Ok(solved) => Ok((solved.solution_set, solved.steps)),

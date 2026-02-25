@@ -16,9 +16,8 @@ use cas_solver_core::solve_outcome::{
     VarEliminatedSolveOutcome,
 };
 use cas_solver_core::strategy_kernels::{
-    build_rational_exponent_execution, collect_rational_exponent_execution_items,
-    derive_rational_exponent_kernel_for_var,
-    solve_rational_exponent_rewrite_pipeline_with_item_with, RationalExponentSolvedRewrite,
+    solve_rational_exponent_rewrite_pipeline_with_item_runtime_for_var,
+    RationalExponentRewriteRuntime, StrategyKernelRuntime,
 };
 use std::cell::RefCell;
 
@@ -469,6 +468,55 @@ fn solve_inner(
     ))
 }
 
+struct SolveCoreRationalExponentRuntime<'a, 'ctx> {
+    simplifier: &'a mut Simplifier,
+    original_eq: &'a cas_ast::Equation,
+    original_var: &'a str,
+    solve_ctx: &'ctx super::SolveCtx,
+}
+
+impl StrategyKernelRuntime for SolveCoreRationalExponentRuntime<'_, '_> {
+    fn context(&mut self) -> &mut cas_ast::Context {
+        &mut self.simplifier.context
+    }
+
+    fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
+        self.simplifier.simplify(expr).0
+    }
+
+    fn render_expr(&mut self, expr: ExprId) -> String {
+        render_expr(&self.simplifier.context, expr)
+    }
+}
+
+impl RationalExponentRewriteRuntime<CasError, SolveStep>
+    for SolveCoreRationalExponentRuntime<'_, '_>
+{
+    fn solve_rewritten(
+        &mut self,
+        equation: &cas_ast::Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        solve_with_ctx(equation, var, self.simplifier, self.solve_ctx)
+    }
+
+    fn map_item_to_step(
+        &mut self,
+        item: cas_solver_core::strategy_kernels::StrategyExecutionItem,
+    ) -> SolveStep {
+        medium_step(item.description, item.equation)
+    }
+
+    fn verify_discrete_solution(&mut self, solution: ExprId) -> bool {
+        super::check::verify_solution_by_equivalence(
+            self.simplifier,
+            self.original_eq,
+            self.original_var,
+            solution,
+        )
+    }
+}
+
 /// Try to solve equations with rational exponents like x^(3/2) = 8
 /// by converting to x^3 = 64 (raising both sides to power q)
 fn try_solve_rational_exponent(
@@ -477,35 +525,22 @@ fn try_solve_rational_exponent(
     simplifier: &mut Simplifier,
     ctx: &super::SolveCtx,
 ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-    let kernel = derive_rational_exponent_kernel_for_var(&mut simplifier.context, eq, var)?;
-    let sim_lhs = simplifier.simplify(kernel.rewritten.lhs).0;
-    let sim_rhs = simplifier.simplify(kernel.rewritten.rhs).0;
-    let execution = build_rational_exponent_execution(kernel.q, sim_lhs, sim_rhs);
-    let items = collect_rational_exponent_execution_items(&execution);
-    let rewrite = RationalExponentSolvedRewrite {
-        equation: execution.equation,
-        items,
-    };
-
     let include_item = simplifier.collect_steps();
-    let solved = match solve_rational_exponent_rewrite_pipeline_with_item_with(
-        rewrite,
+    let mut runtime = SolveCoreRationalExponentRuntime {
+        simplifier,
+        original_eq: eq,
+        original_var: var,
+        solve_ctx: ctx,
+    };
+    let solved = match solve_rational_exponent_rewrite_pipeline_with_item_runtime_for_var(
+        &mut runtime,
+        eq,
         var,
         include_item,
-        |equation, var| solve_with_ctx(equation, var, simplifier, ctx),
-        |item| medium_step(item.description, item.equation),
-        |_| true,
     ) {
-        Ok(solved) => solved,
-        Err(e) => return Some(Err(e)),
+        Some(Ok(solved)) => solved,
+        Some(Err(e)) => return Some(Err(e)),
+        None => return None,
     };
-    let solution_set = if let SolutionSet::Discrete(sols) = solved.solution_set {
-        SolutionSet::Discrete(cas_solver_core::solve_analysis::retain_verified_discrete(
-            sols,
-            |solution| super::check::verify_solution_by_equivalence(simplifier, eq, var, solution),
-        ))
-    } else {
-        solved.solution_set
-    };
-    Some(Ok((solution_set, solved.steps)))
+    Some(Ok((solved.solution_set, solved.steps)))
 }
