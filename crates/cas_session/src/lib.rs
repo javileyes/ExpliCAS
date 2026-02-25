@@ -7,7 +7,7 @@ pub mod env;
 mod snapshot;
 mod state;
 
-pub use cache::{SimplifiedCache, SimplifyCacheKey};
+pub use cache::{CacheDomainMode, SimplifiedCache, SimplifyCacheKey};
 pub type CacheHitEntryId = u64;
 
 pub type ResolvedExpr = cas_session_core::cache::ResolvedExpr<RequiredItem>;

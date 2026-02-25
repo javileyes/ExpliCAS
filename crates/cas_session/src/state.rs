@@ -1,5 +1,5 @@
 use cas_ast::ExprId;
-use cas_engine::{Diagnostics, EvalOptions, EvalSession, EvalStore, ProfileCache};
+use cas_engine::{Diagnostics, EvalOptions, EvalSession, EvalStore};
 
 use crate::{
     snapshot::SessionSnapshot, Environment, ResolveError, SessionStore, SimplifyCacheKey,
@@ -82,7 +82,6 @@ pub struct SessionState {
     store: SessionEvalStore,
     env: Environment,
     options: EvalOptions,
-    profile_cache: ProfileCache,
 }
 
 impl SessionState {
@@ -103,7 +102,6 @@ impl SessionState {
             store: SessionEvalStore::new(),
             env: Environment::new(),
             options: EvalOptions::default(),
-            profile_cache: ProfileCache::new(),
         }
     }
 
@@ -113,7 +111,6 @@ impl SessionState {
             store: SessionEvalStore::from_store(store),
             env: Environment::new(),
             options: EvalOptions::default(),
-            profile_cache: ProfileCache::new(),
         }
     }
 
@@ -226,14 +223,6 @@ impl SessionState {
         self.env.clear_all();
     }
 
-    pub fn profile_cache_len(&self) -> usize {
-        self.profile_cache.len()
-    }
-
-    pub fn clear_profile_cache(&mut self) {
-        self.profile_cache.clear();
-    }
-
     /// Clear all session data (history + env bindings).
     /// Note: options are intentionally preserved.
     pub fn clear(&mut self) {
@@ -251,10 +240,6 @@ impl EvalSession for SessionState {
 
     fn options(&self) -> &EvalOptions {
         &self.options
-    }
-
-    fn profile_cache_mut(&mut self) -> &mut ProfileCache {
-        &mut self.profile_cache
     }
 
     fn resolve_all_with_diagnostics(

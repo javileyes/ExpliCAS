@@ -437,8 +437,6 @@ mod tests {
 
     #[test]
     fn test_session_snapshot_save_load() {
-        use cas_engine::DomainMode;
-
         let dir = tempdir().unwrap();
         let path = dir.path().join("test.session");
 
@@ -453,7 +451,7 @@ mod tests {
         store.push(crate::EntryKind::Expr(expr), "x + 1".to_string());
 
         let key = SimplifyCacheKey {
-            domain: DomainMode::Generic,
+            domain: crate::CacheDomainMode::Generic,
             ruleset_rev: 1,
         };
 

@@ -43,6 +43,7 @@ use cas_ast::{BuiltinFn, Equation, Expr, ExprId, RelOp};
 /// ```
 pub struct Engine {
     pub simplifier: Simplifier,
+    profile_cache: crate::profile_cache::ProfileCache,
 }
 
 /// Session abstraction for `Engine::eval`, allowing callers to provide any
@@ -67,7 +68,6 @@ pub trait EvalSession {
 
     fn store_mut(&mut self) -> &mut Self::Store;
     fn options(&self) -> &crate::options::EvalOptions;
-    fn profile_cache_mut(&mut self) -> &mut crate::profile_cache::ProfileCache;
 
     fn resolve_all_with_diagnostics(
         &self,
@@ -77,6 +77,14 @@ pub trait EvalSession {
 }
 
 impl Engine {
+    /// Create an Engine from a configured `Simplifier`.
+    pub fn with_simplifier(simplifier: Simplifier) -> Self {
+        Self {
+            simplifier,
+            profile_cache: crate::profile_cache::ProfileCache::new(),
+        }
+    }
+
     /// Create a new Engine with default rules.
     ///
     /// # Example
@@ -88,16 +96,22 @@ impl Engine {
     /// // Engine is ready to simplify expressions
     /// ```
     pub fn new() -> Self {
-        Self {
-            simplifier: Simplifier::with_default_rules(),
-        }
+        Self::with_simplifier(Simplifier::with_default_rules())
     }
 
     /// Create an Engine with a pre-populated Context (for session restoration).
     pub fn with_context(context: cas_ast::Context) -> Self {
-        Self {
-            simplifier: Simplifier::with_context(context),
-        }
+        Self::with_simplifier(Simplifier::with_context(context))
+    }
+
+    /// Number of cached rule profiles currently held by this engine.
+    pub fn profile_cache_len(&self) -> usize {
+        self.profile_cache.len()
+    }
+
+    /// Clear cached rule profiles.
+    pub fn clear_profile_cache(&mut self) {
+        self.profile_cache.clear();
     }
 
     /// Determine effective options, resolving Auto modes based on expression content.

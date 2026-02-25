@@ -43,7 +43,6 @@ impl EvalStore for NoopEvalStore {
 struct StatelessEvalSession {
     store: NoopEvalStore,
     options: crate::options::EvalOptions,
-    profile_cache: crate::profile_cache::ProfileCache,
 }
 
 impl StatelessEvalSession {
@@ -51,7 +50,6 @@ impl StatelessEvalSession {
         Self {
             store: NoopEvalStore,
             options,
-            profile_cache: crate::profile_cache::ProfileCache::new(),
         }
     }
 }
@@ -65,10 +63,6 @@ impl EvalSession for StatelessEvalSession {
 
     fn options(&self) -> &crate::options::EvalOptions {
         &self.options
-    }
-
-    fn profile_cache_mut(&mut self) -> &mut crate::profile_cache::ProfileCache {
-        &mut self.profile_cache
     }
 
     fn resolve_all_with_diagnostics(
@@ -211,10 +205,7 @@ impl Engine {
             output_scopes,
             solver_required,
         ) = match req.action {
-            EvalAction::Simplify => {
-                let profile_cache = session.profile_cache_mut();
-                self.eval_simplify(options, profile_cache, resolved)?
-            }
+            EvalAction::Simplify => self.eval_simplify(options, resolved)?,
             EvalAction::Expand => {
                 // Treating Expand as Simplify for now, as Simplifier has no explicit expand mode yet exposed cleanly
                 let (res, steps) = self.simplifier.simplify(resolved);
@@ -265,14 +256,13 @@ impl Engine {
     fn eval_simplify(
         &mut self,
         options: &crate::options::EvalOptions,
-        profile_cache: &mut crate::profile_cache::ProfileCache,
         resolved: ExprId,
     ) -> Result<ActionResult, anyhow::Error> {
         // Determine effective context mode for this request
         let effective_opts = self.effective_options(options, resolved);
 
         // Get cached profile (or build once and cache)
-        let profile = profile_cache.get_or_build(&effective_opts);
+        let profile = self.profile_cache.get_or_build(&effective_opts);
 
         // Create simplifier from cached profile
         let mut ctx_simplifier = Simplifier::from_profile(profile);

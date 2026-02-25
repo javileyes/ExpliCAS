@@ -6,6 +6,25 @@
 use cas_ast::ExprId;
 use std::sync::Arc;
 
+/// Session-local domain axis used by cache keys.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CacheDomainMode {
+    Strict,
+    Assume,
+    Generic,
+}
+
+impl From<cas_engine::DomainMode> for CacheDomainMode {
+    fn from(mode: cas_engine::DomainMode) -> Self {
+        match mode {
+            cas_engine::DomainMode::Strict => Self::Strict,
+            cas_engine::DomainMode::Assume => Self::Assume,
+            cas_engine::DomainMode::Generic => Self::Generic,
+        }
+    }
+}
+
 /// Key for cache invalidation.
 ///
 /// If any setting changes between cache creation and cache usage, the cache is
@@ -13,7 +32,7 @@ use std::sync::Arc;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SimplifyCacheKey {
     /// Domain mode at time of simplification.
-    pub domain: cas_engine::DomainMode,
+    pub domain: CacheDomainMode,
     /// Build/version hash for ruleset (currently static).
     pub ruleset_rev: u64,
 }
@@ -22,7 +41,7 @@ impl SimplifyCacheKey {
     /// Create a cache key from current context settings.
     pub fn from_context(domain: cas_engine::DomainMode) -> Self {
         Self {
-            domain,
+            domain: domain.into(),
             // For now, use a static value. In the future this can hash ruleset config.
             ruleset_rev: 1,
         }

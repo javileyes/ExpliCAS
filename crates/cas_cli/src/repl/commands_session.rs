@@ -259,7 +259,7 @@ impl Repl {
         self.print_reply(reset_reply);
 
         // Also clear profile cache
-        self.core.state.clear_profile_cache();
+        self.core.engine.clear_profile_cache();
 
         self.print_reply(reply_output(
             "Profile cache cleared (will rebuild on next eval).",
@@ -279,7 +279,7 @@ impl Repl {
         match args.get(1).copied() {
             None | Some("status") => {
                 // Show cache status
-                let count = self.core.state.profile_cache_len();
+                let count = self.core.engine.profile_cache_len();
                 let mut lines = vec![format!("Profile Cache: {} profiles cached", count)];
                 if count == 0 {
                     lines.push("  (empty - profiles will be built on first eval)".to_string());
@@ -289,7 +289,7 @@ impl Repl {
                 reply_output(lines.join("\n"))
             }
             Some("clear") => {
-                self.core.state.clear_profile_cache();
+                self.core.engine.clear_profile_cache();
                 reply_output("Profile cache cleared.")
             }
             Some(cmd) => {
@@ -299,5 +299,77 @@ impl Repl {
                 reply
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn first_output(reply: &ReplReply) -> &str {
+        for msg in reply {
+            if let ReplMsg::Output(text) = msg {
+                return text.as_str();
+            }
+        }
+        panic!("reply should contain output");
+    }
+
+    #[test]
+    fn cache_status_uses_engine_profile_cache() {
+        let mut repl = Repl::new();
+
+        let parsed = match cas_parser::parse("x + x", &mut repl.core.engine.simplifier.context) {
+            Ok(id) => id,
+            Err(err) => panic!("parse expression failed: {err}"),
+        };
+        let req = cas_solver::EvalRequest {
+            raw_input: "x + x".to_string(),
+            parsed,
+            action: cas_solver::EvalAction::Simplify,
+            auto_store: false,
+        };
+        if let Err(err) = repl
+            .core
+            .engine
+            .eval_stateless(cas_solver::EvalOptions::default(), req)
+        {
+            panic!("eval failed: {err}");
+        }
+
+        let status = repl.handle_cache_command_core("cache status");
+        let output = first_output(&status);
+        assert!(
+            output.contains("Profile Cache: 1 profiles cached"),
+            "unexpected cache status output: {output}"
+        );
+    }
+
+    #[test]
+    fn cache_clear_empties_engine_profile_cache() {
+        let mut repl = Repl::new();
+
+        let parsed = match cas_parser::parse("x + x", &mut repl.core.engine.simplifier.context) {
+            Ok(id) => id,
+            Err(err) => panic!("parse expression failed: {err}"),
+        };
+        let req = cas_solver::EvalRequest {
+            raw_input: "x + x".to_string(),
+            parsed,
+            action: cas_solver::EvalAction::Simplify,
+            auto_store: false,
+        };
+        if let Err(err) = repl
+            .core
+            .engine
+            .eval_stateless(cas_solver::EvalOptions::default(), req)
+        {
+            panic!("eval failed: {err}");
+        }
+        assert_eq!(repl.core.engine.profile_cache_len(), 1);
+
+        let clear = repl.handle_cache_command_core("cache clear");
+        assert!(first_output(&clear).contains("Profile cache cleared"));
+        assert_eq!(repl.core.engine.profile_cache_len(), 0);
     }
 }

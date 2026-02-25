@@ -35,7 +35,7 @@ impl ReplCore {
     /// since rule configuration depends on CasConfig which is UI-level.
     pub fn with_simplifier(simplifier: Simplifier) -> Self {
         Self {
-            engine: Engine { simplifier },
+            engine: Engine::with_simplifier(simplifier),
             simplify_options: SimplifyOptions::default(),
             debug_mode: false,
             last_stats: None,
