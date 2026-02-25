@@ -148,6 +148,23 @@ impl Default for SolverOptions {
     }
 }
 
+impl SolverOptions {
+    /// Convert engine domain mode into core solver domain mode kind.
+    pub(crate) fn core_domain_mode(self) -> cas_solver_core::log_domain::DomainModeKind {
+        match self.domain_mode {
+            crate::domain::DomainMode::Strict => {
+                cas_solver_core::log_domain::DomainModeKind::Strict
+            }
+            crate::domain::DomainMode::Generic => {
+                cas_solver_core::log_domain::DomainModeKind::Generic
+            }
+            crate::domain::DomainMode::Assume => {
+                cas_solver_core::log_domain::DomainModeKind::Assume
+            }
+        }
+    }
+}
+
 // =============================================================================
 // Domain Environment (V2.2+)
 // =============================================================================

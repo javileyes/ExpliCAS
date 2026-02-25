@@ -437,11 +437,13 @@ fn isolate_pow_exponent(
         &simplifier.context,
         tactic_base,
         tactic_rhs,
-        &opts,
-        &ctx.domain_env,
+        opts.value_domain,
+        opts.domain_mode,
+        ctx.domain_env.has_positive(tactic_base),
+        ctx.domain_env.has_positive(tactic_rhs),
     );
 
-    let mode = crate::solver::domain_guards::to_core_domain_mode(opts.domain_mode);
+    let mode = opts.core_domain_mode();
     let wildcard_scope = opts.assume_scope == crate::semantics::AssumeScope::Wildcard;
 
     if let Some(outcome) = resolve_log_terminal_outcome(

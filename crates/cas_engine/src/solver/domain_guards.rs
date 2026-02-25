@@ -16,10 +16,8 @@ use cas_ast::{Context, ExprId};
 use crate::domain::DomainMode;
 use crate::helpers::prove_positive;
 use crate::semantics::ValueDomain;
-use crate::solver::SolverOptions;
 use cas_solver_core::log_domain::{
-    classify_log_solve_with_prover_runtime, DomainModeKind, LogSolveDecision, LogSolveProofRuntime,
-    ProofStatus,
+    classify_log_solve_with_prover_runtime, LogSolveDecision, LogSolveProofRuntime, ProofStatus,
 };
 
 struct EngineLogSolveProofRuntime {
@@ -55,116 +53,83 @@ pub(crate) fn classify_log_solve(
     ctx: &Context,
     base: ExprId,
     rhs: ExprId,
-    opts: &SolverOptions,
-    env: &super::SolveDomainEnv,
+    value_domain: ValueDomain,
+    domain_mode: DomainMode,
+    base_in_env: bool,
+    rhs_in_env: bool,
 ) -> LogSolveDecision {
-    let mode = opts.domain_mode;
-    let vd = opts.value_domain;
-
-    // Check env.required for conditions already proven by domain inference
-    let base_in_env = env.has_positive(base);
-    let rhs_in_env = env.has_positive(rhs);
-
-    let mut runtime = EngineLogSolveProofRuntime { value_domain: vd };
+    let mut runtime = EngineLogSolveProofRuntime { value_domain };
     classify_log_solve_with_prover_runtime(
         ctx,
         base,
         rhs,
-        opts.value_domain == ValueDomain::RealOnly,
-        to_core_domain_mode(mode),
+        value_domain == ValueDomain::RealOnly,
+        match domain_mode {
+            DomainMode::Strict => cas_solver_core::log_domain::DomainModeKind::Strict,
+            DomainMode::Generic => cas_solver_core::log_domain::DomainModeKind::Generic,
+            DomainMode::Assume => cas_solver_core::log_domain::DomainModeKind::Assume,
+        },
         base_in_env,
         rhs_in_env,
         &mut runtime,
     )
 }
 
-pub(crate) fn to_core_domain_mode(mode: DomainMode) -> DomainModeKind {
-    match mode {
-        DomainMode::Strict => DomainModeKind::Strict,
-        DomainMode::Generic => DomainModeKind::Generic,
-        DomainMode::Assume => DomainModeKind::Assume,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::semantics::AssumeScope;
     use cas_solver_core::log_domain::LogAssumption;
 
-    fn make_test_ctx_and_opts(mode: DomainMode, scope: AssumeScope) -> (Context, SolverOptions) {
-        let ctx = Context::new();
-        let opts = SolverOptions {
-            value_domain: ValueDomain::RealOnly,
-            domain_mode: mode,
-            assume_scope: scope,
-            budget: crate::solver::SolveBudget::default(),
-            ..Default::default()
-        };
-        (ctx, opts)
+    fn make_test_ctx() -> Context {
+        Context::new()
+    }
+
+    fn classify_for_test(
+        ctx: &Context,
+        base: ExprId,
+        rhs: ExprId,
+        mode: DomainMode,
+    ) -> LogSolveDecision {
+        classify_log_solve(ctx, base, rhs, ValueDomain::RealOnly, mode, false, false)
     }
 
     #[test]
     fn test_both_proven_positive_ok() {
-        let (mut ctx, opts) = make_test_ctx_and_opts(DomainMode::Generic, AssumeScope::Real);
+        let mut ctx = make_test_ctx();
         let base = ctx.num(2); // 2 > 0 proven
         let rhs = ctx.num(8); // 8 > 0 proven
 
-        let decision = classify_log_solve(
-            &ctx,
-            base,
-            rhs,
-            &opts,
-            &super::super::SolveDomainEnv::default(),
-        );
+        let decision = classify_for_test(&ctx, base, rhs, DomainMode::Generic);
         assert!(matches!(decision, LogSolveDecision::Ok));
     }
 
     #[test]
     fn test_base_positive_rhs_negative_empty() {
-        let (mut ctx, opts) = make_test_ctx_and_opts(DomainMode::Generic, AssumeScope::Real);
+        let mut ctx = make_test_ctx();
         let base = ctx.num(2);
         let rhs = ctx.num(-5);
 
-        let decision = classify_log_solve(
-            &ctx,
-            base,
-            rhs,
-            &opts,
-            &super::super::SolveDomainEnv::default(),
-        );
+        let decision = classify_for_test(&ctx, base, rhs, DomainMode::Generic);
         assert!(matches!(decision, LogSolveDecision::EmptySet(_)));
     }
 
     #[test]
     fn test_negative_base_needs_complex() {
-        let (mut ctx, opts) = make_test_ctx_and_opts(DomainMode::Generic, AssumeScope::Real);
+        let mut ctx = make_test_ctx();
         let base = ctx.num(-2);
         let rhs = ctx.num(5);
 
-        let decision = classify_log_solve(
-            &ctx,
-            base,
-            rhs,
-            &opts,
-            &super::super::SolveDomainEnv::default(),
-        );
+        let decision = classify_for_test(&ctx, base, rhs, DomainMode::Generic);
         assert!(matches!(decision, LogSolveDecision::NeedsComplex(_)));
     }
 
     #[test]
     fn test_assume_mode_unknown_rhs_ok_with_assumptions() {
-        let (mut ctx, opts) = make_test_ctx_and_opts(DomainMode::Assume, AssumeScope::Real);
+        let mut ctx = make_test_ctx();
         let base = ctx.num(2);
         let rhs = ctx.var("y"); // Unknown
 
-        let decision = classify_log_solve(
-            &ctx,
-            base,
-            rhs,
-            &opts,
-            &super::super::SolveDomainEnv::default(),
-        );
+        let decision = classify_for_test(&ctx, base, rhs, DomainMode::Assume);
         match decision {
             LogSolveDecision::OkWithAssumptions(assumptions) => {
                 assert!(assumptions.contains(&LogAssumption::PositiveRhs));
@@ -175,35 +140,23 @@ mod tests {
 
     #[test]
     fn test_generic_mode_unknown_rhs_unsupported() {
-        let (mut ctx, opts) = make_test_ctx_and_opts(DomainMode::Generic, AssumeScope::Real);
+        let mut ctx = make_test_ctx();
         let base = ctx.num(2);
         let rhs = ctx.var("y");
 
-        let decision = classify_log_solve(
-            &ctx,
-            base,
-            rhs,
-            &opts,
-            &super::super::SolveDomainEnv::default(),
-        );
+        let decision = classify_for_test(&ctx, base, rhs, DomainMode::Generic);
         assert!(matches!(decision, LogSolveDecision::Unsupported(_, _)));
     }
 
     #[test]
     fn test_base_positive_rhs_neg_expr_empty() {
         // Test with Neg(5) which is how parser represents -5
-        let (mut ctx, opts) = make_test_ctx_and_opts(DomainMode::Generic, AssumeScope::Real);
+        let mut ctx = make_test_ctx();
         let base = ctx.num(2);
         let five = ctx.num(5);
         let rhs = ctx.add(cas_ast::Expr::Neg(five)); // Neg(5) instead of Number(-5)
 
-        let decision = classify_log_solve(
-            &ctx,
-            base,
-            rhs,
-            &opts,
-            &super::super::SolveDomainEnv::default(),
-        );
+        let decision = classify_for_test(&ctx, base, rhs, DomainMode::Generic);
         assert!(
             matches!(decision, LogSolveDecision::EmptySet(_)),
             "Expected EmptySet for Neg(5), got {:?}",

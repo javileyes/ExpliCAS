@@ -103,8 +103,10 @@ impl UnwrapPlanRuntime for UnwrapEntryRuntimeAdapter<'_, '_> {
             ctx,
             base,
             other_side,
-            self.opts,
-            &self.solve_ctx.domain_env,
+            self.opts.value_domain,
+            self.opts.domain_mode,
+            self.solve_ctx.domain_env.has_positive(base),
+            self.solve_ctx.domain_env.has_positive(other_side),
         )
     }
 
@@ -186,7 +188,7 @@ impl SolverStrategy for UnwrapStrategy {
         opts: &SolverOptions,
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-        let mode = crate::solver::domain_guards::to_core_domain_mode(opts.domain_mode);
+        let mode = opts.core_domain_mode();
         let wildcard_scope = opts.assume_scope == crate::semantics::AssumeScope::Wildcard;
 
         let include_item = simplifier.collect_steps();
