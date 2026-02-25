@@ -126,48 +126,40 @@ pub fn solve_linear_collect_factored_with_runtime<R>(
 where
     R: LinearCollectRuntime,
 {
-    let expr = {
-        let ctx = runtime.context();
-        ctx.add(Expr::Sub(lhs, rhs))
-    };
-    let expr = runtime.simplify_expr(expr);
-
-    let kernel = {
-        let ctx = runtime.context();
-        derive_linear_collect_factored_kernel(ctx, expr, var)?
-    };
-    let coeff = runtime.simplify_expr(kernel.coeff);
-    let rhs_term = runtime.simplify_expr(kernel.rhs_term);
-    let solution = {
-        let ctx = runtime.context();
-        build_linear_collect_solution_expr(ctx, rhs_term, coeff)
-    };
-    let solution = runtime.simplify_expr(solution);
-
-    let coeff_contains_var = {
-        let ctx = runtime.context();
-        contains_var(ctx, coeff, var)
-    };
-
-    let (coeff_status, rhs_status) = if coeff_contains_var {
-        (NonZeroStatus::Unknown, NonZeroStatus::Unknown)
-    } else {
-        let coeff_status = runtime.prove_nonzero_status(coeff);
-        let rhs_status = if coeff_status == NonZeroStatus::Zero {
-            runtime.prove_nonzero_status(rhs_term)
-        } else {
-            NonZeroStatus::Unknown
-        };
-        (coeff_status, rhs_status)
-    };
-
-    Some(LinearCollectFactoredSolve {
-        coeff,
-        rhs_term,
-        solution,
-        coeff_status,
-        rhs_status,
-    })
+    let runtime_cell = std::cell::RefCell::new(runtime);
+    solve_linear_collect_factored_with(
+        lhs,
+        rhs,
+        var,
+        |left, right| {
+            let mut runtime_ref = runtime_cell.borrow_mut();
+            let ctx = runtime_ref.context();
+            ctx.add(Expr::Sub(left, right))
+        },
+        |expr| {
+            let mut runtime_ref = runtime_cell.borrow_mut();
+            runtime_ref.simplify_expr(expr)
+        },
+        |expr, name| {
+            let mut runtime_ref = runtime_cell.borrow_mut();
+            let ctx = runtime_ref.context();
+            derive_linear_collect_factored_kernel(ctx, expr, name)
+        },
+        |numerator, coeff| {
+            let mut runtime_ref = runtime_cell.borrow_mut();
+            let ctx = runtime_ref.context();
+            build_linear_collect_solution_expr(ctx, numerator, coeff)
+        },
+        |expr, name| {
+            let mut runtime_ref = runtime_cell.borrow_mut();
+            let ctx = runtime_ref.context();
+            contains_var(ctx, expr, name)
+        },
+        |expr| {
+            let mut runtime_ref = runtime_cell.borrow_mut();
+            runtime_ref.prove_nonzero_status(expr)
+        },
+    )
 }
 
 /// Solve additive linear-collect form from equation sides using injected runtime.
@@ -183,31 +175,132 @@ pub fn solve_linear_collect_additive_with_runtime<R>(
 where
     R: LinearCollectRuntime,
 {
-    let kernel = {
-        let ctx = runtime.context();
-        derive_linear_collect_additive_kernel(ctx, lhs, rhs, var)?
-    };
-    let coeff = runtime.simplify_expr(kernel.coeff);
-    let constant = runtime.simplify_expr(kernel.constant);
+    let runtime_cell = std::cell::RefCell::new(runtime);
+    solve_linear_collect_additive_with(
+        lhs,
+        rhs,
+        var,
+        |left, right, name| {
+            let mut runtime_ref = runtime_cell.borrow_mut();
+            let ctx = runtime_ref.context();
+            derive_linear_collect_additive_kernel(ctx, left, right, name)
+        },
+        |expr| {
+            let mut runtime_ref = runtime_cell.borrow_mut();
+            runtime_ref.simplify_expr(expr)
+        },
+        |constant, coeff| {
+            let mut runtime_ref = runtime_cell.borrow_mut();
+            let ctx = runtime_ref.context();
+            let neg_constant = ctx.add(Expr::Neg(constant));
+            build_linear_collect_solution_expr(ctx, neg_constant, coeff)
+        },
+        |expr, name| {
+            let mut runtime_ref = runtime_cell.borrow_mut();
+            let ctx = runtime_ref.context();
+            contains_var(ctx, expr, name)
+        },
+        |expr| {
+            let mut runtime_ref = runtime_cell.borrow_mut();
+            runtime_ref.prove_nonzero_status(expr)
+        },
+    )
+}
 
-    let solution = {
-        let ctx = runtime.context();
-        let neg_constant = ctx.add(Expr::Neg(constant));
-        build_linear_collect_solution_expr(ctx, neg_constant, coeff)
-    };
-    let solution = runtime.simplify_expr(solution);
+/// Solve factored linear-collect form from equation sides using closure hooks.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_linear_collect_factored_with<
+    FBuildDifferenceExpr,
+    FSimplifyExpr,
+    FDeriveKernel,
+    FBuildSolutionExpr,
+    FContainsVar,
+    FProveNonzeroStatus,
+>(
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    mut build_difference_expr: FBuildDifferenceExpr,
+    mut simplify_expr: FSimplifyExpr,
+    mut derive_kernel: FDeriveKernel,
+    mut build_solution_expr: FBuildSolutionExpr,
+    mut contains_var_hook: FContainsVar,
+    mut prove_nonzero_status: FProveNonzeroStatus,
+) -> Option<LinearCollectFactoredSolve>
+where
+    FBuildDifferenceExpr: FnMut(ExprId, ExprId) -> ExprId,
+    FSimplifyExpr: FnMut(ExprId) -> ExprId,
+    FDeriveKernel: FnMut(ExprId, &str) -> Option<LinearCollectFactoredKernel>,
+    FBuildSolutionExpr: FnMut(ExprId, ExprId) -> ExprId,
+    FContainsVar: FnMut(ExprId, &str) -> bool,
+    FProveNonzeroStatus: FnMut(ExprId) -> NonZeroStatus,
+{
+    let expr = build_difference_expr(lhs, rhs);
+    let expr = simplify_expr(expr);
+    let kernel = derive_kernel(expr, var)?;
+    let coeff = simplify_expr(kernel.coeff);
+    let rhs_term = simplify_expr(kernel.rhs_term);
+    let solution = simplify_expr(build_solution_expr(rhs_term, coeff));
 
-    let coeff_contains_var = {
-        let ctx = runtime.context();
-        contains_var(ctx, coeff, var)
+    let coeff_contains_var = contains_var_hook(coeff, var);
+    let (coeff_status, rhs_status) = if coeff_contains_var {
+        (NonZeroStatus::Unknown, NonZeroStatus::Unknown)
+    } else {
+        let coeff_status = prove_nonzero_status(coeff);
+        let rhs_status = if coeff_status == NonZeroStatus::Zero {
+            prove_nonzero_status(rhs_term)
+        } else {
+            NonZeroStatus::Unknown
+        };
+        (coeff_status, rhs_status)
     };
 
+    Some(LinearCollectFactoredSolve {
+        coeff,
+        rhs_term,
+        solution,
+        coeff_status,
+        rhs_status,
+    })
+}
+
+/// Solve additive linear-collect form from equation sides using closure hooks.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_linear_collect_additive_with<
+    FDeriveKernel,
+    FSimplifyExpr,
+    FBuildSolutionExpr,
+    FContainsVar,
+    FProveNonzeroStatus,
+>(
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    mut derive_kernel: FDeriveKernel,
+    mut simplify_expr: FSimplifyExpr,
+    mut build_solution_expr: FBuildSolutionExpr,
+    mut contains_var_hook: FContainsVar,
+    mut prove_nonzero_status: FProveNonzeroStatus,
+) -> Option<LinearCollectAdditiveSolve>
+where
+    FDeriveKernel: FnMut(ExprId, ExprId, &str) -> Option<LinearCollectAdditiveKernel>,
+    FSimplifyExpr: FnMut(ExprId) -> ExprId,
+    FBuildSolutionExpr: FnMut(ExprId, ExprId) -> ExprId,
+    FContainsVar: FnMut(ExprId, &str) -> bool,
+    FProveNonzeroStatus: FnMut(ExprId) -> NonZeroStatus,
+{
+    let kernel = derive_kernel(lhs, rhs, var)?;
+    let coeff = simplify_expr(kernel.coeff);
+    let constant = simplify_expr(kernel.constant);
+    let solution = simplify_expr(build_solution_expr(constant, coeff));
+
+    let coeff_contains_var = contains_var_hook(coeff, var);
     let (coeff_status, constant_status) = if coeff_contains_var {
         (NonZeroStatus::Unknown, NonZeroStatus::Unknown)
     } else {
-        let coeff_status = runtime.prove_nonzero_status(coeff);
+        let coeff_status = prove_nonzero_status(coeff);
         let constant_status = if coeff_status == NonZeroStatus::Zero {
-            runtime.prove_nonzero_status(constant)
+            prove_nonzero_status(constant)
         } else {
             NonZeroStatus::Unknown
         };
@@ -371,7 +464,7 @@ pub fn solve_linear_collect_factored_pipeline_with_runtime_and_items<R, S, FRend
     rhs: ExprId,
     var: &str,
     include_items: bool,
-    render_expr: FRender,
+    mut render_expr: FRender,
     map_item_to_step: FStep,
 ) -> Option<(SolutionSet, Vec<S>)>
 where
@@ -379,22 +472,155 @@ where
     FRender: FnMut(&Context, ExprId) -> String,
     FStep: FnMut(LinearCollectExecutionItem) -> S,
 {
-    let solved = solve_linear_collect_factored_with_runtime(runtime, lhs, rhs, var)?;
-
-    if include_items {
-        let execution = {
-            let ctx = runtime.context();
+    let runtime_cell = std::cell::RefCell::new(runtime);
+    solve_linear_collect_factored_pipeline_with_and_items(
+        lhs,
+        rhs,
+        var,
+        include_items,
+        |left, right, name| {
+            solve_linear_collect_factored_with(
+                left,
+                right,
+                name,
+                |lhs_expr, rhs_expr| {
+                    let mut runtime_ref = runtime_cell.borrow_mut();
+                    let ctx = runtime_ref.context();
+                    ctx.add(Expr::Sub(lhs_expr, rhs_expr))
+                },
+                |expr| {
+                    let mut runtime_ref = runtime_cell.borrow_mut();
+                    runtime_ref.simplify_expr(expr)
+                },
+                |expr, inner_name| {
+                    let mut runtime_ref = runtime_cell.borrow_mut();
+                    let ctx = runtime_ref.context();
+                    derive_linear_collect_factored_kernel(ctx, expr, inner_name)
+                },
+                |numerator, coeff| {
+                    let mut runtime_ref = runtime_cell.borrow_mut();
+                    let ctx = runtime_ref.context();
+                    build_linear_collect_solution_expr(ctx, numerator, coeff)
+                },
+                |expr, inner_name| {
+                    let mut runtime_ref = runtime_cell.borrow_mut();
+                    let ctx = runtime_ref.context();
+                    contains_var(ctx, expr, inner_name)
+                },
+                |expr| {
+                    let mut runtime_ref = runtime_cell.borrow_mut();
+                    runtime_ref.prove_nonzero_status(expr)
+                },
+            )
+        },
+        |name, solved| {
+            let mut runtime_ref = runtime_cell.borrow_mut();
+            let ctx = runtime_ref.context();
             build_linear_collect_factored_execution_with(
                 ctx,
-                var,
+                name,
                 solved.coeff,
                 solved.rhs_term,
                 solved.solution,
                 solved.coeff_status,
                 solved.rhs_status,
-                render_expr,
+                |ctx, id| render_expr(ctx, id),
             )
-        };
+        },
+        map_item_to_step,
+    )
+}
+
+/// Solve additive linear-collect with runtime and optionally map didactic
+/// execution items into caller-owned step payloads.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_linear_collect_additive_pipeline_with_runtime_and_items<R, S, FRender, FStep>(
+    runtime: &mut R,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    include_items: bool,
+    mut render_expr: FRender,
+    map_item_to_step: FStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    R: LinearCollectRuntime,
+    FRender: FnMut(&Context, ExprId) -> String,
+    FStep: FnMut(LinearCollectExecutionItem) -> S,
+{
+    let runtime_cell = std::cell::RefCell::new(runtime);
+    solve_linear_collect_additive_pipeline_with_and_items(
+        lhs,
+        rhs,
+        var,
+        include_items,
+        |left, right, name| {
+            solve_linear_collect_additive_with(
+                left,
+                right,
+                name,
+                |lhs_expr, rhs_expr, inner_name| {
+                    let mut runtime_ref = runtime_cell.borrow_mut();
+                    let ctx = runtime_ref.context();
+                    derive_linear_collect_additive_kernel(ctx, lhs_expr, rhs_expr, inner_name)
+                },
+                |expr| {
+                    let mut runtime_ref = runtime_cell.borrow_mut();
+                    runtime_ref.simplify_expr(expr)
+                },
+                |constant, coeff| {
+                    let mut runtime_ref = runtime_cell.borrow_mut();
+                    let ctx = runtime_ref.context();
+                    let neg_constant = ctx.add(Expr::Neg(constant));
+                    build_linear_collect_solution_expr(ctx, neg_constant, coeff)
+                },
+                |expr, inner_name| {
+                    let mut runtime_ref = runtime_cell.borrow_mut();
+                    let ctx = runtime_ref.context();
+                    contains_var(ctx, expr, inner_name)
+                },
+                |expr| {
+                    let mut runtime_ref = runtime_cell.borrow_mut();
+                    runtime_ref.prove_nonzero_status(expr)
+                },
+            )
+        },
+        |name, solved| {
+            let mut runtime_ref = runtime_cell.borrow_mut();
+            let ctx = runtime_ref.context();
+            build_linear_collect_additive_execution_with(
+                ctx,
+                name,
+                solved.coeff,
+                solved.constant,
+                solved.solution,
+                solved.coeff_status,
+                solved.constant_status,
+                |ctx, id| render_expr(ctx, id),
+            )
+        },
+        map_item_to_step,
+    )
+}
+
+/// Solve factored linear-collect with closure hooks and optional didactic mapping.
+pub fn solve_linear_collect_factored_pipeline_with_and_items<S, FSolve, FBuildExecution, FStep>(
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    include_items: bool,
+    mut solve_factored: FSolve,
+    mut build_execution: FBuildExecution,
+    map_item_to_step: FStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FSolve: FnMut(ExprId, ExprId, &str) -> Option<LinearCollectFactoredSolve>,
+    FBuildExecution: FnMut(&str, LinearCollectFactoredSolve) -> LinearCollectSolveExecution,
+    FStep: FnMut(LinearCollectExecutionItem) -> S,
+{
+    let solved = solve_factored(lhs, rhs, var)?;
+    if include_items {
+        let execution = build_execution(var, solved);
         let solved_execution =
             solve_linear_collect_execution_pipeline_with_items(execution, true, map_item_to_step);
         return Some(solved_execution.solved);
@@ -410,39 +636,24 @@ where
     Some((solution_set, Vec::new()))
 }
 
-/// Solve additive linear-collect with runtime and optionally map didactic
-/// execution items into caller-owned step payloads.
-#[allow(clippy::too_many_arguments)]
-pub fn solve_linear_collect_additive_pipeline_with_runtime_and_items<R, S, FRender, FStep>(
-    runtime: &mut R,
+/// Solve additive linear-collect with closure hooks and optional didactic mapping.
+pub fn solve_linear_collect_additive_pipeline_with_and_items<S, FSolve, FBuildExecution, FStep>(
     lhs: ExprId,
     rhs: ExprId,
     var: &str,
     include_items: bool,
-    render_expr: FRender,
+    mut solve_additive: FSolve,
+    mut build_execution: FBuildExecution,
     map_item_to_step: FStep,
 ) -> Option<(SolutionSet, Vec<S>)>
 where
-    R: LinearCollectRuntime,
-    FRender: FnMut(&Context, ExprId) -> String,
+    FSolve: FnMut(ExprId, ExprId, &str) -> Option<LinearCollectAdditiveSolve>,
+    FBuildExecution: FnMut(&str, LinearCollectAdditiveSolve) -> LinearCollectSolveExecution,
     FStep: FnMut(LinearCollectExecutionItem) -> S,
 {
-    let solved = solve_linear_collect_additive_with_runtime(runtime, lhs, rhs, var)?;
-
+    let solved = solve_additive(lhs, rhs, var)?;
     if include_items {
-        let execution = {
-            let ctx = runtime.context();
-            build_linear_collect_additive_execution_with(
-                ctx,
-                var,
-                solved.coeff,
-                solved.constant,
-                solved.solution,
-                solved.coeff_status,
-                solved.constant_status,
-                render_expr,
-            )
-        };
+        let execution = build_execution(var, solved);
         let solved_execution =
             solve_linear_collect_execution_pipeline_with_items(execution, true, map_item_to_step);
         return Some(solved_execution.solved);
