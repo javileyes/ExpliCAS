@@ -12,7 +12,7 @@ use cas_solver_core::solve_outcome::{
 };
 use cas_solver_core::strategy_kernels::{
     derive_collect_terms_kernel, derive_isolation_strategy_routing,
-    derive_rational_exponent_kernel, materialize_collect_terms_rewrite_with,
+    derive_rational_exponent_kernel_for_var, materialize_collect_terms_rewrite_with,
     materialize_rational_exponent_rewrite, solve_collect_terms_rewrite_pipeline_with_item,
     solve_isolation_strategy_routing_with, solve_rational_exponent_rewrite_pipeline_with_item_with,
 };
@@ -215,17 +215,7 @@ impl SolverStrategy for RationalExponentStrategy {
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let include_item = simplifier.collect_steps();
-        let lhs_has_var =
-            cas_solver_core::isolation_utils::contains_var(&simplifier.context, eq.lhs, var);
-        let rhs_has_var =
-            cas_solver_core::isolation_utils::contains_var(&simplifier.context, eq.rhs, var);
-        let kernel = derive_rational_exponent_kernel(
-            &mut simplifier.context,
-            eq,
-            var,
-            lhs_has_var,
-            rhs_has_var,
-        )?;
+        let kernel = derive_rational_exponent_kernel_for_var(&mut simplifier.context, eq, var)?;
         let sim_lhs = simplifier.simplify(kernel.rewritten.lhs).0;
         let sim_rhs = simplifier.simplify(kernel.rewritten.rhs).0;
         let rewrite = materialize_rational_exponent_rewrite(kernel.q, sim_lhs, sim_rhs);

@@ -26,7 +26,7 @@ use cas_solver_core::solve_outcome::{
 };
 use cas_solver_core::step_cleanup::{cleanup_steps_by, CleanupStep};
 use cas_solver_core::strategy_kernels::{
-    derive_rational_exponent_kernel, materialize_rational_exponent_rewrite,
+    derive_rational_exponent_kernel_for_var, materialize_rational_exponent_rewrite,
     solve_rational_exponent_rewrite_pipeline_with_item_with,
 };
 
@@ -507,15 +507,7 @@ fn try_solve_rational_exponent(
     opts: SolverOptions,
     ctx: &super::SolveCtx,
 ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
-    let lhs_has_var = contains_var(&simplifier.context, eq.lhs, var);
-    let rhs_has_var = contains_var(&simplifier.context, eq.rhs, var);
-    let kernel = derive_rational_exponent_kernel(
-        &mut simplifier.context,
-        eq,
-        var,
-        lhs_has_var,
-        rhs_has_var,
-    )?;
+    let kernel = derive_rational_exponent_kernel_for_var(&mut simplifier.context, eq, var)?;
     let sim_lhs = simplifier.simplify(kernel.rewritten.lhs).0;
     let sim_rhs = simplifier.simplify(kernel.rewritten.rhs).0;
     let rewrite = materialize_rational_exponent_rewrite(kernel.q, sim_lhs, sim_rhs);
