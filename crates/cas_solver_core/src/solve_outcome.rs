@@ -3372,6 +3372,31 @@ where
     })
 }
 
+/// Execute exponent-log rewrite pipeline from a deferred rewrite-plan builder.
+///
+/// This composes:
+/// 1. rewrite planning
+/// 2. pipeline solve with optional didactic item mapping
+pub fn execute_pow_exponent_log_isolation_pipeline_with_item_with<E, S, FPlan, FSolve, FStep>(
+    include_item: bool,
+    plan_rewrite: FPlan,
+    solve_rewrite: FSolve,
+    map_item_to_step: FStep,
+) -> Result<PowExponentLogIsolationRewritePipelineSolved<S>, E>
+where
+    FPlan: FnOnce() -> PowExponentLogIsolationRewritePlan,
+    FSolve: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(PowExponentLogIsolationExecutionItem) -> S,
+{
+    let rewrite = plan_rewrite();
+    solve_pow_exponent_log_isolation_rewrite_pipeline_with_item(
+        rewrite,
+        include_item,
+        solve_rewrite,
+        map_item_to_step,
+    )
+}
+
 /// Execute a planned unsupported logarithmic route (residual or guarded).
 ///
 /// For guarded routes, this runs the guarded rewrite solve callback and
@@ -3464,6 +3489,30 @@ where
             }
         }
     }
+}
+
+/// Plan and solve unsupported exponent-log route in one helper.
+///
+/// Returns `None` when plan construction decides the route is supported and no
+/// unsupported execution should run.
+pub fn execute_pow_exponent_log_unsupported_pipeline_from_decision_with<FG, FStep, FPlan, S>(
+    include_items: bool,
+    plan_execution: FPlan,
+    try_guarded_solve: FG,
+    map_item_to_step: FStep,
+) -> Option<PowExponentLogUnsupportedPipelineSolved<S>>
+where
+    FG: FnMut(&Equation) -> Option<SolutionSet>,
+    FStep: FnMut(TermIsolationExecutionItem) -> S,
+    FPlan: FnOnce() -> Option<PowExponentLogUnsupportedExecution>,
+{
+    let execution = plan_execution()?;
+    Some(solve_pow_exponent_log_unsupported_pipeline_with_items(
+        execution,
+        include_items,
+        try_guarded_solve,
+        map_item_to_step,
+    ))
 }
 
 /// Build narration for eliminating rational exponents by powering both sides.
@@ -7516,6 +7565,88 @@ mod tests {
     }
 
     #[test]
+    fn execute_pow_exponent_log_unsupported_pipeline_from_decision_with_returns_none_for_supported()
+    {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let out = execute_pow_exponent_log_unsupported_pipeline_from_decision_with(
+            true,
+            || {
+                plan_pow_exponent_log_unsupported_execution_from_decision_with(
+                    &mut ctx,
+                    &LogSolveDecision::Ok,
+                    true,
+                    x,
+                    x,
+                    "x",
+                    x,
+                    x,
+                    x,
+                    RelOp::Eq,
+                    Equation {
+                        lhs: x,
+                        rhs: x,
+                        op: RelOp::Eq,
+                    },
+                    |_, _| "x".to_string(),
+                )
+            },
+            |_eq| Some(SolutionSet::AllReals),
+            |_item| "unused".to_string(),
+        );
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn execute_pow_exponent_log_unsupported_pipeline_from_decision_with_maps_guarded_steps() {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let decision = LogSolveDecision::Unsupported(
+            "Cannot prove base > 0 and RHS > 0 for logarithm",
+            vec![
+                crate::log_domain::LogAssumption::PositiveBase,
+                crate::log_domain::LogAssumption::PositiveRhs,
+            ],
+        );
+        let out = execute_pow_exponent_log_unsupported_pipeline_from_decision_with(
+            true,
+            || {
+                plan_pow_exponent_log_unsupported_execution_from_decision_with(
+                    &mut ctx,
+                    &decision,
+                    true,
+                    exponent,
+                    rhs,
+                    "x",
+                    exponent,
+                    base,
+                    rhs,
+                    RelOp::Eq,
+                    Equation {
+                        lhs: exponent,
+                        rhs,
+                        op: RelOp::Eq,
+                    },
+                    |_, id| format!("runtime({id})"),
+                )
+            },
+            |_eq| Some(SolutionSet::Discrete(vec![exponent])),
+            |item| item.description,
+        )
+        .expect("unsupported decision should map and solve");
+
+        assert_eq!(out.blocked_hints.len(), 2);
+        assert_eq!(out.steps.len(), 2);
+        assert!(out.steps[0].contains("Take log base runtime("));
+        assert!(out.steps[1].starts_with("Conditional solution:"));
+        assert!(out.steps[1].contains("base > 0"));
+        assert!(out.steps[1].contains("RHS > 0"));
+        assert!(matches!(out.solution_set, SolutionSet::Conditional(_)));
+    }
+
+    #[test]
     fn guarded_solutions_with_residual_fallback_builds_two_cases() {
         let mut ctx = Context::new();
         let b = ctx.var("b");
@@ -10360,6 +10491,45 @@ mod tests {
 
         assert!(matches!(solved.solution_set, SolutionSet::Empty));
         assert_eq!(solved.steps, vec!["only-substep".to_string()]);
+    }
+
+    #[test]
+    fn execute_pow_exponent_log_isolation_pipeline_with_item_with_builds_and_solves() {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let mut plan_calls = 0usize;
+        let mut solve_calls = 0usize;
+
+        let solved = execute_pow_exponent_log_isolation_pipeline_with_item_with(
+            true,
+            || {
+                plan_calls += 1;
+                plan_pow_exponent_log_isolation_step_with(
+                    &mut ctx,
+                    exponent,
+                    base,
+                    rhs,
+                    RelOp::Eq,
+                    None,
+                    |_, _| "a".to_string(),
+                )
+            },
+            |_equation| {
+                solve_calls += 1;
+                Ok::<_, ()>((SolutionSet::AllReals, vec!["sub".to_string()]))
+            },
+            |item| item.description,
+        )
+        .expect("execute wrapper should solve");
+
+        assert_eq!(plan_calls, 1);
+        assert_eq!(solve_calls, 1);
+        assert!(matches!(solved.solution_set, SolutionSet::AllReals));
+        assert_eq!(solved.steps.len(), 2);
+        assert!(solved.steps[0].contains("Take log base a of both sides"));
+        assert_eq!(solved.steps[1], "sub".to_string());
     }
 
     #[test]

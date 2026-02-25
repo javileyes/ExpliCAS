@@ -6,13 +6,13 @@ use cas_solver_core::isolation_utils::{are_equivalent_by_difference_with, is_num
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
     build_pow_base_isolation_action_with, derive_pow_isolation_route,
+    execute_pow_exponent_log_isolation_pipeline_with_item_with,
+    execute_pow_exponent_log_unsupported_pipeline_from_decision_with,
     execute_pow_exponent_shortcut_pipeline_with_item_with,
     plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
     pow_exponent_rhs_contains_variable, resolve_log_terminal_outcome,
     resolve_power_base_one_shortcut_for_pow_with, solve_pow_base_isolation_pipeline_with_item,
-    solve_pow_exponent_log_isolation_rewrite_pipeline_with_item,
-    solve_pow_exponent_log_unsupported_pipeline_with_items,
     solve_power_base_one_shortcut_pipeline_with_item,
     solve_solve_tactic_normalization_pipeline_with_item, solve_terminal_outcome_pipeline_with_item,
     PowBaseIsolationPipelineSolved, PowExponentShortcutPipelineSolved, PowIsolationRoute,
@@ -333,32 +333,36 @@ fn isolate_pow_exponent(
         rhs,
         op: op.clone(),
     };
-    let unsupported_execution = plan_pow_exponent_log_unsupported_execution_from_decision_with(
-        &mut simplifier.context,
-        &decision,
-        opts.budget.can_branch(),
-        lhs,
-        rhs,
-        var,
-        e,
-        b,
-        rhs,
-        op.clone(),
-        source_equation,
-        solver_render_expr,
-    );
-    if let Some(unsupported_execution) = unsupported_execution {
-        let include_items = simplifier.collect_steps();
-        let unsupported_solved = solve_pow_exponent_log_unsupported_pipeline_with_items(
-            unsupported_execution,
+    let include_items = simplifier.collect_steps();
+    let unsupported_solved = {
+        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+        execute_pow_exponent_log_unsupported_pipeline_from_decision_with(
             include_items,
+            || {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                plan_pow_exponent_log_unsupported_execution_from_decision_with(
+                    &mut simplifier_ref.context,
+                    &decision,
+                    opts.budget.can_branch(),
+                    lhs,
+                    rhs,
+                    var,
+                    e,
+                    b,
+                    rhs,
+                    op.clone(),
+                    source_equation,
+                    solver_render_expr,
+                )
+            },
             |equation| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
                 isolate(
                     equation.lhs,
                     equation.rhs,
                     equation.op.clone(),
                     var,
-                    simplifier,
+                    *simplifier_ref,
                     opts,
                     ctx,
                 )
@@ -366,8 +370,9 @@ fn isolate_pow_exponent(
                 .map(|(solutions, _)| solutions)
             },
             |item| medium_step(item.description().to_string(), item.equation),
-        );
-
+        )
+    };
+    if let Some(unsupported_solved) = unsupported_solved {
         // Register blocked hints for pedagogical feedback
         for hint in unsupported_solved.blocked_hints {
             let event = crate::assumptions::AssumptionEvent::from_log_assumption(
@@ -391,31 +396,37 @@ fn isolate_pow_exponent(
     // End of domain guards
     // ================================================================
 
-    let log_plan = plan_pow_exponent_log_isolation_step_with(
-        &mut simplifier.context,
-        e,
-        b,
-        rhs,
-        op,
-        None,
-        solver_render_expr,
-    );
     let include_item = simplifier.collect_steps();
-    let solved_log = solve_pow_exponent_log_isolation_rewrite_pipeline_with_item(
-        log_plan,
-        include_item,
-        |equation| {
-            isolate(
-                equation.lhs,
-                equation.rhs,
-                equation.op.clone(),
-                var,
-                simplifier,
-                opts,
-                ctx,
-            )
-        },
-        |item| medium_step(item.description().to_string(), item.equation),
-    )?;
+    let solved_log = {
+        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+        execute_pow_exponent_log_isolation_pipeline_with_item_with(
+            include_item,
+            || {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                plan_pow_exponent_log_isolation_step_with(
+                    &mut simplifier_ref.context,
+                    e,
+                    b,
+                    rhs,
+                    op,
+                    None,
+                    solver_render_expr,
+                )
+            },
+            |equation| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                isolate(
+                    equation.lhs,
+                    equation.rhs,
+                    equation.op.clone(),
+                    var,
+                    *simplifier_ref,
+                    opts,
+                    ctx,
+                )
+            },
+            |item| medium_step(item.description().to_string(), item.equation),
+        )?
+    };
     prepend_steps((solved_log.solution_set, solved_log.steps), steps)
 }
