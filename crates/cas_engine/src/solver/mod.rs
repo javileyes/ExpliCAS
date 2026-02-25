@@ -150,7 +150,7 @@ impl Default for SolverOptions {
 
 impl SolverOptions {
     /// Convert engine domain mode into core solver domain mode kind.
-    pub(crate) fn core_domain_mode(self) -> cas_solver_core::log_domain::DomainModeKind {
+    pub(crate) fn core_domain_mode(&self) -> cas_solver_core::log_domain::DomainModeKind {
         match self.domain_mode {
             crate::domain::DomainMode::Strict => {
                 cas_solver_core::log_domain::DomainModeKind::Strict
@@ -162,6 +162,20 @@ impl SolverOptions {
                 cas_solver_core::log_domain::DomainModeKind::Assume
             }
         }
+    }
+}
+
+/// Map engine proof classification to solver-core non-zero status.
+pub(crate) fn prove_nonzero_status(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+) -> cas_solver_core::linear_solution::NonZeroStatus {
+    match crate::helpers::prove_nonzero(ctx, expr) {
+        crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit => {
+            cas_solver_core::linear_solution::NonZeroStatus::NonZero
+        }
+        crate::domain::Proof::Unknown => cas_solver_core::linear_solution::NonZeroStatus::Unknown,
+        crate::domain::Proof::Disproven => cas_solver_core::linear_solution::NonZeroStatus::Zero,
     }
 }
 

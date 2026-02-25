@@ -32,17 +32,7 @@ impl ReciprocalSolveRuntime for ReciprocalRuntimeAdapter<'_> {
         &mut self,
         expr: ExprId,
     ) -> cas_solver_core::linear_solution::NonZeroStatus {
-        match crate::helpers::prove_nonzero(&self.simplifier.context, expr) {
-            crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit => {
-                cas_solver_core::linear_solution::NonZeroStatus::NonZero
-            }
-            crate::domain::Proof::Unknown => {
-                cas_solver_core::linear_solution::NonZeroStatus::Unknown
-            }
-            crate::domain::Proof::Disproven => {
-                cas_solver_core::linear_solution::NonZeroStatus::Zero
-            }
-        }
+        crate::solver::prove_nonzero_status(&self.simplifier.context, expr)
     }
 }
 
