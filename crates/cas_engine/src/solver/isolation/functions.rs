@@ -14,45 +14,10 @@ use cas_solver_core::log_isolation::{
 };
 use cas_solver_core::solve_outcome::{
     finalize_abs_split_solution_set, plan_abs_isolation, solve_abs_isolation_plan_with,
-    solve_abs_split_pipeline_with_optional_items_runtime, AbsIsolationSolved, AbsSplitRuntime,
+    solve_abs_split_pipeline_with_optional_items, AbsIsolationSolved,
 };
 
 use super::{isolate, prepend_steps};
-
-struct AbsSplitRuntimeAdapter<'a, 'ctx> {
-    simplifier: &'a mut Simplifier,
-    opts: SolverOptions,
-    solve_ctx: &'ctx super::super::SolveCtx,
-}
-
-impl AbsSplitRuntime<CasError, SolveStep> for AbsSplitRuntimeAdapter<'_, '_> {
-    fn render_expr(&mut self, expr: ExprId) -> String {
-        solver_render_expr(&self.simplifier.context, expr)
-    }
-
-    fn solve_branch(
-        &mut self,
-        equation: &Equation,
-        var: &str,
-    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        isolate(
-            equation.lhs,
-            equation.rhs,
-            equation.op.clone(),
-            var,
-            self.simplifier,
-            self.opts,
-            self.solve_ctx,
-        )
-    }
-
-    fn map_item_to_step(
-        &mut self,
-        item: cas_solver_core::solve_outcome::AbsSplitExecutionItem,
-    ) -> SolveStep {
-        medium_step(item.description().to_string(), item.equation)
-    }
-}
 
 struct UnaryInverseRuntimeAdapter<'a, 'ctx> {
     simplifier: &'a mut Simplifier,
@@ -176,19 +141,30 @@ fn isolate_abs(
         AbsIsolationSolved::Split((positive, negative)) => {
             let include_items = simplifier.collect_steps();
             let solved = {
-                let mut runtime = AbsSplitRuntimeAdapter {
-                    simplifier,
-                    opts,
-                    solve_ctx: ctx,
-                };
-                solve_abs_split_pipeline_with_optional_items_runtime(
+                let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+                solve_abs_split_pipeline_with_optional_items(
                     positive,
                     negative,
                     arg,
                     include_items,
                     &steps,
-                    var,
-                    &mut runtime,
+                    |expr| {
+                        let simplifier_ref = runtime_cell.borrow();
+                        solver_render_expr(&simplifier_ref.context, expr)
+                    },
+                    |equation| {
+                        let mut simplifier_ref = runtime_cell.borrow_mut();
+                        isolate(
+                            equation.lhs,
+                            equation.rhs,
+                            equation.op.clone(),
+                            var,
+                            *simplifier_ref,
+                            opts,
+                            ctx,
+                        )
+                    },
+                    |item| medium_step(item.description().to_string(), item.equation),
                 )?
             };
             let final_set = finalize_abs_split_solution_set(
