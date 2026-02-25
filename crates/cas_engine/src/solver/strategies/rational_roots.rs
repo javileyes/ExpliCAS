@@ -17,7 +17,7 @@ use crate::solver::{medium_step, SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, SolutionSet};
 use cas_solver_core::rational_roots::{
     extract_poly_coefficients, plan_rational_roots_step, solve_numeric_coeff_polynomial,
-    solve_rational_roots_strategy_with_and_item,
+    solve_rational_roots_strategy_result_with_and_item,
 };
 use cas_solver_core::solution_set::sort_and_dedup_exprs;
 
@@ -45,7 +45,7 @@ impl SolverStrategy for RationalRootsStrategy {
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let include_item = simplifier.collect_steps();
         let runtime_cell = std::cell::RefCell::new(simplifier);
-        let solved = solve_rational_roots_strategy_with_and_item(
+        let solved = solve_rational_roots_strategy_result_with_and_item(
             eq.lhs,
             eq.rhs,
             eq.op.clone(),
@@ -90,7 +90,7 @@ impl SolverStrategy for RationalRootsStrategy {
             },
             |item| medium_step(item.description().to_string(), item.equation),
         )?;
-        Some(Ok((solved.solution_set, solved.steps)))
+        Some(Ok(solved))
     }
 
     fn should_verify(&self) -> bool {
