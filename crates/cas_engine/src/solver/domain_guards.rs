@@ -18,8 +18,25 @@ use crate::helpers::prove_positive;
 use crate::semantics::ValueDomain;
 use crate::solver::SolverOptions;
 use cas_solver_core::log_domain::{
-    classify_log_solve_with_prover_runtime, DomainModeKind, LogSolveDecision, ProofStatus,
+    classify_log_solve_with_prover_runtime, DomainModeKind, LogSolveDecision, LogSolveProofRuntime,
+    ProofStatus,
 };
+
+struct EngineLogSolveProofRuntime {
+    value_domain: ValueDomain,
+}
+
+impl LogSolveProofRuntime for EngineLogSolveProofRuntime {
+    fn prove_positive_status(&mut self, ctx: &Context, expr: ExprId) -> ProofStatus {
+        match prove_positive(ctx, expr, self.value_domain) {
+            crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit => {
+                ProofStatus::Proven
+            }
+            crate::domain::Proof::Unknown => ProofStatus::Unknown,
+            crate::domain::Proof::Disproven => ProofStatus::Disproven,
+        }
+    }
+}
 
 /// Classify whether a logarithmic solve step (for `base^x = rhs`) is valid.
 ///
@@ -48,14 +65,7 @@ pub(crate) fn classify_log_solve(
     let base_in_env = env.has_positive(base);
     let rhs_in_env = env.has_positive(rhs);
 
-    let mut prove_status =
-        |core_ctx: &Context, expr: ExprId| match prove_positive(core_ctx, expr, vd) {
-            crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit => {
-                ProofStatus::Proven
-            }
-            crate::domain::Proof::Unknown => ProofStatus::Unknown,
-            crate::domain::Proof::Disproven => ProofStatus::Disproven,
-        };
+    let mut runtime = EngineLogSolveProofRuntime { value_domain: vd };
     classify_log_solve_with_prover_runtime(
         ctx,
         base,
@@ -64,7 +74,7 @@ pub(crate) fn classify_log_solve(
         to_core_domain_mode(mode),
         base_in_env,
         rhs_in_env,
-        &mut prove_status,
+        &mut runtime,
     )
 }
 
