@@ -18,15 +18,17 @@ use cas_solver_core::solve_outcome::{
     plan_div_numerator_isolation_step_with_runtime, plan_division_denominator,
     plan_division_denominator_sign_split, plan_isolated_denominator_sign_split,
     plan_mul_factor_isolation_step_with_runtime, plan_product_zero_inequality_split,
-    plan_sub_isolation_step_with_runtime, solve_division_denominator_pipeline_with_optional_items,
-    solve_division_denominator_sign_split_pipeline_with_optional_items,
-    solve_isolated_denominator_sign_split_pipeline_with_optional_items,
-    solve_product_zero_inequality_split_execution_with,
+    plan_sub_isolation_step_with_runtime,
+    solve_division_denominator_pipeline_with_optional_items_runtime,
+    solve_division_denominator_sign_split_pipeline_with_optional_items_runtime,
+    solve_isolated_denominator_sign_split_pipeline_with_optional_items_runtime,
+    solve_product_zero_inequality_split_execution_with_runtime,
     solve_term_isolation_rewrite_pipeline_with_item_runtime, AddIsolationRoute,
-    DivDenominatorIsolationRoute, DivIsolationRoute, DivisionDenominatorSignSplitSolvedCases,
-    IsolatedDenominatorSignSplitSolvedCases, TermIsolationRewritePlan, TermIsolationRewriteRuntime,
+    DivDenominatorIsolationRoute, DivIsolationRoute, DivisionDenominatorDidacticRuntime,
+    DivisionDenominatorSignSplitRuntime, DivisionDenominatorSignSplitSolvedCases,
+    IsolatedDenominatorSignSplitRuntime, IsolatedDenominatorSignSplitSolvedCases,
+    ProductZeroInequalityExecutionRuntime, TermIsolationRewritePlan, TermIsolationRewriteRuntime,
 };
-use std::cell::RefCell;
 
 use super::{isolate, prepend_steps};
 
@@ -185,9 +187,28 @@ pub(super) fn isolate_mul(
         if let Some(plan) =
             plan_product_zero_inequality_split(&mut simplifier.context, l, r, op.clone())
         {
-            let solved = solve_product_zero_inequality_split_execution_with(&plan, |equation| {
-                solve_with_ctx(equation, var, simplifier, ctx)
-            })?;
+            struct ProductZeroRuntime<'a, 'ctx> {
+                simplifier: &'a mut Simplifier,
+                solve_ctx: &'ctx super::super::SolveCtx,
+                var: &'a str,
+            }
+
+            impl ProductZeroInequalityExecutionRuntime<CasError, SolveStep> for ProductZeroRuntime<'_, '_> {
+                fn solve_case(
+                    &mut self,
+                    equation: &cas_ast::Equation,
+                ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+                    solve_with_ctx(equation, self.var, self.simplifier, self.solve_ctx)
+                }
+            }
+
+            let mut runtime = ProductZeroRuntime {
+                simplifier,
+                solve_ctx: ctx,
+                var,
+            };
+            let solved =
+                solve_product_zero_inequality_split_execution_with_runtime(&plan, &mut runtime)?;
             let final_set = finalize_product_zero_inequality_solved_sets(
                 &simplifier.context,
                 solved.solved_sets,
@@ -254,38 +275,70 @@ pub(super) fn isolate_div(
             .expect("inequality branch requires denominator sign cases");
             let (sim_rhs, _) = simplifier.simplify(split_plan.positive_equation.rhs);
             let include_items = simplifier.collect_steps();
-            let simplifier_cell = RefCell::new(simplifier);
-            let solved = solve_division_denominator_sign_split_pipeline_with_optional_items(
-                split_plan,
-                r,
-                l,
-                op.clone(),
-                sim_rhs,
-                include_items,
-                &steps,
-                |id| {
-                    let s_ref = simplifier_cell.borrow();
-                    solver_render_expr(&s_ref.context, id)
-                },
-                |equation| {
-                    let mut s_ref = simplifier_cell.borrow_mut();
+            struct DivisionSignSplitRuntimeAdapter<'a, 'ctx> {
+                simplifier: &'a mut Simplifier,
+                opts: SolverOptions,
+                solve_ctx: &'ctx super::super::SolveCtx,
+            }
+
+            impl DivisionDenominatorSignSplitRuntime<CasError, SolveStep>
+                for DivisionSignSplitRuntimeAdapter<'_, '_>
+            {
+                fn render_expr(&mut self, expr: ExprId) -> String {
+                    solver_render_expr(&self.simplifier.context, expr)
+                }
+
+                fn solve_branch(
+                    &mut self,
+                    equation: &cas_ast::Equation,
+                    var: &str,
+                ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
                     isolate(
                         equation.lhs,
                         equation.rhs,
                         equation.op.clone(),
                         var,
-                        &mut s_ref,
-                        opts,
-                        ctx,
+                        self.simplifier,
+                        self.opts,
+                        self.solve_ctx,
                     )
-                },
-                |equation| {
-                    let mut s_ref = simplifier_cell.borrow_mut();
-                    let (set, _) = solve_with_ctx(equation, var, &mut s_ref, ctx)?;
+                }
+
+                fn solve_domain(
+                    &mut self,
+                    equation: &cas_ast::Equation,
+                    var: &str,
+                ) -> Result<SolutionSet, CasError> {
+                    let (set, _) = solve_with_ctx(equation, var, self.simplifier, self.solve_ctx)?;
                     Ok(set)
-                },
-                |item| medium_step(item.description().to_string(), item.equation),
-            )?;
+                }
+
+                fn map_item_to_step(
+                    &mut self,
+                    item: cas_solver_core::solve_outcome::DivisionDidacticExecutionItem,
+                ) -> SolveStep {
+                    medium_step(item.description().to_string(), item.equation)
+                }
+            }
+
+            let solved = {
+                let mut runtime = DivisionSignSplitRuntimeAdapter {
+                    simplifier,
+                    opts,
+                    solve_ctx: ctx,
+                };
+                solve_division_denominator_sign_split_pipeline_with_optional_items_runtime(
+                    split_plan,
+                    r,
+                    l,
+                    op.clone(),
+                    sim_rhs,
+                    include_items,
+                    &steps,
+                    var,
+                    &mut runtime,
+                )?
+            };
 
             let cas_solver_core::solve_outcome::DivisionDenominatorSignSplitExecutionSolved {
                 positive_set,
@@ -295,18 +348,15 @@ pub(super) fn isolate_div(
                 steps: solved_steps,
             } = solved;
 
-            let final_set = {
-                let s_ref = simplifier_cell.borrow();
-                finalize_division_denominator_sign_split_solved_sets(
-                    &s_ref.context,
-                    DivisionDenominatorSignSplitSolvedCases {
-                        positive_branch: positive_set,
-                        negative_branch: negative_set,
-                        positive_domain: positive_domain_set,
-                        negative_domain: negative_domain_set,
-                    },
-                )
-            };
+            let final_set = finalize_division_denominator_sign_split_solved_sets(
+                &simplifier.context,
+                DivisionDenominatorSignSplitSolvedCases {
+                    positive_branch: positive_set,
+                    negative_branch: negative_set,
+                    positive_domain: positive_domain_set,
+                    negative_domain: negative_domain_set,
+                },
+            );
             Ok((final_set, solved_steps))
         } else {
             // A = RHS * B
@@ -365,31 +415,59 @@ pub(super) fn isolate_div(
             let split_plan = plan_isolated_denominator_sign_split(r, sim_rhs, op.clone())
                 .expect("inequality branch requires denominator sign cases");
             let include_items = simplifier.collect_steps();
-            let simplifier_cell = RefCell::new(simplifier);
-            let solved = solve_isolated_denominator_sign_split_pipeline_with_optional_items(
-                split_plan,
-                r,
-                op.clone(),
-                include_items,
-                &steps,
-                |id| {
-                    let s_ref = simplifier_cell.borrow();
-                    solver_render_expr(&s_ref.context, id)
-                },
-                |equation| {
-                    let mut s_ref = simplifier_cell.borrow_mut();
+            struct IsolatedDenSignSplitRuntimeAdapter<'a, 'ctx> {
+                simplifier: &'a mut Simplifier,
+                opts: SolverOptions,
+                solve_ctx: &'ctx super::super::SolveCtx,
+            }
+
+            impl IsolatedDenominatorSignSplitRuntime<CasError, SolveStep>
+                for IsolatedDenSignSplitRuntimeAdapter<'_, '_>
+            {
+                fn render_expr(&mut self, expr: ExprId) -> String {
+                    solver_render_expr(&self.simplifier.context, expr)
+                }
+
+                fn solve_branch(
+                    &mut self,
+                    equation: &cas_ast::Equation,
+                    var: &str,
+                ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
                     isolate(
                         equation.lhs,
                         equation.rhs,
                         equation.op.clone(),
                         var,
-                        &mut s_ref,
-                        opts,
-                        ctx,
+                        self.simplifier,
+                        self.opts,
+                        self.solve_ctx,
                     )
-                },
-                |item| medium_step(item.description().to_string(), item.equation),
-            )?;
+                }
+
+                fn map_item_to_step(
+                    &mut self,
+                    item: cas_solver_core::solve_outcome::DivisionDidacticExecutionItem,
+                ) -> SolveStep {
+                    medium_step(item.description().to_string(), item.equation)
+                }
+            }
+
+            let solved = {
+                let mut runtime = IsolatedDenSignSplitRuntimeAdapter {
+                    simplifier,
+                    opts,
+                    solve_ctx: ctx,
+                };
+                solve_isolated_denominator_sign_split_pipeline_with_optional_items_runtime(
+                    split_plan,
+                    r,
+                    op.clone(),
+                    include_items,
+                    &steps,
+                    var,
+                    &mut runtime,
+                )?
+            };
 
             let cas_solver_core::solve_outcome::IsolatedDenominatorSignSplitExecutionSolved {
                 positive_set,
@@ -397,16 +475,13 @@ pub(super) fn isolate_div(
                 steps: solved_steps,
             } = solved;
 
-            let final_set = {
-                let mut s_ref = simplifier_cell.borrow_mut();
-                finalize_isolated_denominator_sign_split_solved_sets(
-                    &mut s_ref.context,
-                    IsolatedDenominatorSignSplitSolvedCases {
-                        positive_branch: positive_set,
-                        negative_branch: negative_set,
-                    },
-                )
-            };
+            let final_set = finalize_isolated_denominator_sign_split_solved_sets(
+                &mut simplifier.context,
+                IsolatedDenominatorSignSplitSolvedCases {
+                    positive_branch: positive_set,
+                    negative_branch: negative_set,
+                },
+            );
             return Ok((final_set, solved_steps));
         }
 
@@ -421,29 +496,57 @@ pub(super) fn isolate_div(
         } else {
             didactic_plan.multiply_equation.rhs
         };
-        let simplifier_cell = RefCell::new(simplifier);
-        let solved_execution = solve_division_denominator_pipeline_with_optional_items(
-            didactic_plan,
-            include_items,
-            simplified_multiply_rhs,
-            |id| {
-                let s_ref = simplifier_cell.borrow();
-                solver_render_expr(&s_ref.context, id)
-            },
-            |equation| {
-                let mut s_ref = simplifier_cell.borrow_mut();
+        struct DivisionDenDidacticRuntimeAdapter<'a, 'ctx> {
+            simplifier: &'a mut Simplifier,
+            opts: SolverOptions,
+            solve_ctx: &'ctx super::super::SolveCtx,
+        }
+
+        impl DivisionDenominatorDidacticRuntime<CasError, SolveStep>
+            for DivisionDenDidacticRuntimeAdapter<'_, '_>
+        {
+            fn render_expr(&mut self, expr: ExprId) -> String {
+                solver_render_expr(&self.simplifier.context, expr)
+            }
+
+            fn solve_rewritten(
+                &mut self,
+                equation: &cas_ast::Equation,
+                var: &str,
+            ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
                 isolate(
                     equation.lhs,
                     equation.rhs,
                     equation.op.clone(),
                     var,
-                    &mut s_ref,
-                    opts,
-                    ctx,
+                    self.simplifier,
+                    self.opts,
+                    self.solve_ctx,
                 )
-            },
-            |item| medium_step(item.description().to_string(), item.equation),
-        )?;
+            }
+
+            fn map_item_to_step(
+                &mut self,
+                item: cas_solver_core::solve_outcome::DivisionDidacticExecutionItem,
+            ) -> SolveStep {
+                medium_step(item.description().to_string(), item.equation)
+            }
+        }
+
+        let solved_execution = {
+            let mut runtime = DivisionDenDidacticRuntimeAdapter {
+                simplifier,
+                opts,
+                solve_ctx: ctx,
+            };
+            solve_division_denominator_pipeline_with_optional_items_runtime(
+                didactic_plan,
+                include_items,
+                simplified_multiply_rhs,
+                var,
+                &mut runtime,
+            )?
+        };
         prepend_steps(
             (solved_execution.solution_set, solved_execution.steps),
             steps,
