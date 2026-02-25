@@ -8,15 +8,49 @@
 
 use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::reciprocal::{
-    build_reciprocal_execution_from_kernel_prepared, build_reciprocal_solve_plan,
-    derive_reciprocal_solve_kernel, execute_reciprocal_solve_with,
-    solve_reciprocal_execution_pipeline_with_items, ReciprocalExecutionItem,
-    ReciprocalPreparedExecution,
+    execute_reciprocal_solve_with_runtime, solve_reciprocal_execution_pipeline_with_items_runtime,
+    ReciprocalExecutionItem, ReciprocalExecutionRuntime, ReciprocalSolveRuntime,
 };
-use std::cell::RefCell;
 
 use crate::engine::Simplifier;
 use crate::solver::{medium_step, SolveStep};
+
+struct ReciprocalRuntimeAdapter<'a> {
+    simplifier: &'a mut Simplifier,
+}
+
+impl ReciprocalSolveRuntime for ReciprocalRuntimeAdapter<'_> {
+    fn context(&mut self) -> &mut cas_ast::Context {
+        &mut self.simplifier.context
+    }
+
+    fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
+        self.simplifier.simplify(expr).0
+    }
+
+    fn prove_nonzero_status(
+        &mut self,
+        expr: ExprId,
+    ) -> cas_solver_core::linear_solution::NonZeroStatus {
+        match crate::helpers::prove_nonzero(&self.simplifier.context, expr) {
+            crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit => {
+                cas_solver_core::linear_solution::NonZeroStatus::NonZero
+            }
+            crate::domain::Proof::Unknown => {
+                cas_solver_core::linear_solution::NonZeroStatus::Unknown
+            }
+            crate::domain::Proof::Disproven => {
+                cas_solver_core::linear_solution::NonZeroStatus::Zero
+            }
+        }
+    }
+}
+
+impl ReciprocalExecutionRuntime<SolveStep> for ReciprocalRuntimeAdapter<'_> {
+    fn map_item_to_step(&mut self, item: ReciprocalExecutionItem) -> SolveStep {
+        medium_step(item.description().to_string(), item.equation)
+    }
+}
 
 /// Try to solve `1/var = expr` using pedagogical steps.
 ///
@@ -29,57 +63,19 @@ pub(crate) fn try_reciprocal_solve(
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
     let include_items = simplifier.collect_steps();
-    let simplifier_cell = RefCell::new(simplifier);
-    let execution = execute_reciprocal_solve_with(
-        lhs,
-        rhs,
-        var,
-        |inner_lhs, inner_rhs, inner_var| {
-            let mut s_ref = simplifier_cell.borrow_mut();
-            derive_reciprocal_solve_kernel(&mut s_ref.context, inner_lhs, inner_rhs, inner_var)
-        },
-        |inner_var, kernel| {
-            let mut s_ref = simplifier_cell.borrow_mut();
-            let raw_plan = build_reciprocal_solve_plan(
-                &mut s_ref.context,
-                inner_var,
-                kernel.numerator,
-                kernel.denominator,
-            );
-            let combined_rhs_display = s_ref.simplify(raw_plan.combined_rhs).0;
-            let solution_rhs_display = s_ref.simplify(raw_plan.solution_rhs).0;
-            let guard_numerator = s_ref.simplify(kernel.numerator).0;
-            let numerator_status =
-                match crate::helpers::prove_nonzero(&s_ref.context, guard_numerator) {
-                    crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit => {
-                        cas_solver_core::linear_solution::NonZeroStatus::NonZero
-                    }
-                    crate::domain::Proof::Unknown => {
-                        cas_solver_core::linear_solution::NonZeroStatus::Unknown
-                    }
-                    crate::domain::Proof::Disproven => {
-                        cas_solver_core::linear_solution::NonZeroStatus::Zero
-                    }
-                };
-            build_reciprocal_execution_from_kernel_prepared(
-                &mut s_ref.context,
-                inner_var,
-                kernel,
-                ReciprocalPreparedExecution {
-                    combined_rhs_display,
-                    solution_rhs_display,
-                    guard_numerator,
-                    numerator_status,
-                },
-            )
-        },
-    )?;
+    let execution = {
+        let mut runtime = ReciprocalRuntimeAdapter { simplifier };
+        execute_reciprocal_solve_with_runtime(&mut runtime, lhs, rhs, var)?
+    };
 
-    let solved_execution = solve_reciprocal_execution_pipeline_with_items(
-        execution,
-        include_items,
-        |item: ReciprocalExecutionItem| medium_step(item.description().to_string(), item.equation),
-    );
+    let solved_execution = {
+        let mut runtime = ReciprocalRuntimeAdapter { simplifier };
+        solve_reciprocal_execution_pipeline_with_items_runtime(
+            execution,
+            include_items,
+            &mut runtime,
+        )
+    };
     let (solution_set, steps) = solved_execution.solved;
     Some((solution_set, steps))
 }
