@@ -4,6 +4,15 @@
 //! entry points, plus the rational-exponent pre-check.
 
 use super::SolveDiagnostics;
+use crate::engine::Simplifier;
+use crate::error::CasError;
+use crate::solver::strategies::isolation_strategy::{
+    CollectTermsStrategy, IsolationStrategy, RationalExponentStrategy, UnwrapStrategy,
+};
+use crate::solver::strategies::quadratic::QuadraticStrategy;
+use crate::solver::strategies::rational_roots::RationalRootsStrategy;
+use crate::solver::strategies::substitution::SubstitutionStrategy;
+use crate::solver::strategy::SolverStrategy;
 use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_analysis::{
@@ -21,15 +30,6 @@ use cas_solver_core::strategy_kernels::{
     solve_rational_exponent_rewrite_pipeline_with_item_runtime_for_var,
     RationalExponentRewriteRuntime, StrategyKernelRuntime,
 };
-use crate::engine::Simplifier;
-use crate::error::CasError;
-use crate::solver::strategies::isolation_strategy::{
-    CollectTermsStrategy, IsolationStrategy, RationalExponentStrategy, UnwrapStrategy,
-};
-use crate::solver::strategies::quadratic::QuadraticStrategy;
-use crate::solver::strategies::rational_roots::RationalRootsStrategy;
-use crate::solver::strategies::substitution::SubstitutionStrategy;
-use crate::solver::strategy::SolverStrategy;
 
 use super::{
     medium_step, render_expr, DepthGuard, DisplaySolveSteps, SolveDomainEnv, SolveStep,
@@ -203,9 +203,9 @@ fn solve_inner(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // Check and increment recursion depth
     let current_depth = SOLVE_DEPTH.with(|d| {
-        let mut depth = d.borrow_mut();
-        *depth += 1;
-        *depth
+        let depth = d.get() + 1;
+        d.set(depth);
+        depth
     });
 
     // Create guard to decrement on exit

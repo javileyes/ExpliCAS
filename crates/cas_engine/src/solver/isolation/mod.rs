@@ -22,7 +22,7 @@ pub(crate) fn isolate(
     ctx: &super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // Check recursion depth
-    let current_depth = SOLVE_DEPTH.with(|d| *d.borrow());
+    let current_depth = SOLVE_DEPTH.with(|d| d.get());
     if current_depth > MAX_SOLVE_DEPTH {
         return Err(CasError::SolverError(
             "Maximum solver recursion depth exceeded in isolation.".to_string(),

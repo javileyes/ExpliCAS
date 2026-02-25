@@ -904,8 +904,8 @@ mod tests {
                 )
             },
             |roots| {
-                let mut context_ref = context_cell.borrow_mut();
-                crate::solution_set::sort_and_dedup_exprs(&mut context_ref, roots);
+                let context_ref = context_cell.borrow();
+                crate::solution_set::sort_and_dedup_exprs(&context_ref, roots);
             },
             |expanded, degree| {
                 let mut context_ref = context_cell.borrow_mut();

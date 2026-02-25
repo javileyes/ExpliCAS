@@ -447,6 +447,7 @@ pub trait SubstitutionStrategyRuntime<E, S> {
 /// 2) solving in temporary variable,
 /// 3) back-substitution `sub_expr = value_i`,
 /// 4) aggregation of final discrete solutions.
+#[allow(clippy::too_many_arguments)]
 pub fn solve_exponential_substitution_strategy_with_items_with<E, S, FRender, FSolve, FMap>(
     equation_before: Equation,
     rewrite_plan: ExponentialSubstitutionRewritePlan,
@@ -467,19 +468,20 @@ where
             render_expr(id)
         });
 
-    let solved_intro = solve_exponential_substitution_with_items(intro_execution, |items, equation| {
-        let mut steps = Vec::new();
-        if include_didactic_items {
-            steps.extend(
-                items
-                    .into_iter()
-                    .map(|item| map_step(item.description, item.equation)),
-            );
-        }
-        let (u_solutions, mut u_steps) = solve_equation(equation, substitution_var)?;
-        steps.append(&mut u_steps);
-        Ok((u_solutions, steps))
-    })?;
+    let solved_intro =
+        solve_exponential_substitution_with_items(intro_execution, |items, equation| {
+            let mut steps = Vec::new();
+            if include_didactic_items {
+                steps.extend(
+                    items
+                        .into_iter()
+                        .map(|item| map_step(item.description, item.equation)),
+                );
+            }
+            let (u_solutions, mut u_steps) = solve_equation(equation, substitution_var)?;
+            steps.append(&mut u_steps);
+            Ok((u_solutions, steps))
+        })?;
 
     let (u_solutions, mut steps) = solved_intro.solved;
 
@@ -489,20 +491,21 @@ where
                 solved_intro.execution.substitution_expr,
                 &vals,
                 include_didactic_items,
-                |id| render_expr(id),
+                &mut render_expr,
             );
 
-            let solved_back = solve_back_substitution_plan_with_items(back_plan, |item, equation| {
-                let mut local_steps = Vec::new();
-                if include_didactic_items {
-                    if let Some(item) = item {
-                        local_steps.push(map_step(item.description, item.equation));
+            let solved_back =
+                solve_back_substitution_plan_with_items(back_plan, |item, equation| {
+                    let mut local_steps = Vec::new();
+                    if include_didactic_items {
+                        if let Some(item) = item {
+                            local_steps.push(map_step(item.description, item.equation));
+                        }
                     }
-                }
-                let (x_solution_set, mut x_steps) = solve_equation(equation, target_var)?;
-                local_steps.append(&mut x_steps);
-                Ok((x_solution_set, local_steps))
-            })?;
+                    let (x_solution_set, mut x_steps) = solve_equation(equation, target_var)?;
+                    local_steps.append(&mut x_steps);
+                    Ok((x_solution_set, local_steps))
+                })?;
 
             let mut final_solutions = Vec::new();
             for (x_sol, mut x_steps) in solved_back.solved {
@@ -604,8 +607,7 @@ where
                 target_var: &'a str,
             }
 
-            impl<R, E, S> BackSubstitutionPlanSolveItemsRuntime<E, (SolutionSet, Vec<S>)>
-                for BackRuntime<'_, R>
+            impl<R, E, S> BackSubstitutionPlanSolveItemsRuntime<E, (SolutionSet, Vec<S>)> for BackRuntime<'_, R>
             where
                 R: SubstitutionStrategyRuntime<E, S>,
             {

@@ -54,25 +54,27 @@ impl SolverStrategy for QuadraticStrategy {
             if eq.op == RelOp::Eq {
                 let include_items = simplifier.collect_steps();
                 let residual_expr = sim_poly_expr;
-                let factorized_execution = build_factorized_zero_product_execution_with_optional_items(
-                    &simplifier.context,
-                    sim_poly_expr,
-                    &factors,
-                    var,
-                    zero,
-                    include_items,
-                    |id| render_expr(&simplifier.context, id),
-                );
-                let solved_factorized = match solve_factorized_zero_product_execution_pipeline_with_items(
-                    &factorized_execution,
-                    include_items,
-                    |equation| solve_with_ctx(equation, var, simplifier, ctx),
-                    |item| medium_step(item.description().to_string(), item.equation),
-                    |item| medium_step(item.description, item.equation),
-                ) {
-                    Ok(solved) => solved,
-                    Err(e) => return Some(Err(e)),
-                };
+                let factorized_execution =
+                    build_factorized_zero_product_execution_with_optional_items(
+                        &simplifier.context,
+                        sim_poly_expr,
+                        &factors,
+                        var,
+                        zero,
+                        include_items,
+                        |id| render_expr(&simplifier.context, id),
+                    );
+                let solved_factorized =
+                    match solve_factorized_zero_product_execution_pipeline_with_items(
+                        &factorized_execution,
+                        include_items,
+                        |equation| solve_with_ctx(equation, var, simplifier, ctx),
+                        |item| medium_step(item.description().to_string(), item.equation),
+                        |item| medium_step(item.description, item.equation),
+                    ) {
+                        Ok(solved) => solved,
+                        Err(e) => return Some(Err(e)),
+                    };
                 let finalized = finalize_factorized_zero_product_strategy_solved(
                     &simplifier.context,
                     solved_factorized,

@@ -301,7 +301,7 @@ pub(crate) const MAX_SOLVE_DEPTH: usize = 50;
 //   SOLVE_ASSUMPTIONS  – per-solve assumption collector (runtime_tls.rs)
 //   OUTPUT_SCOPES      – display scope tags emitted by strategies (runtime_tls.rs)
 thread_local! {
-    pub(crate) static SOLVE_DEPTH: std::cell::RefCell<usize> = const { std::cell::RefCell::new(0) };
+    pub(crate) static SOLVE_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// Guard that decrements depth on drop
@@ -310,7 +310,7 @@ pub(crate) struct DepthGuard;
 impl Drop for DepthGuard {
     fn drop(&mut self) {
         SOLVE_DEPTH.with(|d| {
-            *d.borrow_mut() -= 1;
+            d.set(d.get().saturating_sub(1));
         });
     }
 }
