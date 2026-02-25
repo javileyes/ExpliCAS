@@ -2,7 +2,7 @@ use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
-use cas_solver_core::isolation_utils::is_numeric_zero;
+use cas_solver_core::isolation_utils::{are_equivalent_by_difference_with, is_numeric_zero};
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
     build_pow_base_isolation_action_with, build_pow_exponent_shortcut_execution_plan,
@@ -23,12 +23,23 @@ use cas_solver_core::solve_outcome::{
 use super::{isolate, prepend_steps};
 
 fn bases_are_equivalent(simplifier: &mut Simplifier, base: ExprId, candidate: ExprId) -> bool {
-    if base == candidate {
-        return true;
-    }
-    let diff = simplifier.context.add(Expr::Sub(base, candidate));
-    let (sim_diff, _) = simplifier.simplify(diff);
-    is_numeric_zero(&simplifier.context, sim_diff)
+    let runtime_cell = std::cell::RefCell::new(simplifier);
+    are_equivalent_by_difference_with(
+        base,
+        candidate,
+        |lhs, rhs| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            simplifier_ref.context.add(Expr::Sub(lhs, rhs))
+        },
+        |expr| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            simplifier_ref.simplify(expr).0
+        },
+        |expr| {
+            let simplifier_ref = runtime_cell.borrow();
+            is_numeric_zero(&simplifier_ref.context, expr)
+        },
+    )
 }
 
 /// Handle isolation for `Pow(b, e)`: `B^E = RHS`

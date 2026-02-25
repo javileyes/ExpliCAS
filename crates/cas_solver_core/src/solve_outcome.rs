@@ -107,25 +107,26 @@ where
 /// Returned steps are non-empty only when circular fallback resolves via
 /// linear-collect routes.
 #[allow(clippy::too_many_arguments)]
-pub fn solve_isolated_variable_lhs_with<S, FSimplify, FTry1, FTry2, FResidual>(
-    ctx: &mut Context,
+pub fn solve_isolated_variable_lhs_with_resolver<S, FResolve, FSimplify, FTry1, FTry2, FResidual>(
     lhs: ExprId,
     rhs: ExprId,
     op: RelOp,
     var: &str,
+    mut resolve_isolated_outcome: FResolve,
     mut simplify_rhs: FSimplify,
     try_linear_collect: FTry1,
     try_linear_collect_v2: FTry2,
     residual_solution: FResidual,
 ) -> (SolutionSet, Vec<S>)
 where
+    FResolve: FnMut(ExprId, RelOp, &str) -> IsolatedVariableOutcome,
     FSimplify: FnMut(ExprId) -> ExprId,
     FTry1: FnMut(ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<S>)>,
     FTry2: FnMut(ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<S>)>,
     FResidual: FnMut(ExprId, ExprId, &str) -> SolutionSet,
 {
     let sim_rhs = simplify_rhs(rhs);
-    match resolve_isolated_variable_outcome(ctx, sim_rhs, op, var) {
+    match resolve_isolated_outcome(sim_rhs, op, var) {
         IsolatedVariableOutcome::Solved(set) => (set, Vec::new()),
         IsolatedVariableOutcome::ContainsTargetVariable => {
             match resolve_circular_isolated_outcome_with(
@@ -144,6 +145,43 @@ where
             }
         }
     }
+}
+
+/// Solve a branch where `lhs` is already the target variable (`x op rhs`).
+///
+/// Returned steps are non-empty only when circular fallback resolves via
+/// linear-collect routes.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_isolated_variable_lhs_with<S, FSimplify, FTry1, FTry2, FResidual>(
+    ctx: &mut Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    simplify_rhs: FSimplify,
+    try_linear_collect: FTry1,
+    try_linear_collect_v2: FTry2,
+    residual_solution: FResidual,
+) -> (SolutionSet, Vec<S>)
+where
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FTry1: FnMut(ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<S>)>,
+    FTry2: FnMut(ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<S>)>,
+    FResidual: FnMut(ExprId, ExprId, &str) -> SolutionSet,
+{
+    solve_isolated_variable_lhs_with_resolver(
+        lhs,
+        rhs,
+        op,
+        var,
+        |sim_rhs, rel_op, solve_var| {
+            resolve_isolated_variable_outcome(ctx, sim_rhs, rel_op, solve_var)
+        },
+        simplify_rhs,
+        try_linear_collect,
+        try_linear_collect_v2,
+        residual_solution,
+    )
 }
 
 /// Route for handling `base^x = base` shortcuts.
@@ -2222,6 +2260,36 @@ where
         solution_set,
         steps,
     })
+}
+
+/// Execute term-isolation plan with optional RHS pre-simplification before
+/// recursive isolation.
+pub fn solve_term_isolation_plan_with<E, S, FSimplify, FSolve, FStep>(
+    plan: TermIsolationRewritePlan,
+    include_item: bool,
+    simplify_rhs_before_solve: bool,
+    mut simplify_rhs: FSimplify,
+    mut solve_rewritten: FSolve,
+    map_item_to_step: FStep,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FSolve: FnMut(Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(TermIsolationRewriteExecutionItem) -> S,
+{
+    let solved = solve_term_isolation_rewrite_pipeline_with_item(
+        plan,
+        include_item,
+        |equation| {
+            let mut rewritten = equation;
+            if simplify_rhs_before_solve {
+                rewritten.rhs = simplify_rhs(rewritten.rhs);
+            }
+            solve_rewritten(rewritten)
+        },
+        map_item_to_step,
+    )?;
+    Ok((solved.solution_set, solved.steps))
 }
 
 /// Execute negated-LHS isolation rewrite and optional first-item didactic
@@ -8781,6 +8849,58 @@ mod tests {
             SolutionSet::Discrete(vec![expected_rhs])
         );
         assert_eq!(solved.steps, vec!["only-substep".to_string()]);
+    }
+
+    #[test]
+    fn solve_term_isolation_plan_with_simplifies_rhs_when_enabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let plan =
+            plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
+        let expected_item = plan.items[0].description.clone();
+        let simplified_rhs = ctx.num(42);
+        let raw_rhs = plan.equation.rhs;
+
+        let (solution_set, steps) = solve_term_isolation_plan_with(
+            plan,
+            true,
+            true,
+            |_| simplified_rhs,
+            |equation| Ok::<_, ()>((SolutionSet::Discrete(vec![equation.rhs]), vec![])),
+            |item| item.description,
+        )
+        .expect("plan solve should succeed");
+
+        assert_eq!(solution_set, SolutionSet::Discrete(vec![simplified_rhs]));
+        assert_eq!(steps, vec![expected_item]);
+        assert_ne!(raw_rhs, simplified_rhs);
+    }
+
+    #[test]
+    fn solve_term_isolation_plan_with_keeps_rhs_when_disabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let plan =
+            plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
+        let raw_rhs = plan.equation.rhs;
+        let unexpected_rhs = ctx.num(7);
+
+        let (solution_set, steps) = solve_term_isolation_plan_with(
+            plan,
+            false,
+            false,
+            |_| unexpected_rhs,
+            |equation| Ok::<_, ()>((SolutionSet::Discrete(vec![equation.rhs]), vec![])),
+            |item| item.description,
+        )
+        .expect("plan solve should succeed");
+
+        assert_eq!(solution_set, SolutionSet::Discrete(vec![raw_rhs]));
+        assert!(steps.is_empty());
     }
 
     #[test]

@@ -137,6 +137,30 @@ pub fn is_numeric_zero(ctx: &Context, expr: ExprId) -> bool {
     )
 }
 
+/// Check semantic equivalence by simplifying the difference `left - right`.
+///
+/// The caller supplies construction/simplification hooks so this utility can
+/// be reused from higher-level runtimes without coupling to a specific engine.
+pub fn are_equivalent_by_difference_with<FBuildSub, FSimplify, FIsZero>(
+    left: ExprId,
+    right: ExprId,
+    mut build_sub: FBuildSub,
+    mut simplify: FSimplify,
+    mut is_zero: FIsZero,
+) -> bool
+where
+    FBuildSub: FnMut(ExprId, ExprId) -> ExprId,
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FIsZero: FnMut(ExprId) -> bool,
+{
+    if left == right {
+        return true;
+    }
+    let diff = build_sub(left, right);
+    let simplified = simplify(diff);
+    is_zero(simplified)
+}
+
 /// True iff expression is the numeric literal one.
 pub fn is_numeric_one(ctx: &Context, expr: ExprId) -> bool {
     matches!(
@@ -809,5 +833,30 @@ mod tests {
         assert_eq!(apply_sign_flip(RelOp::Gt, true), RelOp::Lt);
         assert_eq!(apply_sign_flip(RelOp::Gt, false), RelOp::Gt);
         assert_eq!(apply_sign_flip(RelOp::Eq, true), RelOp::Eq);
+    }
+
+    #[test]
+    fn test_are_equivalent_by_difference_with_detects_equivalence() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+
+        let equivalent = are_equivalent_by_difference_with(
+            x,
+            y,
+            |lhs, rhs| ctx.add(Expr::Sub(lhs, rhs)),
+            |expr| expr,
+            |expr| expr == x,
+        );
+        assert!(!equivalent);
+
+        let equivalent_same = are_equivalent_by_difference_with(
+            x,
+            x,
+            |lhs, rhs| ctx.add(Expr::Sub(lhs, rhs)),
+            |expr| expr,
+            |_expr| false,
+        );
+        assert!(equivalent_same);
     }
 }

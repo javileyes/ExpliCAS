@@ -20,38 +20,13 @@ use cas_solver_core::solve_outcome::{
     plan_sub_isolation_step_with, solve_division_denominator_pipeline_with_optional_items,
     solve_division_denominator_sign_split_pipeline_with_optional_items,
     solve_isolated_denominator_sign_split_pipeline_with_optional_items,
-    solve_product_zero_inequality_split_execution_with,
-    solve_term_isolation_rewrite_pipeline_with_item, AddIsolationRoute,
-    DivDenominatorIsolationRoute, DivIsolationRoute, DivisionDenominatorSignSplitSolvedCases,
-    IsolatedDenominatorSignSplitSolvedCases, SubIsolationRoute, TermIsolationRewritePlan,
+    solve_product_zero_inequality_split_execution_with, solve_term_isolation_plan_with,
+    AddIsolationRoute, DivDenominatorIsolationRoute, DivIsolationRoute,
+    DivisionDenominatorSignSplitSolvedCases, IsolatedDenominatorSignSplitSolvedCases,
+    SubIsolationRoute,
 };
 
 use super::{isolate, prepend_steps};
-
-fn solve_term_isolation_plan(
-    plan: TermIsolationRewritePlan,
-    var: &str,
-    include_item: bool,
-    simplify_rhs_before_isolate: bool,
-    simplifier: &mut Simplifier,
-    opts: SolverOptions,
-    ctx: &super::super::SolveCtx,
-) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let solved = solve_term_isolation_rewrite_pipeline_with_item(
-        plan,
-        include_item,
-        |equation| {
-            let rhs = if simplify_rhs_before_isolate {
-                simplifier.simplify(equation.rhs).0
-            } else {
-                equation.rhs
-            };
-            isolate(equation.lhs, rhs, equation.op, var, simplifier, opts, ctx)
-        },
-        |item| medium_step(item.description, item.equation),
-    )?;
-    Ok((solved.solution_set, solved.steps))
-}
 
 /// Handle isolation for `Add(l, r)`: `(A + B) = RHS`
 #[allow(clippy::too_many_arguments)]
@@ -91,7 +66,29 @@ pub(super) fn isolate_add(
         move |_| add_moved_desc.clone(),
     );
     let include_item = simplifier.collect_steps();
-    let solved = solve_term_isolation_plan(plan, var, include_item, true, simplifier, opts, ctx)?;
+    let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+    let solved = solve_term_isolation_plan_with(
+        plan,
+        include_item,
+        true,
+        |expr| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            simplifier_ref.simplify(expr).0
+        },
+        |equation| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            isolate(
+                equation.lhs,
+                equation.rhs,
+                equation.op,
+                var,
+                *simplifier_ref,
+                opts,
+                ctx,
+            )
+        },
+        |item| medium_step(item.description, item.equation),
+    )?;
     prepend_steps(solved, steps)
 }
 
@@ -122,7 +119,29 @@ pub(super) fn isolate_sub(
             sub_moved_desc.clone()
         });
     let include_item = simplifier.collect_steps();
-    let solved = solve_term_isolation_plan(plan, var, include_item, true, simplifier, opts, ctx)?;
+    let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+    let solved = solve_term_isolation_plan_with(
+        plan,
+        include_item,
+        true,
+        |expr| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            simplifier_ref.simplify(expr).0
+        },
+        |equation| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            isolate(
+                equation.lhs,
+                equation.rhs,
+                equation.op,
+                var,
+                *simplifier_ref,
+                opts,
+                ctx,
+            )
+        },
+        |item| medium_step(item.description, item.equation),
+    )?;
     prepend_steps(solved, steps)
 }
 
@@ -181,7 +200,29 @@ pub(super) fn isolate_mul(
         move |_| mul_moved_desc.clone(),
     );
     let include_item = simplifier.collect_steps();
-    let solved = solve_term_isolation_plan(plan, var, include_item, false, simplifier, opts, ctx)?;
+    let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+    let solved = solve_term_isolation_plan_with(
+        plan,
+        include_item,
+        false,
+        |expr| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            simplifier_ref.simplify(expr).0
+        },
+        |equation| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            isolate(
+                equation.lhs,
+                equation.rhs,
+                equation.op,
+                var,
+                *simplifier_ref,
+                opts,
+                ctx,
+            )
+        },
+        |item| medium_step(item.description, item.equation),
+    )?;
     prepend_steps(solved, steps)
 }
 
@@ -281,8 +322,29 @@ pub(super) fn isolate_div(
                 move |_| denominator_desc.clone(),
             );
             let include_item = simplifier.collect_steps();
-            let solved =
-                solve_term_isolation_plan(plan, var, include_item, false, simplifier, opts, ctx)?;
+            let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+            let solved = solve_term_isolation_plan_with(
+                plan,
+                include_item,
+                false,
+                |expr| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    simplifier_ref.simplify(expr).0
+                },
+                |equation| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    isolate(
+                        equation.lhs,
+                        equation.rhs,
+                        equation.op,
+                        var,
+                        *simplifier_ref,
+                        opts,
+                        ctx,
+                    )
+                },
+                |item| medium_step(item.description, item.equation),
+            )?;
             prepend_steps(solved, steps)
         }
     } else {
