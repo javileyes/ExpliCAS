@@ -28,7 +28,7 @@ use cas_solver_core::isolation_utils::is_numeric_zero;
 use cas_solver_core::solution_check::{
     verify_solution_with_runtime as verify_solution_with_core_runtime, SolutionCheckRuntime,
 };
-use cas_solver_core::verification::verify_solution_set_with;
+use cas_solver_core::verification::{verify_solution_set_with_runtime, VerifySolutionSetRuntime};
 use cas_solver_core::verify_substitution::{
     verify_solution_with_runtime as verify_solution_with_equivalence_core_runtime,
     VerifySolutionRuntime,
@@ -110,6 +110,18 @@ impl VerifySolutionRuntime for EngineVerifyEquivalenceRuntime<'_> {
     }
 }
 
+struct EngineVerifySetRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+    equation: &'a Equation,
+    var: &'a str,
+}
+
+impl VerifySolutionSetRuntime for EngineVerifySetRuntime<'_> {
+    fn verify_discrete(&mut self, solution: ExprId) -> VerifyStatus {
+        verify_solution(self.simplifier, self.equation, self.var, solution)
+    }
+}
+
 /// Verify a single solution by substituting into the equation.
 ///
 /// # Algorithm
@@ -153,9 +165,12 @@ pub fn verify_solution_set(
     var: &str,
     solutions: &SolutionSet,
 ) -> VerifyResult {
-    let mut verify_discrete =
-        |solution: ExprId| verify_solution(simplifier, equation, var, solution);
-    verify_solution_set_with(solutions, &mut verify_discrete)
+    let mut runtime = EngineVerifySetRuntime {
+        simplifier,
+        equation,
+        var,
+    };
+    verify_solution_set_with_runtime(solutions, &mut runtime)
 }
 
 #[cfg(test)]
