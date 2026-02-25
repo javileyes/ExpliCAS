@@ -1,5 +1,4 @@
 pub mod check;
-pub(crate) mod domain_guards;
 pub(crate) mod isolation;
 pub(crate) mod linear_collect;
 pub(crate) mod numeric_islands;
@@ -163,6 +162,11 @@ impl SolverOptions {
             }
         }
     }
+
+    /// Returns true when assume-scope allows wildcard assumptions.
+    pub(crate) fn wildcard_scope(&self) -> bool {
+        self.assume_scope == crate::semantics::AssumeScope::Wildcard
+    }
 }
 
 /// Map engine proof classification to solver-core non-zero status.
@@ -177,6 +181,56 @@ pub(crate) fn prove_nonzero_status(
         crate::domain::Proof::Unknown => cas_solver_core::linear_solution::NonZeroStatus::Unknown,
         crate::domain::Proof::Disproven => cas_solver_core::linear_solution::NonZeroStatus::Zero,
     }
+}
+
+fn proof_status_from_proof(
+    proof: crate::domain::Proof,
+) -> cas_solver_core::log_domain::ProofStatus {
+    match proof {
+        crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit => {
+            cas_solver_core::log_domain::ProofStatus::Proven
+        }
+        crate::domain::Proof::Unknown => cas_solver_core::log_domain::ProofStatus::Unknown,
+        crate::domain::Proof::Disproven => cas_solver_core::log_domain::ProofStatus::Disproven,
+    }
+}
+
+struct EngineLogSolveProofRuntime {
+    value_domain: crate::semantics::ValueDomain,
+}
+
+impl cas_solver_core::log_domain::LogSolveProofRuntime for EngineLogSolveProofRuntime {
+    fn prove_positive_status(
+        &mut self,
+        ctx: &cas_ast::Context,
+        expr: ExprId,
+    ) -> cas_solver_core::log_domain::ProofStatus {
+        proof_status_from_proof(crate::helpers::prove_positive(ctx, expr, self.value_domain))
+    }
+}
+
+/// Classify whether a logarithmic solve step (`base^x = rhs`) is valid.
+pub(crate) fn classify_log_solve(
+    ctx: &cas_ast::Context,
+    base: ExprId,
+    rhs: ExprId,
+    opts: &SolverOptions,
+    env: &SolveDomainEnv,
+) -> cas_solver_core::log_domain::LogSolveDecision {
+    let mut runtime = EngineLogSolveProofRuntime {
+        value_domain: opts.value_domain,
+    };
+
+    cas_solver_core::log_domain::classify_log_solve_with_prover_runtime(
+        ctx,
+        base,
+        rhs,
+        opts.value_domain == crate::semantics::ValueDomain::RealOnly,
+        opts.core_domain_mode(),
+        env.has_positive(base),
+        env.has_positive(rhs),
+        &mut runtime,
+    )
 }
 
 // =============================================================================
@@ -379,6 +433,7 @@ mod tests {
     use cas_ast::{BoundType, Context, RelOp};
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
+    use cas_solver_core::log_domain::{LogAssumption, LogSolveDecision};
 
     // Helper to make equation from strings
     fn make_eq(ctx: &mut Context, lhs: &str, rhs: &str) -> Equation {
@@ -591,5 +646,82 @@ mod tests {
         } else {
             panic!("Expected Continuous solution, got {:?}", result);
         }
+    }
+
+    fn classify_for_test(
+        ctx: &Context,
+        base: ExprId,
+        rhs: ExprId,
+        mode: crate::domain::DomainMode,
+    ) -> LogSolveDecision {
+        let opts = SolverOptions {
+            domain_mode: mode,
+            ..Default::default()
+        };
+        classify_log_solve(ctx, base, rhs, &opts, &SolveDomainEnv::default())
+    }
+
+    #[test]
+    fn test_log_solve_both_proven_positive_ok() {
+        let mut ctx = Context::new();
+        let base = ctx.num(2);
+        let rhs = ctx.num(8);
+        let decision = classify_for_test(&ctx, base, rhs, crate::domain::DomainMode::Generic);
+        assert!(matches!(decision, LogSolveDecision::Ok));
+    }
+
+    #[test]
+    fn test_log_solve_negative_rhs_empty() {
+        let mut ctx = Context::new();
+        let base = ctx.num(2);
+        let rhs = ctx.num(-5);
+        let decision = classify_for_test(&ctx, base, rhs, crate::domain::DomainMode::Generic);
+        assert!(matches!(decision, LogSolveDecision::EmptySet(_)));
+    }
+
+    #[test]
+    fn test_log_solve_negative_base_needs_complex() {
+        let mut ctx = Context::new();
+        let base = ctx.num(-2);
+        let rhs = ctx.num(5);
+        let decision = classify_for_test(&ctx, base, rhs, crate::domain::DomainMode::Generic);
+        assert!(matches!(decision, LogSolveDecision::NeedsComplex(_)));
+    }
+
+    #[test]
+    fn test_log_solve_assume_unknown_rhs_emits_assumption() {
+        let mut ctx = Context::new();
+        let base = ctx.num(2);
+        let rhs = ctx.var("y");
+        let decision = classify_for_test(&ctx, base, rhs, crate::domain::DomainMode::Assume);
+        match decision {
+            LogSolveDecision::OkWithAssumptions(assumptions) => {
+                assert!(assumptions.contains(&LogAssumption::PositiveRhs));
+            }
+            _ => panic!("Expected OkWithAssumptions, got {:?}", decision),
+        }
+    }
+
+    #[test]
+    fn test_log_solve_generic_unknown_rhs_unsupported() {
+        let mut ctx = Context::new();
+        let base = ctx.num(2);
+        let rhs = ctx.var("y");
+        let decision = classify_for_test(&ctx, base, rhs, crate::domain::DomainMode::Generic);
+        assert!(matches!(decision, LogSolveDecision::Unsupported(_, _)));
+    }
+
+    #[test]
+    fn test_log_solve_neg_expr_rhs_empty() {
+        let mut ctx = Context::new();
+        let base = ctx.num(2);
+        let five = ctx.num(5);
+        let rhs = ctx.add(cas_ast::Expr::Neg(five));
+        let decision = classify_for_test(&ctx, base, rhs, crate::domain::DomainMode::Generic);
+        assert!(
+            matches!(decision, LogSolveDecision::EmptySet(_)),
+            "Expected EmptySet for Neg(5), got {:?}",
+            decision
+        );
     }
 }

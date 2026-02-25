@@ -391,7 +391,7 @@ fn isolate_pow_exponent(
     }
 
     // ================================================================
-    use crate::solver::domain_guards::classify_log_solve;
+    use crate::solver::classify_log_solve;
 
     // ================================================================
     // SOLVE TACTIC: Pre-simplify base/rhs with Analytic rules in Assume mode
@@ -437,14 +437,12 @@ fn isolate_pow_exponent(
         &simplifier.context,
         tactic_base,
         tactic_rhs,
-        opts.value_domain,
-        opts.domain_mode,
-        ctx.domain_env.has_positive(tactic_base),
-        ctx.domain_env.has_positive(tactic_rhs),
+        &opts,
+        &ctx.domain_env,
     );
 
     let mode = opts.core_domain_mode();
-    let wildcard_scope = opts.assume_scope == crate::semantics::AssumeScope::Wildcard;
+    let wildcard_scope = opts.wildcard_scope();
 
     if let Some(outcome) = resolve_log_terminal_outcome(
         &mut simplifier.context,

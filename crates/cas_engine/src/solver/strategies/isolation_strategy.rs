@@ -99,14 +99,12 @@ impl UnwrapPlanRuntime for UnwrapEntryRuntimeAdapter<'_, '_> {
         base: ExprId,
         other_side: ExprId,
     ) -> cas_solver_core::log_domain::LogSolveDecision {
-        crate::solver::domain_guards::classify_log_solve(
+        crate::solver::classify_log_solve(
             ctx,
             base,
             other_side,
-            self.opts.value_domain,
-            self.opts.domain_mode,
-            self.solve_ctx.domain_env.has_positive(base),
-            self.solve_ctx.domain_env.has_positive(other_side),
+            self.opts,
+            &self.solve_ctx.domain_env,
         )
     }
 
@@ -189,7 +187,7 @@ impl SolverStrategy for UnwrapStrategy {
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let mode = opts.core_domain_mode();
-        let wildcard_scope = opts.assume_scope == crate::semantics::AssumeScope::Wildcard;
+        let wildcard_scope = opts.wildcard_scope();
 
         let include_item = simplifier.collect_steps();
         let mut runtime = UnwrapEntryRuntimeAdapter {
