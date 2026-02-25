@@ -9,7 +9,7 @@ use cas_solver_core::function_inverse::{
 };
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::log_isolation::{
-    plan_log_isolation_step_with, solve_log_isolation_rewrite_pipeline_with_item,
+    execute_log_isolation_pipeline_with_item_with, plan_log_isolation_step_with,
 };
 use cas_solver_core::solve_outcome::{
     finalize_abs_split_solution_set, plan_abs_isolation, solve_abs_isolation_plan_with,
@@ -145,39 +145,45 @@ fn isolate_log(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let rewrite = plan_log_isolation_step_with(
-        &mut simplifier.context,
-        base,
-        arg,
-        rhs,
-        var,
-        op.clone(),
-        solver_render_expr,
-    )
-    .ok_or_else(|| {
-        CasError::IsolationError(
-            var.to_string(),
-            "Cannot isolate from log function".to_string(),
-        )
-    })?;
     let include_item = simplifier.collect_steps();
-    let solved = solve_log_isolation_rewrite_pipeline_with_item(
-        rewrite,
-        include_item,
-        |equation| {
-            let (solution_set, solved_steps) = isolate(
-                equation.lhs,
-                equation.rhs,
-                equation.op.clone(),
-                var,
-                simplifier,
-                opts,
-                ctx,
-            )?;
-            Ok::<(SolutionSet, Vec<SolveStep>), CasError>((solution_set, solved_steps))
-        },
-        |item| medium_step(item.description().to_string(), item.equation),
-    )?;
+    let solved = {
+        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+        execute_log_isolation_pipeline_with_item_with(
+            include_item,
+            || {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                plan_log_isolation_step_with(
+                    &mut simplifier_ref.context,
+                    base,
+                    arg,
+                    rhs,
+                    var,
+                    op.clone(),
+                    solver_render_expr,
+                )
+            },
+            |equation| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                let (solution_set, solved_steps) = isolate(
+                    equation.lhs,
+                    equation.rhs,
+                    equation.op.clone(),
+                    var,
+                    *simplifier_ref,
+                    opts,
+                    ctx,
+                )?;
+                Ok::<(SolutionSet, Vec<SolveStep>), CasError>((solution_set, solved_steps))
+            },
+            |item| medium_step(item.description().to_string(), item.equation),
+        )
+        .ok_or_else(|| {
+            CasError::IsolationError(
+                var.to_string(),
+                "Cannot isolate from log function".to_string(),
+            )
+        })??
+    };
     let (solution_set, solved_steps) = solved.solved;
     prepend_steps((solution_set, solved_steps), steps)
 }

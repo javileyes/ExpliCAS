@@ -119,6 +119,31 @@ where
     })
 }
 
+/// Execute log-isolation planning + solve pipeline while optionally collecting
+/// the first didactic execution item.
+///
+/// Returns `None` when log isolation cannot be planned for the given variable.
+#[allow(clippy::type_complexity)]
+pub fn execute_log_isolation_pipeline_with_item_with<E, S, FPlan, FSolve, FMap>(
+    include_item: bool,
+    mut plan_rewrite: FPlan,
+    solve_rewritten: FSolve,
+    map_item_to_step: FMap,
+) -> Option<Result<LogIsolationSolved<(cas_ast::SolutionSet, Vec<S>)>, E>>
+where
+    FPlan: FnMut() -> Option<LogIsolationRewritePlan>,
+    FSolve: FnMut(&Equation) -> Result<(cas_ast::SolutionSet, Vec<S>), E>,
+    FMap: FnMut(LogIsolationExecutionItem) -> S,
+{
+    let rewrite = plan_rewrite()?;
+    Some(solve_log_isolation_rewrite_pipeline_with_item(
+        rewrite,
+        include_item,
+        solve_rewritten,
+        map_item_to_step,
+    ))
+}
+
 /// Planned transformation for isolating a logarithmic equation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogIsolationPlan {
@@ -566,5 +591,61 @@ mod tests {
         assert_eq!(solve_calls, 1);
         assert_eq!(solved.solved.0, SolutionSet::Discrete(vec![rhs]));
         assert_eq!(solved.solved.1, vec!["sub-only".to_string()]);
+    }
+
+    #[test]
+    fn execute_log_isolation_pipeline_with_item_with_runs_supported_pipeline() {
+        let mut ctx = Context::new();
+        let base = ctx.var("b");
+        let arg = ctx.var("x");
+        let rhs = ctx.num(3);
+
+        let mut solve_calls = 0usize;
+        let solved = execute_log_isolation_pipeline_with_item_with(
+            true,
+            || {
+                plan_log_isolation_step_with(&mut ctx, base, arg, rhs, "x", RelOp::Eq, |_, _| {
+                    "rendered(b)".to_string()
+                })
+            },
+            |_equation| {
+                solve_calls += 1;
+                Ok::<_, ()>((SolutionSet::AllReals, vec!["sub".to_string()]))
+            },
+            |item| item.description,
+        )
+        .expect("log isolation should be supported")
+        .expect("pipeline solve should succeed");
+
+        assert_eq!(solve_calls, 1);
+        assert_eq!(solved.solved.0, SolutionSet::AllReals);
+        assert_eq!(solved.solved.1.len(), 2);
+        assert_eq!(solved.solved.1[1], "sub");
+    }
+
+    #[test]
+    fn execute_log_isolation_pipeline_with_item_with_returns_none_when_not_plannable() {
+        let mut ctx = Context::new();
+        let base = ctx.var("x");
+        let arg = ctx.var("x");
+        let rhs = ctx.num(3);
+
+        let mut solve_calls = 0usize;
+        let out = execute_log_isolation_pipeline_with_item_with(
+            true,
+            || {
+                plan_log_isolation_step_with(&mut ctx, base, arg, rhs, "x", RelOp::Eq, |_, _| {
+                    "rendered".to_string()
+                })
+            },
+            |_equation| {
+                solve_calls += 1;
+                Ok::<_, ()>((SolutionSet::Empty, vec!["unexpected".to_string()]))
+            },
+            |item| item.description,
+        );
+
+        assert!(out.is_none());
+        assert_eq!(solve_calls, 0);
     }
 }
