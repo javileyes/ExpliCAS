@@ -1939,6 +1939,58 @@ where
     plan_pow_exponent_shortcut_action(ctx, shortcut, base, op)
 }
 
+/// Execute the full exponent-shortcut pipeline for `base^x op rhs`
+/// using closure hooks.
+///
+/// This performs:
+/// 1. RHS shortcut-shape detection
+/// 2. Shortcut action planning
+/// 3. Didactic/executable action mapping
+#[allow(clippy::too_many_arguments)]
+pub fn execute_pow_exponent_shortcut_with<FReadExpr, FPlanAction, FBasesEquivalent, FRenderExpr>(
+    exponent_lhs: ExprId,
+    base: ExprId,
+    rhs: ExprId,
+    original_op: RelOp,
+    var: &str,
+    base_is_zero: bool,
+    base_is_numeric: bool,
+    can_branch: bool,
+    mut read_expr: FReadExpr,
+    mut plan_action_from_inputs: FPlanAction,
+    mut bases_equivalent: FBasesEquivalent,
+    mut render_expr: FRenderExpr,
+) -> PowExponentShortcutEngineAction
+where
+    FReadExpr: FnMut(ExprId) -> Expr,
+    FPlanAction:
+        FnMut(ExprId, RelOp, bool, Option<ExprId>, bool, bool, bool) -> PowExponentShortcutAction,
+    FBasesEquivalent: FnMut(ExprId, ExprId) -> bool,
+    FRenderExpr: FnMut(ExprId) -> String,
+{
+    let rhs_expr = read_expr(rhs);
+    let bases_equal = bases_equivalent(base, rhs);
+    let rhs_pow_base_equal = match rhs_expr {
+        Expr::Pow(rhs_base, rhs_exp) if bases_equivalent(base, rhs_base) => Some(rhs_exp),
+        _ => None,
+    };
+
+    let action = plan_action_from_inputs(
+        base,
+        original_op.clone(),
+        bases_equal,
+        rhs_pow_base_equal,
+        base_is_zero,
+        base_is_numeric,
+        can_branch,
+    );
+    let plan = build_pow_exponent_shortcut_execution_plan(action);
+
+    map_pow_exponent_shortcut_with(plan, exponent_lhs, base, rhs, original_op, var, |id| {
+        render_expr(id)
+    })
+}
+
 /// Runtime contract for exponent-shortcut execution (`base^x = rhs`).
 ///
 /// Callers inject equivalence checks and expression rendering while solver-core
@@ -1973,35 +2025,50 @@ pub fn execute_pow_exponent_shortcut_with_runtime<R>(
 where
     R: PowExponentShortcutRuntime,
 {
-    let rhs_expr = {
-        let ctx = runtime.context();
-        ctx.get(rhs).clone()
-    };
-
-    let bases_equal = runtime.bases_equivalent(base, rhs);
-    let rhs_pow_base_equal = match rhs_expr {
-        Expr::Pow(rhs_base, rhs_exp) if runtime.bases_equivalent(base, rhs_base) => Some(rhs_exp),
-        _ => None,
-    };
-
-    let action = {
-        let ctx = runtime.context();
-        plan_pow_exponent_shortcut_action_from_inputs(
-            ctx,
-            base,
-            original_op.clone(),
-            bases_equal,
-            rhs_pow_base_equal,
-            base_is_zero,
-            base_is_numeric,
-            can_branch,
-        )
-    };
-    let plan = build_pow_exponent_shortcut_execution_plan(action);
-
-    map_pow_exponent_shortcut_with(plan, exponent_lhs, base, rhs, original_op, var, |id| {
-        runtime.render_expr(id)
-    })
+    let runtime_cell = std::cell::RefCell::new(runtime);
+    execute_pow_exponent_shortcut_with(
+        exponent_lhs,
+        base,
+        rhs,
+        original_op,
+        var,
+        base_is_zero,
+        base_is_numeric,
+        can_branch,
+        |id| {
+            let mut runtime_ref = runtime_cell.borrow_mut();
+            let ctx = runtime_ref.context();
+            ctx.get(id).clone()
+        },
+        |inner_base,
+         inner_op,
+         bases_equal,
+         rhs_pow_base_equal,
+         inner_base_is_zero,
+         inner_base_is_numeric,
+         inner_can_branch| {
+            let mut runtime_ref = runtime_cell.borrow_mut();
+            let ctx = runtime_ref.context();
+            plan_pow_exponent_shortcut_action_from_inputs(
+                ctx,
+                inner_base,
+                inner_op,
+                bases_equal,
+                rhs_pow_base_equal,
+                inner_base_is_zero,
+                inner_base_is_numeric,
+                inner_can_branch,
+            )
+        },
+        |left, right| {
+            let mut runtime_ref = runtime_cell.borrow_mut();
+            runtime_ref.bases_equivalent(left, right)
+        },
+        |id| {
+            let mut runtime_ref = runtime_cell.borrow_mut();
+            runtime_ref.render_expr(id)
+        },
+    )
 }
 
 /// Classify route for base-isolation in a power equation.
@@ -9027,6 +9094,62 @@ mod tests {
 
         fn render_expr(&mut self, expr: ExprId) -> String {
             format!("{}", expr)
+        }
+    }
+
+    #[test]
+    fn execute_pow_exponent_shortcut_with_maps_equal_pow_bases() {
+        let mut context = Context::new();
+        let base = context.var("b");
+        let exponent = context.var("x");
+        let rhs_exp = context.var("n");
+        let rhs = context.add(Expr::Pow(base, rhs_exp));
+        let context_cell = std::cell::RefCell::new(context);
+
+        let action = execute_pow_exponent_shortcut_with(
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            "x",
+            false,
+            false,
+            false,
+            |id| {
+                let context_ref = context_cell.borrow();
+                context_ref.get(id).clone()
+            },
+            |inner_base,
+             inner_op,
+             bases_equal,
+             rhs_pow_base_equal,
+             inner_base_is_zero,
+             inner_base_is_numeric,
+             inner_can_branch| {
+                let mut context_ref = context_cell.borrow_mut();
+                plan_pow_exponent_shortcut_action_from_inputs(
+                    &mut context_ref,
+                    inner_base,
+                    inner_op,
+                    bases_equal,
+                    rhs_pow_base_equal,
+                    inner_base_is_zero,
+                    inner_base_is_numeric,
+                    inner_can_branch,
+                )
+            },
+            |left, right| left == right,
+            |id| format!("{}", id),
+        );
+
+        match action {
+            PowExponentShortcutEngineAction::IsolateExponent { rhs, op, items } => {
+                assert_eq!(rhs, rhs_exp);
+                assert_eq!(op, RelOp::Eq);
+                assert_eq!(items.len(), 1);
+                assert!(items[0].description.contains("equal exponents"));
+            }
+            other => panic!("expected isolate-exponent shortcut, got {:?}", other),
         }
     }
 

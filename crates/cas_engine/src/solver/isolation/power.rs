@@ -6,48 +6,21 @@ use cas_solver_core::isolation_utils::is_numeric_zero;
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
     build_pow_base_isolation_action_with, derive_pow_isolation_route,
-    execute_pow_exponent_shortcut_with_runtime, plan_pow_exponent_log_isolation_step_with,
+    execute_pow_exponent_shortcut_with, plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
-    pow_exponent_rhs_contains_variable, resolve_log_terminal_outcome,
-    resolve_power_base_one_shortcut_for_pow_with, solve_pow_base_isolation_pipeline_with_item,
+    plan_pow_exponent_shortcut_action_from_inputs, pow_exponent_rhs_contains_variable,
+    resolve_log_terminal_outcome, resolve_power_base_one_shortcut_for_pow_with,
+    solve_pow_base_isolation_pipeline_with_item,
     solve_pow_exponent_log_isolation_rewrite_pipeline_with_item,
     solve_pow_exponent_log_unsupported_pipeline_with_items,
     solve_pow_exponent_shortcut_pipeline_with_item,
     solve_power_base_one_shortcut_pipeline_with_item,
     solve_solve_tactic_normalization_pipeline_with_item, solve_terminal_outcome_pipeline_with_item,
-    PowBaseIsolationPipelineSolved, PowExponentShortcutPipelineSolved, PowExponentShortcutRuntime,
-    PowIsolationRoute, ShortcutBasesEquivalentRuntime,
+    PowBaseIsolationPipelineSolved, PowExponentShortcutPipelineSolved, PowIsolationRoute,
 };
+use std::cell::RefCell;
 
 use super::{isolate, prepend_steps};
-
-struct EnginePowShortcutRuntime<'a> {
-    simplifier: &'a mut Simplifier,
-}
-
-impl ShortcutBasesEquivalentRuntime for EnginePowShortcutRuntime<'_> {
-    fn equivalent_nontrivial(&mut self, left: ExprId, right: ExprId) -> bool {
-        let diff = self.simplifier.context.add(Expr::Sub(left, right));
-        let (sim_diff, _) = self.simplifier.simplify(diff);
-        is_numeric_zero(&self.simplifier.context, sim_diff)
-    }
-}
-
-impl PowExponentShortcutRuntime for EnginePowShortcutRuntime<'_> {
-    fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.simplifier.context
-    }
-
-    fn bases_equivalent(&mut self, base: ExprId, candidate: ExprId) -> bool {
-        cas_solver_core::solve_outcome::shortcut_bases_equivalent_with_runtime(
-            base, candidate, self,
-        )
-    }
-
-    fn render_expr(&mut self, expr: ExprId) -> String {
-        solver_render_expr(&self.simplifier.context, expr)
-    }
-}
 
 /// Handle isolation for `Pow(b, e)`: `B^E = RHS`
 #[allow(clippy::too_many_arguments)]
@@ -152,9 +125,8 @@ fn isolate_pow_exponent(
     let base_is_zero = is_numeric_zero(&simplifier.context, b);
     let base_is_numeric = matches!(simplifier.context.get(b), Expr::Number(_));
     let shortcut_engine_action = {
-        let mut runtime = EnginePowShortcutRuntime { simplifier };
-        execute_pow_exponent_shortcut_with_runtime(
-            &mut runtime,
+        let simplifier_cell = RefCell::new(&mut *simplifier);
+        execute_pow_exponent_shortcut_with(
             e,
             b,
             rhs,
@@ -163,6 +135,42 @@ fn isolate_pow_exponent(
             base_is_zero,
             base_is_numeric,
             opts.budget.max_branches >= 2,
+            |id| {
+                let s_ref = simplifier_cell.borrow();
+                s_ref.context.get(id).clone()
+            },
+            |inner_base,
+             inner_op,
+             bases_equal,
+             rhs_pow_base_equal,
+             inner_base_is_zero,
+             inner_base_is_numeric,
+             inner_can_branch| {
+                let mut s_ref = simplifier_cell.borrow_mut();
+                plan_pow_exponent_shortcut_action_from_inputs(
+                    &mut s_ref.context,
+                    inner_base,
+                    inner_op,
+                    bases_equal,
+                    rhs_pow_base_equal,
+                    inner_base_is_zero,
+                    inner_base_is_numeric,
+                    inner_can_branch,
+                )
+            },
+            |left, right| {
+                if left == right {
+                    return true;
+                }
+                let mut s_ref = simplifier_cell.borrow_mut();
+                let diff = s_ref.context.add(Expr::Sub(left, right));
+                let (sim_diff, _) = s_ref.simplify(diff);
+                is_numeric_zero(&s_ref.context, sim_diff)
+            },
+            |id| {
+                let s_ref = simplifier_cell.borrow();
+                solver_render_expr(&s_ref.context, id)
+            },
         )
     };
     let shortcut_solved = {

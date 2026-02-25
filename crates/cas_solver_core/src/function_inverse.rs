@@ -381,31 +381,29 @@ pub fn plan_unary_inverse_isolation_step(
     })
 }
 
-/// Execute unary-inverse isolation with optional RHS cleanup via runtime hooks.
+/// Execute unary-inverse isolation with optional RHS cleanup using closure hooks.
 ///
 /// Returns `None` when function inversion is unsupported.
-pub fn execute_unary_inverse_with_runtime<R>(
-    runtime: &mut R,
+pub fn execute_unary_inverse_with<FPlan, FSimplifyRhs>(
     fn_name: &str,
     arg: ExprId,
     other: ExprId,
     op: RelOp,
     is_lhs: bool,
+    mut plan_unary_inverse_step: FPlan,
+    mut simplify_rhs_with_entries: FSimplifyRhs,
 ) -> Option<UnaryInverseSolveExecution>
 where
-    R: UnaryInverseRuntime,
+    FPlan: FnMut(&str, ExprId, ExprId, RelOp, bool) -> Option<UnaryInverseIsolationStepPlan>,
+    FSimplifyRhs: FnMut(ExprId) -> (ExprId, Vec<(String, ExprId)>),
 {
-    let plan = {
-        let ctx = runtime.context();
-        plan_unary_inverse_isolation_step(ctx, fn_name, arg, other, op, is_lhs)?
-    };
-
+    let plan = plan_unary_inverse_step(fn_name, arg, other, op, is_lhs)?;
     let rewritten_equation = plan.equation.clone();
     let mut rhs_cleanup_items = Vec::new();
     let mut target_rhs = rewritten_equation.rhs;
 
     if plan.needs_rhs_cleanup {
-        let (simplified_rhs, entries) = runtime.simplify_rhs_with_entries(target_rhs);
+        let (simplified_rhs, entries) = simplify_rhs_with_entries(target_rhs);
         target_rhs = simplified_rhs;
         rhs_cleanup_items = build_rhs_simplification_execution_items(
             rewritten_equation.lhs,
@@ -420,6 +418,46 @@ where
         rewritten_equation,
         target_rhs,
     })
+}
+
+/// Execute unary-inverse isolation with optional RHS cleanup via runtime hooks.
+///
+/// Returns `None` when function inversion is unsupported.
+pub fn execute_unary_inverse_with_runtime<R>(
+    runtime: &mut R,
+    fn_name: &str,
+    arg: ExprId,
+    other: ExprId,
+    op: RelOp,
+    is_lhs: bool,
+) -> Option<UnaryInverseSolveExecution>
+where
+    R: UnaryInverseRuntime,
+{
+    let runtime_cell = std::cell::RefCell::new(runtime);
+    execute_unary_inverse_with(
+        fn_name,
+        arg,
+        other,
+        op,
+        is_lhs,
+        |inner_fn_name, inner_arg, inner_other, inner_op, inner_is_lhs| {
+            let mut runtime_ref = runtime_cell.borrow_mut();
+            let ctx = runtime_ref.context();
+            plan_unary_inverse_isolation_step(
+                ctx,
+                inner_fn_name,
+                inner_arg,
+                inner_other,
+                inner_op,
+                inner_is_lhs,
+            )
+        },
+        |rhs| {
+            let mut runtime_ref = runtime_cell.borrow_mut();
+            runtime_ref.simplify_rhs_with_entries(rhs)
+        },
+    )
 }
 
 /// Execute recursive solve for unary-inverse rewrite output.
@@ -996,6 +1034,42 @@ mod tests {
                 vec![("Simplify RHS".to_string(), self.simplify_target)],
             )
         }
+    }
+
+    #[test]
+    fn execute_unary_inverse_with_applies_rhs_cleanup_when_needed() {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let y = context.var("y");
+        let cleaned = context.var("cleaned");
+        let mut simplify_calls = 0usize;
+
+        let execution = execute_unary_inverse_with(
+            "sin",
+            x,
+            y,
+            RelOp::Eq,
+            true,
+            |fn_name, arg, other, op, is_lhs| {
+                plan_unary_inverse_isolation_step(&mut context, fn_name, arg, other, op, is_lhs)
+            },
+            |rhs| {
+                simplify_calls += 1;
+                (
+                    cleaned,
+                    vec![
+                        ("Simplify RHS".to_string(), rhs),
+                        ("Done".to_string(), cleaned),
+                    ],
+                )
+            },
+        )
+        .expect("sin inverse should execute");
+
+        assert_eq!(simplify_calls, 1);
+        assert_eq!(execution.rewrite_items.len(), 1);
+        assert_eq!(execution.rhs_cleanup_items.len(), 2);
+        assert_eq!(execution.target_rhs, cleaned);
     }
 
     #[test]
