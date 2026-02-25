@@ -3,14 +3,36 @@ use crate::error::CasError;
 use crate::solver::solve_core::solve_with_ctx;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{medium_step, render_expr, SolveCtx, SolveStep, SolverOptions};
-use cas_ast::{Equation, SolutionSet};
+use cas_ast::{Equation, ExprId, SolutionSet};
 use cas_solver_core::substitution::{
-    plan_exponential_substitution_rewrite, solve_exponential_substitution_strategy_with_items_with,
-    SubstitutionStrategySolved,
+    plan_exponential_substitution_rewrite, solve_exponential_substitution_strategy_with_items,
+    SubstitutionStrategyRuntime, SubstitutionStrategySolved,
 };
-use std::cell::RefCell;
 
 pub struct SubstitutionStrategy;
+
+struct EngineSubstitutionRuntime<'a, 'ctx> {
+    simplifier: &'a mut Simplifier,
+    solve_ctx: &'ctx SolveCtx,
+}
+
+impl SubstitutionStrategyRuntime<CasError, SolveStep> for EngineSubstitutionRuntime<'_, '_> {
+    fn render_expr(&mut self, expr: ExprId) -> String {
+        render_expr(&self.simplifier.context, expr)
+    }
+
+    fn solve_equation(
+        &mut self,
+        equation: &Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        solve_with_ctx(equation, var, self.simplifier, self.solve_ctx)
+    }
+
+    fn map_step(&mut self, description: String, equation_after: Equation) -> SolveStep {
+        medium_step(description, equation_after)
+    }
+}
 
 impl SolverStrategy for SubstitutionStrategy {
     fn name(&self) -> &str {
@@ -31,22 +53,17 @@ impl SolverStrategy for SubstitutionStrategy {
             plan_exponential_substitution_rewrite(&mut simplifier.context, eq, var, SUB_VAR_NAME)
         {
             let include_didactic_items = simplifier.collect_steps();
-            let simplifier_cell = RefCell::new(simplifier);
-            let solved = solve_exponential_substitution_strategy_with_items_with(
+            let mut runtime = EngineSubstitutionRuntime {
+                simplifier,
+                solve_ctx: ctx,
+            };
+            let solved = solve_exponential_substitution_strategy_with_items(
+                &mut runtime,
                 eq.clone(),
                 rewrite_plan,
                 var,
                 SUB_VAR_NAME,
                 include_didactic_items,
-                |expr| {
-                    let s_ref = simplifier_cell.borrow();
-                    render_expr(&s_ref.context, expr)
-                },
-                |equation, var| {
-                    let mut s_ref = simplifier_cell.borrow_mut();
-                    solve_with_ctx(equation, var, &mut s_ref, ctx)
-                },
-                medium_step,
             );
 
             return match solved {

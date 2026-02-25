@@ -8,8 +8,10 @@ use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_analysis::{
     apply_nonzero_exclusion_guards_if_any, classify_equation_var_presence,
-    guard_solved_result_with_exclusions, merge_symbolic_with_verified_numeric,
-    normalize_variable_residual_with, simplify_equation_sides_for_var_with, EquationVarPresence,
+    guard_solved_result_with_exclusions, merge_symbolic_with_verified_numeric_with_runtime,
+    normalize_variable_residual_with_runtime, simplify_equation_sides_for_var_with_runtime,
+    DiscreteVerificationRuntime, EquationVarPresence, ResidualRewriteRuntime,
+    SolvePreprocessRuntime,
 };
 use cas_solver_core::solve_outcome::{
     resolve_var_eliminated_outcome_with, solve_var_eliminated_constraint_pipeline_with_item,
@@ -19,8 +21,6 @@ use cas_solver_core::strategy_kernels::{
     solve_rational_exponent_rewrite_pipeline_with_item_runtime_for_var,
     RationalExponentRewriteRuntime, StrategyKernelRuntime,
 };
-use std::cell::RefCell;
-
 use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::strategies::isolation_strategy::{
@@ -136,6 +136,59 @@ pub(crate) fn solve_with_options(
     solve_inner(eq, var, simplifier, opts, &ctx)
 }
 
+struct SolveCorePreprocessRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+}
+
+impl SolvePreprocessRuntime for SolveCorePreprocessRuntime<'_> {
+    fn context(&mut self) -> &mut cas_ast::Context {
+        &mut self.simplifier.context
+    }
+
+    fn simplify_for_solve(&mut self, expr: ExprId) -> ExprId {
+        self.simplifier.simplify_for_solve(expr)
+    }
+}
+
+struct SolveCoreResidualRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+}
+
+impl ResidualRewriteRuntime for SolveCoreResidualRuntime<'_> {
+    fn context(&mut self) -> &mut cas_ast::Context {
+        &mut self.simplifier.context
+    }
+
+    fn expand_algebraic(&mut self, expr: ExprId) -> ExprId {
+        crate::expand::expand(&mut self.simplifier.context, expr)
+    }
+
+    fn simplify_for_solve(&mut self, expr: ExprId) -> ExprId {
+        self.simplifier.simplify_for_solve(expr)
+    }
+
+    fn expand_trig(&mut self, expr: ExprId) -> ExprId {
+        self.simplifier.expand(expr).0
+    }
+}
+
+struct SolveCoreVerifyRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+    equation: &'a cas_ast::Equation,
+    var: &'a str,
+}
+
+impl DiscreteVerificationRuntime for SolveCoreVerifyRuntime<'_> {
+    fn verify_discrete(&mut self, solution: ExprId) -> bool {
+        super::check::verify_solution_by_equivalence(
+            self.simplifier,
+            self.equation,
+            self.var,
+            solution,
+        )
+    }
+}
+
 /// Core solver implementation.
 ///
 /// All public entry points delegate here. `parent_ctx` carries the shared
@@ -230,26 +283,8 @@ fn solve_inner(
     // This is crucial for equations like "1/3*x + 1/2*x = 5"
     // which need to be simplified to "5/6*x = 5" before isolation
     let mut simplified_eq = {
-        let simplifier_cell = RefCell::new(&mut *simplifier);
-        simplify_equation_sides_for_var_with(
-            eq,
-            var,
-            |expr, name| {
-                let s_ref = simplifier_cell.borrow();
-                cas_solver_core::isolation_utils::contains_var(&s_ref.context, expr, name)
-            },
-            |expr| {
-                let mut s_ref = simplifier_cell.borrow_mut();
-                s_ref.simplify_for_solve(expr)
-            },
-            |expr| {
-                let mut s_ref = simplifier_cell.borrow_mut();
-                cas_solver_core::isolation_utils::try_recompose_pow_quotient(
-                    &mut s_ref.context,
-                    expr,
-                )
-            },
-        )
+        let mut preprocess_runtime = SolveCorePreprocessRuntime { simplifier };
+        simplify_equation_sides_for_var_with_runtime(&mut preprocess_runtime, eq, var)
     };
 
     // NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)) and
@@ -317,36 +352,8 @@ fn solve_inner(
     // rewrites only when they eliminate the variable or significantly
     // reduce expression size.
     let normalized_diff = {
-        let simplifier_cell = RefCell::new(&mut *simplifier);
-        normalize_variable_residual_with(
-            diff_simplified,
-            var,
-            |expr, name| {
-                let s_ref = simplifier_cell.borrow();
-                cas_solver_core::isolation_utils::contains_var(&s_ref.context, expr, name)
-            },
-            |expr| {
-                let mut s_ref = simplifier_cell.borrow_mut();
-                crate::expand::expand(&mut s_ref.context, expr)
-            },
-            |expr| {
-                let mut s_ref = simplifier_cell.borrow_mut();
-                s_ref.simplify_for_solve(expr)
-            },
-            |expr| {
-                let mut s_ref = simplifier_cell.borrow_mut();
-                s_ref.expand(expr).0
-            },
-            |current, candidate, name| {
-                let s_ref = simplifier_cell.borrow();
-                cas_solver_core::solve_analysis::accept_residual_rewrite_candidate(
-                    &s_ref.context,
-                    current,
-                    candidate,
-                    name,
-                )
-            },
-        )
+        let mut residual_runtime = SolveCoreResidualRuntime { simplifier };
+        normalize_variable_residual_with_runtime(&mut residual_runtime, diff_simplified, var)
     };
     if normalized_diff != diff_simplified {
         diff_simplified = normalized_diff;
@@ -440,17 +447,17 @@ fn solve_inner(
                                 &simplifier.context,
                                 &sols,
                             );
-                        let verify_runtime = |solution: ExprId| {
-                            // Verify against ORIGINAL equation, not simplified form, so
-                            // domain-invalid roots (e.g. division by zero) are rejected.
-                            super::check::verify_solution_by_equivalence(
-                                simplifier, eq, var, solution,
-                            )
+                        // Verify against ORIGINAL equation, not simplified form, so
+                        // domain-invalid roots (e.g. division by zero) are rejected.
+                        let mut verify_runtime = SolveCoreVerifyRuntime {
+                            simplifier,
+                            equation: eq,
+                            var,
                         };
-                        let valid_sols = merge_symbolic_with_verified_numeric(
+                        let valid_sols = merge_symbolic_with_verified_numeric_with_runtime(
                             symbolic_solutions,
                             numeric_solutions,
-                            verify_runtime,
+                            &mut verify_runtime,
                         );
                         return Ok((SolutionSet::Discrete(valid_sols), steps));
                     }
