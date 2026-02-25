@@ -24,13 +24,6 @@ pub(crate) type ActionResult = (
 use crate::Simplifier;
 use cas_ast::{BuiltinFn, Equation, Expr, ExprId, RelOp};
 
-/// Raw input kind recorded by external session stores.
-#[derive(Debug, Clone, Copy)]
-pub enum StoredInputKind {
-    Expr(ExprId),
-    Eq { lhs: ExprId, rhs: ExprId },
-}
-
 /// Engine-level reference resolution error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EvalResolveError {
@@ -77,7 +70,8 @@ pub struct Engine {
 /// Session abstraction for `Engine::eval`, allowing callers to provide any
 /// state container that exposes the required eval components.
 pub trait EvalStore {
-    fn push_raw_input(&mut self, kind: StoredInputKind, raw_input: String) -> u64;
+    fn push_raw_expr(&mut self, expr: ExprId, raw_input: String) -> u64;
+    fn push_raw_equation(&mut self, lhs: ExprId, rhs: ExprId, raw_input: String) -> u64;
     fn touch_cached(&mut self, entry_id: u64);
     fn update_diagnostics(&mut self, id: u64, diagnostics: crate::diagnostics::Diagnostics);
     fn update_simplified(

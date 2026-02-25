@@ -1,7 +1,6 @@
 use cas_ast::ExprId;
 use cas_engine::{
     Diagnostics, EvalOptions, EvalResolveError, EvalSession, EvalStore, ProfileCache,
-    StoredInputKind,
 };
 
 use crate::{
@@ -47,12 +46,12 @@ impl std::ops::DerefMut for SessionEvalStore {
 }
 
 impl EvalStore for SessionEvalStore {
-    fn push_raw_input(&mut self, kind: StoredInputKind, raw_input: String) -> u64 {
-        let mapped = match kind {
-            StoredInputKind::Expr(expr) => crate::EntryKind::Expr(expr),
-            StoredInputKind::Eq { lhs, rhs } => crate::EntryKind::Eq { lhs, rhs },
-        };
-        self.0.push(mapped, raw_input)
+    fn push_raw_expr(&mut self, expr: ExprId, raw_input: String) -> u64 {
+        self.0.push(crate::EntryKind::Expr(expr), raw_input)
+    }
+
+    fn push_raw_equation(&mut self, lhs: ExprId, rhs: ExprId, raw_input: String) -> u64 {
+        self.0.push(crate::EntryKind::Eq { lhs, rhs }, raw_input)
     }
 
     fn touch_cached(&mut self, entry_id: u64) {

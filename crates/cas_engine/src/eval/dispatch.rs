@@ -76,18 +76,18 @@ impl Engine {
 
         // 2. Auto-store raw + parsed (unresolved)
         let stored_id = if req.auto_store {
-            let kind = if let Some((lhs, rhs)) =
+            let id = if let Some((lhs, rhs)) =
                 cas_ast::eq::unwrap_eq(&self.simplifier.context, req.parsed)
             {
-                StoredInputKind::Eq { lhs, rhs }
-            } else {
-                StoredInputKind::Expr(req.parsed)
-            };
-            Some(
                 session
                     .store_mut()
-                    .push_raw_input(kind, req.raw_input.clone()),
-            )
+                    .push_raw_equation(lhs, rhs, req.raw_input.clone())
+            } else {
+                session
+                    .store_mut()
+                    .push_raw_expr(req.parsed, req.raw_input.clone())
+            };
+            Some(id)
         } else {
             None
         };
