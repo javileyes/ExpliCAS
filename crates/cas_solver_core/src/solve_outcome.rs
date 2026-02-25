@@ -544,65 +544,6 @@ where
     }
 }
 
-/// Runtime contract for exponent-shortcut pipeline execution.
-pub trait PowExponentShortcutPipelineRuntime<E, S> {
-    /// Solve isolated exponent equation for `var`.
-    fn solve_isolated_exponent(
-        &mut self,
-        lhs_exponent: ExprId,
-        rhs: ExprId,
-        op: RelOp,
-        var: &str,
-    ) -> Result<(SolutionSet, Vec<S>), E>;
-    /// Map optional shortcut item to caller-owned step payload.
-    fn map_shortcut_item_to_step(&mut self, item: PowExponentShortcutExecutionItem) -> S;
-}
-
-/// Execute exponent-shortcut solve + optional first-item dispatch via runtime.
-pub fn solve_pow_exponent_shortcut_pipeline_with_item_runtime<R, E, S>(
-    action: PowExponentShortcutEngineAction,
-    lhs_exponent: ExprId,
-    include_item: bool,
-    var: &str,
-    runtime: &mut R,
-) -> Result<PowExponentShortcutPipelineSolved<S>, E>
-where
-    R: PowExponentShortcutPipelineRuntime<E, S>,
-{
-    match action {
-        PowExponentShortcutEngineAction::Continue => {
-            Ok(PowExponentShortcutPipelineSolved::Continue)
-        }
-        PowExponentShortcutEngineAction::IsolateExponent { rhs, op, items } => {
-            let mut steps = Vec::new();
-            if include_item {
-                if let Some(item) = items.into_iter().next() {
-                    steps.push(runtime.map_shortcut_item_to_step(item));
-                }
-            }
-            let (solution_set, mut sub_steps) =
-                runtime.solve_isolated_exponent(lhs_exponent, rhs, op, var)?;
-            steps.append(&mut sub_steps);
-            Ok(PowExponentShortcutPipelineSolved::Isolated {
-                solution_set,
-                steps,
-            })
-        }
-        PowExponentShortcutEngineAction::ReturnSolutionSet { solutions, items } => {
-            let mut steps = Vec::new();
-            if include_item {
-                if let Some(item) = items.into_iter().next() {
-                    steps.push(runtime.map_shortcut_item_to_step(item));
-                }
-            }
-            Ok(PowExponentShortcutPipelineSolved::ReturnedSolutionSet {
-                solution_set: solutions,
-                steps,
-            })
-        }
-    }
-}
-
 /// Solved base-one shortcut (`1^x = rhs`) with didactic payload.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowerBaseOneShortcutOutcome {
@@ -947,42 +888,6 @@ where
     ))
 }
 
-/// Runtime variant of `plan_pow_exponent_log_unsupported_execution_from_decision_with`.
-#[allow(clippy::too_many_arguments)]
-pub fn plan_pow_exponent_log_unsupported_execution_from_decision_with_runtime<R>(
-    ctx: &mut Context,
-    decision: &LogSolveDecision,
-    can_branch: bool,
-    lhs: ExprId,
-    rhs: ExprId,
-    var: &str,
-    exponent: ExprId,
-    base: ExprId,
-    rhs_expr: ExprId,
-    op: RelOp,
-    source_equation: Equation,
-    runtime: &mut R,
-) -> Option<PowExponentLogUnsupportedExecution>
-where
-    R: TermIsolationPlanRuntime,
-{
-    let base_desc = runtime.render_expr(ctx, base);
-    plan_pow_exponent_log_unsupported_execution_from_decision_with(
-        ctx,
-        decision,
-        can_branch,
-        lhs,
-        rhs,
-        var,
-        exponent,
-        base,
-        rhs_expr,
-        op,
-        source_equation,
-        |_, _| base_desc.clone(),
-    )
-}
-
 /// Routing for isolation when the variable is in the power base (`B^E = RHS`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PowBaseIsolationRoute {
@@ -1159,65 +1064,6 @@ where
                 }
             }
             let (solution_set, mut sub_steps) = solve_isolate(lhs, rhs, op)?;
-            steps.append(&mut sub_steps);
-            Ok(PowBaseIsolationPipelineSolved::Isolated {
-                solution_set,
-                steps,
-            })
-        }
-    }
-}
-
-/// Runtime contract for base-isolation pipeline execution.
-pub trait PowBaseIsolationRuntime<E, S> {
-    /// Solve isolated base equation for `var`.
-    fn solve_isolated_base(
-        &mut self,
-        lhs: ExprId,
-        rhs: ExprId,
-        op: RelOp,
-        var: &str,
-    ) -> Result<(SolutionSet, Vec<S>), E>;
-    /// Map optional base-isolation item to caller-owned step payload.
-    fn map_base_item_to_step(&mut self, item: PowBaseIsolationExecutionItem) -> S;
-}
-
-/// Execute base-isolation solve + optional first-item dispatch via runtime.
-pub fn solve_pow_base_isolation_pipeline_with_item_runtime<R, E, S>(
-    action: PowBaseIsolationEngineAction,
-    include_item: bool,
-    var: &str,
-    runtime: &mut R,
-) -> Result<PowBaseIsolationPipelineSolved<S>, E>
-where
-    R: PowBaseIsolationRuntime<E, S>,
-{
-    match action {
-        PowBaseIsolationEngineAction::ReturnSolutionSet { solutions, items } => {
-            let mut steps = Vec::new();
-            if include_item {
-                if let Some(item) = items.into_iter().next() {
-                    steps.push(runtime.map_base_item_to_step(item));
-                }
-            }
-            Ok(PowBaseIsolationPipelineSolved::ReturnedSolutionSet {
-                solution_set: solutions,
-                steps,
-            })
-        }
-        PowBaseIsolationEngineAction::IsolateBase {
-            lhs,
-            rhs,
-            op,
-            items,
-        } => {
-            let mut steps = Vec::new();
-            if include_item {
-                if let Some(item) = items.into_iter().next() {
-                    steps.push(runtime.map_base_item_to_step(item));
-                }
-            }
-            let (solution_set, mut sub_steps) = runtime.solve_isolated_base(lhs, rhs, op, var)?;
             steps.append(&mut sub_steps);
             Ok(PowBaseIsolationPipelineSolved::Isolated {
                 solution_set,
@@ -1880,86 +1726,6 @@ where
     })
 }
 
-/// Runtime contract for exponent-shortcut execution (`base^x = rhs`).
-///
-/// Callers inject equivalence checks and expression rendering while solver-core
-/// keeps shortcut routing centralized.
-pub trait PowExponentShortcutRuntime {
-    /// Mutable access to expression context.
-    fn context(&mut self) -> &mut Context;
-    /// Decide whether two bases should be treated as equivalent for shortcut routing.
-    fn bases_equivalent(&mut self, base: ExprId, candidate: ExprId) -> bool;
-    /// Render an expression for didactic messages.
-    fn render_expr(&mut self, expr: ExprId) -> String;
-}
-
-/// Execute the full exponent-shortcut pipeline for `base^x op rhs`.
-///
-/// This performs:
-/// 1. RHS shortcut-shape detection
-/// 2. Shortcut action planning
-/// 3. Didactic/executable action mapping
-#[allow(clippy::too_many_arguments)]
-pub fn execute_pow_exponent_shortcut_with_runtime<R>(
-    runtime: &mut R,
-    exponent_lhs: ExprId,
-    base: ExprId,
-    rhs: ExprId,
-    original_op: RelOp,
-    var: &str,
-    base_is_zero: bool,
-    base_is_numeric: bool,
-    can_branch: bool,
-) -> PowExponentShortcutEngineAction
-where
-    R: PowExponentShortcutRuntime,
-{
-    let runtime_cell = std::cell::RefCell::new(runtime);
-    execute_pow_exponent_shortcut_with(
-        exponent_lhs,
-        base,
-        rhs,
-        original_op,
-        var,
-        base_is_zero,
-        base_is_numeric,
-        can_branch,
-        |id| {
-            let mut runtime_ref = runtime_cell.borrow_mut();
-            let ctx = runtime_ref.context();
-            ctx.get(id).clone()
-        },
-        |inner_base,
-         inner_op,
-         bases_equal,
-         rhs_pow_base_equal,
-         inner_base_is_zero,
-         inner_base_is_numeric,
-         inner_can_branch| {
-            let mut runtime_ref = runtime_cell.borrow_mut();
-            let ctx = runtime_ref.context();
-            plan_pow_exponent_shortcut_action_from_inputs(
-                ctx,
-                inner_base,
-                inner_op,
-                bases_equal,
-                rhs_pow_base_equal,
-                inner_base_is_zero,
-                inner_base_is_numeric,
-                inner_can_branch,
-            )
-        },
-        |left, right| {
-            let mut runtime_ref = runtime_cell.borrow_mut();
-            runtime_ref.bases_equivalent(left, right)
-        },
-        |id| {
-            let mut runtime_ref = runtime_cell.borrow_mut();
-            runtime_ref.render_expr(id)
-        },
-    )
-}
-
 /// Classify route for base-isolation in a power equation.
 pub fn classify_pow_base_isolation_route(
     exponent_is_even: bool,
@@ -2126,47 +1892,6 @@ where
     map_pow_base_isolation_plan_with(plan, base, exponent, rhs, op, |id| render_expr(ctx, id))
 }
 
-/// Runtime variant of `build_pow_base_isolation_action_with`.
-#[allow(clippy::too_many_arguments)]
-pub fn build_pow_base_isolation_action_with_runtime<R>(
-    ctx: &mut Context,
-    base: ExprId,
-    exponent: ExprId,
-    rhs: ExprId,
-    op: RelOp,
-    runtime: &mut R,
-) -> PowBaseIsolationEngineAction
-where
-    R: TermIsolationPlanRuntime,
-{
-    let base_desc = runtime.render_expr(ctx, base);
-    let exponent_desc = runtime.render_expr(ctx, exponent);
-    let rhs_desc = runtime.render_expr(ctx, rhs);
-
-    let plan = plan_pow_base_isolation(
-        ctx,
-        base,
-        exponent,
-        rhs,
-        op.clone(),
-        crate::isolation_utils::is_even_integer_expr(ctx, exponent),
-        crate::isolation_utils::is_known_negative(ctx, rhs),
-        crate::isolation_utils::is_known_negative(ctx, exponent),
-    );
-
-    map_pow_base_isolation_plan_with(plan, base, exponent, rhs, op, |id| {
-        if id == base {
-            base_desc.clone()
-        } else if id == exponent {
-            exponent_desc.clone()
-        } else if id == rhs {
-            rhs_desc.clone()
-        } else {
-            id.to_string()
-        }
-    })
-}
-
 /// Build didactic narration for terminal base-isolation outcomes.
 pub fn pow_base_isolation_terminal_message(
     route: PowBaseIsolationRoute,
@@ -2311,30 +2036,6 @@ where
 {
     let rewrite = plan_solve_tactic_normalization_step(ctx, base, exponent, rhs, op);
     collect_term_isolation_rewrite_first_step_with_item(&rewrite, include_item, map_item_to_step)
-}
-
-/// Runtime adapter for solve-tactic normalization didactic mapping.
-pub trait SolveTacticNormalizationRuntime<S> {
-    fn context(&mut self) -> &mut Context;
-    fn map_solve_tactic_item_to_step(&mut self, item: TermIsolationRewriteExecutionItem) -> S;
-}
-
-/// Runtime-based variant of `solve_solve_tactic_normalization_pipeline_with_item`.
-pub fn solve_solve_tactic_normalization_pipeline_with_item_runtime<S, R>(
-    base: ExprId,
-    exponent: ExprId,
-    rhs: ExprId,
-    op: RelOp,
-    include_item: bool,
-    runtime: &mut R,
-) -> Vec<S>
-where
-    R: SolveTacticNormalizationRuntime<S>,
-{
-    let rewrite = plan_solve_tactic_normalization_step(runtime.context(), base, exponent, rhs, op);
-    collect_term_isolation_rewrite_first_step_with_item(&rewrite, include_item, |item| {
-        runtime.map_solve_tactic_item_to_step(item)
-    })
 }
 
 /// Build didactic narration for multiplicative isolation.
@@ -2763,21 +2464,6 @@ pub fn plan_negated_lhs_isolation_step(
     build_term_isolation_rewrite_plan_from_item(equation, item)
 }
 
-/// Runtime contract for planning term-isolation didactic rewrites.
-pub trait TermIsolationPlanRuntime {
-    /// Render one expression in the provided core context.
-    fn render_expr(&mut self, core_ctx: &Context, expr: ExprId) -> String;
-}
-
-impl<F> TermIsolationPlanRuntime for F
-where
-    F: FnMut(&Context, ExprId) -> String,
-{
-    fn render_expr(&mut self, core_ctx: &Context, expr: ExprId) -> String {
-        self(core_ctx, expr)
-    }
-}
-
 /// Plan add-operand isolation and corresponding didactic step.
 pub fn plan_add_operand_isolation_step_with<F>(
     ctx: &mut Context,
@@ -2793,22 +2479,6 @@ where
     let equation = crate::equation_rewrite::isolate_add_operand(ctx, kept, moved, rhs, op);
     let item = build_add_operand_isolation_item_with(equation.clone(), moved, render_expr);
     build_term_isolation_rewrite_plan_from_item(equation, item)
-}
-
-/// Plan add-operand isolation and didactic step via runtime renderer.
-pub fn plan_add_operand_isolation_step_with_runtime<R>(
-    ctx: &mut Context,
-    kept: ExprId,
-    moved: ExprId,
-    rhs: ExprId,
-    op: RelOp,
-    runtime: &mut R,
-) -> TermIsolationRewritePlan
-where
-    R: TermIsolationPlanRuntime,
-{
-    let moved_desc = runtime.render_expr(ctx, moved);
-    plan_add_operand_isolation_step_with(ctx, kept, moved, rhs, op, |_| moved_desc.clone())
 }
 
 /// Plan sub-minuend isolation and corresponding didactic step.
@@ -2869,31 +2539,6 @@ where
     }
 }
 
-/// Plan subtraction isolation `(l - r) = rhs` using runtime renderer.
-pub fn plan_sub_isolation_step_with_runtime<R>(
-    ctx: &mut Context,
-    left: ExprId,
-    right: ExprId,
-    rhs: ExprId,
-    op: RelOp,
-    var: &str,
-    runtime: &mut R,
-) -> TermIsolationRewritePlan
-where
-    R: TermIsolationPlanRuntime,
-{
-    let moved = if matches!(
-        derive_sub_isolation_route(ctx, left, var),
-        SubIsolationRoute::Minuend
-    ) {
-        right
-    } else {
-        left
-    };
-    let moved_desc = runtime.render_expr(ctx, moved);
-    plan_sub_isolation_step_with(ctx, left, right, rhs, op, var, |_| moved_desc.clone())
-}
-
 /// Plan multiplicative-factor isolation and corresponding didactic step.
 pub fn plan_mul_factor_isolation_step_with<F>(
     ctx: &mut Context,
@@ -2911,25 +2556,6 @@ where
         crate::equation_rewrite::isolate_mul_factor(ctx, kept, moved, rhs, op, moved_is_negative);
     let item = build_mul_factor_isolation_item_with(equation.clone(), moved, render_expr);
     build_term_isolation_rewrite_plan_from_item(equation, item)
-}
-
-/// Plan multiplicative-factor isolation and didactic step via runtime renderer.
-pub fn plan_mul_factor_isolation_step_with_runtime<R>(
-    ctx: &mut Context,
-    kept: ExprId,
-    moved: ExprId,
-    rhs: ExprId,
-    op: RelOp,
-    moved_is_negative: bool,
-    runtime: &mut R,
-) -> TermIsolationRewritePlan
-where
-    R: TermIsolationPlanRuntime,
-{
-    let moved_desc = runtime.render_expr(ctx, moved);
-    plan_mul_factor_isolation_step_with(ctx, kept, moved, rhs, op, moved_is_negative, |_| {
-        moved_desc.clone()
-    })
 }
 
 /// Plan division-numerator isolation and corresponding didactic step.
@@ -2955,31 +2581,6 @@ where
     );
     let item = build_div_numerator_isolation_item_with(equation.clone(), denominator, render_expr);
     build_term_isolation_rewrite_plan_from_item(equation, item)
-}
-
-/// Plan division-numerator isolation and didactic step via runtime renderer.
-pub fn plan_div_numerator_isolation_step_with_runtime<R>(
-    ctx: &mut Context,
-    numerator: ExprId,
-    denominator: ExprId,
-    rhs: ExprId,
-    op: RelOp,
-    denominator_is_negative: bool,
-    runtime: &mut R,
-) -> TermIsolationRewritePlan
-where
-    R: TermIsolationPlanRuntime,
-{
-    let denominator_desc = runtime.render_expr(ctx, denominator);
-    plan_div_numerator_isolation_step_with(
-        ctx,
-        numerator,
-        denominator,
-        rhs,
-        op,
-        denominator_is_negative,
-        |_| denominator_desc.clone(),
-    )
 }
 
 /// Plan denominator isolation with `rhs == 0` safety guard.
@@ -3216,34 +2817,6 @@ where
     if include_item {
         let item = build_terminal_outcome_item(&outcome, equation_after, residual_suffix);
         steps.push(map_item_to_step(item));
-    }
-    TerminalOutcomePipelineSolved {
-        solution_set,
-        steps,
-    }
-}
-
-/// Runtime adapter for terminal-outcome didactic mapping.
-pub trait TerminalOutcomePipelineRuntime<S> {
-    fn map_terminal_outcome_item_to_step(&mut self, item: TermIsolationExecutionItem) -> S;
-}
-
-/// Runtime-based variant of `solve_terminal_outcome_pipeline_with_item`.
-pub fn solve_terminal_outcome_pipeline_with_item_runtime<S, R>(
-    outcome: TerminalSolveOutcome,
-    equation_after: Equation,
-    residual_suffix: &str,
-    include_item: bool,
-    runtime: &mut R,
-) -> TerminalOutcomePipelineSolved<S>
-where
-    R: TerminalOutcomePipelineRuntime<S>,
-{
-    let solution_set = outcome.solutions.clone();
-    let mut steps = Vec::new();
-    if include_item {
-        let item = build_terminal_outcome_item(&outcome, equation_after, residual_suffix);
-        steps.push(runtime.map_terminal_outcome_item_to_step(item));
     }
     TerminalOutcomePipelineSolved {
         solution_set,
@@ -3506,23 +3079,6 @@ where
         equation: step.equation_after.clone(),
         items,
     }
-}
-
-/// Runtime variant of `plan_pow_exponent_log_isolation_step_with`.
-pub fn plan_pow_exponent_log_isolation_step_with_runtime<R>(
-    ctx: &mut Context,
-    exponent: ExprId,
-    base: ExprId,
-    rhs: ExprId,
-    op: RelOp,
-    guard_message: Option<&str>,
-    runtime: &mut R,
-) -> PowExponentLogIsolationRewritePlan
-where
-    R: TermIsolationPlanRuntime,
-{
-    let base_desc = runtime.render_expr(ctx, base);
-    plan_pow_exponent_log_isolation_step(ctx, exponent, base, rhs, op, guard_message, &base_desc)
 }
 
 /// Plan guarded logarithmic isolation (`x = log_b(rhs)`) and render base display
@@ -4276,33 +3832,6 @@ where
         AbsIsolationPlan::SplitBranches { positive, negative } => {
             Ok(AbsIsolationSolved::Split(solve_split(positive, negative)?))
         }
-    }
-}
-
-/// Runtime contract for absolute-value isolation plan dispatch.
-pub trait AbsIsolationPlanRuntime<E, TSingle, TSplit> {
-    /// Handle a single-equation absolute isolation branch.
-    fn solve_single(&mut self, equation: Equation) -> Result<TSingle, E>;
-    /// Handle split branches `(+rhs, -rhs)` for absolute isolation.
-    fn solve_split(&mut self, positive: Equation, negative: Equation) -> Result<TSplit, E>;
-}
-
-/// Runtime variant of `solve_abs_isolation_plan_with`.
-pub fn solve_abs_isolation_plan_with_runtime<R, E, TSingle, TSplit>(
-    plan: AbsIsolationPlan,
-    runtime: &mut R,
-) -> Result<AbsIsolationSolved<TSingle, TSplit>, E>
-where
-    R: AbsIsolationPlanRuntime<E, TSingle, TSplit>,
-{
-    match plan {
-        AbsIsolationPlan::ReturnEmptySet => Ok(AbsIsolationSolved::ReturnedEmptySet),
-        AbsIsolationPlan::IsolateSingleEquation { equation } => Ok(
-            AbsIsolationSolved::IsolatedSingle(runtime.solve_single(equation)?),
-        ),
-        AbsIsolationPlan::SplitBranches { positive, negative } => Ok(AbsIsolationSolved::Split(
-            runtime.solve_split(positive, negative)?,
-        )),
     }
 }
 
@@ -6336,14 +5865,6 @@ mod tests {
         );
     }
 
-    struct TestTermIsolationPlanRuntime;
-
-    impl TermIsolationPlanRuntime for TestTermIsolationPlanRuntime {
-        fn render_expr(&mut self, _core_ctx: &Context, expr: ExprId) -> String {
-            format!("runtime({expr})")
-        }
-    }
-
     #[test]
     fn resolve_power_base_one_shortcut_with_returns_none_when_not_applicable() {
         let mut ctx = Context::new();
@@ -7261,94 +6782,6 @@ mod tests {
         }
     }
 
-    #[derive(Default)]
-    struct TestAbsIsolationPlanRuntime {
-        single_calls: usize,
-        split_calls: usize,
-    }
-
-    impl AbsIsolationPlanRuntime<(), Equation, (Equation, Equation)> for TestAbsIsolationPlanRuntime {
-        fn solve_single(&mut self, equation: Equation) -> Result<Equation, ()> {
-            self.single_calls += 1;
-            Ok(equation)
-        }
-
-        fn solve_split(
-            &mut self,
-            positive: Equation,
-            negative: Equation,
-        ) -> Result<(Equation, Equation), ()> {
-            self.split_calls += 1;
-            Ok((positive, negative))
-        }
-    }
-
-    #[test]
-    fn solve_abs_isolation_plan_with_runtime_executes_single_branch() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let rhs = ctx.num(0);
-        let equation = Equation {
-            lhs: x,
-            rhs,
-            op: RelOp::Eq,
-        };
-        let mut runtime = TestAbsIsolationPlanRuntime::default();
-
-        let solved = solve_abs_isolation_plan_with_runtime(
-            AbsIsolationPlan::IsolateSingleEquation {
-                equation: equation.clone(),
-            },
-            &mut runtime,
-        )
-        .expect("runtime solve should succeed");
-
-        assert_eq!(runtime.single_calls, 1);
-        assert_eq!(runtime.split_calls, 0);
-        match solved {
-            AbsIsolationSolved::IsolatedSingle(eq) => assert_eq!(eq, equation),
-            other => panic!("expected single solved variant, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn solve_abs_isolation_plan_with_runtime_executes_split_branch() {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let two = ctx.num(2);
-        let neg_two = ctx.num(-2);
-        let positive = Equation {
-            lhs: x,
-            rhs: two,
-            op: RelOp::Eq,
-        };
-        let negative = Equation {
-            lhs: x,
-            rhs: neg_two,
-            op: RelOp::Eq,
-        };
-        let mut runtime = TestAbsIsolationPlanRuntime::default();
-
-        let solved = solve_abs_isolation_plan_with_runtime(
-            AbsIsolationPlan::SplitBranches {
-                positive: positive.clone(),
-                negative: negative.clone(),
-            },
-            &mut runtime,
-        )
-        .expect("runtime solve should succeed");
-
-        assert_eq!(runtime.single_calls, 0);
-        assert_eq!(runtime.split_calls, 1);
-        match solved {
-            AbsIsolationSolved::Split((pos, neg)) => {
-                assert_eq!(pos, positive);
-                assert_eq!(neg, negative);
-            }
-            other => panic!("expected split solved variant, got {:?}", other),
-        }
-    }
-
     #[test]
     fn abs_guard_wraps_solution_when_rhs_contains_var() {
         let mut ctx = Context::new();
@@ -7705,78 +7138,6 @@ mod tests {
 
         assert!(matches!(solved.solution_set, SolutionSet::Residual(id) if id == residual));
         assert!(solved.steps.is_empty());
-    }
-
-    #[derive(Default)]
-    struct TestTerminalOutcomeRuntime {
-        calls: usize,
-    }
-
-    impl TerminalOutcomePipelineRuntime<String> for TestTerminalOutcomeRuntime {
-        fn map_terminal_outcome_item_to_step(
-            &mut self,
-            item: TermIsolationExecutionItem,
-        ) -> String {
-            self.calls += 1;
-            item.description
-        }
-    }
-
-    #[test]
-    fn solve_terminal_outcome_pipeline_with_item_runtime_emits_step_when_enabled() {
-        let mut ctx = Context::new();
-        let lhs = ctx.var("x");
-        let rhs = ctx.var("y");
-        let outcome = TerminalSolveOutcome {
-            message: "no real solutions",
-            solutions: SolutionSet::Empty,
-        };
-        let mut runtime = TestTerminalOutcomeRuntime::default();
-
-        let solved = solve_terminal_outcome_pipeline_with_item_runtime(
-            outcome,
-            Equation {
-                lhs,
-                rhs,
-                op: RelOp::Eq,
-            },
-            " (residual)",
-            true,
-            &mut runtime,
-        );
-
-        assert!(matches!(solved.solution_set, SolutionSet::Empty));
-        assert_eq!(solved.steps, vec!["no real solutions".to_string()]);
-        assert_eq!(runtime.calls, 1);
-    }
-
-    #[test]
-    fn solve_terminal_outcome_pipeline_with_item_runtime_omits_step_when_disabled() {
-        let mut ctx = Context::new();
-        let lhs = ctx.var("x");
-        let rhs = ctx.var("y");
-        let residual = ctx.var("residual");
-        let outcome = TerminalSolveOutcome {
-            message: "needs complex log",
-            solutions: SolutionSet::Residual(residual),
-        };
-        let mut runtime = TestTerminalOutcomeRuntime::default();
-
-        let solved = solve_terminal_outcome_pipeline_with_item_runtime(
-            outcome,
-            Equation {
-                lhs,
-                rhs,
-                op: RelOp::Eq,
-            },
-            " (residual)",
-            false,
-            &mut runtime,
-        );
-
-        assert!(matches!(solved.solution_set, SolutionSet::Residual(id) if id == residual));
-        assert!(solved.steps.is_empty());
-        assert_eq!(runtime.calls, 0);
     }
 
     #[test]
@@ -8299,8 +7660,7 @@ mod tests {
     }
 
     #[test]
-    fn plan_pow_exponent_log_unsupported_execution_from_decision_with_runtime_maps_guarded_variant()
-    {
+    fn plan_pow_exponent_log_unsupported_execution_from_decision_with_uses_renderer() {
         let mut ctx = Context::new();
         let exponent = ctx.var("x");
         let base = ctx.var("a");
@@ -8312,8 +7672,7 @@ mod tests {
                 crate::log_domain::LogAssumption::PositiveRhs,
             ],
         );
-        let mut runtime = TestTermIsolationPlanRuntime;
-        let out = plan_pow_exponent_log_unsupported_execution_from_decision_with_runtime(
+        let out = plan_pow_exponent_log_unsupported_execution_from_decision_with(
             &mut ctx,
             &decision,
             true,
@@ -8329,7 +7688,7 @@ mod tests {
                 rhs,
                 op: RelOp::Eq,
             },
-            &mut runtime,
+            |_, id| format!("runtime({id})"),
         )
         .expect("must map unsupported decision");
         match out {
@@ -8732,24 +8091,6 @@ mod tests {
         ));
     }
 
-    struct MockPowShortcutRuntime {
-        context: Context,
-    }
-
-    impl PowExponentShortcutRuntime for MockPowShortcutRuntime {
-        fn context(&mut self) -> &mut Context {
-            &mut self.context
-        }
-
-        fn bases_equivalent(&mut self, base: ExprId, candidate: ExprId) -> bool {
-            base == candidate
-        }
-
-        fn render_expr(&mut self, expr: ExprId) -> String {
-            format!("{}", expr)
-        }
-    }
-
     #[test]
     fn execute_pow_exponent_shortcut_with_maps_equal_pow_bases() {
         let mut context = Context::new();
@@ -8804,61 +8145,6 @@ mod tests {
             }
             other => panic!("expected isolate-exponent shortcut, got {:?}", other),
         }
-    }
-
-    #[test]
-    fn execute_pow_exponent_shortcut_with_runtime_maps_equal_pow_bases() {
-        let mut context = Context::new();
-        let base = context.var("b");
-        let exponent = context.var("x");
-        let rhs_exp = context.var("n");
-        let rhs = context.add(Expr::Pow(base, rhs_exp));
-        let mut runtime = MockPowShortcutRuntime { context };
-
-        let action = execute_pow_exponent_shortcut_with_runtime(
-            &mut runtime,
-            exponent,
-            base,
-            rhs,
-            RelOp::Eq,
-            "x",
-            false,
-            false,
-            false,
-        );
-
-        match action {
-            PowExponentShortcutEngineAction::IsolateExponent { rhs, op, items } => {
-                assert_eq!(rhs, rhs_exp);
-                assert_eq!(op, RelOp::Eq);
-                assert_eq!(items.len(), 1);
-                assert!(items[0].description.contains("equal exponents"));
-            }
-            other => panic!("expected isolate-exponent shortcut, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn execute_pow_exponent_shortcut_with_runtime_returns_continue_when_no_shortcut() {
-        let mut context = Context::new();
-        let base = context.var("b");
-        let exponent = context.var("x");
-        let rhs = context.var("y");
-        let mut runtime = MockPowShortcutRuntime { context };
-
-        let action = execute_pow_exponent_shortcut_with_runtime(
-            &mut runtime,
-            exponent,
-            base,
-            rhs,
-            RelOp::Eq,
-            "x",
-            false,
-            false,
-            false,
-        );
-
-        assert_eq!(action, PowExponentShortcutEngineAction::Continue);
     }
 
     #[test]
@@ -9128,19 +8414,18 @@ mod tests {
     }
 
     #[test]
-    fn build_pow_base_isolation_action_with_runtime_computes_predicates_and_maps_payload() {
+    fn build_pow_base_isolation_action_with_uses_renderer_for_payload() {
         let mut ctx = Context::new();
         let base = ctx.var("x");
         let exponent = ctx.num(2);
         let rhs = ctx.num(-1);
-        let mut runtime = TestTermIsolationPlanRuntime;
-        let action = build_pow_base_isolation_action_with_runtime(
+        let action = build_pow_base_isolation_action_with(
             &mut ctx,
             base,
             exponent,
             rhs,
             RelOp::Eq,
-            &mut runtime,
+            |_, id| format!("runtime({id})"),
         );
 
         match action {
@@ -9301,134 +8586,6 @@ mod tests {
         }
     }
 
-    struct TestPowExponentShortcutPipelineRuntime {
-        solve_result: (SolutionSet, Vec<String>),
-        last_call: Option<(ExprId, ExprId, RelOp, String)>,
-    }
-
-    impl PowExponentShortcutPipelineRuntime<&'static str, String>
-        for TestPowExponentShortcutPipelineRuntime
-    {
-        fn solve_isolated_exponent(
-            &mut self,
-            lhs_exponent: ExprId,
-            rhs: ExprId,
-            op: RelOp,
-            var: &str,
-        ) -> Result<(SolutionSet, Vec<String>), &'static str> {
-            self.last_call = Some((lhs_exponent, rhs, op, var.to_string()));
-            Ok(self.solve_result.clone())
-        }
-
-        fn map_shortcut_item_to_step(&mut self, item: PowExponentShortcutExecutionItem) -> String {
-            item.description
-        }
-    }
-
-    #[test]
-    fn solve_pow_exponent_shortcut_pipeline_with_item_runtime_forwards_call_and_steps() {
-        let mut ctx = Context::new();
-        let e = ctx.var("e");
-        let rhs = ctx.var("n");
-        let x = ctx.var("x");
-        let action = PowExponentShortcutEngineAction::IsolateExponent {
-            rhs,
-            op: RelOp::Eq,
-            items: vec![PowExponentShortcutExecutionItem {
-                equation: Equation {
-                    lhs: x,
-                    rhs,
-                    op: RelOp::Eq,
-                },
-                description: "shortcut-step".to_string(),
-            }],
-        };
-        let mut runtime = TestPowExponentShortcutPipelineRuntime {
-            solve_result: (
-                SolutionSet::Discrete(vec![rhs]),
-                vec!["runtime-substep".to_string()],
-            ),
-            last_call: None,
-        };
-
-        let solved = solve_pow_exponent_shortcut_pipeline_with_item_runtime(
-            action,
-            e,
-            true,
-            "x",
-            &mut runtime,
-        )
-        .expect("runtime pipeline should solve");
-
-        assert_eq!(
-            runtime.last_call,
-            Some((e, rhs, RelOp::Eq, "x".to_string()))
-        );
-        match solved {
-            PowExponentShortcutPipelineSolved::Isolated {
-                solution_set,
-                steps,
-            } => {
-                assert!(matches!(solution_set, SolutionSet::Discrete(_)));
-                assert_eq!(
-                    steps,
-                    vec!["shortcut-step".to_string(), "runtime-substep".to_string()]
-                );
-            }
-            other => panic!(
-                "expected isolated runtime shortcut pipeline result, got {:?}",
-                other
-            ),
-        }
-    }
-
-    #[test]
-    fn solve_pow_exponent_shortcut_pipeline_with_item_runtime_omits_item_for_terminal_branch_when_disabled(
-    ) {
-        let mut ctx = Context::new();
-        let e = ctx.var("e");
-        let x = ctx.var("x");
-        let action = PowExponentShortcutEngineAction::ReturnSolutionSet {
-            solutions: SolutionSet::Empty,
-            items: vec![PowExponentShortcutExecutionItem {
-                equation: Equation {
-                    lhs: x,
-                    rhs: x,
-                    op: RelOp::Eq,
-                },
-                description: "terminal".to_string(),
-            }],
-        };
-        let mut runtime = TestPowExponentShortcutPipelineRuntime {
-            solve_result: (SolutionSet::AllReals, vec!["unexpected".to_string()]),
-            last_call: None,
-        };
-
-        let solved = solve_pow_exponent_shortcut_pipeline_with_item_runtime(
-            action,
-            e,
-            false,
-            "x",
-            &mut runtime,
-        )
-        .expect("runtime pipeline should solve");
-
-        assert_eq!(runtime.last_call, None);
-        match solved {
-            PowExponentShortcutPipelineSolved::ReturnedSolutionSet {
-                solution_set,
-                steps,
-            } => {
-                assert!(matches!(solution_set, SolutionSet::Empty));
-                assert!(steps.is_empty());
-            }
-            other => panic!(
-                "expected terminal runtime shortcut pipeline result, got {:?}",
-                other
-            ),
-        }
-    }
-
     #[test]
     fn solve_pow_base_isolation_action_with_invokes_isolate_once() {
         let mut ctx = Context::new();
@@ -9566,115 +8723,6 @@ mod tests {
                 assert!(steps.is_empty());
             }
             other => panic!("expected terminal pipeline result, got {:?}", other),
-        }
-    }
-
-    struct TestPowBaseIsolationRuntime {
-        solve_result: (SolutionSet, Vec<String>),
-        last_call: Option<(ExprId, ExprId, RelOp, String)>,
-    }
-
-    impl PowBaseIsolationRuntime<&'static str, String> for TestPowBaseIsolationRuntime {
-        fn solve_isolated_base(
-            &mut self,
-            lhs: ExprId,
-            rhs: ExprId,
-            op: RelOp,
-            var: &str,
-        ) -> Result<(SolutionSet, Vec<String>), &'static str> {
-            self.last_call = Some((lhs, rhs, op, var.to_string()));
-            Ok(self.solve_result.clone())
-        }
-
-        fn map_base_item_to_step(&mut self, item: PowBaseIsolationExecutionItem) -> String {
-            item.description
-        }
-    }
-
-    #[test]
-    fn solve_pow_base_isolation_pipeline_with_item_runtime_forwards_call_and_steps() {
-        let mut ctx = Context::new();
-        let lhs = ctx.var("x");
-        let rhs = ctx.var("r");
-        let action = PowBaseIsolationEngineAction::IsolateBase {
-            lhs,
-            rhs,
-            op: RelOp::Eq,
-            items: vec![PowBaseIsolationExecutionItem {
-                equation: Equation {
-                    lhs,
-                    rhs,
-                    op: RelOp::Eq,
-                },
-                description: "Take root".to_string(),
-            }],
-        };
-        let mut runtime = TestPowBaseIsolationRuntime {
-            solve_result: (
-                SolutionSet::Discrete(vec![rhs]),
-                vec!["runtime-substep".to_string()],
-            ),
-            last_call: None,
-        };
-
-        let solved =
-            solve_pow_base_isolation_pipeline_with_item_runtime(action, true, "x", &mut runtime)
-                .expect("runtime pipeline should solve");
-
-        assert_eq!(
-            runtime.last_call,
-            Some((lhs, rhs, RelOp::Eq, "x".to_string()))
-        );
-        match solved {
-            PowBaseIsolationPipelineSolved::Isolated {
-                solution_set,
-                steps,
-            } => {
-                assert!(matches!(solution_set, SolutionSet::Discrete(_)));
-                assert_eq!(
-                    steps,
-                    vec!["Take root".to_string(), "runtime-substep".to_string()]
-                );
-            }
-            other => panic!("expected isolated runtime pipeline result, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn solve_pow_base_isolation_pipeline_with_item_runtime_omits_item_for_terminal_branch_when_disabled(
-    ) {
-        let mut ctx = Context::new();
-        let x = ctx.var("x");
-        let action = PowBaseIsolationEngineAction::ReturnSolutionSet {
-            solutions: SolutionSet::Empty,
-            items: vec![PowBaseIsolationExecutionItem {
-                equation: Equation {
-                    lhs: x,
-                    rhs: x,
-                    op: RelOp::Eq,
-                },
-                description: "terminal".to_string(),
-            }],
-        };
-        let mut runtime = TestPowBaseIsolationRuntime {
-            solve_result: (SolutionSet::AllReals, vec!["unexpected".to_string()]),
-            last_call: None,
-        };
-
-        let solved =
-            solve_pow_base_isolation_pipeline_with_item_runtime(action, false, "x", &mut runtime)
-                .expect("runtime pipeline should solve");
-
-        assert_eq!(runtime.last_call, None);
-        match solved {
-            PowBaseIsolationPipelineSolved::ReturnedSolutionSet {
-                solution_set,
-                steps,
-            } => {
-                assert!(matches!(solution_set, SolutionSet::Empty));
-                assert!(steps.is_empty());
-            }
-            other => panic!("expected terminal runtime pipeline result, got {:?}", other),
         }
     }
 
@@ -9997,67 +9045,6 @@ mod tests {
         assert!(steps.is_empty());
     }
 
-    #[derive(Default)]
-    struct TestSolveTacticNormalizationRuntime {
-        ctx: Context,
-        calls: usize,
-    }
-
-    impl SolveTacticNormalizationRuntime<String> for TestSolveTacticNormalizationRuntime {
-        fn context(&mut self) -> &mut Context {
-            &mut self.ctx
-        }
-
-        fn map_solve_tactic_item_to_step(
-            &mut self,
-            item: TermIsolationRewriteExecutionItem,
-        ) -> String {
-            self.calls += 1;
-            item.description
-        }
-    }
-
-    #[test]
-    fn solve_solve_tactic_normalization_pipeline_with_item_runtime_maps_step_when_enabled() {
-        let mut runtime = TestSolveTacticNormalizationRuntime::default();
-        let base = runtime.ctx.var("a");
-        let exponent = runtime.ctx.var("x");
-        let rhs = runtime.ctx.var("b");
-
-        let steps = solve_solve_tactic_normalization_pipeline_with_item_runtime(
-            base,
-            exponent,
-            rhs,
-            RelOp::Eq,
-            true,
-            &mut runtime,
-        );
-
-        assert_eq!(steps.len(), 1);
-        assert_eq!(steps[0], SOLVE_TACTIC_NORMALIZATION_MESSAGE.to_string());
-        assert_eq!(runtime.calls, 1);
-    }
-
-    #[test]
-    fn solve_solve_tactic_normalization_pipeline_with_item_runtime_omits_step_when_disabled() {
-        let mut runtime = TestSolveTacticNormalizationRuntime::default();
-        let base = runtime.ctx.var("a");
-        let exponent = runtime.ctx.var("x");
-        let rhs = runtime.ctx.var("b");
-
-        let steps = solve_solve_tactic_normalization_pipeline_with_item_runtime(
-            base,
-            exponent,
-            rhs,
-            RelOp::Eq,
-            false,
-            &mut runtime,
-        );
-
-        assert!(steps.is_empty());
-        assert_eq!(runtime.calls, 0);
-    }
-
     #[test]
     fn denominator_case_messages_include_sign_context() {
         assert_eq!(
@@ -10174,30 +9161,15 @@ mod tests {
         );
     }
 
-    struct MockTermIsolationPlanRuntime;
-
-    impl TermIsolationPlanRuntime for MockTermIsolationPlanRuntime {
-        fn render_expr(&mut self, _core_ctx: &Context, expr: ExprId) -> String {
-            format!("e{expr}")
-        }
-    }
-
     #[test]
-    fn term_isolation_runtime_plan_helpers_build_equation_and_step() {
+    fn term_isolation_plan_helpers_build_equation_and_step_with_custom_renderer() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let y = ctx.var("y");
         let z = ctx.var("z");
-        let mut runtime = MockTermIsolationPlanRuntime;
 
-        let add_plan = plan_add_operand_isolation_step_with_runtime(
-            &mut ctx,
-            x,
-            y,
-            z,
-            RelOp::Eq,
-            &mut runtime,
-        );
+        let add_plan =
+            plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| format!("e{y}"));
         assert_eq!(add_plan.equation.lhs, x);
         assert_eq!(
             add_plan.items[0].description,
@@ -10205,37 +9177,27 @@ mod tests {
         );
 
         let sub_plan =
-            plan_sub_isolation_step_with_runtime(&mut ctx, x, y, z, RelOp::Eq, "x", &mut runtime);
+            plan_sub_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, "x", |_| format!("e{y}"));
         assert_eq!(sub_plan.equation.lhs, x);
         assert_eq!(
             sub_plan.items[0].description,
             format!("Add e{} to both sides", y)
         );
 
-        let mul_plan = plan_mul_factor_isolation_step_with_runtime(
-            &mut ctx,
-            x,
-            y,
-            z,
-            RelOp::Eq,
-            false,
-            &mut runtime,
-        );
+        let mul_plan =
+            plan_mul_factor_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, false, |_| {
+                format!("e{y}")
+            });
         assert_eq!(mul_plan.equation.lhs, x);
         assert_eq!(
             mul_plan.items[0].description,
             format!("Divide both sides by e{}", y)
         );
 
-        let div_plan = plan_div_numerator_isolation_step_with_runtime(
-            &mut ctx,
-            x,
-            y,
-            z,
-            RelOp::Eq,
-            false,
-            &mut runtime,
-        );
+        let div_plan =
+            plan_div_numerator_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, false, |_| {
+                format!("e{y}")
+            });
         assert_eq!(div_plan.equation.lhs, x);
         assert_eq!(
             div_plan.items[0].description,
@@ -11542,21 +10504,20 @@ mod tests {
     }
 
     #[test]
-    fn plan_pow_exponent_log_isolation_step_with_runtime_uses_renderer() {
+    fn plan_pow_exponent_log_isolation_step_with_uses_runtime_like_renderer() {
         let mut ctx = Context::new();
         let exponent = ctx.var("x");
         let base = ctx.var("a");
         let rhs = ctx.var("b");
-        let mut runtime = TestTermIsolationPlanRuntime;
 
-        let plan = plan_pow_exponent_log_isolation_step_with_runtime(
+        let plan = plan_pow_exponent_log_isolation_step_with(
             &mut ctx,
             exponent,
             base,
             rhs,
             RelOp::Eq,
             None,
-            &mut runtime,
+            |_, id| format!("runtime({id})"),
         );
 
         assert_eq!(plan.items[0].equation, plan.equation);
