@@ -14,10 +14,12 @@ use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{medium_step, SolveCtx, SolveStep, SolverOptions};
-use cas_ast::{Equation, SolutionSet};
+use cas_ast::{Equation, Expr, SolutionSet};
 use cas_solver_core::rational_roots::{
-    solve_rational_roots_strategy_with_runtime_and_item, RationalRootsStrategyRuntime,
+    extract_poly_coefficients, plan_rational_roots_step, solve_numeric_coeff_polynomial,
+    solve_rational_roots_strategy_with_and_item,
 };
+use cas_solver_core::solution_set::sort_and_dedup_exprs;
 
 /// Maximum number of candidate rational roots to try before bailing.
 /// Prevents combinatorial blowup on polynomials with large leading/constant coefficients.
@@ -27,20 +29,6 @@ const MAX_CANDIDATES: usize = 200;
 const MAX_DEGREE: usize = 10;
 
 pub struct RationalRootsStrategy;
-
-impl RationalRootsStrategyRuntime for Simplifier {
-    fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.context
-    }
-
-    fn simplify_expr(&mut self, expr: cas_ast::ExprId) -> cas_ast::ExprId {
-        self.simplify(expr).0
-    }
-
-    fn expand_expr(&mut self, expr: cas_ast::ExprId) -> cas_ast::ExprId {
-        crate::expand::expand(&mut self.context, expr)
-    }
-}
 
 impl SolverStrategy for RationalRootsStrategy {
     fn name(&self) -> &str {
@@ -56,8 +44,8 @@ impl SolverStrategy for RationalRootsStrategy {
         _ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let include_item = simplifier.collect_steps();
-        let solved = solve_rational_roots_strategy_with_runtime_and_item(
-            simplifier,
+        let runtime_cell = std::cell::RefCell::new(simplifier);
+        let solved = solve_rational_roots_strategy_with_and_item(
             eq.lhs,
             eq.rhs,
             eq.op.clone(),
@@ -66,6 +54,40 @@ impl SolverStrategy for RationalRootsStrategy {
             MAX_DEGREE,
             MAX_CANDIDATES,
             include_item,
+            |left, right| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                simplifier_ref.context.add(Expr::Sub(left, right))
+            },
+            |expr| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                simplifier_ref.simplify(expr).0
+            },
+            |expr| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                crate::expand::expand(&mut simplifier_ref.context, expr)
+            },
+            |expanded, name, max_degree| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                extract_poly_coefficients(&mut simplifier_ref.context, expanded, name, max_degree)
+            },
+            |coeffs, min_degree, max_degree, max_candidates| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                solve_numeric_coeff_polynomial(
+                    &mut simplifier_ref.context,
+                    coeffs,
+                    min_degree,
+                    max_degree,
+                    max_candidates,
+                )
+            },
+            |roots| {
+                let simplifier_ref = runtime_cell.borrow();
+                sort_and_dedup_exprs(&simplifier_ref.context, roots);
+            },
+            |expanded, degree| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                plan_rational_roots_step(&mut simplifier_ref.context, expanded, degree)
+            },
             |item| medium_step(item.description().to_string(), item.equation),
         )?;
         Some(Ok((solved.solution_set, solved.steps)))

@@ -9,44 +9,18 @@
 //! 2. Factor: P*(1 + r*t) - A = 0
 //! 3. Solve: P = A / (1 + r*t)  [guard: 1 + r*t ≠ 0]
 
-use cas_ast::{ExprId, SolutionSet};
+use cas_ast::{Expr, ExprId, SolutionSet};
+use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::linear_collect::{
-    solve_linear_collect_additive_pipeline_with_runtime_and_items_runtime,
-    solve_linear_collect_factored_pipeline_with_runtime_and_items_runtime,
-    LinearCollectDidacticRuntime, LinearCollectExecutionItem, LinearCollectRuntime,
+    build_linear_collect_additive_execution_with, build_linear_collect_factored_execution_with,
+    build_linear_collect_solution_expr, derive_linear_collect_additive_kernel,
+    derive_linear_collect_factored_kernel, solve_linear_collect_additive_pipeline_with_and_items,
+    solve_linear_collect_additive_with, solve_linear_collect_factored_pipeline_with_and_items,
+    solve_linear_collect_factored_with, LinearCollectExecutionItem,
 };
 
 use crate::engine::Simplifier;
 use crate::solver::{medium_step, render_expr, SolveStep};
-
-impl LinearCollectRuntime for Simplifier {
-    fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.context
-    }
-
-    fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
-        self.simplify(expr).0
-    }
-
-    fn prove_nonzero_status(
-        &mut self,
-        expr: ExprId,
-    ) -> cas_solver_core::linear_solution::NonZeroStatus {
-        crate::solver::prove_nonzero_status(&self.context, expr)
-    }
-}
-
-struct LinearCollectDidacticMapper;
-
-impl LinearCollectDidacticRuntime<SolveStep> for LinearCollectDidacticMapper {
-    fn render_expr(&mut self, ctx: &cas_ast::Context, expr: ExprId) -> String {
-        render_expr(ctx, expr)
-    }
-
-    fn map_item_to_step(&mut self, item: LinearCollectExecutionItem) -> SolveStep {
-        medium_step(item.description().to_string(), item.equation)
-    }
-}
 
 /// Try to solve a linear equation where variable appears in multiple additive terms.
 ///
@@ -60,14 +34,67 @@ pub(crate) fn try_linear_collect(
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
     let include_items = simplifier.collect_steps();
-    let mut didactic_runtime = LinearCollectDidacticMapper;
-    solve_linear_collect_factored_pipeline_with_runtime_and_items_runtime(
-        simplifier,
+    let runtime_cell = std::cell::RefCell::new(simplifier);
+    solve_linear_collect_factored_pipeline_with_and_items(
         lhs,
         rhs,
         var,
         include_items,
-        &mut didactic_runtime,
+        |left, right, name| {
+            solve_linear_collect_factored_with(
+                left,
+                right,
+                name,
+                |lhs_expr, rhs_expr| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    simplifier_ref.context.add(Expr::Sub(lhs_expr, rhs_expr))
+                },
+                |expr| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    simplifier_ref.simplify(expr).0
+                },
+                |expr, inner_name| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    derive_linear_collect_factored_kernel(
+                        &mut simplifier_ref.context,
+                        expr,
+                        inner_name,
+                    )
+                },
+                |numerator, coeff| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    build_linear_collect_solution_expr(
+                        &mut simplifier_ref.context,
+                        numerator,
+                        coeff,
+                    )
+                },
+                |expr, inner_name| {
+                    let simplifier_ref = runtime_cell.borrow();
+                    contains_var(&simplifier_ref.context, expr, inner_name)
+                },
+                |expr| {
+                    let simplifier_ref = runtime_cell.borrow();
+                    crate::solver::prove_nonzero_status(&simplifier_ref.context, expr)
+                },
+            )
+        },
+        |name, solved| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            build_linear_collect_factored_execution_with(
+                &mut simplifier_ref.context,
+                name,
+                solved.coeff,
+                solved.rhs_term,
+                solved.solution,
+                solved.coeff_status,
+                solved.rhs_status,
+                render_expr,
+            )
+        },
+        |item: LinearCollectExecutionItem| {
+            medium_step(item.description().to_string(), item.equation)
+        },
     )
 }
 
@@ -83,14 +110,65 @@ pub(crate) fn try_linear_collect_v2(
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
     let include_items = simplifier.collect_steps();
-    let mut didactic_runtime = LinearCollectDidacticMapper;
-    solve_linear_collect_additive_pipeline_with_runtime_and_items_runtime(
-        simplifier,
+    let runtime_cell = std::cell::RefCell::new(simplifier);
+    solve_linear_collect_additive_pipeline_with_and_items(
         lhs,
         rhs,
         var,
         include_items,
-        &mut didactic_runtime,
+        |left, right, name| {
+            solve_linear_collect_additive_with(
+                left,
+                right,
+                name,
+                |lhs_expr, rhs_expr, inner_name| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    derive_linear_collect_additive_kernel(
+                        &mut simplifier_ref.context,
+                        lhs_expr,
+                        rhs_expr,
+                        inner_name,
+                    )
+                },
+                |expr| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    simplifier_ref.simplify(expr).0
+                },
+                |constant, coeff| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    let neg_constant = simplifier_ref.context.add(Expr::Neg(constant));
+                    build_linear_collect_solution_expr(
+                        &mut simplifier_ref.context,
+                        neg_constant,
+                        coeff,
+                    )
+                },
+                |expr, inner_name| {
+                    let simplifier_ref = runtime_cell.borrow();
+                    contains_var(&simplifier_ref.context, expr, inner_name)
+                },
+                |expr| {
+                    let simplifier_ref = runtime_cell.borrow();
+                    crate::solver::prove_nonzero_status(&simplifier_ref.context, expr)
+                },
+            )
+        },
+        |name, solved| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            build_linear_collect_additive_execution_with(
+                &mut simplifier_ref.context,
+                name,
+                solved.coeff,
+                solved.constant,
+                solved.solution,
+                solved.coeff_status,
+                solved.constant_status,
+                render_expr,
+            )
+        },
+        |item: LinearCollectExecutionItem| {
+            medium_step(item.description().to_string(), item.equation)
+        },
     )
 }
 
