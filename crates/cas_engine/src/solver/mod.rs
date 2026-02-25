@@ -156,7 +156,6 @@ impl Default for SolverOptions {
 ///
 /// Contains the "semantic ground" under which the solver operates:
 /// - `required`: Constraints inferred from equation structure (e.g., sqrt(y) → y ≥ 0)
-/// - `assumed`: Constraints assumed by policy (only in Assume mode)
 ///
 /// This is passed explicitly rather than via TLS for clean reentrancy and testability.
 #[derive(Debug, Clone, Default)]
@@ -164,8 +163,6 @@ pub struct SolveDomainEnv {
     /// Required conditions inferred from equation structure.
     /// These are NOT assumptions - they represent the minimum domain of validity.
     pub required: crate::implicit_domain::ImplicitDomain,
-    /// Assumed conditions made during solving (only populated in Assume mode).
-    pub assumed: Vec<crate::assumptions::AssumptionEvent>,
 }
 
 impl SolveDomainEnv {

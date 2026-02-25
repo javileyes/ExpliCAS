@@ -4,10 +4,7 @@
 # CI lint: prevent new thread_local! declarations in solver modules.
 #
 # Allowlist (legacy, tracked for future migration):
-#   - SOLVE_DEPTH         (solve_core.rs via mod.rs)
-#   - SOLVE_ASSUMPTIONS   (mod.rs)
-#   - OUTPUT_SCOPES       (mod.rs)
-#   - SOLVE_SEEN          (solve_core.rs)
+#   - SOLVE_DEPTH         (recursion depth guard in solver/mod.rs)
 #
 # Usage: ./scripts/lint_no_solver_tls.sh
 # Exit 0 = pass, Exit 1 = new TLS found
@@ -21,7 +18,7 @@ NC='\033[0m'
 SOLVER_DIR="crates/cas_engine/src/solver"
 
 # Allowlisted TLS variable names (these already exist and are tracked)
-ALLOWLIST="SOLVE_DEPTH|SOLVE_ASSUMPTIONS|OUTPUT_SCOPES|SOLVE_SEEN"
+ALLOWLIST="SOLVE_DEPTH"
 
 echo "==> Checking for new thread_local! declarations in solver..."
 
@@ -63,9 +60,9 @@ if [[ -n "$VIOLATIONS" ]]; then
     echo "The solver is designed to be TLS-free (context via SolveCtx)."
     echo "Move state into SolveCtx or use an existing mechanism."
     echo ""
-    echo "Allowlisted (legacy): SOLVE_DEPTH, SOLVE_ASSUMPTIONS, OUTPUT_SCOPES, SOLVE_SEEN"
+    echo "Allowlisted (legacy): SOLVE_DEPTH"
     exit 1
 fi
 
-echo -e "${GREEN}✔${NC} No new thread_local! in solver (4 legacy allowlisted)"
+echo -e "${GREEN}✔${NC} No new thread_local! in solver (1 legacy allowlisted)"
 exit 0
