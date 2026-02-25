@@ -8,7 +8,7 @@
 //! with the condition captured in the "requires" output, rather than returning
 //! a Conditional solution set.
 
-use cas_ast::{Equation, Expr, RelOp, SolutionSet};
+use cas_ast::{Constant, Equation, Expr, RelOp, SolutionSet};
 use cas_engine::solver::{solve_with_display_steps, SolverOptions};
 use cas_engine::DomainMode;
 use cas_engine::Engine;
@@ -314,4 +314,241 @@ fn budget_zero_still_solves_simple_exponential() {
             // Residual is also acceptable for budget=0
         }
     }
+}
+
+// =============================================================================
+// Test 4: Nested product-zero recursion must preserve solver options
+// =============================================================================
+
+#[test]
+fn assume_mode_nested_product_zero_keeps_assume_semantics() {
+    // (a^x - b) * (x - 1) = 0
+    //
+    // Product-zero split triggers nested recursive solves for each factor.
+    // In Assume mode, the exponential factor can be solved as log(a, b).
+    // If nested solves lose options and fall back to default Generic mode,
+    // this regresses to a residual/unsupported branch.
+    let mut engine = setup_engine();
+    let ctx = &mut engine.simplifier.context;
+
+    let a = ctx.var("a");
+    let b = ctx.var("b");
+    let x = ctx.var("x");
+    let one = ctx.num(1);
+    let a_pow_x = ctx.add(Expr::Pow(a, x));
+    let exp_factor = ctx.add(Expr::Sub(a_pow_x, b));
+    let linear_factor = ctx.add(Expr::Sub(x, one));
+    let product = ctx.add(Expr::Mul(exp_factor, linear_factor));
+    let zero = ctx.num(0);
+
+    let eq = Equation {
+        lhs: product,
+        rhs: zero,
+        op: RelOp::Eq,
+    };
+
+    let opts = make_opts(DomainMode::Assume, AssumeScope::Real);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
+    assert!(
+        result.is_ok(),
+        "Assume mode should solve nested product-zero"
+    );
+
+    let (solution_set, _steps, _diagnostics) = result.unwrap();
+    let SolutionSet::Discrete(solutions) = solution_set else {
+        panic!(
+            "Expected discrete solutions in Assume mode, got: {:?}",
+            solution_set
+        );
+    };
+
+    let rendered: Vec<String> = solutions
+        .iter()
+        .map(|id| {
+            cas_formatter::DisplayExpr {
+                context: &engine.simplifier.context,
+                id: *id,
+            }
+            .to_string()
+        })
+        .collect();
+
+    assert!(
+        rendered.iter().any(|s| s == "1"),
+        "Expected linear branch solution x=1, got: {:?}",
+        rendered
+    );
+    assert!(
+        rendered
+            .iter()
+            .any(|s| s.contains("log(") || s.contains("ln(")),
+        "Expected exponential branch solution log(a,b), got: {:?}",
+        rendered
+    );
+}
+
+#[test]
+fn generic_mode_nested_product_zero_stays_residual() {
+    // Same equation as above, but in Generic mode the exponential factor with
+    // symbolic base/rhs remains unsupported, so the whole solve stays residual.
+    let mut engine = setup_engine();
+    let ctx = &mut engine.simplifier.context;
+
+    let a = ctx.var("a");
+    let b = ctx.var("b");
+    let x = ctx.var("x");
+    let one = ctx.num(1);
+    let a_pow_x = ctx.add(Expr::Pow(a, x));
+    let exp_factor = ctx.add(Expr::Sub(a_pow_x, b));
+    let linear_factor = ctx.add(Expr::Sub(x, one));
+    let product = ctx.add(Expr::Mul(exp_factor, linear_factor));
+    let zero = ctx.num(0);
+
+    let eq = Equation {
+        lhs: product,
+        rhs: zero,
+        op: RelOp::Eq,
+    };
+
+    let opts = make_opts(DomainMode::Generic, AssumeScope::Real);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
+    assert!(
+        result.is_ok(),
+        "Generic mode should not crash on nested product-zero"
+    );
+
+    let (solution_set, _steps, _diagnostics) = result.unwrap();
+    assert!(
+        matches!(solution_set, SolutionSet::Residual(_)),
+        "Expected residual in Generic mode, got: {:?}",
+        solution_set
+    );
+}
+
+#[test]
+fn assume_mode_scaled_exponential_both_sides_does_not_cycle() {
+    // 2^(2*x) = y*2^x
+    // This should be solved by substitution (u = 2^x), not fail with cycle/isolation.
+    let mut engine = setup_engine();
+    let ctx = &mut engine.simplifier.context;
+
+    let two = ctx.num(2);
+    let x = ctx.var("x");
+    let y = ctx.var("y");
+    let two_x = ctx.add(Expr::Mul(two, x));
+    let lhs = ctx.add(Expr::Pow(two, two_x));
+    let two_pow_x = ctx.add(Expr::Pow(two, x));
+    let rhs = ctx.add(Expr::Mul(y, two_pow_x));
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+
+    let opts = make_opts(DomainMode::Assume, AssumeScope::Real);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
+    assert!(
+        result.is_ok(),
+        "Assume mode should not fail for 2^(2*x)=y*2^x, got: {:?}",
+        result
+    );
+
+    let (solution_set, _steps, _diagnostics) = result.unwrap();
+    let has_solution = match &solution_set {
+        SolutionSet::Discrete(sols) => !sols.is_empty(),
+        SolutionSet::Conditional(cases) => !cases.is_empty(),
+        _ => false,
+    };
+    assert!(
+        has_solution,
+        "Expected non-empty solution set in Assume mode, got: {:?}",
+        solution_set
+    );
+}
+
+#[test]
+fn generic_mode_scaled_exponential_both_sides_does_not_hard_fail() {
+    // Same equation as above in Generic mode.
+    // We only require non-crashing behavior; representation may be Discrete/Conditional/Residual.
+    let mut engine = setup_engine();
+    let ctx = &mut engine.simplifier.context;
+
+    let two = ctx.num(2);
+    let x = ctx.var("x");
+    let y = ctx.var("y");
+    let two_x = ctx.add(Expr::Mul(two, x));
+    let lhs = ctx.add(Expr::Pow(two, two_x));
+    let two_pow_x = ctx.add(Expr::Pow(two, x));
+    let rhs = ctx.add(Expr::Mul(y, two_pow_x));
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+
+    let opts = make_opts(DomainMode::Generic, AssumeScope::Real);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
+    assert!(
+        result.is_ok(),
+        "Generic mode should not hard-fail for 2^(2*x)=y*2^x, got: {:?}",
+        result
+    );
+}
+
+#[test]
+fn assume_mode_scaled_e_exponential_both_sides_does_not_cycle() {
+    // e^(2*x) = y*e^x (same substitution shape, symbolic RHS)
+    let mut engine = setup_engine();
+    let ctx = &mut engine.simplifier.context;
+
+    let e = ctx.add(Expr::Constant(Constant::E));
+    let two = ctx.num(2);
+    let x = ctx.var("x");
+    let y = ctx.var("y");
+    let two_x = ctx.add(Expr::Mul(two, x));
+    let lhs = ctx.add(Expr::Pow(e, two_x));
+    let e_pow_x = ctx.add(Expr::Pow(e, x));
+    let rhs = ctx.add(Expr::Mul(y, e_pow_x));
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+
+    let opts = make_opts(DomainMode::Assume, AssumeScope::Real);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
+    assert!(
+        result.is_ok(),
+        "Assume mode should not fail for e^(2*x)=y*e^x, got: {:?}",
+        result
+    );
+}
+
+#[test]
+fn generic_mode_scaled_e_exponential_both_sides_does_not_hard_fail() {
+    // Same equation as above in Generic mode.
+    let mut engine = setup_engine();
+    let ctx = &mut engine.simplifier.context;
+
+    let e = ctx.add(Expr::Constant(Constant::E));
+    let two = ctx.num(2);
+    let x = ctx.var("x");
+    let y = ctx.var("y");
+    let two_x = ctx.add(Expr::Mul(two, x));
+    let lhs = ctx.add(Expr::Pow(e, two_x));
+    let e_pow_x = ctx.add(Expr::Pow(e, x));
+    let rhs = ctx.add(Expr::Mul(y, e_pow_x));
+    let eq = Equation {
+        lhs,
+        rhs,
+        op: RelOp::Eq,
+    };
+
+    let opts = make_opts(DomainMode::Generic, AssumeScope::Real);
+    let result = solve_with_display_steps(&eq, "x", &mut engine.simplifier, opts);
+    assert!(
+        result.is_ok(),
+        "Generic mode should not hard-fail for e^(2*x)=y*e^x, got: {:?}",
+        result
+    );
 }

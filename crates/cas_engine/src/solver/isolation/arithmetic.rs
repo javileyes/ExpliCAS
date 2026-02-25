@@ -1,6 +1,6 @@
 use crate::engine::Simplifier;
 use crate::error::CasError;
-use crate::solver::solve_core::solve_with_ctx;
+use crate::solver::solve_core::solve_with_ctx_and_options;
 use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, SolverOptions};
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{
@@ -198,6 +198,7 @@ pub(super) fn isolate_mul(
         {
             struct ProductZeroRuntime<'a, 'ctx> {
                 simplifier: &'a mut Simplifier,
+                opts: SolverOptions,
                 solve_ctx: &'ctx super::super::SolveCtx,
                 var: &'a str,
             }
@@ -207,12 +208,19 @@ pub(super) fn isolate_mul(
                     &mut self,
                     equation: &cas_ast::Equation,
                 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-                    solve_with_ctx(equation, self.var, self.simplifier, self.solve_ctx)
+                    solve_with_ctx_and_options(
+                        equation,
+                        self.var,
+                        self.simplifier,
+                        self.opts,
+                        self.solve_ctx,
+                    )
                 }
             }
 
             let mut runtime = ProductZeroRuntime {
                 simplifier,
+                opts,
                 solve_ctx: ctx,
                 var,
             };
@@ -318,7 +326,13 @@ pub(super) fn isolate_div(
                     equation: &cas_ast::Equation,
                     var: &str,
                 ) -> Result<SolutionSet, CasError> {
-                    let (set, _) = solve_with_ctx(equation, var, self.simplifier, self.solve_ctx)?;
+                    let (set, _) = solve_with_ctx_and_options(
+                        equation,
+                        var,
+                        self.simplifier,
+                        self.opts,
+                        self.solve_ctx,
+                    )?;
                     Ok(set)
                 }
 

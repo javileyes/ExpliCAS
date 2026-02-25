@@ -1,6 +1,6 @@
 use crate::engine::Simplifier;
 use crate::error::CasError;
-use crate::solver::solve_core::solve_with_ctx;
+use crate::solver::solve_core::solve_with_ctx_and_options;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{medium_step, render_expr, SolveCtx, SolveStep, SolveSubStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
@@ -45,6 +45,7 @@ impl QuadraticMainWithSubstepsPlanRuntime for QuadraticMainPlanRuntime {
 struct QuadraticFactorizedRuntime<'a, 'ctx> {
     simplifier: &'a mut Simplifier,
     var: &'a str,
+    opts: SolverOptions,
     solve_ctx: &'ctx SolveCtx,
 }
 
@@ -55,7 +56,13 @@ impl FactorizedZeroProductExecutionRuntime<CasError, (SolutionSet, Vec<SolveStep
         &mut self,
         equation: &Equation,
     ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        solve_with_ctx(equation, self.var, self.simplifier, self.solve_ctx)
+        solve_with_ctx_and_options(
+            equation,
+            self.var,
+            self.simplifier,
+            self.opts,
+            self.solve_ctx,
+        )
     }
 
     fn map_entry_item_to_step(&mut self, item: QuadraticExecutionItem) -> SolveStep {
@@ -103,7 +110,7 @@ impl SolverStrategy for QuadraticStrategy {
         eq: &Equation,
         var: &str,
         simplifier: &mut Simplifier,
-        _opts: &SolverOptions,
+        opts: &SolverOptions,
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let mut steps = Vec::new();
@@ -146,6 +153,7 @@ impl SolverStrategy for QuadraticStrategy {
                         &mut QuadraticFactorizedRuntime {
                             simplifier,
                             var,
+                            opts: *opts,
                             solve_ctx: ctx,
                         },
                     ) {
@@ -186,8 +194,7 @@ impl SolverStrategy for QuadraticStrategy {
             }
 
             let include_items = simplifier.collect_steps();
-            let is_real_only =
-                matches!(_opts.value_domain, crate::semantics::ValueDomain::RealOnly);
+            let is_real_only = matches!(opts.value_domain, crate::semantics::ValueDomain::RealOnly);
             let main_equation = Equation {
                 lhs: sim_poly_expr,
                 rhs: simplifier.context.num(0),

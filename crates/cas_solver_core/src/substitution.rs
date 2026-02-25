@@ -1,5 +1,5 @@
 use crate::isolation_utils::contains_var;
-use cas_ast::{ordering::compare_expr, Constant, Context, Equation, Expr, ExprId, SolutionSet};
+use cas_ast::{ordering::compare_expr, Context, Equation, Expr, ExprId, SolutionSet};
 use cas_math::build::mul2_raw;
 use std::cmp::Ordering;
 
@@ -439,6 +439,38 @@ pub trait SubstitutionStrategyRuntime<E, S> {
     fn map_step(&mut self, description: String, equation_after: Equation) -> S;
 }
 
+fn aggregate_back_substitution_solutions<S>(
+    solved: Vec<(SolutionSet, Vec<S>)>,
+    steps: &mut Vec<S>,
+) -> Result<Vec<ExprId>, SolutionSet> {
+    let mut final_solutions = Vec::new();
+    let mut non_discrete_solution: Option<SolutionSet> = None;
+
+    for (x_sol, mut x_steps) in solved {
+        steps.append(&mut x_steps);
+        match x_sol {
+            SolutionSet::Discrete(xs) => {
+                final_solutions.extend(xs);
+            }
+            SolutionSet::Empty => {
+                // Valid branch elimination (e.g. base^x = 0 with positive base).
+                // Keep scanning other branches for actual solutions.
+            }
+            other => {
+                if non_discrete_solution.is_none() {
+                    non_discrete_solution = Some(other);
+                }
+            }
+        }
+    }
+
+    if let Some(solution_set) = non_discrete_solution {
+        Err(solution_set)
+    } else {
+        Ok(final_solutions)
+    }
+}
+
 /// Solve exponential substitution strategy end-to-end with optional didactic
 /// items using caller-provided callbacks.
 ///
@@ -507,18 +539,16 @@ where
                     Ok((x_solution_set, local_steps))
                 })?;
 
-            let mut final_solutions = Vec::new();
-            for (x_sol, mut x_steps) in solved_back.solved {
-                steps.append(&mut x_steps);
-                if let SolutionSet::Discrete(xs) = x_sol {
-                    final_solutions.extend(xs);
-                }
+            match aggregate_back_substitution_solutions(solved_back.solved, &mut steps) {
+                Ok(final_solutions) => Ok(SubstitutionStrategySolved::SolvedDiscrete {
+                    solutions: final_solutions,
+                    steps,
+                }),
+                Err(solution_set) => Ok(SubstitutionStrategySolved::UnsupportedSolutionSet {
+                    solution_set,
+                    steps,
+                }),
             }
-
-            Ok(SubstitutionStrategySolved::SolvedDiscrete {
-                solutions: final_solutions,
-                steps,
-            })
         }
         solution_set => Ok(SubstitutionStrategySolved::UnsupportedSolutionSet {
             solution_set,
@@ -639,18 +669,16 @@ where
                 solve_back_substitution_plan_with_items_runtime(back_plan, &mut back_runtime)?
             };
 
-            let mut final_solutions = Vec::new();
-            for (x_sol, mut x_steps) in solved_back.solved {
-                steps.append(&mut x_steps);
-                if let SolutionSet::Discrete(xs) = x_sol {
-                    final_solutions.extend(xs);
-                }
+            match aggregate_back_substitution_solutions(solved_back.solved, &mut steps) {
+                Ok(final_solutions) => Ok(SubstitutionStrategySolved::SolvedDiscrete {
+                    solutions: final_solutions,
+                    steps,
+                }),
+                Err(solution_set) => Ok(SubstitutionStrategySolved::UnsupportedSolutionSet {
+                    solution_set,
+                    steps,
+                }),
             }
-
-            Ok(SubstitutionStrategySolved::SolvedDiscrete {
-                solutions: final_solutions,
-                steps,
-            })
         }
         solution_set => Ok(SubstitutionStrategySolved::UnsupportedSolutionSet {
             solution_set,
@@ -785,23 +813,17 @@ pub fn substitute_named_var(ctx: &mut Context, expr: ExprId, var: &str, value: E
     }
 }
 
-fn is_e_base(ctx: &Context, base: ExprId) -> bool {
-    match ctx.get(base) {
-        Expr::Variable(sym_id) => ctx.sym_name(*sym_id) == "e",
-        Expr::Constant(c) => matches!(c, Constant::E),
-        _ => false,
-    }
-}
-
-/// Returns true if `var` appears in `expr` outside of any `Pow(e, ...)` context.
+/// Returns true if `var` appears in `expr` outside of any `Pow(base, exponent)`
+/// where `base` is independent of `var` and `exponent` contains `var`.
 fn var_outside_exponentials(ctx: &Context, expr: ExprId, var: &str) -> bool {
     match ctx.get(expr) {
         Expr::Variable(sym_id) => ctx.sym_name(*sym_id) == var,
-
-        // Treat e^(...) as an opaque leaf: var inside exponent is allowed.
-        Expr::Pow(b, _e) if is_e_base(ctx, *b) => false,
-
         Expr::Pow(b, e) => {
+            // Treat base^(...) as an opaque leaf when variable appears only
+            // in the exponent and base itself is independent of `var`.
+            if contains_var(ctx, *e, var) && !contains_var(ctx, *b, var) {
+                return false;
+            }
             var_outside_exponentials(ctx, *b, var) || var_outside_exponentials(ctx, *e, var)
         }
         Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
@@ -817,7 +839,7 @@ fn var_outside_exponentials(ctx: &Context, expr: ExprId, var: &str) -> bool {
 fn collect_exponential_terms(ctx: &Context, expr: ExprId, var: &str, out: &mut Vec<ExprId>) {
     match ctx.get(expr) {
         Expr::Pow(b, e) => {
-            if is_e_base(ctx, *b) && contains_var(ctx, *e, var) {
+            if contains_var(ctx, *e, var) && !contains_var(ctx, *b, var) {
                 out.push(expr);
             }
         }
@@ -840,7 +862,7 @@ fn collect_exponential_terms(ctx: &Context, expr: ExprId, var: &str, out: &mut V
     }
 }
 
-/// Detect substitution candidate `u = e^x` (or base^x) for exponential equations.
+/// Detect substitution candidate `u = base^x` for exponential equations.
 ///
 /// Returns the base substitution term if the equation contains exponential
 /// terms where `var` appears only in exponents.
@@ -863,16 +885,30 @@ pub fn detect_exponential_substitution(
 
     let mut found_complex = false;
     let mut base_term = None;
+    let mut inferred_base: Option<ExprId> = None;
 
     for term in &terms {
-        if let Expr::Pow(_, exp) = ctx.get(*term) {
-            if let Expr::Variable(sym_id) = ctx.get(*exp) {
-                if ctx.sym_name(*sym_id) == var {
-                    base_term = Some(*term);
-                }
-            } else if contains_var(ctx, *exp, var) {
-                found_complex = true;
+        let Expr::Pow(base, exp) = ctx.get(*term) else {
+            continue;
+        };
+
+        if let Some(first_base) = inferred_base {
+            if compare_expr(ctx, *base, first_base) != Ordering::Equal {
+                // Mixed exponential bases are not safe for one-variable substitution.
+                return None;
             }
+        } else {
+            inferred_base = Some(*base);
+        }
+
+        if let Expr::Variable(sym_id) = ctx.get(*exp) {
+            if ctx.sym_name(*sym_id) == var {
+                base_term = Some(*term);
+                continue;
+            }
+        }
+        if contains_var(ctx, *exp, var) {
+            found_complex = true;
         }
     }
 
@@ -884,10 +920,6 @@ pub fn detect_exponential_substitution(
         return Some(base);
     }
 
-    let inferred_base = match ctx.get(terms[0]) {
-        Expr::Pow(base, _) => Some(*base),
-        _ => None,
-    };
     if let Some(base) = inferred_base {
         let var_expr = ctx.var(var);
         return Some(ctx.add(Expr::Pow(base, var_expr)));
@@ -1061,6 +1093,7 @@ pub fn plan_exponential_substitution_rewrite(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_ast::Constant;
 
     #[test]
     fn substitute_simple_named_var() {
@@ -1113,6 +1146,38 @@ mod tests {
     }
 
     #[test]
+    fn detect_exponential_substitution_finds_general_base_pow_x() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let b = ctx.var("b");
+        let a_pow_x = ctx.add(Expr::Pow(a, x));
+        let two_x = ctx.add(Expr::Mul(two, x));
+        let a_pow_2x = ctx.add(Expr::Pow(a, two_x));
+        let rhs = ctx.add(Expr::Mul(b, a_pow_x));
+        let sub = detect_exponential_substitution(&mut ctx, a_pow_2x, rhs, "x")
+            .expect("must detect substitution for base independent of x");
+        assert_eq!(sub, a_pow_x);
+    }
+
+    #[test]
+    fn detect_exponential_substitution_rejects_mixed_bases() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let two_x = ctx.add(Expr::Pow(two, x));
+        let three_x = ctx.add(Expr::Pow(three, x));
+        let lhs = ctx.add(Expr::Add(two_x, three_x));
+        let one = ctx.num(1);
+        assert!(
+            detect_exponential_substitution(&mut ctx, lhs, one, "x").is_none(),
+            "mixed bases should not trigger one-variable substitution"
+        );
+    }
+
+    #[test]
     fn substitute_expr_pattern_handles_e_pow_2x() {
         let mut ctx = Context::new();
         let e = ctx.add(Expr::Constant(Constant::E));
@@ -1152,6 +1217,29 @@ mod tests {
         let plan = plan_exponential_substitution_rewrite(&mut ctx, &eq, "x", "u")
             .expect("should build substitution rewrite");
         assert_eq!(plan.substitution_expr, e_pow_x);
+        assert!(!contains_var(&ctx, plan.equation.lhs, "x"));
+        assert!(!contains_var(&ctx, plan.equation.rhs, "x"));
+    }
+
+    #[test]
+    fn plan_exponential_substitution_rewrite_handles_general_base() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let a_pow_x = ctx.add(Expr::Pow(a, x));
+        let two_x = ctx.add(Expr::Mul(two, x));
+        let a_pow_2x = ctx.add(Expr::Pow(a, two_x));
+        let rhs = ctx.add(Expr::Mul(b, a_pow_x));
+        let eq = Equation {
+            lhs: a_pow_2x,
+            rhs,
+            op: cas_ast::RelOp::Eq,
+        };
+
+        let plan = plan_exponential_substitution_rewrite(&mut ctx, &eq, "x", "u")
+            .expect("should build substitution rewrite for general base");
         assert!(!contains_var(&ctx, plan.equation.lhs, "x"));
         assert!(!contains_var(&ctx, plan.equation.rhs, "x"));
     }
@@ -1640,6 +1728,54 @@ mod tests {
                 assert!(matches!(solution_set, SolutionSet::AllReals));
                 assert_eq!(runtime.solve_calls, vec!["u"]);
                 assert_eq!(steps.len(), 3);
+            }
+            other => panic!("expected non-discrete outcome, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn solve_exponential_substitution_strategy_with_items_reports_non_discrete_back_solution_set() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let u = ctx.var("u");
+        let one = ctx.num(1);
+        let equation_before = Equation {
+            lhs: x,
+            rhs: one,
+            op: cas_ast::RelOp::Eq,
+        };
+        let rewrite_plan = ExponentialSubstitutionRewritePlan {
+            substitution_expr: x,
+            equation: Equation {
+                lhs: u,
+                rhs: one,
+                op: cas_ast::RelOp::Eq,
+            },
+        };
+        let mut runtime = MockSubstitutionStrategyRuntime {
+            u_solution: SolutionSet::Discrete(vec![one]),
+            back_solutions: vec![SolutionSet::AllReals],
+            solve_calls: vec![],
+        };
+
+        let solved = solve_exponential_substitution_strategy_with_items(
+            &mut runtime,
+            equation_before,
+            rewrite_plan,
+            "x",
+            "u",
+            true,
+        )
+        .expect("substitution strategy should succeed");
+
+        match solved {
+            SubstitutionStrategySolved::UnsupportedSolutionSet {
+                solution_set,
+                steps,
+            } => {
+                assert!(matches!(solution_set, SolutionSet::AllReals));
+                assert_eq!(runtime.solve_calls, vec!["u", "x"]);
+                assert_eq!(steps.len(), 5);
             }
             other => panic!("expected non-discrete outcome, got {:?}", other),
         }

@@ -30,7 +30,7 @@ pub use self::solve_core::{solve, solve_with_display_steps};
 /// The `required_sink` is a shared accumulator (`Rc<RefCell<…>>`)
 /// so that recursive sub-solves contribute conditions to the same set.
 /// `solve_with_display_steps` creates one, and every recursive
-/// `solve_with_ctx` / `solve_with_options` pushes into it.
+/// `solve_with_ctx_and_options` / `solve_with_options` pushes into it.
 #[derive(Debug, Clone)]
 pub struct SolveCtx {
     /// Domain environment inferred from equation structure (per-level).

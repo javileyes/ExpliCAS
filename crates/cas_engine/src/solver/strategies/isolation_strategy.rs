@@ -1,7 +1,7 @@
 use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::isolation::isolate;
-use crate::solver::solve_core::solve_with_ctx;
+use crate::solver::solve_core::solve_with_ctx_and_options;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{
     medium_step, render_expr as solver_render_expr, SolveCtx, SolveStep, SolverOptions,
@@ -121,6 +121,7 @@ impl UnwrapEntryRuntime<SolveStep> for UnwrapEntryRuntimeAdapter<'_, '_> {
 
 struct UnwrapExecutionRuntimeAdapter<'a, 'ctx> {
     simplifier: &'a mut Simplifier,
+    opts: SolverOptions,
     solve_ctx: &'ctx SolveCtx,
 }
 
@@ -140,7 +141,7 @@ impl UnwrapExecutionRuntime<CasError, SolveStep> for UnwrapExecutionRuntimeAdapt
         equation: &Equation,
         var: &str,
     ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        solve_with_ctx(equation, var, self.simplifier, self.solve_ctx)
+        solve_with_ctx_and_options(equation, var, self.simplifier, self.opts, self.solve_ctx)
     }
 
     fn map_item_to_step(&mut self, item: UnwrapExecutionItem) -> SolveStep {
@@ -153,11 +154,13 @@ fn run_unwrap_execution(
     other_side: ExprId,
     var: &str,
     simplifier: &mut Simplifier,
+    opts: SolverOptions,
     ctx: &SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let include_item = simplifier.collect_steps();
     let mut runtime = UnwrapExecutionRuntimeAdapter {
         simplifier,
+        opts,
         solve_ctx: ctx,
     };
     let solved = solve_unwrap_execution_pipeline_with_item(
@@ -211,6 +214,7 @@ impl SolverStrategy for UnwrapStrategy {
                 selected.other_side,
                 var,
                 simplifier,
+                *opts,
                 ctx,
             ),
         })
@@ -227,6 +231,7 @@ pub struct CollectTermsStrategy;
 
 struct StrategyRewriteRuntime<'a, 'ctx> {
     simplifier: &'a mut Simplifier,
+    opts: SolverOptions,
     solve_ctx: &'ctx SolveCtx,
 }
 
@@ -250,7 +255,7 @@ impl CollectTermsRewriteRuntime<CasError, SolveStep> for StrategyRewriteRuntime<
         equation: &Equation,
         var: &str,
     ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        solve_with_ctx(equation, var, self.simplifier, self.solve_ctx)
+        solve_with_ctx_and_options(equation, var, self.simplifier, self.opts, self.solve_ctx)
     }
 
     fn map_item_to_step(&mut self, item: StrategyExecutionItem) -> SolveStep {
@@ -264,7 +269,7 @@ impl RationalExponentRewriteRuntime<CasError, SolveStep> for StrategyRewriteRunt
         equation: &Equation,
         var: &str,
     ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        solve_with_ctx(equation, var, self.simplifier, self.solve_ctx)
+        solve_with_ctx_and_options(equation, var, self.simplifier, self.opts, self.solve_ctx)
     }
 
     fn map_item_to_step(&mut self, item: StrategyExecutionItem) -> SolveStep {
@@ -286,12 +291,13 @@ impl SolverStrategy for CollectTermsStrategy {
         eq: &Equation,
         var: &str,
         simplifier: &mut Simplifier,
-        _opts: &SolverOptions,
+        opts: &SolverOptions,
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let include_item = simplifier.collect_steps();
         let mut runtime = StrategyRewriteRuntime {
             simplifier,
+            opts: *opts,
             solve_ctx: ctx,
         };
         let solved = solve_collect_terms_rewrite_pipeline_with_item_runtime_for_var(
@@ -323,12 +329,13 @@ impl SolverStrategy for RationalExponentStrategy {
         eq: &Equation,
         var: &str,
         simplifier: &mut Simplifier,
-        _opts: &SolverOptions,
+        opts: &SolverOptions,
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let include_item = simplifier.collect_steps();
         let mut runtime = StrategyRewriteRuntime {
             simplifier,
+            opts: *opts,
             solve_ctx: ctx,
         };
         let solved = solve_rational_exponent_rewrite_pipeline_with_item_runtime_for_var(

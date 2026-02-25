@@ -69,7 +69,7 @@ impl CleanupStepsRuntime<SolveStep> for SolveStepCleanupRuntime {
 ///
 /// This creates a fresh `SolveCtx`; conditions are NOT propagated
 /// to any parent context. For recursive calls from strategies that
-/// need to accumulate conditions, use [`solve_with_ctx`] instead.
+/// need to accumulate conditions, use [`solve_with_ctx_and_options`] instead.
 pub fn solve(
     eq: &cas_ast::Equation,
     var: &str,
@@ -78,17 +78,18 @@ pub fn solve(
     solve_with_options(eq, var, simplifier, SolverOptions::default())
 }
 
-/// Solve with a shared `SolveCtx` so conditions accumulate across recursive calls.
+/// Solve with a shared `SolveCtx` and explicit options.
 ///
-/// Called by strategies that have a `&SolveCtx` and want sub-solve conditions
-/// to feed into the top-level diagnostics.
-pub(crate) fn solve_with_ctx(
+/// This should be used by recursive strategy/isolation paths so nested solves
+/// preserve semantic/domain options from the top-level invocation.
+pub(crate) fn solve_with_ctx_and_options(
     eq: &cas_ast::Equation,
     var: &str,
     simplifier: &mut Simplifier,
+    opts: SolverOptions,
     ctx: &super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    solve_inner(eq, var, simplifier, SolverOptions::default(), ctx)
+    solve_inner(eq, var, simplifier, opts, ctx)
 }
 
 /// V2.9.8: Solve with type-enforced display-ready steps.
@@ -107,7 +108,7 @@ pub fn solve_with_display_steps(
     opts: SolverOptions,
 ) -> Result<(SolutionSet, DisplaySolveSteps, SolveDiagnostics), CasError> {
     // Create a SolveCtx with a fresh accumulator — all recursive calls
-    // through solve_with_ctx will push conditions into this shared set.
+    // through solve_with_ctx_and_options will push conditions into this shared set.
     let ctx = super::SolveCtx::default();
     let result = solve_inner(eq, var, simplifier, opts, &ctx);
 
@@ -146,7 +147,7 @@ pub fn solve_with_display_steps(
 /// Solve with options but no shared context.
 ///
 /// Creates a fresh, isolated `SolveCtx`. Conditions derived here do NOT
-/// propagate to any parent context. Prefer [`solve_with_ctx`] inside
+/// propagate to any parent context. Prefer [`solve_with_ctx_and_options`] inside
 /// strategies that already hold a `&SolveCtx`.
 pub(crate) fn solve_with_options(
     eq: &cas_ast::Equation,
@@ -230,6 +231,16 @@ impl DiscreteVerificationRuntime for SolveCoreVerifyRuntime<'_> {
             self.var,
             solution,
         )
+    }
+}
+
+/// Errors that represent a dead-end for one strategy but should not abort
+/// the whole strategy pipeline. This lets later strategies attempt recovery.
+fn is_soft_strategy_error(err: &CasError) -> bool {
+    match err {
+        CasError::IsolationError(_, detail) => detail.contains("variable appears on both sides"),
+        CasError::SolverError(detail) => detail.contains("Cycle detected"),
+        _ => false,
     }
 }
 
@@ -320,7 +331,7 @@ fn solve_inner(
     // EARLY CHECK: Handle rational exponent equations BEFORE simplification
     // This prevents x^(3/2) from being simplified to |x|*sqrt(x) which causes loops
     if eq.op == cas_ast::RelOp::Eq {
-        if let Some(result) = try_solve_rational_exponent(eq, var, simplifier, &ctx) {
+        if let Some(result) = try_solve_rational_exponent(eq, var, simplifier, opts, &ctx) {
             return guard_solved_result_with_exclusions(result, &domain_exclusions);
         }
     }
@@ -472,6 +483,7 @@ fn solve_inner(
     ];
 
     // 4. Try strategies on the simplified equation
+    let mut last_soft_error: Option<CasError> = None;
     for strategy in strategies {
         let _strategy_name = strategy.name();
         if let Some(res) = strategy.apply(&simplified_eq, var, simplifier, &opts, &ctx) {
@@ -504,10 +516,18 @@ fn solve_inner(
                     return Ok((result, steps));
                 }
                 Err(e) => {
+                    if is_soft_strategy_error(&e) {
+                        last_soft_error = Some(e);
+                        continue;
+                    }
                     return Err(e);
                 }
             }
         }
+    }
+
+    if let Some(e) = last_soft_error {
+        return Err(e);
     }
 
     Err(CasError::SolverError(
@@ -519,6 +539,7 @@ struct SolveCoreRationalExponentRuntime<'a, 'ctx> {
     simplifier: &'a mut Simplifier,
     original_eq: &'a cas_ast::Equation,
     original_var: &'a str,
+    opts: SolverOptions,
     solve_ctx: &'ctx super::SolveCtx,
 }
 
@@ -544,7 +565,7 @@ impl RationalExponentRewriteRuntime<CasError, SolveStep>
         equation: &cas_ast::Equation,
         var: &str,
     ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        solve_with_ctx(equation, var, self.simplifier, self.solve_ctx)
+        solve_with_ctx_and_options(equation, var, self.simplifier, self.opts, self.solve_ctx)
     }
 
     fn map_item_to_step(
@@ -570,6 +591,7 @@ fn try_solve_rational_exponent(
     eq: &cas_ast::Equation,
     var: &str,
     simplifier: &mut Simplifier,
+    opts: SolverOptions,
     ctx: &super::SolveCtx,
 ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
     let include_item = simplifier.collect_steps();
@@ -577,6 +599,7 @@ fn try_solve_rational_exponent(
         simplifier,
         original_eq: eq,
         original_var: var,
+        opts,
         solve_ctx: ctx,
     };
     let solved = match solve_rational_exponent_rewrite_pipeline_with_item_runtime_for_var(

@@ -1,6 +1,6 @@
 use crate::engine::Simplifier;
 use crate::error::CasError;
-use crate::solver::solve_core::solve_with_ctx;
+use crate::solver::solve_core::solve_with_ctx_and_options;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{medium_step, render_expr, SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, ExprId, SolutionSet};
@@ -13,6 +13,7 @@ pub struct SubstitutionStrategy;
 
 struct EngineSubstitutionRuntime<'a, 'ctx> {
     simplifier: &'a mut Simplifier,
+    opts: SolverOptions,
     solve_ctx: &'ctx SolveCtx,
 }
 
@@ -26,7 +27,7 @@ impl SubstitutionStrategyRuntime<CasError, SolveStep> for EngineSubstitutionRunt
         equation: &Equation,
         var: &str,
     ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-        solve_with_ctx(equation, var, self.simplifier, self.solve_ctx)
+        solve_with_ctx_and_options(equation, var, self.simplifier, self.opts, self.solve_ctx)
     }
 
     fn map_step(&mut self, description: String, equation_after: Equation) -> SolveStep {
@@ -44,7 +45,7 @@ impl SolverStrategy for SubstitutionStrategy {
         eq: &Equation,
         var: &str,
         simplifier: &mut Simplifier,
-        _opts: &SolverOptions,
+        opts: &SolverOptions,
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         const SUB_VAR_NAME: &str = "u";
@@ -55,6 +56,7 @@ impl SolverStrategy for SubstitutionStrategy {
             let include_didactic_items = simplifier.collect_steps();
             let mut runtime = EngineSubstitutionRuntime {
                 simplifier,
+                opts: *opts,
                 solve_ctx: ctx,
             };
             let solved = solve_exponential_substitution_strategy_with_items(
@@ -70,12 +72,10 @@ impl SolverStrategy for SubstitutionStrategy {
                 Ok(SubstitutionStrategySolved::SolvedDiscrete { solutions, steps }) => {
                     Some(Ok((SolutionSet::Discrete(solutions), steps)))
                 }
-                Ok(SubstitutionStrategySolved::UnsupportedSolutionSet { .. }) => {
-                    Some(Err(CasError::SolverError(
-                        "Substitution strategy currently only supports discrete solutions"
-                            .to_string(),
-                    )))
-                }
+                Ok(SubstitutionStrategySolved::UnsupportedSolutionSet {
+                    solution_set,
+                    steps,
+                }) => Some(Ok((solution_set, steps))),
                 Err(e) => Some(Err(e)),
             };
         }
