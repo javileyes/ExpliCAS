@@ -439,6 +439,24 @@ where
     )
 }
 
+/// High-level reciprocal solve execution using closure hooks.
+///
+/// Returns `None` when equation shape is not reciprocal-isolable.
+pub fn execute_reciprocal_solve_with<FDeriveKernel, FBuildExecution>(
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    mut derive_kernel: FDeriveKernel,
+    mut build_execution: FBuildExecution,
+) -> Option<ReciprocalSolveExecution>
+where
+    FDeriveKernel: FnMut(ExprId, ExprId, &str) -> Option<ReciprocalSolveKernel>,
+    FBuildExecution: FnMut(&str, ReciprocalSolveKernel) -> ReciprocalSolveExecution,
+{
+    let kernel = derive_kernel(lhs, rhs, var)?;
+    Some(build_execution(var, kernel))
+}
+
 /// High-level reciprocal solve execution using an injected runtime.
 ///
 /// Returns `None` when equation shape is not reciprocal-isolable.
@@ -451,35 +469,41 @@ pub fn execute_reciprocal_solve_with_runtime<R>(
 where
     R: ReciprocalSolveRuntime,
 {
-    let kernel = {
-        let ctx = runtime.context();
-        derive_reciprocal_solve_kernel(ctx, lhs, rhs, var)?
-    };
+    let runtime_cell = std::cell::RefCell::new(runtime);
+    execute_reciprocal_solve_with(
+        lhs,
+        rhs,
+        var,
+        |inner_lhs, inner_rhs, inner_var| {
+            let mut runtime_ref = runtime_cell.borrow_mut();
+            let ctx = runtime_ref.context();
+            derive_reciprocal_solve_kernel(ctx, inner_lhs, inner_rhs, inner_var)
+        },
+        |inner_var, kernel| {
+            let mut runtime_ref = runtime_cell.borrow_mut();
+            let raw_plan = {
+                let ctx = runtime_ref.context();
+                build_reciprocal_solve_plan(ctx, inner_var, kernel.numerator, kernel.denominator)
+            };
+            let combined_rhs_display = runtime_ref.simplify_expr(raw_plan.combined_rhs);
+            let solution_rhs_display = runtime_ref.simplify_expr(raw_plan.solution_rhs);
+            let guard_numerator = runtime_ref.simplify_expr(kernel.numerator);
+            let numerator_status = runtime_ref.prove_nonzero_status(guard_numerator);
 
-    let raw_plan = {
-        let ctx = runtime.context();
-        build_reciprocal_solve_plan(ctx, var, kernel.numerator, kernel.denominator)
-    };
-
-    let combined_rhs_display = runtime.simplify_expr(raw_plan.combined_rhs);
-    let solution_rhs_display = runtime.simplify_expr(raw_plan.solution_rhs);
-    let guard_numerator = runtime.simplify_expr(kernel.numerator);
-    let numerator_status = runtime.prove_nonzero_status(guard_numerator);
-
-    Some({
-        let ctx = runtime.context();
-        build_reciprocal_execution_from_kernel_prepared(
-            ctx,
-            var,
-            kernel,
-            ReciprocalPreparedExecution {
-                combined_rhs_display,
-                solution_rhs_display,
-                guard_numerator,
-                numerator_status,
-            },
-        )
-    })
+            let ctx = runtime_ref.context();
+            build_reciprocal_execution_from_kernel_prepared(
+                ctx,
+                inner_var,
+                kernel,
+                ReciprocalPreparedExecution {
+                    combined_rhs_display,
+                    solution_rhs_display,
+                    guard_numerator,
+                    numerator_status,
+                },
+            )
+        },
+    )
 }
 
 #[cfg(test)]
@@ -690,6 +714,47 @@ mod tests {
             self.prove_calls += 1;
             self.prove_result
         }
+    }
+
+    #[test]
+    fn execute_reciprocal_solve_with_uses_injected_hooks() {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let r = context.var("r");
+        let one = context.num(1);
+        let lhs = context.add(Expr::Div(one, x));
+        let rhs = context.add(Expr::Div(one, r));
+        let context_cell = std::cell::RefCell::new(context);
+        let mut derive_calls = 0usize;
+        let mut build_calls = 0usize;
+
+        let execution = execute_reciprocal_solve_with(
+            lhs,
+            rhs,
+            "x",
+            |inner_lhs, inner_rhs, inner_var| {
+                derive_calls += 1;
+                let mut context_ref = context_cell.borrow_mut();
+                derive_reciprocal_solve_kernel(&mut context_ref, inner_lhs, inner_rhs, inner_var)
+            },
+            |inner_var, kernel| {
+                build_calls += 1;
+                let mut context_ref = context_cell.borrow_mut();
+                build_reciprocal_execution_from_kernel_with(
+                    &mut context_ref,
+                    inner_var,
+                    kernel,
+                    |expr| expr,
+                    |_core_ctx, _expr| NonZeroStatus::Unknown,
+                )
+            },
+        )
+        .expect("reciprocal solve should execute");
+
+        assert_eq!(derive_calls, 1);
+        assert_eq!(build_calls, 1);
+        assert_eq!(execution.items.len(), 2);
+        assert!(matches!(execution.solutions, SolutionSet::Conditional(_)));
     }
 
     #[test]
