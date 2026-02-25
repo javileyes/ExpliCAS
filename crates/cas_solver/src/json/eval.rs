@@ -6,6 +6,19 @@ use cas_api_models::{
 };
 use cas_engine::{strip_all_holds, Engine, EvalAction, EvalOptions, EvalRequest, EvalResult};
 
+fn map_eval_error_message(message: String) -> EngineJsonError {
+    if message.contains("requires stateful eval") {
+        EngineJsonError::invalid_input(
+            "Session references (#N) are not supported in stateless eval_json mode",
+            serde_json::json!({
+                "hint": "Use stateful Engine::eval with an EvalSession for #N references"
+            }),
+        )
+    } else {
+        EngineJsonError::simple("InternalError", "E_INTERNAL", message)
+    }
+}
+
 /// Evaluate an expression and return JSON response.
 ///
 /// This is the **canonical entry point** for all JSON-returning evaluation.
@@ -84,8 +97,7 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
     let output = match engine.eval_stateless(EvalOptions::default(), req) {
         Ok(o) => o,
         Err(e) => {
-            // anyhow::Error - create generic error
-            let error = EngineJsonError::simple("InternalError", "E_INTERNAL", e.to_string());
+            let error = map_eval_error_message(e.to_string());
             let resp = EngineJsonResponse::err(error, budget_info);
             return if opts.pretty {
                 resp.to_json_pretty()
@@ -168,5 +180,20 @@ pub fn eval_str_to_json(expr: &str, opts_json: &str) -> String {
         resp.to_json_pretty()
     } else {
         resp.to_json()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::eval_str_to_json;
+
+    #[test]
+    fn eval_json_session_ref_returns_invalid_input() {
+        let json = eval_str_to_json("#1 + x", "{}");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("json");
+
+        assert_eq!(parsed["ok"], false);
+        assert_eq!(parsed["error"]["kind"], "InvalidInput");
+        assert_eq!(parsed["error"]["code"], "E_INVALID_INPUT");
     }
 }
