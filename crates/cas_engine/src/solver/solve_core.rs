@@ -20,7 +20,6 @@ use cas_solver_core::strategy_kernels::{
     derive_rational_exponent_kernel_for_var,
     solve_rational_exponent_rewrite_pipeline_with_item_with, RationalExponentSolvedRewrite,
 };
-use cas_solver_core::verify_substitution::{substitute_equation_sides, verify_solution_with};
 use std::cell::RefCell;
 
 use crate::engine::Simplifier;
@@ -44,32 +43,6 @@ use super::{
 //   - rules/rational_canonicalization.rs (CanonicalizeRationalDivRule, CanonicalizeNestedPowRule)
 //   - rules/cancel_common_terms.rs (CancelCommonAdditiveTermsRule)
 // These are now applied automatically by simplify_for_solve().
-
-fn verify_solution(
-    eq: &cas_ast::Equation,
-    var: &str,
-    sol: ExprId,
-    simplifier: &mut Simplifier,
-) -> bool {
-    let simplifier_cell = RefCell::new(simplifier);
-    verify_solution_with(
-        eq,
-        var,
-        sol,
-        |equation, name, candidate| {
-            let mut s_ref = simplifier_cell.borrow_mut();
-            substitute_equation_sides(&mut s_ref.context, equation, name, candidate)
-        },
-        |expr| {
-            let mut s_ref = simplifier_cell.borrow_mut();
-            s_ref.simplify(expr).0
-        },
-        |lhs, rhs| {
-            let mut s_ref = simplifier_cell.borrow_mut();
-            s_ref.are_equivalent(lhs, rhs)
-        },
-    )
-}
 
 /// Solve with default options (for backward compatibility with tests).
 /// Uses RealOnly domain and Generic mode.
@@ -471,7 +444,9 @@ fn solve_inner(
                         let verify_runtime = |solution: ExprId| {
                             // Verify against ORIGINAL equation, not simplified form, so
                             // domain-invalid roots (e.g. division by zero) are rejected.
-                            verify_solution(eq, var, solution, simplifier)
+                            super::check::verify_solution_by_equivalence(
+                                simplifier, eq, var, solution,
+                            )
                         };
                         let valid_sols = merge_symbolic_with_verified_numeric(
                             symbolic_solutions,
@@ -527,7 +502,7 @@ fn try_solve_rational_exponent(
     let solution_set = if let SolutionSet::Discrete(sols) = solved.solution_set {
         SolutionSet::Discrete(cas_solver_core::solve_analysis::retain_verified_discrete(
             sols,
-            |solution| verify_solution(eq, var, solution, simplifier),
+            |solution| super::check::verify_solution_by_equivalence(simplifier, eq, var, solution),
         ))
     } else {
         solved.solution_set

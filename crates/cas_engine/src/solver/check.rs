@@ -27,7 +27,10 @@ use cas_math::expr_predicates::contains_variable;
 use cas_solver_core::isolation_utils::is_numeric_zero;
 use cas_solver_core::solution_check::verify_solution_with as verify_solution_with_core;
 use cas_solver_core::verification::verify_solution_set_with;
-use cas_solver_core::verify_substitution::substitute_equation_diff;
+use cas_solver_core::verify_substitution::{
+    substitute_equation_diff, substitute_equation_sides,
+    verify_solution_with as verify_solution_with_equivalence_core,
+};
 use std::cell::RefCell;
 
 use crate::engine::Simplifier;
@@ -104,6 +107,36 @@ pub fn verify_solution(
         |expr| {
             let s_ref = simplifier_cell.borrow();
             solver_render_expr(&s_ref.context, expr)
+        },
+    )
+}
+
+/// Fast equivalence-based verifier used by solve strategy filtering.
+///
+/// This keeps legacy behavior for strategy-level post-filtering:
+/// substitute both equation sides and check semantic equivalence after simplify.
+pub(crate) fn verify_solution_by_equivalence(
+    simplifier: &mut Simplifier,
+    equation: &Equation,
+    var: &str,
+    solution: ExprId,
+) -> bool {
+    let simplifier_cell = RefCell::new(simplifier);
+    verify_solution_with_equivalence_core(
+        equation,
+        var,
+        solution,
+        |eq, name, candidate| {
+            let mut s_ref = simplifier_cell.borrow_mut();
+            substitute_equation_sides(&mut s_ref.context, eq, name, candidate)
+        },
+        |expr| {
+            let mut s_ref = simplifier_cell.borrow_mut();
+            s_ref.simplify(expr).0
+        },
+        |lhs, rhs| {
+            let mut s_ref = simplifier_cell.borrow_mut();
+            s_ref.are_equivalent(lhs, rhs)
         },
     )
 }
