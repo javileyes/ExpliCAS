@@ -6,14 +6,14 @@ use crate::solver::{medium_step, render_expr, SolveCtx, SolveStep, SolveSubStep,
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{is_numeric_zero, split_zero_product_factors};
 use cas_solver_core::quadratic_didactic::{
-    build_factorized_zero_product_execution_with_optional_items_runtime,
-    build_quadratic_main_with_substeps_execution_with_optional_items_runtime,
+    build_factorized_zero_product_execution_with_optional_items,
+    build_quadratic_main_with_substeps_execution_with_optional_items,
     finalize_factorized_zero_product_strategy_solved,
     solve_factorized_zero_product_execution_pipeline_with_items_runtime,
     solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification_runtime,
-    FactorizedZeroProductExecutionRuntime, FactorizedZeroProductPlanRuntime,
-    QuadraticExecutionItem, QuadraticMainWithSubstepsPlanRuntime, QuadraticMainWithSubstepsRuntime,
-    QuadraticSubstepExecutionItem, ZeroProductFactorExecutionItem,
+    FactorizedZeroProductExecutionRuntime, QuadraticExecutionItem,
+    QuadraticMainWithSubstepsRuntime, QuadraticSubstepExecutionItem,
+    ZeroProductFactorExecutionItem,
 };
 use cas_solver_core::quadratic_formula::{
     discriminant, discriminant_expr, roots_from_a_b_and_sqrt, roots_from_a_b_delta, sqrt_expr,
@@ -23,24 +23,6 @@ use num_rational::BigRational;
 use num_traits::Zero;
 
 pub struct QuadraticStrategy;
-
-struct QuadraticFactorizedPlanRuntime<'a> {
-    context: &'a cas_ast::Context,
-}
-
-impl FactorizedZeroProductPlanRuntime for QuadraticFactorizedPlanRuntime<'_> {
-    fn render_expr(&mut self, expr: ExprId) -> String {
-        render_expr(self.context, expr)
-    }
-}
-
-struct QuadraticMainPlanRuntime;
-
-impl QuadraticMainWithSubstepsPlanRuntime for QuadraticMainPlanRuntime {
-    fn render_expr(&mut self, ctx: &cas_ast::Context, expr: ExprId) -> String {
-        render_expr(ctx, expr)
-    }
-}
 
 struct QuadraticFactorizedRuntime<'a, 'ctx> {
     simplifier: &'a mut Simplifier,
@@ -74,13 +56,9 @@ impl FactorizedZeroProductExecutionRuntime<CasError, (SolutionSet, Vec<SolveStep
     }
 }
 
-struct QuadraticDidacticRuntime<'a> {
-    simplifier: &'a mut Simplifier,
-}
-
-impl QuadraticMainWithSubstepsRuntime<SolveStep, SolveSubStep> for QuadraticDidacticRuntime<'_> {
+impl QuadraticMainWithSubstepsRuntime<SolveStep, SolveSubStep> for Simplifier {
     fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
-        self.simplifier.simplify(expr).0
+        self.simplify(expr).0
     }
 
     fn map_main_item_to_step(
@@ -133,18 +111,15 @@ impl SolverStrategy for QuadraticStrategy {
             if eq.op == RelOp::Eq {
                 let include_items = simplifier.collect_steps();
                 let residual_expr = sim_poly_expr;
-                let mut plan_runtime = QuadraticFactorizedPlanRuntime {
-                    context: &simplifier.context,
-                };
                 let factorized_execution =
-                    build_factorized_zero_product_execution_with_optional_items_runtime(
+                    build_factorized_zero_product_execution_with_optional_items(
                         &simplifier.context,
                         sim_poly_expr,
                         &factors,
                         var,
                         zero,
                         include_items,
-                        &mut plan_runtime,
+                        |expr| render_expr(&simplifier.context, expr),
                     );
                 let solved_factorized =
                     match solve_factorized_zero_product_execution_pipeline_with_items_runtime(
@@ -200,18 +175,17 @@ impl SolverStrategy for QuadraticStrategy {
                 rhs: simplifier.context.num(0),
                 op: RelOp::Eq,
             };
-            let mut execution =
-                build_quadratic_main_with_substeps_execution_with_optional_items_runtime(
-                    &mut simplifier.context,
-                    var,
-                    sim_a,
-                    sim_b,
-                    sim_c,
-                    is_real_only,
-                    main_equation,
-                    include_items,
-                    &mut QuadraticMainPlanRuntime,
-                );
+            let mut execution = build_quadratic_main_with_substeps_execution_with_optional_items(
+                &mut simplifier.context,
+                var,
+                sim_a,
+                sim_b,
+                sim_c,
+                is_real_only,
+                main_equation,
+                include_items,
+                render_expr,
+            );
             let was_collecting = simplifier.collect_steps();
             if include_items {
                 // Simplify substep equations with step collection disabled to avoid polluting timeline.
@@ -221,7 +195,7 @@ impl SolverStrategy for QuadraticStrategy {
                 solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification_runtime(
                     &mut execution,
                     include_items,
-                    &mut QuadraticDidacticRuntime { simplifier },
+                    simplifier,
                 );
             if include_items {
                 simplifier.set_collect_steps(was_collecting);

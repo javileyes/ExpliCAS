@@ -16,8 +16,7 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{medium_step, SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, SolutionSet};
 use cas_solver_core::rational_roots::{
-    solve_rational_roots_strategy_with_runtime_and_item_runtime, RationalRootsDidacticRuntime,
-    RationalRootsExecutionItem, RationalRootsStrategyRuntime,
+    solve_rational_roots_strategy_with_runtime_and_item, RationalRootsStrategyRuntime,
 };
 
 /// Maximum number of candidate rational roots to try before bailing.
@@ -29,29 +28,17 @@ const MAX_DEGREE: usize = 10;
 
 pub struct RationalRootsStrategy;
 
-struct RationalRootsRuntimeAdapter<'a> {
-    simplifier: &'a mut Simplifier,
-}
-
-impl RationalRootsStrategyRuntime for RationalRootsRuntimeAdapter<'_> {
+impl RationalRootsStrategyRuntime for Simplifier {
     fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.simplifier.context
+        &mut self.context
     }
 
     fn simplify_expr(&mut self, expr: cas_ast::ExprId) -> cas_ast::ExprId {
-        self.simplifier.simplify(expr).0
+        self.simplify(expr).0
     }
 
     fn expand_expr(&mut self, expr: cas_ast::ExprId) -> cas_ast::ExprId {
-        crate::expand::expand(&mut self.simplifier.context, expr)
-    }
-}
-
-struct RationalRootsDidacticMapper;
-
-impl RationalRootsDidacticRuntime<SolveStep> for RationalRootsDidacticMapper {
-    fn map_item_to_step(&mut self, item: RationalRootsExecutionItem) -> SolveStep {
-        medium_step(item.description().to_string(), item.equation)
+        crate::expand::expand(&mut self.context, expr)
     }
 }
 
@@ -69,10 +56,8 @@ impl SolverStrategy for RationalRootsStrategy {
         _ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let include_item = simplifier.collect_steps();
-        let mut runtime = RationalRootsRuntimeAdapter { simplifier };
-        let mut didactic_runtime = RationalRootsDidacticMapper;
-        let solved = solve_rational_roots_strategy_with_runtime_and_item_runtime(
-            &mut runtime,
+        let solved = solve_rational_roots_strategy_with_runtime_and_item(
+            simplifier,
             eq.lhs,
             eq.rhs,
             eq.op.clone(),
@@ -81,7 +66,7 @@ impl SolverStrategy for RationalRootsStrategy {
             MAX_DEGREE,
             MAX_CANDIDATES,
             include_item,
-            &mut didactic_runtime,
+            |item| medium_step(item.description().to_string(), item.equation),
         )?;
         Some(Ok((solved.solution_set, solved.steps)))
     }

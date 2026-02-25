@@ -10,40 +10,15 @@ use cas_solver_core::function_inverse::{
 };
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::log_isolation::{
-    plan_log_isolation_step_with_runtime, solve_log_isolation_rewrite_pipeline_with_item,
-    LogIsolationPlanRuntime, LogIsolationRewriteRuntime,
+    plan_log_isolation_step_with, solve_log_isolation_rewrite_pipeline_with_item,
+    LogIsolationRewriteRuntime,
 };
 use cas_solver_core::solve_outcome::{
-    finalize_abs_split_solution_set, plan_abs_isolation, solve_abs_isolation_plan_with_runtime,
-    solve_abs_split_pipeline_with_optional_items_runtime, AbsIsolationPlanRuntime,
-    AbsIsolationSolved, AbsSplitRuntime,
+    finalize_abs_split_solution_set, plan_abs_isolation, solve_abs_isolation_plan_with,
+    solve_abs_split_pipeline_with_optional_items_runtime, AbsIsolationSolved, AbsSplitRuntime,
 };
 
 use super::{isolate, prepend_steps};
-
-struct AbsPlanDispatchRuntime;
-
-struct LogIsolationPlanRenderRuntime;
-
-impl LogIsolationPlanRuntime for LogIsolationPlanRenderRuntime {
-    fn render_expr(&mut self, ctx: &cas_ast::Context, expr: ExprId) -> String {
-        solver_render_expr(ctx, expr)
-    }
-}
-
-impl AbsIsolationPlanRuntime<CasError, Equation, (Equation, Equation)> for AbsPlanDispatchRuntime {
-    fn solve_single(&mut self, equation: Equation) -> Result<Equation, CasError> {
-        Ok(equation)
-    }
-
-    fn solve_split(
-        &mut self,
-        positive: Equation,
-        negative: Equation,
-    ) -> Result<(Equation, Equation), CasError> {
-        Ok((positive, negative))
-    }
-}
 
 struct AbsSplitRuntimeAdapter<'a, 'ctx> {
     simplifier: &'a mut Simplifier,
@@ -214,10 +189,10 @@ fn isolate_abs(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let rhs_sign = numeric_sign(&simplifier.context, rhs);
     let abs_plan = plan_abs_isolation(&mut simplifier.context, arg, rhs, op.clone(), rhs_sign);
-    let dispatched_abs = {
-        let mut runtime = AbsPlanDispatchRuntime;
-        solve_abs_isolation_plan_with_runtime(abs_plan, &mut runtime)?
-    };
+    let dispatched_abs =
+        solve_abs_isolation_plan_with(abs_plan, Ok::<Equation, CasError>, |positive, negative| {
+            Ok::<(Equation, Equation), CasError>((positive, negative))
+        })?;
 
     match dispatched_abs {
         AbsIsolationSolved::ReturnedEmptySet => Ok((SolutionSet::Empty, steps)),
@@ -274,18 +249,15 @@ fn isolate_log(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let rewrite = {
-        let mut runtime = LogIsolationPlanRenderRuntime;
-        plan_log_isolation_step_with_runtime(
-            &mut simplifier.context,
-            base,
-            arg,
-            rhs,
-            var,
-            op.clone(),
-            &mut runtime,
-        )
-    }
+    let rewrite = plan_log_isolation_step_with(
+        &mut simplifier.context,
+        base,
+        arg,
+        rhs,
+        var,
+        op.clone(),
+        solver_render_expr,
+    )
     .ok_or_else(|| {
         CasError::IsolationError(
             var.to_string(),

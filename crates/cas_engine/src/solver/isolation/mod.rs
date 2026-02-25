@@ -19,20 +19,14 @@ struct NegatedIsolationRuntime<'a, 'ctx> {
     solve_ctx: &'ctx super::SolveCtx,
 }
 
-struct IsolatedVariableRuntimeAdapter<'a> {
-    simplifier: &'a mut Simplifier,
-}
-
-impl cas_solver_core::solve_outcome::CircularIsolatedRuntime<SolveStep>
-    for IsolatedVariableRuntimeAdapter<'_>
-{
+impl cas_solver_core::solve_outcome::CircularIsolatedRuntime<SolveStep> for Simplifier {
     fn try_linear_collect(
         &mut self,
         lhs: ExprId,
         rhs: ExprId,
         var: &str,
     ) -> Option<(SolutionSet, Vec<SolveStep>)> {
-        crate::solver::linear_collect::try_linear_collect(lhs, rhs, var, self.simplifier)
+        crate::solver::linear_collect::try_linear_collect(lhs, rhs, var, self)
     }
 
     fn try_linear_collect_v2(
@@ -41,21 +35,21 @@ impl cas_solver_core::solve_outcome::CircularIsolatedRuntime<SolveStep>
         rhs: ExprId,
         var: &str,
     ) -> Option<(SolutionSet, Vec<SolveStep>)> {
-        crate::solver::linear_collect::try_linear_collect_v2(lhs, rhs, var, self.simplifier)
+        crate::solver::linear_collect::try_linear_collect_v2(lhs, rhs, var, self)
     }
 
     fn residual_solution(&mut self, lhs: ExprId, rhs: ExprId, var: &str) -> SolutionSet {
-        residual_solution_set(&mut self.simplifier.context, lhs, rhs, var)
+        residual_solution_set(&mut self.context, lhs, rhs, var)
     }
 }
 
-impl IsolatedVariableRuntime<SolveStep> for IsolatedVariableRuntimeAdapter<'_> {
+impl IsolatedVariableRuntime<SolveStep> for Simplifier {
     fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.simplifier.context
+        &mut self.context
     }
 
     fn simplify_rhs(&mut self, rhs: ExprId) -> ExprId {
-        self.simplifier.simplify(rhs).0
+        self.simplify(rhs).0
     }
 }
 
@@ -108,8 +102,7 @@ pub(crate) fn isolate(
 
     match lhs_expr {
         Expr::Variable(sym_id) if simplifier.context.sym_name(sym_id) == var => {
-            let mut runtime = IsolatedVariableRuntimeAdapter { simplifier };
-            let solved = solve_isolated_variable_lhs_with_runtime(lhs, rhs, op, var, &mut runtime);
+            let solved = solve_isolated_variable_lhs_with_runtime(lhs, rhs, op, var, simplifier);
             prepend_steps(solved, steps)
         }
         Expr::Add(l, r) => {

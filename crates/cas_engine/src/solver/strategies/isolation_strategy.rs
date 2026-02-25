@@ -19,9 +19,9 @@ use cas_solver_core::strategy_kernels::{
     StrategyKernelRuntime,
 };
 use cas_solver_core::unwrap_plan::{
-    route_unwrap_entry_with_item_runtime, solve_unwrap_execution_pipeline_with_item,
-    LogLinearAssumptionRecord, UnwrapEntryRouting, UnwrapEntryRuntime, UnwrapExecutionItem,
-    UnwrapExecutionPlan, UnwrapExecutionRuntime, UnwrapPlanRuntime,
+    route_unwrap_entry_with_item, solve_unwrap_execution_pipeline_with_item,
+    LogLinearAssumptionRecord, UnwrapEntryRouting, UnwrapExecutionItem, UnwrapExecutionPlan,
+    UnwrapExecutionRuntime,
 };
 
 pub struct IsolationStrategy;
@@ -86,38 +86,6 @@ impl SolverStrategy for IsolationStrategy {
 }
 
 pub struct UnwrapStrategy;
-
-struct UnwrapEntryRuntimeAdapter<'a, 'ctx> {
-    opts: &'a SolverOptions,
-    solve_ctx: &'ctx SolveCtx,
-}
-
-impl UnwrapPlanRuntime for UnwrapEntryRuntimeAdapter<'_, '_> {
-    fn classify_log_solve(
-        &mut self,
-        ctx: &cas_ast::Context,
-        base: ExprId,
-        other_side: ExprId,
-    ) -> cas_solver_core::log_domain::LogSolveDecision {
-        crate::solver::classify_log_solve(
-            ctx,
-            base,
-            other_side,
-            self.opts,
-            &self.solve_ctx.domain_env,
-        )
-    }
-
-    fn render_expr(&mut self, ctx: &cas_ast::Context, expr: ExprId) -> String {
-        solver_render_expr(ctx, expr)
-    }
-}
-
-impl UnwrapEntryRuntime<SolveStep> for UnwrapEntryRuntimeAdapter<'_, '_> {
-    fn map_terminal_item_to_step(&mut self, item: TermIsolationExecutionItem) -> SolveStep {
-        medium_step(item.description, item.equation)
-    }
-}
 
 struct UnwrapExecutionRuntimeAdapter<'a, 'ctx> {
     simplifier: &'a mut Simplifier,
@@ -190,11 +158,7 @@ impl SolverStrategy for UnwrapStrategy {
         let wildcard_scope = opts.wildcard_scope();
 
         let include_item = simplifier.collect_steps();
-        let mut runtime = UnwrapEntryRuntimeAdapter {
-            opts,
-            solve_ctx: ctx,
-        };
-        let routed = route_unwrap_entry_with_item_runtime(
+        let routed = route_unwrap_entry_with_item(
             &mut simplifier.context,
             eq,
             var,
@@ -202,7 +166,11 @@ impl SolverStrategy for UnwrapStrategy {
             wildcard_scope,
             " - use 'semantics preset complex'",
             include_item,
-            &mut runtime,
+            |core_ctx, base, other_side| {
+                crate::solver::classify_log_solve(core_ctx, base, other_side, opts, &ctx.domain_env)
+            },
+            solver_render_expr,
+            |item: TermIsolationExecutionItem| medium_step(item.description, item.equation),
         );
         let routed = routed?;
         Some(match routed {
