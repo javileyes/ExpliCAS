@@ -144,6 +144,41 @@ pub trait SolvePreprocessRuntime {
     fn simplify_for_solve(&mut self, expr: ExprId) -> ExprId;
 }
 
+/// Simplify only equation sides that contain `var` and recompose `a^x / b^x` when possible
+/// using caller-provided hooks.
+pub fn simplify_equation_sides_for_var_with<FContains, FSimplify, FRecompose>(
+    eq: &Equation,
+    var: &str,
+    mut contains_var: FContains,
+    mut simplify_for_solve: FSimplify,
+    mut try_recompose_pow_quotient: FRecompose,
+) -> Equation
+where
+    FContains: FnMut(ExprId, &str) -> bool,
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FRecompose: FnMut(ExprId) -> Option<ExprId>,
+{
+    let mut simplified_eq = eq.clone();
+
+    if contains_var(eq.lhs, var) {
+        let sim_lhs = simplify_for_solve(eq.lhs);
+        simplified_eq.lhs = sim_lhs;
+        if let Some(recomposed) = try_recompose_pow_quotient(sim_lhs) {
+            simplified_eq.lhs = recomposed;
+        }
+    }
+
+    if contains_var(eq.rhs, var) {
+        let sim_rhs = simplify_for_solve(eq.rhs);
+        simplified_eq.rhs = sim_rhs;
+        if let Some(recomposed) = try_recompose_pow_quotient(sim_rhs) {
+            simplified_eq.rhs = recomposed;
+        }
+    }
+
+    simplified_eq
+}
+
 /// Simplify only equation sides that contain `var` and recompose `a^x / b^x` when possible.
 pub fn simplify_equation_sides_for_var_with_runtime<R>(
     runtime: &mut R,
@@ -209,6 +244,53 @@ pub trait ResidualRewriteRuntime {
     fn expand_algebraic(&mut self, expr: ExprId) -> ExprId;
     fn simplify_for_solve(&mut self, expr: ExprId) -> ExprId;
     fn expand_trig(&mut self, expr: ExprId) -> ExprId;
+}
+
+/// Normalize a residual expression by applying the two engine-level fallback rewrites:
+/// 1) algebraic expand + simplify
+/// 2) trig expand mode
+///
+/// A rewrite is accepted only if it eliminates `var` or reduces tree size significantly.
+pub fn normalize_variable_residual_with<
+    FContains,
+    FExpandAlgebraic,
+    FSimplifyForSolve,
+    FExpandTrig,
+    FAcceptCandidate,
+>(
+    residual: ExprId,
+    var: &str,
+    mut contains_var: FContains,
+    mut expand_algebraic: FExpandAlgebraic,
+    mut simplify_for_solve: FSimplifyForSolve,
+    mut expand_trig: FExpandTrig,
+    mut accept_candidate: FAcceptCandidate,
+) -> ExprId
+where
+    FContains: FnMut(ExprId, &str) -> bool,
+    FExpandAlgebraic: FnMut(ExprId) -> ExprId,
+    FSimplifyForSolve: FnMut(ExprId) -> ExprId,
+    FExpandTrig: FnMut(ExprId) -> ExprId,
+    FAcceptCandidate: FnMut(ExprId, ExprId, &str) -> Option<ExprId>,
+{
+    let mut current = residual;
+
+    if contains_var(current, var) {
+        let expanded = expand_algebraic(current);
+        let re_simplified = simplify_for_solve(expanded);
+        if let Some(accepted) = accept_candidate(current, re_simplified, var) {
+            current = accepted;
+        }
+    }
+
+    if contains_var(current, var) {
+        let trig_expanded = expand_trig(current);
+        if let Some(accepted) = accept_candidate(current, trig_expanded, var) {
+            current = accepted;
+        }
+    }
+
+    current
 }
 
 /// Normalize a residual expression by applying the two engine-level fallback rewrites:

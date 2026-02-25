@@ -9,8 +9,7 @@ use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_analysis::{
     apply_nonzero_exclusion_guards_if_any, classify_equation_var_presence,
     guard_solved_result_with_exclusions, merge_symbolic_with_verified_numeric,
-    normalize_variable_residual_with_runtime, simplify_equation_sides_for_var_with_runtime,
-    EquationVarPresence, ResidualRewriteRuntime, SolvePreprocessRuntime,
+    normalize_variable_residual_with, simplify_equation_sides_for_var_with, EquationVarPresence,
 };
 use cas_solver_core::solve_outcome::{
     resolve_var_eliminated_outcome_with, solve_var_eliminated_constraint_pipeline_with_item,
@@ -21,7 +20,8 @@ use cas_solver_core::strategy_kernels::{
     derive_rational_exponent_kernel_for_var,
     solve_rational_exponent_rewrite_pipeline_with_item_with, RationalExponentSolvedRewrite,
 };
-use cas_solver_core::verify_substitution::{verify_solution_with_runtime, VerifySolutionRuntime};
+use cas_solver_core::verify_substitution::{substitute_equation_sides, verify_solution_with};
+use std::cell::RefCell;
 
 use crate::engine::Simplifier;
 use crate::error::CasError;
@@ -51,51 +51,24 @@ fn verify_solution(
     sol: ExprId,
     simplifier: &mut Simplifier,
 ) -> bool {
-    verify_solution_with_runtime(simplifier, eq, var, sol)
-}
-
-impl VerifySolutionRuntime for Simplifier {
-    fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.context
-    }
-
-    fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
-        let (simplified, _) = self.simplify(expr);
-        simplified
-    }
-
-    fn are_equivalent(&mut self, lhs: ExprId, rhs: ExprId) -> bool {
-        self.are_equivalent(lhs, rhs)
-    }
-}
-
-impl SolvePreprocessRuntime for Simplifier {
-    fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.context
-    }
-
-    fn simplify_for_solve(&mut self, expr: ExprId) -> ExprId {
-        self.simplify_for_solve(expr)
-    }
-}
-
-impl ResidualRewriteRuntime for Simplifier {
-    fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.context
-    }
-
-    fn expand_algebraic(&mut self, expr: ExprId) -> ExprId {
-        crate::expand::expand(&mut self.context, expr)
-    }
-
-    fn simplify_for_solve(&mut self, expr: ExprId) -> ExprId {
-        self.simplify_for_solve(expr)
-    }
-
-    fn expand_trig(&mut self, expr: ExprId) -> ExprId {
-        let (expanded, _) = self.expand(expr);
-        expanded
-    }
+    let simplifier_cell = RefCell::new(simplifier);
+    verify_solution_with(
+        eq,
+        var,
+        sol,
+        |equation, name, candidate| {
+            let mut s_ref = simplifier_cell.borrow_mut();
+            substitute_equation_sides(&mut s_ref.context, equation, name, candidate)
+        },
+        |expr| {
+            let mut s_ref = simplifier_cell.borrow_mut();
+            s_ref.simplify(expr).0
+        },
+        |lhs, rhs| {
+            let mut s_ref = simplifier_cell.borrow_mut();
+            s_ref.are_equivalent(lhs, rhs)
+        },
+    )
 }
 
 /// Solve with default options (for backward compatibility with tests).
@@ -284,7 +257,28 @@ fn solve_inner(
     // 2. Simplify both sides BEFORE applying strategies
     // This is crucial for equations like "1/3*x + 1/2*x = 5"
     // which need to be simplified to "5/6*x = 5" before isolation
-    let mut simplified_eq = simplify_equation_sides_for_var_with_runtime(simplifier, eq, var);
+    let mut simplified_eq = {
+        let simplifier_cell = RefCell::new(&mut *simplifier);
+        simplify_equation_sides_for_var_with(
+            eq,
+            var,
+            |expr, name| {
+                let s_ref = simplifier_cell.borrow();
+                cas_solver_core::isolation_utils::contains_var(&s_ref.context, expr, name)
+            },
+            |expr| {
+                let mut s_ref = simplifier_cell.borrow_mut();
+                s_ref.simplify_for_solve(expr)
+            },
+            |expr| {
+                let mut s_ref = simplifier_cell.borrow_mut();
+                cas_solver_core::isolation_utils::try_recompose_pow_quotient(
+                    &mut s_ref.context,
+                    expr,
+                )
+            },
+        )
+    };
 
     // NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)) and
     // nested-pow folding are handled by global simplifier rules:
@@ -350,8 +344,38 @@ fn solve_inner(
     // expand + simplify and a trig expand fallback (Ticket 6c). Accept
     // rewrites only when they eliminate the variable or significantly
     // reduce expression size.
-    let normalized_diff =
-        normalize_variable_residual_with_runtime(simplifier, diff_simplified, var);
+    let normalized_diff = {
+        let simplifier_cell = RefCell::new(&mut *simplifier);
+        normalize_variable_residual_with(
+            diff_simplified,
+            var,
+            |expr, name| {
+                let s_ref = simplifier_cell.borrow();
+                cas_solver_core::isolation_utils::contains_var(&s_ref.context, expr, name)
+            },
+            |expr| {
+                let mut s_ref = simplifier_cell.borrow_mut();
+                crate::expand::expand(&mut s_ref.context, expr)
+            },
+            |expr| {
+                let mut s_ref = simplifier_cell.borrow_mut();
+                s_ref.simplify_for_solve(expr)
+            },
+            |expr| {
+                let mut s_ref = simplifier_cell.borrow_mut();
+                s_ref.expand(expr).0
+            },
+            |current, candidate, name| {
+                let s_ref = simplifier_cell.borrow();
+                cas_solver_core::solve_analysis::accept_residual_rewrite_candidate(
+                    &s_ref.context,
+                    current,
+                    candidate,
+                    name,
+                )
+            },
+        )
+    };
     if normalized_diff != diff_simplified {
         diff_simplified = normalized_diff;
         let zero = simplifier.context.num(0);

@@ -34,6 +34,26 @@ pub fn substitute_equation_diff(
     ctx.add(Expr::Sub(lhs_sub, rhs_sub))
 }
 
+/// Verify a candidate solution with caller-provided substitution/simplification hooks.
+pub fn verify_solution_with<FSubstitute, FSimplify, FEquivalent>(
+    equation: &Equation,
+    var: &str,
+    solution: ExprId,
+    mut substitute_sides: FSubstitute,
+    mut simplify_expr: FSimplify,
+    mut are_equivalent: FEquivalent,
+) -> bool
+where
+    FSubstitute: FnMut(&Equation, &str, ExprId) -> (ExprId, ExprId),
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FEquivalent: FnMut(ExprId, ExprId) -> bool,
+{
+    let (lhs_sub, rhs_sub) = substitute_sides(equation, var, solution);
+    let lhs_sim = simplify_expr(lhs_sub);
+    let rhs_sim = simplify_expr(rhs_sub);
+    are_equivalent(lhs_sim, rhs_sim)
+}
+
 /// Verify a candidate solution by substitution, simplification, and equivalence.
 pub fn verify_solution_with_runtime<R>(
     runtime: &mut R,
