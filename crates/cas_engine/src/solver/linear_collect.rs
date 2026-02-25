@@ -19,24 +19,20 @@ use cas_solver_core::linear_collect::{
 use crate::engine::Simplifier;
 use crate::solver::{medium_step, render_expr, SolveStep};
 
-struct LinearCollectComputeRuntime<'a> {
-    simplifier: &'a mut Simplifier,
-}
-
-impl LinearCollectRuntime for LinearCollectComputeRuntime<'_> {
+impl LinearCollectRuntime for Simplifier {
     fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.simplifier.context
+        &mut self.context
     }
 
     fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
-        self.simplifier.simplify(expr).0
+        self.simplify(expr).0
     }
 
     fn prove_nonzero_status(
         &mut self,
         expr: ExprId,
     ) -> cas_solver_core::linear_solution::NonZeroStatus {
-        crate::solver::prove_nonzero_status(&self.simplifier.context, expr)
+        crate::solver::prove_nonzero_status(&self.context, expr)
     }
 }
 
@@ -64,10 +60,9 @@ pub(crate) fn try_linear_collect(
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
     let include_items = simplifier.collect_steps();
-    let mut compute_runtime = LinearCollectComputeRuntime { simplifier };
     let mut didactic_runtime = LinearCollectDidacticMapper;
     solve_linear_collect_factored_pipeline_with_runtime_and_items_runtime(
-        &mut compute_runtime,
+        simplifier,
         lhs,
         rhs,
         var,
@@ -88,10 +83,9 @@ pub(crate) fn try_linear_collect_v2(
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
     let include_items = simplifier.collect_steps();
-    let mut compute_runtime = LinearCollectComputeRuntime { simplifier };
     let mut didactic_runtime = LinearCollectDidacticMapper;
     solve_linear_collect_additive_pipeline_with_runtime_and_items_runtime(
-        &mut compute_runtime,
+        simplifier,
         lhs,
         rhs,
         var,

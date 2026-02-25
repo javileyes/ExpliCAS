@@ -15,28 +15,26 @@ use cas_solver_core::reciprocal::{
 use crate::engine::Simplifier;
 use crate::solver::{medium_step, SolveStep};
 
-struct ReciprocalRuntimeAdapter<'a> {
-    simplifier: &'a mut Simplifier,
-}
-
-impl ReciprocalSolveRuntime for ReciprocalRuntimeAdapter<'_> {
+impl ReciprocalSolveRuntime for Simplifier {
     fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.simplifier.context
+        &mut self.context
     }
 
     fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
-        self.simplifier.simplify(expr).0
+        self.simplify(expr).0
     }
 
     fn prove_nonzero_status(
         &mut self,
         expr: ExprId,
     ) -> cas_solver_core::linear_solution::NonZeroStatus {
-        crate::solver::prove_nonzero_status(&self.simplifier.context, expr)
+        crate::solver::prove_nonzero_status(&self.context, expr)
     }
 }
 
-impl ReciprocalExecutionRuntime<SolveStep> for ReciprocalRuntimeAdapter<'_> {
+struct ReciprocalStepMapper;
+
+impl ReciprocalExecutionRuntime<SolveStep> for ReciprocalStepMapper {
     fn map_item_to_step(&mut self, item: ReciprocalExecutionItem) -> SolveStep {
         medium_step(item.description().to_string(), item.equation)
     }
@@ -53,17 +51,14 @@ pub(crate) fn try_reciprocal_solve(
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
     let include_items = simplifier.collect_steps();
-    let execution = {
-        let mut runtime = ReciprocalRuntimeAdapter { simplifier };
-        execute_reciprocal_solve_with_runtime(&mut runtime, lhs, rhs, var)?
-    };
+    let execution = execute_reciprocal_solve_with_runtime(simplifier, lhs, rhs, var)?;
 
     let solved_execution = {
-        let mut runtime = ReciprocalRuntimeAdapter { simplifier };
+        let mut mapper = ReciprocalStepMapper;
         solve_reciprocal_execution_pipeline_with_items_runtime(
             execution,
             include_items,
-            &mut runtime,
+            &mut mapper,
         )
     };
     let (solution_set, steps) = solved_execution.solved;
