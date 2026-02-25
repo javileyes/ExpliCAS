@@ -468,6 +468,34 @@ where
     })
 }
 
+/// Execute unwrap pipeline returning plain `(SolutionSet, steps)` output for
+/// engine strategy surfaces.
+pub fn solve_unwrap_execution_result_pipeline_with_item<E, S, FAssume, FSolve, FStep>(
+    execution: UnwrapExecutionPlan,
+    other_side: ExprId,
+    var: &str,
+    include_item: bool,
+    note_assumption: FAssume,
+    solve_equation: FSolve,
+    map_item_to_step: FStep,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FAssume: FnMut(LogLinearAssumptionRecord),
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(UnwrapExecutionItem) -> S,
+{
+    let solved = solve_unwrap_execution_pipeline_with_item(
+        execution,
+        other_side,
+        var,
+        include_item,
+        note_assumption,
+        solve_equation,
+        map_item_to_step,
+    )?;
+    Ok((solved.solution_set, solved.steps))
+}
+
 /// Plan unwrap rewrite for a target expression (`Function`/`Pow`).
 pub fn plan_unwrap_rewrite<F>(
     ctx: &mut Context,
@@ -1299,6 +1327,48 @@ mod tests {
         assert_eq!(assumptions.len(), 0);
         assert_eq!(solve_calls, vec!["x"]);
         assert_eq!(solved.steps, vec!["sub-step".to_string()]);
+    }
+
+    #[test]
+    fn solve_unwrap_execution_result_pipeline_with_item_returns_plain_tuple() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let execution = UnwrapExecutionPlan {
+            equation: Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            description: "unwrap".to_string(),
+            assumptions: vec![LogAssumption::PositiveBase],
+            log_linear_base: Some(x),
+            items: vec![UnwrapExecutionItem {
+                equation: Equation {
+                    lhs: y,
+                    rhs: z,
+                    op: RelOp::Eq,
+                },
+                description: "first".to_string(),
+            }],
+        };
+
+        let solved = solve_unwrap_execution_result_pipeline_with_item(
+            execution,
+            y,
+            "x",
+            true,
+            |_record| {},
+            |_equation, _var| {
+                Ok::<_, ()>((SolutionSet::Discrete(vec![z]), vec!["sub".to_string()]))
+            },
+            |item| item.description,
+        )
+        .expect("pipeline should succeed");
+
+        assert_eq!(solved.0, SolutionSet::Discrete(vec![z]));
+        assert_eq!(solved.1, vec!["first".to_string(), "sub".to_string()]);
     }
 
     #[test]

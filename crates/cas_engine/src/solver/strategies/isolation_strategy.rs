@@ -16,7 +16,7 @@ use cas_solver_core::strategy_kernels::{
     solve_isolation_strategy_routing_with,
 };
 use cas_solver_core::unwrap_plan::{
-    route_unwrap_entry_with_item, solve_unwrap_execution_pipeline_with_item,
+    route_unwrap_entry_with_item, solve_unwrap_execution_result_pipeline_with_item,
     LogLinearAssumptionRecord, UnwrapEntryRouting, UnwrapExecutionItem, UnwrapExecutionPlan,
 };
 
@@ -74,7 +74,7 @@ fn run_unwrap_execution(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let include_item = simplifier.collect_steps();
     let runtime_cell = std::cell::RefCell::new(simplifier);
-    let solved = solve_unwrap_execution_pipeline_with_item(
+    solve_unwrap_execution_result_pipeline_with_item(
         execution,
         other_side,
         var,
@@ -94,8 +94,7 @@ fn run_unwrap_execution(
             solve_with_ctx_and_options(equation, solve_var, *simplifier_ref, opts, ctx)
         },
         |item: UnwrapExecutionItem| medium_step(item.description, item.equation),
-    )?;
-    Ok((solved.solution_set, solved.steps))
+    )
 }
 
 impl SolverStrategy for UnwrapStrategy {
