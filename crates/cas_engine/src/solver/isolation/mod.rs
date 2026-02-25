@@ -6,11 +6,44 @@ use crate::engine::Simplifier;
 use crate::solver::{medium_step, SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
 use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::solve_outcome::{
-    plan_negated_lhs_isolation_step, residual_solution_set, resolve_isolated_variable_outcome,
-    solve_term_isolation_rewrite_pipeline_with_item, IsolatedVariableOutcome,
+    residual_solution_set, resolve_isolated_variable_outcome,
+    solve_negated_lhs_isolation_with_runtime, IsolatedVariableOutcome, NegatedLhsIsolationRuntime,
+    TermIsolationRewriteExecutionItem,
 };
 
 use crate::error::CasError;
+
+struct NegatedIsolationRuntime<'a, 'ctx> {
+    simplifier: &'a mut Simplifier,
+    opts: SolverOptions,
+    solve_ctx: &'ctx super::SolveCtx,
+}
+
+impl NegatedLhsIsolationRuntime<CasError, SolveStep> for NegatedIsolationRuntime<'_, '_> {
+    fn context(&mut self) -> &mut cas_ast::Context {
+        &mut self.simplifier.context
+    }
+
+    fn solve_rewritten(
+        &mut self,
+        equation: cas_ast::Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        isolate(
+            equation.lhs,
+            equation.rhs,
+            equation.op,
+            var,
+            self.simplifier,
+            self.opts,
+            self.solve_ctx,
+        )
+    }
+
+    fn map_item_to_step(&mut self, item: TermIsolationRewriteExecutionItem) -> SolveStep {
+        medium_step(item.description, item.equation)
+    }
+}
 
 pub(crate) fn isolate(
     lhs: ExprId,
@@ -84,24 +117,20 @@ pub(crate) fn isolate(
         }
         Expr::Neg(inner) => {
             let include_item = simplifier.collect_steps();
-            let rewrite = plan_negated_lhs_isolation_step(&mut simplifier.context, inner, rhs, op);
-            let solved = solve_term_isolation_rewrite_pipeline_with_item(
-                rewrite,
+            let mut runtime = NegatedIsolationRuntime {
+                simplifier,
+                opts,
+                solve_ctx: ctx,
+            };
+            let solved = solve_negated_lhs_isolation_with_runtime(
+                inner,
+                rhs,
+                op,
+                var,
                 include_item,
-                |equation| {
-                    isolate(
-                        equation.lhs,
-                        equation.rhs,
-                        equation.op,
-                        var,
-                        simplifier,
-                        opts,
-                        ctx,
-                    )
-                },
-                |item| medium_step(item.description, item.equation),
+                &mut runtime,
             )?;
-            prepend_steps((solved.solution_set, solved.steps), steps)
+            prepend_steps(solved, steps)
         }
         _ => Err(CasError::IsolationError(
             var.to_string(),
