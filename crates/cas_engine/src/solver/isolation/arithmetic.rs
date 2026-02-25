@@ -10,23 +10,21 @@ use cas_solver_core::isolation_utils::{
 };
 use cas_solver_core::solve_outcome::{
     derive_add_isolation_operands, derive_div_isolation_route, derive_mul_isolation_operands,
-    derive_sub_isolation_route,
     finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
     finalize_product_zero_inequality_solved_sets, mul_rhs_contains_variable,
-    plan_add_operand_isolation_step_with,
+    plan_add_operand_isolation_step_with_runtime,
     plan_div_denominator_isolation_with_zero_rhs_guard,
-    plan_div_numerator_isolation_step_with, plan_division_denominator,
+    plan_div_numerator_isolation_step_with_runtime, plan_division_denominator,
     plan_division_denominator_sign_split, plan_isolated_denominator_sign_split,
-    plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split,
-    plan_sub_isolation_step_with,
-    solve_division_denominator_pipeline_with_optional_items,
+    plan_mul_factor_isolation_step_with_runtime, plan_product_zero_inequality_split,
+    plan_sub_isolation_step_with_runtime, solve_division_denominator_pipeline_with_optional_items,
     solve_division_denominator_sign_split_pipeline_with_optional_items,
     solve_isolated_denominator_sign_split_pipeline_with_optional_items,
     solve_product_zero_inequality_split_execution_with,
-    solve_term_isolation_rewrite_pipeline_with_item, AddIsolationRoute,
+    solve_term_isolation_rewrite_pipeline_with_item_runtime, AddIsolationRoute,
     DivDenominatorIsolationRoute, DivIsolationRoute, DivisionDenominatorSignSplitSolvedCases,
-    IsolatedDenominatorSignSplitSolvedCases, SubIsolationRoute, TermIsolationRewritePlan,
+    IsolatedDenominatorSignSplitSolvedCases, TermIsolationRewritePlan, TermIsolationRewriteRuntime,
 };
 use std::cell::RefCell;
 
@@ -41,12 +39,21 @@ fn solve_term_isolation_plan(
     opts: SolverOptions,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let solved = solve_term_isolation_rewrite_pipeline_with_item(
-        plan,
-        include_item,
-        |equation| {
-            let rhs = if simplify_rhs_before_isolate {
-                simplifier.simplify(equation.rhs).0
+    struct TermIsolationRuntimeAdapter<'a, 'ctx> {
+        simplifier: &'a mut Simplifier,
+        opts: SolverOptions,
+        solve_ctx: &'ctx super::super::SolveCtx,
+        simplify_rhs_before_isolate: bool,
+    }
+
+    impl TermIsolationRewriteRuntime<CasError, SolveStep> for TermIsolationRuntimeAdapter<'_, '_> {
+        fn solve_rewritten(
+            &mut self,
+            equation: cas_ast::Equation,
+            var: &str,
+        ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+            let rhs = if self.simplify_rhs_before_isolate {
+                self.simplifier.simplify(equation.rhs).0
             } else {
                 equation.rhs
             };
@@ -55,12 +62,31 @@ fn solve_term_isolation_plan(
                 rhs,
                 equation.op,
                 var,
-                simplifier,
-                opts,
-                ctx,
+                self.simplifier,
+                self.opts,
+                self.solve_ctx,
             )
-        },
-        |item| medium_step(item.description, item.equation),
+        }
+
+        fn map_item_to_step(
+            &mut self,
+            item: cas_solver_core::solve_outcome::TermIsolationRewriteExecutionItem,
+        ) -> SolveStep {
+            medium_step(item.description, item.equation)
+        }
+    }
+
+    let mut runtime = TermIsolationRuntimeAdapter {
+        simplifier,
+        opts,
+        solve_ctx: ctx,
+        simplify_rhs_before_isolate,
+    };
+    let solved = solve_term_isolation_rewrite_pipeline_with_item_runtime(
+        plan,
+        var,
+        include_item,
+        &mut runtime,
     )?;
     Ok((solved.solution_set, solved.steps))
 }
@@ -93,15 +119,17 @@ pub(super) fn isolate_add(
         }
     }
 
-    let moved_desc = solver_render_expr(&simplifier.context, add_operands.moved_addend);
-    let plan = plan_add_operand_isolation_step_with(
-        &mut simplifier.context,
-        add_operands.isolated_addend,
-        add_operands.moved_addend,
-        rhs,
-        op.clone(),
-        |_| moved_desc.clone(),
-    );
+    let plan = {
+        let mut runtime = |core_ctx: &cas_ast::Context, id| solver_render_expr(core_ctx, id);
+        plan_add_operand_isolation_step_with_runtime(
+            &mut simplifier.context,
+            add_operands.isolated_addend,
+            add_operands.moved_addend,
+            rhs,
+            op.clone(),
+            &mut runtime,
+        )
+    };
     let include_item = simplifier.collect_steps();
     let solved = solve_term_isolation_plan(plan, var, include_item, true, simplifier, opts, ctx)?;
     prepend_steps(solved, steps)
@@ -120,24 +148,18 @@ pub(super) fn isolate_sub(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let moved_expr = if matches!(
-        derive_sub_isolation_route(&simplifier.context, l, var),
-        SubIsolationRoute::Minuend
-    ) {
-        r
-    } else {
-        l
+    let plan = {
+        let mut runtime = |core_ctx: &cas_ast::Context, id| solver_render_expr(core_ctx, id);
+        plan_sub_isolation_step_with_runtime(
+            &mut simplifier.context,
+            l,
+            r,
+            rhs,
+            op,
+            var,
+            &mut runtime,
+        )
     };
-    let moved_desc = solver_render_expr(&simplifier.context, moved_expr);
-    let plan = plan_sub_isolation_step_with(
-        &mut simplifier.context,
-        l,
-        r,
-        rhs,
-        op,
-        var,
-        |_| moved_desc.clone(),
-    );
     let include_item = simplifier.collect_steps();
     let solved = solve_term_isolation_plan(plan, var, include_item, true, simplifier, opts, ctx)?;
     prepend_steps(solved, steps)
@@ -187,16 +209,18 @@ pub(super) fn isolate_mul(
 
     let mul_operands = derive_mul_isolation_operands(&simplifier.context, l, r, var);
     let moved_is_negative = is_known_negative(&simplifier.context, mul_operands.moved_factor);
-    let moved_desc = solver_render_expr(&simplifier.context, mul_operands.moved_factor);
-    let plan = plan_mul_factor_isolation_step_with(
-        &mut simplifier.context,
-        mul_operands.isolated_factor,
-        mul_operands.moved_factor,
-        rhs,
-        op,
-        moved_is_negative,
-        |_| moved_desc.clone(),
-    );
+    let plan = {
+        let mut runtime = |core_ctx: &cas_ast::Context, id| solver_render_expr(core_ctx, id);
+        plan_mul_factor_isolation_step_with_runtime(
+            &mut simplifier.context,
+            mul_operands.isolated_factor,
+            mul_operands.moved_factor,
+            rhs,
+            op,
+            moved_is_negative,
+            &mut runtime,
+        )
+    };
     let include_item = simplifier.collect_steps();
     let solved = solve_term_isolation_plan(plan, var, include_item, false, simplifier, opts, ctx)?;
     prepend_steps(solved, steps)
@@ -287,16 +311,19 @@ pub(super) fn isolate_div(
         } else {
             // A = RHS * B
             let denominator_is_negative = is_known_negative(&simplifier.context, r);
-            let denominator_desc = solver_render_expr(&simplifier.context, r);
-            let plan = plan_div_numerator_isolation_step_with(
-                &mut simplifier.context,
-                l,
-                r,
-                rhs,
-                op,
-                denominator_is_negative,
-                |_| denominator_desc.clone(),
-            );
+            let plan = {
+                let mut runtime =
+                    |core_ctx: &cas_ast::Context, id| solver_render_expr(core_ctx, id);
+                plan_div_numerator_isolation_step_with_runtime(
+                    &mut simplifier.context,
+                    l,
+                    r,
+                    rhs,
+                    op,
+                    denominator_is_negative,
+                    &mut runtime,
+                )
+            };
             let include_item = simplifier.collect_steps();
             let solved =
                 solve_term_isolation_plan(plan, var, include_item, false, simplifier, opts, ctx)?;
