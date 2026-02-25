@@ -1,19 +1,10 @@
 use cas_ast::ExprId;
-use cas_engine::{
-    Diagnostics, EvalOptions, EvalResolveError, EvalSession, EvalStore, ProfileCache,
-};
+use cas_engine::{Diagnostics, EvalOptions, EvalSession, EvalStore, ProfileCache};
 
 use crate::{
     snapshot::SessionSnapshot, Environment, ResolveError, SessionStore, SimplifyCacheKey,
     SnapshotError,
 };
-
-fn map_eval_resolve_error(err: ResolveError) -> EvalResolveError {
-    match err {
-        ResolveError::NotFound(id) => EvalResolveError::NotFound(id),
-        ResolveError::CircularReference(id) => EvalResolveError::CircularReference(id),
-    }
-}
 
 /// Local adapter that bridges `cas_session::SessionStore` to `cas_engine::EvalStore`.
 #[derive(Debug, Default)]
@@ -270,8 +261,15 @@ impl EvalSession for SessionState {
         &self,
         ctx: &mut cas_ast::Context,
         expr: ExprId,
-    ) -> Result<(ExprId, Diagnostics, Vec<u64>), EvalResolveError> {
+    ) -> anyhow::Result<(ExprId, Diagnostics, Vec<u64>)> {
         self.resolve_state_refs_with_diagnostics(ctx, expr)
-            .map_err(map_eval_resolve_error)
+            .map_err(|err| match err {
+                ResolveError::NotFound(id) => {
+                    anyhow::anyhow!("Session reference #{} not found", id)
+                }
+                ResolveError::CircularReference(id) => {
+                    anyhow::anyhow!("Circular reference detected involving #{}", id)
+                }
+            })
     }
 }

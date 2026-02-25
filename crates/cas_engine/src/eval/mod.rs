@@ -24,28 +24,6 @@ pub(crate) type ActionResult = (
 use crate::Simplifier;
 use cas_ast::{BuiltinFn, Equation, Expr, ExprId, RelOp};
 
-/// Engine-level reference resolution error.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum EvalResolveError {
-    /// Reference to non-existent entry.
-    NotFound(u64),
-    /// Circular reference detected (e.g., #3 -> #4 -> #3).
-    CircularReference(u64),
-}
-
-impl std::fmt::Display for EvalResolveError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NotFound(id) => write!(f, "Session reference #{} not found", id),
-            Self::CircularReference(id) => {
-                write!(f, "Circular reference detected involving #{}", id)
-            }
-        }
-    }
-}
-
-impl std::error::Error for EvalResolveError {}
-
 /// The central Engine struct that wraps the core Simplifier and potentially other components.
 ///
 /// # Example
@@ -95,7 +73,7 @@ pub trait EvalSession {
         &self,
         ctx: &mut cas_ast::Context,
         expr: ExprId,
-    ) -> Result<(ExprId, crate::diagnostics::Diagnostics, Vec<u64>), EvalResolveError>;
+    ) -> anyhow::Result<(ExprId, crate::diagnostics::Diagnostics, Vec<u64>)>;
 }
 
 impl Engine {

@@ -23,28 +23,17 @@ impl Engine {
     ) -> Result<EvalOutput, anyhow::Error> {
         // 1) Resolve parsed input (session refs + env vars) before mutably
         // borrowing session internals for store/cache updates.
-        let (resolved, inherited_diagnostics, cache_hits) =
-            match session.resolve_all_with_diagnostics(&mut self.simplifier.context, req.parsed) {
-                Ok(r) => r,
-                Err(EvalResolveError::CircularReference(id)) => {
-                    return Err(anyhow::anyhow!("Circular reference detected: #{}", id))
-                }
-                Err(e) => return Err(anyhow::anyhow!("Resolution error: {}", e)),
-            };
+        let (resolved, inherited_diagnostics, cache_hits) = session
+            .resolve_all_with_diagnostics(&mut self.simplifier.context, req.parsed)
+            .map_err(|e| anyhow::anyhow!("Resolution error: {}", e))?;
 
         // Equivalence checks need to resolve the "other" expression too.
         let resolved_equiv_other = match &req.action {
             EvalAction::Equiv { other } => Some(
-                match session.resolve_all_with_diagnostics(&mut self.simplifier.context, *other) {
-                    Ok((r, _, _)) => r,
-                    Err(EvalResolveError::CircularReference(id)) => {
-                        return Err(anyhow::anyhow!(
-                            "Circular reference detected in other: #{}",
-                            id
-                        ))
-                    }
-                    Err(e) => return Err(anyhow::anyhow!("Resolution error in other: {}", e)),
-                },
+                session
+                    .resolve_all_with_diagnostics(&mut self.simplifier.context, *other)
+                    .map_err(|e| anyhow::anyhow!("Resolution error in other: {}", e))?
+                    .0,
             ),
             _ => None,
         };
