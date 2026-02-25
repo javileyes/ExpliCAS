@@ -23,6 +23,71 @@ pub trait SolutionCheckRuntime {
     fn render_expr(&mut self, expr: ExprId) -> String;
 }
 
+/// Verify one candidate solution by substitution and two-phase simplification
+/// using caller-provided hooks.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_solution_with<
+    FSubstituteDiff,
+    FSimplifyStrict,
+    FSimplifyGeneric,
+    FFoldNumericIslands,
+    FIsNumericZero,
+    FContainsVariable,
+    FRenderExpr,
+>(
+    equation: &Equation,
+    var: &str,
+    solution: ExprId,
+    mut substitute_diff: FSubstituteDiff,
+    mut simplify_strict: FSimplifyStrict,
+    mut simplify_generic: FSimplifyGeneric,
+    mut fold_numeric_islands: FFoldNumericIslands,
+    mut is_numeric_zero: FIsNumericZero,
+    mut contains_variable: FContainsVariable,
+    mut render_expr: FRenderExpr,
+) -> VerifyStatus
+where
+    FSubstituteDiff: FnMut(&Equation, &str, ExprId) -> ExprId,
+    FSimplifyStrict: FnMut(ExprId) -> ExprId,
+    FSimplifyGeneric: FnMut(ExprId) -> ExprId,
+    FFoldNumericIslands: FnMut(ExprId) -> ExprId,
+    FIsNumericZero: FnMut(ExprId) -> bool,
+    FContainsVariable: FnMut(ExprId) -> bool,
+    FRenderExpr: FnMut(ExprId) -> String,
+{
+    let diff = substitute_diff(equation, var, solution);
+
+    let strict_result = simplify_strict(diff);
+    if is_numeric_zero(strict_result) {
+        return VerifyStatus::Verified;
+    }
+
+    if contains_variable(strict_result) {
+        crate::verify_stats::record_attempted();
+        let folded = fold_numeric_islands(strict_result);
+        if folded != strict_result {
+            crate::verify_stats::record_changed();
+            let folded_result = simplify_strict(folded);
+            if is_numeric_zero(folded_result) {
+                crate::verify_stats::record_verified();
+                return VerifyStatus::Verified;
+            }
+        }
+    }
+
+    if !contains_variable(strict_result) {
+        let generic_result = simplify_generic(diff);
+        if is_numeric_zero(generic_result) {
+            return VerifyStatus::Verified;
+        }
+    }
+
+    VerifyStatus::Unverifiable {
+        residual: strict_result,
+        reason: format!("residual: {}", render_expr(strict_result)),
+    }
+}
+
 /// Verify one candidate solution by substitution and two-phase simplification.
 ///
 /// Algorithm:

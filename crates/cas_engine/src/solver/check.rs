@@ -25,10 +25,10 @@
 use cas_ast::{Equation, ExprId, SolutionSet};
 use cas_math::expr_predicates::contains_variable;
 use cas_solver_core::isolation_utils::is_numeric_zero;
-use cas_solver_core::solution_check::{
-    verify_solution_with_runtime as verify_solution_with_runtime_core, SolutionCheckRuntime,
-};
-use cas_solver_core::verification::verify_solution_set_with_runtime;
+use cas_solver_core::solution_check::verify_solution_with as verify_solution_with_core;
+use cas_solver_core::verification::verify_solution_set_with;
+use cas_solver_core::verify_substitution::substitute_equation_diff;
+use std::cell::RefCell;
 
 use crate::engine::Simplifier;
 use crate::solver::render_expr as solver_render_expr;
@@ -52,7 +52,60 @@ pub fn verify_solution(
     var: &str,
     solution: ExprId,
 ) -> VerifyStatus {
-    verify_solution_with_runtime_core(simplifier, equation, var, solution)
+    let simplifier_cell = RefCell::new(simplifier);
+    verify_solution_with_core(
+        equation,
+        var,
+        solution,
+        |eq, name, candidate| {
+            let mut s_ref = simplifier_cell.borrow_mut();
+            substitute_equation_diff(&mut s_ref.context, eq, name, candidate)
+        },
+        |expr| {
+            let strict_opts = crate::SimplifyOptions {
+                shared: crate::phase::SharedSemanticConfig {
+                    semantics: crate::semantics::EvalConfig {
+                        domain_mode: crate::domain::DomainMode::Strict,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let mut s_ref = simplifier_cell.borrow_mut();
+            s_ref.simplify_with_stats(expr, strict_opts).0
+        },
+        |expr| {
+            let generic_opts = crate::SimplifyOptions {
+                shared: crate::phase::SharedSemanticConfig {
+                    semantics: crate::semantics::EvalConfig {
+                        domain_mode: crate::domain::DomainMode::Generic,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let mut s_ref = simplifier_cell.borrow_mut();
+            s_ref.simplify_with_stats(expr, generic_opts).0
+        },
+        |expr| {
+            let mut s_ref = simplifier_cell.borrow_mut();
+            super::numeric_islands::fold_numeric_islands(&mut s_ref.context, expr)
+        },
+        |expr| {
+            let s_ref = simplifier_cell.borrow();
+            is_numeric_zero(&s_ref.context, expr)
+        },
+        |expr| {
+            let s_ref = simplifier_cell.borrow();
+            contains_variable(&s_ref.context, expr)
+        },
+        |expr| {
+            let s_ref = simplifier_cell.borrow();
+            solver_render_expr(&s_ref.context, expr)
+        },
+    )
 }
 
 /// Verify a solution set, handling all SolutionSet variants.
@@ -64,59 +117,7 @@ pub fn verify_solution_set(
 ) -> VerifyResult {
     let mut verify_discrete =
         |solution: ExprId| verify_solution(simplifier, equation, var, solution);
-    verify_solution_set_with_runtime(solutions, &mut verify_discrete)
-}
-
-impl SolutionCheckRuntime for Simplifier {
-    fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.context
-    }
-
-    fn simplify_strict(&mut self, expr: ExprId) -> ExprId {
-        let strict_opts = crate::SimplifyOptions {
-            shared: crate::phase::SharedSemanticConfig {
-                semantics: crate::semantics::EvalConfig {
-                    domain_mode: crate::domain::DomainMode::Strict,
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        let (result, _, _) = self.simplify_with_stats(expr, strict_opts);
-        result
-    }
-
-    fn simplify_generic(&mut self, expr: ExprId) -> ExprId {
-        let generic_opts = crate::SimplifyOptions {
-            shared: crate::phase::SharedSemanticConfig {
-                semantics: crate::semantics::EvalConfig {
-                    domain_mode: crate::domain::DomainMode::Generic,
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        let (result, _, _) = self.simplify_with_stats(expr, generic_opts);
-        result
-    }
-
-    fn fold_numeric_islands(&mut self, expr: ExprId) -> ExprId {
-        super::numeric_islands::fold_numeric_islands(&mut self.context, expr)
-    }
-
-    fn is_numeric_zero(&mut self, expr: ExprId) -> bool {
-        is_numeric_zero(&self.context, expr)
-    }
-
-    fn contains_variable(&mut self, expr: ExprId) -> bool {
-        contains_variable(&self.context, expr)
-    }
-
-    fn render_expr(&mut self, expr: ExprId) -> String {
-        solver_render_expr(&self.context, expr)
-    }
+    verify_solution_set_with(solutions, &mut verify_discrete)
 }
 
 #[cfg(test)]
