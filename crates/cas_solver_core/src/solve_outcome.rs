@@ -2354,6 +2354,33 @@ where
     Ok((solved.solution_set, solved.steps))
 }
 
+/// Build and execute one term-isolation plan with optional RHS pre-simplification
+/// before recursive isolation.
+pub fn execute_term_isolation_plan_with<E, S, FPlan, FSimplify, FSolve, FStep>(
+    mut plan_rewrite: FPlan,
+    include_item: bool,
+    simplify_rhs_before_solve: bool,
+    simplify_rhs: FSimplify,
+    solve_rewritten: FSolve,
+    map_item_to_step: FStep,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FPlan: FnMut() -> TermIsolationRewritePlan,
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FSolve: FnMut(Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(TermIsolationRewriteExecutionItem) -> S,
+{
+    let plan = plan_rewrite();
+    solve_term_isolation_plan_with(
+        plan,
+        include_item,
+        simplify_rhs_before_solve,
+        simplify_rhs,
+        solve_rewritten,
+        map_item_to_step,
+    )
+}
+
 /// Execute negated-LHS isolation rewrite and optional first-item didactic
 /// projection via caller-provided callbacks.
 pub fn solve_negated_lhs_isolation_with<E, S, FPlan, FSolve, FStep>(
@@ -9068,6 +9095,72 @@ mod tests {
         )
         .expect("plan solve should succeed");
 
+        assert_eq!(solution_set, SolutionSet::Discrete(vec![raw_rhs]));
+        assert!(steps.is_empty());
+    }
+
+    #[test]
+    fn execute_term_isolation_plan_with_builds_and_solves_plan() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let plan =
+            plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
+        let expected_item = plan.items[0].description.clone();
+        let raw_rhs = plan.equation.rhs;
+        let simplified_rhs = ctx.num(99);
+
+        let mut plan_calls = 0usize;
+        let mut simplify_calls = 0usize;
+        let (solution_set, steps) = execute_term_isolation_plan_with(
+            || {
+                plan_calls += 1;
+                plan.clone()
+            },
+            true,
+            true,
+            |rhs| {
+                assert_eq!(rhs, raw_rhs);
+                simplify_calls += 1;
+                simplified_rhs
+            },
+            |equation| Ok::<_, ()>((SolutionSet::Discrete(vec![equation.rhs]), vec![])),
+            |item| item.description,
+        )
+        .expect("execute plan solve should succeed");
+
+        assert_eq!(plan_calls, 1);
+        assert_eq!(simplify_calls, 1);
+        assert_eq!(solution_set, SolutionSet::Discrete(vec![simplified_rhs]));
+        assert_eq!(steps, vec![expected_item]);
+    }
+
+    #[test]
+    fn execute_term_isolation_plan_with_skips_simplify_when_disabled() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let plan =
+            plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
+        let raw_rhs = plan.equation.rhs;
+
+        let mut simplify_calls = 0usize;
+        let (solution_set, steps) = execute_term_isolation_plan_with(
+            || plan.clone(),
+            false,
+            false,
+            |_| {
+                simplify_calls += 1;
+                raw_rhs
+            },
+            |equation| Ok::<_, ()>((SolutionSet::Discrete(vec![equation.rhs]), vec![])),
+            |item| item.description,
+        )
+        .expect("execute plan solve should succeed");
+
+        assert_eq!(simplify_calls, 0);
         assert_eq!(solution_set, SolutionSet::Discrete(vec![raw_rhs]));
         assert!(steps.is_empty());
     }

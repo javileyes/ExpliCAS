@@ -10,7 +10,8 @@ use cas_solver_core::isolation_utils::{
 };
 use cas_solver_core::solve_outcome::{
     derive_add_isolation_operands, derive_div_isolation_route, derive_mul_isolation_operands,
-    derive_sub_isolation_route, finalize_division_denominator_sign_split_solved_sets,
+    derive_sub_isolation_route, execute_term_isolation_plan_with,
+    finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
     finalize_product_zero_inequality_solved_sets, mul_rhs_contains_variable,
     plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
@@ -20,10 +21,9 @@ use cas_solver_core::solve_outcome::{
     plan_sub_isolation_step_with, solve_division_denominator_pipeline_with_optional_items,
     solve_division_denominator_sign_split_pipeline_with_optional_items,
     solve_isolated_denominator_sign_split_pipeline_with_optional_items,
-    solve_product_zero_inequality_split_execution_with, solve_term_isolation_plan_with,
-    AddIsolationRoute, DivDenominatorIsolationRoute, DivIsolationRoute,
-    DivisionDenominatorSignSplitSolvedCases, IsolatedDenominatorSignSplitSolvedCases,
-    SubIsolationRoute,
+    solve_product_zero_inequality_split_execution_with, AddIsolationRoute,
+    DivDenominatorIsolationRoute, DivIsolationRoute, DivisionDenominatorSignSplitSolvedCases,
+    IsolatedDenominatorSignSplitSolvedCases, SubIsolationRoute,
 };
 
 use super::{isolate, prepend_steps};
@@ -57,18 +57,20 @@ pub(super) fn isolate_add(
     }
 
     let add_moved_desc = solver_render_expr(&simplifier.context, add_operands.moved_addend);
-    let plan = plan_add_operand_isolation_step_with(
-        &mut simplifier.context,
-        add_operands.isolated_addend,
-        add_operands.moved_addend,
-        rhs,
-        op.clone(),
-        move |_| add_moved_desc.clone(),
-    );
     let include_item = simplifier.collect_steps();
     let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    let solved = solve_term_isolation_plan_with(
-        plan,
+    let solved = execute_term_isolation_plan_with(
+        || {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            plan_add_operand_isolation_step_with(
+                &mut simplifier_ref.context,
+                add_operands.isolated_addend,
+                add_operands.moved_addend,
+                rhs,
+                op.clone(),
+                |_| add_moved_desc.clone(),
+            )
+        },
         include_item,
         true,
         |expr| {
@@ -114,14 +116,21 @@ pub(super) fn isolate_sub(
         l
     };
     let sub_moved_desc = solver_render_expr(&simplifier.context, sub_moved);
-    let plan =
-        plan_sub_isolation_step_with(&mut simplifier.context, l, r, rhs, op, var, move |_| {
-            sub_moved_desc.clone()
-        });
     let include_item = simplifier.collect_steps();
     let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    let solved = solve_term_isolation_plan_with(
-        plan,
+    let solved = execute_term_isolation_plan_with(
+        || {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            plan_sub_isolation_step_with(
+                &mut simplifier_ref.context,
+                l,
+                r,
+                rhs,
+                op.clone(),
+                var,
+                |_| sub_moved_desc.clone(),
+            )
+        },
         include_item,
         true,
         |expr| {
@@ -190,19 +199,21 @@ pub(super) fn isolate_mul(
     let mul_operands = derive_mul_isolation_operands(&simplifier.context, l, r, var);
     let moved_is_negative = is_known_negative(&simplifier.context, mul_operands.moved_factor);
     let mul_moved_desc = solver_render_expr(&simplifier.context, mul_operands.moved_factor);
-    let plan = plan_mul_factor_isolation_step_with(
-        &mut simplifier.context,
-        mul_operands.isolated_factor,
-        mul_operands.moved_factor,
-        rhs,
-        op,
-        moved_is_negative,
-        move |_| mul_moved_desc.clone(),
-    );
     let include_item = simplifier.collect_steps();
     let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    let solved = solve_term_isolation_plan_with(
-        plan,
+    let solved = execute_term_isolation_plan_with(
+        || {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            plan_mul_factor_isolation_step_with(
+                &mut simplifier_ref.context,
+                mul_operands.isolated_factor,
+                mul_operands.moved_factor,
+                rhs,
+                op.clone(),
+                moved_is_negative,
+                |_| mul_moved_desc.clone(),
+            )
+        },
         include_item,
         false,
         |expr| {
@@ -312,19 +323,21 @@ pub(super) fn isolate_div(
             // A = RHS * B
             let denominator_is_negative = is_known_negative(&simplifier.context, r);
             let denominator_desc = solver_render_expr(&simplifier.context, r);
-            let plan = plan_div_numerator_isolation_step_with(
-                &mut simplifier.context,
-                l,
-                r,
-                rhs,
-                op,
-                denominator_is_negative,
-                move |_| denominator_desc.clone(),
-            );
             let include_item = simplifier.collect_steps();
             let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-            let solved = solve_term_isolation_plan_with(
-                plan,
+            let solved = execute_term_isolation_plan_with(
+                || {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    plan_div_numerator_isolation_step_with(
+                        &mut simplifier_ref.context,
+                        l,
+                        r,
+                        rhs,
+                        op.clone(),
+                        denominator_is_negative,
+                        |_| denominator_desc.clone(),
+                    )
+                },
                 include_item,
                 false,
                 |expr| {
