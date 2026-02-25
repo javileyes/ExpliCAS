@@ -73,11 +73,42 @@ impl EvalSession for StatelessEvalSession {
 
     fn resolve_all_with_diagnostics(
         &self,
-        _ctx: &mut cas_ast::Context,
+        ctx: &mut cas_ast::Context,
         expr: ExprId,
     ) -> anyhow::Result<(ExprId, crate::diagnostics::Diagnostics, Vec<u64>)> {
+        if let Some(ref_id) = first_session_ref(ctx, expr) {
+            return Err(anyhow::anyhow!(
+                "Session reference #{} requires stateful eval (Engine::eval with EvalSession)",
+                ref_id
+            ));
+        }
         Ok((expr, crate::diagnostics::Diagnostics::new(), Vec::new()))
     }
+}
+
+fn first_session_ref(ctx: &cas_ast::Context, root: ExprId) -> Option<u64> {
+    use cas_ast::Expr;
+
+    let mut stack = vec![root];
+    while let Some(id) = stack.pop() {
+        match ctx.get(id) {
+            Expr::SessionRef(ref_id) => return Some(*ref_id),
+            Expr::Add(a, b)
+            | Expr::Sub(a, b)
+            | Expr::Mul(a, b)
+            | Expr::Div(a, b)
+            | Expr::Pow(a, b) => {
+                stack.push(*a);
+                stack.push(*b);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) => {}
+        }
+    }
+
+    None
 }
 
 impl Engine {
