@@ -132,7 +132,7 @@ impl UnwrapExecutionRuntime<CasError, SolveStep> for UnwrapExecutionRuntimeAdapt
             record.base,
             record.other_side,
         );
-        crate::solver::note_assumption(event);
+        self.solve_ctx.note_assumption(event);
     }
 
     fn solve_equation(

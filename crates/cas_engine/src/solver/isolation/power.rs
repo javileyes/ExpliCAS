@@ -481,7 +481,7 @@ fn isolate_pow_exponent(
             b,
             rhs,
         );
-        crate::solver::note_assumption(event);
+        ctx.note_assumption(event);
     }
 
     if let LogSolveDecision::NeedsComplex(msg) = &decision {

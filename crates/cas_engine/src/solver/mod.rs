@@ -4,14 +4,12 @@ pub(crate) mod isolation;
 pub(crate) mod linear_collect;
 pub(crate) mod numeric_islands;
 pub(crate) mod reciprocal_solve;
-pub(crate) mod runtime_tls;
 pub(crate) mod solve_core;
 pub(crate) mod strategies;
 pub(crate) mod strategy;
 pub use cas_solver_core::isolation_utils::contains_var;
 pub use cas_solver_core::solve_budget::SolveBudget;
 pub use cas_solver_core::verify_stats;
-pub(crate) use runtime_tls::{note_assumption, SolveAssumptionsGuard};
 
 #[cfg(test)]
 use crate::engine::Simplifier;
@@ -39,6 +37,8 @@ pub struct SolveCtx {
     pub domain_env: SolveDomainEnv,
     /// Shared accumulator for required conditions across all recursive levels.
     pub(crate) required_sink: Rc<RefCell<HashSet<crate::implicit_domain::ImplicitCondition>>>,
+    /// Shared accumulator for solver assumption events across recursive levels.
+    pub(crate) assumptions_sink: Rc<RefCell<Vec<crate::assumptions::AssumptionEvent>>>,
     /// Shared collector for output scope tags across recursive levels.
     pub(crate) output_scopes_sink: Rc<RefCell<Vec<cas_formatter::display_transforms::ScopeTag>>>,
 }
@@ -48,12 +48,23 @@ impl Default for SolveCtx {
         Self {
             domain_env: SolveDomainEnv::default(),
             required_sink: Rc::new(RefCell::new(HashSet::new())),
+            assumptions_sink: Rc::new(RefCell::new(Vec::new())),
             output_scopes_sink: Rc::new(RefCell::new(Vec::new())),
         }
     }
 }
 
 impl SolveCtx {
+    /// Record an assumption emitted during solve.
+    pub(crate) fn note_assumption(&self, event: crate::assumptions::AssumptionEvent) {
+        self.assumptions_sink.borrow_mut().push(event);
+    }
+
+    /// Snapshot collected solver assumptions.
+    pub(crate) fn assumptions(&self) -> Vec<crate::assumptions::AssumptionEvent> {
+        self.assumptions_sink.borrow().clone()
+    }
+
     /// Emit a scope tag used by output display transforms.
     pub(crate) fn emit_scope(&self, scope: cas_formatter::display_transforms::ScopeTag) {
         let mut scopes = self.output_scopes_sink.borrow_mut();
@@ -310,15 +321,13 @@ pub(crate) fn render_expr(ctx: &cas_ast::Context, expr: ExprId) -> String {
 pub(crate) const MAX_SOLVE_DEPTH: usize = 50;
 
 // ---------------------------------------------------------------------------
-// Legacy thread-local state: diagnostic/UI ONLY
+// Legacy thread-local state: recursion guard ONLY
 // ---------------------------------------------------------------------------
-// These TLS cells are retained for recursion safety and display concerns.
-// They must NOT carry solver-semantic information (e.g. domain conditions).
-// Domain conditions are fully SolveCtx-threaded and returned in SolveDiagnostics.
+// Solver-semantic data (required conditions, assumptions, scopes) is fully
+// SolveCtx-threaded and returned in SolveDiagnostics.
 //
 // Allowlisted cells:
 //   SOLVE_DEPTH        – recursion depth guard (prevents stack overflow)
-//   SOLVE_ASSUMPTIONS  – per-solve assumption collector (runtime_tls.rs)
 thread_local! {
     pub(crate) static SOLVE_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }

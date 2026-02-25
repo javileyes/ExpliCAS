@@ -383,11 +383,6 @@ impl Engine {
             ..Default::default()
         };
 
-        // RAII guard for assumption collection (handles nested solves safely)
-        let collect_assumptions =
-            options.shared.assumption_reporting != crate::assumptions::AssumptionReporting::Off;
-        let assumption_guard = crate::solver::SolveAssumptionsGuard::new(collect_assumptions);
-
         // V2.9.8: Use type-safe API that guarantees cleanup is applied
         // detailed_steps=true for Normal+ verbosity (caller's responsibility to set)
         let sol_result = crate::solver::solve_with_display_steps(
@@ -397,14 +392,23 @@ impl Engine {
             solver_opts,
         );
 
-        // Collect assumptions (guard restores previous collector on drop)
-        let solver_assumptions = assumption_guard.finish();
-
         match sol_result {
             Ok((solution_set, display_steps, diagnostics)) => {
                 // V2.9.8: Extract Vec<SolveStep> from DisplaySolveSteps wrapper
                 // Steps are guaranteed to be post-cleanup
                 let solve_steps = display_steps.0;
+
+                let solver_assumptions = if options.shared.assumption_reporting
+                    == crate::assumptions::AssumptionReporting::Off
+                {
+                    vec![]
+                } else {
+                    let mut collector = crate::assumptions::AssumptionCollector::new();
+                    for event in diagnostics.assumed.clone() {
+                        collector.note(event);
+                    }
+                    collector.finish()
+                };
 
                 // V2.0: Return the full SolutionSet preserving all variants
                 // including Conditional for proper REPL display
