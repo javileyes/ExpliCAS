@@ -24,7 +24,7 @@ use cas_solver_core::solve_outcome::{
     solve_var_eliminated_outcome_pipeline_with, VarEliminatedOutcomePipelineSolved,
 };
 use cas_solver_core::step_cleanup::{cleanup_steps_by, CleanupStep};
-use cas_solver_core::strategy_kernels::execute_rational_exponent_kernel_pipeline_with_item_with;
+use cas_solver_core::strategy_kernels::execute_rational_exponent_kernel_result_pipeline_with_item_with;
 
 use super::{
     medium_step, render_expr, DepthGuard, DisplaySolveSteps, SolveDomainEnv, SolveStep,
@@ -498,7 +498,7 @@ fn try_solve_rational_exponent(
 ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
     let include_item = simplifier.collect_steps();
     let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    let solved = execute_rational_exponent_kernel_pipeline_with_item_with(
+    execute_rational_exponent_kernel_result_pipeline_with_item_with(
         || {
             let mut simplifier_ref = runtime_cell.borrow_mut();
             cas_solver_core::strategy_kernels::derive_rational_exponent_kernel_for_var(
@@ -522,9 +522,5 @@ fn try_solve_rational_exponent(
             let mut simplifier_ref = runtime_cell.borrow_mut();
             super::check::verify_solution_by_equivalence(*simplifier_ref, eq, var, solution)
         },
-    )?;
-    Some(match solved {
-        Ok(solved) => Ok((solved.solution_set, solved.steps)),
-        Err(e) => Err(e),
-    })
+    )
 }

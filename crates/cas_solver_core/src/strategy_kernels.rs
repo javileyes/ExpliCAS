@@ -429,6 +429,91 @@ where
     ))
 }
 
+/// Materialize and solve one collect-terms kernel returning the plain
+/// `(SolutionSet, steps)` tuple used by engine strategy surfaces.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_collect_terms_kernel_result_pipeline_with_item<
+    E,
+    S,
+    FSimplify,
+    FRender,
+    FSolve,
+    FStep,
+>(
+    kernel: CollectTermsKernel,
+    op: RelOp,
+    original_rhs: ExprId,
+    var: &str,
+    include_item: bool,
+    simplify_expr: FSimplify,
+    render_expr: FRender,
+    solve_rewritten: FSolve,
+    map_item_to_step: FStep,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FRender: FnMut(ExprId) -> String,
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(StrategyExecutionItem) -> S,
+{
+    let solved = solve_collect_terms_kernel_pipeline_with_item(
+        kernel,
+        op,
+        original_rhs,
+        var,
+        include_item,
+        simplify_expr,
+        render_expr,
+        solve_rewritten,
+        map_item_to_step,
+    )?;
+    Ok((solved.solution_set, solved.steps))
+}
+
+/// Derive and solve one collect-terms kernel returning plain strategy output.
+///
+/// Returns `None` when collect-terms kernel derivation does not apply.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_collect_terms_kernel_result_pipeline_with_item<
+    E,
+    S,
+    FDerive,
+    FSimplify,
+    FRender,
+    FSolve,
+    FStep,
+>(
+    derive_kernel: FDerive,
+    op: RelOp,
+    original_rhs: ExprId,
+    var: &str,
+    include_item: bool,
+    simplify_expr: FSimplify,
+    render_expr: FRender,
+    solve_rewritten: FSolve,
+    map_item_to_step: FStep,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FDerive: FnMut() -> Option<CollectTermsKernel>,
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FRender: FnMut(ExprId) -> String,
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(StrategyExecutionItem) -> S,
+{
+    let solved = execute_collect_terms_kernel_pipeline_with_item(
+        derive_kernel,
+        op,
+        original_rhs,
+        var,
+        include_item,
+        simplify_expr,
+        render_expr,
+        solve_rewritten,
+        map_item_to_step,
+    )?;
+    Some(solved.map(|payload| (payload.solution_set, payload.steps)))
+}
+
 /// Rewrite payload for `RationalExponentStrategy`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RationalExponentKernel {
@@ -740,6 +825,81 @@ where
         map_item_to_step,
         verify_discrete_solution,
     ))
+}
+
+/// Materialize and solve one rational-exponent kernel returning the plain
+/// `(SolutionSet, steps)` tuple used by engine strategy surfaces.
+pub fn solve_rational_exponent_kernel_result_pipeline_with_item_with<
+    E,
+    S,
+    FSimplify,
+    FSolve,
+    FStep,
+    FVerify,
+>(
+    kernel: RationalExponentKernel,
+    var: &str,
+    include_item: bool,
+    simplify_expr: FSimplify,
+    solve_rewritten: FSolve,
+    map_item_to_step: FStep,
+    verify_discrete_solution: FVerify,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(StrategyExecutionItem) -> S,
+    FVerify: FnMut(ExprId) -> bool,
+{
+    let solved = solve_rational_exponent_kernel_pipeline_with_item_with(
+        kernel,
+        var,
+        include_item,
+        simplify_expr,
+        solve_rewritten,
+        map_item_to_step,
+        verify_discrete_solution,
+    )?;
+    Ok((solved.solution_set, solved.steps))
+}
+
+/// Derive and solve one rational-exponent kernel returning plain strategy output.
+///
+/// Returns `None` when no rational-exponent kernel applies.
+pub fn execute_rational_exponent_kernel_result_pipeline_with_item_with<
+    E,
+    S,
+    FDerive,
+    FSimplify,
+    FSolve,
+    FStep,
+    FVerify,
+>(
+    derive_kernel: FDerive,
+    var: &str,
+    include_item: bool,
+    simplify_expr: FSimplify,
+    solve_rewritten: FSolve,
+    map_item_to_step: FStep,
+    verify_discrete_solution: FVerify,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FDerive: FnMut() -> Option<RationalExponentKernel>,
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(StrategyExecutionItem) -> S,
+    FVerify: FnMut(ExprId) -> bool,
+{
+    let solved = execute_rational_exponent_kernel_pipeline_with_item_with(
+        derive_kernel,
+        var,
+        include_item,
+        simplify_expr,
+        solve_rewritten,
+        map_item_to_step,
+        verify_discrete_solution,
+    )?;
+    Some(solved.map(|payload| (payload.solution_set, payload.steps)))
 }
 
 #[cfg(test)]
@@ -1591,6 +1751,40 @@ mod tests {
     }
 
     #[test]
+    fn execute_collect_terms_kernel_result_pipeline_with_item_returns_plain_tuple() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let lhs = ctx.add(Expr::Add(x, one));
+        let rhs = ctx.add(Expr::Add(x, two));
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+
+        let solved = execute_collect_terms_kernel_result_pipeline_with_item(
+            || derive_collect_terms_kernel(&mut ctx, &eq, "x"),
+            eq.op.clone(),
+            eq.rhs,
+            "x",
+            true,
+            |id| id,
+            |_| "rhs".to_string(),
+            |_equation, _var| {
+                Ok::<_, ()>((SolutionSet::Discrete(vec![x]), vec!["sub".to_string()]))
+            },
+            |item| item.description,
+        )
+        .expect("kernel should be derived")
+        .expect("collect kernel pipeline should succeed");
+
+        assert_eq!(solved.0, SolutionSet::Discrete(vec![x]));
+        assert_eq!(solved.1.len(), 2);
+    }
+
+    #[test]
     fn solve_rational_exponent_rewrite_with_runs_solver_on_rewritten_equation() {
         let mut ctx = Context::new();
         let lhs = ctx.var("lhs");
@@ -1815,5 +2009,38 @@ mod tests {
 
         assert!(out.is_none());
         assert_eq!(solve_calls, 0);
+    }
+
+    #[test]
+    fn execute_rational_exponent_kernel_result_pipeline_with_item_with_returns_plain_tuple() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let exponent = ctx.add(Expr::Div(three, two));
+        let lhs = ctx.add(Expr::Pow(x, exponent));
+        let rhs = ctx.num(8);
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+
+        let solved = execute_rational_exponent_kernel_result_pipeline_with_item_with(
+            || derive_rational_exponent_kernel_for_var(&mut ctx, &eq, "x"),
+            "x",
+            true,
+            |id| id,
+            |_equation, _solve_var| {
+                Ok::<_, ()>((SolutionSet::Discrete(vec![x, rhs]), vec!["sub".to_string()]))
+            },
+            |item| item.description,
+            |solution| solution == x,
+        )
+        .expect("kernel should be derived")
+        .expect("pipeline should solve");
+
+        assert_eq!(solved.0, SolutionSet::Discrete(vec![x]));
+        assert_eq!(solved.1.len(), 2);
     }
 }
