@@ -11,9 +11,9 @@ use cas_solver_core::solve_outcome::{
     TermIsolationExecutionItem, TermIsolationRewriteExecutionItem,
 };
 use cas_solver_core::strategy_kernels::{
-    derive_collect_terms_kernel, derive_isolation_strategy_routing,
+    derive_isolation_strategy_routing, execute_collect_terms_kernel_pipeline_with_item,
     execute_rational_exponent_kernel_pipeline_with_item_with,
-    solve_collect_terms_kernel_pipeline_with_item, solve_isolation_strategy_routing_with,
+    solve_isolation_strategy_routing_with,
 };
 use cas_solver_core::unwrap_plan::{
     route_unwrap_entry_with_item, solve_unwrap_execution_pipeline_with_item,
@@ -168,11 +168,17 @@ impl SolverStrategy for CollectTermsStrategy {
         ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let include_item = simplifier.collect_steps();
-        let kernel = derive_collect_terms_kernel(&mut simplifier.context, eq, var)?;
         let rhs_desc = solver_render_expr(&simplifier.context, eq.rhs);
         let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        let solved = solve_collect_terms_kernel_pipeline_with_item(
-            kernel,
+        let solved = execute_collect_terms_kernel_pipeline_with_item(
+            || {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                cas_solver_core::strategy_kernels::derive_collect_terms_kernel(
+                    &mut simplifier_ref.context,
+                    eq,
+                    var,
+                )
+            },
             eq.op.clone(),
             eq.rhs,
             var,
@@ -187,7 +193,7 @@ impl SolverStrategy for CollectTermsStrategy {
                 solve_with_ctx_and_options(equation, solve_var, *simplifier_ref, *opts, ctx)
             },
             |item| medium_step(item.description, item.equation),
-        );
+        )?;
 
         Some(match solved {
             Ok(solved) => Ok((solved.solution_set, solved.steps)),

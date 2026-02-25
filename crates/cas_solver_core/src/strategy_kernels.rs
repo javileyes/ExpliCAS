@@ -385,6 +385,50 @@ where
     )
 }
 
+/// Derive and solve one collect-terms kernel with optional didactic item dispatch.
+///
+/// Returns `None` when collect-terms kernel derivation does not apply.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_collect_terms_kernel_pipeline_with_item<
+    E,
+    S,
+    FDerive,
+    FSimplify,
+    FRender,
+    FSolve,
+    FStep,
+>(
+    mut derive_kernel: FDerive,
+    op: RelOp,
+    original_rhs: ExprId,
+    var: &str,
+    include_item: bool,
+    simplify_expr: FSimplify,
+    render_expr: FRender,
+    solve_rewritten: FSolve,
+    map_item_to_step: FStep,
+) -> Option<Result<CollectTermsRewriteSolved<S>, E>>
+where
+    FDerive: FnMut() -> Option<CollectTermsKernel>,
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FRender: FnMut(ExprId) -> String,
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(StrategyExecutionItem) -> S,
+{
+    let kernel = derive_kernel()?;
+    Some(solve_collect_terms_kernel_pipeline_with_item(
+        kernel,
+        op,
+        original_rhs,
+        var,
+        include_item,
+        simplify_expr,
+        render_expr,
+        solve_rewritten,
+        map_item_to_step,
+    ))
+}
+
 /// Rewrite payload for `RationalExponentStrategy`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RationalExponentKernel {
@@ -1483,6 +1527,67 @@ mod tests {
                 "sub-step".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn execute_collect_terms_kernel_pipeline_with_item_runs_when_kernel_exists() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let lhs = ctx.add(Expr::Add(x, one));
+        let rhs = ctx.add(Expr::Add(x, two));
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+
+        let mut solve_calls = 0usize;
+        let solved = execute_collect_terms_kernel_pipeline_with_item(
+            || derive_collect_terms_kernel(&mut ctx, &eq, "x"),
+            eq.op.clone(),
+            eq.rhs,
+            "x",
+            true,
+            |id| id,
+            |_| "rhs".to_string(),
+            |_equation, var| {
+                solve_calls += 1;
+                assert_eq!(var, "x");
+                Ok::<_, ()>((SolutionSet::Discrete(vec![x]), vec!["sub".to_string()]))
+            },
+            |item| item.description,
+        )
+        .expect("kernel should be derived")
+        .expect("collect kernel pipeline should succeed");
+
+        assert_eq!(solve_calls, 1);
+        assert_eq!(solved.steps.len(), 2);
+    }
+
+    #[test]
+    fn execute_collect_terms_kernel_pipeline_with_item_returns_none_without_kernel() {
+        let mut ctx = Context::new();
+        let rhs = ctx.num(0);
+        let mut solve_calls = 0usize;
+        let out = execute_collect_terms_kernel_pipeline_with_item(
+            || None,
+            RelOp::Eq,
+            rhs,
+            "x",
+            true,
+            |id| id,
+            |_| "rhs".to_string(),
+            |_equation, _var| {
+                solve_calls += 1;
+                Ok::<_, ()>((SolutionSet::AllReals, vec!["unexpected".to_string()]))
+            },
+            |item| item.description,
+        );
+
+        assert!(out.is_none());
+        assert_eq!(solve_calls, 0);
     }
 
     #[test]
