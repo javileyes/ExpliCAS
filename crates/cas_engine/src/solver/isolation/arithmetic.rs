@@ -10,8 +10,10 @@ use cas_solver_core::isolation_utils::{
 };
 use cas_solver_core::solve_outcome::{
     derive_add_isolation_operands, derive_div_isolation_route, derive_mul_isolation_operands,
-    derive_sub_isolation_route, execute_term_isolation_plan_with,
-    finalize_division_denominator_sign_split_solved_sets,
+    derive_sub_isolation_route,
+    execute_division_denominator_sign_split_pipeline_with_optional_items,
+    execute_isolated_denominator_sign_split_pipeline_with_optional_items,
+    execute_term_isolation_plan_with, finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
     finalize_product_zero_inequality_solved_sets, mul_rhs_contains_variable,
     plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
@@ -19,11 +21,8 @@ use cas_solver_core::solve_outcome::{
     plan_division_denominator_sign_split, plan_isolated_denominator_sign_split,
     plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split,
     plan_sub_isolation_step_with, solve_division_denominator_pipeline_with_optional_items,
-    solve_division_denominator_sign_split_pipeline_with_optional_items,
-    solve_isolated_denominator_sign_split_pipeline_with_optional_items,
     solve_product_zero_inequality_split_execution_with, AddIsolationRoute,
-    DivDenominatorIsolationRoute, DivIsolationRoute, DivisionDenominatorSignSplitSolvedCases,
-    IsolatedDenominatorSignSplitSolvedCases, SubIsolationRoute,
+    DivDenominatorIsolationRoute, DivIsolationRoute, SubIsolationRoute,
 };
 
 use super::{isolate, prepend_steps};
@@ -267,7 +266,7 @@ pub(super) fn isolate_div(
             let include_items = simplifier.collect_steps();
             let solved = {
                 let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-                solve_division_denominator_sign_split_pipeline_with_optional_items(
+                execute_division_denominator_sign_split_pipeline_with_optional_items(
                     split_plan,
                     r,
                     l,
@@ -298,27 +297,16 @@ pub(super) fn isolate_div(
                         Ok(set)
                     },
                     |item| medium_step(item.description().to_string(), item.equation),
+                    |solved_cases| {
+                        let simplifier_ref = runtime_cell.borrow();
+                        finalize_division_denominator_sign_split_solved_sets(
+                            &simplifier_ref.context,
+                            solved_cases,
+                        )
+                    },
                 )?
             };
-
-            let cas_solver_core::solve_outcome::DivisionDenominatorSignSplitExecutionSolved {
-                positive_set,
-                negative_set,
-                positive_domain_set,
-                negative_domain_set,
-                steps: solved_steps,
-            } = solved;
-
-            let final_set = finalize_division_denominator_sign_split_solved_sets(
-                &simplifier.context,
-                DivisionDenominatorSignSplitSolvedCases {
-                    positive_branch: positive_set,
-                    negative_branch: negative_set,
-                    positive_domain: positive_domain_set,
-                    negative_domain: negative_domain_set,
-                },
-            );
-            Ok((final_set, solved_steps))
+            Ok(solved)
         } else {
             // A = RHS * B
             let denominator_is_negative = is_known_negative(&simplifier.context, r);
@@ -398,7 +386,7 @@ pub(super) fn isolate_div(
             let include_items = simplifier.collect_steps();
             let solved = {
                 let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-                solve_isolated_denominator_sign_split_pipeline_with_optional_items(
+                execute_isolated_denominator_sign_split_pipeline_with_optional_items(
                     split_plan,
                     r,
                     op.clone(),
@@ -421,23 +409,16 @@ pub(super) fn isolate_div(
                         )
                     },
                     |item| medium_step(item.description().to_string(), item.equation),
+                    |solved_cases| {
+                        let mut simplifier_ref = runtime_cell.borrow_mut();
+                        finalize_isolated_denominator_sign_split_solved_sets(
+                            &mut simplifier_ref.context,
+                            solved_cases,
+                        )
+                    },
                 )?
             };
-
-            let cas_solver_core::solve_outcome::IsolatedDenominatorSignSplitExecutionSolved {
-                positive_set,
-                negative_set,
-                steps: solved_steps,
-            } = solved;
-
-            let final_set = finalize_isolated_denominator_sign_split_solved_sets(
-                &mut simplifier.context,
-                IsolatedDenominatorSignSplitSolvedCases {
-                    positive_branch: positive_set,
-                    negative_branch: negative_set,
-                },
-            );
-            return Ok((final_set, solved_steps));
+            return Ok(solved);
         }
 
         // PEDAGOGICAL: Decompose denominator isolation into two explicit steps

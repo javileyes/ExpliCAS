@@ -4482,6 +4482,67 @@ pub fn finalize_division_denominator_sign_split_solved_sets(
     )
 }
 
+/// Execute denominator-sign split pipeline and finalize branch/domain sets.
+///
+/// This combines:
+/// 1. Pipeline execution with optional didactic items.
+/// 2. Conversion of solved branch/domain payload into finalized `SolutionSet`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_division_denominator_sign_split_pipeline_with_optional_items<
+    E,
+    S,
+    FRenderExpr,
+    FSolveBranch,
+    FSolveDomain,
+    FMapStep,
+    FFinalize,
+>(
+    split_plan: DivisionDenominatorSignSplitPlan,
+    denominator: ExprId,
+    case_boundary_lhs: ExprId,
+    case_boundary_op: RelOp,
+    simplified_rhs: ExprId,
+    include_items: bool,
+    branch_prefix_steps: &[S],
+    render_expr: FRenderExpr,
+    solve_branch: FSolveBranch,
+    solve_domain: FSolveDomain,
+    map_item_to_step: FMapStep,
+    mut finalize_solved_sets: FFinalize,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    S: Clone,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveBranch: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FSolveDomain: FnMut(&Equation) -> Result<SolutionSet, E>,
+    FMapStep: FnMut(DivisionDidacticExecutionItem) -> S,
+    FFinalize:
+        FnMut(DivisionDenominatorSignSplitSolvedCases<SolutionSet, SolutionSet>) -> SolutionSet,
+{
+    let solved = solve_division_denominator_sign_split_pipeline_with_optional_items(
+        split_plan,
+        denominator,
+        case_boundary_lhs,
+        case_boundary_op,
+        simplified_rhs,
+        include_items,
+        branch_prefix_steps,
+        render_expr,
+        solve_branch,
+        solve_domain,
+        map_item_to_step,
+    )?;
+
+    let final_set = finalize_solved_sets(DivisionDenominatorSignSplitSolvedCases {
+        positive_branch: solved.positive_set,
+        negative_branch: solved.negative_set,
+        positive_domain: solved.positive_domain_set,
+        negative_domain: solved.negative_domain_set,
+    });
+
+    Ok((final_set, solved.steps))
+}
+
 /// Solve both branch equations for already-isolated denominator sign split.
 pub fn solve_isolated_denominator_sign_split_cases_with<E, TBranch, FSolveBranch>(
     execution: &IsolatedDenominatorSignSplitExecutionPlan,
@@ -4676,6 +4737,56 @@ pub fn finalize_isolated_denominator_sign_split_solved_sets(
         solved.positive_branch,
         solved.negative_branch,
     )
+}
+
+/// Execute isolated-denominator sign-split pipeline and finalize branch sets.
+///
+/// This combines:
+/// 1. Pipeline execution with optional didactic items.
+/// 2. Conversion of solved branch payload into finalized `SolutionSet`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_isolated_denominator_sign_split_pipeline_with_optional_items<
+    E,
+    S,
+    FRenderExpr,
+    FSolveBranch,
+    FMapStep,
+    FFinalize,
+>(
+    split_plan: IsolatedDenominatorSignSplitPlan,
+    denominator: ExprId,
+    case_boundary_op: RelOp,
+    include_items: bool,
+    branch_prefix_steps: &[S],
+    render_expr: FRenderExpr,
+    solve_branch: FSolveBranch,
+    map_item_to_step: FMapStep,
+    mut finalize_solved_sets: FFinalize,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    S: Clone,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveBranch: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(DivisionDidacticExecutionItem) -> S,
+    FFinalize: FnMut(IsolatedDenominatorSignSplitSolvedCases<SolutionSet>) -> SolutionSet,
+{
+    let solved = solve_isolated_denominator_sign_split_pipeline_with_optional_items(
+        split_plan,
+        denominator,
+        case_boundary_op,
+        include_items,
+        branch_prefix_steps,
+        render_expr,
+        solve_branch,
+        map_item_to_step,
+    )?;
+
+    let final_set = finalize_solved_sets(IsolatedDenominatorSignSplitSolvedCases {
+        positive_branch: solved.positive_set,
+        negative_branch: solved.negative_set,
+    });
+
+    Ok((final_set, solved.steps))
 }
 
 /// Build executable split plan for division inequalities where denominator sign
@@ -10609,6 +10720,50 @@ mod tests {
     }
 
     #[test]
+    fn execute_division_denominator_sign_split_pipeline_with_optional_items_finalizes_sets() {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let simplified_rhs = ctx.var("s");
+        let split =
+            plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Lt).unwrap();
+
+        let mut finalize_called = false;
+        let (final_set, steps) =
+            execute_division_denominator_sign_split_pipeline_with_optional_items(
+                split,
+                den,
+                num,
+                RelOp::Lt,
+                simplified_rhs,
+                false,
+                &[0u8],
+                |_id| -> String { panic!("renderer must not run when items are disabled") },
+                |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![rhs]), vec![1u8])),
+                |_domain_equation| Ok::<_, ()>(SolutionSet::AllReals),
+                |_item| -> u8 { panic!("mapper must not run when items are disabled") },
+                |solved_cases| {
+                    finalize_called = true;
+                    assert!(matches!(
+                        solved_cases.positive_domain,
+                        SolutionSet::AllReals
+                    ));
+                    assert!(matches!(
+                        solved_cases.negative_domain,
+                        SolutionSet::AllReals
+                    ));
+                    SolutionSet::AllReals
+                },
+            )
+            .expect("execute helper should solve and finalize");
+
+        assert!(finalize_called);
+        assert!(matches!(final_set, SolutionSet::AllReals));
+        assert_eq!(steps, vec![0u8, 1u8, 0u8, 1u8]);
+    }
+
+    #[test]
     fn division_denominator_sign_split_boundary_item_returns_case_separator() {
         let mut ctx = Context::new();
         let num = ctx.var("n");
@@ -10970,6 +11125,44 @@ mod tests {
         .expect("pipeline should solve");
 
         assert_eq!(solved.steps, vec![0u8, 1u8, 0u8, 1u8]);
+    }
+
+    #[test]
+    fn execute_isolated_denominator_sign_split_pipeline_with_optional_items_finalizes_sets() {
+        let mut ctx = Context::new();
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let split = plan_isolated_denominator_sign_split(den, rhs, RelOp::Leq).unwrap();
+
+        let mut finalize_called = false;
+        let (final_set, steps) =
+            execute_isolated_denominator_sign_split_pipeline_with_optional_items(
+                split,
+                den,
+                RelOp::Leq,
+                false,
+                &[0u8],
+                |_id| -> String { panic!("renderer must not run when items are disabled") },
+                |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![rhs]), vec![1u8])),
+                |_item| -> u8 { panic!("mapper must not run when items are disabled") },
+                |solved_cases| {
+                    finalize_called = true;
+                    assert!(matches!(
+                        solved_cases.positive_branch,
+                        SolutionSet::Discrete(_)
+                    ));
+                    assert!(matches!(
+                        solved_cases.negative_branch,
+                        SolutionSet::Discrete(_)
+                    ));
+                    SolutionSet::Empty
+                },
+            )
+            .expect("execute helper should solve and finalize");
+
+        assert!(finalize_called);
+        assert!(matches!(final_set, SolutionSet::Empty));
+        assert_eq!(steps, vec![0u8, 1u8, 0u8, 1u8]);
     }
 
     #[test]
