@@ -202,6 +202,8 @@ pub struct SolveDiagnostics {
     pub required: Vec<crate::implicit_domain::ImplicitCondition>,
     /// Assumptions made during solving (policy decisions)
     pub assumed: Vec<crate::assumptions::AssumptionEvent>,
+    /// Deduplicated assumption summary records for external output.
+    pub assumed_records: Vec<crate::assumptions::AssumptionRecord>,
     /// Output scopes for context-aware display transforms.
     pub output_scopes: Vec<cas_formatter::display_transforms::ScopeTag>,
 }

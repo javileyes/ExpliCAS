@@ -113,10 +113,19 @@ pub fn solve_with_display_steps(
 
     // Read accumulated conditions from the shared sink (zero TLS)
     let required: Vec<_> = ctx.required_sink.borrow().iter().cloned().collect();
+    let assumed = ctx.assumptions();
+    let assumed_records = {
+        let mut collector = crate::assumptions::AssumptionCollector::new();
+        for event in assumed.iter().cloned() {
+            collector.note(event);
+        }
+        collector.finish()
+    };
 
     let diagnostics = SolveDiagnostics {
         required,
-        assumed: ctx.assumptions(),
+        assumed,
+        assumed_records,
         output_scopes: ctx.output_scopes(),
     };
 

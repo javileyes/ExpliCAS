@@ -403,11 +403,7 @@ impl Engine {
                 {
                     vec![]
                 } else {
-                    let mut collector = crate::assumptions::AssumptionCollector::new();
-                    for event in diagnostics.assumed.clone() {
-                        collector.note(event);
-                    }
-                    collector.finish()
+                    diagnostics.assumed_records.clone()
                 };
 
                 // V2.0: Return the full SolutionSet preserving all variants
