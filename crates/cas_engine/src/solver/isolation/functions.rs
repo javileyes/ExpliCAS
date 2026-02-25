@@ -10,7 +10,7 @@ use cas_solver_core::function_inverse::{
 };
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::log_isolation::{
-    plan_log_isolation_step_with, solve_log_isolation_rewrite_with_item,
+    plan_log_isolation_step_with, solve_log_isolation_rewrite_pipeline_with_item,
 };
 use cas_solver_core::solve_outcome::{
     finalize_abs_split_solution_set, plan_abs_isolation, solve_abs_isolation_plan_with,
@@ -162,26 +162,23 @@ fn isolate_log(
         )
     })?;
     let include_item = simplifier.collect_steps();
-    let solved = solve_log_isolation_rewrite_with_item(rewrite, |item, equation| {
-        let (solution_set, mut solved_steps) = isolate(
-            equation.lhs,
-            equation.rhs,
-            equation.op.clone(),
-            var,
-            simplifier,
-            opts,
-            ctx,
-        )?;
-
-        let mut steps = Vec::with_capacity(solved_steps.len() + usize::from(include_item));
-        if include_item {
-            if let Some(item) = item {
-                steps.push(medium_step(item.description().to_string(), item.equation));
-            }
-        }
-        steps.append(&mut solved_steps);
-        Ok::<(SolutionSet, Vec<SolveStep>), CasError>((solution_set, steps))
-    })?;
+    let solved = solve_log_isolation_rewrite_pipeline_with_item(
+        rewrite,
+        include_item,
+        |equation| {
+            let (solution_set, solved_steps) = isolate(
+                equation.lhs,
+                equation.rhs,
+                equation.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )?;
+            Ok::<(SolutionSet, Vec<SolveStep>), CasError>((solution_set, solved_steps))
+        },
+        |item| medium_step(item.description().to_string(), item.equation),
+    )?;
     let (solution_set, solved_steps) = solved.solved;
     prepend_steps((solution_set, solved_steps), steps)
 }

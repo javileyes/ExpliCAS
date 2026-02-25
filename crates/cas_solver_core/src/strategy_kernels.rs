@@ -226,6 +226,28 @@ where
     }
 }
 
+/// Materialize a collect-terms rewrite from simplified equation sides.
+///
+/// This is a convenience wrapper that keeps execution-item wiring in core.
+pub fn materialize_collect_terms_rewrite_with<F>(
+    lhs_after: ExprId,
+    rhs_after: ExprId,
+    op: RelOp,
+    original_rhs: ExprId,
+    render_expr: F,
+) -> CollectTermsSolvedRewrite
+where
+    F: FnMut(ExprId) -> String,
+{
+    let execution =
+        build_collect_terms_execution_with(lhs_after, rhs_after, op, original_rhs, render_expr);
+    let items = collect_collect_terms_execution_items(&execution);
+    CollectTermsSolvedRewrite {
+        equation: execution.equation,
+        items,
+    }
+}
+
 /// Derive, simplify, and materialize collect-terms rewrite in one pipeline.
 ///
 /// This centralizes strategy-kernel orchestration while caller controls
@@ -235,7 +257,7 @@ pub fn execute_collect_terms_rewrite_with<FSimplify, FRender>(
     eq: &Equation,
     var: &str,
     mut simplify_expr: FSimplify,
-    mut render_expr: FRender,
+    render_expr: FRender,
 ) -> Option<CollectTermsSolvedRewrite>
 where
     FSimplify: FnMut(ExprId) -> ExprId,
@@ -244,15 +266,13 @@ where
     let kernel = derive_collect_terms_kernel(ctx, eq, var)?;
     let simp_lhs = simplify_expr(kernel.rewritten.lhs);
     let simp_rhs = simplify_expr(kernel.rewritten.rhs);
-    let execution =
-        build_collect_terms_execution_with(simp_lhs, simp_rhs, eq.op.clone(), eq.rhs, |id| {
-            render_expr(id)
-        });
-    let items = collect_collect_terms_execution_items(&execution);
-    Some(CollectTermsSolvedRewrite {
-        equation: execution.equation,
-        items,
-    })
+    Some(materialize_collect_terms_rewrite_with(
+        simp_lhs,
+        simp_rhs,
+        eq.op.clone(),
+        eq.rhs,
+        render_expr,
+    ))
 }
 
 /// Execute recursive solve for a materialized collect-terms rewrite.
@@ -416,6 +436,20 @@ pub fn build_rational_exponent_execution(
     }
 }
 
+/// Materialize a rational-exponent rewrite from simplified equation sides.
+pub fn materialize_rational_exponent_rewrite(
+    q: i64,
+    lhs_after: ExprId,
+    rhs_after: ExprId,
+) -> RationalExponentSolvedRewrite {
+    let execution = build_rational_exponent_execution(q, lhs_after, rhs_after);
+    let items = collect_rational_exponent_execution_items(&execution);
+    RationalExponentSolvedRewrite {
+        equation: execution.equation,
+        items,
+    }
+}
+
 /// Derive, simplify, and materialize rational-exponent rewrite in one pipeline.
 ///
 /// This centralizes strategy-kernel orchestration while caller controls
@@ -434,12 +468,9 @@ where
     let kernel = derive_rational_exponent_kernel(ctx, eq, var, lhs_has_var, rhs_has_var)?;
     let sim_lhs = simplify_expr(kernel.rewritten.lhs);
     let sim_rhs = simplify_expr(kernel.rewritten.rhs);
-    let execution = build_rational_exponent_execution(kernel.q, sim_lhs, sim_rhs);
-    let items = collect_rational_exponent_execution_items(&execution);
-    Some(RationalExponentSolvedRewrite {
-        equation: execution.equation,
-        items,
-    })
+    Some(materialize_rational_exponent_rewrite(
+        kernel.q, sim_lhs, sim_rhs,
+    ))
 }
 
 /// Derive, simplify, and materialize rational-exponent rewrite in one pipeline
@@ -896,6 +927,29 @@ mod tests {
     }
 
     #[test]
+    fn materialize_collect_terms_rewrite_with_builds_rewrite_payload() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let rhs_orig = ctx.var("rhs");
+
+        let rewrite = materialize_collect_terms_rewrite_with(x, y, RelOp::Eq, rhs_orig, |_| {
+            "rhs".to_string()
+        });
+        assert_eq!(
+            rewrite.equation,
+            Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq
+            }
+        );
+        assert_eq!(rewrite.items.len(), 1);
+        assert_eq!(rewrite.items[0].equation, rewrite.equation);
+        assert_eq!(rewrite.items[0].description, "Subtract rhs from both sides");
+    }
+
+    #[test]
     fn collect_collect_terms_didactic_steps_returns_single_step() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -942,6 +996,29 @@ mod tests {
         );
         assert_eq!(
             execution.description,
+            "Raise both sides to power 5 to eliminate fractional exponent"
+        );
+    }
+
+    #[test]
+    fn materialize_rational_exponent_rewrite_builds_rewrite_payload() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+
+        let rewrite = materialize_rational_exponent_rewrite(5, x, y);
+        assert_eq!(
+            rewrite.equation,
+            Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq
+            }
+        );
+        assert_eq!(rewrite.items.len(), 1);
+        assert_eq!(rewrite.items[0].equation, rewrite.equation);
+        assert_eq!(
+            rewrite.items[0].description,
             "Raise both sides to power 5 to eliminate fractional exponent"
         );
     }

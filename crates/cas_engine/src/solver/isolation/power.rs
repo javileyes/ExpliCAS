@@ -5,13 +5,11 @@ use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{are_equivalent_by_difference_with, is_numeric_zero};
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
-    build_pow_base_isolation_action_with, build_pow_exponent_shortcut_execution_plan,
-    derive_pow_isolation_route, map_pow_exponent_shortcut_with,
-    plan_pow_exponent_log_isolation_step_with,
+    build_pow_base_isolation_action_with, derive_pow_isolation_route,
+    execute_pow_exponent_shortcut_with, plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
-    plan_pow_exponent_shortcut_action_from_inputs, pow_exponent_rhs_contains_variable,
-    resolve_log_terminal_outcome, resolve_power_base_one_shortcut_for_pow_with,
-    solve_pow_base_isolation_pipeline_with_item,
+    pow_exponent_rhs_contains_variable, resolve_log_terminal_outcome,
+    resolve_power_base_one_shortcut_for_pow_with, solve_pow_base_isolation_pipeline_with_item,
     solve_pow_exponent_log_isolation_rewrite_pipeline_with_item,
     solve_pow_exponent_log_unsupported_pipeline_with_items,
     solve_pow_exponent_shortcut_pipeline_with_item,
@@ -137,28 +135,42 @@ fn isolate_pow_exponent(
     let base_is_zero = is_numeric_zero(&simplifier.context, b);
     let base_is_numeric = matches!(simplifier.context.get(b), Expr::Number(_));
     let shortcut_engine_action = {
-        let rhs_expr = simplifier.context.get(rhs).clone();
-        let bases_equal = bases_are_equivalent(simplifier, b, rhs);
-        let rhs_pow_base_equal = match rhs_expr {
-            Expr::Pow(rhs_base, rhs_exp) if bases_are_equivalent(simplifier, b, rhs_base) => {
-                Some(rhs_exp)
-            }
-            _ => None,
-        };
-        let action = plan_pow_exponent_shortcut_action_from_inputs(
-            &mut simplifier.context,
+        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+        execute_pow_exponent_shortcut_with(
+            e,
             b,
+            rhs,
             op.clone(),
-            bases_equal,
-            rhs_pow_base_equal,
+            var,
             base_is_zero,
             base_is_numeric,
             opts.budget.max_branches >= 2,
-        );
-        let execution = build_pow_exponent_shortcut_execution_plan(action);
-        map_pow_exponent_shortcut_with(execution, e, b, rhs, op.clone(), var, |expr| {
-            solver_render_expr(&simplifier.context, expr)
-        })
+            |expr| {
+                let simplifier_ref = runtime_cell.borrow();
+                simplifier_ref.context.get(expr).clone()
+            },
+            |base, rel_op, bases_equal, rhs_pow_base_equal, is_zero, is_numeric, can_branch| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                cas_solver_core::solve_outcome::plan_pow_exponent_shortcut_action_from_inputs(
+                    &mut simplifier_ref.context,
+                    base,
+                    rel_op,
+                    bases_equal,
+                    rhs_pow_base_equal,
+                    is_zero,
+                    is_numeric,
+                    can_branch,
+                )
+            },
+            |lhs_base, rhs_base| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                bases_are_equivalent(*simplifier_ref, lhs_base, rhs_base)
+            },
+            |expr| {
+                let simplifier_ref = runtime_cell.borrow();
+                solver_render_expr(&simplifier_ref.context, expr)
+            },
+        )
     };
     let shortcut_solved = {
         let include_item = simplifier.collect_steps();

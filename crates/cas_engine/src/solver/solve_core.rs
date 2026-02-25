@@ -26,9 +26,8 @@ use cas_solver_core::solve_outcome::{
 };
 use cas_solver_core::step_cleanup::{cleanup_steps_by, CleanupStep};
 use cas_solver_core::strategy_kernels::{
-    build_rational_exponent_execution, collect_rational_exponent_execution_items,
-    derive_rational_exponent_kernel, solve_rational_exponent_rewrite_pipeline_with_item_with,
-    RationalExponentSolvedRewrite,
+    derive_rational_exponent_kernel, materialize_rational_exponent_rewrite,
+    solve_rational_exponent_rewrite_pipeline_with_item_with,
 };
 
 use super::{
@@ -519,12 +518,7 @@ fn try_solve_rational_exponent(
     )?;
     let sim_lhs = simplifier.simplify(kernel.rewritten.lhs).0;
     let sim_rhs = simplifier.simplify(kernel.rewritten.rhs).0;
-    let execution = build_rational_exponent_execution(kernel.q, sim_lhs, sim_rhs);
-    let items = collect_rational_exponent_execution_items(&execution);
-    let rewrite = RationalExponentSolvedRewrite {
-        equation: execution.equation,
-        items,
-    };
+    let rewrite = materialize_rational_exponent_rewrite(kernel.q, sim_lhs, sim_rhs);
 
     let include_item = simplifier.collect_steps();
     let solved = {
