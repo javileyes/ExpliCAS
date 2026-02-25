@@ -480,6 +480,45 @@ where
     })
 }
 
+/// Execute unary-inverse planning + solve pipeline with optional didactic item dispatch.
+///
+/// Returns `None` when unary inversion is unsupported for the requested function.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_unary_inverse_pipeline_with_items_with<E, S, FPlan, FSimplifyRhs, FSolve, FStep>(
+    fn_name: &str,
+    arg: ExprId,
+    other: ExprId,
+    op: RelOp,
+    is_lhs: bool,
+    include_items: bool,
+    plan_unary_inverse_step: FPlan,
+    simplify_rhs_with_entries: FSimplifyRhs,
+    solve: FSolve,
+    map_item_to_step: FStep,
+) -> Option<Result<UnaryInverseExecutionPipelineSolved<S>, E>>
+where
+    FPlan: FnMut(&str, ExprId, ExprId, RelOp, bool) -> Option<UnaryInverseIsolationStepPlan>,
+    FSimplifyRhs: FnMut(ExprId) -> (ExprId, Vec<(String, ExprId)>),
+    FSolve: FnMut(ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(UnaryInverseSolveExecutionItem) -> S,
+{
+    let execution = execute_unary_inverse_with(
+        fn_name,
+        arg,
+        other,
+        op,
+        is_lhs,
+        plan_unary_inverse_step,
+        simplify_rhs_with_entries,
+    )?;
+    Some(solve_unary_inverse_execution_pipeline_with_items(
+        execution,
+        include_items,
+        solve,
+        map_item_to_step,
+    ))
+}
+
 /// Build didactic RHS-cleanup steps from `(description, rhs_after)` tuples.
 pub fn build_rhs_simplification_steps<I>(
     lhs: ExprId,
@@ -1171,6 +1210,94 @@ mod tests {
 
         assert!(matches!(solved.solution_set, SolutionSet::Discrete(_)));
         assert_eq!(solved.steps, vec!["only".to_string()]);
+    }
+
+    #[test]
+    fn execute_unary_inverse_pipeline_with_items_with_runs_pipeline_for_supported_inverse() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+
+        let mut solve_calls = 0usize;
+        let solved = execute_unary_inverse_pipeline_with_items_with(
+            "ln",
+            x,
+            y,
+            RelOp::Eq,
+            true,
+            true,
+            |_fn_name, _arg, _other, _op, _is_lhs| {
+                Some(UnaryInverseIsolationStepPlan {
+                    equation: Equation {
+                        lhs: x,
+                        rhs: y,
+                        op: RelOp::Eq,
+                    },
+                    items: vec![UnaryInverseExecutionItem {
+                        equation: Equation {
+                            lhs: x,
+                            rhs: y,
+                            op: RelOp::Eq,
+                        },
+                        description: "rewrite".to_string(),
+                    }],
+                    needs_rhs_cleanup: true,
+                })
+            },
+            |_rhs| (z, vec![("cleanup".to_string(), z)]),
+            |lhs, rhs, op| {
+                solve_calls += 1;
+                assert_eq!(lhs, x);
+                assert_eq!(rhs, z);
+                assert_eq!(op, RelOp::Eq);
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![rhs]),
+                    vec!["substep".to_string()],
+                ))
+            },
+            |item| item.description,
+        )
+        .expect("inverse should be supported")
+        .expect("pipeline should solve");
+
+        assert_eq!(solve_calls, 1);
+        assert!(matches!(solved.solution_set, SolutionSet::Discrete(_)));
+        assert_eq!(
+            solved.steps,
+            vec![
+                "rewrite".to_string(),
+                "cleanup".to_string(),
+                "substep".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn execute_unary_inverse_pipeline_with_items_with_returns_none_for_unsupported_inverse() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+
+        let mut solve_calls = 0usize;
+        let out = execute_unary_inverse_pipeline_with_items_with(
+            "unknown",
+            x,
+            y,
+            RelOp::Eq,
+            true,
+            true,
+            |_fn_name, _arg, _other, _op, _is_lhs| None,
+            |_rhs| (y, vec![]),
+            |_lhs, _rhs, _op| {
+                solve_calls += 1;
+                Ok::<_, ()>((SolutionSet::AllReals, vec!["unexpected".to_string()]))
+            },
+            |item| item.description,
+        );
+
+        assert!(out.is_none());
+        assert_eq!(solve_calls, 0);
     }
 
     #[test]

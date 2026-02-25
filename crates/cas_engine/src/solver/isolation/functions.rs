@@ -4,9 +4,8 @@ use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, S
 use cas_ast::symbol::SymbolId;
 use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::function_inverse::{
-    derive_function_isolation_route, execute_unary_inverse_with, plan_unary_inverse_isolation_step,
-    solve_unary_inverse_execution_pipeline_with_items, FunctionIsolationRoute,
-    FunctionIsolationRouteError,
+    derive_function_isolation_route, execute_unary_inverse_pipeline_with_items_with,
+    plan_unary_inverse_isolation_step, FunctionIsolationRoute, FunctionIsolationRouteError,
 };
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::log_isolation::{
@@ -197,14 +196,16 @@ fn isolate_unary_function(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let fn_name = simplifier.context.sym_name(fn_id).to_string();
-    let execution = {
+    let include_items = simplifier.collect_steps();
+    let solved_execution = {
         let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        execute_unary_inverse_with(
+        execute_unary_inverse_pipeline_with_items_with(
             &fn_name,
             arg,
             rhs,
             op.clone(),
             true,
+            include_items,
             |inner_fn_name, inner_arg, inner_other, inner_op, inner_is_lhs| {
                 let mut simplifier_ref = runtime_cell.borrow_mut();
                 plan_unary_inverse_isolation_step(
@@ -225,16 +226,14 @@ fn isolate_unary_function(
                     .collect::<Vec<_>>();
                 (simplified_rhs, entries)
             },
+            |lhs, rhs, inner_op| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                isolate(lhs, rhs, inner_op, var, *simplifier_ref, opts, ctx)
+            },
+            |item| medium_step(item.description().to_string(), item.equation),
         )
-        .ok_or_else(|| CasError::UnknownFunction(fn_name.clone()))?
+        .ok_or_else(|| CasError::UnknownFunction(fn_name.clone()))??
     };
-    let include_items = simplifier.collect_steps();
-    let solved_execution = solve_unary_inverse_execution_pipeline_with_items(
-        execution,
-        include_items,
-        |lhs, rhs, inner_op| isolate(lhs, rhs, inner_op, var, simplifier, opts, ctx),
-        |item| medium_step(item.description().to_string(), item.equation),
-    )?;
     prepend_steps(
         (solved_execution.solution_set, solved_execution.steps),
         steps,
