@@ -12,8 +12,8 @@ use cas_solver_core::log_isolation::{
     execute_log_isolation_pipeline_with_item_with, plan_log_isolation_step_with,
 };
 use cas_solver_core::solve_outcome::{
-    finalize_abs_split_solution_set, plan_abs_isolation, solve_abs_isolation_plan_with,
-    solve_abs_split_pipeline_with_optional_items, AbsIsolationSolved,
+    execute_abs_split_pipeline_with_optional_items, finalize_abs_split_solution_set,
+    plan_abs_isolation, solve_abs_isolation_plan_with, AbsIsolationSolved,
 };
 
 use super::{isolate, prepend_steps};
@@ -94,7 +94,7 @@ fn isolate_abs(
             let include_items = simplifier.collect_steps();
             let solved = {
                 let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-                solve_abs_split_pipeline_with_optional_items(
+                execute_abs_split_pipeline_with_optional_items(
                     positive,
                     negative,
                     arg,
@@ -117,17 +117,20 @@ fn isolate_abs(
                         )
                     },
                     |item| medium_step(item.description().to_string(), item.equation),
+                    |positive_set, negative_set| {
+                        let simplifier_ref = runtime_cell.borrow();
+                        finalize_abs_split_solution_set(
+                            &simplifier_ref.context,
+                            op.clone(),
+                            contains_var(&simplifier_ref.context, rhs, var),
+                            rhs,
+                            positive_set,
+                            negative_set,
+                        )
+                    },
                 )?
             };
-            let final_set = finalize_abs_split_solution_set(
-                &simplifier.context,
-                op,
-                contains_var(&simplifier.context, rhs, var),
-                rhs,
-                solved.positive_set,
-                solved.negative_set,
-            );
-            Ok((final_set, solved.steps))
+            Ok(solved)
         }
     }
 }

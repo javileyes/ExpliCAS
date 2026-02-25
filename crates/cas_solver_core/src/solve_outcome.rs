@@ -5416,6 +5416,51 @@ where
     )
 }
 
+/// Execute absolute-value split pipeline and finalize branch solution sets.
+///
+/// This combines:
+/// 1. Pipeline execution with optional didactic items.
+/// 2. Conversion of solved branch payload into finalized `SolutionSet`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_abs_split_pipeline_with_optional_items<
+    E,
+    S,
+    FRenderExpr,
+    FSolveBranch,
+    FMapStep,
+    FFinalize,
+>(
+    positive_equation: Equation,
+    negative_equation: Equation,
+    lhs_expr: ExprId,
+    include_items: bool,
+    branch_prefix_steps: &[S],
+    render_expr: FRenderExpr,
+    solve_branch: FSolveBranch,
+    map_item_to_step: FMapStep,
+    mut finalize_solved_sets: FFinalize,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    S: Clone,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveBranch: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(AbsSplitExecutionItem) -> S,
+    FFinalize: FnMut(SolutionSet, SolutionSet) -> SolutionSet,
+{
+    let solved = solve_abs_split_pipeline_with_optional_items(
+        positive_equation,
+        negative_equation,
+        lhs_expr,
+        include_items,
+        branch_prefix_steps,
+        render_expr,
+        solve_branch,
+        map_item_to_step,
+    )?;
+    let final_set = finalize_solved_sets(solved.positive_set, solved.negative_set);
+    Ok((final_set, solved.steps))
+}
+
 /// For `|A| = rhs`, attach the soundness guard `rhs >= 0` when
 /// `rhs` depends on the solve variable.
 pub fn guard_abs_solution_with_nonnegative_rhs(
@@ -6451,6 +6496,45 @@ mod tests {
         .expect("pipeline should solve");
 
         assert_eq!(solved.steps, vec![0u8, 1u8, 0u8, 1u8]);
+    }
+
+    #[test]
+    fn execute_abs_split_pipeline_with_optional_items_finalizes_sets() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let neg_two = ctx.num(-2);
+
+        let mut finalize_called = false;
+        let (final_set, steps) = execute_abs_split_pipeline_with_optional_items(
+            Equation {
+                lhs: x,
+                rhs: two,
+                op: RelOp::Eq,
+            },
+            Equation {
+                lhs: x,
+                rhs: neg_two,
+                op: RelOp::Eq,
+            },
+            x,
+            false,
+            &[0u8],
+            |_id| -> String { panic!("renderer must not run when items are disabled") },
+            |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![two]), vec![1u8])),
+            |_item| -> u8 { panic!("mapper must not run when items are disabled") },
+            |positive_set, negative_set| {
+                finalize_called = true;
+                assert!(matches!(positive_set, SolutionSet::Discrete(_)));
+                assert!(matches!(negative_set, SolutionSet::Discrete(_)));
+                SolutionSet::Empty
+            },
+        )
+        .expect("execute helper should solve and finalize");
+
+        assert!(finalize_called);
+        assert!(matches!(final_set, SolutionSet::Empty));
+        assert_eq!(steps, vec![0u8, 1u8, 0u8, 1u8]);
     }
 
     #[test]
