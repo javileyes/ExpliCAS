@@ -2,33 +2,153 @@ use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
-use cas_ast::{ExprId, RelOp, SolutionSet};
+use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::function_inverse::{
-    derive_function_isolation_route, execute_unary_inverse_with, plan_unary_inverse_isolation_step,
-    solve_unary_inverse_execution_pipeline_with_items, FunctionIsolationRoute,
-    FunctionIsolationRouteError,
+    derive_function_isolation_route, execute_unary_inverse_with_runtime,
+    solve_unary_inverse_execution_pipeline_with_items_runtime, FunctionIsolationRoute,
+    FunctionIsolationRouteError, UnaryInverseRuntime, UnaryInverseSolveRuntime,
 };
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::log_isolation::{
-    plan_log_isolation_step_with, solve_log_isolation_rewrite_with_item,
+    plan_log_isolation_step_with_runtime, solve_log_isolation_rewrite_pipeline_with_item,
+    LogIsolationRewriteRuntime,
 };
 use cas_solver_core::solve_outcome::{
-    finalize_abs_split_solution_set, plan_abs_isolation, solve_abs_isolation_plan_with,
-    solve_abs_split_pipeline_with_optional_items, AbsIsolationSolved,
+    finalize_abs_split_solution_set, plan_abs_isolation, solve_abs_isolation_plan_with_runtime,
+    solve_abs_split_pipeline_with_optional_items_runtime, AbsIsolationPlanRuntime,
+    AbsIsolationSolved, AbsSplitRuntime,
 };
-use std::cell::RefCell;
 
 use super::{isolate, prepend_steps};
 
-fn identity_equation(equation: cas_ast::Equation) -> Result<cas_ast::Equation, CasError> {
-    Ok(equation)
+struct AbsPlanDispatchRuntime;
+
+impl AbsIsolationPlanRuntime<CasError, Equation, (Equation, Equation)> for AbsPlanDispatchRuntime {
+    fn solve_single(&mut self, equation: Equation) -> Result<Equation, CasError> {
+        Ok(equation)
+    }
+
+    fn solve_split(
+        &mut self,
+        positive: Equation,
+        negative: Equation,
+    ) -> Result<(Equation, Equation), CasError> {
+        Ok((positive, negative))
+    }
 }
 
-fn pair_equations(
-    positive: cas_ast::Equation,
-    negative: cas_ast::Equation,
-) -> Result<(cas_ast::Equation, cas_ast::Equation), CasError> {
-    Ok((positive, negative))
+struct AbsSplitRuntimeAdapter<'a, 'ctx> {
+    simplifier: &'a mut Simplifier,
+    opts: SolverOptions,
+    solve_ctx: &'ctx super::super::SolveCtx,
+}
+
+impl AbsSplitRuntime<CasError, SolveStep> for AbsSplitRuntimeAdapter<'_, '_> {
+    fn render_expr(&mut self, expr: ExprId) -> String {
+        solver_render_expr(&self.simplifier.context, expr)
+    }
+
+    fn solve_branch(
+        &mut self,
+        equation: &Equation,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        isolate(
+            equation.lhs,
+            equation.rhs,
+            equation.op.clone(),
+            var,
+            self.simplifier,
+            self.opts,
+            self.solve_ctx,
+        )
+    }
+
+    fn map_item_to_step(
+        &mut self,
+        item: cas_solver_core::solve_outcome::AbsSplitExecutionItem,
+    ) -> SolveStep {
+        medium_step(item.description().to_string(), item.equation)
+    }
+}
+
+struct LogIsolationRuntimeAdapter<'a, 'ctx> {
+    simplifier: &'a mut Simplifier,
+    opts: SolverOptions,
+    solve_ctx: &'ctx super::super::SolveCtx,
+    var: &'a str,
+}
+
+impl LogIsolationRewriteRuntime<CasError, SolveStep> for LogIsolationRuntimeAdapter<'_, '_> {
+    fn solve_rewritten(
+        &mut self,
+        equation: &Equation,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        isolate(
+            equation.lhs,
+            equation.rhs,
+            equation.op.clone(),
+            self.var,
+            self.simplifier,
+            self.opts,
+            self.solve_ctx,
+        )
+    }
+
+    fn map_item_to_step(
+        &mut self,
+        item: cas_solver_core::log_isolation::LogIsolationExecutionItem,
+    ) -> SolveStep {
+        medium_step(item.description().to_string(), item.equation)
+    }
+}
+
+struct UnaryInverseRuntimeAdapter<'a, 'ctx> {
+    simplifier: &'a mut Simplifier,
+    opts: SolverOptions,
+    solve_ctx: &'ctx super::super::SolveCtx,
+}
+
+impl UnaryInverseRuntime for UnaryInverseRuntimeAdapter<'_, '_> {
+    fn context(&mut self) -> &mut cas_ast::Context {
+        &mut self.simplifier.context
+    }
+
+    fn simplify_rhs_with_entries(&mut self, rhs: ExprId) -> (ExprId, Vec<(String, ExprId)>) {
+        let (simplified_rhs, sim_steps) = self.simplifier.simplify(rhs);
+        let entries = sim_steps
+            .into_iter()
+            .map(|step| (step.description, step.after))
+            .collect::<Vec<_>>();
+        (simplified_rhs, entries)
+    }
+}
+
+impl UnaryInverseSolveRuntime<CasError, SolveStep> for UnaryInverseRuntimeAdapter<'_, '_> {
+    fn solve_rewritten(
+        &mut self,
+        lhs: ExprId,
+        rhs: ExprId,
+        op: RelOp,
+        var: &str,
+    ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+        isolate(
+            lhs,
+            rhs,
+            op,
+            var,
+            self.simplifier,
+            self.opts,
+            self.solve_ctx,
+        )
+    }
+
+    fn map_item_to_step(
+        &mut self,
+        item: cas_solver_core::function_inverse::UnaryInverseSolveExecutionItem,
+    ) -> SolveStep {
+        medium_step(item.description().to_string(), item.equation)
+    }
 }
 /// Handle isolation for `Function(fn_id, args)`: abs, log, ln, exp, sqrt, trig
 #[allow(clippy::too_many_arguments)]
@@ -86,8 +206,10 @@ fn isolate_abs(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let rhs_sign = numeric_sign(&simplifier.context, rhs);
     let abs_plan = plan_abs_isolation(&mut simplifier.context, arg, rhs, op.clone(), rhs_sign);
-    let dispatched_abs =
-        solve_abs_isolation_plan_with(abs_plan, identity_equation, pair_equations)?;
+    let dispatched_abs = {
+        let mut runtime = AbsPlanDispatchRuntime;
+        solve_abs_isolation_plan_with_runtime(abs_plan, &mut runtime)?
+    };
 
     match dispatched_abs {
         AbsIsolationSolved::ReturnedEmptySet => Ok((SolutionSet::Empty, steps)),
@@ -102,36 +224,26 @@ fn isolate_abs(
         ),
         AbsIsolationSolved::Split((positive, negative)) => {
             let include_items = simplifier.collect_steps();
-            let simplifier_cell = RefCell::new(simplifier);
-            let solved = solve_abs_split_pipeline_with_optional_items(
-                positive,
-                negative,
-                arg,
-                include_items,
-                &steps,
-                |id| {
-                    let s_ref = simplifier_cell.borrow();
-                    solver_render_expr(&s_ref.context, id)
-                },
-                |equation| {
-                    let mut s_ref = simplifier_cell.borrow_mut();
-                    isolate(
-                        equation.lhs,
-                        equation.rhs,
-                        equation.op.clone(),
-                        var,
-                        &mut s_ref,
-                        opts,
-                        ctx,
-                    )
-                },
-                |item| medium_step(item.description().to_string(), item.equation),
-            )?;
-            let s_ref = simplifier_cell.borrow();
+            let solved = {
+                let mut runtime = AbsSplitRuntimeAdapter {
+                    simplifier,
+                    opts,
+                    solve_ctx: ctx,
+                };
+                solve_abs_split_pipeline_with_optional_items_runtime(
+                    positive,
+                    negative,
+                    arg,
+                    include_items,
+                    &steps,
+                    var,
+                    &mut runtime,
+                )?
+            };
             let final_set = finalize_abs_split_solution_set(
-                &s_ref.context,
+                &simplifier.context,
                 op,
-                contains_var(&s_ref.context, rhs, var),
+                contains_var(&simplifier.context, rhs, var),
                 rhs,
                 solved.positive_set,
                 solved.negative_set,
@@ -154,15 +266,18 @@ fn isolate_log(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let rewrite = plan_log_isolation_step_with(
-        &mut simplifier.context,
-        base,
-        arg,
-        rhs,
-        var,
-        op.clone(),
-        |render_ctx, id| solver_render_expr(render_ctx, id),
-    )
+    let rewrite = {
+        let mut runtime = |core_ctx: &cas_ast::Context, id| solver_render_expr(core_ctx, id);
+        plan_log_isolation_step_with_runtime(
+            &mut simplifier.context,
+            base,
+            arg,
+            rhs,
+            var,
+            op.clone(),
+            &mut runtime,
+        )
+    }
     .ok_or_else(|| {
         CasError::IsolationError(
             var.to_string(),
@@ -170,28 +285,17 @@ fn isolate_log(
         )
     })?;
     let include_item = simplifier.collect_steps();
-    let solved = solve_log_isolation_rewrite_with_item(rewrite, |item, equation| {
-        isolate(
-            equation.lhs,
-            equation.rhs,
-            equation.op.clone(),
-            var,
+    let solved = {
+        let mut runtime = LogIsolationRuntimeAdapter {
             simplifier,
             opts,
-            ctx,
-        )
-        .map(|isolated| (item, isolated))
-    })?;
-    let (item, (solution_set, mut solved_steps)) = solved.solved;
-    let mut merged_steps =
-        Vec::with_capacity(solved_steps.len() + usize::from(include_item && item.is_some()));
-    if include_item {
-        if let Some(item) = item {
-            merged_steps.push(medium_step(item.description, item.equation));
-        }
-    }
-    merged_steps.append(&mut solved_steps);
-    prepend_steps((solution_set, merged_steps), steps)
+            solve_ctx: ctx,
+            var,
+        };
+        solve_log_isolation_rewrite_pipeline_with_item(rewrite, include_item, &mut runtime)?
+    };
+    let (solution_set, solved_steps) = solved.solved;
+    prepend_steps((solution_set, solved_steps), steps)
 }
 
 /// Handle single-argument functions: ln, exp, sqrt, sin, cos, tan
@@ -209,53 +313,28 @@ fn isolate_unary_function(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let fn_name = simplifier.context.sym_name(fn_id).to_string();
     let execution = {
-        let simplifier_cell = RefCell::new(&mut *simplifier);
-        execute_unary_inverse_with(
-            &fn_name,
-            arg,
-            rhs,
-            op.clone(),
-            true,
-            |rewrite_fn_name, rewrite_arg, rewrite_rhs, rewrite_op, rewrite_is_lhs| {
-                let mut s_ref = simplifier_cell.borrow_mut();
-                plan_unary_inverse_isolation_step(
-                    &mut s_ref.context,
-                    rewrite_fn_name,
-                    rewrite_arg,
-                    rewrite_rhs,
-                    rewrite_op,
-                    rewrite_is_lhs,
-                )
-            },
-            |rhs_expr| {
-                let mut s_ref = simplifier_cell.borrow_mut();
-                let (simplified_rhs, sim_steps) = s_ref.simplify(rhs_expr);
-                let entries = sim_steps
-                    .into_iter()
-                    .map(|step| (step.description, step.after))
-                    .collect::<Vec<_>>();
-                (simplified_rhs, entries)
-            },
-        )
-        .ok_or_else(|| CasError::UnknownFunction(fn_name.clone()))?
+        let mut runtime = UnaryInverseRuntimeAdapter {
+            simplifier,
+            opts,
+            solve_ctx: ctx,
+        };
+        execute_unary_inverse_with_runtime(&mut runtime, &fn_name, arg, rhs, op.clone(), true)
+            .ok_or_else(|| CasError::UnknownFunction(fn_name.clone()))?
     };
     let include_items = simplifier.collect_steps();
-    let solved_execution = solve_unary_inverse_execution_pipeline_with_items(
-        execution,
-        include_items,
-        |rewritten_lhs, rewritten_rhs, rewritten_op| {
-            isolate(
-                rewritten_lhs,
-                rewritten_rhs,
-                rewritten_op,
-                var,
-                simplifier,
-                opts,
-                ctx,
-            )
-        },
-        |item| medium_step(item.description().to_string(), item.equation),
-    )?;
+    let solved_execution = {
+        let mut runtime = UnaryInverseRuntimeAdapter {
+            simplifier,
+            opts,
+            solve_ctx: ctx,
+        };
+        solve_unary_inverse_execution_pipeline_with_items_runtime(
+            execution,
+            include_items,
+            var,
+            &mut runtime,
+        )?
+    };
     prepend_steps(
         (solved_execution.solution_set, solved_execution.steps),
         steps,
