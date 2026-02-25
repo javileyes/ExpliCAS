@@ -71,9 +71,17 @@ pub(crate) fn try_linear_collect(
                 },
                 |expr| {
                     let s_ref = simplifier_cell.borrow();
-                    crate::solver::proof_bridge::proof_to_nonzero_status(
-                        crate::helpers::prove_nonzero(&s_ref.context, expr),
-                    )
+                    match crate::helpers::prove_nonzero(&s_ref.context, expr) {
+                        crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit => {
+                            cas_solver_core::linear_solution::NonZeroStatus::NonZero
+                        }
+                        crate::domain::Proof::Unknown => {
+                            cas_solver_core::linear_solution::NonZeroStatus::Unknown
+                        }
+                        crate::domain::Proof::Disproven => {
+                            cas_solver_core::linear_solution::NonZeroStatus::Zero
+                        }
+                    }
                 },
             )
         },
@@ -148,9 +156,17 @@ pub(crate) fn try_linear_collect_v2(
                 },
                 |expr| {
                     let s_ref = simplifier_cell.borrow();
-                    crate::solver::proof_bridge::proof_to_nonzero_status(
-                        crate::helpers::prove_nonzero(&s_ref.context, expr),
-                    )
+                    match crate::helpers::prove_nonzero(&s_ref.context, expr) {
+                        crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit => {
+                            cas_solver_core::linear_solution::NonZeroStatus::NonZero
+                        }
+                        crate::domain::Proof::Unknown => {
+                            cas_solver_core::linear_solution::NonZeroStatus::Unknown
+                        }
+                        crate::domain::Proof::Disproven => {
+                            cas_solver_core::linear_solution::NonZeroStatus::Zero
+                        }
+                    }
                 },
             )
         },

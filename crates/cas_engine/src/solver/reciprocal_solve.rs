@@ -16,7 +16,6 @@ use cas_solver_core::reciprocal::{
 use std::cell::RefCell;
 
 use crate::engine::Simplifier;
-use crate::solver::proof_bridge::proof_to_nonzero_status;
 use crate::solver::{medium_step, SolveStep};
 
 /// Try to solve `1/var = expr` using pedagogical steps.
@@ -50,10 +49,18 @@ pub(crate) fn try_reciprocal_solve(
             let combined_rhs_display = s_ref.simplify(raw_plan.combined_rhs).0;
             let solution_rhs_display = s_ref.simplify(raw_plan.solution_rhs).0;
             let guard_numerator = s_ref.simplify(kernel.numerator).0;
-            let numerator_status = proof_to_nonzero_status(crate::helpers::prove_nonzero(
-                &s_ref.context,
-                guard_numerator,
-            ));
+            let numerator_status =
+                match crate::helpers::prove_nonzero(&s_ref.context, guard_numerator) {
+                    crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit => {
+                        cas_solver_core::linear_solution::NonZeroStatus::NonZero
+                    }
+                    crate::domain::Proof::Unknown => {
+                        cas_solver_core::linear_solution::NonZeroStatus::Unknown
+                    }
+                    crate::domain::Proof::Disproven => {
+                        cas_solver_core::linear_solution::NonZeroStatus::Zero
+                    }
+                };
             build_reciprocal_execution_from_kernel_prepared(
                 &mut s_ref.context,
                 inner_var,

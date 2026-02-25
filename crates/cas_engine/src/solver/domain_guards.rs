@@ -16,10 +16,9 @@ use cas_ast::{Context, ExprId};
 use crate::domain::DomainMode;
 use crate::helpers::prove_positive;
 use crate::semantics::ValueDomain;
-use crate::solver::proof_bridge::proof_to_status;
 use crate::solver::SolverOptions;
 use cas_solver_core::log_domain::{
-    classify_log_solve_with_prover_runtime, DomainModeKind, LogSolveDecision,
+    classify_log_solve_with_prover_runtime, DomainModeKind, LogSolveDecision, ProofStatus,
 };
 
 /// Classify whether a logarithmic solve step (for `base^x = rhs`) is valid.
@@ -50,7 +49,13 @@ pub(crate) fn classify_log_solve(
     let rhs_in_env = env.has_positive(rhs);
 
     let mut prove_status =
-        |core_ctx: &Context, expr: ExprId| proof_to_status(prove_positive(core_ctx, expr, vd));
+        |core_ctx: &Context, expr: ExprId| match prove_positive(core_ctx, expr, vd) {
+            crate::domain::Proof::Proven | crate::domain::Proof::ProvenImplicit => {
+                ProofStatus::Proven
+            }
+            crate::domain::Proof::Unknown => ProofStatus::Unknown,
+            crate::domain::Proof::Disproven => ProofStatus::Disproven,
+        };
     classify_log_solve_with_prover_runtime(
         ctx,
         base,
