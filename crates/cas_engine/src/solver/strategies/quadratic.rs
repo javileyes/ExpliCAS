@@ -257,7 +257,7 @@ impl SolverStrategy for QuadraticStrategy {
                 );
 
                 // Emit scope for display transforms (sqrt display in quadratic context)
-                crate::solver::emit_scope(cas_formatter::display_transforms::ScopeTag::Rule(
+                ctx.emit_scope(cas_formatter::display_transforms::ScopeTag::Rule(
                     "QuadraticFormula",
                 ));
 
@@ -307,7 +307,7 @@ impl SolverStrategy for QuadraticStrategy {
             }
 
             // Emit scope for display transforms (sqrt display in quadratic context)
-            crate::solver::emit_scope(cas_formatter::display_transforms::ScopeTag::Rule(
+            ctx.emit_scope(cas_formatter::display_transforms::ScopeTag::Rule(
                 "QuadraticFormula",
             ));
 

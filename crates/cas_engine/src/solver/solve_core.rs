@@ -117,6 +117,7 @@ pub fn solve_with_display_steps(
     let diagnostics = SolveDiagnostics {
         required,
         assumed: vec![],
+        output_scopes: ctx.output_scopes(),
     };
 
     let (solution_set, raw_steps) = result?;
@@ -303,6 +304,7 @@ fn solve_inner(
     let ctx = super::SolveCtx {
         domain_env,
         required_sink: parent_ctx.required_sink.clone(),
+        output_scopes_sink: parent_ctx.output_scopes_sink.clone(),
     };
 
     // EARLY CHECK: Handle rational exponent equations BEFORE simplification

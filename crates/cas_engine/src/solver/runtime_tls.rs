@@ -9,10 +9,6 @@ thread_local! {
     /// Used to pass assumptions from strategies back to caller without changing return type.
     static SOLVE_ASSUMPTIONS: std::cell::RefCell<Option<crate::assumptions::AssumptionCollector>> =
         const { std::cell::RefCell::new(None) };
-    /// Thread-local collector for output scopes (display context).
-    /// Strategies emit scopes like "QuadraticFormula" which affect display transforms.
-    static OUTPUT_SCOPES: std::cell::RefCell<Vec<cas_formatter::display_transforms::ScopeTag>> =
-        const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// RAII guard for solver assumption collection.
@@ -85,22 +81,4 @@ pub(crate) fn note_assumption(event: crate::assumptions::AssumptionEvent) {
             collector.note(event);
         }
     });
-}
-
-/// Emit a scope tag during solver operation for display transforms.
-/// Called by strategies like QuadraticFormula to mark the result context.
-pub(crate) fn emit_scope(scope: cas_formatter::display_transforms::ScopeTag) {
-    OUTPUT_SCOPES.with(|s| {
-        let mut scopes = s.borrow_mut();
-        // Avoid duplicates
-        if !scopes.contains(&scope) {
-            scopes.push(scope);
-        }
-    });
-}
-
-/// Take all emitted scopes, clearing the TLS collector.
-/// Called after solve to get scopes for EvalOutput.
-pub(crate) fn take_scopes() -> Vec<cas_formatter::display_transforms::ScopeTag> {
-    OUTPUT_SCOPES.with(|s| std::mem::take(&mut *s.borrow_mut()))
 }

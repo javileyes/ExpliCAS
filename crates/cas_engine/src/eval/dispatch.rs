@@ -410,8 +410,8 @@ impl Engine {
                 // including Conditional for proper REPL display
                 let warnings: Vec<DomainWarning> = vec![];
                 let eval_res = EvalResult::SolutionSet(solution_set);
-                // Collect output scopes from solver (e.g., QuadraticFormula)
-                let output_scopes = crate::solver::take_scopes();
+                // Output scopes are now solve-context data (no TLS collector).
+                let output_scopes = diagnostics.output_scopes;
 
                 // V2.16+: Required conditions now come in-band via SolveDiagnostics
                 let solver_required = diagnostics.required;

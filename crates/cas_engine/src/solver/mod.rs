@@ -11,7 +11,7 @@ pub(crate) mod strategy;
 pub use cas_solver_core::isolation_utils::contains_var;
 pub use cas_solver_core::solve_budget::SolveBudget;
 pub use cas_solver_core::verify_stats;
-pub(crate) use runtime_tls::{emit_scope, note_assumption, take_scopes, SolveAssumptionsGuard};
+pub(crate) use runtime_tls::{note_assumption, SolveAssumptionsGuard};
 
 #[cfg(test)]
 use crate::engine::Simplifier;
@@ -39,6 +39,8 @@ pub struct SolveCtx {
     pub domain_env: SolveDomainEnv,
     /// Shared accumulator for required conditions across all recursive levels.
     pub(crate) required_sink: Rc<RefCell<HashSet<crate::implicit_domain::ImplicitCondition>>>,
+    /// Shared collector for output scope tags across recursive levels.
+    pub(crate) output_scopes_sink: Rc<RefCell<Vec<cas_formatter::display_transforms::ScopeTag>>>,
 }
 
 impl Default for SolveCtx {
@@ -46,7 +48,23 @@ impl Default for SolveCtx {
         Self {
             domain_env: SolveDomainEnv::default(),
             required_sink: Rc::new(RefCell::new(HashSet::new())),
+            output_scopes_sink: Rc::new(RefCell::new(Vec::new())),
         }
+    }
+}
+
+impl SolveCtx {
+    /// Emit a scope tag used by output display transforms.
+    pub(crate) fn emit_scope(&self, scope: cas_formatter::display_transforms::ScopeTag) {
+        let mut scopes = self.output_scopes_sink.borrow_mut();
+        if !scopes.contains(&scope) {
+            scopes.push(scope);
+        }
+    }
+
+    /// Snapshot collected output scopes.
+    pub(crate) fn output_scopes(&self) -> Vec<cas_formatter::display_transforms::ScopeTag> {
+        self.output_scopes_sink.borrow().clone()
     }
 }
 
@@ -176,6 +194,8 @@ pub struct SolveDiagnostics {
     pub required: Vec<crate::implicit_domain::ImplicitCondition>,
     /// Assumptions made during solving (policy decisions)
     pub assumed: Vec<crate::assumptions::AssumptionEvent>,
+    /// Output scopes for context-aware display transforms.
+    pub output_scopes: Vec<cas_formatter::display_transforms::ScopeTag>,
 }
 
 impl SolveDiagnostics {
@@ -299,7 +319,6 @@ pub(crate) const MAX_SOLVE_DEPTH: usize = 50;
 // Allowlisted cells:
 //   SOLVE_DEPTH        – recursion depth guard (prevents stack overflow)
 //   SOLVE_ASSUMPTIONS  – per-solve assumption collector (runtime_tls.rs)
-//   OUTPUT_SCOPES      – display scope tags emitted by strategies (runtime_tls.rs)
 thread_local! {
     pub(crate) static SOLVE_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
