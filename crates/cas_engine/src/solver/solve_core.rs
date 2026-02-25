@@ -21,8 +21,7 @@ use cas_solver_core::solve_analysis::{
     normalize_variable_residual_with, simplify_equation_sides_for_var_with, EquationVarPresence,
 };
 use cas_solver_core::solve_outcome::{
-    resolve_var_eliminated_outcome_with, solve_var_eliminated_constraint_pipeline_with_item,
-    VarEliminatedSolveOutcome,
+    solve_var_eliminated_outcome_pipeline_with, VarEliminatedOutcomePipelineSolved,
 };
 use cas_solver_core::step_cleanup::{cleanup_steps_by, CleanupStep};
 use cas_solver_core::strategy_kernels::execute_rational_exponent_kernel_pipeline_with_item_with;
@@ -377,29 +376,22 @@ fn solve_inner(
     // Check if the difference has NO variable
     if !contains_var(&simplifier.context, diff_simplified, var) {
         let include_item = simplifier.collect_steps();
-        let reduced_outcome = resolve_var_eliminated_outcome_with(
+        let reduced_outcome = solve_var_eliminated_outcome_pipeline_with(
             &mut simplifier.context,
             diff_simplified,
             var,
+            include_item,
             render_expr,
+            medium_step,
         );
         match reduced_outcome {
-            VarEliminatedSolveOutcome::IdentityAllReals => {
+            VarEliminatedOutcomePipelineSolved::IdentityAllReals => {
                 return Ok((SolutionSet::AllReals, vec![]));
             }
-            VarEliminatedSolveOutcome::ContradictionEmpty => {
+            VarEliminatedOutcomePipelineSolved::ContradictionEmpty => {
                 return Ok((SolutionSet::Empty, vec![]));
             }
-            VarEliminatedSolveOutcome::ConstraintAllReals {
-                description,
-                equation_after,
-            } => {
-                let steps = solve_var_eliminated_constraint_pipeline_with_item(
-                    description,
-                    equation_after,
-                    include_item,
-                    medium_step,
-                );
+            VarEliminatedOutcomePipelineSolved::ConstraintAllReals { steps } => {
                 // Variable was eliminated during simplification (e.g., x/x = 1)
                 // The equation is now a constraint on OTHER variables.
                 // Example: (x*y)/x = 0 simplifies to y = 0
