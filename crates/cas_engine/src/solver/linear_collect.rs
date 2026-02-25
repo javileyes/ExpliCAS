@@ -14,9 +14,8 @@ use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::linear_collect::{
     build_linear_collect_additive_execution_with, build_linear_collect_factored_execution_with,
     build_linear_collect_solution_expr, derive_linear_collect_additive_kernel,
-    derive_linear_collect_factored_kernel, solve_linear_collect_additive_pipeline_with_and_items,
-    solve_linear_collect_additive_with, solve_linear_collect_factored_pipeline_with_and_items,
-    solve_linear_collect_factored_with, LinearCollectExecutionItem,
+    derive_linear_collect_factored_kernel, execute_linear_collect_additive_pipeline_with_and_items,
+    execute_linear_collect_factored_pipeline_with_and_items, LinearCollectExecutionItem,
 };
 
 use crate::engine::Simplifier;
@@ -35,49 +34,34 @@ pub(crate) fn try_linear_collect(
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
     let include_items = simplifier.collect_steps();
     let runtime_cell = std::cell::RefCell::new(simplifier);
-    solve_linear_collect_factored_pipeline_with_and_items(
+    execute_linear_collect_factored_pipeline_with_and_items(
         lhs,
         rhs,
         var,
         include_items,
-        |left, right, name| {
-            solve_linear_collect_factored_with(
-                left,
-                right,
-                name,
-                |lhs_expr, rhs_expr| {
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
-                    simplifier_ref.context.add(Expr::Sub(lhs_expr, rhs_expr))
-                },
-                |expr| {
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
-                    simplifier_ref.simplify(expr).0
-                },
-                |expr, inner_name| {
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
-                    derive_linear_collect_factored_kernel(
-                        &mut simplifier_ref.context,
-                        expr,
-                        inner_name,
-                    )
-                },
-                |numerator, coeff| {
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
-                    build_linear_collect_solution_expr(
-                        &mut simplifier_ref.context,
-                        numerator,
-                        coeff,
-                    )
-                },
-                |expr, inner_name| {
-                    let simplifier_ref = runtime_cell.borrow();
-                    contains_var(&simplifier_ref.context, expr, inner_name)
-                },
-                |expr| {
-                    let simplifier_ref = runtime_cell.borrow();
-                    crate::solver::prove_nonzero_status(&simplifier_ref.context, expr)
-                },
-            )
+        |lhs_expr, rhs_expr| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            simplifier_ref.context.add(Expr::Sub(lhs_expr, rhs_expr))
+        },
+        |expr| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            simplifier_ref.simplify(expr).0
+        },
+        |expr, inner_name| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            derive_linear_collect_factored_kernel(&mut simplifier_ref.context, expr, inner_name)
+        },
+        |numerator, coeff| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            build_linear_collect_solution_expr(&mut simplifier_ref.context, numerator, coeff)
+        },
+        |expr, inner_name| {
+            let simplifier_ref = runtime_cell.borrow();
+            contains_var(&simplifier_ref.context, expr, inner_name)
+        },
+        |expr| {
+            let simplifier_ref = runtime_cell.borrow();
+            crate::solver::prove_nonzero_status(&simplifier_ref.context, expr)
         },
         |name, solved| {
             let mut simplifier_ref = runtime_cell.borrow_mut();
@@ -111,47 +95,36 @@ pub(crate) fn try_linear_collect_v2(
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
     let include_items = simplifier.collect_steps();
     let runtime_cell = std::cell::RefCell::new(simplifier);
-    solve_linear_collect_additive_pipeline_with_and_items(
+    execute_linear_collect_additive_pipeline_with_and_items(
         lhs,
         rhs,
         var,
         include_items,
-        |left, right, name| {
-            solve_linear_collect_additive_with(
-                left,
-                right,
-                name,
-                |lhs_expr, rhs_expr, inner_name| {
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
-                    derive_linear_collect_additive_kernel(
-                        &mut simplifier_ref.context,
-                        lhs_expr,
-                        rhs_expr,
-                        inner_name,
-                    )
-                },
-                |expr| {
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
-                    simplifier_ref.simplify(expr).0
-                },
-                |constant, coeff| {
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
-                    let neg_constant = simplifier_ref.context.add(Expr::Neg(constant));
-                    build_linear_collect_solution_expr(
-                        &mut simplifier_ref.context,
-                        neg_constant,
-                        coeff,
-                    )
-                },
-                |expr, inner_name| {
-                    let simplifier_ref = runtime_cell.borrow();
-                    contains_var(&simplifier_ref.context, expr, inner_name)
-                },
-                |expr| {
-                    let simplifier_ref = runtime_cell.borrow();
-                    crate::solver::prove_nonzero_status(&simplifier_ref.context, expr)
-                },
+        |lhs_expr, rhs_expr, inner_name| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            derive_linear_collect_additive_kernel(
+                &mut simplifier_ref.context,
+                lhs_expr,
+                rhs_expr,
+                inner_name,
             )
+        },
+        |expr| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            simplifier_ref.simplify(expr).0
+        },
+        |constant, coeff| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            let neg_constant = simplifier_ref.context.add(Expr::Neg(constant));
+            build_linear_collect_solution_expr(&mut simplifier_ref.context, neg_constant, coeff)
+        },
+        |expr, inner_name| {
+            let simplifier_ref = runtime_cell.borrow();
+            contains_var(&simplifier_ref.context, expr, inner_name)
+        },
+        |expr| {
+            let simplifier_ref = runtime_cell.borrow();
+            crate::solver::prove_nonzero_status(&simplifier_ref.context, expr)
         },
         |name, solved| {
             let mut simplifier_ref = runtime_cell.borrow_mut();
