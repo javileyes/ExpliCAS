@@ -5,8 +5,8 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{medium_step, render_expr, SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, SolutionSet};
 use cas_solver_core::substitution::{
-    plan_exponential_substitution_rewrite, solve_exponential_substitution_strategy_with_items_with,
-    SubstitutionStrategySolved,
+    plan_exponential_substitution_rewrite,
+    solve_exponential_substitution_strategy_result_with_items_with,
 };
 
 pub struct SubstitutionStrategy;
@@ -32,7 +32,7 @@ impl SolverStrategy for SubstitutionStrategy {
             let include_didactic_items = simplifier.collect_steps();
             let solved = {
                 let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-                solve_exponential_substitution_strategy_with_items_with(
+                solve_exponential_substitution_strategy_result_with_items_with(
                     eq.clone(),
                     rewrite_plan,
                     var,
@@ -50,16 +50,7 @@ impl SolverStrategy for SubstitutionStrategy {
                 )
             };
 
-            return match solved {
-                Ok(SubstitutionStrategySolved::SolvedDiscrete { solutions, steps }) => {
-                    Some(Ok((SolutionSet::Discrete(solutions), steps)))
-                }
-                Ok(SubstitutionStrategySolved::UnsupportedSolutionSet {
-                    solution_set,
-                    steps,
-                }) => Some(Ok((solution_set, steps))),
-                Err(e) => Some(Err(e)),
-            };
+            return Some(solved);
         }
         None
     }

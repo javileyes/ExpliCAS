@@ -451,6 +451,46 @@ where
     }
 }
 
+/// Convenience wrapper that exposes substitution strategy output in the
+/// plain `(SolutionSet, steps)` shape used by engine strategy surfaces.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_exponential_substitution_strategy_result_with_items_with<E, S, FRender, FSolve, FMap>(
+    equation_before: Equation,
+    rewrite_plan: ExponentialSubstitutionRewritePlan,
+    target_var: &str,
+    substitution_var: &str,
+    include_didactic_items: bool,
+    render_expr: FRender,
+    solve_equation: FSolve,
+    map_step: FMap,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FRender: FnMut(ExprId) -> String,
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FMap: FnMut(String, Equation) -> S,
+{
+    let solved = solve_exponential_substitution_strategy_with_items_with(
+        equation_before,
+        rewrite_plan,
+        target_var,
+        substitution_var,
+        include_didactic_items,
+        render_expr,
+        solve_equation,
+        map_step,
+    )?;
+
+    Ok(match solved {
+        SubstitutionStrategySolved::SolvedDiscrete { solutions, steps } => {
+            (SolutionSet::Discrete(solutions), steps)
+        }
+        SubstitutionStrategySolved::UnsupportedSolutionSet {
+            solution_set,
+            steps,
+        } => (solution_set, steps),
+    })
+}
+
 /// Build didactic pair for substitution introduction:
 /// 1) detected substitution `u = expr`
 /// 2) equation rewritten in terms of `u`
@@ -1427,6 +1467,54 @@ mod tests {
     }
 
     #[test]
+    fn solve_exponential_substitution_strategy_result_with_items_with_returns_plain_discrete_set() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let u = ctx.var("u");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let equation_before = Equation {
+            lhs: x,
+            rhs: one,
+            op: cas_ast::RelOp::Eq,
+        };
+        let rewrite_plan = ExponentialSubstitutionRewritePlan {
+            substitution_expr: x,
+            equation: Equation {
+                lhs: u,
+                rhs: two,
+                op: cas_ast::RelOp::Eq,
+            },
+        };
+
+        let solved = solve_exponential_substitution_strategy_result_with_items_with(
+            equation_before,
+            rewrite_plan,
+            "x",
+            "u",
+            true,
+            |_expr| "u".to_string(),
+            |_equation, var| {
+                if var == "u" {
+                    return Ok::<_, ()>((
+                        SolutionSet::Discrete(vec![two]),
+                        vec!["solve-u".to_string()],
+                    ));
+                }
+                Ok((
+                    SolutionSet::Discrete(vec![one]),
+                    vec!["solve-x".to_string()],
+                ))
+            },
+            |description, _equation_after| description,
+        )
+        .expect("substitution result wrapper should succeed");
+
+        assert_eq!(solved.0, SolutionSet::Discrete(vec![one]));
+        assert!(solved.1.len() >= 4);
+    }
+
+    #[test]
     fn solve_exponential_substitution_strategy_with_items_with_reports_non_discrete_u_solution_set()
     {
         let mut ctx = Context::new();
@@ -1479,6 +1567,42 @@ mod tests {
             }
             other => panic!("expected non-discrete outcome, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn solve_exponential_substitution_strategy_result_with_items_with_preserves_non_discrete_set() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let u = ctx.var("u");
+        let one = ctx.num(1);
+        let equation_before = Equation {
+            lhs: x,
+            rhs: one,
+            op: cas_ast::RelOp::Eq,
+        };
+        let rewrite_plan = ExponentialSubstitutionRewritePlan {
+            substitution_expr: x,
+            equation: Equation {
+                lhs: u,
+                rhs: one,
+                op: cas_ast::RelOp::Eq,
+            },
+        };
+
+        let solved = solve_exponential_substitution_strategy_result_with_items_with(
+            equation_before,
+            rewrite_plan,
+            "x",
+            "u",
+            true,
+            |_expr| "u".to_string(),
+            |_equation, _var| Ok::<_, ()>((SolutionSet::AllReals, vec!["solve-u".to_string()])),
+            |description, _equation_after| description,
+        )
+        .expect("substitution result wrapper should succeed");
+
+        assert_eq!(solved.0, SolutionSet::AllReals);
+        assert_eq!(solved.1.len(), 3);
     }
 
     #[test]
