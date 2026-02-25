@@ -187,69 +187,52 @@ pub fn precheck_fold_candidate(
     IslandFoldPrecheck::Eligible { node_count }
 }
 
-/// Fold ground numeric islands bottom-up using caller-provided fold callback.
-///
-/// The caller controls actual folding for eligible subtrees (for example,
-/// by simplifying in a temporary generic-mode context).
-pub trait NumericIslandsFoldRuntime {
-    fn on_over_limit(&mut self);
-    fn try_fold(&mut self, ctx: &mut Context, id: ExprId, node_count: usize) -> ExprId;
-}
-
-impl<OnOverLimit, TryFold> NumericIslandsFoldRuntime for (OnOverLimit, TryFold)
-where
-    OnOverLimit: FnMut(),
-    TryFold: FnMut(&mut Context, ExprId, usize) -> ExprId,
-{
-    fn on_over_limit(&mut self) {
-        (self.0)();
-    }
-
-    fn try_fold(&mut self, ctx: &mut Context, id: ExprId, node_count: usize) -> ExprId {
-        (self.1)(ctx, id, node_count)
-    }
-}
-
-pub fn fold_numeric_islands_with_runtime<R>(
+pub fn fold_numeric_islands_with<OnOverLimit, TryFold>(
     ctx: &mut Context,
     root: ExprId,
     max_nodes: usize,
     max_depth: usize,
-    runtime: &mut R,
+    mut on_over_limit: OnOverLimit,
+    mut try_fold: TryFold,
 ) -> ExprId
 where
-    R: NumericIslandsFoldRuntime,
+    OnOverLimit: FnMut(),
+    TryFold: FnMut(&mut Context, ExprId, usize) -> ExprId,
 {
-    fn maybe_fold<R>(
+    fn maybe_fold<OnOverLimit, TryFold>(
         ctx: &mut Context,
         id: ExprId,
         max_nodes: usize,
         max_depth: usize,
-        runtime: &mut R,
+        on_over_limit: &mut OnOverLimit,
+        try_fold: &mut TryFold,
     ) -> ExprId
     where
-        R: NumericIslandsFoldRuntime,
+        OnOverLimit: FnMut(),
+        TryFold: FnMut(&mut Context, ExprId, usize) -> ExprId,
     {
         match precheck_fold_candidate(ctx, id, max_nodes, max_depth) {
             IslandFoldPrecheck::NotGround | IslandFoldPrecheck::Leaf => id,
             IslandFoldPrecheck::OverLimit => {
-                runtime.on_over_limit();
+                on_over_limit();
                 id
             }
-            IslandFoldPrecheck::Eligible { node_count } => runtime.try_fold(ctx, id, node_count),
+            IslandFoldPrecheck::Eligible { node_count } => try_fold(ctx, id, node_count),
         }
     }
 
-    fn fold_recursive<R>(
+    fn fold_recursive<OnOverLimit, TryFold>(
         ctx: &mut Context,
         id: ExprId,
         max_nodes: usize,
         max_depth: usize,
         memo: &mut HashMap<ExprId, ExprId>,
-        runtime: &mut R,
+        on_over_limit: &mut OnOverLimit,
+        try_fold: &mut TryFold,
     ) -> ExprId
     where
-        R: NumericIslandsFoldRuntime,
+        OnOverLimit: FnMut(),
+        TryFold: FnMut(&mut Context, ExprId, usize) -> ExprId,
     {
         if let Some(&cached) = memo.get(&id) {
             return cached;
@@ -259,70 +242,96 @@ where
         let folded = match node {
             Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => id,
             Expr::Add(a, b) => {
-                let fa = fold_recursive(ctx, a, max_nodes, max_depth, memo, runtime);
-                let fb = fold_recursive(ctx, b, max_nodes, max_depth, memo, runtime);
+                let fa =
+                    fold_recursive(ctx, a, max_nodes, max_depth, memo, on_over_limit, try_fold);
+                let fb =
+                    fold_recursive(ctx, b, max_nodes, max_depth, memo, on_over_limit, try_fold);
                 let next = if fa == a && fb == b {
                     id
                 } else {
                     ctx.add(Expr::Add(fa, fb))
                 };
-                maybe_fold(ctx, next, max_nodes, max_depth, runtime)
+                maybe_fold(ctx, next, max_nodes, max_depth, on_over_limit, try_fold)
             }
             Expr::Sub(a, b) => {
-                let fa = fold_recursive(ctx, a, max_nodes, max_depth, memo, runtime);
-                let fb = fold_recursive(ctx, b, max_nodes, max_depth, memo, runtime);
+                let fa =
+                    fold_recursive(ctx, a, max_nodes, max_depth, memo, on_over_limit, try_fold);
+                let fb =
+                    fold_recursive(ctx, b, max_nodes, max_depth, memo, on_over_limit, try_fold);
                 let next = if fa == a && fb == b {
                     id
                 } else {
                     ctx.add(Expr::Sub(fa, fb))
                 };
-                maybe_fold(ctx, next, max_nodes, max_depth, runtime)
+                maybe_fold(ctx, next, max_nodes, max_depth, on_over_limit, try_fold)
             }
             Expr::Mul(a, b) => {
-                let fa = fold_recursive(ctx, a, max_nodes, max_depth, memo, runtime);
-                let fb = fold_recursive(ctx, b, max_nodes, max_depth, memo, runtime);
+                let fa =
+                    fold_recursive(ctx, a, max_nodes, max_depth, memo, on_over_limit, try_fold);
+                let fb =
+                    fold_recursive(ctx, b, max_nodes, max_depth, memo, on_over_limit, try_fold);
                 let next = if fa == a && fb == b {
                     id
                 } else {
                     ctx.add(Expr::Mul(fa, fb))
                 };
-                maybe_fold(ctx, next, max_nodes, max_depth, runtime)
+                maybe_fold(ctx, next, max_nodes, max_depth, on_over_limit, try_fold)
             }
             Expr::Div(a, b) => {
-                let fa = fold_recursive(ctx, a, max_nodes, max_depth, memo, runtime);
-                let fb = fold_recursive(ctx, b, max_nodes, max_depth, memo, runtime);
+                let fa =
+                    fold_recursive(ctx, a, max_nodes, max_depth, memo, on_over_limit, try_fold);
+                let fb =
+                    fold_recursive(ctx, b, max_nodes, max_depth, memo, on_over_limit, try_fold);
                 let next = if fa == a && fb == b {
                     id
                 } else {
                     ctx.add(Expr::Div(fa, fb))
                 };
-                maybe_fold(ctx, next, max_nodes, max_depth, runtime)
+                maybe_fold(ctx, next, max_nodes, max_depth, on_over_limit, try_fold)
             }
             Expr::Pow(a, b) => {
-                let fa = fold_recursive(ctx, a, max_nodes, max_depth, memo, runtime);
-                let fb = fold_recursive(ctx, b, max_nodes, max_depth, memo, runtime);
+                let fa =
+                    fold_recursive(ctx, a, max_nodes, max_depth, memo, on_over_limit, try_fold);
+                let fb =
+                    fold_recursive(ctx, b, max_nodes, max_depth, memo, on_over_limit, try_fold);
                 let next = if fa == a && fb == b {
                     id
                 } else {
                     ctx.add(Expr::Pow(fa, fb))
                 };
-                maybe_fold(ctx, next, max_nodes, max_depth, runtime)
+                maybe_fold(ctx, next, max_nodes, max_depth, on_over_limit, try_fold)
             }
             Expr::Neg(inner) => {
-                let fi = fold_recursive(ctx, inner, max_nodes, max_depth, memo, runtime);
+                let fi = fold_recursive(
+                    ctx,
+                    inner,
+                    max_nodes,
+                    max_depth,
+                    memo,
+                    on_over_limit,
+                    try_fold,
+                );
                 let next = if fi == inner {
                     id
                 } else {
                     ctx.add(Expr::Neg(fi))
                 };
-                maybe_fold(ctx, next, max_nodes, max_depth, runtime)
+                maybe_fold(ctx, next, max_nodes, max_depth, on_over_limit, try_fold)
             }
             Expr::Function(name, args) => {
                 let mut changed = false;
                 let folded_args: Vec<ExprId> = args
                     .iter()
                     .map(|&arg| {
-                        let fa = fold_recursive(ctx, arg, max_nodes, max_depth, memo, runtime);
+                        let fa = fold_recursive(
+                            ctx,
+                            arg,
+                            max_nodes,
+                            max_depth,
+                            memo,
+                            on_over_limit,
+                            try_fold,
+                        );
                         if fa != arg {
                             changed = true;
                         }
@@ -334,10 +343,18 @@ where
                 } else {
                     id
                 };
-                maybe_fold(ctx, next, max_nodes, max_depth, runtime)
+                maybe_fold(ctx, next, max_nodes, max_depth, on_over_limit, try_fold)
             }
             Expr::Hold(inner) => {
-                let fi = fold_recursive(ctx, inner, max_nodes, max_depth, memo, runtime);
+                let fi = fold_recursive(
+                    ctx,
+                    inner,
+                    max_nodes,
+                    max_depth,
+                    memo,
+                    on_over_limit,
+                    try_fold,
+                );
                 if fi == inner {
                     id
                 } else {
@@ -349,7 +366,15 @@ where
                 let folded_data: Vec<ExprId> = data
                     .iter()
                     .map(|&elem| {
-                        let fe = fold_recursive(ctx, elem, max_nodes, max_depth, memo, runtime);
+                        let fe = fold_recursive(
+                            ctx,
+                            elem,
+                            max_nodes,
+                            max_depth,
+                            memo,
+                            on_over_limit,
+                            try_fold,
+                        );
                         if fe != elem {
                             changed = true;
                         }
@@ -373,23 +398,15 @@ where
     }
 
     let mut memo = HashMap::new();
-    fold_recursive(ctx, root, max_nodes, max_depth, &mut memo, runtime)
-}
-
-pub fn fold_numeric_islands_with<OnOverLimit, TryFold>(
-    ctx: &mut Context,
-    root: ExprId,
-    max_nodes: usize,
-    max_depth: usize,
-    on_over_limit: OnOverLimit,
-    try_fold: TryFold,
-) -> ExprId
-where
-    OnOverLimit: FnMut(),
-    TryFold: FnMut(&mut Context, ExprId, usize) -> ExprId,
-{
-    let mut runtime = (on_over_limit, try_fold);
-    fold_numeric_islands_with_runtime(ctx, root, max_nodes, max_depth, &mut runtime)
+    fold_recursive(
+        ctx,
+        root,
+        max_nodes,
+        max_depth,
+        &mut memo,
+        &mut on_over_limit,
+        &mut try_fold,
+    )
 }
 
 #[cfg(test)]
@@ -539,71 +556,5 @@ mod tests {
 
         assert_eq!(out, three);
         assert!(calls >= 1);
-    }
-
-    #[test]
-    fn fold_numeric_islands_with_runtime_calls_overlimit_hook() {
-        struct Runtime {
-            over_limit_calls: usize,
-        }
-
-        impl NumericIslandsFoldRuntime for Runtime {
-            fn on_over_limit(&mut self) {
-                self.over_limit_calls += 1;
-            }
-
-            fn try_fold(&mut self, _ctx: &mut Context, id: ExprId, _node_count: usize) -> ExprId {
-                id
-            }
-        }
-
-        let mut ctx = Context::new();
-        let one = ctx.num(1);
-        let two = ctx.num(2);
-        let expr = ctx.add(Expr::Add(one, two));
-        let mut runtime = Runtime {
-            over_limit_calls: 0,
-        };
-
-        let out = fold_numeric_islands_with_runtime(&mut ctx, expr, 1, 1, &mut runtime);
-        assert_eq!(out, expr);
-        assert_eq!(runtime.over_limit_calls, 1);
-    }
-
-    #[test]
-    fn fold_numeric_islands_with_runtime_applies_try_fold_on_eligible_nodes() {
-        struct Runtime {
-            target: ExprId,
-            replacement: ExprId,
-            calls: usize,
-        }
-
-        impl NumericIslandsFoldRuntime for Runtime {
-            fn on_over_limit(&mut self) {}
-
-            fn try_fold(&mut self, _ctx: &mut Context, id: ExprId, _node_count: usize) -> ExprId {
-                self.calls += 1;
-                if id == self.target {
-                    self.replacement
-                } else {
-                    id
-                }
-            }
-        }
-
-        let mut ctx = Context::new();
-        let one = ctx.num(1);
-        let two = ctx.num(2);
-        let three = ctx.num(3);
-        let expr = ctx.add(Expr::Add(one, two));
-        let mut runtime = Runtime {
-            target: expr,
-            replacement: three,
-            calls: 0,
-        };
-
-        let out = fold_numeric_islands_with_runtime(&mut ctx, expr, 80, 4, &mut runtime);
-        assert_eq!(out, three);
-        assert!(runtime.calls >= 1);
     }
 }
