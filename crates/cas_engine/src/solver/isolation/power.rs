@@ -26,6 +26,14 @@ use cas_solver_core::solve_outcome::{
 
 use super::{isolate, prepend_steps};
 
+struct PowPlanRenderRuntime;
+
+impl TermIsolationPlanRuntime for PowPlanRenderRuntime {
+    fn render_expr(&mut self, core_ctx: &cas_ast::Context, expr: ExprId) -> String {
+        solver_render_expr(core_ctx, expr)
+    }
+}
+
 struct PowIsolationRuntime<'a, 'ctx> {
     simplifier: &'a mut Simplifier,
     opts: SolverOptions,
@@ -231,7 +239,7 @@ fn isolate_pow_base(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let action = {
-        let mut render_runtime = |core_ctx: &cas_ast::Context, id| solver_render_expr(core_ctx, id);
+        let mut render_runtime = PowPlanRenderRuntime;
         build_pow_base_isolation_action_with_runtime(
             &mut simplifier.context,
             b,
@@ -354,7 +362,7 @@ fn isolate_pow_exponent(
     // ================================================================
     // GUARD 1: Handle base = 1 special case
     let base_one_outcome = {
-        let mut render_runtime = |core_ctx: &cas_ast::Context, id| solver_render_expr(core_ctx, id);
+        let mut render_runtime = PowPlanRenderRuntime;
         resolve_power_base_one_shortcut_for_pow_with_runtime(
             &simplifier.context,
             b,
@@ -489,7 +497,7 @@ fn isolate_pow_exponent(
         op: op.clone(),
     };
     let unsupported_execution = {
-        let mut render_runtime = |core_ctx: &cas_ast::Context, id| solver_render_expr(core_ctx, id);
+        let mut render_runtime = PowPlanRenderRuntime;
         plan_pow_exponent_log_unsupported_execution_from_decision_with_runtime(
             &mut simplifier.context,
             &decision,
@@ -543,7 +551,7 @@ fn isolate_pow_exponent(
     // ================================================================
 
     let log_plan = {
-        let mut render_runtime = |core_ctx: &cas_ast::Context, id| solver_render_expr(core_ctx, id);
+        let mut render_runtime = PowPlanRenderRuntime;
         plan_pow_exponent_log_isolation_step_with_runtime(
             &mut simplifier.context,
             e,

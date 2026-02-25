@@ -27,10 +27,19 @@ use cas_solver_core::solve_outcome::{
     DivDenominatorIsolationRoute, DivIsolationRoute, DivisionDenominatorDidacticRuntime,
     DivisionDenominatorSignSplitRuntime, DivisionDenominatorSignSplitSolvedCases,
     IsolatedDenominatorSignSplitRuntime, IsolatedDenominatorSignSplitSolvedCases,
-    ProductZeroInequalityExecutionRuntime, TermIsolationRewritePlan, TermIsolationRewriteRuntime,
+    ProductZeroInequalityExecutionRuntime, TermIsolationPlanRuntime, TermIsolationRewritePlan,
+    TermIsolationRewriteRuntime,
 };
 
 use super::{isolate, prepend_steps};
+
+struct ArithmeticPlanRenderRuntime;
+
+impl TermIsolationPlanRuntime for ArithmeticPlanRenderRuntime {
+    fn render_expr(&mut self, core_ctx: &cas_ast::Context, expr: ExprId) -> String {
+        solver_render_expr(core_ctx, expr)
+    }
+}
 
 fn solve_term_isolation_plan(
     plan: TermIsolationRewritePlan,
@@ -122,7 +131,7 @@ pub(super) fn isolate_add(
     }
 
     let plan = {
-        let mut runtime = |core_ctx: &cas_ast::Context, id| solver_render_expr(core_ctx, id);
+        let mut runtime = ArithmeticPlanRenderRuntime;
         plan_add_operand_isolation_step_with_runtime(
             &mut simplifier.context,
             add_operands.isolated_addend,
@@ -151,7 +160,7 @@ pub(super) fn isolate_sub(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let plan = {
-        let mut runtime = |core_ctx: &cas_ast::Context, id| solver_render_expr(core_ctx, id);
+        let mut runtime = ArithmeticPlanRenderRuntime;
         plan_sub_isolation_step_with_runtime(
             &mut simplifier.context,
             l,
@@ -231,7 +240,7 @@ pub(super) fn isolate_mul(
     let mul_operands = derive_mul_isolation_operands(&simplifier.context, l, r, var);
     let moved_is_negative = is_known_negative(&simplifier.context, mul_operands.moved_factor);
     let plan = {
-        let mut runtime = |core_ctx: &cas_ast::Context, id| solver_render_expr(core_ctx, id);
+        let mut runtime = ArithmeticPlanRenderRuntime;
         plan_mul_factor_isolation_step_with_runtime(
             &mut simplifier.context,
             mul_operands.isolated_factor,
@@ -362,8 +371,7 @@ pub(super) fn isolate_div(
             // A = RHS * B
             let denominator_is_negative = is_known_negative(&simplifier.context, r);
             let plan = {
-                let mut runtime =
-                    |core_ctx: &cas_ast::Context, id| solver_render_expr(core_ctx, id);
+                let mut runtime = ArithmeticPlanRenderRuntime;
                 plan_div_numerator_isolation_step_with_runtime(
                     &mut simplifier.context,
                     l,

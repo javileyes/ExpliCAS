@@ -23,9 +23,10 @@ use cas_solver_core::solve_analysis::{
     SolvePreprocessRuntime,
 };
 use cas_solver_core::solve_outcome::{
-    resolve_var_eliminated_outcome_with, solve_var_eliminated_constraint_pipeline_with_item,
-    VarEliminatedSolveOutcome,
+    solve_var_eliminated_outcome_pipeline_with_runtime, VarEliminatedOutcomePipelineSolved,
+    VarEliminatedOutcomeRuntime,
 };
+use cas_solver_core::step_cleanup::{CleanupStep, CleanupStepsRuntime};
 use cas_solver_core::strategy_kernels::{
     solve_rational_exponent_rewrite_pipeline_with_item_runtime_for_var,
     RationalExponentRewriteRuntime, StrategyKernelRuntime,
@@ -35,6 +36,26 @@ use super::{
     medium_step, render_expr, DepthGuard, DisplaySolveSteps, SolveDomainEnv, SolveStep,
     SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH,
 };
+
+struct SolveStepCleanupRuntime;
+
+impl CleanupStepsRuntime<SolveStep> for SolveStepCleanupRuntime {
+    fn extract(&mut self, step: &SolveStep) -> CleanupStep {
+        CleanupStep {
+            description: step.description.clone(),
+            equation_after: step.equation_after.clone(),
+        }
+    }
+
+    fn rebuild(&mut self, template: SolveStep, payload: CleanupStep) -> SolveStep {
+        SolveStep {
+            description: payload.description,
+            equation_after: payload.equation_after,
+            importance: template.importance,
+            substeps: template.substeps,
+        }
+    }
+}
 
 // NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)) and
 // common additive term cancellation (Sub(Add(A,B), B) → A) were moved
@@ -101,21 +122,12 @@ pub fn solve_with_display_steps(
     let (solution_set, raw_steps) = result?;
 
     // Apply didactic cleanup using opts.detailed_steps
-    let cleaned = cas_solver_core::step_cleanup::cleanup_steps_by(
+    let cleaned = cas_solver_core::step_cleanup::cleanup_steps_by_runtime(
         &mut simplifier.context,
         raw_steps,
         opts.detailed_steps,
         "x",
-        |step: &SolveStep| cas_solver_core::step_cleanup::CleanupStep {
-            description: step.description.clone(),
-            equation_after: step.equation_after.clone(),
-        },
-        |template: SolveStep, payload: cas_solver_core::step_cleanup::CleanupStep| SolveStep {
-            description: payload.description,
-            equation_after: payload.equation_after,
-            importance: template.importance,
-            substeps: template.substeps,
-        },
+        &mut SolveStepCleanupRuntime,
     );
 
     Ok((solution_set, DisplaySolveSteps(cleaned), diagnostics))
@@ -169,6 +181,28 @@ impl ResidualRewriteRuntime for SolveCoreResidualRuntime<'_> {
 
     fn expand_trig(&mut self, expr: ExprId) -> ExprId {
         self.simplifier.expand(expr).0
+    }
+}
+
+struct SolveCoreVarEliminatedRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+}
+
+impl VarEliminatedOutcomeRuntime<SolveStep> for SolveCoreVarEliminatedRuntime<'_> {
+    fn context(&mut self) -> &mut cas_ast::Context {
+        &mut self.simplifier.context
+    }
+
+    fn render_expr(&mut self, expr: ExprId) -> String {
+        render_expr(&self.simplifier.context, expr)
+    }
+
+    fn map_constraint_step(
+        &mut self,
+        description: String,
+        equation_after: cas_ast::Equation,
+    ) -> SolveStep {
+        medium_step(description, equation_after)
     }
 }
 
@@ -365,29 +399,23 @@ fn solve_inner(
     // Check if the difference has NO variable
     if !contains_var(&simplifier.context, diff_simplified, var) {
         let include_item = simplifier.collect_steps();
-        let reduced_outcome = resolve_var_eliminated_outcome_with(
-            &mut simplifier.context,
-            diff_simplified,
-            var,
-            render_expr,
-        );
+        let reduced_outcome = {
+            let mut runtime = SolveCoreVarEliminatedRuntime { simplifier };
+            solve_var_eliminated_outcome_pipeline_with_runtime(
+                diff_simplified,
+                var,
+                include_item,
+                &mut runtime,
+            )
+        };
         match reduced_outcome {
-            VarEliminatedSolveOutcome::IdentityAllReals => {
+            VarEliminatedOutcomePipelineSolved::IdentityAllReals => {
                 return Ok((SolutionSet::AllReals, vec![]));
             }
-            VarEliminatedSolveOutcome::ContradictionEmpty => {
+            VarEliminatedOutcomePipelineSolved::ContradictionEmpty => {
                 return Ok((SolutionSet::Empty, vec![]));
             }
-            VarEliminatedSolveOutcome::ConstraintAllReals {
-                description,
-                equation_after,
-            } => {
-                let steps = solve_var_eliminated_constraint_pipeline_with_item(
-                    description,
-                    equation_after,
-                    include_item,
-                    medium_step,
-                );
+            VarEliminatedOutcomePipelineSolved::ConstraintAllReals { steps } => {
                 // Variable was eliminated during simplification (e.g., x/x = 1)
                 // The equation is now a constraint on OTHER variables.
                 // Example: (x*y)/x = 0 simplifies to y = 0

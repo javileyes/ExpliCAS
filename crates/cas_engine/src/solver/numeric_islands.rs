@@ -22,7 +22,8 @@
 
 use cas_ast::{Context, ExprId};
 use cas_solver_core::numeric_islands::{
-    fold_numeric_islands_with, is_benign_fold_result, transplant_expr,
+    fold_numeric_islands_with_runtime, is_benign_fold_result, transplant_expr,
+    NumericIslandsFoldRuntime,
 };
 
 use crate::helpers::ground_eval::GroundEvalGuard;
@@ -32,6 +33,18 @@ const MAX_ISLAND_NODES: usize = 80;
 
 /// Maximum depth for an island to be eligible for folding.
 const MAX_ISLAND_DEPTH: usize = 4;
+
+struct NumericIslandsRuntime;
+
+impl NumericIslandsFoldRuntime for NumericIslandsRuntime {
+    fn on_over_limit(&mut self) {
+        cas_solver_core::verify_stats::record_skipped_limits();
+    }
+
+    fn try_fold(&mut self, ctx: &mut Context, id: ExprId, node_count: usize) -> ExprId {
+        fold_one_island_candidate(ctx, id, node_count)
+    }
+}
 
 /// Fold numeric islands in an expression tree.
 ///
@@ -51,14 +64,8 @@ pub(crate) fn fold_numeric_islands(ctx: &mut Context, root: ExprId) -> ExprId {
         None => return root,
     };
 
-    fold_numeric_islands_with(
-        ctx,
-        root,
-        MAX_ISLAND_NODES,
-        MAX_ISLAND_DEPTH,
-        cas_solver_core::verify_stats::record_skipped_limits,
-        fold_one_island_candidate,
-    )
+    let mut runtime = NumericIslandsRuntime;
+    fold_numeric_islands_with_runtime(ctx, root, MAX_ISLAND_NODES, MAX_ISLAND_DEPTH, &mut runtime)
 }
 
 /// Fold one pre-checked eligible island.
