@@ -12,12 +12,12 @@
 
 use crate::engine::Simplifier;
 use crate::error::CasError;
+use crate::solver::runtime_adapters::EngineRationalRootsRuntime;
 use crate::solver::strategy::SolverStrategy;
 use crate::solver::{medium_step, SolveCtx, SolveStep, SolverOptions};
-use cas_ast::{Equation, ExprId, SolutionSet};
+use cas_ast::{Equation, SolutionSet};
 use cas_solver_core::rational_roots::{
     solve_rational_roots_strategy_with_runtime_and_item, RationalRootsExecutionItem,
-    RationalRootsStrategyRuntime,
 };
 
 /// Maximum number of candidate rational roots to try before bailing.
@@ -28,24 +28,6 @@ const MAX_CANDIDATES: usize = 200;
 const MAX_DEGREE: usize = 10;
 
 pub struct RationalRootsStrategy;
-struct EngineRationalRootsRuntime<'a> {
-    simplifier: &'a mut Simplifier,
-}
-
-impl RationalRootsStrategyRuntime for EngineRationalRootsRuntime<'_> {
-    fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.simplifier.context
-    }
-
-    fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
-        let (simplified, _) = self.simplifier.simplify(expr);
-        simplified
-    }
-
-    fn expand_expr(&mut self, expr: ExprId) -> ExprId {
-        crate::expand::expand(&mut self.simplifier.context, expr)
-    }
-}
 
 impl SolverStrategy for RationalRootsStrategy {
     fn name(&self) -> &str {

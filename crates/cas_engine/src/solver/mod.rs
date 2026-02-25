@@ -5,6 +5,7 @@ pub(crate) mod linear_collect;
 pub(crate) mod numeric_islands;
 pub(crate) mod proof_bridge;
 pub(crate) mod reciprocal_solve;
+pub(crate) mod runtime_adapters;
 pub(crate) mod runtime_tls;
 pub(crate) mod solve_core;
 pub(crate) mod strategies;

@@ -13,36 +13,11 @@ use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::linear_collect::{
     solve_linear_collect_additive_pipeline_with_runtime_and_items,
     solve_linear_collect_factored_pipeline_with_runtime_and_items, LinearCollectExecutionItem,
-    LinearCollectRuntime,
 };
 
 use crate::engine::Simplifier;
+use crate::solver::runtime_adapters::EngineLinearCollectRuntime;
 use crate::solver::{medium_step, render_expr, SolveStep};
-
-struct EngineLinearCollectRuntime<'a> {
-    simplifier: &'a mut Simplifier,
-}
-
-impl LinearCollectRuntime for EngineLinearCollectRuntime<'_> {
-    fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.simplifier.context
-    }
-
-    fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
-        let (simplified, _) = self.simplifier.simplify(expr);
-        simplified
-    }
-
-    fn prove_nonzero_status(
-        &mut self,
-        expr: ExprId,
-    ) -> cas_solver_core::linear_solution::NonZeroStatus {
-        crate::solver::proof_bridge::proof_to_nonzero_status(crate::helpers::prove_nonzero(
-            &self.simplifier.context,
-            expr,
-        ))
-    }
-}
 
 /// Try to solve a linear equation where variable appears in multiple additive terms.
 ///
