@@ -8,8 +8,9 @@
 
 use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::reciprocal::{
-    build_reciprocal_execution, build_reciprocal_solve_plan, derive_reciprocal_solve_kernel,
-    execute_reciprocal_solve_with, solve_reciprocal_execution_pipeline_with_items,
+    build_reciprocal_execution_from_kernel_prepared, build_reciprocal_solve_plan,
+    derive_reciprocal_solve_kernel, execute_reciprocal_solve_with,
+    prepare_reciprocal_execution_from_kernel_with, solve_reciprocal_execution_pipeline_with_items,
 };
 
 use crate::engine::Simplifier;
@@ -51,32 +52,25 @@ pub(crate) fn try_reciprocal_solve(
                         kernel.denominator,
                     )
                 };
-                let combined_rhs_display = {
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
-                    simplifier_ref.simplify(raw_plan.combined_rhs).0
-                };
-                let solution_rhs_display = {
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
-                    simplifier_ref.simplify(raw_plan.solution_rhs).0
-                };
-                let guard_numerator = {
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
-                    simplifier_ref.simplify(kernel.numerator).0
-                };
-                let numerator_status = {
-                    let simplifier_ref = runtime_cell.borrow();
-                    crate::solver::prove_nonzero_status(&simplifier_ref.context, guard_numerator)
-                };
+                let prepared = prepare_reciprocal_execution_from_kernel_with(
+                    kernel,
+                    raw_plan.combined_rhs,
+                    raw_plan.solution_rhs,
+                    |expr| {
+                        let mut simplifier_ref = runtime_cell.borrow_mut();
+                        simplifier_ref.simplify(expr).0
+                    },
+                    |expr| {
+                        let simplifier_ref = runtime_cell.borrow();
+                        crate::solver::prove_nonzero_status(&simplifier_ref.context, expr)
+                    },
+                );
                 let mut simplifier_ref = runtime_cell.borrow_mut();
-                build_reciprocal_execution(
+                build_reciprocal_execution_from_kernel_prepared(
                     &mut simplifier_ref.context,
                     inner_var,
-                    kernel.numerator,
-                    kernel.denominator,
-                    combined_rhs_display,
-                    solution_rhs_display,
-                    guard_numerator,
-                    numerator_status,
+                    kernel,
+                    prepared,
                 )
             },
         )?

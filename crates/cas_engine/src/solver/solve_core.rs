@@ -26,8 +26,7 @@ use cas_solver_core::solve_outcome::{
 };
 use cas_solver_core::step_cleanup::{cleanup_steps_by, CleanupStep};
 use cas_solver_core::strategy_kernels::{
-    derive_rational_exponent_kernel_for_var, materialize_rational_exponent_rewrite,
-    solve_rational_exponent_rewrite_pipeline_with_item_with,
+    derive_rational_exponent_kernel_for_var, solve_rational_exponent_kernel_pipeline_with_item_with,
 };
 
 use super::{
@@ -508,17 +507,17 @@ fn try_solve_rational_exponent(
     ctx: &super::SolveCtx,
 ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
     let kernel = derive_rational_exponent_kernel_for_var(&mut simplifier.context, eq, var)?;
-    let sim_lhs = simplifier.simplify(kernel.rewritten.lhs).0;
-    let sim_rhs = simplifier.simplify(kernel.rewritten.rhs).0;
-    let rewrite = materialize_rational_exponent_rewrite(kernel.q, sim_lhs, sim_rhs);
-
     let include_item = simplifier.collect_steps();
     let solved = {
         let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        match solve_rational_exponent_rewrite_pipeline_with_item_with(
-            rewrite,
+        match solve_rational_exponent_kernel_pipeline_with_item_with(
+            kernel,
             var,
             include_item,
+            |expr| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                simplifier_ref.simplify(expr).0
+            },
             |equation, solve_var| {
                 let mut simplifier_ref = runtime_cell.borrow_mut();
                 solve_with_ctx_and_options(equation, solve_var, *simplifier_ref, opts, ctx)

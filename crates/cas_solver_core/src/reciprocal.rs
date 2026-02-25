@@ -370,13 +370,38 @@ pub fn build_reciprocal_execution_from_kernel_prepared(
     )
 }
 
+/// Prepare simplified/proved reciprocal execution inputs from kernel-level data.
+pub fn prepare_reciprocal_execution_from_kernel_with<FS, FP>(
+    kernel: ReciprocalSolveKernel,
+    combined_rhs: ExprId,
+    solution_rhs: ExprId,
+    mut simplify_expr: FS,
+    mut prove_nonzero_status: FP,
+) -> ReciprocalPreparedExecution
+where
+    FS: FnMut(ExprId) -> ExprId,
+    FP: FnMut(ExprId) -> NonZeroStatus,
+{
+    let combined_rhs_display = simplify_expr(combined_rhs);
+    let solution_rhs_display = simplify_expr(solution_rhs);
+    let guard_numerator = simplify_expr(kernel.numerator);
+    let numerator_status = prove_nonzero_status(guard_numerator);
+
+    ReciprocalPreparedExecution {
+        combined_rhs_display,
+        solution_rhs_display,
+        guard_numerator,
+        numerator_status,
+    }
+}
+
 /// Build reciprocal execution directly from a normalized kernel, while callers
 /// inject simplification and proof strategies.
 pub fn build_reciprocal_execution_from_kernel_with<FS, FP>(
     ctx: &mut Context,
     var: &str,
     kernel: ReciprocalSolveKernel,
-    mut simplify_expr: FS,
+    simplify_expr: FS,
     mut prove_nonzero_status: FP,
 ) -> ReciprocalSolveExecution
 where
@@ -384,21 +409,14 @@ where
     FP: FnMut(&Context, ExprId) -> NonZeroStatus,
 {
     let raw_plan = build_reciprocal_solve_plan(ctx, var, kernel.numerator, kernel.denominator);
-    let combined_rhs_display = simplify_expr(raw_plan.combined_rhs);
-    let solution_rhs_display = simplify_expr(raw_plan.solution_rhs);
-    let guard_numerator = simplify_expr(kernel.numerator);
-    let numerator_status = prove_nonzero_status(ctx, guard_numerator);
-
-    build_reciprocal_execution(
-        ctx,
-        var,
-        kernel.numerator,
-        kernel.denominator,
-        combined_rhs_display,
-        solution_rhs_display,
-        guard_numerator,
-        numerator_status,
-    )
+    let prepared = prepare_reciprocal_execution_from_kernel_with(
+        kernel,
+        raw_plan.combined_rhs,
+        raw_plan.solution_rhs,
+        simplify_expr,
+        |expr| prove_nonzero_status(ctx, expr),
+    );
+    build_reciprocal_execution_from_kernel_prepared(ctx, var, kernel, prepared)
 }
 
 /// High-level reciprocal solve execution using closure hooks.
@@ -603,6 +621,42 @@ mod tests {
         assert_eq!(execution.items[0].equation.rhs, one);
         assert_eq!(execution.items[1].equation.rhs, one);
         assert!(matches!(execution.solutions, SolutionSet::Conditional(_)));
+    }
+
+    #[test]
+    fn prepare_reciprocal_execution_from_kernel_with_runs_callbacks() {
+        let mut ctx = Context::new();
+        let numerator = ctx.var("n");
+        let denominator = ctx.var("d");
+        let combined_rhs = ctx.var("combined");
+        let solution_rhs = ctx.var("solution");
+        let display = ctx.var("display");
+        let mut simplify_calls = 0usize;
+        let mut prove_calls = 0usize;
+
+        let prepared = prepare_reciprocal_execution_from_kernel_with(
+            ReciprocalSolveKernel {
+                numerator,
+                denominator,
+            },
+            combined_rhs,
+            solution_rhs,
+            |_| {
+                simplify_calls += 1;
+                display
+            },
+            |_| {
+                prove_calls += 1;
+                NonZeroStatus::Unknown
+            },
+        );
+
+        assert_eq!(simplify_calls, 3);
+        assert_eq!(prove_calls, 1);
+        assert_eq!(prepared.combined_rhs_display, display);
+        assert_eq!(prepared.solution_rhs_display, display);
+        assert_eq!(prepared.guard_numerator, display);
+        assert_eq!(prepared.numerator_status, NonZeroStatus::Unknown);
     }
 
     #[test]

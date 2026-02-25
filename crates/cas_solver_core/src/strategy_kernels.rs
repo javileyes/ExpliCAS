@@ -248,6 +248,24 @@ where
     }
 }
 
+/// Materialize a collect-terms rewrite from a pre-derived kernel by
+/// simplifying the rewritten sides via caller-provided callback.
+pub fn materialize_collect_terms_rewrite_from_kernel_with<FSimplify, FRender>(
+    kernel: CollectTermsKernel,
+    op: RelOp,
+    original_rhs: ExprId,
+    mut simplify_expr: FSimplify,
+    render_expr: FRender,
+) -> CollectTermsSolvedRewrite
+where
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FRender: FnMut(ExprId) -> String,
+{
+    let simp_lhs = simplify_expr(kernel.rewritten.lhs);
+    let simp_rhs = simplify_expr(kernel.rewritten.rhs);
+    materialize_collect_terms_rewrite_with(simp_lhs, simp_rhs, op, original_rhs, render_expr)
+}
+
 /// Derive, simplify, and materialize collect-terms rewrite in one pipeline.
 ///
 /// This centralizes strategy-kernel orchestration while caller controls
@@ -256,7 +274,7 @@ pub fn execute_collect_terms_rewrite_with<FSimplify, FRender>(
     ctx: &mut Context,
     eq: &Equation,
     var: &str,
-    mut simplify_expr: FSimplify,
+    simplify_expr: FSimplify,
     render_expr: FRender,
 ) -> Option<CollectTermsSolvedRewrite>
 where
@@ -264,13 +282,11 @@ where
     FRender: FnMut(ExprId) -> String,
 {
     let kernel = derive_collect_terms_kernel(ctx, eq, var)?;
-    let simp_lhs = simplify_expr(kernel.rewritten.lhs);
-    let simp_rhs = simplify_expr(kernel.rewritten.rhs);
-    Some(materialize_collect_terms_rewrite_with(
-        simp_lhs,
-        simp_rhs,
+    Some(materialize_collect_terms_rewrite_from_kernel_with(
+        kernel,
         eq.op.clone(),
         eq.rhs,
+        simplify_expr,
         render_expr,
     ))
 }
@@ -332,6 +348,41 @@ where
         solution_set,
         steps,
     })
+}
+
+/// Materialize and solve one collect-terms kernel with optional didactic item dispatch.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_collect_terms_kernel_pipeline_with_item<E, S, FSimplify, FRender, FSolve, FStep>(
+    kernel: CollectTermsKernel,
+    op: RelOp,
+    original_rhs: ExprId,
+    var: &str,
+    include_item: bool,
+    simplify_expr: FSimplify,
+    render_expr: FRender,
+    solve_rewritten: FSolve,
+    map_item_to_step: FStep,
+) -> Result<CollectTermsRewriteSolved<S>, E>
+where
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FRender: FnMut(ExprId) -> String,
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(StrategyExecutionItem) -> S,
+{
+    let rewrite = materialize_collect_terms_rewrite_from_kernel_with(
+        kernel,
+        op,
+        original_rhs,
+        simplify_expr,
+        render_expr,
+    );
+    solve_collect_terms_rewrite_pipeline_with_item(
+        rewrite,
+        var,
+        include_item,
+        solve_rewritten,
+        map_item_to_step,
+    )
 }
 
 /// Rewrite payload for `RationalExponentStrategy`.
@@ -450,6 +501,20 @@ pub fn materialize_rational_exponent_rewrite(
     }
 }
 
+/// Materialize a rational-exponent rewrite from a pre-derived kernel by
+/// simplifying rewritten sides via caller-provided callback.
+pub fn materialize_rational_exponent_rewrite_from_kernel_with<FSimplify>(
+    kernel: RationalExponentKernel,
+    mut simplify_expr: FSimplify,
+) -> RationalExponentSolvedRewrite
+where
+    FSimplify: FnMut(ExprId) -> ExprId,
+{
+    let sim_lhs = simplify_expr(kernel.rewritten.lhs);
+    let sim_rhs = simplify_expr(kernel.rewritten.rhs);
+    materialize_rational_exponent_rewrite(kernel.q, sim_lhs, sim_rhs)
+}
+
 /// Derive, simplify, and materialize rational-exponent rewrite in one pipeline.
 ///
 /// This centralizes strategy-kernel orchestration while caller controls
@@ -460,16 +525,15 @@ pub fn execute_rational_exponent_rewrite_with<FSimplify>(
     var: &str,
     lhs_has_var: bool,
     rhs_has_var: bool,
-    mut simplify_expr: FSimplify,
+    simplify_expr: FSimplify,
 ) -> Option<RationalExponentSolvedRewrite>
 where
     FSimplify: FnMut(ExprId) -> ExprId,
 {
     let kernel = derive_rational_exponent_kernel(ctx, eq, var, lhs_has_var, rhs_has_var)?;
-    let sim_lhs = simplify_expr(kernel.rewritten.lhs);
-    let sim_rhs = simplify_expr(kernel.rewritten.rhs);
-    Some(materialize_rational_exponent_rewrite(
-        kernel.q, sim_lhs, sim_rhs,
+    Some(materialize_rational_exponent_rewrite_from_kernel_with(
+        kernel,
+        simplify_expr,
     ))
 }
 
@@ -557,6 +621,41 @@ where
         solution_set,
         steps,
     })
+}
+
+/// Materialize and solve one rational-exponent kernel with optional didactic
+/// item dispatch and discrete solution verification.
+pub fn solve_rational_exponent_kernel_pipeline_with_item_with<
+    E,
+    S,
+    FSimplify,
+    FSolve,
+    FStep,
+    FVerify,
+>(
+    kernel: RationalExponentKernel,
+    var: &str,
+    include_item: bool,
+    simplify_expr: FSimplify,
+    solve_rewritten: FSolve,
+    map_item_to_step: FStep,
+    verify_discrete_solution: FVerify,
+) -> Result<RationalExponentRewriteSolved<S>, E>
+where
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(StrategyExecutionItem) -> S,
+    FVerify: FnMut(ExprId) -> bool,
+{
+    let rewrite = materialize_rational_exponent_rewrite_from_kernel_with(kernel, simplify_expr);
+    solve_rational_exponent_rewrite_pipeline_with_item_with(
+        rewrite,
+        var,
+        include_item,
+        solve_rewritten,
+        map_item_to_step,
+        verify_discrete_solution,
+    )
 }
 
 #[cfg(test)]
@@ -950,6 +1049,33 @@ mod tests {
     }
 
     #[test]
+    fn materialize_collect_terms_rewrite_from_kernel_with_simplifies_sides() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let lhs = ctx.add(Expr::Add(x, one));
+        let rhs = ctx.add(Expr::Add(x, two));
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+        let kernel = derive_collect_terms_kernel(&mut ctx, &eq, "x").expect("kernel should exist");
+
+        let rewrite = materialize_collect_terms_rewrite_from_kernel_with(
+            kernel,
+            eq.op.clone(),
+            eq.rhs,
+            |id| id,
+            |_| "rhs".to_string(),
+        );
+        assert_eq!(rewrite.items.len(), 1);
+        assert_eq!(rewrite.items[0].equation, rewrite.equation);
+        assert_eq!(rewrite.items[0].description, "Subtract rhs from both sides");
+    }
+
+    #[test]
     fn collect_collect_terms_didactic_steps_returns_single_step() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -1020,6 +1146,32 @@ mod tests {
         assert_eq!(
             rewrite.items[0].description,
             "Raise both sides to power 5 to eliminate fractional exponent"
+        );
+    }
+
+    #[test]
+    fn materialize_rational_exponent_rewrite_from_kernel_with_simplifies_sides() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let exponent = ctx.add(Expr::Div(three, two));
+        let lhs = ctx.add(Expr::Pow(x, exponent));
+        let rhs = ctx.num(8);
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+        let kernel = derive_rational_exponent_kernel_for_var(&mut ctx, &eq, "x")
+            .expect("kernel should exist");
+
+        let rewrite = materialize_rational_exponent_rewrite_from_kernel_with(kernel, |id| id);
+        assert_eq!(rewrite.items.len(), 1);
+        assert_eq!(rewrite.items[0].equation, rewrite.equation);
+        assert_eq!(
+            rewrite.items[0].description,
+            "Raise both sides to power 2 to eliminate fractional exponent"
         );
     }
 
@@ -1245,6 +1397,55 @@ mod tests {
     }
 
     #[test]
+    fn solve_collect_terms_kernel_pipeline_with_item_materializes_and_solves() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let lhs = ctx.add(Expr::Add(x, one));
+        let rhs = ctx.add(Expr::Add(x, two));
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+        let kernel = derive_collect_terms_kernel(&mut ctx, &eq, "x").expect("kernel should exist");
+
+        let mut solve_calls = 0usize;
+        let mut mapped = 0usize;
+        let solved = solve_collect_terms_kernel_pipeline_with_item(
+            kernel,
+            eq.op.clone(),
+            eq.rhs,
+            "x",
+            true,
+            |id| id,
+            |_| "rhs".to_string(),
+            |_equation, var| {
+                solve_calls += 1;
+                assert_eq!(var, "x");
+                Ok::<_, ()>((SolutionSet::Discrete(vec![x]), vec!["sub-step".to_string()]))
+            },
+            |item| {
+                mapped += 1;
+                item.description
+            },
+        )
+        .expect("collect kernel pipeline should succeed");
+
+        assert_eq!(solve_calls, 1);
+        assert_eq!(mapped, 1);
+        assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![x]));
+        assert_eq!(
+            solved.steps,
+            vec![
+                "Subtract rhs from both sides".to_string(),
+                "sub-step".to_string()
+            ]
+        );
+    }
+
+    #[test]
     fn solve_rational_exponent_rewrite_with_runs_solver_on_rewritten_equation() {
         let mut ctx = Context::new();
         let lhs = ctx.var("lhs");
@@ -1360,6 +1561,57 @@ mod tests {
         assert_eq!(mapped, 1);
         assert_eq!(verified, vec![a, b]);
         assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![a]));
+        assert_eq!(solved.steps.len(), 2);
+    }
+
+    #[test]
+    fn solve_rational_exponent_kernel_pipeline_with_item_with_solves_and_filters() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let exponent = ctx.add(Expr::Div(three, two));
+        let lhs = ctx.add(Expr::Pow(x, exponent));
+        let rhs = ctx.num(8);
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+        let kernel = derive_rational_exponent_kernel_for_var(&mut ctx, &eq, "x")
+            .expect("kernel should exist");
+
+        let mut solve_calls = 0usize;
+        let mut mapped = 0usize;
+        let mut verified = Vec::new();
+        let solved = solve_rational_exponent_kernel_pipeline_with_item_with(
+            kernel,
+            "x",
+            true,
+            |id| id,
+            |_equation, var| {
+                solve_calls += 1;
+                assert_eq!(var, "x");
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![x, rhs]),
+                    vec!["sub-step".to_string()],
+                ))
+            },
+            |item| {
+                mapped += 1;
+                item.description
+            },
+            |solution| {
+                verified.push(solution);
+                solution == x
+            },
+        )
+        .expect("rational kernel pipeline should succeed");
+
+        assert_eq!(solve_calls, 1);
+        assert_eq!(mapped, 1);
+        assert_eq!(verified, vec![x, rhs]);
+        assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![x]));
         assert_eq!(solved.steps.len(), 2);
     }
 }
