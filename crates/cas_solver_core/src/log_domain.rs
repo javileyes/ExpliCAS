@@ -285,56 +285,6 @@ pub fn classify_log_solve_for_value_domain(
 }
 
 /// Classify a log-solve step by proving positivity only when env facts are missing.
-pub trait LogSolveProofRuntime {
-    fn prove_positive_status(&mut self, ctx: &Context, expr: ExprId) -> ProofStatus;
-}
-
-impl<F> LogSolveProofRuntime for F
-where
-    F: FnMut(&Context, ExprId) -> ProofStatus,
-{
-    fn prove_positive_status(&mut self, ctx: &Context, expr: ExprId) -> ProofStatus {
-        self(ctx, expr)
-    }
-}
-
-/// Runtime-based variant of `classify_log_solve_with_prover`.
-#[allow(clippy::too_many_arguments)]
-pub fn classify_log_solve_with_prover_runtime<R>(
-    ctx: &Context,
-    base: ExprId,
-    rhs: ExprId,
-    value_domain_is_real_only: bool,
-    mode: DomainModeKind,
-    base_in_env: bool,
-    rhs_in_env: bool,
-    runtime: &mut R,
-) -> LogSolveDecision
-where
-    R: LogSolveProofRuntime,
-{
-    let base_proof = if base_in_env {
-        ProofStatus::Proven
-    } else {
-        runtime.prove_positive_status(ctx, base)
-    };
-    let rhs_proof = if rhs_in_env {
-        ProofStatus::Proven
-    } else {
-        runtime.prove_positive_status(ctx, rhs)
-    };
-
-    classify_log_solve_for_value_domain(
-        value_domain_is_real_only,
-        mode,
-        base_in_env,
-        rhs_in_env,
-        base_proof,
-        rhs_proof,
-    )
-}
-
-/// Classify a log-solve step by proving positivity only when env facts are missing.
 #[allow(clippy::too_many_arguments)]
 pub fn classify_log_solve_with_prover<F>(
     ctx: &Context,
@@ -349,15 +299,24 @@ pub fn classify_log_solve_with_prover<F>(
 where
     F: FnMut(&Context, ExprId) -> ProofStatus,
 {
-    classify_log_solve_with_prover_runtime(
-        ctx,
-        base,
-        rhs,
+    let base_proof = if base_in_env {
+        ProofStatus::Proven
+    } else {
+        prove_positive_status(ctx, base)
+    };
+    let rhs_proof = if rhs_in_env {
+        ProofStatus::Proven
+    } else {
+        prove_positive_status(ctx, rhs)
+    };
+
+    classify_log_solve_for_value_domain(
         value_domain_is_real_only,
         mode,
         base_in_env,
         rhs_in_env,
-        &mut prove_positive_status,
+        base_proof,
+        rhs_proof,
     )
 }
 
@@ -648,62 +607,6 @@ mod tests {
         );
 
         assert_eq!(calls, 0);
-        assert_eq!(out, LogSolveDecision::Ok);
-    }
-
-    #[derive(Default)]
-    struct TestLogSolveProofRuntime {
-        calls: usize,
-    }
-
-    impl LogSolveProofRuntime for TestLogSolveProofRuntime {
-        fn prove_positive_status(&mut self, _ctx: &Context, _expr: ExprId) -> ProofStatus {
-            self.calls += 1;
-            ProofStatus::Unknown
-        }
-    }
-
-    #[test]
-    fn classify_log_solve_with_prover_runtime_queries_only_missing_env_proofs() {
-        let mut ctx = cas_ast::Context::new();
-        let base = ctx.var("b");
-        let rhs = ctx.var("r");
-        let mut runtime = TestLogSolveProofRuntime::default();
-
-        let out = classify_log_solve_with_prover_runtime(
-            &ctx,
-            base,
-            rhs,
-            true,
-            DomainModeKind::Generic,
-            true,
-            false,
-            &mut runtime,
-        );
-
-        assert_eq!(runtime.calls, 1);
-        assert!(matches!(out, LogSolveDecision::Unsupported(_, _)));
-    }
-
-    #[test]
-    fn classify_log_solve_with_prover_runtime_skips_callback_when_env_proves_both() {
-        let mut ctx = cas_ast::Context::new();
-        let base = ctx.var("b");
-        let rhs = ctx.var("r");
-        let mut runtime = TestLogSolveProofRuntime::default();
-
-        let out = classify_log_solve_with_prover_runtime(
-            &ctx,
-            base,
-            rhs,
-            true,
-            DomainModeKind::Generic,
-            true,
-            true,
-            &mut runtime,
-        );
-
-        assert_eq!(runtime.calls, 0);
         assert_eq!(out, LogSolveDecision::Ok);
     }
 }

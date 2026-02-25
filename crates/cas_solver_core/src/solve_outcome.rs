@@ -55,32 +55,6 @@ pub enum CircularIsolatedOutcome<S> {
     Residual(SolutionSet),
 }
 
-/// Runtime adapter for circular-isolation fallback.
-pub trait CircularIsolatedRuntime<S> {
-    fn try_linear_collect(
-        &mut self,
-        lhs: ExprId,
-        rhs: ExprId,
-        var: &str,
-    ) -> Option<(SolutionSet, Vec<S>)>;
-    fn try_linear_collect_v2(
-        &mut self,
-        lhs: ExprId,
-        rhs: ExprId,
-        var: &str,
-    ) -> Option<(SolutionSet, Vec<S>)>;
-    fn residual_solution(&mut self, lhs: ExprId, rhs: ExprId, var: &str) -> SolutionSet;
-}
-
-/// Runtime adapter for solving equations where the target variable is already
-/// isolated on the left-hand side.
-pub trait IsolatedVariableRuntime<S>: CircularIsolatedRuntime<S> {
-    /// Mutable access to expression context.
-    fn context(&mut self) -> &mut Context;
-    /// Simplify RHS before checking whether the target variable still appears.
-    fn simplify_rhs(&mut self, rhs: ExprId) -> ExprId;
-}
-
 /// Resolve the final outcome for `x op rhs` once the variable is syntactically
 /// isolated on the left-hand side.
 pub fn resolve_isolated_variable_outcome(
@@ -128,53 +102,40 @@ where
     CircularIsolatedOutcome::Residual(residual_solution(lhs, rhs, var))
 }
 
-/// Runtime-based circular-isolation fallback dispatcher.
-pub fn resolve_circular_isolated_outcome_with_runtime<S, R>(
-    lhs: ExprId,
-    rhs: ExprId,
-    var: &str,
-    runtime: &mut R,
-) -> CircularIsolatedOutcome<S>
-where
-    R: CircularIsolatedRuntime<S>,
-{
-    if let Some((solution_set, steps)) = runtime.try_linear_collect(lhs, rhs, var) {
-        return CircularIsolatedOutcome::Solved {
-            solution_set,
-            steps,
-        };
-    }
-
-    if let Some((solution_set, steps)) = runtime.try_linear_collect_v2(lhs, rhs, var) {
-        return CircularIsolatedOutcome::Solved {
-            solution_set,
-            steps,
-        };
-    }
-
-    CircularIsolatedOutcome::Residual(runtime.residual_solution(lhs, rhs, var))
-}
-
 /// Solve a branch where `lhs` is already the target variable (`x op rhs`).
 ///
-/// The runtime decides how RHS simplification and circular fallbacks are
-/// executed. Returned steps are non-empty only when circular fallback resolves
-/// via linear-collect routes.
-pub fn solve_isolated_variable_lhs_with_runtime<S, R>(
+/// Returned steps are non-empty only when circular fallback resolves via
+/// linear-collect routes.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_isolated_variable_lhs_with<S, FSimplify, FTry1, FTry2, FResidual>(
+    ctx: &mut Context,
     lhs: ExprId,
     rhs: ExprId,
     op: RelOp,
     var: &str,
-    runtime: &mut R,
+    mut simplify_rhs: FSimplify,
+    try_linear_collect: FTry1,
+    try_linear_collect_v2: FTry2,
+    residual_solution: FResidual,
 ) -> (SolutionSet, Vec<S>)
 where
-    R: IsolatedVariableRuntime<S>,
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FTry1: FnMut(ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<S>)>,
+    FTry2: FnMut(ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<S>)>,
+    FResidual: FnMut(ExprId, ExprId, &str) -> SolutionSet,
 {
-    let sim_rhs = runtime.simplify_rhs(rhs);
-    match resolve_isolated_variable_outcome(runtime.context(), sim_rhs, op, var) {
+    let sim_rhs = simplify_rhs(rhs);
+    match resolve_isolated_variable_outcome(ctx, sim_rhs, op, var) {
         IsolatedVariableOutcome::Solved(set) => (set, Vec::new()),
         IsolatedVariableOutcome::ContainsTargetVariable => {
-            match resolve_circular_isolated_outcome_with_runtime(lhs, rhs, var, runtime) {
+            match resolve_circular_isolated_outcome_with(
+                lhs,
+                rhs,
+                var,
+                try_linear_collect,
+                try_linear_collect_v2,
+                residual_solution,
+            ) {
                 CircularIsolatedOutcome::Solved {
                     solution_set,
                     steps,
@@ -1362,16 +1323,6 @@ where
     }
 }
 
-/// Runtime contract for variable-eliminated outcome resolution.
-pub trait VarEliminatedOutcomeRuntime<S> {
-    /// Mutable access to expression context.
-    fn context(&mut self) -> &mut Context;
-    /// Render expression IDs for constraint narration.
-    fn render_expr(&mut self, expr: ExprId) -> String;
-    /// Map constraint payload to caller-owned step payload.
-    fn map_constraint_step(&mut self, description: String, equation_after: Equation) -> S;
-}
-
 /// Solved payload for variable-eliminated outcome pipeline.
 #[derive(Debug, Clone, PartialEq)]
 pub enum VarEliminatedOutcomePipelineSolved<S> {
@@ -1381,30 +1332,36 @@ pub enum VarEliminatedOutcomePipelineSolved<S> {
 }
 
 /// Resolve variable-eliminated residuals and optionally materialize one
-/// constraint step via runtime.
-pub fn solve_var_eliminated_outcome_pipeline_with_runtime<R, S>(
+/// constraint step.
+pub fn solve_var_eliminated_outcome_pipeline_with<S, FRender, FStep>(
+    ctx: &mut Context,
     diff: ExprId,
     var: &str,
     include_item: bool,
-    runtime: &mut R,
+    mut render_expr: FRender,
+    map_item_to_step: FStep,
 ) -> VarEliminatedOutcomePipelineSolved<S>
 where
-    R: VarEliminatedOutcomeRuntime<S>,
+    FRender: FnMut(&Context, ExprId) -> String,
+    FStep: FnMut(String, Equation) -> S,
 {
-    match classify_var_free_difference(runtime.context(), diff) {
-        VarFreeDiffKind::IdentityZero => VarEliminatedOutcomePipelineSolved::IdentityAllReals,
-        VarFreeDiffKind::ContradictionNonZero => {
+    match resolve_var_eliminated_outcome_with(ctx, diff, var, &mut render_expr) {
+        VarEliminatedSolveOutcome::IdentityAllReals => {
+            VarEliminatedOutcomePipelineSolved::IdentityAllReals
+        }
+        VarEliminatedSolveOutcome::ContradictionEmpty => {
             VarEliminatedOutcomePipelineSolved::ContradictionEmpty
         }
-        VarFreeDiffKind::Constraint => {
-            let diff_display = runtime.render_expr(diff);
-            let description = variable_canceled_constraint_message(var, &diff_display);
-            let equation_after = build_zero_constraint_equation(runtime.context(), diff);
-            let steps = if include_item {
-                vec![runtime.map_constraint_step(description, equation_after)]
-            } else {
-                vec![]
-            };
+        VarEliminatedSolveOutcome::ConstraintAllReals {
+            description,
+            equation_after,
+        } => {
+            let steps = solve_var_eliminated_constraint_pipeline_with_item(
+                description,
+                equation_after,
+                include_item,
+                map_item_to_step,
+            );
             VarEliminatedOutcomePipelineSolved::ConstraintAllReals { steps }
         }
     }
@@ -6410,55 +6367,48 @@ mod tests {
         assert!(steps.is_empty());
     }
 
-    struct TestVarEliminatedRuntime {
-        ctx: Context,
-    }
-
-    impl VarEliminatedOutcomeRuntime<String> for TestVarEliminatedRuntime {
-        fn context(&mut self) -> &mut Context {
-            &mut self.ctx
-        }
-
-        fn render_expr(&mut self, expr: ExprId) -> String {
-            expr.to_string()
-        }
-
-        fn map_constraint_step(
-            &mut self,
-            description: String,
-            _equation_after: Equation,
-        ) -> String {
-            description
-        }
-    }
-
     #[test]
-    fn solve_var_eliminated_outcome_pipeline_with_runtime_returns_identity_for_zero_diff() {
-        let mut runtime = TestVarEliminatedRuntime {
-            ctx: Context::new(),
-        };
-        let zero = runtime.ctx.num(0);
-        let out = solve_var_eliminated_outcome_pipeline_with_runtime(zero, "x", true, &mut runtime);
+    fn solve_var_eliminated_outcome_pipeline_with_returns_identity_for_zero_diff() {
+        let mut ctx = Context::new();
+        let zero = ctx.num(0);
+        let out = solve_var_eliminated_outcome_pipeline_with(
+            &mut ctx,
+            zero,
+            "x",
+            true,
+            |_, expr| expr.to_string(),
+            |description, _| description,
+        );
         assert_eq!(out, VarEliminatedOutcomePipelineSolved::IdentityAllReals);
     }
 
     #[test]
-    fn solve_var_eliminated_outcome_pipeline_with_runtime_returns_contradiction_for_nonzero_diff() {
-        let mut runtime = TestVarEliminatedRuntime {
-            ctx: Context::new(),
-        };
-        let one = runtime.ctx.num(1);
-        let out = solve_var_eliminated_outcome_pipeline_with_runtime(one, "x", true, &mut runtime);
+    fn solve_var_eliminated_outcome_pipeline_with_returns_contradiction_for_nonzero_diff() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let out = solve_var_eliminated_outcome_pipeline_with(
+            &mut ctx,
+            one,
+            "x",
+            true,
+            |_, expr| expr.to_string(),
+            |description, _| description,
+        );
         assert_eq!(out, VarEliminatedOutcomePipelineSolved::ContradictionEmpty);
     }
 
     #[test]
-    fn solve_var_eliminated_outcome_pipeline_with_runtime_maps_constraint_step_when_enabled() {
-        let mut runtime = TestVarEliminatedRuntime {
-            ctx: Context::new(),
-        };
-        let y = runtime.ctx.var("y");
-        let out = solve_var_eliminated_outcome_pipeline_with_runtime(y, "x", true, &mut runtime);
+    fn solve_var_eliminated_outcome_pipeline_with_maps_constraint_step_when_enabled() {
+        let mut ctx = Context::new();
+        let y = ctx.var("y");
+        let out = solve_var_eliminated_outcome_pipeline_with(
+            &mut ctx,
+            y,
+            "x",
+            true,
+            |_, expr| expr.to_string(),
+            |description, _| description,
+        );
         match out {
             VarEliminatedOutcomePipelineSolved::ConstraintAllReals { steps } => {
                 assert_eq!(steps.len(), 1);
@@ -13377,115 +13327,83 @@ mod tests {
         ));
     }
 
-    struct TestIsolatedVariableRuntime {
-        ctx: Context,
-        simplified_rhs: Option<ExprId>,
-        linear_collect: Option<(SolutionSet, Vec<&'static str>)>,
-        linear_collect_v2: Option<(SolutionSet, Vec<&'static str>)>,
-        residual: SolutionSet,
-        simplify_calls: usize,
-    }
-
-    impl CircularIsolatedRuntime<&'static str> for TestIsolatedVariableRuntime {
-        fn try_linear_collect(
-            &mut self,
-            _: ExprId,
-            _: ExprId,
-            _: &str,
-        ) -> Option<(SolutionSet, Vec<&'static str>)> {
-            self.linear_collect.clone()
-        }
-
-        fn try_linear_collect_v2(
-            &mut self,
-            _: ExprId,
-            _: ExprId,
-            _: &str,
-        ) -> Option<(SolutionSet, Vec<&'static str>)> {
-            self.linear_collect_v2.clone()
-        }
-
-        fn residual_solution(&mut self, _: ExprId, _: ExprId, _: &str) -> SolutionSet {
-            self.residual.clone()
-        }
-    }
-
-    impl IsolatedVariableRuntime<&'static str> for TestIsolatedVariableRuntime {
-        fn context(&mut self) -> &mut Context {
-            &mut self.ctx
-        }
-
-        fn simplify_rhs(&mut self, rhs: ExprId) -> ExprId {
-            self.simplify_calls += 1;
-            self.simplified_rhs.unwrap_or(rhs)
-        }
-    }
-
     #[test]
-    fn solve_isolated_variable_lhs_with_runtime_returns_direct_solution_for_var_free_rhs() {
+    fn solve_isolated_variable_lhs_with_returns_direct_solution_for_var_free_rhs() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let three = ctx.num(3);
-        let mut runtime = TestIsolatedVariableRuntime {
-            ctx,
-            simplified_rhs: None,
-            linear_collect: None,
-            linear_collect_v2: None,
-            residual: SolutionSet::Empty,
-            simplify_calls: 0,
-        };
+        let mut simplify_calls = 0usize;
+        let (set, steps) = solve_isolated_variable_lhs_with(
+            &mut ctx,
+            x,
+            three,
+            RelOp::Eq,
+            "x",
+            |rhs| {
+                simplify_calls += 1;
+                rhs
+            },
+            |_, _, _| None::<(SolutionSet, Vec<&'static str>)>,
+            |_, _, _| None::<(SolutionSet, Vec<&'static str>)>,
+            |_, _, _| SolutionSet::Empty,
+        );
 
-        let (set, steps) =
-            solve_isolated_variable_lhs_with_runtime(x, three, RelOp::Eq, "x", &mut runtime);
-
-        assert_eq!(runtime.simplify_calls, 1);
+        assert_eq!(simplify_calls, 1);
         assert!(steps.is_empty());
         assert_eq!(set, SolutionSet::Discrete(vec![three]));
     }
 
     #[test]
-    fn solve_isolated_variable_lhs_with_runtime_prefers_circular_linear_collect() {
+    fn solve_isolated_variable_lhs_with_prefers_circular_linear_collect() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let one = ctx.num(1);
         let two = ctx.num(2);
         let rhs = ctx.add(Expr::Add(x, one));
-        let mut runtime = TestIsolatedVariableRuntime {
-            ctx,
-            simplified_rhs: None,
-            linear_collect: Some((SolutionSet::Discrete(vec![two]), vec!["lc1"])),
-            linear_collect_v2: Some((SolutionSet::Discrete(vec![one]), vec!["lc2"])),
-            residual: SolutionSet::Residual(one),
-            simplify_calls: 0,
-        };
+        let mut simplify_calls = 0usize;
+        let (set, steps) = solve_isolated_variable_lhs_with(
+            &mut ctx,
+            x,
+            rhs,
+            RelOp::Eq,
+            "x",
+            |rhs| {
+                simplify_calls += 1;
+                rhs
+            },
+            |_, _, _| Some((SolutionSet::Discrete(vec![two]), vec!["lc1"])),
+            |_, _, _| Some((SolutionSet::Discrete(vec![one]), vec!["lc2"])),
+            |_, _, _| SolutionSet::Residual(one),
+        );
 
-        let (set, steps) =
-            solve_isolated_variable_lhs_with_runtime(x, rhs, RelOp::Eq, "x", &mut runtime);
-
-        assert_eq!(runtime.simplify_calls, 1);
+        assert_eq!(simplify_calls, 1);
         assert_eq!(set, SolutionSet::Discrete(vec![two]));
         assert_eq!(steps, vec!["lc1"]);
     }
 
     #[test]
-    fn solve_isolated_variable_lhs_with_runtime_falls_back_to_residual_without_steps() {
+    fn solve_isolated_variable_lhs_with_falls_back_to_residual_without_steps() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let one = ctx.num(1);
         let rhs = ctx.add(Expr::Add(x, one));
-        let mut runtime = TestIsolatedVariableRuntime {
-            ctx,
-            simplified_rhs: None,
-            linear_collect: None,
-            linear_collect_v2: None,
-            residual: SolutionSet::Residual(one),
-            simplify_calls: 0,
-        };
+        let mut simplify_calls = 0usize;
+        let (set, steps) = solve_isolated_variable_lhs_with(
+            &mut ctx,
+            x,
+            rhs,
+            RelOp::Eq,
+            "x",
+            |rhs| {
+                simplify_calls += 1;
+                rhs
+            },
+            |_, _, _| None::<(SolutionSet, Vec<&'static str>)>,
+            |_, _, _| None::<(SolutionSet, Vec<&'static str>)>,
+            |_, _, _| SolutionSet::Residual(one),
+        );
 
-        let (set, steps) =
-            solve_isolated_variable_lhs_with_runtime(x, rhs, RelOp::Eq, "x", &mut runtime);
-
-        assert_eq!(runtime.simplify_calls, 1);
+        assert_eq!(simplify_calls, 1);
         assert_eq!(set, SolutionSet::Residual(one));
         assert!(steps.is_empty());
     }

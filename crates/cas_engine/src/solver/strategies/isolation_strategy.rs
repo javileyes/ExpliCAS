@@ -20,7 +20,7 @@ use cas_solver_core::strategy_kernels::{
     CollectTermsSolvedRewrite, RationalExponentSolvedRewrite,
 };
 use cas_solver_core::unwrap_plan::{
-    route_unwrap_entry_with_item, solve_unwrap_execution_pipeline_with_item_with,
+    route_unwrap_entry_with_item, solve_unwrap_execution_pipeline_with_item,
     LogLinearAssumptionRecord, UnwrapEntryRouting, UnwrapExecutionItem, UnwrapExecutionPlan,
 };
 
@@ -78,7 +78,7 @@ fn run_unwrap_execution(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let include_item = simplifier.collect_steps();
     let runtime_cell = std::cell::RefCell::new(simplifier);
-    let solved = solve_unwrap_execution_pipeline_with_item_with(
+    let solved = solve_unwrap_execution_pipeline_with_item(
         execution,
         other_side,
         var,

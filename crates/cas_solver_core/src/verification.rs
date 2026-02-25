@@ -53,28 +53,6 @@ pub fn verify_solution_set_with<F>(solutions: &SolutionSet, verify_discrete: &mu
 where
     F: FnMut(ExprId) -> VerifyStatus,
 {
-    verify_solution_set_with_runtime(solutions, verify_discrete)
-}
-
-/// Runtime adapter for solution-set verification over discrete candidates.
-pub trait VerifySolutionSetRuntime {
-    fn verify_discrete(&mut self, solution: ExprId) -> VerifyStatus;
-}
-
-impl<F> VerifySolutionSetRuntime for F
-where
-    F: FnMut(ExprId) -> VerifyStatus,
-{
-    fn verify_discrete(&mut self, solution: ExprId) -> VerifyStatus {
-        self(solution)
-    }
-}
-
-/// Runtime-based variant of [`verify_solution_set_with`].
-pub fn verify_solution_set_with_runtime<R>(solutions: &SolutionSet, runtime: &mut R) -> VerifyResult
-where
-    R: VerifySolutionSetRuntime,
-{
     match solutions {
         SolutionSet::Empty => VerifyResult {
             solutions: vec![],
@@ -87,7 +65,7 @@ where
             let mut verified_count = 0;
 
             for &sol in sols {
-                let status = runtime.verify_discrete(sol);
+                let status = verify_discrete(sol);
                 if matches!(status, VerifyStatus::Verified) {
                     verified_count += 1;
                 }
@@ -131,7 +109,7 @@ where
             let mut has_not_checkable = false;
 
             for case in cases {
-                let case_result = verify_solution_set_with_runtime(&case.then.solutions, runtime);
+                let case_result = verify_solution_set_with(&case.then.solutions, verify_discrete);
 
                 match case_result.summary {
                     VerifySummary::AllVerified | VerifySummary::PartiallyVerified => {
@@ -225,32 +203,6 @@ mod tests {
 
         let result = verify_solution_set_with(&set, &mut verify);
         assert_eq!(calls, 2);
-        assert_eq!(result.summary, VerifySummary::AllVerified);
-        assert_eq!(result.solutions.len(), 2);
-    }
-
-    #[derive(Default)]
-    struct TestVerifySolutionSetRuntime {
-        calls: usize,
-    }
-
-    impl VerifySolutionSetRuntime for TestVerifySolutionSetRuntime {
-        fn verify_discrete(&mut self, _solution: ExprId) -> VerifyStatus {
-            self.calls += 1;
-            VerifyStatus::Verified
-        }
-    }
-
-    #[test]
-    fn test_verify_solution_set_with_runtime_discrete() {
-        let mut ctx = Context::new();
-        let one = ctx.num(1);
-        let two = ctx.num(2);
-        let set = SolutionSet::Discrete(vec![one, two]);
-        let mut runtime = TestVerifySolutionSetRuntime::default();
-
-        let result = verify_solution_set_with_runtime(&set, &mut runtime);
-        assert_eq!(runtime.calls, 2);
         assert_eq!(result.summary, VerifySummary::AllVerified);
         assert_eq!(result.solutions.len(), 2);
     }

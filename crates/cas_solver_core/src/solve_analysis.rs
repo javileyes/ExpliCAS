@@ -38,31 +38,9 @@ pub fn retain_verified_discrete<F>(sols: Vec<ExprId>, mut verify: F) -> Vec<Expr
 where
     F: FnMut(ExprId) -> bool,
 {
-    retain_verified_discrete_with_runtime(sols, &mut verify)
-}
-
-/// Runtime adapter for filtering verified discrete solutions.
-pub trait DiscreteVerificationRuntime {
-    fn verify_discrete(&mut self, solution: ExprId) -> bool;
-}
-
-impl<F> DiscreteVerificationRuntime for F
-where
-    F: FnMut(ExprId) -> bool,
-{
-    fn verify_discrete(&mut self, solution: ExprId) -> bool {
-        self(solution)
-    }
-}
-
-/// Runtime-based variant of [`retain_verified_discrete`].
-pub fn retain_verified_discrete_with_runtime<R>(sols: Vec<ExprId>, runtime: &mut R) -> Vec<ExprId>
-where
-    R: DiscreteVerificationRuntime,
-{
     let mut out = Vec::new();
     for sol in sols {
-        if runtime.verify_discrete(sol) {
+        if verify(sol) {
             out.push(sol);
         }
     }
@@ -80,22 +58,7 @@ pub fn merge_symbolic_with_verified_numeric<F>(
 where
     F: FnMut(ExprId) -> bool,
 {
-    let verified_numeric =
-        retain_verified_discrete_with_runtime(numeric_solutions, &mut verify_numeric);
-    symbolic_solutions.extend(verified_numeric);
-    symbolic_solutions
-}
-
-/// Runtime-based variant of [`merge_symbolic_with_verified_numeric`].
-pub fn merge_symbolic_with_verified_numeric_with_runtime<R>(
-    mut symbolic_solutions: Vec<ExprId>,
-    numeric_solutions: Vec<ExprId>,
-    runtime: &mut R,
-) -> Vec<ExprId>
-where
-    R: DiscreteVerificationRuntime,
-{
-    let verified_numeric = retain_verified_discrete_with_runtime(numeric_solutions, runtime);
+    let verified_numeric = retain_verified_discrete(numeric_solutions, &mut verify_numeric);
     symbolic_solutions.extend(verified_numeric);
     symbolic_solutions
 }
@@ -138,12 +101,6 @@ pub fn classify_equation_var_presence(
     }
 }
 
-/// Runtime contract for pre-solve equation-side simplification.
-pub trait SolvePreprocessRuntime {
-    fn context(&mut self) -> &mut Context;
-    fn simplify_for_solve(&mut self, expr: ExprId) -> ExprId;
-}
-
 /// Simplify only equation sides that contain `var` and recompose `a^x / b^x` when possible
 /// using caller-provided hooks.
 pub fn simplify_equation_sides_for_var_with<FContains, FSimplify, FRecompose>(
@@ -179,48 +136,6 @@ where
     simplified_eq
 }
 
-/// Simplify only equation sides that contain `var` and recompose `a^x / b^x` when possible.
-pub fn simplify_equation_sides_for_var_with_runtime<R>(
-    runtime: &mut R,
-    eq: &Equation,
-    var: &str,
-) -> Equation
-where
-    R: SolvePreprocessRuntime,
-{
-    let mut simplified_eq = eq.clone();
-
-    let lhs_has_var = {
-        let ctx = runtime.context();
-        super::isolation_utils::contains_var(ctx, eq.lhs, var)
-    };
-    if lhs_has_var {
-        let sim_lhs = runtime.simplify_for_solve(eq.lhs);
-        simplified_eq.lhs = sim_lhs;
-        if let Some(recomposed) =
-            super::isolation_utils::try_recompose_pow_quotient(runtime.context(), sim_lhs)
-        {
-            simplified_eq.lhs = recomposed;
-        }
-    }
-
-    let rhs_has_var = {
-        let ctx = runtime.context();
-        super::isolation_utils::contains_var(ctx, eq.rhs, var)
-    };
-    if rhs_has_var {
-        let sim_rhs = runtime.simplify_for_solve(eq.rhs);
-        simplified_eq.rhs = sim_rhs;
-        if let Some(recomposed) =
-            super::isolation_utils::try_recompose_pow_quotient(runtime.context(), sim_rhs)
-        {
-            simplified_eq.rhs = recomposed;
-        }
-    }
-
-    simplified_eq
-}
-
 /// Return the candidate residual when the rewrite is meaningfully better.
 pub fn accept_residual_rewrite_candidate(
     ctx: &Context,
@@ -236,14 +151,6 @@ pub fn accept_residual_rewrite_candidate(
     } else {
         None
     }
-}
-
-/// Runtime contract for residual rewrite normalization.
-pub trait ResidualRewriteRuntime {
-    fn context(&mut self) -> &mut Context;
-    fn expand_algebraic(&mut self, expr: ExprId) -> ExprId;
-    fn simplify_for_solve(&mut self, expr: ExprId) -> ExprId;
-    fn expand_trig(&mut self, expr: ExprId) -> ExprId;
 }
 
 /// Normalize a residual expression by applying the two engine-level fallback rewrites:
@@ -286,51 +193,6 @@ where
     if contains_var(current, var) {
         let trig_expanded = expand_trig(current);
         if let Some(accepted) = accept_candidate(current, trig_expanded, var) {
-            current = accepted;
-        }
-    }
-
-    current
-}
-
-/// Normalize a residual expression by applying the two engine-level fallback rewrites:
-/// 1) algebraic expand + simplify
-/// 2) trig expand mode
-///
-/// A rewrite is accepted only if it eliminates `var` or reduces tree size significantly.
-pub fn normalize_variable_residual_with_runtime<R>(
-    runtime: &mut R,
-    residual: ExprId,
-    var: &str,
-) -> ExprId
-where
-    R: ResidualRewriteRuntime,
-{
-    let mut current = residual;
-
-    let current_has_var = {
-        let ctx = runtime.context();
-        super::isolation_utils::contains_var(ctx, current, var)
-    };
-    if current_has_var {
-        let expanded = runtime.expand_algebraic(current);
-        let re_simplified = runtime.simplify_for_solve(expanded);
-        if let Some(accepted) =
-            accept_residual_rewrite_candidate(runtime.context(), current, re_simplified, var)
-        {
-            current = accepted;
-        }
-    }
-
-    let current_has_var = {
-        let ctx = runtime.context();
-        super::isolation_utils::contains_var(ctx, current, var)
-    };
-    if current_has_var {
-        let trig_expanded = runtime.expand_trig(current);
-        if let Some(accepted) =
-            accept_residual_rewrite_candidate(runtime.context(), current, trig_expanded, var)
-        {
             current = accepted;
         }
     }
@@ -443,52 +305,7 @@ pub fn guard_solved_result_with_exclusions<T, E>(
 mod tests {
     use super::*;
     use cas_ast::RelOp;
-
-    struct TrackingPreprocessRuntime {
-        ctx: Context,
-        simplified_calls: Vec<ExprId>,
-    }
-
-    impl SolvePreprocessRuntime for TrackingPreprocessRuntime {
-        fn context(&mut self) -> &mut Context {
-            &mut self.ctx
-        }
-
-        fn simplify_for_solve(&mut self, expr: ExprId) -> ExprId {
-            self.simplified_calls.push(expr);
-            expr
-        }
-    }
-
-    struct MockResidualRuntime {
-        ctx: Context,
-        algebraic_out: ExprId,
-        trig_out: ExprId,
-        algebraic_calls: usize,
-        simplify_calls: usize,
-        trig_calls: usize,
-    }
-
-    impl ResidualRewriteRuntime for MockResidualRuntime {
-        fn context(&mut self) -> &mut Context {
-            &mut self.ctx
-        }
-
-        fn expand_algebraic(&mut self, _expr: ExprId) -> ExprId {
-            self.algebraic_calls += 1;
-            self.algebraic_out
-        }
-
-        fn simplify_for_solve(&mut self, expr: ExprId) -> ExprId {
-            self.simplify_calls += 1;
-            expr
-        }
-
-        fn expand_trig(&mut self, _expr: ExprId) -> ExprId {
-            self.trig_calls += 1;
-            self.trig_out
-        }
-    }
+    use std::cell::{Cell, RefCell};
 
     #[test]
     fn symbolic_number_vs_variable() {
@@ -576,32 +393,23 @@ mod tests {
         );
     }
 
-    #[derive(Default)]
-    struct TestDiscreteVerificationRuntime {
-        calls: usize,
-    }
-
-    impl DiscreteVerificationRuntime for TestDiscreteVerificationRuntime {
-        fn verify_discrete(&mut self, solution: ExprId) -> bool {
-            self.calls += 1;
-            solution.index() % 2 == 1
-        }
-    }
-
     #[test]
-    fn retain_verified_discrete_with_runtime_keeps_only_verified() {
+    fn retain_verified_discrete_invokes_verifier_for_each_solution() {
         let sols = vec![
             cas_ast::ExprId::from_raw(1),
             cas_ast::ExprId::from_raw(2),
             cas_ast::ExprId::from_raw(3),
         ];
-        let mut runtime = TestDiscreteVerificationRuntime::default();
-        let kept = retain_verified_discrete_with_runtime(sols, &mut runtime);
+        let calls = Cell::new(0usize);
+        let kept = retain_verified_discrete(sols, |solution| {
+            calls.set(calls.get() + 1);
+            solution.index() % 2 == 1
+        });
         assert_eq!(
             kept,
             vec![cas_ast::ExprId::from_raw(1), cas_ast::ExprId::from_raw(3)]
         );
-        assert_eq!(runtime.calls, 3);
+        assert_eq!(calls.get(), 3);
     }
 
     #[test]
@@ -632,20 +440,18 @@ mod tests {
     }
 
     #[test]
-    fn merge_symbolic_with_verified_numeric_with_runtime_preserves_order_and_filters_numeric() {
+    fn merge_symbolic_with_verified_numeric_invokes_numeric_verifier_for_each_candidate() {
         let x = cas_ast::ExprId::from_raw(11);
         let y = cas_ast::ExprId::from_raw(12);
         let two = cas_ast::ExprId::from_raw(2);
         let three = cas_ast::ExprId::from_raw(3);
-        let mut runtime = TestDiscreteVerificationRuntime::default();
-
-        let out = merge_symbolic_with_verified_numeric_with_runtime(
-            vec![x, y],
-            vec![two, three],
-            &mut runtime,
-        );
+        let calls = Cell::new(0usize);
+        let out = merge_symbolic_with_verified_numeric(vec![x, y], vec![two, three], |solution| {
+            calls.set(calls.get() + 1);
+            solution == three
+        });
         assert_eq!(out, vec![x, y, three]);
-        assert_eq!(runtime.calls, 2);
+        assert_eq!(calls.get(), 2);
     }
 
     #[test]
@@ -716,24 +522,31 @@ mod tests {
 
     #[test]
     fn simplify_equation_sides_for_var_only_simplifies_sides_with_variable() {
-        let mut runtime = TrackingPreprocessRuntime {
-            ctx: Context::new(),
-            simplified_calls: vec![],
-        };
-        let x = runtime.ctx.var("x");
-        let one = runtime.ctx.num(1);
-        let two = runtime.ctx.num(2);
-        let lhs = runtime.ctx.add(Expr::Add(x, one));
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let lhs = ctx.add(Expr::Add(x, one));
         let eq = Equation {
             lhs,
             rhs: two,
             op: RelOp::Eq,
         };
+        let simplified_calls = RefCell::new(Vec::new());
 
-        let simplified = simplify_equation_sides_for_var_with_runtime(&mut runtime, &eq, "x");
+        let simplified = simplify_equation_sides_for_var_with(
+            &eq,
+            "x",
+            |expr, _| expr == lhs,
+            |expr| {
+                simplified_calls.borrow_mut().push(expr);
+                expr
+            },
+            |_expr| None,
+        );
         assert_eq!(simplified.lhs, lhs);
         assert_eq!(simplified.rhs, two);
-        assert_eq!(runtime.simplified_calls, vec![lhs]);
+        assert_eq!(*simplified_calls.borrow(), vec![lhs]);
     }
 
     #[test]
@@ -766,21 +579,34 @@ mod tests {
         let x = ctx.var("x");
         let one = ctx.num(1);
         let residual = ctx.add(Expr::Add(x, one));
+        let algebraic_calls = Cell::new(0usize);
+        let simplify_calls = Cell::new(0usize);
+        let trig_calls = Cell::new(0usize);
 
-        let mut runtime = MockResidualRuntime {
-            ctx,
-            algebraic_out: one,
-            trig_out: residual,
-            algebraic_calls: 0,
-            simplify_calls: 0,
-            trig_calls: 0,
-        };
-
-        let normalized = normalize_variable_residual_with_runtime(&mut runtime, residual, "x");
+        let normalized = normalize_variable_residual_with(
+            residual,
+            "x",
+            |expr, _| expr == residual,
+            |_expr| {
+                algebraic_calls.set(algebraic_calls.get() + 1);
+                one
+            },
+            |expr| {
+                simplify_calls.set(simplify_calls.get() + 1);
+                expr
+            },
+            |_expr| {
+                trig_calls.set(trig_calls.get() + 1);
+                residual
+            },
+            |current, candidate, var| {
+                accept_residual_rewrite_candidate(&ctx, current, candidate, var)
+            },
+        );
         assert_eq!(normalized, one);
-        assert_eq!(runtime.algebraic_calls, 1);
-        assert_eq!(runtime.simplify_calls, 1);
-        assert_eq!(runtime.trig_calls, 0);
+        assert_eq!(algebraic_calls.get(), 1);
+        assert_eq!(simplify_calls.get(), 1);
+        assert_eq!(trig_calls.get(), 0);
     }
 
     #[test]
@@ -791,20 +617,33 @@ mod tests {
         let residual = ctx.add(Expr::Add(x, one));
         let algebraic_cosmetic = residual;
         let trig_eliminated = one;
+        let algebraic_calls = Cell::new(0usize);
+        let simplify_calls = Cell::new(0usize);
+        let trig_calls = Cell::new(0usize);
 
-        let mut runtime = MockResidualRuntime {
-            ctx,
-            algebraic_out: algebraic_cosmetic,
-            trig_out: trig_eliminated,
-            algebraic_calls: 0,
-            simplify_calls: 0,
-            trig_calls: 0,
-        };
-
-        let normalized = normalize_variable_residual_with_runtime(&mut runtime, residual, "x");
+        let normalized = normalize_variable_residual_with(
+            residual,
+            "x",
+            |expr, _| expr == residual,
+            |_expr| {
+                algebraic_calls.set(algebraic_calls.get() + 1);
+                algebraic_cosmetic
+            },
+            |expr| {
+                simplify_calls.set(simplify_calls.get() + 1);
+                expr
+            },
+            |_expr| {
+                trig_calls.set(trig_calls.get() + 1);
+                trig_eliminated
+            },
+            |current, candidate, var| {
+                accept_residual_rewrite_candidate(&ctx, current, candidate, var)
+            },
+        );
         assert_eq!(normalized, trig_eliminated);
-        assert_eq!(runtime.algebraic_calls, 1);
-        assert_eq!(runtime.simplify_calls, 1);
-        assert_eq!(runtime.trig_calls, 1);
+        assert_eq!(algebraic_calls.get(), 1);
+        assert_eq!(simplify_calls.get(), 1);
+        assert_eq!(trig_calls.get(), 1);
     }
 }

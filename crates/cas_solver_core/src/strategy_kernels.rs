@@ -34,16 +34,6 @@ impl StrategyExecutionItem {
     }
 }
 
-/// Runtime contract for executing strategy rewrite kernels.
-pub trait StrategyKernelRuntime {
-    /// Mutable access to expression context.
-    fn context(&mut self) -> &mut Context;
-    /// Simplify an expression according to caller policy.
-    fn simplify_expr(&mut self, expr: ExprId) -> ExprId;
-    /// Render an expression for didactic narration.
-    fn render_expr(&mut self, expr: ExprId) -> String;
-}
-
 /// Side-routing plan for isolation strategy applicability.
 #[derive(Debug, Clone, PartialEq)]
 pub enum IsolationStrategyRouting {
@@ -51,20 +41,6 @@ pub enum IsolationStrategyRouting {
     VariableOnBothSides,
     SwapSides { rewrite: TermIsolationRewritePlan },
     DirectIsolation,
-}
-
-/// Runtime contract for isolation-strategy routing orchestration.
-pub trait IsolationStrategyRuntime<E, S> {
-    /// Solve `equation` recursively for `var`.
-    fn solve_equation(
-        &mut self,
-        equation: &Equation,
-        var: &str,
-    ) -> Result<(SolutionSet, Vec<S>), E>;
-    /// Convert swap-side item into caller-owned step payload.
-    fn map_swap_item_to_step(&mut self, item: TermIsolationRewriteExecutionItem) -> S;
-    /// Build caller-specific error for missing variable.
-    fn variable_not_found_error(&mut self, var: &str) -> E;
 }
 
 /// Derive side-routing for isolation strategy from variable presence.
@@ -80,48 +56,6 @@ pub fn derive_isolation_strategy_routing(
             rewrite: plan_swap_sides_step(eq),
         },
         EquationVarPresence::LhsOnly => IsolationStrategyRouting::DirectIsolation,
-    }
-}
-
-/// Execute isolation strategy for a pre-derived routing decision.
-///
-/// Returns `None` only when variable appears on both sides (let other
-/// strategies rewrite first). Otherwise returns either solved result or error.
-pub fn solve_isolation_strategy_routing_with_runtime<R, E, S>(
-    routing: IsolationStrategyRouting,
-    eq: &Equation,
-    var: &str,
-    include_item: bool,
-    runtime: &mut R,
-) -> Option<Result<(SolutionSet, Vec<S>), E>>
-where
-    R: IsolationStrategyRuntime<E, S>,
-{
-    match routing {
-        IsolationStrategyRouting::VariableNotFound => {
-            Some(Err(runtime.variable_not_found_error(var)))
-        }
-        IsolationStrategyRouting::VariableOnBothSides => None,
-        IsolationStrategyRouting::SwapSides { rewrite } => {
-            let first_item = if include_item {
-                first_term_isolation_rewrite_execution_item(&rewrite)
-            } else {
-                None
-            };
-            let solved_swap = runtime.solve_equation(&rewrite.equation, var);
-            Some(match solved_swap {
-                Ok((solution_set, mut substeps)) => {
-                    let mut steps = Vec::new();
-                    if let Some(item) = first_item {
-                        steps.push(runtime.map_swap_item_to_step(item));
-                    }
-                    steps.append(&mut substeps);
-                    Ok((solution_set, steps))
-                }
-                Err(e) => Err(e),
-            })
-        }
-        IsolationStrategyRouting::DirectIsolation => Some(runtime.solve_equation(eq, var)),
     }
 }
 
@@ -321,32 +255,6 @@ where
     })
 }
 
-/// Derive, simplify, and materialize collect-terms rewrite via runtime.
-pub fn execute_collect_terms_rewrite_with_runtime<R>(
-    runtime: &mut R,
-    eq: &Equation,
-    var: &str,
-) -> Option<CollectTermsSolvedRewrite>
-where
-    R: StrategyKernelRuntime,
-{
-    let kernel = {
-        let ctx = runtime.context();
-        derive_collect_terms_kernel(ctx, eq, var)?
-    };
-    let simp_lhs = runtime.simplify_expr(kernel.rewritten.lhs);
-    let simp_rhs = runtime.simplify_expr(kernel.rewritten.rhs);
-    let execution =
-        build_collect_terms_execution_with(simp_lhs, simp_rhs, eq.op.clone(), eq.rhs, |id| {
-            runtime.render_expr(id)
-        });
-    let items = collect_collect_terms_execution_items(&execution);
-    Some(CollectTermsSolvedRewrite {
-        equation: execution.equation,
-        items,
-    })
-}
-
 /// Execute recursive solve for a materialized collect-terms rewrite.
 pub fn solve_collect_terms_rewrite_with<E, T, FSolve>(
     rewrite: CollectTermsSolvedRewrite,
@@ -404,63 +312,6 @@ where
         solution_set,
         steps,
     })
-}
-
-/// Runtime contract for collect-terms rewrite solve orchestration.
-pub trait CollectTermsRewriteRuntime<E, S> {
-    /// Solve rewritten equation recursively for `var`.
-    fn solve_rewritten(
-        &mut self,
-        equation: &Equation,
-        var: &str,
-    ) -> Result<(SolutionSet, Vec<S>), E>;
-    /// Convert one optional rewrite item into a caller step payload.
-    fn map_item_to_step(&mut self, item: StrategyExecutionItem) -> S;
-}
-
-/// Execute collect-terms rewrite solving + optional item dispatch via runtime.
-pub fn solve_collect_terms_rewrite_pipeline_with_item_runtime<E, S, R>(
-    rewrite: CollectTermsSolvedRewrite,
-    var: &str,
-    include_item: bool,
-    runtime: &mut R,
-) -> Result<CollectTermsRewriteSolved<S>, E>
-where
-    R: CollectTermsRewriteRuntime<E, S>,
-{
-    let mut steps = Vec::new();
-    if include_item {
-        if let Some(item) = rewrite.items.first().cloned() {
-            steps.push(runtime.map_item_to_step(item));
-        }
-    }
-    let (solution_set, mut sub_steps) = runtime.solve_rewritten(&rewrite.equation, var)?;
-    steps.append(&mut sub_steps);
-    Ok(CollectTermsRewriteSolved {
-        solution_set,
-        steps,
-    })
-}
-
-/// Derive, materialize, and solve one collect-terms rewrite via runtime.
-///
-/// Returns `None` when collect-terms is not applicable to `eq`.
-pub fn solve_collect_terms_rewrite_pipeline_with_item_runtime_for_var<E, S, R>(
-    runtime: &mut R,
-    eq: &Equation,
-    var: &str,
-    include_item: bool,
-) -> Option<Result<CollectTermsRewriteSolved<S>, E>>
-where
-    R: StrategyKernelRuntime + CollectTermsRewriteRuntime<E, S>,
-{
-    let rewrite = execute_collect_terms_rewrite_with_runtime(runtime, eq, var)?;
-    Some(solve_collect_terms_rewrite_pipeline_with_item_runtime(
-        rewrite,
-        var,
-        include_item,
-        runtime,
-    ))
 }
 
 /// Rewrite payload for `RationalExponentStrategy`.
@@ -607,51 +458,6 @@ where
     execute_rational_exponent_rewrite_with(ctx, eq, var, lhs_has_var, rhs_has_var, simplify_expr)
 }
 
-/// Derive, simplify, and materialize rational-exponent rewrite via runtime.
-pub fn execute_rational_exponent_rewrite_with_runtime<R>(
-    runtime: &mut R,
-    eq: &Equation,
-    var: &str,
-    lhs_has_var: bool,
-    rhs_has_var: bool,
-) -> Option<RationalExponentSolvedRewrite>
-where
-    R: StrategyKernelRuntime,
-{
-    let kernel = {
-        let ctx = runtime.context();
-        derive_rational_exponent_kernel(ctx, eq, var, lhs_has_var, rhs_has_var)?
-    };
-    let sim_lhs = runtime.simplify_expr(kernel.rewritten.lhs);
-    let sim_rhs = runtime.simplify_expr(kernel.rewritten.rhs);
-    let execution = build_rational_exponent_execution(kernel.q, sim_lhs, sim_rhs);
-    let items = collect_rational_exponent_execution_items(&execution);
-    Some(RationalExponentSolvedRewrite {
-        equation: execution.equation,
-        items,
-    })
-}
-
-/// Derive, simplify, and materialize rational-exponent rewrite via runtime,
-/// deriving side presence from `eq` for `var`.
-pub fn execute_rational_exponent_rewrite_with_runtime_for_var<R>(
-    runtime: &mut R,
-    eq: &Equation,
-    var: &str,
-) -> Option<RationalExponentSolvedRewrite>
-where
-    R: StrategyKernelRuntime,
-{
-    let (lhs_has_var, rhs_has_var) = {
-        let ctx = runtime.context();
-        (
-            contains_var(ctx, eq.lhs, var),
-            contains_var(ctx, eq.rhs, var),
-        )
-    };
-    execute_rational_exponent_rewrite_with_runtime(runtime, eq, var, lhs_has_var, rhs_has_var)
-}
-
 /// Execute recursive solve for a materialized rational-exponent rewrite.
 pub fn solve_rational_exponent_rewrite_with<E, T, FSolve>(
     rewrite: RationalExponentSolvedRewrite,
@@ -676,20 +482,6 @@ where
     let item = rewrite.items.first().cloned();
     let solved = solve_rewritten(item, &rewrite.equation)?;
     Ok(RationalExponentSolved { rewrite, solved })
-}
-
-/// Runtime contract for rational-exponent rewrite solve orchestration.
-pub trait RationalExponentRewriteRuntime<E, S> {
-    /// Solve rewritten equation recursively for `var`.
-    fn solve_rewritten(
-        &mut self,
-        equation: &Equation,
-        var: &str,
-    ) -> Result<(SolutionSet, Vec<S>), E>;
-    /// Convert one optional rewrite item into a caller step payload.
-    fn map_item_to_step(&mut self, item: StrategyExecutionItem) -> S;
-    /// Verify one discrete candidate against caller policy.
-    fn verify_discrete_solution(&mut self, solution: ExprId) -> bool;
 }
 
 /// Solved result for a rational-exponent rewrite pipeline.
@@ -736,98 +528,10 @@ where
     })
 }
 
-/// Execute rational-exponent rewrite solving + optional item dispatch + discrete verification.
-pub fn solve_rational_exponent_rewrite_pipeline_with_item<E, S, R>(
-    rewrite: RationalExponentSolvedRewrite,
-    var: &str,
-    include_item: bool,
-    runtime: &mut R,
-) -> Result<RationalExponentRewriteSolved<S>, E>
-where
-    R: RationalExponentRewriteRuntime<E, S>,
-{
-    let mut steps = Vec::new();
-    if include_item {
-        if let Some(item) = rewrite.items.first().cloned() {
-            steps.push(runtime.map_item_to_step(item));
-        }
-    }
-    let (set, mut sub_steps) = runtime.solve_rewritten(&rewrite.equation, var)?;
-    steps.append(&mut sub_steps);
-    let solution_set = if let SolutionSet::Discrete(sols) = set {
-        SolutionSet::Discrete(crate::solve_analysis::retain_verified_discrete(
-            sols,
-            |sol| runtime.verify_discrete_solution(sol),
-        ))
-    } else {
-        set
-    };
-
-    Ok(RationalExponentRewriteSolved {
-        solution_set,
-        steps,
-    })
-}
-
-/// Derive, materialize, and solve one rational-exponent rewrite via runtime.
-///
-/// Returns `None` when rational-exponent rewrite is not applicable to `eq`.
-pub fn solve_rational_exponent_rewrite_pipeline_with_item_runtime_for_var<E, S, R>(
-    runtime: &mut R,
-    eq: &Equation,
-    var: &str,
-    include_item: bool,
-) -> Option<Result<RationalExponentRewriteSolved<S>, E>>
-where
-    R: StrategyKernelRuntime + RationalExponentRewriteRuntime<E, S>,
-{
-    let rewrite = execute_rational_exponent_rewrite_with_runtime_for_var(runtime, eq, var)?;
-    Some(solve_rational_exponent_rewrite_pipeline_with_item(
-        rewrite,
-        var,
-        include_item,
-        runtime,
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use cas_ast::{Context, Expr};
-
-    struct MockIsolationRuntime {
-        solved_with: Vec<Equation>,
-    }
-
-    impl MockIsolationRuntime {
-        fn new() -> Self {
-            Self {
-                solved_with: Vec::new(),
-            }
-        }
-    }
-
-    impl IsolationStrategyRuntime<String, String> for MockIsolationRuntime {
-        fn solve_equation(
-            &mut self,
-            equation: &Equation,
-            _var: &str,
-        ) -> Result<(SolutionSet, Vec<String>), String> {
-            self.solved_with.push(equation.clone());
-            Ok((
-                SolutionSet::Discrete(vec![equation.lhs]),
-                vec![format!("solved {}", equation.lhs)],
-            ))
-        }
-
-        fn map_swap_item_to_step(&mut self, item: TermIsolationRewriteExecutionItem) -> String {
-            item.description
-        }
-
-        fn variable_not_found_error(&mut self, var: &str) -> String {
-            format!("var-not-found:{var}")
-        }
-    }
 
     #[test]
     fn collect_terms_kernel_requires_var_on_both_sides() {
@@ -932,7 +636,7 @@ mod tests {
     }
 
     #[test]
-    fn solve_isolation_strategy_routing_with_runtime_direct_calls_runtime_once() {
+    fn solve_isolation_strategy_routing_with_direct_calls_solver_once() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let y = ctx.var("y");
@@ -941,25 +645,33 @@ mod tests {
             rhs: y,
             op: RelOp::Eq,
         };
-        let mut runtime = MockIsolationRuntime::new();
-        let solved = solve_isolation_strategy_routing_with_runtime(
+        let mut solved_with = Vec::new();
+        let solved = solve_isolation_strategy_routing_with(
             IsolationStrategyRouting::DirectIsolation,
             &eq,
             "x",
             true,
-            &mut runtime,
+            |equation, _| {
+                solved_with.push(equation.clone());
+                Ok::<_, String>((
+                    SolutionSet::Discrete(vec![equation.lhs]),
+                    vec![format!("solved {}", equation.lhs)],
+                ))
+            },
+            |item| item.description,
+            |var| format!("var-not-found:{var}"),
         )
         .expect("direct isolation should be applicable")
-        .expect("runtime should solve");
+        .expect("solve should succeed");
 
-        assert_eq!(runtime.solved_with.len(), 1);
-        assert_eq!(runtime.solved_with[0], eq);
+        assert_eq!(solved_with.len(), 1);
+        assert_eq!(solved_with[0], eq);
         assert!(matches!(solved.0, SolutionSet::Discrete(_)));
         assert_eq!(solved.1, vec![format!("solved {}", eq.lhs)]);
     }
 
     #[test]
-    fn solve_isolation_strategy_routing_with_runtime_swap_prepends_item_when_enabled() {
+    fn solve_isolation_strategy_routing_with_swap_prepends_item_when_enabled() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let y = ctx.var("y");
@@ -969,23 +681,35 @@ mod tests {
             op: RelOp::Lt,
         };
         let routing = derive_isolation_strategy_routing(&ctx, &eq, "x");
-        let mut runtime = MockIsolationRuntime::new();
-        let solved =
-            solve_isolation_strategy_routing_with_runtime(routing, &eq, "x", true, &mut runtime)
-                .expect("swap route should be applicable")
-                .expect("runtime should solve");
+        let mut solved_with = Vec::new();
+        let solved = solve_isolation_strategy_routing_with(
+            routing,
+            &eq,
+            "x",
+            true,
+            |equation, _| {
+                solved_with.push(equation.clone());
+                Ok::<_, String>((
+                    SolutionSet::Discrete(vec![equation.lhs]),
+                    vec![format!("solved {}", equation.lhs)],
+                ))
+            },
+            |item| item.description,
+            |var| format!("var-not-found:{var}"),
+        )
+        .expect("swap route should be applicable")
+        .expect("solve should succeed");
 
-        assert_eq!(runtime.solved_with.len(), 1);
-        // swap-side rewrite should call runtime with swapped equation
-        assert_eq!(runtime.solved_with[0].lhs, eq.rhs);
-        assert_eq!(runtime.solved_with[0].rhs, eq.lhs);
-        assert_eq!(runtime.solved_with[0].op, RelOp::Gt);
+        assert_eq!(solved_with.len(), 1);
+        assert_eq!(solved_with[0].lhs, eq.rhs);
+        assert_eq!(solved_with[0].rhs, eq.lhs);
+        assert_eq!(solved_with[0].op, RelOp::Gt);
         assert_eq!(solved.1.len(), 2);
         assert_eq!(solved.1[0], "Swap sides to put variable on LHS");
     }
 
     #[test]
-    fn solve_isolation_strategy_routing_with_runtime_swap_omits_item_when_disabled() {
+    fn solve_isolation_strategy_routing_with_swap_omits_item_when_disabled() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let y = ctx.var("y");
@@ -995,22 +719,32 @@ mod tests {
             op: RelOp::Eq,
         };
         let routing = derive_isolation_strategy_routing(&ctx, &eq, "x");
-        let mut runtime = MockIsolationRuntime::new();
-        let solved =
-            solve_isolation_strategy_routing_with_runtime(routing, &eq, "x", false, &mut runtime)
-                .expect("swap route should be applicable")
-                .expect("runtime should solve");
+        let mut solved_with = Vec::new();
+        let solved = solve_isolation_strategy_routing_with(
+            routing,
+            &eq,
+            "x",
+            false,
+            |equation, _| {
+                solved_with.push(equation.clone());
+                Ok::<_, String>((
+                    SolutionSet::Discrete(vec![equation.lhs]),
+                    vec![format!("solved {}", equation.lhs)],
+                ))
+            },
+            |item| item.description,
+            |var| format!("var-not-found:{var}"),
+        )
+        .expect("swap route should be applicable")
+        .expect("solve should succeed");
 
-        assert_eq!(runtime.solved_with.len(), 1);
+        assert_eq!(solved_with.len(), 1);
         assert_eq!(solved.1.len(), 1);
-        assert_eq!(
-            solved.1[0],
-            format!("solved {}", runtime.solved_with[0].lhs)
-        );
+        assert_eq!(solved.1[0], format!("solved {}", solved_with[0].lhs));
     }
 
     #[test]
-    fn solve_isolation_strategy_routing_with_runtime_variable_not_found_returns_error() {
+    fn solve_isolation_strategy_routing_with_variable_not_found_returns_error() {
         let mut ctx = Context::new();
         let y = ctx.var("y");
         let z = ctx.var("z");
@@ -1019,13 +753,18 @@ mod tests {
             rhs: z,
             op: RelOp::Eq,
         };
-        let mut runtime = MockIsolationRuntime::new();
-        let solved = solve_isolation_strategy_routing_with_runtime(
+        let mut solve_calls = 0;
+        let solved = solve_isolation_strategy_routing_with(
             IsolationStrategyRouting::VariableNotFound,
             &eq,
             "x",
             true,
-            &mut runtime,
+            |_equation, _| {
+                solve_calls += 1;
+                Ok::<_, String>((SolutionSet::Discrete(vec![]), Vec::<String>::new()))
+            },
+            |item| item.description,
+            |var| format!("var-not-found:{var}"),
         )
         .expect("variable-not-found should be terminal");
 
@@ -1033,11 +772,11 @@ mod tests {
             solved.expect_err("expected variable-not-found error"),
             "var-not-found:x"
         );
-        assert!(runtime.solved_with.is_empty());
+        assert_eq!(solve_calls, 0);
     }
 
     #[test]
-    fn solve_isolation_strategy_routing_with_runtime_both_sides_is_not_applicable() {
+    fn solve_isolation_strategy_routing_with_both_sides_is_not_applicable() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let one = ctx.num(1);
@@ -1048,16 +787,21 @@ mod tests {
             rhs,
             op: RelOp::Eq,
         };
-        let mut runtime = MockIsolationRuntime::new();
-        let solved = solve_isolation_strategy_routing_with_runtime(
+        let mut solve_calls = 0;
+        let solved = solve_isolation_strategy_routing_with(
             IsolationStrategyRouting::VariableOnBothSides,
             &eq,
             "x",
             true,
-            &mut runtime,
+            |_equation, _| {
+                solve_calls += 1;
+                Ok::<_, String>((SolutionSet::Discrete(vec![]), Vec::<String>::new()))
+            },
+            |item| item.description,
+            |var| format!("var-not-found:{var}"),
         );
         assert!(solved.is_none());
-        assert!(runtime.solved_with.is_empty());
+        assert_eq!(solve_calls, 0);
     }
 
     #[test]
@@ -1423,206 +1167,6 @@ mod tests {
         assert_eq!(solved.steps, vec!["sub-step".to_string()]);
     }
 
-    struct TestCollectTermsRuntime {
-        ctx: Context,
-        solve_result: (SolutionSet, Vec<String>),
-        last_var: Option<String>,
-    }
-
-    impl StrategyKernelRuntime for TestCollectTermsRuntime {
-        fn context(&mut self) -> &mut Context {
-            &mut self.ctx
-        }
-
-        fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
-            expr
-        }
-
-        fn render_expr(&mut self, expr: ExprId) -> String {
-            format!("{expr:?}")
-        }
-    }
-
-    impl CollectTermsRewriteRuntime<&'static str, String> for TestCollectTermsRuntime {
-        fn solve_rewritten(
-            &mut self,
-            _: &Equation,
-            var: &str,
-        ) -> Result<(SolutionSet, Vec<String>), &'static str> {
-            self.last_var = Some(var.to_string());
-            Ok(self.solve_result.clone())
-        }
-
-        fn map_item_to_step(&mut self, item: StrategyExecutionItem) -> String {
-            item.description
-        }
-    }
-
-    #[test]
-    fn solve_collect_terms_rewrite_pipeline_with_item_runtime_forwards_item_and_substeps() {
-        let mut ctx = Context::new();
-        let lhs = ctx.var("lhs");
-        let rhs = ctx.var("rhs");
-        let rewrite = CollectTermsSolvedRewrite {
-            equation: Equation {
-                lhs,
-                rhs,
-                op: RelOp::Eq,
-            },
-            items: vec![StrategyExecutionItem {
-                equation: Equation {
-                    lhs,
-                    rhs,
-                    op: RelOp::Eq,
-                },
-                description: "Subtract rhs from both sides".to_string(),
-            }],
-        };
-        let mut runtime = TestCollectTermsRuntime {
-            ctx: Context::new(),
-            solve_result: (
-                SolutionSet::Discrete(vec![lhs]),
-                vec!["runtime-sub-step".to_string()],
-            ),
-            last_var: None,
-        };
-
-        let solved = solve_collect_terms_rewrite_pipeline_with_item_runtime(
-            rewrite,
-            "x",
-            true,
-            &mut runtime,
-        )
-        .expect("runtime collect pipeline should succeed");
-
-        assert_eq!(runtime.last_var.as_deref(), Some("x"));
-        assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![lhs]));
-        assert_eq!(
-            solved.steps,
-            vec![
-                "Subtract rhs from both sides".to_string(),
-                "runtime-sub-step".to_string()
-            ]
-        );
-    }
-
-    #[test]
-    fn solve_collect_terms_rewrite_pipeline_with_item_runtime_omits_item_when_disabled() {
-        let mut ctx = Context::new();
-        let lhs = ctx.var("lhs");
-        let rhs = ctx.var("rhs");
-        let rewrite = CollectTermsSolvedRewrite {
-            equation: Equation {
-                lhs,
-                rhs,
-                op: RelOp::Eq,
-            },
-            items: vec![StrategyExecutionItem {
-                equation: Equation {
-                    lhs,
-                    rhs,
-                    op: RelOp::Eq,
-                },
-                description: "Subtract rhs from both sides".to_string(),
-            }],
-        };
-        let mut runtime = TestCollectTermsRuntime {
-            ctx: Context::new(),
-            solve_result: (
-                SolutionSet::Discrete(vec![rhs]),
-                vec!["runtime-only-sub-step".to_string()],
-            ),
-            last_var: None,
-        };
-
-        let solved = solve_collect_terms_rewrite_pipeline_with_item_runtime(
-            rewrite,
-            "x",
-            false,
-            &mut runtime,
-        )
-        .expect("runtime collect pipeline should succeed");
-
-        assert_eq!(runtime.last_var.as_deref(), Some("x"));
-        assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![rhs]));
-        assert_eq!(solved.steps, vec!["runtime-only-sub-step".to_string()]);
-    }
-
-    #[test]
-    fn solve_collect_terms_rewrite_pipeline_with_item_runtime_for_var_materializes_and_solves() {
-        let mut runtime = TestCollectTermsRuntime {
-            ctx: Context::new(),
-            solve_result: (
-                SolutionSet::Discrete(vec![]),
-                vec!["runtime-sub-step".to_string()],
-            ),
-            last_var: None,
-        };
-        let x = runtime.ctx.var("x");
-        let one = runtime.ctx.num(1);
-        let two = runtime.ctx.num(2);
-        let lhs = runtime.ctx.add(Expr::Add(x, one));
-        let rhs = runtime.ctx.add(Expr::Add(x, two));
-        let eq = Equation {
-            lhs,
-            rhs,
-            op: RelOp::Eq,
-        };
-
-        let solved = solve_collect_terms_rewrite_pipeline_with_item_runtime_for_var(
-            &mut runtime,
-            &eq,
-            "x",
-            true,
-        )
-        .expect("collect rewrite should materialize")
-        .expect("collect pipeline should succeed");
-
-        assert_eq!(runtime.last_var.as_deref(), Some("x"));
-        assert_eq!(solved.steps.len(), 2);
-    }
-
-    struct TestRationalExponentRuntime {
-        ctx: Context,
-        solve_result: (SolutionSet, Vec<String>),
-        last_var: Option<String>,
-        verified: Vec<ExprId>,
-    }
-
-    impl StrategyKernelRuntime for TestRationalExponentRuntime {
-        fn context(&mut self) -> &mut Context {
-            &mut self.ctx
-        }
-
-        fn simplify_expr(&mut self, expr: ExprId) -> ExprId {
-            expr
-        }
-
-        fn render_expr(&mut self, expr: ExprId) -> String {
-            format!("{expr:?}")
-        }
-    }
-
-    impl RationalExponentRewriteRuntime<&'static str, String> for TestRationalExponentRuntime {
-        fn solve_rewritten(
-            &mut self,
-            _: &Equation,
-            var: &str,
-        ) -> Result<(SolutionSet, Vec<String>), &'static str> {
-            self.last_var = Some(var.to_string());
-            Ok(self.solve_result.clone())
-        }
-
-        fn map_item_to_step(&mut self, item: StrategyExecutionItem) -> String {
-            item.description
-        }
-
-        fn verify_discrete_solution(&mut self, solution: ExprId) -> bool {
-            self.verified.push(solution);
-            true
-        }
-    }
-
     #[test]
     fn solve_rational_exponent_rewrite_with_runs_solver_on_rewritten_equation() {
         let mut ctx = Context::new();
@@ -1686,40 +1230,59 @@ mod tests {
     }
 
     #[test]
-    fn solve_rational_exponent_rewrite_pipeline_with_item_runtime_for_var_materializes_and_solves()
-    {
-        let mut runtime = TestRationalExponentRuntime {
-            ctx: Context::new(),
-            solve_result: (
-                SolutionSet::Discrete(vec![]),
-                vec!["runtime-sub-step".to_string()],
-            ),
-            last_var: None,
-            verified: Vec::new(),
-        };
-        let x = runtime.ctx.var("x");
-        let three = runtime.ctx.num(3);
-        let two = runtime.ctx.num(2);
-        let exponent = runtime.ctx.add(Expr::Div(three, two));
-        let lhs = runtime.ctx.add(Expr::Pow(x, exponent));
-        let rhs = runtime.ctx.num(8);
-        let eq = Equation {
-            lhs,
-            rhs,
-            op: RelOp::Eq,
+    fn solve_rational_exponent_rewrite_pipeline_with_item_with_filters_discrete_solutions() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let rewrite = RationalExponentSolvedRewrite {
+            equation: Equation {
+                lhs: a,
+                rhs: b,
+                op: RelOp::Eq,
+            },
+            items: vec![StrategyExecutionItem {
+                equation: Equation {
+                    lhs: a,
+                    rhs: b,
+                    op: RelOp::Eq,
+                },
+                description: "Raise both sides to power 2 to eliminate fractional exponent"
+                    .to_string(),
+            }],
         };
 
-        let solved = solve_rational_exponent_rewrite_pipeline_with_item_runtime_for_var(
-            &mut runtime,
-            &eq,
+        let mut solve_calls = 0;
+        let mut mapped = 0;
+        let mut verified = Vec::new();
+        let solved = solve_rational_exponent_rewrite_pipeline_with_item_with(
+            rewrite,
             "x",
             true,
+            |equation, var| {
+                solve_calls += 1;
+                assert_eq!(equation.lhs, a);
+                assert_eq!(equation.rhs, b);
+                assert_eq!(var, "x");
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![a, b]),
+                    vec!["sub-step".to_string()],
+                ))
+            },
+            |item| {
+                mapped += 1;
+                item.description
+            },
+            |solution| {
+                verified.push(solution);
+                solution == a
+            },
         )
-        .expect("rational-exponent rewrite should materialize")
-        .expect("rational-exponent pipeline should succeed");
+        .expect("pipeline should succeed");
 
-        assert_eq!(runtime.last_var.as_deref(), Some("x"));
-        assert_eq!(runtime.verified.len(), 0);
+        assert_eq!(solve_calls, 1);
+        assert_eq!(mapped, 1);
+        assert_eq!(verified, vec![a, b]);
+        assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![a]));
         assert_eq!(solved.steps.len(), 2);
     }
 }

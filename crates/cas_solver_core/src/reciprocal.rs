@@ -154,19 +154,6 @@ pub struct ReciprocalPreparedExecution {
     pub numerator_status: NonZeroStatus,
 }
 
-/// Runtime contract for reciprocal solve orchestration.
-///
-/// This lets `cas_solver_core` host the reciprocal algorithm while callers
-/// inject their own simplification/proof engines.
-pub trait ReciprocalSolveRuntime {
-    /// Mutable access to the expression context.
-    fn context(&mut self) -> &mut Context;
-    /// Simplify one expression and return the rewritten root.
-    fn simplify_expr(&mut self, expr: ExprId) -> ExprId;
-    /// Prove whether an expression is non-zero.
-    fn prove_nonzero_status(&mut self, expr: ExprId) -> NonZeroStatus;
-}
-
 /// One reciprocal execution item with aligned equation and didactic step.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReciprocalExecutionItem {
@@ -233,31 +220,6 @@ where
         if include_items {
             for item in items {
                 steps.push(map_item_to_step(item));
-            }
-        }
-        (solutions, steps)
-    })
-}
-
-/// Runtime adapter for reciprocal execution didactic mapping.
-pub trait ReciprocalExecutionRuntime<S> {
-    fn map_item_to_step(&mut self, item: ReciprocalExecutionItem) -> S;
-}
-
-/// Runtime-based reciprocal execution pipeline with optional item mapping.
-pub fn solve_reciprocal_execution_pipeline_with_items_runtime<S, R>(
-    execution: ReciprocalSolveExecution,
-    include_items: bool,
-    runtime: &mut R,
-) -> ReciprocalSolvedExecution<(SolutionSet, Vec<S>)>
-where
-    R: ReciprocalExecutionRuntime<S>,
-{
-    solve_reciprocal_execution_with_items(execution, |items, solutions| {
-        let mut steps = Vec::new();
-        if include_items {
-            for item in items {
-                steps.push(runtime.map_item_to_step(item));
             }
         }
         (solutions, steps)
@@ -457,55 +419,6 @@ where
     Some(build_execution(var, kernel))
 }
 
-/// High-level reciprocal solve execution using an injected runtime.
-///
-/// Returns `None` when equation shape is not reciprocal-isolable.
-pub fn execute_reciprocal_solve_with_runtime<R>(
-    runtime: &mut R,
-    lhs: ExprId,
-    rhs: ExprId,
-    var: &str,
-) -> Option<ReciprocalSolveExecution>
-where
-    R: ReciprocalSolveRuntime,
-{
-    let runtime_cell = std::cell::RefCell::new(runtime);
-    execute_reciprocal_solve_with(
-        lhs,
-        rhs,
-        var,
-        |inner_lhs, inner_rhs, inner_var| {
-            let mut runtime_ref = runtime_cell.borrow_mut();
-            let ctx = runtime_ref.context();
-            derive_reciprocal_solve_kernel(ctx, inner_lhs, inner_rhs, inner_var)
-        },
-        |inner_var, kernel| {
-            let mut runtime_ref = runtime_cell.borrow_mut();
-            let raw_plan = {
-                let ctx = runtime_ref.context();
-                build_reciprocal_solve_plan(ctx, inner_var, kernel.numerator, kernel.denominator)
-            };
-            let combined_rhs_display = runtime_ref.simplify_expr(raw_plan.combined_rhs);
-            let solution_rhs_display = runtime_ref.simplify_expr(raw_plan.solution_rhs);
-            let guard_numerator = runtime_ref.simplify_expr(kernel.numerator);
-            let numerator_status = runtime_ref.prove_nonzero_status(guard_numerator);
-
-            let ctx = runtime_ref.context();
-            build_reciprocal_execution_from_kernel_prepared(
-                ctx,
-                inner_var,
-                kernel,
-                ReciprocalPreparedExecution {
-                    combined_rhs_display,
-                    solution_rhs_display,
-                    guard_numerator,
-                    numerator_status,
-                },
-            )
-        },
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -692,30 +605,6 @@ mod tests {
         assert!(matches!(execution.solutions, SolutionSet::Conditional(_)));
     }
 
-    struct MockReciprocalRuntime {
-        context: Context,
-        simplify_value: ExprId,
-        simplify_calls: usize,
-        prove_calls: usize,
-        prove_result: NonZeroStatus,
-    }
-
-    impl ReciprocalSolveRuntime for MockReciprocalRuntime {
-        fn context(&mut self) -> &mut Context {
-            &mut self.context
-        }
-
-        fn simplify_expr(&mut self, _expr: ExprId) -> ExprId {
-            self.simplify_calls += 1;
-            self.simplify_value
-        }
-
-        fn prove_nonzero_status(&mut self, _expr: ExprId) -> NonZeroStatus {
-            self.prove_calls += 1;
-            self.prove_result
-        }
-    }
-
     #[test]
     fn execute_reciprocal_solve_with_uses_injected_hooks() {
         let mut context = Context::new();
@@ -758,51 +647,27 @@ mod tests {
     }
 
     #[test]
-    fn execute_reciprocal_solve_with_runtime_uses_runtime_hooks() {
-        let mut context = Context::new();
-        let x = context.var("x");
-        let r1 = context.var("r1");
-        let one = context.num(1);
-        let lhs = context.add(Expr::Div(one, x));
-        let rhs = context.add(Expr::Div(one, r1));
-        let simplified = context.var("s");
-
-        let mut runtime = MockReciprocalRuntime {
-            context,
-            simplify_value: simplified,
-            simplify_calls: 0,
-            prove_calls: 0,
-            prove_result: NonZeroStatus::Unknown,
-        };
-
-        let execution = execute_reciprocal_solve_with_runtime(&mut runtime, lhs, rhs, "x")
-            .expect("reciprocal equation should be solvable");
-        assert_eq!(runtime.simplify_calls, 3);
-        assert_eq!(runtime.prove_calls, 1);
-        assert_eq!(execution.items.len(), 2);
-        assert_eq!(execution.items[0].equation.rhs, simplified);
-        assert_eq!(execution.items[1].equation.rhs, simplified);
-        assert!(matches!(execution.solutions, SolutionSet::Conditional(_)));
-    }
-
-    #[test]
-    fn execute_reciprocal_solve_with_runtime_rejects_non_reciprocal_shape() {
+    fn execute_reciprocal_solve_with_rejects_non_reciprocal_shape() {
         let mut context = Context::new();
         let x = context.var("x");
         let rhs = context.var("r");
-        let simplified = context.var("s");
-        let mut runtime = MockReciprocalRuntime {
-            context,
-            simplify_value: simplified,
-            simplify_calls: 0,
-            prove_calls: 0,
-            prove_result: NonZeroStatus::Unknown,
-        };
-
-        let execution = execute_reciprocal_solve_with_runtime(&mut runtime, x, rhs, "x");
+        let context_cell = std::cell::RefCell::new(context);
+        let build_calls = std::cell::Cell::new(0usize);
+        let execution = execute_reciprocal_solve_with(
+            x,
+            rhs,
+            "x",
+            |inner_lhs, inner_rhs, inner_var| {
+                let mut context_ref = context_cell.borrow_mut();
+                derive_reciprocal_solve_kernel(&mut context_ref, inner_lhs, inner_rhs, inner_var)
+            },
+            |_inner_var, _kernel| {
+                build_calls.set(build_calls.get() + 1);
+                panic!("build hook must not run for non-reciprocal shape")
+            },
+        );
         assert!(execution.is_none());
-        assert_eq!(runtime.simplify_calls, 0);
-        assert_eq!(runtime.prove_calls, 0);
+        assert_eq!(build_calls.get(), 0);
     }
 
     #[test]
@@ -902,14 +767,17 @@ mod tests {
         let execution =
             build_reciprocal_execution(&mut ctx, "x", n, d, c, s, n, NonZeroStatus::Unknown);
         let expected = execution.clone();
+        let map_calls = std::cell::Cell::new(0usize);
 
         let solved = solve_reciprocal_execution_pipeline_with_items(execution, true, |item| {
+            map_calls.set(map_calls.get() + 1);
             item.description
         });
 
         assert_eq!(solved.execution, expected);
         assert!(matches!(solved.solved.0, SolutionSet::Conditional(_)));
         assert_eq!(solved.solved.1.len(), expected.items.len());
+        assert_eq!(map_calls.get(), expected.items.len());
     }
 
     #[test]
@@ -924,55 +792,5 @@ mod tests {
 
         let solved = solve_reciprocal_execution_pipeline_with_items(execution, false, |_item| 1u8);
         assert!(solved.solved.1.is_empty());
-    }
-
-    #[derive(Default)]
-    struct TestReciprocalExecutionRuntime {
-        map_calls: usize,
-    }
-
-    impl ReciprocalExecutionRuntime<String> for TestReciprocalExecutionRuntime {
-        fn map_item_to_step(&mut self, item: ReciprocalExecutionItem) -> String {
-            self.map_calls += 1;
-            item.description
-        }
-    }
-
-    #[test]
-    fn solve_reciprocal_execution_pipeline_with_items_runtime_maps_steps_when_enabled() {
-        let mut ctx = Context::new();
-        let n = ctx.var("n");
-        let d = ctx.var("d");
-        let c = ctx.var("c");
-        let s = ctx.var("s");
-        let execution =
-            build_reciprocal_execution(&mut ctx, "x", n, d, c, s, n, NonZeroStatus::Unknown);
-        let expected = execution.clone();
-        let mut runtime = TestReciprocalExecutionRuntime::default();
-
-        let solved =
-            solve_reciprocal_execution_pipeline_with_items_runtime(execution, true, &mut runtime);
-
-        assert_eq!(solved.execution, expected);
-        assert!(matches!(solved.solved.0, SolutionSet::Conditional(_)));
-        assert_eq!(solved.solved.1.len(), expected.items.len());
-        assert_eq!(runtime.map_calls, expected.items.len());
-    }
-
-    #[test]
-    fn solve_reciprocal_execution_pipeline_with_items_runtime_omits_steps_when_disabled() {
-        let mut ctx = Context::new();
-        let n = ctx.var("n");
-        let d = ctx.var("d");
-        let c = ctx.var("c");
-        let s = ctx.var("s");
-        let execution =
-            build_reciprocal_execution(&mut ctx, "x", n, d, c, s, n, NonZeroStatus::Unknown);
-        let mut runtime = TestReciprocalExecutionRuntime::default();
-
-        let solved =
-            solve_reciprocal_execution_pipeline_with_items_runtime(execution, false, &mut runtime);
-        assert!(solved.solved.1.is_empty());
-        assert_eq!(runtime.map_calls, 0);
     }
 }
