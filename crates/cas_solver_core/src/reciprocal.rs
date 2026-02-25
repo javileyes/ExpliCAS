@@ -437,6 +437,28 @@ where
     Some(build_execution(var, kernel))
 }
 
+/// High-level reciprocal solve pipeline:
+/// derive kernel, build execution payload, and optionally map didactic items.
+pub fn execute_reciprocal_solve_pipeline_with_items<S, FDeriveKernel, FBuildExecution, FStep>(
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    include_items: bool,
+    derive_kernel: FDeriveKernel,
+    build_execution: FBuildExecution,
+    map_item_to_step: FStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FDeriveKernel: FnMut(ExprId, ExprId, &str) -> Option<ReciprocalSolveKernel>,
+    FBuildExecution: FnMut(&str, ReciprocalSolveKernel) -> ReciprocalSolveExecution,
+    FStep: FnMut(ReciprocalExecutionItem) -> S,
+{
+    let execution = execute_reciprocal_solve_with(lhs, rhs, var, derive_kernel, build_execution)?;
+    let solved_execution =
+        solve_reciprocal_execution_pipeline_with_items(execution, include_items, map_item_to_step);
+    Some(solved_execution.solved)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -722,6 +744,90 @@ mod tests {
         );
         assert!(execution.is_none());
         assert_eq!(build_calls.get(), 0);
+    }
+
+    #[test]
+    fn execute_reciprocal_solve_pipeline_with_items_maps_steps_when_enabled() {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let r = context.var("r");
+        let one = context.num(1);
+        let lhs = context.add(Expr::Div(one, x));
+        let rhs = context.add(Expr::Div(one, r));
+        let context_cell = std::cell::RefCell::new(context);
+        let map_calls = std::cell::Cell::new(0usize);
+
+        let solved = execute_reciprocal_solve_pipeline_with_items(
+            lhs,
+            rhs,
+            "x",
+            true,
+            |inner_lhs, inner_rhs, inner_var| {
+                let mut context_ref = context_cell.borrow_mut();
+                derive_reciprocal_solve_kernel(&mut context_ref, inner_lhs, inner_rhs, inner_var)
+            },
+            |inner_var, kernel| {
+                let mut context_ref = context_cell.borrow_mut();
+                build_reciprocal_execution_from_kernel_with(
+                    &mut context_ref,
+                    inner_var,
+                    kernel,
+                    |expr| expr,
+                    |_core_ctx, _expr| NonZeroStatus::Unknown,
+                )
+            },
+            |item| {
+                map_calls.set(map_calls.get() + 1);
+                item.description
+            },
+        )
+        .expect("reciprocal pipeline should execute");
+
+        assert!(matches!(solved.0, SolutionSet::Conditional(_)));
+        assert_eq!(solved.1.len(), 2);
+        assert_eq!(map_calls.get(), 2);
+    }
+
+    #[test]
+    fn execute_reciprocal_solve_pipeline_with_items_omits_steps_when_disabled() {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let r = context.var("r");
+        let one = context.num(1);
+        let lhs = context.add(Expr::Div(one, x));
+        let rhs = context.add(Expr::Div(one, r));
+        let context_cell = std::cell::RefCell::new(context);
+        let map_calls = std::cell::Cell::new(0usize);
+
+        let solved = execute_reciprocal_solve_pipeline_with_items(
+            lhs,
+            rhs,
+            "x",
+            false,
+            |inner_lhs, inner_rhs, inner_var| {
+                let mut context_ref = context_cell.borrow_mut();
+                derive_reciprocal_solve_kernel(&mut context_ref, inner_lhs, inner_rhs, inner_var)
+            },
+            |inner_var, kernel| {
+                let mut context_ref = context_cell.borrow_mut();
+                build_reciprocal_execution_from_kernel_with(
+                    &mut context_ref,
+                    inner_var,
+                    kernel,
+                    |expr| expr,
+                    |_core_ctx, _expr| NonZeroStatus::Unknown,
+                )
+            },
+            |_item| {
+                map_calls.set(map_calls.get() + 1);
+                0u8
+            },
+        )
+        .expect("reciprocal pipeline should execute");
+
+        assert!(matches!(solved.0, SolutionSet::Conditional(_)));
+        assert!(solved.1.is_empty());
+        assert_eq!(map_calls.get(), 0);
     }
 
     #[test]
