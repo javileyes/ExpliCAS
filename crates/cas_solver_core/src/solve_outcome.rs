@@ -582,6 +582,68 @@ where
     }
 }
 
+/// Execute exponent-shortcut planning + solve pipeline with optional first-item dispatch.
+///
+/// This combines `execute_pow_exponent_shortcut_with` and
+/// `solve_pow_exponent_shortcut_pipeline_with_item` into a single helper.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_pow_exponent_shortcut_pipeline_with_item_with<
+    E,
+    S,
+    FReadExpr,
+    FPlanAction,
+    FBasesEquivalent,
+    FRenderExpr,
+    FSolve,
+    FStep,
+>(
+    exponent_lhs: ExprId,
+    base: ExprId,
+    rhs: ExprId,
+    original_op: RelOp,
+    var: &str,
+    base_is_zero: bool,
+    base_is_numeric: bool,
+    can_branch: bool,
+    include_item: bool,
+    read_expr: FReadExpr,
+    plan_action_from_inputs: FPlanAction,
+    bases_equivalent: FBasesEquivalent,
+    render_expr: FRenderExpr,
+    solve_isolate: FSolve,
+    map_item_to_step: FStep,
+) -> Result<PowExponentShortcutPipelineSolved<S>, E>
+where
+    FReadExpr: FnMut(ExprId) -> Expr,
+    FPlanAction:
+        FnMut(ExprId, RelOp, bool, Option<ExprId>, bool, bool, bool) -> PowExponentShortcutAction,
+    FBasesEquivalent: FnMut(ExprId, ExprId) -> bool,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolve: FnMut(ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(PowExponentShortcutExecutionItem) -> S,
+{
+    let action = execute_pow_exponent_shortcut_with(
+        exponent_lhs,
+        base,
+        rhs,
+        original_op,
+        var,
+        base_is_zero,
+        base_is_numeric,
+        can_branch,
+        read_expr,
+        plan_action_from_inputs,
+        bases_equivalent,
+        render_expr,
+    );
+    solve_pow_exponent_shortcut_pipeline_with_item(
+        action,
+        include_item,
+        solve_isolate,
+        map_item_to_step,
+    )
+}
+
 /// Solved base-one shortcut (`1^x = rhs`) with didactic payload.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowerBaseOneShortcutOutcome {
@@ -8066,6 +8128,116 @@ mod tests {
                 steps,
             } => {
                 assert!(matches!(solution_set, SolutionSet::Empty));
+                assert!(steps.is_empty());
+            }
+            other => panic!(
+                "expected terminal shortcut pipeline result, got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
+    fn execute_pow_exponent_shortcut_pipeline_with_item_with_routes_isolated_branch() {
+        let mut ctx = Context::new();
+        let base = ctx.var("a");
+        let exponent_lhs = ctx.var("x");
+        let rhs = ctx.var("n");
+        let rhs_exp = ctx.var("k");
+
+        let mut solve_calls = 0usize;
+        let solved = execute_pow_exponent_shortcut_pipeline_with_item_with(
+            exponent_lhs,
+            base,
+            rhs,
+            RelOp::Eq,
+            "x",
+            false,
+            false,
+            true,
+            true,
+            |expr| ctx.get(expr).clone(),
+            |_base, _op, _bases_equal, _rhs_pow_base_equal, _is_zero, _is_numeric, _can_branch| {
+                PowExponentShortcutAction::IsolateExponent {
+                    shortcut: PowExponentShortcut::EqualPowBases { rhs_exp },
+                    rhs,
+                    op: RelOp::Eq,
+                }
+            },
+            |_lhs, _rhs| true,
+            |_expr| "render".to_string(),
+            |target_rhs, _target_op| {
+                solve_calls += 1;
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![target_rhs]),
+                    vec!["substep".to_string()],
+                ))
+            },
+            |item| item.description,
+        )
+        .expect("pipeline should solve");
+
+        assert_eq!(solve_calls, 1);
+        match solved {
+            PowExponentShortcutPipelineSolved::Isolated {
+                solution_set,
+                steps,
+            } => {
+                assert!(matches!(solution_set, SolutionSet::Discrete(_)));
+                assert_eq!(steps.len(), 2);
+                assert_eq!(steps[1], "substep");
+            }
+            other => panic!(
+                "expected isolated shortcut pipeline result, got {:?}",
+                other
+            ),
+        }
+    }
+
+    #[test]
+    fn execute_pow_exponent_shortcut_pipeline_with_item_with_skips_solver_for_terminal_branch() {
+        let mut ctx = Context::new();
+        let base = ctx.var("a");
+        let exponent_lhs = ctx.var("x");
+        let rhs = ctx.var("n");
+
+        let mut solve_calls = 0usize;
+        let solved = execute_pow_exponent_shortcut_pipeline_with_item_with(
+            exponent_lhs,
+            base,
+            rhs,
+            RelOp::Eq,
+            "x",
+            false,
+            true,
+            true,
+            false,
+            |expr| ctx.get(expr).clone(),
+            |_base, _op, _bases_equal, _rhs_pow_base_equal, _is_zero, _is_numeric, _can_branch| {
+                PowExponentShortcutAction::ReturnSolutionSet {
+                    shortcut: PowExponentShortcut::PowerEqualsBase(
+                        PowerEqualsBaseRoute::SymbolicCaseSplit,
+                    ),
+                    solutions: SolutionSet::AllReals,
+                }
+            },
+            |_lhs, _rhs| false,
+            |_expr| "render".to_string(),
+            |_target_rhs, _target_op| {
+                solve_calls += 1;
+                Ok::<_, ()>((SolutionSet::Empty, vec!["unexpected".to_string()]))
+            },
+            |item| item.description,
+        )
+        .expect("pipeline should solve");
+
+        assert_eq!(solve_calls, 0);
+        match solved {
+            PowExponentShortcutPipelineSolved::ReturnedSolutionSet {
+                solution_set,
+                steps,
+            } => {
+                assert!(matches!(solution_set, SolutionSet::AllReals));
                 assert!(steps.is_empty());
             }
             other => panic!(
