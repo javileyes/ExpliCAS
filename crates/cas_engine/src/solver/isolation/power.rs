@@ -21,17 +21,21 @@ use cas_solver_core::solve_outcome::{
 
 use super::{isolate, prepend_steps};
 
-impl ShortcutBasesEquivalentRuntime for Simplifier {
+struct EnginePowShortcutRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+}
+
+impl ShortcutBasesEquivalentRuntime for EnginePowShortcutRuntime<'_> {
     fn equivalent_nontrivial(&mut self, left: ExprId, right: ExprId) -> bool {
-        let diff = self.context.add(Expr::Sub(left, right));
-        let (sim_diff, _) = self.simplify(diff);
-        is_numeric_zero(&self.context, sim_diff)
+        let diff = self.simplifier.context.add(Expr::Sub(left, right));
+        let (sim_diff, _) = self.simplifier.simplify(diff);
+        is_numeric_zero(&self.simplifier.context, sim_diff)
     }
 }
 
-impl PowExponentShortcutRuntime for Simplifier {
+impl PowExponentShortcutRuntime for EnginePowShortcutRuntime<'_> {
     fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.context
+        &mut self.simplifier.context
     }
 
     fn bases_equivalent(&mut self, base: ExprId, candidate: ExprId) -> bool {
@@ -41,7 +45,7 @@ impl PowExponentShortcutRuntime for Simplifier {
     }
 
     fn render_expr(&mut self, expr: ExprId) -> String {
-        solver_render_expr(&self.context, expr)
+        solver_render_expr(&self.simplifier.context, expr)
     }
 }
 
@@ -147,17 +151,20 @@ fn isolate_pow_exponent(
     // ================================================================
     let base_is_zero = is_numeric_zero(&simplifier.context, b);
     let base_is_numeric = matches!(simplifier.context.get(b), Expr::Number(_));
-    let shortcut_engine_action = execute_pow_exponent_shortcut_with_runtime(
-        simplifier,
-        e,
-        b,
-        rhs,
-        op.clone(),
-        var,
-        base_is_zero,
-        base_is_numeric,
-        opts.budget.max_branches >= 2,
-    );
+    let shortcut_engine_action = {
+        let mut runtime = EnginePowShortcutRuntime { simplifier };
+        execute_pow_exponent_shortcut_with_runtime(
+            &mut runtime,
+            e,
+            b,
+            rhs,
+            op.clone(),
+            var,
+            base_is_zero,
+            base_is_numeric,
+            opts.budget.max_branches >= 2,
+        )
+    };
     let shortcut_solved = {
         let include_item = simplifier.collect_steps();
         solve_pow_exponent_shortcut_pipeline_with_item(

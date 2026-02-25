@@ -31,13 +31,17 @@ fn pair_equations(
     Ok((positive, negative))
 }
 
-impl UnaryInverseRuntime for Simplifier {
+struct EngineUnaryInverseRuntime<'a> {
+    simplifier: &'a mut Simplifier,
+}
+
+impl UnaryInverseRuntime for EngineUnaryInverseRuntime<'_> {
     fn context(&mut self) -> &mut cas_ast::Context {
-        &mut self.context
+        &mut self.simplifier.context
     }
 
     fn simplify_rhs_with_entries(&mut self, rhs: ExprId) -> (ExprId, Vec<(String, ExprId)>) {
-        let (simplified_rhs, sim_steps) = self.simplify(rhs);
+        let (simplified_rhs, sim_steps) = self.simplifier.simplify(rhs);
         let entries = sim_steps
             .into_iter()
             .map(|step| (step.description, step.after))
@@ -224,9 +228,11 @@ fn isolate_unary_function(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let fn_name = simplifier.context.sym_name(fn_id).to_string();
-    let execution =
-        execute_unary_inverse_with_runtime(simplifier, &fn_name, arg, rhs, op.clone(), true)
-            .ok_or_else(|| CasError::UnknownFunction(fn_name.clone()))?;
+    let execution = {
+        let mut runtime = EngineUnaryInverseRuntime { simplifier };
+        execute_unary_inverse_with_runtime(&mut runtime, &fn_name, arg, rhs, op.clone(), true)
+            .ok_or_else(|| CasError::UnknownFunction(fn_name.clone()))?
+    };
     let include_items = simplifier.collect_steps();
     let solved_execution = solve_unary_inverse_execution_pipeline_with_items(
         execution,
