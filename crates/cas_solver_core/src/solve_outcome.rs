@@ -2356,22 +2356,19 @@ where
 
 /// Execute negated-LHS isolation rewrite and optional first-item didactic
 /// projection via caller-provided callbacks.
-#[allow(clippy::too_many_arguments)]
-pub fn solve_negated_lhs_isolation_with<E, S, FSolve, FStep>(
-    ctx: &mut Context,
-    inner: ExprId,
-    rhs: ExprId,
-    op: RelOp,
+pub fn solve_negated_lhs_isolation_with<E, S, FPlan, FSolve, FStep>(
+    mut plan_rewrite: FPlan,
     var: &str,
     include_item: bool,
     mut solve_rewritten: FSolve,
     mut map_item_to_step: FStep,
 ) -> Result<(SolutionSet, Vec<S>), E>
 where
+    FPlan: FnMut() -> TermIsolationRewritePlan,
     FSolve: FnMut(Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
     FStep: FnMut(TermIsolationRewriteExecutionItem) -> S,
 {
-    let rewrite = plan_negated_lhs_isolation_step(ctx, inner, rhs, op);
+    let rewrite = plan_rewrite();
     let first_item = if include_item {
         first_term_isolation_rewrite_execution_item(&rewrite)
     } else {
@@ -9084,10 +9081,7 @@ mod tests {
         let mut last_solved_equation = None;
 
         let (solution_set, steps) = solve_negated_lhs_isolation_with(
-            &mut ctx,
-            x,
-            y,
-            RelOp::Lt,
+            || plan_negated_lhs_isolation_step(&mut ctx, x, y, RelOp::Lt),
             "x",
             true,
             |equation, _| {
@@ -9124,10 +9118,7 @@ mod tests {
         let y = ctx.var("y");
         let one = ctx.num(1);
         let (solution_set, steps) = solve_negated_lhs_isolation_with(
-            &mut ctx,
-            x,
-            y,
-            RelOp::Eq,
+            || plan_negated_lhs_isolation_step(&mut ctx, x, y, RelOp::Eq),
             "x",
             false,
             |_equation, _| {
