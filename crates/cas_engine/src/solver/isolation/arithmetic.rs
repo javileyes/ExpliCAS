@@ -10,7 +10,7 @@ use cas_solver_core::isolation_utils::{
 };
 use cas_solver_core::solve_outcome::{
     derive_add_isolation_operands, derive_div_isolation_route, derive_mul_isolation_operands,
-    derive_sub_isolation_route,
+    derive_sub_isolation_route, execute_division_denominator_plan_with_optional_items,
     execute_division_denominator_sign_split_pipeline_with_optional_items,
     execute_isolated_denominator_sign_split_pipeline_with_optional_items,
     execute_term_isolation_plan_with, finalize_division_denominator_sign_split_solved_sets,
@@ -20,9 +20,8 @@ use cas_solver_core::solve_outcome::{
     plan_div_numerator_isolation_step_with, plan_division_denominator,
     plan_division_denominator_sign_split, plan_isolated_denominator_sign_split,
     plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split,
-    plan_sub_isolation_step_with, solve_division_denominator_pipeline_with_optional_items,
-    solve_product_zero_inequality_split_execution_with, AddIsolationRoute,
-    DivDenominatorIsolationRoute, DivIsolationRoute, SubIsolationRoute,
+    plan_sub_isolation_step_with, solve_product_zero_inequality_split_execution_with,
+    AddIsolationRoute, DivDenominatorIsolationRoute, DivIsolationRoute, SubIsolationRoute,
 };
 
 use super::{isolate, prepend_steps};
@@ -426,18 +425,15 @@ pub(super) fn isolate_div(
         let include_items = simplifier.collect_steps();
         let didactic_plan =
             plan_division_denominator(&mut simplifier.context, l, r, rhs, sim_rhs, op.clone());
-        let simplified_multiply_rhs = if include_items {
-            let (simplified, _) = simplifier.simplify(didactic_plan.multiply_equation.rhs);
-            simplified
-        } else {
-            didactic_plan.multiply_equation.rhs
-        };
-        let solved_execution = {
+        let solved = {
             let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-            solve_division_denominator_pipeline_with_optional_items(
+            execute_division_denominator_plan_with_optional_items(
                 didactic_plan,
                 include_items,
-                simplified_multiply_rhs,
+                |expr| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    simplifier_ref.simplify(expr).0
+                },
                 |expr| {
                     let simplifier_ref = runtime_cell.borrow();
                     solver_render_expr(&simplifier_ref.context, expr)
@@ -457,9 +453,6 @@ pub(super) fn isolate_div(
                 |item| medium_step(item.description().to_string(), item.equation),
             )?
         };
-        prepend_steps(
-            (solved_execution.solution_set, solved_execution.steps),
-            steps,
-        )
+        prepend_steps(solved, steps)
     }
 }

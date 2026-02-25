@@ -4114,6 +4114,50 @@ where
     })
 }
 
+/// Execute denominator-isolation didactic plan with optional items.
+///
+/// This combines:
+/// 1. Optional simplification of multiply-step RHS (only when didactic items are enabled).
+/// 2. Didactic pipeline execution.
+/// 3. Conversion into `(SolutionSet, steps)` tuple for engine call sites.
+pub fn execute_division_denominator_plan_with_optional_items<
+    E,
+    TStep,
+    FSimplifyExpr,
+    FRenderExpr,
+    FSolveRewritten,
+    FMapStep,
+>(
+    didactic_plan: DivisionDenominatorDidacticPlan,
+    include_items: bool,
+    mut simplify_expr: FSimplifyExpr,
+    render_expr: FRenderExpr,
+    solve_rewritten: FSolveRewritten,
+    map_step: FMapStep,
+) -> Result<(SolutionSet, Vec<TStep>), E>
+where
+    FSimplifyExpr: FnMut(ExprId) -> ExprId,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveRewritten: FnMut(&Equation) -> Result<(SolutionSet, Vec<TStep>), E>,
+    FMapStep: FnMut(DivisionDidacticExecutionItem) -> TStep,
+{
+    let simplified_multiply_rhs = if include_items {
+        simplify_expr(didactic_plan.multiply_equation.rhs)
+    } else {
+        didactic_plan.multiply_equation.rhs
+    };
+
+    let solved = solve_division_denominator_pipeline_with_optional_items(
+        didactic_plan,
+        include_items,
+        simplified_multiply_rhs,
+        render_expr,
+        solve_rewritten,
+        map_step,
+    )?;
+    Ok((solved.solution_set, solved.steps))
+}
+
 /// Classify numeric RHS sign for `|A| = RHS`.
 pub fn abs_equality_precheck(sign: NumericSign) -> AbsEqualityPrecheck {
     match sign {
@@ -9804,6 +9848,80 @@ mod tests {
 
         assert!(matches!(solved.solution_set, SolutionSet::Empty));
         assert_eq!(solved.steps, vec!["direct".to_string()]);
+    }
+
+    #[test]
+    fn execute_division_denominator_plan_with_optional_items_simplifies_when_items_enabled() {
+        let mut ctx = Context::new();
+        let n = ctx.var("n");
+        let d = ctx.var("d");
+        let r = ctx.var("r");
+        let isolated_rhs = ctx.var("isolated");
+        let simplified_mul_rhs = ctx.var("simplified");
+        let solve_tail = ctx.var("tail");
+        let plan = plan_division_denominator_didactic(&mut ctx, n, d, r, isolated_rhs, RelOp::Eq);
+        let expected_divide = plan.divide_equation.clone();
+        let original_multiply_rhs = plan.multiply_equation.rhs;
+
+        let mut simplify_calls = 0usize;
+        let solved = execute_division_denominator_plan_with_optional_items(
+            plan,
+            true,
+            |expr| {
+                simplify_calls += 1;
+                assert_eq!(expr, original_multiply_rhs);
+                simplified_mul_rhs
+            },
+            |id| {
+                if id == d {
+                    "d".to_string()
+                } else {
+                    "r".to_string()
+                }
+            },
+            |equation| {
+                assert_eq!(equation, &expected_divide);
+                Ok::<_, ()>((SolutionSet::AllReals, vec![solve_tail]))
+            },
+            |item| item.equation.rhs,
+        )
+        .expect("execute helper should solve");
+
+        assert_eq!(simplify_calls, 1);
+        assert!(matches!(solved.0, SolutionSet::AllReals));
+        assert_eq!(solved.1, vec![simplified_mul_rhs, isolated_rhs, solve_tail]);
+    }
+
+    #[test]
+    fn execute_division_denominator_plan_with_optional_items_skips_simplify_when_disabled() {
+        let mut ctx = Context::new();
+        let n = ctx.var("n");
+        let d = ctx.var("d");
+        let r = ctx.var("r");
+        let isolated_rhs = ctx.var("isolated");
+        let plan = plan_division_denominator_didactic(&mut ctx, n, d, r, isolated_rhs, RelOp::Eq);
+        let expected_divide = plan.divide_equation.clone();
+
+        let mut simplify_calls = 0usize;
+        let solved = execute_division_denominator_plan_with_optional_items(
+            plan,
+            false,
+            |expr| {
+                simplify_calls += 1;
+                expr
+            },
+            |_expr| -> String { panic!("renderer must not run when items are disabled") },
+            |equation| {
+                assert_eq!(equation, &expected_divide);
+                Ok::<_, ()>((SolutionSet::Empty, vec!["direct".to_string()]))
+            },
+            |_item| -> String { panic!("mapper must not run when items are disabled") },
+        )
+        .expect("execute helper should solve directly");
+
+        assert_eq!(simplify_calls, 0);
+        assert!(matches!(solved.0, SolutionSet::Empty));
+        assert_eq!(solved.1, vec!["direct".to_string()]);
     }
 
     #[test]
