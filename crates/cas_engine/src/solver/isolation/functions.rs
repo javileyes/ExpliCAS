@@ -72,7 +72,6 @@ fn isolate_abs(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let include_items = simplifier.collect_steps();
-    let render_ctx = RefCell::new(simplifier.context.clone());
     let finalize_op = op.clone();
     let simplifier_ref = RefCell::new(simplifier);
     execute_abs_isolation_plan_with_rhs_sign_pipeline_with_optional_items_and_solver(
@@ -84,12 +83,12 @@ fn isolate_abs(
         include_items,
         steps,
         |expr| {
-            let snapshot = render_ctx.borrow();
-            solver_render_expr(&snapshot, expr)
+            let simplifier = simplifier_ref.borrow();
+            solver_render_expr(&simplifier.context, expr)
         },
         |equation| {
             let mut simplifier = simplifier_ref.borrow_mut();
-            let solved = isolate(
+            isolate(
                 equation.lhs,
                 equation.rhs,
                 equation.op.clone(),
@@ -97,15 +96,13 @@ fn isolate_abs(
                 &mut simplifier,
                 opts,
                 ctx,
-            );
-            *render_ctx.borrow_mut() = simplifier.context.clone();
-            solved
+            )
         },
         |item| medium_step(item.description().to_string(), item.equation),
         |positive_set, negative_set| {
-            let snapshot = render_ctx.borrow();
+            let simplifier = simplifier_ref.borrow();
             finalize_abs_split_solution_set_for_rhs(
-                &snapshot,
+                &simplifier.context,
                 finalize_op.clone(),
                 rhs,
                 var,

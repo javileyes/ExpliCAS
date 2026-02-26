@@ -7,7 +7,7 @@ use cas_solver_core::isolation_utils::{is_known_negative, should_try_reciprocal_
 use cas_solver_core::solve_outcome::{
     derive_add_isolation_operands, derive_div_isolation_route, derive_mul_isolation_operands,
     derive_sub_isolation_operands,
-    execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with,
+    execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver,
     execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with,
     execute_product_zero_inequality_split_pipeline_with_existing_steps,
     execute_term_isolation_plan_and_merge_with_existing_steps_with,
@@ -244,7 +244,7 @@ pub(super) fn isolate_div(
                 |_| denominator_desc.clone(),
             );
         let simplifier_ref = RefCell::new(simplifier);
-        execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with(
+        execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver(
             split_plan,
             r,
             op.clone(),
@@ -272,19 +272,6 @@ pub(super) fn isolate_div(
                     opts,
                     ctx,
                 )
-            },
-            |equation| {
-                let mut simplifier = simplifier_ref.borrow_mut();
-                isolate(
-                    equation.lhs,
-                    equation.rhs,
-                    equation.op.clone(),
-                    var,
-                    &mut simplifier,
-                    opts,
-                    ctx,
-                )
-                .map(|(solution_set, _)| solution_set)
             },
             |item| medium_step(item.description, item.equation),
             |item| medium_step(item.description, item.equation),

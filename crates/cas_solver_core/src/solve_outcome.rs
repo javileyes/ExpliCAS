@@ -7518,6 +7518,76 @@ where
 }
 
 /// Execute division denominator-sign split when applicable, otherwise execute
+/// fallback term-isolation plan and merge with existing steps, using a single
+/// equation solver callback for both branch and domain equations.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver<
+    E,
+    S,
+    FSimplifyExpr,
+    FRenderExpr,
+    FSolveEquation,
+    FMapDivisionStep,
+    FMapTermStep,
+    FFinalize,
+>(
+    split_plan: Option<DivisionDenominatorSignSplitPlan>,
+    denominator: ExprId,
+    case_boundary_op: RelOp,
+    case_boundary_lhs: ExprId,
+    include_items: bool,
+    term_plan: TermIsolationRewritePlan,
+    simplify_term_rhs_before_solve: bool,
+    existing_steps: Vec<S>,
+    mut simplify_expr: FSimplifyExpr,
+    render_expr: FRenderExpr,
+    mut solve_equation: FSolveEquation,
+    map_division_item_to_step: FMapDivisionStep,
+    map_term_item_to_step: FMapTermStep,
+    finalize_solved_sets: FFinalize,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    S: Clone,
+    FSimplifyExpr: FnMut(ExprId) -> ExprId,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveEquation: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapDivisionStep: FnMut(DivisionDidacticExecutionItem) -> S,
+    FMapTermStep: FnMut(TermIsolationRewriteExecutionItem) -> S,
+    FFinalize:
+        FnMut(DivisionDenominatorSignSplitSolvedCases<SolutionSet, SolutionSet>) -> SolutionSet,
+{
+    if let Some(split_plan) = split_plan {
+        let simplified_rhs = simplify_expr(split_plan.positive_equation.rhs);
+        return execute_division_denominator_sign_split_pipeline_with_single_solver_with_optional_items(
+            split_plan,
+            denominator,
+            case_boundary_lhs,
+            case_boundary_op,
+            simplified_rhs,
+            include_items,
+            &existing_steps,
+            render_expr,
+            solve_equation,
+            map_division_item_to_step,
+            finalize_solved_sets,
+        );
+    }
+
+    let solved = solve_term_isolation_plan_with(
+        term_plan,
+        include_items,
+        simplify_term_rhs_before_solve,
+        simplify_expr,
+        |equation| solve_equation(&equation),
+        map_term_item_to_step,
+    )?;
+    Ok(merge_solved_with_existing_steps_prepend(
+        solved,
+        existing_steps,
+    ))
+}
+
+/// Execute division denominator-sign split when applicable, otherwise execute
 /// fallback term-isolation plan and merge with existing steps.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_division_denominator_sign_split_if_applicable_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with<
@@ -16553,6 +16623,113 @@ mod tests {
         assert!(finalize_called.get());
         assert_eq!(solution_set, SolutionSet::Discrete(vec![rhs]));
         assert_eq!(steps, vec![7u8, 1u8, 7u8, 1u8]);
+    }
+
+    #[test]
+    fn execute_division_denominator_sign_split_or_term_plan_single_solver_prefers_split_path() {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let split =
+            plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Lt).unwrap();
+        let term_equation = Equation {
+            lhs: den,
+            rhs,
+            op: RelOp::Lt,
+        };
+        let term_plan = build_term_isolation_rewrite_plan_from_item(
+            term_equation.clone(),
+            TermIsolationExecutionItem {
+                description: "fallback".to_string(),
+                equation: term_equation,
+            },
+        );
+        let simplify_called = std::cell::Cell::new(false);
+        let finalize_called = std::cell::Cell::new(false);
+
+        let (solution_set, steps) =
+            execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver(
+                Some(split),
+                den,
+                RelOp::Lt,
+                num,
+                false,
+                term_plan,
+                false,
+                vec![7u8],
+                |rhs_expr| {
+                    simplify_called.set(true);
+                    rhs_expr
+                },
+                |_id| "d".to_string(),
+                |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![rhs]), vec![1u8])),
+                |_item| 9u8,
+                |_item| -> u8 { panic!("fallback mapper must not run on split path") },
+                |solved_cases| {
+                    finalize_called.set(true);
+                    solved_cases.positive_branch
+                },
+            )
+            .expect("split path should execute");
+
+        assert!(simplify_called.get());
+        assert!(finalize_called.get());
+        assert_eq!(solution_set, SolutionSet::Discrete(vec![rhs]));
+        assert_eq!(steps, vec![7u8, 1u8, 7u8, 1u8]);
+    }
+
+    #[test]
+    fn execute_division_denominator_sign_split_or_term_plan_single_solver_uses_fallback_without_split(
+    ) {
+        let mut ctx = Context::new();
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let solved_rhs = ctx.var("sol");
+        let term_equation = Equation {
+            lhs: den,
+            rhs,
+            op: RelOp::Eq,
+        };
+        let term_plan = build_term_isolation_rewrite_plan_from_item(
+            term_equation.clone(),
+            TermIsolationExecutionItem {
+                description: "fallback".to_string(),
+                equation: term_equation,
+            },
+        );
+        let simplify_called = std::cell::Cell::new(false);
+        let finalize_called = std::cell::Cell::new(false);
+
+        let (solution_set, steps) =
+            execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver(
+                None,
+                den,
+                RelOp::Eq,
+                den,
+                true,
+                term_plan,
+                true,
+                vec![9u8],
+                |_| {
+                    simplify_called.set(true);
+                    rhs
+                },
+                |_id| "d".to_string(),
+                |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![solved_rhs]), vec![2u8])),
+                |_item| -> u8 { panic!("split mapper must not run on fallback path") },
+                |_item| 5u8,
+                |_solved_cases| {
+                    finalize_called.set(true);
+                    SolutionSet::Empty
+                },
+            )
+            .expect("fallback path should execute");
+
+        assert!(simplify_called.get());
+        assert!(!finalize_called.get());
+        assert_eq!(solution_set, SolutionSet::Discrete(vec![solved_rhs]));
+        assert_eq!(steps, vec![5u8, 2u8, 9u8]);
     }
 
     #[test]
