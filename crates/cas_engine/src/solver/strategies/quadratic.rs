@@ -14,7 +14,7 @@ use cas_solver_core::quadratic_didactic::{
 };
 use cas_solver_core::quadratic_formula::{
     build_quadratic_coefficient_solve_plan, roots_from_a_b_and_simplified_delta,
-    QuadraticCoefficientSolvePlan, QuadraticCoefficientSolvePlanError,
+    solve_quadratic_coefficient_solve_plan_with, QuadraticCoefficientSolvePlanError,
 };
 use cas_solver_core::solution_set::{order_pair_by_value, quadratic_numeric_solution};
 use std::cell::RefCell;
@@ -153,41 +153,35 @@ impl SolverStrategy for QuadraticStrategy {
                 }
             };
 
-            let solution_set = match plan {
-                QuadraticCoefficientSolvePlan::Numeric {
-                    delta,
-                    roots: (sol1, sol2),
-                    opens_up,
-                } => {
-                    let sim_sol1 = simplifier.simplify(sol1).0;
-                    let sim_sol2 = simplifier.simplify(sol2).0;
-                    let (r1, r2) = order_pair_by_value(&simplifier.context, sim_sol1, sim_sol2);
+            let simplifier_ref = RefCell::new(simplifier);
+            let solution_set = solve_quadratic_coefficient_solve_plan_with(
+                eq.op.clone(),
+                sim_a,
+                sim_b,
+                plan,
+                |expr| {
+                    let mut simplifier = simplifier_ref.borrow_mut();
+                    crate::expand::expand(&mut simplifier.context, expr)
+                },
+                |expr| simplifier_ref.borrow_mut().simplify(expr).0,
+                |eq_op, delta, (sol1, sol2), opens_up| {
+                    let mut simplifier = simplifier_ref.borrow_mut();
+                    let (r1, r2) = order_pair_by_value(&simplifier.context, sol1, sol2);
                     quadratic_numeric_solution(
                         &mut simplifier.context,
-                        eq.op.clone(),
+                        eq_op,
                         &delta,
                         opens_up,
                         r1,
                         r2,
                     )
-                }
-                QuadraticCoefficientSolvePlan::SymbolicEq { delta_expr } => {
-                    let delta_expanded = crate::expand::expand(&mut simplifier.context, delta_expr);
-                    let sim_delta = simplifier.simplify(delta_expanded).0;
-
-                    let (sol1_raw, sol2_raw) = roots_from_a_b_and_simplified_delta(
-                        &mut simplifier.context,
-                        sim_a,
-                        sim_b,
-                        sim_delta,
-                    );
-                    let sol1_expanded = crate::expand::expand(&mut simplifier.context, sol1_raw);
-                    let sim_sol1 = simplifier.simplify(sol1_expanded).0;
-                    let sol2_expanded = crate::expand::expand(&mut simplifier.context, sol2_raw);
-                    let sim_sol2 = simplifier.simplify(sol2_expanded).0;
-                    SolutionSet::Discrete(vec![sim_sol1, sim_sol2])
-                }
-            };
+                },
+                |a, b, sim_delta| {
+                    let mut simplifier = simplifier_ref.borrow_mut();
+                    roots_from_a_b_and_simplified_delta(&mut simplifier.context, a, b, sim_delta)
+                },
+            );
+            let _ = simplifier_ref.into_inner();
 
             // Emit scope for display transforms (sqrt display in quadratic context)
             ctx.emit_scope(cas_formatter::display_transforms::ScopeTag::Rule(
