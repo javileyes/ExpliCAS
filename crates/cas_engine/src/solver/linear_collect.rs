@@ -14,8 +14,9 @@ use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::linear_collect::{
     build_linear_collect_additive_execution_with, build_linear_collect_factored_execution_with,
     build_linear_collect_solution_expr, derive_linear_collect_additive_kernel,
-    derive_linear_collect_factored_kernel, execute_linear_collect_additive_pipeline_with_and_items,
-    execute_linear_collect_factored_pipeline_with_and_items, LinearCollectExecutionItem,
+    derive_linear_collect_factored_kernel,
+    execute_linear_collect_additive_pipeline_with_kernel_and_items,
+    execute_linear_collect_factored_pipeline_with_kernel_and_items, LinearCollectExecutionItem,
 };
 
 use crate::engine::Simplifier;
@@ -33,23 +34,18 @@ pub(crate) fn try_linear_collect(
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
     let include_items = simplifier.collect_steps();
+    let equation_diff = simplifier.context.add(Expr::Sub(lhs, rhs));
+    let simplified_diff = simplifier.simplify(equation_diff).0;
+    let factored_kernel =
+        derive_linear_collect_factored_kernel(&mut simplifier.context, simplified_diff, var);
     let runtime_cell = std::cell::RefCell::new(simplifier);
-    execute_linear_collect_factored_pipeline_with_and_items(
-        lhs,
-        rhs,
+    execute_linear_collect_factored_pipeline_with_kernel_and_items(
         var,
+        factored_kernel,
         include_items,
-        |lhs_expr, rhs_expr| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            simplifier_ref.context.add(Expr::Sub(lhs_expr, rhs_expr))
-        },
         |expr| {
             let mut simplifier_ref = runtime_cell.borrow_mut();
             simplifier_ref.simplify(expr).0
-        },
-        |expr, inner_name| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            derive_linear_collect_factored_kernel(&mut simplifier_ref.context, expr, inner_name)
         },
         |numerator, coeff| {
             let mut simplifier_ref = runtime_cell.borrow_mut();
@@ -94,21 +90,13 @@ pub(crate) fn try_linear_collect_v2(
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
     let include_items = simplifier.collect_steps();
+    let additive_kernel =
+        derive_linear_collect_additive_kernel(&mut simplifier.context, lhs, rhs, var);
     let runtime_cell = std::cell::RefCell::new(simplifier);
-    execute_linear_collect_additive_pipeline_with_and_items(
-        lhs,
-        rhs,
+    execute_linear_collect_additive_pipeline_with_kernel_and_items(
         var,
+        additive_kernel,
         include_items,
-        |lhs_expr, rhs_expr, inner_name| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            derive_linear_collect_additive_kernel(
-                &mut simplifier_ref.context,
-                lhs_expr,
-                rhs_expr,
-                inner_name,
-            )
-        },
         |expr| {
             let mut simplifier_ref = runtime_cell.borrow_mut();
             simplifier_ref.simplify(expr).0

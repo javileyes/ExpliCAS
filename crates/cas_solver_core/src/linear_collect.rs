@@ -157,6 +157,54 @@ where
     })
 }
 
+/// Solve factored linear-collect form from an optional pre-derived kernel.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_linear_collect_factored_from_kernel_with<
+    FSimplifyExpr,
+    FBuildSolutionExpr,
+    FContainsVar,
+    FProveNonzeroStatus,
+>(
+    kernel: Option<LinearCollectFactoredKernel>,
+    var: &str,
+    mut simplify_expr: FSimplifyExpr,
+    mut build_solution_expr: FBuildSolutionExpr,
+    mut contains_var_hook: FContainsVar,
+    mut prove_nonzero_status: FProveNonzeroStatus,
+) -> Option<LinearCollectFactoredSolve>
+where
+    FSimplifyExpr: FnMut(ExprId) -> ExprId,
+    FBuildSolutionExpr: FnMut(ExprId, ExprId) -> ExprId,
+    FContainsVar: FnMut(ExprId, &str) -> bool,
+    FProveNonzeroStatus: FnMut(ExprId) -> NonZeroStatus,
+{
+    let kernel = kernel?;
+    let coeff = simplify_expr(kernel.coeff);
+    let rhs_term = simplify_expr(kernel.rhs_term);
+    let solution = simplify_expr(build_solution_expr(rhs_term, coeff));
+
+    let coeff_contains_var = contains_var_hook(coeff, var);
+    let (coeff_status, rhs_status) = if coeff_contains_var {
+        (NonZeroStatus::Unknown, NonZeroStatus::Unknown)
+    } else {
+        let coeff_status = prove_nonzero_status(coeff);
+        let rhs_status = if coeff_status == NonZeroStatus::Zero {
+            prove_nonzero_status(rhs_term)
+        } else {
+            NonZeroStatus::Unknown
+        };
+        (coeff_status, rhs_status)
+    };
+
+    Some(LinearCollectFactoredSolve {
+        coeff,
+        rhs_term,
+        solution,
+        coeff_status,
+        rhs_status,
+    })
+}
+
 /// Solve additive linear-collect form from equation sides using closure hooks.
 #[allow(clippy::too_many_arguments)]
 pub fn solve_linear_collect_additive_with<
@@ -183,6 +231,54 @@ where
     FProveNonzeroStatus: FnMut(ExprId) -> NonZeroStatus,
 {
     let kernel = derive_kernel(lhs, rhs, var)?;
+    let coeff = simplify_expr(kernel.coeff);
+    let constant = simplify_expr(kernel.constant);
+    let solution = simplify_expr(build_solution_expr(constant, coeff));
+
+    let coeff_contains_var = contains_var_hook(coeff, var);
+    let (coeff_status, constant_status) = if coeff_contains_var {
+        (NonZeroStatus::Unknown, NonZeroStatus::Unknown)
+    } else {
+        let coeff_status = prove_nonzero_status(coeff);
+        let constant_status = if coeff_status == NonZeroStatus::Zero {
+            prove_nonzero_status(constant)
+        } else {
+            NonZeroStatus::Unknown
+        };
+        (coeff_status, constant_status)
+    };
+
+    Some(LinearCollectAdditiveSolve {
+        coeff,
+        constant,
+        solution,
+        coeff_status,
+        constant_status,
+    })
+}
+
+/// Solve additive linear-collect form from an optional pre-derived kernel.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_linear_collect_additive_from_kernel_with<
+    FSimplifyExpr,
+    FBuildSolutionExpr,
+    FContainsVar,
+    FProveNonzeroStatus,
+>(
+    kernel: Option<LinearCollectAdditiveKernel>,
+    var: &str,
+    mut simplify_expr: FSimplifyExpr,
+    mut build_solution_expr: FBuildSolutionExpr,
+    mut contains_var_hook: FContainsVar,
+    mut prove_nonzero_status: FProveNonzeroStatus,
+) -> Option<LinearCollectAdditiveSolve>
+where
+    FSimplifyExpr: FnMut(ExprId) -> ExprId,
+    FBuildSolutionExpr: FnMut(ExprId, ExprId) -> ExprId,
+    FContainsVar: FnMut(ExprId, &str) -> bool,
+    FProveNonzeroStatus: FnMut(ExprId) -> NonZeroStatus,
+{
+    let kernel = kernel?;
     let coeff = simplify_expr(kernel.coeff);
     let constant = simplify_expr(kernel.constant);
     let solution = simplify_expr(build_solution_expr(constant, coeff));
@@ -446,6 +542,65 @@ where
     )
 }
 
+/// High-level factored linear-collect pipeline from an optional pre-derived
+/// kernel, with injected hooks for simplification/proof and optional didactic
+/// mapping.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_linear_collect_factored_pipeline_with_kernel_and_items<
+    S,
+    FSimplifyExpr,
+    FBuildSolutionExpr,
+    FContainsVar,
+    FProveNonzeroStatus,
+    FBuildExecution,
+    FStep,
+>(
+    var: &str,
+    kernel: Option<LinearCollectFactoredKernel>,
+    include_items: bool,
+    simplify_expr: FSimplifyExpr,
+    build_solution_expr: FBuildSolutionExpr,
+    contains_var_hook: FContainsVar,
+    prove_nonzero_status: FProveNonzeroStatus,
+    build_execution: FBuildExecution,
+    map_item_to_step: FStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FSimplifyExpr: FnMut(ExprId) -> ExprId,
+    FBuildSolutionExpr: FnMut(ExprId, ExprId) -> ExprId,
+    FContainsVar: FnMut(ExprId, &str) -> bool,
+    FProveNonzeroStatus: FnMut(ExprId) -> NonZeroStatus,
+    FBuildExecution: FnMut(&str, LinearCollectFactoredSolve) -> LinearCollectSolveExecution,
+    FStep: FnMut(LinearCollectExecutionItem) -> S,
+{
+    let solved = solve_linear_collect_factored_from_kernel_with(
+        kernel,
+        var,
+        simplify_expr,
+        build_solution_expr,
+        contains_var_hook,
+        prove_nonzero_status,
+    )?;
+    if include_items {
+        let execution = {
+            let mut build_execution = build_execution;
+            build_execution(var, solved)
+        };
+        let solved_execution =
+            solve_linear_collect_execution_pipeline_with_items(execution, true, map_item_to_step);
+        return Some(solved_execution.solved);
+    }
+
+    let solution_set = build_linear_solution_set(
+        solved.coeff,
+        solved.rhs_term,
+        solved.solution,
+        solved.coeff_status,
+        solved.rhs_status,
+    );
+    Some((solution_set, Vec::new()))
+}
+
 /// High-level additive linear-collect pipeline using injected hooks for
 /// kernel derivation, simplification, proof checks, and optional didactic mapping.
 #[allow(clippy::too_many_arguments)]
@@ -500,6 +655,65 @@ where
         build_execution,
         map_item_to_step,
     )
+}
+
+/// High-level additive linear-collect pipeline from an optional pre-derived
+/// kernel, with injected hooks for simplification/proof and optional didactic
+/// mapping.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_linear_collect_additive_pipeline_with_kernel_and_items<
+    S,
+    FSimplifyExpr,
+    FBuildSolutionExpr,
+    FContainsVar,
+    FProveNonzeroStatus,
+    FBuildExecution,
+    FStep,
+>(
+    var: &str,
+    kernel: Option<LinearCollectAdditiveKernel>,
+    include_items: bool,
+    simplify_expr: FSimplifyExpr,
+    build_solution_expr: FBuildSolutionExpr,
+    contains_var_hook: FContainsVar,
+    prove_nonzero_status: FProveNonzeroStatus,
+    build_execution: FBuildExecution,
+    map_item_to_step: FStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FSimplifyExpr: FnMut(ExprId) -> ExprId,
+    FBuildSolutionExpr: FnMut(ExprId, ExprId) -> ExprId,
+    FContainsVar: FnMut(ExprId, &str) -> bool,
+    FProveNonzeroStatus: FnMut(ExprId) -> NonZeroStatus,
+    FBuildExecution: FnMut(&str, LinearCollectAdditiveSolve) -> LinearCollectSolveExecution,
+    FStep: FnMut(LinearCollectExecutionItem) -> S,
+{
+    let solved = solve_linear_collect_additive_from_kernel_with(
+        kernel,
+        var,
+        simplify_expr,
+        build_solution_expr,
+        contains_var_hook,
+        prove_nonzero_status,
+    )?;
+    if include_items {
+        let execution = {
+            let mut build_execution = build_execution;
+            build_execution(var, solved)
+        };
+        let solved_execution =
+            solve_linear_collect_execution_pipeline_with_items(execution, true, map_item_to_step);
+        return Some(solved_execution.solved);
+    }
+
+    let solution_set = build_linear_solution_set(
+        solved.coeff,
+        solved.constant,
+        solved.solution,
+        solved.coeff_status,
+        solved.constant_status,
+    );
+    Some((solution_set, Vec::new()))
 }
 
 #[cfg(test)]
@@ -1030,6 +1244,132 @@ mod tests {
             |_item| -> () { panic!("step mapper must not run when items are disabled") },
         )
         .expect("additive execute pipeline should solve");
+
+        assert!(matches!(solution_set, SolutionSet::Discrete(_)));
+        assert!(steps.is_empty());
+        assert_eq!(simplify_calls.get(), 3);
+        assert_eq!(prove_calls.get(), 1);
+    }
+
+    #[test]
+    fn solve_linear_collect_factored_from_kernel_with_returns_none_without_kernel() {
+        let mut simplify_calls = 0usize;
+        let solved = solve_linear_collect_factored_from_kernel_with(
+            None,
+            "x",
+            |expr| {
+                simplify_calls += 1;
+                expr
+            },
+            |_numerator, _coeff| panic!("solution builder must not run without kernel"),
+            |_expr, _name| panic!("contains_var must not run without kernel"),
+            |_expr| panic!("prove_nonzero_status must not run without kernel"),
+        );
+        assert!(solved.is_none());
+        assert_eq!(simplify_calls, 0);
+    }
+
+    #[test]
+    fn execute_linear_collect_factored_pipeline_with_kernel_and_items_maps_steps_when_enabled() {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let a = context.var("a");
+        let b = context.var("b");
+        let lhs = context.add(Expr::Mul(a, x));
+        let rhs = b;
+        let diff = context.add(Expr::Sub(lhs, rhs));
+        let kernel = derive_linear_collect_factored_kernel(&mut context, diff, "x");
+        let context_cell = std::cell::RefCell::new(context);
+        let simplify_calls = std::cell::Cell::new(0usize);
+        let prove_calls = std::cell::Cell::new(0usize);
+        let map_calls = std::cell::Cell::new(0usize);
+
+        let (solution_set, steps) = execute_linear_collect_factored_pipeline_with_kernel_and_items(
+            "x",
+            kernel,
+            true,
+            |expr| {
+                simplify_calls.set(simplify_calls.get() + 1);
+                expr
+            },
+            |numerator, coeff| {
+                let mut ctx = context_cell.borrow_mut();
+                build_linear_collect_solution_expr(&mut ctx, numerator, coeff)
+            },
+            |expr, inner_name| {
+                let ctx = context_cell.borrow();
+                contains_var(&ctx, expr, inner_name)
+            },
+            |_expr| {
+                prove_calls.set(prove_calls.get() + 1);
+                NonZeroStatus::NonZero
+            },
+            |name, solved| {
+                let mut ctx = context_cell.borrow_mut();
+                build_linear_collect_factored_execution_with(
+                    &mut ctx,
+                    name,
+                    solved.coeff,
+                    solved.rhs_term,
+                    solved.solution,
+                    solved.coeff_status,
+                    solved.rhs_status,
+                    |_, _| "k".to_string(),
+                )
+            },
+            |item| {
+                map_calls.set(map_calls.get() + 1);
+                item.description
+            },
+        )
+        .expect("kernel pipeline should solve");
+
+        assert!(matches!(solution_set, SolutionSet::Discrete(_)));
+        assert_eq!(steps.len(), 2);
+        assert_eq!(simplify_calls.get(), 3);
+        assert_eq!(prove_calls.get(), 1);
+        assert_eq!(map_calls.get(), 2);
+    }
+
+    #[test]
+    fn execute_linear_collect_additive_pipeline_with_kernel_and_items_omits_steps_when_disabled() {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let a = context.var("a");
+        let b = context.var("b");
+        let ax = context.add(Expr::Mul(a, x));
+        let lhs = context.add(Expr::Add(ax, b));
+        let rhs = context.num(0);
+        let kernel = derive_linear_collect_additive_kernel(&mut context, lhs, rhs, "x");
+        let context_cell = std::cell::RefCell::new(context);
+        let simplify_calls = std::cell::Cell::new(0usize);
+        let prove_calls = std::cell::Cell::new(0usize);
+
+        let (solution_set, steps) = execute_linear_collect_additive_pipeline_with_kernel_and_items(
+            "x",
+            kernel,
+            false,
+            |expr| {
+                simplify_calls.set(simplify_calls.get() + 1);
+                expr
+            },
+            |constant, coeff| {
+                let mut ctx = context_cell.borrow_mut();
+                let neg_constant = ctx.add(Expr::Neg(constant));
+                build_linear_collect_solution_expr(&mut ctx, neg_constant, coeff)
+            },
+            |expr, inner_name| {
+                let ctx = context_cell.borrow();
+                contains_var(&ctx, expr, inner_name)
+            },
+            |_expr| {
+                prove_calls.set(prove_calls.get() + 1);
+                NonZeroStatus::NonZero
+            },
+            |_name, _solved| panic!("execution builder must not run when items are disabled"),
+            |_item| -> () { panic!("step mapper must not run when items are disabled") },
+        )
+        .expect("additive kernel pipeline should solve");
 
         assert!(matches!(solution_set, SolutionSet::Discrete(_)));
         assert!(steps.is_empty());
