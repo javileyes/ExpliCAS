@@ -15,7 +15,8 @@ use cas_solver_core::solve_outcome::{
     execute_isolated_denominator_sign_split_pipeline_with_optional_items,
     execute_term_isolation_plan_with, finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
-    finalize_product_zero_inequality_solved_sets, mul_rhs_contains_variable,
+    finalize_product_zero_inequality_solved_sets, merge_solved_with_existing_steps_append,
+    merge_solved_with_existing_steps_prepend, mul_rhs_contains_variable,
     plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
     plan_div_numerator_isolation_step_with, plan_division_denominator,
     plan_division_denominator_sign_split, plan_isolated_denominator_sign_split,
@@ -24,7 +25,7 @@ use cas_solver_core::solve_outcome::{
     AddIsolationRoute, DivDenominatorIsolationRoute, DivIsolationRoute, SubIsolationRoute,
 };
 
-use super::{isolate, prepend_steps};
+use super::isolate;
 
 /// Handle isolation for `Add(l, r)`: `(A + B) = RHS`
 #[allow(clippy::too_many_arguments)]
@@ -48,9 +49,10 @@ pub(super) fn isolate_add(
         if let Some((solution_set, linear_steps)) =
             crate::solver::linear_collect::try_linear_collect(lhs, rhs, var, simplifier)
         {
-            let mut all_steps = steps;
-            all_steps.extend(linear_steps);
-            return Ok((solution_set, all_steps));
+            return Ok(merge_solved_with_existing_steps_append(
+                (solution_set, linear_steps),
+                steps,
+            ));
         }
     }
 
@@ -89,7 +91,7 @@ pub(super) fn isolate_add(
         },
         |item| medium_step(item.description, item.equation),
     )?;
-    prepend_steps(solved, steps)
+    Ok(merge_solved_with_existing_steps_prepend(solved, steps))
 }
 
 /// Handle isolation for `Sub(l, r)`: `(A - B) = RHS`
@@ -149,7 +151,7 @@ pub(super) fn isolate_sub(
         },
         |item| medium_step(item.description, item.equation),
     )?;
-    prepend_steps(solved, steps)
+    Ok(merge_solved_with_existing_steps_prepend(solved, steps))
 }
 
 /// Handle isolation for `Mul(l, r)`: `A * B = RHS`
@@ -179,7 +181,10 @@ pub(super) fn isolate_mul(
                 &simplifier.context,
                 solved.solved_sets,
             );
-            return prepend_steps((final_set, solved.steps), steps);
+            return Ok(merge_solved_with_existing_steps_prepend(
+                (final_set, solved.steps),
+                steps,
+            ));
         }
     }
 
@@ -188,9 +193,10 @@ pub(super) fn isolate_mul(
         if let Some((solution_set, linear_steps)) =
             crate::solver::linear_collect::try_linear_collect_v2(lhs, rhs, var, simplifier)
         {
-            let mut all_steps = steps;
-            all_steps.extend(linear_steps);
-            return Ok((solution_set, all_steps));
+            return Ok(merge_solved_with_existing_steps_append(
+                (solution_set, linear_steps),
+                steps,
+            ));
         }
     }
 
@@ -232,7 +238,7 @@ pub(super) fn isolate_mul(
         },
         |item| medium_step(item.description, item.equation),
     )?;
-    prepend_steps(solved, steps)
+    Ok(merge_solved_with_existing_steps_prepend(solved, steps))
 }
 
 /// Handle isolation for `Div(l, r)`: `A / B = RHS`
@@ -345,7 +351,7 @@ pub(super) fn isolate_div(
                 },
                 |item| medium_step(item.description, item.equation),
             )?;
-            prepend_steps(solved, steps)
+            Ok(merge_solved_with_existing_steps_prepend(solved, steps))
         }
     } else {
         // B = A / RHS (variable in denominator)
@@ -453,6 +459,6 @@ pub(super) fn isolate_div(
                 |item| medium_step(item.description().to_string(), item.equation),
             )?
         };
-        prepend_steps(solved, steps)
+        Ok(merge_solved_with_existing_steps_prepend(solved, steps))
     }
 }

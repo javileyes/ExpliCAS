@@ -2434,6 +2434,29 @@ where
     )
 }
 
+/// Merge a solved `(SolutionSet, steps)` payload by prepending solved steps
+/// before caller-owned existing steps.
+pub fn merge_solved_with_existing_steps_prepend<S>(
+    solved: (SolutionSet, Vec<S>),
+    existing_steps: Vec<S>,
+) -> (SolutionSet, Vec<S>) {
+    let (solution_set, mut solved_steps) = solved;
+    solved_steps.extend(existing_steps);
+    (solution_set, solved_steps)
+}
+
+/// Merge a solved `(SolutionSet, steps)` payload by appending solved steps
+/// after caller-owned existing steps.
+pub fn merge_solved_with_existing_steps_append<S>(
+    solved: (SolutionSet, Vec<S>),
+    existing_steps: Vec<S>,
+) -> (SolutionSet, Vec<S>) {
+    let (solution_set, solved_steps) = solved;
+    let mut merged = existing_steps;
+    merged.extend(solved_steps);
+    (solution_set, merged)
+}
+
 /// Execute negated-LHS isolation rewrite and optional first-item didactic
 /// projection via caller-provided callbacks.
 pub fn solve_negated_lhs_isolation_with<E, S, FPlan, FSolve, FStep>(
@@ -9700,6 +9723,30 @@ mod tests {
         assert_eq!(simplify_calls, 0);
         assert_eq!(solution_set, SolutionSet::Discrete(vec![raw_rhs]));
         assert!(steps.is_empty());
+    }
+
+    #[test]
+    fn merge_solved_with_existing_steps_prepend_and_append_preserve_order() {
+        let solved = (
+            SolutionSet::AllReals,
+            vec!["new-1".to_string(), "new-2".to_string()],
+        );
+        let existing = vec!["old".to_string()];
+
+        let prepended = merge_solved_with_existing_steps_prepend(
+            (solved.0.clone(), solved.1.clone()),
+            existing.clone(),
+        );
+        assert_eq!(
+            prepended.1,
+            vec!["new-1".to_string(), "new-2".to_string(), "old".to_string()]
+        );
+
+        let appended = merge_solved_with_existing_steps_append(solved, existing);
+        assert_eq!(
+            appended.1,
+            vec!["old".to_string(), "new-1".to_string(), "new-2".to_string()]
+        );
     }
 
     #[test]
