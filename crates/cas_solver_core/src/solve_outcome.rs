@@ -6807,6 +6807,61 @@ where
     )
 }
 
+/// Execute denominator-sign split with optional didactic items using a single
+/// equation solver callback for both branch and domain equations, and finalize
+/// the solved branch/domain sets into one `SolutionSet`.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_division_denominator_sign_split_pipeline_with_single_solver_with_optional_items<
+    E,
+    S,
+    FRenderExpr,
+    FSolveEquation,
+    FMapStep,
+    FFinalize,
+>(
+    split_plan: DivisionDenominatorSignSplitPlan,
+    denominator: ExprId,
+    case_boundary_lhs: ExprId,
+    case_boundary_op: RelOp,
+    simplified_rhs: ExprId,
+    include_items: bool,
+    branch_prefix_steps: &[S],
+    render_expr: FRenderExpr,
+    solve_equation: FSolveEquation,
+    map_item_to_step: FMapStep,
+    mut finalize_solved_sets: FFinalize,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    S: Clone,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveEquation: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(DivisionDidacticExecutionItem) -> S,
+    FFinalize:
+        FnMut(DivisionDenominatorSignSplitSolvedCases<SolutionSet, SolutionSet>) -> SolutionSet,
+{
+    let solved =
+        solve_division_denominator_sign_split_pipeline_with_single_solver_with_optional_items(
+            split_plan,
+            denominator,
+            case_boundary_lhs,
+            case_boundary_op,
+            simplified_rhs,
+            include_items,
+            branch_prefix_steps,
+            render_expr,
+            solve_equation,
+            map_item_to_step,
+        )?;
+
+    let final_set = finalize_solved_sets(DivisionDenominatorSignSplitSolvedCases {
+        positive_branch: solved.positive_set,
+        negative_branch: solved.negative_set,
+        positive_domain: solved.positive_domain_set,
+        negative_domain: solved.negative_domain_set,
+    });
+    Ok((final_set, solved.steps))
+}
+
 /// Return the boundary didactic item (`--- End of Case 1 ---`) when available.
 pub fn division_denominator_sign_split_boundary_item(
     execution: &DivisionDenominatorSignSplitExecutionPlan,

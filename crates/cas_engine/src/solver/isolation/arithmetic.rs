@@ -8,8 +8,8 @@ use cas_solver_core::solve_outcome::{
     derive_add_isolation_operands, derive_div_isolation_route, derive_mul_isolation_operands,
     derive_sub_isolation_operands,
     execute_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with,
+    execute_division_denominator_sign_split_pipeline_with_single_solver_with_optional_items,
     execute_term_isolation_plan_and_merge_with_existing_steps_with,
-    finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
     finalize_product_zero_inequality_solved_sets,
     merge_optional_solved_with_existing_steps_append_mut, merge_solved_with_existing_steps_prepend,
@@ -19,11 +19,11 @@ use cas_solver_core::solve_outcome::{
     plan_isolated_denominator_sign_split_or_division_denominator,
     plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split_if_applicable,
     plan_sub_isolation_step_with, resolve_div_denominator_isolation_rhs_with,
-    solve_division_denominator_sign_split_pipeline_with_single_solver_with_optional_items,
     solve_isolated_denominator_sign_split_pipeline_with_optional_items,
     solve_product_zero_inequality_split_execution_with, AddIsolationRoute, DivIsolationRoute,
-    DivisionDenominatorSignSplitSolvedCases, IsolatedDenominatorSignSplitSolvedCases,
+    IsolatedDenominatorSignSplitSolvedCases,
 };
+use std::cell::RefCell;
 
 use super::isolate;
 
@@ -246,8 +246,9 @@ pub(super) fn isolate_div(
             );
         if let Some(split_plan) = split_plan {
             let simplified_rhs = simplifier.simplify(split_plan.positive_equation.rhs).0;
+            let split_ctx = RefCell::new(simplifier.context.clone());
             let solved =
-                solve_division_denominator_sign_split_pipeline_with_single_solver_with_optional_items(
+                execute_division_denominator_sign_split_pipeline_with_single_solver_with_optional_items(
                     split_plan,
                     r,
                     l,
@@ -263,7 +264,7 @@ pub(super) fn isolate_div(
                         }
                     },
                     |equation| {
-                        isolate(
+                        let solved = isolate(
                             equation.lhs,
                             equation.rhs,
                             equation.op.clone(),
@@ -271,20 +272,20 @@ pub(super) fn isolate_div(
                             simplifier,
                             opts,
                             ctx,
-                        )
+                        );
+                        *split_ctx.borrow_mut() = simplifier.context.clone();
+                        solved
                     },
                     |item| medium_step(item.description, item.equation),
+                    |solved_sets| {
+                        let snapshot = split_ctx.borrow();
+                        cas_solver_core::solve_outcome::finalize_division_denominator_sign_split_solved_sets(
+                            &snapshot,
+                            solved_sets,
+                        )
+                    },
                 )?;
-            let final_set = finalize_division_denominator_sign_split_solved_sets(
-                &simplifier.context,
-                DivisionDenominatorSignSplitSolvedCases {
-                    positive_branch: solved.positive_set,
-                    negative_branch: solved.negative_set,
-                    positive_domain: solved.positive_domain_set,
-                    negative_domain: solved.negative_domain_set,
-                },
-            );
-            return Ok((final_set, solved.steps));
+            return Ok(solved);
         }
 
         execute_term_isolation_plan_and_merge_with_existing_steps_with(
