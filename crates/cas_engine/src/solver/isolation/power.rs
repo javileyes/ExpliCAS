@@ -10,16 +10,14 @@ use cas_solver_core::solve_outcome::{
     execute_pow_exponent_log_unsupported_pipeline_from_decision_with,
     execute_pow_exponent_shortcut_pipeline_with_item_with,
     execute_power_base_one_shortcut_pipeline_with_item_for_pow_with,
-    merge_pow_base_isolation_pipeline_with_existing_steps,
-    merge_pow_exponent_log_unsupported_pipeline_with_existing_steps,
-    merge_pow_exponent_shortcut_pipeline_with_existing_steps,
-    merge_solved_with_existing_steps_append, merge_solved_with_existing_steps_prepend,
-    plan_pow_exponent_log_isolation_step_with,
+    finalize_pow_exponent_log_unsupported_pipeline_with_existing_steps,
+    finalize_pow_exponent_shortcut_pipeline_with_existing_steps,
+    merge_pow_base_isolation_pipeline_with_existing_steps, merge_solved_with_existing_steps_append,
+    merge_solved_with_existing_steps_prepend, plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
     pow_exponent_rhs_contains_variable, shortcut_bases_equivalent_by_difference_with,
     solve_pow_base_isolation_pipeline_with_item,
-    solve_solve_tactic_normalization_pipeline_with_item, PowExponentShortcutPipelineSolved,
-    PowIsolationRoute,
+    solve_solve_tactic_normalization_pipeline_with_item, PowIsolationRoute,
 };
 
 use super::isolate;
@@ -180,20 +178,10 @@ fn isolate_pow_exponent(
         )?
     };
 
-    match shortcut_solved {
-        PowExponentShortcutPipelineSolved::Continue => {}
-        _ => {
-            let existing_steps = std::mem::take(&mut steps);
-            if let Some((solution_set, merged_steps)) =
-                merge_pow_exponent_shortcut_pipeline_with_existing_steps(
-                    shortcut_solved,
-                    existing_steps,
-                )
-            {
-                return Ok((solution_set, merged_steps));
-            }
-            unreachable!("non-continue shortcut branch must produce merged solution");
-        }
+    if let Some((solution_set, merged_steps)) =
+        finalize_pow_exponent_shortcut_pipeline_with_existing_steps(shortcut_solved, &mut steps)
+    {
+        return Ok((solution_set, merged_steps));
     }
 
     // SAFETY GUARD: If RHS contains the variable, we cannot invert with log.
@@ -360,30 +348,27 @@ fn isolate_pow_exponent(
             |item| medium_step(item.description().to_string(), item.equation),
         )
     };
-    if let Some(unsupported_solved) = unsupported_solved {
-        let existing_steps = std::mem::take(&mut steps);
-        if let Some((solution_set, merged_steps)) =
-            merge_pow_exponent_log_unsupported_pipeline_with_existing_steps(
-                Some(unsupported_solved),
-                existing_steps,
-                |hint| {
-                    let event = crate::assumptions::AssumptionEvent::from_log_assumption(
-                        hint.assumption,
-                        &simplifier.context,
-                        b,
-                        rhs,
-                    );
-                    crate::domain::register_blocked_hint(crate::domain::BlockedHint {
-                        key: event.key,
-                        expr_id: hint.expr_id,
-                        rule: hint.rule.to_string(),
-                        suggestion: hint.suggestion,
-                    });
-                },
-            )
-        {
-            return Ok((solution_set, merged_steps));
-        }
+    if let Some((solution_set, merged_steps)) =
+        finalize_pow_exponent_log_unsupported_pipeline_with_existing_steps(
+            unsupported_solved,
+            &mut steps,
+            |hint| {
+                let event = crate::assumptions::AssumptionEvent::from_log_assumption(
+                    hint.assumption,
+                    &simplifier.context,
+                    b,
+                    rhs,
+                );
+                crate::domain::register_blocked_hint(crate::domain::BlockedHint {
+                    key: event.key,
+                    expr_id: hint.expr_id,
+                    rule: hint.rule.to_string(),
+                    suggestion: hint.suggestion,
+                });
+            },
+        )
+    {
+        return Ok((solution_set, merged_steps));
     }
     // ================================================================
     // End of domain guards

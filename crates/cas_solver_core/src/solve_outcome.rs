@@ -672,6 +672,20 @@ pub fn merge_pow_exponent_shortcut_pipeline_with_existing_steps<S>(
     }
 }
 
+/// Finalize shortcut pipeline against caller-owned mutable step buffer.
+///
+/// Returns `None` for `Continue` without consuming `existing_steps`.
+pub fn finalize_pow_exponent_shortcut_pipeline_with_existing_steps<S>(
+    solved: PowExponentShortcutPipelineSolved<S>,
+    existing_steps: &mut Vec<S>,
+) -> Option<(SolutionSet, Vec<S>)> {
+    if matches!(solved, PowExponentShortcutPipelineSolved::Continue) {
+        return None;
+    }
+    let existing = std::mem::take(existing_steps);
+    merge_pow_exponent_shortcut_pipeline_with_existing_steps(solved, existing)
+}
+
 /// Solved base-one shortcut (`1^x = rhs`) with didactic payload.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowerBaseOneShortcutOutcome {
@@ -3699,6 +3713,27 @@ where
     let mut merged = existing_steps;
     merged.extend(steps);
     Some((solution_set, merged))
+}
+
+/// Finalize unsupported-log pipeline against caller-owned mutable step buffer.
+///
+/// Returns `None` when there is no unsupported pipeline result and preserves
+/// `existing_steps` in that case.
+pub fn finalize_pow_exponent_log_unsupported_pipeline_with_existing_steps<S, FHint>(
+    solved: Option<PowExponentLogUnsupportedPipelineSolved<S>>,
+    existing_steps: &mut Vec<S>,
+    register_blocked_hint: FHint,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FHint: FnMut(LogBlockedHintRecord),
+{
+    let solved = solved?;
+    let existing = std::mem::take(existing_steps);
+    merge_pow_exponent_log_unsupported_pipeline_with_existing_steps(
+        Some(solved),
+        existing,
+        register_blocked_hint,
+    )
 }
 
 /// Build narration for eliminating rational exponents by powering both sides.
@@ -8289,6 +8324,48 @@ mod tests {
     }
 
     #[test]
+    fn finalize_pow_exponent_log_unsupported_pipeline_with_existing_steps_preserves_steps_on_none()
+    {
+        let mut existing = vec!["existing".to_string()];
+        let out = finalize_pow_exponent_log_unsupported_pipeline_with_existing_steps(
+            None::<PowExponentLogUnsupportedPipelineSolved<String>>,
+            &mut existing,
+            |_hint| {},
+        );
+        assert!(out.is_none());
+        assert_eq!(existing, vec!["existing".to_string()]);
+    }
+
+    #[test]
+    fn finalize_pow_exponent_log_unsupported_pipeline_with_existing_steps_merges_and_registers_hints(
+    ) {
+        let mut existing = vec!["existing".to_string()];
+        let mut registered = Vec::new();
+        let out = finalize_pow_exponent_log_unsupported_pipeline_with_existing_steps(
+            Some(PowExponentLogUnsupportedPipelineSolved {
+                blocked_hints: vec![LogBlockedHintRecord {
+                    assumption: LogAssumption::PositiveBase,
+                    expr_id: ExprId::from_raw(17),
+                    rule: "Take log of both sides",
+                    suggestion: "assume positive base",
+                }],
+                solution_set: SolutionSet::AllReals,
+                steps: vec!["unsupported".to_string()],
+            }),
+            &mut existing,
+            |hint| registered.push(hint),
+        )
+        .expect("must merge unsupported outcome");
+        assert_eq!(registered.len(), 1);
+        assert_eq!(registered[0].expr_id, ExprId::from_raw(17));
+        assert_eq!(
+            out.1,
+            vec!["existing".to_string(), "unsupported".to_string()]
+        );
+        assert!(existing.is_empty());
+    }
+
+    #[test]
     fn guarded_solutions_with_residual_fallback_builds_two_cases() {
         let mut ctx = Context::new();
         let b = ctx.var("b");
@@ -9257,6 +9334,33 @@ mod tests {
             merged_returned.1,
             vec!["existing".to_string(), "pipeline".to_string()]
         );
+    }
+
+    #[test]
+    fn finalize_pow_exponent_shortcut_pipeline_with_existing_steps_preserves_steps_on_continue() {
+        let mut existing = vec!["existing".to_string()];
+        let out = finalize_pow_exponent_shortcut_pipeline_with_existing_steps(
+            PowExponentShortcutPipelineSolved::Continue,
+            &mut existing,
+        );
+        assert!(out.is_none());
+        assert_eq!(existing, vec!["existing".to_string()]);
+    }
+
+    #[test]
+    fn finalize_pow_exponent_shortcut_pipeline_with_existing_steps_merges_isolated() {
+        let mut existing = vec!["existing".to_string()];
+        let out = finalize_pow_exponent_shortcut_pipeline_with_existing_steps(
+            PowExponentShortcutPipelineSolved::Isolated {
+                solution_set: SolutionSet::Empty,
+                steps: vec!["pipeline".to_string()],
+            },
+            &mut existing,
+        )
+        .expect("isolated shortcut must merge");
+        assert!(matches!(out.0, SolutionSet::Empty));
+        assert_eq!(out.1, vec!["pipeline".to_string(), "existing".to_string()]);
+        assert!(existing.is_empty());
     }
 
     #[test]
