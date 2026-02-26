@@ -769,6 +769,7 @@ where
 }
 
 /// Resolve and execute base-one shortcut pipeline for equations `base^x op rhs`.
+#[allow(clippy::too_many_arguments)]
 pub fn execute_power_base_one_shortcut_pipeline_with_item_for_pow_with<S, FRender, FStep>(
     ctx: &Context,
     base: ExprId,
@@ -1603,9 +1604,9 @@ where
         crate::isolation_utils::are_equivalent_by_difference_with(
             left,
             right,
-            |a, b| build_sub(a, b),
-            |expr| simplify(expr),
-            |expr| is_zero(expr),
+            &mut build_sub,
+            &mut simplify,
+            &mut is_zero,
         )
     })
 }
