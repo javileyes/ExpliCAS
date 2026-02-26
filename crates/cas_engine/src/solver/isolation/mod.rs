@@ -6,8 +6,8 @@ use crate::engine::Simplifier;
 use crate::solver::{medium_step, SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
 use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::solve_outcome::{
-    residual_solution_set, solve_isolated_variable_lhs_with_resolver,
-    solve_negated_lhs_isolation_with,
+    merge_solved_with_existing_steps_prepend, residual_solution_set,
+    solve_isolated_variable_lhs_with_resolver, solve_negated_lhs_isolation_with,
 };
 
 use crate::error::CasError;
@@ -82,7 +82,7 @@ pub(crate) fn isolate(
                     )
                 },
             );
-            prepend_steps(solved, steps)
+            Ok(merge_solved_with_existing_steps_prepend(solved, steps))
         }
         Expr::Add(l, r) => {
             arithmetic::isolate_add(lhs, l, r, rhs, op, var, simplifier, opts, steps, ctx)
@@ -131,23 +131,11 @@ pub(crate) fn isolate(
                 },
                 |item| medium_step(item.description, item.equation),
             )?;
-            prepend_steps(solved, steps)
+            Ok(merge_solved_with_existing_steps_prepend(solved, steps))
         }
         _ => Err(CasError::IsolationError(
             var.to_string(),
             format!("Cannot isolate from {:?}", lhs_expr),
         )),
     }
-}
-
-// =============================================================================
-// Helpers (used by submodules via `super::`)
-// =============================================================================
-
-pub(crate) fn prepend_steps(
-    (set, mut res_steps): (SolutionSet, Vec<SolveStep>),
-    mut steps: Vec<SolveStep>,
-) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    steps.append(&mut res_steps);
-    Ok((set, steps))
 }

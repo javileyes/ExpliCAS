@@ -4058,6 +4058,60 @@ where
     }
 }
 
+/// Execute absolute-value isolation plan and route each outcome through the
+/// corresponding solve pipeline while preserving caller-provided existing steps.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_abs_isolation_plan_pipeline_with_optional_items<
+    E,
+    S,
+    FSolveSingle,
+    FRenderExpr,
+    FSolveBranch,
+    FMapStep,
+    FFinalize,
+>(
+    plan: AbsIsolationPlan,
+    lhs_expr: ExprId,
+    include_items: bool,
+    existing_steps: Vec<S>,
+    render_expr: FRenderExpr,
+    mut solve_single_equation: FSolveSingle,
+    solve_branch: FSolveBranch,
+    map_item_to_step: FMapStep,
+    finalize_solved_sets: FFinalize,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    S: Clone,
+    FSolveSingle: FnMut(Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveBranch: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(AbsSplitExecutionItem) -> S,
+    FFinalize: FnMut(SolutionSet, SolutionSet) -> SolutionSet,
+{
+    match plan {
+        AbsIsolationPlan::ReturnEmptySet => Ok((SolutionSet::Empty, existing_steps)),
+        AbsIsolationPlan::IsolateSingleEquation { equation } => {
+            Ok(merge_solved_with_existing_steps_prepend(
+                solve_single_equation(equation)?,
+                existing_steps,
+            ))
+        }
+        AbsIsolationPlan::SplitBranches { positive, negative } => {
+            execute_abs_split_pipeline_with_optional_items(
+                positive,
+                negative,
+                lhs_expr,
+                include_items,
+                &existing_steps,
+                render_expr,
+                solve_branch,
+                map_item_to_step,
+                finalize_solved_sets,
+            )
+        }
+    }
+}
+
 /// Pre-built sign-split equations for inequalities of the form `A*B op 0`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProductZeroInequalityPlan {
@@ -7009,6 +7063,55 @@ mod tests {
             }
             other => panic!("expected split solved variant, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn execute_abs_isolation_plan_pipeline_with_optional_items_returns_empty_with_existing_steps() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let solved = execute_abs_isolation_plan_pipeline_with_optional_items(
+            AbsIsolationPlan::ReturnEmptySet,
+            x,
+            true,
+            vec![1u8, 2u8],
+            |_id| String::new(),
+            |_equation| Ok::<_, ()>((SolutionSet::AllReals, vec![9u8])),
+            |_equation| Ok::<_, ()>((SolutionSet::AllReals, vec![9u8])),
+            |_item| 0u8,
+            |_positive, _negative| SolutionSet::AllReals,
+        )
+        .expect("pipeline must return empty set");
+
+        assert!(matches!(solved.0, SolutionSet::Empty));
+        assert_eq!(solved.1, vec![1u8, 2u8]);
+    }
+
+    #[test]
+    fn execute_abs_isolation_plan_pipeline_with_optional_items_merges_single_equation_steps() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("lhs");
+        let rhs = ctx.var("rhs");
+        let x = ctx.var("x");
+        let equation = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+        let solved = execute_abs_isolation_plan_pipeline_with_optional_items(
+            AbsIsolationPlan::IsolateSingleEquation { equation },
+            x,
+            true,
+            vec![3u8, 4u8],
+            |_id| String::new(),
+            |_equation| Ok::<_, ()>((SolutionSet::AllReals, vec![1u8, 2u8])),
+            |_equation| Ok::<_, ()>((SolutionSet::AllReals, vec![9u8])),
+            |_item| 0u8,
+            |_positive, _negative| SolutionSet::AllReals,
+        )
+        .expect("single-equation pipeline must succeed");
+
+        assert!(matches!(solved.0, SolutionSet::AllReals));
+        assert_eq!(solved.1, vec![1u8, 2u8, 3u8, 4u8]);
     }
 
     #[test]
