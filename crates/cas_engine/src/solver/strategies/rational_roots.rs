@@ -17,8 +17,8 @@ use crate::solver::{medium_step, SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, SolutionSet};
 use cas_solver_core::rational_roots::{
     extract_poly_coefficients, plan_rational_roots_strategy_step_with_zero_rhs,
-    solve_numeric_coeff_polynomial,
-    solve_rational_roots_strategy_result_for_equation_with_and_item,
+    solve_numeric_coeff_polynomial, solve_rational_roots_step_pipeline_with_item,
+    NumericPolynomialSolveOutcome,
 };
 use cas_solver_core::solution_set::sort_and_dedup_exprs;
 
@@ -46,50 +46,43 @@ impl SolverStrategy for RationalRootsStrategy {
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let include_item = simplifier.collect_steps();
         let zero_rhs = simplifier.context.num(0);
-        let runtime_cell = std::cell::RefCell::new(simplifier);
-        let solved = solve_rational_roots_strategy_result_for_equation_with_and_item(
-            eq,
-            var,
+        if eq.op != cas_ast::RelOp::Eq {
+            return None;
+        }
+
+        let diff = simplifier.context.add(Expr::Sub(eq.lhs, eq.rhs));
+        let diff = simplifier.simplify(diff).0;
+        let expanded = crate::expand::expand(&mut simplifier.context, diff);
+        let coeffs = extract_poly_coefficients(&mut simplifier.context, expanded, var, MAX_DEGREE)?;
+        let outcome = solve_numeric_coeff_polynomial(
+            &mut simplifier.context,
+            &coeffs,
             3,
             MAX_DEGREE,
             MAX_CANDIDATES,
-            include_item,
-            |left, right| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                simplifier_ref.context.add(Expr::Sub(left, right))
-            },
-            |expr| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                simplifier_ref.simplify(expr).0
-            },
-            |expr| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                crate::expand::expand(&mut simplifier_ref.context, expr)
-            },
-            |expanded, name, max_degree| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                extract_poly_coefficients(&mut simplifier_ref.context, expanded, name, max_degree)
-            },
-            |coeffs, min_degree, max_degree, max_candidates| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                solve_numeric_coeff_polynomial(
-                    &mut simplifier_ref.context,
-                    coeffs,
-                    min_degree,
-                    max_degree,
-                    max_candidates,
-                )
-            },
-            |roots| {
-                let simplifier_ref = runtime_cell.borrow();
-                sort_and_dedup_exprs(&simplifier_ref.context, roots);
-            },
-            |expanded, degree| {
-                plan_rational_roots_strategy_step_with_zero_rhs(expanded, degree, zero_rhs)
-            },
-            |item| medium_step(item.description().to_string(), item.equation),
         )?;
-        Some(Ok(solved))
+        let (degree, mut roots) = match outcome {
+            NumericPolynomialSolveOutcome::AllReals => {
+                return Some(Ok((SolutionSet::AllReals, vec![])));
+            }
+            NumericPolynomialSolveOutcome::CandidateRoots { degree, roots } => (
+                degree,
+                roots
+                    .into_iter()
+                    .map(|expr| simplifier.simplify(expr).0)
+                    .collect::<Vec<_>>(),
+            ),
+        };
+        if roots.is_empty() {
+            return None;
+        }
+        sort_and_dedup_exprs(&simplifier.context, &mut roots);
+
+        let step = plan_rational_roots_strategy_step_with_zero_rhs(expanded, degree, zero_rhs);
+        let steps = solve_rational_roots_step_pipeline_with_item(step, include_item, |item| {
+            medium_step(item.description().to_string(), item.equation)
+        });
+        Some(Ok((SolutionSet::Discrete(roots), steps)))
     }
 
     fn should_verify(&self) -> bool {
