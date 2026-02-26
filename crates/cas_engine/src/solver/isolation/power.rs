@@ -260,7 +260,6 @@ fn isolate_pow_exponent(
     );
     let include_terminal_items = simplifier.collect_steps();
     let include_unsupported_items = simplifier.collect_steps();
-    let hint_ctx = RefCell::new(simplifier.context.clone());
     let (resolved_decision, simplifier) = {
         let simplifier_ref = RefCell::new(simplifier);
         let mut decision_ctx = simplifier_ref.borrow().context.clone();
@@ -288,7 +287,7 @@ fn isolate_pow_exponent(
                 move || unsupported_execution,
                 |equation| {
                     let mut simplifier = simplifier_ref.borrow_mut();
-                    let solved = isolate(
+                    isolate(
                         equation.lhs,
                         equation.rhs,
                         equation.op.clone(),
@@ -298,14 +297,14 @@ fn isolate_pow_exponent(
                         ctx,
                     )
                     .ok()
-                    .map(|(solutions, _)| solutions);
-                    *hint_ctx.borrow_mut() = simplifier.context.clone();
-                    solved
+                    .map(|(solutions, _)| solutions)
                 },
                 |hint| {
-                    let snapshot = hint_ctx.borrow();
-                    let blocked_hint =
-                        crate::solver::domain_blocked_hint_from_log_blocked_hint(&snapshot, hint);
+                    let snapshot = simplifier_ref.borrow();
+                    let blocked_hint = crate::solver::domain_blocked_hint_from_log_blocked_hint(
+                        &snapshot.context,
+                        hint,
+                    );
                     crate::domain::register_blocked_hint(blocked_hint);
                 },
             );
