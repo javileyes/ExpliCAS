@@ -419,6 +419,36 @@ where
     build_reciprocal_execution_from_kernel_prepared(ctx, var, kernel, prepared)
 }
 
+/// Execute reciprocal kernel plan/prepare/build pipeline with injected hooks.
+///
+/// This is useful when callers cannot hold a mutable context borrow across
+/// simplification/proof closures and need to orchestrate each phase separately.
+pub fn execute_reciprocal_kernel_execution_pipeline_with<FPlan, FS, FP, FBuild>(
+    var: &str,
+    kernel: ReciprocalSolveKernel,
+    mut plan_from_kernel: FPlan,
+    simplify_expr: FS,
+    prove_nonzero_status: FP,
+    mut build_execution_from_prepared: FBuild,
+) -> ReciprocalSolveExecution
+where
+    FPlan: FnMut(&str, ReciprocalSolveKernel) -> ReciprocalSolvePlan,
+    FS: FnMut(ExprId) -> ExprId,
+    FP: FnMut(ExprId) -> NonZeroStatus,
+    FBuild:
+        FnMut(&str, ReciprocalSolveKernel, ReciprocalPreparedExecution) -> ReciprocalSolveExecution,
+{
+    let raw_plan = plan_from_kernel(var, kernel);
+    let prepared = prepare_reciprocal_execution_from_kernel_with(
+        kernel,
+        raw_plan.combined_rhs,
+        raw_plan.solution_rhs,
+        simplify_expr,
+        prove_nonzero_status,
+    );
+    build_execution_from_prepared(var, kernel, prepared)
+}
+
 /// High-level reciprocal solve execution using closure hooks.
 ///
 /// Returns `None` when equation shape is not reciprocal-isolable.
@@ -679,6 +709,64 @@ mod tests {
         assert_eq!(prepared.solution_rhs_display, display);
         assert_eq!(prepared.guard_numerator, display);
         assert_eq!(prepared.numerator_status, NonZeroStatus::Unknown);
+    }
+
+    #[test]
+    fn execute_reciprocal_kernel_execution_pipeline_with_runs_all_phases() {
+        let mut context = Context::new();
+        let numerator = context.var("n");
+        let denominator = context.var("d");
+        let display = context.var("display");
+        let context_cell = std::cell::RefCell::new(context);
+        let mut plan_calls = 0usize;
+        let mut simplify_calls = 0usize;
+        let mut prove_calls = 0usize;
+        let mut build_calls = 0usize;
+
+        let execution = execute_reciprocal_kernel_execution_pipeline_with(
+            "x",
+            ReciprocalSolveKernel {
+                numerator,
+                denominator,
+            },
+            |inner_var, kernel| {
+                plan_calls += 1;
+                let mut context_ref = context_cell.borrow_mut();
+                build_reciprocal_solve_plan(
+                    &mut context_ref,
+                    inner_var,
+                    kernel.numerator,
+                    kernel.denominator,
+                )
+            },
+            |_| {
+                simplify_calls += 1;
+                display
+            },
+            |_| {
+                prove_calls += 1;
+                NonZeroStatus::Unknown
+            },
+            |inner_var, kernel, prepared| {
+                build_calls += 1;
+                let mut context_ref = context_cell.borrow_mut();
+                build_reciprocal_execution_from_kernel_prepared(
+                    &mut context_ref,
+                    inner_var,
+                    kernel,
+                    prepared,
+                )
+            },
+        );
+
+        assert_eq!(plan_calls, 1);
+        assert_eq!(simplify_calls, 3);
+        assert_eq!(prove_calls, 1);
+        assert_eq!(build_calls, 1);
+        assert_eq!(execution.items.len(), 2);
+        assert_eq!(execution.items[0].equation.rhs, display);
+        assert_eq!(execution.items[1].equation.rhs, display);
+        assert!(matches!(execution.solutions, SolutionSet::Conditional(_)));
     }
 
     #[test]

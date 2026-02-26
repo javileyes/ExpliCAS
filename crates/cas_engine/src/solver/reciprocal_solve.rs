@@ -9,8 +9,8 @@
 use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::reciprocal::{
     build_reciprocal_execution_from_kernel_prepared, build_reciprocal_solve_plan,
-    derive_reciprocal_solve_kernel, execute_reciprocal_solve_pipeline_with_items,
-    prepare_reciprocal_execution_from_kernel_with,
+    derive_reciprocal_solve_kernel, execute_reciprocal_kernel_execution_pipeline_with,
+    execute_reciprocal_solve_pipeline_with_items,
 };
 
 use crate::engine::Simplifier;
@@ -43,19 +43,18 @@ pub(crate) fn try_reciprocal_solve(
             )
         },
         |inner_var, kernel| {
-            let raw_plan = {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                build_reciprocal_solve_plan(
-                    &mut simplifier_ref.context,
-                    inner_var,
-                    kernel.numerator,
-                    kernel.denominator,
-                )
-            };
-            let prepared = prepare_reciprocal_execution_from_kernel_with(
+            execute_reciprocal_kernel_execution_pipeline_with(
+                inner_var,
                 kernel,
-                raw_plan.combined_rhs,
-                raw_plan.solution_rhs,
+                |plan_var, plan_kernel| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    build_reciprocal_solve_plan(
+                        &mut simplifier_ref.context,
+                        plan_var,
+                        plan_kernel.numerator,
+                        plan_kernel.denominator,
+                    )
+                },
                 |expr| {
                     let mut simplifier_ref = runtime_cell.borrow_mut();
                     simplifier_ref.simplify(expr).0
@@ -64,13 +63,15 @@ pub(crate) fn try_reciprocal_solve(
                     let simplifier_ref = runtime_cell.borrow();
                     crate::solver::prove_nonzero_status(&simplifier_ref.context, expr)
                 },
-            );
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            build_reciprocal_execution_from_kernel_prepared(
-                &mut simplifier_ref.context,
-                inner_var,
-                kernel,
-                prepared,
+                |build_var, build_kernel, prepared| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    build_reciprocal_execution_from_kernel_prepared(
+                        &mut simplifier_ref.context,
+                        build_var,
+                        build_kernel,
+                        prepared,
+                    )
+                },
             )
         },
         |item| medium_step(item.description().to_string(), item.equation),
