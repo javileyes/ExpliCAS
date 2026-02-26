@@ -14,7 +14,7 @@ use cas_solver_core::solve_outcome::{
     execute_term_isolation_plan_with_and_merge_with_existing_steps_with,
     finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
-    finalize_product_zero_inequality_solved_sets, merge_solved_with_existing_steps_append,
+    finalize_product_zero_inequality_solved_sets, merge_optional_solved_with_existing_steps_append,
     mul_rhs_contains_variable, plan_add_operand_isolation_step_with,
     plan_div_denominator_isolation_with_zero_rhs_guard, plan_div_numerator_isolation_step_with,
     plan_division_denominator, plan_division_denominator_sign_split_if_applicable,
@@ -44,13 +44,11 @@ pub(super) fn isolate_add(
     let add_operands = derive_add_isolation_operands(&simplifier.context, l, r, var);
 
     if matches!(add_operands.route, AddIsolationRoute::BothOperands) {
-        if let Some((solution_set, linear_steps)) =
-            crate::solver::linear_collect::try_linear_collect(lhs, rhs, var, simplifier)
-        {
-            return Ok(merge_solved_with_existing_steps_append(
-                (solution_set, linear_steps),
-                steps,
-            ));
+        if let Some(merged) = merge_optional_solved_with_existing_steps_append(
+            crate::solver::linear_collect::try_linear_collect(lhs, rhs, var, simplifier),
+            steps.clone(),
+        ) {
+            return Ok(merged);
         }
     }
 
@@ -193,13 +191,11 @@ pub(super) fn isolate_mul(
 
     // Default behavior: divide by one factor
     if mul_rhs_contains_variable(&simplifier.context, rhs, var) {
-        if let Some((solution_set, linear_steps)) =
-            crate::solver::linear_collect::try_linear_collect_v2(lhs, rhs, var, simplifier)
-        {
-            return Ok(merge_solved_with_existing_steps_append(
-                (solution_set, linear_steps),
-                steps,
-            ));
+        if let Some(merged) = merge_optional_solved_with_existing_steps_append(
+            crate::solver::linear_collect::try_linear_collect_v2(lhs, rhs, var, simplifier),
+            steps.clone(),
+        ) {
+            return Ok(merged);
         }
     }
 

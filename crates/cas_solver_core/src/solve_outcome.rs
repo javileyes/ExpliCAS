@@ -2700,6 +2700,15 @@ pub fn merge_solved_with_existing_steps_append<S>(
     (solution_set, merged)
 }
 
+/// Merge an optional solved payload by appending solved steps after
+/// caller-owned existing steps.
+pub fn merge_optional_solved_with_existing_steps_append<S>(
+    solved: Option<(SolutionSet, Vec<S>)>,
+    existing_steps: Vec<S>,
+) -> Option<(SolutionSet, Vec<S>)> {
+    solved.map(|solved| merge_solved_with_existing_steps_append(solved, existing_steps))
+}
+
 /// Execute log-isolation pipeline and prepend solved steps before caller-owned
 /// existing steps.
 #[allow(clippy::type_complexity)]
@@ -10998,6 +11007,23 @@ mod tests {
             appended.1,
             vec!["old".to_string(), "new-1".to_string(), "new-2".to_string()]
         );
+    }
+
+    #[test]
+    fn merge_optional_solved_with_existing_steps_append_handles_some_and_none() {
+        let some_merged = merge_optional_solved_with_existing_steps_append(
+            Some((SolutionSet::AllReals, vec!["new".to_string()])),
+            vec!["old".to_string()],
+        )
+        .expect("some branch should merge");
+        assert_eq!(some_merged.0, SolutionSet::AllReals);
+        assert_eq!(some_merged.1, vec!["old".to_string(), "new".to_string()]);
+
+        let none_merged = merge_optional_solved_with_existing_steps_append(
+            None::<(SolutionSet, Vec<String>)>,
+            vec!["old".to_string()],
+        );
+        assert!(none_merged.is_none());
     }
 
     #[test]
