@@ -11,12 +11,12 @@ use cas_solver_core::function_inverse::{
 };
 use cas_solver_core::log_isolation::plan_log_isolation_step_with;
 use cas_solver_core::solve_outcome::{
-    build_abs_split_execution_with,
+    execute_abs_isolation_plan_pipeline_with_optional_items_and_solver,
     execute_log_isolation_result_pipeline_with_plan_and_error_and_merge_with_existing_steps,
-    finalize_abs_split_solution_set_for_rhs, materialize_abs_split_execution,
-    merge_solved_with_existing_steps_prepend, plan_abs_isolation_with_rhs_sign,
-    solve_abs_split_execution_pipeline_with_items, AbsIsolationPlan,
+    finalize_abs_split_solution_set_for_rhs, merge_solved_with_existing_steps_prepend,
+    plan_abs_isolation_with_rhs_sign,
 };
+use std::cell::RefCell;
 
 /// Handle isolation for `Function(fn_id, args)`: abs, log, ln, exp, sqrt, trig
 #[allow(clippy::too_many_arguments)]
@@ -74,56 +74,43 @@ fn isolate_abs(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let abs_plan = plan_abs_isolation_with_rhs_sign(&mut simplifier.context, arg, rhs, op.clone());
     let include_items = simplifier.collect_steps();
-    match abs_plan {
-        AbsIsolationPlan::ReturnEmptySet => Ok((SolutionSet::Empty, steps)),
-        AbsIsolationPlan::IsolateSingleEquation { equation } => {
+    let render_ctx = RefCell::new(simplifier.context.clone());
+    let finalize_op = op.clone();
+    execute_abs_isolation_plan_pipeline_with_optional_items_and_solver(
+        abs_plan,
+        arg,
+        include_items,
+        steps,
+        |expr| {
+            let snapshot = render_ctx.borrow();
+            solver_render_expr(&snapshot, expr)
+        },
+        |equation| {
             let solved = isolate(
                 equation.lhs,
                 equation.rhs,
-                equation.op,
+                equation.op.clone(),
                 var,
                 simplifier,
                 opts,
                 ctx,
-            )?;
-            Ok(merge_solved_with_existing_steps_prepend(solved, steps))
-        }
-        AbsIsolationPlan::SplitBranches { positive, negative } => {
-            let execution = if include_items {
-                build_abs_split_execution_with(positive, negative, arg, |expr| {
-                    solver_render_expr(&simplifier.context, expr)
-                })
-            } else {
-                materialize_abs_split_execution(positive, negative)
-            };
-            let solved = solve_abs_split_execution_pipeline_with_items(
-                &execution,
-                include_items,
-                &steps,
-                |equation| {
-                    isolate(
-                        equation.lhs,
-                        equation.rhs,
-                        equation.op.clone(),
-                        var,
-                        simplifier,
-                        opts,
-                        ctx,
-                    )
-                },
-                |item| medium_step(item.description().to_string(), item.equation),
-            )?;
-            let final_set = finalize_abs_split_solution_set_for_rhs(
-                &simplifier.context,
-                op,
+            );
+            *render_ctx.borrow_mut() = simplifier.context.clone();
+            solved
+        },
+        |item| medium_step(item.description().to_string(), item.equation),
+        |positive_set, negative_set| {
+            let snapshot = render_ctx.borrow();
+            finalize_abs_split_solution_set_for_rhs(
+                &snapshot,
+                finalize_op.clone(),
                 rhs,
                 var,
-                solved.positive_set,
-                solved.negative_set,
-            );
-            Ok((final_set, solved.steps))
-        }
-    }
+                positive_set,
+                negative_set,
+            )
+        },
+    )
 }
 
 /// Handle `log(base, arg) = RHS`
