@@ -11,8 +11,8 @@ use cas_solver_core::function_inverse::{
 use cas_solver_core::log_isolation::plan_log_isolation_step_with;
 use cas_solver_core::solve_outcome::{
     execute_abs_isolation_plan_pipeline_with_optional_items_and_solver,
-    execute_log_isolation_result_pipeline_or_else_with_and_merge_with_existing_steps_with,
-    execute_unary_inverse_result_pipeline_or_else_with_and_merge_with_existing_steps_with,
+    execute_log_isolation_result_pipeline_with_plan_or_else_and_merge_with_existing_steps_with,
+    execute_unary_inverse_result_pipeline_with_plan_or_else_and_merge_with_existing_steps_with,
     finalize_abs_split_solution_set_for_rhs, plan_abs_isolation_with_rhs_sign,
 };
 
@@ -122,23 +122,21 @@ fn isolate_log(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+    let rewrite = plan_log_isolation_step_with(
+        &mut simplifier.context,
+        base,
+        arg,
+        rhs,
+        var,
+        op.clone(),
+        solver_render_expr,
+    );
     let include_item = simplifier.collect_steps();
     let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    execute_log_isolation_result_pipeline_or_else_with_and_merge_with_existing_steps_with(
+    execute_log_isolation_result_pipeline_with_plan_or_else_and_merge_with_existing_steps_with(
         include_item,
         steps,
-        || {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            plan_log_isolation_step_with(
-                &mut simplifier_ref.context,
-                base,
-                arg,
-                rhs,
-                var,
-                op.clone(),
-                solver_render_expr,
-            )
-        },
+        rewrite,
         |equation| {
             let mut simplifier_ref = runtime_cell.borrow_mut();
             let (solution_set, solved_steps) = isolate(
@@ -176,9 +174,17 @@ fn isolate_unary_function(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let fn_name = simplifier.context.sym_name(fn_id).to_string();
+    let unary_plan = plan_unary_inverse_isolation_step(
+        &mut simplifier.context,
+        &fn_name,
+        arg,
+        rhs,
+        op.clone(),
+        true,
+    );
     let include_items = simplifier.collect_steps();
     let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    execute_unary_inverse_result_pipeline_or_else_with_and_merge_with_existing_steps_with(
+    execute_unary_inverse_result_pipeline_with_plan_or_else_and_merge_with_existing_steps_with(
         &fn_name,
         arg,
         rhs,
@@ -186,17 +192,7 @@ fn isolate_unary_function(
         true,
         include_items,
         steps,
-        |inner_fn_name, inner_arg, inner_other, inner_op, inner_is_lhs| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            plan_unary_inverse_isolation_step(
-                &mut simplifier_ref.context,
-                inner_fn_name,
-                inner_arg,
-                inner_other,
-                inner_op,
-                inner_is_lhs,
-            )
-        },
+        unary_plan,
         |rhs_expr| {
             let mut simplifier_ref = runtime_cell.borrow_mut();
             let (simplified_rhs, sim_steps) = simplifier_ref.simplify(rhs_expr);

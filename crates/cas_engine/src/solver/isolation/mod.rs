@@ -6,8 +6,9 @@ use crate::engine::Simplifier;
 use crate::solver::{medium_step, SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
 use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::solve_outcome::{
-    residual_solution_set, solve_isolated_variable_lhs_with_resolver_and_merge_with_existing_steps,
-    solve_negated_lhs_isolation_with_and_merge_with_existing_steps,
+    plan_negated_lhs_isolation_step, residual_solution_set,
+    solve_isolated_variable_lhs_with_resolver_and_merge_with_existing_steps,
+    solve_negated_lhs_isolation_plan_with_and_merge_with_existing_steps,
 };
 
 use crate::error::CasError;
@@ -104,18 +105,12 @@ pub(crate) fn isolate(
             functions::isolate_function(fn_id, args, rhs, op, var, simplifier, opts, steps, ctx)
         }
         Expr::Neg(inner) => {
+            let rewrite =
+                plan_negated_lhs_isolation_step(&mut simplifier.context, inner, rhs, op.clone());
             let include_item = simplifier.collect_steps();
             let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-            solve_negated_lhs_isolation_with_and_merge_with_existing_steps(
-                || {
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
-                    cas_solver_core::solve_outcome::plan_negated_lhs_isolation_step(
-                        &mut simplifier_ref.context,
-                        inner,
-                        rhs,
-                        op.clone(),
-                    )
-                },
+            solve_negated_lhs_isolation_plan_with_and_merge_with_existing_steps(
+                rewrite,
                 var,
                 include_item,
                 steps,

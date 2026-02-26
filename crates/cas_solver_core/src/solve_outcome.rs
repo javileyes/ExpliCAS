@@ -1503,6 +1503,35 @@ pub fn merge_pow_base_isolation_pipeline_with_existing_steps<S>(
 }
 
 /// Execute and merge base-isolation pipeline with caller-owned pre-existing steps.
+pub fn execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps<
+    E,
+    S,
+    FSolve,
+    FStep,
+>(
+    include_item: bool,
+    existing_steps: Vec<S>,
+    action: PowBaseIsolationEngineAction,
+    solve_isolate: FSolve,
+    map_item_to_step: FStep,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FSolve: FnMut(ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(PowBaseIsolationExecutionItem) -> S,
+{
+    let solved = solve_pow_base_isolation_pipeline_with_item(
+        action,
+        include_item,
+        solve_isolate,
+        map_item_to_step,
+    )?;
+    Ok(merge_pow_base_isolation_pipeline_with_existing_steps(
+        solved,
+        existing_steps,
+    ))
+}
+
+/// Execute and merge base-isolation pipeline with caller-owned pre-existing steps.
 pub fn execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps_with<
     E,
     S,
@@ -1521,16 +1550,14 @@ where
     FSolve: FnMut(ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
     FStep: FnMut(PowBaseIsolationExecutionItem) -> S,
 {
-    let solved = execute_pow_base_isolation_pipeline_with_item_with(
+    let action = plan_action();
+    execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps(
         include_item,
-        plan_action,
+        existing_steps,
+        action,
         solve_isolate,
         map_item_to_step,
-    )?;
-    Ok(merge_pow_base_isolation_pipeline_with_existing_steps(
-        solved,
-        existing_steps,
-    ))
+    )
 }
 
 /// Didactic payload for one branch produced by absolute-value splitting.
@@ -2815,6 +2842,42 @@ where
 
 /// Execute term-isolation plan and merge solved steps before caller-owned
 /// existing steps.
+pub fn execute_term_isolation_plan_and_merge_with_existing_steps_with<
+    E,
+    S,
+    FSimplify,
+    FSolve,
+    FStep,
+>(
+    plan: TermIsolationRewritePlan,
+    include_item: bool,
+    simplify_rhs_before_solve: bool,
+    existing_steps: Vec<S>,
+    simplify_rhs: FSimplify,
+    solve_rewritten: FSolve,
+    map_item_to_step: FStep,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FSolve: FnMut(Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(TermIsolationRewriteExecutionItem) -> S,
+{
+    let solved = solve_term_isolation_plan_with(
+        plan,
+        include_item,
+        simplify_rhs_before_solve,
+        simplify_rhs,
+        solve_rewritten,
+        map_item_to_step,
+    )?;
+    Ok(merge_solved_with_existing_steps_prepend(
+        solved,
+        existing_steps,
+    ))
+}
+
+/// Execute term-isolation plan and merge solved steps before caller-owned
+/// existing steps.
 pub fn execute_term_isolation_plan_with_and_merge_with_existing_steps_with<
     E,
     S,
@@ -2823,7 +2886,7 @@ pub fn execute_term_isolation_plan_with_and_merge_with_existing_steps_with<
     FSolve,
     FStep,
 >(
-    plan_rewrite: FPlan,
+    mut plan_rewrite: FPlan,
     include_item: bool,
     simplify_rhs_before_solve: bool,
     existing_steps: Vec<S>,
@@ -2837,18 +2900,15 @@ where
     FSolve: FnMut(Equation) -> Result<(SolutionSet, Vec<S>), E>,
     FStep: FnMut(TermIsolationRewriteExecutionItem) -> S,
 {
-    let solved = execute_term_isolation_plan_with(
-        plan_rewrite,
+    execute_term_isolation_plan_and_merge_with_existing_steps_with(
+        plan_rewrite(),
         include_item,
         simplify_rhs_before_solve,
+        existing_steps,
         simplify_rhs,
         solve_rewritten,
         map_item_to_step,
-    )?;
-    Ok(merge_solved_with_existing_steps_prepend(
-        solved,
-        existing_steps,
-    ))
+    )
 }
 
 /// Merge a solved `(SolutionSet, steps)` payload by prepending solved steps
@@ -2935,6 +2995,37 @@ where
     ))
 }
 
+/// Execute log-isolation pipeline from a preplanned optional rewrite and prepend
+/// solved steps before caller-owned existing steps.
+pub fn execute_log_isolation_result_pipeline_with_plan_or_else_and_merge_with_existing_steps_with<
+    E,
+    S,
+    FSolve,
+    FMap,
+    FError,
+>(
+    include_item: bool,
+    existing_steps: Vec<S>,
+    rewrite: Option<crate::log_isolation::LogIsolationRewritePlan>,
+    solve_rewritten: FSolve,
+    map_item_to_step: FMap,
+    not_plannable_error: FError,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FSolve: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FMap: FnMut(crate::log_isolation::LogIsolationExecutionItem) -> S,
+    FError: FnOnce() -> E,
+{
+    execute_log_isolation_result_pipeline_or_else_with_and_merge_with_existing_steps_with(
+        include_item,
+        existing_steps,
+        || rewrite.clone(),
+        solve_rewritten,
+        map_item_to_step,
+        not_plannable_error,
+    )
+}
+
 /// Execute unary-inverse pipeline and prepend solved steps before caller-owned
 /// existing steps.
 #[allow(clippy::too_many_arguments)]
@@ -2992,21 +3083,65 @@ where
     ))
 }
 
+/// Execute unary-inverse pipeline from a preplanned optional rewrite and
+/// prepend solved steps before caller-owned existing steps.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_unary_inverse_result_pipeline_with_plan_or_else_and_merge_with_existing_steps_with<
+    E,
+    S,
+    FSimplifyRhs,
+    FSolve,
+    FStep,
+    FError,
+>(
+    fn_name: &str,
+    arg: ExprId,
+    other: ExprId,
+    op: RelOp,
+    is_lhs: bool,
+    include_items: bool,
+    existing_steps: Vec<S>,
+    plan: Option<crate::function_inverse::UnaryInverseIsolationStepPlan>,
+    simplify_rhs_with_entries: FSimplifyRhs,
+    solve: FSolve,
+    map_item_to_step: FStep,
+    unsupported_error: FError,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FSimplifyRhs: FnMut(ExprId) -> (ExprId, Vec<(String, ExprId)>),
+    FSolve: FnMut(ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(crate::function_inverse::UnaryInverseSolveExecutionItem) -> S,
+    FError: FnOnce() -> E,
+{
+    execute_unary_inverse_result_pipeline_or_else_with_and_merge_with_existing_steps_with(
+        fn_name,
+        arg,
+        other,
+        op,
+        is_lhs,
+        include_items,
+        existing_steps,
+        |_fn_name, _arg, _other, _op, _is_lhs| plan.clone(),
+        simplify_rhs_with_entries,
+        solve,
+        map_item_to_step,
+        unsupported_error,
+    )
+}
+
 /// Execute negated-LHS isolation rewrite and optional first-item didactic
 /// projection via caller-provided callbacks.
-pub fn solve_negated_lhs_isolation_with<E, S, FPlan, FSolve, FStep>(
-    mut plan_rewrite: FPlan,
+pub fn solve_negated_lhs_isolation_plan_with<E, S, FSolve, FStep>(
+    rewrite: TermIsolationRewritePlan,
     var: &str,
     include_item: bool,
     mut solve_rewritten: FSolve,
     mut map_item_to_step: FStep,
 ) -> Result<(SolutionSet, Vec<S>), E>
 where
-    FPlan: FnMut() -> TermIsolationRewritePlan,
     FSolve: FnMut(Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
     FStep: FnMut(TermIsolationRewriteExecutionItem) -> S,
 {
-    let rewrite = plan_rewrite();
     let first_item = if include_item {
         first_term_isolation_rewrite_execution_item(&rewrite)
     } else {
@@ -3022,10 +3157,60 @@ where
     Ok((solution_set, steps))
 }
 
+/// Execute negated-LHS isolation rewrite and optional first-item didactic
+/// projection via caller-provided callbacks.
+pub fn solve_negated_lhs_isolation_with<E, S, FPlan, FSolve, FStep>(
+    mut plan_rewrite: FPlan,
+    var: &str,
+    include_item: bool,
+    solve_rewritten: FSolve,
+    map_item_to_step: FStep,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FPlan: FnMut() -> TermIsolationRewritePlan,
+    FSolve: FnMut(Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(TermIsolationRewriteExecutionItem) -> S,
+{
+    solve_negated_lhs_isolation_plan_with(
+        plan_rewrite(),
+        var,
+        include_item,
+        solve_rewritten,
+        map_item_to_step,
+    )
+}
+
+/// Solve negated-LHS isolation rewrite and prepend solved steps before caller
+/// existing steps.
+pub fn solve_negated_lhs_isolation_plan_with_and_merge_with_existing_steps<E, S, FSolve, FStep>(
+    rewrite: TermIsolationRewritePlan,
+    var: &str,
+    include_item: bool,
+    existing_steps: Vec<S>,
+    solve_rewritten: FSolve,
+    map_item_to_step: FStep,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FSolve: FnMut(Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(TermIsolationRewriteExecutionItem) -> S,
+{
+    let solved = solve_negated_lhs_isolation_plan_with(
+        rewrite,
+        var,
+        include_item,
+        solve_rewritten,
+        map_item_to_step,
+    )?;
+    Ok(merge_solved_with_existing_steps_prepend(
+        solved,
+        existing_steps,
+    ))
+}
+
 /// Solve negated-LHS isolation rewrite and prepend solved steps before caller
 /// existing steps.
 pub fn solve_negated_lhs_isolation_with_and_merge_with_existing_steps<E, S, FPlan, FSolve, FStep>(
-    plan_rewrite: FPlan,
+    mut plan_rewrite: FPlan,
     var: &str,
     include_item: bool,
     existing_steps: Vec<S>,
@@ -3037,17 +3222,15 @@ where
     FSolve: FnMut(Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
     FStep: FnMut(TermIsolationRewriteExecutionItem) -> S,
 {
-    let solved = solve_negated_lhs_isolation_with(
-        plan_rewrite,
+    let solved = solve_negated_lhs_isolation_plan_with_and_merge_with_existing_steps(
+        plan_rewrite(),
         var,
         include_item,
+        existing_steps,
         solve_rewritten,
         map_item_to_step,
     )?;
-    Ok(merge_solved_with_existing_steps_prepend(
-        solved,
-        existing_steps,
-    ))
+    Ok(solved)
 }
 
 /// Route chosen for denominator isolation with zero-RHS guard.
@@ -3400,6 +3583,49 @@ pub fn plan_div_denominator_isolation_with_zero_rhs_guard(
         }
     };
     DivDenominatorIsolationRewritePlan { equation, route }
+}
+
+/// Resolve RHS for a planned denominator-isolation rewrite.
+///
+/// When the rewrite route is `RhsZeroToInfinity`, the rewritten RHS must be
+/// preserved as-is (it encodes the safety guard). Otherwise callers can
+/// simplify the rewritten RHS through the provided callback.
+pub fn resolve_div_denominator_isolation_rhs_with<F>(
+    isolation_plan: DivDenominatorIsolationRewritePlan,
+    mut simplify_rhs: F,
+) -> (Equation, ExprId)
+where
+    F: FnMut(ExprId) -> ExprId,
+{
+    let isolated_eq = isolation_plan.equation;
+    let simplified_rhs = if matches!(
+        isolation_plan.route,
+        DivDenominatorIsolationRoute::RhsZeroToInfinity
+    ) {
+        isolated_eq.rhs
+    } else {
+        simplify_rhs(isolated_eq.rhs)
+    };
+    (isolated_eq, simplified_rhs)
+}
+
+/// Plan denominator isolation with zero-RHS guard and resolve the RHS according
+/// to the selected isolation route.
+pub fn plan_div_denominator_isolation_and_resolve_rhs_with<F>(
+    ctx: &mut Context,
+    denominator: ExprId,
+    numerator: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    simplify_rhs: F,
+) -> (Equation, ExprId)
+where
+    F: FnMut(ExprId) -> ExprId,
+{
+    resolve_div_denominator_isolation_rhs_with(
+        plan_div_denominator_isolation_with_zero_rhs_guard(ctx, denominator, numerator, rhs, op),
+        simplify_rhs,
+    )
 }
 
 /// Didactic payload for one equation step.
@@ -4137,6 +4363,46 @@ where
     )
 }
 
+/// Execute terminal-gate stage first, then route through post-terminal
+/// unsupported handling and resolve to:
+/// - `Ok(Some((solutions, steps)))` when solved,
+/// - `Err(message)` when complex-domain escalation is required,
+/// - `Ok(None)` when regular logarithmic isolation should continue.
+pub fn execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_existing_steps_mut<
+    S,
+    FTerminalGate,
+    FPlan,
+    FGuarded,
+    FStep,
+    FHint,
+>(
+    terminal_gate: FTerminalGate,
+    include_unsupported_items: bool,
+    existing_steps: &mut Vec<S>,
+    plan_unsupported_execution: FPlan,
+    try_guarded_solve: FGuarded,
+    map_item_to_step: FStep,
+    register_blocked_hint: FHint,
+) -> Result<Option<(SolutionSet, Vec<S>)>, &'static str>
+where
+    FTerminalGate: FnOnce(&mut Vec<S>) -> LogDecisionTerminalResult<S>,
+    FPlan: FnOnce() -> Option<PowExponentLogUnsupportedExecution>,
+    FGuarded: FnMut(&Equation) -> Option<SolutionSet>,
+    FStep: FnMut(TermIsolationExecutionItem) -> S,
+    FHint: FnMut(LogBlockedHintRecord),
+{
+    let terminal_result = terminal_gate(existing_steps);
+    execute_and_resolve_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut(
+        terminal_result,
+        include_unsupported_items,
+        existing_steps,
+        plan_unsupported_execution,
+        try_guarded_solve,
+        map_item_to_step,
+        register_blocked_hint,
+    )
+}
+
 /// Execute the full exponent-log decision pipeline and resolve it into:
 /// - `Ok(Some((solutions, steps)))` when solved,
 /// - `Err(message)` when complex-domain escalation is required,
@@ -4647,6 +4913,33 @@ where
         (solved.solution_set, solved.steps),
         existing_steps,
     ))
+}
+
+/// Execute exponent-log rewrite pipeline from a preplanned rewrite payload and
+/// prepend solved steps before caller-owned existing steps.
+pub fn execute_pow_exponent_log_isolation_pipeline_with_plan_and_merge_with_existing_steps_with<
+    E,
+    S,
+    FSolve,
+    FStep,
+>(
+    include_item: bool,
+    existing_steps: Vec<S>,
+    rewrite: PowExponentLogIsolationRewritePlan,
+    solve_rewrite: FSolve,
+    map_item_to_step: FStep,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FSolve: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(PowExponentLogIsolationExecutionItem) -> S,
+{
+    execute_pow_exponent_log_isolation_pipeline_with_item_and_merge_with_existing_steps_with(
+        include_item,
+        existing_steps,
+        || rewrite,
+        solve_rewrite,
+        map_item_to_step,
+    )
 }
 
 /// Execute a planned unsupported logarithmic route (residual or guarded).
@@ -5384,6 +5677,47 @@ where
     }
 }
 
+/// Plan (`rhs`-sign aware) and execute absolute-value isolation pipeline when
+/// single-equation and split-branch paths share the same solver callback.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_abs_isolation_plan_with_rhs_sign_pipeline_with_optional_items_and_solver<
+    E,
+    S,
+    FPlan,
+    FSolveEquation,
+    FRenderExpr,
+    FMapStep,
+    FFinalize,
+>(
+    plan_with_rhs_sign: FPlan,
+    lhs_expr: ExprId,
+    include_items: bool,
+    existing_steps: Vec<S>,
+    render_expr: FRenderExpr,
+    solve_equation: FSolveEquation,
+    map_item_to_step: FMapStep,
+    finalize_solved_sets: FFinalize,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    S: Clone,
+    FPlan: FnOnce() -> AbsIsolationPlan,
+    FSolveEquation: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FMapStep: FnMut(AbsSplitExecutionItem) -> S,
+    FFinalize: FnMut(SolutionSet, SolutionSet) -> SolutionSet,
+{
+    execute_abs_isolation_plan_pipeline_with_optional_items_and_solver(
+        plan_with_rhs_sign(),
+        lhs_expr,
+        include_items,
+        existing_steps,
+        render_expr,
+        solve_equation,
+        map_item_to_step,
+        finalize_solved_sets,
+    )
+}
+
 /// Pre-built sign-split equations for inequalities of the form `A*B op 0`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProductZeroInequalityPlan {
@@ -5795,6 +6129,34 @@ where
             solve_case,
             finalize_solved_sets,
         ),
+    )
+}
+
+/// Plan and execute product-zero inequality split when preconditions hold,
+/// returning `None` otherwise.
+pub fn try_execute_product_zero_inequality_split_if_applicable_pipeline_with_existing_steps<
+    E,
+    S,
+    FPlan,
+    FSolveCase,
+    FFinalize,
+>(
+    plan_if_applicable: FPlan,
+    existing_steps: &[S],
+    solve_case: FSolveCase,
+    finalize_solved_sets: FFinalize,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    S: Clone,
+    FPlan: FnOnce() -> Option<ProductZeroInequalityPlan>,
+    FSolveCase: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FFinalize: FnMut(ProductZeroInequalitySolvedSets) -> SolutionSet,
+{
+    try_execute_product_zero_inequality_split_pipeline_with_existing_steps(
+        plan_if_applicable(),
+        existing_steps,
+        solve_case,
+        finalize_solved_sets,
     )
 }
 
@@ -6500,6 +6862,45 @@ pub fn plan_division_denominator_sign_split_if_applicable(
     }
 }
 
+/// Plan numerator-side division isolation fallback and, when applicable,
+/// denominator-sign split for inequalities.
+#[allow(clippy::too_many_arguments)]
+pub fn plan_division_denominator_sign_split_or_div_numerator_isolation_with<F>(
+    ctx: &mut Context,
+    numerator: ExprId,
+    denominator: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    denominator_is_negative: bool,
+    render_denominator: F,
+) -> (
+    Option<DivisionDenominatorSignSplitPlan>,
+    TermIsolationRewritePlan,
+)
+where
+    F: FnMut(ExprId) -> String,
+{
+    let split_plan = plan_division_denominator_sign_split_if_applicable(
+        ctx,
+        numerator,
+        denominator,
+        rhs,
+        op.clone(),
+        var,
+    );
+    let term_plan = plan_div_numerator_isolation_step_with(
+        ctx,
+        numerator,
+        denominator,
+        rhs,
+        op,
+        denominator_is_negative,
+        render_denominator,
+    );
+    (split_plan, term_plan)
+}
+
 /// Try denominator-sign split planning for division inequalities and execute
 /// the full split pipeline with optional didactic items when applicable.
 #[allow(clippy::too_many_arguments)]
@@ -6607,6 +7008,140 @@ where
     .unwrap_or_else(|| Err(on_missing_plan()))
 }
 
+/// Plan and execute denominator-sign split for division inequalities when
+/// preconditions hold, returning `None` otherwise.
+#[allow(clippy::too_many_arguments)]
+pub fn try_execute_division_denominator_sign_split_if_applicable_with_optional_items<
+    E,
+    S,
+    FPlan,
+    FSimplifyRhs,
+    FRenderExpr,
+    FSolveBranch,
+    FSolveDomain,
+    FMapStep,
+    FFinalize,
+>(
+    plan_if_applicable: FPlan,
+    denominator: ExprId,
+    op: RelOp,
+    case_boundary_lhs: ExprId,
+    include_items: bool,
+    branch_prefix_steps: &[S],
+    mut simplify_rhs: FSimplifyRhs,
+    render_expr: FRenderExpr,
+    solve_branch: FSolveBranch,
+    solve_domain: FSolveDomain,
+    map_item_to_step: FMapStep,
+    finalize_solved_sets: FFinalize,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    S: Clone,
+    FPlan: FnOnce() -> Option<DivisionDenominatorSignSplitPlan>,
+    FSimplifyRhs: FnMut(ExprId) -> ExprId,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveBranch: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FSolveDomain: FnMut(&Equation) -> Result<SolutionSet, E>,
+    FMapStep: FnMut(DivisionDidacticExecutionItem) -> S,
+    FFinalize:
+        FnMut(DivisionDenominatorSignSplitSolvedCases<SolutionSet, SolutionSet>) -> SolutionSet,
+{
+    let split_plan = plan_if_applicable()?;
+    let simplified_rhs = simplify_rhs(split_plan.positive_equation.rhs);
+    Some(
+        execute_division_denominator_sign_split_pipeline_with_optional_items(
+            split_plan,
+            denominator,
+            case_boundary_lhs,
+            op,
+            simplified_rhs,
+            include_items,
+            branch_prefix_steps,
+            render_expr,
+            solve_branch,
+            solve_domain,
+            map_item_to_step,
+            finalize_solved_sets,
+        ),
+    )
+}
+
+/// Execute division denominator-sign split when applicable, otherwise execute
+/// fallback term-isolation plan and merge with existing steps.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_division_denominator_sign_split_if_applicable_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with<
+    E,
+    S,
+    FPlan,
+    FSimplifyExpr,
+    FRenderExpr,
+    FSolveBranch,
+    FSolveDomain,
+    FMapDivisionStep,
+    FMapTermStep,
+    FFinalize,
+>(
+    plan_if_applicable: FPlan,
+    denominator: ExprId,
+    case_boundary_op: RelOp,
+    case_boundary_lhs: ExprId,
+    include_items: bool,
+    term_plan: TermIsolationRewritePlan,
+    simplify_term_rhs_before_solve: bool,
+    existing_steps: Vec<S>,
+    mut simplify_expr: FSimplifyExpr,
+    mut render_expr: FRenderExpr,
+    mut solve_branch: FSolveBranch,
+    mut solve_domain: FSolveDomain,
+    mut map_division_item_to_step: FMapDivisionStep,
+    map_term_item_to_step: FMapTermStep,
+    mut finalize_solved_sets: FFinalize,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    S: Clone,
+    FPlan: FnOnce() -> Option<DivisionDenominatorSignSplitPlan>,
+    FSimplifyExpr: FnMut(ExprId) -> ExprId,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveBranch: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FSolveDomain: FnMut(&Equation) -> Result<SolutionSet, E>,
+    FMapDivisionStep: FnMut(DivisionDidacticExecutionItem) -> S,
+    FMapTermStep: FnMut(TermIsolationRewriteExecutionItem) -> S,
+    FFinalize:
+        FnMut(DivisionDenominatorSignSplitSolvedCases<SolutionSet, SolutionSet>) -> SolutionSet,
+{
+    if let Some(result) =
+        try_execute_division_denominator_sign_split_if_applicable_with_optional_items(
+            plan_if_applicable,
+            denominator,
+            case_boundary_op,
+            case_boundary_lhs,
+            include_items,
+            &existing_steps,
+            &mut simplify_expr,
+            &mut render_expr,
+            &mut solve_branch,
+            &mut solve_domain,
+            &mut map_division_item_to_step,
+            &mut finalize_solved_sets,
+        )
+    {
+        return result;
+    }
+
+    let solved = solve_term_isolation_plan_with(
+        term_plan,
+        include_items,
+        simplify_term_rhs_before_solve,
+        simplify_expr,
+        |equation| solve_branch(&equation),
+        map_term_item_to_step,
+    )?;
+    Ok(merge_solved_with_existing_steps_prepend(
+        solved,
+        existing_steps,
+    ))
+}
+
 /// Build executable split plan for already-isolated denominator inequalities.
 pub fn plan_isolated_denominator_sign_split(
     lhs: ExprId,
@@ -6639,6 +7174,72 @@ pub fn plan_isolated_denominator_sign_split_if_applicable(
     } else {
         None
     }
+}
+
+/// Plan denominator-side split when already isolated and always build didactic
+/// denominator-isolation fallback equations.
+#[allow(clippy::too_many_arguments)]
+pub fn plan_isolated_denominator_sign_split_or_division_denominator(
+    ctx: &mut Context,
+    numerator: ExprId,
+    denominator: ExprId,
+    rhs: ExprId,
+    isolated_rhs: ExprId,
+    op: RelOp,
+    var: &str,
+) -> (
+    Option<IsolatedDenominatorSignSplitPlan>,
+    DivisionDenominatorDidacticPlan,
+) {
+    let split_plan = plan_isolated_denominator_sign_split_if_applicable(
+        ctx,
+        denominator,
+        isolated_rhs,
+        op.clone(),
+        var,
+    );
+    let didactic_plan =
+        plan_division_denominator(ctx, numerator, denominator, rhs, isolated_rhs, op);
+    (split_plan, didactic_plan)
+}
+
+/// Plan denominator-side isolation with zero-RHS guard, resolve its RHS, then
+/// build either isolated-denominator sign split or denominator didactic fallback.
+#[allow(clippy::too_many_arguments)]
+pub fn plan_div_denominator_sign_split_or_division_denominator_with_zero_rhs_guard_and_resolve_rhs_with<
+    F,
+>(
+    ctx: &mut Context,
+    numerator: ExprId,
+    denominator: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    simplify_rhs: F,
+) -> (
+    Option<IsolatedDenominatorSignSplitPlan>,
+    DivisionDenominatorDidacticPlan,
+)
+where
+    F: FnMut(ExprId) -> ExprId,
+{
+    let (_isolated_equation, isolated_rhs) = plan_div_denominator_isolation_and_resolve_rhs_with(
+        ctx,
+        denominator,
+        numerator,
+        rhs,
+        op.clone(),
+        simplify_rhs,
+    );
+    plan_isolated_denominator_sign_split_or_division_denominator(
+        ctx,
+        numerator,
+        denominator,
+        rhs,
+        isolated_rhs,
+        op,
+        var,
+    )
 }
 
 /// Try already-isolated denominator sign split planning and execute the full
@@ -6728,6 +7329,109 @@ where
         finalize_solved_sets,
     )
     .unwrap_or_else(|| Err(on_missing_plan()))
+}
+
+/// Plan and execute already-isolated denominator sign split when preconditions
+/// hold, returning `None` otherwise.
+#[allow(clippy::too_many_arguments)]
+pub fn try_execute_isolated_denominator_sign_split_if_applicable_with_optional_items<
+    E,
+    S,
+    FPlan,
+    FRenderExpr,
+    FSolveBranch,
+    FMapStep,
+    FFinalize,
+>(
+    plan_if_applicable: FPlan,
+    denominator: ExprId,
+    op: RelOp,
+    include_items: bool,
+    branch_prefix_steps: &[S],
+    render_expr: FRenderExpr,
+    solve_branch: FSolveBranch,
+    map_item_to_step: FMapStep,
+    finalize_solved_sets: FFinalize,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    S: Clone,
+    FPlan: FnOnce() -> Option<IsolatedDenominatorSignSplitPlan>,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveBranch: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(DivisionDidacticExecutionItem) -> S,
+    FFinalize: FnMut(IsolatedDenominatorSignSplitSolvedCases<SolutionSet>) -> SolutionSet,
+{
+    let split_plan = plan_if_applicable()?;
+    Some(
+        execute_isolated_denominator_sign_split_pipeline_with_optional_items(
+            split_plan,
+            denominator,
+            op,
+            include_items,
+            branch_prefix_steps,
+            render_expr,
+            solve_branch,
+            map_item_to_step,
+            finalize_solved_sets,
+        ),
+    )
+}
+
+/// Execute isolated-denominator sign split when a plan is present; otherwise
+/// execute denominator-isolation didactic plan and merge with existing steps.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with<
+    E,
+    S,
+    FSimplifyExpr,
+    FRenderExpr,
+    FSolveBranch,
+    FMapStep,
+    FFinalize,
+>(
+    split_plan: Option<IsolatedDenominatorSignSplitPlan>,
+    denominator: ExprId,
+    case_boundary_op: RelOp,
+    include_items: bool,
+    didactic_plan: DivisionDenominatorDidacticPlan,
+    existing_steps: Vec<S>,
+    simplify_expr: FSimplifyExpr,
+    mut render_expr: FRenderExpr,
+    mut solve_branch: FSolveBranch,
+    mut map_item_to_step: FMapStep,
+    mut finalize_solved_sets: FFinalize,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    S: Clone,
+    FSimplifyExpr: FnMut(ExprId) -> ExprId,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveBranch: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(DivisionDidacticExecutionItem) -> S,
+    FFinalize: FnMut(IsolatedDenominatorSignSplitSolvedCases<SolutionSet>) -> SolutionSet,
+{
+    if let Some(result) = try_execute_isolated_denominator_sign_split_pipeline_with_optional_items(
+        split_plan,
+        denominator,
+        case_boundary_op,
+        include_items,
+        &existing_steps,
+        &mut render_expr,
+        &mut solve_branch,
+        &mut map_item_to_step,
+        &mut finalize_solved_sets,
+    ) {
+        return result;
+    }
+
+    execute_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with(
+        didactic_plan,
+        include_items,
+        existing_steps,
+        simplify_expr,
+        render_expr,
+        solve_branch,
+        map_item_to_step,
+    )
 }
 
 /// Build runtime execution plan for denominator-sign split using a precomputed
@@ -8795,6 +9499,41 @@ mod tests {
     }
 
     #[test]
+    fn execute_abs_isolation_plan_with_rhs_sign_pipeline_with_optional_items_and_solver_runs_plan()
+    {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("lhs");
+        let rhs = ctx.var("rhs");
+        let x = ctx.var("x");
+        let equation = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+        let plan_calls = std::cell::Cell::new(0usize);
+
+        let solved =
+            execute_abs_isolation_plan_with_rhs_sign_pipeline_with_optional_items_and_solver(
+                || {
+                    plan_calls.set(plan_calls.get() + 1);
+                    AbsIsolationPlan::IsolateSingleEquation { equation }
+                },
+                x,
+                true,
+                vec![9u8],
+                |_id| String::new(),
+                |_equation| Ok::<_, ()>((SolutionSet::AllReals, vec![1u8])),
+                |_item| 0u8,
+                |_positive, _negative| SolutionSet::AllReals,
+            )
+            .expect("single-equation pipeline must succeed");
+
+        assert_eq!(plan_calls.get(), 1);
+        assert!(matches!(solved.0, SolutionSet::AllReals));
+        assert_eq!(solved.1, vec![1u8, 9u8]);
+    }
+
+    #[test]
     fn abs_guard_wraps_solution_when_rhs_contains_var() {
         let mut ctx = Context::new();
         let rhs = ctx.var("x");
@@ -9838,6 +10577,78 @@ mod tests {
             .expect_err("needs-complex should become error");
 
         assert_eq!(out, "complex required");
+    }
+
+    #[test]
+    fn execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_existing_steps_mut_maps_terminal(
+    ) {
+        let out =
+            execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_existing_steps_mut::<
+                String,
+                _,
+                _,
+                _,
+                _,
+                _,
+            >(
+                |_existing_steps| LogDecisionTerminalResult::Terminal {
+                    solution_set: SolutionSet::Empty,
+                    steps: vec!["terminal".to_string()],
+                },
+                true,
+                &mut Vec::new(),
+                || panic!("unsupported planning must not run for terminal result"),
+                |_equation| panic!("guarded solve must not run for terminal result"),
+                |_item| panic!("step mapper must not run for terminal result"),
+                |_hint| panic!("hint registration must not run for terminal result"),
+            )
+            .expect("terminal should not error");
+
+        assert_eq!(
+            out,
+            Some((SolutionSet::Empty, vec!["terminal".to_string()]))
+        );
+    }
+
+    #[test]
+    fn execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_existing_steps_mut_maps_continue(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let mut existing = vec!["existing".to_string()];
+
+        let out =
+            execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_existing_steps_mut(
+                |_existing_steps| LogDecisionTerminalResult::Continue,
+                true,
+                &mut existing,
+                || {
+                    Some(PowExponentLogUnsupportedExecution::Residual {
+                        item: TermIsolationExecutionItem {
+                            description: "unsupported residual".to_string(),
+                            equation: Equation {
+                                lhs: x,
+                                rhs: y,
+                                op: RelOp::Eq,
+                            },
+                        },
+                        solutions: SolutionSet::Residual(y),
+                    })
+                },
+                |_equation| panic!("guarded solve must not run for residual unsupported plan"),
+                |item| item.description,
+                |_hint| panic!("blocked hints should be empty for residual unsupported plan"),
+            )
+            .expect("continue should not error");
+
+        assert_eq!(
+            out,
+            Some((
+                SolutionSet::Residual(y),
+                vec!["existing".to_string(), "unsupported residual".to_string()],
+            ))
+        );
     }
 
     #[test]
@@ -12106,6 +12917,43 @@ mod tests {
     }
 
     #[test]
+    fn execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps_merges() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("x");
+        let rhs = ctx.var("r");
+        let merged = execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps(
+            true,
+            vec!["existing".to_string()],
+            PowBaseIsolationEngineAction::IsolateBase {
+                lhs,
+                rhs,
+                op: RelOp::Eq,
+                items: vec![PowBaseIsolationExecutionItem {
+                    equation: Equation {
+                        lhs,
+                        rhs,
+                        op: RelOp::Eq,
+                    },
+                    description: "Take root".to_string(),
+                }],
+            },
+            |_lhs, _rhs, _op| Ok::<_, ()>((SolutionSet::Empty, vec!["sub".to_string()])),
+            |item| item.description,
+        )
+        .expect("execute+merge should solve");
+
+        assert!(matches!(merged.0, SolutionSet::Empty));
+        assert_eq!(
+            merged.1,
+            vec![
+                "Take root".to_string(),
+                "sub".to_string(),
+                "existing".to_string()
+            ]
+        );
+    }
+
+    #[test]
     fn merge_pow_base_isolation_pipeline_with_existing_steps_merges_orders() {
         let isolated = PowBaseIsolationPipelineSolved::Isolated {
             solution_set: SolutionSet::AllReals,
@@ -13033,6 +13881,34 @@ mod tests {
     }
 
     #[test]
+    fn execute_term_isolation_plan_and_merge_with_existing_steps_with_prepends_pipeline_steps() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let plan =
+            plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
+        let expected_item = plan.items[0].description.clone();
+
+        let merged = execute_term_isolation_plan_and_merge_with_existing_steps_with(
+            plan,
+            true,
+            false,
+            vec!["existing".to_string()],
+            |rhs| rhs,
+            |_equation| Ok::<_, ()>((SolutionSet::AllReals, vec!["substep".to_string()])),
+            |item| item.description,
+        )
+        .expect("execute+merge plan wrapper should succeed");
+
+        assert!(matches!(merged.0, SolutionSet::AllReals));
+        assert_eq!(
+            merged.1,
+            vec![expected_item, "substep".to_string(), "existing".to_string()]
+        );
+    }
+
+    #[test]
     fn merge_solved_with_existing_steps_prepend_and_append_preserve_order() {
         let solved = (
             SolutionSet::AllReals,
@@ -13155,6 +14031,39 @@ mod tests {
 
         assert_eq!(solution_set, SolutionSet::Discrete(vec![one]));
         assert_eq!(steps, vec!["substep-only".to_string()]);
+    }
+
+    #[test]
+    fn solve_negated_lhs_isolation_plan_with_and_merge_with_existing_steps_prepends_steps() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let one = ctx.num(1);
+        let rewrite = plan_negated_lhs_isolation_step(&mut ctx, x, y, RelOp::Eq);
+        let merged = solve_negated_lhs_isolation_plan_with_and_merge_with_existing_steps(
+            rewrite,
+            "x",
+            true,
+            vec!["existing".to_string()],
+            |_equation, _| {
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![one]),
+                    vec!["substep".to_string()],
+                ))
+            },
+            |item| item.description,
+        )
+        .expect("negated-lhs plan execute+merge wrapper should succeed");
+
+        assert!(matches!(merged.0, SolutionSet::Discrete(_)));
+        assert_eq!(
+            merged.1,
+            vec![
+                "Multiply both sides by -1 (flips inequality)".to_string(),
+                "substep".to_string(),
+                "existing".to_string()
+            ]
+        );
     }
 
     #[test]
@@ -14205,6 +15114,40 @@ mod tests {
     }
 
     #[test]
+    fn execute_pow_exponent_log_isolation_pipeline_with_plan_and_merge_with_existing_steps_with_merges(
+    ) {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let rewrite = plan_pow_exponent_log_isolation_step_with(
+            &mut ctx,
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            None,
+            |_, _| "a".to_string(),
+        );
+
+        let merged =
+            execute_pow_exponent_log_isolation_pipeline_with_plan_and_merge_with_existing_steps_with(
+                true,
+                vec!["existing".to_string()],
+                rewrite,
+                |_equation| Ok::<_, ()>((SolutionSet::Empty, vec!["sub".to_string()])),
+                |item| item.description,
+            )
+            .expect("execute+merge wrapper should solve");
+
+        assert!(matches!(merged.0, SolutionSet::Empty));
+        assert_eq!(merged.1.len(), 3);
+        assert!(merged.1[0].contains("Take log base a of both sides"));
+        assert_eq!(merged.1[1], "sub".to_string());
+        assert_eq!(merged.1[2], "existing".to_string());
+    }
+
+    #[test]
     fn collect_term_isolation_didactic_steps_returns_single_step() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -14868,6 +15811,103 @@ mod tests {
     }
 
     #[test]
+    fn try_execute_division_denominator_sign_split_if_applicable_with_optional_items_returns_none_without_plan(
+    ) {
+        let out = try_execute_division_denominator_sign_split_if_applicable_with_optional_items::<
+            (),
+            u8,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+        >(
+            || None,
+            ExprId::from_raw(1),
+            RelOp::Lt,
+            ExprId::from_raw(2),
+            false,
+            &[],
+            |_rhs| ExprId::from_raw(3),
+            |_id| "x".to_string(),
+            |_equation| Ok((SolutionSet::AllReals, vec![])),
+            |_equation| Ok(SolutionSet::AllReals),
+            |_item| 0u8,
+            |_solved_cases| SolutionSet::AllReals,
+        );
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn try_execute_division_denominator_sign_split_if_applicable_with_optional_items_executes_with_plan(
+    ) {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let simplified_rhs = ctx.var("s");
+        let split =
+            plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Lt).unwrap();
+        let expected_rhs_to_simplify = split.positive_equation.rhs;
+        let mut simplify_calls = 0usize;
+
+        let out = try_execute_division_denominator_sign_split_if_applicable_with_optional_items(
+            || Some(split),
+            den,
+            RelOp::Lt,
+            num,
+            false,
+            &[0u8],
+            |rhs_expr| {
+                simplify_calls += 1;
+                assert_eq!(rhs_expr, expected_rhs_to_simplify);
+                simplified_rhs
+            },
+            |_id| "d".to_string(),
+            |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![rhs]), vec![1u8])),
+            |_equation| Ok::<_, ()>(SolutionSet::AllReals),
+            |_item| 9u8,
+            |_solved_cases| SolutionSet::AllReals,
+        )
+        .expect("plan is present");
+
+        let (final_set, steps) = out.expect("execution should succeed");
+        assert_eq!(simplify_calls, 1);
+        assert!(matches!(final_set, SolutionSet::AllReals));
+        assert_eq!(steps, vec![0u8, 1u8, 0u8, 1u8]);
+    }
+
+    #[test]
+    fn plan_division_denominator_sign_split_or_div_numerator_isolation_with_builds_both_plans() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let num = ctx.add(Expr::Add(x, one));
+        let den = ctx.add(Expr::Sub(x, two));
+        let rhs = ctx.var("r");
+
+        let (split_plan, term_plan) =
+            plan_division_denominator_sign_split_or_div_numerator_isolation_with(
+                &mut ctx,
+                num,
+                den,
+                rhs,
+                RelOp::Lt,
+                "x",
+                false,
+                |_| "d".to_string(),
+            );
+
+        assert!(split_plan.is_some());
+        assert_eq!(term_plan.equation.lhs, num);
+        assert_eq!(term_plan.equation.op, RelOp::Lt);
+        assert!(!term_plan.items.is_empty());
+    }
+
+    #[test]
     fn execute_division_denominator_sign_split_pipeline_or_else_with_optional_items_maps_missing_plan_error(
     ) {
         let out = execute_division_denominator_sign_split_pipeline_or_else_with_optional_items::<
@@ -14928,6 +15968,117 @@ mod tests {
 
         assert!(matches!(out.0, SolutionSet::AllReals));
         assert_eq!(out.1, vec![0u8, 1u8, 0u8, 1u8]);
+    }
+
+    #[test]
+    fn execute_division_denominator_sign_split_if_applicable_or_term_plan_prefers_split_path() {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let split =
+            plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Lt).unwrap();
+        let term_equation = Equation {
+            lhs: den,
+            rhs,
+            op: RelOp::Lt,
+        };
+        let term_plan = build_term_isolation_rewrite_plan_from_item(
+            term_equation.clone(),
+            TermIsolationExecutionItem {
+                description: "fallback".to_string(),
+                equation: term_equation,
+            },
+        );
+        let simplify_called = std::cell::Cell::new(false);
+        let finalize_called = std::cell::Cell::new(false);
+
+        let (solution_set, steps) =
+            execute_division_denominator_sign_split_if_applicable_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with(
+                || Some(split),
+                den,
+                RelOp::Lt,
+                num,
+                false,
+                term_plan,
+                false,
+                vec![7u8],
+                |rhs_expr| {
+                    simplify_called.set(true);
+                    rhs_expr
+                },
+                |_id| "d".to_string(),
+                |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![rhs]), vec![1u8])),
+                |_equation| Ok::<_, ()>(SolutionSet::AllReals),
+                |_item| 9u8,
+                |_item| -> u8 { panic!("fallback mapper must not run on split path") },
+                |solved_cases| {
+                    finalize_called.set(true);
+                    solved_cases.positive_branch
+                },
+            )
+            .expect("split path should execute");
+
+        assert!(simplify_called.get());
+        assert!(finalize_called.get());
+        assert_eq!(solution_set, SolutionSet::Discrete(vec![rhs]));
+        assert_eq!(steps, vec![7u8, 1u8, 7u8, 1u8]);
+    }
+
+    #[test]
+    fn execute_division_denominator_sign_split_if_applicable_or_term_plan_uses_fallback_without_split(
+    ) {
+        let mut ctx = Context::new();
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let solved_rhs = ctx.var("sol");
+        let term_equation = Equation {
+            lhs: den,
+            rhs,
+            op: RelOp::Eq,
+        };
+        let term_plan = build_term_isolation_rewrite_plan_from_item(
+            term_equation.clone(),
+            TermIsolationExecutionItem {
+                description: "fallback".to_string(),
+                equation: term_equation,
+            },
+        );
+        let simplify_called = std::cell::Cell::new(false);
+        let finalize_called = std::cell::Cell::new(false);
+
+        let (solution_set, steps) =
+            execute_division_denominator_sign_split_if_applicable_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with(
+                || None,
+                den,
+                RelOp::Eq,
+                den,
+                true,
+                term_plan,
+                true,
+                vec![9u8],
+                |_| {
+                    simplify_called.set(true);
+                    rhs
+                },
+                |_id| "d".to_string(),
+                |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![solved_rhs]), vec![2u8])),
+                |_equation| -> Result<SolutionSet, ()> {
+                    panic!("domain solver must not run on fallback path")
+                },
+                |_item| -> u8 { panic!("split mapper must not run on fallback path") },
+                |_item| 5u8,
+                |_solved_cases| {
+                    finalize_called.set(true);
+                    SolutionSet::Empty
+                },
+            )
+            .expect("fallback path should execute");
+
+        assert!(simplify_called.get());
+        assert!(!finalize_called.get());
+        assert_eq!(solution_set, SolutionSet::Discrete(vec![solved_rhs]));
+        assert_eq!(steps, vec![5u8, 2u8, 9u8]);
     }
 
     #[test]
@@ -14994,6 +16145,58 @@ mod tests {
 
         assert_eq!(plan.equation.lhs, den);
         assert_eq!(plan.route, DivDenominatorIsolationRoute::DivisionRewrite);
+    }
+
+    #[test]
+    fn plan_div_denominator_isolation_and_resolve_rhs_with_keeps_guarded_rhs_without_simplify() {
+        let mut ctx = Context::new();
+        let den = ctx.var("d");
+        let num = ctx.var("n");
+        let zero = ctx.num(0);
+        let called = std::cell::Cell::new(false);
+
+        let (equation, resolved_rhs) = plan_div_denominator_isolation_and_resolve_rhs_with(
+            &mut ctx,
+            den,
+            num,
+            zero,
+            RelOp::Eq,
+            |_| {
+                called.set(true);
+                zero
+            },
+        );
+
+        assert!(!called.get());
+        assert_eq!(equation.lhs, den);
+        assert_eq!(resolved_rhs, equation.rhs);
+    }
+
+    #[test]
+    fn plan_div_denominator_isolation_and_resolve_rhs_with_simplifies_division_route_rhs() {
+        let mut ctx = Context::new();
+        let den = ctx.var("d");
+        let num = ctx.var("n");
+        let rhs = ctx.var("r");
+        let simplified_rhs = ctx.var("s");
+        let called = std::cell::Cell::new(false);
+
+        let (equation, resolved_rhs) = plan_div_denominator_isolation_and_resolve_rhs_with(
+            &mut ctx,
+            den,
+            num,
+            rhs,
+            RelOp::Eq,
+            |_| {
+                called.set(true);
+                simplified_rhs
+            },
+        );
+
+        assert!(called.get());
+        assert_eq!(equation.lhs, den);
+        assert_eq!(resolved_rhs, simplified_rhs);
+        assert_ne!(equation.rhs, simplified_rhs);
     }
 
     #[test]
@@ -15085,6 +16288,94 @@ mod tests {
         let plan =
             plan_isolated_denominator_sign_split_if_applicable(&ctx, den, rhs, RelOp::Leq, "x");
         assert!(plan.is_none());
+    }
+
+    #[test]
+    fn plan_isolated_denominator_sign_split_or_division_denominator_builds_split_and_fallback() {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let isolated_rhs = ctx.var("q");
+
+        let (split_plan, didactic_plan) =
+            plan_isolated_denominator_sign_split_or_division_denominator(
+                &mut ctx,
+                num,
+                den,
+                rhs,
+                isolated_rhs,
+                RelOp::Leq,
+                "x",
+            );
+
+        assert!(split_plan.is_some());
+        assert_eq!(didactic_plan.divide_equation.lhs, den);
+        assert_eq!(didactic_plan.divide_equation.rhs, isolated_rhs);
+        assert_eq!(didactic_plan.divide_equation.op, RelOp::Leq);
+    }
+
+    #[test]
+    fn plan_div_denominator_sign_split_or_division_denominator_with_zero_rhs_guard_and_resolve_rhs_with_keeps_guarded_rhs(
+    ) {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("x");
+        let zero = ctx.num(0);
+        let called = std::cell::Cell::new(false);
+
+        let (split_plan, didactic_plan) =
+            plan_div_denominator_sign_split_or_division_denominator_with_zero_rhs_guard_and_resolve_rhs_with(
+                &mut ctx,
+                num,
+                den,
+                zero,
+                RelOp::Eq,
+                "x",
+                |_| {
+                    called.set(true);
+                    den
+                },
+            );
+
+        assert!(!called.get());
+        assert!(split_plan.is_none());
+        assert_eq!(didactic_plan.divide_equation.lhs, den);
+        assert!(matches!(
+            ctx.get(didactic_plan.divide_equation.rhs),
+            Expr::Constant(c) if matches!(c, cas_ast::Constant::Infinity)
+        ));
+    }
+
+    #[test]
+    fn plan_div_denominator_sign_split_or_division_denominator_with_zero_rhs_guard_and_resolve_rhs_with_uses_simplified_rhs(
+    ) {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let simplified = ctx.var("s");
+        let called = std::cell::Cell::new(false);
+
+        let (split_plan, didactic_plan) =
+            plan_div_denominator_sign_split_or_division_denominator_with_zero_rhs_guard_and_resolve_rhs_with(
+                &mut ctx,
+                num,
+                den,
+                rhs,
+                RelOp::Leq,
+                "x",
+                |_| {
+                    called.set(true);
+                    simplified
+                },
+            );
+
+        assert!(called.get());
+        assert!(split_plan.is_some());
+        assert_eq!(didactic_plan.divide_equation.lhs, den);
+        assert_eq!(didactic_plan.divide_equation.rhs, simplified);
+        assert_eq!(didactic_plan.divide_equation.op, RelOp::Leq);
     }
 
     #[test]
@@ -15445,6 +16736,57 @@ mod tests {
     }
 
     #[test]
+    fn try_execute_isolated_denominator_sign_split_if_applicable_with_optional_items_returns_none_without_plan(
+    ) {
+        let out = try_execute_isolated_denominator_sign_split_if_applicable_with_optional_items::<
+            (),
+            u8,
+            _,
+            _,
+            _,
+            _,
+            _,
+        >(
+            || None,
+            ExprId::from_raw(1),
+            RelOp::Leq,
+            false,
+            &[],
+            |_id| "x".to_string(),
+            |_equation| Ok((SolutionSet::AllReals, vec![])),
+            |_item| 0u8,
+            |_solved_cases| SolutionSet::AllReals,
+        );
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn try_execute_isolated_denominator_sign_split_if_applicable_with_optional_items_executes_with_plan(
+    ) {
+        let mut ctx = Context::new();
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let split = plan_isolated_denominator_sign_split(den, rhs, RelOp::Leq).unwrap();
+
+        let out = try_execute_isolated_denominator_sign_split_if_applicable_with_optional_items(
+            || Some(split),
+            den,
+            RelOp::Leq,
+            false,
+            &[0u8],
+            |_id| "x".to_string(),
+            |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![rhs]), vec![1u8])),
+            |_item| 9u8,
+            |_solved_cases| SolutionSet::Empty,
+        )
+        .expect("plan is present");
+
+        let (final_set, steps) = out.expect("execution should succeed");
+        assert!(matches!(final_set, SolutionSet::Empty));
+        assert_eq!(steps, vec![0u8, 1u8, 0u8, 1u8]);
+    }
+
+    #[test]
     fn execute_isolated_denominator_sign_split_pipeline_or_else_with_optional_items_maps_missing_plan_error(
     ) {
         let out = execute_isolated_denominator_sign_split_pipeline_or_else_with_optional_items::<
@@ -15495,6 +16837,86 @@ mod tests {
 
         assert!(matches!(out.0, SolutionSet::Empty));
         assert_eq!(out.1, vec![0u8, 1u8, 0u8, 1u8]);
+    }
+
+    #[test]
+    fn execute_isolated_denominator_sign_split_or_division_denominator_plan_uses_split_when_present(
+    ) {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let isolated_rhs = ctx.var("q");
+        let split = plan_isolated_denominator_sign_split(den, rhs, RelOp::Leq).unwrap();
+        let didactic_plan =
+            plan_division_denominator(&mut ctx, num, den, rhs, isolated_rhs, RelOp::Leq);
+        let simplify_called = std::cell::Cell::new(false);
+
+        let (solution_set, steps) =
+            execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with(
+                Some(split),
+                den,
+                RelOp::Leq,
+                false,
+                didactic_plan,
+                vec![7u8],
+                |_| {
+                    simplify_called.set(true);
+                    rhs
+                },
+                |_id| "x".to_string(),
+                |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![rhs]), vec![1u8])),
+                |_item| 9u8,
+                |solved_cases| solved_cases.positive_branch,
+            )
+            .expect("split path should execute");
+
+        assert!(!simplify_called.get());
+        assert_eq!(solution_set, SolutionSet::Discrete(vec![rhs]));
+        assert_eq!(steps, vec![7u8, 1u8, 7u8, 1u8]);
+    }
+
+    #[test]
+    fn execute_isolated_denominator_sign_split_or_division_denominator_plan_falls_back_when_split_missing(
+    ) {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let isolated_rhs = ctx.var("q");
+        let solved_rhs = ctx.var("sol");
+        let simplified_rhs = ctx.var("sim");
+        let didactic_plan =
+            plan_division_denominator(&mut ctx, num, den, rhs, isolated_rhs, RelOp::Eq);
+        let simplify_called = std::cell::Cell::new(false);
+        let finalize_called = std::cell::Cell::new(false);
+
+        let (solution_set, steps) =
+            execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with(
+                None,
+                den,
+                RelOp::Eq,
+                true,
+                didactic_plan,
+                vec![7u8],
+                |_| {
+                    simplify_called.set(true);
+                    simplified_rhs
+                },
+                |_id| "x".to_string(),
+                |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![solved_rhs]), vec![2u8])),
+                |_item| 3u8,
+                |_solved_cases| {
+                    finalize_called.set(true);
+                    SolutionSet::Empty
+                },
+            )
+            .expect("fallback path should execute");
+
+        assert!(simplify_called.get());
+        assert!(!finalize_called.get());
+        assert_eq!(solution_set, SolutionSet::Discrete(vec![solved_rhs]));
+        assert_eq!(steps, vec![3u8, 3u8, 2u8, 7u8]);
     }
 
     #[test]
@@ -15784,6 +17206,47 @@ mod tests {
             |_solved| SolutionSet::AllReals,
         )
         .expect("plan is present");
+
+        let (final_set, steps) = out.expect("execution should succeed");
+        assert!(matches!(final_set, SolutionSet::AllReals));
+        assert_eq!(steps, vec![1u8, 1u8, 1u8, 1u8, 9u8]);
+    }
+
+    #[test]
+    fn try_execute_product_zero_inequality_split_if_applicable_pipeline_with_existing_steps_returns_none_without_plan(
+    ) {
+        let out =
+            try_execute_product_zero_inequality_split_if_applicable_pipeline_with_existing_steps::<
+                (),
+                u8,
+                _,
+                _,
+                _,
+            >(
+                || None,
+                &[],
+                |_eq| Ok((SolutionSet::AllReals, vec![])),
+                |_solved| SolutionSet::AllReals,
+            );
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn try_execute_product_zero_inequality_split_if_applicable_pipeline_with_existing_steps_executes_with_plan(
+    ) {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let plan = plan_product_zero_inequality_split(&mut ctx, a, b, RelOp::Gt).unwrap();
+
+        let out =
+            try_execute_product_zero_inequality_split_if_applicable_pipeline_with_existing_steps(
+                || Some(plan),
+                &[9u8],
+                |_eq| Ok::<_, ()>((SolutionSet::AllReals, vec![1u8])),
+                |_solved| SolutionSet::AllReals,
+            )
+            .expect("plan is present");
 
         let (final_set, steps) = out.expect("execution should succeed");
         assert!(matches!(final_set, SolutionSet::AllReals));
@@ -16094,6 +17557,50 @@ mod tests {
     }
 
     #[test]
+    fn execute_log_isolation_result_pipeline_with_plan_or_else_and_merge_with_existing_steps_with_prepends(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rhs = ctx.var("rhs");
+        let rewrite_eq = Equation {
+            lhs: x,
+            rhs,
+            op: RelOp::Eq,
+        };
+        let rewrite = crate::log_isolation::LogIsolationRewritePlan {
+            equation: rewrite_eq.clone(),
+            items: vec![crate::log_isolation::LogIsolationExecutionItem {
+                equation: rewrite_eq.clone(),
+                description: "Take log".to_string(),
+            }],
+        };
+
+        let merged =
+            execute_log_isolation_result_pipeline_with_plan_or_else_and_merge_with_existing_steps_with(
+                true,
+                vec!["existing".to_string()],
+                Some(rewrite),
+                |equation| {
+                    assert_eq!(equation, &rewrite_eq);
+                    Ok::<_, String>((SolutionSet::Discrete(vec![x]), vec!["sub".to_string()]))
+                },
+                |item| item.description().to_string(),
+                || "not-plannable".to_string(),
+            )
+            .expect("log merge wrapper should solve");
+
+        assert_eq!(merged.0, SolutionSet::Discrete(vec![x]));
+        assert_eq!(
+            merged.1,
+            vec![
+                "Take log".to_string(),
+                "sub".to_string(),
+                "existing".to_string()
+            ]
+        );
+    }
+
+    #[test]
     fn execute_unary_inverse_result_pipeline_or_else_with_and_merge_with_existing_steps_with_prepends(
     ) {
         let mut ctx = Context::new();
@@ -16114,6 +17621,55 @@ mod tests {
                         &mut ctx, fn_name, arg, other, op, is_lhs,
                     )
                 },
+                |rhs_expr| (rhs_expr, Vec::<(String, ExprId)>::new()),
+                |solve_lhs, solve_rhs, solve_op| {
+                    assert_eq!(solve_lhs, x);
+                    assert_eq!(solve_op, RelOp::Eq);
+                    Ok::<_, String>((
+                        SolutionSet::Discrete(vec![solve_rhs]),
+                        vec!["sub".to_string()],
+                    ))
+                },
+                |item| item.description().to_string(),
+                || "unsupported".to_string(),
+            )
+            .expect("unary merge wrapper should solve");
+
+        assert_eq!(
+            merged.1,
+            vec![
+                "Square both sides".to_string(),
+                "sub".to_string(),
+                "existing".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn execute_unary_inverse_result_pipeline_with_plan_or_else_and_merge_with_existing_steps_with_prepends(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rhs = ctx.var("rhs");
+        let plan = crate::function_inverse::plan_unary_inverse_isolation_step(
+            &mut ctx,
+            "sqrt",
+            x,
+            rhs,
+            RelOp::Eq,
+            true,
+        );
+
+        let merged =
+            execute_unary_inverse_result_pipeline_with_plan_or_else_and_merge_with_existing_steps_with(
+                "sqrt",
+                x,
+                rhs,
+                RelOp::Eq,
+                true,
+                true,
+                vec!["existing".to_string()],
+                plan,
                 |rhs_expr| (rhs_expr, Vec::<(String, ExprId)>::new()),
                 |solve_lhs, solve_rhs, solve_op| {
                     assert_eq!(solve_lhs, x);
