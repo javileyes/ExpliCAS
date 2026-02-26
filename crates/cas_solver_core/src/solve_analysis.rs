@@ -220,6 +220,36 @@ where
     StrategyAttemptSequenceResolution::Exhausted { last_soft_error }
 }
 
+/// Finalize a strategy-attempt sequence into a plain solve result.
+///
+/// Caller provides:
+/// - `resolve_discrete`: how to post-process discrete candidates that require
+///   verification/filtering.
+/// - `no_solution_error`: fallback error when sequence is exhausted without a
+///   soft error.
+pub fn finalize_strategy_attempt_sequence_with<S, E, FResolveDiscrete>(
+    resolution: StrategyAttemptSequenceResolution<S, E>,
+    mut resolve_discrete: FResolveDiscrete,
+    no_solution_error: E,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FResolveDiscrete: FnMut(Vec<ExprId>, Vec<S>) -> (SolutionSet, Vec<S>),
+{
+    match resolution {
+        StrategyAttemptSequenceResolution::Solved {
+            solution_set,
+            steps,
+        } => Ok((solution_set, steps)),
+        StrategyAttemptSequenceResolution::NeedsDiscreteVerification { solutions, steps } => {
+            Ok(resolve_discrete(solutions, steps))
+        }
+        StrategyAttemptSequenceResolution::HardError(error) => Err(error),
+        StrategyAttemptSequenceResolution::Exhausted { last_soft_error } => {
+            Err(last_soft_error.unwrap_or(no_solution_error))
+        }
+    }
+}
+
 /// Decide whether a rewritten residual should replace the current one.
 ///
 /// Accept when:
@@ -888,6 +918,66 @@ mod tests {
                 last_soft_error: None
             }
         );
+    }
+
+    #[test]
+    fn finalize_strategy_attempt_sequence_with_returns_solved_directly() {
+        let resolved = finalize_strategy_attempt_sequence_with(
+            StrategyAttemptSequenceResolution::Solved {
+                solution_set: SolutionSet::AllReals,
+                steps: vec!["done"],
+            },
+            |_solutions, _steps| (SolutionSet::Empty, Vec::<&str>::new()),
+            "fallback",
+        )
+        .expect("solved result should pass through");
+        assert_eq!(resolved, (SolutionSet::AllReals, vec!["done"]));
+    }
+
+    #[test]
+    fn finalize_strategy_attempt_sequence_with_resolves_discrete_candidates() {
+        let resolved = finalize_strategy_attempt_sequence_with(
+            StrategyAttemptSequenceResolution::NeedsDiscreteVerification {
+                solutions: vec![ExprId::from_raw(3)],
+                steps: vec!["verify"],
+            },
+            |_solutions, steps| (SolutionSet::Discrete(vec![ExprId::from_raw(7)]), steps),
+            "fallback",
+        )
+        .expect("discrete resolution should be delegated");
+        assert_eq!(
+            resolved,
+            (
+                SolutionSet::Discrete(vec![ExprId::from_raw(7)]),
+                vec!["verify"]
+            )
+        );
+    }
+
+    #[test]
+    fn finalize_strategy_attempt_sequence_with_prefers_soft_error_over_fallback() {
+        let err = finalize_strategy_attempt_sequence_with::<(), &str, _>(
+            StrategyAttemptSequenceResolution::Exhausted {
+                last_soft_error: Some("soft"),
+            },
+            |_solutions, _steps| (SolutionSet::Empty, Vec::<()>::new()),
+            "fallback",
+        )
+        .expect_err("soft error should surface");
+        assert_eq!(err, "soft");
+    }
+
+    #[test]
+    fn finalize_strategy_attempt_sequence_with_uses_fallback_when_exhausted_without_soft_error() {
+        let err = finalize_strategy_attempt_sequence_with::<(), &str, _>(
+            StrategyAttemptSequenceResolution::Exhausted {
+                last_soft_error: None,
+            },
+            |_solutions, _steps| (SolutionSet::Empty, Vec::<()>::new()),
+            "fallback",
+        )
+        .expect_err("fallback error should surface");
+        assert_eq!(err, "fallback");
     }
 
     #[test]

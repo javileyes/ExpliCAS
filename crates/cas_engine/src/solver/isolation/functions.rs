@@ -5,14 +5,14 @@ use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, S
 use cas_ast::symbol::SymbolId;
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::function_inverse::{
-    derive_function_isolation_route, execute_unary_inverse_with, plan_unary_inverse_isolation_step,
-    FunctionIsolationRoute, FunctionIsolationRouteError,
+    derive_function_isolation_route, plan_unary_inverse_isolation_step, FunctionIsolationRoute,
+    FunctionIsolationRouteError,
 };
 use cas_solver_core::log_isolation::plan_log_isolation_step_with;
 use cas_solver_core::solve_outcome::{
     execute_abs_isolation_plan_pipeline_with_optional_items_and_solver,
     execute_log_isolation_result_pipeline_with_plan_and_error_and_merge_with_existing_steps,
-    execute_unary_inverse_execution_pipeline_with_items_and_merge_with_existing_steps_with,
+    execute_unary_inverse_result_pipeline_with_plan_and_error_and_merge_with_existing_steps,
     finalize_abs_split_solution_set_for_rhs, plan_abs_isolation_with_rhs_sign,
 };
 use std::cell::RefCell;
@@ -173,7 +173,7 @@ fn isolate_unary_function(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let fn_name = simplifier.context.sym_name(fn_id).to_string();
-    let unary_plan = plan_unary_inverse_isolation_step(
+    let plan = plan_unary_inverse_isolation_step(
         &mut simplifier.context,
         &fn_name,
         arg,
@@ -182,14 +182,18 @@ fn isolate_unary_function(
         true,
     );
     let include_items = simplifier.collect_steps();
-    let execution = execute_unary_inverse_with(
+    let simplifier_ref = RefCell::new(simplifier);
+    execute_unary_inverse_result_pipeline_with_plan_and_error_and_merge_with_existing_steps(
         &fn_name,
         arg,
         rhs,
         op.clone(),
         true,
-        |_fn_name, _arg, _other, _op, _is_lhs| unary_plan.clone(),
+        include_items,
+        steps,
+        plan,
         |rhs_expr| {
+            let mut simplifier = simplifier_ref.borrow_mut();
             let (simplified_rhs, sim_steps) = simplifier.simplify(rhs_expr);
             let entries = sim_steps
                 .into_iter()
@@ -197,14 +201,11 @@ fn isolate_unary_function(
                 .collect::<Vec<_>>();
             (simplified_rhs, entries)
         },
-    )
-    .ok_or_else(|| CasError::UnknownFunction(fn_name.clone()))?;
-
-    execute_unary_inverse_execution_pipeline_with_items_and_merge_with_existing_steps_with(
-        execution,
-        include_items,
-        steps,
-        |lhs, rhs_expr, inner_op| isolate(lhs, rhs_expr, inner_op, var, simplifier, opts, ctx),
+        |lhs, rhs_expr, inner_op| {
+            let mut simplifier = simplifier_ref.borrow_mut();
+            isolate(lhs, rhs_expr, inner_op, var, &mut simplifier, opts, ctx)
+        },
         |item| medium_step(item.description().to_string(), item.equation),
+        CasError::UnknownFunction(fn_name.clone()),
     )
 }

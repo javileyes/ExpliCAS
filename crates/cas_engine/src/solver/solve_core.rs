@@ -10,13 +10,15 @@ use cas_ast::SolutionSet;
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_analysis::{
     apply_nonzero_exclusion_guards_if_any, classify_equation_var_presence,
-    guard_solved_result_with_exclusions, partition_discrete_symbolic, retain_verified_discrete,
-    run_strategy_attempt_sequence, EquationVarPresence, StrategyAttemptSequenceResolution,
+    finalize_strategy_attempt_sequence_with, guard_solved_result_with_exclusions,
+    normalize_variable_residual_with, resolve_discrete_strategy_solutions_with,
+    run_strategy_attempt_sequence, simplify_equation_sides_for_presence_with, EquationVarPresence,
 };
 use cas_solver_core::solve_outcome::{
     solve_var_eliminated_outcome_pipeline_with, VarEliminatedOutcomePipelineSolved,
 };
 use cas_solver_core::step_cleanup::{cleanup_steps_by, CleanupStep};
+use std::cell::RefCell;
 
 use super::{
     medium_step, render_expr, DepthGuard, DisplaySolveSteps, SolveDomainEnv, SolveStep,
@@ -241,23 +243,23 @@ fn solve_inner(
     // which need to be simplified to "5/6*x = 5" before isolation
     let lhs_has_var = contains_var(&simplifier.context, eq.lhs, var);
     let rhs_has_var = contains_var(&simplifier.context, eq.rhs, var);
-    let mut simplified_eq = eq.clone();
-    if lhs_has_var {
-        let sim_lhs = simplifier.simplify_for_solve(eq.lhs);
-        simplified_eq.lhs = cas_solver_core::isolation_utils::try_recompose_pow_quotient(
-            &mut simplifier.context,
-            sim_lhs,
-        )
-        .unwrap_or(sim_lhs);
-    }
-    if rhs_has_var {
-        let sim_rhs = simplifier.simplify_for_solve(eq.rhs);
-        simplified_eq.rhs = cas_solver_core::isolation_utils::try_recompose_pow_quotient(
-            &mut simplifier.context,
-            sim_rhs,
-        )
-        .unwrap_or(sim_rhs);
-    }
+    let (mut simplified_eq, simplifier) = {
+        let simplifier_ref = RefCell::new(simplifier);
+        let simplified_eq = simplify_equation_sides_for_presence_with(
+            eq,
+            lhs_has_var,
+            rhs_has_var,
+            |expr| simplifier_ref.borrow_mut().simplify_for_solve(expr),
+            |expr| {
+                let mut simplifier = simplifier_ref.borrow_mut();
+                cas_solver_core::isolation_utils::try_recompose_pow_quotient(
+                    &mut simplifier.context,
+                    expr,
+                )
+            },
+        );
+        (simplified_eq, simplifier_ref.into_inner())
+    };
 
     // NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)) and
     // nested-pow folding are handled by global simplifier rules:
@@ -323,30 +325,33 @@ fn solve_inner(
     // expand + simplify and a trig expand fallback (Ticket 6c). Accept
     // rewrites only when they eliminate the variable or significantly
     // reduce expression size.
-    let mut normalized_diff = diff_simplified;
-    if contains_var(&simplifier.context, normalized_diff, var) {
-        let expanded = crate::expand::expand(&mut simplifier.context, normalized_diff);
-        let re_simplified = simplifier.simplify_for_solve(expanded);
-        if let Some(accepted) = cas_solver_core::solve_analysis::accept_residual_rewrite_candidate(
-            &simplifier.context,
-            normalized_diff,
-            re_simplified,
+    let (normalized_diff, simplifier) = {
+        let simplifier_ref = RefCell::new(simplifier);
+        let normalized_diff = normalize_variable_residual_with(
+            diff_simplified,
             var,
-        ) {
-            normalized_diff = accepted;
-        }
-    }
-    if contains_var(&simplifier.context, normalized_diff, var) {
-        let trig_expanded = simplifier.expand(normalized_diff).0;
-        if let Some(accepted) = cas_solver_core::solve_analysis::accept_residual_rewrite_candidate(
-            &simplifier.context,
-            normalized_diff,
-            trig_expanded,
-            var,
-        ) {
-            normalized_diff = accepted;
-        }
-    }
+            |expr, var_name| {
+                let simplifier = simplifier_ref.borrow();
+                contains_var(&simplifier.context, expr, var_name)
+            },
+            |expr| {
+                let mut simplifier = simplifier_ref.borrow_mut();
+                crate::expand::expand(&mut simplifier.context, expr)
+            },
+            |expr| simplifier_ref.borrow_mut().simplify_for_solve(expr),
+            |expr| simplifier_ref.borrow_mut().expand(expr).0,
+            |current, candidate, var_name| {
+                let simplifier = simplifier_ref.borrow();
+                cas_solver_core::solve_analysis::accept_residual_rewrite_candidate(
+                    &simplifier.context,
+                    current,
+                    candidate,
+                    var_name,
+                )
+            },
+        );
+        (normalized_diff, simplifier_ref.into_inner())
+    };
     if normalized_diff != diff_simplified {
         diff_simplified = normalized_diff;
         let zero = simplifier.context.num(0);
@@ -416,32 +421,23 @@ fn solve_inner(
         )
     });
 
-    match run_strategy_attempt_sequence(strategy_attempts, is_soft_strategy_error) {
-        StrategyAttemptSequenceResolution::Solved {
-            solution_set,
-            steps,
-        } => Ok((solution_set, steps)),
-        StrategyAttemptSequenceResolution::NeedsDiscreteVerification { solutions, steps } => {
-            let (mut symbolic_solutions, numeric_solutions) =
-                partition_discrete_symbolic(&simplifier.context, &solutions);
-            let verified_numeric = retain_verified_discrete(numeric_solutions, |solution| {
-                // Verify against ORIGINAL equation, not simplified form, so
-                // domain-invalid roots (e.g. division by zero) are rejected.
-                super::check::verify_solution_by_equivalence(simplifier, eq, var, solution)
-            });
-            symbolic_solutions.extend(verified_numeric);
-            let valid_sols = symbolic_solutions;
-            Ok((SolutionSet::Discrete(valid_sols), steps))
-        }
-        StrategyAttemptSequenceResolution::HardError(error) => Err(error),
-        StrategyAttemptSequenceResolution::Exhausted { last_soft_error } => {
-            if let Some(error) = last_soft_error {
-                Err(error)
-            } else {
-                Err(CasError::SolverError(
-                    "No strategy could solve this equation.".to_string(),
-                ))
-            }
-        }
-    }
+    finalize_strategy_attempt_sequence_with(
+        run_strategy_attempt_sequence(strategy_attempts, is_soft_strategy_error),
+        |solutions, steps| {
+            let classify_ctx = simplifier.context.clone();
+            let valid_sols = resolve_discrete_strategy_solutions_with(
+                solutions,
+                |solution| {
+                    cas_solver_core::solve_analysis::is_symbolic_expr(&classify_ctx, solution)
+                },
+                |solution| {
+                    // Verify against ORIGINAL equation, not simplified form, so
+                    // domain-invalid roots (e.g. division by zero) are rejected.
+                    super::check::verify_solution_by_equivalence(simplifier, eq, var, solution)
+                },
+            );
+            (SolutionSet::Discrete(valid_sols), steps)
+        },
+        CasError::SolverError("No strategy could solve this equation.".to_string()),
+    )
 }
