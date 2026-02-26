@@ -6694,6 +6694,57 @@ where
     )
 }
 
+/// Solve denominator-sign split with optional didactic items using a single
+/// equation solver callback for both branch and domain equations.
+///
+/// Domain equations are solved through the same callback and only their
+/// solution sets are kept (their step traces are discarded).
+#[allow(clippy::too_many_arguments)]
+pub fn solve_division_denominator_sign_split_pipeline_with_single_solver_with_optional_items<
+    E,
+    S,
+    FRenderExpr,
+    FSolveEquation,
+    FMapStep,
+>(
+    split_plan: DivisionDenominatorSignSplitPlan,
+    denominator: ExprId,
+    case_boundary_lhs: ExprId,
+    case_boundary_op: RelOp,
+    simplified_rhs: ExprId,
+    include_items: bool,
+    branch_prefix_steps: &[S],
+    render_expr: FRenderExpr,
+    solve_equation: FSolveEquation,
+    map_item_to_step: FMapStep,
+) -> Result<DivisionDenominatorSignSplitExecutionSolved<S>, E>
+where
+    S: Clone,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveEquation: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(DivisionDidacticExecutionItem) -> S,
+{
+    let execution = if include_items {
+        build_division_denominator_sign_split_execution_with(
+            split_plan,
+            denominator,
+            case_boundary_lhs,
+            case_boundary_op,
+            simplified_rhs,
+            render_expr,
+        )
+    } else {
+        materialize_division_denominator_sign_split_execution(split_plan, simplified_rhs)
+    };
+    solve_division_denominator_sign_split_execution_pipeline_with_single_solver_with_items(
+        &execution,
+        include_items,
+        branch_prefix_steps,
+        solve_equation,
+        map_item_to_step,
+    )
+}
+
 /// Return the boundary didactic item (`--- End of Case 1 ---`) when available.
 pub fn division_denominator_sign_split_boundary_item(
     execution: &DivisionDenominatorSignSplitExecutionPlan,
