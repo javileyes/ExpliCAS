@@ -5,14 +5,14 @@ use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, S
 use cas_ast::symbol::SymbolId;
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::function_inverse::{
-    derive_function_isolation_route, plan_unary_inverse_isolation_step, FunctionIsolationRoute,
+    derive_function_isolation_route, execute_unary_inverse_with, plan_unary_inverse_isolation_step,
+    solve_unary_inverse_execution_pipeline_with_items, FunctionIsolationRoute,
     FunctionIsolationRouteError,
 };
 use cas_solver_core::log_isolation::plan_log_isolation_step_with;
 use cas_solver_core::solve_outcome::{
     build_abs_split_execution_with, collect_abs_split_execution_items,
     execute_log_isolation_result_pipeline_with_plan_and_error_and_merge_with_existing_steps,
-    execute_unary_inverse_result_pipeline_with_plan_and_error_and_merge_with_existing_steps,
     finalize_abs_split_solution_set_for_rhs, materialize_abs_split_execution,
     plan_abs_isolation_with_rhs_sign, AbsIsolationPlan,
 };
@@ -216,30 +216,32 @@ fn isolate_unary_function(
         true,
     );
     let include_items = simplifier.collect_steps();
-    let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    execute_unary_inverse_result_pipeline_with_plan_and_error_and_merge_with_existing_steps(
+    let execution = execute_unary_inverse_with(
         &fn_name,
         arg,
         rhs,
         op.clone(),
         true,
-        include_items,
-        steps,
-        unary_plan,
+        |_fn_name, _arg, _other, _op, _is_lhs| unary_plan.clone(),
         |rhs_expr| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            let (simplified_rhs, sim_steps) = simplifier_ref.simplify(rhs_expr);
+            let (simplified_rhs, sim_steps) = simplifier.simplify(rhs_expr);
             let entries = sim_steps
                 .into_iter()
                 .map(|step| (step.description, step.after))
                 .collect::<Vec<_>>();
             (simplified_rhs, entries)
         },
-        |lhs, rhs, inner_op| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            isolate(lhs, rhs, inner_op, var, *simplifier_ref, opts, ctx)
-        },
-        |item| medium_step(item.description().to_string(), item.equation),
-        CasError::UnknownFunction(fn_name.clone()),
     )
+    .ok_or_else(|| CasError::UnknownFunction(fn_name.clone()))?;
+
+    let solved = solve_unary_inverse_execution_pipeline_with_items(
+        execution,
+        include_items,
+        |lhs, rhs, inner_op| isolate(lhs, rhs, inner_op, var, simplifier, opts, ctx),
+        |item| medium_step(item.description().to_string(), item.equation),
+    )?;
+
+    let mut solved_steps = solved.steps;
+    solved_steps.extend(steps);
+    Ok((solved.solution_set, solved_steps))
 }
