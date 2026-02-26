@@ -333,7 +333,14 @@ pub enum SubstitutionStrategySolved<S> {
     },
 }
 
-fn aggregate_back_substitution_solutions<S>(
+/// Aggregate solved back-substitution branches and append branch steps into the
+/// caller-owned `steps` vector.
+///
+/// Returns:
+/// - `Ok(discrete_solutions)` when all non-empty branches are discrete.
+/// - `Err(solution_set)` when at least one branch yields a non-discrete set
+///   (the first non-discrete set is returned).
+pub fn aggregate_back_substitution_solutions<S>(
     solved: Vec<(SolutionSet, Vec<S>)>,
     steps: &mut Vec<S>,
 ) -> Result<Vec<ExprId>, SolutionSet> {

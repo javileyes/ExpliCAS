@@ -5,9 +5,9 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{medium_step, render_expr, SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, SolutionSet};
 use cas_solver_core::substitution::{
-    build_back_substitution_solve_plan_with, build_exponential_substitution_execution_with,
-    plan_exponential_substitution_rewrite, solve_back_substitution_plan_with_items,
-    solve_exponential_substitution_with_items,
+    aggregate_back_substitution_solutions, build_back_substitution_solve_plan_with,
+    build_exponential_substitution_execution_with, plan_exponential_substitution_rewrite,
+    solve_back_substitution_plan_with_items, solve_exponential_substitution_with_items,
 };
 
 pub struct SubstitutionStrategy;
@@ -80,23 +80,11 @@ impl SolverStrategy for SubstitutionStrategy {
                         Err(err) => return Some(Err(err)),
                     };
 
-                let mut final_solutions = Vec::new();
-                let mut non_discrete_solution: Option<SolutionSet> = None;
-                for (x_sol, mut x_steps) in solved_back.solved {
-                    steps.append(&mut x_steps);
-                    match x_sol {
-                        SolutionSet::Discrete(xs) => final_solutions.extend(xs),
-                        SolutionSet::Empty => {}
-                        other => {
-                            if non_discrete_solution.is_none() {
-                                non_discrete_solution = Some(other);
-                            }
-                        }
-                    }
-                }
-
                 let solution_set =
-                    non_discrete_solution.unwrap_or(SolutionSet::Discrete(final_solutions));
+                    match aggregate_back_substitution_solutions(solved_back.solved, &mut steps) {
+                        Ok(final_solutions) => SolutionSet::Discrete(final_solutions),
+                        Err(solution_set) => solution_set,
+                    };
                 Some(Ok((solution_set, steps)))
             }
             solution_set => Some(Ok((solution_set, steps))),
