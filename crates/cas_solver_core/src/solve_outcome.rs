@@ -6553,6 +6553,60 @@ where
     )
 }
 
+/// Execute denominator-sign split pipeline when a plan is present, otherwise
+/// return caller-provided fallback error.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_division_denominator_sign_split_pipeline_or_else_with_optional_items<
+    E,
+    S,
+    FRenderExpr,
+    FSolveBranch,
+    FSolveDomain,
+    FMapStep,
+    FFinalize,
+    FErr,
+>(
+    split_plan: Option<DivisionDenominatorSignSplitPlan>,
+    denominator: ExprId,
+    op: RelOp,
+    case_boundary_lhs: ExprId,
+    simplified_rhs: ExprId,
+    include_items: bool,
+    branch_prefix_steps: &[S],
+    render_expr: FRenderExpr,
+    solve_branch: FSolveBranch,
+    solve_domain: FSolveDomain,
+    map_item_to_step: FMapStep,
+    finalize_solved_sets: FFinalize,
+    on_missing_plan: FErr,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    S: Clone,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveBranch: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FSolveDomain: FnMut(&Equation) -> Result<SolutionSet, E>,
+    FMapStep: FnMut(DivisionDidacticExecutionItem) -> S,
+    FFinalize:
+        FnMut(DivisionDenominatorSignSplitSolvedCases<SolutionSet, SolutionSet>) -> SolutionSet,
+    FErr: FnOnce() -> E,
+{
+    try_execute_division_denominator_sign_split_pipeline_with_optional_items(
+        split_plan,
+        denominator,
+        op,
+        case_boundary_lhs,
+        simplified_rhs,
+        include_items,
+        branch_prefix_steps,
+        render_expr,
+        solve_branch,
+        solve_domain,
+        map_item_to_step,
+        finalize_solved_sets,
+    )
+    .unwrap_or_else(|| Err(on_missing_plan()))
+}
+
 /// Build executable split plan for already-isolated denominator inequalities.
 pub fn plan_isolated_denominator_sign_split(
     lhs: ExprId,
@@ -6629,6 +6683,51 @@ where
             finalize_solved_sets,
         ),
     )
+}
+
+/// Execute isolated-denominator sign split pipeline when a plan is present,
+/// otherwise return caller-provided fallback error.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_isolated_denominator_sign_split_pipeline_or_else_with_optional_items<
+    E,
+    S,
+    FRenderExpr,
+    FSolveBranch,
+    FMapStep,
+    FFinalize,
+    FErr,
+>(
+    split_plan: Option<IsolatedDenominatorSignSplitPlan>,
+    denominator: ExprId,
+    op: RelOp,
+    include_items: bool,
+    branch_prefix_steps: &[S],
+    render_expr: FRenderExpr,
+    solve_branch: FSolveBranch,
+    map_item_to_step: FMapStep,
+    finalize_solved_sets: FFinalize,
+    on_missing_plan: FErr,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    S: Clone,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveBranch: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(DivisionDidacticExecutionItem) -> S,
+    FFinalize: FnMut(IsolatedDenominatorSignSplitSolvedCases<SolutionSet>) -> SolutionSet,
+    FErr: FnOnce() -> E,
+{
+    try_execute_isolated_denominator_sign_split_pipeline_with_optional_items(
+        split_plan,
+        denominator,
+        op,
+        include_items,
+        branch_prefix_steps,
+        render_expr,
+        solve_branch,
+        map_item_to_step,
+        finalize_solved_sets,
+    )
+    .unwrap_or_else(|| Err(on_missing_plan()))
 }
 
 /// Build runtime execution plan for denominator-sign split using a precomputed
@@ -14769,6 +14868,69 @@ mod tests {
     }
 
     #[test]
+    fn execute_division_denominator_sign_split_pipeline_or_else_with_optional_items_maps_missing_plan_error(
+    ) {
+        let out = execute_division_denominator_sign_split_pipeline_or_else_with_optional_items::<
+            &'static str,
+            u8,
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+        >(
+            None,
+            ExprId::from_raw(1),
+            RelOp::Lt,
+            ExprId::from_raw(2),
+            ExprId::from_raw(3),
+            false,
+            &[],
+            |_id| "x".to_string(),
+            |_equation| Ok((SolutionSet::AllReals, vec![])),
+            |_equation| Ok(SolutionSet::AllReals),
+            |_item| 0u8,
+            |_solved_cases| SolutionSet::AllReals,
+            || "missing-plan",
+        );
+
+        assert_eq!(out, Err("missing-plan"));
+    }
+
+    #[test]
+    fn execute_division_denominator_sign_split_pipeline_or_else_with_optional_items_executes_with_plan(
+    ) {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let simplified_rhs = ctx.var("s");
+        let split =
+            plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Lt).unwrap();
+
+        let out = execute_division_denominator_sign_split_pipeline_or_else_with_optional_items(
+            Some(split),
+            den,
+            RelOp::Lt,
+            num,
+            simplified_rhs,
+            false,
+            &[0u8],
+            |_id| "d".to_string(),
+            |_equation| Ok::<_, &'static str>((SolutionSet::Discrete(vec![rhs]), vec![1u8])),
+            |_equation| Ok::<_, &'static str>(SolutionSet::AllReals),
+            |_item| 9u8,
+            |_solved_cases| SolutionSet::AllReals,
+            || "unexpected-missing-plan",
+        )
+        .expect("execution should succeed");
+
+        assert!(matches!(out.0, SolutionSet::AllReals));
+        assert_eq!(out.1, vec![0u8, 1u8, 0u8, 1u8]);
+    }
+
+    #[test]
     fn division_denominator_sign_split_boundary_item_returns_case_separator() {
         let mut ctx = Context::new();
         let num = ctx.var("n");
@@ -15280,6 +15442,59 @@ mod tests {
         let (final_set, steps) = out.expect("execution should succeed");
         assert!(matches!(final_set, SolutionSet::Empty));
         assert_eq!(steps, vec![0u8, 1u8, 0u8, 1u8]);
+    }
+
+    #[test]
+    fn execute_isolated_denominator_sign_split_pipeline_or_else_with_optional_items_maps_missing_plan_error(
+    ) {
+        let out = execute_isolated_denominator_sign_split_pipeline_or_else_with_optional_items::<
+            &'static str,
+            u8,
+            _,
+            _,
+            _,
+            _,
+            _,
+        >(
+            None,
+            ExprId::from_raw(1),
+            RelOp::Leq,
+            false,
+            &[],
+            |_id| "x".to_string(),
+            |_equation| Ok((SolutionSet::AllReals, vec![])),
+            |_item| 0u8,
+            |_solved_cases| SolutionSet::AllReals,
+            || "missing-plan",
+        );
+
+        assert_eq!(out, Err("missing-plan"));
+    }
+
+    #[test]
+    fn execute_isolated_denominator_sign_split_pipeline_or_else_with_optional_items_executes_with_plan(
+    ) {
+        let mut ctx = Context::new();
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let split = plan_isolated_denominator_sign_split(den, rhs, RelOp::Leq).unwrap();
+
+        let out = execute_isolated_denominator_sign_split_pipeline_or_else_with_optional_items(
+            Some(split),
+            den,
+            RelOp::Leq,
+            false,
+            &[0u8],
+            |_id| "x".to_string(),
+            |_equation| Ok::<_, &'static str>((SolutionSet::Discrete(vec![rhs]), vec![1u8])),
+            |_item| 9u8,
+            |_solved_cases| SolutionSet::Empty,
+            || "unexpected-missing-plan",
+        )
+        .expect("execution should succeed");
+
+        assert!(matches!(out.0, SolutionSet::Empty));
+        assert_eq!(out.1, vec![0u8, 1u8, 0u8, 1u8]);
     }
 
     #[test]

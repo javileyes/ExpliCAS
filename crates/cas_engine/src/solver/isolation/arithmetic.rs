@@ -8,6 +8,8 @@ use cas_solver_core::solve_outcome::{
     derive_add_isolation_operands, derive_div_isolation_route, derive_mul_isolation_operands,
     derive_sub_isolation_operands,
     execute_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with,
+    execute_division_denominator_sign_split_pipeline_or_else_with_optional_items,
+    execute_isolated_denominator_sign_split_pipeline_or_else_with_optional_items,
     execute_term_isolation_plan_with_and_merge_with_existing_steps_with,
     finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
@@ -16,8 +18,6 @@ use cas_solver_core::solve_outcome::{
     plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
     plan_div_numerator_isolation_step_with, plan_division_denominator,
     plan_mul_factor_isolation_step_with, plan_sub_isolation_step_with,
-    try_execute_division_denominator_sign_split_pipeline_with_optional_items,
-    try_execute_isolated_denominator_sign_split_pipeline_with_optional_items,
     try_execute_product_zero_inequality_split_pipeline_with_existing_steps, AddIsolationRoute,
     DivDenominatorIsolationRoute, DivIsolationRoute,
 };
@@ -268,7 +268,7 @@ pub(super) fn isolate_div(
             let include_items = simplifier.collect_steps();
             let result = {
                 let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-                try_execute_division_denominator_sign_split_pipeline_with_optional_items(
+                execute_division_denominator_sign_split_pipeline_or_else_with_optional_items(
                     split_plan,
                     r,
                     op.clone(),
@@ -306,15 +306,15 @@ pub(super) fn isolate_div(
                             solved_cases,
                         )
                     },
+                    || {
+                        CasError::SolverError(
+                            "Internal solver error: denominator-sign split wrapper returned None"
+                                .to_string(),
+                        )
+                    },
                 )
-            }
-            .ok_or_else(|| {
-                CasError::SolverError(
-                    "Internal solver error: denominator-sign split wrapper returned None"
-                        .to_string(),
-                )
-            })?;
-            result
+            }?;
+            Ok(result)
         } else {
             // A = RHS * B
             let denominator_is_negative = is_known_negative(&simplifier.context, r);
@@ -401,7 +401,7 @@ pub(super) fn isolate_div(
             let include_items = simplifier.collect_steps();
             let result = {
                 let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-                try_execute_isolated_denominator_sign_split_pipeline_with_optional_items(
+                execute_isolated_denominator_sign_split_pipeline_or_else_with_optional_items(
                     split_plan,
                     r,
                     op.clone(),
@@ -431,15 +431,15 @@ pub(super) fn isolate_div(
                             solved_cases,
                         )
                     },
+                    || {
+                        CasError::SolverError(
+                            "Internal solver error: isolated denominator split wrapper returned None"
+                                .to_string(),
+                        )
+                    },
                 )
-            }
-            .ok_or_else(|| {
-                CasError::SolverError(
-                    "Internal solver error: isolated denominator split wrapper returned None"
-                        .to_string(),
-                )
-            })?;
-            return result;
+            }?;
+            return Ok(result);
         }
 
         // PEDAGOGICAL: Decompose denominator isolation into two explicit steps
