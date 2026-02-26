@@ -9,21 +9,57 @@ use cas_solver_core::solve_outcome::{
     derive_sub_isolation_operands,
     execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with,
     execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with,
-    execute_term_isolation_plan_and_merge_with_existing_steps_with,
     finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
-    finalize_product_zero_inequality_solved_sets,
+    finalize_product_zero_inequality_solved_sets, first_term_isolation_rewrite_execution_item,
     merge_optional_solved_with_existing_steps_append_mut, mul_rhs_contains_variable,
     plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
     plan_division_denominator_sign_split_or_div_numerator_isolation_with,
     plan_isolated_denominator_sign_split_or_division_denominator,
     plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split_if_applicable,
     plan_sub_isolation_step_with, resolve_div_denominator_isolation_rhs_with,
-    try_execute_product_zero_inequality_split_pipeline_with_existing_steps, AddIsolationRoute,
-    DivIsolationRoute,
+    solve_product_zero_inequality_split_execution_with, AddIsolationRoute, DivIsolationRoute,
+    TermIsolationRewritePlan,
 };
 
 use super::isolate;
+
+#[allow(clippy::too_many_arguments)]
+fn run_term_isolation_plan(
+    plan: TermIsolationRewritePlan,
+    include_item: bool,
+    simplify_rhs_before_solve: bool,
+    existing_steps: Vec<SolveStep>,
+    var: &str,
+    simplifier: &mut Simplifier,
+    opts: SolverOptions,
+    ctx: &super::super::SolveCtx,
+) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
+    let mut steps = Vec::new();
+    if include_item {
+        if let Some(item) = first_term_isolation_rewrite_execution_item(&plan) {
+            steps.push(medium_step(item.description, item.equation));
+        }
+    }
+
+    let mut rewritten = plan.equation;
+    if simplify_rhs_before_solve {
+        rewritten.rhs = simplifier.simplify(rewritten.rhs).0;
+    }
+
+    let (solution_set, mut solved_steps) = isolate(
+        rewritten.lhs,
+        rewritten.rhs,
+        rewritten.op,
+        var,
+        simplifier,
+        opts,
+        ctx,
+    )?;
+    steps.append(&mut solved_steps);
+    steps.extend(existing_steps);
+    Ok((solution_set, steps))
+}
 
 /// Handle isolation for `Add(l, r)`: `(A + B) = RHS`
 #[allow(clippy::too_many_arguments)]
@@ -62,29 +98,15 @@ pub(super) fn isolate_add(
         |_| add_moved_desc.clone(),
     );
     let include_item = simplifier.collect_steps();
-    let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    execute_term_isolation_plan_and_merge_with_existing_steps_with(
+    run_term_isolation_plan(
         add_plan,
         include_item,
         true,
         steps,
-        |expr| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            simplifier_ref.simplify(expr).0
-        },
-        |equation| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            isolate(
-                equation.lhs,
-                equation.rhs,
-                equation.op,
-                var,
-                *simplifier_ref,
-                opts,
-                ctx,
-            )
-        },
-        |item| medium_step(item.description, item.equation),
+        var,
+        simplifier,
+        opts,
+        ctx,
     )
 }
 
@@ -109,29 +131,15 @@ pub(super) fn isolate_sub(
             sub_moved_desc.clone()
         });
     let include_item = simplifier.collect_steps();
-    let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    execute_term_isolation_plan_and_merge_with_existing_steps_with(
+    run_term_isolation_plan(
         sub_plan,
         include_item,
         true,
         steps,
-        |expr| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            simplifier_ref.simplify(expr).0
-        },
-        |equation| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            isolate(
-                equation.lhs,
-                equation.rhs,
-                equation.op,
-                var,
-                *simplifier_ref,
-                opts,
-                ctx,
-            )
-        },
-        |item| medium_step(item.description, item.equation),
+        var,
+        simplifier,
+        opts,
+        ctx,
     )
 }
 
@@ -160,20 +168,18 @@ pub(super) fn isolate_mul(
             op.clone(),
             var,
         );
-        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        if let Some(result) = try_execute_product_zero_inequality_split_pipeline_with_existing_steps(
-            split_plan,
-            &steps,
-            |equation| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                solve_with_ctx_and_options(equation, var, *simplifier_ref, opts, ctx)
-            },
-            |solved_sets| {
-                let simplifier_ref = runtime_cell.borrow();
-                finalize_product_zero_inequality_solved_sets(&simplifier_ref.context, solved_sets)
-            },
-        ) {
-            return result;
+        if let Some(split_plan) = split_plan {
+            let solved =
+                solve_product_zero_inequality_split_execution_with(&split_plan, |equation| {
+                    solve_with_ctx_and_options(equation, var, simplifier, opts, ctx)
+                })?;
+            let final_set = finalize_product_zero_inequality_solved_sets(
+                &simplifier.context,
+                solved.solved_sets,
+            );
+            let mut merged_steps = solved.steps;
+            merged_steps.extend(steps);
+            return Ok((final_set, merged_steps));
         }
     }
 
@@ -200,29 +206,15 @@ pub(super) fn isolate_mul(
         |_| mul_moved_desc.clone(),
     );
     let include_item = simplifier.collect_steps();
-    let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    execute_term_isolation_plan_and_merge_with_existing_steps_with(
+    run_term_isolation_plan(
         mul_plan,
         include_item,
         false,
         steps,
-        |expr| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            simplifier_ref.simplify(expr).0
-        },
-        |equation| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            isolate(
-                equation.lhs,
-                equation.rhs,
-                equation.op,
-                var,
-                *simplifier_ref,
-                opts,
-                ctx,
-            )
-        },
-        |item| medium_step(item.description, item.equation),
+        var,
+        simplifier,
+        opts,
+        ctx,
     )
 }
 

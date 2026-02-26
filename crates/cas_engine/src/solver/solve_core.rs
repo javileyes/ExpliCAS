@@ -10,10 +10,8 @@ use cas_ast::SolutionSet;
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_analysis::{
     apply_nonzero_exclusion_guards_if_any, classify_equation_var_presence,
-    guard_solved_result_with_exclusions, normalize_variable_residual_with,
-    partition_discrete_symbolic, retain_verified_discrete, run_strategy_attempt_sequence,
-    simplify_equation_sides_for_presence_with, EquationVarPresence,
-    StrategyAttemptSequenceResolution,
+    guard_solved_result_with_exclusions, partition_discrete_symbolic, retain_verified_discrete,
+    run_strategy_attempt_sequence, EquationVarPresence, StrategyAttemptSequenceResolution,
 };
 use cas_solver_core::solve_outcome::{
     solve_var_eliminated_outcome_pipeline_with, VarEliminatedOutcomePipelineSolved,
@@ -243,25 +241,23 @@ fn solve_inner(
     // which need to be simplified to "5/6*x = 5" before isolation
     let lhs_has_var = contains_var(&simplifier.context, eq.lhs, var);
     let rhs_has_var = contains_var(&simplifier.context, eq.rhs, var);
-    let mut simplified_eq = {
-        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        simplify_equation_sides_for_presence_with(
-            eq,
-            lhs_has_var,
-            rhs_has_var,
-            |expr| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                simplifier_ref.simplify_for_solve(expr)
-            },
-            |expr| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                cas_solver_core::isolation_utils::try_recompose_pow_quotient(
-                    &mut simplifier_ref.context,
-                    expr,
-                )
-            },
+    let mut simplified_eq = eq.clone();
+    if lhs_has_var {
+        let sim_lhs = simplifier.simplify_for_solve(eq.lhs);
+        simplified_eq.lhs = cas_solver_core::isolation_utils::try_recompose_pow_quotient(
+            &mut simplifier.context,
+            sim_lhs,
         )
-    };
+        .unwrap_or(sim_lhs);
+    }
+    if rhs_has_var {
+        let sim_rhs = simplifier.simplify_for_solve(eq.rhs);
+        simplified_eq.rhs = cas_solver_core::isolation_utils::try_recompose_pow_quotient(
+            &mut simplifier.context,
+            sim_rhs,
+        )
+        .unwrap_or(sim_rhs);
+    }
 
     // NOTE: Pre-solve exponent normalization (Div(p,q) → Number(p/q)) and
     // nested-pow folding are handled by global simplifier rules:
@@ -327,38 +323,30 @@ fn solve_inner(
     // expand + simplify and a trig expand fallback (Ticket 6c). Accept
     // rewrites only when they eliminate the variable or significantly
     // reduce expression size.
-    let normalized_diff = {
-        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        normalize_variable_residual_with(
-            diff_simplified,
+    let mut normalized_diff = diff_simplified;
+    if contains_var(&simplifier.context, normalized_diff, var) {
+        let expanded = crate::expand::expand(&mut simplifier.context, normalized_diff);
+        let re_simplified = simplifier.simplify_for_solve(expanded);
+        if let Some(accepted) = cas_solver_core::solve_analysis::accept_residual_rewrite_candidate(
+            &simplifier.context,
+            normalized_diff,
+            re_simplified,
             var,
-            |expr, inner_var| {
-                let simplifier_ref = runtime_cell.borrow();
-                contains_var(&simplifier_ref.context, expr, inner_var)
-            },
-            |expr| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                crate::expand::expand(&mut simplifier_ref.context, expr)
-            },
-            |expr| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                simplifier_ref.simplify_for_solve(expr)
-            },
-            |expr| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                simplifier_ref.expand(expr).0
-            },
-            |current, candidate, inner_var| {
-                let simplifier_ref = runtime_cell.borrow();
-                cas_solver_core::solve_analysis::accept_residual_rewrite_candidate(
-                    &simplifier_ref.context,
-                    current,
-                    candidate,
-                    inner_var,
-                )
-            },
-        )
-    };
+        ) {
+            normalized_diff = accepted;
+        }
+    }
+    if contains_var(&simplifier.context, normalized_diff, var) {
+        let trig_expanded = simplifier.expand(normalized_diff).0;
+        if let Some(accepted) = cas_solver_core::solve_analysis::accept_residual_rewrite_candidate(
+            &simplifier.context,
+            normalized_diff,
+            trig_expanded,
+            var,
+        ) {
+            normalized_diff = accepted;
+        }
+    }
     if normalized_diff != diff_simplified {
         diff_simplified = normalized_diff;
         let zero = simplifier.context.num(0);

@@ -132,19 +132,17 @@ fn isolate_log(
         solver_render_expr,
     );
     let include_item = simplifier.collect_steps();
-    let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
     execute_log_isolation_result_pipeline_with_plan_and_error_and_merge_with_existing_steps(
         include_item,
         steps,
         rewrite,
         |equation| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
             let (solution_set, solved_steps) = isolate(
                 equation.lhs,
                 equation.rhs,
                 equation.op.clone(),
                 var,
-                *simplifier_ref,
+                simplifier,
                 opts,
                 ctx,
             )?;
