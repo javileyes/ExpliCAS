@@ -2,7 +2,6 @@ use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
-use cas_solver_core::log_domain::LogSolveDecision;
 use cas_solver_core::solve_outcome::{
     classify_pow_exponent_base_flags, derive_pow_isolation_route,
     execute_log_terminal_outcome_pipeline_with_item_and_merge_with_existing_steps_with,
@@ -11,7 +10,7 @@ use cas_solver_core::solve_outcome::{
     execute_pow_exponent_log_unsupported_pipeline_from_decision_and_finalize_with_existing_steps_with,
     execute_pow_exponent_shortcut_pipeline_with_item_with,
     execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_merge_with_existing_steps_with,
-    finalize_pow_exponent_shortcut_pipeline_with_existing_steps,
+    finalize_pow_exponent_shortcut_pipeline_with_existing_steps, log_decision_is_empty_set,
     log_decision_needs_complex_message, plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
     pow_exponent_rhs_contains_variable, shortcut_bases_equivalent_by_difference_with,
@@ -299,7 +298,7 @@ fn isolate_pow_exponent(
     if let Some(msg) = log_decision_needs_complex_message(&decision) {
         return Err(CasError::UnsupportedInRealDomain(msg.to_string()));
     }
-    if matches!(decision, LogSolveDecision::EmptySet(_)) {
+    if log_decision_is_empty_set(&decision) {
         unreachable!("handled by terminal action");
     }
 

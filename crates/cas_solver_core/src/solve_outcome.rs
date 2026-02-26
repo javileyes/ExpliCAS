@@ -4086,6 +4086,11 @@ pub fn log_decision_needs_complex_message(decision: &LogSolveDecision) -> Option
     }
 }
 
+/// Whether the log decision is terminal-empty-set.
+pub fn log_decision_is_empty_set(decision: &LogSolveDecision) -> bool {
+    matches!(decision, LogSolveDecision::EmptySet(_))
+}
+
 /// Merge unsupported exponent-log pipeline outcome with caller-owned steps and
 /// allow caller-side blocked-hint registration through callback.
 pub fn merge_pow_exponent_log_unsupported_pipeline_with_existing_steps<S, FHint>(
@@ -8852,6 +8857,15 @@ mod tests {
             log_decision_needs_complex_message(&LogSolveDecision::Ok),
             None
         );
+    }
+
+    #[test]
+    fn log_decision_is_empty_set_detects_only_empty_set_variant() {
+        assert!(log_decision_is_empty_set(&LogSolveDecision::EmptySet("no")));
+        assert!(!log_decision_is_empty_set(&LogSolveDecision::Ok));
+        assert!(!log_decision_is_empty_set(&LogSolveDecision::NeedsComplex(
+            "need complex"
+        )));
     }
 
     #[test]
