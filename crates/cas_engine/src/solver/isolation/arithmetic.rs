@@ -9,19 +9,18 @@ use cas_solver_core::solve_outcome::{
     derive_sub_isolation_operands,
     execute_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with,
     execute_division_denominator_sign_split_pipeline_with_single_solver_with_optional_items,
+    execute_product_zero_inequality_split_pipeline_with_existing_steps,
     execute_term_isolation_plan_and_merge_with_existing_steps_with,
     finalize_isolated_denominator_sign_split_solved_sets,
     finalize_product_zero_inequality_solved_sets,
-    merge_optional_solved_with_existing_steps_append_mut, merge_solved_with_existing_steps_prepend,
-    mul_rhs_contains_variable, plan_add_operand_isolation_step_with,
-    plan_div_denominator_isolation_with_zero_rhs_guard,
+    merge_optional_solved_with_existing_steps_append_mut, mul_rhs_contains_variable,
+    plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
     plan_division_denominator_sign_split_or_div_numerator_isolation_with,
     plan_isolated_denominator_sign_split_or_division_denominator,
     plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split_if_applicable,
     plan_sub_isolation_step_with, resolve_div_denominator_isolation_rhs_with,
-    solve_isolated_denominator_sign_split_pipeline_with_optional_items,
-    solve_product_zero_inequality_split_execution_with, AddIsolationRoute, DivIsolationRoute,
-    IsolatedDenominatorSignSplitSolvedCases,
+    solve_isolated_denominator_sign_split_pipeline_with_optional_items, AddIsolationRoute,
+    DivIsolationRoute, IsolatedDenominatorSignSplitSolvedCases,
 };
 use std::cell::RefCell;
 
@@ -155,18 +154,20 @@ pub(super) fn isolate_mul(
             var,
         );
         if let Some(split_plan) = split_plan {
-            let solved =
-                solve_product_zero_inequality_split_execution_with(&split_plan, |equation| {
-                    solve_with_ctx_and_options(equation, var, simplifier, opts, ctx)
-                })?;
-            let final_set = finalize_product_zero_inequality_solved_sets(
-                &simplifier.context,
-                solved.solved_sets,
-            );
-            return Ok(merge_solved_with_existing_steps_prepend(
-                (final_set, solved.steps),
+            let split_ctx = RefCell::new(simplifier.context.clone());
+            return execute_product_zero_inequality_split_pipeline_with_existing_steps(
+                &split_plan,
                 steps,
-            ));
+                |equation| {
+                    let solved = solve_with_ctx_and_options(equation, var, simplifier, opts, ctx);
+                    *split_ctx.borrow_mut() = simplifier.context.clone();
+                    solved
+                },
+                |solved_sets| {
+                    let snapshot = split_ctx.borrow();
+                    finalize_product_zero_inequality_solved_sets(&snapshot, solved_sets)
+                },
+            );
         }
     }
 
