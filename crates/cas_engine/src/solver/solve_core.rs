@@ -18,7 +18,7 @@ use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_analysis::{
     apply_nonzero_exclusion_guards_if_any, classify_equation_var_presence,
     classify_strategy_attempt_result, guard_solved_result_with_exclusions,
-    merge_symbolic_with_verified_numeric, normalize_variable_residual_with,
+    normalize_variable_residual_with, resolve_discrete_strategy_solutions_with,
     simplify_equation_sides_for_var_with, EquationVarPresence, StrategyAttemptResolution,
 };
 use cas_solver_core::solve_outcome::{
@@ -112,7 +112,7 @@ pub fn solve_with_display_steps(
         &mut simplifier.context,
         raw_steps,
         opts.detailed_steps,
-        "x",
+        var,
         |step: &SolveStep| CleanupStep {
             description: step.description.clone(),
             equation_after: step.equation_after.clone(),
@@ -453,18 +453,26 @@ fn solve_inner(
                 return Ok((solution_set, steps));
             }
             StrategyAttemptResolution::NeedsDiscreteVerification { solutions, steps } => {
-                let (symbolic_solutions, numeric_solutions) =
-                    cas_solver_core::solve_analysis::partition_discrete_symbolic(
-                        &simplifier.context,
-                        &solutions,
-                    );
-                let valid_sols = merge_symbolic_with_verified_numeric(
-                    symbolic_solutions,
-                    numeric_solutions,
+                let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+                let valid_sols = resolve_discrete_strategy_solutions_with(
+                    solutions,
+                    |solution| {
+                        let simplifier_ref = runtime_cell.borrow();
+                        cas_solver_core::solve_analysis::is_symbolic_expr(
+                            &simplifier_ref.context,
+                            solution,
+                        )
+                    },
                     |solution| {
                         // Verify against ORIGINAL equation, not simplified form, so
                         // domain-invalid roots (e.g. division by zero) are rejected.
-                        super::check::verify_solution_by_equivalence(simplifier, eq, var, solution)
+                        let mut simplifier_ref = runtime_cell.borrow_mut();
+                        super::check::verify_solution_by_equivalence(
+                            *simplifier_ref,
+                            eq,
+                            var,
+                            solution,
+                        )
                     },
                 );
                 return Ok((SolutionSet::Discrete(valid_sols), steps));

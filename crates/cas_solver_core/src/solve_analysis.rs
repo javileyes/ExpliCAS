@@ -63,6 +63,46 @@ where
     symbolic_solutions
 }
 
+/// Resolve discrete strategy candidates by preserving symbolic roots and
+/// verifying only numeric roots with caller-provided callbacks.
+pub fn resolve_discrete_strategy_solutions_with<FIsSymbolic, FVerify>(
+    solutions: Vec<ExprId>,
+    mut is_symbolic: FIsSymbolic,
+    mut verify_numeric: FVerify,
+) -> Vec<ExprId>
+where
+    FIsSymbolic: FnMut(ExprId) -> bool,
+    FVerify: FnMut(ExprId) -> bool,
+{
+    let mut symbolic_solutions = Vec::new();
+    let mut numeric_solutions = Vec::new();
+    for solution in solutions {
+        if is_symbolic(solution) {
+            symbolic_solutions.push(solution);
+        } else {
+            numeric_solutions.push(solution);
+        }
+    }
+
+    merge_symbolic_with_verified_numeric(symbolic_solutions, numeric_solutions, &mut verify_numeric)
+}
+
+/// Resolve discrete strategy candidates using core symbolic classification.
+pub fn resolve_discrete_strategy_solutions_for_context_with<F>(
+    ctx: &Context,
+    solutions: Vec<ExprId>,
+    verify_numeric: F,
+) -> Vec<ExprId>
+where
+    F: FnMut(ExprId) -> bool,
+{
+    resolve_discrete_strategy_solutions_with(
+        solutions,
+        |solution| is_symbolic_expr(ctx, solution),
+        verify_numeric,
+    )
+}
+
 /// Classification of one strategy attempt result from the solve loop.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StrategyAttemptResolution<S, E> {
@@ -503,6 +543,42 @@ mod tests {
             solution == three
         });
         assert_eq!(out, vec![x, y, three]);
+        assert_eq!(calls.get(), 2);
+    }
+
+    #[test]
+    fn resolve_discrete_strategy_solutions_preserves_symbolic_and_filters_numeric() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+
+        let out = resolve_discrete_strategy_solutions_for_context_with(
+            &ctx,
+            vec![x, two, y, three],
+            |sol| sol == three,
+        );
+        assert_eq!(out, vec![x, y, three]);
+    }
+
+    #[test]
+    fn resolve_discrete_strategy_solutions_verifies_only_numeric_candidates() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let calls = Cell::new(0usize);
+
+        let out = resolve_discrete_strategy_solutions_for_context_with(
+            &ctx,
+            vec![x, two, three],
+            |solution| {
+                calls.set(calls.get() + 1);
+                solution == three
+            },
+        );
+        assert_eq!(out, vec![x, three]);
         assert_eq!(calls.get(), 2);
     }
 

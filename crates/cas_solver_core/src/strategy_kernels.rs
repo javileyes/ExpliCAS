@@ -906,6 +906,7 @@ where
 /// returning plain strategy output.
 ///
 /// Returns `None` when no rational-exponent kernel applies.
+#[allow(clippy::too_many_arguments)]
 pub fn execute_rational_exponent_kernel_result_pipeline_for_var_with<
     E,
     S,
