@@ -5381,6 +5381,18 @@ pub fn plan_abs_isolation(
     }
 }
 
+/// Build absolute-value isolation plan using numeric-sign classification derived
+/// directly from the RHS expression.
+pub fn plan_abs_isolation_with_rhs_sign(
+    ctx: &mut Context,
+    arg: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+) -> AbsIsolationPlan {
+    let rhs_sign = crate::isolation_utils::numeric_sign(ctx, rhs);
+    plan_abs_isolation(ctx, arg, rhs, op, rhs_sign)
+}
+
 /// Build didactic narration for each absolute-value split branch.
 pub fn abs_split_case_message(
     case: AbsSplitCase,
@@ -5771,6 +5783,27 @@ pub fn finalize_abs_split_solution_set(
     let combined =
         crate::isolation_utils::combine_abs_branch_sets(ctx, op, positive_branch, negative_branch);
     guard_abs_solution_with_nonnegative_rhs(rhs_contains_var, rhs, combined)
+}
+
+/// Finalize absolute-value split branches and infer `rhs_contains_var` from the
+/// RHS expression and solve variable.
+pub fn finalize_abs_split_solution_set_for_rhs(
+    ctx: &Context,
+    op: RelOp,
+    rhs: ExprId,
+    var: &str,
+    positive_branch: SolutionSet,
+    negative_branch: SolutionSet,
+) -> SolutionSet {
+    let rhs_contains_var = crate::isolation_utils::contains_var(ctx, rhs, var);
+    finalize_abs_split_solution_set(
+        ctx,
+        op,
+        rhs_contains_var,
+        rhs,
+        positive_branch,
+        negative_branch,
+    )
 }
 
 /// Build `Conditional([guard -> guarded_solutions, else -> Residual(original_eq)])`.
@@ -6853,6 +6886,15 @@ mod tests {
     }
 
     #[test]
+    fn plan_abs_isolation_with_rhs_sign_detects_negative_rhs() {
+        let mut ctx = Context::new();
+        let arg = ctx.var("x");
+        let rhs = ctx.num(-1);
+        let plan = plan_abs_isolation_with_rhs_sign(&mut ctx, arg, rhs, RelOp::Eq);
+        assert_eq!(plan, AbsIsolationPlan::ReturnEmptySet);
+    }
+
+    #[test]
     fn solve_abs_isolation_plan_with_handles_return_empty_set() {
         let solved = solve_abs_isolation_plan_with(
             AbsIsolationPlan::ReturnEmptySet,
@@ -6988,6 +7030,42 @@ mod tests {
             }
             other => panic!("expected guarded conditional, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn finalize_abs_split_solution_set_for_rhs_adds_guard_when_rhs_has_target_var() {
+        let mut ctx = Context::new();
+        let rhs = ctx.var("x");
+        let pos = ctx.num(1);
+        let neg = ctx.num(-1);
+        let out = finalize_abs_split_solution_set_for_rhs(
+            &ctx,
+            RelOp::Eq,
+            rhs,
+            "x",
+            SolutionSet::Discrete(vec![pos]),
+            SolutionSet::Discrete(vec![neg]),
+        );
+
+        assert!(matches!(out, SolutionSet::Conditional(_)));
+    }
+
+    #[test]
+    fn finalize_abs_split_solution_set_for_rhs_skips_guard_when_rhs_is_other_var() {
+        let mut ctx = Context::new();
+        let rhs = ctx.var("y");
+        let pos = ctx.num(1);
+        let neg = ctx.num(-1);
+        let out = finalize_abs_split_solution_set_for_rhs(
+            &ctx,
+            RelOp::Eq,
+            rhs,
+            "x",
+            SolutionSet::Discrete(vec![pos]),
+            SolutionSet::Discrete(vec![neg]),
+        );
+
+        assert!(matches!(out, SolutionSet::Discrete(_)));
     }
 
     #[test]

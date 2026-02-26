@@ -7,13 +7,12 @@ use cas_solver_core::function_inverse::{
     derive_function_isolation_route, execute_unary_inverse_result_pipeline_or_else_with,
     plan_unary_inverse_isolation_step, FunctionIsolationRoute, FunctionIsolationRouteError,
 };
-use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::log_isolation::{
     execute_log_isolation_result_pipeline_or_else_with, plan_log_isolation_step_with,
 };
 use cas_solver_core::solve_outcome::{
-    execute_abs_split_pipeline_with_optional_items, finalize_abs_split_solution_set,
-    plan_abs_isolation, solve_abs_isolation_plan_with, AbsIsolationSolved,
+    execute_abs_split_pipeline_with_optional_items, finalize_abs_split_solution_set_for_rhs,
+    plan_abs_isolation_with_rhs_sign, solve_abs_isolation_plan_with, AbsIsolationSolved,
 };
 
 use super::{isolate, prepend_steps};
@@ -72,8 +71,7 @@ fn isolate_abs(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let rhs_sign = numeric_sign(&simplifier.context, rhs);
-    let abs_plan = plan_abs_isolation(&mut simplifier.context, arg, rhs, op.clone(), rhs_sign);
+    let abs_plan = plan_abs_isolation_with_rhs_sign(&mut simplifier.context, arg, rhs, op.clone());
     let dispatched_abs =
         solve_abs_isolation_plan_with(abs_plan, Ok::<Equation, CasError>, |positive, negative| {
             Ok::<(Equation, Equation), CasError>((positive, negative))
@@ -119,11 +117,11 @@ fn isolate_abs(
                     |item| medium_step(item.description().to_string(), item.equation),
                     |positive_set, negative_set| {
                         let simplifier_ref = runtime_cell.borrow();
-                        finalize_abs_split_solution_set(
+                        finalize_abs_split_solution_set_for_rhs(
                             &simplifier_ref.context,
                             op.clone(),
-                            contains_var(&simplifier_ref.context, rhs, var),
                             rhs,
+                            var,
                             positive_set,
                             negative_set,
                         )
