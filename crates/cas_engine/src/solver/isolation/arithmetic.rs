@@ -9,7 +9,7 @@ use cas_solver_core::solve_outcome::{
     derive_sub_isolation_operands,
     execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver,
     execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with,
-    execute_product_zero_inequality_split_pipeline_with_existing_steps,
+    execute_product_zero_inequality_split_pipeline_with_existing_steps_with_context_snapshot,
     execute_term_isolation_plan_and_merge_with_existing_steps_with,
     execute_term_isolation_plan_with_rewritten_rhs_and_merge_with_existing_steps_with,
     finalize_product_zero_inequality_solved_sets,
@@ -155,19 +155,19 @@ pub(super) fn isolate_mul(
             var,
         );
         if let Some(split_plan) = split_plan {
-            let split_ctx = RefCell::new(simplifier.context.clone());
-            return execute_product_zero_inequality_split_pipeline_with_existing_steps(
+            let simplifier_ref = RefCell::new(simplifier);
+            return execute_product_zero_inequality_split_pipeline_with_existing_steps_with_context_snapshot(
                 &split_plan,
                 steps,
                 |equation| {
-                    let solved = solve_with_ctx_and_options(equation, var, simplifier, opts, ctx);
-                    *split_ctx.borrow_mut() = simplifier.context.clone();
-                    solved
+                    let mut simplifier = simplifier_ref.borrow_mut();
+                    solve_with_ctx_and_options(equation, var, &mut simplifier, opts, ctx)
                 },
-                |solved_sets| {
-                    let snapshot = split_ctx.borrow();
-                    finalize_product_zero_inequality_solved_sets(&snapshot, solved_sets)
+                || {
+                    let simplifier = simplifier_ref.borrow();
+                    simplifier.context.clone()
                 },
+                finalize_product_zero_inequality_solved_sets,
             );
         }
     }

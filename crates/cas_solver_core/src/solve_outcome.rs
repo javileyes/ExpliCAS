@@ -6505,6 +6505,38 @@ where
     ))
 }
 
+/// Execute product-zero inequality split pipeline and finalize branch sets
+/// using a context snapshot captured after branch solving.
+///
+/// This wrapper is useful when finalization needs read-only access to a
+/// context owned by the caller's solver.
+pub fn execute_product_zero_inequality_split_pipeline_with_existing_steps_with_context_snapshot<
+    E,
+    S,
+    FCtx,
+    FSolveCase,
+    FFinalize,
+>(
+    plan: &ProductZeroInequalityPlan,
+    existing_steps: Vec<S>,
+    solve_case: FSolveCase,
+    context_snapshot: FCtx,
+    mut finalize_with_context: FFinalize,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FCtx: FnOnce() -> Context,
+    FSolveCase: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FFinalize: FnMut(&Context, ProductZeroInequalitySolvedSets) -> SolutionSet,
+{
+    let solved = solve_product_zero_inequality_split_execution_with(plan, solve_case)?;
+    let snapshot = context_snapshot();
+    let final_set = finalize_with_context(&snapshot, solved.solved_sets);
+    Ok(merge_solved_with_existing_steps_prepend(
+        (final_set, solved.steps),
+        existing_steps,
+    ))
+}
+
 /// Solve branch equations + sign-domain constraints for division denominator
 /// sign split execution.
 pub fn solve_division_denominator_sign_split_cases_with<
@@ -17941,6 +17973,54 @@ mod tests {
         .expect("execution should solve");
 
         assert_eq!(call_index, 4);
+        assert!(matches!(solved.0, SolutionSet::AllReals));
+        assert_eq!(
+            solved.1,
+            vec![
+                "case-1".to_string(),
+                "case-2".to_string(),
+                "case-3".to_string(),
+                "case-4".to_string(),
+                "existing".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn execute_product_zero_inequality_split_pipeline_with_existing_steps_with_context_snapshot_finalizes_and_merges(
+    ) {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let plan =
+            plan_product_zero_inequality_split(&mut ctx, a, b, RelOp::Gt).expect("split plan");
+        let mut call_index = 0usize;
+        let finalize_calls = std::cell::Cell::new(0usize);
+        let solved =
+            execute_product_zero_inequality_split_pipeline_with_existing_steps_with_context_snapshot(
+                &plan,
+                vec!["existing".to_string()],
+                |_eq| {
+                    call_index += 1;
+                    Ok::<_, ()>((
+                        if call_index == 2 {
+                            SolutionSet::Empty
+                        } else {
+                            SolutionSet::AllReals
+                        },
+                        vec![format!("case-{call_index}")],
+                    ))
+                },
+                || ctx.clone(),
+                |snapshot, solved_sets| {
+                    finalize_calls.set(finalize_calls.get() + 1);
+                    finalize_product_zero_inequality_solved_sets(snapshot, solved_sets)
+                },
+            )
+            .expect("execution should solve");
+
+        assert_eq!(call_index, 4);
+        assert_eq!(finalize_calls.get(), 1);
         assert!(matches!(solved.0, SolutionSet::AllReals));
         assert_eq!(
             solved.1,
