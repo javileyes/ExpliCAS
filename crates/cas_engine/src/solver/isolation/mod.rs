@@ -6,8 +6,7 @@ use crate::engine::Simplifier;
 use crate::solver::{medium_step, SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLVE_DEPTH};
 use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::solve_outcome::{
-    merge_solved_with_existing_steps_prepend, residual_solution_set,
-    solve_isolated_variable_lhs_with_resolver,
+    residual_solution_set, solve_isolated_variable_lhs_with_resolver_and_merge_with_existing_steps,
     solve_negated_lhs_isolation_with_and_merge_with_existing_steps,
 };
 
@@ -37,11 +36,12 @@ pub(crate) fn isolate(
     match lhs_expr {
         Expr::Variable(sym_id) if simplifier.context.sym_name(sym_id) == var => {
             let runtime_cell = std::cell::RefCell::new(simplifier);
-            let solved = solve_isolated_variable_lhs_with_resolver(
+            let solved = solve_isolated_variable_lhs_with_resolver_and_merge_with_existing_steps(
                 lhs,
                 rhs,
                 op,
                 var,
+                steps,
                 |sim_rhs, rel_op, solve_var| {
                     let mut simplifier_ref = runtime_cell.borrow_mut();
                     cas_solver_core::solve_outcome::resolve_isolated_variable_outcome(
@@ -83,7 +83,7 @@ pub(crate) fn isolate(
                     )
                 },
             );
-            Ok(merge_solved_with_existing_steps_prepend(solved, steps))
+            Ok(solved)
         }
         Expr::Add(l, r) => {
             arithmetic::isolate_add(lhs, l, r, rhs, op, var, simplifier, opts, steps, ctx)

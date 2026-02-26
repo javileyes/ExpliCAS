@@ -184,6 +184,49 @@ where
     )
 }
 
+/// Solve an already-isolated variable branch and prepend solved steps before
+/// caller-owned existing steps.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_isolated_variable_lhs_with_resolver_and_merge_with_existing_steps<
+    S,
+    FResolve,
+    FSimplify,
+    FTry1,
+    FTry2,
+    FResidual,
+>(
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    existing_steps: Vec<S>,
+    resolve_isolated_outcome: FResolve,
+    simplify_rhs: FSimplify,
+    try_linear_collect: FTry1,
+    try_linear_collect_v2: FTry2,
+    residual_solution: FResidual,
+) -> (SolutionSet, Vec<S>)
+where
+    FResolve: FnMut(ExprId, RelOp, &str) -> IsolatedVariableOutcome,
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FTry1: FnMut(ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<S>)>,
+    FTry2: FnMut(ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<S>)>,
+    FResidual: FnMut(ExprId, ExprId, &str) -> SolutionSet,
+{
+    let solved = solve_isolated_variable_lhs_with_resolver(
+        lhs,
+        rhs,
+        op,
+        var,
+        resolve_isolated_outcome,
+        simplify_rhs,
+        try_linear_collect,
+        try_linear_collect_v2,
+        residual_solution,
+    );
+    merge_solved_with_existing_steps_prepend(solved, existing_steps)
+}
+
 /// Route for handling `base^x = base` shortcuts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PowerEqualsBaseRoute {
@@ -13305,6 +13348,31 @@ mod tests {
         assert_eq!(simplify_calls, 1);
         assert!(steps.is_empty());
         assert_eq!(set, SolutionSet::Discrete(vec![three]));
+    }
+
+    #[test]
+    fn solve_isolated_variable_lhs_with_resolver_and_merge_with_existing_steps_appends_existing() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rhs = ctx.num(3);
+
+        let merged = solve_isolated_variable_lhs_with_resolver_and_merge_with_existing_steps(
+            x,
+            rhs,
+            RelOp::Eq,
+            "x",
+            vec!["existing".to_string()],
+            |sim_rhs, rel_op, solve_var| {
+                resolve_isolated_variable_outcome(&mut ctx, sim_rhs, rel_op, solve_var)
+            },
+            |value| value,
+            |_, _, _| None::<(SolutionSet, Vec<String>)>,
+            |_, _, _| None::<(SolutionSet, Vec<String>)>,
+            |_, _, _| SolutionSet::Empty,
+        );
+
+        assert_eq!(merged.0, SolutionSet::Discrete(vec![rhs]));
+        assert_eq!(merged.1, vec!["existing".to_string()]);
     }
 
     #[test]
