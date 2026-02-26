@@ -17,8 +17,8 @@ use cas_solver_core::strategy_kernels::{
     solve_rational_exponent_rewrite_pipeline_with_item_with,
 };
 use cas_solver_core::unwrap_plan::{
-    collect_log_linear_assumption_records, first_unwrap_execution_item,
-    route_unwrap_entry_with_item, unwrap_rewritten_equation, UnwrapEntryRouting,
+    route_unwrap_entry_with_item,
+    solve_unwrap_entry_routing_option_with_execution_pipeline_with_item, LogLinearAssumptionRecord,
 };
 
 pub struct IsolationStrategy;
@@ -96,43 +96,27 @@ impl SolverStrategy for UnwrapStrategy {
             solver_render_expr,
             |item: TermIsolationExecutionItem| medium_step(item.description, item.equation),
         );
-        let selected = routed?;
-        match selected {
-            UnwrapEntryRouting::Terminal(terminal) => {
-                Some(Ok((terminal.solution_set, terminal.steps)))
-            }
-            UnwrapEntryRouting::Execution(selected_execution) => {
-                let assumption_records = collect_log_linear_assumption_records(
-                    &selected_execution.execution,
-                    selected_execution.other_side,
-                );
-                for record in assumption_records {
-                    let event = crate::solver::assumption_event_from_log_assumption_targets(
-                        &simplifier.context,
-                        record.assumption,
-                        record.base,
-                        record.other_side,
-                    );
-                    ctx.note_assumption(event);
-                }
-
-                let rewritten_equation = unwrap_rewritten_equation(&selected_execution.execution);
-                let mut steps = Vec::new();
-                if include_item {
-                    if let Some(item) = first_unwrap_execution_item(&selected_execution.execution) {
-                        steps.push(medium_step(item.description, item.equation));
-                    }
-                }
-
-                Some(
-                    solve_with_ctx_and_options(&rewritten_equation, var, simplifier, *opts, ctx)
-                        .map(|(solution_set, mut sub_steps)| {
-                            steps.append(&mut sub_steps);
-                            (solution_set, steps)
-                        }),
-                )
-            }
+        let mut assumption_records: Vec<LogLinearAssumptionRecord> = Vec::new();
+        let solved = solve_unwrap_entry_routing_option_with_execution_pipeline_with_item(
+            routed,
+            var,
+            include_item,
+            |record| assumption_records.push(record),
+            |equation, solve_var| {
+                solve_with_ctx_and_options(equation, solve_var, simplifier, *opts, ctx)
+            },
+            |item| medium_step(item.description, item.equation),
+        );
+        for record in assumption_records {
+            let event = crate::solver::assumption_event_from_log_assumption_targets(
+                &simplifier.context,
+                record.assumption,
+                record.base,
+                record.other_side,
+            );
+            ctx.note_assumption(event);
         }
+        solved
     }
 
     // Note: We use the default should_verify() = true here.

@@ -155,6 +155,45 @@ where
     Ok(ExponentialSubstitutionSolved { execution, solved })
 }
 
+/// Solved payload for substitution-intro execution pipeline.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExponentialSubstitutionExecutionPipelineSolved<TStep> {
+    pub substitution_expr: ExprId,
+    pub solution_set: SolutionSet,
+    pub steps: Vec<TStep>,
+}
+
+/// Execute substitution-intro pipeline while optionally prepending intro
+/// didactic items before solved sub-steps.
+pub fn solve_exponential_substitution_execution_pipeline_with_items<E, TStep, FSolve, FMapStep>(
+    execution: ExponentialSubstitutionExecutionPlan,
+    include_items: bool,
+    substitution_var: &str,
+    mut solve_equation: FSolve,
+    mut map_step: FMapStep,
+) -> Result<ExponentialSubstitutionExecutionPipelineSolved<TStep>, E>
+where
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<TStep>), E>,
+    FMapStep: FnMut(SubstitutionExecutionItem) -> TStep,
+{
+    let intro_items = if include_items {
+        collect_substitution_intro_execution_items(&execution)
+    } else {
+        Vec::new()
+    };
+    let (solution_set, mut sub_steps) = solve_equation(&execution.equation, substitution_var)?;
+    let mut steps = intro_items
+        .into_iter()
+        .map(&mut map_step)
+        .collect::<Vec<_>>();
+    steps.append(&mut sub_steps);
+    Ok(ExponentialSubstitutionExecutionPipelineSolved {
+        substitution_expr: execution.substitution_expr,
+        solution_set,
+        steps,
+    })
+}
+
 /// Build didactic payload for substitution detection (`u = expr`).
 pub fn build_detected_substitution_step_with<F>(
     equation_after: Equation,
@@ -316,6 +355,39 @@ where
         solved.push(solve_equation(items.next(), equation)?);
     }
     Ok(BackSubstitutionSolved { plan, solved })
+}
+
+/// Solve back-substitution equations while optionally prepending one didactic
+/// item per branch before branch sub-steps.
+pub fn solve_back_substitution_plan_execution_pipeline_with_items<E, TStep, FSolve, FMapStep>(
+    plan: BackSubstitutionSolvePlan,
+    include_items: bool,
+    target_var: &str,
+    mut solve_equation: FSolve,
+    mut map_step: FMapStep,
+) -> Result<Vec<(SolutionSet, Vec<TStep>)>, E>
+where
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<TStep>), E>,
+    FMapStep: FnMut(BackSubstitutionExecutionItem) -> TStep,
+{
+    let BackSubstitutionSolvePlan { equations, items } = plan;
+    let mut optional_items = if include_items {
+        Some(items.into_iter())
+    } else {
+        None
+    };
+    let mut solved = Vec::with_capacity(equations.len());
+
+    for equation in equations {
+        let mut local_steps = Vec::new();
+        if let Some(item) = optional_items.as_mut().and_then(|iter| iter.next()) {
+            local_steps.push(map_step(item));
+        }
+        let (solution_set, mut sub_steps) = solve_equation(&equation, target_var)?;
+        local_steps.append(&mut sub_steps);
+        solved.push((solution_set, local_steps));
+    }
+    Ok(solved)
 }
 
 /// High-level solved outcome for exponential substitution strategy orchestration.
@@ -1415,6 +1487,52 @@ mod tests {
     }
 
     #[test]
+    fn solve_exponential_substitution_execution_pipeline_with_items_prepends_intro_steps() {
+        let mut ctx = Context::new();
+        let u = ctx.var("u");
+        let two = ctx.num(2);
+        let eq = Equation {
+            lhs: u,
+            rhs: two,
+            op: cas_ast::RelOp::Eq,
+        };
+        let execution = ExponentialSubstitutionExecutionPlan {
+            substitution_expr: u,
+            equation: eq.clone(),
+            items: vec![SubstitutionExecutionItem {
+                equation: eq,
+                description: "Detected substitution: u = t".to_string(),
+            }],
+        };
+
+        let solved = solve_exponential_substitution_execution_pipeline_with_items(
+            execution,
+            true,
+            "u",
+            |equation, solve_var| {
+                assert_eq!(solve_var, "u");
+                assert_eq!(equation.lhs, u);
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![two]),
+                    vec!["substep".to_string()],
+                ))
+            },
+            |item| item.description,
+        )
+        .expect("pipeline solve should succeed");
+
+        assert_eq!(solved.substitution_expr, u);
+        assert_eq!(solved.solution_set, SolutionSet::Discrete(vec![two]));
+        assert_eq!(
+            solved.steps,
+            vec![
+                "Detected substitution: u = t".to_string(),
+                "substep".to_string()
+            ]
+        );
+    }
+
+    #[test]
     fn build_back_substitution_solve_plan_with_omits_items_when_disabled() {
         let mut ctx = Context::new();
         let u_expr = ctx.var("u_expr");
@@ -1491,6 +1609,43 @@ mod tests {
 
         assert_eq!(seen_some, 0);
         assert_eq!(solved.solved, vec![v1, v2]);
+    }
+
+    #[test]
+    fn solve_back_substitution_plan_execution_pipeline_with_items_prepends_item_per_equation() {
+        let mut ctx = Context::new();
+        let u_expr = ctx.var("u_expr");
+        let v1 = ctx.var("v1");
+        let v2 = ctx.var("v2");
+        let plan =
+            build_back_substitution_solve_plan_with(u_expr, &[v1, v2], true, |_| "u".to_string());
+
+        let solved = solve_back_substitution_plan_execution_pipeline_with_items(
+            plan,
+            true,
+            "x",
+            |equation, solve_var| {
+                assert_eq!(solve_var, "x");
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![equation.rhs]),
+                    vec!["substep".to_string()],
+                ))
+            },
+            |item| item.description,
+        )
+        .expect("back-substitution pipeline should succeed");
+
+        assert_eq!(solved.len(), 2);
+        assert_eq!(solved[0].0, SolutionSet::Discrete(vec![v1]));
+        assert_eq!(
+            solved[0].1,
+            vec!["Back-substitute: u = u".to_string(), "substep".to_string()]
+        );
+        assert_eq!(solved[1].0, SolutionSet::Discrete(vec![v2]));
+        assert_eq!(
+            solved[1].1,
+            vec!["Back-substitute: u = u".to_string(), "substep".to_string()]
+        );
     }
 
     #[test]
