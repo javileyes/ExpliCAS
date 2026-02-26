@@ -10,10 +10,11 @@ use cas_solver_core::function_inverse::{
 };
 use cas_solver_core::log_isolation::plan_log_isolation_step_with;
 use cas_solver_core::solve_outcome::{
-    execute_abs_isolation_plan_pipeline_with_optional_items_and_solver,
+    build_abs_split_execution_with, collect_abs_split_execution_items,
     execute_log_isolation_result_pipeline_with_plan_and_error_and_merge_with_existing_steps,
     execute_unary_inverse_result_pipeline_with_plan_and_error_and_merge_with_existing_steps,
-    finalize_abs_split_solution_set_for_rhs, plan_abs_isolation_with_rhs_sign,
+    finalize_abs_split_solution_set_for_rhs, materialize_abs_split_execution,
+    plan_abs_isolation_with_rhs_sign, AbsIsolationPlan,
 };
 
 /// Handle isolation for `Function(fn_id, args)`: abs, log, ln, exp, sqrt, trig
@@ -72,41 +73,77 @@ fn isolate_abs(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let abs_plan = plan_abs_isolation_with_rhs_sign(&mut simplifier.context, arg, rhs, op.clone());
     let include_items = simplifier.collect_steps();
-    let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    execute_abs_isolation_plan_pipeline_with_optional_items_and_solver(
-        abs_plan,
-        arg,
-        include_items,
-        steps,
-        |expr| {
-            let simplifier_ref = runtime_cell.borrow();
-            solver_render_expr(&simplifier_ref.context, expr)
-        },
-        |equation| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            isolate(
+    match abs_plan {
+        AbsIsolationPlan::ReturnEmptySet => Ok((SolutionSet::Empty, steps)),
+        AbsIsolationPlan::IsolateSingleEquation { equation } => {
+            let (solution_set, mut solved_steps) = isolate(
                 equation.lhs,
                 equation.rhs,
-                equation.op.clone(),
+                equation.op,
                 var,
-                *simplifier_ref,
+                simplifier,
                 opts,
                 ctx,
-            )
-        },
-        |item| medium_step(item.description().to_string(), item.equation),
-        |positive_set, negative_set| {
-            let simplifier_ref = runtime_cell.borrow();
-            finalize_abs_split_solution_set_for_rhs(
-                &simplifier_ref.context,
-                op.clone(),
+            )?;
+            solved_steps.extend(steps);
+            Ok((solution_set, solved_steps))
+        }
+        AbsIsolationPlan::SplitBranches { positive, negative } => {
+            let execution = if include_items {
+                build_abs_split_execution_with(positive, negative, arg, |expr| {
+                    solver_render_expr(&simplifier.context, expr)
+                })
+            } else {
+                materialize_abs_split_execution(positive, negative)
+            };
+            let mut split_items = if include_items {
+                collect_abs_split_execution_items(&execution).into_iter()
+            } else {
+                Vec::new().into_iter()
+            };
+
+            let mut positive_steps = steps.clone();
+            if let Some(item) = split_items.next() {
+                positive_steps.push(medium_step(item.description().to_string(), item.equation));
+            }
+            let (positive_set, mut positive_sub_steps) = isolate(
+                execution.positive_equation.lhs,
+                execution.positive_equation.rhs,
+                execution.positive_equation.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )?;
+            positive_steps.append(&mut positive_sub_steps);
+
+            let mut negative_steps = steps;
+            if let Some(item) = split_items.next() {
+                negative_steps.push(medium_step(item.description().to_string(), item.equation));
+            }
+            let (negative_set, mut negative_sub_steps) = isolate(
+                execution.negative_equation.lhs,
+                execution.negative_equation.rhs,
+                execution.negative_equation.op,
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )?;
+            negative_steps.append(&mut negative_sub_steps);
+
+            let final_set = finalize_abs_split_solution_set_for_rhs(
+                &simplifier.context,
+                op,
                 rhs,
                 var,
                 positive_set,
                 negative_set,
-            )
-        },
-    )
+            );
+            positive_steps.extend(negative_steps);
+            Ok((final_set, positive_steps))
+        }
+    }
 }
 
 /// Handle `log(base, arg) = RHS`
