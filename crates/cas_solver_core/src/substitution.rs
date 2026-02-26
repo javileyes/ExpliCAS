@@ -491,6 +491,48 @@ where
     })
 }
 
+/// Derive and solve exponential substitution strategy returning plain strategy output.
+///
+/// Returns `None` when substitution rewrite derivation does not apply.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_exponential_substitution_strategy_result_pipeline_with_items_with<
+    E,
+    S,
+    FDerive,
+    FRender,
+    FSolve,
+    FMap,
+>(
+    equation_before: &Equation,
+    mut derive_rewrite_plan: FDerive,
+    target_var: &str,
+    substitution_var: &str,
+    include_didactic_items: bool,
+    render_expr: FRender,
+    solve_equation: FSolve,
+    map_step: FMap,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FDerive: FnMut() -> Option<ExponentialSubstitutionRewritePlan>,
+    FRender: FnMut(ExprId) -> String,
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FMap: FnMut(String, Equation) -> S,
+{
+    let rewrite_plan = derive_rewrite_plan()?;
+    Some(
+        solve_exponential_substitution_strategy_result_with_items_with(
+            equation_before.clone(),
+            rewrite_plan,
+            target_var,
+            substitution_var,
+            include_didactic_items,
+            render_expr,
+            solve_equation,
+            map_step,
+        ),
+    )
+}
+
 /// Build didactic pair for substitution introduction:
 /// 1) detected substitution `u = expr`
 /// 2) equation rewritten in terms of `u`
@@ -1512,6 +1554,87 @@ mod tests {
 
         assert_eq!(solved.0, SolutionSet::Discrete(vec![one]));
         assert!(solved.1.len() >= 4);
+    }
+
+    #[test]
+    fn execute_exponential_substitution_strategy_result_pipeline_with_items_with_returns_plain_discrete_set(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let u = ctx.var("u");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let equation_before = Equation {
+            lhs: x,
+            rhs: one,
+            op: cas_ast::RelOp::Eq,
+        };
+        let rewrite_plan = ExponentialSubstitutionRewritePlan {
+            substitution_expr: x,
+            equation: Equation {
+                lhs: u,
+                rhs: two,
+                op: cas_ast::RelOp::Eq,
+            },
+        };
+
+        let solved = execute_exponential_substitution_strategy_result_pipeline_with_items_with(
+            &equation_before,
+            || Some(rewrite_plan.clone()),
+            "x",
+            "u",
+            true,
+            |_expr| "u".to_string(),
+            |_equation, var| {
+                if var == "u" {
+                    return Ok::<_, ()>((
+                        SolutionSet::Discrete(vec![two]),
+                        vec!["solve-u".to_string()],
+                    ));
+                }
+                Ok((
+                    SolutionSet::Discrete(vec![one]),
+                    vec!["solve-x".to_string()],
+                ))
+            },
+            |description, _equation_after| description,
+        )
+        .expect("substitution rewrite should be derived")
+        .expect("substitution result pipeline should succeed");
+
+        assert_eq!(solved.0, SolutionSet::Discrete(vec![one]));
+        assert!(solved.1.len() >= 4);
+    }
+
+    #[test]
+    fn execute_exponential_substitution_strategy_result_pipeline_with_items_with_returns_none_without_rewrite(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let equation_before = Equation {
+            lhs: x,
+            rhs: one,
+            op: cas_ast::RelOp::Eq,
+        };
+        let mut solve_calls = 0usize;
+
+        let out = execute_exponential_substitution_strategy_result_pipeline_with_items_with(
+            &equation_before,
+            || None,
+            "x",
+            "u",
+            true,
+            |_expr| "u".to_string(),
+            |_equation, _var| {
+                solve_calls += 1;
+                Ok::<_, ()>((SolutionSet::AllReals, vec!["unexpected".to_string()]))
+            },
+            |description, _equation_after| description,
+        );
+
+        assert!(out.is_none());
+        assert_eq!(solve_calls, 0);
     }
 
     #[test]

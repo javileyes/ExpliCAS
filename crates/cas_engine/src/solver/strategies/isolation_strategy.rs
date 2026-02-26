@@ -11,7 +11,8 @@ use cas_solver_core::solve_outcome::{
     TermIsolationExecutionItem, TermIsolationRewriteExecutionItem,
 };
 use cas_solver_core::strategy_kernels::{
-    derive_isolation_strategy_routing, execute_collect_terms_kernel_result_pipeline_with_item,
+    derive_isolation_strategy_routing,
+    execute_collect_terms_kernel_result_pipeline_for_equation_with_item,
     execute_rational_exponent_kernel_result_pipeline_with_item_with,
     solve_isolation_strategy_routing_with,
 };
@@ -169,7 +170,7 @@ impl SolverStrategy for CollectTermsStrategy {
         let include_item = simplifier.collect_steps();
         let rhs_desc = solver_render_expr(&simplifier.context, eq.rhs);
         let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        execute_collect_terms_kernel_result_pipeline_with_item(
+        execute_collect_terms_kernel_result_pipeline_for_equation_with_item(
             || {
                 let mut simplifier_ref = runtime_cell.borrow_mut();
                 cas_solver_core::strategy_kernels::derive_collect_terms_kernel(
@@ -178,8 +179,7 @@ impl SolverStrategy for CollectTermsStrategy {
                     var,
                 )
             },
-            eq.op.clone(),
-            eq.rhs,
+            eq,
             var,
             include_item,
             |expr| {
