@@ -10,7 +10,7 @@ use cas_solver_core::quadratic_didactic::{
     build_factorized_zero_product_execution_with_optional_items,
     build_quadratic_main_with_substeps_execution_with_optional_items,
     finalize_factorized_zero_product_strategy_solved,
-    solve_factorized_zero_product_execution_pipeline_with_items,
+    solve_factorized_zero_product_execution_result_pipeline_with_items,
     solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification,
 };
 use cas_solver_core::quadratic_formula::{
@@ -18,6 +18,7 @@ use cas_solver_core::quadratic_formula::{
     QuadraticCoefficientSolvePlan, QuadraticCoefficientSolvePlanError,
 };
 use cas_solver_core::solution_set::{order_pair_by_value, quadratic_numeric_solution};
+use std::cell::RefCell;
 
 pub struct QuadraticStrategy;
 
@@ -64,26 +65,33 @@ impl SolverStrategy for QuadraticStrategy {
                         include_items,
                         |expr| render_expr(&simplifier.context, expr),
                     );
-                let solved_factorized =
-                    match solve_factorized_zero_product_execution_pipeline_with_items(
+                let factor_ctx = RefCell::new(simplifier.context.clone());
+                let solved =
+                    match solve_factorized_zero_product_execution_result_pipeline_with_items(
                         &factorized_execution,
                         include_items,
                         |equation| {
-                            solve_with_ctx_and_options(equation, var, simplifier, *opts, ctx)
+                            let solved =
+                                solve_with_ctx_and_options(equation, var, simplifier, *opts, ctx);
+                            *factor_ctx.borrow_mut() = simplifier.context.clone();
+                            solved
                         },
                         |item| medium_step(item.description().to_string(), item.equation),
                         |item| medium_step(item.description, item.equation),
+                        |solved| {
+                            let snapshot = factor_ctx.borrow();
+                            finalize_factorized_zero_product_strategy_solved(
+                                &snapshot,
+                                solved,
+                                residual_expr,
+                                zero,
+                            )
+                        },
                     ) {
                         Ok(solved) => solved,
                         Err(e) => return Some(Err(e)),
                     };
-                let solved = finalize_factorized_zero_product_strategy_solved(
-                    &simplifier.context,
-                    solved_factorized,
-                    residual_expr,
-                    zero,
-                );
-                return Some(Ok((solved.solution_set, solved.steps)));
+                return Some(Ok(solved));
             }
         }
 
