@@ -2649,6 +2649,34 @@ where
     Ok((solution_set, steps))
 }
 
+/// Solve negated-LHS isolation rewrite and prepend solved steps before caller
+/// existing steps.
+pub fn solve_negated_lhs_isolation_with_and_merge_with_existing_steps<E, S, FPlan, FSolve, FStep>(
+    plan_rewrite: FPlan,
+    var: &str,
+    include_item: bool,
+    existing_steps: Vec<S>,
+    solve_rewritten: FSolve,
+    map_item_to_step: FStep,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FPlan: FnMut() -> TermIsolationRewritePlan,
+    FSolve: FnMut(Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(TermIsolationRewriteExecutionItem) -> S,
+{
+    let solved = solve_negated_lhs_isolation_with(
+        plan_rewrite,
+        var,
+        include_item,
+        solve_rewritten,
+        map_item_to_step,
+    )?;
+    Ok(merge_solved_with_existing_steps_prepend(
+        solved,
+        existing_steps,
+    ))
+}
+
 /// Route chosen for denominator isolation with zero-RHS guard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DivDenominatorIsolationRoute {
@@ -10683,6 +10711,38 @@ mod tests {
 
         assert_eq!(solution_set, SolutionSet::Discrete(vec![one]));
         assert_eq!(steps, vec!["substep-only".to_string()]);
+    }
+
+    #[test]
+    fn solve_negated_lhs_isolation_with_and_merge_with_existing_steps_prepends_steps() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let one = ctx.num(1);
+        let merged = solve_negated_lhs_isolation_with_and_merge_with_existing_steps(
+            || plan_negated_lhs_isolation_step(&mut ctx, x, y, RelOp::Eq),
+            "x",
+            true,
+            vec!["existing".to_string()],
+            |_equation, _| {
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![one]),
+                    vec!["substep".to_string()],
+                ))
+            },
+            |item| item.description,
+        )
+        .expect("negated-lhs execute+merge wrapper should succeed");
+
+        assert!(matches!(merged.0, SolutionSet::Discrete(_)));
+        assert_eq!(
+            merged.1,
+            vec![
+                "Multiply both sides by -1 (flips inequality)".to_string(),
+                "substep".to_string(),
+                "existing".to_string()
+            ]
+        );
     }
 
     #[test]

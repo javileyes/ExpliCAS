@@ -7,7 +7,8 @@ use crate::solver::{medium_step, SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLV
 use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::solve_outcome::{
     merge_solved_with_existing_steps_prepend, residual_solution_set,
-    solve_isolated_variable_lhs_with_resolver, solve_negated_lhs_isolation_with,
+    solve_isolated_variable_lhs_with_resolver,
+    solve_negated_lhs_isolation_with_and_merge_with_existing_steps,
 };
 
 use crate::error::CasError;
@@ -105,7 +106,7 @@ pub(crate) fn isolate(
         Expr::Neg(inner) => {
             let include_item = simplifier.collect_steps();
             let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-            let solved = solve_negated_lhs_isolation_with(
+            solve_negated_lhs_isolation_with_and_merge_with_existing_steps(
                 || {
                     let mut simplifier_ref = runtime_cell.borrow_mut();
                     cas_solver_core::solve_outcome::plan_negated_lhs_isolation_step(
@@ -117,6 +118,7 @@ pub(crate) fn isolate(
                 },
                 var,
                 include_item,
+                steps,
                 |equation, solve_var| {
                     let mut simplifier_ref = runtime_cell.borrow_mut();
                     isolate(
@@ -130,8 +132,7 @@ pub(crate) fn isolate(
                     )
                 },
                 |item| medium_step(item.description, item.equation),
-            )?;
-            Ok(merge_solved_with_existing_steps_prepend(solved, steps))
+            )
         }
         _ => Err(CasError::IsolationError(
             var.to_string(),
