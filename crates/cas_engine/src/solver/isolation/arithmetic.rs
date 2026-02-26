@@ -7,10 +7,7 @@ use cas_solver_core::isolation_utils::{is_known_negative, should_try_reciprocal_
 use cas_solver_core::solve_outcome::{
     build_division_denominator_execution_with,
     build_division_denominator_sign_split_execution_with,
-    build_isolated_denominator_sign_split_execution_with,
-    collect_division_denominator_execution_items,
-    collect_division_denominator_sign_split_execution_items,
-    collect_isolated_denominator_sign_split_execution_items, derive_add_isolation_operands,
+    build_isolated_denominator_sign_split_execution_with, derive_add_isolation_operands,
     derive_div_isolation_route, derive_mul_isolation_operands, derive_sub_isolation_operands,
     finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
@@ -23,6 +20,9 @@ use cas_solver_core::solve_outcome::{
     plan_isolated_denominator_sign_split_or_division_denominator,
     plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split_if_applicable,
     plan_sub_isolation_step_with, resolve_div_denominator_isolation_rhs_with,
+    solve_division_denominator_execution_pipeline_with_items,
+    solve_division_denominator_sign_split_execution_pipeline_with_single_solver_with_items,
+    solve_isolated_denominator_sign_split_execution_pipeline_with_items,
     solve_product_zero_inequality_split_execution_with, AddIsolationRoute, DivIsolationRoute,
     DivisionDenominatorSignSplitSolvedCases, IsolatedDenominatorSignSplitSolvedCases,
     TermIsolationRewritePlan,
@@ -268,64 +268,34 @@ pub(super) fn isolate_div(
             } else {
                 materialize_division_denominator_sign_split_execution(split_plan, simplified_rhs)
             };
-
-            let mut items = if include_item {
-                Some(
-                    collect_division_denominator_sign_split_execution_items(&execution).into_iter(),
-                )
-            } else {
-                None
-            };
-
-            let mut positive_steps = steps.clone();
-            if let Some(item) = items.as_mut().and_then(|iter| iter.next()) {
-                positive_steps.push(medium_step(item.description, item.equation));
-            }
-            let (positive_set, positive_sub_steps) = isolate(
-                execution.positive_equation.lhs,
-                execution.positive_equation.rhs,
-                execution.positive_equation.op.clone(),
-                var,
-                simplifier,
-                opts,
-                ctx,
-            )?;
-            positive_steps.extend(positive_sub_steps);
-            let (positive_domain_set, _) =
-                solve_with_ctx_and_options(&execution.positive_domain, var, simplifier, opts, ctx)?;
-
-            let mut negative_steps = steps;
-            if let Some(item) = items.as_mut().and_then(|iter| iter.next()) {
-                negative_steps.push(medium_step(item.description, item.equation));
-            }
-            let (negative_set, negative_sub_steps) = isolate(
-                execution.negative_equation.lhs,
-                execution.negative_equation.rhs,
-                execution.negative_equation.op.clone(),
-                var,
-                simplifier,
-                opts,
-                ctx,
-            )?;
-            negative_steps.extend(negative_sub_steps);
-            let (negative_domain_set, _) =
-                solve_with_ctx_and_options(&execution.negative_domain, var, simplifier, opts, ctx)?;
-
-            if let Some(item) = items.as_mut().and_then(|iter| iter.next()) {
-                positive_steps.push(medium_step(item.description, item.equation));
-            }
-            positive_steps.extend(negative_steps);
-
+            let solved =
+                solve_division_denominator_sign_split_execution_pipeline_with_single_solver_with_items(
+                    &execution,
+                    include_item,
+                    &steps,
+                    |equation| {
+                        isolate(
+                            equation.lhs,
+                            equation.rhs,
+                            equation.op.clone(),
+                            var,
+                            simplifier,
+                            opts,
+                            ctx,
+                        )
+                    },
+                    |item| medium_step(item.description, item.equation),
+                )?;
             let final_set = finalize_division_denominator_sign_split_solved_sets(
                 &simplifier.context,
                 DivisionDenominatorSignSplitSolvedCases {
-                    positive_branch: positive_set,
-                    negative_branch: negative_set,
-                    positive_domain: positive_domain_set,
-                    negative_domain: negative_domain_set,
+                    positive_branch: solved.positive_set,
+                    negative_branch: solved.negative_set,
+                    positive_domain: solved.positive_domain_set,
+                    negative_domain: solved.negative_domain_set,
                 },
             );
-            return Ok((final_set, positive_steps));
+            return Ok((final_set, solved.steps));
         }
 
         run_term_isolation_plan(
@@ -385,58 +355,31 @@ pub(super) fn isolate_div(
             } else {
                 materialize_isolated_denominator_sign_split_execution(split_plan)
             };
-
-            let mut items = if include_items {
-                Some(
-                    collect_isolated_denominator_sign_split_execution_items(&execution).into_iter(),
-                )
-            } else {
-                None
-            };
-
-            let mut positive_steps = steps.clone();
-            if let Some(item) = items.as_mut().and_then(|iter| iter.next()) {
-                positive_steps.push(medium_step(item.description, item.equation));
-            }
-            let (positive_set, positive_sub_steps) = isolate(
-                execution.positive_equation.lhs,
-                execution.positive_equation.rhs,
-                execution.positive_equation.op.clone(),
-                var,
-                simplifier,
-                opts,
-                ctx,
+            let solved = solve_isolated_denominator_sign_split_execution_pipeline_with_items(
+                &execution,
+                include_items,
+                &steps,
+                |equation| {
+                    isolate(
+                        equation.lhs,
+                        equation.rhs,
+                        equation.op.clone(),
+                        var,
+                        simplifier,
+                        opts,
+                        ctx,
+                    )
+                },
+                |item| medium_step(item.description, item.equation),
             )?;
-            positive_steps.extend(positive_sub_steps);
-
-            let mut negative_steps = steps;
-            if let Some(item) = items.as_mut().and_then(|iter| iter.next()) {
-                negative_steps.push(medium_step(item.description, item.equation));
-            }
-            let (negative_set, negative_sub_steps) = isolate(
-                execution.negative_equation.lhs,
-                execution.negative_equation.rhs,
-                execution.negative_equation.op.clone(),
-                var,
-                simplifier,
-                opts,
-                ctx,
-            )?;
-            negative_steps.extend(negative_sub_steps);
-
-            if let Some(item) = items.as_mut().and_then(|iter| iter.next()) {
-                positive_steps.push(medium_step(item.description, item.equation));
-            }
-            positive_steps.extend(negative_steps);
-
             let final_set = finalize_isolated_denominator_sign_split_solved_sets(
                 &mut simplifier.context,
                 IsolatedDenominatorSignSplitSolvedCases {
-                    positive_branch: positive_set,
-                    negative_branch: negative_set,
+                    positive_branch: solved.positive_set,
+                    negative_branch: solved.negative_set,
                 },
             );
-            return Ok((final_set, positive_steps));
+            return Ok((final_set, solved.steps));
         }
 
         if include_items {
@@ -447,22 +390,24 @@ pub(super) fn isolate_div(
                 simplified_multiply_rhs,
                 |expr| solver_render_expr(&simplifier.context, expr),
             );
-            let mut didactic_steps = collect_division_denominator_execution_items(&execution)
-                .into_iter()
-                .map(|item| medium_step(item.description, item.equation))
-                .collect::<Vec<_>>();
-            let (solution_set, mut sub_steps) = isolate(
-                execution.divide_equation.lhs,
-                execution.divide_equation.rhs,
-                execution.divide_equation.op.clone(),
-                var,
-                simplifier,
-                opts,
-                ctx,
+            let solved = solve_division_denominator_execution_pipeline_with_items(
+                execution,
+                |equation| {
+                    isolate(
+                        equation.lhs,
+                        equation.rhs,
+                        equation.op.clone(),
+                        var,
+                        simplifier,
+                        opts,
+                        ctx,
+                    )
+                },
+                |item| medium_step(item.description, item.equation),
             )?;
-            didactic_steps.append(&mut sub_steps);
-            didactic_steps.extend(steps);
-            return Ok((solution_set, didactic_steps));
+            let mut merged_steps = solved.steps;
+            merged_steps.extend(steps);
+            return Ok((solved.solution_set, merged_steps));
         }
 
         let (solution_set, mut sub_steps) = isolate(

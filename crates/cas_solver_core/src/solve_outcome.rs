@@ -6581,6 +6581,64 @@ where
     })
 }
 
+/// Solve denominator-sign split branches and domain guards using a single
+/// equation solver callback.
+///
+/// Domain equations are solved through the same callback and only their
+/// solution sets are kept (their step traces are discarded).
+pub fn solve_division_denominator_sign_split_execution_pipeline_with_single_solver_with_items<
+    E,
+    S,
+    FSolveEquation,
+    FStep,
+>(
+    execution: &DivisionDenominatorSignSplitExecutionPlan,
+    include_items: bool,
+    branch_prefix_steps: &[S],
+    mut solve_equation: FSolveEquation,
+    mut map_item_to_step: FStep,
+) -> Result<DivisionDenominatorSignSplitExecutionSolved<S>, E>
+where
+    S: Clone,
+    FSolveEquation: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(DivisionDidacticExecutionItem) -> S,
+{
+    let mut items = if include_items {
+        Some(collect_division_denominator_sign_split_execution_items(execution).into_iter())
+    } else {
+        None
+    };
+
+    let mut positive_steps = branch_prefix_steps.to_vec();
+    if let Some(item) = take_optional_item(&mut items) {
+        positive_steps.push(map_item_to_step(item));
+    }
+    let (positive_set, positive_sub_steps) = solve_equation(&execution.positive_equation)?;
+    positive_steps.extend(positive_sub_steps);
+    let (positive_domain_set, _) = solve_equation(&execution.positive_domain)?;
+
+    let mut negative_steps = branch_prefix_steps.to_vec();
+    if let Some(item) = take_optional_item(&mut items) {
+        negative_steps.push(map_item_to_step(item));
+    }
+    let (negative_set, negative_sub_steps) = solve_equation(&execution.negative_equation)?;
+    negative_steps.extend(negative_sub_steps);
+    let (negative_domain_set, _) = solve_equation(&execution.negative_domain)?;
+
+    if let Some(item) = take_optional_item(&mut items) {
+        positive_steps.push(map_item_to_step(item));
+    }
+    positive_steps.extend(negative_steps);
+
+    Ok(DivisionDenominatorSignSplitExecutionSolved {
+        positive_set,
+        negative_set,
+        positive_domain_set,
+        negative_domain_set,
+        steps: positive_steps,
+    })
+}
+
 /// Solve denominator-sign split with optional didactic items.
 ///
 /// When `include_items` is enabled, this builds didactic execution items and

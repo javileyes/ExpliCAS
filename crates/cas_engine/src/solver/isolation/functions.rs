@@ -11,10 +11,11 @@ use cas_solver_core::function_inverse::{
 };
 use cas_solver_core::log_isolation::plan_log_isolation_step_with;
 use cas_solver_core::solve_outcome::{
-    build_abs_split_execution_with, collect_abs_split_execution_items,
+    build_abs_split_execution_with,
     execute_log_isolation_result_pipeline_with_plan_and_error_and_merge_with_existing_steps,
     finalize_abs_split_solution_set_for_rhs, materialize_abs_split_execution,
-    plan_abs_isolation_with_rhs_sign, AbsIsolationPlan,
+    plan_abs_isolation_with_rhs_sign, solve_abs_split_execution_pipeline_with_items,
+    AbsIsolationPlan,
 };
 
 /// Handle isolation for `Function(fn_id, args)`: abs, log, ln, exp, sqrt, trig
@@ -96,52 +97,32 @@ fn isolate_abs(
             } else {
                 materialize_abs_split_execution(positive, negative)
             };
-            let mut split_items = if include_items {
-                collect_abs_split_execution_items(&execution).into_iter()
-            } else {
-                Vec::new().into_iter()
-            };
-
-            let mut positive_steps = steps.clone();
-            if let Some(item) = split_items.next() {
-                positive_steps.push(medium_step(item.description().to_string(), item.equation));
-            }
-            let (positive_set, mut positive_sub_steps) = isolate(
-                execution.positive_equation.lhs,
-                execution.positive_equation.rhs,
-                execution.positive_equation.op.clone(),
-                var,
-                simplifier,
-                opts,
-                ctx,
+            let solved = solve_abs_split_execution_pipeline_with_items(
+                &execution,
+                include_items,
+                &steps,
+                |equation| {
+                    isolate(
+                        equation.lhs,
+                        equation.rhs,
+                        equation.op.clone(),
+                        var,
+                        simplifier,
+                        opts,
+                        ctx,
+                    )
+                },
+                |item| medium_step(item.description().to_string(), item.equation),
             )?;
-            positive_steps.append(&mut positive_sub_steps);
-
-            let mut negative_steps = steps;
-            if let Some(item) = split_items.next() {
-                negative_steps.push(medium_step(item.description().to_string(), item.equation));
-            }
-            let (negative_set, mut negative_sub_steps) = isolate(
-                execution.negative_equation.lhs,
-                execution.negative_equation.rhs,
-                execution.negative_equation.op,
-                var,
-                simplifier,
-                opts,
-                ctx,
-            )?;
-            negative_steps.append(&mut negative_sub_steps);
-
             let final_set = finalize_abs_split_solution_set_for_rhs(
                 &simplifier.context,
                 op,
                 rhs,
                 var,
-                positive_set,
-                negative_set,
+                solved.positive_set,
+                solved.negative_set,
             );
-            positive_steps.extend(negative_steps);
-            Ok((final_set, positive_steps))
+            Ok((final_set, solved.steps))
         }
     }
 }
