@@ -1,7 +1,8 @@
 use crate::isolation_utils::{contains_var, mk_residual_solve, NumericSign};
 use crate::log_domain::{
     assumptions_to_condition_set, classify_log_unsupported_route, classify_terminal_action,
-    DomainModeKind, LogAssumption, LogSolveDecision, LogTerminalAction, LogUnsupportedRoute,
+    decision_assumptions, DomainModeKind, LogAssumption, LogSolveDecision, LogTerminalAction,
+    LogUnsupportedRoute,
 };
 use crate::solution_set::{isolated_var_solution, open_positive_domain};
 use cas_ast::{
@@ -4067,6 +4068,24 @@ where
     ))
 }
 
+/// Iterate assumptions implied by the logarithmic decision.
+pub fn visit_log_decision_assumptions_with<F>(decision: &LogSolveDecision, mut visit: F)
+where
+    F: FnMut(LogAssumption),
+{
+    for assumption in decision_assumptions(decision).iter().copied() {
+        visit(assumption);
+    }
+}
+
+/// Return the "needs complex" message when the decision requires complex domain.
+pub fn log_decision_needs_complex_message(decision: &LogSolveDecision) -> Option<&'static str> {
+    match decision {
+        LogSolveDecision::NeedsComplex(message) => Some(*message),
+        _ => None,
+    }
+}
+
 /// Merge unsupported exponent-log pipeline outcome with caller-owned steps and
 /// allow caller-side blocked-hint registration through callback.
 pub fn merge_pow_exponent_log_unsupported_pipeline_with_existing_steps<S, FHint>(
@@ -4109,6 +4128,43 @@ where
     merge_pow_exponent_log_unsupported_pipeline_with_existing_steps(
         Some(solved),
         existing,
+        register_blocked_hint,
+    )
+}
+
+/// Plan, execute, and finalize unsupported exponent-log pipeline in one helper.
+///
+/// Returns `None` when planning reports the route as supported and no
+/// unsupported execution should run.
+pub fn execute_pow_exponent_log_unsupported_pipeline_from_decision_and_finalize_with_existing_steps_with<
+    FG,
+    FStep,
+    FPlan,
+    S,
+    FHint,
+>(
+    include_items: bool,
+    existing_steps: &mut Vec<S>,
+    plan_execution: FPlan,
+    try_guarded_solve: FG,
+    map_item_to_step: FStep,
+    register_blocked_hint: FHint,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FG: FnMut(&Equation) -> Option<SolutionSet>,
+    FStep: FnMut(TermIsolationExecutionItem) -> S,
+    FPlan: FnOnce() -> Option<PowExponentLogUnsupportedExecution>,
+    FHint: FnMut(LogBlockedHintRecord),
+{
+    let solved = execute_pow_exponent_log_unsupported_pipeline_from_decision_with(
+        include_items,
+        plan_execution,
+        try_guarded_solve,
+        map_item_to_step,
+    );
+    finalize_pow_exponent_log_unsupported_pipeline_with_existing_steps(
+        solved,
+        existing_steps,
         register_blocked_hint,
     )
 }
@@ -8773,6 +8829,32 @@ mod tests {
     }
 
     #[test]
+    fn visit_log_decision_assumptions_with_iterates_assumptions_in_order() {
+        let decision = LogSolveDecision::OkWithAssumptions(vec![
+            LogAssumption::PositiveBase,
+            LogAssumption::PositiveRhs,
+        ]);
+        let mut seen = Vec::new();
+        visit_log_decision_assumptions_with(&decision, |assumption| seen.push(assumption));
+        assert_eq!(
+            seen,
+            vec![LogAssumption::PositiveBase, LogAssumption::PositiveRhs]
+        );
+    }
+
+    #[test]
+    fn log_decision_needs_complex_message_reports_only_needs_complex() {
+        assert_eq!(
+            log_decision_needs_complex_message(&LogSolveDecision::NeedsComplex("need complex")),
+            Some("need complex")
+        );
+        assert_eq!(
+            log_decision_needs_complex_message(&LogSolveDecision::Ok),
+            None
+        );
+    }
+
+    #[test]
     fn merge_pow_exponent_log_unsupported_pipeline_with_existing_steps_registers_hints() {
         let solved = Some(PowExponentLogUnsupportedPipelineSolved {
             blocked_hints: vec![LogBlockedHintRecord {
@@ -8840,6 +8922,55 @@ mod tests {
             out.1,
             vec!["existing".to_string(), "unsupported".to_string()]
         );
+        assert!(existing.is_empty());
+    }
+
+    #[test]
+    fn execute_pow_exponent_log_unsupported_pipeline_from_decision_and_finalize_with_existing_steps_with_merges(
+    ) {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+        let decision = LogSolveDecision::Unsupported(
+            "Cannot prove base > 0 and RHS > 0 for logarithm",
+            vec![LogAssumption::PositiveBase, LogAssumption::PositiveRhs],
+        );
+        let mut existing = vec!["existing".to_string()];
+        let mut registered = Vec::new();
+        let out =
+            execute_pow_exponent_log_unsupported_pipeline_from_decision_and_finalize_with_existing_steps_with(
+                true,
+                &mut existing,
+                || {
+                    plan_pow_exponent_log_unsupported_execution_from_decision_with(
+                        &mut ctx,
+                        &decision,
+                        true,
+                        exponent,
+                        rhs,
+                        "x",
+                        exponent,
+                        base,
+                        rhs,
+                        RelOp::Eq,
+                        Equation {
+                            lhs: exponent,
+                            rhs,
+                            op: RelOp::Eq,
+                        },
+                        |_, id| format!("runtime({id})"),
+                    )
+                },
+                |_eq| Some(SolutionSet::Discrete(vec![exponent])),
+                |item| item.description,
+                |hint| registered.push(hint),
+            )
+            .expect("unsupported decision should map, execute and merge");
+
+        assert_eq!(registered.len(), 2);
+        assert!(matches!(out.0, SolutionSet::Conditional(_)));
+        assert!(out.1[0].contains("existing"));
         assert!(existing.is_empty());
     }
 

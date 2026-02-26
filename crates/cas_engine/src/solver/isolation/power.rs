@@ -2,21 +2,21 @@ use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
-use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
+use cas_solver_core::log_domain::LogSolveDecision;
 use cas_solver_core::solve_outcome::{
     classify_pow_exponent_base_flags, derive_pow_isolation_route,
     execute_log_terminal_outcome_pipeline_with_item_and_merge_with_existing_steps_with,
     execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps_with,
     execute_pow_exponent_log_isolation_pipeline_with_item_and_merge_with_existing_steps_with,
-    execute_pow_exponent_log_unsupported_pipeline_from_decision_with,
+    execute_pow_exponent_log_unsupported_pipeline_from_decision_and_finalize_with_existing_steps_with,
     execute_pow_exponent_shortcut_pipeline_with_item_with,
     execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_merge_with_existing_steps_with,
-    finalize_pow_exponent_log_unsupported_pipeline_with_existing_steps,
     finalize_pow_exponent_shortcut_pipeline_with_existing_steps,
-    plan_pow_exponent_log_isolation_step_with,
+    log_decision_needs_complex_message, plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
     pow_exponent_rhs_contains_variable, shortcut_bases_equivalent_by_difference_with,
-    solve_solve_tactic_normalization_pipeline_with_item, PowIsolationRoute,
+    solve_solve_tactic_normalization_pipeline_with_item, visit_log_decision_assumptions_with,
+    PowIsolationRoute,
 };
 
 use super::isolate;
@@ -286,7 +286,7 @@ fn isolate_pow_exponent(
         return Ok(solved_terminal);
     }
 
-    for assumption in decision_assumptions(&decision).iter().copied() {
+    visit_log_decision_assumptions_with(&decision, |assumption| {
         let event = crate::assumptions::AssumptionEvent::from_log_assumption(
             assumption,
             &simplifier.context,
@@ -294,10 +294,10 @@ fn isolate_pow_exponent(
             rhs,
         );
         ctx.note_assumption(event);
-    }
+    });
 
-    if let LogSolveDecision::NeedsComplex(msg) = &decision {
-        return Err(CasError::UnsupportedInRealDomain((*msg).to_string()));
+    if let Some(msg) = log_decision_needs_complex_message(&decision) {
+        return Err(CasError::UnsupportedInRealDomain(msg.to_string()));
     }
     if matches!(decision, LogSolveDecision::EmptySet(_)) {
         unreachable!("handled by terminal action");
@@ -309,10 +309,11 @@ fn isolate_pow_exponent(
         op: op.clone(),
     };
     let include_items = simplifier.collect_steps();
-    let unsupported_solved = {
-        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        execute_pow_exponent_log_unsupported_pipeline_from_decision_with(
+    let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+    if let Some((solution_set, merged_steps)) =
+        execute_pow_exponent_log_unsupported_pipeline_from_decision_and_finalize_with_existing_steps_with(
             include_items,
+            &mut steps,
             || {
                 let mut simplifier_ref = runtime_cell.borrow_mut();
                 plan_pow_exponent_log_unsupported_execution_from_decision_with(
@@ -345,16 +346,11 @@ fn isolate_pow_exponent(
                 .map(|(solutions, _)| solutions)
             },
             |item| medium_step(item.description().to_string(), item.equation),
-        )
-    };
-    if let Some((solution_set, merged_steps)) =
-        finalize_pow_exponent_log_unsupported_pipeline_with_existing_steps(
-            unsupported_solved,
-            &mut steps,
             |hint| {
+                let simplifier_ref = runtime_cell.borrow();
                 let event = crate::assumptions::AssumptionEvent::from_log_assumption(
                     hint.assumption,
-                    &simplifier.context,
+                    &simplifier_ref.context,
                     b,
                     rhs,
                 );

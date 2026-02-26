@@ -356,10 +356,11 @@ pub(super) fn isolate_div(
 
         // PEDAGOGICAL IMPROVEMENT: If LHS is 1/var, use reciprocal solve
         if should_try_reciprocal_solve(&simplifier.context, lhs, &op, var) {
-            if let Some((solution_set, reciprocal_steps)) =
-                crate::solver::reciprocal_solve::try_reciprocal_solve(lhs, rhs, var, simplifier)
-            {
-                return Ok((solution_set, reciprocal_steps));
+            if let Some(merged) = merge_optional_solved_with_existing_steps_append(
+                crate::solver::reciprocal_solve::try_reciprocal_solve(lhs, rhs, var, simplifier),
+                steps.clone(),
+            ) {
+                return Ok(merged);
             }
         }
 
