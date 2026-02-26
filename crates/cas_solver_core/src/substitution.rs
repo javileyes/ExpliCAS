@@ -472,47 +472,34 @@ where
         build_exponential_substitution_execution_with(equation_before, rewrite_plan, |id| {
             render_expr(id)
         });
-
-    let solved_intro =
-        solve_exponential_substitution_with_items(intro_execution, |items, equation| {
-            let mut steps = Vec::new();
-            if include_didactic_items {
-                steps.extend(
-                    items
-                        .into_iter()
-                        .map(|item| map_step(item.description, item.equation)),
-                );
-            }
-            let (u_solutions, mut u_steps) = solve_equation(equation, substitution_var)?;
-            steps.append(&mut u_steps);
-            Ok((u_solutions, steps))
-        })?;
-
-    let (u_solutions, mut steps) = solved_intro.solved;
+    let solved_intro = solve_exponential_substitution_execution_pipeline_with_items(
+        intro_execution,
+        include_didactic_items,
+        substitution_var,
+        |equation, solve_var| solve_equation(equation, solve_var),
+        |item| map_step(item.description, item.equation),
+    )?;
+    let u_solutions = solved_intro.solution_set;
+    let mut steps = solved_intro.steps;
 
     match u_solutions {
         SolutionSet::Discrete(vals) => {
             let back_plan = build_back_substitution_solve_plan_with(
-                solved_intro.execution.substitution_expr,
+                solved_intro.substitution_expr,
                 &vals,
                 include_didactic_items,
                 &mut render_expr,
             );
 
-            let solved_back =
-                solve_back_substitution_plan_with_items(back_plan, |item, equation| {
-                    let mut local_steps = Vec::new();
-                    if include_didactic_items {
-                        if let Some(item) = item {
-                            local_steps.push(map_step(item.description, item.equation));
-                        }
-                    }
-                    let (x_solution_set, mut x_steps) = solve_equation(equation, target_var)?;
-                    local_steps.append(&mut x_steps);
-                    Ok((x_solution_set, local_steps))
-                })?;
+            let solved_back = solve_back_substitution_plan_execution_pipeline_with_items(
+                back_plan,
+                include_didactic_items,
+                target_var,
+                |equation, solve_var| solve_equation(equation, solve_var),
+                |item| map_step(item.description, item.equation),
+            )?;
 
-            match aggregate_back_substitution_solutions(solved_back.solved, &mut steps) {
+            match aggregate_back_substitution_solutions(solved_back, &mut steps) {
                 Ok(final_solutions) => Ok(SubstitutionStrategySolved::SolvedDiscrete {
                     solutions: final_solutions,
                     steps,
