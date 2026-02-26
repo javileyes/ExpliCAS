@@ -9,7 +9,7 @@ use cas_solver_core::solve_outcome::{
     execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut_and_each_assumption,
     execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps,
     execute_pow_exponent_log_isolation_pipeline_with_plan_and_merge_with_existing_steps_with,
-    execute_pow_exponent_log_unsupported_pipeline_from_decision_with,
+    execute_pow_exponent_log_unsupported_pipeline_from_decision_and_finalize_with_existing_steps_with,
     execute_pow_exponent_shortcut_action_pipeline_with_item_and_finalize_with_existing_steps_with,
     execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_finalize_with_existing_steps_with,
     map_pow_exponent_shortcut_with, plan_pow_exponent_log_isolation_step_with,
@@ -17,6 +17,7 @@ use cas_solver_core::solve_outcome::{
     plan_pow_exponent_shortcut_action_from_inputs,
     solve_solve_tactic_normalization_pipeline_with_item, PowIsolationRoute,
 };
+use std::cell::RefCell;
 
 use super::isolate;
 
@@ -226,6 +227,7 @@ fn isolate_pow_exponent(
     );
     let include_terminal_items = simplifier.collect_steps();
     let include_unsupported_items = simplifier.collect_steps();
+    let hint_ctx = RefCell::new(simplifier.context.clone());
     let terminal_result =
         execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut_and_each_assumption(
             &mut simplifier.context,
@@ -257,12 +259,13 @@ fn isolate_pow_exponent(
         cas_solver_core::solve_outcome::LogDecisionTerminalResult::Continue => {}
     }
 
-    if let Some(unsupported_solved) =
-        execute_pow_exponent_log_unsupported_pipeline_from_decision_with(
+    if let Some((solution_set, merged_steps)) =
+        execute_pow_exponent_log_unsupported_pipeline_from_decision_and_finalize_with_existing_steps_with(
             include_unsupported_items,
+            &mut steps,
             move || unsupported_execution,
             |equation| {
-                isolate(
+                let solved = isolate(
                     equation.lhs,
                     equation.rhs,
                     equation.op.clone(),
@@ -272,18 +275,20 @@ fn isolate_pow_exponent(
                     ctx,
                 )
                 .ok()
-                .map(|(solutions, _)| solutions)
+                .map(|(solutions, _)| solutions);
+                *hint_ctx.borrow_mut() = simplifier.context.clone();
+                solved
             },
             |item| medium_step(item.description().to_string(), item.equation),
+            |hint| {
+                let snapshot = hint_ctx.borrow();
+                let blocked_hint =
+                    crate::solver::domain_blocked_hint_from_log_blocked_hint(&snapshot, hint);
+                crate::domain::register_blocked_hint(blocked_hint);
+            },
         )
     {
-        for hint in unsupported_solved.blocked_hints {
-            let blocked_hint =
-                crate::solver::domain_blocked_hint_from_log_blocked_hint(&simplifier.context, hint);
-            crate::domain::register_blocked_hint(blocked_hint);
-        }
-        steps.extend(unsupported_solved.steps);
-        return Ok((unsupported_solved.solution_set, steps));
+        return Ok((solution_set, merged_steps));
     }
     // ================================================================
     // End of domain guards
