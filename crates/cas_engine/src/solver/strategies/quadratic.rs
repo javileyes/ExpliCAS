@@ -9,9 +9,9 @@ use cas_solver_core::quadratic_coeffs::extract_quadratic_coefficients;
 use cas_solver_core::quadratic_didactic::{
     build_factorized_zero_product_execution_with_optional_items,
     build_quadratic_main_with_substeps_execution_with_optional_items,
+    execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_state,
     finalize_factorized_zero_product_strategy_solved,
     solve_factorized_zero_product_execution_result_pipeline_with_items,
-    solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification,
 };
 use cas_solver_core::quadratic_formula::{
     build_quadratic_coefficient_solve_plan, roots_from_a_b_and_simplified_delta,
@@ -132,12 +132,14 @@ impl SolverStrategy for QuadraticStrategy {
                 render_expr,
             );
             let was_collecting = simplifier.collect_steps();
-            simplifier.set_collect_steps(false);
+            let simplifier_ref = RefCell::new(simplifier);
             let didactic_steps =
-                solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification(
+                execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_state(
                     &mut execution,
                     include_items,
-                    |expr| simplifier.simplify(expr).0,
+                    was_collecting,
+                    |collecting| simplifier_ref.borrow_mut().set_collect_steps(collecting),
+                    |expr| simplifier_ref.borrow_mut().simplify(expr).0,
                     |item, substeps| {
                         medium_step(item.description().to_string(), item.equation)
                             .with_substeps(substeps)
@@ -148,7 +150,7 @@ impl SolverStrategy for QuadraticStrategy {
                         importance: crate::step::ImportanceLevel::Low,
                     },
                 );
-            simplifier.set_collect_steps(was_collecting);
+            let simplifier = simplifier_ref.into_inner();
             steps.extend(didactic_steps);
 
             let plan = match build_quadratic_coefficient_solve_plan(
