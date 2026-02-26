@@ -29,7 +29,7 @@ impl SolverStrategy for SubstitutionStrategy {
         let include_didactic_items = simplifier.collect_steps();
         let rewrite_plan =
             plan_exponential_substitution_rewrite(&mut simplifier.context, eq, var, SUB_VAR_NAME);
-        let render_ctx = RefCell::new(simplifier.context.clone());
+        let simplifier_ref = RefCell::new(simplifier);
         execute_exponential_substitution_strategy_result_pipeline_with_items_and_plan_with(
             eq,
             rewrite_plan,
@@ -37,14 +37,12 @@ impl SolverStrategy for SubstitutionStrategy {
             SUB_VAR_NAME,
             include_didactic_items,
             |id| {
-                let snapshot = render_ctx.borrow();
-                render_expr(&snapshot, id)
+                let simplifier = simplifier_ref.borrow();
+                render_expr(&simplifier.context, id)
             },
             |equation, solve_var| {
-                let solved =
-                    solve_with_ctx_and_options(equation, solve_var, simplifier, *opts, ctx);
-                *render_ctx.borrow_mut() = simplifier.context.clone();
-                solved
+                let mut simplifier = simplifier_ref.borrow_mut();
+                solve_with_ctx_and_options(equation, solve_var, &mut simplifier, *opts, ctx)
             },
             medium_step,
         )
