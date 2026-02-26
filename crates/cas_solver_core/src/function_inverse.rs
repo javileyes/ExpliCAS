@@ -564,6 +564,55 @@ where
     Some(solved.map(|payload| (payload.solution_set, payload.steps)))
 }
 
+/// Execute unary-inverse planning + solve pipeline returning plain strategy
+/// output `(SolutionSet, steps)`, or map unsupported inverses into caller
+/// error type via callback.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_unary_inverse_result_pipeline_or_else_with<
+    E,
+    S,
+    FPlan,
+    FSimplifyRhs,
+    FSolve,
+    FStep,
+    FError,
+>(
+    fn_name: &str,
+    arg: ExprId,
+    other: ExprId,
+    op: RelOp,
+    is_lhs: bool,
+    include_items: bool,
+    plan_unary_inverse_step: FPlan,
+    simplify_rhs_with_entries: FSimplifyRhs,
+    solve: FSolve,
+    map_item_to_step: FStep,
+    unsupported_error: FError,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FPlan: FnMut(&str, ExprId, ExprId, RelOp, bool) -> Option<UnaryInverseIsolationStepPlan>,
+    FSimplifyRhs: FnMut(ExprId) -> (ExprId, Vec<(String, ExprId)>),
+    FSolve: FnMut(ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(UnaryInverseSolveExecutionItem) -> S,
+    FError: FnOnce() -> E,
+{
+    match execute_unary_inverse_result_pipeline_with_items_with(
+        fn_name,
+        arg,
+        other,
+        op,
+        is_lhs,
+        include_items,
+        plan_unary_inverse_step,
+        simplify_rhs_with_entries,
+        solve,
+        map_item_to_step,
+    ) {
+        Some(result) => result,
+        None => Err(unsupported_error()),
+    }
+}
+
 /// Build didactic RHS-cleanup steps from `(description, rhs_after)` tuples.
 pub fn build_rhs_simplification_steps<I>(
     lhs: ExprId,
@@ -1371,6 +1420,80 @@ mod tests {
                 "substep".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn execute_unary_inverse_result_pipeline_or_else_with_returns_result_for_supported() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+
+        let solved = execute_unary_inverse_result_pipeline_or_else_with(
+            "ln",
+            x,
+            y,
+            RelOp::Eq,
+            true,
+            true,
+            |_fn_name, _arg, _other, _op, _is_lhs| {
+                Some(UnaryInverseIsolationStepPlan {
+                    equation: Equation {
+                        lhs: x,
+                        rhs: y,
+                        op: RelOp::Eq,
+                    },
+                    items: vec![UnaryInverseExecutionItem {
+                        equation: Equation {
+                            lhs: x,
+                            rhs: y,
+                            op: RelOp::Eq,
+                        },
+                        description: "rewrite".to_string(),
+                    }],
+                    needs_rhs_cleanup: true,
+                })
+            },
+            |_rhs| (z, vec![("cleanup".to_string(), z)]),
+            |_lhs, rhs, _op| {
+                Ok::<_, &'static str>((
+                    SolutionSet::Discrete(vec![rhs]),
+                    vec!["substep".to_string()],
+                ))
+            },
+            |item| item.description,
+            || "unsupported",
+        )
+        .expect("supported inverse should produce result");
+
+        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
+        assert_eq!(solved.1.len(), 3);
+    }
+
+    #[test]
+    fn execute_unary_inverse_result_pipeline_or_else_with_maps_unsupported_to_error() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+
+        let err = execute_unary_inverse_result_pipeline_or_else_with(
+            "unknown",
+            x,
+            y,
+            RelOp::Eq,
+            true,
+            true,
+            |_fn_name, _arg, _other, _op, _is_lhs| None,
+            |_rhs| (y, vec![]),
+            |_lhs, _rhs, _op| {
+                Ok::<_, &'static str>((SolutionSet::Empty, vec!["unexpected".to_string()]))
+            },
+            |item| item.description,
+            || "unsupported",
+        )
+        .expect_err("unsupported inverse should map to error");
+
+        assert_eq!(err, "unsupported");
     }
 
     #[test]

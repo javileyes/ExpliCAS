@@ -169,6 +169,34 @@ where
     Some(solved.map(|payload| payload.solved))
 }
 
+/// Execute log-isolation planning + solve pipeline returning plain strategy
+/// output `(SolutionSet, steps)`, or map non-plannable cases into caller
+/// error type via callback.
+#[allow(clippy::type_complexity)]
+pub fn execute_log_isolation_result_pipeline_or_else_with<E, S, FPlan, FSolve, FMap, FError>(
+    include_item: bool,
+    plan_rewrite: FPlan,
+    solve_rewritten: FSolve,
+    map_item_to_step: FMap,
+    not_plannable_error: FError,
+) -> Result<(cas_ast::SolutionSet, Vec<S>), E>
+where
+    FPlan: FnMut() -> Option<LogIsolationRewritePlan>,
+    FSolve: FnMut(&Equation) -> Result<(cas_ast::SolutionSet, Vec<S>), E>,
+    FMap: FnMut(LogIsolationExecutionItem) -> S,
+    FError: FnOnce() -> E,
+{
+    match execute_log_isolation_result_pipeline_with_item_with(
+        include_item,
+        plan_rewrite,
+        solve_rewritten,
+        map_item_to_step,
+    ) {
+        Some(result) => result,
+        None => Err(not_plannable_error()),
+    }
+}
+
 /// Planned transformation for isolating a logarithmic equation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogIsolationPlan {
@@ -671,6 +699,53 @@ mod tests {
         assert_eq!(solved.0, SolutionSet::AllReals);
         assert_eq!(solved.1.len(), 2);
         assert_eq!(solved.1[1], "sub");
+    }
+
+    #[test]
+    fn execute_log_isolation_result_pipeline_or_else_with_returns_result_for_supported() {
+        let mut ctx = Context::new();
+        let base = ctx.var("b");
+        let arg = ctx.var("x");
+        let rhs = ctx.num(3);
+
+        let solved = execute_log_isolation_result_pipeline_or_else_with(
+            true,
+            || {
+                plan_log_isolation_step_with(&mut ctx, base, arg, rhs, "x", RelOp::Eq, |_, _| {
+                    "rendered(b)".to_string()
+                })
+            },
+            |_equation| Ok::<_, &'static str>((SolutionSet::AllReals, vec!["sub".to_string()])),
+            |item| item.description,
+            || "not-plannable",
+        )
+        .expect("supported log isolation should produce result");
+
+        assert_eq!(solved.0, SolutionSet::AllReals);
+        assert_eq!(solved.1.len(), 2);
+    }
+
+    #[test]
+    fn execute_log_isolation_result_pipeline_or_else_with_maps_not_plannable_to_error() {
+        let mut ctx = Context::new();
+        let base = ctx.var("x");
+        let arg = ctx.var("x");
+        let rhs = ctx.num(3);
+
+        let err = execute_log_isolation_result_pipeline_or_else_with(
+            true,
+            || {
+                plan_log_isolation_step_with(&mut ctx, base, arg, rhs, "x", RelOp::Eq, |_, _| {
+                    "rendered".to_string()
+                })
+            },
+            |_equation| Ok::<_, &'static str>((SolutionSet::Empty, vec!["unexpected".to_string()])),
+            |item| item.description,
+            || "not-plannable",
+        )
+        .expect_err("not-plannable route should map to error");
+
+        assert_eq!(err, "not-plannable");
     }
 
     #[test]
