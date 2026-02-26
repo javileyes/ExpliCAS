@@ -11,7 +11,7 @@ use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_analysis::{
     apply_nonzero_exclusion_guards_if_any, classify_equation_var_presence,
     guard_solved_result_with_exclusions, normalize_variable_residual_with,
-    resolve_discrete_strategy_solutions_with, run_strategy_attempt_sequence,
+    partition_discrete_symbolic, retain_verified_discrete, run_strategy_attempt_sequence,
     simplify_equation_sides_for_var_with, EquationVarPresence, StrategyAttemptSequenceResolution,
 };
 use cas_solver_core::solve_outcome::{
@@ -434,23 +434,15 @@ fn solve_inner(
             steps,
         } => Ok((solution_set, steps)),
         StrategyAttemptSequenceResolution::NeedsDiscreteVerification { solutions, steps } => {
-            let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-            let valid_sols = resolve_discrete_strategy_solutions_with(
-                solutions,
-                |solution| {
-                    let simplifier_ref = runtime_cell.borrow();
-                    cas_solver_core::solve_analysis::is_symbolic_expr(
-                        &simplifier_ref.context,
-                        solution,
-                    )
-                },
-                |solution| {
-                    // Verify against ORIGINAL equation, not simplified form, so
-                    // domain-invalid roots (e.g. division by zero) are rejected.
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
-                    super::check::verify_solution_by_equivalence(*simplifier_ref, eq, var, solution)
-                },
-            );
+            let (mut symbolic_solutions, numeric_solutions) =
+                partition_discrete_symbolic(&simplifier.context, &solutions);
+            let verified_numeric = retain_verified_discrete(numeric_solutions, |solution| {
+                // Verify against ORIGINAL equation, not simplified form, so
+                // domain-invalid roots (e.g. division by zero) are rejected.
+                super::check::verify_solution_by_equivalence(simplifier, eq, var, solution)
+            });
+            symbolic_solutions.extend(verified_numeric);
+            let valid_sols = symbolic_solutions;
             Ok((SolutionSet::Discrete(valid_sols), steps))
         }
         StrategyAttemptSequenceResolution::HardError(error) => Err(error),

@@ -1116,7 +1116,7 @@ pub fn execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_col
     execution: &mut QuadraticMainWithSubstepsExecution,
     include_items: bool,
     mut get_collecting: FGetCollect,
-    mut set_collecting: FSetCollect,
+    set_collecting: FSetCollect,
     simplify_expr: FSimplify,
     map_main_item_to_step: FMain,
     map_substep_item_to_step: FSub,
@@ -1134,6 +1134,50 @@ where
     }
 
     let was_collecting = get_collecting();
+    execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_state(
+        execution,
+        true,
+        was_collecting,
+        set_collecting,
+        simplify_expr,
+        map_main_item_to_step,
+        map_substep_item_to_step,
+    )
+}
+
+/// Execute quadratic main/substep pipeline while temporarily overriding caller
+/// step-collection mode, using a precomputed original collection state.
+///
+/// This variant is useful for engine callsites that already read collection mode
+/// before entering runtime borrow orchestration.
+pub fn execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_state<
+    S,
+    SS,
+    FSimplify,
+    FMain,
+    FSub,
+    FSetCollect,
+>(
+    execution: &mut QuadraticMainWithSubstepsExecution,
+    include_items: bool,
+    was_collecting: bool,
+    set_collecting: FSetCollect,
+    simplify_expr: FSimplify,
+    map_main_item_to_step: FMain,
+    map_substep_item_to_step: FSub,
+) -> Vec<S>
+where
+    SS: Clone,
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FMain: FnMut(QuadraticExecutionItem, Vec<SS>) -> S,
+    FSub: FnMut(QuadraticSubstepExecutionItem) -> SS,
+    FSetCollect: FnMut(bool),
+{
+    if !include_items {
+        return Vec::new();
+    }
+
+    let mut set_collecting = set_collecting;
     set_collecting(false);
     let steps = solve_quadratic_main_with_substeps_execution_pipeline_with_optional_items_and_simplification(
         execution,
@@ -1500,6 +1544,55 @@ mod tests {
                 "set:false".to_string(),
                 "set:true".to_string()
             ]
+        );
+        assert!(collecting.get());
+    }
+
+    #[test]
+    fn execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_state_restores_collection_mode(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let eq = Equation {
+            lhs: x,
+            rhs: ctx.num(0),
+            op: RelOp::Eq,
+        };
+        let mut execution = build_quadratic_main_with_substeps_execution_with_optional_items(
+            &mut ctx,
+            "x",
+            one,
+            one,
+            one,
+            true,
+            eq,
+            true,
+            |_, id| format!("{:?}", id),
+        );
+        let collecting = std::cell::Cell::new(true);
+        let transitions = std::cell::RefCell::new(Vec::new());
+
+        let mapped =
+            execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_state(
+                &mut execution,
+                true,
+                collecting.get(),
+                |enabled| {
+                    transitions.borrow_mut().push(format!("set:{enabled}"));
+                    collecting.set(enabled);
+                },
+                |id| id,
+                |main, substeps: Vec<String>| (main.description, substeps.len()),
+                |substep| substep.description,
+            );
+
+        assert_eq!(mapped.len(), 1);
+        assert_eq!(mapped[0].0, QUADRATIC_FORMULA_MAIN_STEP_DESCRIPTION);
+        assert!(mapped[0].1 > 0);
+        assert_eq!(
+            transitions.into_inner(),
+            vec!["set:false".to_string(), "set:true".to_string()]
         );
         assert!(collecting.get());
     }

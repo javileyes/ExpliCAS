@@ -5,11 +5,11 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{medium_step, render_expr, SolveCtx, SolveStep, SolveSubStep, SolverOptions};
 use cas_ast::{Equation, Expr, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{is_numeric_zero, split_zero_product_factors};
-use cas_solver_core::quadratic_coeffs::extract_simplified_nonzero_quadratic_coefficients_with;
+use cas_solver_core::quadratic_coeffs::extract_quadratic_coefficients;
 use cas_solver_core::quadratic_didactic::{
     build_factorized_zero_product_execution_with_optional_items,
     build_quadratic_main_with_substeps_execution_with_optional_items,
-    execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_guard,
+    execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_state,
     finalize_factorized_zero_product_strategy_solved,
     solve_factorized_zero_product_execution_result_pipeline_with_items,
 };
@@ -96,29 +96,18 @@ impl SolverStrategy for QuadraticStrategy {
         // QuadraticStrategy relies on A*x^2 + B*x + C structure (Add/Sub chain)
         let expanded_expr = crate::expand::expand(&mut simplifier.context, sim_poly_expr);
 
-        let coeffs = {
-            let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-            extract_simplified_nonzero_quadratic_coefficients_with(
-                expanded_expr,
-                var,
-                |poly, name| {
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
-                    cas_solver_core::quadratic_coeffs::extract_quadratic_coefficients(
-                        &mut simplifier_ref.context,
-                        poly,
-                        name,
-                    )
-                },
-                |expr| {
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
-                    simplifier_ref.simplify(expr).0
-                },
-                |expr| {
-                    let simplifier_ref = runtime_cell.borrow();
-                    is_numeric_zero(&simplifier_ref.context, expr)
-                },
-            )
-        };
+        let coeffs = extract_quadratic_coefficients(&mut simplifier.context, expanded_expr, var)
+            .and_then(|(a, b, c)| {
+                let sim_a = simplifier.simplify(a).0;
+                let sim_b = simplifier.simplify(b).0;
+                let sim_c = simplifier.simplify(c).0;
+
+                if is_numeric_zero(&simplifier.context, sim_a) {
+                    None
+                } else {
+                    Some((sim_a, sim_b, sim_c))
+                }
+            });
 
         if let Some((sim_a, sim_b, sim_c)) = coeffs {
             let include_items = simplifier.collect_steps();
@@ -139,14 +128,12 @@ impl SolverStrategy for QuadraticStrategy {
                 include_items,
                 render_expr,
             );
+            let was_collecting = simplifier.collect_steps();
             let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-            let didactic_steps = execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_guard(
+            let didactic_steps = execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_state(
                 &mut execution,
                 include_items,
-                || {
-                    let simplifier_ref = runtime_cell.borrow();
-                    simplifier_ref.collect_steps()
-                },
+                was_collecting,
                 |enabled| {
                     let mut simplifier_ref = runtime_cell.borrow_mut();
                     simplifier_ref.set_collect_steps(enabled);
