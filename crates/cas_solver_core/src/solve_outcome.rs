@@ -4354,6 +4354,24 @@ pub fn plan_product_zero_inequality_split(
     })
 }
 
+/// Build product-zero inequality split plan only when split preconditions are
+/// met (`left`/`right` contain target var, `rhs` is zero and `op` is inequality).
+pub fn plan_product_zero_inequality_split_if_applicable(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+) -> Option<ProductZeroInequalityPlan> {
+    if crate::isolation_utils::should_split_product_zero_inequality(ctx, left, right, rhs, &op, var)
+    {
+        plan_product_zero_inequality_split(ctx, left, right, op)
+    } else {
+        None
+    }
+}
+
 /// Solve each equation of a product-zero inequality split with caller-provided
 /// equation solver callback.
 pub fn solve_product_zero_inequality_cases_with<E, FSolve>(
@@ -4419,6 +4437,31 @@ where
         case2_right,
     };
     Ok(ProductZeroInequalityExecutionSolved { solved_sets, steps })
+}
+
+/// Execute product-zero inequality split pipeline and return finalized solution
+/// set merged with caller-provided existing steps.
+pub fn execute_product_zero_inequality_split_pipeline_with_existing_steps<
+    E,
+    S,
+    FSolveCase,
+    FFinalize,
+>(
+    plan: &ProductZeroInequalityPlan,
+    existing_steps: Vec<S>,
+    solve_case: FSolveCase,
+    mut finalize_solved_sets: FFinalize,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FSolveCase: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FFinalize: FnMut(ProductZeroInequalitySolvedSets) -> SolutionSet,
+{
+    let solved = solve_product_zero_inequality_split_execution_with(plan, solve_case)?;
+    let final_set = finalize_solved_sets(solved.solved_sets);
+    Ok(merge_solved_with_existing_steps_prepend(
+        (final_set, solved.steps),
+        existing_steps,
+    ))
 }
 
 /// Solve branch equations + sign-domain constraints for division denominator
@@ -5008,6 +5051,29 @@ pub fn plan_division_denominator_sign_split(
     })
 }
 
+/// Build division denominator-sign split plan only when split preconditions
+/// hold (`numerator` and `denominator` contain target var and `op` is inequality).
+pub fn plan_division_denominator_sign_split_if_applicable(
+    ctx: &mut Context,
+    numerator: ExprId,
+    denominator: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+) -> Option<DivisionDenominatorSignSplitPlan> {
+    if crate::isolation_utils::should_split_division_denominator_sign_cases(
+        ctx,
+        numerator,
+        denominator,
+        &op,
+        var,
+    ) {
+        plan_division_denominator_sign_split(ctx, numerator, denominator, rhs, op)
+    } else {
+        None
+    }
+}
+
 /// Build executable split plan for already-isolated denominator inequalities.
 pub fn plan_isolated_denominator_sign_split(
     lhs: ExprId,
@@ -5019,6 +5085,27 @@ pub fn plan_isolated_denominator_sign_split(
         positive_equation: branches.positive,
         negative_equation: branches.negative,
     })
+}
+
+/// Build isolated-denominator sign split plan only when the denominator is the
+/// target variable and operator is an inequality.
+pub fn plan_isolated_denominator_sign_split_if_applicable(
+    ctx: &Context,
+    denominator: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+) -> Option<IsolatedDenominatorSignSplitPlan> {
+    if crate::isolation_utils::should_split_isolated_denominator_variable(
+        ctx,
+        denominator,
+        &op,
+        var,
+    ) {
+        plan_isolated_denominator_sign_split(denominator, rhs, op)
+    } else {
+        None
+    }
 }
 
 /// Build runtime execution plan for denominator-sign split using a precomputed
@@ -11429,6 +11516,48 @@ mod tests {
     }
 
     #[test]
+    fn plan_division_denominator_sign_split_if_applicable_returns_some_for_valid_case() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let num = ctx.add(Expr::Add(x, one));
+        let den = ctx.add(Expr::Sub(x, two));
+        let rhs = ctx.var("r");
+
+        let plan = plan_division_denominator_sign_split_if_applicable(
+            &mut ctx,
+            num,
+            den,
+            rhs,
+            RelOp::Lt,
+            "x",
+        );
+        assert!(plan.is_some());
+    }
+
+    #[test]
+    fn plan_division_denominator_sign_split_if_applicable_rejects_non_inequality() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let num = ctx.add(Expr::Add(x, one));
+        let den = ctx.add(Expr::Sub(x, two));
+        let rhs = ctx.var("r");
+
+        let plan = plan_division_denominator_sign_split_if_applicable(
+            &mut ctx,
+            num,
+            den,
+            rhs,
+            RelOp::Eq,
+            "x",
+        );
+        assert!(plan.is_none());
+    }
+
+    #[test]
     fn plan_isolated_denominator_sign_split_builds_flipped_negative_branch() {
         let mut ctx = Context::new();
         let den = ctx.var("x");
@@ -11442,6 +11571,26 @@ mod tests {
         assert_eq!(plan.negative_equation.rhs, rhs);
         assert_eq!(plan.positive_equation.op, RelOp::Geq);
         assert_eq!(plan.negative_equation.op, RelOp::Leq);
+    }
+
+    #[test]
+    fn plan_isolated_denominator_sign_split_if_applicable_returns_some_for_target_var() {
+        let mut ctx = Context::new();
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let plan =
+            plan_isolated_denominator_sign_split_if_applicable(&ctx, den, rhs, RelOp::Leq, "x");
+        assert!(plan.is_some());
+    }
+
+    #[test]
+    fn plan_isolated_denominator_sign_split_if_applicable_rejects_non_target_var() {
+        let mut ctx = Context::new();
+        let den = ctx.var("y");
+        let rhs = ctx.var("r");
+        let plan =
+            plan_isolated_denominator_sign_split_if_applicable(&ctx, den, rhs, RelOp::Leq, "x");
+        assert!(plan.is_none());
     }
 
     #[test]
@@ -11850,6 +11999,45 @@ mod tests {
     }
 
     #[test]
+    fn plan_product_zero_inequality_split_if_applicable_returns_some_for_valid_case() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let left = ctx.add(Expr::Add(x, one));
+        let right = ctx.add(Expr::Sub(x, one));
+        let zero = ctx.num(0);
+
+        let plan = plan_product_zero_inequality_split_if_applicable(
+            &mut ctx,
+            left,
+            right,
+            zero,
+            RelOp::Gt,
+            "x",
+        );
+        assert!(plan.is_some());
+    }
+
+    #[test]
+    fn plan_product_zero_inequality_split_if_applicable_rejects_non_zero_rhs() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let left = ctx.add(Expr::Add(x, one));
+        let right = ctx.add(Expr::Sub(x, one));
+
+        let plan = plan_product_zero_inequality_split_if_applicable(
+            &mut ctx,
+            left,
+            right,
+            one,
+            RelOp::Gt,
+            "x",
+        );
+        assert!(plan.is_none());
+    }
+
+    #[test]
     fn solve_product_zero_inequality_cases_with_solves_all_four_equations_in_order() {
         let mut ctx = Context::new();
         let a = ctx.var("a");
@@ -11930,6 +12118,46 @@ mod tests {
         );
         let final_set = finalize_product_zero_inequality_solved_sets(&ctx, solved.solved_sets);
         assert!(matches!(final_set, SolutionSet::AllReals));
+    }
+
+    #[test]
+    fn execute_product_zero_inequality_split_pipeline_with_existing_steps_finalizes_and_merges() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let plan =
+            plan_product_zero_inequality_split(&mut ctx, a, b, RelOp::Gt).expect("split plan");
+        let mut call_index = 0usize;
+        let solved = execute_product_zero_inequality_split_pipeline_with_existing_steps(
+            &plan,
+            vec!["existing".to_string()],
+            |_eq| {
+                call_index += 1;
+                Ok::<_, ()>((
+                    if call_index == 2 {
+                        SolutionSet::Empty
+                    } else {
+                        SolutionSet::AllReals
+                    },
+                    vec![format!("case-{call_index}")],
+                ))
+            },
+            |solved_sets| finalize_product_zero_inequality_solved_sets(&ctx, solved_sets),
+        )
+        .expect("execution should solve");
+
+        assert_eq!(call_index, 4);
+        assert!(matches!(solved.0, SolutionSet::AllReals));
+        assert_eq!(
+            solved.1,
+            vec![
+                "case-1".to_string(),
+                "case-2".to_string(),
+                "case-3".to_string(),
+                "case-4".to_string(),
+                "existing".to_string(),
+            ]
+        );
     }
 
     #[test]

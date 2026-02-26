@@ -3,25 +3,22 @@ use crate::error::CasError;
 use crate::solver::solve_core::solve_with_ctx_and_options;
 use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, SolverOptions};
 use cas_ast::{ExprId, RelOp, SolutionSet};
-use cas_solver_core::isolation_utils::{
-    is_known_negative, should_split_division_denominator_sign_cases,
-    should_split_isolated_denominator_variable, should_split_product_zero_inequality,
-    should_try_reciprocal_solve,
-};
+use cas_solver_core::isolation_utils::{is_known_negative, should_try_reciprocal_solve};
 use cas_solver_core::solve_outcome::{
     derive_add_isolation_operands, derive_div_isolation_route, derive_mul_isolation_operands,
     derive_sub_isolation_route, execute_division_denominator_plan_with_optional_items,
     execute_division_denominator_sign_split_pipeline_with_optional_items,
     execute_isolated_denominator_sign_split_pipeline_with_optional_items,
+    execute_product_zero_inequality_split_pipeline_with_existing_steps,
     execute_term_isolation_plan_with, finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
     finalize_product_zero_inequality_solved_sets, merge_solved_with_existing_steps_append,
     merge_solved_with_existing_steps_prepend, mul_rhs_contains_variable,
     plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
     plan_div_numerator_isolation_step_with, plan_division_denominator,
-    plan_division_denominator_sign_split, plan_isolated_denominator_sign_split,
-    plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split,
-    plan_sub_isolation_step_with, solve_product_zero_inequality_split_execution_with,
+    plan_division_denominator_sign_split_if_applicable,
+    plan_isolated_denominator_sign_split_if_applicable, plan_mul_factor_isolation_step_with,
+    plan_product_zero_inequality_split_if_applicable, plan_sub_isolation_step_with,
     AddIsolationRoute, DivDenominatorIsolationRoute, DivIsolationRoute, SubIsolationRoute,
 };
 
@@ -169,23 +166,28 @@ pub(super) fn isolate_mul(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     // CRITICAL: For inequalities with products, need sign analysis
-    if should_split_product_zero_inequality(&simplifier.context, l, r, rhs, &op, var) {
-        // Product inequality split: A * B op 0
-        if let Some(plan) =
-            plan_product_zero_inequality_split(&mut simplifier.context, l, r, op.clone())
-        {
-            let solved = solve_product_zero_inequality_split_execution_with(&plan, |equation| {
-                solve_with_ctx_and_options(equation, var, simplifier, opts, ctx)
-            })?;
-            let final_set = finalize_product_zero_inequality_solved_sets(
-                &simplifier.context,
-                solved.solved_sets,
-            );
-            return Ok(merge_solved_with_existing_steps_prepend(
-                (final_set, solved.steps),
-                steps,
-            ));
-        }
+    // Product inequality split: A * B op 0
+    if let Some(plan) = plan_product_zero_inequality_split_if_applicable(
+        &mut simplifier.context,
+        l,
+        r,
+        rhs,
+        op.clone(),
+        var,
+    ) {
+        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+        return execute_product_zero_inequality_split_pipeline_with_existing_steps(
+            &plan,
+            steps,
+            |equation| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                solve_with_ctx_and_options(equation, var, *simplifier_ref, opts, ctx)
+            },
+            |solved_sets| {
+                let simplifier_ref = runtime_cell.borrow();
+                finalize_product_zero_inequality_solved_sets(&simplifier_ref.context, solved_sets)
+            },
+        );
     }
 
     // Default behavior: divide by one factor
@@ -257,16 +259,15 @@ pub(super) fn isolate_div(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let div_route = derive_div_isolation_route(&simplifier.context, l, var);
     if matches!(div_route, DivIsolationRoute::VariableInNumerator) {
-        if should_split_division_denominator_sign_cases(&simplifier.context, l, r, &op, var) {
+        if let Some(split_plan) = plan_division_denominator_sign_split_if_applicable(
+            &mut simplifier.context,
+            l,
+            r,
+            rhs,
+            op.clone(),
+            var,
+        ) {
             // Denominator contains variable. Split into cases.
-            let split_plan = plan_division_denominator_sign_split(
-                &mut simplifier.context,
-                l,
-                r,
-                rhs,
-                op.clone(),
-            )
-            .expect("inequality branch requires denominator sign cases");
             let (sim_rhs, _) = simplifier.simplify(split_plan.positive_equation.rhs);
             let include_items = simplifier.collect_steps();
             let solved = {
@@ -384,10 +385,14 @@ pub(super) fn isolate_div(
         };
 
         // Check if denominator is just the variable (simple case)
-        if should_split_isolated_denominator_variable(&simplifier.context, r, &op, var) {
+        if let Some(split_plan) = plan_isolated_denominator_sign_split_if_applicable(
+            &simplifier.context,
+            r,
+            sim_rhs,
+            op.clone(),
+            var,
+        ) {
             // Split into x > 0 and x < 0
-            let split_plan = plan_isolated_denominator_sign_split(r, sim_rhs, op.clone())
-                .expect("inequality branch requires denominator sign cases");
             let include_items = simplifier.collect_steps();
             let solved = {
                 let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
