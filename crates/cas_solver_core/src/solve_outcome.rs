@@ -2531,6 +2531,45 @@ where
     collect_term_isolation_rewrite_first_step_with_item(&rewrite, include_item, map_item_to_step)
 }
 
+/// Execute solve-tactic normalization for exponent isolation (`base^x = rhs`) with
+/// caller-provided side effects:
+/// - clear blocked-hint sink before/after tactic simplification,
+/// - simplify both sides under solve-tactic options,
+/// - build didactic steps only when a rewrite happened.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_pow_exponent_solve_tactic_normalization_with<S, FClear, FSimplify, FBuildSteps>(
+    base: ExprId,
+    exponent: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    enabled: bool,
+    mut clear_blocked_hints: FClear,
+    mut simplify_with_tactic: FSimplify,
+    mut build_steps: FBuildSteps,
+) -> (ExprId, ExprId, Vec<S>)
+where
+    FClear: FnMut(),
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FBuildSteps: FnMut(ExprId, ExprId, ExprId, RelOp) -> Vec<S>,
+{
+    if !enabled {
+        return (base, rhs, Vec::new());
+    }
+
+    clear_blocked_hints();
+    let sim_base = simplify_with_tactic(base);
+    let sim_rhs = simplify_with_tactic(rhs);
+    clear_blocked_hints();
+
+    let steps = if sim_base != base || sim_rhs != rhs {
+        build_steps(sim_base, exponent, sim_rhs, op)
+    } else {
+        Vec::new()
+    };
+
+    (sim_base, sim_rhs, steps)
+}
+
 /// Build didactic narration for multiplicative isolation.
 pub fn divide_both_sides_message(term_display: &str) -> String {
     format!("Divide both sides by {}", term_display)
@@ -3699,6 +3738,41 @@ pub enum PowExponentLogDecisionPipelineResult<S> {
     Continue,
 }
 
+/// Resolve the exponent-log decision pipeline into:
+/// - `Ok(Some((solutions, steps)))` when solved,
+/// - `Err(message)` when complex domain is required,
+/// - `Ok(None)` when regular log-isolation should continue.
+pub fn resolve_pow_exponent_log_decision_pipeline_result<S>(
+    pipeline: PowExponentLogDecisionPipelineResult<S>,
+) -> Result<Option<(SolutionSet, Vec<S>)>, &'static str> {
+    match pipeline {
+        PowExponentLogDecisionPipelineResult::Terminal {
+            solution_set,
+            steps,
+        }
+        | PowExponentLogDecisionPipelineResult::UnsupportedSolved {
+            solution_set,
+            steps,
+        } => Ok(Some((solution_set, steps))),
+        PowExponentLogDecisionPipelineResult::NeedsComplex { message } => Err(message),
+        PowExponentLogDecisionPipelineResult::Continue => Ok(None),
+    }
+}
+
+/// Validate the exponent-log precondition: `rhs` must not contain target
+/// variable for `base^x = rhs` logarithmic isolation.
+pub fn ensure_pow_exponent_rhs_without_variable(
+    ctx: &Context,
+    rhs: ExprId,
+    var: &str,
+) -> Result<(), &'static str> {
+    if pow_exponent_rhs_contains_variable(ctx, rhs, var) {
+        Err("Cannot isolate exponential: variable appears on both sides")
+    } else {
+        Ok(())
+    }
+}
+
 /// Resolve terminal log outcomes first; if not terminal, emit implied assumptions
 /// and classify whether solving can continue in the current value domain.
 #[allow(clippy::too_many_arguments)]
@@ -4023,6 +4097,105 @@ where
     }
 
     PowExponentLogDecisionPipelineResult::Continue
+}
+
+/// Execute post-terminal exponent-log routing and immediately resolve it into:
+/// - `Ok(Some((solutions, steps)))` when solved,
+/// - `Err(message)` when complex-domain escalation is required,
+/// - `Ok(None)` when regular logarithmic isolation should continue.
+pub fn execute_and_resolve_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut<
+    S,
+    FPlan,
+    FGuarded,
+    FStep,
+    FHint,
+>(
+    terminal_result: LogDecisionTerminalResult<S>,
+    include_unsupported_items: bool,
+    existing_steps: &mut Vec<S>,
+    plan_unsupported_execution: FPlan,
+    try_guarded_solve: FGuarded,
+    map_item_to_step: FStep,
+    register_blocked_hint: FHint,
+) -> Result<Option<(SolutionSet, Vec<S>)>, &'static str>
+where
+    FPlan: FnOnce() -> Option<PowExponentLogUnsupportedExecution>,
+    FGuarded: FnMut(&Equation) -> Option<SolutionSet>,
+    FStep: FnMut(TermIsolationExecutionItem) -> S,
+    FHint: FnMut(LogBlockedHintRecord),
+{
+    resolve_pow_exponent_log_decision_pipeline_result(
+        execute_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut(
+            terminal_result,
+            include_unsupported_items,
+            existing_steps,
+            plan_unsupported_execution,
+            try_guarded_solve,
+            map_item_to_step,
+            register_blocked_hint,
+        ),
+    )
+}
+
+/// Execute the full exponent-log decision pipeline and resolve it into:
+/// - `Ok(Some((solutions, steps)))` when solved,
+/// - `Err(message)` when complex-domain escalation is required,
+/// - `Ok(None)` when regular logarithmic isolation should continue.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_and_resolve_pow_exponent_log_decision_pipeline_with_existing_steps_mut<
+    S,
+    FStep,
+    FAssumption,
+    FPlan,
+    FGuarded,
+    FHint,
+>(
+    ctx: &mut Context,
+    decision: &LogSolveDecision,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    equation_after: Equation,
+    residual_suffix: &str,
+    include_terminal_item: bool,
+    existing_steps: &mut Vec<S>,
+    map_item_to_step: FStep,
+    visit_assumption: FAssumption,
+    include_unsupported_items: bool,
+    plan_unsupported_execution: FPlan,
+    try_guarded_solve: FGuarded,
+    register_blocked_hint: FHint,
+) -> Result<Option<(SolutionSet, Vec<S>)>, &'static str>
+where
+    FStep: FnMut(TermIsolationExecutionItem) -> S,
+    FAssumption: FnMut(&Context, LogAssumption),
+    FPlan: FnOnce() -> Option<PowExponentLogUnsupportedExecution>,
+    FGuarded: FnMut(&Equation) -> Option<SolutionSet>,
+    FHint: FnMut(LogBlockedHintRecord),
+{
+    resolve_pow_exponent_log_decision_pipeline_result(
+        execute_pow_exponent_log_decision_pipeline_with_existing_steps_mut(
+            ctx,
+            decision,
+            mode,
+            wildcard_scope,
+            lhs,
+            rhs,
+            var,
+            equation_after,
+            residual_suffix,
+            include_terminal_item,
+            existing_steps,
+            map_item_to_step,
+            visit_assumption,
+            include_unsupported_items,
+            plan_unsupported_execution,
+            try_guarded_solve,
+            register_blocked_hint,
+        ),
+    )
 }
 
 /// Build didactic payload for conditional-solution messaging.
@@ -9513,6 +9686,142 @@ mod tests {
     }
 
     #[test]
+    fn execute_and_resolve_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut_maps_terminal(
+    ) {
+        let out =
+            execute_and_resolve_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut::<
+                String,
+                _,
+                _,
+                _,
+                _,
+            >(
+                LogDecisionTerminalResult::Terminal {
+                    solution_set: SolutionSet::Empty,
+                    steps: vec!["terminal".to_string()],
+                },
+                true,
+                &mut Vec::new(),
+                || panic!("unsupported planning must not run for terminal result"),
+                |_equation| panic!("guarded solve must not run for terminal result"),
+                |_item| panic!("step mapper must not run for terminal result"),
+                |_hint| panic!("hint registration must not run for terminal result"),
+            )
+            .expect("terminal should not error");
+
+        assert_eq!(
+            out,
+            Some((SolutionSet::Empty, vec!["terminal".to_string()]))
+        );
+    }
+
+    #[test]
+    fn execute_and_resolve_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut_maps_needs_complex(
+    ) {
+        let out =
+            execute_and_resolve_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut::<
+                String,
+                _,
+                _,
+                _,
+                _,
+            >(
+                LogDecisionTerminalResult::NeedsComplex {
+                    message: "complex required",
+                },
+                true,
+                &mut Vec::new(),
+                || panic!("unsupported planning must not run for needs-complex"),
+                |_equation| panic!("guarded solve must not run for needs-complex"),
+                |_item| panic!("step mapper must not run for needs-complex"),
+                |_hint| panic!("hint registration must not run for needs-complex"),
+            )
+            .expect_err("needs-complex should become error");
+
+        assert_eq!(out, "complex required");
+    }
+
+    #[test]
+    fn execute_and_resolve_pow_exponent_log_decision_pipeline_with_existing_steps_mut_maps_terminal(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let mut existing = vec!["existing".to_string()];
+        let mut assumption_calls = 0usize;
+
+        let out = execute_and_resolve_pow_exponent_log_decision_pipeline_with_existing_steps_mut(
+            &mut ctx,
+            &LogSolveDecision::EmptySet("no real solutions"),
+            DomainModeKind::Generic,
+            false,
+            x,
+            y,
+            "x",
+            Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            " (residual)",
+            false,
+            &mut existing,
+            |item| item.description,
+            |_core_ctx, _assumption| assumption_calls += 1,
+            true,
+            || panic!("unsupported planning must not run for terminal decision"),
+            |_equation| panic!("guarded solve must not run for terminal decision"),
+            |_hint| panic!("hint registration must not run for terminal decision"),
+        )
+        .expect("terminal should not error");
+
+        assert_eq!(
+            out,
+            Some((SolutionSet::Empty, vec!["existing".to_string()]))
+        );
+        assert_eq!(assumption_calls, 0);
+    }
+
+    #[test]
+    fn execute_and_resolve_pow_exponent_log_decision_pipeline_with_existing_steps_mut_maps_continue(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let mut existing = vec!["existing".to_string()];
+        let mut assumption_calls = 0usize;
+
+        let out = execute_and_resolve_pow_exponent_log_decision_pipeline_with_existing_steps_mut(
+            &mut ctx,
+            &LogSolveDecision::Ok,
+            DomainModeKind::Generic,
+            false,
+            x,
+            y,
+            "x",
+            Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            " (residual)",
+            false,
+            &mut existing,
+            |item| item.description,
+            |_core_ctx, _assumption| assumption_calls += 1,
+            true,
+            || None,
+            |_equation| panic!("guarded solve must not run when unsupported plan is none"),
+            |_hint| panic!("hint registration must not run when unsupported plan is none"),
+        )
+        .expect("continue should not error");
+
+        assert_eq!(out, None);
+        assert_eq!(existing, vec!["existing".to_string()]);
+        assert_eq!(assumption_calls, 0);
+    }
+
+    #[test]
     fn resolve_log_unsupported_outcome_returns_none_for_supported_decision() {
         let mut ctx = Context::new();
         let x = ctx.var("x");
@@ -10063,6 +10372,67 @@ mod tests {
         assert_eq!(
             seen,
             vec![LogAssumption::PositiveBase, LogAssumption::PositiveRhs]
+        );
+    }
+
+    #[test]
+    fn resolve_pow_exponent_log_decision_pipeline_result_maps_terminal_and_unsupported_to_some() {
+        let terminal = resolve_pow_exponent_log_decision_pipeline_result::<u8>(
+            PowExponentLogDecisionPipelineResult::Terminal {
+                solution_set: SolutionSet::AllReals,
+                steps: vec![1u8, 2u8],
+            },
+        )
+        .expect("terminal should not error");
+        assert_eq!(terminal, Some((SolutionSet::AllReals, vec![1u8, 2u8])));
+
+        let unsupported = resolve_pow_exponent_log_decision_pipeline_result::<u8>(
+            PowExponentLogDecisionPipelineResult::UnsupportedSolved {
+                solution_set: SolutionSet::Empty,
+                steps: vec![9u8],
+            },
+        )
+        .expect("unsupported solved should not error");
+        assert_eq!(unsupported, Some((SolutionSet::Empty, vec![9u8])));
+    }
+
+    #[test]
+    fn resolve_pow_exponent_log_decision_pipeline_result_maps_needs_complex_and_continue() {
+        let complex = resolve_pow_exponent_log_decision_pipeline_result::<u8>(
+            PowExponentLogDecisionPipelineResult::NeedsComplex {
+                message: "complex required",
+            },
+        )
+        .expect_err("needs-complex should return error");
+        assert_eq!(complex, "complex required");
+
+        let cont = resolve_pow_exponent_log_decision_pipeline_result::<u8>(
+            PowExponentLogDecisionPipelineResult::Continue,
+        )
+        .expect("continue should not error");
+        assert_eq!(cont, None);
+    }
+
+    #[test]
+    fn ensure_pow_exponent_rhs_without_variable_accepts_rhs_without_target_var() {
+        let mut ctx = Context::new();
+        let y = ctx.var("y");
+        let one = ctx.num(1);
+        let rhs = ctx.add(Expr::Add(y, one));
+        assert!(ensure_pow_exponent_rhs_without_variable(&ctx, rhs, "x").is_ok());
+    }
+
+    #[test]
+    fn ensure_pow_exponent_rhs_without_variable_rejects_rhs_with_target_var() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let rhs = ctx.add(Expr::Add(x, one));
+        let err = ensure_pow_exponent_rhs_without_variable(&ctx, rhs, "x")
+            .expect_err("rhs containing target variable must fail");
+        assert_eq!(
+            err,
+            "Cannot isolate exponential: variable appears on both sides"
         );
     }
 
@@ -11982,6 +12352,121 @@ mod tests {
         );
 
         assert!(steps.is_empty());
+    }
+
+    #[test]
+    fn execute_pow_exponent_solve_tactic_normalization_with_returns_inputs_when_disabled() {
+        let mut ctx = Context::new();
+        let base = ctx.var("a");
+        let exponent = ctx.var("x");
+        let rhs = ctx.var("b");
+
+        let mut cleared = 0usize;
+        let (out_base, out_rhs, steps) = execute_pow_exponent_solve_tactic_normalization_with(
+            base,
+            exponent,
+            rhs,
+            RelOp::Eq,
+            false,
+            || {
+                cleared += 1;
+            },
+            |_expr| -> ExprId { panic!("simplify must not run when disabled") },
+            |_base, _exp, _rhs, _op| -> Vec<String> {
+                panic!("step builder must not run when disabled")
+            },
+        );
+
+        assert_eq!(cleared, 0);
+        assert_eq!(out_base, base);
+        assert_eq!(out_rhs, rhs);
+        assert!(steps.is_empty());
+    }
+
+    #[test]
+    fn execute_pow_exponent_solve_tactic_normalization_with_clears_hints_and_skips_steps_when_no_rewrite(
+    ) {
+        let mut ctx = Context::new();
+        let base = ctx.var("a");
+        let exponent = ctx.var("x");
+        let rhs = ctx.var("b");
+
+        let mut cleared = 0usize;
+        let mut simplified = Vec::new();
+        let mut build_calls = 0usize;
+        let (out_base, out_rhs, steps) = execute_pow_exponent_solve_tactic_normalization_with(
+            base,
+            exponent,
+            rhs,
+            RelOp::Eq,
+            true,
+            || {
+                cleared += 1;
+            },
+            |expr| {
+                simplified.push(expr);
+                expr
+            },
+            |_base, _exp, _rhs, _op| -> Vec<String> {
+                build_calls += 1;
+                vec!["unexpected".to_string()]
+            },
+        );
+
+        assert_eq!(cleared, 2);
+        assert_eq!(simplified, vec![base, rhs]);
+        assert_eq!(build_calls, 0);
+        assert_eq!(out_base, base);
+        assert_eq!(out_rhs, rhs);
+        assert!(steps.is_empty());
+    }
+
+    #[test]
+    fn execute_pow_exponent_solve_tactic_normalization_with_builds_steps_when_rewrite_happens() {
+        let mut ctx = Context::new();
+        let base = ctx.var("a");
+        let exponent = ctx.var("x");
+        let rhs = ctx.var("b");
+        let rewritten_base = ctx.var("ra");
+        let rewritten_rhs = ctx.var("rb");
+
+        let mut cleared = 0usize;
+        let mut simplify_calls = 0usize;
+        let mut observed_args = None;
+        let (out_base, out_rhs, steps) = execute_pow_exponent_solve_tactic_normalization_with(
+            base,
+            exponent,
+            rhs,
+            RelOp::Eq,
+            true,
+            || {
+                cleared += 1;
+            },
+            |expr| {
+                simplify_calls += 1;
+                if expr == base {
+                    rewritten_base
+                } else if expr == rhs {
+                    rewritten_rhs
+                } else {
+                    expr
+                }
+            },
+            |sim_base, sim_exp, sim_rhs, rel_op| {
+                observed_args = Some((sim_base, sim_exp, sim_rhs, rel_op.clone()));
+                vec!["tactic-step".to_string()]
+            },
+        );
+
+        assert_eq!(cleared, 2);
+        assert_eq!(simplify_calls, 2);
+        assert_eq!(out_base, rewritten_base);
+        assert_eq!(out_rhs, rewritten_rhs);
+        assert_eq!(steps, vec!["tactic-step".to_string()]);
+        assert_eq!(
+            observed_args,
+            Some((rewritten_base, exponent, rewritten_rhs, RelOp::Eq))
+        );
     }
 
     #[test]

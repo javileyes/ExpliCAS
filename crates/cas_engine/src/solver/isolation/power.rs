@@ -4,17 +4,18 @@ use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, S
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::solve_outcome::{
     classify_pow_exponent_base_flags, derive_pow_isolation_route,
+    ensure_pow_exponent_rhs_without_variable,
+    execute_and_resolve_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut,
     execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut_and_each_assumption,
     execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps_with,
     execute_pow_exponent_log_isolation_pipeline_with_item_and_merge_with_existing_steps_with,
-    execute_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut,
     execute_pow_exponent_shortcut_pipeline_with_item_and_finalize_with_existing_steps_with,
+    execute_pow_exponent_solve_tactic_normalization_with,
     execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_finalize_with_existing_steps_with,
     plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
-    pow_exponent_rhs_contains_variable, shortcut_bases_equivalent_by_difference_with,
-    solve_solve_tactic_normalization_pipeline_with_item, PowExponentLogDecisionPipelineResult,
-    PowIsolationRoute,
+    shortcut_bases_equivalent_by_difference_with,
+    solve_solve_tactic_normalization_pipeline_with_item, PowIsolationRoute,
 };
 
 use super::isolate;
@@ -179,12 +180,8 @@ fn isolate_pow_exponent(
     }
 
     // SAFETY GUARD: If RHS contains the variable, we cannot invert with log.
-    if pow_exponent_rhs_contains_variable(&simplifier.context, rhs, var) {
-        return Err(CasError::IsolationError(
-            var.to_string(),
-            "Cannot isolate exponential: variable appears on both sides".to_string(),
-        ));
-    }
+    ensure_pow_exponent_rhs_without_variable(&simplifier.context, rhs, var)
+        .map_err(|message| CasError::IsolationError(var.to_string(), message.to_string()))?;
 
     // ================================================================
     // DOMAIN GUARDS for log operation (RealOnly mode)
@@ -213,38 +210,41 @@ fn isolate_pow_exponent(
     // ================================================================
     // SOLVE TACTIC: Pre-simplify base/rhs with Analytic rules in Assume mode
     // ================================================================
-    let (tactic_base, tactic_rhs) = if opts.domain_mode == crate::domain::DomainMode::Assume
-        && opts.value_domain == crate::semantics::ValueDomain::RealOnly
-    {
-        use crate::SimplifyOptions;
-        let tactic_opts = SimplifyOptions::for_solve_tactic(opts.domain_mode);
-
-        crate::domain::clear_blocked_hints();
-
-        let (sim_base, _) = simplifier.simplify_with_options(b, tactic_opts.clone());
-        let (sim_rhs, _) = simplifier.simplify_with_options(rhs, tactic_opts);
-
-        crate::domain::clear_blocked_hints();
-
-        // Add educational step if tactic transformed something.
-        if sim_base != b || sim_rhs != rhs {
-            let include_item = simplifier.collect_steps();
-            let tactic_steps = solve_solve_tactic_normalization_pipeline_with_item(
-                &mut simplifier.context,
-                sim_base,
-                e,
-                sim_rhs,
-                op.clone(),
-                include_item,
-                |item| medium_step(item.description().to_string(), item.equation),
-            );
-            steps.extend(tactic_steps);
-        }
-
-        (sim_base, sim_rhs)
-    } else {
-        (b, rhs)
+    use crate::SimplifyOptions;
+    let solve_tactic_enabled = opts.domain_mode == crate::domain::DomainMode::Assume
+        && opts.value_domain == crate::semantics::ValueDomain::RealOnly;
+    let tactic_opts = SimplifyOptions::for_solve_tactic(opts.domain_mode);
+    let (tactic_base, tactic_rhs, tactic_steps) = {
+        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+        execute_pow_exponent_solve_tactic_normalization_with(
+            b,
+            e,
+            rhs,
+            op.clone(),
+            solve_tactic_enabled,
+            crate::domain::clear_blocked_hints,
+            |expr| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                simplifier_ref
+                    .simplify_with_options(expr, tactic_opts.clone())
+                    .0
+            },
+            |sim_base, exponent, sim_rhs, rel_op| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                let include_item = simplifier_ref.collect_steps();
+                solve_solve_tactic_normalization_pipeline_with_item(
+                    &mut simplifier_ref.context,
+                    sim_base,
+                    exponent,
+                    sim_rhs,
+                    rel_op,
+                    include_item,
+                    |item| medium_step(item.description().to_string(), item.equation),
+                )
+            },
+        )
     };
+    steps.extend(tactic_steps);
 
     let decision = classify_log_solve(
         &simplifier.context,
@@ -257,12 +257,12 @@ fn isolate_pow_exponent(
     let mode = opts.core_domain_mode();
     let wildcard_scope = opts.wildcard_scope();
 
-    let include_item = simplifier.collect_steps();
     let source_equation = Equation {
         lhs,
         rhs,
         op: op.clone(),
     };
+    let include_item = simplifier.collect_steps();
     let terminal_result =
         execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut_and_each_assumption(
             &mut simplifier.context,
@@ -272,11 +272,7 @@ fn isolate_pow_exponent(
             lhs,
             rhs,
             var,
-            Equation {
-                lhs,
-                rhs,
-                op: op.clone(),
-            },
+            source_equation.clone(),
             " (residual)",
             include_item,
             &mut steps,
@@ -290,65 +286,55 @@ fn isolate_pow_exponent(
         );
     let include_items = simplifier.collect_steps();
     let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    match execute_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut(
-        terminal_result,
-        include_items,
-        &mut steps,
-        || {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            plan_pow_exponent_log_unsupported_execution_from_decision_with(
-                &mut simplifier_ref.context,
-                &decision,
-                opts.budget.can_branch(),
-                lhs,
-                rhs,
-                var,
-                e,
-                b,
-                rhs,
-                op.clone(),
-                source_equation,
-                solver_render_expr,
-            )
-        },
-        |equation| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            isolate(
-                equation.lhs,
-                equation.rhs,
-                equation.op.clone(),
-                var,
-                *simplifier_ref,
-                opts,
-                ctx,
-            )
-            .ok()
-            .map(|(solutions, _)| solutions)
-        },
-        |item| medium_step(item.description().to_string(), item.equation),
-        |hint| {
-            let simplifier_ref = runtime_cell.borrow();
-            let blocked_hint = crate::solver::domain_blocked_hint_from_log_blocked_hint(
-                &simplifier_ref.context,
-                hint,
-            );
-            crate::domain::register_blocked_hint(blocked_hint);
-        },
-    ) {
-        PowExponentLogDecisionPipelineResult::Terminal {
-            solution_set,
-            steps,
-        }
-        | PowExponentLogDecisionPipelineResult::UnsupportedSolved {
-            solution_set,
-            steps,
-        } => {
-            return Ok((solution_set, steps));
-        }
-        PowExponentLogDecisionPipelineResult::NeedsComplex { message } => {
-            return Err(CasError::UnsupportedInRealDomain(message.to_string()));
-        }
-        PowExponentLogDecisionPipelineResult::Continue => {}
+    if let Some((solution_set, steps)) =
+        execute_and_resolve_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut(
+            terminal_result,
+            include_items,
+            &mut steps,
+            || {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                plan_pow_exponent_log_unsupported_execution_from_decision_with(
+                    &mut simplifier_ref.context,
+                    &decision,
+                    opts.budget.can_branch(),
+                    lhs,
+                    rhs,
+                    var,
+                    e,
+                    b,
+                    rhs,
+                    op.clone(),
+                    source_equation,
+                    solver_render_expr,
+                )
+            },
+            |equation| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                isolate(
+                    equation.lhs,
+                    equation.rhs,
+                    equation.op.clone(),
+                    var,
+                    *simplifier_ref,
+                    opts,
+                    ctx,
+                )
+                .ok()
+                .map(|(solutions, _)| solutions)
+            },
+            |item| medium_step(item.description().to_string(), item.equation),
+            |hint| {
+                let simplifier_ref = runtime_cell.borrow();
+                let blocked_hint = crate::solver::domain_blocked_hint_from_log_blocked_hint(
+                    &simplifier_ref.context,
+                    hint,
+                );
+                crate::domain::register_blocked_hint(blocked_hint);
+            },
+        )
+        .map_err(|message| CasError::UnsupportedInRealDomain(message.to_string()))?
+    {
+        return Ok((solution_set, steps));
     }
     // ================================================================
     // End of domain guards
