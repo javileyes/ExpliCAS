@@ -63,6 +63,58 @@ where
     symbolic_solutions
 }
 
+/// Classification of one strategy attempt result from the solve loop.
+#[derive(Debug, Clone, PartialEq)]
+pub enum StrategyAttemptResolution<S, E> {
+    /// Strategy did not apply.
+    Skip,
+    /// Strategy solved without further discrete verification work.
+    Solved {
+        solution_set: SolutionSet,
+        steps: Vec<S>,
+    },
+    /// Strategy returned discrete solutions that need caller-side verification.
+    NeedsDiscreteVerification {
+        solutions: Vec<ExprId>,
+        steps: Vec<S>,
+    },
+    /// Recoverable strategy error; solve loop may continue with next strategy.
+    SoftError(E),
+    /// Non-recoverable strategy error.
+    HardError(E),
+}
+
+/// Classify one strategy attempt into skip/solved/discrete-verify/soft/hard.
+///
+/// This keeps strategy-loop control flow in `cas_solver_core` while leaving
+/// expensive numeric verification to the caller.
+pub fn classify_strategy_attempt_result<S, E, FSoft>(
+    strategy_attempt: Option<Result<(SolutionSet, Vec<S>), E>>,
+    should_verify_discrete: bool,
+    mut is_soft_error: FSoft,
+) -> StrategyAttemptResolution<S, E>
+where
+    FSoft: FnMut(&E) -> bool,
+{
+    match strategy_attempt {
+        None => StrategyAttemptResolution::Skip,
+        Some(Ok((SolutionSet::Discrete(solutions), steps))) if should_verify_discrete => {
+            StrategyAttemptResolution::NeedsDiscreteVerification { solutions, steps }
+        }
+        Some(Ok((solution_set, steps))) => StrategyAttemptResolution::Solved {
+            solution_set,
+            steps,
+        },
+        Some(Err(error)) => {
+            if is_soft_error(&error) {
+                StrategyAttemptResolution::SoftError(error)
+            } else {
+                StrategyAttemptResolution::HardError(error)
+            }
+        }
+    }
+}
+
 /// Decide whether a rewritten residual should replace the current one.
 ///
 /// Accept when:
@@ -518,6 +570,79 @@ mod tests {
             classify_equation_var_presence(&ctx, &eq, "x"),
             EquationVarPresence::BothSides
         );
+    }
+
+    #[test]
+    fn classify_strategy_attempt_result_skip_when_not_applicable() {
+        let out = classify_strategy_attempt_result::<(), (), _>(None, true, |_| false);
+        assert_eq!(out, StrategyAttemptResolution::Skip);
+    }
+
+    #[test]
+    fn classify_strategy_attempt_result_solved_for_non_discrete() {
+        let out = classify_strategy_attempt_result::<String, (), _>(
+            Some(Ok((SolutionSet::AllReals, vec!["step".to_string()]))),
+            true,
+            |_: &()| false,
+        );
+        assert_eq!(
+            out,
+            StrategyAttemptResolution::Solved {
+                solution_set: SolutionSet::AllReals,
+                steps: vec!["step".to_string()]
+            }
+        );
+    }
+
+    #[test]
+    fn classify_strategy_attempt_result_discrete_verification_requested() {
+        let out = classify_strategy_attempt_result::<String, (), _>(
+            Some(Ok((
+                SolutionSet::Discrete(vec![ExprId::from_raw(3)]),
+                vec!["step".to_string()],
+            ))),
+            true,
+            |_: &()| false,
+        );
+        assert_eq!(
+            out,
+            StrategyAttemptResolution::NeedsDiscreteVerification {
+                solutions: vec![ExprId::from_raw(3)],
+                steps: vec!["step".to_string()]
+            }
+        );
+    }
+
+    #[test]
+    fn classify_strategy_attempt_result_discrete_without_verification() {
+        let out = classify_strategy_attempt_result::<String, (), _>(
+            Some(Ok((
+                SolutionSet::Discrete(vec![ExprId::from_raw(3)]),
+                vec!["step".to_string()],
+            ))),
+            false,
+            |_: &()| false,
+        );
+        assert_eq!(
+            out,
+            StrategyAttemptResolution::Solved {
+                solution_set: SolutionSet::Discrete(vec![ExprId::from_raw(3)]),
+                steps: vec!["step".to_string()]
+            }
+        );
+    }
+
+    #[test]
+    fn classify_strategy_attempt_result_soft_vs_hard_error() {
+        let soft = classify_strategy_attempt_result::<(), _, _>(Some(Err("soft")), true, |error| {
+            *error == "soft"
+        });
+        assert_eq!(soft, StrategyAttemptResolution::SoftError("soft"));
+
+        let hard = classify_strategy_attempt_result::<(), _, _>(Some(Err("hard")), true, |error| {
+            *error == "soft"
+        });
+        assert_eq!(hard, StrategyAttemptResolution::HardError("hard"));
     }
 
     #[test]

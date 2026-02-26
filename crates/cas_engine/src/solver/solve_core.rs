@@ -17,8 +17,9 @@ use cas_ast::SolutionSet;
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_analysis::{
     apply_nonzero_exclusion_guards_if_any, classify_equation_var_presence,
-    guard_solved_result_with_exclusions, merge_symbolic_with_verified_numeric,
-    normalize_variable_residual_with, simplify_equation_sides_for_var_with, EquationVarPresence,
+    classify_strategy_attempt_result, guard_solved_result_with_exclusions,
+    merge_symbolic_with_verified_numeric, normalize_variable_residual_with,
+    simplify_equation_sides_for_var_with, EquationVarPresence, StrategyAttemptResolution,
 };
 use cas_solver_core::solve_outcome::{
     solve_var_eliminated_outcome_pipeline_with, VarEliminatedOutcomePipelineSolved,
@@ -439,41 +440,41 @@ fn solve_inner(
     let mut last_soft_error: Option<CasError> = None;
     for strategy in strategies {
         let _strategy_name = strategy.name();
-        if let Some(res) = strategy.apply(&simplified_eq, var, simplifier, &opts, &ctx) {
-            match res {
-                Ok((result, steps)) => {
-                    // Verify solutions if Discrete
-                    if let SolutionSet::Discrete(sols) = result {
-                        if !strategy.should_verify() {
-                            return Ok((SolutionSet::Discrete(sols), steps));
-                        }
-                        let (symbolic_solutions, numeric_solutions) =
-                            cas_solver_core::solve_analysis::partition_discrete_symbolic(
-                                &simplifier.context,
-                                &sols,
-                            );
-                        let valid_sols = merge_symbolic_with_verified_numeric(
-                            symbolic_solutions,
-                            numeric_solutions,
-                            |solution| {
-                                // Verify against ORIGINAL equation, not simplified form, so
-                                // domain-invalid roots (e.g. division by zero) are rejected.
-                                super::check::verify_solution_by_equivalence(
-                                    simplifier, eq, var, solution,
-                                )
-                            },
-                        );
-                        return Ok((SolutionSet::Discrete(valid_sols), steps));
-                    }
-                    return Ok((result, steps));
-                }
-                Err(e) => {
-                    if is_soft_strategy_error(&e) {
-                        last_soft_error = Some(e);
-                        continue;
-                    }
-                    return Err(e);
-                }
+        match classify_strategy_attempt_result(
+            strategy.apply(&simplified_eq, var, simplifier, &opts, &ctx),
+            strategy.should_verify(),
+            is_soft_strategy_error,
+        ) {
+            StrategyAttemptResolution::Skip => continue,
+            StrategyAttemptResolution::Solved {
+                solution_set,
+                steps,
+            } => {
+                return Ok((solution_set, steps));
+            }
+            StrategyAttemptResolution::NeedsDiscreteVerification { solutions, steps } => {
+                let (symbolic_solutions, numeric_solutions) =
+                    cas_solver_core::solve_analysis::partition_discrete_symbolic(
+                        &simplifier.context,
+                        &solutions,
+                    );
+                let valid_sols = merge_symbolic_with_verified_numeric(
+                    symbolic_solutions,
+                    numeric_solutions,
+                    |solution| {
+                        // Verify against ORIGINAL equation, not simplified form, so
+                        // domain-invalid roots (e.g. division by zero) are rejected.
+                        super::check::verify_solution_by_equivalence(simplifier, eq, var, solution)
+                    },
+                );
+                return Ok((SolutionSet::Discrete(valid_sols), steps));
+            }
+            StrategyAttemptResolution::SoftError(error) => {
+                last_soft_error = Some(error);
+                continue;
+            }
+            StrategyAttemptResolution::HardError(error) => {
+                return Err(error);
             }
         }
     }
