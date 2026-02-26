@@ -6,7 +6,8 @@ use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{is_known_negative, should_try_reciprocal_solve};
 use cas_solver_core::solve_outcome::{
     derive_add_isolation_operands, derive_div_isolation_route, derive_mul_isolation_operands,
-    derive_sub_isolation_route, execute_division_denominator_plan_with_optional_items,
+    derive_sub_isolation_route,
+    execute_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with,
     execute_division_denominator_sign_split_pipeline_with_optional_items,
     execute_isolated_denominator_sign_split_pipeline_with_optional_items,
     execute_product_zero_inequality_split_pipeline_with_existing_steps,
@@ -14,10 +15,9 @@ use cas_solver_core::solve_outcome::{
     finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
     finalize_product_zero_inequality_solved_sets, merge_solved_with_existing_steps_append,
-    merge_solved_with_existing_steps_prepend, mul_rhs_contains_variable,
-    plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
-    plan_div_numerator_isolation_step_with, plan_division_denominator,
-    plan_division_denominator_sign_split_if_applicable,
+    mul_rhs_contains_variable, plan_add_operand_isolation_step_with,
+    plan_div_denominator_isolation_with_zero_rhs_guard, plan_div_numerator_isolation_step_with,
+    plan_division_denominator, plan_division_denominator_sign_split_if_applicable,
     plan_isolated_denominator_sign_split_if_applicable, plan_mul_factor_isolation_step_with,
     plan_product_zero_inequality_split_if_applicable, plan_sub_isolation_step_with,
     AddIsolationRoute, DivDenominatorIsolationRoute, DivIsolationRoute, SubIsolationRoute,
@@ -437,34 +437,32 @@ pub(super) fn isolate_div(
         let include_items = simplifier.collect_steps();
         let didactic_plan =
             plan_division_denominator(&mut simplifier.context, l, r, rhs, sim_rhs, op.clone());
-        let solved = {
-            let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-            execute_division_denominator_plan_with_optional_items(
-                didactic_plan,
-                include_items,
-                |expr| {
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
-                    simplifier_ref.simplify(expr).0
-                },
-                |expr| {
-                    let simplifier_ref = runtime_cell.borrow();
-                    solver_render_expr(&simplifier_ref.context, expr)
-                },
-                |equation| {
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
-                    isolate(
-                        equation.lhs,
-                        equation.rhs,
-                        equation.op.clone(),
-                        var,
-                        *simplifier_ref,
-                        opts,
-                        ctx,
-                    )
-                },
-                |item| medium_step(item.description().to_string(), item.equation),
-            )?
-        };
-        Ok(merge_solved_with_existing_steps_prepend(solved, steps))
+        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+        execute_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with(
+            didactic_plan,
+            include_items,
+            steps,
+            |expr| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                simplifier_ref.simplify(expr).0
+            },
+            |expr| {
+                let simplifier_ref = runtime_cell.borrow();
+                solver_render_expr(&simplifier_ref.context, expr)
+            },
+            |equation| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                isolate(
+                    equation.lhs,
+                    equation.rhs,
+                    equation.op.clone(),
+                    var,
+                    *simplifier_ref,
+                    opts,
+                    ctx,
+                )
+            },
+            |item| medium_step(item.description().to_string(), item.equation),
+        )
     }
 }

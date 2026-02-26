@@ -836,6 +836,44 @@ where
     ))
 }
 
+/// Resolve and execute base-one shortcut pipeline, then append solved steps
+/// after caller-owned existing steps.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_merge_with_existing_steps_with<
+    S,
+    FRender,
+    FStep,
+>(
+    ctx: &Context,
+    base: ExprId,
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    include_item: bool,
+    existing_steps: Vec<S>,
+    render_expr: FRender,
+    map_item_to_step: FStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FRender: FnMut(&Context, ExprId) -> String,
+    FStep: FnMut(PowerBaseOneShortcutExecutionItem) -> S,
+{
+    let solved = execute_power_base_one_shortcut_pipeline_with_item_for_pow_with(
+        ctx,
+        base,
+        lhs,
+        rhs,
+        op,
+        include_item,
+        render_expr,
+        map_item_to_step,
+    )?;
+    Some(merge_solved_with_existing_steps_append(
+        (solved.solution_set, solved.steps),
+        existing_steps,
+    ))
+}
+
 /// Didactic payload for logarithmic isolation of exponent equations.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowExponentLogIsolationStep {
@@ -2662,6 +2700,100 @@ pub fn merge_solved_with_existing_steps_append<S>(
     (solution_set, merged)
 }
 
+/// Execute log-isolation pipeline and prepend solved steps before caller-owned
+/// existing steps.
+#[allow(clippy::type_complexity)]
+pub fn execute_log_isolation_result_pipeline_or_else_with_and_merge_with_existing_steps_with<
+    E,
+    S,
+    FPlan,
+    FSolve,
+    FMap,
+    FError,
+>(
+    include_item: bool,
+    existing_steps: Vec<S>,
+    plan_rewrite: FPlan,
+    solve_rewritten: FSolve,
+    map_item_to_step: FMap,
+    not_plannable_error: FError,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FPlan: FnMut() -> Option<crate::log_isolation::LogIsolationRewritePlan>,
+    FSolve: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FMap: FnMut(crate::log_isolation::LogIsolationExecutionItem) -> S,
+    FError: FnOnce() -> E,
+{
+    let solved = crate::log_isolation::execute_log_isolation_result_pipeline_or_else_with(
+        include_item,
+        plan_rewrite,
+        solve_rewritten,
+        map_item_to_step,
+        not_plannable_error,
+    )?;
+    Ok(merge_solved_with_existing_steps_prepend(
+        solved,
+        existing_steps,
+    ))
+}
+
+/// Execute unary-inverse pipeline and prepend solved steps before caller-owned
+/// existing steps.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_unary_inverse_result_pipeline_or_else_with_and_merge_with_existing_steps_with<
+    E,
+    S,
+    FPlan,
+    FSimplifyRhs,
+    FSolve,
+    FStep,
+    FError,
+>(
+    fn_name: &str,
+    arg: ExprId,
+    other: ExprId,
+    op: RelOp,
+    is_lhs: bool,
+    include_items: bool,
+    existing_steps: Vec<S>,
+    plan_unary_inverse_step: FPlan,
+    simplify_rhs_with_entries: FSimplifyRhs,
+    solve: FSolve,
+    map_item_to_step: FStep,
+    unsupported_error: FError,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FPlan: FnMut(
+        &str,
+        ExprId,
+        ExprId,
+        RelOp,
+        bool,
+    ) -> Option<crate::function_inverse::UnaryInverseIsolationStepPlan>,
+    FSimplifyRhs: FnMut(ExprId) -> (ExprId, Vec<(String, ExprId)>),
+    FSolve: FnMut(ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(crate::function_inverse::UnaryInverseSolveExecutionItem) -> S,
+    FError: FnOnce() -> E,
+{
+    let solved = crate::function_inverse::execute_unary_inverse_result_pipeline_or_else_with(
+        fn_name,
+        arg,
+        other,
+        op,
+        is_lhs,
+        include_items,
+        plan_unary_inverse_step,
+        simplify_rhs_with_entries,
+        solve,
+        map_item_to_step,
+        unsupported_error,
+    )?;
+    Ok(merge_solved_with_existing_steps_prepend(
+        solved,
+        existing_steps,
+    ))
+}
+
 /// Execute negated-LHS isolation rewrite and optional first-item didactic
 /// projection via caller-provided callbacks.
 pub fn solve_negated_lhs_isolation_with<E, S, FPlan, FSolve, FStep>(
@@ -3312,6 +3444,48 @@ where
         residual_suffix,
         include_item,
         map_item_to_step,
+    ))
+}
+
+/// Resolve log terminal outcome, execute terminal pipeline, and append solved
+/// steps after caller-owned existing steps.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_log_terminal_outcome_pipeline_with_item_and_merge_with_existing_steps_with<
+    S,
+    FStep,
+>(
+    ctx: &mut Context,
+    decision: &LogSolveDecision,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    equation_after: Equation,
+    residual_suffix: &str,
+    include_item: bool,
+    existing_steps: Vec<S>,
+    map_item_to_step: FStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FStep: FnMut(TermIsolationExecutionItem) -> S,
+{
+    let solved = execute_log_terminal_outcome_pipeline_with_item(
+        ctx,
+        decision,
+        mode,
+        wildcard_scope,
+        lhs,
+        rhs,
+        var,
+        equation_after,
+        residual_suffix,
+        include_item,
+        map_item_to_step,
+    )?;
+    Some(merge_solved_with_existing_steps_append(
+        (solved.solution_set, solved.steps),
+        existing_steps,
     ))
 }
 
@@ -4722,6 +4896,44 @@ where
         map_step,
     )?;
     Ok((solved.solution_set, solved.steps))
+}
+
+/// Execute denominator-isolation didactic plan with optional items and prepend
+/// solved steps before caller-owned existing steps.
+pub fn execute_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with<
+    E,
+    TStep,
+    FSimplifyExpr,
+    FRenderExpr,
+    FSolveRewritten,
+    FMapStep,
+>(
+    didactic_plan: DivisionDenominatorDidacticPlan,
+    include_items: bool,
+    existing_steps: Vec<TStep>,
+    simplify_expr: FSimplifyExpr,
+    render_expr: FRenderExpr,
+    solve_rewritten: FSolveRewritten,
+    map_step: FMapStep,
+) -> Result<(SolutionSet, Vec<TStep>), E>
+where
+    FSimplifyExpr: FnMut(ExprId) -> ExprId,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveRewritten: FnMut(&Equation) -> Result<(SolutionSet, Vec<TStep>), E>,
+    FMapStep: FnMut(DivisionDidacticExecutionItem) -> TStep,
+{
+    let solved = execute_division_denominator_plan_with_optional_items(
+        didactic_plan,
+        include_items,
+        simplify_expr,
+        render_expr,
+        solve_rewritten,
+        map_step,
+    )?;
+    Ok(merge_solved_with_existing_steps_prepend(
+        solved,
+        existing_steps,
+    ))
 }
 
 /// Classify numeric RHS sign for `|A| = RHS`.
@@ -6687,6 +6899,35 @@ mod tests {
     }
 
     #[test]
+    fn execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_merge_with_existing_steps_with_appends_existing(
+    ) {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let x = ctx.var("x");
+        let lhs = ctx.add(Expr::Pow(one, x));
+        let rhs = ctx.num(2);
+
+        let solved =
+            execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_merge_with_existing_steps_with(
+                &ctx,
+                one,
+                lhs,
+                rhs,
+                RelOp::Eq,
+                true,
+                vec!["existing".to_string()],
+                |_, _| "2".to_string(),
+                |item| item.description,
+            )
+            .expect("shortcut should apply");
+
+        assert!(matches!(solved.0, SolutionSet::Empty));
+        assert_eq!(solved.1.len(), 2);
+        assert_eq!(solved.1[0], "existing".to_string());
+        assert!(solved.1[1].contains("no solution"));
+    }
+
+    #[test]
     fn abs_equality_precheck_negative_is_empty() {
         assert_eq!(
             abs_equality_precheck(NumericSign::Negative),
@@ -7946,6 +8187,40 @@ mod tests {
 
         assert!(matches!(solved.solution_set, SolutionSet::Empty));
         assert_eq!(solved.steps, vec!["no real solutions".to_string()]);
+    }
+
+    #[test]
+    fn execute_log_terminal_outcome_pipeline_with_item_and_merge_with_existing_steps_with_appends_existing(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let solved =
+            execute_log_terminal_outcome_pipeline_with_item_and_merge_with_existing_steps_with(
+                &mut ctx,
+                &LogSolveDecision::EmptySet("no real solutions"),
+                DomainModeKind::Generic,
+                false,
+                x,
+                y,
+                "x",
+                Equation {
+                    lhs: x,
+                    rhs: y,
+                    op: RelOp::Eq,
+                },
+                " (residual)",
+                true,
+                vec!["existing".to_string()],
+                |item| item.description,
+            )
+            .expect("must produce merged terminal payload");
+
+        assert!(matches!(solved.0, SolutionSet::Empty));
+        assert_eq!(
+            solved.1,
+            vec!["existing".to_string(), "no real solutions".to_string()]
+        );
     }
 
     #[test]
@@ -11278,6 +11553,52 @@ mod tests {
     }
 
     #[test]
+    fn execute_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with_prepends(
+    ) {
+        let mut ctx = Context::new();
+        let n = ctx.var("n");
+        let d = ctx.var("d");
+        let r = ctx.var("r");
+        let isolated_rhs = ctx.var("isolated");
+        let simplified_mul_rhs = ctx.var("simplified");
+        let solve_tail = ctx.var("tail");
+        let existing = ctx.var("existing");
+        let plan = plan_division_denominator_didactic(&mut ctx, n, d, r, isolated_rhs, RelOp::Eq);
+        let expected_divide = plan.divide_equation.clone();
+        let original_multiply_rhs = plan.multiply_equation.rhs;
+
+        let solved =
+            execute_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with(
+                plan,
+                true,
+                vec![existing],
+                |expr| {
+                    assert_eq!(expr, original_multiply_rhs);
+                    simplified_mul_rhs
+                },
+                |id| {
+                    if id == d {
+                        "d".to_string()
+                    } else {
+                        "r".to_string()
+                    }
+                },
+                |equation| {
+                    assert_eq!(equation, &expected_divide);
+                    Ok::<_, ()>((SolutionSet::AllReals, vec![solve_tail]))
+                },
+                |item| item.equation.rhs,
+            )
+            .expect("merge execute helper should solve");
+
+        assert!(matches!(solved.0, SolutionSet::AllReals));
+        assert_eq!(
+            solved.1,
+            vec![simplified_mul_rhs, isolated_rhs, solve_tail, existing]
+        );
+    }
+
+    #[test]
     fn log_isolation_messages_format_expected_text() {
         assert_eq!(
             take_log_base_message("10"),
@@ -13373,6 +13694,95 @@ mod tests {
 
         assert_eq!(merged.0, SolutionSet::Discrete(vec![rhs]));
         assert_eq!(merged.1, vec!["existing".to_string()]);
+    }
+
+    #[test]
+    fn execute_log_isolation_result_pipeline_or_else_with_and_merge_with_existing_steps_with_prepends(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rhs = ctx.var("rhs");
+        let rewrite_eq = Equation {
+            lhs: x,
+            rhs,
+            op: RelOp::Eq,
+        };
+        let rewrite = crate::log_isolation::LogIsolationRewritePlan {
+            equation: rewrite_eq.clone(),
+            items: vec![crate::log_isolation::LogIsolationExecutionItem {
+                equation: rewrite_eq.clone(),
+                description: "Take log".to_string(),
+            }],
+        };
+
+        let merged =
+            execute_log_isolation_result_pipeline_or_else_with_and_merge_with_existing_steps_with(
+                true,
+                vec!["existing".to_string()],
+                || Some(rewrite.clone()),
+                |equation| {
+                    assert_eq!(equation, &rewrite_eq);
+                    Ok::<_, String>((SolutionSet::Discrete(vec![x]), vec!["sub".to_string()]))
+                },
+                |item| item.description().to_string(),
+                || "not-plannable".to_string(),
+            )
+            .expect("log merge wrapper should solve");
+
+        assert_eq!(merged.0, SolutionSet::Discrete(vec![x]));
+        assert_eq!(
+            merged.1,
+            vec![
+                "Take log".to_string(),
+                "sub".to_string(),
+                "existing".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn execute_unary_inverse_result_pipeline_or_else_with_and_merge_with_existing_steps_with_prepends(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rhs = ctx.var("rhs");
+
+        let merged =
+            execute_unary_inverse_result_pipeline_or_else_with_and_merge_with_existing_steps_with(
+                "sqrt",
+                x,
+                rhs,
+                RelOp::Eq,
+                true,
+                true,
+                vec!["existing".to_string()],
+                |fn_name, arg, other, op, is_lhs| {
+                    crate::function_inverse::plan_unary_inverse_isolation_step(
+                        &mut ctx, fn_name, arg, other, op, is_lhs,
+                    )
+                },
+                |rhs_expr| (rhs_expr, Vec::<(String, ExprId)>::new()),
+                |solve_lhs, solve_rhs, solve_op| {
+                    assert_eq!(solve_lhs, x);
+                    assert_eq!(solve_op, RelOp::Eq);
+                    Ok::<_, String>((
+                        SolutionSet::Discrete(vec![solve_rhs]),
+                        vec!["sub".to_string()],
+                    ))
+                },
+                |item| item.description().to_string(),
+                || "unsupported".to_string(),
+            )
+            .expect("unary merge wrapper should solve");
+
+        assert_eq!(
+            merged.1,
+            vec![
+                "Square both sides".to_string(),
+                "sub".to_string(),
+                "existing".to_string()
+            ]
+        );
     }
 
     #[test]

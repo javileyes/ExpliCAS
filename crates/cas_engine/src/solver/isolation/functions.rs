@@ -1,22 +1,20 @@
+use super::isolate;
 use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, SolverOptions};
 use cas_ast::symbol::SymbolId;
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::function_inverse::{
-    derive_function_isolation_route, execute_unary_inverse_result_pipeline_or_else_with,
-    plan_unary_inverse_isolation_step, FunctionIsolationRoute, FunctionIsolationRouteError,
+    derive_function_isolation_route, plan_unary_inverse_isolation_step, FunctionIsolationRoute,
+    FunctionIsolationRouteError,
 };
-use cas_solver_core::log_isolation::{
-    execute_log_isolation_result_pipeline_or_else_with, plan_log_isolation_step_with,
-};
+use cas_solver_core::log_isolation::plan_log_isolation_step_with;
 use cas_solver_core::solve_outcome::{
     execute_abs_isolation_plan_pipeline_with_optional_items_and_solver,
-    finalize_abs_split_solution_set_for_rhs, merge_solved_with_existing_steps_prepend,
-    plan_abs_isolation_with_rhs_sign,
+    execute_log_isolation_result_pipeline_or_else_with_and_merge_with_existing_steps_with,
+    execute_unary_inverse_result_pipeline_or_else_with_and_merge_with_existing_steps_with,
+    finalize_abs_split_solution_set_for_rhs, plan_abs_isolation_with_rhs_sign,
 };
-
-use super::isolate;
 
 /// Handle isolation for `Function(fn_id, args)`: abs, log, ln, exp, sqrt, trig
 #[allow(clippy::too_many_arguments)]
@@ -125,45 +123,43 @@ fn isolate_log(
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let include_item = simplifier.collect_steps();
-    let solved = {
-        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        execute_log_isolation_result_pipeline_or_else_with(
-            include_item,
-            || {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                plan_log_isolation_step_with(
-                    &mut simplifier_ref.context,
-                    base,
-                    arg,
-                    rhs,
-                    var,
-                    op.clone(),
-                    solver_render_expr,
-                )
-            },
-            |equation| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                let (solution_set, solved_steps) = isolate(
-                    equation.lhs,
-                    equation.rhs,
-                    equation.op.clone(),
-                    var,
-                    *simplifier_ref,
-                    opts,
-                    ctx,
-                )?;
-                Ok::<(SolutionSet, Vec<SolveStep>), CasError>((solution_set, solved_steps))
-            },
-            |item| medium_step(item.description().to_string(), item.equation),
-            || {
-                CasError::IsolationError(
-                    var.to_string(),
-                    "Cannot isolate from log function".to_string(),
-                )
-            },
-        )?
-    };
-    Ok(merge_solved_with_existing_steps_prepend(solved, steps))
+    let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+    execute_log_isolation_result_pipeline_or_else_with_and_merge_with_existing_steps_with(
+        include_item,
+        steps,
+        || {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            plan_log_isolation_step_with(
+                &mut simplifier_ref.context,
+                base,
+                arg,
+                rhs,
+                var,
+                op.clone(),
+                solver_render_expr,
+            )
+        },
+        |equation| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            let (solution_set, solved_steps) = isolate(
+                equation.lhs,
+                equation.rhs,
+                equation.op.clone(),
+                var,
+                *simplifier_ref,
+                opts,
+                ctx,
+            )?;
+            Ok::<(SolutionSet, Vec<SolveStep>), CasError>((solution_set, solved_steps))
+        },
+        |item| medium_step(item.description().to_string(), item.equation),
+        || {
+            CasError::IsolationError(
+                var.to_string(),
+                "Cannot isolate from log function".to_string(),
+            )
+        },
+    )
 }
 
 /// Handle single-argument functions: ln, exp, sqrt, sin, cos, tan
@@ -181,42 +177,40 @@ fn isolate_unary_function(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let fn_name = simplifier.context.sym_name(fn_id).to_string();
     let include_items = simplifier.collect_steps();
-    let solved = {
-        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        execute_unary_inverse_result_pipeline_or_else_with(
-            &fn_name,
-            arg,
-            rhs,
-            op.clone(),
-            true,
-            include_items,
-            |inner_fn_name, inner_arg, inner_other, inner_op, inner_is_lhs| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                plan_unary_inverse_isolation_step(
-                    &mut simplifier_ref.context,
-                    inner_fn_name,
-                    inner_arg,
-                    inner_other,
-                    inner_op,
-                    inner_is_lhs,
-                )
-            },
-            |rhs_expr| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                let (simplified_rhs, sim_steps) = simplifier_ref.simplify(rhs_expr);
-                let entries = sim_steps
-                    .into_iter()
-                    .map(|step| (step.description, step.after))
-                    .collect::<Vec<_>>();
-                (simplified_rhs, entries)
-            },
-            |lhs, rhs, inner_op| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                isolate(lhs, rhs, inner_op, var, *simplifier_ref, opts, ctx)
-            },
-            |item| medium_step(item.description().to_string(), item.equation),
-            || CasError::UnknownFunction(fn_name.clone()),
-        )?
-    };
-    Ok(merge_solved_with_existing_steps_prepend(solved, steps))
+    let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+    execute_unary_inverse_result_pipeline_or_else_with_and_merge_with_existing_steps_with(
+        &fn_name,
+        arg,
+        rhs,
+        op.clone(),
+        true,
+        include_items,
+        steps,
+        |inner_fn_name, inner_arg, inner_other, inner_op, inner_is_lhs| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            plan_unary_inverse_isolation_step(
+                &mut simplifier_ref.context,
+                inner_fn_name,
+                inner_arg,
+                inner_other,
+                inner_op,
+                inner_is_lhs,
+            )
+        },
+        |rhs_expr| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            let (simplified_rhs, sim_steps) = simplifier_ref.simplify(rhs_expr);
+            let entries = sim_steps
+                .into_iter()
+                .map(|step| (step.description, step.after))
+                .collect::<Vec<_>>();
+            (simplified_rhs, entries)
+        },
+        |lhs, rhs, inner_op| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            isolate(lhs, rhs, inner_op, var, *simplifier_ref, opts, ctx)
+        },
+        |item| medium_step(item.description().to_string(), item.equation),
+        || CasError::UnknownFunction(fn_name.clone()),
+    )
 }

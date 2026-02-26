@@ -5,15 +5,15 @@ use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
     classify_pow_exponent_base_flags, derive_pow_isolation_route,
-    execute_log_terminal_outcome_pipeline_with_item,
+    execute_log_terminal_outcome_pipeline_with_item_and_merge_with_existing_steps_with,
     execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps_with,
     execute_pow_exponent_log_isolation_pipeline_with_item_and_merge_with_existing_steps_with,
     execute_pow_exponent_log_unsupported_pipeline_from_decision_with,
     execute_pow_exponent_shortcut_pipeline_with_item_with,
-    execute_power_base_one_shortcut_pipeline_with_item_for_pow_with,
+    execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_merge_with_existing_steps_with,
     finalize_pow_exponent_log_unsupported_pipeline_with_existing_steps,
     finalize_pow_exponent_shortcut_pipeline_with_existing_steps,
-    merge_solved_with_existing_steps_append, plan_pow_exponent_log_isolation_step_with,
+    plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
     pow_exponent_rhs_contains_variable, shortcut_bases_equivalent_by_difference_with,
     solve_solve_tactic_normalization_pipeline_with_item, PowIsolationRoute,
@@ -196,20 +196,20 @@ fn isolate_pow_exponent(
     // ================================================================
     // GUARD 1: Handle base = 1 special case
     let include_item = simplifier.collect_steps();
-    if let Some(solved_shortcut) = execute_power_base_one_shortcut_pipeline_with_item_for_pow_with(
-        &simplifier.context,
-        b,
-        lhs,
-        rhs,
-        op.clone(),
-        include_item,
-        solver_render_expr,
-        |item| medium_step(item.description().to_string(), item.equation),
-    ) {
-        return Ok(merge_solved_with_existing_steps_append(
-            (solved_shortcut.solution_set, solved_shortcut.steps),
-            steps,
-        ));
+    if let Some(solved_shortcut) =
+        execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_merge_with_existing_steps_with(
+            &simplifier.context,
+            b,
+            lhs,
+            rhs,
+            op.clone(),
+            include_item,
+            steps.clone(),
+            solver_render_expr,
+            |item| medium_step(item.description().to_string(), item.equation),
+        )
+    {
+        return Ok(solved_shortcut);
     }
 
     // ================================================================
@@ -263,27 +263,27 @@ fn isolate_pow_exponent(
     let wildcard_scope = opts.wildcard_scope();
 
     let include_item = simplifier.collect_steps();
-    if let Some(solved_terminal) = execute_log_terminal_outcome_pipeline_with_item(
-        &mut simplifier.context,
-        &decision,
-        mode,
-        wildcard_scope,
-        lhs,
-        rhs,
-        var,
-        Equation {
+    if let Some(solved_terminal) =
+        execute_log_terminal_outcome_pipeline_with_item_and_merge_with_existing_steps_with(
+            &mut simplifier.context,
+            &decision,
+            mode,
+            wildcard_scope,
             lhs,
             rhs,
-            op: op.clone(),
-        },
-        " (residual)",
-        include_item,
-        |item| medium_step(item.description().to_string(), item.equation),
-    ) {
-        return Ok(merge_solved_with_existing_steps_append(
-            (solved_terminal.solution_set, solved_terminal.steps),
-            steps,
-        ));
+            var,
+            Equation {
+                lhs,
+                rhs,
+                op: op.clone(),
+            },
+            " (residual)",
+            include_item,
+            steps.clone(),
+            |item| medium_step(item.description().to_string(), item.equation),
+        )
+    {
+        return Ok(solved_terminal);
     }
 
     for assumption in decision_assumptions(&decision).iter().copied() {
