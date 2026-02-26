@@ -28,7 +28,7 @@ use cas_solver_core::isolation_utils::is_numeric_zero;
 use cas_solver_core::verification::{
     verify_solution_set_with, verify_substituted_residual_with_strict_fold_and_generic_fallback,
 };
-use cas_solver_core::verify_substitution::{substitute_equation_diff, substitute_equation_sides};
+use cas_solver_core::verify_substitution::{substitute_equation_diff, verify_solution_with};
 use std::cell::RefCell;
 
 use crate::engine::Simplifier;
@@ -127,11 +127,23 @@ pub(crate) fn verify_solution_by_equivalence(
     var: &str,
     solution: ExprId,
 ) -> bool {
-    let (lhs_sub, rhs_sub) =
-        substitute_equation_sides(&mut simplifier.context, equation, var, solution);
-    let lhs_simplified = simplifier.simplify(lhs_sub).0;
-    let rhs_simplified = simplifier.simplify(rhs_sub).0;
-    simplifier.are_equivalent(lhs_simplified, rhs_simplified)
+    let simplifier_ref = RefCell::new(simplifier);
+    verify_solution_with(
+        equation,
+        var,
+        solution,
+        |eq, var_name, candidate| {
+            let mut simplifier = simplifier_ref.borrow_mut();
+            cas_solver_core::verify_substitution::substitute_equation_sides(
+                &mut simplifier.context,
+                eq,
+                var_name,
+                candidate,
+            )
+        },
+        |expr| simplifier_ref.borrow_mut().simplify(expr).0,
+        |lhs, rhs| simplifier_ref.borrow_mut().are_equivalent(lhs, rhs),
+    )
 }
 
 /// Verify a solution set, handling all SolutionSet variants.

@@ -18,7 +18,7 @@ use cas_solver_core::strategy_kernels::{
 };
 use cas_solver_core::unwrap_plan::{
     route_unwrap_entry_with_item,
-    solve_unwrap_entry_routing_option_with_execution_pipeline_with_item, LogLinearAssumptionRecord,
+    solve_unwrap_entry_routing_option_with_execution_pipeline_with_item,
 };
 use std::cell::RefCell;
 
@@ -97,26 +97,27 @@ impl SolverStrategy for UnwrapStrategy {
             solver_render_expr,
             |item: TermIsolationExecutionItem| medium_step(item.description, item.equation),
         );
-        let mut assumption_records: Vec<LogLinearAssumptionRecord> = Vec::new();
+        let simplifier_ref = RefCell::new(simplifier);
         let solved = solve_unwrap_entry_routing_option_with_execution_pipeline_with_item(
             routed,
             var,
             include_item,
-            |record| assumption_records.push(record),
+            |record| {
+                let simplifier = simplifier_ref.borrow();
+                let event = crate::solver::assumption_event_from_log_assumption_targets(
+                    &simplifier.context,
+                    record.assumption,
+                    record.base,
+                    record.other_side,
+                );
+                ctx.note_assumption(event);
+            },
             |equation, solve_var| {
-                solve_with_ctx_and_options(equation, solve_var, simplifier, *opts, ctx)
+                let mut simplifier = simplifier_ref.borrow_mut();
+                solve_with_ctx_and_options(equation, solve_var, &mut simplifier, *opts, ctx)
             },
             |item| medium_step(item.description, item.equation),
         );
-        for record in assumption_records {
-            let event = crate::solver::assumption_event_from_log_assumption_targets(
-                &simplifier.context,
-                record.assumption,
-                record.base,
-                record.other_side,
-            );
-            ctx.note_assumption(event);
-        }
         solved
     }
 

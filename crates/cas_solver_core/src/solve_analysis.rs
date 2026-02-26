@@ -347,6 +347,42 @@ where
     )
 }
 
+/// Apply ordered equation-side rewrites and re-simplify each changed side.
+///
+/// The sequence is:
+/// 1) structural rewrite attempt
+/// 2) semantic rewrite attempt on the latest side pair
+///
+/// Each successful rewrite updates both sides and runs `simplify_for_solve`
+/// on each changed side before the next phase.
+pub fn apply_equation_pair_rewrite_sequence_with<FStructural, FSemantic, FSimplify>(
+    lhs: ExprId,
+    rhs: ExprId,
+    mut structural_rewrite: FStructural,
+    mut semantic_rewrite: FSemantic,
+    mut simplify_for_solve: FSimplify,
+) -> (ExprId, ExprId)
+where
+    FStructural: FnMut(ExprId, ExprId) -> Option<(ExprId, ExprId)>,
+    FSemantic: FnMut(ExprId, ExprId) -> Option<(ExprId, ExprId)>,
+    FSimplify: FnMut(ExprId) -> ExprId,
+{
+    let mut current_lhs = lhs;
+    let mut current_rhs = rhs;
+
+    if let Some((new_lhs, new_rhs)) = structural_rewrite(current_lhs, current_rhs) {
+        current_lhs = simplify_for_solve(new_lhs);
+        current_rhs = simplify_for_solve(new_rhs);
+    }
+
+    if let Some((new_lhs, new_rhs)) = semantic_rewrite(current_lhs, current_rhs) {
+        current_lhs = simplify_for_solve(new_lhs);
+        current_rhs = simplify_for_solve(new_rhs);
+    }
+
+    (current_lhs, current_rhs)
+}
+
 /// Return the candidate residual when the rewrite is meaningfully better.
 pub fn accept_residual_rewrite_candidate(
     ctx: &Context,
@@ -1036,6 +1072,84 @@ mod tests {
         assert_eq!(simplified.lhs, lhs);
         assert_eq!(simplified.rhs, two);
         assert_eq!(*simplified_calls.borrow(), vec![lhs]);
+    }
+
+    #[test]
+    fn apply_equation_pair_rewrite_sequence_runs_structural_then_semantic() {
+        let mut ctx = Context::new();
+        let lhs0 = ctx.num(1);
+        let rhs0 = ctx.num(2);
+        let lhs1 = ctx.num(3);
+        let rhs1 = ctx.num(4);
+        let lhs1_sim = ctx.num(5);
+        let rhs1_sim = ctx.num(6);
+        let lhs2 = ctx.num(7);
+        let rhs2 = ctx.num(8);
+
+        let seen_semantic = RefCell::new(None::<(ExprId, ExprId)>);
+        let simplify_calls = RefCell::new(Vec::new());
+
+        let (lhs_out, rhs_out) = apply_equation_pair_rewrite_sequence_with(
+            lhs0,
+            rhs0,
+            |lhs, rhs| {
+                if lhs == lhs0 && rhs == rhs0 {
+                    Some((lhs1, rhs1))
+                } else {
+                    None
+                }
+            },
+            |lhs, rhs| {
+                *seen_semantic.borrow_mut() = Some((lhs, rhs));
+                if lhs == lhs1_sim && rhs == rhs1_sim {
+                    Some((lhs2, rhs2))
+                } else {
+                    None
+                }
+            },
+            |expr| {
+                simplify_calls.borrow_mut().push(expr);
+                if expr == lhs1 {
+                    lhs1_sim
+                } else if expr == rhs1 {
+                    rhs1_sim
+                } else {
+                    expr
+                }
+            },
+        );
+
+        assert_eq!(seen_semantic.borrow().as_ref(), Some(&(lhs1_sim, rhs1_sim)));
+        assert_eq!(lhs_out, lhs2);
+        assert_eq!(rhs_out, rhs2);
+        assert_eq!(
+            *simplify_calls.borrow(),
+            vec![lhs1, rhs1, lhs2, rhs2],
+            "each accepted rewrite should simplify both sides"
+        );
+    }
+
+    #[test]
+    fn apply_equation_pair_rewrite_sequence_keeps_original_when_no_rewrites() {
+        let mut ctx = Context::new();
+        let lhs = ctx.num(11);
+        let rhs = ctx.num(12);
+        let simplify_calls = Cell::new(0usize);
+
+        let (lhs_out, rhs_out) = apply_equation_pair_rewrite_sequence_with(
+            lhs,
+            rhs,
+            |_lhs, _rhs| None,
+            |_lhs, _rhs| None,
+            |expr| {
+                simplify_calls.set(simplify_calls.get() + 1);
+                expr
+            },
+        );
+
+        assert_eq!(lhs_out, lhs);
+        assert_eq!(rhs_out, rhs);
+        assert_eq!(simplify_calls.get(), 0);
     }
 
     #[test]

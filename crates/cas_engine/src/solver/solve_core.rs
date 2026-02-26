@@ -9,10 +9,11 @@ use crate::error::CasError;
 use cas_ast::SolutionSet;
 use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::solve_analysis::{
-    apply_nonzero_exclusion_guards_if_any, classify_equation_var_presence,
-    finalize_strategy_attempt_sequence_with, guard_solved_result_with_exclusions,
-    normalize_variable_residual_with, resolve_discrete_strategy_solutions_with,
-    run_strategy_attempt_sequence, simplify_equation_sides_for_presence_with, EquationVarPresence,
+    apply_equation_pair_rewrite_sequence_with, apply_nonzero_exclusion_guards_if_any,
+    classify_equation_var_presence, finalize_strategy_attempt_sequence_with,
+    guard_solved_result_with_exclusions, normalize_variable_residual_with,
+    resolve_discrete_strategy_solutions_with, run_strategy_attempt_sequence,
+    simplify_equation_sides_for_presence_with, EquationVarPresence,
 };
 use cas_solver_core::solve_outcome::{
     solve_var_eliminated_outcome_pipeline_with, VarEliminatedOutcomePipelineSolved,
@@ -289,29 +290,40 @@ fn solve_inner(
         ),
         "cancel_common_terms precondition: RHS top-level is Sub (not canonical)"
     );
-    if let Some(cr) = crate::rules::cancel_common_terms::cancel_common_additive_terms(
-        &mut simplifier.context,
-        simplified_eq.lhs,
-        simplified_eq.rhs,
-    ) {
-        // Re-simplify after cancellation (cheap — expression is smaller now)
-        simplified_eq.lhs = simplifier.simplify_for_solve(cr.new_lhs);
-        simplified_eq.rhs = simplifier.simplify_for_solve(cr.new_rhs);
-    }
-
     // SEMANTIC CANCEL FALLBACK: for remaining unmatched terms, try
     // simplify(term_L - term_R) == 0 to catch semantically equivalent
     // terms that don't converge to the same AST under structural comparison.
     // Examples: sin(arccos(x)) vs sqrt(1-x²), abs(x^n) vs abs(x)^n.
     // Runs AFTER structural cancel to avoid redundant simplifications.
-    if let Some(cr) = crate::rules::cancel_common_terms::cancel_additive_terms_semantic(
-        simplifier,
-        simplified_eq.lhs,
-        simplified_eq.rhs,
-    ) {
-        simplified_eq.lhs = simplifier.simplify_for_solve(cr.new_lhs);
-        simplified_eq.rhs = simplifier.simplify_for_solve(cr.new_rhs);
-    }
+    let (mut simplified_eq, simplifier) = {
+        let simplifier_ref = RefCell::new(simplifier);
+        let (lhs, rhs) = apply_equation_pair_rewrite_sequence_with(
+            simplified_eq.lhs,
+            simplified_eq.rhs,
+            |lhs, rhs| {
+                let mut simplifier = simplifier_ref.borrow_mut();
+                crate::rules::cancel_common_terms::cancel_common_additive_terms(
+                    &mut simplifier.context,
+                    lhs,
+                    rhs,
+                )
+                .map(|rewrite| (rewrite.new_lhs, rewrite.new_rhs))
+            },
+            |lhs, rhs| {
+                let mut simplifier = simplifier_ref.borrow_mut();
+                crate::rules::cancel_common_terms::cancel_additive_terms_semantic(
+                    &mut simplifier,
+                    lhs,
+                    rhs,
+                )
+                .map(|rewrite| (rewrite.new_lhs, rewrite.new_rhs))
+            },
+            |expr| simplifier_ref.borrow_mut().simplify_for_solve(expr),
+        );
+        simplified_eq.lhs = lhs;
+        simplified_eq.rhs = rhs;
+        (simplified_eq, simplifier_ref.into_inner())
+    };
 
     // CRITICAL: After simplification, check for identities and contradictions
     // Do this by moving everything to one side: LHS - RHS
