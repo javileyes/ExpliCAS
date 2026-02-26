@@ -4,19 +4,19 @@ use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, S
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
-    build_pow_base_isolation_action_with, classify_pow_exponent_base_flags,
-    derive_pow_isolation_route, execute_log_terminal_outcome_pipeline_with_item,
+    classify_pow_exponent_base_flags, derive_pow_isolation_route,
+    execute_log_terminal_outcome_pipeline_with_item,
+    execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps_with,
     execute_pow_exponent_log_isolation_pipeline_with_item_with,
     execute_pow_exponent_log_unsupported_pipeline_from_decision_with,
     execute_pow_exponent_shortcut_pipeline_with_item_with,
     execute_power_base_one_shortcut_pipeline_with_item_for_pow_with,
     finalize_pow_exponent_log_unsupported_pipeline_with_existing_steps,
     finalize_pow_exponent_shortcut_pipeline_with_existing_steps,
-    merge_pow_base_isolation_pipeline_with_existing_steps, merge_solved_with_existing_steps_append,
-    merge_solved_with_existing_steps_prepend, plan_pow_exponent_log_isolation_step_with,
+    merge_solved_with_existing_steps_append, merge_solved_with_existing_steps_prepend,
+    plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
     pow_exponent_rhs_contains_variable, shortcut_bases_equivalent_by_difference_with,
-    solve_pow_base_isolation_pipeline_with_item,
     solve_solve_tactic_normalization_pipeline_with_item, PowIsolationRoute,
 };
 
@@ -82,28 +82,28 @@ fn isolate_pow_base(
     steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let action = build_pow_base_isolation_action_with(
-        &mut simplifier.context,
-        b,
-        e,
-        rhs,
-        op,
-        solver_render_expr,
-    );
-    let solved_base = {
-        let include_item = simplifier.collect_steps();
-        solve_pow_base_isolation_pipeline_with_item(
-            action,
-            include_item,
-            |iso_lhs, iso_rhs, iso_op| {
-                isolate(iso_lhs, iso_rhs, iso_op, var, simplifier, opts, ctx)
-            },
-            |item| medium_step(item.description().to_string(), item.equation),
-        )?
-    };
-    let (solution_set, merged_steps) =
-        merge_pow_base_isolation_pipeline_with_existing_steps(solved_base, steps);
-    Ok((solution_set, merged_steps))
+    let include_item = simplifier.collect_steps();
+    let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+    execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps_with(
+        include_item,
+        steps,
+        || {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            cas_solver_core::solve_outcome::build_pow_base_isolation_action_with(
+                &mut simplifier_ref.context,
+                b,
+                e,
+                rhs,
+                op,
+                solver_render_expr,
+            )
+        },
+        |iso_lhs, iso_rhs, iso_op| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            isolate(iso_lhs, iso_rhs, iso_op, var, *simplifier_ref, opts, ctx)
+        },
+        |item| medium_step(item.description().to_string(), item.equation),
+    )
 }
 
 /// Handle `B^E = RHS` when variable is in `E` (the exponent) — logarithmic isolation

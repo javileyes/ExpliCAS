@@ -1239,6 +1239,27 @@ where
     }
 }
 
+/// Execute base-isolation pipeline from a deferred action builder.
+pub fn execute_pow_base_isolation_pipeline_with_item_with<E, S, FPlan, FSolve, FStep>(
+    include_item: bool,
+    plan_action: FPlan,
+    solve_isolate: FSolve,
+    map_item_to_step: FStep,
+) -> Result<PowBaseIsolationPipelineSolved<S>, E>
+where
+    FPlan: FnOnce() -> PowBaseIsolationEngineAction,
+    FSolve: FnMut(ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(PowBaseIsolationExecutionItem) -> S,
+{
+    let action = plan_action();
+    solve_pow_base_isolation_pipeline_with_item(
+        action,
+        include_item,
+        solve_isolate,
+        map_item_to_step,
+    )
+}
+
 /// Merge a base-isolation pipeline outcome with caller-owned pre-existing steps.
 pub fn merge_pow_base_isolation_pipeline_with_existing_steps<S>(
     solved: PowBaseIsolationPipelineSolved<S>,
@@ -1262,6 +1283,37 @@ pub fn merge_pow_base_isolation_pipeline_with_existing_steps<S>(
             (solution_set, merged)
         }
     }
+}
+
+/// Execute and merge base-isolation pipeline with caller-owned pre-existing steps.
+pub fn execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps_with<
+    E,
+    S,
+    FPlan,
+    FSolve,
+    FStep,
+>(
+    include_item: bool,
+    existing_steps: Vec<S>,
+    plan_action: FPlan,
+    solve_isolate: FSolve,
+    map_item_to_step: FStep,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FPlan: FnOnce() -> PowBaseIsolationEngineAction,
+    FSolve: FnMut(ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(PowBaseIsolationExecutionItem) -> S,
+{
+    let solved = execute_pow_base_isolation_pipeline_with_item_with(
+        include_item,
+        plan_action,
+        solve_isolate,
+        map_item_to_step,
+    )?;
+    Ok(merge_pow_base_isolation_pipeline_with_existing_steps(
+        solved,
+        existing_steps,
+    ))
 }
 
 /// Didactic payload for one branch produced by absolute-value splitting.
@@ -9611,6 +9663,88 @@ mod tests {
             }
             other => panic!("expected terminal pipeline result, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn execute_pow_base_isolation_pipeline_with_item_with_plans_then_solves() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("x");
+        let rhs = ctx.var("r");
+        let item_equation = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+        let mut plan_calls = 0usize;
+        let mut solve_calls = 0usize;
+        let solved = execute_pow_base_isolation_pipeline_with_item_with(
+            true,
+            || {
+                plan_calls += 1;
+                PowBaseIsolationEngineAction::IsolateBase {
+                    lhs,
+                    rhs,
+                    op: RelOp::Eq,
+                    items: vec![PowBaseIsolationExecutionItem {
+                        equation: item_equation,
+                        description: "Take root".to_string(),
+                    }],
+                }
+            },
+            |_lhs, _rhs, _op| {
+                solve_calls += 1;
+                Ok::<_, ()>((SolutionSet::AllReals, vec!["sub".to_string()]))
+            },
+            |item| item.description,
+        )
+        .expect("execute wrapper should solve");
+
+        assert_eq!(plan_calls, 1);
+        assert_eq!(solve_calls, 1);
+        match solved {
+            PowBaseIsolationPipelineSolved::Isolated { steps, .. } => {
+                assert_eq!(steps, vec!["Take root".to_string(), "sub".to_string()]);
+            }
+            other => panic!("expected isolated pipeline result, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps_with_merges() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("x");
+        let rhs = ctx.var("r");
+        let merged =
+            execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps_with(
+                true,
+                vec!["existing".to_string()],
+                || PowBaseIsolationEngineAction::IsolateBase {
+                    lhs,
+                    rhs,
+                    op: RelOp::Eq,
+                    items: vec![PowBaseIsolationExecutionItem {
+                        equation: Equation {
+                            lhs,
+                            rhs,
+                            op: RelOp::Eq,
+                        },
+                        description: "Take root".to_string(),
+                    }],
+                },
+                |_lhs, _rhs, _op| Ok::<_, ()>((SolutionSet::Empty, vec!["sub".to_string()])),
+                |item| item.description,
+            )
+            .expect("execute+merge wrapper should solve");
+
+        assert!(matches!(merged.0, SolutionSet::Empty));
+        assert_eq!(
+            merged.1,
+            vec![
+                "Take root".to_string(),
+                "sub".to_string(),
+                "existing".to_string()
+            ]
+        );
     }
 
     #[test]
