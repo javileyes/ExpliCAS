@@ -416,6 +416,66 @@ where
     })
 }
 
+/// Finalize an already-solved factored linear-collect kernel with optional
+/// didactic item mapping.
+pub fn solve_linear_collect_factored_solved_pipeline_with_items<S, FBuildExecution, FStep>(
+    var: &str,
+    solved: LinearCollectFactoredSolve,
+    include_items: bool,
+    mut build_execution: FBuildExecution,
+    map_item_to_step: FStep,
+) -> (SolutionSet, Vec<S>)
+where
+    FBuildExecution: FnMut(&str, LinearCollectFactoredSolve) -> LinearCollectSolveExecution,
+    FStep: FnMut(LinearCollectExecutionItem) -> S,
+{
+    if include_items {
+        let execution = build_execution(var, solved);
+        let solved_execution =
+            solve_linear_collect_execution_pipeline_with_items(execution, true, map_item_to_step);
+        return solved_execution.solved;
+    }
+
+    let solution_set = build_linear_solution_set(
+        solved.coeff,
+        solved.rhs_term,
+        solved.solution,
+        solved.coeff_status,
+        solved.rhs_status,
+    );
+    (solution_set, Vec::new())
+}
+
+/// Finalize an already-solved additive linear-collect kernel with optional
+/// didactic item mapping.
+pub fn solve_linear_collect_additive_solved_pipeline_with_items<S, FBuildExecution, FStep>(
+    var: &str,
+    solved: LinearCollectAdditiveSolve,
+    include_items: bool,
+    mut build_execution: FBuildExecution,
+    map_item_to_step: FStep,
+) -> (SolutionSet, Vec<S>)
+where
+    FBuildExecution: FnMut(&str, LinearCollectAdditiveSolve) -> LinearCollectSolveExecution,
+    FStep: FnMut(LinearCollectExecutionItem) -> S,
+{
+    if include_items {
+        let execution = build_execution(var, solved);
+        let solved_execution =
+            solve_linear_collect_execution_pipeline_with_items(execution, true, map_item_to_step);
+        return solved_execution.solved;
+    }
+
+    let solution_set = build_linear_solution_set(
+        solved.coeff,
+        solved.constant,
+        solved.solution,
+        solved.coeff_status,
+        solved.constant_status,
+    );
+    (solution_set, Vec::new())
+}
+
 /// Solve factored linear-collect with closure hooks and optional didactic mapping.
 pub fn solve_linear_collect_factored_pipeline_with_and_items<S, FSolve, FBuildExecution, FStep>(
     lhs: ExprId,
@@ -995,6 +1055,74 @@ mod tests {
         let solved =
             solve_linear_collect_execution_pipeline_with_items(execution, false, |_item| 1u8);
         assert!(solved.solved.1.is_empty());
+    }
+
+    #[test]
+    fn solve_linear_collect_factored_solved_pipeline_with_items_maps_steps_when_enabled() {
+        let mut ctx = Context::new();
+        let coeff = ctx.var("k");
+        let rhs_term = ctx.var("rhs");
+        let solution = ctx.var("s");
+        let solved = LinearCollectFactoredSolve {
+            coeff,
+            rhs_term,
+            solution,
+            coeff_status: NonZeroStatus::NonZero,
+            rhs_status: NonZeroStatus::Unknown,
+        };
+        let map_calls = std::cell::Cell::new(0usize);
+
+        let (solution_set, steps) = solve_linear_collect_factored_solved_pipeline_with_items(
+            "x",
+            solved,
+            true,
+            |name, solved| {
+                build_linear_collect_factored_execution_with(
+                    &mut ctx,
+                    name,
+                    solved.coeff,
+                    solved.rhs_term,
+                    solved.solution,
+                    solved.coeff_status,
+                    solved.rhs_status,
+                    |_, _| "k".to_string(),
+                )
+            },
+            |item| {
+                map_calls.set(map_calls.get() + 1);
+                item.description
+            },
+        );
+
+        assert!(matches!(solution_set, SolutionSet::Discrete(_)));
+        assert_eq!(steps.len(), 2);
+        assert_eq!(map_calls.get(), 2);
+    }
+
+    #[test]
+    fn solve_linear_collect_additive_solved_pipeline_with_items_omits_steps_when_disabled() {
+        let mut ctx = Context::new();
+        let coeff = ctx.var("k");
+        let constant = ctx.var("c");
+        let solution = ctx.var("s");
+        let solved = LinearCollectAdditiveSolve {
+            coeff,
+            constant,
+            solution,
+            coeff_status: NonZeroStatus::NonZero,
+            constant_status: NonZeroStatus::Unknown,
+        };
+
+        let (solution_set, steps) = solve_linear_collect_additive_solved_pipeline_with_items(
+            "x",
+            solved,
+            false,
+            |_name, _solved| panic!("builder must not run when items are disabled"),
+            |_item| -> () { panic!("mapper must not run when items are disabled") },
+        );
+
+        assert!(matches!(solution_set, SolutionSet::Discrete(_)));
+        assert!(steps.is_empty());
     }
 
     #[test]

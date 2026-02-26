@@ -14,9 +14,12 @@ use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::linear_collect::{
     build_linear_collect_additive_execution_with, build_linear_collect_factored_execution_with,
     build_linear_collect_solution_expr, derive_linear_collect_additive_kernel,
-    derive_linear_collect_factored_kernel, solve_linear_collect_execution_pipeline_with_items,
+    derive_linear_collect_factored_kernel,
+    solve_linear_collect_additive_solved_pipeline_with_items,
+    solve_linear_collect_factored_solved_pipeline_with_items, LinearCollectAdditiveSolve,
+    LinearCollectFactoredSolve,
 };
-use cas_solver_core::linear_solution::{build_linear_solution_set, NonZeroStatus};
+use cas_solver_core::linear_solution::NonZeroStatus;
 
 use crate::engine::Simplifier;
 use crate::solver::{medium_step, render_expr, SolveStep};
@@ -57,26 +60,31 @@ pub(crate) fn try_linear_collect(
         (coeff_status, rhs_status)
     };
 
-    if include_items {
-        let execution = build_linear_collect_factored_execution_with(
-            &mut simplifier.context,
-            var,
-            coeff,
-            rhs_term,
-            solution,
-            coeff_status,
-            rhs_status,
-            render_expr,
-        );
-        let solved = solve_linear_collect_execution_pipeline_with_items(execution, true, |item| {
-            medium_step(item.description().to_string(), item.equation)
-        });
-        return Some(solved.solved);
-    }
-
-    let solution_set =
-        build_linear_solution_set(coeff, rhs_term, solution, coeff_status, rhs_status);
-    Some((solution_set, Vec::new()))
+    let solved = LinearCollectFactoredSolve {
+        coeff,
+        rhs_term,
+        solution,
+        coeff_status,
+        rhs_status,
+    };
+    Some(solve_linear_collect_factored_solved_pipeline_with_items(
+        var,
+        solved,
+        include_items,
+        |name, solved| {
+            build_linear_collect_factored_execution_with(
+                &mut simplifier.context,
+                name,
+                solved.coeff,
+                solved.rhs_term,
+                solved.solution,
+                solved.coeff_status,
+                solved.rhs_status,
+                render_expr,
+            )
+        },
+        |item| medium_step(item.description().to_string(), item.equation),
+    ))
 }
 
 /// Try to solve using the structural linear form extractor.
@@ -114,26 +122,31 @@ pub(crate) fn try_linear_collect_v2(
         (coeff_status, constant_status)
     };
 
-    if include_items {
-        let execution = build_linear_collect_additive_execution_with(
-            &mut simplifier.context,
-            var,
-            coeff,
-            constant,
-            solution,
-            coeff_status,
-            constant_status,
-            render_expr,
-        );
-        let solved = solve_linear_collect_execution_pipeline_with_items(execution, true, |item| {
-            medium_step(item.description().to_string(), item.equation)
-        });
-        return Some(solved.solved);
-    }
-
-    let solution_set =
-        build_linear_solution_set(coeff, constant, solution, coeff_status, constant_status);
-    Some((solution_set, Vec::new()))
+    let solved = LinearCollectAdditiveSolve {
+        coeff,
+        constant,
+        solution,
+        coeff_status,
+        constant_status,
+    };
+    Some(solve_linear_collect_additive_solved_pipeline_with_items(
+        var,
+        solved,
+        include_items,
+        |name, solved| {
+            build_linear_collect_additive_execution_with(
+                &mut simplifier.context,
+                name,
+                solved.coeff,
+                solved.constant,
+                solved.solution,
+                solved.coeff_status,
+                solved.constant_status,
+                render_expr,
+            )
+        },
+        |item| medium_step(item.description().to_string(), item.equation),
+    ))
 }
 
 #[cfg(test)]
