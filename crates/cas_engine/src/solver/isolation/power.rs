@@ -4,7 +4,8 @@ use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, S
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::solve_outcome::{
     build_pow_exponent_shortcut_execution_plan, classify_pow_exponent_base_flags,
-    derive_pow_isolation_route, ensure_pow_exponent_rhs_without_variable,
+    derive_pow_isolation_route, detect_pow_exponent_shortcut_inputs,
+    ensure_pow_exponent_rhs_without_variable,
     execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut_and_each_assumption,
     execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps,
     execute_pow_exponent_log_isolation_pipeline_with_plan_and_merge_with_existing_steps_with,
@@ -18,12 +19,6 @@ use cas_solver_core::solve_outcome::{
 };
 
 use super::isolate;
-
-fn bases_are_equivalent(simplifier: &mut Simplifier, base: ExprId, candidate: ExprId) -> bool {
-    let diff = simplifier.context.add(Expr::Sub(base, candidate));
-    let reduced = simplifier.simplify(diff).0;
-    cas_solver_core::isolation_utils::is_numeric_zero(&simplifier.context, reduced)
-}
 
 /// Handle isolation for `Pow(b, e)`: `B^E = RHS`
 #[allow(clippy::too_many_arguments)]
@@ -103,13 +98,12 @@ fn isolate_pow_exponent(
     let (base_is_zero, base_is_numeric) = classify_pow_exponent_base_flags(&simplifier.context, b);
     let include_item = simplifier.collect_steps();
     let rhs_expr = simplifier.context.get(rhs).clone();
-    let bases_equal = bases_are_equivalent(simplifier, b, rhs);
-    let rhs_pow_base_equal = match rhs_expr {
-        Expr::Pow(rhs_base, rhs_exp) if bases_are_equivalent(simplifier, b, rhs_base) => {
-            Some(rhs_exp)
-        }
-        _ => None,
-    };
+    let (bases_equal, rhs_pow_base_equal) =
+        detect_pow_exponent_shortcut_inputs(rhs, &rhs_expr, |candidate| {
+            let diff = simplifier.context.add(Expr::Sub(b, candidate));
+            let reduced = simplifier.simplify(diff).0;
+            cas_solver_core::isolation_utils::is_numeric_zero(&simplifier.context, reduced)
+        });
     let shortcut_action = plan_pow_exponent_shortcut_action_from_inputs(
         &mut simplifier.context,
         b,
