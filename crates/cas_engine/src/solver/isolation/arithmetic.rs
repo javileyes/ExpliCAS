@@ -5,10 +5,10 @@ use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, S
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{is_known_negative, should_try_reciprocal_solve};
 use cas_solver_core::solve_outcome::{
-    build_division_denominator_execution_with,
     build_division_denominator_sign_split_execution_with,
     build_isolated_denominator_sign_split_execution_with, derive_add_isolation_operands,
     derive_div_isolation_route, derive_mul_isolation_operands, derive_sub_isolation_operands,
+    execute_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with,
     execute_term_isolation_plan_and_merge_with_existing_steps_with,
     finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
@@ -22,7 +22,6 @@ use cas_solver_core::solve_outcome::{
     plan_isolated_denominator_sign_split_or_division_denominator,
     plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split_if_applicable,
     plan_sub_isolation_step_with, resolve_div_denominator_isolation_rhs_with,
-    solve_division_denominator_execution_pipeline_with_items,
     solve_division_denominator_sign_split_execution_pipeline_with_single_solver_with_items,
     solve_isolated_denominator_sign_split_execution_pipeline_with_items,
     solve_product_zero_inequality_split_execution_with, AddIsolationRoute, DivIsolationRoute,
@@ -385,44 +384,49 @@ pub(super) fn isolate_div(
             return Ok((final_set, solved.steps));
         }
 
-        if include_items {
-            let simplified_multiply_rhs =
-                simplifier.simplify(didactic_plan.multiply_equation.rhs).0;
-            let execution = build_division_denominator_execution_with(
-                didactic_plan,
-                simplified_multiply_rhs,
-                |expr| solver_render_expr(&simplifier.context, expr),
-            );
-            let solved = solve_division_denominator_execution_pipeline_with_items(
-                execution,
-                |equation| {
-                    isolate(
-                        equation.lhs,
-                        equation.rhs,
-                        equation.op.clone(),
-                        var,
-                        simplifier,
-                        opts,
-                        ctx,
-                    )
-                },
-                |item| medium_step(item.description, item.equation),
-            )?;
-            return Ok(merge_solved_with_existing_steps_prepend(
-                (solved.solution_set, solved.steps),
-                steps,
-            ));
-        }
-
-        let solved = isolate(
-            didactic_plan.divide_equation.lhs,
-            didactic_plan.divide_equation.rhs,
-            didactic_plan.divide_equation.op,
-            var,
-            simplifier,
-            opts,
-            ctx,
-        )?;
-        Ok(merge_solved_with_existing_steps_prepend(solved, steps))
+        let multiply_by = didactic_plan.multiply_by;
+        let divide_by = didactic_plan.divide_by;
+        let multiply_rhs = didactic_plan.multiply_equation.rhs;
+        let simplified_multiply_rhs = if include_items {
+            Some(simplifier.simplify(multiply_rhs).0)
+        } else {
+            None
+        };
+        let multiply_by_desc = solver_render_expr(&simplifier.context, multiply_by);
+        let divide_by_desc = solver_render_expr(&simplifier.context, divide_by);
+        execute_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with(
+            didactic_plan,
+            include_items,
+            steps,
+            move |expr| {
+                if let Some(simplified) = simplified_multiply_rhs {
+                    if expr == multiply_rhs {
+                        return simplified;
+                    }
+                }
+                expr
+            },
+            move |expr| {
+                if expr == multiply_by {
+                    multiply_by_desc.clone()
+                } else if expr == divide_by {
+                    divide_by_desc.clone()
+                } else {
+                    format!("#{expr}")
+                }
+            },
+            |equation| {
+                isolate(
+                    equation.lhs,
+                    equation.rhs,
+                    equation.op.clone(),
+                    var,
+                    simplifier,
+                    opts,
+                    ctx,
+                )
+            },
+            |item| medium_step(item.description, item.equation),
+        )
     }
 }
