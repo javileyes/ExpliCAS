@@ -5,13 +5,18 @@ use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, S
 use cas_ast::{ExprId, RelOp, SolutionSet};
 use cas_solver_core::isolation_utils::{is_known_negative, should_try_reciprocal_solve};
 use cas_solver_core::solve_outcome::{
-    derive_add_isolation_operands, derive_div_isolation_route, derive_mul_isolation_operands,
-    derive_sub_isolation_operands,
-    execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with,
-    execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with,
+    build_division_denominator_execution_with,
+    build_division_denominator_sign_split_execution_with,
+    build_isolated_denominator_sign_split_execution_with,
+    collect_division_denominator_execution_items,
+    collect_division_denominator_sign_split_execution_items,
+    collect_isolated_denominator_sign_split_execution_items, derive_add_isolation_operands,
+    derive_div_isolation_route, derive_mul_isolation_operands, derive_sub_isolation_operands,
     finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
     finalize_product_zero_inequality_solved_sets, first_term_isolation_rewrite_execution_item,
+    materialize_division_denominator_sign_split_execution,
+    materialize_isolated_denominator_sign_split_execution,
     merge_optional_solved_with_existing_steps_append_mut, mul_rhs_contains_variable,
     plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
     plan_division_denominator_sign_split_or_div_numerator_isolation_with,
@@ -19,6 +24,7 @@ use cas_solver_core::solve_outcome::{
     plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split_if_applicable,
     plan_sub_isolation_step_with, resolve_div_denominator_isolation_rhs_with,
     solve_product_zero_inequality_split_execution_with, AddIsolationRoute, DivIsolationRoute,
+    DivisionDenominatorSignSplitSolvedCases, IsolatedDenominatorSignSplitSolvedCases,
     TermIsolationRewritePlan,
 };
 
@@ -248,50 +254,89 @@ pub(super) fn isolate_div(
                 denominator_is_negative,
                 |_| denominator_desc.clone(),
             );
-        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with(
-            split_plan,
-            r,
-            op.clone(),
-            l,
-            include_item,
+        if let Some(split_plan) = split_plan {
+            let simplified_rhs = simplifier.simplify(split_plan.positive_equation.rhs).0;
+            let execution = if include_item {
+                build_division_denominator_sign_split_execution_with(
+                    split_plan,
+                    r,
+                    l,
+                    op.clone(),
+                    simplified_rhs,
+                    |expr| solver_render_expr(&simplifier.context, expr),
+                )
+            } else {
+                materialize_division_denominator_sign_split_execution(split_plan, simplified_rhs)
+            };
+
+            let mut items = if include_item {
+                Some(
+                    collect_division_denominator_sign_split_execution_items(&execution).into_iter(),
+                )
+            } else {
+                None
+            };
+
+            let mut positive_steps = steps.clone();
+            if let Some(item) = items.as_mut().and_then(|iter| iter.next()) {
+                positive_steps.push(medium_step(item.description, item.equation));
+            }
+            let (positive_set, positive_sub_steps) = isolate(
+                execution.positive_equation.lhs,
+                execution.positive_equation.rhs,
+                execution.positive_equation.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )?;
+            positive_steps.extend(positive_sub_steps);
+            let (positive_domain_set, _) =
+                solve_with_ctx_and_options(&execution.positive_domain, var, simplifier, opts, ctx)?;
+
+            let mut negative_steps = steps;
+            if let Some(item) = items.as_mut().and_then(|iter| iter.next()) {
+                negative_steps.push(medium_step(item.description, item.equation));
+            }
+            let (negative_set, negative_sub_steps) = isolate(
+                execution.negative_equation.lhs,
+                execution.negative_equation.rhs,
+                execution.negative_equation.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )?;
+            negative_steps.extend(negative_sub_steps);
+            let (negative_domain_set, _) =
+                solve_with_ctx_and_options(&execution.negative_domain, var, simplifier, opts, ctx)?;
+
+            if let Some(item) = items.as_mut().and_then(|iter| iter.next()) {
+                positive_steps.push(medium_step(item.description, item.equation));
+            }
+            positive_steps.extend(negative_steps);
+
+            let final_set = finalize_division_denominator_sign_split_solved_sets(
+                &simplifier.context,
+                DivisionDenominatorSignSplitSolvedCases {
+                    positive_branch: positive_set,
+                    negative_branch: negative_set,
+                    positive_domain: positive_domain_set,
+                    negative_domain: negative_domain_set,
+                },
+            );
+            return Ok((final_set, positive_steps));
+        }
+
+        run_term_isolation_plan(
             term_plan,
+            include_item,
             false,
             steps,
-            |expr| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                simplifier_ref.simplify(expr).0
-            },
-            |expr| {
-                let simplifier_ref = runtime_cell.borrow();
-                solver_render_expr(&simplifier_ref.context, expr)
-            },
-            |equation| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                isolate(
-                    equation.lhs,
-                    equation.rhs,
-                    equation.op.clone(),
-                    var,
-                    *simplifier_ref,
-                    opts,
-                    ctx,
-                )
-            },
-            |equation| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                let (set, _) = solve_with_ctx_and_options(equation, var, *simplifier_ref, opts, ctx)?;
-                Ok(set)
-            },
-            |item| medium_step(item.description().to_string(), item.equation),
-            |item| medium_step(item.description, item.equation),
-            |solved_cases| {
-                let simplifier_ref = runtime_cell.borrow();
-                finalize_division_denominator_sign_split_solved_sets(
-                    &simplifier_ref.context,
-                    solved_cases,
-                )
-            },
+            var,
+            simplifier,
+            opts,
+            ctx,
         )
     } else {
         // B = A / RHS (variable in denominator)
@@ -329,42 +374,107 @@ pub(super) fn isolate_div(
                 op.clone(),
                 var,
             );
-        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with(
-            split_plan,
-            r,
-            op.clone(),
-            include_items,
-            didactic_plan,
-            steps,
-            |expr| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                simplifier_ref.simplify(expr).0
-            },
-            |expr| {
-                let simplifier_ref = runtime_cell.borrow();
-                solver_render_expr(&simplifier_ref.context, expr)
-            },
-            |equation| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                isolate(
-                    equation.lhs,
-                    equation.rhs,
-                    equation.op.clone(),
-                    var,
-                    *simplifier_ref,
-                    opts,
-                    ctx,
+        if let Some(split_plan) = split_plan {
+            let execution = if include_items {
+                build_isolated_denominator_sign_split_execution_with(
+                    split_plan,
+                    r,
+                    op.clone(),
+                    |expr| solver_render_expr(&simplifier.context, expr),
                 )
-            },
-            |item| medium_step(item.description().to_string(), item.equation),
-            |solved_cases| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                finalize_isolated_denominator_sign_split_solved_sets(
-                    &mut simplifier_ref.context,
-                    solved_cases,
+            } else {
+                materialize_isolated_denominator_sign_split_execution(split_plan)
+            };
+
+            let mut items = if include_items {
+                Some(
+                    collect_isolated_denominator_sign_split_execution_items(&execution).into_iter(),
                 )
-            },
-        )
+            } else {
+                None
+            };
+
+            let mut positive_steps = steps.clone();
+            if let Some(item) = items.as_mut().and_then(|iter| iter.next()) {
+                positive_steps.push(medium_step(item.description, item.equation));
+            }
+            let (positive_set, positive_sub_steps) = isolate(
+                execution.positive_equation.lhs,
+                execution.positive_equation.rhs,
+                execution.positive_equation.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )?;
+            positive_steps.extend(positive_sub_steps);
+
+            let mut negative_steps = steps;
+            if let Some(item) = items.as_mut().and_then(|iter| iter.next()) {
+                negative_steps.push(medium_step(item.description, item.equation));
+            }
+            let (negative_set, negative_sub_steps) = isolate(
+                execution.negative_equation.lhs,
+                execution.negative_equation.rhs,
+                execution.negative_equation.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )?;
+            negative_steps.extend(negative_sub_steps);
+
+            if let Some(item) = items.as_mut().and_then(|iter| iter.next()) {
+                positive_steps.push(medium_step(item.description, item.equation));
+            }
+            positive_steps.extend(negative_steps);
+
+            let final_set = finalize_isolated_denominator_sign_split_solved_sets(
+                &mut simplifier.context,
+                IsolatedDenominatorSignSplitSolvedCases {
+                    positive_branch: positive_set,
+                    negative_branch: negative_set,
+                },
+            );
+            return Ok((final_set, positive_steps));
+        }
+
+        if include_items {
+            let simplified_multiply_rhs =
+                simplifier.simplify(didactic_plan.multiply_equation.rhs).0;
+            let execution = build_division_denominator_execution_with(
+                didactic_plan,
+                simplified_multiply_rhs,
+                |expr| solver_render_expr(&simplifier.context, expr),
+            );
+            let mut didactic_steps = collect_division_denominator_execution_items(&execution)
+                .into_iter()
+                .map(|item| medium_step(item.description, item.equation))
+                .collect::<Vec<_>>();
+            let (solution_set, mut sub_steps) = isolate(
+                execution.divide_equation.lhs,
+                execution.divide_equation.rhs,
+                execution.divide_equation.op.clone(),
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )?;
+            didactic_steps.append(&mut sub_steps);
+            didactic_steps.extend(steps);
+            return Ok((solution_set, didactic_steps));
+        }
+
+        let (solution_set, mut sub_steps) = isolate(
+            didactic_plan.divide_equation.lhs,
+            didactic_plan.divide_equation.rhs,
+            didactic_plan.divide_equation.op,
+            var,
+            simplifier,
+            opts,
+            ctx,
+        )?;
+        sub_steps.extend(steps);
+        Ok((solution_set, sub_steps))
     }
 }

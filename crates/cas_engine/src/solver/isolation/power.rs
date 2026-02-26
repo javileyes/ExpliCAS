@@ -3,41 +3,26 @@ use crate::error::CasError;
 use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::solve_outcome::{
-    classify_pow_exponent_base_flags, derive_pow_isolation_route,
-    ensure_pow_exponent_rhs_without_variable,
-    execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_existing_steps_mut_with_unsupported_execution,
+    build_pow_exponent_shortcut_execution_plan, classify_pow_exponent_base_flags,
+    derive_pow_isolation_route, ensure_pow_exponent_rhs_without_variable,
     execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut_and_each_assumption,
     execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps,
     execute_pow_exponent_log_isolation_pipeline_with_plan_and_merge_with_existing_steps_with,
-    execute_pow_exponent_shortcut_pipeline_with_item_and_finalize_with_existing_steps_with,
-    execute_pow_exponent_solve_tactic_normalization_with,
+    execute_pow_exponent_log_unsupported_pipeline_from_decision_with,
     execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_finalize_with_existing_steps_with,
+    finalize_pow_exponent_shortcut_pipeline_with_existing_steps, map_pow_exponent_shortcut_with,
     plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
-    shortcut_bases_equivalent_by_difference_with,
+    plan_pow_exponent_shortcut_action_from_inputs, solve_pow_exponent_shortcut_pipeline_with_item,
     solve_solve_tactic_normalization_pipeline_with_item, PowIsolationRoute,
 };
 
 use super::isolate;
 
 fn bases_are_equivalent(simplifier: &mut Simplifier, base: ExprId, candidate: ExprId) -> bool {
-    let runtime_cell = std::cell::RefCell::new(simplifier);
-    shortcut_bases_equivalent_by_difference_with(
-        base,
-        candidate,
-        |lhs, rhs| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            simplifier_ref.context.add(Expr::Sub(lhs, rhs))
-        },
-        |expr| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            simplifier_ref.simplify(expr).0
-        },
-        |expr| {
-            let simplifier_ref = runtime_cell.borrow();
-            cas_solver_core::isolation_utils::is_numeric_zero(&simplifier_ref.context, expr)
-        },
-    )
+    let diff = simplifier.context.add(Expr::Sub(base, candidate));
+    let reduced = simplifier.simplify(diff).0;
+    cas_solver_core::isolation_utils::is_numeric_zero(&simplifier.context, reduced)
 }
 
 /// Handle isolation for `Pow(b, e)`: `B^E = RHS`
@@ -89,15 +74,11 @@ fn isolate_pow_base(
         solver_render_expr,
     );
     let include_item = simplifier.collect_steps();
-    let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
     execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps(
         include_item,
         steps,
         action,
-        |iso_lhs, iso_rhs, iso_op| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            isolate(iso_lhs, iso_rhs, iso_op, var, *simplifier_ref, opts, ctx)
-        },
+        |iso_lhs, iso_rhs, iso_op| isolate(iso_lhs, iso_rhs, iso_op, var, simplifier, opts, ctx),
         |item| medium_step(item.description().to_string(), item.equation),
     )
 }
@@ -121,58 +102,39 @@ fn isolate_pow_exponent(
     // ================================================================
     let (base_is_zero, base_is_numeric) = classify_pow_exponent_base_flags(&simplifier.context, b);
     let include_item = simplifier.collect_steps();
-    let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+    let rhs_expr = simplifier.context.get(rhs).clone();
+    let bases_equal = bases_are_equivalent(simplifier, b, rhs);
+    let rhs_pow_base_equal = match rhs_expr {
+        Expr::Pow(rhs_base, rhs_exp) if bases_are_equivalent(simplifier, b, rhs_base) => {
+            Some(rhs_exp)
+        }
+        _ => None,
+    };
+    let shortcut_action = plan_pow_exponent_shortcut_action_from_inputs(
+        &mut simplifier.context,
+        b,
+        op.clone(),
+        bases_equal,
+        rhs_pow_base_equal,
+        base_is_zero,
+        base_is_numeric,
+        opts.budget.max_branches >= 2,
+    );
+    let shortcut_plan = build_pow_exponent_shortcut_execution_plan(shortcut_action);
+    let shortcut_execution =
+        map_pow_exponent_shortcut_with(shortcut_plan, e, b, rhs, op.clone(), var, |expr| {
+            solver_render_expr(&simplifier.context, expr)
+        });
+    let shortcut_solved = solve_pow_exponent_shortcut_pipeline_with_item(
+        shortcut_execution,
+        include_item,
+        |shortcut_rhs, shortcut_op| {
+            isolate(e, shortcut_rhs, shortcut_op, var, simplifier, opts, ctx)
+        },
+        |item| medium_step(item.description().to_string(), item.equation),
+    )?;
     if let Some((solution_set, merged_steps)) =
-        execute_pow_exponent_shortcut_pipeline_with_item_and_finalize_with_existing_steps_with(
-            e,
-            b,
-            rhs,
-            op.clone(),
-            var,
-            base_is_zero,
-            base_is_numeric,
-            opts.budget.max_branches >= 2,
-            include_item,
-            &mut steps,
-            |expr| {
-                let simplifier_ref = runtime_cell.borrow();
-                simplifier_ref.context.get(expr).clone()
-            },
-            |base, rel_op, bases_equal, rhs_pow_base_equal, is_zero, is_numeric, can_branch| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                cas_solver_core::solve_outcome::plan_pow_exponent_shortcut_action_from_inputs(
-                    &mut simplifier_ref.context,
-                    base,
-                    rel_op,
-                    bases_equal,
-                    rhs_pow_base_equal,
-                    is_zero,
-                    is_numeric,
-                    can_branch,
-                )
-            },
-            |lhs_base, rhs_base| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                bases_are_equivalent(*simplifier_ref, lhs_base, rhs_base)
-            },
-            |expr| {
-                let simplifier_ref = runtime_cell.borrow();
-                solver_render_expr(&simplifier_ref.context, expr)
-            },
-            |shortcut_rhs, shortcut_op| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                isolate(
-                    e,
-                    shortcut_rhs,
-                    shortcut_op,
-                    var,
-                    *simplifier_ref,
-                    opts,
-                    ctx,
-                )
-            },
-            |item| medium_step(item.description().to_string(), item.equation),
-        )?
+        finalize_pow_exponent_shortcut_pipeline_with_existing_steps(shortcut_solved, &mut steps)
     {
         return Ok((solution_set, merged_steps));
     }
@@ -212,35 +174,29 @@ fn isolate_pow_exponent(
     let solve_tactic_enabled = opts.domain_mode == crate::domain::DomainMode::Assume
         && opts.value_domain == crate::semantics::ValueDomain::RealOnly;
     let tactic_opts = SimplifyOptions::for_solve_tactic(opts.domain_mode);
-    let (tactic_base, tactic_rhs, tactic_steps) = {
-        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        execute_pow_exponent_solve_tactic_normalization_with(
-            b,
-            e,
-            rhs,
-            op.clone(),
-            solve_tactic_enabled,
-            crate::domain::clear_blocked_hints,
-            |expr| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                simplifier_ref
-                    .simplify_with_options(expr, tactic_opts.clone())
-                    .0
-            },
-            |sim_base, exponent, sim_rhs, rel_op| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                let include_item = simplifier_ref.collect_steps();
-                solve_solve_tactic_normalization_pipeline_with_item(
-                    &mut simplifier_ref.context,
-                    sim_base,
-                    exponent,
-                    sim_rhs,
-                    rel_op,
-                    include_item,
-                    |item| medium_step(item.description().to_string(), item.equation),
-                )
-            },
-        )
+    let (tactic_base, tactic_rhs, tactic_steps) = if solve_tactic_enabled {
+        crate::domain::clear_blocked_hints();
+        let sim_base = simplifier.simplify_with_options(b, tactic_opts.clone()).0;
+        let sim_rhs = simplifier.simplify_with_options(rhs, tactic_opts.clone()).0;
+        crate::domain::clear_blocked_hints();
+
+        let steps = if sim_base != b || sim_rhs != rhs {
+            let include_item = simplifier.collect_steps();
+            solve_solve_tactic_normalization_pipeline_with_item(
+                &mut simplifier.context,
+                sim_base,
+                e,
+                sim_rhs,
+                op.clone(),
+                include_item,
+                |item| medium_step(item.description().to_string(), item.equation),
+            )
+        } else {
+            Vec::new()
+        };
+        (sim_base, sim_rhs, steps)
+    } else {
+        (b, rhs, Vec::new())
     };
     steps.extend(tactic_steps);
 
@@ -276,43 +232,48 @@ fn isolate_pow_exponent(
     );
     let include_terminal_items = simplifier.collect_steps();
     let include_unsupported_items = simplifier.collect_steps();
-    let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    if let Some((solution_set, steps)) =
-        execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_existing_steps_mut_with_unsupported_execution(
-            |existing_steps| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut_and_each_assumption(
-                    &mut simplifier_ref.context,
-                    &decision,
-                    mode,
-                    wildcard_scope,
-                    lhs,
-                    rhs,
-                    var,
-                    source_equation.clone(),
-                    " (residual)",
-                    include_terminal_items,
-                    existing_steps,
-                    |item| medium_step(item.description().to_string(), item.equation),
-                    |core_ctx, assumption| {
-                        let event = crate::solver::assumption_event_from_log_assumption_targets(
-                            core_ctx, assumption, b, rhs,
-                        );
-                        ctx.note_assumption(event);
-                    },
-                )
-            },
-            include_unsupported_items,
+    let terminal_result =
+        execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut_and_each_assumption(
+            &mut simplifier.context,
+            &decision,
+            mode,
+            wildcard_scope,
+            lhs,
+            rhs,
+            var,
+            source_equation.clone(),
+            " (residual)",
+            include_terminal_items,
             &mut steps,
-            unsupported_execution,
+            |item| medium_step(item.description().to_string(), item.equation),
+            |core_ctx, assumption| {
+                let event =
+                    crate::solver::assumption_event_from_log_assumption_targets(core_ctx, assumption, b, rhs);
+                ctx.note_assumption(event);
+            },
+        );
+    match terminal_result {
+        cas_solver_core::solve_outcome::LogDecisionTerminalResult::Terminal {
+            solution_set,
+            steps,
+        } => return Ok((solution_set, steps)),
+        cas_solver_core::solve_outcome::LogDecisionTerminalResult::NeedsComplex { message } => {
+            return Err(CasError::UnsupportedInRealDomain(message.to_string()))
+        }
+        cas_solver_core::solve_outcome::LogDecisionTerminalResult::Continue => {}
+    }
+
+    if let Some(unsupported_solved) =
+        execute_pow_exponent_log_unsupported_pipeline_from_decision_with(
+            include_unsupported_items,
+            move || unsupported_execution,
             |equation| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
                 isolate(
                     equation.lhs,
                     equation.rhs,
                     equation.op.clone(),
                     var,
-                    *simplifier_ref,
+                    simplifier,
                     opts,
                     ctx,
                 )
@@ -320,18 +281,15 @@ fn isolate_pow_exponent(
                 .map(|(solutions, _)| solutions)
             },
             |item| medium_step(item.description().to_string(), item.equation),
-            |hint| {
-                let simplifier_ref = runtime_cell.borrow();
-                let blocked_hint = crate::solver::domain_blocked_hint_from_log_blocked_hint(
-                    &simplifier_ref.context,
-                    hint,
-                );
-                crate::domain::register_blocked_hint(blocked_hint);
-            },
         )
-        .map_err(|message| CasError::UnsupportedInRealDomain(message.to_string()))?
     {
-        return Ok((solution_set, steps));
+        for hint in unsupported_solved.blocked_hints {
+            let blocked_hint =
+                crate::solver::domain_blocked_hint_from_log_blocked_hint(&simplifier.context, hint);
+            crate::domain::register_blocked_hint(blocked_hint);
+        }
+        steps.extend(unsupported_solved.steps);
+        return Ok((unsupported_solved.solution_set, steps));
     }
     // ================================================================
     // End of domain guards
@@ -347,19 +305,17 @@ fn isolate_pow_exponent(
         solver_render_expr,
     );
     let include_item = simplifier.collect_steps();
-    let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
     execute_pow_exponent_log_isolation_pipeline_with_plan_and_merge_with_existing_steps_with(
         include_item,
         steps,
         rewrite,
         |equation| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
             isolate(
                 equation.lhs,
                 equation.rhs,
                 equation.op.clone(),
                 var,
-                *simplifier_ref,
+                simplifier,
                 opts,
                 ctx,
             )
