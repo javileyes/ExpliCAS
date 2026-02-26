@@ -754,6 +754,30 @@ where
     }
 }
 
+/// Resolve and execute base-one shortcut pipeline for equations `base^x op rhs`.
+pub fn execute_power_base_one_shortcut_pipeline_with_item_for_pow_with<S, FRender, FStep>(
+    ctx: &Context,
+    base: ExprId,
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    include_item: bool,
+    render_expr: FRender,
+    map_item_to_step: FStep,
+) -> Option<PowerBaseOneShortcutPipelineSolved<S>>
+where
+    FRender: FnMut(&Context, ExprId) -> String,
+    FStep: FnMut(PowerBaseOneShortcutExecutionItem) -> S,
+{
+    let outcome =
+        resolve_power_base_one_shortcut_for_pow_with(ctx, base, lhs, rhs, op, render_expr)?;
+    Some(solve_power_base_one_shortcut_pipeline_with_item(
+        outcome,
+        include_item,
+        map_item_to_step,
+    ))
+}
+
 /// Didactic payload for logarithmic isolation of exponent equations.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowExponentLogIsolationStep {
@@ -3085,6 +3109,34 @@ where
         solution_set,
         steps,
     }
+}
+
+/// Resolve log terminal outcome from decision and execute terminal pipeline.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_log_terminal_outcome_pipeline_with_item<S, FStep>(
+    ctx: &mut Context,
+    decision: &LogSolveDecision,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    equation_after: Equation,
+    residual_suffix: &str,
+    include_item: bool,
+    map_item_to_step: FStep,
+) -> Option<TerminalOutcomePipelineSolved<S>>
+where
+    FStep: FnMut(TermIsolationExecutionItem) -> S,
+{
+    let outcome = resolve_log_terminal_outcome(ctx, decision, mode, wildcard_scope, lhs, rhs, var)?;
+    Some(solve_terminal_outcome_pipeline_with_item(
+        outcome,
+        equation_after,
+        residual_suffix,
+        include_item,
+        map_item_to_step,
+    ))
 }
 
 /// Build didactic payload for conditional-solution messaging.
@@ -6381,6 +6433,31 @@ mod tests {
     }
 
     #[test]
+    fn execute_power_base_one_shortcut_pipeline_with_item_for_pow_with_runs_end_to_end() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let x = ctx.var("x");
+        let lhs = ctx.add(Expr::Pow(one, x));
+        let rhs = ctx.num(2);
+
+        let solved = execute_power_base_one_shortcut_pipeline_with_item_for_pow_with(
+            &ctx,
+            one,
+            lhs,
+            rhs,
+            RelOp::Eq,
+            true,
+            |_, _| "2".to_string(),
+            |item| item.description,
+        )
+        .expect("shortcut should apply");
+
+        assert!(matches!(solved.solution_set, SolutionSet::Empty));
+        assert_eq!(solved.steps.len(), 1);
+        assert!(solved.steps[0].contains("no solution"));
+    }
+
+    #[test]
     fn abs_equality_precheck_negative_is_empty() {
         assert_eq!(
             abs_equality_precheck(NumericSign::Negative),
@@ -7587,6 +7664,59 @@ mod tests {
 
         assert!(matches!(solved.solution_set, SolutionSet::Residual(id) if id == residual));
         assert!(solved.steps.is_empty());
+    }
+
+    #[test]
+    fn execute_log_terminal_outcome_pipeline_with_item_returns_none_for_non_terminal_decision() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let out = execute_log_terminal_outcome_pipeline_with_item(
+            &mut ctx,
+            &LogSolveDecision::Ok,
+            DomainModeKind::Generic,
+            false,
+            x,
+            y,
+            "x",
+            Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            " (residual)",
+            true,
+            |item| item.description,
+        );
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn execute_log_terminal_outcome_pipeline_with_item_builds_step_for_terminal_decision() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let solved = execute_log_terminal_outcome_pipeline_with_item(
+            &mut ctx,
+            &LogSolveDecision::EmptySet("no real solutions"),
+            DomainModeKind::Generic,
+            false,
+            x,
+            y,
+            "x",
+            Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            " (residual)",
+            true,
+            |item| item.description,
+        )
+        .expect("must produce terminal pipeline payload");
+
+        assert!(matches!(solved.solution_set, SolutionSet::Empty));
+        assert_eq!(solved.steps, vec!["no real solutions".to_string()]);
     }
 
     #[test]

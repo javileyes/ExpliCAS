@@ -5,20 +5,21 @@ use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
     build_pow_base_isolation_action_with, classify_pow_exponent_base_flags,
-    derive_pow_isolation_route, execute_pow_exponent_log_isolation_pipeline_with_item_with,
+    derive_pow_isolation_route, execute_log_terminal_outcome_pipeline_with_item,
+    execute_pow_exponent_log_isolation_pipeline_with_item_with,
     execute_pow_exponent_log_unsupported_pipeline_from_decision_with,
     execute_pow_exponent_shortcut_pipeline_with_item_with,
+    execute_power_base_one_shortcut_pipeline_with_item_for_pow_with,
     merge_pow_base_isolation_pipeline_with_existing_steps,
     merge_pow_exponent_log_unsupported_pipeline_with_existing_steps,
     merge_pow_exponent_shortcut_pipeline_with_existing_steps,
     merge_solved_with_existing_steps_append, merge_solved_with_existing_steps_prepend,
     plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
-    pow_exponent_rhs_contains_variable, resolve_log_terminal_outcome,
-    resolve_power_base_one_shortcut_for_pow_with, shortcut_bases_equivalent_by_difference_with,
-    solve_pow_base_isolation_pipeline_with_item, solve_power_base_one_shortcut_pipeline_with_item,
-    solve_solve_tactic_normalization_pipeline_with_item, solve_terminal_outcome_pipeline_with_item,
-    PowExponentShortcutPipelineSolved, PowIsolationRoute,
+    pow_exponent_rhs_contains_variable, shortcut_bases_equivalent_by_difference_with,
+    solve_pow_base_isolation_pipeline_with_item,
+    solve_solve_tactic_normalization_pipeline_with_item, PowExponentShortcutPipelineSolved,
+    PowIsolationRoute,
 };
 
 use super::isolate;
@@ -207,21 +208,17 @@ fn isolate_pow_exponent(
     // DOMAIN GUARDS for log operation (RealOnly mode)
     // ================================================================
     // GUARD 1: Handle base = 1 special case
-    let base_one_outcome = resolve_power_base_one_shortcut_for_pow_with(
+    let include_item = simplifier.collect_steps();
+    if let Some(solved_shortcut) = execute_power_base_one_shortcut_pipeline_with_item_for_pow_with(
         &simplifier.context,
         b,
         lhs,
         rhs,
         op.clone(),
+        include_item,
         solver_render_expr,
-    );
-    if let Some(outcome) = base_one_outcome {
-        let solved_shortcut = {
-            let include_item = simplifier.collect_steps();
-            solve_power_base_one_shortcut_pipeline_with_item(outcome, include_item, |item| {
-                medium_step(item.description().to_string(), item.equation)
-            })
-        };
+        |item| medium_step(item.description().to_string(), item.equation),
+    ) {
         return Ok(merge_solved_with_existing_steps_append(
             (solved_shortcut.solution_set, solved_shortcut.steps),
             steps,
@@ -278,7 +275,8 @@ fn isolate_pow_exponent(
     let mode = opts.core_domain_mode();
     let wildcard_scope = opts.wildcard_scope();
 
-    if let Some(outcome) = resolve_log_terminal_outcome(
+    let include_item = simplifier.collect_steps();
+    if let Some(solved_terminal) = execute_log_terminal_outcome_pipeline_with_item(
         &mut simplifier.context,
         &decision,
         mode,
@@ -286,19 +284,15 @@ fn isolate_pow_exponent(
         lhs,
         rhs,
         var,
+        Equation {
+            lhs,
+            rhs,
+            op: op.clone(),
+        },
+        " (residual)",
+        include_item,
+        |item| medium_step(item.description().to_string(), item.equation),
     ) {
-        let include_item = simplifier.collect_steps();
-        let solved_terminal = solve_terminal_outcome_pipeline_with_item(
-            outcome,
-            Equation {
-                lhs,
-                rhs,
-                op: op.clone(),
-            },
-            " (residual)",
-            include_item,
-            |item| medium_step(item.description().to_string(), item.equation),
-        );
         return Ok(merge_solved_with_existing_steps_append(
             (solved_terminal.solution_set, solved_terminal.steps),
             steps,
