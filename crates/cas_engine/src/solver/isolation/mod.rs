@@ -7,8 +7,10 @@ use crate::solver::{medium_step, SolveStep, SolverOptions, MAX_SOLVE_DEPTH, SOLV
 use cas_ast::{Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::solve_outcome::{
     plan_negated_lhs_isolation_step, residual_solution_set, resolve_isolated_variable_outcome,
-    solve_negated_lhs_isolation_plan_with_and_merge_with_existing_steps, IsolatedVariableOutcome,
+    solve_isolated_variable_lhs_with_resolver,
+    solve_negated_lhs_isolation_plan_with_and_merge_with_existing_steps,
 };
+use std::cell::RefCell;
 
 use crate::error::CasError;
 
@@ -35,24 +37,46 @@ pub(crate) fn isolate(
 
     match lhs_expr {
         Expr::Variable(sym_id) if simplifier.context.sym_name(sym_id) == var => {
-            let sim_rhs = simplifier.simplify(rhs).0;
-            match resolve_isolated_variable_outcome(&mut simplifier.context, sim_rhs, op, var) {
-                IsolatedVariableOutcome::Solved(solution_set) => Ok((solution_set, steps)),
-                IsolatedVariableOutcome::ContainsTargetVariable => {
-                    if let Some(solved) =
-                        crate::solver::linear_collect::try_linear_collect(lhs, rhs, var, simplifier)
-                    {
-                        return Ok(solved);
-                    }
-                    if let Some(solved) = crate::solver::linear_collect::try_linear_collect_v2(
-                        lhs, rhs, var, simplifier,
-                    ) {
-                        return Ok(solved);
-                    }
-                    let residual = residual_solution_set(&mut simplifier.context, lhs, rhs, var);
-                    Ok((residual, steps))
-                }
-            }
+            let simplifier_ref = RefCell::new(simplifier);
+            let solved = solve_isolated_variable_lhs_with_resolver(
+                lhs,
+                rhs,
+                op,
+                var,
+                |sim_rhs, rel_op, solve_var| {
+                    let mut simplifier = simplifier_ref.borrow_mut();
+                    resolve_isolated_variable_outcome(
+                        &mut simplifier.context,
+                        sim_rhs,
+                        rel_op,
+                        solve_var,
+                    )
+                },
+                |expr| simplifier_ref.borrow_mut().simplify(expr).0,
+                |solve_lhs, solve_rhs, solve_var| {
+                    let mut simplifier = simplifier_ref.borrow_mut();
+                    crate::solver::linear_collect::try_linear_collect(
+                        solve_lhs,
+                        solve_rhs,
+                        solve_var,
+                        &mut simplifier,
+                    )
+                },
+                |solve_lhs, solve_rhs, solve_var| {
+                    let mut simplifier = simplifier_ref.borrow_mut();
+                    crate::solver::linear_collect::try_linear_collect_v2(
+                        solve_lhs,
+                        solve_rhs,
+                        solve_var,
+                        &mut simplifier,
+                    )
+                },
+                |solve_lhs, solve_rhs, solve_var| {
+                    let mut simplifier = simplifier_ref.borrow_mut();
+                    residual_solution_set(&mut simplifier.context, solve_lhs, solve_rhs, solve_var)
+                },
+            );
+            Ok(solved)
         }
         Expr::Add(l, r) => {
             arithmetic::isolate_add(lhs, l, r, rhs, op, var, simplifier, opts, steps, ctx)
