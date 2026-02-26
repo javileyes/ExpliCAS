@@ -5,8 +5,7 @@ use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::solve_outcome::{
     classify_pow_exponent_base_flags, derive_pow_isolation_route,
     ensure_pow_exponent_rhs_without_variable,
-    execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_existing_steps_mut_with_unsupported_execution,
-    execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut_and_each_assumption,
+    execute_and_resolve_pow_exponent_log_decision_pipeline_with_existing_steps_mut,
     execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps,
     execute_pow_exponent_log_isolation_pipeline_with_plan_and_merge_with_existing_steps_with,
     execute_pow_exponent_shortcut_action_pipeline_with_item_and_finalize_with_existing_steps_with,
@@ -264,34 +263,29 @@ fn isolate_pow_exponent(
     let hint_ctx = RefCell::new(simplifier.context.clone());
     let (resolved_decision, simplifier) = {
         let simplifier_ref = RefCell::new(simplifier);
+        let mut decision_ctx = simplifier_ref.borrow().context.clone();
         let resolved_decision =
-            execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_existing_steps_mut_with_unsupported_execution(
-                |existing_steps| {
-                    let mut simplifier = simplifier_ref.borrow_mut();
-                    execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut_and_each_assumption(
-                        &mut simplifier.context,
-                        &decision,
-                        mode,
-                        wildcard_scope,
-                        lhs,
-                        rhs,
-                        var,
-                        source_equation.clone(),
-                        " (residual)",
-                        include_terminal_items,
-                        existing_steps,
-                        |item| medium_step(item.description().to_string(), item.equation),
-                        |core_ctx, assumption| {
-                            let event = crate::solver::assumption_event_from_log_assumption_targets(
-                                core_ctx, assumption, b, rhs,
-                            );
-                            ctx.note_assumption(event);
-                        },
-                    )
+            execute_and_resolve_pow_exponent_log_decision_pipeline_with_existing_steps_mut(
+                &mut decision_ctx,
+                &decision,
+                mode,
+                wildcard_scope,
+                lhs,
+                rhs,
+                var,
+                source_equation.clone(),
+                " (residual)",
+                include_terminal_items,
+                &mut steps,
+                |item| medium_step(item.description().to_string(), item.equation),
+                |core_ctx, assumption| {
+                    let event = crate::solver::assumption_event_from_log_assumption_targets(
+                        core_ctx, assumption, b, rhs,
+                    );
+                    ctx.note_assumption(event);
                 },
                 include_unsupported_items,
-                &mut steps,
-                unsupported_execution,
+                move || unsupported_execution,
                 |equation| {
                     let mut simplifier = simplifier_ref.borrow_mut();
                     let solved = isolate(
@@ -308,7 +302,6 @@ fn isolate_pow_exponent(
                     *hint_ctx.borrow_mut() = simplifier.context.clone();
                     solved
                 },
-                |item| medium_step(item.description().to_string(), item.equation),
                 |hint| {
                     let snapshot = hint_ctx.borrow();
                     let blocked_hint =
