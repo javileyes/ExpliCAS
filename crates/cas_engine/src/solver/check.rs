@@ -25,7 +25,6 @@
 use cas_ast::{Equation, ExprId, SolutionSet};
 use cas_math::expr_predicates::contains_variable;
 use cas_solver_core::isolation_utils::is_numeric_zero;
-use cas_solver_core::solution_check::verify_solution_with as verify_solution_with_core;
 use cas_solver_core::verification::verify_solution_set_with;
 use cas_solver_core::verify_substitution::{substitute_equation_diff, substitute_equation_sides};
 
@@ -51,65 +50,60 @@ pub fn verify_solution(
     var: &str,
     solution: ExprId,
 ) -> VerifyStatus {
-    let runtime_cell = std::cell::RefCell::new(simplifier);
-    verify_solution_with_core(
-        equation,
-        var,
-        solution,
-        |inner_equation, inner_var, inner_solution| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            substitute_equation_diff(
-                &mut simplifier_ref.context,
-                inner_equation,
-                inner_var,
-                inner_solution,
-            )
+    let diff = substitute_equation_diff(&mut simplifier.context, equation, var, solution);
+    let strict_opts = || crate::SimplifyOptions {
+        shared: crate::phase::SharedSemanticConfig {
+            semantics: crate::semantics::EvalConfig {
+                domain_mode: crate::domain::DomainMode::Strict,
+                ..Default::default()
+            },
+            ..Default::default()
         },
-        |expr| {
-            let strict_opts = crate::SimplifyOptions {
-                shared: crate::phase::SharedSemanticConfig {
-                    semantics: crate::semantics::EvalConfig {
-                        domain_mode: crate::domain::DomainMode::Strict,
-                        ..Default::default()
-                    },
+        ..Default::default()
+    };
+    let strict_result = simplifier.simplify_with_stats(diff, strict_opts()).0;
+    if is_numeric_zero(&simplifier.context, strict_result) {
+        return VerifyStatus::Verified;
+    }
+
+    if contains_variable(&simplifier.context, strict_result) {
+        cas_solver_core::verify_stats::record_attempted();
+        let folded =
+            super::numeric_islands::fold_numeric_islands(&mut simplifier.context, strict_result);
+        if folded != strict_result {
+            cas_solver_core::verify_stats::record_changed();
+            let folded_result = simplifier.simplify_with_stats(folded, strict_opts()).0;
+            if is_numeric_zero(&simplifier.context, folded_result) {
+                cas_solver_core::verify_stats::record_verified();
+                return VerifyStatus::Verified;
+            }
+        }
+    }
+
+    if !contains_variable(&simplifier.context, strict_result) {
+        let generic_opts = crate::SimplifyOptions {
+            shared: crate::phase::SharedSemanticConfig {
+                semantics: crate::semantics::EvalConfig {
+                    domain_mode: crate::domain::DomainMode::Generic,
                     ..Default::default()
                 },
                 ..Default::default()
-            };
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            simplifier_ref.simplify_with_stats(expr, strict_opts).0
-        },
-        |expr| {
-            let generic_opts = crate::SimplifyOptions {
-                shared: crate::phase::SharedSemanticConfig {
-                    semantics: crate::semantics::EvalConfig {
-                        domain_mode: crate::domain::DomainMode::Generic,
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                },
-                ..Default::default()
-            };
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            simplifier_ref.simplify_with_stats(expr, generic_opts).0
-        },
-        |expr| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            super::numeric_islands::fold_numeric_islands(&mut simplifier_ref.context, expr)
-        },
-        |expr| {
-            let simplifier_ref = runtime_cell.borrow();
-            is_numeric_zero(&simplifier_ref.context, expr)
-        },
-        |expr| {
-            let simplifier_ref = runtime_cell.borrow();
-            contains_variable(&simplifier_ref.context, expr)
-        },
-        |expr| {
-            let simplifier_ref = runtime_cell.borrow();
-            solver_render_expr(&simplifier_ref.context, expr)
-        },
-    )
+            },
+            ..Default::default()
+        };
+        let generic_result = simplifier.simplify_with_stats(diff, generic_opts).0;
+        if is_numeric_zero(&simplifier.context, generic_result) {
+            return VerifyStatus::Verified;
+        }
+    }
+
+    VerifyStatus::Unverifiable {
+        residual: strict_result,
+        reason: format!(
+            "residual: {}",
+            solver_render_expr(&simplifier.context, strict_result)
+        ),
+    }
 }
 
 /// Fast equivalence-based verifier used by solve strategy filtering.
