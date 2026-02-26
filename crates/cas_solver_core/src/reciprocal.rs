@@ -504,6 +504,60 @@ where
     Some(solved_execution.solved)
 }
 
+/// High-level reciprocal solve pipeline that routes execution building through
+/// the kernel plan/prepare/build phases.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_reciprocal_solve_pipeline_with_items_via_kernel_execution_pipeline<
+    S,
+    FDeriveKernel,
+    FPlan,
+    FSimplify,
+    FProof,
+    FBuildPrepared,
+    FStep,
+>(
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    include_items: bool,
+    derive_kernel: FDeriveKernel,
+    mut plan_from_kernel: FPlan,
+    mut simplify_expr: FSimplify,
+    mut prove_nonzero_status: FProof,
+    mut build_execution_from_prepared: FBuildPrepared,
+    map_item_to_step: FStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FDeriveKernel: FnMut(ExprId, ExprId, &str) -> Option<ReciprocalSolveKernel>,
+    FPlan: FnMut(&str, ReciprocalSolveKernel) -> ReciprocalSolvePlan,
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FProof: FnMut(ExprId) -> NonZeroStatus,
+    FBuildPrepared:
+        FnMut(&str, ReciprocalSolveKernel, ReciprocalPreparedExecution) -> ReciprocalSolveExecution,
+    FStep: FnMut(ReciprocalExecutionItem) -> S,
+{
+    execute_reciprocal_solve_pipeline_with_items(
+        lhs,
+        rhs,
+        var,
+        include_items,
+        derive_kernel,
+        |inner_var, kernel| {
+            execute_reciprocal_kernel_execution_pipeline_with(
+                inner_var,
+                kernel,
+                |plan_var, plan_kernel| plan_from_kernel(plan_var, plan_kernel),
+                &mut simplify_expr,
+                &mut prove_nonzero_status,
+                |build_var, build_kernel, prepared| {
+                    build_execution_from_prepared(build_var, build_kernel, prepared)
+                },
+            )
+        },
+        map_item_to_step,
+    )
+}
+
 /// High-level reciprocal solve pipeline using an optional pre-derived kernel:
 /// build execution payload and optionally map didactic items.
 pub fn execute_reciprocal_solve_pipeline_with_items_and_kernel<S, FBuildExecution, FStep>(
@@ -907,6 +961,59 @@ mod tests {
                     kernel,
                     |expr| expr,
                     |_core_ctx, _expr| NonZeroStatus::Unknown,
+                )
+            },
+            |item| {
+                map_calls.set(map_calls.get() + 1);
+                item.description
+            },
+        )
+        .expect("reciprocal pipeline should execute");
+
+        assert!(matches!(solved.0, SolutionSet::Conditional(_)));
+        assert_eq!(solved.1.len(), 2);
+        assert_eq!(map_calls.get(), 2);
+    }
+
+    #[test]
+    fn execute_reciprocal_solve_pipeline_with_items_via_kernel_execution_pipeline_maps_steps_when_enabled(
+    ) {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let r = context.var("r");
+        let one = context.num(1);
+        let lhs = context.add(Expr::Div(one, x));
+        let rhs = context.add(Expr::Div(one, r));
+        let context_cell = std::cell::RefCell::new(context);
+        let map_calls = std::cell::Cell::new(0usize);
+
+        let solved = execute_reciprocal_solve_pipeline_with_items_via_kernel_execution_pipeline(
+            lhs,
+            rhs,
+            "x",
+            true,
+            |inner_lhs, inner_rhs, inner_var| {
+                let mut context_ref = context_cell.borrow_mut();
+                derive_reciprocal_solve_kernel(&mut context_ref, inner_lhs, inner_rhs, inner_var)
+            },
+            |inner_var, kernel| {
+                let mut context_ref = context_cell.borrow_mut();
+                build_reciprocal_solve_plan(
+                    &mut context_ref,
+                    inner_var,
+                    kernel.numerator,
+                    kernel.denominator,
+                )
+            },
+            |expr| expr,
+            |_expr| NonZeroStatus::Unknown,
+            |inner_var, kernel, prepared| {
+                let mut context_ref = context_cell.borrow_mut();
+                build_reciprocal_execution_from_kernel_prepared(
+                    &mut context_ref,
+                    inner_var,
+                    kernel,
+                    prepared,
                 )
             },
             |item| {
