@@ -7,7 +7,7 @@ use cas_solver_core::isolation_utils::{is_known_negative, should_try_reciprocal_
 use cas_solver_core::solve_outcome::{
     derive_add_isolation_operands, derive_div_isolation_route, derive_mul_isolation_operands,
     derive_sub_isolation_operands,
-    execute_division_denominator_sign_split_if_applicable_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with,
+    execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with,
     execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with,
     execute_term_isolation_plan_and_merge_with_existing_steps_with,
     finalize_division_denominator_sign_split_solved_sets,
@@ -17,10 +17,10 @@ use cas_solver_core::solve_outcome::{
     plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
     plan_division_denominator_sign_split_or_div_numerator_isolation_with,
     plan_isolated_denominator_sign_split_or_division_denominator,
-    plan_mul_factor_isolation_step_with, plan_sub_isolation_step_with,
-    resolve_div_denominator_isolation_rhs_with,
-    try_execute_product_zero_inequality_split_if_applicable_pipeline_with_existing_steps,
-    AddIsolationRoute, DivIsolationRoute,
+    plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split_if_applicable,
+    plan_sub_isolation_step_with, resolve_div_denominator_isolation_rhs_with,
+    try_execute_product_zero_inequality_split_pipeline_with_existing_steps, AddIsolationRoute,
+    DivIsolationRoute,
 };
 
 use super::isolate;
@@ -152,34 +152,27 @@ pub(super) fn isolate_mul(
     // CRITICAL: For inequalities with products, need sign analysis
     // Product inequality split: A * B op 0
     {
+        let split_plan = plan_product_zero_inequality_split_if_applicable(
+            &mut simplifier.context,
+            l,
+            r,
+            rhs,
+            op.clone(),
+            var,
+        );
         let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        if let Some(result) =
-            try_execute_product_zero_inequality_split_if_applicable_pipeline_with_existing_steps(
-                || {
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
-                    cas_solver_core::solve_outcome::plan_product_zero_inequality_split_if_applicable(
-                        &mut simplifier_ref.context,
-                        l,
-                        r,
-                        rhs,
-                        op.clone(),
-                        var,
-                    )
-                },
-                &steps,
-                |equation| {
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
-                    solve_with_ctx_and_options(equation, var, *simplifier_ref, opts, ctx)
-                },
-                |solved_sets| {
-                    let simplifier_ref = runtime_cell.borrow();
-                    finalize_product_zero_inequality_solved_sets(
-                        &simplifier_ref.context,
-                        solved_sets,
-                    )
-                },
-            )
-        {
+        if let Some(result) = try_execute_product_zero_inequality_split_pipeline_with_existing_steps(
+            split_plan,
+            &steps,
+            |equation| {
+                let mut simplifier_ref = runtime_cell.borrow_mut();
+                solve_with_ctx_and_options(equation, var, *simplifier_ref, opts, ctx)
+            },
+            |solved_sets| {
+                let simplifier_ref = runtime_cell.borrow();
+                finalize_product_zero_inequality_solved_sets(&simplifier_ref.context, solved_sets)
+            },
+        ) {
             return result;
         }
     }
@@ -264,8 +257,8 @@ pub(super) fn isolate_div(
                 |_| denominator_desc.clone(),
             );
         let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        execute_division_denominator_sign_split_if_applicable_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with(
-            || split_plan,
+        execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with(
+            split_plan,
             r,
             op.clone(),
             l,

@@ -4403,6 +4403,40 @@ where
     )
 }
 
+/// Execute terminal-gate stage first, then route through post-terminal
+/// unsupported handling using a preplanned unsupported execution.
+pub fn execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_existing_steps_mut_with_unsupported_execution<
+    S,
+    FTerminalGate,
+    FGuarded,
+    FStep,
+    FHint,
+>(
+    terminal_gate: FTerminalGate,
+    include_unsupported_items: bool,
+    existing_steps: &mut Vec<S>,
+    unsupported_execution: Option<PowExponentLogUnsupportedExecution>,
+    try_guarded_solve: FGuarded,
+    map_item_to_step: FStep,
+    register_blocked_hint: FHint,
+) -> Result<Option<(SolutionSet, Vec<S>)>, &'static str>
+where
+    FTerminalGate: FnOnce(&mut Vec<S>) -> LogDecisionTerminalResult<S>,
+    FGuarded: FnMut(&Equation) -> Option<SolutionSet>,
+    FStep: FnMut(TermIsolationExecutionItem) -> S,
+    FHint: FnMut(LogBlockedHintRecord),
+{
+    execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_existing_steps_mut(
+        terminal_gate,
+        include_unsupported_items,
+        existing_steps,
+        move || unsupported_execution,
+        try_guarded_solve,
+        map_item_to_step,
+        register_blocked_hint,
+    )
+}
+
 /// Execute the full exponent-log decision pipeline and resolve it into:
 /// - `Ok(Some((solutions, steps)))` when solved,
 /// - `Err(message)` when complex-domain escalation is required,
@@ -7069,6 +7103,79 @@ where
 /// Execute division denominator-sign split when applicable, otherwise execute
 /// fallback term-isolation plan and merge with existing steps.
 #[allow(clippy::too_many_arguments)]
+pub fn execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with<
+    E,
+    S,
+    FSimplifyExpr,
+    FRenderExpr,
+    FSolveBranch,
+    FSolveDomain,
+    FMapDivisionStep,
+    FMapTermStep,
+    FFinalize,
+>(
+    split_plan: Option<DivisionDenominatorSignSplitPlan>,
+    denominator: ExprId,
+    case_boundary_op: RelOp,
+    case_boundary_lhs: ExprId,
+    include_items: bool,
+    term_plan: TermIsolationRewritePlan,
+    simplify_term_rhs_before_solve: bool,
+    existing_steps: Vec<S>,
+    mut simplify_expr: FSimplifyExpr,
+    render_expr: FRenderExpr,
+    mut solve_branch: FSolveBranch,
+    solve_domain: FSolveDomain,
+    map_division_item_to_step: FMapDivisionStep,
+    map_term_item_to_step: FMapTermStep,
+    finalize_solved_sets: FFinalize,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    S: Clone,
+    FSimplifyExpr: FnMut(ExprId) -> ExprId,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveBranch: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FSolveDomain: FnMut(&Equation) -> Result<SolutionSet, E>,
+    FMapDivisionStep: FnMut(DivisionDidacticExecutionItem) -> S,
+    FMapTermStep: FnMut(TermIsolationRewriteExecutionItem) -> S,
+    FFinalize:
+        FnMut(DivisionDenominatorSignSplitSolvedCases<SolutionSet, SolutionSet>) -> SolutionSet,
+{
+    if let Some(split_plan) = split_plan {
+        let simplified_rhs = simplify_expr(split_plan.positive_equation.rhs);
+        return execute_division_denominator_sign_split_pipeline_with_optional_items(
+            split_plan,
+            denominator,
+            case_boundary_lhs,
+            case_boundary_op,
+            simplified_rhs,
+            include_items,
+            &existing_steps,
+            render_expr,
+            solve_branch,
+            solve_domain,
+            map_division_item_to_step,
+            finalize_solved_sets,
+        );
+    }
+
+    let solved = solve_term_isolation_plan_with(
+        term_plan,
+        include_items,
+        simplify_term_rhs_before_solve,
+        simplify_expr,
+        |equation| solve_branch(&equation),
+        map_term_item_to_step,
+    )?;
+    Ok(merge_solved_with_existing_steps_prepend(
+        solved,
+        existing_steps,
+    ))
+}
+
+/// Execute division denominator-sign split when applicable, otherwise execute
+/// fallback term-isolation plan and merge with existing steps.
+#[allow(clippy::too_many_arguments)]
 pub fn execute_division_denominator_sign_split_if_applicable_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with<
     E,
     S,
@@ -7089,13 +7196,13 @@ pub fn execute_division_denominator_sign_split_if_applicable_or_term_isolation_p
     term_plan: TermIsolationRewritePlan,
     simplify_term_rhs_before_solve: bool,
     existing_steps: Vec<S>,
-    mut simplify_expr: FSimplifyExpr,
-    mut render_expr: FRenderExpr,
-    mut solve_branch: FSolveBranch,
-    mut solve_domain: FSolveDomain,
-    mut map_division_item_to_step: FMapDivisionStep,
+    simplify_expr: FSimplifyExpr,
+    render_expr: FRenderExpr,
+    solve_branch: FSolveBranch,
+    solve_domain: FSolveDomain,
+    map_division_item_to_step: FMapDivisionStep,
     map_term_item_to_step: FMapTermStep,
-    mut finalize_solved_sets: FFinalize,
+    finalize_solved_sets: FFinalize,
 ) -> Result<(SolutionSet, Vec<S>), E>
 where
     S: Clone,
@@ -7109,37 +7216,23 @@ where
     FFinalize:
         FnMut(DivisionDenominatorSignSplitSolvedCases<SolutionSet, SolutionSet>) -> SolutionSet,
 {
-    if let Some(result) =
-        try_execute_division_denominator_sign_split_if_applicable_with_optional_items(
-            plan_if_applicable,
-            denominator,
-            case_boundary_op,
-            case_boundary_lhs,
-            include_items,
-            &existing_steps,
-            &mut simplify_expr,
-            &mut render_expr,
-            &mut solve_branch,
-            &mut solve_domain,
-            &mut map_division_item_to_step,
-            &mut finalize_solved_sets,
-        )
-    {
-        return result;
-    }
-
-    let solved = solve_term_isolation_plan_with(
-        term_plan,
+    execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with(
+        plan_if_applicable(),
+        denominator,
+        case_boundary_op,
+        case_boundary_lhs,
         include_items,
+        term_plan,
         simplify_term_rhs_before_solve,
-        simplify_expr,
-        |equation| solve_branch(&equation),
-        map_term_item_to_step,
-    )?;
-    Ok(merge_solved_with_existing_steps_prepend(
-        solved,
         existing_steps,
-    ))
+        simplify_expr,
+        render_expr,
+        solve_branch,
+        solve_domain,
+        map_division_item_to_step,
+        map_term_item_to_step,
+        finalize_solved_sets,
+    )
 }
 
 /// Build executable split plan for already-isolated denominator inequalities.
@@ -10641,6 +10734,44 @@ mod tests {
                 |_hint| panic!("blocked hints should be empty for residual unsupported plan"),
             )
             .expect("continue should not error");
+
+        assert_eq!(
+            out,
+            Some((
+                SolutionSet::Residual(y),
+                vec!["existing".to_string(), "unsupported residual".to_string()],
+            ))
+        );
+    }
+
+    #[test]
+    fn execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_existing_steps_mut_with_unsupported_execution_maps_continue(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let mut existing = vec!["existing".to_string()];
+
+        let out = execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_existing_steps_mut_with_unsupported_execution(
+            |_existing_steps| LogDecisionTerminalResult::Continue,
+            true,
+            &mut existing,
+            Some(PowExponentLogUnsupportedExecution::Residual {
+                item: TermIsolationExecutionItem {
+                    description: "unsupported residual".to_string(),
+                    equation: Equation {
+                        lhs: x,
+                        rhs: y,
+                        op: RelOp::Eq,
+                    },
+                },
+                solutions: SolutionSet::Residual(y),
+            }),
+            |_equation| panic!("guarded solve must not run for residual unsupported plan"),
+            |item| item.description,
+            |_hint| panic!("blocked hints should be empty for residual unsupported plan"),
+        )
+        .expect("continue should not error");
 
         assert_eq!(
             out,
@@ -15996,6 +16127,61 @@ mod tests {
         let (solution_set, steps) =
             execute_division_denominator_sign_split_if_applicable_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with(
                 || Some(split),
+                den,
+                RelOp::Lt,
+                num,
+                false,
+                term_plan,
+                false,
+                vec![7u8],
+                |rhs_expr| {
+                    simplify_called.set(true);
+                    rhs_expr
+                },
+                |_id| "d".to_string(),
+                |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![rhs]), vec![1u8])),
+                |_equation| Ok::<_, ()>(SolutionSet::AllReals),
+                |_item| 9u8,
+                |_item| -> u8 { panic!("fallback mapper must not run on split path") },
+                |solved_cases| {
+                    finalize_called.set(true);
+                    solved_cases.positive_branch
+                },
+            )
+            .expect("split path should execute");
+
+        assert!(simplify_called.get());
+        assert!(finalize_called.get());
+        assert_eq!(solution_set, SolutionSet::Discrete(vec![rhs]));
+        assert_eq!(steps, vec![7u8, 1u8, 7u8, 1u8]);
+    }
+
+    #[test]
+    fn execute_division_denominator_sign_split_or_term_plan_prefers_split_path() {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let split =
+            plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Lt).unwrap();
+        let term_equation = Equation {
+            lhs: den,
+            rhs,
+            op: RelOp::Lt,
+        };
+        let term_plan = build_term_isolation_rewrite_plan_from_item(
+            term_equation.clone(),
+            TermIsolationExecutionItem {
+                description: "fallback".to_string(),
+                equation: term_equation,
+            },
+        );
+        let simplify_called = std::cell::Cell::new(false);
+        let finalize_called = std::cell::Cell::new(false);
+
+        let (solution_set, steps) =
+            execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with(
+                Some(split),
                 den,
                 RelOp::Lt,
                 num,
