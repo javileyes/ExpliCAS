@@ -644,6 +644,34 @@ where
     )
 }
 
+/// Merge a shortcut pipeline outcome with caller-owned pre-existing steps.
+///
+/// Returns `None` when shortcut pipeline indicates `Continue`.
+pub fn merge_pow_exponent_shortcut_pipeline_with_existing_steps<S>(
+    solved: PowExponentShortcutPipelineSolved<S>,
+    existing_steps: Vec<S>,
+) -> Option<(SolutionSet, Vec<S>)> {
+    match solved {
+        PowExponentShortcutPipelineSolved::Continue => None,
+        PowExponentShortcutPipelineSolved::Isolated {
+            solution_set,
+            steps,
+        } => {
+            let mut merged = steps;
+            merged.extend(existing_steps);
+            Some((solution_set, merged))
+        }
+        PowExponentShortcutPipelineSolved::ReturnedSolutionSet {
+            solution_set,
+            steps,
+        } => {
+            let mut merged = existing_steps;
+            merged.extend(steps);
+            Some((solution_set, merged))
+        }
+    }
+}
+
 /// Solved base-one shortcut (`1^x = rhs`) with didactic payload.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PowerBaseOneShortcutOutcome {
@@ -1169,6 +1197,31 @@ where
                 solution_set,
                 steps,
             })
+        }
+    }
+}
+
+/// Merge a base-isolation pipeline outcome with caller-owned pre-existing steps.
+pub fn merge_pow_base_isolation_pipeline_with_existing_steps<S>(
+    solved: PowBaseIsolationPipelineSolved<S>,
+    existing_steps: Vec<S>,
+) -> (SolutionSet, Vec<S>) {
+    match solved {
+        PowBaseIsolationPipelineSolved::ReturnedSolutionSet {
+            solution_set,
+            steps,
+        } => {
+            let mut merged = existing_steps;
+            merged.extend(steps);
+            (solution_set, merged)
+        }
+        PowBaseIsolationPipelineSolved::Isolated {
+            solution_set,
+            steps,
+        } => {
+            let mut merged = steps;
+            merged.extend(existing_steps);
+            (solution_set, merged)
         }
     }
 }
@@ -3513,6 +3566,31 @@ where
         try_guarded_solve,
         map_item_to_step,
     ))
+}
+
+/// Merge unsupported exponent-log pipeline outcome with caller-owned steps and
+/// allow caller-side blocked-hint registration through callback.
+pub fn merge_pow_exponent_log_unsupported_pipeline_with_existing_steps<S, FHint>(
+    solved: Option<PowExponentLogUnsupportedPipelineSolved<S>>,
+    existing_steps: Vec<S>,
+    mut register_blocked_hint: FHint,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FHint: FnMut(LogBlockedHintRecord),
+{
+    let PowExponentLogUnsupportedPipelineSolved {
+        blocked_hints,
+        solution_set,
+        steps,
+    } = solved?;
+
+    for hint in blocked_hints {
+        register_blocked_hint(hint);
+    }
+
+    let mut merged = existing_steps;
+    merged.extend(steps);
+    Some((solution_set, merged))
 }
 
 /// Build narration for eliminating rational exponents by powering both sides.
@@ -7647,6 +7725,35 @@ mod tests {
     }
 
     #[test]
+    fn merge_pow_exponent_log_unsupported_pipeline_with_existing_steps_registers_hints() {
+        let solved = Some(PowExponentLogUnsupportedPipelineSolved {
+            blocked_hints: vec![LogBlockedHintRecord {
+                assumption: LogAssumption::PositiveBase,
+                expr_id: ExprId::from_raw(7),
+                rule: "Take log of both sides",
+                suggestion: "use `semantics set domain assume`",
+            }],
+            solution_set: SolutionSet::AllReals,
+            steps: vec!["unsupported".to_string()],
+        });
+
+        let mut registered = Vec::new();
+        let merged = merge_pow_exponent_log_unsupported_pipeline_with_existing_steps(
+            solved,
+            vec!["existing".to_string()],
+            |hint| registered.push(hint),
+        )
+        .expect("must merge unsupported outcome");
+
+        assert_eq!(registered.len(), 1);
+        assert_eq!(registered[0].expr_id, ExprId::from_raw(7));
+        assert_eq!(
+            merged.1,
+            vec!["existing".to_string(), "unsupported".to_string()]
+        );
+    }
+
+    #[test]
     fn guarded_solutions_with_residual_fallback_builds_two_cases() {
         let mut ctx = Context::new();
         let b = ctx.var("b");
@@ -8532,6 +8639,37 @@ mod tests {
     }
 
     #[test]
+    fn merge_pow_exponent_shortcut_pipeline_with_existing_steps_merges_orders() {
+        let isolated = PowExponentShortcutPipelineSolved::Isolated {
+            solution_set: SolutionSet::AllReals,
+            steps: vec!["pipeline".to_string()],
+        };
+        let merged_isolated = merge_pow_exponent_shortcut_pipeline_with_existing_steps(
+            isolated,
+            vec!["existing".to_string()],
+        )
+        .expect("isolated must produce merged output");
+        assert_eq!(
+            merged_isolated.1,
+            vec!["pipeline".to_string(), "existing".to_string()]
+        );
+
+        let returned = PowExponentShortcutPipelineSolved::ReturnedSolutionSet {
+            solution_set: SolutionSet::Empty,
+            steps: vec!["pipeline".to_string()],
+        };
+        let merged_returned = merge_pow_exponent_shortcut_pipeline_with_existing_steps(
+            returned,
+            vec!["existing".to_string()],
+        )
+        .expect("terminal must produce merged output");
+        assert_eq!(
+            merged_returned.1,
+            vec!["existing".to_string(), "pipeline".to_string()]
+        );
+    }
+
+    #[test]
     fn execute_pow_exponent_shortcut_pipeline_with_item_with_routes_isolated_branch() {
         let mut ctx = Context::new();
         let base = ctx.var("a");
@@ -8779,6 +8917,35 @@ mod tests {
             }
             other => panic!("expected terminal pipeline result, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn merge_pow_base_isolation_pipeline_with_existing_steps_merges_orders() {
+        let isolated = PowBaseIsolationPipelineSolved::Isolated {
+            solution_set: SolutionSet::AllReals,
+            steps: vec!["pipeline".to_string()],
+        };
+        let merged_isolated = merge_pow_base_isolation_pipeline_with_existing_steps(
+            isolated,
+            vec!["existing".to_string()],
+        );
+        assert_eq!(
+            merged_isolated.1,
+            vec!["pipeline".to_string(), "existing".to_string()]
+        );
+
+        let returned = PowBaseIsolationPipelineSolved::ReturnedSolutionSet {
+            solution_set: SolutionSet::Empty,
+            steps: vec!["pipeline".to_string()],
+        };
+        let merged_returned = merge_pow_base_isolation_pipeline_with_existing_steps(
+            returned,
+            vec!["existing".to_string()],
+        );
+        assert_eq!(
+            merged_returned.1,
+            vec!["existing".to_string(), "pipeline".to_string()]
+        );
     }
 
     #[test]

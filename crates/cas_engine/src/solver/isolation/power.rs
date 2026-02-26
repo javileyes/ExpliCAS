@@ -9,13 +9,16 @@ use cas_solver_core::solve_outcome::{
     execute_pow_exponent_log_isolation_pipeline_with_item_with,
     execute_pow_exponent_log_unsupported_pipeline_from_decision_with,
     execute_pow_exponent_shortcut_pipeline_with_item_with,
+    merge_pow_base_isolation_pipeline_with_existing_steps,
+    merge_pow_exponent_log_unsupported_pipeline_with_existing_steps,
+    merge_pow_exponent_shortcut_pipeline_with_existing_steps,
     plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
     pow_exponent_rhs_contains_variable, resolve_log_terminal_outcome,
     resolve_power_base_one_shortcut_for_pow_with, solve_pow_base_isolation_pipeline_with_item,
     solve_power_base_one_shortcut_pipeline_with_item,
     solve_solve_tactic_normalization_pipeline_with_item, solve_terminal_outcome_pipeline_with_item,
-    PowBaseIsolationPipelineSolved, PowExponentShortcutPipelineSolved, PowIsolationRoute,
+    PowExponentShortcutPipelineSolved, PowIsolationRoute,
 };
 
 use super::{isolate, prepend_steps};
@@ -77,7 +80,7 @@ fn isolate_pow_base(
     var: &str,
     simplifier: &mut Simplifier,
     opts: SolverOptions,
-    mut steps: Vec<SolveStep>,
+    steps: Vec<SolveStep>,
     ctx: &super::super::SolveCtx,
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let action = build_pow_base_isolation_action_with(
@@ -99,20 +102,9 @@ fn isolate_pow_base(
             |item| medium_step(item.description().to_string(), item.equation),
         )?
     };
-
-    match solved_base {
-        PowBaseIsolationPipelineSolved::ReturnedSolutionSet {
-            solution_set,
-            steps: mut pipeline_steps,
-        } => {
-            steps.append(&mut pipeline_steps);
-            Ok((solution_set, steps))
-        }
-        PowBaseIsolationPipelineSolved::Isolated {
-            solution_set,
-            steps: pipeline_steps,
-        } => prepend_steps((solution_set, pipeline_steps), steps),
-    }
+    let (solution_set, merged_steps) =
+        merge_pow_base_isolation_pipeline_with_existing_steps(solved_base, steps);
+    Ok((solution_set, merged_steps))
 }
 
 /// Handle `B^E = RHS` when variable is in `E` (the exponent) — logarithmic isolation
@@ -190,18 +182,17 @@ fn isolate_pow_exponent(
 
     match shortcut_solved {
         PowExponentShortcutPipelineSolved::Continue => {}
-        PowExponentShortcutPipelineSolved::Isolated {
-            solution_set,
-            steps: pipeline_steps,
-        } => {
-            return prepend_steps((solution_set, pipeline_steps), steps);
-        }
-        PowExponentShortcutPipelineSolved::ReturnedSolutionSet {
-            solution_set,
-            steps: mut pipeline_steps,
-        } => {
-            steps.append(&mut pipeline_steps);
-            return Ok((solution_set, steps));
+        _ => {
+            let existing_steps = std::mem::take(&mut steps);
+            if let Some((solution_set, merged_steps)) =
+                merge_pow_exponent_shortcut_pipeline_with_existing_steps(
+                    shortcut_solved,
+                    existing_steps,
+                )
+            {
+                return Ok((solution_set, merged_steps));
+            }
+            unreachable!("non-continue shortcut branch must produce merged solution");
         }
     }
 
@@ -373,24 +364,29 @@ fn isolate_pow_exponent(
         )
     };
     if let Some(unsupported_solved) = unsupported_solved {
-        // Register blocked hints for pedagogical feedback
-        for hint in unsupported_solved.blocked_hints {
-            let event = crate::assumptions::AssumptionEvent::from_log_assumption(
-                hint.assumption,
-                &simplifier.context,
-                b,
-                rhs,
-            );
-            crate::domain::register_blocked_hint(crate::domain::BlockedHint {
-                key: event.key,
-                expr_id: hint.expr_id,
-                rule: hint.rule.to_string(),
-                suggestion: hint.suggestion,
-            });
+        let existing_steps = std::mem::take(&mut steps);
+        if let Some((solution_set, merged_steps)) =
+            merge_pow_exponent_log_unsupported_pipeline_with_existing_steps(
+                Some(unsupported_solved),
+                existing_steps,
+                |hint| {
+                    let event = crate::assumptions::AssumptionEvent::from_log_assumption(
+                        hint.assumption,
+                        &simplifier.context,
+                        b,
+                        rhs,
+                    );
+                    crate::domain::register_blocked_hint(crate::domain::BlockedHint {
+                        key: event.key,
+                        expr_id: hint.expr_id,
+                        rule: hint.rule.to_string(),
+                        suggestion: hint.suggestion,
+                    });
+                },
+            )
+        {
+            return Ok((solution_set, merged_steps));
         }
-
-        steps.extend(unsupported_solved.steps);
-        return Ok((unsupported_solved.solution_set, steps));
     }
     // ================================================================
     // End of domain guards
