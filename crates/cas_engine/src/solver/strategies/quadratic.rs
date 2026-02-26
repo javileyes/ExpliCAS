@@ -54,19 +54,17 @@ impl SolverStrategy for QuadraticStrategy {
             if eq.op == RelOp::Eq {
                 let include_items = simplifier.collect_steps();
                 let residual_expr = sim_poly_expr;
-                let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-                let factorized_execution = {
-                    let simplifier_ref = runtime_cell.borrow();
+                let factorized_execution =
                     build_factorized_zero_product_execution_with_optional_items(
-                        &simplifier_ref.context,
+                        &simplifier.context,
                         sim_poly_expr,
                         &factors,
                         var,
                         zero,
                         include_items,
-                        |expr| render_expr(&simplifier_ref.context, expr),
-                    )
-                };
+                        |expr| render_expr(&simplifier.context, expr),
+                    );
+                let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
                 let solved =
                     match solve_factorized_zero_product_execution_result_pipeline_with_items(
                         &factorized_execution,
