@@ -9,13 +9,15 @@ use cas_solver_core::solve_outcome::{
     build_division_denominator_sign_split_execution_with,
     build_isolated_denominator_sign_split_execution_with, derive_add_isolation_operands,
     derive_div_isolation_route, derive_mul_isolation_operands, derive_sub_isolation_operands,
+    execute_term_isolation_plan_and_merge_with_existing_steps_with,
     finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
-    finalize_product_zero_inequality_solved_sets, first_term_isolation_rewrite_execution_item,
+    finalize_product_zero_inequality_solved_sets,
     materialize_division_denominator_sign_split_execution,
     materialize_isolated_denominator_sign_split_execution,
-    merge_optional_solved_with_existing_steps_append_mut, mul_rhs_contains_variable,
-    plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
+    merge_optional_solved_with_existing_steps_append_mut, merge_solved_with_existing_steps_prepend,
+    mul_rhs_contains_variable, plan_add_operand_isolation_step_with,
+    plan_div_denominator_isolation_with_zero_rhs_guard,
     plan_division_denominator_sign_split_or_div_numerator_isolation_with,
     plan_isolated_denominator_sign_split_or_division_denominator,
     plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split_if_applicable,
@@ -25,47 +27,9 @@ use cas_solver_core::solve_outcome::{
     solve_isolated_denominator_sign_split_execution_pipeline_with_items,
     solve_product_zero_inequality_split_execution_with, AddIsolationRoute, DivIsolationRoute,
     DivisionDenominatorSignSplitSolvedCases, IsolatedDenominatorSignSplitSolvedCases,
-    TermIsolationRewritePlan,
 };
 
 use super::isolate;
-
-#[allow(clippy::too_many_arguments)]
-fn run_term_isolation_plan(
-    plan: TermIsolationRewritePlan,
-    include_item: bool,
-    simplify_rhs_before_solve: bool,
-    existing_steps: Vec<SolveStep>,
-    var: &str,
-    simplifier: &mut Simplifier,
-    opts: SolverOptions,
-    ctx: &super::super::SolveCtx,
-) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
-    let mut steps = Vec::new();
-    if include_item {
-        if let Some(item) = first_term_isolation_rewrite_execution_item(&plan) {
-            steps.push(medium_step(item.description, item.equation));
-        }
-    }
-
-    let mut rewritten = plan.equation;
-    if simplify_rhs_before_solve {
-        rewritten.rhs = simplifier.simplify(rewritten.rhs).0;
-    }
-
-    let (solution_set, mut solved_steps) = isolate(
-        rewritten.lhs,
-        rewritten.rhs,
-        rewritten.op,
-        var,
-        simplifier,
-        opts,
-        ctx,
-    )?;
-    steps.append(&mut solved_steps);
-    steps.extend(existing_steps);
-    Ok((solution_set, steps))
-}
 
 /// Handle isolation for `Add(l, r)`: `(A + B) = RHS`
 #[allow(clippy::too_many_arguments)]
@@ -95,7 +59,7 @@ pub(super) fn isolate_add(
     }
 
     let add_moved_desc = solver_render_expr(&simplifier.context, add_operands.moved_addend);
-    let add_plan = plan_add_operand_isolation_step_with(
+    let mut add_plan = plan_add_operand_isolation_step_with(
         &mut simplifier.context,
         add_operands.isolated_addend,
         add_operands.moved_addend,
@@ -103,16 +67,26 @@ pub(super) fn isolate_add(
         op.clone(),
         |_| add_moved_desc.clone(),
     );
+    add_plan.equation.rhs = simplifier.simplify(add_plan.equation.rhs).0;
     let include_item = simplifier.collect_steps();
-    run_term_isolation_plan(
+    execute_term_isolation_plan_and_merge_with_existing_steps_with(
         add_plan,
         include_item,
-        true,
+        false,
         steps,
-        var,
-        simplifier,
-        opts,
-        ctx,
+        |expr| expr,
+        |equation| {
+            isolate(
+                equation.lhs,
+                equation.rhs,
+                equation.op,
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )
+        },
+        |item| medium_step(item.description, item.equation),
     )
 }
 
@@ -132,20 +106,30 @@ pub(super) fn isolate_sub(
     let sub_operands = derive_sub_isolation_operands(&simplifier.context, l, r, var);
     let sub_moved = sub_operands.moved_term;
     let sub_moved_desc = solver_render_expr(&simplifier.context, sub_moved);
-    let sub_plan =
+    let mut sub_plan =
         plan_sub_isolation_step_with(&mut simplifier.context, l, r, rhs, op.clone(), var, |_| {
             sub_moved_desc.clone()
         });
+    sub_plan.equation.rhs = simplifier.simplify(sub_plan.equation.rhs).0;
     let include_item = simplifier.collect_steps();
-    run_term_isolation_plan(
+    execute_term_isolation_plan_and_merge_with_existing_steps_with(
         sub_plan,
         include_item,
-        true,
+        false,
         steps,
-        var,
-        simplifier,
-        opts,
-        ctx,
+        |expr| expr,
+        |equation| {
+            isolate(
+                equation.lhs,
+                equation.rhs,
+                equation.op,
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )
+        },
+        |item| medium_step(item.description, item.equation),
     )
 }
 
@@ -183,9 +167,10 @@ pub(super) fn isolate_mul(
                 &simplifier.context,
                 solved.solved_sets,
             );
-            let mut merged_steps = solved.steps;
-            merged_steps.extend(steps);
-            return Ok((final_set, merged_steps));
+            return Ok(merge_solved_with_existing_steps_prepend(
+                (final_set, solved.steps),
+                steps,
+            ));
         }
     }
 
@@ -212,15 +197,24 @@ pub(super) fn isolate_mul(
         |_| mul_moved_desc.clone(),
     );
     let include_item = simplifier.collect_steps();
-    run_term_isolation_plan(
+    execute_term_isolation_plan_and_merge_with_existing_steps_with(
         mul_plan,
         include_item,
         false,
         steps,
-        var,
-        simplifier,
-        opts,
-        ctx,
+        |expr| expr,
+        |equation| {
+            isolate(
+                equation.lhs,
+                equation.rhs,
+                equation.op,
+                var,
+                simplifier,
+                opts,
+                ctx,
+            )
+        },
+        |item| medium_step(item.description, item.equation),
     )
 }
 
@@ -298,15 +292,24 @@ pub(super) fn isolate_div(
             return Ok((final_set, solved.steps));
         }
 
-        run_term_isolation_plan(
+        execute_term_isolation_plan_and_merge_with_existing_steps_with(
             term_plan,
             include_item,
             false,
             steps,
-            var,
-            simplifier,
-            opts,
-            ctx,
+            |expr| expr,
+            |equation| {
+                isolate(
+                    equation.lhs,
+                    equation.rhs,
+                    equation.op,
+                    var,
+                    simplifier,
+                    opts,
+                    ctx,
+                )
+            },
+            |item| medium_step(item.description, item.equation),
         )
     } else {
         // B = A / RHS (variable in denominator)
@@ -405,12 +408,13 @@ pub(super) fn isolate_div(
                 },
                 |item| medium_step(item.description, item.equation),
             )?;
-            let mut merged_steps = solved.steps;
-            merged_steps.extend(steps);
-            return Ok((solved.solution_set, merged_steps));
+            return Ok(merge_solved_with_existing_steps_prepend(
+                (solved.solution_set, solved.steps),
+                steps,
+            ));
         }
 
-        let (solution_set, mut sub_steps) = isolate(
+        let solved = isolate(
             didactic_plan.divide_equation.lhs,
             didactic_plan.divide_equation.rhs,
             didactic_plan.divide_equation.op,
@@ -419,7 +423,6 @@ pub(super) fn isolate_div(
             opts,
             ctx,
         )?;
-        sub_steps.extend(steps);
-        Ok((solution_set, sub_steps))
+        Ok(merge_solved_with_existing_steps_prepend(solved, steps))
     }
 }

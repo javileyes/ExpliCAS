@@ -14,8 +14,8 @@ use cas_solver_core::solve_outcome::{
     build_abs_split_execution_with,
     execute_log_isolation_result_pipeline_with_plan_and_error_and_merge_with_existing_steps,
     finalize_abs_split_solution_set_for_rhs, materialize_abs_split_execution,
-    plan_abs_isolation_with_rhs_sign, solve_abs_split_execution_pipeline_with_items,
-    AbsIsolationPlan,
+    merge_solved_with_existing_steps_prepend, plan_abs_isolation_with_rhs_sign,
+    solve_abs_split_execution_pipeline_with_items, AbsIsolationPlan,
 };
 
 /// Handle isolation for `Function(fn_id, args)`: abs, log, ln, exp, sqrt, trig
@@ -77,7 +77,7 @@ fn isolate_abs(
     match abs_plan {
         AbsIsolationPlan::ReturnEmptySet => Ok((SolutionSet::Empty, steps)),
         AbsIsolationPlan::IsolateSingleEquation { equation } => {
-            let (solution_set, mut solved_steps) = isolate(
+            let solved = isolate(
                 equation.lhs,
                 equation.rhs,
                 equation.op,
@@ -86,8 +86,7 @@ fn isolate_abs(
                 opts,
                 ctx,
             )?;
-            solved_steps.extend(steps);
-            Ok((solution_set, solved_steps))
+            Ok(merge_solved_with_existing_steps_prepend(solved, steps))
         }
         AbsIsolationPlan::SplitBranches { positive, negative } => {
             let execution = if include_items {
@@ -218,11 +217,12 @@ fn isolate_unary_function(
     let solved = solve_unary_inverse_execution_pipeline_with_items(
         execution,
         include_items,
-        |lhs, rhs, inner_op| isolate(lhs, rhs, inner_op, var, simplifier, opts, ctx),
+        |lhs, rhs_expr, inner_op| isolate(lhs, rhs_expr, inner_op, var, simplifier, opts, ctx),
         |item| medium_step(item.description().to_string(), item.equation),
     )?;
 
-    let mut solved_steps = solved.steps;
-    solved_steps.extend(steps);
-    Ok((solved.solution_set, solved_steps))
+    Ok(merge_solved_with_existing_steps_prepend(
+        (solved.solution_set, solved.steps),
+        steps,
+    ))
 }
