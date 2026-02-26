@@ -665,6 +665,23 @@ pub fn plan_rational_roots_strategy_step(
     )
 }
 
+/// Plan Rational Root strategy didactic step for equation `expanded_expr = 0`
+/// with a precomputed zero expression id.
+pub fn plan_rational_roots_strategy_step_with_zero_rhs(
+    expanded_expr: ExprId,
+    degree: usize,
+    zero_rhs: ExprId,
+) -> RationalRootsDidacticStep {
+    build_rational_roots_strategy_step(
+        Equation {
+            lhs: expanded_expr,
+            rhs: zero_rhs,
+            op: RelOp::Eq,
+        },
+        degree,
+    )
+}
+
 /// Plan rational-roots strategy step for equation `expanded_expr = 0`.
 pub fn plan_rational_roots_step(
     ctx: &mut Context,
@@ -1300,6 +1317,22 @@ mod tests {
         );
         assert_eq!(step.equation_after.lhs, x);
         assert!(matches!(ctx.get(step.equation_after.rhs), Expr::Number(n) if n.is_zero()));
+        assert_eq!(step.equation_after.op, cas_ast::RelOp::Eq);
+    }
+
+    #[test]
+    fn plan_rational_roots_strategy_step_with_zero_rhs_uses_given_rhs() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let zero = ctx.num(0);
+        let step = plan_rational_roots_strategy_step_with_zero_rhs(x, 5, zero);
+
+        assert_eq!(
+            step.description,
+            "Applied Rational Root Theorem to degree-5 polynomial"
+        );
+        assert_eq!(step.equation_after.lhs, x);
+        assert_eq!(step.equation_after.rhs, zero);
         assert_eq!(step.equation_after.op, cas_ast::RelOp::Eq);
     }
 

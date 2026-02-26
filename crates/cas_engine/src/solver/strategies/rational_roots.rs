@@ -16,7 +16,8 @@ use crate::solver::strategy::SolverStrategy;
 use crate::solver::{medium_step, SolveCtx, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, SolutionSet};
 use cas_solver_core::rational_roots::{
-    extract_poly_coefficients, plan_rational_roots_step, solve_numeric_coeff_polynomial,
+    extract_poly_coefficients, plan_rational_roots_strategy_step_with_zero_rhs,
+    solve_numeric_coeff_polynomial,
     solve_rational_roots_strategy_result_for_equation_with_and_item,
 };
 use cas_solver_core::solution_set::sort_and_dedup_exprs;
@@ -44,6 +45,7 @@ impl SolverStrategy for RationalRootsStrategy {
         _ctx: &SolveCtx,
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let include_item = simplifier.collect_steps();
+        let zero_rhs = simplifier.context.num(0);
         let runtime_cell = std::cell::RefCell::new(simplifier);
         let solved = solve_rational_roots_strategy_result_for_equation_with_and_item(
             eq,
@@ -83,8 +85,7 @@ impl SolverStrategy for RationalRootsStrategy {
                 sort_and_dedup_exprs(&simplifier_ref.context, roots);
             },
             |expanded, degree| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                plan_rational_roots_step(&mut simplifier_ref.context, expanded, degree)
+                plan_rational_roots_strategy_step_with_zero_rhs(expanded, degree, zero_rhs)
             },
             |item| medium_step(item.description().to_string(), item.equation),
         )?;
