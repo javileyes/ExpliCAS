@@ -8,7 +8,7 @@ use cas_solver_core::isolation_utils::{is_numeric_zero, split_zero_product_facto
 use cas_solver_core::quadratic_coeffs::extract_quadratic_coefficients;
 use cas_solver_core::quadratic_didactic::{
     build_quadratic_main_with_substeps_execution_with_optional_items,
-    execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_state,
+    execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_guard,
     finalize_factorized_zero_product_strategy_solved,
     solve_factorized_zero_product_pipeline_with_optional_items,
 };
@@ -116,13 +116,12 @@ impl SolverStrategy for QuadraticStrategy {
                 include_items,
                 render_expr,
             );
-            let was_collecting = simplifier.collect_steps();
             let simplifier_ref = RefCell::new(simplifier);
             let didactic_steps =
-                execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_state(
+                execute_quadratic_main_with_substeps_pipeline_with_optional_items_and_collection_guard(
                     &mut execution,
                     include_items,
-                    was_collecting,
+                    || simplifier_ref.borrow().collect_steps(),
                     |collecting| simplifier_ref.borrow_mut().set_collect_steps(collecting),
                     |expr| simplifier_ref.borrow_mut().simplify(expr).0,
                     |item, substeps| {
