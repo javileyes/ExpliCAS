@@ -491,6 +491,47 @@ where
     })
 }
 
+/// Solve exponential substitution strategy from an optional pre-derived rewrite
+/// plan, returning plain strategy output.
+///
+/// Returns `None` when substitution rewrite derivation does not apply.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_exponential_substitution_strategy_result_pipeline_with_items_and_plan_with<
+    E,
+    S,
+    FRender,
+    FSolve,
+    FMap,
+>(
+    equation_before: &Equation,
+    rewrite_plan: Option<ExponentialSubstitutionRewritePlan>,
+    target_var: &str,
+    substitution_var: &str,
+    include_didactic_items: bool,
+    render_expr: FRender,
+    solve_equation: FSolve,
+    map_step: FMap,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FRender: FnMut(ExprId) -> String,
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FMap: FnMut(String, Equation) -> S,
+{
+    let rewrite_plan = rewrite_plan?;
+    Some(
+        solve_exponential_substitution_strategy_result_with_items_with(
+            equation_before.clone(),
+            rewrite_plan,
+            target_var,
+            substitution_var,
+            include_didactic_items,
+            render_expr,
+            solve_equation,
+            map_step,
+        ),
+    )
+}
+
 /// Derive and solve exponential substitution strategy returning plain strategy output.
 ///
 /// Returns `None` when substitution rewrite derivation does not apply.
@@ -518,18 +559,15 @@ where
     FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
     FMap: FnMut(String, Equation) -> S,
 {
-    let rewrite_plan = derive_rewrite_plan()?;
-    Some(
-        solve_exponential_substitution_strategy_result_with_items_with(
-            equation_before.clone(),
-            rewrite_plan,
-            target_var,
-            substitution_var,
-            include_didactic_items,
-            render_expr,
-            solve_equation,
-            map_step,
-        ),
+    execute_exponential_substitution_strategy_result_pipeline_with_items_and_plan_with(
+        equation_before,
+        derive_rewrite_plan(),
+        target_var,
+        substitution_var,
+        include_didactic_items,
+        render_expr,
+        solve_equation,
+        map_step,
     )
 }
 
@@ -1604,6 +1642,38 @@ mod tests {
 
         assert_eq!(solved.0, SolutionSet::Discrete(vec![one]));
         assert!(solved.1.len() >= 4);
+    }
+
+    #[test]
+    fn execute_exponential_substitution_strategy_result_pipeline_with_items_and_plan_with_returns_none_without_rewrite(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let equation_before = Equation {
+            lhs: x,
+            rhs: one,
+            op: cas_ast::RelOp::Eq,
+        };
+        let mut solve_calls = 0usize;
+
+        let out =
+            execute_exponential_substitution_strategy_result_pipeline_with_items_and_plan_with(
+                &equation_before,
+                None,
+                "x",
+                "u",
+                true,
+                |_expr| "u".to_string(),
+                |_equation, _var| {
+                    solve_calls += 1;
+                    Ok::<_, ()>((SolutionSet::AllReals, vec!["unexpected".to_string()]))
+                },
+                |description, _equation_after| description,
+            );
+
+        assert!(out.is_none());
+        assert_eq!(solve_calls, 0);
     }
 
     #[test]

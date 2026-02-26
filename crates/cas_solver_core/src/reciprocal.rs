@@ -457,13 +457,28 @@ pub fn execute_reciprocal_solve_with<FDeriveKernel, FBuildExecution>(
     rhs: ExprId,
     var: &str,
     mut derive_kernel: FDeriveKernel,
-    mut build_execution: FBuildExecution,
+    build_execution: FBuildExecution,
 ) -> Option<ReciprocalSolveExecution>
 where
     FDeriveKernel: FnMut(ExprId, ExprId, &str) -> Option<ReciprocalSolveKernel>,
     FBuildExecution: FnMut(&str, ReciprocalSolveKernel) -> ReciprocalSolveExecution,
 {
     let kernel = derive_kernel(lhs, rhs, var)?;
+    execute_reciprocal_solve_with_kernel(var, Some(kernel), build_execution)
+}
+
+/// High-level reciprocal solve execution from an optional pre-derived kernel.
+///
+/// Returns `None` when equation shape is not reciprocal-isolable.
+pub fn execute_reciprocal_solve_with_kernel<FBuildExecution>(
+    var: &str,
+    kernel: Option<ReciprocalSolveKernel>,
+    mut build_execution: FBuildExecution,
+) -> Option<ReciprocalSolveExecution>
+where
+    FBuildExecution: FnMut(&str, ReciprocalSolveKernel) -> ReciprocalSolveExecution,
+{
+    let kernel = kernel?;
     Some(build_execution(var, kernel))
 }
 
@@ -484,6 +499,25 @@ where
     FStep: FnMut(ReciprocalExecutionItem) -> S,
 {
     let execution = execute_reciprocal_solve_with(lhs, rhs, var, derive_kernel, build_execution)?;
+    let solved_execution =
+        solve_reciprocal_execution_pipeline_with_items(execution, include_items, map_item_to_step);
+    Some(solved_execution.solved)
+}
+
+/// High-level reciprocal solve pipeline using an optional pre-derived kernel:
+/// build execution payload and optionally map didactic items.
+pub fn execute_reciprocal_solve_pipeline_with_items_and_kernel<S, FBuildExecution, FStep>(
+    var: &str,
+    kernel: Option<ReciprocalSolveKernel>,
+    include_items: bool,
+    build_execution: FBuildExecution,
+    map_item_to_step: FStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FBuildExecution: FnMut(&str, ReciprocalSolveKernel) -> ReciprocalSolveExecution,
+    FStep: FnMut(ReciprocalExecutionItem) -> S,
+{
+    let execution = execute_reciprocal_solve_with_kernel(var, kernel, build_execution)?;
     let solved_execution =
         solve_reciprocal_execution_pipeline_with_items(execution, include_items, map_item_to_step);
     Some(solved_execution.solved)
@@ -835,6 +869,17 @@ mod tests {
     }
 
     #[test]
+    fn execute_reciprocal_solve_with_kernel_rejects_none_kernel() {
+        let build_calls = std::cell::Cell::new(0usize);
+        let execution = execute_reciprocal_solve_with_kernel("x", None, |_inner_var, _kernel| {
+            build_calls.set(build_calls.get() + 1);
+            panic!("build hook must not run when kernel is missing")
+        });
+        assert!(execution.is_none());
+        assert_eq!(build_calls.get(), 0);
+    }
+
+    #[test]
     fn execute_reciprocal_solve_pipeline_with_items_maps_steps_when_enabled() {
         let mut context = Context::new();
         let x = context.var("x");
@@ -916,6 +961,44 @@ mod tests {
         assert!(matches!(solved.0, SolutionSet::Conditional(_)));
         assert!(solved.1.is_empty());
         assert_eq!(map_calls.get(), 0);
+    }
+
+    #[test]
+    fn execute_reciprocal_solve_pipeline_with_items_and_kernel_maps_steps_when_enabled() {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let r = context.var("r");
+        let one = context.num(1);
+        let lhs = context.add(Expr::Div(one, x));
+        let rhs = context.add(Expr::Div(one, r));
+        let kernel = derive_reciprocal_solve_kernel(&mut context, lhs, rhs, "x");
+        let context_cell = std::cell::RefCell::new(context);
+        let map_calls = std::cell::Cell::new(0usize);
+
+        let solved = execute_reciprocal_solve_pipeline_with_items_and_kernel(
+            "x",
+            kernel,
+            true,
+            |inner_var, kernel| {
+                let mut context_ref = context_cell.borrow_mut();
+                build_reciprocal_execution_from_kernel_with(
+                    &mut context_ref,
+                    inner_var,
+                    kernel,
+                    |expr| expr,
+                    |_core_ctx, _expr| NonZeroStatus::Unknown,
+                )
+            },
+            |item| {
+                map_calls.set(map_calls.get() + 1);
+                item.description
+            },
+        )
+        .expect("reciprocal pipeline should execute");
+
+        assert!(matches!(solved.0, SolutionSet::Conditional(_)));
+        assert_eq!(solved.1.len(), 2);
+        assert_eq!(map_calls.get(), 2);
     }
 
     #[test]

@@ -557,6 +557,46 @@ where
     )
 }
 
+/// Derive and solve one collect-terms kernel for a concrete equation/variable
+/// returning plain strategy output.
+///
+/// Returns `None` when collect-terms kernel derivation does not apply.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_collect_terms_kernel_result_pipeline_for_var_with<
+    E,
+    S,
+    FSimplify,
+    FRender,
+    FSolve,
+    FStep,
+>(
+    ctx: &mut Context,
+    equation: &Equation,
+    var: &str,
+    include_item: bool,
+    simplify_expr: FSimplify,
+    render_expr: FRender,
+    solve_rewritten: FSolve,
+    map_item_to_step: FStep,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FRender: FnMut(ExprId) -> String,
+    FSolve: FnMut(&Equation, &str) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(StrategyExecutionItem) -> S,
+{
+    execute_collect_terms_kernel_result_pipeline_for_equation_with_item(
+        || derive_collect_terms_kernel(ctx, equation, var),
+        equation,
+        var,
+        include_item,
+        simplify_expr,
+        render_expr,
+        solve_rewritten,
+        map_item_to_step,
+    )
+}
+
 /// Rewrite payload for `RationalExponentStrategy`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RationalExponentKernel {
@@ -1914,6 +1954,69 @@ mod tests {
 
         let out = execute_collect_terms_kernel_result_pipeline_for_equation_with_item(
             || None,
+            &eq,
+            "x",
+            true,
+            |id| id,
+            |_| "rhs".to_string(),
+            |_equation, _var| {
+                solve_calls += 1;
+                Ok::<_, ()>((SolutionSet::AllReals, vec!["unexpected".to_string()]))
+            },
+            |item| item.description,
+        );
+
+        assert!(out.is_none());
+        assert_eq!(solve_calls, 0);
+    }
+
+    #[test]
+    fn execute_collect_terms_kernel_result_pipeline_for_var_with_returns_plain_tuple() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let lhs = ctx.add(Expr::Add(x, one));
+        let rhs = ctx.add(Expr::Add(x, two));
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+
+        let solved = execute_collect_terms_kernel_result_pipeline_for_var_with(
+            &mut ctx,
+            &eq,
+            "x",
+            true,
+            |id| id,
+            |_| "rhs".to_string(),
+            |_equation, _var| {
+                Ok::<_, ()>((SolutionSet::Discrete(vec![x]), vec!["sub".to_string()]))
+            },
+            |item| item.description,
+        )
+        .expect("kernel should be derived")
+        .expect("collect kernel pipeline should succeed");
+
+        assert_eq!(solved.0, SolutionSet::Discrete(vec![x]));
+        assert_eq!(solved.1.len(), 2);
+    }
+
+    #[test]
+    fn execute_collect_terms_kernel_result_pipeline_for_var_with_returns_none_without_kernel() {
+        let mut ctx = Context::new();
+        let lhs = ctx.var("y");
+        let rhs = ctx.num(0);
+        let eq = Equation {
+            lhs,
+            rhs,
+            op: RelOp::Eq,
+        };
+        let mut solve_calls = 0usize;
+
+        let out = execute_collect_terms_kernel_result_pipeline_for_var_with(
+            &mut ctx,
             &eq,
             "x",
             true,

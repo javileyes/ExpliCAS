@@ -11,8 +11,8 @@ use cas_solver_core::function_inverse::{
 use cas_solver_core::log_isolation::plan_log_isolation_step_with;
 use cas_solver_core::solve_outcome::{
     execute_abs_isolation_plan_pipeline_with_optional_items_and_solver,
-    execute_log_isolation_result_pipeline_with_plan_or_else_and_merge_with_existing_steps_with,
-    execute_unary_inverse_result_pipeline_with_plan_or_else_and_merge_with_existing_steps_with,
+    execute_log_isolation_result_pipeline_with_plan_and_error_and_merge_with_existing_steps,
+    execute_unary_inverse_result_pipeline_with_plan_and_error_and_merge_with_existing_steps,
     finalize_abs_split_solution_set_for_rhs, plan_abs_isolation_with_rhs_sign,
 };
 
@@ -133,7 +133,7 @@ fn isolate_log(
     );
     let include_item = simplifier.collect_steps();
     let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    execute_log_isolation_result_pipeline_with_plan_or_else_and_merge_with_existing_steps_with(
+    execute_log_isolation_result_pipeline_with_plan_and_error_and_merge_with_existing_steps(
         include_item,
         steps,
         rewrite,
@@ -151,12 +151,10 @@ fn isolate_log(
             Ok::<(SolutionSet, Vec<SolveStep>), CasError>((solution_set, solved_steps))
         },
         |item| medium_step(item.description().to_string(), item.equation),
-        || {
-            CasError::IsolationError(
-                var.to_string(),
-                "Cannot isolate from log function".to_string(),
-            )
-        },
+        CasError::IsolationError(
+            var.to_string(),
+            "Cannot isolate from log function".to_string(),
+        ),
     )
 }
 
@@ -184,7 +182,7 @@ fn isolate_unary_function(
     );
     let include_items = simplifier.collect_steps();
     let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    execute_unary_inverse_result_pipeline_with_plan_or_else_and_merge_with_existing_steps_with(
+    execute_unary_inverse_result_pipeline_with_plan_and_error_and_merge_with_existing_steps(
         &fn_name,
         arg,
         rhs,
@@ -207,6 +205,6 @@ fn isolate_unary_function(
             isolate(lhs, rhs, inner_op, var, *simplifier_ref, opts, ctx)
         },
         |item| medium_step(item.description().to_string(), item.equation),
-        || CasError::UnknownFunction(fn_name.clone()),
+        CasError::UnknownFunction(fn_name.clone()),
     )
 }

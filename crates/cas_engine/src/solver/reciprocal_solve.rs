@@ -10,7 +10,7 @@ use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::reciprocal::{
     build_reciprocal_execution_from_kernel_prepared, build_reciprocal_solve_plan,
     derive_reciprocal_solve_kernel, execute_reciprocal_kernel_execution_pipeline_with,
-    execute_reciprocal_solve_pipeline_with_items,
+    execute_reciprocal_solve_pipeline_with_items_and_kernel,
 };
 
 use crate::engine::Simplifier;
@@ -27,21 +27,12 @@ pub(crate) fn try_reciprocal_solve(
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
     let include_items = simplifier.collect_steps();
+    let kernel = derive_reciprocal_solve_kernel(&mut simplifier.context, lhs, rhs, var);
     let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    execute_reciprocal_solve_pipeline_with_items(
-        lhs,
-        rhs,
+    execute_reciprocal_solve_pipeline_with_items_and_kernel(
         var,
+        kernel,
         include_items,
-        |inner_lhs, inner_rhs, inner_var| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            derive_reciprocal_solve_kernel(
-                &mut simplifier_ref.context,
-                inner_lhs,
-                inner_rhs,
-                inner_var,
-            )
-        },
         |inner_var, kernel| {
             execute_reciprocal_kernel_execution_pipeline_with(
                 inner_var,

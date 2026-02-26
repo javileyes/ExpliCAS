@@ -185,6 +185,49 @@ where
     )
 }
 
+/// Solve an isolated-variable branch using context-backed isolated outcome
+/// resolution and prepend solved steps before caller-owned existing steps.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_isolated_variable_lhs_with_and_merge_with_existing_steps<
+    S,
+    FSimplify,
+    FTry1,
+    FTry2,
+    FResidual,
+>(
+    ctx: &mut Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    op: RelOp,
+    var: &str,
+    existing_steps: Vec<S>,
+    simplify_rhs: FSimplify,
+    try_linear_collect: FTry1,
+    try_linear_collect_v2: FTry2,
+    residual_solution: FResidual,
+) -> (SolutionSet, Vec<S>)
+where
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FTry1: FnMut(ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<S>)>,
+    FTry2: FnMut(ExprId, ExprId, &str) -> Option<(SolutionSet, Vec<S>)>,
+    FResidual: FnMut(ExprId, ExprId, &str) -> SolutionSet,
+{
+    solve_isolated_variable_lhs_with_resolver_and_merge_with_existing_steps(
+        lhs,
+        rhs,
+        op,
+        var,
+        existing_steps,
+        |sim_rhs, rel_op, solve_var| {
+            resolve_isolated_variable_outcome(ctx, sim_rhs, rel_op, solve_var)
+        },
+        simplify_rhs,
+        try_linear_collect,
+        try_linear_collect_v2,
+        residual_solution,
+    )
+}
+
 /// Solve an already-isolated variable branch and prepend solved steps before
 /// caller-owned existing steps.
 #[allow(clippy::too_many_arguments)]
@@ -3026,6 +3069,36 @@ where
     )
 }
 
+/// Execute log-isolation pipeline from a preplanned optional rewrite using a
+/// prebuilt not-plannable error payload, and prepend solved steps before
+/// caller-owned existing steps.
+pub fn execute_log_isolation_result_pipeline_with_plan_and_error_and_merge_with_existing_steps<
+    E,
+    S,
+    FSolve,
+    FMap,
+>(
+    include_item: bool,
+    existing_steps: Vec<S>,
+    rewrite: Option<crate::log_isolation::LogIsolationRewritePlan>,
+    solve_rewritten: FSolve,
+    map_item_to_step: FMap,
+    not_plannable_error: E,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FSolve: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FMap: FnMut(crate::log_isolation::LogIsolationExecutionItem) -> S,
+{
+    execute_log_isolation_result_pipeline_with_plan_or_else_and_merge_with_existing_steps_with(
+        include_item,
+        existing_steps,
+        rewrite,
+        solve_rewritten,
+        map_item_to_step,
+        || not_plannable_error,
+    )
+}
+
 /// Execute unary-inverse pipeline and prepend solved steps before caller-owned
 /// existing steps.
 #[allow(clippy::too_many_arguments)]
@@ -3126,6 +3199,51 @@ where
         solve,
         map_item_to_step,
         unsupported_error,
+    )
+}
+
+/// Execute unary-inverse pipeline from a preplanned optional rewrite using a
+/// prebuilt unsupported-error payload, and prepend solved steps before
+/// caller-owned existing steps.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_unary_inverse_result_pipeline_with_plan_and_error_and_merge_with_existing_steps<
+    E,
+    S,
+    FSimplifyRhs,
+    FSolve,
+    FStep,
+>(
+    fn_name: &str,
+    arg: ExprId,
+    other: ExprId,
+    op: RelOp,
+    is_lhs: bool,
+    include_items: bool,
+    existing_steps: Vec<S>,
+    plan: Option<crate::function_inverse::UnaryInverseIsolationStepPlan>,
+    simplify_rhs_with_entries: FSimplifyRhs,
+    solve: FSolve,
+    map_item_to_step: FStep,
+    unsupported_error: E,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FSimplifyRhs: FnMut(ExprId) -> (ExprId, Vec<(String, ExprId)>),
+    FSolve: FnMut(ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(crate::function_inverse::UnaryInverseSolveExecutionItem) -> S,
+{
+    execute_unary_inverse_result_pipeline_with_plan_or_else_and_merge_with_existing_steps_with(
+        fn_name,
+        arg,
+        other,
+        op,
+        is_lhs,
+        include_items,
+        existing_steps,
+        plan,
+        simplify_rhs_with_entries,
+        solve,
+        map_item_to_step,
+        || unsupported_error,
     )
 }
 
@@ -17699,6 +17817,29 @@ mod tests {
     }
 
     #[test]
+    fn solve_isolated_variable_lhs_with_and_merge_with_existing_steps_appends_existing() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rhs = ctx.num(3);
+
+        let merged = solve_isolated_variable_lhs_with_and_merge_with_existing_steps(
+            &mut ctx,
+            x,
+            rhs,
+            RelOp::Eq,
+            "x",
+            vec!["existing".to_string()],
+            |value| value,
+            |_, _, _| None::<(SolutionSet, Vec<String>)>,
+            |_, _, _| None::<(SolutionSet, Vec<String>)>,
+            |_, _, _| SolutionSet::Empty,
+        );
+
+        assert_eq!(merged.0, SolutionSet::Discrete(vec![rhs]));
+        assert_eq!(merged.1, vec!["existing".to_string()]);
+    }
+
+    #[test]
     fn execute_log_isolation_result_pipeline_or_else_with_and_merge_with_existing_steps_with_prepends(
     ) {
         let mut ctx = Context::new();
@@ -17772,6 +17913,50 @@ mod tests {
                 },
                 |item| item.description().to_string(),
                 || "not-plannable".to_string(),
+            )
+            .expect("log merge wrapper should solve");
+
+        assert_eq!(merged.0, SolutionSet::Discrete(vec![x]));
+        assert_eq!(
+            merged.1,
+            vec![
+                "Take log".to_string(),
+                "sub".to_string(),
+                "existing".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn execute_log_isolation_result_pipeline_with_plan_and_error_and_merge_with_existing_steps_prepends(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rhs = ctx.var("rhs");
+        let rewrite_eq = Equation {
+            lhs: x,
+            rhs,
+            op: RelOp::Eq,
+        };
+        let rewrite = crate::log_isolation::LogIsolationRewritePlan {
+            equation: rewrite_eq.clone(),
+            items: vec![crate::log_isolation::LogIsolationExecutionItem {
+                equation: rewrite_eq.clone(),
+                description: "Take log".to_string(),
+            }],
+        };
+
+        let merged =
+            execute_log_isolation_result_pipeline_with_plan_and_error_and_merge_with_existing_steps(
+                true,
+                vec!["existing".to_string()],
+                Some(rewrite),
+                |equation| {
+                    assert_eq!(equation, &rewrite_eq);
+                    Ok::<_, String>((SolutionSet::Discrete(vec![x]), vec!["sub".to_string()]))
+                },
+                |item| item.description().to_string(),
+                "not-plannable".to_string(),
             )
             .expect("log merge wrapper should solve");
 
@@ -17867,6 +18052,55 @@ mod tests {
                 },
                 |item| item.description().to_string(),
                 || "unsupported".to_string(),
+            )
+            .expect("unary merge wrapper should solve");
+
+        assert_eq!(
+            merged.1,
+            vec![
+                "Square both sides".to_string(),
+                "sub".to_string(),
+                "existing".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn execute_unary_inverse_result_pipeline_with_plan_and_error_and_merge_with_existing_steps_prepends(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let rhs = ctx.var("rhs");
+        let plan = crate::function_inverse::plan_unary_inverse_isolation_step(
+            &mut ctx,
+            "sqrt",
+            x,
+            rhs,
+            RelOp::Eq,
+            true,
+        );
+
+        let merged =
+            execute_unary_inverse_result_pipeline_with_plan_and_error_and_merge_with_existing_steps(
+                "sqrt",
+                x,
+                rhs,
+                RelOp::Eq,
+                true,
+                true,
+                vec!["existing".to_string()],
+                plan,
+                |rhs_expr| (rhs_expr, Vec::<(String, ExprId)>::new()),
+                |solve_lhs, solve_rhs, solve_op| {
+                    assert_eq!(solve_lhs, x);
+                    assert_eq!(solve_op, RelOp::Eq);
+                    Ok::<_, String>((
+                        SolutionSet::Discrete(vec![solve_rhs]),
+                        vec!["sub".to_string()],
+                    ))
+                },
+                |item| item.description().to_string(),
+                "unsupported".to_string(),
             )
             .expect("unary merge wrapper should solve");
 
