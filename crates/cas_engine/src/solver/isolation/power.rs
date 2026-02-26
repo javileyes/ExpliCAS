@@ -10,11 +10,11 @@ use cas_solver_core::solve_outcome::{
     execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps,
     execute_pow_exponent_log_isolation_pipeline_with_plan_and_merge_with_existing_steps_with,
     execute_pow_exponent_log_unsupported_pipeline_from_decision_with,
+    execute_pow_exponent_shortcut_action_pipeline_with_item_and_finalize_with_existing_steps_with,
     execute_power_base_one_shortcut_pipeline_with_item_for_pow_and_finalize_with_existing_steps_with,
-    finalize_pow_exponent_shortcut_pipeline_with_existing_steps, map_pow_exponent_shortcut_with,
-    plan_pow_exponent_log_isolation_step_with,
+    map_pow_exponent_shortcut_with, plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
-    plan_pow_exponent_shortcut_action_from_inputs, solve_pow_exponent_shortcut_pipeline_with_item,
+    plan_pow_exponent_shortcut_action_from_inputs,
     solve_solve_tactic_normalization_pipeline_with_item, PowIsolationRoute,
 };
 
@@ -119,16 +119,16 @@ fn isolate_pow_exponent(
         map_pow_exponent_shortcut_with(shortcut_plan, e, b, rhs, op.clone(), var, |expr| {
             solver_render_expr(&simplifier.context, expr)
         });
-    let shortcut_solved = solve_pow_exponent_shortcut_pipeline_with_item(
-        shortcut_execution,
-        include_item,
-        |shortcut_rhs, shortcut_op| {
-            isolate(e, shortcut_rhs, shortcut_op, var, simplifier, opts, ctx)
-        },
-        |item| medium_step(item.description().to_string(), item.equation),
-    )?;
     if let Some((solution_set, merged_steps)) =
-        finalize_pow_exponent_shortcut_pipeline_with_existing_steps(shortcut_solved, &mut steps)
+        execute_pow_exponent_shortcut_action_pipeline_with_item_and_finalize_with_existing_steps_with(
+            shortcut_execution,
+            include_item,
+            &mut steps,
+            |shortcut_rhs, shortcut_op| {
+                isolate(e, shortcut_rhs, shortcut_op, var, simplifier, opts, ctx)
+            },
+            |item| medium_step(item.description().to_string(), item.equation),
+        )?
     {
         return Ok((solution_set, merged_steps));
     }

@@ -825,6 +825,38 @@ where
     ))
 }
 
+/// Execute a prebuilt exponent-shortcut action, then finalize against
+/// caller-owned mutable step buffer.
+///
+/// Returns `Ok(None)` when shortcut resolution is `Continue`.
+pub fn execute_pow_exponent_shortcut_action_pipeline_with_item_and_finalize_with_existing_steps_with<
+    E,
+    S,
+    FSolve,
+    FStep,
+>(
+    action: PowExponentShortcutEngineAction,
+    include_item: bool,
+    existing_steps: &mut Vec<S>,
+    solve_isolate: FSolve,
+    map_item_to_step: FStep,
+) -> Result<Option<(SolutionSet, Vec<S>)>, E>
+where
+    FSolve: FnMut(ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(PowExponentShortcutExecutionItem) -> S,
+{
+    let solved = solve_pow_exponent_shortcut_pipeline_with_item(
+        action,
+        include_item,
+        solve_isolate,
+        map_item_to_step,
+    )?;
+    Ok(finalize_pow_exponent_shortcut_pipeline_with_existing_steps(
+        solved,
+        existing_steps,
+    ))
+}
+
 /// Merge a shortcut pipeline outcome with caller-owned pre-existing steps.
 ///
 /// Returns `None` when shortcut pipeline indicates `Continue`.
