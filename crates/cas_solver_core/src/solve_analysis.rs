@@ -260,21 +260,20 @@ pub fn classify_equation_var_presence(
 
 /// Simplify only equation sides that contain `var` and recompose `a^x / b^x` when possible
 /// using caller-provided hooks.
-pub fn simplify_equation_sides_for_var_with<FContains, FSimplify, FRecompose>(
+pub fn simplify_equation_sides_for_presence_with<FSimplify, FRecompose>(
     eq: &Equation,
-    var: &str,
-    mut contains_var: FContains,
+    lhs_has_var: bool,
+    rhs_has_var: bool,
     mut simplify_for_solve: FSimplify,
     mut try_recompose_pow_quotient: FRecompose,
 ) -> Equation
 where
-    FContains: FnMut(ExprId, &str) -> bool,
     FSimplify: FnMut(ExprId) -> ExprId,
     FRecompose: FnMut(ExprId) -> Option<ExprId>,
 {
     let mut simplified_eq = eq.clone();
 
-    if contains_var(eq.lhs, var) {
+    if lhs_has_var {
         let sim_lhs = simplify_for_solve(eq.lhs);
         simplified_eq.lhs = sim_lhs;
         if let Some(recomposed) = try_recompose_pow_quotient(sim_lhs) {
@@ -282,7 +281,7 @@ where
         }
     }
 
-    if contains_var(eq.rhs, var) {
+    if rhs_has_var {
         let sim_rhs = simplify_for_solve(eq.rhs);
         simplified_eq.rhs = sim_rhs;
         if let Some(recomposed) = try_recompose_pow_quotient(sim_rhs) {
@@ -291,6 +290,31 @@ where
     }
 
     simplified_eq
+}
+
+/// Simplify only equation sides that contain `var` and recompose `a^x / b^x` when possible
+/// using caller-provided hooks.
+pub fn simplify_equation_sides_for_var_with<FContains, FSimplify, FRecompose>(
+    eq: &Equation,
+    var: &str,
+    mut contains_var: FContains,
+    simplify_for_solve: FSimplify,
+    try_recompose_pow_quotient: FRecompose,
+) -> Equation
+where
+    FContains: FnMut(ExprId, &str) -> bool,
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FRecompose: FnMut(ExprId) -> Option<ExprId>,
+{
+    let lhs_has_var = contains_var(eq.lhs, var);
+    let rhs_has_var = contains_var(eq.rhs, var);
+    simplify_equation_sides_for_presence_with(
+        eq,
+        lhs_has_var,
+        rhs_has_var,
+        simplify_for_solve,
+        try_recompose_pow_quotient,
+    )
 }
 
 /// Return the candidate residual when the rewrite is meaningfully better.
@@ -884,6 +908,35 @@ mod tests {
             &eq,
             "x",
             |expr, _| expr == lhs,
+            |expr| {
+                simplified_calls.borrow_mut().push(expr);
+                expr
+            },
+            |_expr| None,
+        );
+        assert_eq!(simplified.lhs, lhs);
+        assert_eq!(simplified.rhs, two);
+        assert_eq!(*simplified_calls.borrow(), vec![lhs]);
+    }
+
+    #[test]
+    fn simplify_equation_sides_for_presence_with_uses_precomputed_presence() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let lhs = ctx.add(Expr::Add(x, one));
+        let eq = Equation {
+            lhs,
+            rhs: two,
+            op: RelOp::Eq,
+        };
+        let simplified_calls = RefCell::new(Vec::new());
+
+        let simplified = simplify_equation_sides_for_presence_with(
+            &eq,
+            true,
+            false,
             |expr| {
                 simplified_calls.borrow_mut().push(expr);
                 expr

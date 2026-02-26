@@ -12,7 +12,8 @@ use cas_solver_core::solve_analysis::{
     apply_nonzero_exclusion_guards_if_any, classify_equation_var_presence,
     guard_solved_result_with_exclusions, normalize_variable_residual_with,
     partition_discrete_symbolic, retain_verified_discrete, run_strategy_attempt_sequence,
-    simplify_equation_sides_for_var_with, EquationVarPresence, StrategyAttemptSequenceResolution,
+    simplify_equation_sides_for_presence_with, EquationVarPresence,
+    StrategyAttemptSequenceResolution,
 };
 use cas_solver_core::solve_outcome::{
     solve_var_eliminated_outcome_pipeline_with, VarEliminatedOutcomePipelineSolved,
@@ -240,15 +241,14 @@ fn solve_inner(
     // 2. Simplify both sides BEFORE applying strategies
     // This is crucial for equations like "1/3*x + 1/2*x = 5"
     // which need to be simplified to "5/6*x = 5" before isolation
+    let lhs_has_var = contains_var(&simplifier.context, eq.lhs, var);
+    let rhs_has_var = contains_var(&simplifier.context, eq.rhs, var);
     let mut simplified_eq = {
         let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        simplify_equation_sides_for_var_with(
+        simplify_equation_sides_for_presence_with(
             eq,
-            var,
-            |expr, inner_var| {
-                let simplifier_ref = runtime_cell.borrow();
-                contains_var(&simplifier_ref.context, expr, inner_var)
-            },
+            lhs_has_var,
+            rhs_has_var,
             |expr| {
                 let mut simplifier_ref = runtime_cell.borrow_mut();
                 simplifier_ref.simplify_for_solve(expr)
