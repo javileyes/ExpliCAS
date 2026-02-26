@@ -11,7 +11,8 @@ use cas_solver_core::solve_outcome::{
     merge_pow_base_isolation_pipeline_with_existing_steps,
     merge_pow_exponent_log_unsupported_pipeline_with_existing_steps,
     merge_pow_exponent_shortcut_pipeline_with_existing_steps,
-    merge_solved_with_existing_steps_prepend, plan_pow_exponent_log_isolation_step_with,
+    merge_solved_with_existing_steps_append, merge_solved_with_existing_steps_prepend,
+    plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
     pow_exponent_rhs_contains_variable, resolve_log_terminal_outcome,
     resolve_power_base_one_shortcut_for_pow_with, shortcut_bases_equivalent_by_difference_with,
@@ -221,8 +222,10 @@ fn isolate_pow_exponent(
                 medium_step(item.description().to_string(), item.equation)
             })
         };
-        steps.extend(solved_shortcut.steps);
-        return Ok((solved_shortcut.solution_set, steps));
+        return Ok(merge_solved_with_existing_steps_append(
+            (solved_shortcut.solution_set, solved_shortcut.steps),
+            steps,
+        ));
     }
 
     // ================================================================
@@ -296,8 +299,10 @@ fn isolate_pow_exponent(
             include_item,
             |item| medium_step(item.description().to_string(), item.equation),
         );
-        steps.extend(solved_terminal.steps);
-        return Ok((solved_terminal.solution_set, steps));
+        return Ok(merge_solved_with_existing_steps_append(
+            (solved_terminal.solution_set, solved_terminal.steps),
+            steps,
+        ));
     }
 
     for assumption in decision_assumptions(&decision).iter().copied() {
