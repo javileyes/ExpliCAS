@@ -27,10 +27,7 @@ use cas_math::expr_predicates::contains_variable;
 use cas_solver_core::isolation_utils::is_numeric_zero;
 use cas_solver_core::solution_check::verify_solution_with as verify_solution_with_core;
 use cas_solver_core::verification::verify_solution_set_with;
-use cas_solver_core::verify_substitution::{
-    substitute_equation_diff, substitute_equation_sides,
-    verify_solution_with as verify_solution_with_equivalence_core,
-};
+use cas_solver_core::verify_substitution::{substitute_equation_diff, substitute_equation_sides};
 
 use crate::engine::Simplifier;
 use crate::solver::render_expr as solver_render_expr;
@@ -125,29 +122,11 @@ pub(crate) fn verify_solution_by_equivalence(
     var: &str,
     solution: ExprId,
 ) -> bool {
-    let runtime_cell = std::cell::RefCell::new(simplifier);
-    verify_solution_with_equivalence_core(
-        equation,
-        var,
-        solution,
-        |inner_equation, inner_var, inner_solution| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            substitute_equation_sides(
-                &mut simplifier_ref.context,
-                inner_equation,
-                inner_var,
-                inner_solution,
-            )
-        },
-        |expr| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            simplifier_ref.simplify(expr).0
-        },
-        |lhs, rhs| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            simplifier_ref.are_equivalent(lhs, rhs)
-        },
-    )
+    let (lhs_sub, rhs_sub) =
+        substitute_equation_sides(&mut simplifier.context, equation, var, solution);
+    let lhs_simplified = simplifier.simplify(lhs_sub).0;
+    let rhs_simplified = simplifier.simplify(rhs_sub).0;
+    simplifier.are_equivalent(lhs_simplified, rhs_simplified)
 }
 
 /// Verify a solution set, handling all SolutionSet variants.

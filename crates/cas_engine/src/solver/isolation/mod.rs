@@ -108,20 +108,18 @@ pub(crate) fn isolate(
             let rewrite =
                 plan_negated_lhs_isolation_step(&mut simplifier.context, inner, rhs, op.clone());
             let include_item = simplifier.collect_steps();
-            let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
             solve_negated_lhs_isolation_plan_with_and_merge_with_existing_steps(
                 rewrite,
                 var,
                 include_item,
                 steps,
                 |equation, solve_var| {
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
                     isolate(
                         equation.lhs,
                         equation.rhs,
                         equation.op,
                         solve_var,
-                        *simplifier_ref,
+                        simplifier,
                         opts,
                         ctx,
                     )
