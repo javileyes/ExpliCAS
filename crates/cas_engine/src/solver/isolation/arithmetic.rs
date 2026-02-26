@@ -11,6 +11,7 @@ use cas_solver_core::solve_outcome::{
     execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with,
     execute_product_zero_inequality_split_pipeline_with_existing_steps,
     execute_term_isolation_plan_and_merge_with_existing_steps_with,
+    execute_term_isolation_plan_with_rewritten_rhs_and_merge_with_existing_steps_with,
     finalize_product_zero_inequality_solved_sets,
     merge_optional_solved_with_existing_steps_append_mut, mul_rhs_contains_variable,
     plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
@@ -52,7 +53,7 @@ pub(super) fn isolate_add(
     }
 
     let add_moved_desc = solver_render_expr(&simplifier.context, add_operands.moved_addend);
-    let mut add_plan = plan_add_operand_isolation_step_with(
+    let add_plan = plan_add_operand_isolation_step_with(
         &mut simplifier.context,
         add_operands.isolated_addend,
         add_operands.moved_addend,
@@ -60,10 +61,11 @@ pub(super) fn isolate_add(
         op.clone(),
         |_| add_moved_desc.clone(),
     );
-    add_plan.equation.rhs = simplifier.simplify(add_plan.equation.rhs).0;
+    let add_rewritten_rhs = simplifier.simplify(add_plan.equation.rhs).0;
     let include_item = simplifier.collect_steps();
-    execute_term_isolation_plan_and_merge_with_existing_steps_with(
+    execute_term_isolation_plan_with_rewritten_rhs_and_merge_with_existing_steps_with(
         add_plan,
+        add_rewritten_rhs,
         include_item,
         false,
         steps,
@@ -99,14 +101,15 @@ pub(super) fn isolate_sub(
     let sub_operands = derive_sub_isolation_operands(&simplifier.context, l, r, var);
     let sub_moved = sub_operands.moved_term;
     let sub_moved_desc = solver_render_expr(&simplifier.context, sub_moved);
-    let mut sub_plan =
+    let sub_plan =
         plan_sub_isolation_step_with(&mut simplifier.context, l, r, rhs, op.clone(), var, |_| {
             sub_moved_desc.clone()
         });
-    sub_plan.equation.rhs = simplifier.simplify(sub_plan.equation.rhs).0;
+    let sub_rewritten_rhs = simplifier.simplify(sub_plan.equation.rhs).0;
     let include_item = simplifier.collect_steps();
-    execute_term_isolation_plan_and_merge_with_existing_steps_with(
+    execute_term_isolation_plan_with_rewritten_rhs_and_merge_with_existing_steps_with(
         sub_plan,
+        sub_rewritten_rhs,
         include_item,
         false,
         steps,

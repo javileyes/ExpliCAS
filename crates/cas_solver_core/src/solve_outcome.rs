@@ -2951,6 +2951,45 @@ where
     ))
 }
 
+/// Execute term-isolation plan after overriding the rewrite equation RHS, then
+/// merge solved steps before caller-owned existing steps.
+///
+/// This is useful when callers precompute a canonical RHS for the rewrite
+/// equation (for example by simplifying once before recursive isolation).
+#[allow(clippy::too_many_arguments)]
+pub fn execute_term_isolation_plan_with_rewritten_rhs_and_merge_with_existing_steps_with<
+    E,
+    S,
+    FSimplify,
+    FSolve,
+    FStep,
+>(
+    mut plan: TermIsolationRewritePlan,
+    rewritten_rhs: ExprId,
+    include_item: bool,
+    simplify_rhs_before_solve: bool,
+    existing_steps: Vec<S>,
+    simplify_rhs: FSimplify,
+    solve_rewritten: FSolve,
+    map_item_to_step: FStep,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FSolve: FnMut(Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(TermIsolationRewriteExecutionItem) -> S,
+{
+    plan.equation.rhs = rewritten_rhs;
+    execute_term_isolation_plan_and_merge_with_existing_steps_with(
+        plan,
+        include_item,
+        simplify_rhs_before_solve,
+        existing_steps,
+        simplify_rhs,
+        solve_rewritten,
+        map_item_to_step,
+    )
+}
+
 /// Execute term-isolation plan and merge solved steps before caller-owned
 /// existing steps.
 pub fn execute_term_isolation_plan_with_and_merge_with_existing_steps_with<
@@ -14451,6 +14490,35 @@ mod tests {
             merged.1,
             vec![expected_item, "substep".to_string(), "existing".to_string()]
         );
+    }
+
+    #[test]
+    fn execute_term_isolation_plan_with_rewritten_rhs_and_merge_with_existing_steps_with_overrides_rhs(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let rewritten_rhs = ctx.num(42);
+        let plan =
+            plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
+        let expected_item = plan.items[0].description.clone();
+
+        let merged =
+            execute_term_isolation_plan_with_rewritten_rhs_and_merge_with_existing_steps_with(
+                plan,
+                rewritten_rhs,
+                true,
+                false,
+                vec!["existing".to_string()],
+                |rhs| rhs,
+                |equation| Ok::<_, ()>((SolutionSet::Discrete(vec![equation.rhs]), vec![])),
+                |item| item.description,
+            )
+            .expect("execute+merge rewritten-rhs wrapper should succeed");
+
+        assert_eq!(merged.0, SolutionSet::Discrete(vec![rewritten_rhs]));
+        assert_eq!(merged.1, vec![expected_item, "existing".to_string()]);
     }
 
     #[test]
