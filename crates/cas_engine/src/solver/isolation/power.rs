@@ -2,11 +2,10 @@ use crate::engine::Simplifier;
 use crate::error::CasError;
 use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, SolverOptions};
 use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
-use cas_solver_core::isolation_utils::{are_equivalent_by_difference_with, is_numeric_zero};
 use cas_solver_core::log_domain::{decision_assumptions, LogSolveDecision};
 use cas_solver_core::solve_outcome::{
-    build_pow_base_isolation_action_with, derive_pow_isolation_route,
-    execute_pow_exponent_log_isolation_pipeline_with_item_with,
+    build_pow_base_isolation_action_with, classify_pow_exponent_base_flags,
+    derive_pow_isolation_route, execute_pow_exponent_log_isolation_pipeline_with_item_with,
     execute_pow_exponent_log_unsupported_pipeline_from_decision_with,
     execute_pow_exponent_shortcut_pipeline_with_item_with,
     merge_pow_base_isolation_pipeline_with_existing_steps,
@@ -15,8 +14,8 @@ use cas_solver_core::solve_outcome::{
     plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
     pow_exponent_rhs_contains_variable, resolve_log_terminal_outcome,
-    resolve_power_base_one_shortcut_for_pow_with, solve_pow_base_isolation_pipeline_with_item,
-    solve_power_base_one_shortcut_pipeline_with_item,
+    resolve_power_base_one_shortcut_for_pow_with, shortcut_bases_equivalent_by_difference_with,
+    solve_pow_base_isolation_pipeline_with_item, solve_power_base_one_shortcut_pipeline_with_item,
     solve_solve_tactic_normalization_pipeline_with_item, solve_terminal_outcome_pipeline_with_item,
     PowExponentShortcutPipelineSolved, PowIsolationRoute,
 };
@@ -25,7 +24,7 @@ use super::{isolate, prepend_steps};
 
 fn bases_are_equivalent(simplifier: &mut Simplifier, base: ExprId, candidate: ExprId) -> bool {
     let runtime_cell = std::cell::RefCell::new(simplifier);
-    are_equivalent_by_difference_with(
+    shortcut_bases_equivalent_by_difference_with(
         base,
         candidate,
         |lhs, rhs| {
@@ -38,7 +37,7 @@ fn bases_are_equivalent(simplifier: &mut Simplifier, base: ExprId, candidate: Ex
         },
         |expr| {
             let simplifier_ref = runtime_cell.borrow();
-            is_numeric_zero(&simplifier_ref.context, expr)
+            cas_solver_core::isolation_utils::is_numeric_zero(&simplifier_ref.context, expr)
         },
     )
 }
@@ -124,8 +123,7 @@ fn isolate_pow_exponent(
     // ================================================================
     // POWER EQUALS BASE SHORTCUT: base^x = base
     // ================================================================
-    let base_is_zero = is_numeric_zero(&simplifier.context, b);
-    let base_is_numeric = matches!(simplifier.context.get(b), Expr::Number(_));
+    let (base_is_zero, base_is_numeric) = classify_pow_exponent_base_flags(&simplifier.context, b);
     let shortcut_solved = {
         let include_item = simplifier.collect_steps();
         let runtime_cell = std::cell::RefCell::new(&mut *simplifier);

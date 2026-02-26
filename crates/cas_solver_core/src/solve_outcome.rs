@@ -1495,6 +1495,39 @@ where
     base == candidate || equivalent_nontrivial(base, candidate)
 }
 
+/// Compare shortcut bases by first short-circuiting identical ids and then
+/// using simplified-difference equivalence for non-identical candidates.
+pub fn shortcut_bases_equivalent_by_difference_with<FBuildSub, FSimplify, FIsZero>(
+    base: ExprId,
+    candidate: ExprId,
+    mut build_sub: FBuildSub,
+    mut simplify: FSimplify,
+    mut is_zero: FIsZero,
+) -> bool
+where
+    FBuildSub: FnMut(ExprId, ExprId) -> ExprId,
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FIsZero: FnMut(ExprId) -> bool,
+{
+    shortcut_bases_equivalent_with(base, candidate, |left, right| {
+        crate::isolation_utils::are_equivalent_by_difference_with(
+            left,
+            right,
+            |a, b| build_sub(a, b),
+            |expr| simplify(expr),
+            |expr| is_zero(expr),
+        )
+    })
+}
+
+/// Classify base flags used by exponent-shortcut planning.
+pub fn classify_pow_exponent_base_flags(ctx: &Context, base: ExprId) -> (bool, bool) {
+    (
+        crate::isolation_utils::is_numeric_zero(ctx, base),
+        matches!(ctx.get(base), Expr::Number(_)),
+    )
+}
+
 /// Classify exponent-isolation shortcuts before generic logarithmic isolation.
 pub fn classify_pow_exponent_shortcut(
     op: RelOp,
@@ -8093,6 +8126,61 @@ mod tests {
         let b = ctx.var("b");
         let out = shortcut_bases_equivalent_with(a, b, |left, right| left == a && right == b);
         assert!(out);
+    }
+
+    #[test]
+    fn shortcut_bases_equivalent_by_difference_with_short_circuits_equal_ids() {
+        let mut ctx = Context::new();
+        let b = ctx.var("b");
+        let mut called = false;
+        let out = shortcut_bases_equivalent_by_difference_with(
+            b,
+            b,
+            |_left, _right| {
+                called = true;
+                b
+            },
+            |expr| expr,
+            |_expr| false,
+        );
+        assert!(out);
+        assert!(!called, "difference comparator must not run for equal ids");
+    }
+
+    #[test]
+    fn shortcut_bases_equivalent_by_difference_with_uses_difference_path() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let zero = ctx.num(0);
+        let one = ctx.num(1);
+        let mut called = false;
+        let out = shortcut_bases_equivalent_by_difference_with(
+            a,
+            b,
+            |left, right| {
+                called = true;
+                if left == a && right == b {
+                    zero
+                } else {
+                    one
+                }
+            },
+            |expr| expr,
+            |expr| expr == zero,
+        );
+        assert!(out);
+        assert!(called);
+    }
+
+    #[test]
+    fn classify_pow_exponent_base_flags_detects_zero_numeric_and_symbolic() {
+        let mut ctx = Context::new();
+        let zero = ctx.num(0);
+        let x = ctx.var("x");
+
+        assert_eq!(classify_pow_exponent_base_flags(&ctx, zero), (true, true));
+        assert_eq!(classify_pow_exponent_base_flags(&ctx, x), (false, false));
     }
 
     #[test]
