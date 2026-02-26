@@ -4434,7 +4434,7 @@ where
     FAssumption: FnMut(&Context, LogAssumption),
     FPlan: FnOnce() -> Option<PowExponentLogUnsupportedExecution>,
     FGuarded: FnMut(&Equation) -> Option<SolutionSet>,
-    FHint: FnMut(LogBlockedHintRecord),
+    FHint: FnMut(&Context, LogBlockedHintRecord),
 {
     match execute_log_terminal_outcome_and_assumptions_gate_with_existing_steps_mut_and_each_assumption(
         ctx,
@@ -4469,6 +4469,7 @@ where
     if let Some((solution_set, steps)) =
         execute_pow_exponent_log_unsupported_pipeline_from_decision_and_finalize_with_existing_steps_with(
             include_unsupported_items,
+            ctx,
             existing_steps,
             plan_unsupported_execution,
             try_guarded_solve,
@@ -4488,6 +4489,7 @@ where
 /// Execute post-terminal exponent-log routing:
 /// - map terminal gate results,
 /// - optionally run unsupported guarded/residual pipeline when continuing.
+#[allow(clippy::too_many_arguments)]
 pub fn execute_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut<
     S,
     FPlan,
@@ -4495,6 +4497,7 @@ pub fn execute_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut<
     FStep,
     FHint,
 >(
+    ctx: &Context,
     terminal_result: LogDecisionTerminalResult<S>,
     include_unsupported_items: bool,
     existing_steps: &mut Vec<S>,
@@ -4507,7 +4510,7 @@ where
     FPlan: FnOnce() -> Option<PowExponentLogUnsupportedExecution>,
     FGuarded: FnMut(&Equation) -> Option<SolutionSet>,
     FStep: FnMut(TermIsolationExecutionItem) -> S,
-    FHint: FnMut(LogBlockedHintRecord),
+    FHint: FnMut(&Context, LogBlockedHintRecord),
 {
     match terminal_result {
         LogDecisionTerminalResult::Terminal {
@@ -4528,6 +4531,7 @@ where
     if let Some((solution_set, steps)) =
         execute_pow_exponent_log_unsupported_pipeline_from_decision_and_finalize_with_existing_steps_with(
             include_unsupported_items,
+            ctx,
             existing_steps,
             plan_unsupported_execution,
             try_guarded_solve,
@@ -4548,6 +4552,7 @@ where
 /// - `Ok(Some((solutions, steps)))` when solved,
 /// - `Err(message)` when complex-domain escalation is required,
 /// - `Ok(None)` when regular logarithmic isolation should continue.
+#[allow(clippy::too_many_arguments)]
 pub fn execute_and_resolve_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut<
     S,
     FPlan,
@@ -4555,6 +4560,7 @@ pub fn execute_and_resolve_pow_exponent_log_post_terminal_pipeline_with_existing
     FStep,
     FHint,
 >(
+    ctx: &Context,
     terminal_result: LogDecisionTerminalResult<S>,
     include_unsupported_items: bool,
     existing_steps: &mut Vec<S>,
@@ -4567,10 +4573,11 @@ where
     FPlan: FnOnce() -> Option<PowExponentLogUnsupportedExecution>,
     FGuarded: FnMut(&Equation) -> Option<SolutionSet>,
     FStep: FnMut(TermIsolationExecutionItem) -> S,
-    FHint: FnMut(LogBlockedHintRecord),
+    FHint: FnMut(&Context, LogBlockedHintRecord),
 {
     resolve_pow_exponent_log_decision_pipeline_result(
         execute_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut(
+            ctx,
             terminal_result,
             include_unsupported_items,
             existing_steps,
@@ -4587,6 +4594,7 @@ where
 /// - `Ok(Some((solutions, steps)))` when solved,
 /// - `Err(message)` when complex-domain escalation is required,
 /// - `Ok(None)` when regular logarithmic isolation should continue.
+#[allow(clippy::too_many_arguments)]
 pub fn execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_existing_steps_mut<
     S,
     FTerminalGate,
@@ -4595,6 +4603,7 @@ pub fn execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_exi
     FStep,
     FHint,
 >(
+    ctx: &Context,
     terminal_gate: FTerminalGate,
     include_unsupported_items: bool,
     existing_steps: &mut Vec<S>,
@@ -4608,10 +4617,11 @@ where
     FPlan: FnOnce() -> Option<PowExponentLogUnsupportedExecution>,
     FGuarded: FnMut(&Equation) -> Option<SolutionSet>,
     FStep: FnMut(TermIsolationExecutionItem) -> S,
-    FHint: FnMut(LogBlockedHintRecord),
+    FHint: FnMut(&Context, LogBlockedHintRecord),
 {
     let terminal_result = terminal_gate(existing_steps);
     execute_and_resolve_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut(
+        ctx,
         terminal_result,
         include_unsupported_items,
         existing_steps,
@@ -4624,6 +4634,7 @@ where
 
 /// Execute terminal-gate stage first, then route through post-terminal
 /// unsupported handling using a preplanned unsupported execution.
+#[allow(clippy::too_many_arguments)]
 pub fn execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_existing_steps_mut_with_unsupported_execution<
     S,
     FTerminalGate,
@@ -4631,6 +4642,7 @@ pub fn execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_exi
     FStep,
     FHint,
 >(
+    ctx: &Context,
     terminal_gate: FTerminalGate,
     include_unsupported_items: bool,
     existing_steps: &mut Vec<S>,
@@ -4643,9 +4655,10 @@ where
     FTerminalGate: FnOnce(&mut Vec<S>) -> LogDecisionTerminalResult<S>,
     FGuarded: FnMut(&Equation) -> Option<SolutionSet>,
     FStep: FnMut(TermIsolationExecutionItem) -> S,
-    FHint: FnMut(LogBlockedHintRecord),
+    FHint: FnMut(&Context, LogBlockedHintRecord),
 {
     execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_existing_steps_mut(
+        ctx,
         terminal_gate,
         include_unsupported_items,
         existing_steps,
@@ -4692,7 +4705,7 @@ where
     FAssumption: FnMut(&Context, LogAssumption),
     FPlan: FnOnce() -> Option<PowExponentLogUnsupportedExecution>,
     FGuarded: FnMut(&Equation) -> Option<SolutionSet>,
-    FHint: FnMut(LogBlockedHintRecord),
+    FHint: FnMut(&Context, LogBlockedHintRecord),
 {
     resolve_pow_exponent_log_decision_pipeline_result(
         execute_pow_exponent_log_decision_pipeline_with_existing_steps_mut(
@@ -4714,6 +4727,61 @@ where
             try_guarded_solve,
             register_blocked_hint,
         ),
+    )
+}
+
+/// Execute and resolve exponent-log decision pipeline using a preplanned
+/// unsupported execution payload.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_and_resolve_pow_exponent_log_decision_pipeline_with_existing_steps_mut_with_unsupported_execution<
+    S,
+    FStep,
+    FAssumption,
+    FGuarded,
+    FHint,
+>(
+    ctx: &mut Context,
+    decision: &LogSolveDecision,
+    mode: DomainModeKind,
+    wildcard_scope: bool,
+    lhs: ExprId,
+    rhs: ExprId,
+    var: &str,
+    equation_after: Equation,
+    residual_suffix: &str,
+    include_terminal_item: bool,
+    existing_steps: &mut Vec<S>,
+    map_item_to_step: FStep,
+    visit_assumption: FAssumption,
+    include_unsupported_items: bool,
+    unsupported_execution: Option<PowExponentLogUnsupportedExecution>,
+    try_guarded_solve: FGuarded,
+    register_blocked_hint: FHint,
+) -> Result<Option<(SolutionSet, Vec<S>)>, &'static str>
+where
+    FStep: FnMut(TermIsolationExecutionItem) -> S,
+    FAssumption: FnMut(&Context, LogAssumption),
+    FGuarded: FnMut(&Equation) -> Option<SolutionSet>,
+    FHint: FnMut(&Context, LogBlockedHintRecord),
+{
+    execute_and_resolve_pow_exponent_log_decision_pipeline_with_existing_steps_mut(
+        ctx,
+        decision,
+        mode,
+        wildcard_scope,
+        lhs,
+        rhs,
+        var,
+        equation_after,
+        residual_suffix,
+        include_terminal_item,
+        existing_steps,
+        map_item_to_step,
+        visit_assumption,
+        include_unsupported_items,
+        move || unsupported_execution,
+        try_guarded_solve,
+        register_blocked_hint,
     )
 }
 
@@ -5340,11 +5408,12 @@ pub fn log_decision_is_empty_set(decision: &LogSolveDecision) -> bool {
 /// allow caller-side blocked-hint registration through callback.
 pub fn merge_pow_exponent_log_unsupported_pipeline_with_existing_steps<S, FHint>(
     solved: Option<PowExponentLogUnsupportedPipelineSolved<S>>,
+    ctx: &Context,
     existing_steps: Vec<S>,
     mut register_blocked_hint: FHint,
 ) -> Option<(SolutionSet, Vec<S>)>
 where
-    FHint: FnMut(LogBlockedHintRecord),
+    FHint: FnMut(&Context, LogBlockedHintRecord),
 {
     let PowExponentLogUnsupportedPipelineSolved {
         blocked_hints,
@@ -5353,7 +5422,7 @@ where
     } = solved?;
 
     for hint in blocked_hints {
-        register_blocked_hint(hint);
+        register_blocked_hint(ctx, hint);
     }
 
     let mut merged = existing_steps;
@@ -5367,16 +5436,18 @@ where
 /// `existing_steps` in that case.
 pub fn finalize_pow_exponent_log_unsupported_pipeline_with_existing_steps<S, FHint>(
     solved: Option<PowExponentLogUnsupportedPipelineSolved<S>>,
+    ctx: &Context,
     existing_steps: &mut Vec<S>,
     register_blocked_hint: FHint,
 ) -> Option<(SolutionSet, Vec<S>)>
 where
-    FHint: FnMut(LogBlockedHintRecord),
+    FHint: FnMut(&Context, LogBlockedHintRecord),
 {
     let solved = solved?;
     let existing = std::mem::take(existing_steps);
     merge_pow_exponent_log_unsupported_pipeline_with_existing_steps(
         Some(solved),
+        ctx,
         existing,
         register_blocked_hint,
     )
@@ -5394,6 +5465,7 @@ pub fn execute_pow_exponent_log_unsupported_pipeline_from_decision_and_finalize_
     FHint,
 >(
     include_items: bool,
+    ctx: &Context,
     existing_steps: &mut Vec<S>,
     plan_execution: FPlan,
     try_guarded_solve: FG,
@@ -5404,7 +5476,7 @@ where
     FG: FnMut(&Equation) -> Option<SolutionSet>,
     FStep: FnMut(TermIsolationExecutionItem) -> S,
     FPlan: FnOnce() -> Option<PowExponentLogUnsupportedExecution>,
-    FHint: FnMut(LogBlockedHintRecord),
+    FHint: FnMut(&Context, LogBlockedHintRecord),
 {
     let solved = execute_pow_exponent_log_unsupported_pipeline_from_decision_with(
         include_items,
@@ -5414,6 +5486,7 @@ where
     );
     finalize_pow_exponent_log_unsupported_pipeline_with_existing_steps(
         solved,
+        ctx,
         existing_steps,
         register_blocked_hint,
     )
@@ -10897,7 +10970,7 @@ mod tests {
             true,
             || panic!("unsupported planning must not run on terminal route"),
             |_equation| panic!("guarded solve must not run on terminal route"),
-            |_hint| panic!("blocked-hint registration must not run on terminal route"),
+            |_core_ctx, _hint| panic!("blocked-hint registration must not run on terminal route"),
         );
 
         match out {
@@ -10945,7 +11018,7 @@ mod tests {
             true,
             || panic!("unsupported planning must not run for needs-complex"),
             |_equation| panic!("guarded solve must not run for needs-complex"),
-            |_hint| panic!("blocked-hint registration must not run for needs-complex"),
+            |_core_ctx, _hint| panic!("blocked-hint registration must not run for needs-complex"),
         );
 
         match out {
@@ -11002,7 +11075,9 @@ mod tests {
                 })
             },
             |_equation| panic!("guarded solve must not run for residual unsupported plan"),
-            |_hint| panic!("blocked hints should be empty for residual unsupported plan"),
+            |_core_ctx, _hint| {
+                panic!("blocked hints should be empty for residual unsupported plan")
+            },
         );
 
         match out {
@@ -11023,6 +11098,7 @@ mod tests {
 
     #[test]
     fn execute_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut_forwards_terminal() {
+        let ctx = Context::new();
         let out = execute_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut::<
             String,
             _,
@@ -11030,6 +11106,7 @@ mod tests {
             _,
             _,
         >(
+            &ctx,
             LogDecisionTerminalResult::Terminal {
                 solution_set: SolutionSet::Empty,
                 steps: vec!["existing".to_string(), "terminal".to_string()],
@@ -11039,7 +11116,7 @@ mod tests {
             || panic!("unsupported planning must not run for terminal result"),
             |_equation| panic!("guarded solve must not run for terminal result"),
             |_item| panic!("step mapper must not run for terminal result"),
-            |_hint| panic!("hint registration must not run for terminal result"),
+            |_core_ctx, _hint| panic!("hint registration must not run for terminal result"),
         );
 
         match out {
@@ -11064,6 +11141,7 @@ mod tests {
         let mut existing = vec!["existing".to_string()];
 
         let out = execute_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut(
+            &ctx,
             LogDecisionTerminalResult::Continue,
             true,
             &mut existing,
@@ -11082,7 +11160,9 @@ mod tests {
             },
             |_equation| panic!("guarded solve must not run for residual unsupported plan"),
             |item| item.description,
-            |_hint| panic!("blocked hints should be empty for residual unsupported plan"),
+            |_core_ctx, _hint| {
+                panic!("blocked hints should be empty for residual unsupported plan")
+            },
         );
 
         match out {
@@ -11104,6 +11184,7 @@ mod tests {
     #[test]
     fn execute_and_resolve_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut_maps_terminal(
     ) {
+        let ctx = Context::new();
         let out =
             execute_and_resolve_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut::<
                 String,
@@ -11112,6 +11193,7 @@ mod tests {
                 _,
                 _,
             >(
+                &ctx,
                 LogDecisionTerminalResult::Terminal {
                     solution_set: SolutionSet::Empty,
                     steps: vec!["terminal".to_string()],
@@ -11121,7 +11203,7 @@ mod tests {
                 || panic!("unsupported planning must not run for terminal result"),
                 |_equation| panic!("guarded solve must not run for terminal result"),
                 |_item| panic!("step mapper must not run for terminal result"),
-                |_hint| panic!("hint registration must not run for terminal result"),
+                |_core_ctx, _hint| panic!("hint registration must not run for terminal result"),
             )
             .expect("terminal should not error");
 
@@ -11134,6 +11216,7 @@ mod tests {
     #[test]
     fn execute_and_resolve_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut_maps_needs_complex(
     ) {
+        let ctx = Context::new();
         let out =
             execute_and_resolve_pow_exponent_log_post_terminal_pipeline_with_existing_steps_mut::<
                 String,
@@ -11142,6 +11225,7 @@ mod tests {
                 _,
                 _,
             >(
+                &ctx,
                 LogDecisionTerminalResult::NeedsComplex {
                     message: "complex required",
                 },
@@ -11150,7 +11234,7 @@ mod tests {
                 || panic!("unsupported planning must not run for needs-complex"),
                 |_equation| panic!("guarded solve must not run for needs-complex"),
                 |_item| panic!("step mapper must not run for needs-complex"),
-                |_hint| panic!("hint registration must not run for needs-complex"),
+                |_core_ctx, _hint| panic!("hint registration must not run for needs-complex"),
             )
             .expect_err("needs-complex should become error");
 
@@ -11160,6 +11244,7 @@ mod tests {
     #[test]
     fn execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_existing_steps_mut_maps_terminal(
     ) {
+        let ctx = Context::new();
         let out =
             execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_existing_steps_mut::<
                 String,
@@ -11169,6 +11254,7 @@ mod tests {
                 _,
                 _,
             >(
+                &ctx,
                 |_existing_steps| LogDecisionTerminalResult::Terminal {
                     solution_set: SolutionSet::Empty,
                     steps: vec!["terminal".to_string()],
@@ -11178,7 +11264,7 @@ mod tests {
                 || panic!("unsupported planning must not run for terminal result"),
                 |_equation| panic!("guarded solve must not run for terminal result"),
                 |_item| panic!("step mapper must not run for terminal result"),
-                |_hint| panic!("hint registration must not run for terminal result"),
+                |_core_ctx, _hint| panic!("hint registration must not run for terminal result"),
             )
             .expect("terminal should not error");
 
@@ -11198,6 +11284,7 @@ mod tests {
 
         let out =
             execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_existing_steps_mut(
+                &ctx,
                 |_existing_steps| LogDecisionTerminalResult::Continue,
                 true,
                 &mut existing,
@@ -11216,7 +11303,7 @@ mod tests {
                 },
                 |_equation| panic!("guarded solve must not run for residual unsupported plan"),
                 |item| item.description,
-                |_hint| panic!("blocked hints should be empty for residual unsupported plan"),
+                |_core_ctx, _hint| panic!("blocked hints should be empty for residual unsupported plan"),
             )
             .expect("continue should not error");
 
@@ -11238,6 +11325,7 @@ mod tests {
         let mut existing = vec!["existing".to_string()];
 
         let out = execute_and_resolve_pow_exponent_log_terminal_then_post_pipeline_with_existing_steps_mut_with_unsupported_execution(
+            &ctx,
             |_existing_steps| LogDecisionTerminalResult::Continue,
             true,
             &mut existing,
@@ -11254,7 +11342,7 @@ mod tests {
             }),
             |_equation| panic!("guarded solve must not run for residual unsupported plan"),
             |item| item.description,
-            |_hint| panic!("blocked hints should be empty for residual unsupported plan"),
+            |_core_ctx, _hint| panic!("blocked hints should be empty for residual unsupported plan"),
         )
         .expect("continue should not error");
 
@@ -11297,7 +11385,7 @@ mod tests {
             true,
             || panic!("unsupported planning must not run for terminal decision"),
             |_equation| panic!("guarded solve must not run for terminal decision"),
-            |_hint| panic!("hint registration must not run for terminal decision"),
+            |_core_ctx, _hint| panic!("hint registration must not run for terminal decision"),
         )
         .expect("terminal should not error");
 
@@ -11338,13 +11426,74 @@ mod tests {
             true,
             || None,
             |_equation| panic!("guarded solve must not run when unsupported plan is none"),
-            |_hint| panic!("hint registration must not run when unsupported plan is none"),
+            |_core_ctx, _hint| {
+                panic!("hint registration must not run when unsupported plan is none")
+            },
         )
         .expect("continue should not error");
 
         assert_eq!(out, None);
         assert_eq!(existing, vec!["existing".to_string()]);
         assert_eq!(assumption_calls, 0);
+    }
+
+    #[test]
+    fn execute_and_resolve_pow_exponent_log_decision_pipeline_with_existing_steps_mut_with_unsupported_execution_maps_continue(
+    ) {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let residual = ctx.add(Expr::Sub(x, y));
+        let mut existing = vec!["existing".to_string()];
+
+        let out = execute_and_resolve_pow_exponent_log_decision_pipeline_with_existing_steps_mut_with_unsupported_execution(
+            &mut ctx,
+            &LogSolveDecision::Unsupported(
+                "Cannot prove RHS > 0 for logarithm",
+                vec![LogAssumption::PositiveRhs],
+            ),
+            DomainModeKind::Generic,
+            false,
+            x,
+            y,
+            "x",
+            Equation {
+                lhs: x,
+                rhs: y,
+                op: RelOp::Eq,
+            },
+            " (residual)",
+            false,
+            &mut existing,
+            |item| item.description,
+            |_core_ctx, _assumption| {},
+            true,
+            Some(PowExponentLogUnsupportedExecution::Residual {
+                item: TermIsolationExecutionItem {
+                    description: "unsupported residual".to_string(),
+                    equation: Equation {
+                        lhs: x,
+                        rhs: y,
+                        op: RelOp::Eq,
+                    },
+                },
+                solutions: SolutionSet::Residual(residual),
+            }),
+            |_equation| panic!("guarded solve must not run for residual unsupported plan"),
+            |_core_ctx, _hint| {
+                panic!("blocked hints should be empty for residual unsupported plan")
+            },
+        )
+        .expect("continue should not error");
+
+        assert_eq!(
+            out,
+            Some((
+                SolutionSet::Residual(residual),
+                vec!["existing".to_string(), "unsupported residual".to_string()],
+            ))
+        );
+        assert!(existing.is_empty());
     }
 
     #[test]
@@ -11985,6 +12134,7 @@ mod tests {
 
     #[test]
     fn merge_pow_exponent_log_unsupported_pipeline_with_existing_steps_registers_hints() {
+        let ctx = Context::new();
         let solved = Some(PowExponentLogUnsupportedPipelineSolved {
             blocked_hints: vec![LogBlockedHintRecord {
                 assumption: LogAssumption::PositiveBase,
@@ -11999,8 +12149,9 @@ mod tests {
         let mut registered = Vec::new();
         let merged = merge_pow_exponent_log_unsupported_pipeline_with_existing_steps(
             solved,
+            &ctx,
             vec!["existing".to_string()],
-            |hint| registered.push(hint),
+            |_core_ctx, hint| registered.push(hint),
         )
         .expect("must merge unsupported outcome");
 
@@ -12015,11 +12166,13 @@ mod tests {
     #[test]
     fn finalize_pow_exponent_log_unsupported_pipeline_with_existing_steps_preserves_steps_on_none()
     {
+        let ctx = Context::new();
         let mut existing = vec!["existing".to_string()];
         let out = finalize_pow_exponent_log_unsupported_pipeline_with_existing_steps(
             None::<PowExponentLogUnsupportedPipelineSolved<String>>,
+            &ctx,
             &mut existing,
-            |_hint| {},
+            |_core_ctx, _hint| {},
         );
         assert!(out.is_none());
         assert_eq!(existing, vec!["existing".to_string()]);
@@ -12028,6 +12181,7 @@ mod tests {
     #[test]
     fn finalize_pow_exponent_log_unsupported_pipeline_with_existing_steps_merges_and_registers_hints(
     ) {
+        let ctx = Context::new();
         let mut existing = vec!["existing".to_string()];
         let mut registered = Vec::new();
         let out = finalize_pow_exponent_log_unsupported_pipeline_with_existing_steps(
@@ -12041,8 +12195,9 @@ mod tests {
                 solution_set: SolutionSet::AllReals,
                 steps: vec!["unsupported".to_string()],
             }),
+            &ctx,
             &mut existing,
-            |hint| registered.push(hint),
+            |_core_ctx, hint| registered.push(hint),
         )
         .expect("must merge unsupported outcome");
         assert_eq!(registered.len(), 1);
@@ -12065,35 +12220,35 @@ mod tests {
             "Cannot prove base > 0 and RHS > 0 for logarithm",
             vec![LogAssumption::PositiveBase, LogAssumption::PositiveRhs],
         );
+        let unsupported_execution = plan_pow_exponent_log_unsupported_execution_from_decision_with(
+            &mut ctx,
+            &decision,
+            true,
+            exponent,
+            rhs,
+            "x",
+            exponent,
+            base,
+            rhs,
+            RelOp::Eq,
+            Equation {
+                lhs: exponent,
+                rhs,
+                op: RelOp::Eq,
+            },
+            |_, id| format!("runtime({id})"),
+        );
         let mut existing = vec!["existing".to_string()];
         let mut registered = Vec::new();
         let out =
             execute_pow_exponent_log_unsupported_pipeline_from_decision_and_finalize_with_existing_steps_with(
                 true,
+                &ctx,
                 &mut existing,
-                || {
-                    plan_pow_exponent_log_unsupported_execution_from_decision_with(
-                        &mut ctx,
-                        &decision,
-                        true,
-                        exponent,
-                        rhs,
-                        "x",
-                        exponent,
-                        base,
-                        rhs,
-                        RelOp::Eq,
-                        Equation {
-                            lhs: exponent,
-                            rhs,
-                            op: RelOp::Eq,
-                        },
-                        |_, id| format!("runtime({id})"),
-                    )
-                },
+                move || unsupported_execution,
                 |_eq| Some(SolutionSet::Discrete(vec![exponent])),
                 |item| item.description,
-                |hint| registered.push(hint),
+                |_core_ctx, hint| registered.push(hint),
             )
             .expect("unsupported decision should map, execute and merge");
 

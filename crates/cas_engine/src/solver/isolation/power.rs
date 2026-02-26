@@ -5,7 +5,7 @@ use cas_ast::{Equation, Expr, ExprId, RelOp, SolutionSet};
 use cas_solver_core::solve_outcome::{
     classify_pow_exponent_base_flags, derive_pow_isolation_route,
     ensure_pow_exponent_rhs_without_variable,
-    execute_and_resolve_pow_exponent_log_decision_pipeline_with_existing_steps_mut,
+    execute_and_resolve_pow_exponent_log_decision_pipeline_with_existing_steps_mut_with_unsupported_execution,
     execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps,
     execute_pow_exponent_log_isolation_pipeline_with_plan_and_merge_with_existing_steps_with,
     execute_pow_exponent_shortcut_action_pipeline_with_item_and_finalize_with_existing_steps_with,
@@ -263,8 +263,7 @@ fn isolate_pow_exponent(
     let (resolved_decision, simplifier) = {
         let simplifier_ref = RefCell::new(simplifier);
         let mut decision_ctx = simplifier_ref.borrow().context.clone();
-        let resolved_decision =
-            execute_and_resolve_pow_exponent_log_decision_pipeline_with_existing_steps_mut(
+        let resolved_decision = execute_and_resolve_pow_exponent_log_decision_pipeline_with_existing_steps_mut_with_unsupported_execution(
                 &mut decision_ctx,
                 &decision,
                 mode,
@@ -284,7 +283,7 @@ fn isolate_pow_exponent(
                     ctx.note_assumption(event);
                 },
                 include_unsupported_items,
-                move || unsupported_execution,
+                unsupported_execution,
                 |equation| {
                     let mut simplifier = simplifier_ref.borrow_mut();
                     isolate(
@@ -299,12 +298,9 @@ fn isolate_pow_exponent(
                     .ok()
                     .map(|(solutions, _)| solutions)
                 },
-                |hint| {
-                    let snapshot = simplifier_ref.borrow();
-                    let blocked_hint = crate::solver::domain_blocked_hint_from_log_blocked_hint(
-                        &snapshot.context,
-                        hint,
-                    );
+                |core_ctx, hint| {
+                    let blocked_hint =
+                        crate::solver::domain_blocked_hint_from_log_blocked_hint(core_ctx, hint);
                     crate::domain::register_blocked_hint(blocked_hint);
                 },
             );
