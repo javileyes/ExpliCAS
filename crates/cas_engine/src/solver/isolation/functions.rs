@@ -11,7 +11,7 @@ use cas_solver_core::log_isolation::{
     execute_log_isolation_result_pipeline_or_else_with, plan_log_isolation_step_with,
 };
 use cas_solver_core::solve_outcome::{
-    execute_abs_isolation_plan_pipeline_with_optional_items,
+    execute_abs_isolation_plan_pipeline_with_optional_items_and_solver,
     finalize_abs_split_solution_set_for_rhs, merge_solved_with_existing_steps_prepend,
     plan_abs_isolation_with_rhs_sign,
 };
@@ -75,7 +75,7 @@ fn isolate_abs(
     let abs_plan = plan_abs_isolation_with_rhs_sign(&mut simplifier.context, arg, rhs, op.clone());
     let include_items = simplifier.collect_steps();
     let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    execute_abs_isolation_plan_pipeline_with_optional_items(
+    execute_abs_isolation_plan_pipeline_with_optional_items_and_solver(
         abs_plan,
         arg,
         include_items,
@@ -83,18 +83,6 @@ fn isolate_abs(
         |expr| {
             let simplifier_ref = runtime_cell.borrow();
             solver_render_expr(&simplifier_ref.context, expr)
-        },
-        |equation| {
-            let mut simplifier_ref = runtime_cell.borrow_mut();
-            isolate(
-                equation.lhs,
-                equation.rhs,
-                equation.op,
-                var,
-                *simplifier_ref,
-                opts,
-                ctx,
-            )
         },
         |equation| {
             let mut simplifier_ref = runtime_cell.borrow_mut();
