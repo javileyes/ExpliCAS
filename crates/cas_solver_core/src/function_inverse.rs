@@ -519,6 +519,51 @@ where
     ))
 }
 
+/// Execute unary-inverse planning + solve pipeline returning plain strategy
+/// output `(SolutionSet, steps)`.
+///
+/// Returns `None` when unary inversion is unsupported for the requested function.
+#[allow(clippy::too_many_arguments)]
+pub fn execute_unary_inverse_result_pipeline_with_items_with<
+    E,
+    S,
+    FPlan,
+    FSimplifyRhs,
+    FSolve,
+    FStep,
+>(
+    fn_name: &str,
+    arg: ExprId,
+    other: ExprId,
+    op: RelOp,
+    is_lhs: bool,
+    include_items: bool,
+    plan_unary_inverse_step: FPlan,
+    simplify_rhs_with_entries: FSimplifyRhs,
+    solve: FSolve,
+    map_item_to_step: FStep,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    FPlan: FnMut(&str, ExprId, ExprId, RelOp, bool) -> Option<UnaryInverseIsolationStepPlan>,
+    FSimplifyRhs: FnMut(ExprId) -> (ExprId, Vec<(String, ExprId)>),
+    FSolve: FnMut(ExprId, ExprId, RelOp) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(UnaryInverseSolveExecutionItem) -> S,
+{
+    let solved = execute_unary_inverse_pipeline_with_items_with(
+        fn_name,
+        arg,
+        other,
+        op,
+        is_lhs,
+        include_items,
+        plan_unary_inverse_step,
+        simplify_rhs_with_entries,
+        solve,
+        map_item_to_step,
+    )?;
+    Some(solved.map(|payload| (payload.solution_set, payload.steps)))
+}
+
 /// Build didactic RHS-cleanup steps from `(description, rhs_after)` tuples.
 pub fn build_rhs_simplification_steps<I>(
     lhs: ExprId,
@@ -1265,6 +1310,61 @@ mod tests {
         assert!(matches!(solved.solution_set, SolutionSet::Discrete(_)));
         assert_eq!(
             solved.steps,
+            vec![
+                "rewrite".to_string(),
+                "cleanup".to_string(),
+                "substep".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn execute_unary_inverse_result_pipeline_with_items_with_returns_plain_tuple() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+
+        let solved = execute_unary_inverse_result_pipeline_with_items_with(
+            "ln",
+            x,
+            y,
+            RelOp::Eq,
+            true,
+            true,
+            |_fn_name, _arg, _other, _op, _is_lhs| {
+                Some(UnaryInverseIsolationStepPlan {
+                    equation: Equation {
+                        lhs: x,
+                        rhs: y,
+                        op: RelOp::Eq,
+                    },
+                    items: vec![UnaryInverseExecutionItem {
+                        equation: Equation {
+                            lhs: x,
+                            rhs: y,
+                            op: RelOp::Eq,
+                        },
+                        description: "rewrite".to_string(),
+                    }],
+                    needs_rhs_cleanup: true,
+                })
+            },
+            |_rhs| (z, vec![("cleanup".to_string(), z)]),
+            |_lhs, rhs, _op| {
+                Ok::<_, ()>((
+                    SolutionSet::Discrete(vec![rhs]),
+                    vec!["substep".to_string()],
+                ))
+            },
+            |item| item.description,
+        )
+        .expect("inverse should be supported")
+        .expect("pipeline should solve");
+
+        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
+        assert_eq!(
+            solved.1,
             vec![
                 "rewrite".to_string(),
                 "cleanup".to_string(),

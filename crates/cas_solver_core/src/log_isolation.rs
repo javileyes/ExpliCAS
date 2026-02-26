@@ -144,6 +144,31 @@ where
     ))
 }
 
+/// Execute log-isolation planning + solve pipeline returning plain strategy
+/// output `(SolutionSet, steps)`.
+///
+/// Returns `None` when log isolation cannot be planned for the given variable.
+#[allow(clippy::type_complexity)]
+pub fn execute_log_isolation_result_pipeline_with_item_with<E, S, FPlan, FSolve, FMap>(
+    include_item: bool,
+    plan_rewrite: FPlan,
+    solve_rewritten: FSolve,
+    map_item_to_step: FMap,
+) -> Option<Result<(cas_ast::SolutionSet, Vec<S>), E>>
+where
+    FPlan: FnMut() -> Option<LogIsolationRewritePlan>,
+    FSolve: FnMut(&Equation) -> Result<(cas_ast::SolutionSet, Vec<S>), E>,
+    FMap: FnMut(LogIsolationExecutionItem) -> S,
+{
+    let solved = execute_log_isolation_pipeline_with_item_with(
+        include_item,
+        plan_rewrite,
+        solve_rewritten,
+        map_item_to_step,
+    )?;
+    Some(solved.map(|payload| payload.solved))
+}
+
 /// Planned transformation for isolating a logarithmic equation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogIsolationPlan {
@@ -621,6 +646,31 @@ mod tests {
         assert_eq!(solved.solved.0, SolutionSet::AllReals);
         assert_eq!(solved.solved.1.len(), 2);
         assert_eq!(solved.solved.1[1], "sub");
+    }
+
+    #[test]
+    fn execute_log_isolation_result_pipeline_with_item_with_returns_plain_tuple() {
+        let mut ctx = Context::new();
+        let base = ctx.var("b");
+        let arg = ctx.var("x");
+        let rhs = ctx.num(3);
+
+        let solved = execute_log_isolation_result_pipeline_with_item_with(
+            true,
+            || {
+                plan_log_isolation_step_with(&mut ctx, base, arg, rhs, "x", RelOp::Eq, |_, _| {
+                    "rendered(b)".to_string()
+                })
+            },
+            |_equation| Ok::<_, ()>((SolutionSet::AllReals, vec!["sub".to_string()])),
+            |item| item.description,
+        )
+        .expect("log isolation should be supported")
+        .expect("pipeline solve should succeed");
+
+        assert_eq!(solved.0, SolutionSet::AllReals);
+        assert_eq!(solved.1.len(), 2);
+        assert_eq!(solved.1[1], "sub");
     }
 
     #[test]

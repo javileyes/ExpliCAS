@@ -4,12 +4,12 @@ use crate::solver::{medium_step, render_expr as solver_render_expr, SolveStep, S
 use cas_ast::symbol::SymbolId;
 use cas_ast::{Equation, ExprId, RelOp, SolutionSet};
 use cas_solver_core::function_inverse::{
-    derive_function_isolation_route, execute_unary_inverse_pipeline_with_items_with,
+    derive_function_isolation_route, execute_unary_inverse_result_pipeline_with_items_with,
     plan_unary_inverse_isolation_step, FunctionIsolationRoute, FunctionIsolationRouteError,
 };
 use cas_solver_core::isolation_utils::{contains_var, numeric_sign};
 use cas_solver_core::log_isolation::{
-    execute_log_isolation_pipeline_with_item_with, plan_log_isolation_step_with,
+    execute_log_isolation_result_pipeline_with_item_with, plan_log_isolation_step_with,
 };
 use cas_solver_core::solve_outcome::{
     execute_abs_split_pipeline_with_optional_items, finalize_abs_split_solution_set,
@@ -151,7 +151,7 @@ fn isolate_log(
     let include_item = simplifier.collect_steps();
     let solved = {
         let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        execute_log_isolation_pipeline_with_item_with(
+        execute_log_isolation_result_pipeline_with_item_with(
             include_item,
             || {
                 let mut simplifier_ref = runtime_cell.borrow_mut();
@@ -187,8 +187,7 @@ fn isolate_log(
             )
         })??
     };
-    let (solution_set, solved_steps) = solved.solved;
-    prepend_steps((solution_set, solved_steps), steps)
+    prepend_steps(solved, steps)
 }
 
 /// Handle single-argument functions: ln, exp, sqrt, sin, cos, tan
@@ -206,9 +205,9 @@ fn isolate_unary_function(
 ) -> Result<(SolutionSet, Vec<SolveStep>), CasError> {
     let fn_name = simplifier.context.sym_name(fn_id).to_string();
     let include_items = simplifier.collect_steps();
-    let solved_execution = {
+    let solved = {
         let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        execute_unary_inverse_pipeline_with_items_with(
+        execute_unary_inverse_result_pipeline_with_items_with(
             &fn_name,
             arg,
             rhs,
@@ -243,8 +242,5 @@ fn isolate_unary_function(
         )
         .ok_or_else(|| CasError::UnknownFunction(fn_name.clone()))??
     };
-    prepend_steps(
-        (solved_execution.solution_set, solved_execution.steps),
-        steps,
-    )
+    prepend_steps(solved, steps)
 }
