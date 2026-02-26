@@ -2558,6 +2558,44 @@ where
     )
 }
 
+/// Execute term-isolation plan and merge solved steps before caller-owned
+/// existing steps.
+pub fn execute_term_isolation_plan_with_and_merge_with_existing_steps_with<
+    E,
+    S,
+    FPlan,
+    FSimplify,
+    FSolve,
+    FStep,
+>(
+    plan_rewrite: FPlan,
+    include_item: bool,
+    simplify_rhs_before_solve: bool,
+    existing_steps: Vec<S>,
+    simplify_rhs: FSimplify,
+    solve_rewritten: FSolve,
+    map_item_to_step: FStep,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FPlan: FnMut() -> TermIsolationRewritePlan,
+    FSimplify: FnMut(ExprId) -> ExprId,
+    FSolve: FnMut(Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(TermIsolationRewriteExecutionItem) -> S,
+{
+    let solved = execute_term_isolation_plan_with(
+        plan_rewrite,
+        include_item,
+        simplify_rhs_before_solve,
+        simplify_rhs,
+        solve_rewritten,
+        map_item_to_step,
+    )?;
+    Ok(merge_solved_with_existing_steps_prepend(
+        solved,
+        existing_steps,
+    ))
+}
+
 /// Merge a solved `(SolutionSet, steps)` payload by prepending solved steps
 /// before caller-owned existing steps.
 pub fn merge_solved_with_existing_steps_prepend<S>(
@@ -10529,6 +10567,35 @@ mod tests {
         assert_eq!(simplify_calls, 0);
         assert_eq!(solution_set, SolutionSet::Discrete(vec![raw_rhs]));
         assert!(steps.is_empty());
+    }
+
+    #[test]
+    fn execute_term_isolation_plan_with_and_merge_with_existing_steps_with_prepends_pipeline_steps()
+    {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let y = ctx.var("y");
+        let z = ctx.var("z");
+        let plan =
+            plan_add_operand_isolation_step_with(&mut ctx, x, y, z, RelOp::Eq, |_| "y".to_string());
+        let expected_item = plan.items[0].description.clone();
+
+        let merged = execute_term_isolation_plan_with_and_merge_with_existing_steps_with(
+            || plan.clone(),
+            true,
+            false,
+            vec!["existing".to_string()],
+            |rhs| rhs,
+            |_equation| Ok::<_, ()>((SolutionSet::AllReals, vec!["substep".to_string()])),
+            |item| item.description,
+        )
+        .expect("execute+merge wrapper should succeed");
+
+        assert!(matches!(merged.0, SolutionSet::AllReals));
+        assert_eq!(
+            merged.1,
+            vec![expected_item, "substep".to_string(), "existing".to_string()]
+        );
     }
 
     #[test]

@@ -10,7 +10,8 @@ use cas_solver_core::solve_outcome::{
     execute_division_denominator_sign_split_pipeline_with_optional_items,
     execute_isolated_denominator_sign_split_pipeline_with_optional_items,
     execute_product_zero_inequality_split_pipeline_with_existing_steps,
-    execute_term_isolation_plan_with, finalize_division_denominator_sign_split_solved_sets,
+    execute_term_isolation_plan_with_and_merge_with_existing_steps_with,
+    finalize_division_denominator_sign_split_solved_sets,
     finalize_isolated_denominator_sign_split_solved_sets,
     finalize_product_zero_inequality_solved_sets, merge_solved_with_existing_steps_append,
     merge_solved_with_existing_steps_prepend, mul_rhs_contains_variable,
@@ -56,7 +57,7 @@ pub(super) fn isolate_add(
     let add_moved_desc = solver_render_expr(&simplifier.context, add_operands.moved_addend);
     let include_item = simplifier.collect_steps();
     let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    let solved = execute_term_isolation_plan_with(
+    execute_term_isolation_plan_with_and_merge_with_existing_steps_with(
         || {
             let mut simplifier_ref = runtime_cell.borrow_mut();
             plan_add_operand_isolation_step_with(
@@ -70,6 +71,7 @@ pub(super) fn isolate_add(
         },
         include_item,
         true,
+        steps,
         |expr| {
             let mut simplifier_ref = runtime_cell.borrow_mut();
             simplifier_ref.simplify(expr).0
@@ -87,8 +89,7 @@ pub(super) fn isolate_add(
             )
         },
         |item| medium_step(item.description, item.equation),
-    )?;
-    Ok(merge_solved_with_existing_steps_prepend(solved, steps))
+    )
 }
 
 /// Handle isolation for `Sub(l, r)`: `(A - B) = RHS`
@@ -115,7 +116,7 @@ pub(super) fn isolate_sub(
     let sub_moved_desc = solver_render_expr(&simplifier.context, sub_moved);
     let include_item = simplifier.collect_steps();
     let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    let solved = execute_term_isolation_plan_with(
+    execute_term_isolation_plan_with_and_merge_with_existing_steps_with(
         || {
             let mut simplifier_ref = runtime_cell.borrow_mut();
             plan_sub_isolation_step_with(
@@ -130,6 +131,7 @@ pub(super) fn isolate_sub(
         },
         include_item,
         true,
+        steps,
         |expr| {
             let mut simplifier_ref = runtime_cell.borrow_mut();
             simplifier_ref.simplify(expr).0
@@ -147,8 +149,7 @@ pub(super) fn isolate_sub(
             )
         },
         |item| medium_step(item.description, item.equation),
-    )?;
-    Ok(merge_solved_with_existing_steps_prepend(solved, steps))
+    )
 }
 
 /// Handle isolation for `Mul(l, r)`: `A * B = RHS`
@@ -207,7 +208,7 @@ pub(super) fn isolate_mul(
     let mul_moved_desc = solver_render_expr(&simplifier.context, mul_operands.moved_factor);
     let include_item = simplifier.collect_steps();
     let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    let solved = execute_term_isolation_plan_with(
+    execute_term_isolation_plan_with_and_merge_with_existing_steps_with(
         || {
             let mut simplifier_ref = runtime_cell.borrow_mut();
             plan_mul_factor_isolation_step_with(
@@ -222,6 +223,7 @@ pub(super) fn isolate_mul(
         },
         include_item,
         false,
+        steps,
         |expr| {
             let mut simplifier_ref = runtime_cell.borrow_mut();
             simplifier_ref.simplify(expr).0
@@ -239,8 +241,7 @@ pub(super) fn isolate_mul(
             )
         },
         |item| medium_step(item.description, item.equation),
-    )?;
-    Ok(merge_solved_with_existing_steps_prepend(solved, steps))
+    )
 }
 
 /// Handle isolation for `Div(l, r)`: `A / B = RHS`
@@ -319,7 +320,7 @@ pub(super) fn isolate_div(
             let denominator_desc = solver_render_expr(&simplifier.context, r);
             let include_item = simplifier.collect_steps();
             let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-            let solved = execute_term_isolation_plan_with(
+            execute_term_isolation_plan_with_and_merge_with_existing_steps_with(
                 || {
                     let mut simplifier_ref = runtime_cell.borrow_mut();
                     plan_div_numerator_isolation_step_with(
@@ -334,6 +335,7 @@ pub(super) fn isolate_div(
                 },
                 include_item,
                 false,
+                steps,
                 |expr| {
                     let mut simplifier_ref = runtime_cell.borrow_mut();
                     simplifier_ref.simplify(expr).0
@@ -351,8 +353,7 @@ pub(super) fn isolate_div(
                     )
                 },
                 |item| medium_step(item.description, item.equation),
-            )?;
-            Ok(merge_solved_with_existing_steps_prepend(solved, steps))
+            )
         }
     } else {
         // B = A / RHS (variable in denominator)
