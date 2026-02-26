@@ -25,8 +25,11 @@
 use cas_ast::{Equation, ExprId, SolutionSet};
 use cas_math::expr_predicates::contains_variable;
 use cas_solver_core::isolation_utils::is_numeric_zero;
-use cas_solver_core::verification::verify_solution_set_with;
+use cas_solver_core::verification::{
+    verify_solution_set_with, verify_substituted_residual_with_strict_fold_and_generic_fallback,
+};
 use cas_solver_core::verify_substitution::{substitute_equation_diff, substitute_equation_sides};
+use std::cell::RefCell;
 
 use crate::engine::Simplifier;
 use crate::solver::render_expr as solver_render_expr;
@@ -51,7 +54,7 @@ pub fn verify_solution(
     solution: ExprId,
 ) -> VerifyStatus {
     let diff = substitute_equation_diff(&mut simplifier.context, equation, var, solution);
-    let strict_opts = || crate::SimplifyOptions {
+    let strict_opts = crate::SimplifyOptions {
         shared: crate::phase::SharedSemanticConfig {
             semantics: crate::semantics::EvalConfig {
                 domain_mode: crate::domain::DomainMode::Strict,
@@ -61,42 +64,50 @@ pub fn verify_solution(
         },
         ..Default::default()
     };
-    let strict_result = simplifier.simplify_with_stats(diff, strict_opts()).0;
-    if is_numeric_zero(&simplifier.context, strict_result) {
-        return VerifyStatus::Verified;
-    }
-
-    if contains_variable(&simplifier.context, strict_result) {
-        cas_solver_core::verify_stats::record_attempted();
-        let folded =
-            super::numeric_islands::fold_numeric_islands(&mut simplifier.context, strict_result);
-        if folded != strict_result {
-            cas_solver_core::verify_stats::record_changed();
-            let folded_result = simplifier.simplify_with_stats(folded, strict_opts()).0;
-            if is_numeric_zero(&simplifier.context, folded_result) {
-                cas_solver_core::verify_stats::record_verified();
-                return VerifyStatus::Verified;
-            }
-        }
-    }
-
-    if !contains_variable(&simplifier.context, strict_result) {
-        let generic_opts = crate::SimplifyOptions {
-            shared: crate::phase::SharedSemanticConfig {
-                semantics: crate::semantics::EvalConfig {
-                    domain_mode: crate::domain::DomainMode::Generic,
-                    ..Default::default()
-                },
+    let generic_opts = crate::SimplifyOptions {
+        shared: crate::phase::SharedSemanticConfig {
+            semantics: crate::semantics::EvalConfig {
+                domain_mode: crate::domain::DomainMode::Generic,
                 ..Default::default()
             },
             ..Default::default()
-        };
-        let generic_result = simplifier.simplify_with_stats(diff, generic_opts).0;
-        if is_numeric_zero(&simplifier.context, generic_result) {
-            return VerifyStatus::Verified;
-        }
+        },
+        ..Default::default()
+    };
+
+    let simplifier_ref = RefCell::new(simplifier);
+    let (verified, strict_result) =
+        verify_substituted_residual_with_strict_fold_and_generic_fallback(
+            diff,
+            |expr| {
+                simplifier_ref
+                    .borrow_mut()
+                    .simplify_with_stats(expr, strict_opts.clone())
+                    .0
+            },
+            |expr| {
+                simplifier_ref
+                    .borrow_mut()
+                    .simplify_with_stats(expr, generic_opts.clone())
+                    .0
+            },
+            |expr| contains_variable(&simplifier_ref.borrow().context, expr),
+            |expr| {
+                super::numeric_islands::fold_numeric_islands(
+                    &mut simplifier_ref.borrow_mut().context,
+                    expr,
+                )
+            },
+            |expr| is_numeric_zero(&simplifier_ref.borrow().context, expr),
+            cas_solver_core::verify_stats::record_attempted,
+            cas_solver_core::verify_stats::record_changed,
+            cas_solver_core::verify_stats::record_verified,
+        );
+    if verified {
+        return VerifyStatus::Verified;
     }
 
+    let simplifier = simplifier_ref.into_inner();
     VerifyStatus::Unverifiable {
         residual: strict_result,
         reason: format!(

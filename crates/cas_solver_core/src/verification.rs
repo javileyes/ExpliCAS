@@ -133,6 +133,72 @@ where
     }
 }
 
+/// Verify one substituted residual with the engine's 2-phase flow:
+/// 1) strict simplify, 2) variable-only island fold + strict retry,
+/// 3) generic simplify fallback only for variable-free strict residuals.
+///
+/// Returns `(verified, strict_residual)` where `strict_residual` is the phase-1
+/// strict simplification output and is intended for error reporting when
+/// verification fails.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_substituted_residual_with_strict_fold_and_generic_fallback<
+    FSimplifyStrict,
+    FSimplifyGeneric,
+    FContainsVariable,
+    FFoldNumericIslands,
+    FIsZero,
+    FRecordAttempted,
+    FRecordChanged,
+    FRecordVerified,
+>(
+    diff: ExprId,
+    mut simplify_strict: FSimplifyStrict,
+    mut simplify_generic: FSimplifyGeneric,
+    mut contains_variable: FContainsVariable,
+    mut fold_numeric_islands: FFoldNumericIslands,
+    mut is_zero: FIsZero,
+    mut record_attempted: FRecordAttempted,
+    mut record_changed: FRecordChanged,
+    mut record_verified: FRecordVerified,
+) -> (bool, ExprId)
+where
+    FSimplifyStrict: FnMut(ExprId) -> ExprId,
+    FSimplifyGeneric: FnMut(ExprId) -> ExprId,
+    FContainsVariable: FnMut(ExprId) -> bool,
+    FFoldNumericIslands: FnMut(ExprId) -> ExprId,
+    FIsZero: FnMut(ExprId) -> bool,
+    FRecordAttempted: FnMut(),
+    FRecordChanged: FnMut(),
+    FRecordVerified: FnMut(),
+{
+    let strict_result = simplify_strict(diff);
+    if is_zero(strict_result) {
+        return (true, strict_result);
+    }
+
+    if contains_variable(strict_result) {
+        record_attempted();
+        let folded = fold_numeric_islands(strict_result);
+        if folded != strict_result {
+            record_changed();
+            let folded_result = simplify_strict(folded);
+            if is_zero(folded_result) {
+                record_verified();
+                return (true, strict_result);
+            }
+        }
+    }
+
+    if !contains_variable(strict_result) {
+        let generic_result = simplify_generic(diff);
+        if is_zero(generic_result) {
+            return (true, strict_result);
+        }
+    }
+
+    (false, strict_result)
+}
+
 /// Compute summary for discrete verification outcomes.
 pub fn discrete_summary(total: usize, verified_count: usize) -> VerifySummary {
     if total == 0 {
@@ -163,6 +229,7 @@ pub fn conditional_summary(has_verified: bool, has_not_checkable: bool) -> Verif
 mod tests {
     use super::*;
     use cas_ast::Context;
+    use std::cell::Cell;
 
     #[test]
     fn test_discrete_summary() {
@@ -205,5 +272,125 @@ mod tests {
         assert_eq!(calls, 2);
         assert_eq!(result.summary, VerifySummary::AllVerified);
         assert_eq!(result.solutions.len(), 2);
+    }
+
+    #[test]
+    fn verify_substituted_residual_with_strict_fold_and_generic_fallback_verifies_on_strict() {
+        let mut ctx = Context::new();
+        let diff = ctx.num(99);
+        let zero = ctx.num(0);
+        let nonzero = ctx.num(2);
+
+        let (verified, strict_residual) =
+            verify_substituted_residual_with_strict_fold_and_generic_fallback(
+                diff,
+                |_expr| zero,
+                |_expr| nonzero,
+                |_expr| false,
+                |expr| expr,
+                |expr| expr == zero,
+                || {},
+                || {},
+                || {},
+            );
+
+        assert!(verified);
+        assert_eq!(strict_residual, zero);
+    }
+
+    #[test]
+    fn verify_substituted_residual_with_strict_fold_and_generic_fallback_verifies_after_fold() {
+        let mut ctx = Context::new();
+        let diff = ctx.num(100);
+        let strict = ctx.var("x");
+        let folded = ctx.num(7);
+        let zero = ctx.num(0);
+
+        let attempted = Cell::new(0usize);
+        let changed = Cell::new(0usize);
+        let verified_counter = Cell::new(0usize);
+
+        let (verified, strict_residual) =
+            verify_substituted_residual_with_strict_fold_and_generic_fallback(
+                diff,
+                |expr| {
+                    if expr == diff {
+                        strict
+                    } else if expr == folded {
+                        zero
+                    } else {
+                        expr
+                    }
+                },
+                |_expr| ctx.num(5),
+                |expr| expr == strict,
+                |expr| if expr == strict { folded } else { expr },
+                |expr| expr == zero,
+                || attempted.set(attempted.get() + 1),
+                || changed.set(changed.get() + 1),
+                || verified_counter.set(verified_counter.get() + 1),
+            );
+
+        assert!(verified);
+        assert_eq!(strict_residual, strict);
+        assert_eq!(attempted.get(), 1);
+        assert_eq!(changed.get(), 1);
+        assert_eq!(verified_counter.get(), 1);
+    }
+
+    #[test]
+    fn verify_substituted_residual_with_strict_fold_and_generic_fallback_verifies_on_generic_ground(
+    ) {
+        let mut ctx = Context::new();
+        let diff = ctx.num(101);
+        let strict = ctx.num(9);
+        let zero = ctx.num(0);
+
+        let (verified, strict_residual) =
+            verify_substituted_residual_with_strict_fold_and_generic_fallback(
+                diff,
+                |_expr| strict,
+                |_expr| zero,
+                |_expr| false,
+                |expr| expr,
+                |expr| expr == zero,
+                || {},
+                || {},
+                || {},
+            );
+
+        assert!(verified);
+        assert_eq!(strict_residual, strict);
+    }
+
+    #[test]
+    fn verify_substituted_residual_with_strict_fold_and_generic_fallback_returns_unverified() {
+        let mut ctx = Context::new();
+        let diff = ctx.num(102);
+        let strict = ctx.var("x");
+        let zero = ctx.num(0);
+
+        let attempted = Cell::new(0usize);
+        let changed = Cell::new(0usize);
+        let verified_counter = Cell::new(0usize);
+
+        let (verified, strict_residual) =
+            verify_substituted_residual_with_strict_fold_and_generic_fallback(
+                diff,
+                |_expr| strict,
+                |_expr| zero,
+                |expr| expr == strict,
+                |expr| expr,
+                |expr| expr == zero,
+                || attempted.set(attempted.get() + 1),
+                || changed.set(changed.get() + 1),
+                || verified_counter.set(verified_counter.get() + 1),
+            );
+
+        assert!(!verified);
+        assert_eq!(strict_residual, strict);
+        assert_eq!(attempted.get(), 1);
+        assert_eq!(changed.get(), 0);
+        assert_eq!(verified_counter.get(), 0);
     }
 }
