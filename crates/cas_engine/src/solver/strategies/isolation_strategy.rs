@@ -12,8 +12,8 @@ use cas_solver_core::solve_outcome::{
 };
 use cas_solver_core::strategy_kernels::{
     derive_isolation_strategy_routing, execute_collect_terms_kernel_result_pipeline_with_item,
-    execute_rational_exponent_kernel_result_pipeline_with_item_with,
     solve_isolation_strategy_routing_with,
+    solve_rational_exponent_kernel_result_pipeline_with_item_with,
 };
 use cas_solver_core::unwrap_plan::{
     route_unwrap_entry_with_item, solve_unwrap_execution_result_pipeline_with_item,
@@ -216,27 +216,30 @@ impl SolverStrategy for RationalExponentStrategy {
     ) -> Option<Result<(SolutionSet, Vec<SolveStep>), CasError>> {
         let include_item = simplifier.collect_steps();
         let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        execute_rational_exponent_kernel_result_pipeline_with_item_with(
-            || {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                cas_solver_core::strategy_kernels::derive_rational_exponent_kernel_for_var(
-                    &mut simplifier_ref.context,
-                    eq,
-                    var,
-                )
-            },
-            var,
-            include_item,
-            |expr| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                simplifier_ref.simplify(expr).0
-            },
-            |equation, solve_var| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                solve_with_ctx_and_options(equation, solve_var, *simplifier_ref, *opts, ctx)
-            },
-            |item| medium_step(item.description, item.equation),
-            |_solution| true,
+        let kernel = {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            cas_solver_core::strategy_kernels::derive_rational_exponent_kernel_for_var(
+                &mut simplifier_ref.context,
+                eq,
+                var,
+            )
+        }?;
+        Some(
+            solve_rational_exponent_kernel_result_pipeline_with_item_with(
+                kernel,
+                var,
+                include_item,
+                |expr| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    simplifier_ref.simplify(expr).0
+                },
+                |equation, solve_var| {
+                    let mut simplifier_ref = runtime_cell.borrow_mut();
+                    solve_with_ctx_and_options(equation, solve_var, *simplifier_ref, *opts, ctx)
+                },
+                |item| medium_step(item.description, item.equation),
+                |_solution| true,
+            ),
         )
     }
 }
