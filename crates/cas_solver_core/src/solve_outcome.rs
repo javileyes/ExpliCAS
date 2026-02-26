@@ -5596,6 +5596,35 @@ pub fn plan_product_zero_inequality_split_if_applicable(
     }
 }
 
+/// Try product-zero inequality split planning and execute the full split
+/// pipeline when applicable.
+pub fn try_execute_product_zero_inequality_split_pipeline_with_existing_steps<
+    E,
+    S,
+    FSolveCase,
+    FFinalize,
+>(
+    plan: Option<ProductZeroInequalityPlan>,
+    existing_steps: &[S],
+    solve_case: FSolveCase,
+    finalize_solved_sets: FFinalize,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    S: Clone,
+    FSolveCase: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FFinalize: FnMut(ProductZeroInequalitySolvedSets) -> SolutionSet,
+{
+    let plan = plan?;
+    Some(
+        execute_product_zero_inequality_split_pipeline_with_existing_steps(
+            &plan,
+            existing_steps.to_vec(),
+            solve_case,
+            finalize_solved_sets,
+        ),
+    )
+}
+
 /// Solve each equation of a product-zero inequality split with caller-provided
 /// equation solver callback.
 pub fn solve_product_zero_inequality_cases_with<E, FSolve>(
@@ -6298,6 +6327,59 @@ pub fn plan_division_denominator_sign_split_if_applicable(
     }
 }
 
+/// Try denominator-sign split planning for division inequalities and execute
+/// the full split pipeline with optional didactic items when applicable.
+#[allow(clippy::too_many_arguments)]
+pub fn try_execute_division_denominator_sign_split_pipeline_with_optional_items<
+    E,
+    S,
+    FRenderExpr,
+    FSolveBranch,
+    FSolveDomain,
+    FMapStep,
+    FFinalize,
+>(
+    split_plan: Option<DivisionDenominatorSignSplitPlan>,
+    denominator: ExprId,
+    op: RelOp,
+    case_boundary_lhs: ExprId,
+    simplified_rhs: ExprId,
+    include_items: bool,
+    branch_prefix_steps: &[S],
+    render_expr: FRenderExpr,
+    solve_branch: FSolveBranch,
+    solve_domain: FSolveDomain,
+    map_item_to_step: FMapStep,
+    finalize_solved_sets: FFinalize,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    S: Clone,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveBranch: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FSolveDomain: FnMut(&Equation) -> Result<SolutionSet, E>,
+    FMapStep: FnMut(DivisionDidacticExecutionItem) -> S,
+    FFinalize:
+        FnMut(DivisionDenominatorSignSplitSolvedCases<SolutionSet, SolutionSet>) -> SolutionSet,
+{
+    let split_plan = split_plan?;
+    Some(
+        execute_division_denominator_sign_split_pipeline_with_optional_items(
+            split_plan,
+            denominator,
+            case_boundary_lhs,
+            op,
+            simplified_rhs,
+            include_items,
+            branch_prefix_steps,
+            render_expr,
+            solve_branch,
+            solve_domain,
+            map_item_to_step,
+            finalize_solved_sets,
+        ),
+    )
+}
+
 /// Build executable split plan for already-isolated denominator inequalities.
 pub fn plan_isolated_denominator_sign_split(
     lhs: ExprId,
@@ -6330,6 +6412,50 @@ pub fn plan_isolated_denominator_sign_split_if_applicable(
     } else {
         None
     }
+}
+
+/// Try already-isolated denominator sign split planning and execute the full
+/// split pipeline with optional didactic items when applicable.
+#[allow(clippy::too_many_arguments)]
+pub fn try_execute_isolated_denominator_sign_split_pipeline_with_optional_items<
+    E,
+    S,
+    FRenderExpr,
+    FSolveBranch,
+    FMapStep,
+    FFinalize,
+>(
+    split_plan: Option<IsolatedDenominatorSignSplitPlan>,
+    denominator: ExprId,
+    op: RelOp,
+    include_items: bool,
+    branch_prefix_steps: &[S],
+    render_expr: FRenderExpr,
+    solve_branch: FSolveBranch,
+    map_item_to_step: FMapStep,
+    finalize_solved_sets: FFinalize,
+) -> Option<Result<(SolutionSet, Vec<S>), E>>
+where
+    S: Clone,
+    FRenderExpr: FnMut(ExprId) -> String,
+    FSolveBranch: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FMapStep: FnMut(DivisionDidacticExecutionItem) -> S,
+    FFinalize: FnMut(IsolatedDenominatorSignSplitSolvedCases<SolutionSet>) -> SolutionSet,
+{
+    let split_plan = split_plan?;
+    Some(
+        execute_isolated_denominator_sign_split_pipeline_with_optional_items(
+            split_plan,
+            denominator,
+            op,
+            include_items,
+            branch_prefix_steps,
+            render_expr,
+            solve_branch,
+            map_item_to_step,
+            finalize_solved_sets,
+        ),
+    )
 }
 
 /// Build runtime execution plan for denominator-sign split using a precomputed
@@ -14098,6 +14224,66 @@ mod tests {
     }
 
     #[test]
+    fn try_execute_division_denominator_sign_split_pipeline_with_optional_items_returns_none_without_plan(
+    ) {
+        let out = try_execute_division_denominator_sign_split_pipeline_with_optional_items::<
+            (),
+            u8,
+            _,
+            _,
+            _,
+            _,
+            _,
+        >(
+            None,
+            ExprId::from_raw(1),
+            RelOp::Lt,
+            ExprId::from_raw(2),
+            ExprId::from_raw(3),
+            false,
+            &[],
+            |_id| "x".to_string(),
+            |_equation| Ok((SolutionSet::AllReals, vec![])),
+            |_equation| Ok(SolutionSet::AllReals),
+            |_item| 0u8,
+            |_solved_cases| SolutionSet::AllReals,
+        );
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn try_execute_division_denominator_sign_split_pipeline_with_optional_items_executes_with_plan()
+    {
+        let mut ctx = Context::new();
+        let num = ctx.var("n");
+        let den = ctx.var("d");
+        let rhs = ctx.var("r");
+        let simplified_rhs = ctx.var("s");
+        let split =
+            plan_division_denominator_sign_split(&mut ctx, num, den, rhs, RelOp::Lt).unwrap();
+
+        let out = try_execute_division_denominator_sign_split_pipeline_with_optional_items(
+            Some(split),
+            den,
+            RelOp::Lt,
+            num,
+            simplified_rhs,
+            false,
+            &[0u8],
+            |_id| "d".to_string(),
+            |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![rhs]), vec![1u8])),
+            |_domain_equation| Ok::<_, ()>(SolutionSet::AllReals),
+            |_item| 9u8,
+            |_solved_cases| SolutionSet::AllReals,
+        )
+        .expect("plan is present");
+
+        let (final_set, steps) = out.expect("execution should succeed");
+        assert!(matches!(final_set, SolutionSet::AllReals));
+        assert_eq!(steps, vec![0u8, 1u8, 0u8, 1u8]);
+    }
+
+    #[test]
     fn division_denominator_sign_split_boundary_item_returns_case_separator() {
         let mut ctx = Context::new();
         let num = ctx.var("n");
@@ -14562,6 +14748,56 @@ mod tests {
     }
 
     #[test]
+    fn try_execute_isolated_denominator_sign_split_pipeline_with_optional_items_returns_none_without_plan(
+    ) {
+        let out = try_execute_isolated_denominator_sign_split_pipeline_with_optional_items::<
+            (),
+            u8,
+            _,
+            _,
+            _,
+            _,
+        >(
+            None,
+            ExprId::from_raw(1),
+            RelOp::Leq,
+            false,
+            &[],
+            |_id| "x".to_string(),
+            |_equation| Ok((SolutionSet::AllReals, vec![])),
+            |_item| 0u8,
+            |_solved_cases| SolutionSet::AllReals,
+        );
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn try_execute_isolated_denominator_sign_split_pipeline_with_optional_items_executes_with_plan()
+    {
+        let mut ctx = Context::new();
+        let den = ctx.var("x");
+        let rhs = ctx.var("r");
+        let split = plan_isolated_denominator_sign_split(den, rhs, RelOp::Leq).unwrap();
+
+        let out = try_execute_isolated_denominator_sign_split_pipeline_with_optional_items(
+            Some(split),
+            den,
+            RelOp::Leq,
+            false,
+            &[0u8],
+            |_id| "x".to_string(),
+            |_equation| Ok::<_, ()>((SolutionSet::Discrete(vec![rhs]), vec![1u8])),
+            |_item| 9u8,
+            |_solved_cases| SolutionSet::Empty,
+        )
+        .expect("plan is present");
+
+        let (final_set, steps) = out.expect("execution should succeed");
+        assert!(matches!(final_set, SolutionSet::Empty));
+        assert_eq!(steps, vec![0u8, 1u8, 0u8, 1u8]);
+    }
+
+    #[test]
     fn isolated_denominator_sign_split_boundary_item_returns_case_separator() {
         let mut ctx = Context::new();
         let den = ctx.var("x");
@@ -14819,6 +15055,39 @@ mod tests {
                 "existing".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn try_execute_product_zero_inequality_split_pipeline_with_existing_steps_returns_none_without_plan(
+    ) {
+        let out =
+            try_execute_product_zero_inequality_split_pipeline_with_existing_steps::<(), u8, _, _>(
+                None,
+                &[],
+                |_eq| Ok((SolutionSet::AllReals, vec![])),
+                |_solved| SolutionSet::AllReals,
+            );
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn try_execute_product_zero_inequality_split_pipeline_with_existing_steps_executes_with_plan() {
+        let mut ctx = Context::new();
+        let a = ctx.var("a");
+        let b = ctx.var("b");
+        let plan = plan_product_zero_inequality_split(&mut ctx, a, b, RelOp::Gt).unwrap();
+
+        let out = try_execute_product_zero_inequality_split_pipeline_with_existing_steps(
+            Some(plan),
+            &[9u8],
+            |_eq| Ok::<_, ()>((SolutionSet::AllReals, vec![1u8])),
+            |_solved| SolutionSet::AllReals,
+        )
+        .expect("plan is present");
+
+        let (final_set, steps) = out.expect("execution should succeed");
+        assert!(matches!(final_set, SolutionSet::AllReals));
+        assert_eq!(steps, vec![1u8, 1u8, 1u8, 1u8, 9u8]);
     }
 
     #[test]
