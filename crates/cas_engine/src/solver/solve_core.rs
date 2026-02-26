@@ -12,7 +12,7 @@ use cas_solver_core::solve_analysis::{
     apply_equation_pair_rewrite_sequence_with, apply_nonzero_exclusion_guards_if_any,
     classify_equation_var_presence, finalize_strategy_attempt_sequence_with,
     guard_solved_result_with_exclusions, normalize_variable_residual_with,
-    resolve_discrete_strategy_solutions_with, run_strategy_attempt_sequence,
+    resolve_discrete_strategy_solutions_for_context_with, run_strategy_attempt_sequence,
     simplify_equation_sides_for_presence_with, EquationVarPresence,
 };
 use cas_solver_core::solve_outcome::{
@@ -437,11 +437,9 @@ fn solve_inner(
         run_strategy_attempt_sequence(strategy_attempts, is_soft_strategy_error),
         |solutions, steps| {
             let classify_ctx = simplifier.context.clone();
-            let valid_sols = resolve_discrete_strategy_solutions_with(
+            let valid_sols = resolve_discrete_strategy_solutions_for_context_with(
+                &classify_ctx,
                 solutions,
-                |solution| {
-                    cas_solver_core::solve_analysis::is_symbolic_expr(&classify_ctx, solution)
-                },
                 |solution| {
                     // Verify against ORIGINAL equation, not simplified form, so
                     // domain-invalid roots (e.g. division by zero) are rejected.
