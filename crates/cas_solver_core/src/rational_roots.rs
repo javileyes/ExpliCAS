@@ -589,6 +589,66 @@ where
     Some((solved.solution_set, solved.steps))
 }
 
+/// Solve rational-roots strategy for a concrete equation returning the plain
+/// `(SolutionSet, steps)` tuple used by engine strategy surfaces.
+#[allow(clippy::too_many_arguments)]
+pub fn solve_rational_roots_strategy_result_for_equation_with_and_item<
+    S,
+    FBuildDiff,
+    FSimplifyExpr,
+    FExpandExpr,
+    FExtractCoefficients,
+    FSolveNumericPolynomial,
+    FSortAndDedupRoots,
+    FPlanStep,
+    FStep,
+>(
+    equation: &Equation,
+    var: &str,
+    min_degree: usize,
+    max_degree: usize,
+    max_candidates: usize,
+    include_item: bool,
+    build_diff: FBuildDiff,
+    simplify_expr: FSimplifyExpr,
+    expand_expr: FExpandExpr,
+    extract_coefficients: FExtractCoefficients,
+    solve_numeric_polynomial: FSolveNumericPolynomial,
+    sort_and_dedup_roots: FSortAndDedupRoots,
+    plan_step: FPlanStep,
+    map_item_to_step: FStep,
+) -> Option<(SolutionSet, Vec<S>)>
+where
+    FBuildDiff: FnMut(ExprId, ExprId) -> ExprId,
+    FSimplifyExpr: FnMut(ExprId) -> ExprId,
+    FExpandExpr: FnMut(ExprId) -> ExprId,
+    FExtractCoefficients: FnMut(ExprId, &str, usize) -> Option<Vec<ExprId>>,
+    FSolveNumericPolynomial:
+        FnMut(&[ExprId], usize, usize, usize) -> Option<NumericPolynomialSolveOutcome>,
+    FSortAndDedupRoots: FnMut(&mut Vec<ExprId>),
+    FPlanStep: FnMut(ExprId, usize) -> RationalRootsDidacticStep,
+    FStep: FnMut(RationalRootsExecutionItem) -> S,
+{
+    solve_rational_roots_strategy_result_with_and_item(
+        equation.lhs,
+        equation.rhs,
+        equation.op.clone(),
+        var,
+        min_degree,
+        max_degree,
+        max_candidates,
+        include_item,
+        build_diff,
+        simplify_expr,
+        expand_expr,
+        extract_coefficients,
+        solve_numeric_polynomial,
+        sort_and_dedup_roots,
+        plan_step,
+        map_item_to_step,
+    )
+}
+
 /// Plan Rational Root strategy didactic step for equation `expanded_expr = 0`.
 pub fn plan_rational_roots_strategy_step(
     ctx: &mut Context,
@@ -840,6 +900,105 @@ mod tests {
 
         assert!(matches!(solved.0, SolutionSet::Discrete(_)));
         assert_eq!(solved.1.len(), 1);
+    }
+
+    #[test]
+    fn solve_rational_roots_strategy_result_for_equation_with_and_item_returns_plain_tuple() {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let two = context.num(2);
+        let x2 = context.add(Expr::Pow(x, two));
+        let x3 = context.add(Expr::Mul(x2, x));
+        let lhs = context.add(Expr::Sub(x3, x)); // x^3 - x
+        let zero = context.num(0);
+        let equation = Equation {
+            lhs,
+            rhs: zero,
+            op: RelOp::Eq,
+        };
+        let context_cell = std::cell::RefCell::new(context);
+
+        let solved = solve_rational_roots_strategy_result_for_equation_with_and_item(
+            &equation,
+            "x",
+            3,
+            10,
+            200,
+            true,
+            |left, right| {
+                let mut context_ref = context_cell.borrow_mut();
+                context_ref.add(Expr::Sub(left, right))
+            },
+            |expr| expr,
+            |expr| expr,
+            |expanded, var, max_degree| {
+                let mut context_ref = context_cell.borrow_mut();
+                extract_poly_coefficients(&mut context_ref, expanded, var, max_degree)
+            },
+            |coeffs, min_degree, max_degree, max_candidates| {
+                let mut context_ref = context_cell.borrow_mut();
+                solve_numeric_coeff_polynomial(
+                    &mut context_ref,
+                    coeffs,
+                    min_degree,
+                    max_degree,
+                    max_candidates,
+                )
+            },
+            |roots| {
+                let context_ref = context_cell.borrow();
+                crate::solution_set::sort_and_dedup_exprs(&context_ref, roots);
+            },
+            |expanded, degree| {
+                let mut context_ref = context_cell.borrow_mut();
+                plan_rational_roots_step(&mut context_ref, expanded, degree)
+            },
+            |item| item.description,
+        )
+        .expect("strategy should solve cubic");
+
+        assert!(matches!(solved.0, SolutionSet::Discrete(_)));
+        assert_eq!(solved.1.len(), 1);
+    }
+
+    #[test]
+    fn solve_rational_roots_strategy_result_for_equation_with_and_item_returns_none_for_inequality()
+    {
+        let mut context = Context::new();
+        let x = context.var("x");
+        let one = context.num(1);
+        let equation = Equation {
+            lhs: x,
+            rhs: one,
+            op: RelOp::Gt,
+        };
+        let mut extract_calls = 0usize;
+
+        let out = solve_rational_roots_strategy_result_for_equation_with_and_item(
+            &equation,
+            "x",
+            3,
+            10,
+            200,
+            true,
+            |left, right| {
+                let mut ctx = Context::new();
+                ctx.add(Expr::Sub(left, right))
+            },
+            |expr| expr,
+            |expr| expr,
+            |_expanded, _var, _max_degree| {
+                extract_calls += 1;
+                None
+            },
+            |_coeffs, _min_degree, _max_degree, _max_candidates| None,
+            |_roots| {},
+            |_expanded, _degree| panic!("didactic step must not be planned for inequalities"),
+            |item| item.description,
+        );
+
+        assert!(out.is_none());
+        assert_eq!(extract_calls, 0);
     }
 
     #[test]
