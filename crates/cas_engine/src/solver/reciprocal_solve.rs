@@ -9,8 +9,8 @@
 use cas_ast::{ExprId, SolutionSet};
 use cas_solver_core::reciprocal::{
     build_reciprocal_execution_from_kernel_prepared, build_reciprocal_solve_plan,
-    derive_reciprocal_solve_kernel, execute_reciprocal_kernel_execution_pipeline_with,
-    execute_reciprocal_solve_pipeline_with_items_and_kernel,
+    derive_reciprocal_solve_kernel, solve_reciprocal_execution_pipeline_with_items,
+    ReciprocalPreparedExecution,
 };
 
 use crate::engine::Simplifier;
@@ -28,45 +28,35 @@ pub(crate) fn try_reciprocal_solve(
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
     let include_items = simplifier.collect_steps();
     let kernel = derive_reciprocal_solve_kernel(&mut simplifier.context, lhs, rhs, var);
-    let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-    execute_reciprocal_solve_pipeline_with_items_and_kernel(
+    let kernel = kernel?;
+    let raw_plan = build_reciprocal_solve_plan(
+        &mut simplifier.context,
+        var,
+        kernel.numerator,
+        kernel.denominator,
+    );
+    let combined_rhs_display = simplifier.simplify(raw_plan.combined_rhs).0;
+    let solution_rhs_display = simplifier.simplify(raw_plan.solution_rhs).0;
+    let guard_numerator = simplifier.simplify(kernel.numerator).0;
+    let numerator_status =
+        crate::solver::prove_nonzero_status(&simplifier.context, guard_numerator);
+    let prepared = ReciprocalPreparedExecution {
+        combined_rhs_display,
+        solution_rhs_display,
+        guard_numerator,
+        numerator_status,
+    };
+    let execution = build_reciprocal_execution_from_kernel_prepared(
+        &mut simplifier.context,
         var,
         kernel,
-        include_items,
-        |inner_var, kernel| {
-            execute_reciprocal_kernel_execution_pipeline_with(
-                inner_var,
-                kernel,
-                |plan_var, plan_kernel| {
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
-                    build_reciprocal_solve_plan(
-                        &mut simplifier_ref.context,
-                        plan_var,
-                        plan_kernel.numerator,
-                        plan_kernel.denominator,
-                    )
-                },
-                |expr| {
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
-                    simplifier_ref.simplify(expr).0
-                },
-                |expr| {
-                    let simplifier_ref = runtime_cell.borrow();
-                    crate::solver::prove_nonzero_status(&simplifier_ref.context, expr)
-                },
-                |build_var, build_kernel, prepared| {
-                    let mut simplifier_ref = runtime_cell.borrow_mut();
-                    build_reciprocal_execution_from_kernel_prepared(
-                        &mut simplifier_ref.context,
-                        build_var,
-                        build_kernel,
-                        prepared,
-                    )
-                },
-            )
-        },
-        |item| medium_step(item.description().to_string(), item.equation),
-    )
+        prepared,
+    );
+    let solved_execution =
+        solve_reciprocal_execution_pipeline_with_items(execution, include_items, |item| {
+            medium_step(item.description().to_string(), item.equation)
+        });
+    Some(solved_execution.solved)
 }
 
 #[cfg(test)]
