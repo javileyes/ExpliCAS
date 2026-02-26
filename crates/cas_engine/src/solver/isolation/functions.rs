@@ -141,7 +141,7 @@ fn isolate_log(
         steps,
         rewrite,
         |equation| {
-            let (solution_set, solved_steps) = isolate(
+            isolate(
                 equation.lhs,
                 equation.rhs,
                 equation.op.clone(),
@@ -149,8 +149,7 @@ fn isolate_log(
                 simplifier,
                 opts,
                 ctx,
-            )?;
-            Ok::<(SolutionSet, Vec<SolveStep>), CasError>((solution_set, solved_steps))
+            )
         },
         |item| medium_step(item.description().to_string(), item.equation),
         CasError::IsolationError(
