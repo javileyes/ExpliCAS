@@ -14,12 +14,10 @@ use cas_solver_core::isolation_utils::contains_var;
 use cas_solver_core::linear_collect::{
     build_linear_collect_additive_execution_with, build_linear_collect_factored_execution_with,
     build_linear_collect_solution_expr, derive_linear_collect_additive_kernel,
-    derive_linear_collect_factored_kernel,
-    solve_linear_collect_additive_solved_pipeline_with_items,
-    solve_linear_collect_factored_solved_pipeline_with_items, LinearCollectAdditiveSolve,
-    LinearCollectFactoredSolve,
+    derive_linear_collect_factored_kernel, execute_linear_collect_additive_pipeline_with_and_items,
+    execute_linear_collect_factored_pipeline_with_and_items,
 };
-use cas_solver_core::linear_solution::NonZeroStatus;
+use std::cell::RefCell;
 
 use crate::engine::Simplifier;
 use crate::solver::{medium_step, render_expr, SolveStep};
@@ -36,42 +34,35 @@ pub(crate) fn try_linear_collect(
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
     let include_items = simplifier.collect_steps();
-    let equation_diff = simplifier.context.add(Expr::Sub(lhs, rhs));
-    let simplified_diff = simplifier.simplify(equation_diff).0;
-    let factored_kernel =
-        derive_linear_collect_factored_kernel(&mut simplifier.context, simplified_diff, var)?;
-
-    let coeff = simplifier.simplify(factored_kernel.coeff).0;
-    let rhs_term = simplifier.simplify(factored_kernel.rhs_term).0;
-    let solution_expr =
-        build_linear_collect_solution_expr(&mut simplifier.context, rhs_term, coeff);
-    let solution = simplifier.simplify(solution_expr).0;
-
-    let coeff_contains_var = contains_var(&simplifier.context, coeff, var);
-    let (coeff_status, rhs_status) = if coeff_contains_var {
-        (NonZeroStatus::Unknown, NonZeroStatus::Unknown)
-    } else {
-        let coeff_status = crate::solver::prove_nonzero_status(&simplifier.context, coeff);
-        let rhs_status = if coeff_status == NonZeroStatus::Zero {
-            crate::solver::prove_nonzero_status(&simplifier.context, rhs_term)
-        } else {
-            NonZeroStatus::Unknown
-        };
-        (coeff_status, rhs_status)
-    };
-
-    let solved = LinearCollectFactoredSolve {
-        coeff,
-        rhs_term,
-        solution,
-        coeff_status,
-        rhs_status,
-    };
-    Some(solve_linear_collect_factored_solved_pipeline_with_items(
+    let simplifier_ref = RefCell::new(simplifier);
+    execute_linear_collect_factored_pipeline_with_and_items(
+        lhs,
+        rhs,
         var,
-        solved,
         include_items,
+        |left, right| {
+            let mut simplifier = simplifier_ref.borrow_mut();
+            simplifier.context.add(Expr::Sub(left, right))
+        },
+        |expr| simplifier_ref.borrow_mut().simplify(expr).0,
+        |equation_diff, var_name| {
+            let mut simplifier = simplifier_ref.borrow_mut();
+            derive_linear_collect_factored_kernel(&mut simplifier.context, equation_diff, var_name)
+        },
+        |rhs_term, coeff| {
+            let mut simplifier = simplifier_ref.borrow_mut();
+            build_linear_collect_solution_expr(&mut simplifier.context, rhs_term, coeff)
+        },
+        |expr, var_name| {
+            let simplifier = simplifier_ref.borrow();
+            contains_var(&simplifier.context, expr, var_name)
+        },
+        |expr| {
+            let simplifier = simplifier_ref.borrow();
+            crate::solver::prove_nonzero_status(&simplifier.context, expr)
+        },
         |name, solved| {
+            let mut simplifier = simplifier_ref.borrow_mut();
             build_linear_collect_factored_execution_with(
                 &mut simplifier.context,
                 name,
@@ -84,7 +75,7 @@ pub(crate) fn try_linear_collect(
             )
         },
         |item| medium_step(item.description().to_string(), item.equation),
-    ))
+    )
 }
 
 /// Try to solve using the structural linear form extractor.
@@ -99,41 +90,32 @@ pub(crate) fn try_linear_collect_v2(
     simplifier: &mut Simplifier,
 ) -> Option<(SolutionSet, Vec<SolveStep>)> {
     let include_items = simplifier.collect_steps();
-    let additive_kernel =
-        derive_linear_collect_additive_kernel(&mut simplifier.context, lhs, rhs, var)?;
-
-    let coeff = simplifier.simplify(additive_kernel.coeff).0;
-    let constant = simplifier.simplify(additive_kernel.constant).0;
-    let neg_constant = simplifier.context.add(Expr::Neg(constant));
-    let solution_expr =
-        build_linear_collect_solution_expr(&mut simplifier.context, neg_constant, coeff);
-    let solution = simplifier.simplify(solution_expr).0;
-
-    let coeff_contains_var = contains_var(&simplifier.context, coeff, var);
-    let (coeff_status, constant_status) = if coeff_contains_var {
-        (NonZeroStatus::Unknown, NonZeroStatus::Unknown)
-    } else {
-        let coeff_status = crate::solver::prove_nonzero_status(&simplifier.context, coeff);
-        let constant_status = if coeff_status == NonZeroStatus::Zero {
-            crate::solver::prove_nonzero_status(&simplifier.context, constant)
-        } else {
-            NonZeroStatus::Unknown
-        };
-        (coeff_status, constant_status)
-    };
-
-    let solved = LinearCollectAdditiveSolve {
-        coeff,
-        constant,
-        solution,
-        coeff_status,
-        constant_status,
-    };
-    Some(solve_linear_collect_additive_solved_pipeline_with_items(
+    let simplifier_ref = RefCell::new(simplifier);
+    execute_linear_collect_additive_pipeline_with_and_items(
+        lhs,
+        rhs,
         var,
-        solved,
         include_items,
+        |left, right, var_name| {
+            let mut simplifier = simplifier_ref.borrow_mut();
+            derive_linear_collect_additive_kernel(&mut simplifier.context, left, right, var_name)
+        },
+        |expr| simplifier_ref.borrow_mut().simplify(expr).0,
+        |constant, coeff| {
+            let mut simplifier = simplifier_ref.borrow_mut();
+            let neg_constant = simplifier.context.add(Expr::Neg(constant));
+            build_linear_collect_solution_expr(&mut simplifier.context, neg_constant, coeff)
+        },
+        |expr, var_name| {
+            let simplifier = simplifier_ref.borrow();
+            contains_var(&simplifier.context, expr, var_name)
+        },
+        |expr| {
+            let simplifier = simplifier_ref.borrow();
+            crate::solver::prove_nonzero_status(&simplifier.context, expr)
+        },
         |name, solved| {
+            let mut simplifier = simplifier_ref.borrow_mut();
             build_linear_collect_additive_execution_with(
                 &mut simplifier.context,
                 name,
@@ -146,7 +128,7 @@ pub(crate) fn try_linear_collect_v2(
             )
         },
         |item| medium_step(item.description().to_string(), item.equation),
-    ))
+    )
 }
 
 #[cfg(test)]
