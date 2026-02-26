@@ -7,14 +7,13 @@ use cas_solver_core::solve_outcome::{
     classify_pow_exponent_base_flags, derive_pow_isolation_route,
     execute_log_terminal_outcome_pipeline_with_item,
     execute_pow_base_isolation_pipeline_with_item_and_merge_with_existing_steps_with,
-    execute_pow_exponent_log_isolation_pipeline_with_item_with,
+    execute_pow_exponent_log_isolation_pipeline_with_item_and_merge_with_existing_steps_with,
     execute_pow_exponent_log_unsupported_pipeline_from_decision_with,
     execute_pow_exponent_shortcut_pipeline_with_item_with,
     execute_power_base_one_shortcut_pipeline_with_item_for_pow_with,
     finalize_pow_exponent_log_unsupported_pipeline_with_existing_steps,
     finalize_pow_exponent_shortcut_pipeline_with_existing_steps,
-    merge_solved_with_existing_steps_append, merge_solved_with_existing_steps_prepend,
-    plan_pow_exponent_log_isolation_step_with,
+    merge_solved_with_existing_steps_append, plan_pow_exponent_log_isolation_step_with,
     plan_pow_exponent_log_unsupported_execution_from_decision_with,
     pow_exponent_rhs_contains_variable, shortcut_bases_equivalent_by_difference_with,
     solve_solve_tactic_normalization_pipeline_with_item, PowIsolationRoute,
@@ -375,39 +374,34 @@ fn isolate_pow_exponent(
     // ================================================================
 
     let include_item = simplifier.collect_steps();
-    let solved_log = {
-        let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
-        execute_pow_exponent_log_isolation_pipeline_with_item_with(
-            include_item,
-            || {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                plan_pow_exponent_log_isolation_step_with(
-                    &mut simplifier_ref.context,
-                    e,
-                    b,
-                    rhs,
-                    op,
-                    None,
-                    solver_render_expr,
-                )
-            },
-            |equation| {
-                let mut simplifier_ref = runtime_cell.borrow_mut();
-                isolate(
-                    equation.lhs,
-                    equation.rhs,
-                    equation.op.clone(),
-                    var,
-                    *simplifier_ref,
-                    opts,
-                    ctx,
-                )
-            },
-            |item| medium_step(item.description().to_string(), item.equation),
-        )?
-    };
-    Ok(merge_solved_with_existing_steps_prepend(
-        (solved_log.solution_set, solved_log.steps),
+    let runtime_cell = std::cell::RefCell::new(&mut *simplifier);
+    execute_pow_exponent_log_isolation_pipeline_with_item_and_merge_with_existing_steps_with(
+        include_item,
         steps,
-    ))
+        || {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            plan_pow_exponent_log_isolation_step_with(
+                &mut simplifier_ref.context,
+                e,
+                b,
+                rhs,
+                op,
+                None,
+                solver_render_expr,
+            )
+        },
+        |equation| {
+            let mut simplifier_ref = runtime_cell.borrow_mut();
+            isolate(
+                equation.lhs,
+                equation.rhs,
+                equation.op.clone(),
+                var,
+                *simplifier_ref,
+                opts,
+                ctx,
+            )
+        },
+        |item| medium_step(item.description().to_string(), item.equation),
+    )
 }

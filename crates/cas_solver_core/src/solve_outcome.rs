@@ -3691,6 +3691,38 @@ where
     )
 }
 
+/// Execute exponent-log rewrite pipeline and prepend solved steps before
+/// caller-owned existing steps.
+pub fn execute_pow_exponent_log_isolation_pipeline_with_item_and_merge_with_existing_steps_with<
+    E,
+    S,
+    FPlan,
+    FSolve,
+    FStep,
+>(
+    include_item: bool,
+    existing_steps: Vec<S>,
+    plan_rewrite: FPlan,
+    solve_rewrite: FSolve,
+    map_item_to_step: FStep,
+) -> Result<(SolutionSet, Vec<S>), E>
+where
+    FPlan: FnOnce() -> PowExponentLogIsolationRewritePlan,
+    FSolve: FnMut(&Equation) -> Result<(SolutionSet, Vec<S>), E>,
+    FStep: FnMut(PowExponentLogIsolationExecutionItem) -> S,
+{
+    let solved = execute_pow_exponent_log_isolation_pipeline_with_item_with(
+        include_item,
+        plan_rewrite,
+        solve_rewrite,
+        map_item_to_step,
+    )?;
+    Ok(merge_solved_with_existing_steps_prepend(
+        (solved.solution_set, solved.steps),
+        existing_steps,
+    ))
+}
+
 /// Execute a planned unsupported logarithmic route (residual or guarded).
 ///
 /// For guarded routes, this runs the guarded rewrite solve callback and
@@ -11677,6 +11709,41 @@ mod tests {
         assert_eq!(solved.steps.len(), 2);
         assert!(solved.steps[0].contains("Take log base a of both sides"));
         assert_eq!(solved.steps[1], "sub".to_string());
+    }
+
+    #[test]
+    fn execute_pow_exponent_log_isolation_pipeline_with_item_and_merge_with_existing_steps_with_merges(
+    ) {
+        let mut ctx = Context::new();
+        let exponent = ctx.var("x");
+        let base = ctx.var("a");
+        let rhs = ctx.var("b");
+
+        let merged =
+            execute_pow_exponent_log_isolation_pipeline_with_item_and_merge_with_existing_steps_with(
+                true,
+                vec!["existing".to_string()],
+                || {
+                    plan_pow_exponent_log_isolation_step_with(
+                        &mut ctx,
+                        exponent,
+                        base,
+                        rhs,
+                        RelOp::Eq,
+                        None,
+                        |_, _| "a".to_string(),
+                    )
+                },
+                |_equation| Ok::<_, ()>((SolutionSet::Empty, vec!["sub".to_string()])),
+                |item| item.description,
+            )
+            .expect("execute+merge wrapper should solve");
+
+        assert!(matches!(merged.0, SolutionSet::Empty));
+        assert_eq!(merged.1.len(), 3);
+        assert!(merged.1[0].contains("Take log base a of both sides"));
+        assert_eq!(merged.1[1], "sub".to_string());
+        assert_eq!(merged.1[2], "existing".to_string());
     }
 
     #[test]
